@@ -1,0 +1,835 @@
+{
+  "schema_version": 1,
+  "kind": "emotions",
+  "emotions": [
+    {
+      "id": "neutral",
+      "name": "Neutral",
+      "category": "basic",
+      "aliases": [
+        "calm",
+        "idle",
+        "normal"
+      ],
+      "meaning": "No strong feeling; resting state.",
+      "default_intensity": 0,
+      "priority": 0,
+      "duration": null,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.6,
+        "out": 0.8
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "happy",
+      "name": "Happy",
+      "category": "basic",
+      "aliases": [
+        "glad",
+        "cheerful",
+        "joy"
+      ],
+      "meaning": "Pleased, in a good mood.",
+      "default_intensity": 60,
+      "priority": 30,
+      "duration": 7,
+      "reaction": "joy",
+      "animation": {
+        "png_softbody": "joy"
+      },
+      "transition": {
+        "in": 0.35,
+        "out": 0.8
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "خوشحال",
+          "عالیه",
+          "هورا",
+          "خوبه"
+        ],
+        "en": [
+          "glad",
+          "yay",
+          "great",
+          "awesome"
+        ]
+      }
+    },
+    {
+      "id": "sad",
+      "name": "Sad",
+      "category": "basic",
+      "aliases": [
+        "down",
+        "upset",
+        "sorrow",
+        "blue"
+      ],
+      "meaning": "Hurt, disappointed or low.",
+      "default_intensity": 55,
+      "priority": 40,
+      "duration": 8,
+      "reaction": "sorrow",
+      "animation": {
+        "png_softbody": "sorrow"
+      },
+      "transition": {
+        "in": 0.5,
+        "out": 1.2
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "ناراحت",
+          "غمگین",
+          "دلم گرفته"
+        ],
+        "en": [
+          "sad",
+          "sorry to hear",
+          "miss you"
+        ]
+      }
+    },
+    {
+      "id": "angry",
+      "name": "Angry",
+      "category": "basic",
+      "aliases": [
+        "mad",
+        "furious",
+        "rage"
+      ],
+      "meaning": "Genuinely angry.",
+      "default_intensity": 65,
+      "priority": 60,
+      "duration": 8,
+      "reaction": "anger",
+      "animation": {
+        "png_softbody": "anger"
+      },
+      "transition": {
+        "in": 0.2,
+        "out": 1.0
+      },
+      "fallback": "frustrated",
+      "keywords": {
+        "fa": [
+          "عصبانی",
+          "لعنتی",
+          "کثافت",
+          "بیشعور"
+        ],
+        "en": [
+          "furious",
+          "pissed",
+          "damn you",
+          "shut up"
+        ]
+      }
+    },
+    {
+      "id": "surprised",
+      "name": "Surprised",
+      "category": "basic",
+      "aliases": [
+        "shocked",
+        "startled",
+        "astonished"
+      ],
+      "meaning": "Caught off guard.",
+      "default_intensity": 60,
+      "priority": 50,
+      "duration": 3.5,
+      "reaction": "surprise",
+      "animation": {
+        "png_softbody": "surprise"
+      },
+      "transition": {
+        "in": 0.12,
+        "out": 0.6
+      },
+      "fallback": "curious",
+      "keywords": {
+        "fa": [
+          "وای",
+          "چی؟!",
+          "جدی؟"
+        ],
+        "en": [
+          "whoa",
+          "what?!",
+          "no way"
+        ]
+      }
+    },
+    {
+      "id": "curious",
+      "name": "Curious",
+      "category": "basic",
+      "aliases": [
+        "intrigued",
+        "interested",
+        "wondering"
+      ],
+      "meaning": "Interested and wants to know more.",
+      "default_intensity": 45,
+      "priority": 20,
+      "duration": 5,
+      "reaction": "curiosity",
+      "animation": {
+        "png_softbody": "curiosity"
+      },
+      "transition": {
+        "in": 0.35,
+        "out": 0.8
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "کنجکاو",
+          "جالبه",
+          "چطور"
+        ],
+        "en": [
+          "curious",
+          "interesting",
+          "tell me more"
+        ]
+      }
+    },
+    {
+      "id": "proud",
+      "name": "Proud",
+      "category": "personality",
+      "aliases": [
+        "pleased_with_self",
+        "confident"
+      ],
+      "meaning": "Proud of herself or of him.",
+      "default_intensity": 60,
+      "priority": 34,
+      "duration": 7,
+      "reaction": "pride",
+      "animation": {
+        "png_softbody": "pride"
+      },
+      "transition": {
+        "in": 0.35,
+        "out": 0.8
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "افتخار",
+          "باهوشم"
+        ],
+        "en": [
+          "proud",
+          "of course i did"
+        ]
+      }
+    },
+    {
+      "id": "arrogant",
+      "name": "Arrogant",
+      "category": "personality",
+      "aliases": [
+        "haughty",
+        "conceited",
+        "vain"
+      ],
+      "meaning": "Looks down on things; very sure she is the best.",
+      "default_intensity": 60,
+      "priority": 34,
+      "duration": 7,
+      "reaction": "haughty",
+      "animation": {
+        "png_softbody": "haughty"
+      },
+      "transition": {
+        "in": 0.35,
+        "out": 0.8
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "معلومه که",
+          "منم دیگه",
+          "من بهترینم"
+        ],
+        "en": [
+          "obviously",
+          "i'm the best",
+          "beneath me"
+        ]
+      }
+    },
+    {
+      "id": "smug",
+      "name": "Smug",
+      "category": "personality",
+      "aliases": [
+        "smirking",
+        "self_satisfied",
+        "cocky"
+      ],
+      "meaning": "Quietly pleased that she is right or gorgeous.",
+      "default_intensity": 60,
+      "priority": 33,
+      "duration": 7,
+      "reaction": "smirk",
+      "animation": {
+        "png_softbody": "smirk"
+      },
+      "transition": {
+        "in": 0.35,
+        "out": 0.8
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "دیدی گفتم",
+          "خوشگلم دیگه"
+        ],
+        "en": [
+          "told you",
+          "i know i'm gorgeous",
+          "called it"
+        ]
+      }
+    },
+    {
+      "id": "playful",
+      "name": "Playful",
+      "category": "personality",
+      "aliases": [
+        "mischievous",
+        "cheeky",
+        "fun"
+      ],
+      "meaning": "Up for a joke or a game.",
+      "default_intensity": 55,
+      "priority": 32,
+      "duration": 6,
+      "reaction": "mischief",
+      "animation": {
+        "png_softbody": "mischief"
+      },
+      "transition": {
+        "in": 0.35,
+        "out": 0.8
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "شیطون",
+          "شوخی",
+          "کل‌کل"
+        ],
+        "en": [
+          "hehe",
+          "just kidding",
+          "gotcha"
+        ]
+      }
+    },
+    {
+      "id": "teasing",
+      "name": "Teasing",
+      "category": "personality",
+      "aliases": [
+        "taunting",
+        "needling"
+      ],
+      "meaning": "Teases him on purpose, affectionately.",
+      "default_intensity": 55,
+      "priority": 33,
+      "duration": 6,
+      "reaction": "tease",
+      "animation": {
+        "png_softbody": "tease"
+      },
+      "transition": {
+        "in": 0.35,
+        "out": 0.8
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "اذیتت",
+          "سر به سرت"
+        ],
+        "en": [
+          "teasing",
+          "aww poor you",
+          "make me"
+        ]
+      }
+    },
+    {
+      "id": "tsundere",
+      "name": "Tsundere",
+      "category": "personality",
+      "aliases": [
+        "tsun",
+        "denial",
+        "flustered_anger"
+      ],
+      "meaning": "Hides affection behind grumpiness.",
+      "default_intensity": 60,
+      "priority": 45,
+      "duration": 7,
+      "reaction": "huff",
+      "animation": {
+        "png_softbody": "huff"
+      },
+      "transition": {
+        "in": 0.35,
+        "out": 0.8
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "احمق",
+          "بهت که نگفتم دوستت دارم",
+          "خجالت نمیکشی"
+        ],
+        "en": [
+          "it's not like",
+          "idiot",
+          "baka",
+          "i don't care about you"
+        ]
+      }
+    },
+    {
+      "id": "bored",
+      "name": "Bored",
+      "category": "personality",
+      "aliases": [
+        "uninterested",
+        "dull"
+      ],
+      "meaning": "Nothing interesting is happening.",
+      "default_intensity": 50,
+      "priority": 10,
+      "duration": null,
+      "reaction": "boredom",
+      "animation": {
+        "png_softbody": "boredom"
+      },
+      "transition": {
+        "in": 0.6,
+        "out": 1.0
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "حوصله",
+          "خسته‌کننده"
+        ],
+        "en": [
+          "boring",
+          "yawn",
+          "whatever"
+        ]
+      }
+    },
+    {
+      "id": "frustrated",
+      "name": "Frustrated",
+      "category": "personality",
+      "aliases": [
+        "exasperated",
+        "fed_up"
+      ],
+      "meaning": "Fed up that something is not working.",
+      "default_intensity": 55,
+      "priority": 50,
+      "duration": 7,
+      "reaction": "frustration",
+      "animation": {
+        "png_softbody": "frustration"
+      },
+      "transition": {
+        "in": 0.25,
+        "out": 0.9
+      },
+      "fallback": "annoyed",
+      "keywords": {
+        "fa": [
+          "دیگه کفرم",
+          "چرا کار نمیکنه",
+          "اه"
+        ],
+        "en": [
+          "ugh",
+          "for fuck's sake",
+          "why won't"
+        ]
+      }
+    },
+    {
+      "id": "affectionate",
+      "name": "Affectionate",
+      "category": "romantic",
+      "aliases": [
+        "loving",
+        "tender",
+        "warm"
+      ],
+      "meaning": "Warm love for him.",
+      "default_intensity": 60,
+      "priority": 35,
+      "duration": 8,
+      "reaction": "warmth",
+      "animation": {
+        "png_softbody": "warmth"
+      },
+      "transition": {
+        "in": 0.5,
+        "out": 1.0
+      },
+      "fallback": "happy",
+      "keywords": {
+        "fa": [
+          "دوستت دارم",
+          "عزیزم",
+          "جونم",
+          "قربونت"
+        ],
+        "en": [
+          "love you",
+          "sweetheart",
+          "darling",
+          "my love"
+        ]
+      }
+    },
+    {
+      "id": "flirty",
+      "name": "Flirty",
+      "category": "romantic",
+      "aliases": [
+        "seductive",
+        "coy",
+        "sultry"
+      ],
+      "meaning": "Flirting and seducing in a teasing way.",
+      "default_intensity": 55,
+      "priority": 34,
+      "duration": 7,
+      "reaction": "coy",
+      "animation": {
+        "png_softbody": "coy"
+      },
+      "transition": {
+        "in": 0.5,
+        "out": 1.0
+      },
+      "fallback": "playful",
+      "keywords": {
+        "fa": [
+          "خوشگلم",
+          "بیا اینجا",
+          "چشمک"
+        ],
+        "en": [
+          "come here",
+          "like what you see",
+          "wink"
+        ]
+      }
+    },
+    {
+      "id": "shy",
+      "name": "Shy",
+      "category": "romantic",
+      "aliases": [
+        "bashful",
+        "timid"
+      ],
+      "meaning": "Shy and a little overwhelmed.",
+      "default_intensity": 55,
+      "priority": 38,
+      "duration": 7,
+      "reaction": "bashful",
+      "animation": {
+        "png_softbody": "bashful"
+      },
+      "transition": {
+        "in": 0.3,
+        "out": 0.9
+      },
+      "fallback": "embarrassed",
+      "keywords": {
+        "fa": [
+          "خجالت",
+          "شرمنده"
+        ],
+        "en": [
+          "shy",
+          "um...",
+          "i-it's nothing"
+        ]
+      }
+    },
+    {
+      "id": "embarrassed",
+      "name": "Embarrassed",
+      "category": "romantic",
+      "aliases": [
+        "flustered",
+        "blushing"
+      ],
+      "meaning": "Caught off guard by something sweet or awkward.",
+      "default_intensity": 65,
+      "priority": 42,
+      "duration": 6,
+      "reaction": "flustered",
+      "animation": {
+        "png_softbody": "flustered"
+      },
+      "transition": {
+        "in": 0.2,
+        "out": 0.9
+      },
+      "fallback": "shy",
+      "keywords": {
+        "fa": [
+          "هل شدم",
+          "چرا اینو میگی",
+          "لوس نشو"
+        ],
+        "en": [
+          "stop it",
+          "s-stop",
+          "you're making me blush"
+        ]
+      }
+    },
+    {
+      "id": "jealous",
+      "name": "Jealous",
+      "category": "romantic",
+      "aliases": [
+        "envious",
+        "possessive",
+        "sulky"
+      ],
+      "meaning": "Jealous because his attention went elsewhere.",
+      "default_intensity": 60,
+      "priority": 55,
+      "duration": 8,
+      "reaction": "sulk",
+      "animation": {
+        "png_softbody": "sulk"
+      },
+      "transition": {
+        "in": 0.35,
+        "out": 1.2
+      },
+      "fallback": "angry",
+      "keywords": {
+        "fa": [
+          "حسودی",
+          "اون کیه",
+          "فقط مال منی"
+        ],
+        "en": [
+          "who is she",
+          "jealous",
+          "you're mine"
+        ]
+      }
+    },
+    {
+      "id": "laughing",
+      "name": "Laughing",
+      "category": "social",
+      "aliases": [
+        "lol",
+        "giggling",
+        "cracking_up"
+      ],
+      "meaning": "Laughing out loud.",
+      "default_intensity": 65,
+      "priority": 36,
+      "duration": 4.5,
+      "reaction": "laugh",
+      "animation": {
+        "png_softbody": "laugh"
+      },
+      "transition": {
+        "in": 0.15,
+        "out": 0.7
+      },
+      "fallback": "happy",
+      "keywords": {
+        "fa": [
+          "هاها",
+          "خخخ",
+          "ههه",
+          "بامزه"
+        ],
+        "en": [
+          "haha",
+          "lol",
+          "lmao",
+          "hehehe"
+        ]
+      }
+    },
+    {
+      "id": "annoyed",
+      "name": "Annoyed",
+      "category": "social",
+      "aliases": [
+        "irritated",
+        "peeved"
+      ],
+      "meaning": "Mildly irritated.",
+      "default_intensity": 45,
+      "priority": 45,
+      "duration": 6,
+      "reaction": "irritation",
+      "animation": {
+        "png_softbody": "irritation"
+      },
+      "transition": {
+        "in": 0.3,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "حوصله‌ام سر رفت",
+          "بس کن",
+          "اعصابم"
+        ],
+        "en": [
+          "annoying",
+          "stop that",
+          "seriously?"
+        ]
+      }
+    },
+    {
+      "id": "protective",
+      "name": "Protective",
+      "category": "social",
+      "aliases": [
+        "defensive",
+        "loyal",
+        "guarding"
+      ],
+      "meaning": "Ready to defend him.",
+      "default_intensity": 70,
+      "priority": 62,
+      "duration": 8,
+      "reaction": "guard",
+      "animation": {
+        "png_softbody": "guard"
+      },
+      "transition": {
+        "in": 0.25,
+        "out": 1.0
+      },
+      "fallback": "angry",
+      "keywords": {
+        "fa": [
+          "به کسی اجازه نمیدم",
+          "با من طرفی",
+          "بیا ببینم"
+        ],
+        "en": [
+          "don't you dare",
+          "leave him alone",
+          "back off"
+        ]
+      }
+    },
+    {
+      "id": "excited",
+      "name": "Excited",
+      "category": "social",
+      "aliases": [
+        "thrilled",
+        "hyped",
+        "energetic"
+      ],
+      "meaning": "Very energetic and eager.",
+      "default_intensity": 70,
+      "priority": 36,
+      "duration": 6,
+      "reaction": "excitement",
+      "animation": {
+        "png_softbody": "excitement"
+      },
+      "transition": {
+        "in": 0.2,
+        "out": 0.8
+      },
+      "fallback": "happy",
+      "keywords": {
+        "fa": [
+          "هیجان",
+          "وای عالی",
+          "بریم"
+        ],
+        "en": [
+          "let's go",
+          "can't wait",
+          "so excited"
+        ]
+      }
+    },
+    {
+      "id": "thinking",
+      "name": "Thinking",
+      "category": "social",
+      "aliases": [
+        "pondering",
+        "considering",
+        "hmm"
+      ],
+      "meaning": "Working something out.",
+      "default_intensity": 50,
+      "priority": 15,
+      "duration": null,
+      "reaction": "ponder",
+      "animation": {
+        "png_softbody": "ponder"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.8
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "ببینم",
+          "فکر کنم",
+          "هوم"
+        ],
+        "en": [
+          "let me think",
+          "hmm",
+          "let's see"
+        ]
+      }
+    }
+  ]
+}

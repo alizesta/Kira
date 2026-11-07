@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "kind": "events",
+  "events": {
+    "app_startup": {
+      "emotion": "happy",
+      "intensity": 40,
+      "duration": 3.0,
+      "pulse": "perk"
+    },
+    "user_message": {
+      "emotion": "curious",
+      "intensity": 28,
+      "duration": 1.8,
+      "pulse": "listen"
+    },
+    "response_started": {
+      "emotion": "thinking",
+      "intensity": 45,
+      "duration": 25.0
+    },
+    "response_finished": {
+      "pulse": "nod",
+      "release_events": [
+        "response_started"
+      ]
+    },
+    "response_failed": {
+      "emotion": "sad",
+      "intensity": 40,
+      "duration": 4.0,
+      "release_events": [
+        "response_started"
+      ]
+    },
+    "tts_started": {
+      "speaking": true
+    },
+    "tts_stopped": {
+      "speaking": false
+    },
+    "user_interrupt": {
+      "emotion": "annoyed",
+      "intensity": 35,
+      "duration": 2.5,
+      "pulse": "flinch",
+      "speaking": false,
+      "release_events": [
+        "response_started"
+      ]
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "kind": "avatar_profile",
+  "avatar_id": "kira_png_softbody",
+  "technology": "png_softbody",
+  "image": "assets/kira_character.png",
+  "capabilities": {
+    "face_overlay": true,
+    "blink_overlay": true,
+    "mouth_overlay": true,
+    "pose_softbody": true,
+    "expression_images": false,
+    "eye_layers": false,
+    "mouth_layers": false,
+    "sprite_sequences": false,
+    "live2d": false,
+    "vrm": false
+  },
+  "expression_images": {},
+  "notes": "Face channels are procedural overlays painted on the single flat PNG (eyelid, cheek raise, mouth, blush). The PNG itself has no separate layers: no eye direction, eyebrows or hand-drawn expressions exist until extra art is supplied. To add art later, set the matching capability to true and list files under expression_images / layers; see README_EMOTION_LIBRARY.md."
+}

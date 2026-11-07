@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "kind": "rules",
+  "rules": {
+    "min_hold_s": 1.6,
+    "preempt_priority_margin": 20,
+    "switch_budget": {
+      "window_s": 10.0,
+      "max_switches": 4
+    },
+    "pending_ttl_s": 4.0,
+    "max_blend": 2,
+    "same_emotion_refresh_mix": 0.6,
+    "default_duration_s": 6.0,
+    "min_visible_intensity": 6,
+    "hold_while_speaking": true,
+    "keyword_intensity": {
+      "base": 30,
+      "per_hit": 8,
+      "max": 55,
+      "min_hits": 1
+    },
+    "speaking_fade_in_s": 0.15
+  }
+}

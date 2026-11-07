@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "library_version": "1.0.0",
+  "description": "Kira Emotion & Reaction Library. Data only: no code is ever loaded from these files.",
+  "files": {
+    "emotions": "emotions.json",
+    "reactions": "reactions.json",
+    "combinations": "combinations.json",
+    "events": "events.json",
+    "rules": "rules.json",
+    "animation": [
+      "animation/png_softbody.json"
+    ],
+    "avatar": "avatar/profile.json"
+  },
+  "packs_dir": "packs"
+}

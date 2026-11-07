@@ -1,0 +1,286 @@
+{
+  "schema_version": 1,
+  "kind": "reactions",
+  "note": "Technology independent. face channels: lid=eyelid closure, raise=cheek raise (smiling eyes), open=mouth opening, blush, smile=-1..1. gesture names are resolved by the active animation pack.",
+  "reactions": {
+    "neutral": {
+      "face": {
+        "lid": 0.0,
+        "raise": 0.0,
+        "open": 0.0,
+        "blush": 0.0,
+        "smile": 0.35
+      },
+      "gesture": "idle",
+      "base_mood": "neutral"
+    },
+    "joy": {
+      "face": {
+        "lid": 0.3,
+        "raise": 0.22,
+        "open": 0,
+        "blush": 0.8,
+        "smile": 1.0
+      },
+      "gesture": "bounce_soft",
+      "base_mood": "happy"
+    },
+    "sorrow": {
+      "face": {
+        "lid": 0.3,
+        "raise": 0,
+        "open": 0,
+        "blush": 0,
+        "smile": -0.7
+      },
+      "gesture": "droop",
+      "base_mood": "sad"
+    },
+    "anger": {
+      "face": {
+        "lid": 0.34,
+        "raise": 0,
+        "open": 0.1,
+        "blush": 0.35,
+        "smile": -0.5
+      },
+      "gesture": "tense",
+      "base_mood": "angry"
+    },
+    "surprise": {
+      "face": {
+        "lid": 0,
+        "raise": 0,
+        "open": 0.62,
+        "blush": 0,
+        "smile": 0.0
+      },
+      "gesture": "recoil",
+      "base_mood": "surprised"
+    },
+    "curiosity": {
+      "face": {
+        "lid": 0.05,
+        "raise": 0.05,
+        "open": 0,
+        "blush": 0,
+        "smile": 0.2
+      },
+      "gesture": "tilt_curious",
+      "base_mood": "neutral"
+    },
+    "pride": {
+      "face": {
+        "lid": 0.22,
+        "raise": 0.05,
+        "open": 0,
+        "blush": 0.1,
+        "smile": 0.55
+      },
+      "gesture": "chin_up",
+      "base_mood": "neutral"
+    },
+    "haughty": {
+      "face": {
+        "lid": 0.35,
+        "raise": 0,
+        "open": 0,
+        "blush": 0,
+        "smile": 0.15
+      },
+      "gesture": "chin_up_turn",
+      "base_mood": "neutral"
+    },
+    "smirk": {
+      "face": {
+        "lid": 0.28,
+        "raise": 0.1,
+        "open": 0,
+        "blush": 0.05,
+        "smile": 0.65
+      },
+      "gesture": "slow_sway",
+      "base_mood": "neutral"
+    },
+    "mischief": {
+      "face": {
+        "lid": 0.12,
+        "raise": 0.18,
+        "open": 0.12,
+        "blush": 0.15,
+        "smile": 0.9
+      },
+      "gesture": "bounce_light",
+      "base_mood": "happy"
+    },
+    "tease": {
+      "face": {
+        "lid": 0.2,
+        "raise": 0.15,
+        "open": 0.05,
+        "blush": 0.2,
+        "smile": 0.8
+      },
+      "gesture": "lean_tease",
+      "base_mood": "neutral"
+    },
+    "huff": {
+      "face": {
+        "lid": 0.3,
+        "raise": 0,
+        "open": 0.05,
+        "blush": 0.7,
+        "smile": -0.2
+      },
+      "gesture": "turn_away",
+      "base_mood": "neutral"
+    },
+    "boredom": {
+      "face": {
+        "lid": 0.45,
+        "raise": 0,
+        "open": 0,
+        "blush": 0,
+        "smile": -0.15
+      },
+      "gesture": "sag",
+      "base_mood": "bored"
+    },
+    "frustration": {
+      "face": {
+        "lid": 0.38,
+        "raise": 0,
+        "open": 0.08,
+        "blush": 0.25,
+        "smile": -0.6
+      },
+      "gesture": "shake_head",
+      "base_mood": "angry"
+    },
+    "warmth": {
+      "face": {
+        "lid": 0.25,
+        "raise": 0.2,
+        "open": 0,
+        "blush": 0.6,
+        "smile": 0.85
+      },
+      "gesture": "lean_in",
+      "base_mood": "neutral"
+    },
+    "coy": {
+      "face": {
+        "lid": 0.3,
+        "raise": 0.15,
+        "open": 0,
+        "blush": 0.35,
+        "smile": 0.75
+      },
+      "gesture": "hip_sway",
+      "base_mood": "neutral"
+    },
+    "bashful": {
+      "face": {
+        "lid": 0.12,
+        "raise": 0.1,
+        "open": 0.05,
+        "blush": 1.0,
+        "smile": 0.5
+      },
+      "gesture": "shrink",
+      "base_mood": "shy"
+    },
+    "flustered": {
+      "face": {
+        "lid": 0.18,
+        "raise": 0.1,
+        "open": 0.12,
+        "blush": 1.0,
+        "smile": 0.25
+      },
+      "gesture": "fidget",
+      "base_mood": "shy"
+    },
+    "sulk": {
+      "face": {
+        "lid": 0.35,
+        "raise": 0,
+        "open": 0,
+        "blush": 0.3,
+        "smile": -0.35
+      },
+      "gesture": "sulk_turn",
+      "base_mood": "neutral"
+    },
+    "laugh": {
+      "face": {
+        "lid": 0.55,
+        "raise": 0.3,
+        "open": 0.55,
+        "blush": 0.4,
+        "smile": 1.0
+      },
+      "gesture": "laugh_shake",
+      "base_mood": "excited"
+    },
+    "irritation": {
+      "face": {
+        "lid": 0.38,
+        "raise": 0,
+        "open": 0,
+        "blush": 0,
+        "smile": -0.35
+      },
+      "gesture": "sigh_tilt",
+      "base_mood": "neutral"
+    },
+    "guard": {
+      "face": {
+        "lid": 0.25,
+        "raise": 0,
+        "open": 0,
+        "blush": 0,
+        "smile": 0.0
+      },
+      "gesture": "stand_firm",
+      "base_mood": "neutral"
+    },
+    "excitement": {
+      "face": {
+        "lid": 0,
+        "raise": 0.25,
+        "open": 0.4,
+        "blush": 0.6,
+        "smile": 1.0
+      },
+      "gesture": "bounce_high",
+      "base_mood": "excited"
+    },
+    "ponder": {
+      "face": {
+        "lid": 0.18,
+        "raise": 0,
+        "open": 0,
+        "blush": 0,
+        "smile": 0.2
+      },
+      "gesture": "tilt_think",
+      "base_mood": "thinking"
+    },
+    "_example_image_smirk": {
+      "face": {
+        "lid": 0.28,
+        "raise": 0.1,
+        "open": 0,
+        "blush": 0.05,
+        "smile": 0.65
+      },
+      "gesture": "slow_sway",
+      "base_mood": "neutral",
+      "requires": [
+        "expression_images"
+      ],
+      "fallback": "smirk"
+    }
+  }
+}

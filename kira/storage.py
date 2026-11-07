@@ -1,0 +1,115 @@
+"""Where Kira keeps the user's data, and how it is carried over / backed up.
+
+User data lives OUTSIDE the program folder (%LOCALAPPDATA%\\Kira on Windows) so replacing the program folder with
+a new version never touches settings, API keys or chat history. Old data is only ever COPIED, never moved or deleted.
+"""
+from __future__ import annotations
+
+import os
+import shutil
+import sqlite3
+import time
+from pathlib import Path
+
+SETTINGS_NAME = "settings.json"
+DB_NAME = "kira_memory.sqlite3"
+CLOUD_VOICE_NAME = "cloud_voice.json"                     # Cloud Voice keys + settings (kept outside the program folder, like settings.json)
+MARKER = "migrated_from.txt"
+
+
+def default_data_dir(root: Path) -> Path:
+    env = os.environ.get("KIRA_DATA_DIR")
+    if env:
+        return Path(env)
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        return Path(local) / "Kira"
+    return root / "data"                      # non-Windows development fallback
+
+
+def has_user_data(folder: Path) -> bool:
+    return any((folder / n).is_file() for n in (SETTINGS_NAME, DB_NAME, CLOUD_VOICE_NAME))
+
+
+def legacy_candidates(root: Path):
+    """Old data folders, newest first: the program's own ./data, then ./data of sibling Kira folders
+    (people unzip every new version next to the old one)."""
+    found = []
+    own = root / "data"
+    if has_user_data(own):
+        found.append(own)
+    try:
+        siblings = [p / "data" for p in root.parent.iterdir()
+                    if p.is_dir() and p != root and "kira" in p.name.lower() and has_user_data(p / "data")]
+    except OSError:
+        siblings = []
+    siblings.sort(key=lambda d: max((f.stat().st_mtime for f in d.glob("*") if f.is_file()), default=0), reverse=True)
+    return found + siblings
+
+
+def migrate_legacy(new_dir: Path, candidates) -> str | None:
+    """Copy settings and/or chat history from an old data folder into the new one. COPY ONLY, never overwrites.
+
+    Each file is carried over on its own: a new folder that already has settings.json but no chat database still gets the
+    old chat history (this used to be skipped, which looked like 'my chats disappeared after updating').
+    Runs once: after the first migration a marker file stops it, so deleted data is never resurrected."""
+    new_dir.mkdir(parents=True, exist_ok=True)
+    if (new_dir / MARKER).exists():
+        return None
+    missing = [name for name in (SETTINGS_NAME, DB_NAME, CLOUD_VOICE_NAME) if not (new_dir / name).is_file()]
+    if not missing:
+        return None
+    for source in candidates:
+        if Path(source).resolve() == new_dir.resolve() or not has_user_data(Path(source)):
+            continue
+        copied = []
+        for name in missing:
+            src = Path(source) / name
+            if src.is_file():
+                shutil.copy2(src, new_dir / name)
+                copied.append(name)
+        if not copied:
+            continue
+        (new_dir / MARKER).write_text(f"{source}\n", encoding="utf-8")
+        return f"اطلاعات نسخه‌ی قبلی ({', '.join(copied)}) از «{source}» کپی شد. پوشه‌ی قدیمی دست‌نخورده ماند."
+    return None
+
+
+def backup_user_data(data_dir: Path, keep: int = 7, min_age_hours: float = 12.0) -> Path | None:
+    """Rolling backup of settings + chat history (SQLite online-backup API, safe while the DB is in use)."""
+    if not has_user_data(data_dir):
+        return None
+    root = data_dir / "backups"
+    root.mkdir(exist_ok=True)
+    existing = sorted(p for p in root.iterdir() if p.is_dir())
+    if existing and time.time() - existing[-1].stat().st_mtime < min_age_hours * 3600:
+        return None
+    target = root / time.strftime("%Y%m%d-%H%M%S")
+    target.mkdir()
+    if (data_dir / SETTINGS_NAME).is_file():
+        shutil.copy2(data_dir / SETTINGS_NAME, target / SETTINGS_NAME)
+    if (data_dir / CLOUD_VOICE_NAME).is_file():
+        shutil.copy2(data_dir / CLOUD_VOICE_NAME, target / CLOUD_VOICE_NAME)
+    if (data_dir / DB_NAME).is_file():
+        src = sqlite3.connect(data_dir / DB_NAME)
+        try:
+            dst = sqlite3.connect(target / DB_NAME)
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+        finally:
+            src.close()
+    for old in sorted(p for p in root.iterdir() if p.is_dir())[:-keep]:
+        shutil.rmtree(old, ignore_errors=True)
+    return target
+
+
+if __name__ == "__main__":
+    # python -m kira.storage "C:\path\to\old\Project_Kira\data"   -> copy data from a specific old folder
+    import sys
+    from .config import DATA_DIR
+    if len(sys.argv) > 1:
+        print(migrate_legacy(DATA_DIR, [Path(sys.argv[1])]) or f"Nothing copied ({DATA_DIR} already has data).")
+    else:
+        print("Data folder:", DATA_DIR)

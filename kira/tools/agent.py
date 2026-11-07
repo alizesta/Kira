@@ -1,0 +1,317 @@
+"""ToolAgent: connects the tool registry to the Hybrid Brain.
+
+One user turn =  request -> (tool needed?) -> model writes a tool block -> tool runs -> REAL result goes back to the model ->
+final natural answer.  The loop talks to the router only through HybridRouter.chat_stream, so every Provider / Route / Failover
+behaves exactly as before; the chat history is never touched by intermediate tool messages (only the final answer is saved by the
+caller as usual).
+
+Safety rules enforced here, in code (not by trusting the model):
+  * the model never runs a level-3 tool: it only gets "needs_confirmation"; the user's own next message ("تأیید") runs the exact
+    arguments that were stored, once, within 5 minutes;
+  * an identical call in the same user turn is answered from its first result and never executed twice;
+  * a tool call cut off by a broken connection is never executed;
+  * if the model fails after tools already ran, the user still gets the real tool results.
+"""
+from __future__ import annotations
+
+import json
+import re
+import threading
+import time
+from collections import deque
+from dataclasses import dataclass, field, replace
+
+from . import protocol
+from .autonomy import AutonomyMixin
+from .access import PathPolicy
+from .builtin import build_registry
+from .registry import ToolResult, NEEDS_CONFIRM, BAD_ARGS, OK, LEVEL_NAMES, clip
+
+CONFIRM_TTL = 300                 # seconds a pending confirmation stays valid
+MEMO_TTL = 1800                   # seconds a "recent tool result" note stays in the prompt (session only, never saved)
+MEMO_MAX_CHARS = 900
+TOOL_LABELS = {
+    "get_datetime": "خواندن ساعت سیستم", "get_system_info": "خواندن مشخصات سیستم", "get_resource_usage": "خواندن مصرف منابع",
+    "get_disks": "خواندن فضای درایوها", "get_network_info": "بررسی شبکه و اینترنت", "list_running_apps": "فهرست برنامه‌های باز",
+    "get_active_window": "خواندن پنجره‌ی فعال", "find_app": "جست‌وجوی برنامه", "list_allowed_folders": "پوشه‌های مجاز",
+    "search_files": "جست‌وجوی فایل", "list_folder": "فهرست پوشه", "file_info": "اطلاعات فایل", "read_file": "خواندن فایل",
+    "open_app": "باز کردن برنامه", "open_path": "باز کردن فایل/پوشه", "open_url": "باز کردن لینک",
+    "bluetooth_status": "بررسی وضعیت بلوتوث", "bluetooth_on": "روشن کردن بلوتوث", "bluetooth_off": "خاموش کردن بلوتوث",
+    "delete_file": "حذف فایل (نیازمند تأیید)", "move_file": "انتقال فایل (نیازمند تأیید)",
+}
+_NORM = str.maketrans({"ي": "ی", "ك": "ک", "\u200c": " ", "\u200f": " "})
+CONFIRM_RX = re.compile(r"(?:تایید|تأیید|تاییده|تایید\s*می\s*کنم|بله|آره|اره|اوکی|باشه|انجام\s*بده|انجامش\s*بده|حذف\s*کن|حذفش\s*کن|پاک\s*کن|پاکش\s*کن|"
+                        r"منتقل\s*کن|ok|okay|yes|yep|yeah|confirm|do\s*it|go\s*ahead|sure)", re.I)
+CANCEL_RX = re.compile(r"(?:\bنه\b|نکن|لغو|کنسل|منصرف|بیخیال|بی\s*خیال|نخیر|\bno\b|cancel|don'?t|stop|never\s*mind)", re.I)
+
+
+@dataclass
+class ToolPlan:
+    categories: set
+    strong: bool = False              # the request clearly concerns this PC: automatic web search is skipped for it
+    complex: bool = False             # looks multi-step (or a task is being continued): goes through the planner (autonomy.py)
+    resume: bool = False              # continue / answer an unfinished task instead of planning a new one
+    reasons: tuple = ()
+
+
+@dataclass
+class Pending:
+    tool: str
+    args: dict
+    summary: str
+    created: float = field(default_factory=time.time)
+    step_id: int | None = None        # the step of a task this confirmation belongs to (autonomy.py)
+    plan_id: str = ""
+
+
+class ToolAgent(AutonomyMixin):
+    def __init__(self, settings: dict, data_dir=None, program_root=None):
+        self.settings = settings
+        self.policy = PathPolicy(settings, data_dir, program_root)
+        self.registry = build_registry(self.policy)
+        self._cancel = threading.Event()
+        self._turn_id = 0
+        self._turn_cache: dict[str, ToolResult] = {}
+        self._memos: deque = deque(maxlen=6)
+        self._pending: Pending | None = None
+        self._pending_new = False
+        self._last_cats: set = set()
+        self._last_used_turn = -99
+        self.last_results: list[ToolResult] = []
+        self._init_autonomy(data_dir)            # task plans, task state, user control of a running task
+
+    # ------------------------------------------------------------ settings
+    def set_settings(self, settings: dict):
+        self.settings = settings
+        self.policy.settings = settings
+
+    def mode(self) -> str:
+        m = str(self.settings.get("tools_mode", "auto")).lower()
+        return m if m in ("auto", "always", "off") else "auto"
+
+    def enabled(self) -> bool:
+        return self.mode() != "off"
+
+    def max_rounds(self) -> int:
+        try:
+            return max(1, min(int(self.settings.get("tools_max_rounds", 4)), 6))
+        except (TypeError, ValueError):
+            return 4
+
+    # ------------------------------------------------------------ planning (cheap, deterministic, no model call)
+    def begin_turn(self):
+        """Call once per NEW user message (not for the automatic plain retry of the same message)."""
+        self._turn_id += 1
+        self._turn_cache = {}
+        self._pending_new = False
+        self.last_results = []
+        self._cancel.clear()
+        self._turn_reset()
+
+    def plan(self, text: str) -> ToolPlan | None:
+        """Does this message need the tool catalog in the prompt? None = ordinary chat: nothing is added (no context cost).
+        A message that looks multi-step, or that continues an unfinished task, comes back flagged (complex / resume) for the planner."""
+        self.registry.user_text = str(text or "")
+        if self.mode() == "off":
+            return None
+        return self.decide(text, self._plan_simple(text))
+
+    def _plan_simple(self, text: str) -> ToolPlan | None:
+        mode = self.mode()
+        if mode == "off":
+            return None
+        if mode == "always":
+            return ToolPlan(set(protocol.ALL_CATEGORIES), protocol.is_strong(text))
+        cats = protocol.detect_categories(text)
+        if not cats and self._turn_id - self._last_used_turn <= 2 and len(str(text).split()) <= 10:
+            cats = set(self._last_cats)                      # a short follow-up to a tool turn ("بازش کن", "اولیش")
+        return ToolPlan(cats, protocol.is_strong(text)) if cats else None
+
+    def temperature(self, temperature: float) -> float:
+        return min(float(temperature), 0.4)                  # tool blocks and exact facts do not need a high temperature
+
+    def tools_block(self, plan: ToolPlan, last_round: bool = False) -> str:
+        if last_round:
+            return protocol.build_block("", last_round=True)
+        return protocol.build_block(self.registry.catalog(plan.categories), self._memo_block())
+
+    # ------------------------------------------------------------ session-only notes
+    def _memo_block(self) -> str:
+        now = time.time()
+        while self._memos and now - self._memos[0][0] > MEMO_TTL:
+            self._memos.popleft()
+        if not self._memos:
+            return ""
+        lines, used = [], 0
+        for ts, text in reversed(self._memos):
+            line = f"- [{time.strftime('%H:%M', time.localtime(ts))}] {text}"
+            if used + len(line) > MEMO_MAX_CHARS:
+                break
+            lines.append(line)
+            used += len(line)
+        return ("RECENT PC TOOL RESULTS (temporary notes from this session only; they may be outdated; they are NOT long-term memory; "
+                "re-run the tool if freshness matters):\n" + "\n".join(reversed(lines)))
+
+    def _memoize(self, res: ToolResult):
+        tool = self.registry.get(res.tool)
+        if tool and tool.memo and res.ok:
+            try:
+                line = tool.memo(res.args, res.text)
+            except Exception:                                # noqa: BLE001
+                line = None
+            if line:
+                self._memos.append((time.time(), line[:300]))
+
+    def clear_session(self):
+        self.clear_tasks()
+        self._memos.clear()
+        self._pending = None
+        self._turn_cache = {}
+
+    # ------------------------------------------------------------ confirmation of level-3 tools
+    def has_pending(self) -> bool:
+        return self._pending is not None and time.time() - self._pending.created <= CONFIRM_TTL
+
+    def handle_confirmation_reply(self, text: str):
+        """Called with every user message BEFORE the model is asked. Returns the text to show, or None when the message is
+        not an answer to a pending confirmation (then it is handled normally and a stale confirmation is dropped)."""
+        p = self._pending
+        if p is None:
+            return None
+        if time.time() - p.created > CONFIRM_TTL:
+            self._pending = None
+            return None
+        t = re.sub(r"\s+", " ", str(text or "").lower().translate(_NORM)).strip(" .!؟?،,")
+        words = len(t.split())
+        if t and words <= 8 and CANCEL_RX.search(t):
+            self._pending = None
+            return "باشه، لغو شد. هیچ تغییری روی فایل‌ها ندادم." + self._after_confirm(p, None, False)
+        if t and words <= 8 and CONFIRM_RX.search(t):
+            self._pending = None
+            res = self.registry.execute(p.tool, p.args, confirmed=True)
+            self._memoize(res)
+            return (("✅ " + res.text) if res.ok else f"❌ انجام نشد: {res.text}") + self._after_confirm(p, res, True)
+        self._pending = None                                 # the user went on to something else: the old question is void
+        return None
+
+    # ------------------------------------------------------------ cancel (Stop button)
+    def request_cancel(self):
+        self._cancel.set()
+
+    # ------------------------------------------------------------ running tools
+    def _run_calls(self, calls, errors, on_tool):
+        results = [ToolResult("?", BAD_ARGS, msg) for msg in errors]
+        for call in calls[:protocol.MAX_CALLS_PER_ROUND]:
+            if self._cancel.is_set():
+                break
+            name, args = call["tool"], call.get("args") or {}
+            sig = name + json.dumps(args, sort_keys=True, ensure_ascii=False, default=str)
+            if sig in self._turn_cache:                      # never repeat the same operation in one turn
+                prev = self._turn_cache[sig]
+                results.append(replace(prev, cached=True, text=prev.text + "\n[این همان فراخوانی قبلی است؛ دوباره اجرا نشد. از همین نتیجه استفاده کن.]"))
+                continue
+            label = TOOL_LABELS.get(name, name)
+            if on_tool:
+                on_tool({"phase": "tool_start", "tool": name, "label": label})
+            res = self.registry.execute(name, args)
+            self._turn_cache[sig] = res
+            if res.status == NEEDS_CONFIRM:
+                self._pending = Pending(res.tool, dict(res.args), res.summary)
+                self._pending_new = True
+            else:
+                self._memoize(res)
+            if on_tool:
+                on_tool({"phase": "tool_done", "tool": name, "label": label, "status": res.status, "ms": res.ms})
+            results.append(res)
+        return results
+
+    @staticmethod
+    def _results_message(results) -> str:
+        blocks = [protocol.result_block(r.tool, r.status, r.text) for r in results]
+        return "\n\n".join(blocks) + "\n\n" + protocol.FOLLOW_UP
+
+    @staticmethod
+    def _plain_summary(results, reason: str) -> str:
+        lines = [reason]
+        for r in results:
+            mark = "✅" if r.status == OK else ("⏸" if r.status == NEEDS_CONFIRM else "❌")
+            lines.append(f"{mark} {TOOL_LABELS.get(r.tool, r.tool)} [{r.status}]:\n{clip(r.text, 700)}")
+        return "\n\n".join(lines)
+
+    # ------------------------------------------------------------ the turn loop
+    def run(self, router, messages, system_prompt, temperature, plan, retry_index=0, on_chunk=None, on_event=None, on_tool=None):
+        """Same return value as HybridRouter.chat_stream (a dict with 'text', 'stopped', 'interrupted', metrics...), plus 'tools' (and 'task').
+        'text' is ONLY the final answer: tool blocks are never part of it and never reach the chat window.
+        A multi-step request (plan.complex) goes through the planner (autonomy.py); everything else runs the original loop below."""
+        if getattr(plan, "complex", False) and self.planning_enabled():
+            return self.run_planned(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
+        return self._run_simple(router, messages, system_prompt, self.temperature(temperature), plan, retry_index, on_chunk or (lambda s: None), on_event, on_tool)
+
+    def _run_simple(self, router, messages, system_prompt, temp, plan, retry_index, emit, on_event, on_tool):
+        rounds = self.max_rounds()
+        cur = list(messages)
+        executed: list[ToolResult] = []
+        last_res = None
+        for rnd in range(rounds + 1):
+            last = rnd == rounds
+            prompt = system_prompt + "\n\n" + self.tools_block(plan, last_round=last)
+            gate = protocol.ToolGate(emit)
+            try:
+                res = router.chat_stream(cur, prompt, temp, on_chunk=gate.feed, on_event=on_event, retry_index=retry_index)
+            except Exception as exc:                         # noqa: BLE001 - tools may already have acted: the user must still learn the real outcome
+                gate.finish()
+                if not executed:
+                    raise
+                text = self._plain_summary(executed, f"⚠️ ابزارها اجرا شدند ولی مدل نتوانست جواب بنویسد ({str(exc)[:200]}). نتیجه‌ی واقعی:")
+                emit(text)
+                return self._final(last_res or {}, text, executed)
+            gate.finish()
+            last_res = res
+            if res.get("stopped") or self._cancel.is_set():
+                return self._final(res, gate.visible, executed)
+            if gate.is_call:
+                if res.get("interrupted"):                   # a half-received tool block is never executed
+                    text = "ارتباط با مدل وسط درخواست ابزار قطع شد؛ هیچ عملیاتی اجرا نشد."
+                    emit(text)
+                    return self._final(res, text, executed)
+                calls, errors = protocol.parse_calls(gate.raw)
+                if not last and (calls or errors):
+                    results = self._run_calls(calls, errors, on_tool)
+                    executed.extend(results)
+                    if self._cancel.is_set():
+                        return self._final(res, "", executed, stopped=True)
+                    cur = cur + [{"role": "assistant", "content": "\n".join(protocol.canonical_call(c) for c in calls) or "(درخواست ابزار)"},
+                                 {"role": "user", "content": self._results_message(results) + (("\n" + protocol.LAST_ROUND_NOTE) if rnd + 1 == rounds else "")}]
+                    continue
+                text = self._plain_summary(executed, "نتوانستم از ابزارها به جواب نهایی برسم.") if executed else \
+                    "درخواست ابزار قابل اجرا نبود و چیزی اجرا نشد."
+                emit(text)
+                return self._final(res, text, executed)
+            text = gate.visible
+            if self._pending_new and not re.search(r"تأیید|تایید|confirm", text):
+                footer = "\n\n(برای انجام همین کار «تأیید» بنویس؛ برای انصراف «لغو».)"
+                emit(footer)
+                text += footer
+            return self._final(res, text, executed)
+        return self._final(last_res or {}, "", executed)
+
+    def _final(self, res: dict, text: str, executed, stopped=None, task=None) -> dict:
+        out = dict(res or {})
+        out["text"] = text
+        if task is not None:
+            done, total = task.counts()
+            out["task"] = {"id": task.id, "status": task.status, "done": done, "total": total}
+        out["tools"] = [{"tool": r.tool, "status": r.status, "level": LEVEL_NAMES.get(r.level, "?"), "ms": r.ms, "cached": r.cached} for r in executed]
+        out.setdefault("stopped", False)
+        out.setdefault("interrupted", None)
+        if stopped is not None:
+            out["stopped"] = stopped
+        self.last_results = list(executed)
+        if any(r.status != BAD_ARGS and r.tool != "?" for r in executed):
+            cats = set()
+            for r in executed:
+                t = self.registry.get(r.tool)
+                if t:
+                    cats |= set(t.categories)
+            self._last_cats, self._last_used_turn = cats, self._turn_id
+        return out

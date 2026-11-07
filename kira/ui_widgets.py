@@ -1,0 +1,152 @@
+"""Small reusable widgets for the compact companion UI."""
+import base64
+import os
+
+from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtGui import QFontMetrics, QPixmap
+from PySide6.QtWidgets import QFrame, QLabel, QPlainTextEdit, QToolButton, QVBoxLayout
+
+
+class ChatInput(QPlainTextEdit):
+    """Compact multi-line message box: Enter sends, Shift+Enter inserts a new line, grows up to 5 lines.
+
+    Offers the small QLineEdit-style API the application already uses (text / setText / returnPressed).
+    """
+    returnPressed = Signal()
+    filesDropped = Signal(list)          # local file paths dropped or pasted as files
+    imagePasted = Signal(object)         # QImage pasted from the clipboard
+    MAX_LINES = 5
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("chatInput")
+        self.setFrameShape(QFrame.NoFrame)
+        self.setTabChangesFocus(True)
+        self._last_width = -1
+        self.textChanged.connect(self._fit)
+        self._fit()
+
+    def text(self):
+        return self.toPlainText()
+
+    def setText(self, value):
+        self.setPlainText(str(value))
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter) and not (event.modifiers() & Qt.ShiftModifier):
+            self.returnPressed.emit()
+            return
+        super().keyPressEvent(event)
+
+    def canInsertFromMimeData(self, source):
+        return source.hasUrls() or source.hasImage() or super().canInsertFromMimeData(source)
+
+    def insertFromMimeData(self, source):
+        paths = [u.toLocalFile() for u in source.urls() if u.isLocalFile()] if source.hasUrls() else []
+        if paths:
+            self.filesDropped.emit(paths)
+        elif source.hasImage() and not source.hasText():
+            self.imagePasted.emit(source.imageData())
+        else:
+            super().insertFromMimeData(source)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.width() != self._last_width:          # only re-measure when the width (wrapping) changed
+            self._last_width = self.width()
+            self._fit()
+
+    def _fit(self):
+        lines = max(1, min(self.MAX_LINES, int(self.document().size().height())))
+        self.setFixedHeight(lines * self.fontMetrics().lineSpacing() + 16)
+
+
+class RouteChip(QToolButton):
+    """Small pill showing the active provider / model; long names are shortened, the tooltip keeps the full text."""
+    MAX_CHARS = 40
+
+    def setText(self, text, display=None):
+        """text = the full status (kept for text() and the tooltip); display = optional shorter wording for the button."""
+        self._full = full = str(text)
+        shown = str(display) if display else full
+        short = shown if len(shown) <= self.MAX_CHARS else shown[: self.MAX_CHARS - 1] + "…"
+        super().setText(short)
+        self.setToolTip(full)
+
+    def text(self):
+        return getattr(self, "_full", super().text())
+
+
+class AttachmentTile(QFrame):
+    """One attachment card: square thumbnail (or a file-type badge), file name, optional remove button and a
+    progress overlay ("37%" -> "✓") drawn on top of the thumbnail."""
+    removeRequested = Signal(object)
+    THUMB = 88
+
+    def __init__(self, name, parent=None):
+        super().__init__(parent)
+        self.setObjectName("attTile")
+        self.name = str(name)
+        self.att = None                       # the loaded attachment dict (set when loading finished)
+        self.deleted = False
+        self.setFixedSize(self.THUMB + 12, self.THUMB + 34)
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(6, 6, 6, 4)
+        lay.setSpacing(3)
+        self.thumb = QLabel()
+        self.thumb.setObjectName("attThumb")
+        self.thumb.setFixedSize(self.THUMB, self.THUMB)
+        self.thumb.setAlignment(Qt.AlignCenter)
+        lay.addWidget(self.thumb)
+        self.caption = QLabel()
+        self.caption.setObjectName("hint")
+        self.caption.setAlignment(Qt.AlignCenter)
+        self.caption.setToolTip(self.name)
+        self.caption.setText(QFontMetrics(self.caption.font()).elidedText(self.name, Qt.ElideMiddle, self.THUMB))
+        lay.addWidget(self.caption)
+        self.overlay = QLabel(self.thumb)
+        self.overlay.setObjectName("attOverlay")
+        self.overlay.setGeometry(0, 0, self.THUMB, self.THUMB)
+        self.overlay.setAlignment(Qt.AlignCenter)
+        self.overlay.hide()
+        self.close_btn = QToolButton(self)
+        self.close_btn.setObjectName("attClose")
+        self.close_btn.setText("✕")
+        self.close_btn.setCursor(Qt.PointingHandCursor)
+        self.close_btn.setFixedSize(20, 20)
+        self.close_btn.move(self.width() - 24, 3)
+        self.close_btn.clicked.connect(lambda: self.removeRequested.emit(self))
+        self._hide_timer = QTimer(self)
+        self._hide_timer.setSingleShot(True)
+        self._hide_timer.timeout.connect(self.overlay.hide)
+        self.set_badge(os.path.splitext(self.name)[1])
+
+    def set_badge(self, ext):
+        self.thumb.setPixmap(QPixmap())
+        self.thumb.setText((ext.lstrip(".")[:4].upper() or "FILE"))
+
+    def set_attachment(self, attachment):
+        self.att = attachment
+        if attachment.get("kind") == "image":
+            pm = QPixmap()
+            if pm.loadFromData(base64.b64decode(attachment["b64"])):
+                size = self.THUMB
+                pm = pm.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                pm = pm.copy((pm.width() - size) // 2, (pm.height() - size) // 2, size, size)      # centre crop to a square
+                self.thumb.setText("")
+                self.thumb.setPixmap(pm)
+
+    def set_removable(self, on):
+        self.close_btn.setVisible(bool(on))
+
+    def set_progress(self, percent):
+        """None hides the overlay, -1 shows '…' (size unknown), 0-99 shows the percentage, 100 shows ✓ and fades out."""
+        self._hide_timer.stop()
+        if percent is None:
+            self.overlay.hide()
+            return
+        self.overlay.setText("…" if percent < 0 else ("✓" if percent >= 100 else f"{int(percent)}%"))
+        self.overlay.raise_()
+        self.overlay.show()
+        if percent >= 100:
+            self._hide_timer.start(1200)

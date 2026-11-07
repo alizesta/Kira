@@ -1,0 +1,370 @@
+{
+  "_help": "Edit freely. Per area: lines (fa/en), expression, pitch/rate offsets for a different voice, and kicks [part, channel, strength]. Put your own audio files (wav/mp3) in assets/sounds/<area>/ to play them instead of text-to-speech. Areas: face, hair, hand, arm_l, arm_r, torso, clothes, legs, feet.",
+  "face": {
+    "expression": "surprised",
+    "pitch": 10,
+    "rate": 5,
+    "kicks": [
+      [
+        "head",
+        "ang",
+        55
+      ],
+      [
+        "head",
+        "tx",
+        45
+      ]
+    ],
+    "fa": [
+      "هی! صورتم رو دست نزن!",
+      "هیی، قلقلکم میاد!",
+      "بله؟ کاری داشتی؟"
+    ],
+    "en": [
+      "Hey! Don't poke my face!",
+      "Hehe, that tickles!",
+      "Yes? Need something?"
+    ],
+    "annoyed": {
+      "expression": "angry",
+      "pitch": -6,
+      "rate": 8,
+      "fa": [
+        "بسه دیگه! اذیتم نکن!",
+        "هی! گفتم دست نزن!"
+      ],
+      "en": [
+        "That's enough! Stop it!",
+        "Hey! I said don't poke!"
+      ],
+      "kicks": [
+        [
+          "head",
+          "ang",
+          -70
+        ],
+        [
+          "body",
+          "tx",
+          50
+        ]
+      ]
+    }
+  },
+  "hair": {
+    "expression": "surprised",
+    "pitch": 4,
+    "rate": 0,
+    "kicks": [
+      [
+        "hair_l",
+        "ang",
+        90
+      ],
+      [
+        "hair_r",
+        "ang",
+        -90
+      ],
+      [
+        "head",
+        "ang",
+        -30
+      ]
+    ],
+    "fa": [
+      "موهام رو خراب نکن!",
+      "وای، تازه شونه‌شون کرده بودم!"
+    ],
+    "en": [
+      "Don't mess up my hair!",
+      "I just brushed it!"
+    ],
+    "annoyed": {
+      "expression": "angry",
+      "pitch": -4,
+      "rate": 6,
+      "fa": [
+        "موهام!! بسه!"
+      ],
+      "en": [
+        "My hair!! Stop it!"
+      ],
+      "kicks": [
+        [
+          "hair_l",
+          "ang",
+          150
+        ],
+        [
+          "hair_r",
+          "ang",
+          -150
+        ]
+      ]
+    }
+  },
+  "hand": {
+    "expression": "excited",
+    "pitch": 8,
+    "rate": 8,
+    "kicks": [
+      [
+        "arm_l",
+        "ang",
+        260
+      ],
+      [
+        "head",
+        "ang",
+        25
+      ]
+    ],
+    "fa": [
+      "سلام سلام!",
+      "بای بای~",
+      "دیدی دست تکون دادم؟"
+    ],
+    "en": [
+      "Hi hi!",
+      "Bye bye~",
+      "See? I'm waving!"
+    ]
+  },
+  "arm_l": {
+    "expression": "neutral",
+    "pitch": 0,
+    "rate": 0,
+    "kicks": [
+      [
+        "arm_l",
+        "ang",
+        150
+      ]
+    ],
+    "fa": [
+      "آستینم رو نکش!",
+      "هوم؟"
+    ],
+    "en": [
+      "Don't pull my sleeve!",
+      "Hm?"
+    ]
+  },
+  "arm_r": {
+    "expression": "surprised",
+    "pitch": -4,
+    "rate": 0,
+    "kicks": [
+      [
+        "arm_r",
+        "ang",
+        -130
+      ],
+      [
+        "body",
+        "tx",
+        -30
+      ]
+    ],
+    "fa": [
+      "آخ! دستم!",
+      "ولم کن، شوخی کردم."
+    ],
+    "en": [
+      "Ouch! My arm!",
+      "Let go, I'm kidding."
+    ]
+  },
+  "torso": {
+    "expression": "happy",
+    "pitch": 6,
+    "rate": -4,
+    "kicks": [
+      [
+        "body",
+        "sc",
+        0.7
+      ],
+      [
+        "head",
+        "ty",
+        40
+      ],
+      [
+        "hair_l",
+        "ang",
+        40
+      ],
+      [
+        "hair_r",
+        "ang",
+        -40
+      ]
+    ],
+    "fa": [
+      "هی، قلقلک نده!",
+      "هههه، نکن!"
+    ],
+    "en": [
+      "Hey, no tickling!",
+      "Hahaha, stop it!"
+    ],
+    "annoyed": {
+      "expression": "angry",
+      "pitch": -6,
+      "rate": 6,
+      "fa": [
+        "جدی میگم، قلقلک نده!"
+      ],
+      "en": [
+        "I'm serious, no tickling!"
+      ],
+      "kicks": [
+        [
+          "body",
+          "tx",
+          60
+        ],
+        [
+          "head",
+          "ang",
+          -60
+        ]
+      ]
+    }
+  },
+  "legs": {
+    "expression": "neutral",
+    "pitch": -6,
+    "rate": -6,
+    "kicks": [
+      [
+        "leg_l",
+        "ang",
+        22
+      ],
+      [
+        "leg_r",
+        "ang",
+        -22
+      ],
+      [
+        "body",
+        "tx",
+        20
+      ]
+    ],
+    "fa": [
+      "پاهام خسته شد!",
+      "می‌خوای راه برم؟"
+    ],
+    "en": [
+      "My legs are tired!",
+      "Want me to take a walk?"
+    ]
+  },
+  "feet": {
+    "expression": "excited",
+    "pitch": 12,
+    "rate": 10,
+    "kicks": [
+      [
+        "body",
+        "ty",
+        -170
+      ],
+      [
+        "head",
+        "ty",
+        -60
+      ],
+      [
+        "hair_l",
+        "ang",
+        70
+      ],
+      [
+        "hair_r",
+        "ang",
+        -70
+      ]
+    ],
+    "fa": [
+      "اوه! پام!",
+      "نکن، می‌پرم هوا!"
+    ],
+    "en": [
+      "Oh! My foot!",
+      "Careful, I'll jump!"
+    ]
+  },
+  "_idle": {
+    "fa": [
+      "حوصله‌م سر رفت... یه کاری بده انجام بدم.",
+      "هعی... کسی اینجا نیست؟",
+      "می‌شه باهام حرف بزنی؟"
+    ],
+    "en": [
+      "I'm bored... give me something to do.",
+      "Hmm... is anyone there?",
+      "Can you talk to me?"
+    ]
+  },
+  "clothes": {
+    "expression": "surprised",
+    "pitch": 2,
+    "rate": 0,
+    "kicks": [
+      [
+        "strap_l",
+        "ang",
+        260
+      ],
+      [
+        "strap_r",
+        "ang",
+        -260
+      ],
+      [
+        "skirt",
+        "ang",
+        120
+      ]
+    ],
+    "fa": [
+      "لباسم رو نکش!",
+      "هی، بندهام!",
+      "مواظب باش، خراب می‌شه!"
+    ],
+    "en": [
+      "Don't pull my clothes!",
+      "Hey, my straps!",
+      "Careful, you'll ruin it!"
+    ],
+    "annoyed": {
+      "expression": "angry",
+      "pitch": -5,
+      "rate": 6,
+      "fa": [
+        "گفتم نکش دیگه!"
+      ],
+      "en": [
+        "I said stop pulling!"
+      ],
+      "kicks": [
+        [
+          "skirt",
+          "ang",
+          -200
+        ],
+        [
+          "body",
+          "tx",
+          50
+        ]
+      ]
+    }
+  }
+}

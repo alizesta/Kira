@@ -1,0 +1,732 @@
+{
+  "schema_version": 1,
+  "kind": "animation_pack",
+  "technology": "png_softbody",
+  "note": "Values are in the rig's own units (degrees / reference pixels) before the user's motion-strength setting. parts: head body chest skirt arm_l arm_r leg_l leg_r hair_l hair_r strap_l strap_r. channels: ang tx ty sc.",
+  "gestures": {
+    "idle": {},
+    "bounce_soft": {
+      "motion": [
+        {
+          "part": "body",
+          "channel": "ty",
+          "amp": 4,
+          "freq": 1.0,
+          "phase": 0.0
+        },
+        {
+          "part": "head",
+          "channel": "ang",
+          "amp": 2.5,
+          "freq": 0.9,
+          "phase": 1
+        },
+        {
+          "part": "hair_l",
+          "channel": "ang",
+          "amp": 3,
+          "freq": 1.0,
+          "phase": 1
+        }
+      ],
+      "onset": "perk"
+    },
+    "droop": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ty",
+          "value": 8
+        },
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": -6
+        },
+        {
+          "part": "body",
+          "channel": "ty",
+          "value": 4
+        }
+      ]
+    },
+    "tense": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ty",
+          "value": 4
+        },
+        {
+          "part": "arm_r",
+          "channel": "ang",
+          "value": -6
+        }
+      ],
+      "motion": [
+        {
+          "part": "body",
+          "channel": "tx",
+          "amp": 1.2,
+          "freq": 14,
+          "phase": 0.0
+        }
+      ],
+      "onset": "flinch"
+    },
+    "recoil": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ty",
+          "value": -8
+        },
+        {
+          "part": "body",
+          "channel": "ty",
+          "value": -3
+        }
+      ],
+      "onset": "startle"
+    },
+    "tilt_curious": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": 8
+        },
+        {
+          "part": "head",
+          "channel": "tx",
+          "value": 6
+        }
+      ],
+      "motion": [
+        {
+          "part": "head",
+          "channel": "ang",
+          "amp": 1.5,
+          "freq": 0.5,
+          "phase": 0.0
+        }
+      ],
+      "onset": "listen"
+    },
+    "chin_up": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ty",
+          "value": -6
+        },
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": 3
+        },
+        {
+          "part": "chest",
+          "channel": "ty",
+          "value": -3
+        }
+      ]
+    },
+    "slow_sway": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": -5
+        },
+        {
+          "part": "head",
+          "channel": "tx",
+          "value": 4
+        }
+      ],
+      "motion": [
+        {
+          "part": "body",
+          "channel": "tx",
+          "amp": 5,
+          "freq": 0.35,
+          "phase": 0.0
+        },
+        {
+          "part": "hair_r",
+          "channel": "ang",
+          "amp": 3,
+          "freq": 0.35,
+          "phase": 1
+        }
+      ]
+    },
+    "chin_up_turn": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": 7
+        },
+        {
+          "part": "head",
+          "channel": "tx",
+          "value": 8
+        },
+        {
+          "part": "head",
+          "channel": "ty",
+          "value": -6
+        },
+        {
+          "part": "body",
+          "channel": "tx",
+          "value": 5
+        }
+      ]
+    },
+    "bounce_light": {
+      "motion": [
+        {
+          "part": "body",
+          "channel": "ty",
+          "amp": 5,
+          "freq": 1.6,
+          "phase": 0.0
+        },
+        {
+          "part": "head",
+          "channel": "ang",
+          "amp": 3,
+          "freq": 1.1,
+          "phase": 0.0
+        },
+        {
+          "part": "arm_l",
+          "channel": "ang",
+          "amp": 6,
+          "freq": 1.6,
+          "phase": 0.0
+        }
+      ],
+      "onset": "perk"
+    },
+    "lean_tease": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": -7
+        },
+        {
+          "part": "head",
+          "channel": "tx",
+          "value": -6
+        },
+        {
+          "part": "body",
+          "channel": "tx",
+          "value": -8
+        }
+      ],
+      "motion": [
+        {
+          "part": "head",
+          "channel": "ang",
+          "amp": 2.5,
+          "freq": 0.9,
+          "phase": 0.0
+        },
+        {
+          "part": "arm_l",
+          "channel": "ang",
+          "amp": 5,
+          "freq": 1.2,
+          "phase": 0.0
+        }
+      ]
+    },
+    "turn_away": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "tx",
+          "value": 14
+        },
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": 6
+        },
+        {
+          "part": "head",
+          "channel": "ty",
+          "value": 3
+        },
+        {
+          "part": "body",
+          "channel": "tx",
+          "value": 10
+        },
+        {
+          "part": "arm_r",
+          "channel": "ang",
+          "value": -8
+        }
+      ],
+      "onset": "huff"
+    },
+    "sag": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ty",
+          "value": 9
+        },
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": 10
+        },
+        {
+          "part": "body",
+          "channel": "ty",
+          "value": 6
+        }
+      ]
+    },
+    "shake_head": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ty",
+          "value": 6
+        },
+        {
+          "part": "arm_r",
+          "channel": "ang",
+          "value": -8
+        }
+      ],
+      "motion": [
+        {
+          "part": "head",
+          "channel": "ang",
+          "amp": 5,
+          "freq": 2.6,
+          "phase": 0.0
+        }
+      ]
+    },
+    "lean_in": {
+      "pose": [
+        {
+          "part": "body",
+          "channel": "sc",
+          "value": 0.012
+        },
+        {
+          "part": "head",
+          "channel": "ty",
+          "value": 4
+        },
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": -4
+        }
+      ],
+      "motion": [
+        {
+          "part": "body",
+          "channel": "tx",
+          "amp": 2,
+          "freq": 0.5,
+          "phase": 0.0
+        }
+      ]
+    },
+    "hip_sway": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": -6
+        }
+      ],
+      "motion": [
+        {
+          "part": "body",
+          "channel": "tx",
+          "amp": 7,
+          "freq": 0.6,
+          "phase": 0.0
+        },
+        {
+          "part": "skirt",
+          "channel": "ang",
+          "amp": 4,
+          "freq": 0.6,
+          "phase": 0.5
+        },
+        {
+          "part": "head",
+          "channel": "ang",
+          "amp": 3,
+          "freq": 0.6,
+          "phase": 1.3
+        }
+      ]
+    },
+    "shrink": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ty",
+          "value": 10
+        },
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": 12
+        },
+        {
+          "part": "head",
+          "channel": "tx",
+          "value": -4
+        },
+        {
+          "part": "body",
+          "channel": "tx",
+          "value": -8
+        },
+        {
+          "part": "arm_l",
+          "channel": "ang",
+          "value": 8
+        }
+      ],
+      "motion": [
+        {
+          "part": "body",
+          "channel": "tx",
+          "amp": 1,
+          "freq": 6,
+          "phase": 0.0
+        }
+      ]
+    },
+    "fidget": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ty",
+          "value": 7
+        },
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": 9
+        }
+      ],
+      "motion": [
+        {
+          "part": "arm_l",
+          "channel": "ang",
+          "amp": 9,
+          "freq": 3.2,
+          "phase": 0.0
+        },
+        {
+          "part": "body",
+          "channel": "tx",
+          "amp": 2.5,
+          "freq": 2.2,
+          "phase": 0.0
+        },
+        {
+          "part": "hair_l",
+          "channel": "ang",
+          "amp": 3,
+          "freq": 2.2,
+          "phase": 1
+        }
+      ]
+    },
+    "sulk_turn": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "tx",
+          "value": 12
+        },
+        {
+          "part": "head",
+          "channel": "ty",
+          "value": 8
+        },
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": 8
+        },
+        {
+          "part": "body",
+          "channel": "tx",
+          "value": 6
+        }
+      ]
+    },
+    "laugh_shake": {
+      "motion": [
+        {
+          "part": "body",
+          "channel": "ty",
+          "amp": 7,
+          "freq": 5.2,
+          "phase": 0.0
+        },
+        {
+          "part": "head",
+          "channel": "ang",
+          "amp": 4,
+          "freq": 2.6,
+          "phase": 0.0
+        },
+        {
+          "part": "chest",
+          "channel": "ty",
+          "amp": 5,
+          "freq": 5.2,
+          "phase": 0.4
+        }
+      ]
+    },
+    "sigh_tilt": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": 8
+        },
+        {
+          "part": "head",
+          "channel": "ty",
+          "value": 5
+        }
+      ],
+      "onset": "sigh"
+    },
+    "stand_firm": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ty",
+          "value": -3
+        },
+        {
+          "part": "body",
+          "channel": "sc",
+          "value": 0.006
+        },
+        {
+          "part": "chest",
+          "channel": "ty",
+          "value": -2
+        }
+      ],
+      "motion": [
+        {
+          "part": "body",
+          "channel": "tx",
+          "amp": 0.8,
+          "freq": 9,
+          "phase": 0.0
+        }
+      ]
+    },
+    "bounce_high": {
+      "motion": [
+        {
+          "part": "body",
+          "channel": "ty",
+          "amp": 11,
+          "freq": 2.4,
+          "phase": 0.0
+        },
+        {
+          "part": "arm_l",
+          "channel": "ang",
+          "amp": 14,
+          "freq": 2.4,
+          "phase": 0.0
+        },
+        {
+          "part": "head",
+          "channel": "ang",
+          "amp": 5,
+          "freq": 1.2,
+          "phase": 0.0
+        }
+      ],
+      "onset": "perk"
+    },
+    "tilt_think": {
+      "pose": [
+        {
+          "part": "head",
+          "channel": "ang",
+          "value": -8
+        },
+        {
+          "part": "head",
+          "channel": "tx",
+          "value": 10
+        },
+        {
+          "part": "arm_l",
+          "channel": "ang",
+          "value": 12
+        }
+      ]
+    },
+    "speaking": {
+      "motion": [
+        {
+          "part": "head",
+          "channel": "ang",
+          "amp": 1.2,
+          "freq": 2.3,
+          "phase": 0.0
+        },
+        {
+          "part": "head",
+          "channel": "ty",
+          "amp": 1.2,
+          "freq": 4.6,
+          "phase": 0.0
+        },
+        {
+          "part": "chest",
+          "channel": "ty",
+          "amp": 1.5,
+          "freq": 4.6,
+          "phase": 0.0
+        }
+      ]
+    }
+  },
+  "pulses": {
+    "perk": {
+      "dur": 0.55,
+      "kicks": [
+        {
+          "part": "head",
+          "channel": "ty",
+          "amp": -14
+        },
+        {
+          "part": "body",
+          "channel": "ty",
+          "amp": -6
+        }
+      ]
+    },
+    "listen": {
+      "dur": 0.9,
+      "kicks": [
+        {
+          "part": "head",
+          "channel": "ang",
+          "amp": -6
+        },
+        {
+          "part": "head",
+          "channel": "ty",
+          "amp": 3
+        }
+      ]
+    },
+    "nod": {
+      "dur": 0.5,
+      "kicks": [
+        {
+          "part": "head",
+          "channel": "ty",
+          "amp": 7
+        }
+      ]
+    },
+    "startle": {
+      "dur": 0.45,
+      "kicks": [
+        {
+          "part": "head",
+          "channel": "ty",
+          "amp": -22
+        },
+        {
+          "part": "body",
+          "channel": "ty",
+          "amp": -10
+        },
+        {
+          "part": "hair_l",
+          "channel": "ang",
+          "amp": 8
+        },
+        {
+          "part": "hair_r",
+          "channel": "ang",
+          "amp": -8
+        }
+      ]
+    },
+    "flinch": {
+      "dur": 0.35,
+      "kicks": [
+        {
+          "part": "head",
+          "channel": "ty",
+          "amp": 5
+        },
+        {
+          "part": "body",
+          "channel": "tx",
+          "amp": -5
+        }
+      ]
+    },
+    "huff": {
+      "dur": 0.7,
+      "kicks": [
+        {
+          "part": "head",
+          "channel": "tx",
+          "amp": 12
+        },
+        {
+          "part": "head",
+          "channel": "ang",
+          "amp": 6
+        }
+      ]
+    },
+    "sigh": {
+      "dur": 1.4,
+      "kicks": [
+        {
+          "part": "head",
+          "channel": "ty",
+          "amp": 12
+        },
+        {
+          "part": "body",
+          "channel": "ty",
+          "amp": 5
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "kind": "combinations",
+  "conflicts": [
+    [
+      "happy",
+      "sad"
+    ],
+    [
+      "happy",
+      "angry"
+    ],
+    [
+      "happy",
+      "frustrated"
+    ],
+    [
+      "laughing",
+      "sad"
+    ],
+    [
+      "laughing",
+      "angry"
+    ],
+    [
+      "excited",
+      "bored"
+    ],
+    [
+      "excited",
+      "sad"
+    ],
+    [
+      "affectionate",
+      "sad"
+    ],
+    [
+      "protective",
+      "bored"
+    ],
+    [
+      "smug",
+      "sad"
+    ]
+  ],
+  "combinations": [
+    {
+      "id": "embarrassed_happy",
+      "name": "Embarrassed + Happy",
+      "members": [
+        "embarrassed",
+        "happy"
+      ],
+      "mode": "blend",
+      "weights": [
+        0.55,
+        0.45
+      ]
+    },
+    {
+      "id": "jealous_angry",
+      "name": "Jealous + Angry",
+      "members": [
+        "jealous",
+        "angry"
+      ],
+      "mode": "blend",
+      "weights": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "shy_affectionate",
+      "name": "Shy + Affectionate",
+      "members": [
+        "shy",
+        "affectionate"
+      ],
+      "mode": "blend",
+      "weights": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "smug_playful",
+      "name": "Smug + Playful",
+      "members": [
+        "smug",
+        "playful"
+      ],
+      "mode": "blend",
+      "weights": [
+        0.55,
+        0.45
+      ]
+    },
+    {
+      "id": "flirty_embarrassed",
+      "name": "Flirty + Embarrassed",
+      "members": [
+        "flirty",
+        "embarrassed"
+      ],
+      "mode": "blend",
+      "weights": [
+        0.5,
+        0.5
+      ]
+    },
+    {
+      "id": "angry_affectionate",
+      "name": "Angry + Affectionate",
+      "members": [
+        "angry",
+        "affectionate"
+      ],
+      "mode": "replace",
+      "result": "tsundere"
+    },
+    {
+      "id": "embarrassed_angry",
+      "name": "Embarrassed + Angry",
+      "members": [
+        "embarrassed",
+        "angry"
+      ],
+      "mode": "replace",
+      "result": "tsundere"
+    }
+  ]
+}
