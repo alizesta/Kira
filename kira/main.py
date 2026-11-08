@@ -1,3 +1,4 @@
+import contextlib
 import base64
 import json
 import random
@@ -43,6 +44,9 @@ from .speech_fixes import SpeechFixes
 from .strings import STR, TEST_LINES
 from .personality import build_system_prompt
 from . import persona_memory
+from . import evidence_memory
+from . import brain
+from . import usage
 from . import mood
 from .rig import MOODS
 from .ui_icons import make_icon
@@ -208,22 +212,30 @@ class StreamWorker(QThread):
     failed = Signal(str)
     tool_event = Signal(dict)       # a tool starts / ends (status line only)
 
-    def __init__(self, router, messages, prompt, temperature, retry_index=0, agent=None, plan=None):
+    def __init__(self, router, messages, prompt, temperature, retry_index=0, agent=None, plan=None, role="", route_id=""):
         super().__init__()
+        self.role, self.route_id = role, route_id                 # brain stage (kira/brain.py); "" = normal routing
         self.router, self.messages, self.prompt, self.temperature, self.retry_index = router, messages, prompt, temperature, retry_index
         self.agent, self.plan = agent, plan                       # tool loop (kira/tools); plan None = an ordinary chat turn
 
     def run(self):
         try:
+            scope = getattr(self.router, "role_scope", None)
+            with (scope(self.role, self.route_id) if scope else contextlib.nullcontext()):
+                result = self._run_request()
+            self.finished_ok.emit(result)
+        except Exception as e:                                    # noqa: BLE001 - shown to the user, never crashes the UI
+            self.failed.emit(str(e))
+
+    def _run_request(self):
+        if True:
             if self.agent is not None and self.plan is not None:
                 result = self.agent.run(self.router, self.messages, self.prompt, self.temperature, self.plan, retry_index=self.retry_index,
                                         on_chunk=self.chunk.emit, on_event=self.event.emit, on_tool=self.tool_event.emit)
             else:
                 result = self.router.chat_stream(self.messages, self.prompt, self.temperature, on_chunk=self.chunk.emit,
                                                  on_event=self.event.emit, retry_index=self.retry_index)
-            self.finished_ok.emit(result)
-        except Exception as e:                                    # noqa: BLE001 - shown to the user, never crashes the UI
-            self.failed.emit(str(e))
+            return result
 
 
 class AttachWorker(QThread):
@@ -463,6 +475,8 @@ class MainWindow(QMainWindow):
         self._ollama_models = []
         self.client = HybridRouter(self.settings)
         self.tool_agent = ToolAgent(self.settings, DATA_DIR, ROOT)      # Computer Awareness + Unified Tool System (kira/tools)
+        usage.install(self.settings)                                    # usage ledger + limits (kira/usage.py); never blocks start-up
+        evidence_memory.configure(self.settings)                        # facts with provenance (kira/evidence_memory.py); never blocks start-up
         self._tool_plan = None             # tool plan of the message being answered (None = ordinary chat, nothing added to the prompt)
         self.ollama_client = OllamaClient.from_settings(self.settings)
         self.director = EmotionDirector.from_default()        # emotion library + engine (kira/emotion, emotion_library/)
@@ -2205,6 +2219,8 @@ class MainWindow(QMainWindow):
         self.client = HybridRouter(s)                      # fresh cooldowns after saving (a fixed key/model gets another chance)
         self.client.states = old_states
         self.tool_agent.set_settings(s)
+        evidence_memory.configure(s)
+        usage.install(s)
         self.ollama_client = OllamaClient.from_settings(s)
         self.refresh_route_list()
         self.set_badge("idle", self.client.preview_route())
@@ -2654,7 +2670,10 @@ class MainWindow(QMainWindow):
         self.tool_agent.begin_turn()
         action_result = None
         if not packed:
-            if self.tool_agent.enabled():
+            action_result = usage.handle_command(text)                                 # "/usage [days]": numbers from the local ledger, no model call
+            if action_result is not None:
+                pass
+            elif self.tool_agent.enabled():
                 action_result = self.tool_agent.handle_confirmation_reply(text)       # "تأیید" / "لغو" for a pending sensitive action: decided in code, not by the model
                 if action_result is None:
                     action_result = self.tool_agent.handle_task_command(text)         # status / pause / cancel / add a step of an unfinished task: decided in code too
@@ -2682,6 +2701,8 @@ class MainWindow(QMainWindow):
         query, forced = websearch.plan(text) if self.settings.get("web_search", True) or text.lstrip().startswith("/") else (None, False)
         if query and not forced and self._tool_plan is not None and self._tool_plan.strong:
             query = None                                          # a request about this PC (files, apps, RAM...) is not a web question
+        if query and not forced and self._tool_plan is not None and getattr(self._tool_plan, "web", False):
+            query = None                                          # research / "read this page" requests go through the web tools (kira/webintel), not the one-shot search
         if query:
             self.begin_web_search(query, packed["model"] if packed else text, packed["images"] if packed else [])
             return
@@ -2868,7 +2889,9 @@ class MainWindow(QMainWindow):
         try:
             older = recent_messages(window + 40)[:-window] if window else []
             # her own recent banter is a style anchor for casual talk only; a practical request does not get it
-            memory_block = persona_memory.build_block(older, voice_samples=(mode is None or mode.name == modes.CHAT))
+            memory_block = persona_memory.build_block(older, voice_samples=(mode is None or mode.name == modes.CHAT),
+                                                      query=evidence_memory.query_from_context(context),
+                                                      budget=evidence_memory.budget_for(self.settings, self.client))
             total = message_count()
             if persona_memory.needs_summary(total, window):       # old messages are folded into a short summary (local, no model call)
                 persona_memory.maintain(recent_messages(min(total, 3000)), window)
@@ -2880,13 +2903,24 @@ class MainWindow(QMainWindow):
             mood_block = ""
         prompt = build_system_prompt(self.settings, "" if plain else self.director.format_hint(), memory_block,
                                      voice_input=self._turn_voice, mode=mode, mood_block=mood_block)
+        try:                                                      # brain stage: deterministic, no model call; any problem = the normal path
+            extra0 = self._turn_extra
+            has_att = bool(self._turn_attach_kinds or (extra0 and (extra0.get("images") or "--- فایل ضمیمه" in str(extra0.get("model", "")))))
+            last_user = next((m.get("content", "") for m in reversed(context) if m.get("role") == "user"), "")
+            self._brain_user_text = str(last_user)
+            self._brain_mode_name = mode.name if mode else None
+            self._brain = brain.decide(last_user, mode, self._tool_plan, has_att, self.tool_agent.tasks.active() is not None, self.settings)
+            prompt = brain.extend_prompt(prompt, self._brain, self.settings, self.client)
+        except Exception:                                         # noqa: BLE001
+            self._brain = brain.Decision()
         self._stream_begin()
         extra = self._turn_extra
         if extra and context and context[-1]["role"] == "user":          # this turn gets the full file text and the real images
             context[-1] = {"role": "user", "content": extra["model"], "images": extra["images"]}
         temperature = modes.temperature_for(mode, self.settings["temperature"]) if mode else self.settings["temperature"]
         self.worker = StreamWorker(self.client, context, prompt, temperature, retry_index=1 if plain else 0,
-                                   agent=self.tool_agent, plan=self._tool_plan)
+                                   agent=self.tool_agent, plan=self._tool_plan, role=self._brain.stage,
+                                   route_id=self._brain.route_id)
         self.worker.tool_event.connect(self.on_tool_event)
         self.worker.event.connect(self.on_stream_event)
         self.worker.chunk.connect(self.on_stream_chunk)
@@ -3147,6 +3181,11 @@ class MainWindow(QMainWindow):
             self.director.event("response_failed")
         else:
             self.save_message("assistant", raw)
+            try:                                                   # quiet second look (rules; optional background model call)
+                brain.after_turn(self.client, self.settings, getattr(self, "_brain", brain.Decision()), getattr(self, "_brain_user_text", ""),
+                                 text, res.get("tools"), getattr(self, "_brain_mode_name", None), bool(self._tool_plan))
+            except Exception:                                      # noqa: BLE001
+                pass
             if not self._emotion_applied:                          # no tag from the model: tag-less fallback (keywords / neutral)
                 self.director.on_reply(meta)
             if self._speech_live:
@@ -3486,6 +3525,7 @@ class MainWindow(QMainWindow):
                 clear_memory()                  # saves a snapshot first; nothing is deleted if that fails
                 persona_memory.forget_conversation()
                 self.tool_agent.clear_tasks()   # the unfinished task (its goal is the user's own words) goes with the chat
+                brain.reset_state()
             except ChatStoreError as exc:
                 QMessageBox.warning(self, self.t("clear_t"), str(exc))
                 return

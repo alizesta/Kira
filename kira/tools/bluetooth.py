@@ -1,24 +1,21 @@
 """Windows Bluetooth control: read the state, switch the radio on, switch it off - three independent tools.
 
 Method: the official Windows Runtime radio API (Windows.Devices.Radios.Radio: RequestAccessAsync / GetRadiosAsync / SetStateAsync - the same API
-the Settings app uses), reached through Windows PowerShell 5.1 with a FIXED script. No user or model text is ever part of the script: the only
+the Settings app uses), reached through Windows PowerShell 5.1 (shared runner: winrunner.py) with a FIXED script. No user or model text is ever part of the script: the only
 variable is a literal chosen from a closed list (read / On / Off). Nothing is run through a shell string and no arbitrary command exists.
 
 Every change is verified: after SetStateAsync the radio is read again (up to ~6 s) and only the real state is reported.
 """
 from __future__ import annotations
 
-import base64
-import json
-import subprocess
 import sys
 import threading
 import time
 
 from .registry import ToolError, DENIED, ERROR
+from .winrunner import FixedScript, run_fixed          # shared controlled PowerShell runner (also used by Audio)
 
 IS_WIN = sys.platform == "win32"
-NO_WINDOW = 0x08000000 if IS_WIN else 0
 _LOCK = threading.Lock()
 
 _SCRIPT = r"""
@@ -44,32 +41,16 @@ $out|ConvertTo-Json -Compress -Depth 4
 """
 _SET_TEMPLATE = ("if([string]$r.State -ne '@@V@@'){$out.set+=([string](Wait-Op ($r.SetStateAsync([Windows.Devices.Radios.RadioState]::@@V@@)) "
                  "([Windows.Devices.Radios.RadioAccessStatus])))+';'}")
-_SCRIPTS = {"read": _SCRIPT.replace("@@SET@@", ""),
-            "On": _SCRIPT.replace("@@SET@@", _SET_TEMPLATE.replace("@@V@@", "On")),
-            "Off": _SCRIPT.replace("@@SET@@", _SET_TEMPLATE.replace("@@V@@", "Off"))}
+_SCRIPTS = {"read": FixedScript("bluetooth-read", _SCRIPT.replace("@@SET@@", "")),
+            "On": FixedScript("bluetooth-on", _SCRIPT.replace("@@SET@@", _SET_TEMPLATE.replace("@@V@@", "On"))),
+            "Off": FixedScript("bluetooth-off", _SCRIPT.replace("@@SET@@", _SET_TEMPLATE.replace("@@V@@", "Off")))}
 
 
 def _run(mode: str) -> dict:
     """Run one of the three fixed scripts. -> parsed JSON, or {'ok': False, 'error': ...} when Windows PowerShell itself failed."""
-    script = _SCRIPTS[mode]                                    # KeyError = programming error: only the three fixed modes exist
-    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
-    try:
-        r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
-                           capture_output=True, timeout=45, creationflags=NO_WINDOW)
-    except FileNotFoundError:
-        return {"ok": False, "error": "Windows PowerShell (powershell.exe) پیدا نشد", "fatal": True}
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "پاسخ API بلوتوث ویندوز بیش از ۴۵ ثانیه طول کشید", "fatal": True}
-    except OSError as e:
-        return {"ok": False, "error": f"اجرای PowerShell ممکن نشد: {e}", "fatal": True}
-    text = r.stdout.decode("utf-8", "ignore").strip()
-    try:
-        data = json.loads(text[text.index("{"):]) if "{" in text else {}
-    except ValueError:
-        data = {}
-    if not data:
-        err = r.stderr.decode("utf-8", "ignore").strip()[:300] or f"خروجی نامعتبر (کد {r.returncode})"
-        return {"ok": False, "error": err, "fatal": True}
+    data = run_fixed(_SCRIPTS[mode], timeout=45, api_name="بلوتوث ویندوز")   # KeyError = programming error: only the three fixed modes exist
+    if data.get("fatal"):
+        return data
     radios = data.get("radios") or []
     data["radios"] = [radios] if isinstance(radios, dict) else list(radios)
     return data

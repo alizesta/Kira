@@ -257,6 +257,26 @@ def recent_messages(limit=12):
         return [{"role": r, "content": c} for r, c in _pending[-int(limit):]]
 
 
+def rows_with_ids(limit=3000, after_id=0):
+    """[(id, role, content, created_at)] oldest first: the newest `limit` messages with id > after_id. Read-only; [] when the store is unusable.
+    Used by the evidence memory to point each fact at the exact message it came from."""
+    try:
+        with _lock, _db() as con:
+            rows = con.execute("SELECT id, role, content, created_at FROM messages WHERE id > ? ORDER BY id DESC LIMIT ?",
+                               (int(after_id), int(limit))).fetchall()
+        return [(int(i), str(r), str(c), str(ts or "")) for i, r, c, ts in reversed(rows)]
+    except (sqlite3.Error, OSError):
+        return []
+
+
+def max_message_id() -> int:
+    try:
+        with _lock, _db() as con:
+            return int(con.execute("SELECT COALESCE(MAX(id), 0) FROM messages").fetchone()[0])
+    except (sqlite3.Error, OSError):
+        return 0
+
+
 def message_count() -> int:
     try:
         with _db() as con:

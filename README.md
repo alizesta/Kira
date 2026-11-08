@@ -11,6 +11,7 @@
 ## قابلیت‌ها
 - **API Manager + Route Manager:** کلید را وارد کن تا Provider (Groq، Mistral، Google AI Studio، Cloudflare) خودکار شناسایی و اعتبارسنجی شود؛ مدل‌ها از API رسمی خوانده می‌شوند؛ چند مدل با اولویت و Failover خودکار.
 - **جست‌وجوی وب:** دکمه‌ی 🌐 کنار 📎؛ با Tavily (کلید رایگان از tavily.com را در تب عمومی وارد کن و «آزمایش جست‌وجوی وب» را بزن). نتایج شماره‌دار و با بررسی شواهد به مدل داده می‌شوند. با `/web عبارت` اجباری می‌شود.
+- **تحقیق چندمنبعی در وب (جدید):** «درباره‌ی … تحقیق کن»، «این لینک رو بخون» یا `/research …` ← Kira چند جست‌وجو و چند منبع مستقل را می‌خواند، تکراری/قدیمی/کم‌اعتبار را کنار می‌گذارد و گزارش منبع‌دار با سطح اطمینان هر ادعا، تناقض‌ها و کمبود شواهد می‌دهد؛ قابل توقف و ادامه، با حافظه‌ی موقت، محافظت در برابر تزریق دستور/SSRF/نشت کلید، و مستقل از Provider (هیچ مدلی برای خودِ تحقیق صدا زده نمی‌شود). جست‌وجوی سریع 🌐 مثل قبل است. راهنما: `docs/WEB_RESEARCH_FA.md`.
 - **ضمیمه:** دکمه‌ی 📎، کشیدن فایل روی پنجره، یا Ctrl+V برای عکس. عکس‌ها به مدل‌های بینایی (مثل Gemini) می‌روند؛ فایل‌های متنی، docx و (با `pypdf`) pdf خوانده می‌شوند.
 - **ضمیمه در حالت Tray:** وقتی پنجره‌ی اصلی در System Tray است، حباب چت کنار کیرا هم دکمه‌ی 📎، کشیدن فایل روی حباب و Ctrl+V برای عکس دارد (همان محدودیت‌ها و همان مسیر پنجره‌ی اصلی).
 - **جست‌وجوی تصویری:** دکمه‌ی 🔎 (در پنجره‌ی اصلی و حباب Tray). وقتی روشن است، عکسی که می‌فرستی در وب جست‌وجو می‌شود تا معلوم شود چیست؛ برای یک پیام هم می‌شود با `/img` شروع کرد. ترتیب: Gemini + Google Search با خودِ عکس (اگر کلید Gemini داری) ← یک مدل بینایی از روی عکس عبارت جست‌وجو می‌سازد و Tavily ← Google ← DuckDuckGo آن را جست‌وجو می‌کنند. Tavily و DuckDuckGo عکس نمی‌گیرند؛ فقط متن. اگر جست‌وجو شکست بخورد، کیرا از روی خودِ عکس جواب می‌دهد و موارد تأییدنشده را صریح می‌گوید.
@@ -22,7 +23,7 @@
 - **کتابخانه‌ی احساسات و انیمیشن:** `emotion_library/` (راهنما: `emotion_library/README_EMOTION_LIBRARY.md`).
 
 ## راهنماها
-`docs/TOOLS_FA.md` · `docs/ROUTE_MANAGER_GUIDE_FA.md` · `docs/ADD_PROVIDER_AND_MODEL_FA.md` · `docs/WINDOWS11_CHECKLIST_FA.md` · `docs/CHARACTER_FA.md` · `docs/AGENT_FA.md` (برنامه‌ریزی و اجرای خودکار وظایف)
+`docs/TOOLS_FA.md` · `docs/ROUTE_MANAGER_GUIDE_FA.md` · `docs/ADD_PROVIDER_AND_MODEL_FA.md` · `docs/WINDOWS11_CHECKLIST_FA.md` · `docs/CHARACTER_FA.md` · `docs/AGENT_FA.md` (برنامه‌ریزی و اجرای خودکار وظایف) · `docs/WEB_RESEARCH_FA.md` (تحقیق چندمنبعی در وب) · `docs/MEMORY_EVIDENCE_FA.md` (حافظه‌ی شواهدمحور) · `docs/BRAIN_FA.md` (مغز چندمرحله‌ای) · `docs/MCP_AGENTS_FA.md` (MCP و ایجنت‌های مستقل) · `docs/USAGE_FA.md` (مصرف و هزینه) · `docs/FILE_AGENT_FA.md` (عامل فایل) · `docs/DESKTOP_FA.md` (تعامل با دسکتاپ) · `docs/CHANGES_INTEGRATION_FA.md` (خلاصه‌ی تغییرات)
 
 ## تست
 `run_tests.bat` (یا `python -m unittest discover -s tests -t .`).

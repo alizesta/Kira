@@ -13,6 +13,7 @@ from pathlib import Path
 
 SETTINGS_NAME = "settings.json"
 DB_NAME = "kira_memory.sqlite3"
+EVIDENCE_DB_NAME = "kira_evidence.sqlite3"            # facts with provenance (kira/evidence_memory.py); an index that can also be rebuilt from the chat
 CLOUD_VOICE_NAME = "cloud_voice.json"                     # Cloud Voice keys + settings (kept outside the program folder, like settings.json)
 MARKER = "migrated_from.txt"
 
@@ -90,16 +91,17 @@ def backup_user_data(data_dir: Path, keep: int = 7, min_age_hours: float = 12.0)
         shutil.copy2(data_dir / SETTINGS_NAME, target / SETTINGS_NAME)
     if (data_dir / CLOUD_VOICE_NAME).is_file():
         shutil.copy2(data_dir / CLOUD_VOICE_NAME, target / CLOUD_VOICE_NAME)
-    if (data_dir / DB_NAME).is_file():
-        src = sqlite3.connect(data_dir / DB_NAME)
-        try:
-            dst = sqlite3.connect(target / DB_NAME)
+    for db_name in (DB_NAME, EVIDENCE_DB_NAME):
+        if (data_dir / db_name).is_file():
+            src = sqlite3.connect(data_dir / db_name)
             try:
-                src.backup(dst)
+                dst = sqlite3.connect(target / db_name)
+                try:
+                    src.backup(dst)
+                finally:
+                    dst.close()
             finally:
-                dst.close()
-        finally:
-            src.close()
+                src.close()
     for old in sorted(p for p in root.iterdir() if p.is_dir())[:-keep]:
         shutil.rmtree(old, ignore_errors=True)
     return target

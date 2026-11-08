@@ -31,6 +31,15 @@ DEFAULTS = {
     "web_fallback": True,                # Tavily fails -> Google (Gemini) -> DuckDuckGo
     "tavily_api_key": "",                # web search engine key (https://tavily.com, free plan)
     "web_depth": "basic",                # basic = 1 credit per search, advanced = 2 credits and better relevance
+    # Web Intelligence & Research (kira/webintel, docs/WEB_RESEARCH_FA.md): multi-source research tools used through the Tool System / Autonomous Agent
+    "web_research": True,                # the web_search / web_read / web_research tools exist (they still run only on an explicit request)
+    "web_research_max_searches": 8,      # most searches in ONE deep research (1-20)
+    "web_research_max_pages": 10,        # most pages read in ONE deep research (1-25)
+    "web_research_max_seconds": 90,      # time limit of ONE deep research (15-300); it pauses and can be continued
+    "web_research_max_chars": 9000,      # size of the report sent to the model (2500-14000 characters)
+    "web_read_timeout": 15,              # seconds to wait for one page
+    "web_read_max_mb": 2.5,              # biggest page / PDF read (MB); the rest is cut
+    "web_max_redirects": 4,              # redirects followed per page (each hop is re-checked against SSRF rules)
     "speak_replies": True,
     "active_modes": True,                # per-message Active Mode (chat / task / plain answer): the request outranks the personality
     "stream_speech": True,               # speech starts from the first finished sentence while the reply is still being written
@@ -62,6 +71,21 @@ DEFAULTS = {
     "idle_talk": True,
     "provider_order": ["groq", "cloudflare", "mistral", "openrouter", "ollama"],
     "memory_context_limit": 12,
+    # Evidence memory (kira/evidence_memory.py, docs/MEMORY_EVIDENCE_FA.md): facts with their source quote, recalled by relevance.
+    "evidence_memory": "auto",      # auto = on (falls back to the plain fact list on any problem) | off = the earlier behaviour only
+    "memory_top_k": 6,              # most facts recalled for one message (besides the pinned name / nickname / answer-length preference)
+    "embedding_backend": "off",     # off (default: no embedding request is ever made) | ollama (local) | provider (an OpenAI-compatible API)
+    "embedding_model": "",          # e.g. "bge-m3" or "nomic-embed-text" for ollama; the provider's embedding model id for "provider"
+    "embedding_provider": "",       # route provider id used when embedding_backend = "provider" (independent of the chat route)
+    # Multi-stage brain (kira/brain.py, docs/BRAIN_FA.md): deterministic stage choice + free reply check; model calls only when enabled here.
+    "brain_mode": "auto",           # auto | surface_only (never the deep stage) | off (the module does nothing)
+    "brain_reflection": "rules",    # rules (free) | model (also one small background call on deep turns) | off
+    "brain_memory_writer": "off",   # off | idle (background fact writer; every fact must quote the user, verified in code)
+    "role_routes": {"surface": "auto", "deep": "auto", "reflection": "auto", "memory": "auto"},   # route id per role, or "auto"
+    "mcp_mode": "auto",             # auto = use kira_mcp.json when it exists | off (docs/MCP_AGENTS_FA.md)
+    # Usage ledger (kira/usage.py, docs/USAGE_FA.md): numbers only; Unknown when the provider does not report.
+    "model_prices": {},             # {"provider:model" or "model": {"input_per_million": 0.5, "output_per_million": 1.5, "cache_per_million": 0.1}}
+    "usage_limits": {},             # {"role:deep": {"requests_per_day": 50, "tokens_per_day": 200000, "action": "warn|block"}, "provider:groq": {...}}
     # Computer Awareness + Tool System (kira/tools, docs/TOOLS_FA.md)
     "tools_mode": "auto",           # auto = tools are offered to the model only for requests about this PC | always | off (old fixed shortcuts only)
     "tools_allowed_paths": [],      # extra folders Kira may search/read/open, besides Desktop, Documents, Downloads, Pictures, Videos, Music

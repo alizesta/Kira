@@ -93,7 +93,7 @@ class AutonomyMixin:
             t = self.registry.get(s.tool) if s.tool else None
             if t:
                 cats |= set(t.categories)
-        return cats or set(protocol.ALL_CATEGORIES)
+        return cats or (set(protocol.ALL_CATEGORIES) - {"mcp", "agents"})        # external tools join a task only when named
 
     def _remember_task_preference(self, text: str):
         """A standing preference about HOW to do tasks ("همیشه قبل از حذف بپرس") goes to the long-term memory as a short note. Tool results never do."""

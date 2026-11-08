@@ -10,7 +10,8 @@ _TOKEN = re.compile(r"\[([^\[\]\n]{1,60})\]")
 _SPLIT = re.compile(r"\s*[+&/,]\s*|\s+and\s+", re.I)
 _JUNK_FIRST_LINE = re.compile(r"^\s*\[[A-Za-z_+&/:|=, 0-9%.-]{1,50}\]\s*$")
 _BARE_MOOD = re.compile(r"(?im)^\s*(neutral|happy|excited|sad|bored|angry|shy|surprised|thinking|sleepy)\s*[.!,:;]?\s*$")
-_MOOD_LINE = re.compile(r"(?im)^\s*(?:mood|emotion|情绪|حالت)\s*[:：=].*$")
+# U+60C5 U+7EEA is the Chinese word for "emotion"; U+FF1A is the fullwidth colon. Both are matched on purpose because some models answer in Chinese.
+_MOOD_LINE = re.compile(r"(?im)^\s*(?:mood|emotion|\u60c5\u7eea|حالت)\s*[:\uff1a=].*$")
 
 
 class ReplyMeta:

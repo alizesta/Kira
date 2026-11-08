@@ -26,6 +26,7 @@ from .autonomy import AutonomyMixin
 from .access import PathPolicy
 from .builtin import build_registry
 from .registry import ToolResult, NEEDS_CONFIRM, BAD_ARGS, OK, LEVEL_NAMES, clip
+from ..webintel.session import CANCEL as WEB_CANCEL
 
 CONFIRM_TTL = 300                 # seconds a pending confirmation stays valid
 MEMO_TTL = 1800                   # seconds a "recent tool result" note stays in the prompt (session only, never saved)
@@ -36,12 +37,37 @@ TOOL_LABELS = {
     "get_active_window": "خواندن پنجره‌ی فعال", "find_app": "جست‌وجوی برنامه", "list_allowed_folders": "پوشه‌های مجاز",
     "search_files": "جست‌وجوی فایل", "list_folder": "فهرست پوشه", "file_info": "اطلاعات فایل", "read_file": "خواندن فایل",
     "open_app": "باز کردن برنامه", "open_path": "باز کردن فایل/پوشه", "open_url": "باز کردن لینک",
-    "bluetooth_status": "بررسی وضعیت بلوتوث", "bluetooth_on": "روشن کردن بلوتوث", "bluetooth_off": "خاموش کردن بلوتوث",
+    "bluetooth_status": "بررسی وضعیت بلوتوث", "bluetooth_on": "روشن کردن بلوتوث", "bluetooth_off": "خاموش کردن بلوتوث", "windows_control_info": "جدول دسترسی‌ها و عملیات اخیر",
+    "make_folder": "ساخت پوشه", "create_file": "ساخت فایل", "append_text": "افزودن متن به فایل", "copy_item": "کپی فایل/پوشه", "rename_item": "تغییر نام",
+    "write_file": "جایگزینی محتوای فایل (نیازمند تأیید)", "delete_folder": "حذف پوشه (نیازمند تأیید)", "batch_files": "عملیات گروهی روی فایل‌ها (نیازمند تأیید)",
+    "organise_folder": "مرتب‌سازی پوشه (نیازمند تأیید)", "undo_file_operation": "برگرداندن آخرین عملیات فایل (نیازمند تأیید)",
     "delete_file": "حذف فایل (نیازمند تأیید)", "move_file": "انتقال فایل (نیازمند تأیید)",
+    "agent_ask": "سپردن کار به ایجنت (نیازمند تأیید)", "agent_status": "وضعیت کار ایجنت", "agent_answer": "ارسال جواب کاربر به ایجنت",
+    "window_list": "فهرست پنجره‌ها", "window_active": "پنجره‌ی فعال", "window_focus": "آوردن پنجره به جلو", "window_close": "بستن پنجره", "window_set_state": "تغییر اندازه‌ی پنجره",
+    "type_text": "تایپ متن", "press_keys": "زدن کلید", "clipboard_set": "قرار دادن متن در کلیپ‌بورد", "clipboard_get": "خواندن کلیپ‌بورد (نیازمند تأیید)",
+    "ui_list_controls": "فهرست کنترل‌های پنجره", "ui_click": "کلیک روی کنترل", "ui_click_confirmed": "کلیک روی کنترل حساس (نیازمند تأیید)",
+    "ui_set_text": "پر کردن فیلد متنی", "mouse_click": "کلیک روی نقطه (نیازمند تأیید)",
+    "agent_stop": "توقف کار ایجنت", "agent_health": "بررسی ایجنت", "mcp_info": "وضعیت سرورهای MCP",
+    "web_search": "جست‌وجوی وب", "web_read": "خواندن صفحه‌ی وب", "web_research": "تحقیق چندمنبعی در وب", "web_research_status": "وضعیت تحقیق وب",
 }
 _NORM = str.maketrans({"ي": "ی", "ك": "ک", "\u200c": " ", "\u200f": " "})
-CONFIRM_RX = re.compile(r"(?:تایید|تأیید|تاییده|تایید\s*می\s*کنم|بله|آره|اره|اوکی|باشه|انجام\s*بده|انجامش\s*بده|حذف\s*کن|حذفش\s*کن|پاک\s*کن|پاکش\s*کن|"
-                        r"منتقل\s*کن|ok|okay|yes|yep|yeah|confirm|do\s*it|go\s*ahead|sure)", re.I)
+# A confirmation is ONLY a bare "yes" (optionally with polite filler). A message that names an operation ("حذفش کن", "delete it", "فایل دیگه رو پاک کن")
+# is a NEW request, never a confirmation of the pending one: the pending question is dropped and the new message is handled normally.
+_CONFIRM_CORE = ("تایید می کنم", "تأیید می کنم", "تاییدش می کنم", "تایید", "تأیید", "تاییده", "تأییده", "بله", "بلی", "آره", "اره", "اوکی", "باشه", "درسته", "انجام بده",
+                 "انجامش بده", "انجام بدید", "ok", "okay", "yes", "yep", "yeah", "confirm", "confirmed", "sure", "go ahead", "do it")
+_CONFIRM_FILLER = ("لطفا", "لطفاً", "ممنون", "مرسی", "همین", "همینو", "همین رو", "خب", "خوب", "دیگه", "هم", "please", "thanks", "thank you", "then", "now")
+_CORE_RX = re.compile(r"(?<![\w])(?:" + "|".join(re.escape(w) for w in sorted(_CONFIRM_CORE, key=len, reverse=True)) + r")(?![\w])")
+_FILLER_RX = re.compile(r"(?<![\w])(?:" + "|".join(re.escape(w) for w in sorted(_CONFIRM_FILLER, key=len, reverse=True)) + r")(?![\w])")
+
+
+def is_bare_confirmation(t: str) -> bool:
+    """True only for a message that consists of nothing but confirmation words (already lower-cased / normalised, punctuation stripped)."""
+    if not _CORE_RX.search(t):
+        return False
+    rest = _FILLER_RX.sub(" ", _CORE_RX.sub(" ", t))
+    return not re.sub(r"[\s.!؟?،,؛;:~\-]+", "", rest)
+
+
 CANCEL_RX = re.compile(r"(?:\bنه\b|نکن|لغو|کنسل|منصرف|بیخیال|بی\s*خیال|نخیر|\bno\b|cancel|don'?t|stop|never\s*mind)", re.I)
 
 
@@ -52,6 +78,7 @@ class ToolPlan:
     complex: bool = False             # looks multi-step (or a task is being continued): goes through the planner (autonomy.py)
     resume: bool = False              # continue / answer an unfinished task instead of planning a new one
     reasons: tuple = ()
+    web: bool = False                 # the request is a web research / page reading request (the tool route handles it, the old one-shot auto search is skipped)
 
 
 @dataclass
@@ -69,6 +96,13 @@ class ToolAgent(AutonomyMixin):
         self.settings = settings
         self.policy = PathPolicy(settings, data_dir, program_root)
         self.registry = build_registry(self.policy)
+        self.registry.access.require_grants = True           # production: a confirmed execution needs a grant made from the user's own confirmation message
+        self.mcp = None
+        try:                                              # external MCP servers + independent agents (kira/mcp); optional, in the background
+            from .. import mcp as _mcp
+            self.mcp = _mcp.install(self.registry, data_dir or self.policy.data_dir, lambda: self.settings)
+        except Exception:                                 # noqa: BLE001
+            self.mcp = None
         self._cancel = threading.Event()
         self._turn_id = 0
         self._turn_cache: dict[str, ToolResult] = {}
@@ -106,6 +140,7 @@ class ToolAgent(AutonomyMixin):
         self._pending_new = False
         self.last_results = []
         self._cancel.clear()
+        WEB_CANCEL.clear()
         self._turn_reset()
 
     def plan(self, text: str) -> ToolPlan | None:
@@ -114,7 +149,16 @@ class ToolAgent(AutonomyMixin):
         self.registry.user_text = str(text or "")
         if self.mode() == "off":
             return None
-        return self.decide(text, self._plan_simple(text))
+        plan = self.decide(text, self._plan_simple(text))
+        if plan is not None:
+            plan.web = "web" in plan.categories and (bool(protocol.detect_categories(text) & {"web"}) or self._web_resume(text))
+        return plan
+
+    def _web_resume(self, text: str) -> bool:
+        """A short 'continue' while a web research is paused."""
+        ctx = getattr(self.registry, "web_context", None)
+        cur = ctx.store.current() if ctx else None
+        return bool(cur is not None and cur.status == "paused" and len(str(text).split()) <= 6 and re.search(r"ادامه|بده|بزن|continue|resume", str(text), re.I))
 
     def _plan_simple(self, text: str) -> ToolPlan | None:
         mode = self.mode()
@@ -123,6 +167,8 @@ class ToolAgent(AutonomyMixin):
         if mode == "always":
             return ToolPlan(set(protocol.ALL_CATEGORIES), protocol.is_strong(text))
         cats = protocol.detect_categories(text)
+        if not cats and self._web_resume(text):
+            cats = {"web"}                                   # "ادامه بده" while a web research is paused
         if not cats and self._turn_id - self._last_used_turn <= 2 and len(str(text).split()) <= 10:
             cats = set(self._last_cats)                      # a short follow-up to a tool turn ("بازش کن", "اولیش")
         return ToolPlan(cats, protocol.is_strong(text)) if cats else None
@@ -133,7 +179,18 @@ class ToolAgent(AutonomyMixin):
     def tools_block(self, plan: ToolPlan, last_round: bool = False) -> str:
         if last_round:
             return protocol.build_block("", last_round=True)
-        return protocol.build_block(self.registry.catalog(plan.categories), self._memo_block())
+        extra = ""
+        if "web" in plan.categories:
+            extra = protocol.WEB_RULES
+            ctx = getattr(self.registry, "web_context", None)
+            cur = ctx.store.current() if ctx else None
+            if cur is not None and cur.status == "paused" and cur.subtopics:
+                extra += f"\nA paused research exists: «{cur.topic}» ({len(cur.done_subtopics)}/{len(cur.subtopics)} sub-topics done). If the user wants it continued, call web_research with resume=true."
+        if "desktop" in plan.categories:
+            extra = (extra + "\n\n" if extra else "") + protocol.DESKTOP_RULES
+        if plan.categories & {"mcp", "agents"}:
+            extra = (extra + "\n\n" if extra else "") + protocol.MCP_RULES
+        return protocol.build_block(self.registry.catalog(plan.categories), self._memo_block(), extra=extra)
 
     # ------------------------------------------------------------ session-only notes
     def _memo_block(self) -> str:
@@ -167,6 +224,9 @@ class ToolAgent(AutonomyMixin):
         self._memos.clear()
         self._pending = None
         self._turn_cache = {}
+        ctx = getattr(self.registry, "web_context", None)
+        if ctx is not None:
+            ctx.store.clear()                                # the temporary research memory goes with the chat
 
     # ------------------------------------------------------------ confirmation of level-3 tools
     def has_pending(self) -> bool:
@@ -185,9 +245,10 @@ class ToolAgent(AutonomyMixin):
         words = len(t.split())
         if t and words <= 8 and CANCEL_RX.search(t):
             self._pending = None
-            return "باشه، لغو شد. هیچ تغییری روی فایل‌ها ندادم." + self._after_confirm(p, None, False)
-        if t and words <= 8 and CONFIRM_RX.search(t):
+            return "باشه، لغو شد. هیچ تغییری ندادم." + self._after_confirm(p, None, False)
+        if t and words <= 8 and is_bare_confirmation(t):
             self._pending = None
+            self.registry.access.grant(p.tool, p.args)         # one-shot, bound to exactly this tool + these arguments
             res = self.registry.execute(p.tool, p.args, confirmed=True)
             self._memoize(res)
             return (("✅ " + res.text) if res.ok else f"❌ انجام نشد: {res.text}") + self._after_confirm(p, res, True)
@@ -197,6 +258,8 @@ class ToolAgent(AutonomyMixin):
     # ------------------------------------------------------------ cancel (Stop button)
     def request_cancel(self):
         self._cancel.set()
+        self.registry.access.revoke_grants()                 # Stop also withdraws any confirmation that was given but not used yet
+        WEB_CANCEL.set()                                     # a running web research stops at the next step and stays resumable
 
     # ------------------------------------------------------------ running tools
     def _run_calls(self, calls, errors, on_tool):

@@ -5,6 +5,7 @@ Secrets come from the local settings file and are redacted from every error mess
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import threading
 import time
@@ -188,6 +189,7 @@ class BaseProvider:
         kind = "local" if self.config.get("local") else "cloud"
         self.timeout = route_model.clamp_timeout(self.config.get("timeout", 18), kind)
         self._resp = None
+        self.last_usage = None                  # token / cost numbers the provider REPORTED for the last request (kira/usage.py), else None
         if self.config.get("local"):
             self.needs_key = False
 
@@ -200,6 +202,13 @@ class BaseProvider:
 
     def _fail(self, message, retryable, status=None, kind="error", retry_after=None):
         return ProviderError(self.name, redact(message, self.secret), retryable, status, kind, retry_after)
+
+    def _note_usage(self, obj):
+        try:
+            from . import usage as _usage
+            self.last_usage = _usage.merge_usage(self.last_usage, _usage.parse_usage(obj))
+        except Exception:                                              # noqa: BLE001 - usage bookkeeping never breaks a request
+            pass
 
     def abort(self):
         """Close the open stream from another thread (Stop button)."""
@@ -253,9 +262,11 @@ class BaseProvider:
             raise self._fail(f"خطای شبکه: {exc}", True, kind="network") from exc
         self._check_status(response)
         try:
-            return response.json()
+            data = response.json()
         except ValueError as exc:
             raise self._fail("پاسخ سرویس قابل خواندن نبود.", True, kind="response") from exc
+        self._note_usage(data)
+        return data
 
     def _open_stream(self, url, headers, payload):
         """POST with stream=True; the status is checked before the first byte of the body is read."""
@@ -289,6 +300,7 @@ class BaseProvider:
                     obj = json.loads(data)
                 except ValueError:
                     continue
+                self._note_usage(obj)
                 if isinstance(obj, dict) and obj.get("error"):
                     err = obj["error"]
                     msg = err.get("message") if isinstance(err, dict) else err
@@ -341,6 +353,8 @@ class OpenAICompatibleProvider(BaseProvider):
         self._sent_images = any(m.get("images") for m in clean)
         if max_tokens:
             payload["max_tokens"] = int(max_tokens)
+        if stream and self.name in ("groq", "openrouter") and self.config.get("usage_stream_options", True):
+            payload["stream_options"] = {"include_usage": True}        # the last chunk then carries the token counts (kira/usage.py)
         if self.name == "openrouter":
             headers["HTTP-Referer"] = "https://project-kira.local"
             headers["X-Title"] = "Project Kira"
@@ -554,6 +568,8 @@ class HybridRouter:
         self._lock = threading.Lock()
         self._cancel = threading.Event()
         self._active = None
+        self._role = ""                                # brain role of the request in progress (surface | deep | reflection | memory); "" = unspecified
+        self._prefer = ""                              # route id the role asked for first ("" = the normal order)
 
     # ---------- logging ----------
     @staticmethod
@@ -605,16 +621,40 @@ class HybridRouter:
             return False, "cooldown"
         return True, "ok"
 
+    @contextlib.contextmanager
+    def role_scope(self, role="", route_id=""):
+        """Requests made inside this block belong to a brain role: the role is written to the metrics, and `route_id` (when it names an
+        existing route) is tried FIRST. If that route is unusable the normal order follows, so a role never stops the conversation."""
+        previous = (self._role, self._prefer)
+        self._role, self._prefer = str(role or ""), str(route_id or "")
+        try:
+            yield self
+        finally:
+            self._role, self._prefer = previous
+
     def _candidates(self):
-        """Routes in the order they will be tried: manual choice first, then priority order (unless failover is off)."""
+        """Routes in the order they will be tried: a role's own route (if any), then the manual choice, then priority order (unless failover is off)."""
         routes = self.routes()
         manual = self.settings.get("manual_route_id") or ""
         chosen = next((r for r in routes if r["id"] == manual), None) if manual else None
         if chosen is None:
-            return routes
-        if not self.settings.get("failover_enabled", True):
-            return [chosen]
-        return [chosen] + [r for r in routes if r["id"] != chosen["id"]]
+            base = routes
+        elif not self.settings.get("failover_enabled", True):
+            base = [chosen]
+        else:
+            base = [chosen] + [r for r in routes if r["id"] != chosen["id"]]
+        prefer = self._prefer
+        try:
+            from . import usage as _usage
+            if prefer and not _usage.role_allowed(self._role):
+                prefer = ""                                            # an expensive role over its blocking limit goes back to the normal path
+            base = _usage.apply_limits(base, lambda r: self.eligibility(r)[0])
+        except Exception:                                              # noqa: BLE001
+            pass
+        preferred = next((r for r in routes if r["id"] == prefer and r in base), None) if prefer else None
+        if preferred is None:
+            return base
+        return [preferred] + [r for r in base if r["id"] != preferred["id"]]
 
     def preview_route(self):
         """The route the next request would try first (for the indicator before sending). None if nothing is usable."""
@@ -724,7 +764,7 @@ class HybridRouter:
             metrics = {"request_id": uuid.uuid4().hex[:8], "started_at": datetime.now(timezone.utc).isoformat(),
                        "stream": bool(stream), "retries": int(retry_index), "failovers": 0, "provider": None, "model": None,
                        "route_id": None, "kind": None, "connect_ms": None, "first_token_ms": None, "total_ms": None,
-                       "result": None, "chars": 0}
+                       "result": None, "chars": 0, "role": self._role or None}
             failures = []
             emit = on_event or (lambda e: None)
             for route in self._candidates():
@@ -820,6 +860,7 @@ class HybridRouter:
             metrics.update(result="failed", total_ms=self.last_duration_ms)
             self.metrics.append(metrics)
             self.last_metrics = metrics
+            self._ledger(metrics, "failed")
             self._write_telemetry({"provider": None, "result": "failed", "duration_ms": self.last_duration_ms,
                                    "attempts": self.last_attempts, "request_id": metrics["request_id"], "stream": bool(stream),
                                    "failovers": metrics["failovers"], "retries": metrics["retries"]})
@@ -827,6 +868,22 @@ class HybridRouter:
         finally:
             self._active = None
             self._lock.release()
+
+    def _ledger(self, metrics, status, provider=None, stats=None, kind=None):
+        """One usage-ledger row per request (success, stopped, interrupted or failed). Only numbers the provider reported are stored."""
+        try:
+            from . import usage as _usage
+            nums, source = dict(getattr(provider, "last_usage", None) or {}), "provider"
+            if not nums and isinstance(stats, dict) and (stats.get("prompt_tokens") or stats.get("eval_tokens")):
+                nums, source = {"tokens_in": stats.get("prompt_tokens"), "tokens_out": stats.get("eval_tokens")}, "ollama"
+            causes = [a.get("error_kind") or a.get("result") for a in self.last_attempts if a.get("result") in ("error", "cooldown")]
+            _usage.record({**nums, "request_id": metrics.get("request_id"), "role": metrics.get("role"), "provider": metrics.get("provider"),
+                           "model": metrics.get("model"), "route_id": metrics.get("route_id"), "status": status, "failovers": metrics.get("failovers"),
+                           "failover_causes": causes, "connect_ms": metrics.get("connect_ms"), "first_token_ms": metrics.get("first_token_ms"),
+                           "total_ms": metrics.get("total_ms"), "tokens_source": source, "kind": kind or metrics.get("kind"),
+                           "error_kind": causes[-1] if causes and status == "failed" else None})
+        except Exception:                                              # noqa: BLE001
+            pass
 
     def _finish(self, route, info, parts, metrics, started, attempt_started, connect_at, first_at, provider,
                 stopped=False, interrupted=None, failures=()):
@@ -855,10 +912,11 @@ class HybridRouter:
             metrics.update(load_ms=stats.get("load_ms"), eval_tokens=stats.get("eval_tokens"), eval_ms=stats.get("eval_ms"))
         self.metrics.append(metrics)
         self.last_metrics = metrics
+        self._ledger(metrics, metrics["result"], provider, stats)
         self._write_telemetry({"provider": route["provider"], "model": model, "result": metrics["result"],
                                "duration_ms": self.last_duration_ms, "attempts": self.last_attempts,
                                **{k: metrics.get(k) for k in ("request_id", "route_id", "kind", "stream", "connect_ms",
-                                                              "first_token_ms", "total_ms", "retries", "failovers")}})
+                                                              "first_token_ms", "total_ms", "retries", "failovers", "role")}})
         return {"text": text, "stopped": stopped, "interrupted": interrupted, "metrics": metrics,
                 "provider": route["provider"], "model": model, "route_id": route["id"], "kind": info["kind"], "label": info["label"]}
 

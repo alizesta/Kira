@@ -20,6 +20,8 @@ import subprocess
 import sys
 import time
 
+from .winrunner import FixedScript, run_fixed
+
 try:                                                          # Windows only
     import winreg
 except Exception:                                             # noqa: BLE001
@@ -378,6 +380,13 @@ def deep_apps(max_age: float = 120.0) -> list[AppEntry]:
     return _CACHE["deep"]
 
 
+_STARTAPPS = FixedScript("start-apps", """
+[Console]::OutputEncoding=[Text.Encoding]::UTF8
+$o=@(Get-StartApps | ForEach-Object { @{ Name=[string]$_.Name; AppID=[string]$_.AppID } })
+@{ ok=$true; items=$o } | ConvertTo-Json -Compress -Depth 4
+""")
+
+
 def uwp_apps(max_age: float = 600.0) -> list[AppEntry]:
     """Store (UWP) apps from a FIXED Get-StartApps query. No user text is ever part of this command."""
     if not IS_WIN:
@@ -387,10 +396,8 @@ def uwp_apps(max_age: float = 600.0) -> list[AppEntry]:
         return _UWP["items"]
     items: list[AppEntry] = []
     try:
-        cmd = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-StartApps | ConvertTo-Json -Compress"
-        r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd], capture_output=True, timeout=12,
-                           creationflags=NO_WINDOW)
-        data = json.loads(r.stdout.decode("utf-8", "ignore") or "[]")
+        res = run_fixed(_STARTAPPS, timeout=15, api_name="Store apps")
+        data = [] if res.get("fatal") or not res.get("ok") else res.get("items") or []
         if isinstance(data, dict):
             data = [data]
         for row in data:

@@ -155,7 +155,8 @@ def concat_wavs(parts: list[bytes]) -> bytes:
 def chunk_text(text: str, limit: int) -> list[str]:
     """Cut at sentence ends (then spaces) so no piece is longer than `limit`."""
     pieces, cur = [], ""
-    for sent in re.split(r"(?<=[.!?؟۔。！？\n])\s*", text.strip()):
+    # Sentence ends include U+3002 (ideographic full stop), U+FF01 (fullwidth "!") and U+FF1F (fullwidth "?").
+    for sent in re.split(r"(?<=[.!?؟۔\u3002\uff01\uff1f\n])\s*", text.strip()):
         if not sent:
             continue
         while len(sent) > limit:

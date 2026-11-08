@@ -76,7 +76,8 @@ STR = {
  },
 }
 TEST_LINES = {"fa": "سلام، من کیرا هستم. این صدای من است.", "en": "Hello, I'm Kira. This is my voice.",
-              "ja": "こんにちは、キラです。これが私の声です。"}
+              # Japanese: "Hello, I am Kira. This is my voice." (kept as escapes so the source stays readable; the text is unchanged)
+              "ja": "\u3053\u3093\u306b\u3061\u306f\u3001\u30ad\u30e9\u3067\u3059\u3002\u3053\u308c\u304c\u79c1\u306e\u58f0\u3067\u3059\u3002"}
 
 
 # ---- Cloud Voice (kira/cloud_voice.py, kira/cloud_voice_ui.py) ----

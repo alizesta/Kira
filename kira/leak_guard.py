@@ -27,21 +27,22 @@ _TAG_LINE = re.compile(r"^\s*\[[A-Za-z_+&/:|=, 0-9%.-]{1,50}\]\s*$")            
 _LEAD_TAG = re.compile(r"^\s*\[[A-Za-z_+&/:|=, 0-9%.-]{1,50}\]\s*")
 _CALL_BLOCK = re.compile(r"<kira_(?:tool|plan)>", re.I)
 
+# U+FF1A below is the fullwidth colon (some models write "Thinking" followed by it); it is matched as well as the ASCII colon.
 _LEAK_START = re.compile(r"""^\s*[*_#>\-\s]*(?:
     (?:thinking|thoughts?|reasoning|analysis|analy[sz]ing|internal|scratchpad|chain[ -]of[ -]thought|my\ (?:thoughts|reasoning|plan)|plan|draft|
-       notes?|router|system(?:\ note|\ prompt)?|instructions?|self[ -]check|reflection)\b[^\n]{0,40}?(?:[:：]|\*\*|\n)
+       notes?|router|system(?:\ note|\ prompt)?|instructions?|self[ -]check|reflection)\b[^\n]{0,40}?(?:[:\uff1a]|\*\*|\n)
   | (?:okay|ok|alright|so|hmm+|wait|let\ me|let's|first|now|right)[,.…!]?\s+(?:so\s+)?
         (?:the\s+user|i\s+(?:need|should|must|have\ to|will|am\ going|'ll)|let(?:'s|\ me|\ us)|we\s+(?:need|should|must)|looking\ at|going)\b
   | the\s+user(?:'s)?\s+(?:is\s+(?:asking|saying|greeting|requesting|wants)|asked|wants|said|wrote|message|input|request|greeted|seems|has)\b
   | (?:i|we)\s+(?:need\ to|should|must|have\ to|will)\s+(?:respond|reply|answer|figure|determine|consider|analy[sz]e|check|think|keep|follow|make\ sure|craft|write)\b
   | user\s+(?:is\s+)?(?:asking|says|wants|said|asked)\b
-  | (?:تحلیل|استدلال|فکر\s*کردن|یادداشت(?:\s*داخلی)?|فرایند\s*فکری|پیش[‌ ]?نویس|مسیریاب|روتر)\s*[:：]
+  | (?:تحلیل|استدلال|فکر\s*کردن|یادداشت(?:\s*داخلی)?|فرایند\s*فکری|پیش[‌ ]?نویس|مسیریاب|روتر)\s*[:\uff1a]
   | کاربر\s+(?:می[‌ ]?خواهد|می[‌ ]?خواد|پرسیده|پرسید|گفته|گفت|درخواست|سلام\s+کرده|از\s+من)\b
   | (?:باید|لازم\s+است)\s+(?:پاسخ|جواب)\s+(?:بدهم|بدم)\b
 )""", re.I | re.X)
 
 _FINAL_MARK = re.compile(r"^\s*[*_#>\s-]*(?:final(?:\s+(?:answer|response|reply|output))?|answer|response|reply|output|kira|"
-                         r"پاسخ(?:\s+نهایی)?|جواب(?:\s+نهایی)?|خروجی(?:\s+نهایی)?)\s*[*_]*\s*[:：]\s*[*_]*\s*(.*)$", re.I | re.S)
+                         r"پاسخ(?:\s+نهایی)?|جواب(?:\s+نهایی)?|خروجی(?:\s+نهایی)?)\s*[*_]*\s*[:\uff1a]\s*[*_]*\s*(.*)$", re.I | re.S)
 
 # lines that are app / model internals and never belong in a reply
 _NOTE_LINE = re.compile(r"(?im)^[ \t]*(?:\[(?:system(?:\s+note)?|router|route|internal|kira\s+internal|debug|tool\s+note|note\s+to\s+self)[^\]\n]*\]"

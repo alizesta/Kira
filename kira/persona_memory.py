@@ -24,6 +24,7 @@ import re
 import threading
 import time
 
+from . import evidence_memory as _evidence      # facts with provenance + relevance-based recall (this module stays the owner of the editable list)
 from .config import DATA_DIR
 
 FILE_NAME = "kira_persona_memory.json"
@@ -86,6 +87,11 @@ def _save(data: dict):
 
 def _id(kind: str, text: str) -> str:
     return hashlib.sha1(f"{kind}|{text}".encode("utf-8")).hexdigest()[:8]
+
+
+def item_id(kind: str, text: str) -> str:
+    """The id an item gets in the memory window (the evidence layer stores it to stay linked with the editable list)."""
+    return _id(kind, text)
 
 
 def clean_reply(raw: str) -> str:
@@ -163,15 +169,19 @@ def _clean_value(kind: str, value: str) -> str:
     return value
 
 
-def extract_facts(text: str) -> list[tuple[str, str]]:
-    """(kind, sentence) pairs found in one user message. Only short statements; questions are ignored."""
+# U+FF1F is the fullwidth question mark; it counts as a question mark like "?" and the Persian "؟" (U+061F).
+def extract_facts_detailed(text: str) -> list[dict]:
+    """Facts found in one user message, each with the evidence that justifies it:
+    {'kind', 'label' (the stored sentence), 'value', 'quote' (the exact words he wrote), 'uncertain' (he hedged), 'correction' (he corrected himself)}.
+    Only short statements; questions are ignored."""
     found = []
-    for m_part in re.finditer(r"([^\n.!؟?？]+)([.!؟?？]*)", str(text or "")):
+    for m_part in re.finditer(r"([^\n.!؟?\uff1f]+)([.!؟?\uff1f]*)", str(text or "")):
         part, ending = m_part.group(1).strip(), m_part.group(2)
-        if not 4 <= len(part) <= 160 or "?" in ending or "؟" in ending or "？" in ending:
+        if not 4 <= len(part) <= 160 or "?" in ending or "؟" in ending or "\uff1f" in ending:
             continue                                           # questions (the mark is checked BEFORE the text is split) are never facts
         if _QUESTION_RX.search(_norm_part(part)):
             continue                                           # a question written without the mark
+        flags = {"uncertain": bool(_evidence._UNCERTAIN_RX.search(_evidence.norm(part))), "correction": bool(_evidence._CORRECTION_RX.search(_evidence.norm(part)))}
         pref = False
         for rx, kind, template in _PREF_RULES:
             m = rx.search(_norm_part(part))
@@ -179,7 +189,8 @@ def extract_facts(text: str) -> list[tuple[str, str]]:
                 value = " ".join(g for g in m.groups() if g) if m.groups() else ""
                 if kind == "nick" and not value:
                     continue
-                found.append((kind, template.format(value) if "{}" in template else template))
+                label = template.format(value) if "{}" in template else template
+                found.append({"kind": kind, "label": label, "value": value or label, "quote": part, **flags})
                 pref = True
                 break
         if pref:
@@ -191,9 +202,14 @@ def extract_facts(text: str) -> list[tuple[str, str]]:
             value = " ".join(g.strip() for g in m.groups() if g and g.strip()).strip(" ,.:؛،")
             value = _clean_value(kind, value) if value else ""
             if value:
-                found.append((kind, _LABELS[kind].format(value)))
+                found.append({"kind": kind, "label": _LABELS[kind].format(value), "value": value, "quote": part, **flags})
             break
     return found
+
+
+def extract_facts(text: str) -> list[tuple[str, str]]:
+    """(kind, sentence) pairs found in one user message. Only short statements; questions are ignored."""
+    return [(d["kind"], d["label"]) for d in extract_facts_detailed(text)]
 
 
 def add_fact(kind: str, text: str, now=None):
@@ -231,9 +247,9 @@ _last_reply = ""
 
 
 def _sentences(text: str):
-    for m in re.finditer(r"([^\n.!؟?？]+)([.!؟?？]*)", str(text or "")):
+    for m in re.finditer(r"([^\n.!؟?\uff1f]+)([.!؟?\uff1f]*)", str(text or "")):
         part, end = m.group(1).strip(), m.group(2)
-        if 8 <= len(part) <= 160 and not any(q in end for q in "?؟？") and not _QUESTION_RX.search(_norm_part(part)):
+        if 8 <= len(part) <= 160 and not any(q in end for q in "?؟\uff1f") and not _QUESTION_RX.search(_norm_part(part)):
             yield part
 
 
@@ -318,10 +334,17 @@ def observe(role: str, content: str, now=None):
                         data["voice"] = (data["voice"] + [text])[-MAX_VOICE:]
                         _save(data)
         elif role == "user":
-            for kind, sentence in extract_facts(content):
-                add_fact(kind, sentence, now)
-            for kind, sentence in extract_moments(content):
-                add_moment(kind, _label_moment(kind, sentence, now), now)
+            details = extract_facts_detailed(content)
+            for d in details:
+                add_fact(d["kind"], d["label"], now)
+                d["persona_id"] = _id(d["kind"], d["label"])
+            moments = extract_moments(content)
+            moment_ids = []
+            for kind, sentence in moments:
+                label = _label_moment(kind, sentence, now)
+                add_moment(kind, label, now)
+                moment_ids.append((kind, sentence, _id(kind, label)))
+            _evidence.record_user_message(content, facts=details, moments=moment_ids, now=now)      # provenance + contradiction handling (never raises)
             if _last_reply and _LAUGH_RX.search(str(content)) and is_voice_sample(_last_reply):
                 add_moment("joke", f"A line of hers that made him laugh: \"{_last_reply[:140]}\"", now)
             _note_habits(str(content), now)
@@ -347,6 +370,7 @@ def forget_all():
     _last_reply = ""
     with _lock:
         _save(_empty())
+    _evidence.forget_all()
 
 
 # ---------------- view / edit ----------------
@@ -367,10 +391,19 @@ def list_items(now=None) -> list[dict]:
                 continue
             kind = it.get("kind", "summary" if group == "summary" else "fact")
             out.append({"id": it.get("id") or _id(kind, it["text"]), "group": group, "kind": kind, "text": it["text"], "ts": it.get("ts", 0)})
+    out.extend(_evidence.list_extra_items({i["id"] for i in out}))        # facts only the evidence layer holds: the window must show everything she knows
     return out
 
 
 def delete_item(item_id: str) -> bool:
+    if str(item_id).startswith("ev:"):
+        return _evidence.delete_extra(item_id)
+    removed = _delete_persona_item(item_id)
+    _evidence.delete_by_persona_id(item_id)                              # the evidence of what he deleted goes too
+    return removed
+
+
+def _delete_persona_item(item_id: str) -> bool:
     with _lock:
         data = _load()
         for key in ("facts", "moments", "summaries"):
@@ -386,23 +419,36 @@ def update_item(item_id: str, text: str) -> bool:
     text = " ".join(str(text or "").split())[:200]
     if len(text) < 2:
         return False
+    if str(item_id).startswith("ev:"):
+        return _evidence.delete_extra(item_id) and _evidence.add_manual(text)
+    sync = None
     with _lock:
         data = _load()
         for key in ("facts", "moments", "summaries"):
             for it in data[key]:
                 if (it.get("id") or _id(it.get("kind", "summary"), it["text"])) == item_id:
                     it["text"] = text
-                    it["id"] = _id(it.get("kind", "summary"), text)
+                    new_id = _id(it.get("kind", "summary"), text)
+                    it["id"] = new_id
                     _save(data)
-                    return True
-    return False
+                    sync = (key, new_id)
+                    break
+            if sync:
+                break
+    if sync is None:
+        return False
+    if sync[0] == "facts":                                              # outside the lock: the two stores never wait for each other
+        _evidence.update_by_persona_id(item_id, sync[1], text)          # his own wording replaces the stored fact
+    return True
 
 
 def add_note(text: str, now=None) -> bool:
     text = " ".join(str(text or "").split())[:200]
     if len(text) < 3:
         return False
-    add_fact("note", _LABELS["note"].format(text), now)
+    label = _LABELS["note"].format(text)
+    add_fact("note", label, now)
+    _evidence.add_manual(label, now, persona_id=_id("note", label))
     return True
 
 
@@ -491,8 +537,22 @@ HEADER = ("Kira's own memory (real, stored on this computer; it stays the same w
           "anything not listed here she does not know, and she must not pretend to.")
 
 
-def build_block(older: list[dict] | None = None, voice_samples: bool = True, now=None) -> str:
+HEADER_RELEVANT = ("Kira's own memory (real, stored on this computer; it stays the same whichever model is writing the reply). "
+                   "Use it naturally and sparingly; never recite it or mention that it is a list. The facts below are only the ones that fit this "
+                   "message; if he asks about something that is not listed, she does not remember it and must say so instead of guessing.")
+
+
+def build_block(older: list[dict] | None = None, voice_samples: bool = True, now=None, query: str | None = None, budget: int | None = None) -> str:
+    """``query`` = the user's current message: with it, facts are chosen by relevance (evidence memory); without it (or when the evidence
+    layer is unavailable) the older "last facts" list is used exactly as before. ``budget`` = characters this block may use."""
     now = time.time() if now is None else now
+    budget = int(budget or BLOCK_BUDGET)
+    relevant = None
+    if query is not None:
+        try:
+            relevant = _evidence.build_block(query, budget=max(300, int(budget * 0.45)))
+        except Exception:                                              # noqa: BLE001 - never let the index break the prompt
+            relevant = None
     with _lock:
         data = _load()
     parts = []
@@ -501,12 +561,15 @@ def build_block(older: list[dict] | None = None, voice_samples: bool = True, now
         samples = "\n".join(f"- {v}" for v in reversed(voice))
         parts.append("How Kira really sounds (her own recent lines). Match this rhythm, slang, attitude and length in "
                      "your reply; do not copy the sentences:\n" + samples)
-    fact_lines = [f["text"] for f in data["facts"]]
-    notes = [t for t in fact_lines if t.startswith("He asked her")]
-    rest = [t for t in fact_lines if not t.startswith("He asked her")]
-    shown = (rest[-(FACTS_SHOWN - min(len(notes), 6)):] + notes[-6:])
-    if shown:
-        parts.append("What she knows about him:\n" + "\n".join(f"- {t}" for t in shown))
+    if relevant is None:
+        fact_lines = [f["text"] for f in data["facts"]]
+        notes = [t for t in fact_lines if t.startswith("He asked her")]
+        rest = [t for t in fact_lines if not t.startswith("He asked her")]
+        shown = (rest[-(FACTS_SHOWN - min(len(notes), 6)):] + notes[-6:])
+        if shown:
+            parts.append("What she knows about him:\n" + "\n".join(f"- {t}" for t in shown))
+    elif relevant:
+        parts.append(relevant)
     rel = habit_lines(now)
     if rel:
         parts.append("The relationship and his habits:\n" + "\n".join(f"- {t}" for t in rel))
@@ -522,5 +585,5 @@ def build_block(older: list[dict] | None = None, voice_samples: bool = True, now
         parts.append("Earlier topics he raised (older than the messages below):\n" + "\n".join(f"- {t}" for t in older_lines))
     if not parts:
         return ""
-    block = HEADER + "\n\n" + "\n\n".join(parts)
-    return block[:BLOCK_BUDGET]
+    block = (HEADER if relevant is None else HEADER_RELEVANT) + "\n\n" + "\n\n".join(parts)
+    return block[:budget]

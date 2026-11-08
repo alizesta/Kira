@@ -1,6 +1,6 @@
 """Splits a reply into short sentences for speech, also while the reply is still being written.
 
-  * a sentence ends at . ! ? ؟ ؛ ; … 。！？ (also several in a row, closing quotes / brackets) when whitespace follows, or at a line break;
+  * a sentence ends at . ! ? ؟ ؛ ; … and the CJK terminators U+3002, U+FF01, U+FF1F (also several in a row, closing quotes / brackets) when whitespace follows, or at a line break;
   * NOT inside decimals (3.5), URLs, abbreviations (Dr. e.g. vs.) - those have no whitespace after the dot or are listed;
   * a piece that is too short (< MIN_CHARS) is joined to the next one, so "OK." never becomes its own request;
   * a very long run without any ending is cut at a comma / space (MAX_CHARS); the FIRST piece may be cut early at a comma
@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import re
 
-TERMS = "。！？.!?؟؛;…"
+# U+3002 ideographic full stop, U+FF01 fullwidth "!", U+FF1F fullwidth "?"
+TERMS = "\u3002\uff01\uff1f.!?؟؛;…"
 CLOSERS = "\"'»”’)]}"
 SOFT = "،,;:"
 MIN_CHARS = 14

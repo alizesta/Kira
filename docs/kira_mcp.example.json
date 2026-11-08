@@ -1,0 +1,20 @@
+{
+  "servers": {
+    "notes": {
+      "command": "npx",
+      "args": ["-y", "your-mcp-server-package"],
+      "env": {},
+      "enabled": true,
+      "allow": [],
+      "deny": [],
+      "levels": {"search_notes": "read"},
+      "default_level": "sensitive",
+      "timeout": 30,
+      "max_tools": 20,
+      "keywords": ["notes", "یادداشت"]
+    }
+  },
+  "agents": {
+    "helper": {"url": "http://127.0.0.1:8765", "token_env": "", "timeout": 15, "enabled": true, "keywords": ["helper"]}
+  }
+}

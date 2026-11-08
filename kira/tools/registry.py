@@ -11,6 +11,7 @@ Access levels:
 from __future__ import annotations
 
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -53,6 +54,13 @@ class Tool:
     memo: Callable[[dict, str], str | None] | None = None    # short line worth keeping for follow-ups in this session only
     max_chars: int = DEFAULT_MAX_CHARS
     intent_rx: Any = None                # optional: the user's CURRENT message must match this regex, otherwise the tool refuses to run (explicit-request guard)
+    # Declared by Windows-control capabilities; every other tool leaves them empty and sysaccess.AccessManager derives them from `level` / `categories`.
+    permission: int = 0                  # sysaccess: READ(1) CONTROL(2) FILE(3) ELEVATED(4) PROTECTED(5); 0 = derive from `level`
+    domain: str = ""
+    backend: str = ""                    # sysaccess.BACKENDS key of the code that really does the work
+    verifies_result: bool = False        # the handler re-reads the real state after changing it
+    intent_alt: Any = None               # optional extra way to satisfy intent_rx: callable(normalised user text) -> bool (e.g. 'continue the paused research')
+    external: bool = False               # its RESULT is content written by somebody else (web page, document, MCP / agent output)
 
     def signature(self) -> str:
         parts = [f"{p.name}{'*' if p.required else '?'}: {p.type}" for p in self.params]
@@ -149,26 +157,48 @@ def clip(text: str, limit: int) -> str:
 class ToolRegistry:
     def __init__(self):
         self._tools: dict[str, Tool] = {}
-        self.user_text = ""               # the user's latest message (set by the agent each turn); used only by tools with intent_rx
+        self._tools_lock = threading.RLock()   # external tools (MCP) are added from a background thread
+        from .sysaccess import AccessManager            # lazy: sysaccess imports this module
+        self.access = AccessManager(self)             # the ONE permission / confirmation / journal authority (see sysaccess.py)
+
+    @property
+    def user_text(self) -> str:
+        """The user's latest message (the agent sets it at the start of every turn; it also resets the 'external content seen' flag)."""
+        return self.access.user_text
+
+    @user_text.setter
+    def user_text(self, value: str):
+        self.access.begin_turn(value)
 
     def register(self, tool: Tool) -> Tool:
-        if tool.name in self._tools:
-            raise ValueError(f"ابزار «{tool.name}» قبلاً ثبت شده است.")
-        self._tools[tool.name] = tool
+        with self._tools_lock:
+            if tool.name in self._tools:
+                raise ValueError(f"ابزار «{tool.name}» قبلاً ثبت شده است.")
+            self._tools[tool.name] = tool
         return tool
+
+    def unregister_where(self, predicate) -> int:
+        """Remove every tool for which predicate(tool) is true (used to refresh the tools of an external MCP server). Returns the count."""
+        with self._tools_lock:
+            gone = [n for n, t in self._tools.items() if predicate(t)]
+            for n in gone:
+                del self._tools[n]
+        return len(gone)
 
     def get(self, name: str) -> Tool | None:
         return self._tools.get(str(name or "").strip())
 
     def names(self) -> list[str]:
-        return list(self._tools)
+        with self._tools_lock:
+            return list(self._tools)
 
     def all(self) -> list[Tool]:
-        return list(self._tools.values())
+        with self._tools_lock:
+            return list(self._tools.values())
 
     def for_categories(self, categories) -> list[Tool]:
         wanted = set(categories or ())
-        return [t for t in self._tools.values() if not wanted or wanted & set(t.categories)]
+        return [t for t in self.all() if not wanted or wanted & set(t.categories)]
 
     def catalog(self, categories=None) -> str:
         return "\n".join(t.catalog_line() for t in self.for_categories(categories))
@@ -206,25 +236,38 @@ class ToolRegistry:
 
     # ---- execution ----
     def execute(self, name: str, args: Any, confirmed: bool = False) -> ToolResult:
+        """Run one tool through the central access manager: arguments -> permission / confirmation / explicit-request gate -> handler -> journal."""
         started = time.monotonic()
         tool = self.get(name)
         if tool is None:
             return ToolResult(str(name), UNKNOWN, f"ابزاری به نام «{name}» وجود ندارد. ابزارهای معتبر: {', '.join(self._tools)}.")
+        acc = self.access
+        pol = acc.policy_for(tool)
+        why = [""]
 
         def done(status, text, a=None, summary=""):
-            return ToolResult(tool.name, status, clip(redact_secrets(text), tool.max_chars), a if a is not None else {}, tool.level,
-                              int((time.monotonic() - started) * 1000), summary)
+            res = ToolResult(tool.name, status, clip(redact_secrets(text), tool.max_chars), a if a is not None else {}, tool.level,
+                             int((time.monotonic() - started) * 1000), summary)
+            acc.record(tool, pol, res, confirmed, why[0])
+            return res
 
         try:
             clean = self.clean_args(tool, args)
-            if tool.level >= SENSITIVE:
-                if tool.precheck:
+            why[0] = acc.confirmation_reason(tool, pol)
+            if why[0]:
+                granted = bool(confirmed) and (acc.consume_grant(tool.name, clean) or not acc.require_grants)      # the grant is bound to exactly these arguments
+                if tool.precheck and (pol.always_confirm or granted):
                     clean = tool.precheck(clean)                  # a denied / missing target is reported now, not after a question
-                if not confirmed:
+                if not granted:
                     what = tool.confirm_summary(clean) if tool.confirm_summary else f"اجرای «{tool.name}»"
-                    return done(NEEDS_CONFIRM, "این عملیات حساس است و هنوز اجرا نشده؛ منتظر تأیید صریح کاربر است: " + what, clean, what)
-            if tool.intent_rx is not None and not tool.intent_rx.search(re.sub(r"\s+", " ", str(self.user_text or "").lower().replace("ي", "ی").replace("ك", "ک").replace("\u200c", " "))):
-                return done(DENIED, f"«{tool.name}» فقط در پاسخ به درخواست صریح کاربر در همین پیام اجرا می‌شود و چیزی تغییر نکرد. اگر کاربر واقعاً این را خواسته، از او بخواه صریح بنویسد (مثلاً «بلوتوث رو روشن کن»).", clean)
+                    if why[0] == "elevated":
+                        what = "[نیازمند دسترسی Administrator؛ ویندوز فقط برای همین عملیات UAC می‌پرسد] " + what
+                    elif why[0] == "tainted":
+                        what = "[محتوای خارجی (وب/فایل/ابزار بیرونی) در این پیام خوانده شده؛ کاربر باید خودش تأیید کند] " + what
+                    note = "؛ تأیید قبلی با این پارامترها معتبر نبود" if confirmed else ""
+                    return done(NEEDS_CONFIRM, "این عملیات هنوز اجرا نشده؛ منتظر تأیید صریح کاربر است" + note + ": " + what, clean, what)
+            elif not acc.check_intent(tool, pol):
+                return done(DENIED, f"«{tool.name}» فقط در پاسخ به درخواست صریح کاربر در همین پیام اجرا می‌شود و چیزی تغییر نکرد. اگر کاربر واقعاً این را خواسته، از او بخواه صریح‌تر بنویسد.", clean)
             text = tool.handler(clean)
             return done(OK, str(text if text is not None else "انجام شد."), clean)
         except ToolError as exc:

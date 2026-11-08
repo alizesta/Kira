@@ -207,7 +207,8 @@ def tavily_search(query: str, api_key: str, depth: str = "basic", timeout: float
             continue
         results.append({"title": _tidy(unescape(item.get("title") or ""), 140), "url": url,
                         "snippet": _tidy(unescape(item.get("content") or ""), 500),
-                        "text": _tidy(unescape(item.get("raw_content") or ""), 20000)})
+                        "text": _tidy(unescape(item.get("raw_content") or ""), 20000),
+                        "date": _tidy(str(item.get("published_date") or ""), 40)})      # news results carry a publication date (used by webintel)
     if not results:
         raise SearchError("Tavily نتیجه‌ای پیدا نکرد.")
     out = {"query": query, "results": results[:MAX_RESULTS], "date": date.today().isoformat(), "engine": "tavily", "mode": mode}
