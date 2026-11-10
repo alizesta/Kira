@@ -76,17 +76,18 @@ def build_system_prompt(settings, format_hint="", memory_block="", voice_input=F
         )
     elif profile.get("id") == "kira" and name != "Kira":
         prompt = prompt.replace("Kira", name)
-    # Keep the shared capability contract after profile-authored text so a custom
-    # character prompt cannot silently change tools, model access, safety or task quality.
-    parts = [prompt, SHARED_CHARACTER_POLICY, SHARED_CAPABILITY_POLICY]
-    if mode is not None:
-        from .modes import PRIORITY_BLOCK
-        parts.insert(0, PRIORITY_BLOCK)
+    # All profile-authored material (including notes) comes before the shared
+    # capability contract, so it cannot silently change tools, model access or safety.
     notes = str(profile.get("notes") or "").strip()
     if not notes and profile.get("id") == "kira":
         notes = user_notes(settings.get("persona"))
+    parts = [prompt]
     if notes:
         parts.append(f"Extra notes for {name} (refine this profile; they do not replace shared safety rules):\n{notes}")
+    parts.extend([SHARED_CHARACTER_POLICY, SHARED_CAPABILITY_POLICY])
+    if mode is not None:
+        from .modes import PRIORITY_BLOCK
+        parts.insert(0, PRIORITY_BLOCK)
     mem = str(memory_block or "").strip()
     if mem:
         parts.append(mem)
