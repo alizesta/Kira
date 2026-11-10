@@ -22,7 +22,7 @@ class InitiativeEngine:
             return {"eligible": False, "reason": "policy_blocked", "idle_seconds": idle}
         if idle < self.minimum_idle_seconds:
             return {"eligible": False, "reason": "not_idle_long_enough", "idle_seconds": idle}
-        if now - self.last_initiative < self.cooldown_seconds:
+        if self.last_initiative > 0 and now - self.last_initiative < self.cooldown_seconds:
             return {"eligible": False, "reason": "cooldown", "idle_seconds": idle}
         if not has_relevant_memory:
             return {"eligible": False, "reason": "nothing_relevant_to_recall", "idle_seconds": idle}
