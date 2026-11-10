@@ -54,6 +54,7 @@ class BrokenShortcutFallbackTests(unittest.TestCase):
             return str(path).lower() == shortcut.lower()
 
         with patch.object(app_tools.os.path, "isfile", side_effect=is_file), \
+             patch.object(app_tools.os.path, "isabs", return_value=True), \
              patch.object(app_tools.appcatalog, "lnk_exes", return_value=[target]), \
              patch.object(app_tools.appcatalog, "find_main_exe", return_value=fallback), \
              patch.object(app_tools.appcatalog, "is_safe_exe", return_value=True):
