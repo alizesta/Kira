@@ -335,6 +335,15 @@ def on_reply(emotions, intensity=None, now=None):
 
 
 
+def on_event(name, detail=None):
+    """Record application/avatar events in the provider-independent emotional runtime."""
+    _ensure_runtime_migration()
+    try:
+        return _emotional_runtime.trigger(name, detail)
+    except Exception:
+        return None
+
+
 def reset():
     with _lock:
         _save({"scores": {}, "behavior_scores": {}, "energy": ENERGY_START, "energy_updated": time.time(),
