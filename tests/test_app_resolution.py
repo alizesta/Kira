@@ -9,8 +9,8 @@ from kira.tools import appcatalog
 class PersianAppResolutionTests(unittest.TestCase):
     def setUp(self):
         self.opera = appcatalog.AppEntry("Opera GX")
-        self.opera.add("startmenu", "lnk", r"C:\\Users\\Test\\Opera GX.lnk",
-                       install_dir=r"C:\\Program Files\\Opera GX")
+        self.opera.add("startmenu", "lnk", r"C:\Users\Test\Opera GX.lnk",
+                       install_dir=r"C:\Program Files\Opera GX")
 
     def resolve_with_catalog(self, query, entries=None):
         entries = [self.opera] if entries is None else entries
@@ -45,10 +45,10 @@ class PersianAppResolutionTests(unittest.TestCase):
 class BrokenShortcutFallbackTests(unittest.TestCase):
     def test_missing_shortcut_target_does_not_block_install_folder_exe(self):
         entry = appcatalog.AppEntry("Opera GX")
-        shortcut = r"C:\\Users\\Test\\Opera GX.lnk"
-        target = r"C:\\Old Location\\opera.exe"
-        fallback = r"C:\\Program Files\\Opera GX\\opera.exe"
-        entry.add("startmenu", "lnk", shortcut, install_dir=r"C:\\Program Files\\Opera GX")
+        shortcut = r"C:\Users\Test\Opera GX.lnk"
+        target = r"C:\Old Location\opera.exe"
+        fallback = r"C:\Program Files\Opera GX\\opera.exe"
+        entry.add("startmenu", "lnk", shortcut, install_dir=r"C:\Program Files\Opera GX")
 
         def is_file(path):
             return str(path).lower() == shortcut.lower()
@@ -64,8 +64,8 @@ class BrokenShortcutFallbackTests(unittest.TestCase):
 
     def test_existing_shortcut_keeps_shortcut_as_first_choice(self):
         entry = appcatalog.AppEntry("Opera GX")
-        shortcut = r"C:\\Users\\Test\\Opera GX.lnk"
-        target = r"C:\\Program Files\\Opera GX\\opera.exe"
+        shortcut = r"C:\Users\Test\Opera GX.lnk"
+        target = r"C:\Program Files\Opera GX\\opera.exe"
         entry.add("startmenu", "lnk", shortcut)
 
         with patch.object(app_tools.os.path, "isfile", return_value=True), \
