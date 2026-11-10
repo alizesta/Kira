@@ -51,8 +51,8 @@ class AppsModule(WinModule):
         return [
             Capability("find_app", "apps", "check whether an app is installed (Start Menu, Steam, installed apps, Store), how it would be started, whether it is running, and list close matches",
                        self.apps.find_app, READ, (Param("name", "string", "app name", True),), ("apps",)),
-            Capability("open_app", "apps", "open an installed app, Steam game or Windows tool by name (Discord, Notepad, Chrome, Wallpaper Engine ...); reuses a running instance",
-                       self.apps.open_app, ACTION, (Param("name", "string", "app name as the user said it", True),), ("apps",),
+            Capability("open_app", "apps", "open an installed app, Steam game or Windows tool by the exact name the user said, in Persian or English (for example Opera GX / «اپرا جی ایکس», Discord / «دیسکورد», Windscribe / «وینداسکرایب», Telegram / «تلگرام»); extract only the app name from the request; reuses a running instance",
+                       self.apps.open_app, ACTION, (Param("name", "string", "only the app name, in the same language/pronunciation the user used; do not include «باز کن» or «برنامه»", True),), ("apps",),
                        intent_optout="باز کردن برنامه کم‌ریسک و برگشت‌پذیر است و دروازه‌ی نیت عمومی (protocol.GATES) قبلاً فقط برای درخواست‌های مربوط به برنامه‌ها ابزار را نشان می‌دهد؛ "
                                      "هیچ نمونه‌ی دومی هم ساخته نمی‌شود.",
                        memo=lambda a, t: f"open_app → {a.get('name')}", verifies_result=True, changes_system=True),
