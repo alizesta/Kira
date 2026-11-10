@@ -90,7 +90,7 @@ class GuiTests(unittest.TestCase):
         self.assertTrue(w.rect().contains(top_left))
         self.assertTrue(w.rect().contains(w.menu_btn.mapTo(w, w.menu_btn.rect().bottomRight())))
         texts = [a.text() for a in w.nav_menu.actions()]
-        self.assertEqual(texts, ["گفتگو", "دستیار", "صدا و میکروفون", "شخصیت", "عمومی", "Route"])
+        self.assertEqual(texts, ["گفتگو", "شخصیت‌ها", "صدا و میکروفون", "شخصیت و رفتار", "تنظیمات", "Route", "راهنما"])
         for i, action in enumerate(w.nav_menu.actions()):
             action.trigger()
             self.assertEqual(w.tabs.currentIndex(), i)
@@ -99,7 +99,7 @@ class GuiTests(unittest.TestCase):
         w = self.win
         w.settings["ui_lang"] = "en"
         w.retranslate()
-        self.assertEqual([a.text() for a in w.nav_menu.actions()][-1], "Routes")
+        self.assertEqual([a.text() for a in w.nav_menu.actions()][5:], ["Routes", "Help"])
         w.settings["ui_lang"] = "fa"
         w.retranslate()
 
