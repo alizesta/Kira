@@ -23,6 +23,7 @@ import os
 import re
 import threading
 import time
+from pathlib import Path
 
 from . import evidence_memory as _evidence      # facts with provenance + relevance-based recall (this module stays the owner of the editable list)
 from .config import DATA_DIR
