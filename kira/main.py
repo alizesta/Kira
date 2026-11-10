@@ -942,7 +942,7 @@ class MainWindow(QMainWindow):
         self._set_neon_glow(getattr(self, "wake_btn", None), (167, 111, 255), 20, 190)
         self._set_neon_glow(getattr(self, "voice_btn", None), (74, 224, 255), 21, 205)
         self._pulse_neon_glow(chat_glow, 42, 58, 2800)
-        self._pulse_neon_glow(composer_glow, 38, 52, 2300)
+        # Keep the composer glow static: animated blur can look like the input is shaking.
         self._pulse_neon_glow(avatar_glow, 30, 43, 3400)
         self._pulse_neon_glow(self._mood_emotion_glow, 20, 32, 2500)
 
