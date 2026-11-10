@@ -146,6 +146,68 @@ QLabel#attOverlay { background: rgba(7,10,22,0.74); border-radius: 8px; color: #
 QToolButton#attClose { background: rgba(7,10,22,0.78); color: #FFFFFF; border: 1px solid rgba(255,255,255,0.22); border-radius: 10px; padding: 0px; font-size: 8pt; }
 QToolButton#attClose:hover { background: #A83261; border: 1px solid #FF94C1; }
 QSplitter::handle { background: rgba(105,193,235,0.28); }
+
+/* Neon Glow pass: stronger luminous edges and brighter active states */
+QFrame#chatCard {
+    background: rgba(10, 17, 37, 0.90);
+    border: 1px solid #42DFFF;
+    border-radius: 20px;
+}
+QFrame#composer {
+    background: rgba(25, 20, 58, 0.94);
+    border: 1px solid #A77BFF;
+    border-radius: 17px;
+}
+QFrame#avatarCard {
+    background: rgba(14, 27, 52, 0.90);
+    border: 1px solid #45DFFF;
+    border-radius: 20px;
+}
+QToolButton#routeChip {
+    background: #102F4A;
+    border: 1px solid #42E6FF;
+    color: #D9FBFF;
+}
+QToolButton#routeChip:hover {
+    background: #174A70;
+    border: 1px solid #B5F8FF;
+}
+QToolButton#sendBtn {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #00D9FF, stop:0.48 #397BFF, stop:1 #A64DFF);
+    border: 1px solid #D8FCFF;
+    border-radius: 16px;
+}
+QToolButton#sendBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #63F0FF, stop:0.48 #689DFF, stop:1 #C78AFF);
+    border: 1px solid #FFFFFF;
+}
+QToolButton#menuBtn, QToolButton {
+    border-color: rgba(90, 220, 255, 0.20);
+}
+QToolButton:hover {
+    background: rgba(52, 187, 255, 0.20);
+    border: 1px solid #55E7FF;
+}
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #704BFF, stop:0.55 #4B5BDF, stop:1 #168FCA);
+    border: 1px solid #9DDBFF;
+}
+QPushButton:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #9679FF, stop:0.55 #6887FF, stop:1 #30C8EF);
+    border: 1px solid #D9FBFF;
+}
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus {
+    border: 1px solid #55E7FF;
+}
+QTabBar::tab:selected {
+    background: #44308E;
+    border: 1px solid #65E8FF;
+    color: #FFFFFF;
+}
+QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {
+    background: #5CEAFF;
+}
+
 """
 
 # Only background tokens are replaced, so text and icon colors remain untouched.
