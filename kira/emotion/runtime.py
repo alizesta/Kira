@@ -16,6 +16,7 @@ from ..character.traits import (
     BASE_TRAITS, TRAIT_LEARNING_RULES, TRAIT_MIN_OFFSET, TRAIT_MAX_OFFSET,
     TRAIT_LEARNING_THRESHOLD, TRAIT_FEEDBACK_COOLDOWN_S,
 )
+from ..character.relationship import RelationshipEngine
 
 STATE_FILE = "kira_emotional_state.json"
 LOCK = threading.RLock()
@@ -103,6 +104,7 @@ class EmotionalRuntime:
         self.clock = clock
         self._lock = LOCK
         self._state = self._load()
+        self.relationship_engine = RelationshipEngine(DEFAULTS["relationship"])
 
     def _fresh(self):
         return json.loads(json.dumps(DEFAULTS))
@@ -181,9 +183,11 @@ class EmotionalRuntime:
         state["emotions"] = _decay(state["emotions"], elapsed, float(self.config.get("emotion_half_life_s", EMOTION_HALF_LIFE)))
         state["behaviors"] = _decay(state["behaviors"], elapsed, float(self.config.get("behavior_half_life_s", BEHAVIOR_HALF_LIFE)), BEHAVIOR_BASELINE)
         state["energy"] = _clamp(state["energy"] + elapsed * float(self.config.get("energy_recovery_per_second", ENERGY_RECOVERY)))
-        # Tension fades slowly with time; trust and closeness do not evaporate just because the user is away.
-        tension_recovery = elapsed * float(self.config.get("relationship_tension_recovery_per_day", 2.0)) / 86400.0
-        state["relationship"]["tension"] = _clamp(state["relationship"]["tension"] - tension_recovery)
+        # Relationship decay is isolated from emotion decay; trust and closeness do not evaporate with absence.
+        self.relationship_engine.advance(
+            state["relationship"], elapsed,
+            {"tension_recovery_per_day": self.config.get("relationship_tension_recovery_per_day", 2.0)},
+        )
         state["updated"] = now
 
     def _bump(self, bucket, key, amount):
@@ -241,17 +245,10 @@ class EmotionalRuntime:
                 self._event("personality_adjusted", now, str(category))
             else:
                 self._event("feedback_observed", now, str(category))
-            # Explicit feedback that Kira respected or missed the user's style preference also informs comfort/trust.
-            rel = self._state["relationship"]
-            if category in ("liked_teasing", "liked_support", "liked_curiosity", "disliked_formality"):
-                rel["comfort"] = _clamp(rel["comfort"] + 0.08)
-                rel["trust"] = _clamp(rel["trust"] + 0.04)
-            elif category == "disliked_teasing":
-                rel["comfort"] = _clamp(rel["comfort"] + 0.10)
-                rel["trust"] = _clamp(rel["trust"] + 0.06)
-                rel["tension"] = _clamp(rel["tension"] - 0.08)
-            elif category == "accuracy_correction":
-                rel["trust"] = _clamp(rel["trust"] - 0.12)
+            # Explicit feedback informs comfort/trust through the independent relationship engine.
+            self.relationship_engine.on_feedback(
+                self._state["relationship"], category, self.config.get("relationship_deltas", {})
+            )
             self._save()
         return self.snapshot(now)
 
@@ -326,19 +323,10 @@ class EmotionalRuntime:
             self._state["last_interaction"] = now
             self._state["last_user_signals"] = signals
             self._event("user_message", now, ",".join(signals))
-            # Relationship changes slowly and is bounded; no score is a reward/punishment mechanism.
-            rel = self._state["relationship"]
-            deltas = self.config.get("relationship_deltas", {})
-            if "thanks" in signals or "praise" in signals:
-                rel["closeness"] = _clamp(rel["closeness"] + float(deltas.get("thanks_closeness", 0.12)))
-                rel["comfort"] = _clamp(rel["comfort"] + float(deltas.get("thanks_comfort", 0.10)))
-            if "apology" in signals:
-                rel["tension"] = _clamp(rel["tension"] + float(deltas.get("apology_tension", -0.8)))
-                rel["trust"] = _clamp(rel["trust"] + float(deltas.get("apology_trust", 0.08)))
-            if "hostile" in signals:
-                rel["tension"] = _clamp(rel["tension"] + float(deltas.get("hostile_tension", 0.5)))
-                rel["comfort"] = _clamp(rel["comfort"] + float(deltas.get("hostile_comfort", -0.12)))
-            rel["familiarity"] = _clamp(rel["familiarity"] + float(deltas.get("familiarity_per_message", 0.025)))
+            # Relationship changes are bounded and isolated in their own engine.
+            self.relationship_engine.on_user_signals(
+                self._state["relationship"], signals, self.config.get("relationship_deltas", {})
+            )
             self._save()
         return self.snapshot(now)
 
@@ -354,8 +342,9 @@ class EmotionalRuntime:
                 for behavior, amount in REPLY_BEHAVIORS.get(emotion, {}).items():
                     self._bump("behaviors", behavior, amount * level / 60.0)
             self._event("kira_reply", now, "+".join(valid))
-            if any(e in valid for e in ("happy", "affectionate", "grateful", "relieved")):
-                self._state["relationship"]["closeness"] = _clamp(self._state["relationship"]["closeness"] + 0.025)
+            self.relationship_engine.on_reply(
+                self._state["relationship"], valid, self.config.get("relationship_deltas", {})
+            )
             if text and any(e in valid for e in ("sad", "angry", "fearful", "disappointed")):
                 self._memory("kira_emotion", str(text)[:120], level * 0.25, now)
             self._save()
