@@ -17,7 +17,9 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 CONFIG_PATH = DATA_DIR / "settings.json"
 DB_PATH = DATA_DIR / "kira_memory.sqlite3"
 
-APP_NAME = "Project Kira"  # product branding; independent from the active character profile
+APP_NAME = "Project Kira"  # change this to rebrand the desktop application
+PROJECT_URL = "https://github.com/alizesta/Kira"
+RELEASES_URL = PROJECT_URL + "/releases/latest"
 VERSION = "1 stable"
 
 DEFAULTS = {
