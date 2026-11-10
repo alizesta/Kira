@@ -133,6 +133,24 @@ class EmotionalRuntime:
             except OSError:
                 pass
 
+    def migrate_legacy(self, legacy):
+        """One-time import from the original kira_mood.json without overwriting newer runtime data."""
+        if not isinstance(legacy, dict):
+            return
+        with self._lock:
+            if self._state.get("updated") or self._state.get("emotions") or self._state.get("behaviors"):
+                return
+            old_emotions = legacy.get("scores") or {}
+            old_behaviors = legacy.get("behavior_scores") or {}
+            self._state["emotions"] = {k: _clamp(v) for k, v in old_emotions.items() if k in EMOTIONS}
+            self._state["behaviors"] = {k: _clamp(v) for k, v in old_behaviors.items() if k in BEHAVIORS}
+            self._state["energy"] = _clamp(legacy.get("energy", self._state["energy"]))
+            self._state["updated"] = float(legacy.get("updated") or 0.0)
+            self._state["last_interaction"] = float(legacy.get("last_chat") or 0.0)
+            self._state["last_user_signals"] = list(legacy.get("user_states") or [])
+            self._event("legacy_mood_migrated", self.clock())
+            self._save()
+
     def _advance(self, now):
         state = self._state
         previous = float(state.get("updated") or now)
