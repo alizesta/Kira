@@ -1,6 +1,6 @@
 import unittest
 
-from kira.character.decision import BASE_TRAITS, DecisionEngine, decide as decide_character
+from kira.character.decision import BASE_TRAITS, BEHAVIOUR_GUIDES, DecisionEngine, decide as decide_character
 from kira.character.initiative import InitiativeEngine
 from kira.character.learning import detect_feedback
 
@@ -51,6 +51,14 @@ class CharacterDecisionTests(unittest.TestCase):
         self.assertEqual(detect_feedback("این شوخی خوب بود"), "liked_teasing")
         self.assertEqual(detect_feedback("شوخی نکن"), "disliked_teasing")
         self.assertEqual(detect_feedback("فردا امتحان دارم"), None)
+
+    def test_extended_behaviours_are_selectable_and_described(self):
+        for behaviour in ("sarcastic", "clingy", "stubborn", "sulking", "cheerful", "reserved", "flirty", "energetic"):
+            self.assertIn(behaviour, BEHAVIOUR_GUIDES)
+        decision = self.engine.decide("عشقم", {
+            "emotion": "flirty", "behaviors": [("flirty", 95)], "energy": 90,
+        })
+        self.assertEqual(decision.behaviour, "flirty")
 
 
 class InitiativeTests(unittest.TestCase):
