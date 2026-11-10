@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -8,6 +9,8 @@ import zipfile
 
 SOURCE_ARCHIVE = Path("ProjectKira_261111_0059.zip")
 THEME_SOURCE = Path("kira/theme.py")
+MOOD_SOURCE = Path("kira/mood.py")
+EMOTIONS_SOURCE = Path("emotion_library/emotions.json")
 OUTPUT_ARCHIVE = Path("dist/ProjectKira_Stage3_Neon_Glass.zip")
 
 SKIP_DIRS = {
@@ -70,8 +73,9 @@ def should_skip(path: Path) -> bool:
 def main() -> None:
     if not SOURCE_ARCHIVE.is_file():
         raise FileNotFoundError(f"Missing Stage 3 source archive: {SOURCE_ARCHIVE}")
-    if not THEME_SOURCE.is_file():
-        raise FileNotFoundError(f"Missing neon glass theme source: {THEME_SOURCE}")
+    for required in (THEME_SOURCE, MOOD_SOURCE, EMOTIONS_SOURCE):
+        if not required.is_file():
+            raise FileNotFoundError(f"Missing reviewed Kira source: {required}")
 
     OUTPUT_ARCHIVE.parent.mkdir(parents=True, exist_ok=True)
     excluded = 0
@@ -96,23 +100,35 @@ def main() -> None:
         if "def build_style(" not in theme_text or "QFrame#chatCard" not in theme_text:
             raise RuntimeError("Neon glass theme contract check failed")
 
-        # Apply only the UI layer files from the reviewed Stage 3 repository.
-        ui_sources = {
+        # Apply the reviewed UI and emotional-state sources to the uploaded Stage 3 package.
+        reviewed_sources = {
             "kira/theme.py": THEME_SOURCE,
             "kira/main.py": Path("kira/main.py"),
             "kira/chat_render.py": Path("kira/chat_render.py"),
+            "kira/mood.py": MOOD_SOURCE,
+            "emotion_library/emotions.json": EMOTIONS_SOURCE,
         }
-        for relative, source_path in ui_sources.items():
-            target = kira_dir / Path(relative).name
-            if not target.is_file() or not source_path.is_file():
-                raise RuntimeError(f"Missing required UI source/target: {relative}")
+        for relative, source_path in reviewed_sources.items():
+            if not source_path.is_file():
+                raise RuntimeError(f"Missing reviewed source: {relative}")
+            rel_path = Path(relative)
+            target = (kira_dir / rel_path.name) if rel_path.parts[0] == "kira" else (kira_dir.parent / rel_path)
+            target.parent.mkdir(parents=True, exist_ok=True)
             updated = source_path.read_text(encoding="utf-8")
-            ast.parse(updated, filename=relative) if relative.endswith(".py") else None
-            target.write_text(updated, encoding="utf-8", newline="\n")
+            if relative.endswith(".py"):
+                ast.parse(updated, filename=relative)
+            target.write_text(updated, encoding="utf-8", newline="\\n")
 
-        main_text = (extracted / "kira/main.py").read_text(encoding="utf-8")
+        main_text = (kira_dir / "main.py").read_text(encoding="utf-8")
+        mood_text = (kira_dir / "mood.py").read_text(encoding="utf-8")
         if "def chat_actions_html(" not in main_text or "def apply_neon_glow(" not in main_text:
             raise RuntimeError("Neon action controls / glow effects were not applied")
+        if "BEHAVIOR_REST" not in mood_text or "def _energy_at(" not in mood_text:
+            raise RuntimeError("Layered emotion / energy / behavior system was not applied")
+        emotion_data = json.loads((kira_dir.parent / EMOTIONS_SOURCE).read_text(encoding="utf-8"))
+        emotion_ids = {item.get("id") for item in emotion_data.get("emotions", [])}
+        if not {"fearful", "disgusted"}.issubset(emotion_ids):
+            raise RuntimeError("Primary emotion library is missing fearful/disgusted")
 
         # Parse the complete Python source tree without importing providers or starting services.
         for py_file in extracted.rglob("*.py"):
