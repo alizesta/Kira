@@ -4107,7 +4107,7 @@ class MainWindow(QMainWindow):
             terms.extend(("کیرا", "کی را", "کایرا", "کیرآ", "کیارا", "Kira", "Keira", "Kyra", "Kiera"))
         patterns = []
         for term in dict.fromkeys(item for item in terms if item):
-            patterns.append(re.escape(term).replace(r"\\ ", r"[\s\u200c]*").replace(" ", r"[\\s\\u200c]*"))
+            patterns.append(re.escape(term).replace(r"\ ", r"[\s\u200c]*").replace(" ", r"[\s\u200c]*"))
         if not patterns:
             return WAKE_RE
         joined = "|".join(patterns)
