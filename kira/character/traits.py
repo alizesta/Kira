@@ -1,7 +1,7 @@
-"""Canonical baseline traits for Kira's stable personality.
+"""Canonical trait keys and fallback baseline for character profiles.
 
-The baseline is the identity anchor. Learning may move a trait only within a narrow
-band around this value; transient emotions never mutate these traits.
+Each profile supplies its own baseline. Learning may move a trait only within a narrow
+band around that profile's value; transient emotions never mutate these traits.
 """
 
 BASE_TRAITS = {
