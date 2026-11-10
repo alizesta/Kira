@@ -18,6 +18,8 @@ on:
       - "kira/main.py"
       - "kira/theme.py"
       - "kira/ui_icons.py"
+      - "kira/chat_render.py"
+      - "tests/test_chat_render.py"
       - "kira/personality.py"
       - "kira/config.py"
       - "kira/character/**"
@@ -52,7 +54,7 @@ jobs:
           python-version: "3.12"
 
       - name: Test layered emotional state
-        run: python -m unittest discover -s tests -p "test_mood.py" && python -m unittest discover -s tests -p "test_emotional_runtime.py" && python -m unittest discover -s tests -p "test_character_decision.py" && python -m unittest discover -s tests -p "test_character_scenarios.py" && python -m unittest discover -s tests -p "test_relationship_engine.py" && python -m unittest discover -s tests -p "test_config.py"
+        run: python -m unittest discover -s tests -p "test_chat_render.py" && python -m unittest discover -s tests -p "test_mood.py" && python -m unittest discover -s tests -p "test_emotional_runtime.py" && python -m unittest discover -s tests -p "test_character_decision.py" && python -m unittest discover -s tests -p "test_character_scenarios.py" && python -m unittest discover -s tests -p "test_relationship_engine.py" && python -m unittest discover -s tests -p "test_config.py"
 
       - name: Patch the uploaded Stage 3 archive and package it
         run: python scripts/build_stage3_release.py
