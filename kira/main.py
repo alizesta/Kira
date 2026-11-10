@@ -520,6 +520,7 @@ class MainWindow(QMainWindow):
         self.settings["assistant_name"] = self.characters.active_profile["name"]
         self.settings["persona"] = self.characters.active_profile.get("notes", "")
         mood.set_active_character(self.characters.active_id, self.characters.active_profile.get("traits"))
+        persona_memory.set_active_character(self.characters.active_id)
         self._db_notes = init_db()
         self._save_warned = False
         self._emotion_applied = False
@@ -1302,6 +1303,7 @@ class MainWindow(QMainWindow):
         try:
             profile = self.characters.set_active(profile_id)
             mood.set_active_character(profile_id, profile.get("traits"))
+            persona_memory.set_active_character(profile_id)
             self.settings["active_character_id"] = profile_id
             self.settings["assistant_name"] = profile["name"]
             self.settings["persona"] = profile.get("notes", "")
@@ -1321,6 +1323,7 @@ class MainWindow(QMainWindow):
         try:
             profile = self.characters.create(name.strip())
             mood.set_active_character(profile["id"], profile.get("traits"))
+            persona_memory.set_active_character(profile["id"])
             self.settings["active_character_id"] = profile["id"]
             self.settings["assistant_name"] = profile["name"]
             self.settings["persona"] = ""
@@ -3446,7 +3449,7 @@ class MainWindow(QMainWindow):
             older = recent_messages(window + 40)[:-window] if window else []
             # her own recent banter is a style anchor for casual talk only; a practical request does not get it
             memory_query = decision_text or evidence_memory.query_from_context(context)
-            memory_block = persona_memory.build_block(older, voice_samples=(self.characters.active_id == "kira" and (mode is None or mode.name == modes.CHAT)),
+            memory_block = persona_memory.build_block(older, voice_samples=(mode is None or mode.name == modes.CHAT),
                                                       query=memory_query,
                                                       budget=evidence_memory.budget_for(self.settings, self.client))
             total = message_count()
