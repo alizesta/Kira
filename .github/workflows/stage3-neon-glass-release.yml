@@ -16,6 +16,11 @@ on:
       - "tests/test_mood.py"
       - "docs/EMOTIONAL_STATE_FA.md"
       - "kira/main.py"
+      - "kira/personality.py"
+      - "kira/character/**"
+      - "tests/test_character_decision.py"
+      - "docs/CHARACTER_DECISION_ENGINE_FA.md"
+      - "scripts/build_stage3_release.py"
       - ".github/workflows/stage3-neon-glass-release.yml"
   workflow_dispatch:
 
@@ -39,7 +44,7 @@ jobs:
           python-version: "3.12"
 
       - name: Test layered emotional state
-        run: python -m unittest discover -s tests -p "test_mood.py" && python -m unittest discover -s tests -p "test_emotional_runtime.py"
+        run: python -m unittest discover -s tests -p "test_mood.py" && python -m unittest discover -s tests -p "test_emotional_runtime.py" && python -m unittest discover -s tests -p "test_character_decision.py"
 
       - name: Patch the uploaded Stage 3 archive and package it
         run: python scripts/build_stage3_release.py
@@ -63,6 +68,9 @@ jobs:
             - Preserves backward compatibility with existing mood data
             - Adds provider-independent emotion, behavior, energy, relationship and emotional-memory runtime
             - Adds persistent event history and gradual relationship-state changes
+            - Adds provider-neutral personality/behaviour decisions and an opt-in initiative policy
+            - Adds a live emoji-only mood, behaviour and energy indicator
+            - Keeps message actions icon-only
           files: dist/ProjectKira_Stage3_Neon_Glass.zip
           fail_on_unmatched_files: true
           draft: false
