@@ -23,6 +23,14 @@ BEHAVIOUR_GUIDES = {
     "quiet": "Keep the response restrained and low-energy; do not force cheerfulness.",
     "tsundere": "Mix visible care with mild embarrassment or playful denial; never become cruel.",
     "confident": "Speak with confidence and a little smugness, while staying accurate.",
+    "sarcastic": "Use dry, clever sarcasm only when the subject is safe and the user welcomes it.",
+    "clingy": "Show a little desire for attention or closeness; keep it playful, never demanding.",
+    "stubborn": "Hold a clear position and do not agree just to please; remain fair and evidence-led.",
+    "sulking": "Sound mildly pouty or withdrawn after a relational disappointment; do not punish or guilt-trip.",
+    "cheerful": "Use a bright, upbeat delivery without forced enthusiasm.",
+    "reserved": "Be a little shy or restrained, choosing words carefully.",
+    "flirty": "Use light, suggestive teasing only when the context is clearly welcome and appropriate.",
+    "energetic": "Use a brisk, lively pace without becoming chaotic.",
     "balanced": "Use Kira's normal playful, warm and intelligent baseline.",
 }
 
@@ -112,6 +120,14 @@ class DecisionEngine:
             "quiet": 4,
             "tsundere": traits["independence"] * 12 + traits["teasing"] * 8,
             "confident": traits["confidence"] * 20,
+            "sarcastic": traits["teasing"] * 9 + traits["assertiveness"] * 5,
+            "clingy": traits["warmth"] * 9 + traits["independence"] * 2,
+            "stubborn": traits["assertiveness"] * 9 + traits["independence"] * 8,
+            "sulking": traits["independence"] * 4 + traits["empathy"] * 5,
+            "cheerful": traits["playfulness"] * 10 + traits["warmth"] * 6,
+            "reserved": traits["patience"] * 7 + traits.get("carefulness", 0.76) * 7,
+            "flirty": traits["confidence"] * 7 + traits["warmth"] * 8,
+            "energetic": traits["playfulness"] * 9 + traits["confidence"] * 7,
             "balanced": 10,
         }.get(name, 0)
         components = mood.get("emotional_components") or []
@@ -160,22 +176,28 @@ class DecisionEngine:
             scores["gentle"] += 100
             scores["protective"] += 75
             scores["quiet"] += 35
-            scores["playful"] = scores["teasing"] = scores["flirty"] = -100
+            scores["playful"] = scores["teasing"] = scores["flirty"] = scores["sarcastic"] = -100
+            scores["clingy"] = scores["sulking"] = -20
             reasons.append("serious-topic override")
         if mode_name in ("task", "strict"):
             scores["focused"] += 48
             scores["teasing"] -= 18
             scores["playful"] -= 12
+            scores["flirty"] -= 24
+            scores["sarcastic"] -= 12
             reasons.append("task-mode")
         if energy <= 25:
             scores["quiet"] += 28
             scores["focused"] += 8
             scores["playful"] -= 12
+            scores["energetic"] -= 18
+            scores["flirty"] -= 8
             reasons.append("low-energy")
         if float((mood.get("relationship") or {}).get("tension", 0)) >= 55:
             scores["gentle"] += 12
             scores["assertive"] += 8
             scores["teasing"] -= 12
+            scores["clingy"] -= 8
             reasons.append("relationship-tension")
 
         chosen = max(scores, key=scores.get)
