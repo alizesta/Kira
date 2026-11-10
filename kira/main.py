@@ -3214,7 +3214,9 @@ class MainWindow(QMainWindow):
         try:
             state = mood.current(now)
             items = persona_memory.list_items(now=now)
-            candidate = self.initiative_engine.select_candidate(items, now=now)
+            candidate = self.initiative_engine.select_candidate(
+                items, now=now, exclude_id=state.get("last_initiative_memory_id", "")
+            )
             self.initiative_engine.last_initiative = float(state.get("last_initiative", 0.0) or 0.0)
             last_interaction = now - float(state.get("age", 0.0) or 0.0)
             hour = time.localtime(now).tm_hour
@@ -3257,7 +3259,8 @@ class MainWindow(QMainWindow):
         if not self._initiative_current:
             return
         if success:
-            mood.mark_initiative_sent()
+            memory_id = (self._initiative_pending or {}).get("id")
+            mood.mark_initiative_sent(memory_id=memory_id)
             self.initiative_engine.mark_sent()
         self._initiative_current = False
         self._initiative_pending = None
