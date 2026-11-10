@@ -1369,6 +1369,7 @@ class MainWindow(QMainWindow):
             self.characters.delete(profile["id"])
             profile = self.characters.active_profile
             mood.set_active_character(profile["id"], profile.get("traits"))
+            persona_memory.set_active_character(profile["id"])
             self.settings["active_character_id"] = profile["id"]
             self.settings["assistant_name"] = profile["name"]
             self.settings["persona"] = profile.get("notes", "")
