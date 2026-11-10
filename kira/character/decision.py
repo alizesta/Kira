@@ -56,6 +56,17 @@ EMOTION_BIAS = {
     "relieved": {"affectionate": 8, "playful": 5},
 }
 
+MEMORY_SIGNAL_BIAS = {
+    "down": {"gentle": 10, "protective": 8},
+    "stressed": {"protective": 10, "focused": 8},
+    "joke": {"playful": 8, "teasing": 5},
+    "praise": {"confident": 6, "affectionate": 5},
+    "flirt": {"affectionate": 8, "teasing": 5},
+    "apology": {"gentle": 8, "affectionate": 5},
+    "jealous": {"tsundere": 8},
+    "excited": {"playful": 8, "confident": 4},
+}
+
 BEHAVIOUR_BIAS = {
     "playful": {"playful": 18}, "teasing": {"teasing": 20},
     "tsundere": {"tsundere": 24}, "sarcastic": {"teasing": 8, "assertive": 8},
@@ -119,6 +130,22 @@ class DecisionEngine:
             score += EMOTION_BIAS.get(str(secondary), {}).get(name, 0) * min(1.0, float(strength) / 100.0)
         for behaviour, strength in mood.get("behaviors", [])[:5]:
             score += BEHAVIOUR_BIAS.get(str(behaviour), {}).get(name, 0) * min(1.0, float(strength) / 100.0)
+        relationship = mood.get("relationship") or {}
+        closeness = float(relationship.get("closeness", 0) or 0)
+        trust = float(relationship.get("trust", 50) or 0)
+        tension = float(relationship.get("tension", 0) or 0)
+        if name == "affectionate":
+            score += max(0.0, closeness - 35.0) * 0.12
+        if name in ("gentle", "balanced") and trust < 30:
+            score += (30.0 - trust) * 0.18
+        if name in ("gentle", "assertive") and tension >= 40:
+            score += min(12.0, (tension - 40.0) * 0.22)
+        for memory in mood.get("emotional_memories", [])[-12:]:
+            if not isinstance(memory, dict):
+                continue
+            signal = str(memory.get("signal") or "")
+            impact = max(0.0, min(100.0, float(memory.get("impact", 0) or 0)))
+            score += MEMORY_SIGNAL_BIAS.get(signal, {}).get(name, 0) * impact / 100.0
         return score
 
     def decide(self, user_text="", mood=None, mode_name="chat", initiative="wait"):
