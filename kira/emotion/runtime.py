@@ -47,7 +47,7 @@ DEFAULTS = {
 # Mood impulse is intentionally distinct from delivery behavior.
 USER_EFFECTS = {
     "down": ({"sad": 15, "affectionate": 24, "protective": 18}, {"gentle": 16, "quiet": 12}, {"playful": -12, "teasing": -18, "sarcastic": -14}),
-    "stressed": ({"fearful": 5, "protective": 22, "calm": 12}, {"focused": 18, "gentle": 10}, {"teasing": -12, "sarcastic": -10}),
+    "stressed": ({"fearful": 5, "protective": 22, "calm": 12}, {"focused": 18, "gentle": 10}, {"playful": -10, "teasing": -12, "sarcastic": -10}),
     "hostile": ({"angry": 16, "annoyed": 18, "sad": 5}, {"stubborn": 12, "reserved": 12, "sulking": 10}, {"affectionate": -5}),
     "frustrated": ({"frustrated": 18, "protective": 14}, {"focused": 18, "protective": 10}, {"sarcastic": -5}),
     "praise": ({"proud": 18, "happy": 10, "shy": 8}, {"cheerful": 12, "playful": 8}, {}),
