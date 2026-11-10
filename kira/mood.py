@@ -21,7 +21,7 @@ import threading
 import time
 
 from .config import DATA_DIR
-from .emotion.runtime import EmotionalRuntime, EMOTIONS as RUNTIME_EMOTIONS
+from .emotion.runtime import EmotionalRuntime, EMOTIONS as RUNTIME_EMOTIONS, STATE_FILE
 from .character.learning import detect_feedback
 
 _emotional_runtime = EmotionalRuntime()
@@ -152,9 +152,17 @@ _lock = threading.Lock()
 
 
 def _path():
+    """Legacy mood compatibility file; kept separate from the structured runtime file."""
     if _ACTIVE_CHARACTER_ID == "kira":
-        return DATA_DIR / FILE_NAME  # preserve the existing Kira mood file
-    return DATA_DIR / "characters" / _ACTIVE_CHARACTER_ID / "mood.json"
+        return DATA_DIR / FILE_NAME  # preserve the original Kira mood file
+    return DATA_DIR / "characters" / _ACTIVE_CHARACTER_ID / "legacy_mood.json"
+
+
+def _runtime_path():
+    """Structured emotional state for the active profile."""
+    if _ACTIVE_CHARACTER_ID == "kira":
+        return DATA_DIR / STATE_FILE  # preserve the existing structured Kira state
+    return DATA_DIR / "characters" / _ACTIVE_CHARACTER_ID / "emotional_state.json"
 
 
 def set_active_character(character_id, base_traits=None):
@@ -163,11 +171,13 @@ def set_active_character(character_id, base_traits=None):
     safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", str(character_id or "kira"))[:80] or "kira"
     profile_changed = safe_id != _ACTIVE_CHARACTER_ID
     _ACTIVE_CHARACTER_ID = safe_id
-    path = _path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    runtime_path_changed = str(getattr(_emotional_runtime, "path", "")) != str(path)
+    legacy_path = _path()
+    runtime_path = _runtime_path()
+    legacy_path.parent.mkdir(parents=True, exist_ok=True)
+    runtime_path.parent.mkdir(parents=True, exist_ok=True)
+    runtime_path_changed = str(getattr(_emotional_runtime, "path", "")) != str(runtime_path)
     if profile_changed or runtime_path_changed:
-        _emotional_runtime = EmotionalRuntime(path=path, base_traits=base_traits)
+        _emotional_runtime = EmotionalRuntime(path=runtime_path, base_traits=base_traits)
         _runtime_migrated = False
     elif base_traits is not None:
         _emotional_runtime.set_base_traits(base_traits)
