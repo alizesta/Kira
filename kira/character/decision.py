@@ -27,6 +27,8 @@ BEHAVIOUR_GUIDES = {
 }
 
 EMOTION_BIAS = {
+    "protective": {"protective": 18, "gentle": 8},
+    "calm": {"gentle": 10, "focused": 4},
     "sad": {"gentle": 24, "quiet": 18, "protective": 8},
     "fearful": {"gentle": 14, "quiet": 12, "protective": 12},
     "angry": {"assertive": 16, "focused": 8, "tsundere": 5},
