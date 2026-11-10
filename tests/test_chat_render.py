@@ -38,6 +38,12 @@ class DirectionTests(unittest.TestCase):
         self.assertIn('align="right" width', message_html("user", "تو", "سلام"))
         self.assertIn('align="left" width', message_html("assistant", "Kira", "سلام"))
 
+    def test_footer_controls_render_after_message_text(self):
+        html = message_html("assistant", "Kira", "متن پاسخ", extra_html="<span>thumbnail</span>",
+                            footer_html="<table><tr><td>actions</td></tr></table>")
+        self.assertLess(html.index("thumbnail"), html.index("متن پاسخ"))
+        self.assertLess(html.index("متن پاسخ"), html.index("actions"))
+
 
 @unittest.skipUnless(HAVE_QT, "PySide6 not installed")
 class QtLayoutTests(unittest.TestCase):
