@@ -35,10 +35,16 @@ class CharacterRegistryTests(unittest.TestCase):
             self.assertEqual(reloaded.active_profile["name"], "Nova")
             self.assertEqual(reloaded.active_profile["description"], "A calm technical companion.")
             self.assertEqual(reloaded.active_profile["traits"]["playfulness"], 0.2)
+            profile_dir = reloaded.directory / custom_id
+            profile_dir.mkdir(parents=True, exist_ok=True)
+            (profile_dir / "voice_memory.json").write_text('{"voice": ["private style sample"]}', encoding="utf-8")
             self.assertTrue(reloaded.delete(custom_id))
+            self.assertFalse(profile_dir.exists())
             self.assertEqual(reloaded.active_id, "kira")
             with self.assertRaises(ValueError):
                 reloaded.delete("kira")
+            with self.assertRaises(ValueError):
+                reloaded.create("../outside")
 
     def test_kira_is_a_profile_and_custom_prompt_is_generic(self):
         self.assertEqual(KIRA_PROFILE["id"], "kira")
