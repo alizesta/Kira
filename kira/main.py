@@ -519,7 +519,7 @@ class MainWindow(QMainWindow):
         self.settings["active_character_id"] = self.characters.active_id
         self.settings["assistant_name"] = self.characters.active_profile["name"]
         self.settings["persona"] = self.characters.active_profile.get("notes", "")
-        mood.set_active_character(self.characters.active_id)
+        mood.set_active_character(self.characters.active_id, self.characters.active_profile.get("traits"))
         self._db_notes = init_db()
         self._save_warned = False
         self._emotion_applied = False
@@ -1301,7 +1301,7 @@ class MainWindow(QMainWindow):
             return
         try:
             profile = self.characters.set_active(profile_id)
-            mood.set_active_character(profile_id)
+            mood.set_active_character(profile_id, profile.get("traits"))
             self.settings["active_character_id"] = profile_id
             self.settings["assistant_name"] = profile["name"]
             self.settings["persona"] = profile.get("notes", "")
@@ -1320,7 +1320,7 @@ class MainWindow(QMainWindow):
             return
         try:
             profile = self.characters.create(name.strip())
-            mood.set_active_character(profile["id"])
+            mood.set_active_character(profile["id"], profile.get("traits"))
             self.settings["active_character_id"] = profile["id"]
             self.settings["assistant_name"] = profile["name"]
             self.settings["persona"] = ""
@@ -1417,6 +1417,7 @@ class MainWindow(QMainWindow):
         traits = {key: slider.value() / 100.0 for key, slider in self.personality_sliders.items()}
         try:
             self.characters.update(profile["id"], traits=traits)
+            mood.set_active_character(profile["id"], traits)
             if not silent:
                 self.add_chat("system", self.t("character_traits_saved", name=profile["name"]))
             return True
@@ -3459,7 +3460,6 @@ class MainWindow(QMainWindow):
             mood_block = ""
         try:
             character_mood = mood.current(query=decision_text)
-            character_mood["personality_traits"] = self.active_character().get("traits") or BASE_TRAITS
             character_block, self._character_decision = build_character_block(
                 decision_text, character_mood, mode.name if mode else modes.CHAT,
                 initiative="proactive" if proactive else "wait",
@@ -3654,7 +3654,7 @@ class MainWindow(QMainWindow):
         if not text.strip():
             return
         self._speak_stream(text)
-        name = self.settings.get("assistant_name", "Kira")
+        name = self.active_character().get("name", "Character")
         ui_dir = "rtl" if self.settings.get("ui_lang", "fa") == "fa" else "ltr"
         html = message_html("assistant", name, text, ui_dir)
         doc = self.chat.document()
