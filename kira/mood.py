@@ -21,7 +21,7 @@ import threading
 import time
 
 from .config import DATA_DIR
-from .emotion.runtime import EmotionalRuntime
+from .emotion.runtime import EmotionalRuntime, EMOTIONS as RUNTIME_EMOTIONS
 
 _emotional_runtime = EmotionalRuntime()
 _runtime_migrated = False
@@ -35,10 +35,9 @@ ENERGY_START = 78.0
 ENERGY_RECOVERY_PER_SECOND = 0.0022
 ENERGY_USER_COST = 0.55
 ENERGY_REPLY_COST = 0.35
-EMOTIONS = ("neutral", "happy", "sad", "angry", "fearful", "disgusted", "surprised", "curious", "proud", "arrogant", "smug", "playful", "teasing", "tsundere", "bored",
-            "frustrated", "affectionate", "flirty", "shy", "embarrassed", "jealous", "laughing", "annoyed", "protective", "excited", "thinking")
+EMOTIONS = tuple(RUNTIME_EMOTIONS)
 _PRIORITY = ("angry", "fearful", "jealous", "sad", "disgusted", "protective", "flirty", "affectionate", "excited", "happy", "proud", "shy", "embarrassed", "annoyed",
-             "frustrated", "smug", "arrogant", "teasing", "playful", "laughing", "curious", "bored", "tsundere", "surprised", "thinking", "neutral")
+             "frustrated", "smug", "arrogant", "teasing", "playful", "laughing", "curious", "bored", "tsundere", "surprised", "thinking", "hopeful", "grateful", "relieved", "content", "confident", "calm", "nostalgic", "lonely", "disappointed", "guilty", "confused", "neutral")
 SHOW = {
     "happy": "light, bright, quick to laugh", "sad": "quieter, softer, shorter, a little vulnerable", "angry": "sharp, clipped, openly irritated",
     "fearful": "cautious, worried, seeking reassurance", "disgusted": "visibly put off, recoils from the subject",
@@ -49,6 +48,10 @@ SHOW = {
     "flirty": "suggestive, teasing, intimate", "shy": "flustered, hesitant, deflecting", "embarrassed": "stammering, deflecting, a bit red",
     "jealous": "sulky, possessive, demands his attention", "laughing": "laughing, can barely stay serious", "annoyed": "irritated, short with him",
     "protective": "caring and fierce on his behalf", "excited": "fast, energetic, exclamatory", "thinking": "thoughtful, measured", "neutral": "even and calm",
+    "calm": "settled and unhurried", "hopeful": "quietly optimistic", "disappointed": "let down but composed",
+    "lonely": "missing company and connection", "guilty": "regretful and accountable", "grateful": "warmly thankful",
+    "nostalgic": "softly remembering the past", "confident": "self-assured without being dismissive",
+    "confused": "puzzled and seeking clarity", "relieved": "letting tension go", "content": "quietly satisfied",
 }
 
 # Behavioral disposition is separate from emotion: it changes HOW Kira responds, not WHAT she feels.
