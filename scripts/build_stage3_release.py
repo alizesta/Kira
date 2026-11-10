@@ -107,6 +107,7 @@ def main() -> None:
             "kira/chat_render.py": Path("kira/chat_render.py"),
             "kira/mood.py": MOOD_SOURCE,
             "kira/emotion/runtime.py": Path("kira/emotion/runtime.py"),
+            "kira/emotion/director.py": Path("kira/emotion/director.py"),
             "emotion_library/emotions.json": EMOTIONS_SOURCE,
         }
         for relative, source_path in reviewed_sources.items():
