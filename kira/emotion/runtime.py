@@ -41,6 +41,7 @@ DEFAULTS = {
                      "comfort": 45.0, "tension": 0.0},
     "memories": [], "recent_events": [], "last_user_signals": [],
     "personality_traits": BASE_TRAITS, "feedback_evidence": {}, "last_initiative": 0.0,
+    "last_initiative_memory_id": "",
 }
 
 # Mood impulse is intentionally distinct from delivery behavior.
@@ -136,6 +137,7 @@ class EmotionalRuntime:
                 for key, value in evidence.items() if isinstance(value, dict)
             }
             state["last_initiative"] = max(0.0, float(raw.get("last_initiative", 0.0) or 0.0))
+            state["last_initiative_memory_id"] = str(raw.get("last_initiative_memory_id") or "")[:64]
             state["schema"] = 3
             return state
         except (OSError, ValueError, TypeError):
@@ -253,12 +255,13 @@ class EmotionalRuntime:
             self._save()
         return self.snapshot(now)
 
-    def mark_initiative_sent(self, now=None):
+    def mark_initiative_sent(self, memory_id=None, now=None):
         now = self.clock() if now is None else float(now)
         with self._lock:
             self._advance(now)
             self._state["last_initiative"] = now
-            self._event("proactive_check_in", now)
+            self._state["last_initiative_memory_id"] = str(memory_id or "")[:64]
+            self._event("proactive_check_in", now, self._state["last_initiative_memory_id"])
             self._save()
         return now
 
@@ -413,6 +416,7 @@ class EmotionalRuntime:
                 "personality_traits": dict(self._state["personality_traits"]),
                 "feedback_evidence": {k: dict(v) for k, v in self._state["feedback_evidence"].items()},
                 "last_initiative": float(self._state.get("last_initiative", 0.0)),
+                "last_initiative_memory_id": str(self._state.get("last_initiative_memory_id") or ""),
                 "recent_events": list(self._state["recent_events"][-12:]),
                 "user_states": list(self._state["last_user_signals"]),
                 "age": max(0.0, now - float(self._state.get("last_interaction") or now)),
