@@ -813,25 +813,26 @@ class MainWindow(QMainWindow):
                 glow_colour.setAlpha(215)
                 glow.setColor(glow_colour)
 
-            behaviour_icons = {
-                "playful": "😜", "teasing": "😼", "tsundere": "😤", "sarcastic": "🙃",
-                "quiet": "🤫", "affectionate": "💕", "clingy": "🥺", "stubborn": "😤",
-                "sulking": "😗", "cheerful": "🌸", "reserved": "☺️", "protective": "🛡️",
-                "focused": "🎯", "flirty": "😘", "curious": "🔎", "gentle": "🫶",
-                "formal": "📘", "energetic": "⚡",
-            }
-            energy_icons = {
-                "exhausted": "🥱", "tired": "😪", "low": "😴",
-                "normal": "", "active": "⚡", "hyper": "🔥",
-            }
+            # Behaviour and energy are represented by vector neon glyphs only.
+            # Never place a plain Unicode emoji beside the neon emotion face.
             behaviour = str(state.get("behavior", "balanced"))
             energy = str(state.get("energy_label", "normal"))
-            icons = []
-            if behaviour in behaviour_icons and behaviour != emotion:
-                icons.append(behaviour_icons[behaviour])
-            if energy_icons.get(energy):
-                icons.append(energy_icons[energy])
-            label.setText(" ".join(icons[:2]))
+            show_bolt = energy in {"active", "hyper"} or behaviour == "energetic"
+            if show_bolt:
+                bolt_colour = "#FFE36B" if energy == "hyper" else "#72F4FF"
+                bolt = make_icon(
+                    "energy_bolt", normal=bolt_colour, hover="#FFFFFF",
+                    checked=bolt_colour, disabled="#52617B",
+                )
+                label.setPixmap(bolt.pixmap(QSize(23, 23)))
+                label.setStyleSheet(
+                    "QLabel#moodIndicator { background: rgba(22, 28, 65, 0.62); "
+                    f"border: 1px solid {bolt_colour}; border-radius: 10px; padding: 2px; }}"
+                )
+                label.setVisible(True)
+            else:
+                label.clear()
+                label.setVisible(False)
             intensity = int(state.get("intensity", 0))
             secondary = ", ".join(name for name, _ in state.get("secondary_emotions", [])[:2])
             tooltip = (
@@ -927,23 +928,23 @@ class MainWindow(QMainWindow):
     def apply_neon_glow(self):
         """Layered Qt glows with a restrained pulse so the glass interface feels luminous, not flat."""
         self._neon_animations = []
-        chat_glow = self._set_neon_glow(getattr(self, "chat_card", None), (35, 210, 255), 36, 190)
-        composer_glow = self._set_neon_glow(getattr(self, "composer", None), (169, 105, 255), 31, 205)
-        avatar_glow = self._set_neon_glow(getattr(self, "avatar_card", None), (45, 198, 255), 27, 160)
+        chat_glow = self._set_neon_glow(getattr(self, "chat_card", None), (35, 210, 255), 52, 235)
+        composer_glow = self._set_neon_glow(getattr(self, "composer", None), (169, 105, 255), 46, 245)
+        avatar_glow = self._set_neon_glow(getattr(self, "avatar_card", None), (45, 198, 255), 39, 215)
         self._set_neon_glow(getattr(self, "route_badge", None), (65, 229, 255), 22, 210)
-        self._mood_emotion_glow = self._set_neon_glow(getattr(self, "mood_emotion_icon", None), (105, 229, 255), 20, 215)
+        self._mood_emotion_glow = self._set_neon_glow(getattr(self, "mood_emotion_icon", None), (105, 229, 255), 30, 250)
         self._set_neon_glow(getattr(self, "mood_indicator", None), (163, 112, 255), 18, 175)
-        self._set_neon_glow(getattr(self, "send_btn", None), (60, 225, 255), 27, 235)
+        self._set_neon_glow(getattr(self, "send_btn", None), (60, 225, 255), 36, 255)
         self._set_neon_glow(getattr(self, "attach_btn", None), (60, 220, 255), 18, 165)
         self._set_neon_glow(getattr(self, "web_btn", None), (73, 150, 255), 19, 165)
         self._set_neon_glow(getattr(self, "img_search_btn", None), (180, 105, 255), 19, 175)
         self._set_neon_glow(getattr(self, "mic_btn", None), (255, 90, 174), 21, 205)
         self._set_neon_glow(getattr(self, "wake_btn", None), (167, 111, 255), 20, 190)
         self._set_neon_glow(getattr(self, "voice_btn", None), (74, 224, 255), 21, 205)
-        self._pulse_neon_glow(chat_glow, 30, 42, 2800)
-        self._pulse_neon_glow(composer_glow, 24, 36, 2300)
-        self._pulse_neon_glow(avatar_glow, 21, 31, 3400)
-        self._pulse_neon_glow(self._mood_emotion_glow, 12, 21, 2500)
+        self._pulse_neon_glow(chat_glow, 42, 58, 2800)
+        self._pulse_neon_glow(composer_glow, 38, 52, 2300)
+        self._pulse_neon_glow(avatar_glow, 30, 43, 3400)
+        self._pulse_neon_glow(self._mood_emotion_glow, 20, 32, 2500)
 
     def thumbnail_html(self, images):
         parts = []
@@ -1114,7 +1115,8 @@ class MainWindow(QMainWindow):
         self.mood_indicator = QLabel()
         self.mood_indicator.setObjectName("moodIndicator")
         self.mood_indicator.setAlignment(Qt.AlignCenter)
-        self.mood_indicator.setMinimumWidth(24)
+        self.mood_indicator.hide()
+        self.mood_indicator.setFixedSize(32, 32)
         self.mood_indicator.setToolTip("رفتار و انرژی فعلی شخصیت فعال")
         self.mood_indicator.setStyleSheet(
             "QLabel#moodIndicator { background: rgba(20, 24, 62, 0.92); "
