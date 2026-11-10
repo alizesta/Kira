@@ -6,6 +6,8 @@ on:
     paths:
       - "scripts/build_stage3_release.py"
       - "kira/mood.py"
+      - "kira/emotion/runtime.py"
+      - "tests/test_emotional_runtime.py"
       - "emotion_library/emotions.json"
       - "tests/test_mood.py"
       - "docs/EMOTIONAL_STATE_FA.md"
@@ -33,7 +35,7 @@ jobs:
           python-version: "3.12"
 
       - name: Test layered emotional state
-        run: python -m unittest discover -s tests -p "test_mood.py"
+        run: python -m unittest discover -s tests -p "test_*.py"
 
       - name: Patch the uploaded Stage 3 archive and package it
         run: python scripts/build_stage3_release.py
@@ -55,6 +57,8 @@ jobs:
             - Tracks conversational energy independently from the user's state
             - Adds separate behavioral dispositions with gradual decay and recovery
             - Preserves backward compatibility with existing mood data
+            - Adds provider-independent emotion, behavior, energy, relationship and emotional-memory runtime
+            - Adds persistent event history and gradual relationship-state changes
           files: dist/ProjectKira_Stage3_Neon_Glass.zip
           fail_on_unmatched_files: true
           draft: false
