@@ -731,8 +731,9 @@ class MainWindow(QMainWindow):
             name = {"user": self.t("you"), "assistant": self.settings.get("assistant_name", "Kira"),
                     "error": self.t("error"), "system": ""}.get(kind, "")
         ui_dir = "rtl" if self.settings.get("ui_lang", "fa") == "fa" else "ltr"
-        extra = self.thumbnail_html(images) + self.chat_actions_html(kind, text)
-        self.chat.append(message_html(kind, name, text, ui_dir, extra))
+        extra = self.thumbnail_html(images)
+        footer = self.chat_actions_html(kind, text)
+        self.chat.append(message_html(kind, name, text, ui_dir, extra, footer))
         if getattr(self, "bubble", None) is not None:
             self.bubble.push(kind, name, text, ui_dir)
         bar = self.chat.verticalScrollBar()
