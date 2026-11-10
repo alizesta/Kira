@@ -681,7 +681,7 @@ class MainWindow(QMainWindow):
 
     # ---------- i18n helpers ----------
     def t(self, key, **kw):
-        s = STR.get(self.settings.get("ui_lang", "fa"), STR["fa"]).get(key, key)
+        s = APP_NAME if key == "app" else STR.get(self.settings.get("ui_lang", "fa"), STR["fa"]).get(key, key)
         return s.format(**kw) if kw else s
 
     def reg(self, setter, key):
