@@ -3248,7 +3248,7 @@ class MainWindow(QMainWindow):
         self._web_found = None
         self.busy = True
         self.gen_stop_btn.show()
-        self.set_status("Kira is checking in…")
+        self.set_status("کیرا دارد یکی از موضوعات قبلی را پیگیری می‌کند…")
         self.set_badge("connecting", self.client.preview_route())
         self.director.event("response_started")
         self.begin_reply()
