@@ -26,6 +26,8 @@ User facts, dated events, conversation summaries and the evidence index remain s
 
 The desktop companion artwork and TTS voice selection are still shared UI settings; per-character avatar and voice selection are not implemented yet. The provider/router layer does not depend on the selected character. A profile supplies identity, description, notes and baseline traits to the shared prompt and decision engines; it does not choose the model or provider.
 
+Every character receives the same shared capability contract: the same routed model, tool registry and permissions, planner, task modes, memory/context access, safety rules, reasoning quality bar and result-verification requirements. Character profiles may change only conversational expression (tone, temperament, humour, warmth, assertiveness, emotional style and relationship style). They cannot add or remove tools, change the model, bypass confirmations, or reduce task quality. This is also enforced by one shared ToolAgent and HybridRouter instance in the application, not only by prompt wording.
+
 ## Add another profile
 
 Use **Characters → New character**. Give it a name, description and character-specific notes, then use **Personality** to set its baseline traits. Its emotional state and voice-style samples are stored separately from Kira's.
