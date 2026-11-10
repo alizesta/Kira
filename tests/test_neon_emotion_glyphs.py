@@ -32,7 +32,10 @@ class NeonEmotionGlyphTests(unittest.TestCase):
     def test_chat_emojis_are_not_rewritten_by_mood_indicator(self):
         self.assertIn("self.chat.append(message_html(kind, name, text, ui_dir, extra, footer))", self.main)
         self.assertIn("self.mood_emotion_icon", self.main)
-        self.assertIn("behaviour_icons", self.update_method)
+        self.assertNotIn("behaviour_icons", self.update_method)
+        self.assertNotIn("😜", self.update_method)
+        self.assertIn('"energy_bolt"', self.update_method)
+        self.assertIn('if name == "energy_bolt":', self.icons)
 
 
 if __name__ == "__main__":
