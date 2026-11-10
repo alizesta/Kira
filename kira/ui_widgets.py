@@ -23,8 +23,9 @@ class ChatInput(QPlainTextEdit):
         self.setFrameShape(QFrame.NoFrame)
         self.setTabChangesFocus(True)
         self._last_width = -1
-        self.textChanged.connect(self._fit)
-        self._fit()
+        self._fit_queued = False
+        self.textChanged.connect(self._queue_fit)
+        self._queue_fit()
 
     def text(self):
         return self.toPlainText()
@@ -54,11 +55,28 @@ class ChatInput(QPlainTextEdit):
         super().resizeEvent(event)
         if self.width() != self._last_width:          # only re-measure when the width (wrapping) changed
             self._last_width = self.width()
-            self._fit()
+            self._queue_fit()
+
+    def _queue_fit(self):
+        """Coalesce text/resize layout notifications to avoid height oscillation while typing."""
+        if self._fit_queued:
+            return
+        self._fit_queued = True
+        QTimer.singleShot(0, self._fit)
 
     def _fit(self):
-        lines = max(1, min(self.MAX_LINES, int(self.document().size().height())))
-        self.setFixedHeight(lines * self.fontMetrics().lineSpacing() + 16)
+        self._fit_queued = False
+        if self.width() <= 0:
+            return
+        # Qt reports fractional document heights while wrapping; ceil avoids a one-pixel
+        # up/down resize loop that looks like the composer is vibrating.
+        import math
+        doc_height = self.document().documentLayout().documentSize().height()
+        line_height = max(1, self.fontMetrics().lineSpacing())
+        lines = max(1, min(self.MAX_LINES, math.ceil(doc_height / line_height)))
+        target = lines * line_height + 16
+        if self.height() != target:
+            self.setFixedHeight(target)
 
 
 class RouteChip(QToolButton):
