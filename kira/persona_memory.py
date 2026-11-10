@@ -3,7 +3,7 @@
 The chat history alone cannot do that: a model that only sees the last few messages copies its own habits.
 These layers are stored locally and injected into the system prompt on every request, whichever provider answers:
 
-1. Voice memory   - Kira's own past replies that sound like her (short, in character). Shown as samples so a new
+1. Voice memory   - The active character's own past replies that capture their style (short, in character). Shown as samples so a new
                     model imitates the real rhythm, slang and attitude instead of its default style.
 2. Fact memory    - lasting things about the user and the relationship (name, likes, "remember that ..."),
                     extracted locally from what he writes. No extra model call is needed.
@@ -532,12 +532,12 @@ def digest(older: list[dict]) -> list[str]:
 
 
 # ---------------- the block that goes into the system prompt ----------------
-HEADER = ("Kira's own memory (real, stored on this computer; it stays the same whichever model is writing the reply). "
+HEADER = ("Shared app memory about the user (real, stored on this computer; available to the active character whichever model is writing the reply). "
           "Use it naturally and sparingly; never recite it or mention that it is a list. It is everything she knows about him: "
           "anything not listed here she does not know, and she must not pretend to.")
 
 
-HEADER_RELEVANT = ("Kira's own memory (real, stored on this computer; it stays the same whichever model is writing the reply). "
+HEADER_RELEVANT = ("Shared app memory about the user (real, stored on this computer; available to the active character whichever model is writing the reply). "
                    "Use it naturally and sparingly; never recite it or mention that it is a list. The facts below are only the ones that fit this "
                    "message; if he asks about something that is not listed, she does not remember it and must say so instead of guessing.")
 
@@ -559,7 +559,7 @@ def build_block(older: list[dict] | None = None, voice_samples: bool = True, now
     voice = data["voice"][-10:][::-1][::2][:VOICE_SHOWN]
     if voice and voice_samples:                  # her own recent banter is a style anchor: left out when the turn is a practical request
         samples = "\n".join(f"- {v}" for v in reversed(voice))
-        parts.append("How Kira really sounds (her own recent lines). Match this rhythm, slang, attitude and length in "
+        parts.append("How the active character really sounds (their own recent lines). Match this rhythm, slang, attitude and length in "
                      "your reply; do not copy the sentences:\n" + samples)
     if relevant is None:
         fact_lines = [f["text"] for f in data["facts"]]
