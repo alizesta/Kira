@@ -293,8 +293,6 @@ class EmotionalRuntime:
         ranked.sort(key=lambda item: (item[0], float(item[1].get("reinforced_at") or item[1].get("created") or 0)), reverse=True)
         selected = []
         for _score, memory in ranked[:max(1, int(limit))]:
-            memory["last_recalled"] = now
-            memory["recall_count"] = int(memory.get("recall_count", 0)) + 1
             selected.append(dict(memory))
         return selected
 
