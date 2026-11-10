@@ -326,7 +326,7 @@ class BenchWorker(QThread):
 
 
 class EmotionalStateDialog(QDialog):
-    """Read-only diagnostic view of Kira's independent emotional layers."""
+    """Read-only diagnostic view of the active character's independent emotional layers."""
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("وضعیت احساسی شخصیت فعال")
@@ -384,12 +384,12 @@ class EmotionalStateDialog(QDialog):
 
 
 class MemoryDialog(QDialog):
-    """What Kira remembers about the user (facts, dated moments, summaries): view, edit, delete, add a note, forget everything."""
+    """View and manage the shared user memory: facts, dated moments, summaries and notes."""
     GROUPS = {"fact": "درباره‌ی تو", "moment": "لحظه / رویداد", "summary": "خلاصه‌ی گفتگوهای قدیمی"}
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("حافظه‌ی Kira")
+        self.setWindowTitle("حافظه‌ی مشترک برنامه")
         self.resize(680, 480)
         lay = QVBoxLayout(self)
         self.info = QLabel()
@@ -426,7 +426,7 @@ class MemoryDialog(QDialog):
         return item.data(Qt.UserRole) if item else None
 
     def add_note(self):
-        text, ok = QInputDialog.getText(self, "یادداشت جدید", "چه چیزی را Kira یادش بماند؟")
+        text, ok = QInputDialog.getText(self, "یادداشت جدید", "چه چیزی در حافظه‌ی مشترک برنامه ذخیره شود؟")
         if ok and persona_memory.add_note(text):
             self.refresh()
 
@@ -445,7 +445,7 @@ class MemoryDialog(QDialog):
             self.refresh()
 
     def forget_all(self):
-        if QMessageBox.question(self, "فراموش‌کردن همه", "همه‌ی چیزهایی که Kira درباره‌ی تو یادش مانده (و حال‌وهوایش) پاک شود؟ تاریخچه‌ی گفتگو دست‌نخورده می‌ماند.") == QMessageBox.Yes:
+        if QMessageBox.question(self, "فراموش‌کردن همه", "همه‌ی اطلاعات حافظه‌ی مشترک برنامه و مود شخصیت فعال پاک شود؟ تاریخچه‌ی گفتگو و مود شخصیت‌های دیگر دست‌نخورده می‌مانند.") == QMessageBox.Yes:
             persona_memory.forget_all()
             mood.reset()
             self.refresh()
@@ -847,7 +847,7 @@ class MainWindow(QMainWindow):
                                  checked="#B9D4F5", disabled="#52617B")
             face_label.setPixmap(fallback.pixmap(QSize(30, 30)))
             label.setText("")
-            face_label.setToolTip("حال‌وهوای فعلی Kira")
+            face_label.setToolTip("حال‌وهوای شخصیت فعال")
 
     def chat_actions_html(self, kind, text):
         """Neon icon chips with generous separation; labels stay in tooltips to keep the chat compact."""
@@ -2006,7 +2006,7 @@ class MainWindow(QMainWindow):
     def build_api_boxes(self):
         """Add API + Registered APIs + details of the selected API. Returns the three group boxes."""
         add_box, af = self.group("Add API")
-        hint = QLabel("فقط API Key را وارد کن؛ Kira خودش سرویس را (Groq، Mistral، Google AI Studio یا Cloudflare) از روی پاسخ رسمی آن تشخیص می‌دهد، "
+        hint = QLabel("فقط API Key را وارد کن؛ برنامه سرویس را (Groq، Mistral، Google AI Studio یا Cloudflare) از روی پاسخ رسمی آن تشخیص می‌دهد، "
                       "کلید را اعتبارسنجی می‌کند و مدل‌های قابل‌دسترسی را می‌گیرد. اگر سرویس با قطعیت شناسایی نشود، چیزی ثبت نمی‌شود.")
         hint.setObjectName("hint")
         hint.setWordWrap(True)
@@ -4099,13 +4099,27 @@ class MainWindow(QMainWindow):
         self.animator.set_expression("happy", hold=2)
         self.wake_timer.start(int(self.settings["wake_timeout"]) * 1000)
 
+    def wake_pattern_for_active_character(self):
+        """Build the wake phrase from the selected profile, not from the app name."""
+        profile = self.active_character()
+        terms = [str(profile.get("name") or "").strip()]
+        if profile.get("id") == "kira":
+            terms.extend(("کیرا", "کی را", "کایرا", "کیرآ", "کیارا", "Kira", "Keira", "Kyra", "Kiera"))
+        patterns = []
+        for term in dict.fromkeys(item for item in terms if item):
+            patterns.append(re.escape(term).replace(r"\\ ", r"[\\s\\u200c]*").replace(" ", r"[\\s\\u200c]*"))
+        if not patterns:
+            return WAKE_RE
+        joined = "|".join(patterns)
+        return re.compile(r"(?:(?:هی|سلام|hey|hi)[\\s\\u200c]*)?(?:" + joined + ")", re.I)
+
     def on_heard(self, text):
         self.animator.touch()
         if self.busy:
             return
         if self.wake_btn.isChecked():
             if not self.awake:
-                mt = WAKE_RE.search(text)
+                mt = self.wake_pattern_for_active_character().search(text)
                 if not mt:
                     return
                 self.wake_up()
