@@ -417,6 +417,15 @@ def forget_all():
     with _lock:
         _save(_empty())
         try:
+            shared_path = _path()
+            try:
+                shared = json.loads(shared_path.read_text(encoding="utf-8"))
+                if not isinstance(shared, dict):
+                    shared = _empty()
+            except (OSError, ValueError, TypeError):
+                shared = _empty()
+            shared["voice"] = []
+            _write_json(shared_path, shared)
             root = DATA_DIR / "characters"
             if root.exists():
                 for path in root.glob("*/voice_memory.json"):
