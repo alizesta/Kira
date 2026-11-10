@@ -73,7 +73,7 @@ BEHAVIOUR_BIAS = {
     "clingy": {"affectionate": 8, "tsundere": 5}, "stubborn": {"assertive": 12},
     "sulking": {"quiet": 10, "tsundere": 8}, "cheerful": {"playful": 10},
     "protective": {"protective": 18}, "focused": {"focused": 20},
-    "flirty": {"affectionate": 10, "teasing": 8}, "gentle": {"gentle": 18},
+    "flirty": {"flirty": 20, "affectionate": 10, "teasing": 8}, "gentle": {"gentle": 18},
     "energetic": {"playful": 8, "confident": 5},
 }
 
