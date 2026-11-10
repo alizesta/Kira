@@ -408,8 +408,21 @@ def avatar_hint(now=None):
     _ensure_runtime_migration()
     try:
         state = _emotional_runtime.snapshot(now)
-        if state["age"] <= 120 and state["intensity"] >= 12 and state["emotion"] != "neutral":
-            return state["emotion"], max(18, state["intensity"])
+        if state["age"] <= 120:
+            if state["intensity"] >= 12 and state["emotion"] != "neutral":
+                return state["emotion"], max(18, state["intensity"])
+            behavior_map = {
+                "playful": "playful", "teasing": "smug", "tsundere": "tsundere",
+                "sarcastic": "smug", "quiet": "sad", "affectionate": "affectionate",
+                "clingy": "affectionate", "stubborn": "angry", "sulking": "sad",
+                "cheerful": "happy", "reserved": "shy", "protective": "protective",
+                "focused": "thinking", "flirty": "flirty", "curious": "curious",
+                "gentle": "affectionate", "energetic": "excited",
+            }
+            if state["behavior"] in behavior_map:
+                active = dict(state["behaviors"]).get(state["behavior"], 0)
+                if active >= 18:
+                    return behavior_map[state["behavior"]], min(65, active + 18)
     except Exception:
         pass
     cur = current(now)
