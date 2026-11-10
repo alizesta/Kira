@@ -66,6 +66,17 @@ class InitiativeTests(unittest.TestCase):
             result = engine.evaluate(now=10000, last_interaction=1, enabled=True, has_relevant_memory=True, **kwargs)
             self.assertFalse(result["eligible"])
 
+    def test_only_recent_events_and_promises_are_initiative_candidates(self):
+        engine = InitiativeEngine()
+        now = 20 * 86400
+        items = [
+            {"group": "moment", "kind": "joke", "text": "joke", "ts": now - 10},
+            {"group": "fact", "kind": "event", "text": "not a moment", "ts": now - 10},
+            {"group": "moment", "kind": "event", "text": "recent exam", "ts": now - 100},
+            {"group": "moment", "kind": "promise", "text": "old promise", "ts": now - 20 * 86400},
+        ]
+        self.assertEqual(engine.select_candidate(items, now=now)["text"], "recent exam")
+
 
 if __name__ == "__main__":
     unittest.main()
