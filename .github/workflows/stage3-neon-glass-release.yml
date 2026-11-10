@@ -8,6 +8,9 @@ on:
       - "kira/mood.py"
       - "emotion_library/emotions.json"
       - "tests/test_mood.py"
+      - "docs/EMOTIONAL_STATE_FA.md"
+      - "kira/main.py"
+      - ".github/workflows/stage3-neon-glass-release.yml"
   workflow_dispatch:
 
 permissions:
@@ -48,6 +51,10 @@ jobs:
             - Consistent styling for chat, composer, route chip, settings, menus and controls
             - Preserves the existing Stage 3 application logic and features
             - Keeps Windows 11 Acrylic/Mica window effects
+            - Adds persistent layered emotions, including fear and disgust
+            - Tracks conversational energy independently from the user's state
+            - Adds separate behavioral dispositions with gradual decay and recovery
+            - Preserves backward compatibility with existing mood data
           files: dist/ProjectKira_Stage3_Neon_Glass.zip
           fail_on_unmatched_files: true
           draft: false
