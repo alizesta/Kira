@@ -149,7 +149,7 @@ PROFILE = {
     "name": "Kira",
     "description": "A lively, expressive anime desktop companion with a confident, playful and caring personality.",
     "notes": "",
-    "system_prompt": "\\n\\n".join(CORE_BLOCKS),
+    "system_prompt": "\n\n".join(CORE_BLOCKS),
     "traits": {
         "playfulness": 0.78, "warmth": 0.76, "curiosity": 0.72, "confidence": 0.78,
         "assertiveness": 0.62, "teasing": 0.68, "empathy": 0.84, "independence": 0.58,
