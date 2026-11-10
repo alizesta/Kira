@@ -90,7 +90,7 @@ def _paragraph(line: str, colour: str, ui_dir: str, size: str = "", italic: bool
     return f'<p dir="{d}" align="{align}" style="{style}">{_linkify(html.escape(line, quote=False)) or "&nbsp;"}</p>'
 
 
-def message_html(kind: str, name: str, text: str, ui_dir: str = RTL, extra_html: str = "") -> str:
+def message_html(kind: str, name: str, text: str, ui_dir: str = RTL, extra_html: str = "", footer_html: str = "") -> str:
     bubble, name_colour, text_colour, side = STYLES.get(kind, STYLES["assistant"])
     lines = _lines(text)
     body = "" if (extra_html and not str(text or "").strip()) else "".join(
@@ -104,5 +104,5 @@ def message_html(kind: str, name: str, text: str, ui_dir: str = RTL, extra_html:
     edge = "#39DFFF" if kind == "user" else ("#A58BFF" if kind == "assistant" else "#547B9F")
     return (f'<table align="{table_side}" width="86%" cellspacing="0" cellpadding="10" '
             f'style="margin:7px 4px;border:1px solid {edge};">'
-            f'<tr><td bgcolor="{bubble}">{head}{extra_html}{body}</td></tr></table>'
+            f'<tr><td bgcolor="{bubble}">{head}{extra_html}{body}{footer_html}</td></tr></table>'
             f'<p style="margin:0;font-size:3pt;">&nbsp;</p>')
