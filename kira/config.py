@@ -69,6 +69,11 @@ DEFAULTS = {
     "minimize_to_tray": True,            # minimize button hides the window to the system tray
     "close_to_tray": False,              # close (X) hides to the tray instead of quitting
     "idle_talk": True,
+    "initiative_enabled": False,             # opt-in proactive check-ins; disabled until the user explicitly enables them
+    "initiative_min_idle_seconds": 2700,      # wait at least 45 minutes since the last user message
+    "initiative_cooldown_seconds": 14400,     # at most one proactive check-in every 4 hours
+    "initiative_quiet_start_hour": 22,        # local quiet hours: 22:00 -> 09:00
+    "initiative_quiet_end_hour": 9,
     "provider_order": ["groq", "cloudflare", "mistral", "openrouter", "ollama"],
     "memory_context_limit": 12,
     # Evidence memory (kira/evidence_memory.py, docs/MEMORY_EVIDENCE_FA.md): facts with their source quote, recalled by relevance.
