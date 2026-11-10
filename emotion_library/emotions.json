@@ -121,7 +121,7 @@
       },
       "transition": {
         "in": 0.2,
-        "out": 1.0
+        "out": 1
       },
       "fallback": "frustrated",
       "keywords": {
@@ -432,7 +432,7 @@
       },
       "transition": {
         "in": 0.6,
-        "out": 1.0
+        "out": 1
       },
       "fallback": "neutral",
       "keywords": {
@@ -500,7 +500,7 @@
       },
       "transition": {
         "in": 0.5,
-        "out": 1.0
+        "out": 1
       },
       "fallback": "happy",
       "keywords": {
@@ -537,7 +537,7 @@
       },
       "transition": {
         "in": 0.5,
-        "out": 1.0
+        "out": 1
       },
       "fallback": "playful",
       "keywords": {
@@ -745,7 +745,7 @@
       },
       "transition": {
         "in": 0.25,
-        "out": 1.0
+        "out": 1
       },
       "fallback": "angry",
       "keywords": {
@@ -828,6 +828,76 @@
           "let me think",
           "hmm",
           "let's see"
+        ]
+      }
+    },
+    {
+      "id": "fearful",
+      "name": "Fearful",
+      "category": "basic",
+      "aliases": [
+        "afraid",
+        "scared",
+        "fear"
+      ],
+      "meaning": "Worried, cautious or startled by a perceived threat.",
+      "default_intensity": 52,
+      "priority": 58,
+      "duration": 7,
+      "reaction": "guard",
+      "animation": {
+        "png_softbody": "guard"
+      },
+      "transition": {
+        "in": 0.3,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "ترسیدم",
+          "می‌ترسم",
+          "نگرانم"
+        ],
+        "en": [
+          "afraid",
+          "scared",
+          "frightened"
+        ]
+      }
+    },
+    {
+      "id": "disgusted",
+      "name": "Disgusted",
+      "category": "basic",
+      "aliases": [
+        "disgust",
+        "repulsed",
+        "revulsed"
+      ],
+      "meaning": "Strong aversion or dislike toward something.",
+      "default_intensity": 48,
+      "priority": 36,
+      "duration": 5,
+      "reaction": "irritation",
+      "animation": {
+        "png_softbody": "irritation"
+      },
+      "transition": {
+        "in": 0.25,
+        "out": 0.8
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "چندش",
+          "حالم به هم خورد",
+          "منزجر"
+        ],
+        "en": [
+          "disgusting",
+          "gross",
+          "repulsive"
         ]
       }
     }
