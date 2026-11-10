@@ -33,7 +33,7 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(sum(f.startswith("His name") for f in facts), 1)      # newest name replaces the old
         self.assertTrue(any("Ali" in f for f in facts))
         self.assertTrue(any("امتحان" in f for f in facts))
-        self.assertIn("What she knows about him", pm.build_block())
+        self.assertIn("What the active character knows about the user", pm.build_block())
 
     def test_questions_are_not_facts(self):
         pm.observe("user", "من چی دوست دارم؟")
@@ -44,7 +44,7 @@ class PersonaMemoryTests(unittest.TestCase):
         block = pm.build_block(older)
         self.assertIn("شیراز", block)
         prompt = build_system_prompt({"assistant_name": "Kira"}, "FORMAT", block)
-        self.assertLess(prompt.index("Kira's own memory"), prompt.index("FORMAT"))
+        self.assertLess(prompt.index("Shared app memory about the user"), prompt.index("FORMAT"))
         self.assertIn("You are Kira", prompt)
 
     def test_empty_memory_adds_nothing_and_forget(self):
