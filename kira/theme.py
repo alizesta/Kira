@@ -208,6 +208,108 @@ QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {
     background: #5CEAFF;
 }
 
+/* Neon finish: luminous surfaces, brighter controls and clear colour identity per action. */
+QFrame#chatCard {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(12,29,54,0.98), stop:0.52 rgba(17,22,48,0.98), stop:1 rgba(31,20,60,0.98));
+    border: 1px solid #48E7FF;
+    border-radius: 21px;
+}
+QFrame#avatarCard {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(13,39,66,0.98), stop:0.60 rgba(20,25,55,0.98), stop:1 rgba(39,21,67,0.98));
+    border: 1px solid #5DEBFF;
+    border-radius: 21px;
+}
+QFrame#composer {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 rgba(18,35,72,0.99), stop:0.55 rgba(35,27,78,0.99), stop:1 rgba(49,23,72,0.99));
+    border: 1px solid #B58CFF;
+    border-radius: 18px;
+}
+QLabel#title { color: #B7F7FF; }
+QLabel#moodIndicator {
+    background: rgba(25,22,68,0.98);
+    border: 1px solid #A98AFF;
+    border-radius: 11px;
+    color: #F5ECFF;
+    padding: 4px 9px;
+}
+QToolButton {
+    border: 1px solid rgba(90,220,255,0.34);
+    border-radius: 11px;
+    padding: 7px;
+    background: rgba(14,35,61,0.88);
+}
+QToolButton:hover {
+    background: rgba(40,117,157,0.60);
+    border: 1px solid #A4F6FF;
+}
+QToolButton:checked {
+    background: rgba(75,53,139,0.78);
+    border: 1px solid #D2B7FF;
+}
+/* Voice controls have distinct neon identities instead of the same flat grey icon. */
+QToolButton#icon_mic {
+    background: rgba(62,24,61,0.88);
+    border: 1px solid #FF75C8;
+}
+QToolButton#icon_mic:hover, QToolButton#icon_mic:checked {
+    background: rgba(135,35,103,0.82);
+    border: 1px solid #FFD1F0;
+}
+QToolButton#icon_moon {
+    background: rgba(45,30,84,0.88);
+    border: 1px solid #A98AFF;
+}
+QToolButton#icon_moon:hover, QToolButton#icon_moon:checked {
+    background: rgba(87,54,145,0.84);
+    border: 1px solid #E0D0FF;
+}
+QToolButton#icon_speaker {
+    background: rgba(16,54,78,0.90);
+    border: 1px solid #55E9FF;
+}
+QToolButton#icon_speaker:hover, QToolButton#icon_speaker:checked {
+    background: rgba(21,112,145,0.82);
+    border: 1px solid #C6FBFF;
+}
+QToolButton#icon_stop {
+    background: rgba(73,28,59,0.90);
+    border: 1px solid #FF85B8;
+}
+QToolButton#icon_stop:hover {
+    background: rgba(145,35,83,0.88);
+    border: 1px solid #FFD4E5;
+}
+QToolButton#sendBtn {
+    border: 1px solid #E5FDFF;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #00DFFF, stop:0.48 #477DFF, stop:1 #B45CFF);
+}
+QToolButton#sendBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #86F4FF, stop:0.48 #83A8FF, stop:1 #D69AFF);
+    border: 1px solid #FFFFFF;
+}
+QToolButton#routeChip {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #103C56, stop:1 #33245F);
+    border: 1px solid #53E8FF;
+}
+QToolButton#routeChip:hover { border: 1px solid #FFFFFF; }
+
+/* Brighter focus rings make text and setting controls feel connected to the neon theme. */
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus,
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border: 1px solid #67EDFF;
+}
+QGroupBox {
+    border: 1px solid rgba(100,205,255,0.52);
+    background: rgba(15,25,49,0.94);
+}
+QGroupBox::title { color: #C4AEFF; }
+
 """
 
 # Only background tokens are replaced, so text and icon colors remain untouched.
