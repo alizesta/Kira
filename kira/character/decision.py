@@ -9,19 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Mapping
 
-
-# Stable traits: these define who Kira is, not how she feels in this particular turn.
-BASE_TRAITS = {
-    "playfulness": 0.78,
-    "warmth": 0.76,
-    "curiosity": 0.72,
-    "confidence": 0.78,
-    "assertiveness": 0.62,
-    "teasing": 0.68,
-    "empathy": 0.84,
-    "independence": 0.58,
-    "patience": 0.70,
-}
+from .traits import BASE_TRAITS
 
 BEHAVIOUR_GUIDES = {
     "playful": "Be witty and playful; use light banter when the situation welcomes it.",
@@ -115,7 +103,7 @@ class DecisionEngine:
             "teasing": traits["teasing"] * 20,
             "gentle": traits["empathy"] * 18,
             "protective": traits["empathy"] * 12 + traits["warmth"] * 8,
-            "focused": traits["patience"] * 14,
+            "focused": traits["patience"] * 12 + traits.get("carefulness", 0.76) * 8,
             "assertive": traits["assertiveness"] * 18,
             "affectionate": traits["warmth"] * 20,
             "curious": traits["curiosity"] * 20,
@@ -124,10 +112,16 @@ class DecisionEngine:
             "confident": traits["confidence"] * 20,
             "balanced": 10,
         }.get(name, 0)
-        emotion = str(mood.get("emotion", "neutral"))
-        score += EMOTION_BIAS.get(emotion, {}).get(name, 0)
-        for secondary, strength in mood.get("secondary_emotions", [])[:3]:
-            score += EMOTION_BIAS.get(str(secondary), {}).get(name, 0) * min(1.0, float(strength) / 100.0)
+        components = mood.get("emotional_components") or []
+        if components:
+            for component in components[:3]:
+                emotion, strength = (component + [100])[:2] if isinstance(component, (list, tuple)) else (str(component), 100)
+                score += EMOTION_BIAS.get(str(emotion), {}).get(name, 0) * min(1.0, float(strength) / 100.0)
+        else:
+            emotion = str(mood.get("emotion", "neutral"))
+            score += EMOTION_BIAS.get(emotion, {}).get(name, 0)
+            for secondary, strength in mood.get("secondary_emotions", [])[:3]:
+                score += EMOTION_BIAS.get(str(secondary), {}).get(name, 0) * min(1.0, float(strength) / 100.0)
         for behaviour, strength in mood.get("behaviors", [])[:5]:
             score += BEHAVIOUR_BIAS.get(str(behaviour), {}).get(name, 0) * min(1.0, float(strength) / 100.0)
         relationship = mood.get("relationship") or {}
@@ -140,7 +134,7 @@ class DecisionEngine:
             score += (30.0 - trust) * 0.18
         if name in ("gentle", "assertive") and tension >= 40:
             score += min(12.0, (tension - 40.0) * 0.22)
-        for memory in mood.get("emotional_memories", [])[-12:]:
+        for memory in mood.get("emotional_memories", [])[:8]:
             if not isinstance(memory, dict):
                 continue
             signal = str(memory.get("signal") or "")
@@ -207,9 +201,15 @@ _DEFAULT_ENGINE = DecisionEngine()
 
 
 def decide(user_text="", mood=None, mode_name="chat", initiative="wait"):
-    return _DEFAULT_ENGINE.decide(user_text, mood, mode_name, initiative)
+    mood = mood or {}
+    traits = mood.get("personality_traits") if isinstance(mood, dict) else None
+    engine = DecisionEngine(traits) if isinstance(traits, dict) else _DEFAULT_ENGINE
+    return engine.decide(user_text, mood, mode_name, initiative)
 
 
 def build_block(user_text="", mood=None, mode_name="chat", initiative="wait"):
-    decision = decide(user_text, mood, mode_name, initiative)
-    return _DEFAULT_ENGINE.build_prompt(decision), decision
+    mood = mood or {}
+    traits = mood.get("personality_traits") if isinstance(mood, dict) else None
+    engine = DecisionEngine(traits) if isinstance(traits, dict) else _DEFAULT_ENGINE
+    decision = engine.decide(user_text, mood, mode_name, initiative)
+    return engine.build_prompt(decision), decision
