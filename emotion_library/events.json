@@ -5,19 +5,38 @@
     "app_startup": {
       "emotion": "happy",
       "intensity": 40,
-      "duration": 3.0,
-      "pulse": "perk"
+      "duration": 3,
+      "pulse": "perk",
+      "runtime_emotions": {
+        "happy": 10,
+        "curious": 5
+      },
+      "runtime_behaviors": {
+        "cheerful": 5
+      }
     },
     "user_message": {
       "emotion": "curious",
       "intensity": 28,
       "duration": 1.8,
-      "pulse": "listen"
+      "pulse": "listen",
+      "runtime_emotions": {
+        "curious": 5
+      },
+      "runtime_behaviors": {
+        "focused": 3
+      }
     },
     "response_started": {
       "emotion": "thinking",
       "intensity": 45,
-      "duration": 25.0
+      "duration": 25,
+      "runtime_emotions": {
+        "thinking": 7
+      },
+      "runtime_behaviors": {
+        "focused": 5
+      }
     },
     "response_finished": {
       "pulse": "nod",
@@ -28,16 +47,28 @@
     "response_failed": {
       "emotion": "sad",
       "intensity": 40,
-      "duration": 4.0,
+      "duration": 4,
       "release_events": [
         "response_started"
-      ]
+      ],
+      "runtime_emotions": {
+        "frustrated": 10
+      },
+      "runtime_behaviors": {
+        "focused": 5
+      }
     },
     "tts_started": {
-      "speaking": true
+      "speaking": true,
+      "runtime_emotions": {
+        "confident": 3
+      }
     },
     "tts_stopped": {
-      "speaking": false
+      "speaking": false,
+      "runtime_emotions": {
+        "calm": 2
+      }
     },
     "user_interrupt": {
       "emotion": "annoyed",
@@ -47,7 +78,13 @@
       "speaking": false,
       "release_events": [
         "response_started"
-      ]
+      ],
+      "runtime_emotions": {
+        "surprised": 8
+      },
+      "runtime_behaviors": {
+        "reserved": 4
+      }
     }
   }
 }
