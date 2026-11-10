@@ -62,6 +62,7 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          target_commitish: ${{ github.sha }}
           tag_name: kira-${{ steps.package.outputs.stamp }}-${{ github.run_number }}
           name: Kira Update ${{ steps.package.outputs.stamp }}
           body: |
