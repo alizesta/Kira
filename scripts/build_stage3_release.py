@@ -108,7 +108,11 @@ def main() -> None:
             "kira/ui_icons.py": Path("kira/ui_icons.py"),
             "kira/mood.py": MOOD_SOURCE,
             "kira/personality.py": Path("kira/personality.py"),
+            "kira/strings.py": Path("kira/strings.py"),
             "kira/config.py": Path("kira/config.py"),
+            "kira/characters/__init__.py": Path("kira/characters/__init__.py"),
+            "kira/characters/kira.py": Path("kira/characters/kira.py"),
+            "kira/characters/registry.py": Path("kira/characters/registry.py"),
             "kira/character/__init__.py": Path("kira/character/__init__.py"),
             "kira/character/traits.py": Path("kira/character/traits.py"),
             "kira/character/learning.py": Path("kira/character/learning.py"),
@@ -145,6 +149,19 @@ def main() -> None:
         character_target = kira_dir / "character" / "decision.py"
         if not character_target.is_file() or "class DecisionEngine" not in character_target.read_text(encoding="utf-8"):
             raise RuntimeError("Provider-neutral character decision engine was not packaged")
+        profiles_target = kira_dir / "characters" / "registry.py"
+        kira_profile_target = kira_dir / "characters" / "kira.py"
+        prompt_target = kira_dir / "personality.py"
+        if not profiles_target.is_file() or "class CharacterRegistry" not in profiles_target.read_text(encoding="utf-8"):
+            raise RuntimeError("Independent character profile registry was not packaged")
+        if not kira_profile_target.is_file() or '"id": "kira"' not in kira_profile_target.read_text(encoding="utf-8"):
+            raise RuntimeError("Built-in Kira character profile was not packaged")
+        if not prompt_target.is_file() or "character_profile=None" not in prompt_target.read_text(encoding="utf-8"):
+            raise RuntimeError("Generic active-character prompt assembly was not packaged")
+        if "def build_characters_tab" not in main_text or "def build_personality_tab" not in main_text or "def build_help_tab" not in main_text:
+            raise RuntimeError("Character-first navigation and Help UI were not packaged")
+        if "APP_NAME" not in main_text:
+            raise RuntimeError("Application branding is still coupled to the active character")
         if "def update_mood_indicator" not in main_text:
             raise RuntimeError("Live emoji mood indicator was not packaged")
         if "def _pulse_neon_glow" not in main_text or "QPropertyAnimation" not in main_text:
