@@ -9,7 +9,7 @@ These layers are stored locally and injected into the system prompt on every req
                     extracted locally from the user's messages. No extra model call is needed.
 3. Digest memory  - a compact digest of what was talked about earlier, beyond the messages sent verbatim.
 4. Relationship memory - dated moments the user mentioned (exams, trips, promises), lines from the active character that made the user laugh, preferences the user
-                    stated, habits OBSERVED from timing (marked as observed, never as something he said), and compressed
+                    stated, habits OBSERVED from timing (marked as observed, never as something the user stated), and compressed
                     summaries of old conversations. Everything is local, rule-based (no extra model call), listable, editable
                     and deletable (list_items / update_item / delete_item / forget_all).
 
@@ -219,7 +219,7 @@ def _clean_value(kind: str, value: str) -> str:
 # U+FF1F is the fullwidth question mark; it counts as a question mark like "?" and the Persian "؟" (U+061F).
 def extract_facts_detailed(text: str) -> list[dict]:
     """Facts found in one user message, each with the evidence that justifies it:
-    {'kind', 'label' (the stored sentence), 'value', 'quote' (the exact words he wrote), 'uncertain' (he hedged), 'correction' (he corrected himself)}.
+    {'kind', 'label' (the stored sentence), 'value', 'quote' (the exact words the user wrote), 'uncertain' (he hedged), 'correction' (he corrected himself)}.
     Only short statements; questions are ignored."""
     found = []
     for m_part in re.finditer(r"([^\n.!؟?\uff1f]+)([.!؟?\uff1f]*)", str(text or "")):
@@ -462,7 +462,7 @@ def delete_item(item_id: str) -> bool:
     if str(item_id).startswith("ev:"):
         return _evidence.delete_extra(item_id)
     removed = _delete_persona_item(item_id)
-    _evidence.delete_by_persona_id(item_id)                              # the evidence of what he deleted goes too
+    _evidence.delete_by_persona_id(item_id)                              # the corresponding evidence record is deleted too
     return removed
 
 
@@ -501,7 +501,7 @@ def update_item(item_id: str, text: str) -> bool:
     if sync is None:
         return False
     if sync[0] == "facts":                                              # outside the lock: the two stores never wait for each other
-        _evidence.update_by_persona_id(item_id, sync[1], text)          # his own wording replaces the stored fact
+        _evidence.update_by_persona_id(item_id, sync[1], text)          # the user's own wording replaces the stored fact
     return True
 
 
@@ -517,7 +517,7 @@ def add_note(text: str, now=None) -> bool:
 
 # ---------------- summaries of old conversations ----------------
 def summarize(chunk: list[dict]) -> str:
-    """Compact, extractive summary of old messages (no model call): the most informative distinct lines he wrote + counts of how he felt."""
+    """Compact, extractive summary of old messages (no model call): the most informative distinct lines written by the user + broad interaction signals."""
     from . import mood
     users = []
     for item in chunk:
@@ -635,7 +635,7 @@ def build_block(older: list[dict] | None = None, voice_samples: bool = True, now
         parts.append(relevant)
     rel = habit_lines(now)
     if rel:
-        parts.append("The relationship and his habits:\n" + "\n".join(f"- {t}" for t in rel))
+        parts.append("The user's observed habits and interaction patterns:\n" + "\n".join(f"- {t}" for t in rel))
     moments = [m for m in data["moments"] if not _expired(m, now) and (voice_samples or m.get("kind") != "joke")]
     if moments:
         parts.append("Dated moments shared by the user (they may be over by now, so ask rather than assume):\n"
