@@ -38,7 +38,7 @@ QLineEdit:read-only { color: #AAB8D2; }
 
 QPushButton {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #6653E8, stop:1 #493EAA);
-    border: 1px solid rgba(181,164,255,0.54); border-radius: 10px; padding: 8px 15px;
+    border: 1px solid rgba(181,164,255,0.54); border-radius: 10px; padding: 6px 11px;
     color: #FFFFFF; font-weight: 700;
 }
 QPushButton:hover {
@@ -54,7 +54,7 @@ QPushButton#save {
 }
 QPushButton#save:hover { background: #20B8B0; border: 1px solid #A0FFFF; }
 
-QToolButton { border: 1px solid transparent; border-radius: 9px; padding: 6px; color: #DCEBFF; }
+QToolButton { border: 1px solid transparent; border-radius: 9px; padding: 4px; color: #DCEBFF; }
 QToolButton:hover { background: rgba(99,220,255,0.13); border: 1px solid rgba(99,220,255,0.40); }
 QToolButton:pressed { background: rgba(125,104,255,0.26); border: 1px solid rgba(157,141,255,0.72); }
 QToolButton:checked { background: rgba(84,75,177,0.40); border: 1px solid rgba(118,222,255,0.66); }
@@ -74,7 +74,7 @@ QToolButton#sendBtn:disabled { background: #35415B; border: 1px solid #52617B; }
 QToolButton#routeChip {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #173C58, stop:1 #302B62);
     border: 1px solid rgba(105,224,255,0.64); border-radius: 12px;
-    padding: 4px 11px; color: #D9F8FF; font-size: 8.5pt; font-weight: 700;
+    padding: 3px 8px; color: #D9F8FF; font-size: 8.5pt; font-weight: 700;
 }
 QToolButton#routeChip:hover { background: #284A75; border: 1px solid #A1F0FF; }
 QToolButton#genStop { background: #A83261; border: 1px solid #FF94C1; border-radius: 16px; padding: 0px; }
@@ -211,19 +211,19 @@ QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {
 /* Neon finish: luminous surfaces, brighter controls and clear colour identity per action. */
 QFrame#chatCard {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(12,29,54,0.98), stop:0.52 rgba(17,22,48,0.98), stop:1 rgba(31,20,60,0.98));
+        stop:0 rgba(12,29,54,0.62), stop:0.52 rgba(17,22,48,0.66), stop:1 rgba(31,20,60,0.62));
     border: 1px solid #48E7FF;
     border-radius: 21px;
 }
 QFrame#avatarCard {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(13,39,66,0.98), stop:0.60 rgba(20,25,55,0.98), stop:1 rgba(39,21,67,0.98));
+        stop:0 rgba(13,39,66,0.62), stop:0.60 rgba(20,25,55,0.66), stop:1 rgba(39,21,67,0.62));
     border: 1px solid #5DEBFF;
     border-radius: 21px;
 }
 QFrame#composer {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 rgba(18,35,72,0.99), stop:0.55 rgba(35,27,78,0.99), stop:1 rgba(49,23,72,0.99));
+        stop:0 rgba(18,35,72,0.58), stop:0.55 rgba(35,27,78,0.62), stop:1 rgba(49,23,72,0.58));
     border: 1px solid #B58CFF;
     border-radius: 18px;
 }
