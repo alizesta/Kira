@@ -6,9 +6,9 @@ These layers are stored locally and injected into the system prompt on every req
 1. Voice memory   - The active character's own past replies that capture their style (short, in character). Shown as samples so a new
                     model imitates the real rhythm, slang and attitude instead of its default style.
 2. Fact memory    - lasting things about the user and the relationship (name, likes, "remember that ..."),
-                    extracted locally from what he writes. No extra model call is needed.
+                    extracted locally from the user's messages. No extra model call is needed.
 3. Digest memory  - a compact digest of what was talked about earlier, beyond the messages sent verbatim.
-4. Relationship memory - dated moments he mentioned (exams, trips, promises), lines of hers that made him laugh, preferences he
+4. Relationship memory - dated moments the user mentioned (exams, trips, promises), lines from the active character that made the user laugh, preferences the user
                     stated, habits OBSERVED from timing (marked as observed, never as something he said), and compressed
                     summaries of old conversations. Everything is local, rule-based (no extra model call), listable, editable
                     and deletable (list_items / update_item / delete_item / forget_all).
@@ -177,7 +177,7 @@ _PREF_RULES = (
     (re.compile(r"(?:صدام\s*کن|بهم\s*بگو|منو\s*صدا\s*کن)\s+([^\s.,!؟?،]{2,20})|call\s+me\s+([A-Za-z][\w'-]{1,20})", re.I), "nick", "He likes to be called {}"),
 )
 _LABELS = {"pref_len": "{}", "nick": "He likes to be called {}", "name": "His name is {}", "age": "He is {} years old", "like": "He likes {}", "dislike": "He dislikes {}",
-           "job": "His work: {}", "place": "He is from/lives in {}", "note": "He asked her to remember: {}"}
+           "job": "His work: {}", "place": "He is from/lives in {}", "note": "User asked the active character to remember: {}"}
 
 
 _QUESTION_RX = re.compile(
@@ -301,7 +301,7 @@ def _sentences(text: str):
 
 
 def extract_moments(text: str) -> list[tuple[str, str]]:
-    """(kind, sentence) for dated events and promises he states. Conservative: time word + event word, or an explicit promise."""
+    """(kind, sentence) for dated events and promises stated by the user. Conservative: time word + event word, or an explicit promise."""
     out = []
     for part in _sentences(text):
         norm = _norm_part(part)
@@ -327,7 +327,7 @@ def _label_moment(kind: str, text: str, now: float) -> str:
     day = time.strftime("%Y-%m-%d", time.localtime(now))
     if kind == "joke":
         return text
-    return f"{day}: he said \"{text[:140]}\"" + (" (a promise)" if kind == "promise" else "")
+    return f"{day}: user said \"{text[:140]}\"" + (" (a promise)" if kind == "promise" else "")
 
 
 def _note_habits(content: str, now: float):
@@ -345,23 +345,23 @@ def _note_habits(content: str, now: float):
 
 
 def habit_lines(now=None) -> list[str]:
-    """Habits measured from timing/length, clearly marked as observed (he never said them). Empty until there is enough data."""
+    """Habits measured from timing/length, clearly marked as observed (the user never stated them). Empty until there is enough data."""
     with _lock:
         h = _load()["habits"]
     lines = []
     if h["first_seen"] and len(h["days"]) >= 2:
-        lines.append(f"They have been talking since {time.strftime('%Y-%m-%d', time.localtime(h['first_seen']))}; he has chatted on {len(h['days'])} different days.")
+        lines.append(f"They have been talking since {time.strftime('%Y-%m-%d', time.localtime(h['first_seen']))}; the user has chatted on {len(h['days'])} different days.")
     if h["messages"] >= HABIT_MIN_MESSAGES:
         bands = {"at night (00-06)": sum(h["hours"][0:6]), "in the morning (06-12)": sum(h["hours"][6:12]),
                  "in the afternoon (12-18)": sum(h["hours"][12:18]), "in the evening (18-24)": sum(h["hours"][18:24])}
         name, count = max(bands.items(), key=lambda kv: kv[1])
         if count / h["messages"] >= 0.45:
-            lines.append(f"Observed (he never said it): he mostly talks to her {name}.")
+            lines.append(f"Observed (not user-stated): the user most often chats during {name}.")
         avg = h["chars"] / h["messages"]
         if avg < 35:
-            lines.append("Observed: he usually writes short messages.")
+            lines.append("Observed: the user usually writes short messages.")
         elif avg > 180:
-            lines.append("Observed: he usually writes long, detailed messages.")
+            lines.append("Observed: the user usually writes long, detailed messages.")
     return lines
 
 
@@ -393,7 +393,7 @@ def observe(role: str, content: str, now=None):
                 moment_ids.append((kind, sentence, _id(kind, label)))
             _evidence.record_user_message(content, facts=details, moments=moment_ids, now=now)      # provenance + contradiction handling (never raises)
             if _last_reply and _LAUGH_RX.search(str(content)) and is_voice_sample(_last_reply):
-                add_moment("joke", f"A line of hers that made him laugh: \"{_last_reply[:140]}\"", now)
+                add_moment("joke", f"A line from the active character that made the user laugh: \"{_last_reply[:140]}\"", now)
             _note_habits(str(content), now)
     except Exception:                                             # noqa: BLE001
         pass
@@ -596,13 +596,13 @@ def digest(older: list[dict]) -> list[str]:
 
 # ---------------- the block that goes into the system prompt ----------------
 HEADER = ("Shared app memory about the user (real, stored on this computer; available to the active character whichever model is writing the reply). "
-          "Use it naturally and sparingly; never recite it or mention that it is a list. It is everything she knows about him: "
-          "anything not listed here she does not know, and she must not pretend to.")
+          "Use it naturally and sparingly; never recite it or mention that it is a list. It is everything the active character knows about the user: "
+          "anything not listed here is unknown to the active character and must not be invented.")
 
 
 HEADER_RELEVANT = ("Shared app memory about the user (real, stored on this computer; available to the active character whichever model is writing the reply). "
                    "Use it naturally and sparingly; never recite it or mention that it is a list. The facts below are only the ones that fit this "
-                   "message; if he asks about something that is not listed, she does not remember it and must say so instead of guessing.")
+                   "message; if the user asks about something that is not listed, the active character does not remember it and must say so instead of guessing.")
 
 
 def build_block(older: list[dict] | None = None, voice_samples: bool = True, now=None, query: str | None = None, budget: int | None = None) -> str:
@@ -620,17 +620,17 @@ def build_block(older: list[dict] | None = None, voice_samples: bool = True, now
         data = _load()
     parts = []
     voice = data["voice"][-10:][::-1][::2][:VOICE_SHOWN]
-    if voice and voice_samples:                  # her own recent banter is a style anchor: left out when the turn is a practical request
+    if voice and voice_samples:                  # the active character's own recent banter is a style anchor: left out when the turn is a practical request
         samples = "\n".join(f"- {v}" for v in reversed(voice))
         parts.append("How the active character really sounds (their own recent lines). Match this rhythm, slang, attitude and length in "
                      "your reply; do not copy the sentences:\n" + samples)
     if relevant is None:
         fact_lines = [f["text"] for f in data["facts"]]
-        notes = [t for t in fact_lines if t.startswith("He asked her")]
-        rest = [t for t in fact_lines if not t.startswith("He asked her")]
+        notes = [t for t in fact_lines if t.startswith("He asked her") or t.startswith("User asked the active character")]
+        rest = [t for t in fact_lines if not (t.startswith("He asked her") or t.startswith("User asked the active character"))]
         shown = (rest[-(FACTS_SHOWN - min(len(notes), 6)):] + notes[-6:])
         if shown:
-            parts.append("What she knows about him:\n" + "\n".join(f"- {t}" for t in shown))
+            parts.append("What the active character knows about the user:\n" + "\n".join(f"- {t}" for t in shown))
     elif relevant:
         parts.append(relevant)
     rel = habit_lines(now)
@@ -638,14 +638,14 @@ def build_block(older: list[dict] | None = None, voice_samples: bool = True, now
         parts.append("The relationship and his habits:\n" + "\n".join(f"- {t}" for t in rel))
     moments = [m for m in data["moments"] if not _expired(m, now) and (voice_samples or m.get("kind") != "joke")]
     if moments:
-        parts.append("Moments and things he told her (dated; they may be over by now, so ask rather than assume):\n"
+        parts.append("Dated moments shared by the user (they may be over by now, so ask rather than assume):\n"
                      + "\n".join(f"- {m['text']}" for m in moments[-MOMENTS_SHOWN:]))
     if data["summaries"]:
         parts.append("Older conversations (compressed summaries; may be incomplete):\n"
                      + "\n".join(f"- {m['text']}" for m in data["summaries"][-SUMMARIES_SHOWN:]))
     older_lines = digest(older or [])
     if older_lines:
-        parts.append("Earlier topics he raised (older than the messages below):\n" + "\n".join(f"- {t}" for t in older_lines))
+        parts.append("Earlier topics the user raised (older than the messages below):\n" + "\n".join(f"- {t}" for t in older_lines))
     if not parts:
         return ""
     block = (HEADER if relevant is None else HEADER_RELEVANT) + "\n\n" + "\n\n".join(parts)
