@@ -9,7 +9,7 @@ STR = {
   "g_behavior": "رفتار عمومی برنامه", "g_help_updates": "دریافت و به‌روزرسانی", "help_description": "از این بخش می‌توانی نسخه‌ی جدید، فایل نصب/فشرده و تغییرات آن را از صفحه‌ی رسمی پروژه پیدا کنی.", "help_latest": "آخرین نسخه و دانلود", "help_repository": "مخزن کد در GitHub", "g_help_about": "درباره‌ی برنامه", "help_about_text": "این برنامه یک هسته‌ی هوش مصنوعی با قابلیت انتخاب شخصیت است. پروفایل Kira فقط یکی از شخصیت‌هاست و نام تجاری برنامه در تنظیمات مستقل نگه‌داری می‌شود.",
 
   "send": "ارسال", "nav_menu_tip": "بخش‌ها و تنظیمات", "route_idle": "● آماده · انتخاب خودکار", "route_none": "هیچ مسیر فعالی نیست", "route_open": "مدیریت Route…", "input_ph": "پیامت رو بنویس… (مثلاً: ماشین حساب رو باز کن)",
-  "mic": "میکروفون", "wake": "حالت بیدارباش", "voice": "صدای شخصیت فعال", "stop": "قطع صدا",
+  "mic": "میکروفون", "wake": "حالت بیدارباش", "voice": "صدای گفتار", "stop": "قطع صدا",
   "show_char": "نمایش شخصیت روی دسکتاپ", "hide_char": "مخفی کردن شخصیت",
   "g_assistant": "هویت و شخصیت", "g_model": "مدل محلی (Ollama)", "g_tts": "خروجی صدا", "g_stt": "میکروفون و تشخیص گفتار",
   "g_char": "شخصیت روی دسکتاپ", "g_lang": "زبان برنامه", "g_memory": "حافظه",
@@ -51,7 +51,7 @@ STR = {
   "g_behavior": "General app behavior", "g_help_updates": "Downloads and updates", "help_description": "Find the latest version, release download and change notes on the official project page.", "help_latest": "Latest release and download", "help_repository": "GitHub source repository", "g_help_about": "About", "help_about_text": "This app provides an AI core with selectable character profiles. Kira is one character; the application brand is managed independently.",
 
   "nav_menu_tip": "Sections and settings", "route_idle": "● Ready · automatic", "route_none": "No active route", "route_open": "Route Manager…", "send": "Send", "input_ph": "Type a message… (e.g. open calculator)",
-  "mic": "Microphone", "wake": "Wake mode", "voice": "Active character voice", "stop": "Stop voice",
+  "mic": "Microphone", "wake": "Wake mode", "voice": "Speech voice", "stop": "Stop voice",
   "show_char": "Show character on desktop", "hide_char": "Hide character",
   "g_assistant": "Identity and personality", "g_model": "AI model (Ollama)", "g_tts": "Voice output", "g_stt": "Microphone and speech recognition",
   "g_char": "Desktop character", "g_lang": "Language", "g_memory": "Memory",
