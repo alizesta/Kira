@@ -355,6 +355,39 @@ class GuiTests(unittest.TestCase):
         self.assertIsNone(sp._fx)
         self.assertTrue(errors and "دستگاه" in errors[0])
 
+    def test_neon_mood_indicator_uses_vector_bolt_without_plain_emoji(self):
+        from unittest import mock
+        from kira.main import make_icon
+        w = self.win
+        with mock.patch("kira.main.mood.current", return_value={
+            "emotion": "happy", "intensity": 70, "secondary_emotions": [],
+            "behavior": "energetic", "energy_label": "active",
+        }):
+            w.update_mood_indicator()
+        self.assertEqual(w.mood_indicator.text(), "")
+        self.assertFalse(w.mood_indicator.pixmap().isNull())
+        self.assertTrue(w.mood_indicator.isVisible())
+        with mock.patch("kira.main.mood.current", return_value={
+            "emotion": "neutral", "intensity": 20, "secondary_emotions": [],
+            "behavior": "balanced", "energy_label": "normal",
+        }):
+            w.update_mood_indicator()
+        self.assertFalse(w.mood_indicator.isVisible())
+
+    def test_chat_input_height_does_not_reapply_same_geometry(self):
+        from kira.ui_widgets import ChatInput
+        widget = ChatInput()
+        widget.resize(420, 40)
+        widget.show()
+        APP.processEvents()
+        widget.setText("سلام")
+        APP.processEvents()
+        first_height = widget.height()
+        widget._fit()
+        widget._fit()
+        self.assertEqual(widget.height(), first_height)
+        widget.close()
+
     # 19) character, face, reactions, companion untouched and working
     def test_19_character_voice_and_reactions_still_work(self):
         w = self.win
