@@ -900,6 +900,259 @@
           "repulsive"
         ]
       }
+    },
+    {
+      "id": "calm",
+      "name": "Calm",
+      "category": "state",
+      "aliases": [],
+      "meaning": "steady and settled",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "hopeful",
+      "name": "Hopeful",
+      "category": "state",
+      "aliases": [],
+      "meaning": "expects a positive outcome",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "disappointed",
+      "name": "Disappointed",
+      "category": "state",
+      "aliases": [],
+      "meaning": "expectations were not met",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "lonely",
+      "name": "Lonely",
+      "category": "state",
+      "aliases": [],
+      "meaning": "feels socially disconnected",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "guilty",
+      "name": "Guilty",
+      "category": "state",
+      "aliases": [],
+      "meaning": "regrets an action",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "grateful",
+      "name": "Grateful",
+      "category": "state",
+      "aliases": [],
+      "meaning": "feels thankful",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "nostalgic",
+      "name": "Nostalgic",
+      "category": "state",
+      "aliases": [],
+      "meaning": "emotionally recalls the past",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "confident",
+      "name": "Confident",
+      "category": "state",
+      "aliases": [],
+      "meaning": "feels capable and assured",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "confused",
+      "name": "Confused",
+      "category": "state",
+      "aliases": [],
+      "meaning": "uncertain or puzzled",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "relieved",
+      "name": "Relieved",
+      "category": "state",
+      "aliases": [],
+      "meaning": "tension has eased",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "content",
+      "name": "Content",
+      "category": "state",
+      "aliases": [],
+      "meaning": "quietly satisfied",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
     }
   ]
 }
