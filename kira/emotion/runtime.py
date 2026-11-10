@@ -387,10 +387,6 @@ class EmotionalRuntime:
                     continue
                 chosen.append((emotion, value))
                 if len(chosen) == 2: break
-            if len(chosen) == 2 and self.library:
-                combo = self.library.combination(chosen[0][0], chosen[1][0])
-                if combo and combo.get("mode") == "replace" and combo.get("result") in EMOTIONS:
-                    chosen = [(combo["result"], max(v for _, v in chosen))]
             components = [(e, int(round(v))) for e, v in chosen]
             dominant = chosen[0] if chosen else ("neutral", 0.0)
             composite = None
