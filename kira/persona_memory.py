@@ -1,4 +1,4 @@
-"""Kira's model-independent memory: three layers that keep her the same person on every model.
+"""Model-independent application memory: user facts and continuity shared with the active character.
 
 The chat history alone cannot do that: a model that only sees the last few messages copies its own habits.
 These layers are stored locally and injected into the system prompt on every request, whichever provider answers:
@@ -320,7 +320,7 @@ def habit_lines(now=None) -> list[str]:
 
 # ---------------- observing the conversation ----------------
 def observe(role: str, content: str, now=None):
-    """Called for every saved message. Learns voice samples (Kira), facts, moments, jokes and habits (user). Never raises."""
+    """Called for every saved message. Learns active-character voice samples (when enabled), user facts, moments, jokes and habits. Never raises."""
     global _last_reply
     now = time.time() if now is None else now
     try:
@@ -365,7 +365,7 @@ def forget_conversation():
 
 
 def forget_all():
-    """Everything Kira stored about him and the relationship (not the chat history itself)."""
+    """Shared information about the user and ongoing context (not the chat history itself)."""
     global _last_reply
     _last_reply = ""
     with _lock:
