@@ -286,6 +286,7 @@ class EmotionalRuntime:
                 "secondary_emotions": [(e, int(round(v))) for e, v in chosen[1:]],
                 "emotions": {k: int(round(v)) for k, v in emotions.items()},
                 "behavior": behavior,
+                "behavior_scores": {k: int(round(v)) for k, v in behaviors.items()},
                 "behaviors": [(k, int(round(v))) for k, v in sorted(behaviors.items(), key=lambda x: x[1], reverse=True) if v >= 12][:4],
                 "energy": int(round(self._state["energy"])),
                 "energy_label": ("exhausted" if self._state["energy"] <= 15 else "tired" if self._state["energy"] <= 35 else "low" if self._state["energy"] <= 55 else "normal" if self._state["energy"] <= 75 else "active" if self._state["energy"] <= 90 else "hyper"),
