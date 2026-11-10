@@ -156,7 +156,8 @@ def main() -> None:
                 included += 1
 
     print(f"Stage 3 source: {SOURCE_ARCHIVE}")
-    print("Applied visual-only theme update: kira/theme.py")
+    print("Applied visual theme update: kira/theme.py")
+    print("Applied layered emotional state: persistent mood, energy and behavior")
     print(f"Python syntax checks: passed")
     print(f"Files included: {included}; runtime/sensitive files excluded: {excluded}")
     print(f"Release asset: {OUTPUT_ARCHIVE}")
