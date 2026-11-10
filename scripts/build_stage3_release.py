@@ -108,6 +108,7 @@ def main() -> None:
             "kira/ui_icons.py": Path("kira/ui_icons.py"),
             "kira/mood.py": MOOD_SOURCE,
             "kira/personality.py": Path("kira/personality.py"),
+            "kira/persona_memory.py": Path("kira/persona_memory.py"),
             "kira/strings.py": Path("kira/strings.py"),
             "kira/config.py": Path("kira/config.py"),
             "kira/characters/__init__.py": Path("kira/characters/__init__.py"),
