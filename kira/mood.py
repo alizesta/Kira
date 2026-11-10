@@ -157,15 +157,19 @@ def _path():
     return DATA_DIR / "characters" / _ACTIVE_CHARACTER_ID / "mood.json"
 
 
-def set_active_character(character_id):
-    """Switch persistent emotional state to the selected character profile."""
+def set_active_character(character_id, base_traits=None):
+    """Switch persistent emotional and learned personality state to the selected profile."""
     global _ACTIVE_CHARACTER_ID, _emotional_runtime, _runtime_migrated
     safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", str(character_id or "kira"))[:80] or "kira"
+    path_changed = safe_id != _ACTIVE_CHARACTER_ID
     _ACTIVE_CHARACTER_ID = safe_id
     path = _path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    _emotional_runtime = EmotionalRuntime(path=path)
-    _runtime_migrated = False
+    if path_changed:
+        _emotional_runtime = EmotionalRuntime(path=path, base_traits=base_traits)
+        _runtime_migrated = False
+    elif base_traits is not None:
+        _emotional_runtime.set_base_traits(base_traits)
     return _ACTIVE_CHARACTER_ID
 
 
@@ -329,7 +333,7 @@ def on_user_message(text, now=None) -> list[str]:
 
 def on_reply(emotions, intensity=None, now=None):
     _ensure_runtime_migration()
-    """Carry Kira's own reply emotions forward and update her behavioral disposition."""
+    """Carry the active character's reply emotions forward and update their behavioral disposition."""
     now = time.time() if now is None else now
     emotions = [e for e in (emotions or []) if e in EMOTIONS and e != "neutral"]
     level = max(0.0, min(100.0, float(intensity))) if intensity is not None else 35.0
