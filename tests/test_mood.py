@@ -67,6 +67,20 @@ class MoodStateTests(unittest.TestCase):
     def test_strict_prompt_does_not_expose_mood_state(self):
         self.assertEqual(mood.build_block("strict", now=1000), "")
 
+    def test_repeated_explicit_style_feedback_teaches_personality_slowly(self):
+        initial = mood.current(now=1000)["personality_traits"]["teasing"]
+        mood.on_user_message("این شوخی خوب بود", now=1000)
+        first = mood.current(now=1000)["personality_traits"]["teasing"]
+        self.assertEqual(first, initial)
+        mood.on_user_message("همین لحن شوخ رو دوست دارم", now=1000 + 9 * 3600)
+        later = mood.current(now=1000 + 9 * 3600)["personality_traits"]["teasing"]
+        self.assertGreater(later, initial)
+
+    def test_mood_prompt_recalls_memories_relevant_to_the_current_message(self):
+        mood.on_user_message("فردا امتحان مهم دارم و نگرانم", now=1000)
+        block = mood.build_block("chat", now=1000, query="امتحان فردا")
+        self.assertIn("فردا امتحان", block)
+
 
 if __name__ == "__main__":
     unittest.main()
