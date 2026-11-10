@@ -12,6 +12,10 @@ import time
 from pathlib import Path
 
 from ..config import DATA_DIR
+from ..character.traits import (
+    BASE_TRAITS, TRAIT_LEARNING_RULES, TRAIT_MIN_OFFSET, TRAIT_MAX_OFFSET,
+    TRAIT_LEARNING_THRESHOLD, TRAIT_FEEDBACK_COOLDOWN_S,
+)
 
 STATE_FILE = "kira_emotional_state.json"
 LOCK = threading.RLock()
@@ -36,6 +40,7 @@ DEFAULTS = {
     "relationship": {"trust": 50.0, "closeness": 28.0, "familiarity": 12.0,
                      "comfort": 45.0, "tension": 0.0},
     "memories": [], "recent_events": [], "last_user_signals": [],
+    "personality_traits": BASE_TRAITS, "feedback_evidence": {}, "last_initiative": 0.0,
 }
 
 # Mood impulse is intentionally distinct from delivery behavior.
@@ -116,7 +121,22 @@ class EmotionalRuntime:
             state["memories"] = list(raw.get("memories") or [])[-int(self.config.get("memory_limit", MAX_MEMORIES)):]
             state["recent_events"] = list(raw.get("recent_events") or [])[-int(self.config.get("event_limit", MAX_EVENTS)):]
             state["last_user_signals"] = list(raw.get("last_user_signals") or [])
-            state["schema"] = 2
+            stored_traits = raw.get("personality_traits") if isinstance(raw.get("personality_traits"), dict) else {}
+            state["personality_traits"] = {
+                key: max(0.0, min(1.0, float(stored_traits.get(key, baseline))))
+                for key, baseline in BASE_TRAITS.items()
+            }
+            evidence = raw.get("feedback_evidence") if isinstance(raw.get("feedback_evidence"), dict) else {}
+            state["feedback_evidence"] = {
+                str(key): {
+                    "count": max(0, int(value.get("count", 0))),
+                    "applied": max(0, int(value.get("applied", 0))),
+                    "last_at": max(0.0, float(value.get("last_at", 0.0))),
+                }
+                for key, value in evidence.items() if isinstance(value, dict)
+            }
+            state["last_initiative"] = max(0.0, float(raw.get("last_initiative", 0.0) or 0.0))
+            state["schema"] = 3
             return state
         except (OSError, ValueError, TypeError):
             return self._fresh()
@@ -159,6 +179,9 @@ class EmotionalRuntime:
         state["emotions"] = _decay(state["emotions"], elapsed, float(self.config.get("emotion_half_life_s", EMOTION_HALF_LIFE)))
         state["behaviors"] = _decay(state["behaviors"], elapsed, float(self.config.get("behavior_half_life_s", BEHAVIOR_HALF_LIFE)), BEHAVIOR_BASELINE)
         state["energy"] = _clamp(state["energy"] + elapsed * float(self.config.get("energy_recovery_per_second", ENERGY_RECOVERY)))
+        # Tension fades slowly with time; trust and closeness do not evaporate just because the user is away.
+        tension_recovery = elapsed * float(self.config.get("relationship_tension_recovery_per_day", 2.0)) / 86400.0
+        state["relationship"]["tension"] = _clamp(state["relationship"]["tension"] - tension_recovery)
         state["updated"] = now
 
     def _bump(self, bucket, key, amount):
@@ -175,10 +198,105 @@ class EmotionalRuntime:
         text = str(text or "").strip()[:280]
         if not text:
             return
+        # Repeatedly observed identical experiences strengthen one memory instead of filling the store with duplicates.
+        existing = next((m for m in reversed(self._state["memories"])
+                         if m.get("kind") == kind and m.get("signal") == signal and m.get("text") == text), None)
+        if existing:
+            existing["impact"] = _clamp(float(existing.get("impact", 0)) + 4.0)
+            existing["reinforced_at"] = now
+            existing["reinforcements"] = int(existing.get("reinforcements", 0)) + 1
+            return
         # Only high-signal events become long-lived memories; ordinary chat stays in short event history.
         self._state["memories"].append({"kind": kind, "signal": signal, "text": text, "impact": _clamp(impact),
-                                        "created": now, "last_recalled": 0.0, "recall_count": 0})
+                                        "created": now, "reinforced_at": now, "last_recalled": 0.0,
+                                        "recall_count": 0, "reinforcements": 0})
         self._state["memories"] = self._state["memories"][-int(self.config.get("memory_limit", MAX_MEMORIES)):]
+
+    def observe_feedback(self, category, text="", now=None):
+        """Learn from repeated, explicit feedback without letting one message rewrite Kira's identity."""
+        now = self.clock() if now is None else float(now)
+        effects = TRAIT_LEARNING_RULES.get(str(category))
+        if not effects:
+            return self.snapshot(now)
+        with self._lock:
+            self._advance(now)
+            record = self._state["feedback_evidence"].setdefault(
+                str(category), {"count": 0, "applied": 0, "last_at": 0.0}
+            )
+            last_at = float(record.get("last_at", 0.0) or 0.0)
+            if last_at and now - last_at < TRAIT_FEEDBACK_COOLDOWN_S:
+                return self.snapshot(now)
+            record["count"] = int(record.get("count", 0)) + 1
+            record["last_at"] = now
+            if record["count"] >= TRAIT_LEARNING_THRESHOLD and record["count"] > int(record.get("applied", 0)):
+                traits = self._state["personality_traits"]
+                for trait, delta in effects.items():
+                    baseline = float(BASE_TRAITS[trait])
+                    low = max(0.0, baseline + TRAIT_MIN_OFFSET)
+                    high = min(1.0, baseline + TRAIT_MAX_OFFSET)
+                    traits[trait] = max(low, min(high, float(traits.get(trait, baseline)) + float(delta)))
+                record["applied"] = int(record.get("applied", 0)) + 1
+                self._event("personality_adjusted", now, str(category))
+            else:
+                self._event("feedback_observed", now, str(category))
+            # Explicit feedback that Kira respected or missed the user's style preference also informs comfort/trust.
+            rel = self._state["relationship"]
+            if category in ("liked_teasing", "liked_support", "liked_curiosity", "disliked_formality"):
+                rel["comfort"] = _clamp(rel["comfort"] + 0.08)
+                rel["trust"] = _clamp(rel["trust"] + 0.04)
+            elif category == "disliked_teasing":
+                rel["comfort"] = _clamp(rel["comfort"] + 0.10)
+                rel["trust"] = _clamp(rel["trust"] + 0.06)
+                rel["tension"] = _clamp(rel["tension"] - 0.08)
+            elif category == "accuracy_correction":
+                rel["trust"] = _clamp(rel["trust"] - 0.12)
+            self._save()
+        return self.snapshot(now)
+
+    def mark_initiative_sent(self, now=None):
+        now = self.clock() if now is None else float(now)
+        with self._lock:
+            self._advance(now)
+            self._state["last_initiative"] = now
+            self._event("proactive_check_in", now)
+            self._save()
+        return now
+
+    @staticmethod
+    def _memory_tokens(text):
+        import re
+        value = str(text or "").replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ").lower()
+        tokens = set(re.findall(r"[a-z0-9آ-ی]{2,}", value))
+        stop = {
+            "این", "اون", "برای", "من", "تو", "که", "از", "به", "با", "رو", "را", "در", "و",
+            "the", "and", "for", "with", "that", "this", "you", "your", "was", "are", "have",
+        }
+        return tokens - stop
+
+    def recall_memories(self, query=None, limit=4, now=None):
+        """Retrieve high-signal memories relevant to the current message, with recency and impact weighting."""
+        now = self.clock() if now is None else float(now)
+        query_tokens = self._memory_tokens(query)
+        ranked = []
+        for memory in self._state["memories"]:
+            text = str(memory.get("text", ""))
+            overlap = len(query_tokens & self._memory_tokens(text)) if query_tokens else 0
+            age_days = max(0.0, now - float(memory.get("reinforced_at") or memory.get("created") or now)) / 86400.0
+            recency = max(0.0, 12.0 - age_days * 0.45)
+            impact = _clamp(memory.get("impact", 0))
+            signal_bonus = 5.0 if memory.get("signal") in ("down", "stressed", "excited", "apology") else 0.0
+            score = impact * 0.22 + recency + signal_bonus + overlap * (24.0 if query_tokens else 0.0)
+            if query_tokens and overlap == 0 and age_days > 3:
+                score -= 10.0
+            if score > 8.0:
+                ranked.append((score, memory))
+        ranked.sort(key=lambda item: (item[0], float(item[1].get("reinforced_at") or item[1].get("created") or 0)), reverse=True)
+        selected = []
+        for _score, memory in ranked[:max(1, int(limit))]:
+            memory["last_recalled"] = now
+            memory["recall_count"] = int(memory.get("recall_count", 0)) + 1
+            selected.append(dict(memory))
+        return selected
 
     def on_user_message(self, text, signals=(), now=None):
         now = self.clock() if now is None else float(now)
@@ -256,7 +374,7 @@ class EmotionalRuntime:
             self._save()
         return self.snapshot(now)
 
-    def snapshot(self, now=None):
+    def snapshot(self, now=None, query=None):
         now = self.clock() if now is None else float(now)
         with self._lock:
             self._advance(now)
@@ -275,12 +393,21 @@ class EmotionalRuntime:
                 combo = self.library.combination(chosen[0][0], chosen[1][0])
                 if combo and combo.get("mode") == "replace" and combo.get("result") in EMOTIONS:
                     chosen = [(combo["result"], max(v for _, v in chosen))]
+            components = [(e, int(round(v))) for e, v in chosen]
             dominant = chosen[0] if chosen else ("neutral", 0.0)
+            composite = None
+            if len(chosen) == 2 and self.library:
+                combo = self.library.combination(chosen[0][0], chosen[1][0])
+                if combo and combo.get("mode") == "replace" and combo.get("result") in EMOTIONS:
+                    composite = str(combo["result"])
+                    dominant = (composite, max(v for _, v in chosen))
             behavior = max(behaviors.items(), key=lambda x: x[1])[0] if behaviors else "balanced"
             rel = dict(self._state["relationship"])
+            recalled = self.recall_memories(query, limit=4, now=now)
             return {
                 "emotion": dominant[0], "intensity": int(round(dominant[1])),
                 "secondary_emotions": [(e, int(round(v))) for e, v in chosen[1:]],
+                "emotional_components": components, "composite_emotion": composite,
                 "emotions": {k: int(round(v)) for k, v in emotions.items()},
                 "behavior": behavior,
                 "behavior_scores": {k: int(round(v)) for k, v in behaviors.items()},
@@ -288,26 +415,37 @@ class EmotionalRuntime:
                 "energy": int(round(self._state["energy"])),
                 "energy_label": ("exhausted" if self._state["energy"] <= 15 else "tired" if self._state["energy"] <= 35 else "low" if self._state["energy"] <= 55 else "normal" if self._state["energy"] <= 75 else "active" if self._state["energy"] <= 90 else "hyper"),
                 "relationship": rel, "memories": list(self._state["memories"][-8:]),
+                "recalled_memories": recalled, "memory_count": len(self._state["memories"]),
+                "personality_traits": dict(self._state["personality_traits"]),
+                "feedback_evidence": {k: dict(v) for k, v in self._state["feedback_evidence"].items()},
+                "last_initiative": float(self._state.get("last_initiative", 0.0)),
                 "recent_events": list(self._state["recent_events"][-12:]),
                 "user_states": list(self._state["last_user_signals"]),
                 "age": max(0.0, now - float(self._state.get("last_interaction") or now)),
             }
 
-    def build_prompt(self, mode="chat", now=None):
+    def build_prompt(self, mode="chat", now=None, query=None):
         if mode == "strict": return ""
-        state = self.snapshot(now)
+        state = self.snapshot(now, query=query)
         if mode not in ("chat", "task"): return ""
         rel = state["relationship"]
         lines = [
-            f"Persistent emotional state: {state['emotion']} ({state['intensity']}/100); secondary: {state['secondary_emotions'] or 'none'}.",
+            f"Persistent emotional state: {state['emotion']} ({state['intensity']}/100); components: {state['emotional_components'] or 'none'}; secondary: {state['secondary_emotions'] or 'none'}.",
             f"Energy: {state['energy_label']} ({state['energy']}/100).",
             "Delivery behavior: " + ", ".join(k for k, _ in state["behaviors"][:3]) + ".",
             f"Relationship context (not a score to mention): familiarity {int(rel['familiarity'])}, comfort {int(rel['comfort'])}, tension {int(rel['tension'])}.",
             "Keep continuity with prior turns. Do not announce internal state or fabricate memories.",
         ]
-        if state["memories"]:
-            lines.append("Relevant emotional continuity (use only when naturally relevant): " +
-                         "; ".join(m["text"] for m in state["memories"][-3:]))
+        if state["recalled_memories"]:
+            lines.append("Relevant recalled emotional continuity (use only when naturally relevant; do not assume an old event is still current): " +
+                         "; ".join(m["text"] for m in state["recalled_memories"][:3]))
+        trait_changes = []
+        for key, value in state["personality_traits"].items():
+            baseline = BASE_TRAITS[key]
+            if abs(float(value) - baseline) >= 0.015:
+                trait_changes.append(f"{key} {float(value):.2f}")
+        if trait_changes:
+            lines.append("Small learned style adjustments from repeated explicit feedback (identity remains anchored): " + ", ".join(trait_changes))
         if mode == "task":
             lines = ["Practical-task delivery guidance: keep emotional flavor subtle; never reduce accuracy."] + lines[:2]
         return "\n".join(lines)
