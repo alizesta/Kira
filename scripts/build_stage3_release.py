@@ -106,6 +106,10 @@ def main() -> None:
             "kira/main.py": Path("kira/main.py"),
             "kira/chat_render.py": Path("kira/chat_render.py"),
             "kira/mood.py": MOOD_SOURCE,
+            "kira/personality.py": Path("kira/personality.py"),
+            "kira/character/__init__.py": Path("kira/character/__init__.py"),
+            "kira/character/decision.py": Path("kira/character/decision.py"),
+            "kira/character/initiative.py": Path("kira/character/initiative.py"),
             "kira/emotion/runtime.py": Path("kira/emotion/runtime.py"),
             "kira/emotion/director.py": Path("kira/emotion/director.py"),
             "emotion_library/emotions.json": EMOTIONS_SOURCE,
@@ -132,6 +136,11 @@ def main() -> None:
         runtime_target = kira_dir / "emotion" / "runtime.py"
         if not runtime_target.is_file() or "class EmotionalRuntime" not in runtime_target.read_text(encoding="utf-8"):
             raise RuntimeError("Persistent layered emotional runtime was not packaged")
+        character_target = kira_dir / "character" / "decision.py"
+        if not character_target.is_file() or "class DecisionEngine" not in character_target.read_text(encoding="utf-8"):
+            raise RuntimeError("Provider-neutral character decision engine was not packaged")
+        if "def update_mood_indicator" not in main_text:
+            raise RuntimeError("Live emoji mood indicator was not packaged")
         emotion_data = json.loads((kira_dir.parent / EMOTIONS_SOURCE).read_text(encoding="utf-8"))
         emotion_ids = {item.get("id") for item in emotion_data.get("emotions", [])}
         if not {"fearful", "disgusted"}.issubset(emotion_ids):
