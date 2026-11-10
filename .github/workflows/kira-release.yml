@@ -1,0 +1,78 @@
+name: Build Kira Update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "kira/**"
+      - "docs/**"
+      - "tests/test_api_manager.py"
+      - "tests/test_routes.py"
+      - "tests/test_router_routes.py"
+      - "tests/test_providers.py"
+      - "tests/test_persona_memory.py"
+      - "tests/test_app_resolution.py"
+      - "tests/test_persian_quality.py"
+      - "tests/test_release_package.py"
+      - "scripts/build_release.py"
+      - ".github/workflows/kira-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kira-update-release
+  cancel-in-progress: false
+
+jobs:
+  package-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install portable test dependency
+        run: python -m pip install requests
+
+      - name: Run portable regression tests (GUI and Windows tests excluded)
+        run: >-
+          python -m unittest
+          tests.test_api_manager
+          tests.test_routes
+          tests.test_router_routes
+          tests.test_providers
+          tests.test_persona_memory
+          tests.test_app_resolution
+          tests.test_persian_quality
+          tests.test_release_package
+
+      - name: Check Python syntax
+        run: python -m compileall -q kira scripts
+
+      - name: Build timestamped source ZIP
+        id: package
+        run: python scripts/build_release.py
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: kira-${{ steps.package.outputs.stamp }}-${{ github.run_number }}
+          name: Kira Update ${{ steps.package.outputs.stamp }}
+          body: |
+            Kira source update.
+            
+            The source archive uses the ProjectKira_YYMMDD_HHMM.zip format and Asia/Tehran local time.
+            
+            Portable regression tests and Python syntax checks passed before packaging. GUI and Windows-specific tests are intentionally excluded.
+          files: ${{ steps.package.outputs.asset }}
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
