@@ -18,7 +18,7 @@ class InitiativeEngine:
         self.memory_max_age_seconds = int(memory_max_age_seconds)
         self.last_initiative = 0.0
 
-    def select_candidate(self, items, now=None):
+    def select_candidate(self, items, now=None, exclude_id=None):
         """Choose a recent remembered event/promise; jokes and static facts never trigger an unsolicited message."""
         now = time.time() if now is None else float(now)
         candidates = []
@@ -26,6 +26,8 @@ class InitiativeEngine:
             if not isinstance(item, dict) or item.get("group") != "moment":
                 continue
             if item.get("kind") not in self.CANDIDATE_KINDS:
+                continue
+            if exclude_id and str(item.get("id") or "") == str(exclude_id):
                 continue
             try:
                 stamp = float(item.get("ts") or 0)
