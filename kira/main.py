@@ -820,12 +820,12 @@ class MainWindow(QMainWindow):
             intensity = int(state.get("intensity", 0))
             secondary = ", ".join(name for name, _ in state.get("secondary_emotions", [])[:2])
             tooltip = (
-                f"احساس: {emotion} ({intensity}/100)\\n"
-                f"رفتار: {behaviour}\\n"
+                f"احساس: {emotion} ({intensity}/100)\n"
+                f"رفتار: {behaviour}\n"
                 f"انرژی: {energy}"
             )
             if secondary:
-                tooltip += f"\\nاحساسات همراه: {secondary}"
+                tooltip += f"\nاحساسات همراه: {secondary}"
             face_label.setToolTip(tooltip)
             label.setToolTip(tooltip)
         except Exception:
