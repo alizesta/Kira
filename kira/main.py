@@ -814,10 +814,9 @@ class MainWindow(QMainWindow):
             )
         links = "".join(cells)
         return (
-            '<p dir="rtl" align="right" style="margin:10px 2px 2px 2px;padding-top:7px;'
-            'border-top:1px solid #314968;">'
-            '<table align="right" border="0" cellspacing="9" cellpadding="0"><tr>'
-            f'{links}</tr></table></p>'
+            '<table dir="rtl" align="right" border="0" cellspacing="9" cellpadding="0" '
+            'style="margin-top:10px;border-top:1px solid #314968;padding-top:7px;">'
+            f'<tr>{links}</tr></table>'
         )
 
     def handle_chat_link(self, url):
