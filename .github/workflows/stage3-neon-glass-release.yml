@@ -28,6 +28,7 @@ on:
       - "tests/test_character_decision.py"
       - "tests/test_character_scenarios.py"
       - "tests/test_relationship_engine.py"
+      - "tests/test_neon_emotion_glyphs.py"
       - "kira/character/relationship.py"
       - "docs/CHARACTER_DECISION_ENGINE_FA.md"
       - "scripts/build_stage3_release.py"
@@ -54,7 +55,7 @@ jobs:
           python-version: "3.12"
 
       - name: Test layered emotional state
-        run: python -m unittest discover -s tests -p "test_chat_render.py" && python -m unittest discover -s tests -p "test_mood.py" && python -m unittest discover -s tests -p "test_emotional_runtime.py" && python -m unittest discover -s tests -p "test_character_decision.py" && python -m unittest discover -s tests -p "test_character_scenarios.py" && python -m unittest discover -s tests -p "test_relationship_engine.py" && python -m unittest discover -s tests -p "test_config.py"
+        run: python -m unittest discover -s tests -p "test_chat_render.py" && python -m unittest discover -s tests -p "test_mood.py" && python -m unittest discover -s tests -p "test_emotional_runtime.py" && python -m unittest discover -s tests -p "test_character_decision.py" && python -m unittest discover -s tests -p "test_character_scenarios.py" && python -m unittest discover -s tests -p "test_relationship_engine.py" && python -m unittest discover -s tests -p "test_config.py" && python -m unittest discover -s tests -p "test_neon_emotion_glyphs.py"
 
       - name: Patch the uploaded Stage 3 archive and package it
         run: python scripts/build_stage3_release.py
@@ -82,7 +83,7 @@ jobs:
             - Adds provider-independent emotion, behavior, energy, relationship and emotional-memory runtime
             - Adds persistent event history and gradual relationship-state changes
             - Adds provider-neutral personality/behaviour decisions and an opt-in initiative policy
-            - Adds a live emoji-only mood, behaviour and energy indicator
+            - Adds a live mood indicator with custom neon vector face glyphs for emotions; chat-message emoji remain unchanged
             - Keeps message actions icon-only
             - Adds query-relevant emotional memory recall and bounded personality adaptation from repeated explicit feedback
             - Adds a standalone bounded relationship engine for trust, closeness, familiarity, comfort and tension
