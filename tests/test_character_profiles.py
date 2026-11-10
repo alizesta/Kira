@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest import mock
 
 from kira.characters import CharacterRegistry
+from kira.characters.registry import _normalise_profile
 from kira.characters.kira import PROFILE as KIRA_PROFILE
 from kira.emotion.runtime import EmotionalRuntime
 from kira.personality import build_system_prompt
@@ -14,6 +15,12 @@ from kira import mood, persona_memory
 
 
 class CharacterRegistryTests(unittest.TestCase):
+    def test_profile_ids_cannot_escape_the_character_data_directory(self):
+        with self.assertRaises(ValueError):
+            _normalise_profile({"id": "../outside", "name": "Unsafe"})
+        with self.assertRaises(ValueError):
+            _normalise_profile({"id": "a/b", "name": "Unsafe"})
+
     def test_legacy_settings_seed_the_builtin_kira_profile(self):
         with tempfile.TemporaryDirectory() as folder:
             registry = CharacterRegistry(folder, legacy_name="Kira", legacy_notes="Use informal Persian.")
