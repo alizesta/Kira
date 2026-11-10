@@ -7,6 +7,8 @@ on:
       - "scripts/build_stage3_release.py"
       - "kira/mood.py"
       - "kira/emotion/runtime.py"
+      - "kira/emotion/director.py"
+      - "docs/EMOTIONAL_RUNTIME_FA.md"
       - "tests/test_emotional_runtime.py"
       - "emotion_library/emotions.json"
       - "tests/test_mood.py"
