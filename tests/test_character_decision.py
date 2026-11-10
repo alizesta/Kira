@@ -2,6 +2,7 @@ import unittest
 
 from kira.character.decision import BASE_TRAITS, DecisionEngine
 from kira.character.initiative import InitiativeEngine
+from kira.character.learning import detect_feedback
 
 
 class CharacterDecisionTests(unittest.TestCase):
@@ -38,6 +39,18 @@ class CharacterDecisionTests(unittest.TestCase):
             "emotional_memories": [{"signal": "down", "impact": 100}],
         })
         self.assertEqual(decision.behaviour, "gentle")
+
+    def test_learned_traits_are_used_by_decision_engine(self):
+        decision = self.engine.decide("hello", {
+            "emotion": "happy",
+            "personality_traits": {**BASE_TRAITS, "playfulness": 1.0, "teasing": 1.0},
+        })
+        self.assertEqual(decision.traits["playfulness"], 1.0)
+
+    def test_feedback_detector_requires_specific_style_language(self):
+        self.assertEqual(detect_feedback("این شوخی خوب بود"), "liked_teasing")
+        self.assertEqual(detect_feedback("شوخی نکن"), "disliked_teasing")
+        self.assertEqual(detect_feedback("فردا امتحان دارم"), None)
 
 
 class InitiativeTests(unittest.TestCase):
