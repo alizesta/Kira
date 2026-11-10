@@ -161,11 +161,12 @@ def set_active_character(character_id, base_traits=None):
     """Switch persistent emotional and learned personality state to the selected profile."""
     global _ACTIVE_CHARACTER_ID, _emotional_runtime, _runtime_migrated
     safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", str(character_id or "kira"))[:80] or "kira"
-    path_changed = safe_id != _ACTIVE_CHARACTER_ID
+    profile_changed = safe_id != _ACTIVE_CHARACTER_ID
     _ACTIVE_CHARACTER_ID = safe_id
     path = _path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path_changed:
+    runtime_path_changed = str(getattr(_emotional_runtime, "path", "")) != str(path)
+    if profile_changed or runtime_path_changed:
         _emotional_runtime = EmotionalRuntime(path=path, base_traits=base_traits)
         _runtime_migrated = False
     elif base_traits is not None:
