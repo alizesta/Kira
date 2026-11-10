@@ -22,6 +22,7 @@ import time
 
 from .config import DATA_DIR
 from .emotion.runtime import EmotionalRuntime, EMOTIONS as RUNTIME_EMOTIONS
+from .character.learning import detect_feedback
 
 _emotional_runtime = EmotionalRuntime()
 _runtime_migrated = False
@@ -303,6 +304,9 @@ def on_user_message(text, now=None) -> list[str]:
         _save(state)
     try:
         _emotional_runtime.on_user_message(text, found, now=now)
+        feedback = detect_feedback(text)
+        if feedback:
+            _emotional_runtime.observe_feedback(feedback, text=text, now=now)
     except Exception:
         pass
     return found
@@ -358,7 +362,7 @@ def reset():
 
 
 # ---------------- reading the state ----------------
-def current(now=None) -> dict:
+def current(now=None, query=None) -> dict:
     _ensure_runtime_migration()
     """Snapshot of current emotion, energy, behavioral disposition and the user's detected state."""
     now = time.time() if now is None else now
@@ -384,19 +388,24 @@ def current(now=None) -> dict:
         "behavior": dominant_behavior, "dominant_behavior": dominant_behavior,
         "behaviors": active_behaviors,
         "behavior_scores": {k: int(round(v)) for k, v in behaviors.items()},
-        **_runtime_snapshot(now),
+        **_runtime_snapshot(now, query=query),
     }
 
 
-def _runtime_snapshot(now=None):
+def _runtime_snapshot(now=None, query=None):
     try:
-        state = _emotional_runtime.snapshot(now)
+        state = _emotional_runtime.snapshot(now, query=query)
         return {"emotion": state["emotion"], "intensity": state["intensity"],
                 "secondary": state["secondary_emotions"][0][0] if state["secondary_emotions"] else "",
                 "secondary_emotions": state["secondary_emotions"], "behavior": state["behavior"],
                 "dominant_behavior": state["behavior"], "behaviors": state["behaviors"],
                 "energy": state["energy"], "energy_label": state["energy_label"],
-                "behavior_scores": state["behavior_scores"], "relationship": state["relationship"], "emotional_memories": state["memories"],
+                "behavior_scores": state["behavior_scores"], "relationship": state["relationship"],
+                "emotional_memories": state.get("recalled_memories", state["memories"]),
+                "emotional_memory_count": state.get("memory_count", len(state["memories"])),
+                "personality_traits": state.get("personality_traits", {}),
+                "emotional_components": state.get("emotional_components", []),
+                "last_initiative": state.get("last_initiative", 0.0),
                 "recent_events": state["recent_events"], "runtime_emotion": state["emotion"],
                 "runtime_intensity": state["intensity"], "runtime_behaviors": state["behaviors"]}
     except Exception:
@@ -425,7 +434,7 @@ def avatar_hint(now=None):
                     return behavior_map[state["behavior"]], min(65, active + 18)
     except Exception:
         pass
-    cur = current(now)
+    cur = current(now, query=query)
     if cur["age"] > 120:
         return None
     for name in cur["user_states"]:
@@ -434,13 +443,13 @@ def avatar_hint(now=None):
     return None
 
 
-def build_block(mode_name="chat", now=None) -> str:
+def build_block(mode_name="chat", now=None, query=None) -> str:
     _ensure_runtime_migration()
     """Prompt text. Chat gets the full emotional state; task gets only delivery-critical user context."""
     if mode_name == "strict":
         return ""
     try:
-        layered = _emotional_runtime.build_prompt("task" if mode_name == "task" else "chat", now)
+        layered = _emotional_runtime.build_prompt("task" if mode_name == "task" else "chat", now, query=query)
     except Exception:
         layered = ""
     cur = current(now)
