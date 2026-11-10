@@ -26,7 +26,7 @@ class NeonEmotionGlyphTests(unittest.TestCase):
 
     def test_live_emotion_uses_neon_vector_icon(self):
         self.assertIn('make_icon(\n                f"emotion_{icon_name}"', self.update_method)
-        self.assertIn("self.mood_emotion_icon.setPixmap", self.update_method)
+        self.assertIn("face_label.setPixmap", self.update_method)
         self.assertIn("emotion_colors", self.update_method)
 
     def test_chat_emojis_are_not_rewritten_by_mood_indicator(self):
