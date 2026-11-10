@@ -52,7 +52,7 @@ class CharacterRegistryTests(unittest.TestCase):
         self.assertIn("Use short, measured sentences.", prompt)
         self.assertNotIn("Kira's", prompt)
         kira_prompt = build_system_prompt({}, character_profile=KIRA_PROFILE)
-        self.assertIn("CORE", kira_prompt.upper())
+        self.assertIn(KIRA_PROFILE["system_prompt"][:80], kira_prompt)
         self.assertIn("Kira", kira_prompt)
 
 
