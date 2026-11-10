@@ -92,16 +92,16 @@ def _pick(q: str, apps: list):
 def _clean_app_query(name: str) -> str:
     """Remove common Persian request wrappers so the resolver receives only the app name."""
     text = str(name or "").strip().lower().replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ")
-    text = re.sub(r"[،,؛;.!؟?\\\"'()\\[\\]{}]+", " ", text)
-    text = re.sub(r"\\s+", " ", text).strip()
-    text = re.sub(r"^(?:(?:لطفا|لطفاً|خواهشا|خواهشاً|میشه|می\\s*شه|میتونی|می\\s*تونی|برام|برای\\s+من)\\s+)+", "", text)
-    verb = r"(?:باز|اجرا|راه\\s*اندازی|لانچ)\\s*(?:ش)?\\s*(?:کن|بکن|کنی|بکنی|کنید|بکنید)"
-    text = re.sub(r"^" + verb + r"\\s+", "", text)
-    text = re.sub(r"\\s+(?:رو|را)\\s+(?:(?:برام|برای\\s+من)\\s+)?" + verb + r"(?:\\s+(?:برام|برای\\s+من))?$", "", text)
-    text = re.sub(r"\\s+" + verb + r"(?:\\s+(?:برام|برای\\s+من))?$", "", text)
-    text = re.sub(r"\\s+(?:رو|را)$", "", text)
-    text = re.sub(r"^(?:برنامه(?:\\s*ی)?|اپلیکیشن|اپ|نرم\\s*افزار)\\s+", "", text)
-    return re.sub(r"\\s+", " ", text).strip()
+    text = re.sub(r"[،,؛;.!؟?\"'()\[\]{}]+", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"^(?:(?:لطفا|لطفاً|خواهشا|خواهشاً|میشه|می\s*شه|میتونی|می\s*تونی|برام|برای\s+من)\s+)+", "", text)
+    verb = r"(?:باز|اجرا|راه\s*اندازی|لانچ)\s*(?:ش)?\s*(?:کن|بکن|کنی|بکنی|کنید|بکنید)"
+    text = re.sub(r"^" + verb + r"\s+", "", text)
+    text = re.sub(r"\s+(?:رو|را)\s+(?:(?:برام|برای\s+من)\s+)?" + verb + r"(?:\s+(?:برام|برای\s+من))?$", "", text)
+    text = re.sub(r"\s+" + verb + r"(?:\s+(?:برام|برای\s+من))?$", "", text)
+    text = re.sub(r"\s+(?:رو|را)$", "", text)
+    text = re.sub(r"^(?:برنامه(?:\s*ی)?|اپلیکیشن|اپ|نرم\s*افزار)\s+", "", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def _query_key(name: str) -> str:
@@ -117,7 +117,6 @@ def _lnk_is_usable(path: str) -> bool:
         return False
     targets = [p for p in appcatalog.lnk_exes(path) if os.path.isabs(p) and p.lower().endswith(".exe")]
     return not targets or any(os.path.isfile(p) for p in targets)
-
 
 def resolve_app(name: str):
     """-> ('builtin', key) | ('app', AppEntry) | ('ambiguous', [display names]) | ('none', [close names]).
