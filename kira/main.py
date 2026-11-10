@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QPushButton, QMessageBox, QComboBox, QFormLayout, QSpinBox, QTabWidget, QGroupBox, QCheckBox,
     QSlider, QScrollArea, QToolButton, QMenu, QListWidget, QListWidgetItem, QAbstractItemView, QDialog,
     QDialogButtonBox, QFrame, QFileDialog, QSizePolicy, QSystemTrayIcon, QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog,
-    QStackedWidget, QDoubleSpinBox
+    QStackedWidget, QDoubleSpinBox, QGraphicsDropShadowEffect
 )
 from .config import load_settings, save_settings, ROOT, VERSION, LOAD_WARNINGS, DATA_DIR
 from . import storage
@@ -460,6 +460,8 @@ class MainWindow(QMainWindow):
         self._load_tiles = []              # cards of the batch currently being read
         self._upload_tiles = []            # cards shown while the message is being sent to the model
         self._upload_token, self._upload_done, self._att_seq = 0, False, 0
+        self._chat_action_seq = 0
+        self._chat_action_texts = {}
         self._turn_extra = None            # full text + images of the message being answered (history keeps a short form)
         self._turn_attach_kinds = []       # kinds ("image"/"text") of what the user attached to the message being answered
         self._voice_next = False           # the next submit() comes from the microphone (the model is told it may contain mishearings)
@@ -650,11 +652,78 @@ class MainWindow(QMainWindow):
             name = {"user": self.t("you"), "assistant": self.settings.get("assistant_name", "Kira"),
                     "error": self.t("error"), "system": ""}.get(kind, "")
         ui_dir = "rtl" if self.settings.get("ui_lang", "fa") == "fa" else "ltr"
-        self.chat.append(message_html(kind, name, text, ui_dir, self.thumbnail_html(images)))
+        extra = self.thumbnail_html(images) + self.chat_actions_html(kind, text)
+        self.chat.append(message_html(kind, name, text, ui_dir, extra))
         if getattr(self, "bubble", None) is not None:
             self.bubble.push(kind, name, text, ui_dir)
         bar = self.chat.verticalScrollBar()
         bar.setValue(bar.maximum())
+
+    def chat_actions_html(self, kind, text):
+        """Compact per-message controls: copy, edit and read aloud."""
+        if kind not in ("assistant", "user") or not str(text or "").strip():
+            return ""
+        self._chat_action_seq += 1
+        key = str(self._chat_action_seq)
+        self._chat_action_texts[key] = str(text)
+        if len(self._chat_action_texts) > 300:
+            self._chat_action_texts.pop(next(iter(self._chat_action_texts)))
+        actions = [
+            ("copy", "⧉  کپی", "#72E8FF"),
+            ("edit", "✎  ویرایش", "#C4A7FF"),
+            ("speak", "♫  خواندن", "#FF9BDB"),
+        ]
+        links = "".join(
+            f'<a href="kira-action://{action}/{key}" style="color:{colour};text-decoration:none;'
+            f'font-size:9pt;font-weight:600;margin-left:12px;">{label}</a>'
+            for action, label, colour in actions
+        )
+        return (f'<p dir="rtl" align="right" style="margin:8px 2px 1px 2px;'
+                f'padding-top:5px;border-top:1px solid #394C79;">{links}</p>')
+
+    def handle_chat_link(self, url):
+        """Handle local message actions while preserving normal external links."""
+        if url.scheme() == "kira-action":
+            action = url.host()
+            key = url.path().strip("/")
+            text = self._chat_action_texts.get(key)
+            if text is None:
+                return
+            if action == "copy":
+                QApplication.clipboard().setText(text)
+                self.set_status("st_ready")
+            elif action == "edit":
+                self.input.setText(text)
+                self.input.setFocus()
+                self.input.moveCursor(QTextCursor.End)
+            elif action == "speak":
+                self.safe_stop_speaker()
+                self.speaker.speak(text)
+            return
+        if url.scheme() in ("http", "https", "mailto"):
+            QDesktopServices.openUrl(url)
+
+    def _set_neon_glow(self, widget, colour, blur=24, alpha=175):
+        if widget is None:
+            return
+        glow = QGraphicsDropShadowEffect(widget)
+        glow.setBlurRadius(blur)
+        glow.setColor(QColor(colour[0], colour[1], colour[2], alpha))
+        glow.setOffset(0, 0)
+        widget.setGraphicsEffect(glow)
+
+    def apply_neon_glow(self):
+        """Real Qt drop-shadow glow, not just translucent acrylic backgrounds."""
+        self._set_neon_glow(getattr(self, "chat_card", None), (38, 205, 255), 34, 115)
+        self._set_neon_glow(getattr(self, "composer", None), (164, 92, 255), 28, 165)
+        self._set_neon_glow(getattr(self, "route_badge", None), (64, 225, 255), 19, 145)
+        self._set_neon_glow(getattr(self, "send_btn", None), (60, 220, 255), 24, 210)
+        self._set_neon_glow(getattr(self, "attach_btn", None), (60, 220, 255), 16, 120)
+        self._set_neon_glow(getattr(self, "web_btn", None), (73, 150, 255), 16, 115)
+        self._set_neon_glow(getattr(self, "img_search_btn", None), (180, 105, 255), 16, 125)
+        self._set_neon_glow(getattr(self, "mic_btn", None), (255, 90, 174), 18, 135)
+        self._set_neon_glow(getattr(self, "wake_btn", None), (167, 111, 255), 17, 125)
+        self._set_neon_glow(getattr(self, "voice_btn", None), (74, 224, 255), 17, 130)
 
     def thumbnail_html(self, images):
         parts = []
@@ -791,6 +860,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self.avatar_card)
         # --- chat card: compact header, conversation, composer
         chat_card = QFrame()
+        self.chat_card = chat_card
         chat_card.setObjectName("chatCard")
         cv = QVBoxLayout(chat_card)
         cv.setContentsMargins(12, 8, 12, 10)
@@ -807,11 +877,13 @@ class MainWindow(QMainWindow):
         cv.addLayout(header)
         self.chat = QTextBrowser()                         # read-only chat whose links open in the default browser
         self.chat.setObjectName("chatView")
-        self.chat.setOpenExternalLinks(True)
+        self.chat.setOpenExternalLinks(False)
+        self.chat.anchorClicked.connect(self.handle_chat_link)
         self.chat.setReadOnly(True)
         self.chat.setFrameShape(QFrame.NoFrame)
         cv.addWidget(self.chat, 1)
         composer = QFrame()
+        self.composer = composer
         composer.setObjectName("composer")
         co = QVBoxLayout(composer)
         co.setContentsMargins(10, 6, 8, 6)
@@ -912,6 +984,7 @@ class MainWindow(QMainWindow):
         co.addLayout(bar)
         cv.addWidget(composer)
         root.addWidget(chat_card, 1)
+        self.apply_neon_glow()
         self.tabs.addTab(page, "")
 
     def build_assistant_tab(self):
