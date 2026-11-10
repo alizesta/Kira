@@ -107,12 +107,16 @@ def main() -> None:
             "kira/chat_render.py": Path("kira/chat_render.py"),
             "kira/mood.py": MOOD_SOURCE,
             "kira/personality.py": Path("kira/personality.py"),
+            "kira/config.py": Path("kira/config.py"),
             "kira/character/__init__.py": Path("kira/character/__init__.py"),
+            "kira/character/traits.py": Path("kira/character/traits.py"),
+            "kira/character/learning.py": Path("kira/character/learning.py"),
             "kira/character/decision.py": Path("kira/character/decision.py"),
             "kira/character/initiative.py": Path("kira/character/initiative.py"),
             "kira/emotion/runtime.py": Path("kira/emotion/runtime.py"),
             "kira/emotion/director.py": Path("kira/emotion/director.py"),
             "emotion_library/emotions.json": EMOTIONS_SOURCE,
+            "emotion_library/combinations.json": Path("emotion_library/combinations.json"),
             "emotion_library/rules.json": Path("emotion_library/rules.json"),
             "emotion_library/events.json": Path("emotion_library/events.json"),
         }
@@ -141,6 +145,21 @@ def main() -> None:
             raise RuntimeError("Provider-neutral character decision engine was not packaged")
         if "def update_mood_indicator" not in main_text:
             raise RuntimeError("Live emoji mood indicator was not packaged")
+        if "def check_proactive_initiative" not in main_text or "initiative_enabled" not in main_text:
+            raise RuntimeError("Opt-in proactive initiative UI/policy was not packaged")
+        learning_target = kira_dir / "character" / "learning.py"
+        traits_target = kira_dir / "character" / "traits.py"
+        if not learning_target.is_file() or "def detect_feedback" not in learning_target.read_text(encoding="utf-8"):
+            raise RuntimeError("Explicit personality feedback learning was not packaged")
+        if not traits_target.is_file() or "TRAIT_LEARNING_RULES" not in traits_target.read_text(encoding="utf-8"):
+            raise RuntimeError("Stable personality trait definitions were not packaged")
+        config_target = kira_dir / "config.py"
+        if not config_target.is_file() or '"initiative_enabled": False' not in config_target.read_text(encoding="utf-8"):
+            raise RuntimeError("Safe opt-in initiative default was not packaged")
+        combo_data = json.loads((kira_dir.parent / "emotion_library" / "combinations.json").read_text(encoding="utf-8"))
+        combo_members = {frozenset(item.get("members", [])) for item in combo_data.get("combinations", [])}
+        if frozenset(("angry", "affectionate")) not in combo_members:
+            raise RuntimeError("Core mixed-emotion combinations were not packaged")
         emotion_data = json.loads((kira_dir.parent / EMOTIONS_SOURCE).read_text(encoding="utf-8"))
         emotion_ids = {item.get("id") for item in emotion_data.get("emotions", [])}
         if not {"fearful", "disgusted"}.issubset(emotion_ids):
