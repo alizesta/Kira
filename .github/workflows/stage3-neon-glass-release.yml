@@ -23,6 +23,8 @@ on:
       - "tests/test_config.py"
       - "tests/test_character_decision.py"
       - "tests/test_character_scenarios.py"
+      - "tests/test_relationship_engine.py"
+      - "kira/character/relationship.py"
       - "docs/CHARACTER_DECISION_ENGINE_FA.md"
       - "scripts/build_stage3_release.py"
       - ".github/workflows/stage3-neon-glass-release.yml"
@@ -48,7 +50,7 @@ jobs:
           python-version: "3.12"
 
       - name: Test layered emotional state
-        run: python -m unittest discover -s tests -p "test_mood.py" && python -m unittest discover -s tests -p "test_emotional_runtime.py" && python -m unittest discover -s tests -p "test_character_decision.py" && python -m unittest discover -s tests -p "test_character_scenarios.py" && python -m unittest discover -s tests -p "test_config.py"
+        run: python -m unittest discover -s tests -p "test_mood.py" && python -m unittest discover -s tests -p "test_emotional_runtime.py" && python -m unittest discover -s tests -p "test_character_decision.py" && python -m unittest discover -s tests -p "test_character_scenarios.py" && python -m unittest discover -s tests -p "test_relationship_engine.py" && python -m unittest discover -s tests -p "test_config.py"
 
       - name: Patch the uploaded Stage 3 archive and package it
         run: python scripts/build_stage3_release.py
@@ -76,6 +78,7 @@ jobs:
             - Adds a live emoji-only mood, behaviour and energy indicator
             - Keeps message actions icon-only
             - Adds query-relevant emotional memory recall and bounded personality adaptation from repeated explicit feedback
+            - Adds a standalone bounded relationship engine for trust, closeness, familiarity, comfort and tension
             - Preserves mixed-emotion components and tests opt-in proactive follow-ups with quiet-hour/cooldown guards
           files: dist/ProjectKira_Stage3_Neon_Glass.zip
           fail_on_unmatched_files: true
