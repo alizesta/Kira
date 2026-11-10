@@ -144,7 +144,7 @@ VOICE_INPUT_NOTE = (
 )
 
 
-def build_system_prompt(settings, format_hint="", memory_block="", voice_input=False, mode=None, mood_block=""):
+def build_system_prompt(settings, format_hint="", memory_block="", voice_input=False, mode=None, mood_block="", character_block=""):
     """Compose the full system prompt for one request.
 
     ``settings``    the application settings dict (assistant_name and persona are read).
@@ -169,6 +169,9 @@ def build_system_prompt(settings, format_hint="", memory_block="", voice_input=F
     mood_text = str(mood_block or "").strip()
     if mood_text:
         parts.append(mood_text)
+    character_text = str(character_block or "").strip()
+    if character_text:
+        parts.append(character_text)
     if voice_input:
         parts.append(VOICE_INPUT_NOTE)
     prompt = "\n\n".join(parts)
