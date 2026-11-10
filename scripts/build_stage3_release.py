@@ -105,6 +105,7 @@ def main() -> None:
             "kira/theme.py": THEME_SOURCE,
             "kira/main.py": Path("kira/main.py"),
             "kira/chat_render.py": Path("kira/chat_render.py"),
+            "kira/ui_icons.py": Path("kira/ui_icons.py"),
             "kira/mood.py": MOOD_SOURCE,
             "kira/personality.py": Path("kira/personality.py"),
             "kira/config.py": Path("kira/config.py"),
@@ -146,6 +147,13 @@ def main() -> None:
             raise RuntimeError("Provider-neutral character decision engine was not packaged")
         if "def update_mood_indicator" not in main_text:
             raise RuntimeError("Live emoji mood indicator was not packaged")
+        if "def _pulse_neon_glow" not in main_text or "QPropertyAnimation" not in main_text:
+            raise RuntimeError("Animated neon glow layer was not packaged")
+        if "cellspacing=\"9\"" not in main_text or "Neon icon chips" not in main_text:
+            raise RuntimeError("Spaced neon message action chips were not packaged")
+        icons_target = kira_dir / "ui_icons.py"
+        if not icons_target.is_file() or "glow_colour" not in icons_target.read_text(encoding="utf-8"):
+            raise RuntimeError("Neon line icon renderer was not packaged")
         if "def check_proactive_initiative" not in main_text or "initiative_enabled" not in main_text:
             raise RuntimeError("Opt-in proactive initiative UI/policy was not packaged")
         learning_target = kira_dir / "character" / "learning.py"
