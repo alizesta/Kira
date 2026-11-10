@@ -21,6 +21,9 @@ import threading
 import time
 
 from .config import DATA_DIR
+from .emotion.runtime import EmotionalRuntime
+
+_emotional_runtime = EmotionalRuntime()
 
 FILE_NAME = "kira_mood.json"
 HALF_LIFE = 900.0
@@ -282,6 +285,10 @@ def on_user_message(text, now=None) -> list[str]:
             "away_hours": round(away, 1),
         })
         _save(state)
+    try:
+        _emotional_runtime.on_user_message(text, found, now=now)
+    except Exception:
+        pass
     return found
 
 
@@ -306,6 +313,10 @@ def on_reply(emotions, intensity=None, now=None):
             "energy": round(energy, 2), "energy_updated": now, "updated": now,
         })
         _save(state)
+    try:
+        _emotional_runtime.on_reply(emotions, intensity, now=now)
+    except Exception:
+        pass
 
 
 
@@ -314,6 +325,10 @@ def reset():
     with _lock:
         _save({"scores": {}, "behavior_scores": {}, "energy": ENERGY_START, "energy_updated": time.time(),
                "updated": 0.0, "last_chat": 0.0, "user_states": [], "away_hours": 0.0})
+    try:
+        _emotional_runtime.reset()
+    except Exception:
+        pass
 
 
 # ---------------- reading the state ----------------
@@ -342,7 +357,18 @@ def current(now=None) -> dict:
         "behavior": dominant_behavior, "dominant_behavior": dominant_behavior,
         "behaviors": active_behaviors,
         "behavior_scores": {k: int(round(v)) for k, v in behaviors.items()},
+        **_runtime_snapshot(),
     }
+
+
+def _runtime_snapshot():
+    try:
+        state = _emotional_runtime.snapshot()
+        return {"relationship": state["relationship"], "emotional_memories": state["memories"],
+                "recent_events": state["recent_events"], "runtime_emotion": state["emotion"],
+                "runtime_intensity": state["intensity"], "runtime_behaviors": state["behaviors"]}
+    except Exception:
+        return {}
 
 
 def avatar_hint(now=None):
@@ -360,6 +386,10 @@ def build_block(mode_name="chat", now=None) -> str:
     """Prompt text. Chat gets the full emotional state; task gets only delivery-critical user context."""
     if mode_name == "strict":
         return ""
+    try:
+        layered = _emotional_runtime.build_prompt("task" if mode_name == "task" else "chat", now)
+    except Exception:
+        layered = ""
     cur = current(now)
     states = cur["user_states"]
     lines = []
@@ -394,4 +424,5 @@ def build_block(mode_name="chat", now=None) -> str:
             lines.append("Reading him right now: " + USER_STATES[name][1])
     if mode_name == "task" and lines:
         lines.insert(0, "Delivery note for this practical request (substance and accuracy unchanged):")
-    return "\n".join(lines)
+    legacy = "\n".join(lines)
+    return "\n".join(part for part in (layered, legacy) if part)
