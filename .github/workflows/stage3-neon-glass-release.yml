@@ -11,6 +11,8 @@ on:
       - "docs/EMOTIONAL_RUNTIME_FA.md"
       - "tests/test_emotional_runtime.py"
       - "emotion_library/emotions.json"
+      - "emotion_library/rules.json"
+      - "emotion_library/events.json"
       - "tests/test_mood.py"
       - "docs/EMOTIONAL_STATE_FA.md"
       - "kira/main.py"
