@@ -396,7 +396,7 @@ def _runtime_snapshot(now=None):
                 "secondary_emotions": state["secondary_emotions"], "behavior": state["behavior"],
                 "dominant_behavior": state["behavior"], "behaviors": state["behaviors"],
                 "energy": state["energy"], "energy_label": state["energy_label"],
-                "relationship": state["relationship"], "emotional_memories": state["memories"],
+                "behavior_scores": state["behavior_scores"], "relationship": state["relationship"], "emotional_memories": state["memories"],
                 "recent_events": state["recent_events"], "runtime_emotion": state["emotion"],
                 "runtime_intensity": state["intensity"], "runtime_behaviors": state["behaviors"]}
     except Exception:
