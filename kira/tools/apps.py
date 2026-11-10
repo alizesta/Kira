@@ -32,9 +32,32 @@ BUILTIN_APPS = {
 }
 SKIP_WORDS = appcatalog.SKIP_WORDS
 _norm = appcatalog.norm
-# Spoken / Persian names -> the name used by the app itself (compared after normalisation)
-_NAME_ALIASES = {"هاتاسپاتشیلد": "hotspotshield", "هاتاسپات": "hotspotshield", "هات‌اسپات‌شیلد": "hotspotshield",
-                 "والپیپرانجین": "wallpaperengine", "وال‌پیپرانجین": "wallpaperengine", "والپیپر": "wallpaperengine", "wallpaper": "wallpaperengine"}
+# Spoken / Persian names -> the installed app's display-name key. Keep aliases here,
+# not in the model prompt alone: resolution must work on the very first request.
+_NAME_ALIASES = {
+    _norm(alias): _norm(canonical)
+    for canonical, aliases in {
+        "hotspotshield": ("هاتاسپاتشیلد", "هاتاسپات", "هات اسپات شیلد", "هات‌اسپات‌شیلد"),
+        "wallpaperengine": ("والپیپرانجین", "وال پیپر انجین", "وال‌پیپر انجین", "والپیپر", "wallpaper"),
+        "operagx": ("اپرا جی ایکس", "اوپرا جی ایکس", "اپرا جی‌ایکس", "اوپرا جی‌ایکس", "اپرا gx", "اوپرا gx"),
+        "opera": ("اپرا", "اوپرا"),
+        "googlechrome": ("گوگل کروم", "کروم", "گوگل‌کروم"),
+        "microsoftedge": ("مایکروسافت اج", "مایکروسافت اِج", "اج", "اِج", "اِج مایکروسافت"),
+        "firefox": ("فایرفاکس", "فایر فاکس"),
+        "brave": ("بریو", "مرورگر بریو"),
+        "discord": ("دیسکورد", "دیس کورد"),
+        "telegram": ("تلگرام",),
+        "whatsapp": ("واتساپ", "واتس اپ", "واتس‌اپ"),
+        "spotify": ("اسپاتیفای", "اسپاتی فای"),
+        "steam": ("استیم",),
+        "windscribe": ("وینداسکرایب", "واینداسکرایب", "ویند اسکرایب", "وایند اسکرایب"),
+        "vlc": ("وی ال سی", "وی‌ال‌سی", "وی ال سی پلیر"),
+        "visualstudiocode": ("وی اس کد", "وی‌اس‌کد", "ویژوال استودیو کد"),
+        "ollama": ("اولاما", "اُلاما"),
+        "razersynapse": ("ریزر سیناپس", "ریزر سیناپس"),
+    }.items()
+    for alias in aliases
+}
 NOT_FOUND_TEXT_SHORT = "جست‌وجو در Start Menu، Steam، برنامه‌های نصب‌شده‌ی ویندوز و برنامه‌های Store انجام شد (برنامه‌های پورتابل بدون نصب ممکن است دیده نشوند)."
 NOT_FOUND_TEXT = "برنامه‌ای با این نام پیدا نشد؛ " + NOT_FOUND_TEXT_SHORT
 _NO_PLAN_WAIT = 8.0
@@ -66,14 +89,42 @@ def _pick(q: str, apps: list):
     return "none", None
 
 
+def _clean_app_query(name: str) -> str:
+    """Remove common Persian request wrappers so the resolver receives only the app name."""
+    text = str(name or "").strip().lower().replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ")
+    text = re.sub(r"[،,؛;.!؟?\\\"'()\\[\\]{}]+", " ", text)
+    text = re.sub(r"\\s+", " ", text).strip()
+    text = re.sub(r"^(?:(?:لطفا|لطفاً|خواهشا|خواهشاً|میشه|می\\s*شه|میتونی|می\\s*تونی|برام|برای\\s+من)\\s+)+", "", text)
+    verb = r"(?:باز|اجرا|راه\\s*اندازی|لانچ)\\s*(?:ش)?\\s*(?:کن|بکن|کنی|بکنی|کنید|بکنید)"
+    text = re.sub(r"^" + verb + r"\\s+", "", text)
+    text = re.sub(r"\\s+(?:رو|را)\\s+(?:(?:برام|برای\\s+من)\\s+)?" + verb + r"(?:\\s+(?:برام|برای\\s+من))?$", "", text)
+    text = re.sub(r"\\s+" + verb + r"(?:\\s+(?:برام|برای\\s+من))?$", "", text)
+    text = re.sub(r"\\s+(?:رو|را)$", "", text)
+    text = re.sub(r"^(?:برنامه(?:\\s*ی)?|اپلیکیشن|اپ|نرم\\s*افزار)\\s+", "", text)
+    return re.sub(r"\\s+", " ", text).strip()
+
+
+def _query_key(name: str) -> str:
+    q = _norm(_clean_app_query(name))
+    if not q:
+        return ""
+    return _NAME_ALIASES.get(q, q)
+
+
+def _lnk_is_usable(path: str) -> bool:
+    """Ignore a missing shortcut or a shortcut whose resolved executable targets are all gone."""
+    if not path or not os.path.isfile(path):
+        return False
+    targets = [p for p in appcatalog.lnk_exes(path) if os.path.isabs(p) and p.lower().endswith(".exe")]
+    return not targets or any(os.path.isfile(p) for p in targets)
+
+
 def resolve_app(name: str):
     """-> ('builtin', key) | ('app', AppEntry) | ('ambiguous', [display names]) | ('none', [close names]).
-    Looks in: Start Menu / Desktop / Steam first (what the user sees), then the Windows installed-apps list and App Paths,
-    then Store apps. The first source with a unique match wins; a vague match is reported, never guessed."""
-    q = _norm(name)
+    Persian request wrappers and common spoken app names are normalised before searching; a vague match is never guessed."""
+    q = _query_key(name)
     if not q:
         return "none", []
-    q = _norm(_NAME_ALIASES.get(q, q))
     for key, (label, _, _, aliases) in BUILTIN_APPS.items():
         if q == _norm(key) or q in {_norm(a) for a in aliases}:
             return "builtin", key
@@ -225,17 +276,20 @@ def _method_text(kind: str, target: str) -> str:
 
 
 def _launch_plan(entry) -> list:
-    """[(kind, target, certain)] in the order they should be tried. Nothing here comes from model text."""
+    """[(kind, target, certain)] in safe priority order. A broken .lnk never blocks other discovery sources."""
     plan = []
     by_kind = {k: [t for kk, t in entry.launchers if kk == k] for k in ("lnk", "steam", "exe", "uwp")}
-    plan += [("lnk", t, True) for t in by_kind["lnk"]]
+    valid_lnks = [t for t in by_kind["lnk"] if _lnk_is_usable(t)]
+    plan += [("lnk", t, True) for t in valid_lnks]
     plan += [("steam", t, True) for t in by_kind["steam"]]
     exes = list(by_kind["exe"])
     if entry.exe:
         exes.append(entry.exe)
     certain_exes = [p for p in exes if appcatalog.is_safe_exe(p)]
-    if not certain_exes and entry.lnk_path():
-        certain_exes = [p for p in appcatalog.lnk_exes(entry.lnk_path()) if os.path.isabs(p) and appcatalog.is_safe_exe(p)]
+    if not certain_exes:
+        for shortcut in valid_lnks:
+            certain_exes.extend(p for p in appcatalog.lnk_exes(shortcut)
+                                if os.path.isabs(p) and appcatalog.is_safe_exe(p))
     plan += [("exe", p, True) for p in dict.fromkeys(certain_exes)]
     if not any(k in ("lnk", "steam", "exe") for k, _, _ in plan):
         folder, hint_exe = entry.install_dir, ""
@@ -245,7 +299,7 @@ def _launch_plan(entry) -> list:
             plan.append(("exe", hint_exe, True))
         else:
             guess = appcatalog.find_main_exe(entry.name, folder) if folder else ""
-            if guess:
+            if guess and appcatalog.is_safe_exe(guess):
                 plan.append(("exe", guess, False))                   # a guess from the folder contents: not "certain"
     plan += [("uwp", t, True) for t in by_kind["uwp"]]
     return plan
