@@ -321,6 +321,64 @@ class BenchWorker(QThread):
             self.done.emit((False, str(exc)[:400]))
 
 
+class EmotionalStateDialog(QDialog):
+    """Read-only diagnostic view of Kira's independent emotional layers."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("وضعیت احساسی Kira")
+        self.resize(620, 520)
+        layout = QVBoxLayout(self)
+        self.summary = QLabel()
+        self.summary.setWordWrap(True)
+        layout.addWidget(self.summary)
+        self.table = QTableWidget(0, 2)
+        self.table.setHorizontalHeaderLabels(["لایه", "وضعیت"])
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.setSelectionMode(QAbstractItemView.NoSelection)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        layout.addWidget(self.table, 1)
+        self.events = QListWidget()
+        self.events.setMaximumHeight(135)
+        layout.addWidget(QLabel("رویدادهای اخیر"))
+        layout.addWidget(self.events)
+        row = QHBoxLayout()
+        refresh = QPushButton("به‌روزرسانی")
+        refresh.clicked.connect(self.refresh)
+        close = QPushButton("بستن")
+        close.clicked.connect(self.accept)
+        row.addWidget(refresh)
+        row.addStretch(1)
+        row.addWidget(close)
+        layout.addLayout(row)
+        self.refresh()
+
+    def refresh(self):
+        state = mood.current()
+        relationship = state.get("relationship") or {}
+        rows = [
+            ("احساس غالب", f"{state['emotion']} · {state['intensity']}/100"),
+            ("احساسات ثانویه", ", ".join(f"{name} ({value})" for name, value in state.get("secondary_emotions", [])) or "ندارد"),
+            ("رفتار غالب", state.get("behavior", "balanced")),
+            ("رفتارهای فعال", ", ".join(f"{name} ({value})" for name, value in state.get("behaviors", [])) or "متعادل"),
+            ("انرژی مکالمه", f"{state.get('energy_label', 'normal')} · {state.get('energy', 0)}/100"),
+            ("اعتماد", f"{relationship.get('trust', 0):.1f}/100"),
+            ("صمیمیت", f"{relationship.get('closeness', 0):.1f}/100"),
+            ("آشنایی", f"{relationship.get('familiarity', 0):.1f}/100"),
+            ("راحتی", f"{relationship.get('comfort', 0):.1f}/100"),
+            ("تنش", f"{relationship.get('tension', 0):.1f}/100"),
+            ("حافظه احساسی", str(len(state.get("emotional_memories", [])))),
+        ]
+        self.table.setRowCount(len(rows))
+        for row, (name, value) in enumerate(rows):
+            self.table.setItem(row, 0, QTableWidgetItem(name))
+            self.table.setItem(row, 1, QTableWidgetItem(value))
+        self.summary.setText("این وضعیت مستقل از مدل و Provider ذخیره می‌شود. اعداد رابطه شاخص‌های داخلی‌اند، نه امتیاز ارزش‌گذاری کاربر.")
+        self.events.clear()
+        for event in reversed(state.get("recent_events", [])[-12:]):
+            detail = f" · {event['detail']}" if event.get("detail") else ""
+            self.events.addItem(f"{event['name']}{detail}")
+
+
 class MemoryDialog(QDialog):
     """What Kira remembers about the user (facts, dated moments, summaries): view, edit, delete, add a note, forget everything."""
     GROUPS = {"fact": "درباره‌ی تو", "moment": "لحظه / رویداد", "summary": "خلاصه‌ی گفتگوهای قدیمی"}
@@ -337,7 +395,7 @@ class MemoryDialog(QDialog):
         self.items.setSelectionMode(QAbstractItemView.SingleSelection)
         lay.addWidget(self.items, 1)
         row = QHBoxLayout()
-        for text, fn in (("افزودن یادداشت", self.add_note), ("ویرایش", self.edit_item), ("حذف", self.delete_item), ("فراموش‌کردن همه", self.forget_all)):
+        for text, fn in (("وضعیت احساسی", self.show_emotional_state), ("افزودن یادداشت", self.add_note), ("ویرایش", self.edit_item), ("حذف", self.delete_item), ("فراموش‌کردن همه", self.forget_all)):
             btn = QPushButton(text)
             btn.clicked.connect(lambda checked=False, f=fn: f())
             row.addWidget(btn)
@@ -355,6 +413,9 @@ class MemoryDialog(QDialog):
             row = QListWidgetItem(f"[{self.GROUPS.get(it['group'], it['group'])}] {it['text']}")
             row.setData(Qt.UserRole, it["id"])
             self.items.addItem(row)
+
+    def show_emotional_state(self):
+        EmotionalStateDialog(self).exec()
 
     def _selected(self):
         item = self.items.currentItem()
