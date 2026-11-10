@@ -103,7 +103,7 @@ def main() -> None:
             "kira/chat_render.py": Path("kira/chat_render.py"),
         }
         for relative, source_path in ui_sources.items():
-            target = extracted / relative
+            target = kira_dir / Path(relative).name
             if not target.is_file() or not source_path.is_file():
                 raise RuntimeError(f"Missing required UI source/target: {relative}")
             updated = source_path.read_text(encoding="utf-8")
