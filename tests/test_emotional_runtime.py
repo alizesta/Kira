@@ -102,10 +102,12 @@ class EmotionalRuntimeTests(unittest.TestCase):
         after = self.runtime.snapshot(now=1000 + 86400)["relationship"]["tension"]
         self.assertLess(after, before)
 
-    def test_last_initiative_is_persistent(self):
-        self.runtime.mark_initiative_sent(now=1000)
+    def test_last_initiative_and_memory_id_are_persistent(self):
+        self.runtime.mark_initiative_sent(memory_id="exam-123", now=1000)
         restored = EmotionalRuntime(self.library, self.path, clock=lambda: 1001)
-        self.assertEqual(restored.snapshot(now=1001)["last_initiative"], 1000)
+        state = restored.snapshot(now=1001)
+        self.assertEqual(state["last_initiative"], 1000)
+        self.assertEqual(state["last_initiative_memory_id"], "exam-123")
 
 
 if __name__ == "__main__":
