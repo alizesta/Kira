@@ -740,54 +740,100 @@ class MainWindow(QMainWindow):
         bar.setValue(bar.maximum())
 
     def update_mood_indicator(self):
-        """Tiny live emoji-only status chip for Kira's current emotional/behavioural state."""
+        """Render Kira's current emotion as a custom neon face; chat-message emoji are untouched."""
         label = getattr(self, "mood_indicator", None)
-        if label is None:
+        face_label = getattr(self, "mood_emotion_icon", None)
+        if label is None or face_label is None:
             return
-        emotion_icons = {
-            "neutral": "🙂", "happy": "😊", "sad": "🥺", "angry": "😠",
-            "fearful": "😟", "disgusted": "😒", "surprised": "😮", "curious": "🤔",
-            "proud": "😌", "arrogant": "😏", "smug": "😏", "playful": "😜",
-            "teasing": "😼", "tsundere": "😤", "bored": "😑", "frustrated": "😣",
-            "affectionate": "🥰", "flirty": "😘", "shy": "☺️", "embarrassed": "🫣",
-            "jealous": "😾", "laughing": "😂", "annoyed": "🙄", "protective": "🛡️",
-            "excited": "🤩", "thinking": "🤔", "calm": "😌", "hopeful": "🌱",
-            "disappointed": "😔", "lonely": "🥲", "guilty": "😓", "grateful": "💗",
-            "nostalgic": "🥹", "confident": "😎", "confused": "😵‍💫",
-            "relieved": "😮‍💨", "content": "☺️",
+
+        face_map = {
+            "neutral": "neutral", "happy": "happy", "sad": "sad", "angry": "angry",
+            "fearful": "fearful", "disgusted": "disgusted", "surprised": "surprised",
+            "curious": "curious", "proud": "proud", "arrogant": "smug", "smug": "smug",
+            "playful": "playful", "teasing": "teasing", "tsundere": "angry", "bored": "bored",
+            "frustrated": "angry", "affectionate": "affectionate", "flirty": "flirty",
+            "shy": "shy", "embarrassed": "shy", "jealous": "jealous", "laughing": "laughing",
+            "annoyed": "angry", "protective": "protective", "excited": "excited",
+            "thinking": "curious", "calm": "calm", "hopeful": "hopeful",
+            "disappointed": "sad", "lonely": "sad", "guilty": "sad", "grateful": "affectionate",
+            "nostalgic": "soft", "confident": "proud", "confused": "surprised",
+            "relieved": "relieved", "content": "calm",
         }
-        behaviour_icons = {
-            "playful": "😜", "teasing": "😼", "tsundere": "😤", "sarcastic": "🙃",
-            "quiet": "🤫", "affectionate": "💕", "clingy": "🥺", "stubborn": "😤",
-            "sulking": "😗", "cheerful": "🌸", "reserved": "☺️", "protective": "🛡️",
-            "focused": "🎯", "flirty": "😘", "curious": "🔎", "gentle": "🫶",
-            "formal": "📘", "energetic": "⚡",
+        emotion_colors = {
+            "neutral": "#B9D4F5", "calm": "#8FE8F2", "content": "#8FE8F2",
+            "happy": "#FFD36E", "excited": "#FFC45E", "laughing": "#FFE078",
+            "hopeful": "#A9F0C2", "grateful": "#FF9CE5",
+            "sad": "#72B9FF", "disappointed": "#72B9FF", "lonely": "#78A8EE",
+            "guilty": "#9AAFEF", "nostalgic": "#B4A8FF",
+            "angry": "#FF668C", "frustrated": "#FF718A", "annoyed": "#FF7A91",
+            "tsundere": "#FF8AAE", "jealous": "#FF79B8",
+            "fearful": "#B59BFF", "disgusted": "#A4D77D",
+            "surprised": "#64E7FF", "confused": "#73DFFF", "curious": "#67DFFF",
+            "thinking": "#75DDF8", "proud": "#C7A0FF", "arrogant": "#C7A0FF",
+            "smug": "#C7A0FF", "confident": "#C7A0FF",
+            "playful": "#FFAE78", "teasing": "#FF9CCB",
+            "affectionate": "#FF87D2", "flirty": "#FF78C5",
+            "shy": "#FF9FCB", "embarrassed": "#FFA0C8",
+            "protective": "#80D9C2", "relieved": "#9BEAD7",
+            "bored": "#A9B7D2",
         }
-        energy_icons = {
-            "exhausted": "🥱", "tired": "😪", "low": "😴",
-            "normal": "", "active": "⚡", "hyper": "🔥",
-        }
+
         try:
             state = mood.current()
-            emotion = state.get("emotion", "neutral")
-            behaviour = state.get("behavior", "balanced")
-            energy = state.get("energy_label", "normal")
-            icons = [emotion_icons.get(emotion, "🙂")]
+            emotion = str(state.get("emotion", "neutral") or "neutral").lower()
+            icon_name = face_map.get(emotion, "neutral")
+            neon = emotion_colors.get(emotion, "#69E5FF")
+            face_icon = make_icon(
+                f"emotion_{icon_name}", normal=neon, hover=neon,
+                checked=neon, disabled="#52617B",
+            )
+            face_label.setPixmap(face_icon.pixmap(QSize(30, 30)))
+            face_label.setStyleSheet(
+                "QLabel#moodEmotionIcon { background: rgba(12, 20, 43, 0.96); "
+                f"border: 1px solid {neon}; border-radius: 11px; padding: 2px; }}"
+            )
+            glow = getattr(self, "_mood_emotion_glow", None)
+            if glow is not None:
+                glow_colour = QColor(neon)
+                glow_colour.setAlpha(215)
+                glow.setColor(glow_colour)
+
+            behaviour_icons = {
+                "playful": "😜", "teasing": "😼", "tsundere": "😤", "sarcastic": "🙃",
+                "quiet": "🤫", "affectionate": "💕", "clingy": "🥺", "stubborn": "😤",
+                "sulking": "😗", "cheerful": "🌸", "reserved": "☺️", "protective": "🛡️",
+                "focused": "🎯", "flirty": "😘", "curious": "🔎", "gentle": "🫶",
+                "formal": "📘", "energetic": "⚡",
+            }
+            energy_icons = {
+                "exhausted": "🥱", "tired": "😪", "low": "😴",
+                "normal": "", "active": "⚡", "hyper": "🔥",
+            }
+            behaviour = str(state.get("behavior", "balanced"))
+            energy = str(state.get("energy_label", "normal"))
+            icons = []
             if behaviour in behaviour_icons and behaviour != emotion:
                 icons.append(behaviour_icons[behaviour])
             if energy_icons.get(energy):
                 icons.append(energy_icons[energy])
-            label.setText(" ".join(icons[:3]))
+            label.setText(" ".join(icons[:2]))
             intensity = int(state.get("intensity", 0))
             secondary = ", ".join(name for name, _ in state.get("secondary_emotions", [])[:2])
-            label.setToolTip(
-                f"احساس: {emotion} ({intensity}/100)\n"
-                f"رفتار: {behaviour}\n"
-                f"انرژی: {energy}" + (f"\nاحساسات همراه: {secondary}" if secondary else "")
+            tooltip = (
+                f"احساس: {emotion} ({intensity}/100)\\n"
+                f"رفتار: {behaviour}\\n"
+                f"انرژی: {energy}"
             )
+            if secondary:
+                tooltip += f"\\nاحساسات همراه: {secondary}"
+            face_label.setToolTip(tooltip)
+            label.setToolTip(tooltip)
         except Exception:
-            label.setText("🙂")
-            label.setToolTip("حال‌وهوای فعلی Kira")
+            fallback = make_icon("emotion_neutral", normal="#B9D4F5", hover="#B9D4F5",
+                                 checked="#B9D4F5", disabled="#52617B")
+            face_label.setPixmap(fallback.pixmap(QSize(30, 30)))
+            label.setText("")
+            face_label.setToolTip("حال‌وهوای فعلی Kira")
 
     def chat_actions_html(self, kind, text):
         """Neon icon chips with generous separation; labels stay in tooltips to keep the chat compact."""
@@ -870,7 +916,8 @@ class MainWindow(QMainWindow):
         composer_glow = self._set_neon_glow(getattr(self, "composer", None), (169, 105, 255), 31, 205)
         avatar_glow = self._set_neon_glow(getattr(self, "avatar_card", None), (45, 198, 255), 27, 160)
         self._set_neon_glow(getattr(self, "route_badge", None), (65, 229, 255), 22, 210)
-        self._set_neon_glow(getattr(self, "mood_indicator", None), (163, 112, 255), 20, 195)
+        self._mood_emotion_glow = self._set_neon_glow(getattr(self, "mood_emotion_icon", None), (105, 229, 255), 20, 215)
+        self._set_neon_glow(getattr(self, "mood_indicator", None), (163, 112, 255), 18, 175)
         self._set_neon_glow(getattr(self, "send_btn", None), (60, 225, 255), 27, 235)
         self._set_neon_glow(getattr(self, "attach_btn", None), (60, 220, 255), 18, 165)
         self._set_neon_glow(getattr(self, "web_btn", None), (73, 150, 255), 19, 165)
@@ -881,6 +928,7 @@ class MainWindow(QMainWindow):
         self._pulse_neon_glow(chat_glow, 30, 42, 2800)
         self._pulse_neon_glow(composer_glow, 24, 36, 2300)
         self._pulse_neon_glow(avatar_glow, 21, 31, 3400)
+        self._pulse_neon_glow(self._mood_emotion_glow, 12, 21, 2500)
 
     def thumbnail_html(self, images):
         parts = []
@@ -1038,15 +1086,25 @@ class MainWindow(QMainWindow):
         self.title.setObjectName("title")
         header.addWidget(self.title)
         header.addStretch(1)
-        self.mood_indicator = QLabel("🙂")
+        self.mood_emotion_icon = QLabel()
+        self.mood_emotion_icon.setObjectName("moodEmotionIcon")
+        self.mood_emotion_icon.setAlignment(Qt.AlignCenter)
+        self.mood_emotion_icon.setFixedSize(38, 38)
+        self.mood_emotion_icon.setToolTip("احساس فعلی Kira")
+        self.mood_emotion_icon.setStyleSheet(
+            "QLabel#moodEmotionIcon { background: rgba(12, 20, 43, 0.96); "
+            "border: 1px solid rgba(105, 229, 255, 0.85); border-radius: 11px; padding: 2px; }"
+        )
+        header.addWidget(self.mood_emotion_icon)
+        self.mood_indicator = QLabel()
         self.mood_indicator.setObjectName("moodIndicator")
         self.mood_indicator.setAlignment(Qt.AlignCenter)
-        self.mood_indicator.setMinimumWidth(58)
-        self.mood_indicator.setToolTip("حال‌وهوای فعلی Kira")
+        self.mood_indicator.setMinimumWidth(24)
+        self.mood_indicator.setToolTip("رفتار و انرژی فعلی Kira")
         self.mood_indicator.setStyleSheet(
             "QLabel#moodIndicator { background: rgba(20, 24, 62, 0.92); "
             "border: 1px solid rgba(137, 112, 255, 0.88); border-radius: 11px; "
-            "padding: 4px 9px; font-size: 16px; color: #F2E9FF; }"
+            "padding: 4px 7px; font-size: 16px; color: #F2E9FF; }"
         )
         header.addWidget(self.mood_indicator)
         self.companion_btn = self.icon_button("user", True)
