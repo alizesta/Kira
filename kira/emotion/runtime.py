@@ -92,6 +92,7 @@ class EmotionalRuntime:
     """Persistent emotional state. No provider, UI or Qt dependency."""
     def __init__(self, library=None, path=None, clock=time.time):
         self.library = library
+        self.config = ((library.rules.get("emotional_runtime") or {}) if library else {})
         self.path = Path(path) if path else Path(DATA_DIR) / STATE_FILE
         self.clock = clock
         self._lock = LOCK
@@ -111,9 +112,9 @@ class EmotionalRuntime:
             state["behaviors"] = {k: _clamp(v) for k, v in (raw.get("behaviors") or {}).items() if k in BEHAVIORS}
             rel = raw.get("relationship") or {}
             state["relationship"] = {k: _clamp(rel.get(k, DEFAULTS["relationship"][k])) for k in RELATIONSHIP_KEYS}
-            state["energy"] = _clamp(raw.get("energy", 76))
-            state["memories"] = list(raw.get("memories") or [])[-MAX_MEMORIES:]
-            state["recent_events"] = list(raw.get("recent_events") or [])[-MAX_EVENTS:]
+            state["energy"] = _clamp(raw.get("energy", self.config.get("energy_start", 76)))
+            state["memories"] = list(raw.get("memories") or [])[-int(self.config.get("memory_limit", MAX_MEMORIES)):]
+            state["recent_events"] = list(raw.get("recent_events") or [])[-int(self.config.get("event_limit", MAX_EVENTS)):]
             state["last_user_signals"] = list(raw.get("last_user_signals") or [])
             state["schema"] = 2
             return state
@@ -155,9 +156,9 @@ class EmotionalRuntime:
         state = self._state
         previous = float(state.get("updated") or now)
         elapsed = max(0.0, now - previous)
-        state["emotions"] = _decay(state["emotions"], elapsed, EMOTION_HALF_LIFE)
-        state["behaviors"] = _decay(state["behaviors"], elapsed, BEHAVIOR_HALF_LIFE, BEHAVIOR_BASELINE)
-        state["energy"] = _clamp(state["energy"] + elapsed * ENERGY_RECOVERY)
+        state["emotions"] = _decay(state["emotions"], elapsed, float(self.config.get("emotion_half_life_s", EMOTION_HALF_LIFE)))
+        state["behaviors"] = _decay(state["behaviors"], elapsed, float(self.config.get("behavior_half_life_s", BEHAVIOR_HALF_LIFE)), BEHAVIOR_BASELINE)
+        state["energy"] = _clamp(state["energy"] + elapsed * float(self.config.get("energy_recovery_per_second", ENERGY_RECOVERY)))
         state["updated"] = now
 
     def _bump(self, bucket, key, amount):
@@ -168,7 +169,7 @@ class EmotionalRuntime:
 
     def _event(self, name, now, detail=None):
         self._state["recent_events"].append({"name": str(name), "at": now, "detail": str(detail or "")[:180]})
-        self._state["recent_events"] = self._state["recent_events"][-MAX_EVENTS:]
+        self._state["recent_events"] = self._state["recent_events"][-int(self.config.get("event_limit", MAX_EVENTS)):]
 
     def _memory(self, kind, text, impact, now):
         text = str(text or "").strip()[:280]
@@ -177,14 +178,14 @@ class EmotionalRuntime:
         # Only high-signal events become long-lived memories; ordinary chat stays in short event history.
         self._state["memories"].append({"kind": kind, "text": text, "impact": _clamp(impact),
                                         "created": now, "last_recalled": 0.0, "recall_count": 0})
-        self._state["memories"] = self._state["memories"][-MAX_MEMORIES:]
+        self._state["memories"] = self._state["memories"][-int(self.config.get("memory_limit", MAX_MEMORIES)):]
 
     def on_user_message(self, text, signals=(), now=None):
         now = self.clock() if now is None else float(now)
         signals = list(dict.fromkeys(str(x) for x in signals))
         with self._lock:
             self._advance(now)
-            self._state["energy"] = _clamp(self._state["energy"] - 0.7)
+            self._state["energy"] = _clamp(self._state["energy"] - float(self.config.get("user_message_energy_cost", 0.7)))
             for signal in signals:
                 effect = USER_EFFECTS.get(signal)
                 if not effect:
@@ -198,7 +199,7 @@ class EmotionalRuntime:
                 if signal in ("down", "stressed", "excited", "apology", "goodbye"):
                     self._memory("interaction", signal, 16 if signal in ("down", "stressed") else 9, now)
             gap = now - float(self._state.get("last_interaction") or now)
-            if gap >= 6 * 3600:
+            if gap >= float(self.config.get("away_after_s", 6 * 3600)):
                 self._bump("emotions", "affectionate", 12)
                 self._bump("emotions", "lonely", 5)
                 self._bump("behaviors", "clingy", 5)
@@ -208,16 +209,17 @@ class EmotionalRuntime:
             self._event("user_message", now, ",".join(signals))
             # Relationship changes slowly and is bounded; no score is a reward/punishment mechanism.
             rel = self._state["relationship"]
+            deltas = self.config.get("relationship_deltas", {})
             if "thanks" in signals or "praise" in signals:
-                rel["closeness"] = _clamp(rel["closeness"] + 0.12)
-                rel["comfort"] = _clamp(rel["comfort"] + 0.10)
+                rel["closeness"] = _clamp(rel["closeness"] + float(deltas.get("thanks_closeness", 0.12)))
+                rel["comfort"] = _clamp(rel["comfort"] + float(deltas.get("thanks_comfort", 0.10)))
             if "apology" in signals:
-                rel["tension"] = _clamp(rel["tension"] - 0.8)
-                rel["trust"] = _clamp(rel["trust"] + 0.08)
+                rel["tension"] = _clamp(rel["tension"] + float(deltas.get("apology_tension", -0.8)))
+                rel["trust"] = _clamp(rel["trust"] + float(deltas.get("apology_trust", 0.08)))
             if "hostile" in signals:
-                rel["tension"] = _clamp(rel["tension"] + 0.5)
-                rel["comfort"] = _clamp(rel["comfort"] - 0.12)
-            rel["familiarity"] = _clamp(rel["familiarity"] + 0.025)
+                rel["tension"] = _clamp(rel["tension"] + float(deltas.get("hostile_tension", 0.5)))
+                rel["comfort"] = _clamp(rel["comfort"] + float(deltas.get("hostile_comfort", -0.12)))
+            rel["familiarity"] = _clamp(rel["familiarity"] + float(deltas.get("familiarity_per_message", 0.025)))
             self._save()
         return self.snapshot(now)
 
@@ -227,7 +229,7 @@ class EmotionalRuntime:
         level = _clamp(35 if intensity is None else intensity)
         with self._lock:
             self._advance(now)
-            self._state["energy"] = _clamp(self._state["energy"] - 0.35)
+            self._state["energy"] = _clamp(self._state["energy"] - float(self.config.get("reply_energy_cost", 0.35)))
             for index, emotion in enumerate(valid):
                 self._state["emotions"][emotion] = max(self._state["emotions"].get(emotion, 0), level * (0.88 if index == 0 else 0.58))
                 for behavior, amount in REPLY_BEHAVIORS.get(emotion, {}).items():
