@@ -2934,6 +2934,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:                                  # noqa: BLE001 - never leave the window stuck in 'busy'
             self._stream_timer.stop()
             self.add_chat("error", self.t("reply_err", e=f"{type(exc).__name__}: {exc}"))
+            self._finish_initiative(success=False)
             self.finish_request(None)
             self.set_badge("error")
 
@@ -3198,6 +3199,69 @@ class MainWindow(QMainWindow):
             self._turn_mode = None
         return self._turn_mode
 
+    def _quiet_hours_active(self, hour):
+        start = int(self.settings.get("initiative_quiet_start_hour", 22)) % 24
+        end = int(self.settings.get("initiative_quiet_end_hour", 9)) % 24
+        if start == end:
+            return False
+        return start <= hour < end if start < end else (hour >= start or hour < end)
+
+    def check_proactive_initiative(self):
+        """Run the bounded, opt-in check-in policy. It never sends without a recent remembered milestone."""
+        if not self.settings.get("initiative_enabled", False) or self._closing:
+            return
+        now = time.time()
+        try:
+            state = mood.current(now)
+            items = persona_memory.list_items(now=now)
+            candidate = self.initiative_engine.select_candidate(items, now=now)
+            self.initiative_engine.last_initiative = float(state.get("last_initiative", 0.0) or 0.0)
+            last_interaction = now - float(state.get("age", 0.0) or 0.0)
+            hour = time.localtime(now).tm_hour
+            listening = bool(self.listener is not None and self.listener.isRunning())
+            decision = self.initiative_engine.evaluate(
+                now=now, last_interaction=last_interaction,
+                busy=bool(self.busy or self._initiative_current or self._speech_live or listening),
+                enabled=True,
+                app_active=bool(self.isVisible() and not self.isMinimized()),
+                quiet_hours=self._quiet_hours_active(hour),
+                has_relevant_memory=bool(candidate),
+            )
+            if decision.get("eligible") and candidate:
+                self.begin_proactive_checkin(candidate)
+        except Exception:
+            return
+
+    def begin_proactive_checkin(self, candidate):
+        """Start an assistant-only check-in turn; no synthetic user message is written to chat history."""
+        if self.busy or self._initiative_current or not self.settings.get("initiative_enabled", False):
+            return
+        self._initiative_pending = dict(candidate)
+        self._initiative_current = True
+        # Locally apply the cooldown immediately so a failed request is not retried every minute.
+        self.initiative_engine.mark_sent()
+        self._turn_voice = False
+        self._turn_extra = None
+        self._turn_attach_kinds = []
+        self._tool_plan = None
+        self._plain_retry = False
+        self._web_found = None
+        self.busy = True
+        self.gen_stop_btn.show()
+        self.set_status("Kira is checking in…")
+        self.set_badge("connecting", self.client.preview_route())
+        self.director.event("response_started")
+        self.begin_reply()
+
+    def _finish_initiative(self, success=False):
+        if not self._initiative_current:
+            return
+        if success:
+            mood.mark_initiative_sent()
+            self.initiative_engine.mark_sent()
+        self._initiative_current = False
+        self._initiative_pending = None
+
     def stop_generation(self):
         """Stop button: ends the answer now; text received so far is kept."""
         if self._search_worker is not None and self._search_worker.isRunning():
@@ -3230,6 +3294,8 @@ class MainWindow(QMainWindow):
 
     def _speak_stream(self, text):
         """Speech starts from the first finished sentence while the model is still writing (setting: stream_speech)."""
+        if self._initiative_current:
+            return
         if not (self.voice_btn.isChecked() and self.settings.get("stream_speech", True)):
             return
         try:
@@ -3399,6 +3465,7 @@ class MainWindow(QMainWindow):
             return
         self._stream_timer.stop()
         raw = res.get("text", "")
+        proactive_turn = bool(self._initiative_current)
         meta = self.director.parse_reply(raw)
         text = meta.text
         if not text.strip() and not res.get("stopped") and not res.get("interrupted") and not getattr(self, "_plain_retry", False):
@@ -3436,8 +3503,11 @@ class MainWindow(QMainWindow):
                 self.director.on_reply(meta)
             if self._speech_live:
                 self.speaker.stream_end()                          # the sentences were spoken while it was written: say the tail
-            else:
+            elif not proactive_turn:
                 self.say(text)
+        if self._initiative_current:
+            completed = bool(text.strip() and not res.get("stopped") and not res.get("interrupted"))
+            self._finish_initiative(success=completed)
         if self._web_found and text.strip():
             self.add_sources(self._web_found)
         self._web_found = None
@@ -3453,6 +3523,7 @@ class MainWindow(QMainWindow):
             self.speaker.stream_end()
         self.add_chat("error", self.t("reply_err", e=error))
         self.director.event("response_failed")
+        self._finish_initiative(success=False)
         self.finish_request(None)
         self.set_badge("error")
         self.check_status()
@@ -3748,6 +3819,10 @@ class MainWindow(QMainWindow):
             self._partial_saved = True
             self.save_message("assistant", self._stream_text)      # the half answer that was already on screen is not lost
         self._closing = True
+        if hasattr(self, "_initiative_timer"):
+            self._initiative_timer.stop()
+        if hasattr(self, "_mood_ui_timer"):
+            self._mood_ui_timer.stop()
         if getattr(self, "tray", None) is not None:
             self.tray.hide()
         self.bubble.close()
