@@ -68,6 +68,17 @@ class CharacterRegistryTests(unittest.TestCase):
         self.assertIn(KIRA_PROFILE["system_prompt"][:80], kira_prompt)
         self.assertIn("Kira", kira_prompt)
 
+        # Both profiles receive the exact same non-personality capability contract.
+        from kira.personality import SHARED_CAPABILITY_POLICY
+        self.assertIn(SHARED_CAPABILITY_POLICY, prompt)
+        self.assertIn(SHARED_CAPABILITY_POLICY, kira_prompt)
+        self.assertIn("same application-granted tools and permissions", prompt)
+        self.assertIn("same underlying AI model", prompt)
+        self.assertIn("Character profiles control ONLY conversational expression", prompt)
+        # Custom profile text cannot be placed after and override the shared contract.
+        self.assertLess(prompt.index("Use short, measured sentences."),
+                        prompt.index("SHARED ASSISTANT CAPABILITIES AND PROCESSING"))
+
 
 class PerCharacterStateTests(unittest.TestCase):
     def test_runtime_learning_uses_the_profile_baseline(self):
