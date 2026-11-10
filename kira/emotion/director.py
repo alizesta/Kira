@@ -14,6 +14,7 @@ import time
 from .engine import EmotionEngine
 from .library import Library
 from .parser import parse_reply as _parse_reply
+from .. import mood as mood_state
 
 
 class EmotionDirector:
@@ -63,6 +64,10 @@ class EmotionDirector:
     # ---------- events ----------
     def event(self, name, now=None):
         now = self._now(now)
+        try:
+            mood_state.on_event(name)
+        except Exception:
+            pass
         ev = self.library.events.get(name)
         if not ev:
             return
