@@ -401,9 +401,16 @@ def _runtime_snapshot(now=None):
 
 
 def avatar_hint(now=None):
-    """(emotion id, intensity) for a quick avatar reaction to how he seems right now, or None."""
+    """Return the runtime's current emotional expression for the avatar, if recent and meaningful."""
+    _ensure_runtime_migration()
+    try:
+        state = _emotional_runtime.snapshot(now)
+        if state["age"] <= 120 and state["intensity"] >= 12 and state["emotion"] != "neutral":
+            return state["emotion"], max(18, state["intensity"])
+    except Exception:
+        pass
     cur = current(now)
-    if cur["age"] > 120:                                          # only a reaction to a message he just sent, never to an old state
+    if cur["age"] > 120:
         return None
     for name in cur["user_states"]:
         if name in AVATAR:
