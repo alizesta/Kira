@@ -44,13 +44,31 @@ HABIT_MIN_MESSAGES = 15            # habits are only reported after this many me
 DAY = 86400
 TTL = {"event": 45 * DAY, "promise": 30 * DAY, "joke": 120 * DAY}
 
-_lock = threading.Lock()
+_lock = threading.RLock()
+_ACTIVE_CHARACTER_ID = "kira"
 _TAG = re.compile(r"^\s*\[[^\]\n]{1,30}\]\s*")
 _BAD_VOICE = ("http://", "https://", "```", "[نتایج", "language model", "as an ai", "مدل زبانی", "به عنوان یک هوش", "how can i help", "چطور می‌توانم کمک")
 
 
 def _path():
+    """Shared user facts, moments and summaries (backward-compatible location)."""
     return DATA_DIR / FILE_NAME
+
+
+def _voice_path():
+    """One independent style-sample store per character; Kira keeps the legacy voice field."""
+    if _ACTIVE_CHARACTER_ID == "kira":
+        return None
+    return DATA_DIR / "characters" / _ACTIVE_CHARACTER_ID / "voice_memory.json"
+
+
+def set_active_character(character_id):
+    """Switch the style-sample store without switching the shared user-memory store."""
+    global _ACTIVE_CHARACTER_ID, _last_reply
+    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", str(character_id or "kira"))[:80] or "kira"
+    _ACTIVE_CHARACTER_ID = safe_id
+    _last_reply = ""
+    return _ACTIVE_CHARACTER_ID
 
 
 def _empty() -> dict:
@@ -72,15 +90,43 @@ def _load() -> dict:
             data["summarized"] = int(raw.get("summarized") or 0)
     except (OSError, ValueError, TypeError):
         pass
+    voice_path = _voice_path()
+    if voice_path is not None:
+        try:
+            voice_payload = json.loads(voice_path.read_text(encoding="utf-8"))
+            samples = voice_payload.get("voice", []) if isinstance(voice_payload, dict) else []
+            data["voice"] = [str(x) for x in samples if isinstance(x, str)][-MAX_VOICE:]
+        except (OSError, ValueError, TypeError):
+            data["voice"] = []
     return data
+
+
+def _write_json(path: Path, payload: dict):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def _save(data: dict):
     path = _path()
-    tmp = path.with_suffix(".tmp")
     try:
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-        os.replace(tmp, path)
+        voice_path = _voice_path()
+        if voice_path is None:
+            _write_json(path, data)
+        else:
+            # Save style samples privately, and preserve Kira's legacy voice samples in the shared file.
+            _write_json(voice_path, {"schema": 1, "character_id": _ACTIVE_CHARACTER_ID,
+                                     "voice": list(data.get("voice") or [])[-MAX_VOICE:]})
+            try:
+                shared = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(shared, dict):
+                    shared = _empty()
+            except (OSError, ValueError, TypeError):
+                shared = _empty()
+            for key in ("facts", "moments", "summaries", "habits", "summarized"):
+                shared[key] = data.get(key, _empty()[key])
+            _write_json(path, shared)
     except OSError:
         pass                                                      # memory is a bonus; never break the chat
 
@@ -365,11 +411,18 @@ def forget_conversation():
 
 
 def forget_all():
-    """Shared information about the user and ongoing context (not the chat history itself)."""
+    """Clear shared user memory and every character's saved voice samples."""
     global _last_reply
     _last_reply = ""
     with _lock:
         _save(_empty())
+        try:
+            root = DATA_DIR / "characters"
+            if root.exists():
+                for path in root.glob("*/voice_memory.json"):
+                    _write_json(path, {"schema": 1, "character_id": path.parent.name, "voice": []})
+        except OSError:
+            pass
     _evidence.forget_all()
 
 
