@@ -117,7 +117,7 @@ def main() -> None:
             updated = source_path.read_text(encoding="utf-8")
             if relative.endswith(".py"):
                 ast.parse(updated, filename=relative)
-            target.write_text(updated, encoding="utf-8", newline="\\n")
+            target.write_text(updated, encoding="utf-8", newline="\n")
 
         main_text = (kira_dir / "main.py").read_text(encoding="utf-8")
         mood_text = (kira_dir / "mood.py").read_text(encoding="utf-8")
