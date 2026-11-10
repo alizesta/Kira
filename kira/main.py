@@ -445,7 +445,7 @@ class MemoryDialog(QDialog):
             self.refresh()
 
     def forget_all(self):
-        if QMessageBox.question(self, "فراموش‌کردن همه", "همه‌ی اطلاعات حافظه‌ی مشترک برنامه و مود شخصیت فعال پاک شود؟ تاریخچه‌ی گفتگو و مود شخصیت‌های دیگر دست‌نخورده می‌مانند.") == QMessageBox.Yes:
+        if QMessageBox.question(self, "فراموش‌کردن همه", "همه‌ی اطلاعات حافظه‌ی مشترک برنامه، نمونه‌های لحن همه‌ی شخصیت‌ها و مود شخصیت فعال پاک شوند؟ تاریخچه‌ی گفتگو و مود شخصیت‌های دیگر دست‌نخورده می‌مانند.") == QMessageBox.Yes:
             persona_memory.forget_all()
             mood.reset()
             self.refresh()
