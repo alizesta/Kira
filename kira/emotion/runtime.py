@@ -247,17 +247,12 @@ class EmotionalRuntime:
         with self._lock:
             self._advance(now)
             self._event(event, now, detail)
-            # Event rules can be extended in events.json without coupling this state to the avatar engine.
-            mapping = {
-                "app_startup": ("happy", 10, "curious", 5),
-                "response_failed": ("frustrated", 10, "focused", 5),
-                "user_interrupt": ("surprised", 8, "reserved", 4),
-                "tts_started": ("confident", 3, None, 0),
-            }
-            row = mapping.get(event)
-            if row:
-                self._bump("emotions", row[0], row[1])
-                if row[2]: self._bump("behaviors", row[2], row[3])
+            # Runtime impulses are data-driven by the same event library used by the avatar.
+            event_rule = (self.library.events.get(event) or {}) if self.library else {}
+            for emotion, amount in (event_rule.get("runtime_emotions") or {}).items():
+                self._bump("emotions", emotion, amount)
+            for behavior, amount in (event_rule.get("runtime_behaviors") or {}).items():
+                self._bump("behaviors", behavior, amount)
             self._save()
         return self.snapshot(now)
 
