@@ -109,6 +109,8 @@ def main() -> None:
             "kira/emotion/runtime.py": Path("kira/emotion/runtime.py"),
             "kira/emotion/director.py": Path("kira/emotion/director.py"),
             "emotion_library/emotions.json": EMOTIONS_SOURCE,
+            "emotion_library/rules.json": Path("emotion_library/rules.json"),
+            "emotion_library/events.json": Path("emotion_library/events.json"),
         }
         for relative, source_path in reviewed_sources.items():
             if not source_path.is_file():
