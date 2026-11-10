@@ -1,4 +1,4 @@
-"""Provider-neutral character decision layer for Kira.
+"""Provider-neutral character decision layer.
 
 This module does not generate prose or call an LLM. It selects a delivery behaviour
 from stable character traits, the current emotional state, relationship context and
@@ -31,7 +31,7 @@ BEHAVIOUR_GUIDES = {
     "reserved": "Be a little shy or restrained, choosing words carefully.",
     "flirty": "Use light, suggestive teasing only when the context is clearly welcome and appropriate.",
     "energetic": "Use a brisk, lively pace without becoming chaotic.",
-    "balanced": "Use Kira's normal playful, warm and intelligent baseline.",
+    "balanced": "Use this character's normal baseline behaviour, guided by its own profile traits.",
 }
 
 EMOTION_BIAS = {
@@ -214,7 +214,7 @@ class DecisionEngine:
             "Keep humour and affection context-sensitive. Never let a persona trait reduce accuracy or usefulness."
         )
         return (
-            "[KIRA CHARACTER DECISION]\n"
+            "[CHARACTER DECISION]\n"
             f"Selected behaviour: {decision.behaviour} (intensity {decision.intensity}/100).\n"
             f"Behaviour instruction: {guide}\n"
             f"Stable character traits (0-1): {traits}.\n"
