@@ -154,6 +154,11 @@ def main() -> None:
         icons_target = kira_dir / "ui_icons.py"
         if not icons_target.is_file() or "glow_colour" not in icons_target.read_text(encoding="utf-8"):
             raise RuntimeError("Neon line icon renderer was not packaged")
+        icons_text = icons_target.read_text(encoding="utf-8")
+        if "def _emotion_shapes(" not in icons_text or 'startswith("emotion_")' not in icons_text:
+            raise RuntimeError("Custom neon emotion glyphs were not packaged")
+        if "self.mood_emotion_icon.setPixmap" not in main_text or 'make_icon(' not in main_text:
+            raise RuntimeError("Live neon emotion indicator was not packaged")
         if "def check_proactive_initiative" not in main_text or "initiative_enabled" not in main_text:
             raise RuntimeError("Opt-in proactive initiative UI/policy was not packaged")
         learning_target = kira_dir / "character" / "learning.py"
