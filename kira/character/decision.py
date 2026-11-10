@@ -47,6 +47,7 @@ EMOTION_BIAS = {
     "curious": {"curious": 18},
     "shy": {"affectionate": 8, "quiet": 8, "tsundere": 10},
     "jealous": {"tsundere": 18, "teasing": 8},
+    "flirty": {"flirty": 18, "affectionate": 8, "teasing": 5},
     "affectionate": {"affectionate": 18, "gentle": 6},
     "proud": {"confident": 18, "teasing": 6},
     "calm": {"gentle": 10, "balanced": 6},
