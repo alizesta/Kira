@@ -434,7 +434,7 @@ def avatar_hint(now=None):
                     return behavior_map[state["behavior"]], min(65, active + 18)
     except Exception:
         pass
-    cur = current(now, query=query)
+    cur = current(now)
     if cur["age"] > 120:
         return None
     for name in cur["user_states"]:
@@ -452,7 +452,7 @@ def build_block(mode_name="chat", now=None, query=None) -> str:
         layered = _emotional_runtime.build_prompt("task" if mode_name == "task" else "chat", now, query=query)
     except Exception:
         layered = ""
-    cur = current(now)
+    cur = current(now, query=query)
     states = cur["user_states"]
     lines = []
     if mode_name == "chat":
