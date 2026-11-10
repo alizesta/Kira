@@ -32,6 +32,13 @@ class CharacterDecisionTests(unittest.TestCase):
         tired = self.engine.decide("hello", {"emotion": "happy", "energy": 10})
         self.assertNotEqual(rested.behaviour, tired.behaviour)
 
+    def test_emotional_memory_changes_the_selected_behaviour(self):
+        decision = self.engine.decide("hello", {
+            "emotion": "neutral",
+            "emotional_memories": [{"signal": "down", "impact": 100}],
+        })
+        self.assertEqual(decision.behaviour, "gentle")
+
 
 class InitiativeTests(unittest.TestCase):
     def test_initiative_requires_opt_in_and_relevant_memory(self):
