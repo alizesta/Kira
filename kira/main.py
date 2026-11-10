@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 import re
 import sys
-from PySide6.QtCore import Qt, QThread, Signal, QTimer, QRectF, QUrl, QSize
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QRectF, QUrl, QSize, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QAction, QIcon, QDesktopServices, QTextCursor, QColor, QBrush, QImage, QTextDocument
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QTextBrowser, QLineEdit,
@@ -525,6 +525,7 @@ class MainWindow(QMainWindow):
         self._upload_token, self._upload_done, self._att_seq = 0, False, 0
         self._chat_action_seq = 0
         self._chat_action_texts = {}
+        self._neon_animations = []
         self._initiative_pending = None
         self._initiative_current = False
         self._turn_extra = None            # full text + images of the message being answered (history keeps a short form)
@@ -788,7 +789,7 @@ class MainWindow(QMainWindow):
             label.setToolTip("حال‌وهوای فعلی Kira")
 
     def chat_actions_html(self, kind, text):
-        """Compact icon-only per-message controls; labels are available as hover tooltips."""
+        """Neon icon chips with generous separation; labels stay in tooltips to keep the chat compact."""
         if kind not in ("assistant", "user") or not str(text or "").strip():
             return ""
         self._chat_action_seq += 1
@@ -797,17 +798,26 @@ class MainWindow(QMainWindow):
         if len(self._chat_action_texts) > 300:
             self._chat_action_texts.pop(next(iter(self._chat_action_texts)))
         actions = [
-            ("copy", "⧉", "#72E8FF", "کپی"),
-            ("edit", "✎", "#C4A7FF", "ویرایش"),
-            ("speak", "♫", "#FF9BDB", "خواندن"),
+            ("copy", "⧉", "#8CF5FF", "#103A52", "#39DFFF", "کپی"),
+            ("edit", "✎", "#E0C8FF", "#30214F", "#B18AFF", "ویرایش"),
+            ("speak", "♫", "#FFC0E9", "#4B2044", "#FF83D0", "خواندن"),
         ]
-        links = "".join(
-            f'<a href="kira-action://{action}/{key}" title="{tooltip}" style="color:{colour};'
-            f'text-decoration:none;font-size:11pt;font-weight:600;margin-left:14px;">{glyph}</a>'
-            for action, glyph, colour, tooltip in actions
+        cells = []
+        for action, glyph, colour, background, border, tooltip in actions:
+            cells.append(
+                f'<td bgcolor="{background}" style="border:1px solid {border};border-radius:10px;'
+                f'padding:4px 11px;">'
+                f'<a href="kira-action://{action}/{key}" title="{tooltip}" '
+                f'style="color:{colour};text-decoration:none;font-size:13pt;font-weight:700;">{glyph}</a>'
+                f'</td>'
+            )
+        links = "".join(cells)
+        return (
+            '<p dir="rtl" align="right" style="margin:10px 2px 2px 2px;padding-top:7px;'
+            'border-top:1px solid #314968;">'
+            '<table align="right" border="0" cellspacing="9" cellpadding="0"><tr>'
+            f'{links}</tr></table></p>'
         )
-        return (f'<p dir="rtl" align="right" style="margin:8px 2px 1px 2px;'
-                f'padding-top:5px;border-top:1px solid #394C79;">{links}</p>')
 
     def handle_chat_link(self, url):
         """Handle local message actions while preserving normal external links."""
@@ -833,25 +843,44 @@ class MainWindow(QMainWindow):
 
     def _set_neon_glow(self, widget, colour, blur=24, alpha=175):
         if widget is None:
-            return
+            return None
         glow = QGraphicsDropShadowEffect(widget)
         glow.setBlurRadius(blur)
         glow.setColor(QColor(colour[0], colour[1], colour[2], alpha))
         glow.setOffset(0, 0)
         widget.setGraphicsEffect(glow)
+        return glow
+
+    def _pulse_neon_glow(self, effect, minimum, maximum, duration):
+        if effect is None:
+            return
+        animation = QPropertyAnimation(effect, b"blurRadius", self)
+        animation.setDuration(duration)
+        animation.setStartValue(minimum)
+        animation.setEndValue(maximum)
+        animation.setEasingCurve(QEasingCurve.InOutSine)
+        animation.setLoopCount(-1)
+        animation.start()
+        self._neon_animations.append(animation)
 
     def apply_neon_glow(self):
-        """Real Qt drop-shadow glow, not just translucent acrylic backgrounds."""
-        self._set_neon_glow(getattr(self, "chat_card", None), (38, 205, 255), 34, 115)
-        self._set_neon_glow(getattr(self, "composer", None), (164, 92, 255), 28, 165)
-        self._set_neon_glow(getattr(self, "route_badge", None), (64, 225, 255), 19, 145)
-        self._set_neon_glow(getattr(self, "send_btn", None), (60, 220, 255), 24, 210)
-        self._set_neon_glow(getattr(self, "attach_btn", None), (60, 220, 255), 16, 120)
-        self._set_neon_glow(getattr(self, "web_btn", None), (73, 150, 255), 16, 115)
-        self._set_neon_glow(getattr(self, "img_search_btn", None), (180, 105, 255), 16, 125)
-        self._set_neon_glow(getattr(self, "mic_btn", None), (255, 90, 174), 18, 135)
-        self._set_neon_glow(getattr(self, "wake_btn", None), (167, 111, 255), 17, 125)
-        self._set_neon_glow(getattr(self, "voice_btn", None), (74, 224, 255), 17, 130)
+        """Layered Qt glows with a restrained pulse so the glass interface feels luminous, not flat."""
+        self._neon_animations = []
+        chat_glow = self._set_neon_glow(getattr(self, "chat_card", None), (35, 210, 255), 36, 190)
+        composer_glow = self._set_neon_glow(getattr(self, "composer", None), (169, 105, 255), 31, 205)
+        avatar_glow = self._set_neon_glow(getattr(self, "avatar_card", None), (45, 198, 255), 27, 160)
+        self._set_neon_glow(getattr(self, "route_badge", None), (65, 229, 255), 22, 210)
+        self._set_neon_glow(getattr(self, "mood_indicator", None), (163, 112, 255), 20, 195)
+        self._set_neon_glow(getattr(self, "send_btn", None), (60, 225, 255), 27, 235)
+        self._set_neon_glow(getattr(self, "attach_btn", None), (60, 220, 255), 18, 165)
+        self._set_neon_glow(getattr(self, "web_btn", None), (73, 150, 255), 19, 165)
+        self._set_neon_glow(getattr(self, "img_search_btn", None), (180, 105, 255), 19, 175)
+        self._set_neon_glow(getattr(self, "mic_btn", None), (255, 90, 174), 21, 205)
+        self._set_neon_glow(getattr(self, "wake_btn", None), (167, 111, 255), 20, 190)
+        self._set_neon_glow(getattr(self, "voice_btn", None), (74, 224, 255), 21, 205)
+        self._pulse_neon_glow(chat_glow, 30, 42, 2800)
+        self._pulse_neon_glow(composer_glow, 24, 36, 2300)
+        self._pulse_neon_glow(avatar_glow, 21, 31, 3400)
 
     def thumbnail_html(self, images):
         parts = []
@@ -952,6 +981,7 @@ class MainWindow(QMainWindow):
     def icon_button(self, name, checkable=False):
         """Small borderless icon button; its tooltip carries the (translated) meaning."""
         b = QToolButton()
+        b.setObjectName(f"icon_{name}")
         b.setIcon(make_icon(name))
         b.setIconSize(QSize(20, 20))
         b.setCheckable(checkable)
@@ -1005,9 +1035,9 @@ class MainWindow(QMainWindow):
         self.mood_indicator.setMinimumWidth(58)
         self.mood_indicator.setToolTip("حال‌وهوای فعلی Kira")
         self.mood_indicator.setStyleSheet(
-            "QLabel#moodIndicator { background: rgba(105, 86, 160, 0.16); "
-            "border: 1px solid rgba(166, 137, 255, 0.30); border-radius: 10px; "
-            "padding: 3px 7px; font-size: 15px; }"
+            "QLabel#moodIndicator { background: rgba(20, 24, 62, 0.92); "
+            "border: 1px solid rgba(137, 112, 255, 0.88); border-radius: 11px; "
+            "padding: 4px 9px; font-size: 16px; color: #F2E9FF; }"
         )
         header.addWidget(self.mood_indicator)
         self.companion_btn = self.icon_button("user", True)
@@ -1043,7 +1073,7 @@ class MainWindow(QMainWindow):
         self.input.textChanged.connect(lambda: self.on_input_changed(self.input.text()))
         co.addWidget(self.input)
         bar = QHBoxLayout()
-        bar.setSpacing(2)
+        bar.setSpacing(7)
         # Model indicator: Claude 2's compact chip, driven by the router (set_badge / build_badge_menu).
         self.route_badge = RouteChip()
         self.route_badge.setObjectName("routeChip")
