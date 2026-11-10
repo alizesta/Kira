@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,7 +10,7 @@ from kira.characters import CharacterRegistry
 from kira.characters.kira import PROFILE as KIRA_PROFILE
 from kira.emotion.runtime import EmotionalRuntime
 from kira.personality import build_system_prompt
-from kira import mood
+from kira import mood, persona_memory
 
 
 class CharacterRegistryTests(unittest.TestCase):
@@ -97,6 +98,31 @@ class PerCharacterStateTests(unittest.TestCase):
                 self.assertEqual(mood._emotional_runtime.base_traits["playfulness"], KIRA_PROFILE["traits"]["playfulness"])
             # Restore the runtime path after the patched data directory goes away.
             mood.set_active_character("kira", KIRA_PROFILE["traits"])
+
+
+class PerCharacterVoiceMemoryTests(unittest.TestCase):
+    def test_voice_samples_do_not_leak_between_character_profiles(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with mock.patch.object(persona_memory, "DATA_DIR", Path(folder)):
+                with mock.patch.object(persona_memory, "is_voice_sample", return_value=True):
+                    persona_memory.set_active_character("kira")
+                    persona_memory.observe("assistant", "Kira keeps her own distinct speaking style.")
+                    shared_path = Path(folder) / "kira_persona_memory.json"
+                    self.assertEqual(json.loads(shared_path.read_text(encoding="utf-8"))["voice"],
+                                     ["Kira keeps her own distinct speaking style."])
+
+                    persona_memory.set_active_character("nova-test")
+                    persona_memory.observe("assistant", "Nova uses a calmer and more measured speaking style.")
+                    self.assertEqual(persona_memory._load()["voice"],
+                                     ["Nova uses a calmer and more measured speaking style."])
+                    self.assertEqual(json.loads(shared_path.read_text(encoding="utf-8"))["voice"],
+                                     ["Kira keeps her own distinct speaking style."])
+                    self.assertTrue((Path(folder) / "characters" / "nova-test" / "voice_memory.json").is_file())
+
+                    persona_memory.set_active_character("kira")
+                    self.assertEqual(persona_memory._load()["voice"],
+                                     ["Kira keeps her own distinct speaking style."])
+            persona_memory.set_active_character("kira")
 
 
 class CharacterTabWiringTests(unittest.TestCase):
