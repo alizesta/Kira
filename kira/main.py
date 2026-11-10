@@ -329,7 +329,7 @@ class EmotionalStateDialog(QDialog):
     """Read-only diagnostic view of Kira's independent emotional layers."""
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("وضعیت احساسی Kira")
+        self.setWindowTitle("وضعیت احساسی شخصیت فعال")
         self.resize(620, 520)
         layout = QVBoxLayout(self)
         self.summary = QLabel()
@@ -411,7 +411,7 @@ class MemoryDialog(QDialog):
 
     def refresh(self):
         cur = mood.current()
-        self.info.setText(f"حال‌وهوای فعلی Kira: {cur['emotion']} ({cur['intensity']}/100). هرچه اینجا نباشد Kira نمی‌داند. حذف یا ویرایش فوری اثر می‌کند.")
+        self.info.setText(f"حال‌وهوای شخصیت فعال: {cur['emotion']} ({cur['intensity']}/100). حافظه‌ی مشترک برنامه در این پنجره قابل ویرایش است.")
         self.items.clear()
         for it in persona_memory.list_items():
             row = QListWidgetItem(f"[{self.GROUPS.get(it['group'], it['group'])}] {it['text']}")
@@ -2875,7 +2875,7 @@ class MainWindow(QMainWindow):
         self.update_bubble()
         if getattr(self, "tray", None) is not None and not getattr(self, "_tray_hinted", False):
             self._tray_hinted = True
-            self.tray.showMessage("Kira", "Kira هنوز در System Tray فعال است. برای باز کردن روی آیکون کلیک کن.",
+            self.tray.showMessage(APP_NAME, f"{APP_NAME} هنوز در System Tray فعال است. برای باز کردن روی آیکون کلیک کن.",
                                   QSystemTrayIcon.Information, 3500)
 
     def toggle_main_window(self):
@@ -3446,7 +3446,7 @@ class MainWindow(QMainWindow):
             older = recent_messages(window + 40)[:-window] if window else []
             # her own recent banter is a style anchor for casual talk only; a practical request does not get it
             memory_query = decision_text or evidence_memory.query_from_context(context)
-            memory_block = persona_memory.build_block(older, voice_samples=(mode is None or mode.name == modes.CHAT),
+            memory_block = persona_memory.build_block(older, voice_samples=(self.characters.active_id == "kira" and (mode is None or mode.name == modes.CHAT)),
                                                       query=memory_query,
                                                       budget=evidence_memory.budget_for(self.settings, self.client))
             total = message_count()
