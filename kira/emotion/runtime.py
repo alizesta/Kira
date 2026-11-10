@@ -171,12 +171,12 @@ class EmotionalRuntime:
         self._state["recent_events"].append({"name": str(name), "at": now, "detail": str(detail or "")[:180]})
         self._state["recent_events"] = self._state["recent_events"][-int(self.config.get("event_limit", MAX_EVENTS)):]
 
-    def _memory(self, kind, text, impact, now):
+    def _memory(self, kind, text, impact, now, signal=None):
         text = str(text or "").strip()[:280]
         if not text:
             return
         # Only high-signal events become long-lived memories; ordinary chat stays in short event history.
-        self._state["memories"].append({"kind": kind, "text": text, "impact": _clamp(impact),
+        self._state["memories"].append({"kind": kind, "signal": signal, "text": text, "impact": _clamp(impact),
                                         "created": now, "last_recalled": 0.0, "recall_count": 0})
         self._state["memories"] = self._state["memories"][-int(self.config.get("memory_limit", MAX_MEMORIES)):]
 
@@ -197,7 +197,7 @@ class EmotionalRuntime:
                     bucket = self._state["behaviors"]
                     bucket[key] = _clamp(bucket.get(key, 0) + value)
                 if signal in ("down", "stressed", "excited", "apology", "goodbye"):
-                    self._memory("interaction", signal, 16 if signal in ("down", "stressed") else 9, now)
+                    self._memory("interaction", text, 16 if signal in ("down", "stressed") else 9, now, signal=signal)
             gap = now - float(self._state.get("last_interaction") or now)
             if gap >= float(self.config.get("away_after_s", 6 * 3600)):
                 self._bump("emotions", "affectionate", 12)
