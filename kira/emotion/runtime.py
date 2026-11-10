@@ -1,6 +1,6 @@
-"""Deterministic, provider-independent emotional runtime for Kira.
+"""Deterministic, provider-independent emotional runtime for a character profile.
 
-The LLM may suggest reply emotions, but this module owns persistent state,
+The LLM may suggest reply emotions, but this module owns per-profile state,
 decay, relationship drift, emotional memories, event reactions and final mood.
 """
 from __future__ import annotations
@@ -97,17 +97,47 @@ def _decay(values, elapsed, half_life, baseline=None):
 
 class EmotionalRuntime:
     """Persistent emotional state. No provider, UI or Qt dependency."""
-    def __init__(self, library=None, path=None, clock=time.time):
+    def __init__(self, library=None, path=None, clock=time.time, base_traits=None):
         self.library = library
         self.config = ((library.rules.get("emotional_runtime") or {}) if library else {})
         self.path = Path(path) if path else Path(DATA_DIR) / STATE_FILE
         self.clock = clock
         self._lock = LOCK
+        self.base_traits = self._normalise_traits(base_traits or BASE_TRAITS)
         self._state = self._load()
         self.relationship_engine = RelationshipEngine(DEFAULTS["relationship"])
 
+    @staticmethod
+    def _normalise_traits(values):
+        values = values if isinstance(values, dict) else {}
+        result = {}
+        for key, baseline in BASE_TRAITS.items():
+            try:
+                result[key] = max(0.0, min(1.0, float(values.get(key, baseline))))
+            except (TypeError, ValueError):
+                result[key] = float(baseline)
+        return result
+
     def _fresh(self):
-        return json.loads(json.dumps(DEFAULTS))
+        state = json.loads(json.dumps(DEFAULTS))
+        state["personality_traits"] = dict(self.base_traits)
+        return state
+
+    def set_base_traits(self, values):
+        """Change this profile's baseline while preserving any small learned deltas."""
+        updated = self._normalise_traits(values)
+        with self._lock:
+            current = self._state.get("personality_traits") or {}
+            revised = {}
+            for key, baseline in updated.items():
+                old_base = float(self.base_traits.get(key, BASE_TRAITS[key]))
+                old_value = float(current.get(key, old_base))
+                learned_delta = old_value - old_base
+                revised[key] = max(0.0, min(1.0, baseline + learned_delta))
+            self.base_traits = updated
+            self._state["personality_traits"] = revised
+            self._save()
+        return dict(revised)
 
     def _load(self):
         try:
@@ -127,7 +157,7 @@ class EmotionalRuntime:
             stored_traits = raw.get("personality_traits") if isinstance(raw.get("personality_traits"), dict) else {}
             state["personality_traits"] = {
                 key: max(0.0, min(1.0, float(stored_traits.get(key, baseline))))
-                for key, baseline in BASE_TRAITS.items()
+                for key, baseline in self.base_traits.items()
             }
             evidence = raw.get("feedback_evidence") if isinstance(raw.get("feedback_evidence"), dict) else {}
             state["feedback_evidence"] = {
@@ -237,7 +267,7 @@ class EmotionalRuntime:
             if record["count"] >= TRAIT_LEARNING_THRESHOLD and record["count"] > int(record.get("applied", 0)):
                 traits = self._state["personality_traits"]
                 for trait, delta in effects.items():
-                    baseline = float(BASE_TRAITS[trait])
+                    baseline = float(self.base_traits[trait])
                     low = max(0.0, baseline + TRAIT_MIN_OFFSET)
                     high = min(1.0, baseline + TRAIT_MAX_OFFSET)
                     traits[trait] = max(low, min(high, float(traits.get(trait, baseline)) + float(delta)))
@@ -428,7 +458,7 @@ class EmotionalRuntime:
                          "; ".join(m["text"] for m in state["recalled_memories"][:3]))
         trait_changes = []
         for key, value in state["personality_traits"].items():
-            baseline = BASE_TRAITS[key]
+            baseline = self.base_traits[key]
             if abs(float(value) - baseline) >= 0.015:
                 trait_changes.append(f"{key} {float(value):.2f}")
         if trait_changes:
