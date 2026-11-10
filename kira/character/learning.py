@@ -1,6 +1,6 @@
-"""Conservative, explicit feedback detection for Kira's long-term personality learning.
+"""Conservative, explicit feedback detection for a selected character's long-term personality learning.
 
-Only direct user feedback about Kira's style is considered. Ordinary sentiment,
+Only direct user feedback about the active character's style is considered. Ordinary sentiment,
 praise of unrelated things, and ambiguous wording are ignored.
 """
 from __future__ import annotations
