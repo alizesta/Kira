@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox, QFrame, QFileDialog, QSizePolicy, QSystemTrayIcon, QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog,
     QStackedWidget, QDoubleSpinBox, QGraphicsDropShadowEffect
 )
-from .config import load_settings, save_settings, ROOT, VERSION, LOAD_WARNINGS, DATA_DIR
+from .config import load_settings, save_settings, ROOT, VERSION, APP_NAME, LOAD_WARNINGS, DATA_DIR
 from . import storage
 from . import memory as chat_store
 from .memory import init_db, add_message, conversation_context, clear_memory, recent_messages, message_count, ChatStoreError
@@ -43,6 +43,8 @@ from .cloud_voice_ui import CloudVoicePage
 from .speech_fixes import SpeechFixes
 from .strings import STR, TEST_LINES
 from .personality import build_system_prompt
+from .characters import CharacterRegistry
+from .character.traits import BASE_TRAITS
 from . import persona_memory
 from . import evidence_memory
 from . import brain
@@ -508,6 +510,16 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.settings = load_settings()
+        self.characters = CharacterRegistry(
+            DATA_DIR,
+            active_id=self.settings.get("active_character_id", "kira"),
+            legacy_name=self.settings.get("assistant_name", "Kira"),
+            legacy_notes=self.settings.get("persona", ""),
+        )
+        self.settings["active_character_id"] = self.characters.active_id
+        self.settings["assistant_name"] = self.characters.active_profile["name"]
+        self.settings["persona"] = self.characters.active_profile.get("notes", "")
+        mood.set_active_character(self.characters.active_id)
         self._db_notes = init_db()
         self._save_warned = False
         self._emotion_applied = False
@@ -591,11 +603,13 @@ class MainWindow(QMainWindow):
             self.setAttribute(Qt.WA_TranslucentBackground, True)    # the DWM paints the glass behind the transparent window
         self.tabs = QTabWidget()
         self.build_chat_tab()
-        self.build_assistant_tab()
+        self.build_characters_tab()
         self.build_voice_tab()
-        self.build_char_tab()
+        self.build_personality_tab()
+        self.build_char_tab()                  # desktop companion controls are part of Preferences
         self.build_general_tab()
         self.build_ai_tab()
+        self.build_help_tab()
         self.update_mood_indicator()
         self._mood_ui_timer.start()
         self._initiative_timer.start()
@@ -605,7 +619,7 @@ class MainWindow(QMainWindow):
         self.save_btn.setIconSize(QSize(16, 16))
         self.save_btn.clicked.connect(self.apply_settings)
         self.reg(self.save_btn.setText, "save")
-        self.tab_keys = ["tab_chat", "tab_assistant", "tab_voice", "tab_char", "tab_general", "tab_ai"]
+        self.tab_keys = ["tab_chat", "tab_characters", "tab_voice", "tab_personality", "tab_preferences", "tab_ai", "tab_help"]
         self.tidy_forms()                      # field widths follow their content (done once every page exists)
         for i, key in enumerate(self.tab_keys):
             self.reg(lambda s, i=i: self.tabs.setTabText(i, s), key)
@@ -682,8 +696,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_menu_actions"):
             for action, key in zip(self._menu_actions, self.tab_keys):
                 action.setText(self.t(key))
-        self.setWindowTitle(f"Project {self.settings['assistant_name']}  {VERSION}")
-        self.title.setText(f"Project {self.settings['assistant_name']}")
+        self.setWindowTitle(f"{APP_NAME}  {VERSION}")
+        self.title.setText(APP_NAME)
         self.set_status(*self._status[:1], **self._status[1])
         self.update_companion_btn()
         self.update_engine_label()
@@ -728,7 +742,7 @@ class MainWindow(QMainWindow):
         """Append one message bubble; direction is decided per line so Persian reads right-to-left.
         images: attachment dicts whose thumbnails are shown at the top of the bubble."""
         if name is None:
-            name = {"user": self.t("you"), "assistant": self.settings.get("assistant_name", "Kira"),
+            name = {"user": self.t("you"), "assistant": self.active_character().get("name", "Character"),
                     "error": self.t("error"), "system": ""}.get(kind, "")
         ui_dir = "rtl" if self.settings.get("ui_lang", "fa") == "fa" else "ltr"
         extra = self.thumbnail_html(images)
@@ -740,7 +754,7 @@ class MainWindow(QMainWindow):
         bar.setValue(bar.maximum())
 
     def update_mood_indicator(self):
-        """Render Kira's current emotion as a custom neon face; chat-message emoji are untouched."""
+        """Render the active character's current emotion as a custom neon face; chat-message emoji are untouched."""
         label = getattr(self, "mood_indicator", None)
         face_label = getattr(self, "mood_emotion_icon", None)
         if label is None or face_label is None:
@@ -1082,7 +1096,7 @@ class MainWindow(QMainWindow):
         cv.setSpacing(6)
         header = QHBoxLayout()
         header.setSpacing(6)
-        self.title = QLabel("Project Kira")
+        self.title = QLabel(APP_NAME)
         self.title.setObjectName("title")
         header.addWidget(self.title)
         header.addStretch(1)
@@ -1090,7 +1104,7 @@ class MainWindow(QMainWindow):
         self.mood_emotion_icon.setObjectName("moodEmotionIcon")
         self.mood_emotion_icon.setAlignment(Qt.AlignCenter)
         self.mood_emotion_icon.setFixedSize(38, 38)
-        self.mood_emotion_icon.setToolTip("احساس فعلی Kira")
+        self.mood_emotion_icon.setToolTip("احساس فعلی شخصیت فعال")
         self.mood_emotion_icon.setStyleSheet(
             "QLabel#moodEmotionIcon { background: rgba(12, 20, 43, 0.96); "
             "border: 1px solid rgba(105, 229, 255, 0.85); border-radius: 11px; padding: 2px; }"
@@ -1100,7 +1114,7 @@ class MainWindow(QMainWindow):
         self.mood_indicator.setObjectName("moodIndicator")
         self.mood_indicator.setAlignment(Qt.AlignCenter)
         self.mood_indicator.setMinimumWidth(24)
-        self.mood_indicator.setToolTip("رفتار و انرژی فعلی Kira")
+        self.mood_indicator.setToolTip("رفتار و انرژی فعلی شخصیت فعال")
         self.mood_indicator.setStyleSheet(
             "QLabel#moodIndicator { background: rgba(20, 24, 62, 0.92); "
             "border: 1px solid rgba(137, 112, 255, 0.88); border-radius: 11px; "
@@ -1141,7 +1155,7 @@ class MainWindow(QMainWindow):
         co.addWidget(self.input)
         bar = QHBoxLayout()
         bar.setSpacing(7)
-        # Model indicator: Claude 2's compact chip, driven by the router (set_badge / build_badge_menu).
+        # Model indicator: compact chip driven by the router (set_badge / build_badge_menu).
         self.route_badge = RouteChip()
         self.route_badge.setObjectName("routeChip")
         self.route_badge.setText("● Ready")
@@ -1223,43 +1237,218 @@ class MainWindow(QMainWindow):
         self.apply_neon_glow()
         self.tabs.addTab(page, "")
 
-    def build_assistant_tab(self):
+    def active_character(self):
+        """Return a detached copy of the currently selected character profile."""
+        return self.characters.active_profile or {"id": "kira", "name": "Kira", "traits": {}}
+
+    def build_characters_tab(self):
+        """Character library: profiles are data records, not application identity."""
+        box, form = self.group("g_characters")
+        self.character_select = QComboBox()
+        self.row(form, "character_select", self.character_select)
+        self.character_name_edit = self.row(form, "character_name", QLineEdit())
+        self.character_description_edit = QTextEdit()
+        self.character_description_edit.setMinimumHeight(70)
+        self.row(form, "character_description", self.character_description_edit)
+        self.character_notes_edit = QTextEdit()
+        self.character_notes_edit.setMinimumHeight(110)
+        self.row(form, "character_notes", self.character_notes_edit)
+        hint = QLabel()
+        hint.setObjectName("hint")
+        hint.setWordWrap(True)
+        self.reg(hint.setText, "characters_hint")
+        form.addRow(hint)
+        actions = QHBoxLayout()
+        self.character_new_btn = QPushButton()
+        self.character_save_btn = QPushButton()
+        self.character_delete_btn = QPushButton()
+        self.reg(self.character_new_btn.setText, "character_new")
+        self.reg(self.character_save_btn.setText, "character_save")
+        self.reg(self.character_delete_btn.setText, "character_delete")
+        self.character_new_btn.clicked.connect(self.create_character_profile)
+        self.character_save_btn.clicked.connect(self.save_character_profile)
+        self.character_delete_btn.clicked.connect(self.delete_character_profile)
+        for button in (self.character_new_btn, self.character_save_btn, self.character_delete_btn):
+            actions.addWidget(button)
+        form.addRow(actions)
+        self.character_select.currentIndexChanged.connect(self.on_character_selected)
+        self.tabs.addTab(self.page(box), "")
+        self.refresh_character_list()
+
+    def refresh_character_list(self):
+        if not hasattr(self, "character_select"):
+            return
+        self.character_select.blockSignals(True)
+        self.character_select.clear()
+        for profile in self.characters.list_profiles():
+            self.character_select.addItem(profile["name"], profile["id"])
+        index = self.character_select.findData(self.characters.active_id)
+        self.character_select.setCurrentIndex(max(0, index))
+        self.character_select.blockSignals(False)
+        self.refresh_character_fields()
+
+    def refresh_character_fields(self):
+        profile = self.active_character()
+        self.character_name_edit.setText(profile.get("name", ""))
+        self.character_description_edit.setPlainText(profile.get("description", ""))
+        self.character_notes_edit.setPlainText(profile.get("notes", ""))
+        self.character_delete_btn.setEnabled(profile.get("id") != "kira")
+        self.refresh_personality_controls()
+
+    def on_character_selected(self, index):
+        profile_id = self.character_select.itemData(index) if index >= 0 else ""
+        if not profile_id or profile_id == self.characters.active_id:
+            return
+        try:
+            profile = self.characters.set_active(profile_id)
+            mood.set_active_character(profile_id)
+            self.settings["active_character_id"] = profile_id
+            self.settings["assistant_name"] = profile["name"]
+            self.settings["persona"] = profile.get("notes", "")
+            save_settings(self.settings)
+            self.refresh_character_fields()
+            self.retranslate()
+            self.update_mood_indicator()
+            self.add_chat("system", self.t("character_activated", name=profile["name"]))
+        except Exception as exc:
+            QMessageBox.warning(self, self.t("character_error_title"), str(exc))
+            self.refresh_character_list()
+
+    def create_character_profile(self):
+        name, ok = QInputDialog.getText(self, self.t("character_new_title"), self.t("character_new_prompt"))
+        if not ok or not name.strip():
+            return
+        try:
+            profile = self.characters.create(name.strip())
+            mood.set_active_character(profile["id"])
+            self.settings["active_character_id"] = profile["id"]
+            self.settings["assistant_name"] = profile["name"]
+            self.settings["persona"] = ""
+            save_settings(self.settings)
+            self.refresh_character_list()
+            self.retranslate()
+            self.add_chat("system", self.t("character_activated", name=profile["name"]))
+        except Exception as exc:
+            QMessageBox.warning(self, self.t("character_error_title"), str(exc))
+
+    def save_character_profile(self, silent=False):
+        profile = self.active_character()
+        try:
+            updated = self.characters.update(
+                profile["id"],
+                name=self.character_name_edit.text().strip() or profile["name"],
+                description=self.character_description_edit.toPlainText().strip(),
+                notes=self.character_notes_edit.toPlainText().strip(),
+            )
+            self.settings["active_character_id"] = updated["id"]
+            self.settings["assistant_name"] = updated["name"]
+            self.settings["persona"] = updated.get("notes", "")
+            if not silent:
+                save_settings(self.settings)
+            self.refresh_character_list()
+            if not silent:
+                self.add_chat("system", self.t("character_saved", name=updated["name"]))
+            self.retranslate()
+            return updated
+        except Exception as exc:
+            if not silent:
+                QMessageBox.warning(self, self.t("character_error_title"), str(exc))
+            return None
+
+    def delete_character_profile(self):
+        profile = self.active_character()
+        if profile.get("id") == "kira":
+            return
+        if QMessageBox.question(self, self.t("character_delete_title"),
+                                self.t("character_delete_confirm", name=profile.get("name", ""))) != QMessageBox.Yes:
+            return
+        try:
+            self.characters.delete(profile["id"])
+            profile = self.characters.active_profile
+            mood.set_active_character(profile["id"])
+            self.settings["active_character_id"] = profile["id"]
+            self.settings["assistant_name"] = profile["name"]
+            self.settings["persona"] = profile.get("notes", "")
+            save_settings(self.settings)
+            self.refresh_character_list()
+            self.retranslate()
+        except Exception as exc:
+            QMessageBox.warning(self, self.t("character_error_title"), str(exc))
+
+    def build_personality_tab(self):
+        box, form = self.group("g_personality_traits")
+        labels = {
+            "playfulness": "trait_playfulness", "warmth": "trait_warmth",
+            "curiosity": "trait_curiosity", "confidence": "trait_confidence",
+            "assertiveness": "trait_assertiveness", "teasing": "trait_teasing",
+            "empathy": "trait_empathy", "independence": "trait_independence",
+            "patience": "trait_patience", "carefulness": "trait_carefulness",
+        }
+        self.personality_sliders = {}
+        for key, translation_key in labels.items():
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(0, 100)
+            slider.setValue(int(round(float(BASE_TRAITS.get(key, 0.5)) * 100)))
+            self.row(form, translation_key, slider)
+            self.personality_sliders[key] = slider
+        note = QLabel()
+        note.setObjectName("hint")
+        note.setWordWrap(True)
+        self.reg(note.setText, "personality_hint")
+        form.addRow(note)
+        save = QPushButton()
+        self.reg(save.setText, "character_save_traits")
+        save.clicked.connect(self.save_personality_profile)
+        form.addRow(save)
+        self.tabs.addTab(self.page(box), "")
+        self.refresh_personality_controls()
+
+    def refresh_personality_controls(self):
+        if not getattr(self, "personality_sliders", None):
+            return
+        traits = self.active_character().get("traits") or BASE_TRAITS
+        for key, slider in self.personality_sliders.items():
+            slider.blockSignals(True)
+            slider.setValue(int(round(float(traits.get(key, BASE_TRAITS.get(key, 0.5))) * 100)))
+            slider.blockSignals(False)
+
+    def save_personality_profile(self, silent=False):
+        profile = self.active_character()
+        traits = {key: slider.value() / 100.0 for key, slider in self.personality_sliders.items()}
+        try:
+            self.characters.update(profile["id"], traits=traits)
+            if not silent:
+                self.add_chat("system", self.t("character_traits_saved", name=profile["name"]))
+            return True
+        except Exception as exc:
+            if not silent:
+                QMessageBox.warning(self, self.t("character_error_title"), str(exc))
+            return False
+
+    def build_local_model_group(self):
+        """Advanced settings for the local model belong with Routes, not with character profiles."""
         s = self.settings
-        box1, f1 = self.group("g_assistant")
-        self.name = self.row(f1, "name", QLineEdit(s["assistant_name"]))
-        self.persona = QTextEdit()
-        self.persona.setPlainText(s["persona"])
-        self.persona.setMinimumHeight(110)
-        self.row(f1, "persona", self.persona)
-        self.modes_chk = QCheckBox()
-        self.modes_chk.setChecked(bool(s.get("active_modes", True)))
-        self.reg(self.modes_chk.setText, "active_modes")
-        self.reg(self.modes_chk.setToolTip, "active_modes_tip")
-        f1.addRow(self.modes_chk)
-        self.temp = self.row(f1, "temp", QComboBox())
-        self.temp.addItems(["0.2", "0.4", "0.7", "0.9", "1.0"])
-        self.temp.setCurrentText(str(s.get("temperature", 0.7)))
-        box2, f2 = self.group("g_model")
+        box, form = self.group("g_model")
         ocfg = s.get("providers", {}).get("ollama", {})
-        local_route_note = QLabel("فعال‌سازی و اولویت Ollama از بخش Route مدیریت می‌شود.")
+        local_route_note = QLabel("انتخاب، فعال‌سازی و اولویت Ollama از همین بخش Route مدیریت می‌شود.")
         local_route_note.setObjectName("hint")
         local_route_note.setWordWrap(True)
-        f2.addRow(local_route_note)
-        self.model = self.row(f2, "model", ModelCombo(s["model"]))
-        self.url = self.row(f2, "url", QLineEdit(s["ollama_url"]))
-        self.use_qwen_btn = QPushButton()
-        self.reg(self.use_qwen_btn.setText, "o_use_qwen")
-        self.use_qwen_btn.clicked.connect(lambda: self.model.setText("qwen3.5:4b"))
-        f2.addRow(self.use_qwen_btn)
-        self.num_ctx = self.row(f2, "o_ctx", QSpinBox())
+        form.addRow(local_route_note)
+        self.model = self.row(form, "model", ModelCombo(s["model"]))
+        self.url = self.row(form, "url", QLineEdit(s["ollama_url"]))
+        use_qwen_btn = QPushButton()
+        self.reg(use_qwen_btn.setText, "o_use_qwen")
+        use_qwen_btn.clicked.connect(lambda: self.model.setText("qwen3.5:4b"))
+        form.addRow(use_qwen_btn)
+        self.num_ctx = self.row(form, "o_ctx", QSpinBox())
         self.num_ctx.setRange(1024, 32768)
         self.num_ctx.setSingleStep(1024)
         self.num_ctx.setValue(clamp_num_ctx(ocfg.get("num_ctx", DEFAULT_NUM_CTX)))
-        self.num_predict = self.row(f2, "o_predict", QSpinBox())
+        self.num_predict = self.row(form, "o_predict", QSpinBox())
         self.num_predict.setRange(32, 4096)
         self.num_predict.setSingleStep(64)
         self.num_predict.setValue(clamp_num_predict(ocfg.get("num_predict", DEFAULT_NUM_PREDICT)))
-        self.keep_alive = self.row(f2, "o_keep", QComboBox())
+        self.keep_alive = self.row(form, "o_keep", QComboBox())
         self.keep_alive.setEditable(True)
         self.keep_alive.addItems(["0", "30s", "2m", "5m", "15m"])
         self.keep_alive.setCurrentText(str(ocfg.get("keep_alive", DEFAULT_KEEP_ALIVE)))
@@ -1267,7 +1456,7 @@ class MainWindow(QMainWindow):
         keep_hint.setObjectName("hint")
         keep_hint.setWordWrap(True)
         self.reg(keep_hint.setText, "o_keep_hint")
-        f2.addRow(keep_hint)
+        form.addRow(keep_hint)
         self.conn_btn = QPushButton()
         self.reg(self.conn_btn.setText, "check_conn")
         self.conn_btn.clicked.connect(self.test_connection)
@@ -1277,24 +1466,24 @@ class MainWindow(QMainWindow):
         self.unload_btn = QPushButton()
         self.reg(self.unload_btn.setText, "o_unload")
         self.unload_btn.clicked.connect(self.unload_local_model)
-        h = QHBoxLayout()
-        h.addWidget(self.conn_btn)
-        h.addWidget(self.load_btn)
-        h.addWidget(self.unload_btn)
-        f2.addRow(h)
+        buttons = QHBoxLayout()
+        buttons.addWidget(self.conn_btn)
+        buttons.addWidget(self.load_btn)
+        buttons.addWidget(self.unload_btn)
+        form.addRow(buttons)
         self.speed_btn = QPushButton()
         self.reg(self.speed_btn.setText, "o_speed")
         self.speed_btn.clicked.connect(self.speed_test)
-        f2.addRow(self.speed_btn)
+        form.addRow(self.speed_btn)
         self.conn_lbl = QLabel()
         self.conn_lbl.setWordWrap(True)
-        f2.addRow(self.conn_lbl)
+        form.addRow(self.conn_lbl)
         game_note = QLabel()
         game_note.setObjectName("hint")
         game_note.setWordWrap(True)
         self.reg(game_note.setText, "o_game_note")
-        f2.addRow(game_note)
-        self.tabs.addTab(self.page(box1, box2), "")
+        form.addRow(game_note)
+        return box
 
     def voice_row(self, form, key, items, current, lang_key):
         combo = QComboBox()
@@ -1523,7 +1712,7 @@ class MainWindow(QMainWindow):
         note.setWordWrap(True)
         self.reg(note.setText, "char_note")
         f.addRow(note)
-        self.tabs.addTab(self.page(box), "")
+        self._companion_box = box
 
     def build_general_tab(self):
         box1, f1 = self.group("g_lang")
@@ -1553,7 +1742,7 @@ class MainWindow(QMainWindow):
         self.web_fallback_chk = QCheckBox("اگر Tavily کار نکرد، با Google (Gemini) و بعد DuckDuckGo جست‌وجو کن")
         self.web_fallback_chk.setChecked(bool(self.settings.get("web_fallback", True)))
         f1.addRow(self.web_fallback_chk)
-        self.initiative_chk = QCheckBox("Kira گاهی خودش درباره‌ی رویدادهای مهمی که به او گفته‌ام پیگیری کند")
+        self.initiative_chk = QCheckBox("شخصیت فعال گاهی خودش درباره‌ی رویدادهای مهمی که به او گفته‌ام پیگیری کند")
         self.initiative_chk.setChecked(bool(self.settings.get("initiative_enabled", False)))
         self.initiative_chk.setToolTip(
             "اختیاری و پیش‌فرض خاموش: فقط پس از حداقل ۴۵ دقیقه بی‌تعامل، با وجود یک خاطره‌ی رویداد/قول مرتبط، "
@@ -1571,13 +1760,22 @@ class MainWindow(QMainWindow):
         self.restore_chat_btn = QPushButton("بازگرداندن آخرین پاک‌سازی")
         self.restore_chat_btn.clicked.connect(self.restore_cleared_chat)
         f2.addRow(self.restore_chat_btn)
-        self.memory_btn = QPushButton("حافظه‌ی Kira درباره‌ی تو: مشاهده، ویرایش و حذف…")
+        self.memory_btn = QPushButton("حافظه‌ی مشترک برنامه: مشاهده، ویرایش و حذف…")
         self.memory_btn.clicked.connect(self.open_memory_dialog)
         f2.addRow(self.memory_btn)
         self.import_chat_btn = QPushButton("ورود گفتگو از نسخه‌ی قدیمی…")
         self.import_chat_btn.clicked.connect(lambda: self.import_old_chat())
         f2.addRow(self.import_chat_btn)
-        self.tabs.addTab(self.page(box1, box2), "")
+        behavior_box, behavior_form = self.group("g_behavior")
+        self.modes_chk = QCheckBox()
+        self.modes_chk.setChecked(bool(self.settings.get("active_modes", True)))
+        self.reg(self.modes_chk.setText, "active_modes")
+        self.reg(self.modes_chk.setToolTip, "active_modes_tip")
+        behavior_form.addRow(self.modes_chk)
+        self.temp = self.row(behavior_form, "temp", QComboBox())
+        self.temp.addItems(["0.2", "0.4", "0.7", "0.9", "1.0"])
+        self.temp.setCurrentText(str(self.settings.get("temperature", 0.7)))
+        self.tabs.addTab(self.page(box1, box2, behavior_box, self._companion_box), "")
 
     def build_ai_tab(self):
         """Route Manager: ordered list of routes (drag & drop), per-route editor, providers (keys), benchmark."""
@@ -1683,6 +1881,7 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(rbox)
         root_layout.addWidget(ebox)
         root_layout.addWidget(self.build_ollama_group())
+        root_layout.addWidget(self.build_local_model_group())
         root_layout.addStretch()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1715,6 +1914,36 @@ class MainWindow(QMainWindow):
         self.refresh_route_list()
         self.refresh_api_table()
 
+    def build_help_tab(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(8, 8, 8, 8)
+        update_box, update_form = self.group("g_help_updates")
+        version_label = QLabel(f"{APP_NAME} · {VERSION}")
+        version_label.setObjectName("title")
+        update_form.addRow(version_label)
+        description = QLabel()
+        description.setWordWrap(True)
+        self.reg(description.setText, "help_description")
+        update_form.addRow(description)
+        latest_btn = QPushButton()
+        repo_btn = QPushButton()
+        self.reg(latest_btn.setText, "help_latest")
+        self.reg(repo_btn.setText, "help_repository")
+        latest_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/alizesta/Kira/releases/latest")))
+        repo_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/alizesta/Kira")))
+        update_form.addRow(latest_btn)
+        update_form.addRow(repo_btn)
+        about_box, about_form = self.group("g_help_about")
+        about = QLabel()
+        about.setWordWrap(True)
+        self.reg(about.setText, "help_about_text")
+        about_form.addRow(about)
+        layout.addWidget(update_box)
+        layout.addWidget(about_box)
+        layout.addStretch(1)
+        self.tabs.addTab(page, "")
+
     def build_ollama_group(self):
         """Local Ollama provider: enable switch + Edit for its address (Local Model settings stay exactly as before)."""
         local_cfg = self.settings.get("providers", {}).get("ollama", {})
@@ -1736,7 +1965,7 @@ class MainWindow(QMainWindow):
         self.ollama_edit_btn.clicked.connect(lambda: self.ollama_edit_mode(True))
         self.ollama_cancel_btn.clicked.connect(lambda: self.ollama_edit_mode(False))
         self.ollama_save_btn.clicked.connect(self.save_ollama_edit)
-        note = QLabel("Context، Keep-alive و Num Predict پیش‌فرض Ollama در تب «دستیار» است؛ هر Route محلی می‌تواند Context/Num Predict خودش را هم داشته باشد. مدل‌های نصب‌شده را با «یافتن مدل‌های Ollama» بالای صفحه بیاور.")
+        note = QLabel("Context، Keep-alive و Num Predict پیش‌فرض Ollama در همین بخش تنظیم می‌شود؛ هر Route محلی می‌تواند Context/Num Predict خودش را هم داشته باشد. مدل‌های نصب‌شده را با «یافتن مدل‌های Ollama» بالای صفحه بیاور.")
         note.setObjectName("hint")
         note.setWordWrap(True)
         lf.addRow(note)
@@ -2483,12 +2712,15 @@ class MainWindow(QMainWindow):
             self.add_chat("system", "برای اعمال کامل حالت شیشه‌ای، برنامه را یک بار ببند و دوباره باز کن.")
 
     def apply_settings(self):
+        self.save_character_profile(silent=True)
+        self.save_personality_profile(silent=True)
         s = self.settings
         s.update({
-            "assistant_name": self.name.text().strip() or "Kira",
+            "assistant_name": self.active_character().get("name", "Character"),
+            "active_character_id": self.characters.active_id,
             "model": self.model.text().strip() or "qwen2.5:3b",
             "ollama_url": self.url.text().strip() or "http://localhost:11434",
-            "persona": self.persona.toPlainText().strip(), "active_modes": self.modes_chk.isChecked(),
+            "persona": self.active_character().get("notes", ""), "active_modes": self.modes_chk.isChecked(),
             "temperature": float(self.temp.currentText()),
             "speak_replies": self.speak_chk.isChecked(), "stream_speech": self.stream_chk.isChecked(),
             "voice_fa": self.voice_fa.currentText().strip() or EDGE_FA[0],
@@ -3226,15 +3458,17 @@ class MainWindow(QMainWindow):
         except Exception:                                         # noqa: BLE001
             mood_block = ""
         try:
+            character_mood = mood.current(query=decision_text)
+            character_mood["personality_traits"] = self.active_character().get("traits") or BASE_TRAITS
             character_block, self._character_decision = build_character_block(
-                decision_text, mood.current(query=decision_text), mode.name if mode else modes.CHAT,
+                decision_text, character_mood, mode.name if mode else modes.CHAT,
                 initiative="proactive" if proactive else "wait",
             )
         except Exception:
             character_block, self._character_decision = "", None
         prompt = build_system_prompt(self.settings, "" if plain else self.director.format_hint(), memory_block,
                                      voice_input=self._turn_voice, mode=mode, mood_block=mood_block,
-                                     character_block=character_block)
+                                     character_block=character_block, character_profile=self.active_character())
         if proactive:
             remembered = str(proactive.get("text") or "")[:220]
             prompt += (
