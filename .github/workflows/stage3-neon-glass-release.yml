@@ -21,6 +21,7 @@ on:
       - "kira/chat_render.py"
       - "tests/test_chat_render.py"
       - "kira/personality.py"
+      - "kira/persona_memory.py"
       - "kira/characters/**"
       - "kira/strings.py"
       - "tests/test_character_profiles.py"
