@@ -115,7 +115,11 @@ class DecisionEngine:
         components = mood.get("emotional_components") or []
         if components:
             for component in components[:3]:
-                emotion, strength = (component + [100])[:2] if isinstance(component, (list, tuple)) else (str(component), 100)
+                if isinstance(component, (list, tuple)):
+                    emotion = component[0] if component else "neutral"
+                    strength = component[1] if len(component) > 1 else 100
+                else:
+                    emotion, strength = str(component), 100
                 score += EMOTION_BIAS.get(str(emotion), {}).get(name, 0) * min(1.0, float(strength) / 100.0)
         else:
             emotion = str(mood.get("emotion", "neutral"))
