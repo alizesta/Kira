@@ -48,6 +48,7 @@ from . import evidence_memory
 from . import brain
 from . import usage
 from . import mood
+from .character import build_block as build_character_block
 from .rig import MOODS
 from .ui_icons import make_icon
 from .ui_widgets import ChatInput, RouteChip, AttachmentTile
@@ -568,6 +569,9 @@ class MainWindow(QMainWindow):
         self._stream_timer = QTimer(self)
         self._stream_timer.setInterval(60)
         self._stream_timer.timeout.connect(self._stream_flush)
+        self._mood_ui_timer = QTimer(self)
+        self._mood_ui_timer.setInterval(1500)
+        self._mood_ui_timer.timeout.connect(self.update_mood_indicator)
         self.resize(900, 720)
         self.setMinimumSize(520, 540)
         self.setAcceptDrops(True)                          # drop images / files anywhere on the window to attach them
@@ -581,6 +585,8 @@ class MainWindow(QMainWindow):
         self.build_char_tab()
         self.build_general_tab()
         self.build_ai_tab()
+        self.update_mood_indicator()
+        self._mood_ui_timer.start()
         self.save_btn = QPushButton()
         self.save_btn.setObjectName("save")
         self.save_btn.setIcon(make_icon("check", normal="#ffffff", hover="#ffffff"))
@@ -720,8 +726,58 @@ class MainWindow(QMainWindow):
         bar = self.chat.verticalScrollBar()
         bar.setValue(bar.maximum())
 
+    def update_mood_indicator(self):
+        """Tiny live emoji-only status chip for Kira's current emotional/behavioural state."""
+        label = getattr(self, "mood_indicator", None)
+        if label is None:
+            return
+        emotion_icons = {
+            "neutral": "🙂", "happy": "😊", "sad": "🥺", "angry": "😠",
+            "fearful": "😟", "disgusted": "😒", "surprised": "😮", "curious": "🤔",
+            "proud": "😌", "arrogant": "😏", "smug": "😏", "playful": "😜",
+            "teasing": "😼", "tsundere": "😤", "bored": "😑", "frustrated": "😣",
+            "affectionate": "🥰", "flirty": "😘", "shy": "☺️", "embarrassed": "🫣",
+            "jealous": "😾", "laughing": "😂", "annoyed": "🙄", "protective": "🛡️",
+            "excited": "🤩", "thinking": "🤔", "calm": "😌", "hopeful": "🌱",
+            "disappointed": "😔", "lonely": "🥲", "guilty": "😓", "grateful": "💗",
+            "nostalgic": "🥹", "confident": "😎", "confused": "😵‍💫",
+            "relieved": "😮‍💨", "content": "☺️",
+        }
+        behaviour_icons = {
+            "playful": "😜", "teasing": "😼", "tsundere": "😤", "sarcastic": "🙃",
+            "quiet": "🤫", "affectionate": "💕", "clingy": "🥺", "stubborn": "😤",
+            "sulking": "😗", "cheerful": "🌸", "reserved": "☺️", "protective": "🛡️",
+            "focused": "🎯", "flirty": "😘", "curious": "🔎", "gentle": "🫶",
+            "formal": "📘", "energetic": "⚡",
+        }
+        energy_icons = {
+            "exhausted": "🥱", "tired": "😪", "low": "😴",
+            "normal": "", "active": "⚡", "hyper": "🔥",
+        }
+        try:
+            state = mood.current()
+            emotion = state.get("emotion", "neutral")
+            behaviour = state.get("behavior", "balanced")
+            energy = state.get("energy_label", "normal")
+            icons = [emotion_icons.get(emotion, "🙂")]
+            if behaviour in behaviour_icons and behaviour != emotion:
+                icons.append(behaviour_icons[behaviour])
+            if energy_icons.get(energy):
+                icons.append(energy_icons[energy])
+            label.setText(" ".join(icons[:3]))
+            intensity = int(state.get("intensity", 0))
+            secondary = ", ".join(name for name, _ in state.get("secondary_emotions", [])[:2])
+            label.setToolTip(
+                f"احساس: {emotion} ({intensity}/100)\n"
+                f"رفتار: {behaviour}\n"
+                f"انرژی: {energy}" + (f"\nاحساسات همراه: {secondary}" if secondary else "")
+            )
+        except Exception:
+            label.setText("🙂")
+            label.setToolTip("حال‌وهوای فعلی Kira")
+
     def chat_actions_html(self, kind, text):
-        """Compact per-message controls: copy, edit and read aloud."""
+        """Compact icon-only per-message controls; labels are available as hover tooltips."""
         if kind not in ("assistant", "user") or not str(text or "").strip():
             return ""
         self._chat_action_seq += 1
@@ -730,14 +786,14 @@ class MainWindow(QMainWindow):
         if len(self._chat_action_texts) > 300:
             self._chat_action_texts.pop(next(iter(self._chat_action_texts)))
         actions = [
-            ("copy", "⧉  کپی", "#72E8FF"),
-            ("edit", "✎  ویرایش", "#C4A7FF"),
-            ("speak", "♫  خواندن", "#FF9BDB"),
+            ("copy", "⧉", "#72E8FF", "کپی"),
+            ("edit", "✎", "#C4A7FF", "ویرایش"),
+            ("speak", "♫", "#FF9BDB", "خواندن"),
         ]
         links = "".join(
-            f'<a href="kira-action://{action}/{key}" style="color:{colour};text-decoration:none;'
-            f'font-size:9pt;font-weight:600;margin-left:12px;">{label}</a>'
-            for action, label, colour in actions
+            f'<a href="kira-action://{action}/{key}" title="{tooltip}" style="color:{colour};'
+            f'text-decoration:none;font-size:11pt;font-weight:600;margin-left:14px;">{glyph}</a>'
+            for action, glyph, colour, tooltip in actions
         )
         return (f'<p dir="rtl" align="right" style="margin:8px 2px 1px 2px;'
                 f'padding-top:5px;border-top:1px solid #394C79;">{links}</p>')
@@ -932,6 +988,17 @@ class MainWindow(QMainWindow):
         self.title.setObjectName("title")
         header.addWidget(self.title)
         header.addStretch(1)
+        self.mood_indicator = QLabel("🙂")
+        self.mood_indicator.setObjectName("moodIndicator")
+        self.mood_indicator.setAlignment(Qt.AlignCenter)
+        self.mood_indicator.setMinimumWidth(58)
+        self.mood_indicator.setToolTip("حال‌وهوای فعلی Kira")
+        self.mood_indicator.setStyleSheet(
+            "QLabel#moodIndicator { background: rgba(105, 86, 160, 0.16); "
+            "border: 1px solid rgba(166, 137, 255, 0.30); border-radius: 10px; "
+            "padding: 3px 7px; font-size: 15px; }"
+        )
+        header.addWidget(self.mood_indicator)
         self.companion_btn = self.icon_button("user", True)
         self.companion_btn.clicked.connect(self.toggle_companion)
         header.addWidget(self.companion_btn)
@@ -3035,8 +3102,16 @@ class MainWindow(QMainWindow):
             mood_block = mood.build_block(mode.name if mode else modes.CHAT)
         except Exception:                                         # noqa: BLE001
             mood_block = ""
+        last_user = next((m.get("content", "") for m in reversed(context) if m.get("role") == "user"), "")
+        try:
+            character_block, self._character_decision = build_character_block(
+                last_user, mood.current(), mode.name if mode else modes.CHAT
+            )
+        except Exception:
+            character_block, self._character_decision = "", None
         prompt = build_system_prompt(self.settings, "" if plain else self.director.format_hint(), memory_block,
-                                     voice_input=self._turn_voice, mode=mode, mood_block=mood_block)
+                                     voice_input=self._turn_voice, mode=mode, mood_block=mood_block,
+                                     character_block=character_block)
         try:                                                      # brain stage: deterministic, no model call; any problem = the normal path
             extra0 = self._turn_extra
             has_att = bool(self._turn_attach_kinds or (extra0 and (extra0.get("images") or "--- فایل ضمیمه" in str(extra0.get("model", "")))))
@@ -3396,11 +3471,13 @@ class MainWindow(QMainWindow):
         try:
             if role == "user":
                 mood.on_user_message(content)
+                self.update_mood_indicator()
                 self.apply_mood_to_avatar()
             elif role == "assistant":
                 meta = self.director.parse_reply(content)
                 if meta is not None:
                     mood.on_reply(meta.emotions, meta.intensity)
+                    self.update_mood_indicator()
         except Exception:                                         # noqa: BLE001 - mood is a bonus, never block the chat
             pass
         if ok:
