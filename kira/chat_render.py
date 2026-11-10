@@ -15,10 +15,10 @@ RTL, LTR = "rtl", "ltr"
 
 # kind -> (bubble colour, name colour, text colour, physical side of the bubble)
 STYLES = {
-    "user":      ("#35306a", "#cfc4ff", "#f1f2f8", "right"),
-    "assistant": ("#252839", "#b9a7ff", "#eceef6", "left"),
-    "system":    ("#1e2030", "#8d93ab", "#a2a8c0", "left"),
-    "error":     ("#47232f", "#ff9aa8", "#ffe3e7", "left"),
+    "user":      ("#142F4C", "#79E8FF", "#F2FBFF", "right"),
+    "assistant": ("#211B43", "#C5A9FF", "#F5F0FF", "left"),
+    "system":    ("#18263A", "#8DDCFF", "#C8D8EC", "left"),
+    "error":     ("#47213A", "#FF9BCB", "#FFEAF3", "left"),
 }
 
 
@@ -101,5 +101,8 @@ def message_html(kind: str, name: str, text: str, ui_dir: str = RTL, extra_html:
         head = _paragraph(name, name_colour, ui_dir, size="font-size:9pt;font-weight:600;",
                           force_dir=detect_direction(lines[0], ui_dir))
     table_side = "right" if side == "right" else "left"
-    return (f'<table align="{table_side}" width="86%" cellspacing="0" cellpadding="10" style="margin:7px 4px;">'
-            f'<tr><td bgcolor="{bubble}">{head}{extra_html}{body}</td></tr></table><p style="margin:0;font-size:3pt;">&nbsp;</p>')
+    edge = "#39DFFF" if kind == "user" else ("#A58BFF" if kind == "assistant" else "#547B9F")
+    return (f'<table align="{table_side}" width="86%" cellspacing="0" cellpadding="10" '
+            f'style="margin:7px 4px;border:1px solid {edge};">'
+            f'<tr><td bgcolor="{bubble}">{head}{extra_html}{body}</td></tr></table>'
+            f'<p style="margin:0;font-size:3pt;">&nbsp;</p>')
