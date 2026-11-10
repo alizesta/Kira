@@ -979,10 +979,19 @@ class MainWindow(QMainWindow):
                         widget.setMaximumWidth(lim["line"])
 
     def icon_button(self, name, checkable=False):
-        """Small borderless icon button; its tooltip carries the (translated) meaning."""
+        """Compact neon icon button; its tooltip carries the (translated) meaning."""
+        palettes = {
+            "chat": {"normal": "#8CEEFF", "hover": "#F4FDFF", "checked": "#B8EEFF"},
+            "route": {"normal": "#B9A7FF", "hover": "#F7F0FF", "checked": "#D5C5FF"},
+            "user": {"normal": "#FFB7E6", "hover": "#FFF2FA", "checked": "#FFD2F0"},
+            "mic": {"normal": "#FF9BD8", "hover": "#FFF0FA", "checked": "#FFC4E9"},
+            "moon": {"normal": "#B8A0FF", "hover": "#F7F0FF", "checked": "#D8C9FF"},
+            "speaker": {"normal": "#83F0FF", "hover": "#F2FEFF", "checked": "#B8F8FF"},
+            "stop": {"normal": "#FF94B8", "hover": "#FFF3F7", "checked": "#FFC5D8"},
+        }
         b = QToolButton()
         b.setObjectName(f"icon_{name}")
-        b.setIcon(make_icon(name))
+        b.setIcon(make_icon(name, **palettes.get(name, {})))
         b.setIconSize(QSize(20, 20))
         b.setCheckable(checkable)
         b.setCursor(Qt.PointingHandCursor)
