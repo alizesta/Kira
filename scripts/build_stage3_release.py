@@ -96,7 +96,23 @@ def main() -> None:
         if "def build_style(" not in theme_text or "QFrame#chatCard" not in theme_text:
             raise RuntimeError("Neon glass theme contract check failed")
 
-        theme_target.write_text(theme_text, encoding="utf-8", newline="\n")
+        # Apply only the UI layer files from the reviewed Stage 3 repository.
+        ui_sources = {
+            "kira/theme.py": THEME_SOURCE,
+            "kira/main.py": Path("kira/main.py"),
+            "kira/chat_render.py": Path("kira/chat_render.py"),
+        }
+        for relative, source_path in ui_sources.items():
+            target = extracted / relative
+            if not target.is_file() or not source_path.is_file():
+                raise RuntimeError(f"Missing required UI source/target: {relative}")
+            updated = source_path.read_text(encoding="utf-8")
+            ast.parse(updated, filename=relative) if relative.endswith(".py") else None
+            target.write_text(updated, encoding="utf-8", newline="\n")
+
+        main_text = (extracted / "kira/main.py").read_text(encoding="utf-8")
+        if "def chat_actions_html(" not in main_text or "def apply_neon_glow(" not in main_text:
+            raise RuntimeError("Neon action controls / glow effects were not applied")
 
         # Parse the complete Python source tree without importing providers or starting services.
         for py_file in extracted.rglob("*.py"):
