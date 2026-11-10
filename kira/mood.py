@@ -351,10 +351,10 @@ def on_event(name, detail=None):
         return None
 
 
-def mark_initiative_sent(now=None):
+def mark_initiative_sent(memory_id=None, now=None):
     _ensure_runtime_migration()
     try:
-        return _emotional_runtime.mark_initiative_sent(now=now)
+        return _emotional_runtime.mark_initiative_sent(memory_id=memory_id, now=now)
     except Exception:
         return None
 
@@ -414,6 +414,7 @@ def _runtime_snapshot(now=None, query=None):
                 "personality_traits": state.get("personality_traits", {}),
                 "emotional_components": state.get("emotional_components", []),
                 "last_initiative": state.get("last_initiative", 0.0),
+                "last_initiative_memory_id": state.get("last_initiative_memory_id", ""),
                 "recent_events": state["recent_events"], "runtime_emotion": state["emotion"],
                 "runtime_intensity": state["intensity"], "runtime_behaviors": state["behaviors"]}
     except Exception:
