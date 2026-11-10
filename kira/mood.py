@@ -1,4 +1,4 @@
-"""Kira's persistent mood and her reading of the user's state (pure Python, no Qt, no model call).
+"""Persistent per-character mood and a reading of the user's state (pure Python, no Qt, no model call).
 
 Why: a chat model starts every request from zero, so her mood used to reset with every message and differ per provider. Here the
 mood is real state kept on this computer:
@@ -26,6 +26,7 @@ from .character.learning import detect_feedback
 
 _emotional_runtime = EmotionalRuntime()
 _runtime_migrated = False
+_ACTIVE_CHARACTER_ID = "kira"
 
 FILE_NAME = "kira_mood.json"
 HALF_LIFE = 900.0
@@ -55,7 +56,7 @@ SHOW = {
     "confused": "puzzled and seeking clarity", "relieved": "letting tension go", "content": "quietly satisfied",
 }
 
-# Behavioral disposition is separate from emotion: it changes HOW Kira responds, not WHAT she feels.
+# Behavioral disposition is separate from emotion: it changes HOW the active character responds, not WHAT they feel.
 BEHAVIORS = ("playful", "teasing", "tsundere", "sarcastic", "quiet", "affectionate", "clingy", "stubborn",
              "sulking", "cheerful", "reserved", "protective", "focused", "flirty")
 BEHAVIOR_REST = {"playful": 20, "affectionate": 18, "teasing": 10, "sarcastic": 8}
@@ -151,7 +152,21 @@ _lock = threading.Lock()
 
 
 def _path():
-    return DATA_DIR / FILE_NAME
+    if _ACTIVE_CHARACTER_ID == "kira":
+        return DATA_DIR / FILE_NAME  # preserve the existing Kira mood file
+    return DATA_DIR / "characters" / _ACTIVE_CHARACTER_ID / "mood.json"
+
+
+def set_active_character(character_id):
+    """Switch persistent emotional state to the selected character profile."""
+    global _ACTIVE_CHARACTER_ID, _emotional_runtime, _runtime_migrated
+    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", str(character_id or "kira"))[:80] or "kira"
+    _ACTIVE_CHARACTER_ID = safe_id
+    path = _path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _emotional_runtime = EmotionalRuntime(path=path)
+    _runtime_migrated = False
+    return _ACTIVE_CHARACTER_ID
 
 
 def _norm(text) -> str:
