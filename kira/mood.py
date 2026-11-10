@@ -372,14 +372,19 @@ def current(now=None) -> dict:
         "behavior": dominant_behavior, "dominant_behavior": dominant_behavior,
         "behaviors": active_behaviors,
         "behavior_scores": {k: int(round(v)) for k, v in behaviors.items()},
-        **_runtime_snapshot(),
+        **_runtime_snapshot(now),
     }
 
 
-def _runtime_snapshot():
+def _runtime_snapshot(now=None):
     try:
-        state = _emotional_runtime.snapshot()
-        return {"relationship": state["relationship"], "emotional_memories": state["memories"],
+        state = _emotional_runtime.snapshot(now)
+        return {"emotion": state["emotion"], "intensity": state["intensity"],
+                "secondary": state["secondary_emotions"][0][0] if state["secondary_emotions"] else "",
+                "secondary_emotions": state["secondary_emotions"], "behavior": state["behavior"],
+                "dominant_behavior": state["behavior"], "behaviors": state["behaviors"],
+                "energy": state["energy"], "energy_label": state["energy_label"],
+                "relationship": state["relationship"], "emotional_memories": state["memories"],
                 "recent_events": state["recent_events"], "runtime_emotion": state["emotion"],
                 "runtime_intensity": state["intensity"], "runtime_behaviors": state["behaviors"]}
     except Exception:
