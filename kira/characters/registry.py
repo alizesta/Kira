@@ -8,6 +8,7 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 from pathlib import Path
+import shutil
 import re
 import uuid
 
@@ -23,6 +24,8 @@ def _normalise_profile(profile):
     name = str(profile.get("name") or "").strip()
     if not pid or not name:
         raise ValueError("Character profile needs an id and a name.")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", pid):
+        raise ValueError("Character profile id contains unsupported path characters.")
     clean = {
         "id": pid[:80],
         "name": name[:80],
@@ -167,6 +170,11 @@ class CharacterRegistry:
             raise ValueError("The built-in Kira profile cannot be deleted.")
         if profile_id not in self.profiles:
             return False
+        profile_dir = self.directory / profile_id
+        if profile_dir.exists():
+            # Character-scoped voice and emotional state belong to the profile being deleted.
+            # The shared user facts and shared chat history live elsewhere and are untouched.
+            shutil.rmtree(profile_dir)
         del self.profiles[profile_id]
         if self.active_id == profile_id:
             self.active_id = DEFAULT_CHARACTER_ID
