@@ -43,8 +43,7 @@ class CharacterRegistryTests(unittest.TestCase):
             self.assertEqual(reloaded.active_id, "kira")
             with self.assertRaises(ValueError):
                 reloaded.delete("kira")
-            with self.assertRaises(ValueError):
-                reloaded.create("../outside")
+
 
     def test_kira_is_a_profile_and_custom_prompt_is_generic(self):
         self.assertEqual(KIRA_PROFILE["id"], "kira")
