@@ -66,6 +66,16 @@ class InitiativeTests(unittest.TestCase):
             result = engine.evaluate(now=10000, last_interaction=1, enabled=True, has_relevant_memory=True, **kwargs)
             self.assertFalse(result["eligible"])
 
+    def test_completed_memory_is_not_selected_for_another_checkin(self):
+        engine = InitiativeEngine()
+        now = 20 * 86400
+        items = [
+            {"id": "event-1", "group": "moment", "kind": "event", "text": "exam", "ts": now - 100},
+            {"id": "event-2", "group": "moment", "kind": "promise", "text": "trip", "ts": now - 200},
+        ]
+        selected = engine.select_candidate(items, now=now, exclude_id="event-1")
+        self.assertEqual(selected["id"], "event-2")
+
     def test_only_recent_events_and_promises_are_initiative_candidates(self):
         engine = InitiativeEngine()
         now = 20 * 86400
