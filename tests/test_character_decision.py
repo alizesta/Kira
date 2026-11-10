@@ -1,6 +1,6 @@
 import unittest
 
-from kira.character.decision import BASE_TRAITS, DecisionEngine
+from kira.character.decision import BASE_TRAITS, DecisionEngine, decide as decide_character
 from kira.character.initiative import InitiativeEngine
 from kira.character.learning import detect_feedback
 
@@ -41,7 +41,7 @@ class CharacterDecisionTests(unittest.TestCase):
         self.assertEqual(decision.behaviour, "gentle")
 
     def test_learned_traits_are_used_by_decision_engine(self):
-        decision = self.engine.decide("hello", {
+        decision = decide_character("hello", {
             "emotion": "happy",
             "personality_traits": {**BASE_TRAITS, "playfulness": 1.0, "teasing": 1.0},
         })
