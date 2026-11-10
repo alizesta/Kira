@@ -351,6 +351,14 @@ def on_event(name, detail=None):
         return None
 
 
+def mark_initiative_sent(now=None):
+    _ensure_runtime_migration()
+    try:
+        return _emotional_runtime.mark_initiative_sent(now=now)
+    except Exception:
+        return None
+
+
 def reset():
     with _lock:
         _save({"scores": {}, "behavior_scores": {}, "energy": ENERGY_START, "energy_updated": time.time(),
@@ -462,6 +470,9 @@ def build_block(mode_name="chat", now=None, query=None) -> str:
             if cur["secondary_emotions"]:
                 underneath = ", ".join(f"{name} ~{value}/100" for name, value in cur["secondary_emotions"])
                 line += f" Other active feelings: {underneath}."
+            if cur.get("emotional_components"):
+                components = ", ".join(name for name, _value in cur["emotional_components"])
+                line += f" Underlying emotional components: {components}."
             lines.append(line + " Keep emotional continuity; do not flip moods abruptly.")
         else:
             lines.append("Mood now: calm and balanced (low emotional intensity).")
