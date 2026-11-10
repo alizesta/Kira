@@ -17,13 +17,15 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 CONFIG_PATH = DATA_DIR / "settings.json"
 DB_PATH = DATA_DIR / "kira_memory.sqlite3"
 
+APP_NAME = "Project Kira"  # product branding; independent from the active character profile
 VERSION = "1 stable"
 
 DEFAULTS = {
     "ollama_url": "http://localhost:11434",
     "model": "qwen3.5:4b",
-    "assistant_name": "Kira",
-    # Extra user notes only. Kira's real character is defined in kira/personality.py and always applied.
+    "assistant_name": "Kira",  # legacy compatibility; active identity is stored in characters/profiles.json
+    "active_character_id": "kira",
+    # Legacy character-note mirror. The active profile owns its own notes.
     "persona": "",
     "temperature": 0.7,
     "web_search": True,                  # Kira may search the web when a message needs current information
