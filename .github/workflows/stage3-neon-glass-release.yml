@@ -21,6 +21,9 @@ on:
       - "kira/chat_render.py"
       - "tests/test_chat_render.py"
       - "kira/personality.py"
+      - "kira/characters/**"
+      - "kira/strings.py"
+      - "tests/test_character_profiles.py"
       - "kira/config.py"
       - "kira/character/**"
       - "emotion_library/combinations.json"
@@ -55,7 +58,7 @@ jobs:
           python-version: "3.12"
 
       - name: Test layered emotional state
-        run: python -m unittest discover -s tests -p "test_chat_render.py" && python -m unittest discover -s tests -p "test_mood.py" && python -m unittest discover -s tests -p "test_emotional_runtime.py" && python -m unittest discover -s tests -p "test_character_decision.py" && python -m unittest discover -s tests -p "test_character_scenarios.py" && python -m unittest discover -s tests -p "test_relationship_engine.py" && python -m unittest discover -s tests -p "test_config.py" && python -m unittest discover -s tests -p "test_neon_emotion_glyphs.py"
+        run: python -m unittest discover -s tests -p "test_chat_render.py" && python -m unittest discover -s tests -p "test_mood.py" && python -m unittest discover -s tests -p "test_emotional_runtime.py" && python -m unittest discover -s tests -p "test_character_decision.py" && python -m unittest discover -s tests -p "test_character_scenarios.py" && python -m unittest discover -s tests -p "test_relationship_engine.py" && python -m unittest discover -s tests -p "test_config.py" && python -m unittest discover -s tests -p "test_neon_emotion_glyphs.py" && python -m unittest discover -s tests -p "test_character_profiles.py"
 
       - name: Patch the uploaded Stage 3 archive and package it
         run: python scripts/build_stage3_release.py
@@ -84,6 +87,10 @@ jobs:
             - Adds persistent event history and gradual relationship-state changes
             - Adds provider-neutral personality/behaviour decisions and an opt-in initiative policy
             - Adds a live mood indicator with custom neon vector face glyphs for emotions; chat-message emoji remain unchanged
+            - Adds an independent Character Library with Kira as the built-in starter profile
+            - Separates app branding, shared AI/provider routing and character identity
+            - Adds per-character profile notes, trait baselines, learned adjustments and emotional state
+            - Adds Characters, Personality, Preferences and Help tabs; local model tuning is grouped under Routes
             - Keeps message actions icon-only
             - Adds query-relevant emotional memory recall and bounded personality adaptation from repeated explicit feedback
             - Adds a standalone bounded relationship engine for trust, closeness, familiarity, comfort and tension
