@@ -24,6 +24,7 @@ from .config import DATA_DIR
 from .emotion.runtime import EmotionalRuntime
 
 _emotional_runtime = EmotionalRuntime()
+_runtime_migrated = False
 
 FILE_NAME = "kira_mood.json"
 HALF_LIFE = 900.0
@@ -173,6 +174,17 @@ def _load() -> dict:
             "updated": 0.0, "last_chat": 0.0, "user_states": [], "away_hours": 0.0}
 
 
+def _ensure_runtime_migration():
+    global _runtime_migrated
+    if _runtime_migrated:
+        return
+    try:
+        _emotional_runtime.migrate_legacy(_load())
+    except Exception:
+        pass
+    _runtime_migrated = True
+
+
 def _save(state: dict):
     path = _path()
     tmp = path.with_suffix(".tmp")
@@ -244,6 +256,7 @@ def detect_user_states(text) -> list[str]:
 
 # ---------------- updates ----------------
 def on_user_message(text, now=None) -> list[str]:
+    _ensure_runtime_migration()
     """Called once for every user message. Updates emotional, behavioral and conversational-energy layers."""
     now = time.time() if now is None else now
     with _lock:
@@ -293,6 +306,7 @@ def on_user_message(text, now=None) -> list[str]:
 
 
 def on_reply(emotions, intensity=None, now=None):
+    _ensure_runtime_migration()
     """Carry Kira's own reply emotions forward and update her behavioral disposition."""
     now = time.time() if now is None else now
     emotions = [e for e in (emotions or []) if e in EMOTIONS and e != "neutral"]
@@ -333,6 +347,7 @@ def reset():
 
 # ---------------- reading the state ----------------
 def current(now=None) -> dict:
+    _ensure_runtime_migration()
     """Snapshot of current emotion, energy, behavioral disposition and the user's detected state."""
     now = time.time() if now is None else now
     with _lock:
@@ -383,6 +398,7 @@ def avatar_hint(now=None):
 
 
 def build_block(mode_name="chat", now=None) -> str:
+    _ensure_runtime_migration()
     """Prompt text. Chat gets the full emotional state; task gets only delivery-critical user context."""
     if mode_name == "strict":
         return ""
