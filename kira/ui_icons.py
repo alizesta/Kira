@@ -142,6 +142,9 @@ def _shapes(name):
         body.moveTo(5, 20)
         body.cubicTo(5, 13.5, 19, 13.5, 19, 20)
         return [(head, False), (body, False)]
+    if name == "energy_bolt":
+        return [(_poly([(13.5, 2.5), (5.8, 13.2), (10.8, 13.2), (9.6, 21.5),
+                         (18.4, 9.6), (13.2, 9.6)]), False)]
     if name == "send":
         return [(_poly([(12, 19), (12, 6)]), False), (_poly([(6.5, 11.5), (12, 6), (17.5, 11.5)]), False)]
     if name == "mic":
@@ -184,8 +187,8 @@ def _pixmap(name, colour):
     p.scale(_SIZE / 24.0, _SIZE / 24.0)
     base = QColor(colour)
     glow_colour = QColor(base)
-    glow_colour.setAlpha(68)
-    aura_pen = QPen(glow_colour, 5.2)
+    glow_colour.setAlpha(118)
+    aura_pen = QPen(glow_colour, 6.4)
     aura_pen.setCapStyle(Qt.RoundCap)
     aura_pen.setJoinStyle(Qt.RoundJoin)
     core_pen = QPen(base, 2.35)
