@@ -111,6 +111,7 @@ def main() -> None:
             "kira/character/__init__.py": Path("kira/character/__init__.py"),
             "kira/character/traits.py": Path("kira/character/traits.py"),
             "kira/character/learning.py": Path("kira/character/learning.py"),
+            "kira/character/relationship.py": Path("kira/character/relationship.py"),
             "kira/character/decision.py": Path("kira/character/decision.py"),
             "kira/character/initiative.py": Path("kira/character/initiative.py"),
             "kira/emotion/runtime.py": Path("kira/emotion/runtime.py"),
@@ -149,6 +150,9 @@ def main() -> None:
             raise RuntimeError("Opt-in proactive initiative UI/policy was not packaged")
         learning_target = kira_dir / "character" / "learning.py"
         traits_target = kira_dir / "character" / "traits.py"
+        relationship_target = kira_dir / "character" / "relationship.py"
+        if not relationship_target.is_file() or "class RelationshipEngine" not in relationship_target.read_text(encoding="utf-8"):
+            raise RuntimeError("Independent relationship engine was not packaged")
         if not learning_target.is_file() or "def detect_feedback" not in learning_target.read_text(encoding="utf-8"):
             raise RuntimeError("Explicit personality feedback learning was not packaged")
         if not traits_target.is_file() or "TRAIT_LEARNING_RULES" not in traits_target.read_text(encoding="utf-8"):
