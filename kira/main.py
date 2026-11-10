@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox, QFrame, QFileDialog, QSizePolicy, QSystemTrayIcon, QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog,
     QStackedWidget, QDoubleSpinBox, QGraphicsDropShadowEffect
 )
-from .config import load_settings, save_settings, ROOT, VERSION, APP_NAME, LOAD_WARNINGS, DATA_DIR
+from .config import load_settings, save_settings, ROOT, VERSION, APP_NAME, PROJECT_URL, RELEASES_URL, LOAD_WARNINGS, DATA_DIR
 from . import storage
 from . import memory as chat_store
 from .memory import init_db, add_message, conversation_context, clear_memory, recent_messages, message_count, ChatStoreError
@@ -1935,8 +1935,8 @@ class MainWindow(QMainWindow):
         repo_btn = QPushButton()
         self.reg(latest_btn.setText, "help_latest")
         self.reg(repo_btn.setText, "help_repository")
-        latest_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/alizesta/Kira/releases/latest")))
-        repo_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/alizesta/Kira")))
+        latest_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(RELEASES_URL)))
+        repo_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(PROJECT_URL)))
         update_form.addRow(latest_btn)
         update_form.addRow(repo_btn)
         about_box, about_form = self.group("g_help_about")
