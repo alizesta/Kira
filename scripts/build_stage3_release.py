@@ -106,13 +106,14 @@ def main() -> None:
             "kira/main.py": Path("kira/main.py"),
             "kira/chat_render.py": Path("kira/chat_render.py"),
             "kira/mood.py": MOOD_SOURCE,
+            "kira/emotion/runtime.py": Path("kira/emotion/runtime.py"),
             "emotion_library/emotions.json": EMOTIONS_SOURCE,
         }
         for relative, source_path in reviewed_sources.items():
             if not source_path.is_file():
                 raise RuntimeError(f"Missing reviewed source: {relative}")
             rel_path = Path(relative)
-            target = (kira_dir / rel_path.name) if rel_path.parts[0] == "kira" else (kira_dir.parent / rel_path)
+            target = kira_dir.parent / rel_path
             target.parent.mkdir(parents=True, exist_ok=True)
             updated = source_path.read_text(encoding="utf-8")
             if relative.endswith(".py"):
@@ -124,7 +125,10 @@ def main() -> None:
         if "def chat_actions_html(" not in main_text or "def apply_neon_glow(" not in main_text:
             raise RuntimeError("Neon action controls / glow effects were not applied")
         if "BEHAVIOR_REST" not in mood_text or "def _energy_at(" not in mood_text:
-            raise RuntimeError("Layered emotion / energy / behavior system was not applied")
+            raise RuntimeError("Legacy mood compatibility layer was not applied")
+        runtime_target = kira_dir / "emotion" / "runtime.py"
+        if not runtime_target.is_file() or "class EmotionalRuntime" not in runtime_target.read_text(encoding="utf-8"):
+            raise RuntimeError("Persistent layered emotional runtime was not packaged")
         emotion_data = json.loads((kira_dir.parent / EMOTIONS_SOURCE).read_text(encoding="utf-8"))
         emotion_ids = {item.get("id") for item in emotion_data.get("emotions", [])}
         if not {"fearful", "disgusted"}.issubset(emotion_ids):
@@ -157,7 +161,7 @@ def main() -> None:
 
     print(f"Stage 3 source: {SOURCE_ARCHIVE}")
     print("Applied visual theme update: kira/theme.py")
-    print("Applied layered emotional state: persistent mood, energy and behavior")
+    print("Applied layered emotional runtime: emotions, behavior, energy, relationship and emotional memory")
     print(f"Python syntax checks: passed")
     print(f"Files included: {included}; runtime/sensitive files excluded: {excluded}")
     print(f"Release asset: {OUTPUT_ARCHIVE}")
