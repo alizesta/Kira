@@ -4,6 +4,7 @@ import ast
 import json
 import os
 from pathlib import Path
+import shutil
 import tempfile
 import zipfile
 
@@ -11,6 +12,7 @@ SOURCE_ARCHIVE = Path("ProjectKira_261111_0059.zip")
 THEME_SOURCE = Path("kira/theme.py")
 MOOD_SOURCE = Path("kira/mood.py")
 EMOTIONS_SOURCE = Path("emotion_library/emotions.json")
+DEFAULT_VRM_SOURCE = Path("kira sample.vrm")
 OUTPUT_ARCHIVE = Path("dist/ProjectKira_Stage3_Neon_Glass.zip")
 
 SKIP_DIRS = {
@@ -73,7 +75,7 @@ def should_skip(path: Path) -> bool:
 def main() -> None:
     if not SOURCE_ARCHIVE.is_file():
         raise FileNotFoundError(f"Missing Stage 3 source archive: {SOURCE_ARCHIVE}")
-    for required in (THEME_SOURCE, MOOD_SOURCE, EMOTIONS_SOURCE):
+    for required in (THEME_SOURCE, MOOD_SOURCE, EMOTIONS_SOURCE, DEFAULT_VRM_SOURCE):
         if not required.is_file():
             raise FileNotFoundError(f"Missing reviewed Kira source: {required}")
 
@@ -114,6 +116,14 @@ def main() -> None:
             "kira/characters/__init__.py": Path("kira/characters/__init__.py"),
             "kira/characters/kira.py": Path("kira/characters/kira.py"),
             "kira/characters/registry.py": Path("kira/characters/registry.py"),
+            "kira/face.py": Path("kira/face.py"),
+            "kira/vrm/__init__.py": Path("kira/vrm/__init__.py"),
+            "kira/vrm/metadata.py": Path("kira/vrm/metadata.py"),
+            "kira/vrm/paths.py": Path("kira/vrm/paths.py"),
+            "kira/vrm/renderer.py": Path("kira/vrm/renderer.py"),
+            "kira/vrm/web/index.html": Path("kira/vrm/web/index.html"),
+            "kira/vrm/web/viewer.js": Path("kira/vrm/web/viewer.js"),
+            "kira/vrm/web/viewer.bundle.js": Path("kira/vrm/web/viewer.bundle.js"),
             "kira/character/__init__.py": Path("kira/character/__init__.py"),
             "kira/character/traits.py": Path("kira/character/traits.py"),
             "kira/character/learning.py": Path("kira/character/learning.py"),
@@ -137,6 +147,12 @@ def main() -> None:
             if relative.endswith(".py"):
                 ast.parse(updated, filename=relative)
             target.write_text(updated, encoding="utf-8", newline="\n")
+
+        # Ship the creator-provided VRM beside the Kira package, where paths.py resolves it.
+        vrm_target = kira_dir.parent / "kira sample.vrm"
+        shutil.copy2(DEFAULT_VRM_SOURCE, vrm_target)
+        if not vrm_target.is_file() or vrm_target.stat().st_size != DEFAULT_VRM_SOURCE.stat().st_size:
+            raise RuntimeError("Kira's default VRM model was not copied into the release payload")
 
         main_text = (kira_dir / "main.py").read_text(encoding="utf-8")
         mood_text = (kira_dir / "mood.py").read_text(encoding="utf-8")
