@@ -22,7 +22,7 @@
 - `blink`, `blinkLeft`, `blinkRight` و حالت خواب به پلک‌ها متصل‌اند.
 - حالت‌های happy, sad, angry, surprised و relaxed به همراه نگاشت‌های thinking, shy, sleepy, bored, playful, teasing, embarrassed, affectionate, jealous, fearful و چند حالت دیگر در صورت وجود Expression سازگار اجرا می‌شوند.
 - Expressionهای استاندارد نگاه `lookUp`, `lookDown`, `lookLeft`, `lookRight` از وضعیت نگاه نشانگر استفاده می‌کنند.
-- حرکت بسیار ملایم و procedural برای hips، spine، chest، neck و head ادامه دارد؛ Spring Bone توسط runtime خود VRM به‌روز می‌شود.
+- مدل‌هایی که در حالت T-pose ذخیره شده‌اند هنگام بارگذاری به حالت ایستادن طبیعی‌تر می‌روند: بازوها پایین می‌آیند و کمی خمیدگی آرنج حفظ می‌شود. حرکت procedural ملایم برای hips، spine، chest، بازوها، neck و head اجرا می‌شود؛ Spring Bone توسط runtime خود VRM به‌روز می‌شود.
 
 مدل VRM به‌تنهایی انیمیشن کامل بدن یا lip-sync فونم‌محور تضمین نمی‌کند. فایل‌های motion/VRMA و تشخیص واج‌های صوتی، مرحله‌ی توسعه‌ی جداگانه‌اند.
 
