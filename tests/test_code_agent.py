@@ -37,6 +37,16 @@ class CodeAgentContextTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 safe_project_file(root, secret)
 
+    def test_inline_credentials_are_redacted_from_context(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "config.py"
+            source.write_text('api_key = "sk-test-secret-value"\\npassword = "hunter2"\\n', encoding="utf-8")
+            context = build_project_context(root, source)
+            self.assertNotIn("sk-test-secret-value", context)
+            self.assertNotIn("hunter2", context)
+            self.assertIn("[REDACTED]", context)
+
     def test_path_escape_is_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "project"

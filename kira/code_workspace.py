@@ -348,6 +348,10 @@ class CodeWorkspaceDialog(QDialog):
 
     def shutdown(self):
         self._closing = True
+        try:
+            self.router.cancel()
+        except Exception:
+            pass
         if self._process is not None and self._process.state() != QProcess.NotRunning:
             self._process.kill()
             self._process.waitForFinished(1000)

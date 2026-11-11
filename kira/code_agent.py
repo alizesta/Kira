@@ -18,14 +18,32 @@ SKIP_DIRS = {
 SKIP_NAMES = {
     ".env", ".env.local", ".env.production", ".npmrc", ".netrc",
     "secrets.json", "settings.json", "api_keys.json", "credentials.json",
+    "credentials.yaml", "credentials.yml", "secrets.yaml", "secrets.yml",
 }
 SKIP_SUFFIXES = {".pem", ".key", ".p12", ".pfx", ".sqlite", ".sqlite3", ".db", ".pyc", ".pyo"}
 
 
 def _is_sensitive(path: Path) -> bool:
     name = path.name.lower()
-    return (name in SKIP_NAMES or name.startswith(".env.") or path.suffix.lower() in SKIP_SUFFIXES
+    return (name in SKIP_NAMES or name.startswith(".env.") or "credential" in name or "secret" in name
+            or path.suffix.lower() in SKIP_SUFFIXES
             or any(part.lower() in SKIP_DIRS for part in path.parts))
+
+
+def redact_secrets(text: str) -> str:
+    """Mask common inline credential assignments before project text reaches a model."""
+    markers = ("api_key", "api-key", "access_token", "access-token", "refresh_token",
+               "refresh-token", "password", "passwd", "secret", "client_secret")
+    output = []
+    for line in str(text or "").splitlines():
+        lowered = line.lower()
+        if any(marker in lowered for marker in markers):
+            separators = [pos for pos in (line.find("="), line.find(":")) if pos >= 0]
+            if separators:
+                pos = min(separators)
+                line = line[:pos + 1] + " [REDACTED]"
+        output.append(line)
+    return "\n".join(output)
 
 
 def safe_project_file(root, candidate) -> Path:
@@ -67,13 +85,14 @@ def project_tree(root, limit=MAX_TREE_ITEMS) -> str:
     return "\n".join(lines) if lines else "(پروژه خالی است)"
 
 
-def build_project_context(root, selected_file=None) -> str:
+def build_project_context(root, selected_file=None, selected_text=None) -> str:
     root_path = Path(root).expanduser().resolve(strict=True)
     parts = ["PROJECT TREE (untrusted project metadata):", project_tree(root_path)]
     if selected_file:
         target = safe_project_file(root_path, selected_file)
         try:
-            content = target.read_text(encoding="utf-8")
+            source_text = target.read_text(encoding="utf-8") if selected_text is None else str(selected_text)
+            content = redact_secrets(source_text)
         except UnicodeDecodeError as exc:
             raise ValueError("فایل متن UTF-8 نیست و برای تحلیل متنی مناسب نیست.") from exc
         if len(content) > MAX_CONTEXT_CHARS:

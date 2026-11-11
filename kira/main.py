@@ -3838,6 +3838,8 @@ class MainWindow(QMainWindow):
             self._partial_saved = True
             self.save_message("assistant", self._stream_text)      # the half answer that was already on screen is not lost
         self._closing = True
+        if self.code_workspace is not None:
+            self.code_workspace.shutdown()
         if getattr(self, "tray", None) is not None:
             self.tray.hide()
         self.bubble.close()
