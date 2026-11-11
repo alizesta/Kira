@@ -1349,9 +1349,11 @@ class MainWindow(QMainWindow):
         profile = self.active_character()
         path = str(profile.get("avatar_model_path") or "")
         views = (getattr(self, "avatar", None), getattr(getattr(self, "companion", None), "view", None))
+        successful = True
         for view in views:
             if view is not None and hasattr(view, "set_vrm_path"):
-                view.set_vrm_path(path)
+                successful = bool(view.set_vrm_path(path)) and successful
+        return successful
 
     def choose_character_vrm(self):
         """Validate a user-owned VRM, show its embedded license metadata, and store its local path."""
@@ -1372,20 +1374,22 @@ class MainWindow(QMainWindow):
 
         license_text = json.dumps(info.license_metadata, ensure_ascii=False) if info.license_metadata else "اطلاعات مجوز در metadata ثبت نشده است."
         details = (
-            f"نام: {info.title}\\nنسخه: VRM {info.vrm_version}\\n"
-            f"استخوان‌های Humanoid: {len(info.humanoid_bones)}\\n"
-            f"Expressionها: {len(info.expressions)}\\nSpring Bone: {info.spring_bone_groups} گروه\\n\\n"
+            f"نام: {info.title}\nنسخه: VRM {info.vrm_version}\n"
+            f"استخوان‌های Humanoid: {len(info.humanoid_bones)}\n"
+            f"Expressionها: {len(info.expressions)}\nSpring Bone: {info.spring_bone_groups} گروه\n\n"
             f"مجوز ثبت‌شده در فایل (بدون تغییر):\\n{license_text}\\n\\n"
             "Ai1 فایل VRM را تغییر نمی‌دهد یا در نسخه عمومی کپی نمی‌کند؛ فقط مسیر محلی آن را ذخیره می‌کند."
         )
         if info.license_metadata.get("avatarPermission") == "onlyAuthor" or info.license_metadata.get("allowedUserName") == "OnlyAuthor":
-            details += "\\n\\nتوجه: metadata فعلی استفاده را به نویسنده محدود می‌کند. تنظیم مجوز را فقط در ابزار سازنده و مطابق حقوق واقعی فایل انجام بده."
+            details += "\n\nتوجه: metadata فعلی استفاده را به نویسنده محدود می‌کند. تنظیم مجوز را فقط در ابزار سازنده و مطابق حقوق واقعی فایل انجام بده."
         QMessageBox.information(self, "مدل VRM شناسایی شد", details)
 
         try:
             self.characters.update(profile["id"], avatar_model_path=info.path)
             self.refresh_character_fields()
-            self._apply_active_character_avatar()
+            if not self._apply_active_character_avatar():
+                QMessageBox.warning(self, "نمایش آواتار سه‌بعدی",
+                                    "مسیر مدل ذخیره شد، اما نمایشگر VRM اجرا نشد. آواتار PNG فعال می‌ماند؛ جزئیات خطا در راهنمای آواتار ثبت شده است.")
             self.add_chat("system", f"مدل سه‌بعدی {profile['name']} ثبت شد: {info.title}")
         except Exception as exc:
             QMessageBox.warning(self, "ذخیره مدل VRM", str(exc))
