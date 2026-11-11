@@ -45,6 +45,7 @@ from .strings import STR, TEST_LINES
 from .personality import build_system_prompt
 from .characters import CharacterRegistry
 from .vrm.metadata import inspect_vrm, VrmFileError
+from .vrm.paths import DEFAULT_KIRA_VRM, resolve_avatar_path
 from .character.traits import BASE_TRAITS
 from . import persona_memory
 from . import evidence_memory
@@ -1075,9 +1076,10 @@ class MainWindow(QMainWindow):
         av.setContentsMargins(8, 8, 8, 10)
         av.setSpacing(4)
         self.avatar = AvatarView(self.animator, QRectF(150, 0, 520, 680))
-        self.avatar.set_vrm_path(self.active_character().get("avatar_model_path", ""))
+        initial_avatar_path = resolve_avatar_path(self.active_character())
+        self.avatar.set_vrm_path(initial_avatar_path)
         if getattr(self.companion, "view", None) is not None:
-            self.companion.view.set_vrm_path(self.active_character().get("avatar_model_path", ""))
+            self.companion.view.set_vrm_path(initial_avatar_path)
         self.avatar.setMinimumSize(150, 190)
         self.avatar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         av.addWidget(self.avatar, 1)
@@ -1274,7 +1276,7 @@ class MainWindow(QMainWindow):
         avatar_controls.addWidget(self.character_avatar_browse_btn)
         avatar_controls.addWidget(self.character_avatar_clear_btn)
         form.addRow(QLabel("آواتار سه‌بعدی (VRM)"), avatar_controls)
-        avatar_hint = QLabel("مدل از مسیر محلی خوانده می‌شود و داخل ZIP یا پوشه نصب کپی نمی‌شود. برای نمایش سه‌بعدی، اینترنت برای بارگذاری کتابخانه‌های رندر لازم است؛ در صورت خطا آواتار PNG باقی می‌ماند.")
+        avatar_hint = QLabel("Kira به‌صورت پیش‌فرض از فایل kira sample.vrm در کنار پوشه‌ی اصلی برنامه استفاده می‌کند. برای Ren و Mika می‌توان مدل جداگانه انتخاب کرد؛ مسیر مدل سفارشی در پروفایل ذخیره می‌شود و خود فایل دست‌کاری نمی‌شود. نمایشگر از کتابخانه‌های محلی استفاده می‌کند و در صورت خطا به PNG برمی‌گردد.")
         avatar_hint.setObjectName("hint")
         avatar_hint.setWordWrap(True)
         form.addRow(avatar_hint)
@@ -1318,8 +1320,15 @@ class MainWindow(QMainWindow):
         self.character_name_edit.setText(profile.get("name", ""))
         self.character_description_edit.setPlainText(profile.get("description", ""))
         self.character_notes_edit.setPlainText(profile.get("notes", ""))
-        self.character_avatar_path_edit.setText(profile.get("avatar_model_path", ""))
-        self.character_avatar_clear_btn.setEnabled(bool(profile.get("avatar_model_path")))
+        custom_avatar_path = str(profile.get("avatar_model_path") or "").strip()
+        if custom_avatar_path:
+            avatar_display_path = custom_avatar_path
+        elif profile.get("id") == "kira" and profile.get("avatar_default_enabled") and DEFAULT_KIRA_VRM.is_file():
+            avatar_display_path = "مدل پیش‌فرض Kira · kira sample.vrm"
+        else:
+            avatar_display_path = ""
+        self.character_avatar_path_edit.setText(avatar_display_path)
+        self.character_avatar_clear_btn.setEnabled(bool(custom_avatar_path) or bool(profile.get("avatar_default_enabled")))
         self.character_delete_btn.setEnabled(profile.get("id") != "kira")
         self.refresh_personality_controls()
 
@@ -1347,7 +1356,7 @@ class MainWindow(QMainWindow):
     def _apply_active_character_avatar(self):
         """Apply the active profile's private VRM path to the main and floating avatar views."""
         profile = self.active_character()
-        path = str(profile.get("avatar_model_path") or "")
+        path = resolve_avatar_path(profile)
         views = (getattr(self, "avatar", None), getattr(getattr(self, "companion", None), "view", None))
         successful = True
         for view in views:
@@ -1373,19 +1382,21 @@ class MainWindow(QMainWindow):
             return
 
         license_text = json.dumps(info.license_metadata, ensure_ascii=False) if info.license_metadata else "اطلاعات مجوز در metadata ثبت نشده است."
+        authors_text = ", ".join(info.authors) if info.authors else "در فایل ثبت نشده"
         details = (
             f"نام: {info.title}\nنسخه: VRM {info.vrm_version}\n"
+            f"سازنده/Attribution: {authors_text}\n"
             f"استخوان‌های Humanoid: {len(info.humanoid_bones)}\n"
             f"Expressionها: {len(info.expressions)}\nSpring Bone: {info.spring_bone_groups} گروه\n\n"
             f"مجوز ثبت‌شده در فایل (بدون تغییر):\n{license_text}\n\n"
-            "Ai1 فایل VRM را تغییر نمی‌دهد یا در نسخه عمومی کپی نمی‌کند؛ فقط مسیر محلی آن را ذخیره می‌کند."
+            "Ai1 مدل اصلی را تغییر نمی‌دهد؛ فقط مسیر فایل انتخاب‌شده را در پروفایل ذخیره می‌کند."
         )
         if info.license_metadata.get("avatarPermission") == "onlyAuthor" or info.license_metadata.get("allowedUserName") == "OnlyAuthor":
             details += "\n\nتوجه: metadata فعلی استفاده را به نویسنده محدود می‌کند. تنظیم مجوز را فقط در ابزار سازنده و مطابق حقوق واقعی فایل انجام بده."
         QMessageBox.information(self, "مدل VRM شناسایی شد", details)
 
         try:
-            self.characters.update(profile["id"], avatar_model_path=info.path)
+            self.characters.update(profile["id"], avatar_model_path=info.path, avatar_default_enabled=False)
             self.refresh_character_fields()
             if not self._apply_active_character_avatar():
                 QMessageBox.warning(self, "نمایش آواتار سه‌بعدی",
@@ -1397,7 +1408,7 @@ class MainWindow(QMainWindow):
     def clear_character_vrm(self):
         profile = self.active_character()
         try:
-            self.characters.update(profile["id"], avatar_model_path="")
+            self.characters.update(profile["id"], avatar_model_path="", avatar_default_enabled=False)
             self.refresh_character_fields()
             self._apply_active_character_avatar()
             self.add_chat("system", f"آواتار {profile['name']} به PNG برگشت.")
