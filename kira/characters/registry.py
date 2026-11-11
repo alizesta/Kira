@@ -32,6 +32,8 @@ def _normalise_profile(profile):
         "description": str(profile.get("description") or "").strip()[:4000],
         "notes": str(profile.get("notes") or "").strip()[:12000],
         "system_prompt": str(profile.get("system_prompt") or "").strip()[:30000],
+        # A path only: the VRM asset stays in the user's private storage and is never copied to releases.
+        "avatar_model_path": str(profile.get("avatar_model_path") or "").strip()[:4096],
         "traits": {},
         "built_in": bool(profile.get("built_in", False)),
     }
@@ -155,7 +157,7 @@ class CharacterRegistry:
         profile_id = str(profile_id or "")
         if profile_id not in self.profiles:
             raise KeyError(profile_id)
-        allowed = {"name", "description", "notes", "system_prompt", "traits"}
+        allowed = {"name", "description", "notes", "system_prompt", "traits", "avatar_model_path"}
         current = deepcopy(self.profiles[profile_id])
         for key, value in changes.items():
             if key in allowed:
