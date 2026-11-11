@@ -2,7 +2,7 @@ name: Build Kira Update
 
 on:
   push:
-    branches: [main, "next/2026-11-11-intelligence"]
+    branches: [main, "next/2026-11-11-intelligence", "feature/characters-ren-mika"]
     paths:
       - "kira/**"
       - "docs/**"
@@ -11,6 +11,7 @@ on:
       - "tests/test_router_routes.py"
       - "tests/test_providers.py"
       - "tests/test_persona_memory.py"
+      - "tests/test_characters.py"
       - "tests/test_app_resolution.py"
       - "tests/test_persian_quality.py"
       - "tests/test_release_package.py"
@@ -48,6 +49,7 @@ jobs:
           tests.test_router_routes
           tests.test_providers
           tests.test_persona_memory
+          tests.test_characters
           tests.test_app_resolution
           tests.test_persian_quality
           tests.test_release_package
