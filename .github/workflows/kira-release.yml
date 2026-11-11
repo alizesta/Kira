@@ -53,6 +53,7 @@ jobs:
           tests.test_app_resolution
           tests.test_persian_quality
           tests.test_release_package
+          tests.test_minimax_cloud_voice
 
       - name: Check Python syntax
         run: python -m compileall -q kira scripts
