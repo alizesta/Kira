@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 import sys
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QRectF, QUrl, QSize
-from PySide6.QtGui import QAction, QIcon, QDesktopServices, QTextCursor, QColor, QBrush, QImage, QTextDocument
+from PySide6.QtGui import QAction, QIcon, QDesktopServices, QTextCursor, QColor, QBrush, QImage, QTextDocument, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QTextBrowser, QLineEdit,
     QPushButton, QMessageBox, QComboBox, QFormLayout, QSpinBox, QTabWidget, QGroupBox, QCheckBox,
@@ -48,6 +48,7 @@ from . import evidence_memory
 from . import brain
 from . import usage
 from . import mood
+from . import characters
 from .rig import MOODS
 from .ui_icons import make_icon
 from .ui_widgets import ChatInput, RouteChip, AttachmentTile
@@ -1172,6 +1173,28 @@ class MainWindow(QMainWindow):
     def build_char_tab(self):
         s = self.settings
         box, f = self.group("g_char")
+        # Character selector: every profile shares the same brain, routes, tools and permissions.
+        self.character_combo = QComboBox()
+        self.character_portrait = QLabel()
+        self.character_portrait.setFixedSize(144, 180)
+        self.character_portrait.setScaledContents(True)
+        self.character_description = QLabel()
+        self.character_description.setWordWrap(True)
+        for cid in ("kira", "ren", "mika"):
+            profile = characters.CHARACTERS[cid]
+            self.character_combo.addItem(profile["name_fa"] + " · " + profile["name"], cid)
+        current_id = characters.active_id(s)
+        self.character_combo.setCurrentIndex(max(0, self.character_combo.findData(current_id)))
+        profile_row = QHBoxLayout()
+        profile_row.addWidget(self.character_portrait)
+        profile_info = QVBoxLayout()
+        profile_info.addWidget(QLabel("شخصیت فعال"))
+        profile_info.addWidget(self.character_combo)
+        profile_info.addWidget(self.character_description)
+        profile_row.addLayout(profile_info, 1)
+        f.addRow(profile_row)
+        self.character_combo.currentIndexChanged.connect(self.select_character)
+        self.refresh_character_card(current_id)
         self.size_sl = self.row(f, "char_size", QSlider(Qt.Horizontal))
         self.size_sl.setRange(300, 1000); self.size_sl.setValue(int(s["companion_height"]))
         self.follow_sl = self.row(f, "follow", QSlider(Qt.Horizontal))
@@ -1215,6 +1238,22 @@ class MainWindow(QMainWindow):
         self.reg(note.setText, "char_note")
         f.addRow(note)
         self.tabs.addTab(self.page(box), "")
+
+    def refresh_character_card(self, character_id=None):
+        profile = characters.CHARACTERS.get(character_id or characters.active_id(self.settings), characters.CHARACTERS["kira"])
+        image_path = ROOT / profile["image"]
+        pixmap = QPixmap(str(image_path))
+        self.character_portrait.setPixmap(pixmap)
+        self.character_description.setText(profile["description"])
+
+    def select_character(self, index):
+        character_id = self.character_combo.itemData(index)
+        if not character_id:
+            return
+        self.settings["active_character_id"] = character_id
+        self.refresh_character_card(character_id)
+        self.save_now()
+        self.add_chat("system", f"شخصیت فعال به {characters.CHARACTERS[character_id]['name_fa']} تغییر کرد.")
 
     def build_general_tab(self):
         box1, f1 = self.group("g_lang")
@@ -2903,6 +2942,10 @@ class MainWindow(QMainWindow):
             mood_block = ""
         prompt = build_system_prompt(self.settings, "" if plain else self.director.format_hint(), memory_block,
                                      voice_input=self._turn_voice, mode=mode, mood_block=mood_block)
+        # The selected character changes identity and conversational style only; all shared tools and policies stay intact.
+        character_layer = characters.prompt_for(self.settings)
+        if character_layer:
+            prompt += "\\n\\n" + character_layer
         try:                                                      # brain stage: deterministic, no model call; any problem = the normal path
             extra0 = self._turn_extra
             has_att = bool(self._turn_attach_kinds or (extra0 and (extra0.get("images") or "--- فایل ضمیمه" in str(extra0.get("model", "")))))
@@ -3008,7 +3051,7 @@ class MainWindow(QMainWindow):
         if not text.strip():
             return
         self._speak_stream(text)
-        name = self.settings.get("assistant_name", "Kira")
+        name = characters.display_name(self.settings)
         ui_dir = "rtl" if self.settings.get("ui_lang", "fa") == "fa" else "ltr"
         html = message_html("assistant", name, text, ui_dir)
         doc = self.chat.document()
