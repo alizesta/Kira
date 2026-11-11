@@ -146,5 +146,5 @@ class GameModeMonitor(QObject):
             return None
         target = fit_capture_size(pixmap.width(), pixmap.height())
         if pixmap.width() > target[0] or pixmap.height() > target[1]:
-            pixmap = pixmap.scaled(target[0], target[1], Qt.IgnoreAspectRatio, Qt.FastTransformation)
+            pixmap = pixmap.scaled(target[0], target[1], Qt.KeepAspectRatio, Qt.FastTransformation)
         return pixmap
