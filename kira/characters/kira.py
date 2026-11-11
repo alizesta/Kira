@@ -155,5 +155,6 @@ PROFILE = {
         "assertiveness": 0.62, "teasing": 0.68, "empathy": 0.84, "independence": 0.58,
         "patience": 0.70, "carefulness": 0.76,
     },
+    "avatar_default_enabled": True,
     "built_in": True,
 }
