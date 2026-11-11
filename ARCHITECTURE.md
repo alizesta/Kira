@@ -113,3 +113,5 @@ Cloud Voice settings are written atomically outside the application installation
 - Portable title/PID identity tests run in the Linux release job.
 - The Windows release gate runs `tests.test_game_detection` and `tests.test_game_mode` on `windows-latest` with `QT_QPA_PLATFORM=offscreen` before ZIP packaging.
 - The Windows job exercises the monitor's Qt integration with mocked foreground-window data. It cannot verify the user's real Ai1 window title, DPI/display setup, or foreground process state; those still require an interactive Windows 11 smoke test.
+
+- The Windows test fixture creates a QApplication even in offscreen mode because the generic large-window heuristic queries QApplication.primaryScreen().

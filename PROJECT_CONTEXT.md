@@ -101,3 +101,5 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 ## Game Mode Windows CI validation
 - The release workflow runs `tests.test_game_detection` and `tests.test_game_mode` on `windows-latest` with PySide6 and Qt's offscreen platform before the packaging/release job can start.
 - Linux portable coverage remains in place. This CI validates mocked foreground PID/title integration and safety behavior; it does not replace a real interactive Windows 11 test with the user's actual desktop/window title.
+
+- The Windows Game Mode test fixture initializes QApplication before exercising the monitor's large-window heuristic; CI runs the Qt integration offscreen.

@@ -8,6 +8,8 @@ on:
       - "assets/characters/**"
       - "install.bat"
       - "tests/test_game_audio.py"
+      - "tests/test_game_mode.py"
+      - "tests/test_game_detection.py"
       - "kira/game_mode_policy.py"
       - "tests/test_game_mode_policy.py"
       - "tests/test_streaming.py"

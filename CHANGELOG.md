@@ -105,3 +105,7 @@
 
 ### Portable Game Mode identity regression coverage
 - Extracted the current-process and known Ai1/Kira window-title exclusion into a pure-Python helper and added CI coverage for the false-positive case and a real-game negative control.
+
+### Windows Game Mode test fixture correction
+- Initialize a Qt application in the Game Mode test fixture so the primary-screen geometry query is available on Windows CI's offscreen platform.
+- Include both Game Mode test modules in workflow path filters so future edits trigger the release gate.

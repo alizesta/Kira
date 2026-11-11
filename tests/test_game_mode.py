@@ -1,10 +1,18 @@
 import unittest
 from unittest import mock
 
+from PySide6.QtWidgets import QApplication
+
 from kira.game_mode import GameModeMonitor, fit_capture_size
 
 
 class GameModeSafetyTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # GameModeMonitor.poll() uses the primary screen geometry for its large-window heuristic.
+        # The offscreen Windows CI runner still needs a QApplication instance for that Qt API.
+        cls._app = QApplication.instance() or QApplication([])
+
     def test_starts_disabled(self):
         monitor = GameModeMonitor()
         self.assertFalse(monitor.enabled)
