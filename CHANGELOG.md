@@ -9,11 +9,11 @@
 - Updated GUI navigation tests for the current menu, including the separator and Ai1 Code entry.
 - Expanded CI coverage to include streaming, chat persistence and release regression modules.
 
-### Character specialties and generated portraits
+### Character specialties and profile portraits
 - Defined Kira as the coding/software-development specialist, Mika as the medical-information guide, and Ren as the news and intelligence analyst.
 - Added scope-aware specialty prompts while keeping model routes, tools and permissions shared across characters.
 - Added medical safety boundaries: no definitive diagnosis or independent prescribing, emergency red flags, reputable evidence and privacy-aware handling of sensitive health details.
-- Replaced built-in vector placeholder portraits in the Characters tab with generated anime portrait image assets; the tab decodes JPEG data in memory for native Qt display.
+- Restored Kira's original SVG portrait as her active profile image. Ren and Mika retain their separate generated JPEG portrait assets; JPEG decode warnings for those assets remain a separate issue to investigate.
 - Added regression coverage for each built-in character's specialty prompt.
 
 ### Ai1 Code workspace (initial foundation)
