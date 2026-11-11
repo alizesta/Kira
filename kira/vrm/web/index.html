@@ -28,6 +28,18 @@
 <body>
   <div id="stage"></div>
   <div id="status"></div>
-  <script type="module" src="/viewer.js"></script>
+  <script type="module">
+    try {
+      await import("/viewer.js");
+    } catch (error) {
+      const message = "کتابخانه نمایش سه‌بعدی بارگذاری نشد. اتصال اینترنت و دسترسی به jsDelivr را بررسی کن.\\n" + (error?.message || error);
+      const node = document.getElementById("status");
+      node.textContent = message;
+      node.style.display = "block";
+      if (window.qt && window.qt.webChannelTransport && window.QWebChannel) {
+        new QWebChannel(qt.webChannelTransport, (channel) => channel.objects.ai1.onError(message));
+      }
+    }
+  </script>
 </body>
 </html>
