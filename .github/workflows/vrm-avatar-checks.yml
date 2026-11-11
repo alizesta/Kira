@@ -102,7 +102,7 @@ jobs:
                       continue
                   archive.write(path, relative.as_posix())
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_file:
-              output_file.write(f"archive_name={name}\n")
+              output_file.write(f"archive_name={name}" + chr(10))
           print(f"Created {output} ({output.stat().st_size:,} bytes)")
           PY
       - name: Upload complete source ZIP
