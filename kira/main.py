@@ -1236,6 +1236,7 @@ class MainWindow(QMainWindow):
         self.character_portrait = QLabel()
         self.character_portrait.setFixedSize(144, 180)
         self.character_portrait.setScaledContents(True)
+        self.character_portrait.setStyleSheet("border: 1px solid #6954a8; border-radius: 10px; background: #171326;")
         self.character_description = QLabel()
         self.character_description.setWordWrap(True)
         profile_row = QHBoxLayout()
@@ -1323,10 +1324,18 @@ class MainWindow(QMainWindow):
 
     def refresh_character_card(self, character_id=None):
         profile = characters.all_profiles(self.settings).get(character_id or characters.active_id(self.settings), characters.CHARACTERS["kira"])
-        image_path = ROOT / profile.get("image", "assets/characters/ren.svg")
-        pixmap = QPixmap(str(image_path))
+        image_path = ROOT / profile.get("image", "assets/characters/kira.jpg.b64")
+        pixmap = QPixmap()
+        try:
+            if image_path.suffix == ".b64":
+                image_bytes = base64.b64decode(image_path.read_text(encoding="ascii").strip(), validate=True)
+                pixmap.loadFromData(image_bytes, "JPG")
+            else:
+                pixmap.load(str(image_path))
+        except (OSError, ValueError):
+            pixmap = QPixmap()
         if pixmap.isNull():
-            pixmap = QPixmap(str(ROOT / "assets" / "characters" / "ren.svg"))
+            pixmap.load(str(ROOT / "assets" / "characters" / "ren.svg"))
         self.character_portrait.setPixmap(pixmap)
         self.character_description.setText(profile.get("description", ""))
 
