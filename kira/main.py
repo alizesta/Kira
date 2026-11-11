@@ -330,9 +330,12 @@ class MemoryDialog(QDialog):
     """What Kira remembers about the user (facts, dated moments, summaries): view, edit, delete, add a note, forget everything."""
     GROUPS = {"fact": "درباره‌ی تو", "moment": "لحظه / رویداد", "summary": "خلاصه‌ی گفتگوهای قدیمی"}
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, character_id="kira"):
         super().__init__(parent)
-        self.setWindowTitle("حافظه‌ی Kira")
+        self.character_id = str(character_id or "kira")
+        profiles = characters.all_profiles(getattr(parent, "settings", {}))
+        self.character_name = str(profiles.get(self.character_id, {}).get("name") or self.character_id.title())
+        self.setWindowTitle(f"حافظه‌ی {self.character_name}")
         self.resize(680, 480)
         lay = QVBoxLayout(self)
         self.info = QLabel()
@@ -356,7 +359,9 @@ class MemoryDialog(QDialog):
         cur = mood.current()
         self.info.setText(f"حال‌وهوای فعلی Kira: {cur['emotion']} ({cur['intensity']}/100). هرچه اینجا نباشد Kira نمی‌داند. حذف یا ویرایش فوری اثر می‌کند.")
         self.items.clear()
-        for it in persona_memory.list_items():
+        with persona_memory.character_scope(self.character_id):
+            saved_items = persona_memory.list_items()
+        for it in saved_items:
             row = QListWidgetItem(f"[{self.GROUPS.get(it['group'], it['group'])}] {it['text']}")
             row.setData(Qt.UserRole, it["id"])
             self.items.addItem(row)
@@ -367,26 +372,37 @@ class MemoryDialog(QDialog):
 
     def add_note(self):
         text, ok = QInputDialog.getText(self, "یادداشت جدید", "چه چیزی را Kira یادش بماند؟")
-        if ok and persona_memory.add_note(text):
-            self.refresh()
+        if ok:
+            with persona_memory.character_scope(self.character_id):
+                added = persona_memory.add_note(text)
+            if added:
+                self.refresh()
 
     def edit_item(self):
         iid = self._selected()
         if not iid:
             return
-        current = next((i["text"] for i in persona_memory.list_items() if i["id"] == iid), "")
+        with persona_memory.character_scope(self.character_id):
+            current = next((i["text"] for i in persona_memory.list_items() if i["id"] == iid), "")
         text, ok = QInputDialog.getText(self, "ویرایش", "متن:", QLineEdit.Normal, current)
-        if ok and persona_memory.update_item(iid, text):
-            self.refresh()
+        if ok:
+            with persona_memory.character_scope(self.character_id):
+                updated = persona_memory.update_item(iid, text)
+            if updated:
+                self.refresh()
 
     def delete_item(self):
         iid = self._selected()
-        if iid and persona_memory.delete_item(iid):
-            self.refresh()
+        if iid:
+            with persona_memory.character_scope(self.character_id):
+                deleted = persona_memory.delete_item(iid)
+            if deleted:
+                self.refresh()
 
     def forget_all(self):
         if QMessageBox.question(self, "فراموش‌کردن همه", "همه‌ی چیزهایی که Kira درباره‌ی تو یادش مانده (و حال‌وهوایش) پاک شود؟ تاریخچه‌ی گفتگو دست‌نخورده می‌ماند.") == QMessageBox.Yes:
-            persona_memory.forget_all()
+            with persona_memory.character_scope(self.character_id):
+                persona_memory.forget_all()
             mood.reset()
             self.refresh()
 
@@ -3225,12 +3241,16 @@ class MainWindow(QMainWindow):
         try:
             older = recent_messages(window + 40)[:-window] if window else []
             # her own recent banter is a style anchor for casual talk only; a practical request does not get it
-            memory_block = persona_memory.build_block(older, voice_samples=(mode is None or mode.name == modes.CHAT),
-                                                      query=evidence_memory.query_from_context(context),
-                                                      budget=evidence_memory.budget_for(self.settings, self.client))
-            total = message_count()
-            if persona_memory.needs_summary(total, window):       # old messages are folded into a short summary (local, no model call)
-                persona_memory.maintain(recent_messages(min(total, 3000)), window)
+            character_id = characters.active_id(self.settings)
+            with persona_memory.character_scope(character_id):
+                memory_block = persona_memory.build_block(
+                    older, voice_samples=(mode is None or mode.name == modes.CHAT),
+                    query=evidence_memory.query_from_context(context) if character_id == "kira" else None,
+                    budget=evidence_memory.budget_for(self.settings, self.client),
+                )
+                total = message_count()
+                if persona_memory.needs_summary(total, window):   # each character maintains its own digest cursor
+                    persona_memory.maintain(recent_messages(min(total, 3000)), window)
         except Exception:                                         # noqa: BLE001 - memory is a bonus, never block a reply
             memory_block = ""
         try:                                                      # her persisted mood + how he seems right now (same text for every provider)
@@ -3598,7 +3618,8 @@ class MainWindow(QMainWindow):
         except Exception as exc:                                  # noqa: BLE001
             ok = False
             chat_store.last_error = f"{type(exc).__name__}: {exc}"
-        persona_memory.observe(role, content)
+        with persona_memory.character_scope(characters.active_id(self.settings)):
+            persona_memory.observe(role, content)
         try:
             if role == "user":
                 mood.on_user_message(content)
@@ -3877,7 +3898,8 @@ class MainWindow(QMainWindow):
         if QMessageBox.question(self, self.t("clear_t"), self.t("clear_q")) == QMessageBox.Yes:
             try:
                 clear_memory()                  # saves a snapshot first; nothing is deleted if that fails
-                persona_memory.forget_conversation()
+                with persona_memory.character_scope(characters.active_id(self.settings)):
+                    persona_memory.forget_conversation()
                 self.tool_agent.clear_tasks()   # the unfinished task (its goal is the user's own words) goes with the chat
                 brain.reset_state()
             except ChatStoreError as exc:
@@ -3897,7 +3919,7 @@ class MainWindow(QMainWindow):
             pass
 
     def open_memory_dialog(self):
-        MemoryDialog(self).exec()
+        MemoryDialog(self, characters.active_id(self.settings)).exec()
 
     def restore_cleared_chat(self):
         try:

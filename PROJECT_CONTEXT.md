@@ -123,3 +123,9 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 - The release workflow now includes its own YAML file in the push path filter, so changes to release gates and permissions are validated by a fresh run rather than silently skipping the job.
 
 - Release workflow permission is declared once at the top level (`contents: write`); the duplicate declaration introduced during the first permission fix was removed after GitHub rejected the workflow before creating jobs.
+
+
+## Stage 5: Character-specific long-term memory
+- Kira retains the existing `kira_persona_memory.json` path for compatibility. Ren and Mika now use separate `kira_persona_memory_ren.json` and `kira_persona_memory_mika.json` stores in the same external data directory.
+- Voice samples, extracted facts, moments, habits and summaries are scoped to the active character. The evidence-backed SQLite index remains Kira-only; Ren/Mika use their own local persona-memory facts and do not receive Kira's evidence retrieval.
+- The Memory dialog reads/edits/forgets only the active character's long-term memory. Short-term chat history remains shared and is explicitly described as shared in character profiles.

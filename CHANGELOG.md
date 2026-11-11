@@ -137,3 +137,11 @@
 - Include the release workflow YAML in its own path filter and test that persona/evidence-only legacy folders are recognized as user data.
 
 - Remove the duplicate top-level workflow permissions key; retain one explicit `contents: write` permission for release publishing.
+
+
+### Character-specific long-term memory
+- Isolate voice samples, facts, moments, habits and conversation summaries by active character.
+- Preserve Kira's existing memory filename; create separate Ren/Mika files under the external data directory.
+- Keep the evidence-backed fact index Kira-only and prevent Ren/Mika prompts from retrieving Kira's indexed facts.
+- Bind the Memory dialog and memory maintenance to the active character. Short-term chat history remains shared.
+- Add tests for profile isolation, Kira compatibility, evidence-index isolation and per-character voice/joke state.

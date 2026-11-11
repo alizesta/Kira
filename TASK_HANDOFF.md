@@ -102,3 +102,11 @@ Character specialization and generated portraits. The implementation is complete
 - Added the workflow YAML itself to the path filter so workflow permission/gate edits trigger CI. Added coverage for legacy folders containing only persona or evidence memory.
 
 - The permission fix initially duplicated the existing `permissions` YAML key, causing GitHub to reject the workflow before jobs were created. The workflow now retains exactly one `permissions: contents: write` block; the next push must prove Windows tests, storage tests and release publishing all run.
+
+
+## Stage 5: Character-specific long-term memory
+- Implemented context-local memory scoping in `persona_memory.py`. Kira keeps the legacy JSON filename; Ren and Mika receive separate files.
+- MainWindow now scopes prompt memory, observation, summary maintenance, Memory dialog operations and clear-chat memory handling to the active character.
+- Kira's evidence-backed SQLite index is not queried or mutated while Ren/Mika are active. They use only their own JSON persona memory.
+- Short-term chat history in `kira_memory.sqlite3` remains shared across profiles; the character prompts and Memory dialog must not claim otherwise.
+- Added regression tests for memory isolation and voice/joke state isolation. Run the full Windows-gated release workflow before publishing.

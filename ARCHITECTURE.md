@@ -136,3 +136,10 @@ Cloud Voice settings are written atomically outside the application installation
 - The release workflow file itself is included in its path filters; workflow and permission changes therefore trigger validation.
 
 - The release workflow has one top-level `permissions: contents: write` declaration, required by the GitHub Release action. Avoid duplicate YAML permission keys.
+
+
+## Character-scoped long-term memory
+- `persona_memory.character_scope(id)` uses a context-local character ID so concurrent execution contexts do not accidentally write to another profile's memory.
+- Kira keeps the legacy `kira_persona_memory.json`; other profiles use `kira_persona_memory_<id>.json`. The external user-data directory and migration/backup logic cover all these files.
+- Kira alone uses the evidence-backed SQLite fact index. Ren/Mika facts, voice samples, moments, habits and summaries are stored in their own JSON files and never query Kira's evidence index.
+- The Memory dialog is bound to the active character. Short-term SQLite chat history remains shared; this change isolates long-term persona memory only.

@@ -35,6 +35,47 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertTrue(any("امتحان" in f for f in facts))
         self.assertIn("What she knows about him", pm.build_block())
 
+    def test_long_term_memory_is_separate_for_each_character_and_keeps_kira_legacy_file(self):
+        with pm.character_scope("kira"):
+            pm.observe("user", "my name is KiraUser")
+            pm.observe("assistant", "این هم یک جواب خودمانی مخصوص کیراست، همین‌قدر ساده و مستقیم.")
+            self.assertTrue((Path(self.tmp.name) / pm.FILE_NAME).exists())
+        with pm.character_scope("ren"):
+            pm.observe("user", "my name is RenUser")
+            block = pm.build_block()
+            self.assertIn("RenUser", block)
+            self.assertIn("Ren's own memory", block)
+            self.assertNotIn("KiraUser", block)
+            self.assertTrue((Path(self.tmp.name) / "kira_persona_memory_ren.json").exists())
+        with pm.character_scope("mika"):
+            pm.observe("user", "my name is MikaUser")
+            block = pm.build_block()
+            self.assertIn("MikaUser", block)
+            self.assertNotIn("RenUser", block)
+            self.assertNotIn("KiraUser", block)
+            self.assertTrue((Path(self.tmp.name) / "kira_persona_memory_mika.json").exists())
+        with pm.character_scope("kira"):
+            block = pm.build_block()
+            self.assertIn("KiraUser", block)
+            self.assertNotIn("RenUser", block)
+            self.assertNotIn("MikaUser", block)
+
+    def test_evidence_memory_is_written_only_for_kira(self):
+        with mock.patch.object(pm._evidence, "record_user_message") as record:
+            with pm.character_scope("ren"):
+                pm.observe("user", "my name is Ren")
+            record.assert_not_called()
+            with pm.character_scope("kira"):
+                pm.observe("user", "my name is Kira")
+            record.assert_called_once()
+
+    def test_last_reply_voice_and_joke_memory_do_not_cross_characters(self):
+        with pm.character_scope("kira"):
+            pm.observe("assistant", "این یک جمله‌ی مخصوص کیراست که برای نمونه‌ی لحن ذخیره می‌شود.")
+        with pm.character_scope("ren"):
+            pm.observe("user", "😂")
+            self.assertFalse(any(m["kind"] == "joke" for m in pm._load()["moments"]))
+
     def test_questions_are_not_facts(self):
         pm.observe("user", "من چی دوست دارم؟")
         self.assertEqual(pm.facts(), [])
