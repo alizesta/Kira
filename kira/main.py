@@ -54,7 +54,7 @@ from .ui_icons import make_icon
 from .ui_widgets import ChatInput, RouteChip, AttachmentTile
 from .theme import build_style, STYLE
 from . import winfx
-from .game_mode import GameModeMonitor
+from .game_mode import GameModeMonitor, CAPTURE_INTERVAL_MS, CAPTURE_JPEG_QUALITY
 
 WAKE_RE = re.compile(r"(?:(?:هی|سلام|hey|hi)[\s\u200c]*)?(?:کی[\s\u200c]?را|کایرا|کیرآ|کیارا|kira|keira|kyra|kiera)", re.I)
 STOP_RE = re.compile(r"^\W*(?:بس\s*کن|بسه|ساکت(?:\s*شو)?|صبر\s*کن|وایسا|وایستا|stop|be\s*quiet)\W*$", re.I)       # "just be quiet" is not a chat message
@@ -515,7 +515,7 @@ class MainWindow(QMainWindow):
         self._game_poll_timer.timeout.connect(self.game_mode.poll)
         self._game_poll_timer.start()
         self._game_capture_timer = QTimer(self)
-        self._game_capture_timer.setInterval(1000)
+        self._game_capture_timer.setInterval(CAPTURE_INTERVAL_MS)
         self._game_capture_timer.timeout.connect(self._capture_game_frame)
         self.game_mode.game_detected.connect(self.on_game_detected)
         self.resize(900, 720)
@@ -2813,7 +2813,7 @@ class MainWindow(QMainWindow):
             from PySide6.QtCore import QBuffer, QByteArray, QIODevice
             data = QByteArray()
             buffer = QBuffer(data)
-            if not buffer.open(QIODevice.WriteOnly) or not self._latest_game_frame.save(buffer, "JPEG", 68):
+            if not buffer.open(QIODevice.WriteOnly) or not self._latest_game_frame.save(buffer, "JPEG", CAPTURE_JPEG_QUALITY):
                 return None
             return att.image_attachment(bytes(data), "game-screen.jpg", "image/jpeg")
         except Exception as exc:  # noqa: BLE001 - a failed capture must not block ordinary chat
