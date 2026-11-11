@@ -6,7 +6,7 @@ Ai1 is the application. Kira, Mika and Ren are character profiles within Ai1.
 ## Character specialties and portraits
 - `kira/characters.py` defines Kira (coding/software), Mika (medical information) and Ren (news/intelligence) as prompt/presentation profiles.
 - All characters use the same model routes, tools, computer access and safety permissions. Specialty prompts do not grant capabilities.
-- Medical guidance is informational, not diagnosis or prescribing; sensitive health information must not be shared across profiles without user direction.
+- Medical guidance is informational, not diagnosis or prescribing. Current conversation history/memory is shared across profiles; Mika's prompt requests careful handling but does not enforce profile-level medical-data isolation.
 - Current-events analysis should use available research tools, validate dates and independent sources, and disclose uncertainty.
 - Generated portraits are stored as base64 JPEG text assets in `assets/characters/*.jpg.b64` and decoded in `MainWindow.refresh_character_card()` into in-memory `QPixmap` objects. Legacy SVG files remain as fallbacks/compatibility assets.
 
