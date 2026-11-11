@@ -83,6 +83,8 @@ class GameAudioListener(QThread):
             except Exception as exc:
                 raise RuntimeError(f"موتور محلی faster-whisper آماده نشد: {exc}") from exc
 
+            if not self._run:
+                return
             rate = int(speakers["defaultSampleRate"])
             channels = max(1, min(2, int(speakers["maxInputChannels"])))
             stream = audio.open(
