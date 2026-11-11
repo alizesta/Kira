@@ -14,7 +14,7 @@ Ai1 is a Windows desktop anime-style digital companion. It combines local and cl
 - Kira: coding, architecture, debugging and technical support; use Ai1 Code for project-file workflows and never claim unperformed tests.
 - Mika: medical information and health education only, not diagnosis or independent prescribing; flag emergencies and preserve health-data privacy.
 - Ren: current news and intelligence analysis; verify dates and independent sources, distinguish facts from claims/opinion, and disclose unavailable live verification.
-- All three share the same Route Manager, model intelligence, tools, computer permissions and safety policy. Specialty is not an access-control boundary.
+- All three share the same Route Manager, model intelligence, tools, computer permissions, safety policy and current chat history/memory. Specialty is not an access-control boundary. Mika's prompt requests careful handling, but profile-level medical-memory isolation is not implemented.
 
 ## Current platform
 - Windows 11
