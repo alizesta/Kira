@@ -10,7 +10,7 @@ import os
 import re
 from ctypes import wintypes
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication
 
@@ -24,6 +24,20 @@ _NON_GAME = {
     "battle.net.exe", "upc.exe", "ubisoftconnect.exe", "eadesktop.exe",
     "riotclientservices.exe", "riotclientux.exe", "xboxpcapp.exe",
 }
+CAPTURE_MAX_WIDTH = 854
+CAPTURE_MAX_HEIGHT = 480
+CAPTURE_INTERVAL_MS = 1000
+CAPTURE_JPEG_QUALITY = 68
+
+
+def fit_capture_size(width: int, height: int, max_width: int = CAPTURE_MAX_WIDTH,
+                     max_height: int = CAPTURE_MAX_HEIGHT) -> tuple[int, int]:
+    """Fit a frame inside the 480p bounds without upscaling or changing its aspect ratio."""
+    width, height = max(1, int(width)), max(1, int(height))
+    scale = min(1.0, max_width / width, max_height / height)
+    return max(1, round(width * scale)), max(1, round(height * scale))
+
+
 _GAME_HINTS = re.compile(
     r"(game|shipping|win64|win32|client[-_ ]?win64|"
     r"eldenring|elden ring|cyberpunk|valorant|league of legends|"
@@ -128,4 +142,9 @@ class GameModeMonitor(QObject):
         if screen is None:
             return None
         pixmap = screen.grabWindow(hwnd)
-        return pixmap if not pixmap.isNull() else None
+        if pixmap.isNull():
+            return None
+        target = fit_capture_size(pixmap.width(), pixmap.height())
+        if pixmap.width() > target[0] or pixmap.height() > target[1]:
+            pixmap = pixmap.scaled(target[0], target[1], Qt.IgnoreAspectRatio, Qt.FastTransformation)
+        return pixmap
