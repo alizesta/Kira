@@ -1180,21 +1180,28 @@ class MainWindow(QMainWindow):
         self.character_portrait.setScaledContents(True)
         self.character_description = QLabel()
         self.character_description.setWordWrap(True)
-        for cid in ("kira", "ren", "mika"):
-            profile = characters.CHARACTERS[cid]
-            self.character_combo.addItem(profile["name_fa"] + " · " + profile["name"], cid)
-        current_id = characters.active_id(s)
-        self.character_combo.setCurrentIndex(max(0, self.character_combo.findData(current_id)))
         profile_row = QHBoxLayout()
         profile_row.addWidget(self.character_portrait)
         profile_info = QVBoxLayout()
         profile_info.addWidget(QLabel("شخصیت فعال"))
         profile_info.addWidget(self.character_combo)
         profile_info.addWidget(self.character_description)
+        manager_row = QHBoxLayout()
+        self.character_add_btn = QPushButton("شخصیت جدید")
+        self.character_edit_btn = QPushButton("ویرایش")
+        self.character_delete_btn = QPushButton("حذف")
+        self.character_add_btn.clicked.connect(self.add_character)
+        self.character_edit_btn.clicked.connect(self.edit_character)
+        self.character_delete_btn.clicked.connect(self.delete_character)
+        manager_row.addWidget(self.character_add_btn)
+        manager_row.addWidget(self.character_edit_btn)
+        manager_row.addWidget(self.character_delete_btn)
+        profile_info.addLayout(manager_row)
         profile_row.addLayout(profile_info, 1)
         f.addRow(profile_row)
+        self.refresh_character_choices()
         self.character_combo.currentIndexChanged.connect(self.select_character)
-        self.refresh_character_card(current_id)
+        self.refresh_character_card()
         self.size_sl = self.row(f, "char_size", QSlider(Qt.Horizontal))
         self.size_sl.setRange(300, 1000); self.size_sl.setValue(int(s["companion_height"]))
         self.follow_sl = self.row(f, "follow", QSlider(Qt.Horizontal))
@@ -1239,21 +1246,100 @@ class MainWindow(QMainWindow):
         f.addRow(note)
         self.tabs.addTab(self.page(box), "")
 
+    def refresh_character_choices(self):
+        current = characters.active_id(self.settings)
+        self.character_combo.blockSignals(True)
+        self.character_combo.clear()
+        profiles = characters.all_profiles(self.settings)
+        for cid in ("kira", "ren", "mika"):
+            if cid in profiles:
+                p = profiles[cid]
+                self.character_combo.addItem(p.get("name_fa", p["name"]) + " · " + p["name"], cid)
+        for cid, p in profiles.items():
+            if cid not in ("kira", "ren", "mika"):
+                self.character_combo.addItem(p.get("name_fa", p["name"]) + " · " + p["name"], cid)
+        self.character_combo.setCurrentIndex(max(0, self.character_combo.findData(current)))
+        self.character_combo.blockSignals(False)
+        self.character_edit_btn.setEnabled(current != "kira")
+        self.character_delete_btn.setEnabled(current != "kira")
+
     def refresh_character_card(self, character_id=None):
-        profile = characters.CHARACTERS.get(character_id or characters.active_id(self.settings), characters.CHARACTERS["kira"])
-        image_path = ROOT / profile["image"]
+        profile = characters.all_profiles(self.settings).get(character_id or characters.active_id(self.settings), characters.CHARACTERS["kira"])
+        image_path = ROOT / profile.get("image", "assets/characters/ren.svg")
         pixmap = QPixmap(str(image_path))
+        if pixmap.isNull():
+            pixmap = QPixmap(str(ROOT / "assets" / "characters" / "ren.svg"))
         self.character_portrait.setPixmap(pixmap)
-        self.character_description.setText(profile["description"])
+        self.character_description.setText(profile.get("description", ""))
 
     def select_character(self, index):
         character_id = self.character_combo.itemData(index)
         if not character_id:
             return
         self.settings["active_character_id"] = character_id
+        self.refresh_character_choices()
         self.refresh_character_card(character_id)
         self.save_now()
-        self.add_chat("system", f"شخصیت فعال به {characters.CHARACTERS[character_id]['name_fa']} تغییر کرد.")
+        profile = characters.all_profiles(self.settings)[character_id]
+        self.add_chat("system", f"شخصیت فعال به {profile.get('name_fa', profile['name'])} تغییر کرد.")
+
+    def add_character(self):
+        name, ok = QInputDialog.getText(self, "شخصیت جدید", "نام:")
+        if not ok or not name.strip():
+            return
+        description, ok = QInputDialog.getText(self, "شخصیت جدید", "توضیح کوتاه:")
+        if not ok:
+            return
+        prompt, ok = QInputDialog.getMultiLineText(self, "شخصیت جدید", "دستور شخصیت و لحن:")
+        if not ok:
+            return
+        cid = "custom_" + str(time.time_ns())
+        profile = {"id": cid, "name": name.strip(), "name_fa": name.strip(), "gender": "unspecified",
+                   "description": description.strip(), "image": "assets/characters/ren.svg", "prompt": prompt.strip()}
+        self.settings.setdefault("characters", []).append(profile)
+        self.settings["active_character_id"] = cid
+        self.refresh_character_choices()
+        self.refresh_character_card(cid)
+        self.save_now()
+
+    def edit_character(self):
+        cid = characters.active_id(self.settings)
+        if cid == "kira":
+            return
+        profile = dict(characters.all_profiles(self.settings)[cid])
+        name, ok = QInputDialog.getText(self, "ویرایش شخصیت", "نام:", QLineEdit.Normal, profile.get("name", ""))
+        if not ok or not name.strip():
+            return
+        description, ok = QInputDialog.getText(self, "ویرایش شخصیت", "توضیح:", QLineEdit.Normal, profile.get("description", ""))
+        if not ok:
+            return
+        prompt, ok = QInputDialog.getMultiLineText(self, "ویرایش شخصیت", "دستور شخصیت و لحن:", profile.get("prompt", ""))
+        if not ok:
+            return
+        profile.update({"name": name.strip(), "name_fa": name.strip(), "description": description.strip(), "prompt": prompt.strip()})
+        custom = self.settings.setdefault("characters", [])
+        custom[:] = [x for x in custom if x.get("id") != cid]
+        custom.append(profile)
+        self.refresh_character_choices()
+        self.refresh_character_card(cid)
+        self.save_now()
+
+    def delete_character(self):
+        cid = characters.active_id(self.settings)
+        if cid == "kira":
+            return
+        if QMessageBox.question(self, "حذف شخصیت", "این شخصیت حذف شود؟") != QMessageBox.Yes:
+            return
+        if cid in characters.CHARACTERS:
+            hidden = self.settings.setdefault("deleted_character_ids", [])
+            if cid not in hidden:
+                hidden.append(cid)
+        else:
+            self.settings["characters"] = [x for x in self.settings.get("characters", []) if x.get("id") != cid]
+        self.settings["active_character_id"] = "kira"
+        self.refresh_character_choices()
+        self.refresh_character_card("kira")
+        self.save_now()
 
     def build_general_tab(self):
         box1, f1 = self.group("g_lang")
