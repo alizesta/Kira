@@ -139,8 +139,8 @@ class GameAudioListener(QThread):
                 while len(pending) >= BLOCK and self._run:
                     block = pending[:BLOCK]
                     pending = pending[BLOCK:]
-                    if not calibrated:
-                        calibrated = segmenter.calibrate(block)
+                    if segmenter.calibrating:
+                        segmenter.calibrate(block)
                         continue
                     for event in segmenter.feed(block):
                         if event[0] != "segment":
