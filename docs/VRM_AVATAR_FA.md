@@ -2,9 +2,9 @@
 
 ## مدل پیش‌فرض Kira
 
-فایل سازنده با نام \`kira sample.vrm\` در ریشه‌ی مخزن قرار دارد و Kira آن را به‌عنوان آواتار پیش‌فرض می‌شناسد. برنامه فایل را جابه‌جا، بازنویسی یا به مسیر دیگری تکثیر نمی‌کند. پروفایل‌های قدیمی Kira که هنوز مدل سفارشی ندارند به‌صورت خودکار از همین مسیر استفاده می‌کنند.
+فایل سازنده با نام `kira sample.vrm` در ریشه‌ی مخزن قرار دارد و Kira آن را به‌عنوان آواتار پیش‌فرض می‌شناسد. برنامه فایل را جابه‌جا، بازنویسی یا به مسیر دیگری تکثیر نمی‌کند. پروفایل‌های قدیمی Kira که هنوز مدل سفارشی ندارند به‌صورت خودکار از همین مسیر استفاده می‌کنند.
 
-در بخش Characters می‌توان آواتار پیش‌فرض Kira را با **بازگشت به PNG** غیرفعال کرد، یا برای هر شخصیت یک فایل سفارشی انتخاب کرد. مسیر مدل سفارشی در \`%LOCALAPPDATA%\\Kira\\characters\\profiles.json\` ذخیره می‌شود؛ خود فایل سفارشی در همان محل انتخاب‌شده باقی می‌ماند. مدل سفارشی انتخاب‌شده بر مدل پیش‌فرض اولویت دارد.
+در بخش Characters می‌توان آواتار پیش‌فرض Kira را با **بازگشت به PNG** غیرفعال کرد، یا برای هر شخصیت یک فایل سفارشی انتخاب کرد. مسیر مدل سفارشی در `%LOCALAPPDATA%\Kira\\characters\\profiles.json` ذخیره می‌شود؛ خود فایل سفارشی در همان محل انتخاب‌شده باقی می‌ماند. مدل سفارشی انتخاب‌شده بر مدل پیش‌فرض اولویت دارد.
 
 ## موتور نمایش
 
@@ -12,16 +12,16 @@
 - three.js نسخه 0.180.0 و @pixiv/three-vrm نسخه 3.5.5 برای خواندن VRM 1.0/0.x استفاده می‌شوند.
 - نمایشگر فقط روی 127.0.0.1 یک HTTP server موقت باز می‌کند و صفحه، کد viewer و فایل VRM انتخاب‌شده را ارائه می‌دهد.
 - کتابخانه‌های JavaScript با نسخه‌های ثابت به‌صورت bundle محلی نگهداری می‌شوند؛ برای بارگذاری کتابخانه‌های رندر در زمان اجرا به CDN یا اینترنت وابسته نیست.
-- \`VRMUtils.rotateVRM0\` برای جهت سازگار مدل‌های VRM 0.x استفاده می‌شود و \`vrm.update()\` Spring Bone و Expressionها را به‌روزرسانی می‌کند.
+- `VRMUtils.rotateVRM0` برای جهت سازگار مدل‌های VRM 0.x استفاده می‌شود و `vrm.update()` Spring Bone و Expressionها را به‌روزرسانی می‌کند.
 - اگر فایل پیش‌فرض در کنار برنامه پیدا نشود یا WebGL/Qt WebEngine اجرا نشود، آواتار PNG باقی می‌ماند.
 
 ## اتصال Lip Sync و Emotion
 
-- سیگنال بلندی صدای خروجی \`Speaker.level\` به \`EmotionFaceAnimator.set_mouth_target\` وصل است؛ همین envelope در هر فریم به viewer سه‌بعدی فرستاده می‌شود.
-- Expressionهای استاندارد \`aa\`, \`ih\`, \`ee\`, \`ou\`, \`oh\` با دامنه‌ی صدای زنده و چرخه‌ی نرم viseme تقریبی ترکیب می‌شوند. این lip-sync مبتنی بر شدت صداست، نه تشخیص واج/فونم از متن.
-- \`blink\`, \`blinkLeft\`, \`blinkRight\` و حالت خواب به پلک‌ها متصل‌اند.
+- سیگنال بلندی صدای خروجی `Speaker.level` به `EmotionFaceAnimator.set_mouth_target` وصل است؛ همین envelope در هر فریم به viewer سه‌بعدی فرستاده می‌شود.
+- Expressionهای استاندارد `aa`, `ih`, `ee`, `ou`, `oh` با دامنه‌ی صدای زنده و چرخه‌ی نرم viseme تقریبی ترکیب می‌شوند. این lip-sync مبتنی بر شدت صداست، نه تشخیص واج/فونم از متن.
+- `blink`, `blinkLeft`, `blinkRight` و حالت خواب به پلک‌ها متصل‌اند.
 - حالت‌های happy, sad, angry, surprised و relaxed به همراه نگاشت‌های thinking, shy, sleepy, bored, playful, teasing, embarrassed, affectionate, jealous, fearful و چند حالت دیگر در صورت وجود Expression سازگار اجرا می‌شوند.
-- Expressionهای استاندارد نگاه \`lookUp\`, \`lookDown\`, \`lookLeft\`, \`lookRight\` از وضعیت نگاه نشانگر استفاده می‌کنند.
+- Expressionهای استاندارد نگاه `lookUp`, `lookDown`, `lookLeft`, `lookRight` از وضعیت نگاه نشانگر استفاده می‌کنند.
 - حرکت بسیار ملایم و procedural برای hips، spine، chest، neck و head ادامه دارد؛ Spring Bone توسط runtime خود VRM به‌روز می‌شود.
 
 مدل VRM به‌تنهایی انیمیشن کامل بدن یا lip-sync فونم‌محور تضمین نمی‌کند. فایل‌های motion/VRMA و تشخیص واج‌های صوتی، مرحله‌ی توسعه‌ی جداگانه‌اند.
@@ -32,4 +32,4 @@ Ai1 metadata مجوز را فقط می‌خواند و نمایش می‌دهد�
 
 ## تست‌ها
 
-\`tests/test_vrm_metadata.py\` ظرف GLB، metadata و سازگاری پروفایل‌ها را آزمایش می‌کند. \`tests/test_vrm_assets.py\` فایل پیش‌فرض Kira را از نظر VRM 1.0، Humanoid، Expressionها و انتخاب خودکار پروفایل بررسی می‌کند. CI همچنین Python را compile و viewer JavaScript را bundle می‌کند.
+`tests/test_vrm_metadata.py` ظرف GLB، metadata و سازگاری پروفایل‌ها را آزمایش می‌کند. `tests/test_vrm_assets.py` فایل پیش‌فرض Kira را از نظر VRM 1.0، Humanoid، Expressionها و انتخاب خودکار پروفایل بررسی می‌کند. CI همچنین Python را compile و viewer JavaScript را bundle می‌کند.
