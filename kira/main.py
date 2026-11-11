@@ -2945,7 +2945,7 @@ class MainWindow(QMainWindow):
         # The selected character changes identity and conversational style only; all shared tools and policies stay intact.
         character_layer = characters.prompt_for(self.settings)
         if character_layer:
-            prompt += "\\n\\n" + character_layer
+            prompt += "\n\n" + character_layer
         try:                                                      # brain stage: deterministic, no model call; any problem = the normal path
             extra0 = self._turn_extra
             has_att = bool(self._turn_attach_kinds or (extra0 and (extra0.get("images") or "--- فایل ضمیمه" in str(extra0.get("model", "")))))
