@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal, QProcess
+from PySide6.QtCore import Qt, QThread, Signal, QProcess, QDir
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QSplitter, QWidget, QLabel, QPushButton,
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from .code_agent import CodeAgentEngine, build_project_context, safe_project_file, SKIP_DIRS
+from .hybrid_ai import HybridRouter
 
 
 class _CodeAskWorker(QThread):
@@ -37,8 +38,8 @@ class CodeWorkspaceDialog(QDialog):
     def __init__(self, settings, router, parent=None):
         super().__init__(parent)
         self.settings = settings
-        self.router = router
-        self.engine = CodeAgentEngine(router)
+        self.router = HybridRouter(settings)
+        self.engine = CodeAgentEngine(self.router)
         self.project_root = None
         self.current_file = None
         self._worker = None
@@ -73,9 +74,7 @@ class CodeWorkspaceDialog(QDialog):
         left_l.addWidget(QLabel("فایل‌های پروژه"))
         self.fs_model = QFileSystemModel(self)
         self.fs_model.setReadOnly(True)
-        self.fs_model.setFilter(
-            self.fs_model.filter() | self.fs_model.Filter.AllDirs | self.fs_model.Filter.Files
-        )
+        self.fs_model.setFilter(QDir.AllDirs | QDir.Files | QDir.NoDotAndDotDot)
         self.tree = QTreeView()
         self.tree.setModel(self.fs_model)
         self.tree.setHeaderHidden(True)
@@ -158,8 +157,8 @@ class CodeWorkspaceDialog(QDialog):
 
     def update_runtime(self, settings, router):
         self.settings = settings
-        self.router = router
-        self.engine = CodeAgentEngine(router)
+        self.router = HybridRouter(settings)
+        self.engine = CodeAgentEngine(self.router)
 
     def choose_project(self):
         path = QFileDialog.getExistingDirectory(self, "انتخاب پوشه پروژه", str(self.project_root or Path.home()))
@@ -262,7 +261,8 @@ class CodeWorkspaceDialog(QDialog):
             return
         try:
             selected = self.current_file if self.current_file and self.current_file.exists() else None
-            context = build_project_context(self.project_root, selected)
+            unsaved_text = self.editor.toPlainText() if selected and self.editor.document().isModified() else None
+            context = build_project_context(self.project_root, selected, unsaved_text)
         except Exception as exc:
             QMessageBox.warning(self, "Code Agent", str(exc))
             return
