@@ -70,8 +70,8 @@ def release_file_bytes(path: Path, relative: Path) -> bytes:
     """Return deterministic release bytes; Windows batch scripts always use CRLF."""
     data = Path(path).read_bytes()
     if Path(relative).suffix.lower() == ".bat":
-        data = data.replace(b"\\r\\n", b"\\n").replace(b"\\r", b"\\n")
-        data = data.replace(b"\\n", b"\\r\\n")
+        data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+        data = data.replace(b"\n", b"\r\n")
     return data
 
 
