@@ -1,12 +1,11 @@
-"""Built-in character profiles. All profiles share Kira's router, tools, permissions and memory."""
+"""Built-in and user-editable character profiles. Shared system capabilities are never profile-specific."""
 from __future__ import annotations
 
 CHARACTERS = {
     "kira": {
         "id": "kira", "name": "Kira", "name_fa": "کیرا", "gender": "female",
         "description": "همراه اصلی؛ باهوش، بازیگوش، صمیمی و کمی شیطون.",
-        "image": "assets/characters/kira.svg",
-        "prompt": "",
+        "image": "assets/characters/kira.svg", "prompt": "",
     },
     "ren": {
         "id": "ren", "name": "Ren", "name_fa": "رِن", "gender": "male",
@@ -22,19 +21,30 @@ CHARACTERS = {
     },
 }
 
+def all_profiles(settings):
+    settings = settings or {}
+    hidden = set(settings.get("deleted_character_ids") or [])
+    profiles = {k: dict(v) for k, v in CHARACTERS.items() if k not in hidden}
+    custom = settings.get("characters") or []
+    if isinstance(custom, list):
+        for item in custom:
+            if isinstance(item, dict) and item.get("id") and item["id"] != "kira":
+                profiles[str(item["id"])] = {**CHARACTERS.get(str(item["id"]), {}), **item}
+    profiles["kira"] = dict(CHARACTERS["kira"])
+    return profiles
+
 def active_id(settings):
     value = str((settings or {}).get("active_character_id") or "kira").strip().lower()
-    return value if value in CHARACTERS else "kira"
+    return value if value in all_profiles(settings) else "kira"
 
 def active(settings):
-    return CHARACTERS[active_id(settings)]
+    return all_profiles(settings)[active_id(settings)]
 
 def prompt_for(settings):
-    """Return only the selected character layer; shared core capabilities remain unchanged."""
     profile = active(settings)
     if profile["id"] == "kira":
         return ""
-    return "[ACTIVE CHARACTER PROFILE]\n" + profile["prompt"] + "\n[END ACTIVE CHARACTER PROFILE]"
+    return "[ACTIVE CHARACTER PROFILE]\n" + str(profile.get("prompt") or "") + "\n[END ACTIVE CHARACTER PROFILE]"
 
 def display_name(settings):
-    return active(settings)["name"]
+    return active(settings).get("name") or "Kira"
