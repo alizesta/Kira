@@ -10,6 +10,11 @@ Ai1 is the application. Kira, Mika and Ren are character profiles within Ai1.
 - Current-events analysis should use available research tools, validate dates and independent sources, and disclose uncertainty.
 - Generated portraits are stored as base64 JPEG text assets in `assets/characters/*.jpg.b64` and decoded in `MainWindow.refresh_character_card()` into in-memory `QPixmap` objects. Legacy SVG files remain as fallbacks/compatibility assets.
 
+## Release packaging
+- `.gitattributes` enforces CRLF working-tree line endings for Windows `.bat` scripts.
+- The ZIP builder independently normalizes batch-file line endings to CRLF, regardless of source checkout line endings.
+- `tests/test_release.py` validates optional `psutil` and the batch-line-ending normalization helper.
+
 ## Game Mode profiles
 
 - `story`: manual opt-in for offline/story games. Enables the existing game-window Vision sampling and local WASAPI loopback speech analysis. Existing desktop tools, including explicitly requested keyboard/mouse/UI control, remain available for offline play.
