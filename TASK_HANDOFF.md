@@ -52,3 +52,12 @@ Character specialization and generated portraits. The implementation is complete
 - Root cause: the generic large-foreground-window heuristic did not exclude Ai1's own process. Its full-size window could therefore trigger the game suggestion.
 - Fix: `GameModeMonitor.poll()` now ignores `os.getpid()` before title/process hints and window-size heuristics.
 - Regression test covers the `Project Kira 1 stable` title, current process ID and full-screen geometry; it must emit no `game_detected` signal.
+
+
+## 2026-11-11 native function calling and Game Mode follow-up
+- Native Function Calling is implemented for OpenAI-compatible providers through OpenAICompatibleProvider.chat_with_tools() and HybridRouter.chat_with_tools().
+- ToolAgent prefers native structured calls when a selected route supports them; unsupported routes retain the text-protocol fallback. Tool execution still passes through the existing registry and permission boundaries.
+- Current native coverage: Groq, Mistral, OpenRouter and configured OpenAI-compatible endpoints. Current Ollama and Cloudflare adapters remain text-protocol only.
+- Native tool-call requests are non-streaming; final responses remain streamed. Verify provider-specific schema compatibility and real tool calls on Windows/API accounts.
+- Game detector now ignores the Ai1 process ID and known Ai1/Kira product window titles. Tests cover same-process title, mismatched-PID product title, and a positive large game window. Actual Windows 11 foreground-window/PID behavior still needs user-side validation.
+- CI must run tests.test_native_function_calling and Python compile checks before release packaging.

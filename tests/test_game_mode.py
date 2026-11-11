@@ -35,6 +35,32 @@ class GameModeSafetyTests(unittest.TestCase):
         self.assertIsNone(monitor.last_game)
         detected.assert_not_called()
 
+    def test_poll_ignores_ai1_title_even_if_reported_pid_differs(self):
+        monitor = GameModeMonitor()
+        monitor._foreground_info = mock.Mock(return_value={
+            "hwnd": 123, "pid": 999999,
+            "exe": "python.exe", "title": "Project Kira 1 stable",
+            "rect": (0, 0, 1920, 1080),
+        })
+        detected = mock.Mock()
+        monitor.game_detected.connect(detected)
+        monitor.poll()
+        self.assertIsNone(monitor.last_game)
+        detected.assert_not_called()
+
+    def test_poll_still_detects_a_large_non_ai1_window(self):
+        monitor = GameModeMonitor()
+        monitor._foreground_info = mock.Mock(return_value={
+            "hwnd": 456, "pid": 999999,
+            "exe": "game.exe", "title": "Some Game",
+            "rect": (0, 0, 1920, 1080),
+        })
+        detected = mock.Mock()
+        monitor.game_detected.connect(detected)
+        monitor.poll()
+        self.assertEqual(monitor.last_game["pid"], 999999)
+        detected.assert_called_once()
+
     def test_poll_is_safe_without_windows_api(self):
         monitor = GameModeMonitor()
         monitor._user32 = None

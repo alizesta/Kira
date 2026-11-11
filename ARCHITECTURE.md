@@ -98,3 +98,10 @@ Cloud Voice settings are written atomically outside the application installation
 
 ## Game detector self-exclusion
 - `GameModeMonitor.poll()` rejects the current process ID before any game-name/title heuristics or large-window checks. This prevents Ai1's own full-size window (for example, `Project Kira 1 stable`) from being suggested as a game.
+
+
+## Native function calling
+- Tool.json_schema() is the single schema source. HybridRouter.chat_with_tools() selects an eligible route and invokes native calls only when its adapter exposes that capability.
+- The OpenAI-compatible adapter sends tools with tool_choice=auto, parses structured tool_calls, and preserves assistant/tool messages in the next request.
+- ToolAgent executes the structured call through the existing registry. Validation, access manager, one-shot confirmation grants, per-turn de-duplication, and Competitive Safe guard are unchanged and remain authoritative.
+- Routes without native support return to the existing text protocol. The current Ollama and Cloudflare adapters do not yet expose native calls. Tool-call rounds are non-streaming; final user-facing text remains streamed.

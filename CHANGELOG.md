@@ -80,3 +80,17 @@
 - Added stale-file/editor checks, one-time backup and atomic replacement for approved changes.
 - Blocked patch proposals for contexts containing redacted credentials to avoid overwriting real secrets with placeholders.
 - Added regression tests for patch-response validation. Windows GUI and PowerShell behavior still require manual testing on Windows 11.
+
+
+## 2026-11-11
+
+### Native Function Calling
+- Added native JSON-schema tool calls for OpenAI-compatible Route providers.
+- Reused the central ToolRegistry schemas and execution pipeline; native calls do not bypass permissions, confirmations, duplicate-call protection or Game Mode restrictions.
+- Preserved standard assistant tool-call and tool-result messages across native rounds, with a safe text-result bridge if a later route lacks native support.
+- Kept text-protocol fallback for providers without a native adapter.
+- Added provider parsing and native message-normalization regression tests.
+
+### Game Mode detector hardening
+- Added an explicit product-window-title exclusion for Project Kira 1 stable / Kira / Ai1 windows in addition to the current-process-ID guard.
+- Added regression tests for a mismatched reported PID and a positive large-game-window detection to avoid suppressing real games.

@@ -43,6 +43,7 @@ _GAME_HINTS = re.compile(
     r"eldenring|elden ring|cyberpunk|valorant|league of legends|"
     r"fortnite|minecraft|gta5|witcher|steam_app)", re.I
 )
+_AI1_WINDOW_TITLE = re.compile(r"^(?:Project\\s+)?Kira(?:\\s+\\d+(?:\\.\\d+)*)?(?:\\s+stable)?$|^Ai1(?:\\s+.*)?$", re.I)
 
 
 class GameModeMonitor(QObject):
@@ -103,8 +104,8 @@ class GameModeMonitor(QObject):
         if not info:
             return
         # Ai1's main and companion windows share this process. Exclude the
-        # current process before title hints or large-window heuristics.
-        if int(info.get("pid", -1)) == os.getpid():
+        # current process and known product window titles before game heuristics.
+        if int(info.get("pid", -1)) == os.getpid() or _AI1_WINDOW_TITLE.fullmatch(str(info.get("title") or "").strip()):
             return
         exe = info["exe"]
         title = info["title"]

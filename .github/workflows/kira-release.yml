@@ -78,6 +78,7 @@ jobs:
           tests.test_minimax_cloud_voice
           tests.test_game_mode_policy
           tests.test_code_agent
+          tests.test_native_function_calling
           tests.test_streaming
           tests.test_chat_persistence
           tests.test_release

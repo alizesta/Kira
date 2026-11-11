@@ -87,3 +87,10 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 
 ## Game detector self-exclusion
 - The foreground detector must ignore Ai1's own process ID before applying title hints or large-window heuristics. Ai1's main/companion windows share the same process and must never trigger a game suggestion.
+
+
+## Native Function Calling (2026-11-11)
+- Added native OpenAI-compatible function calling for routes using the OpenAI Chat Completions tools schema (Groq, Mistral, OpenRouter and configured OpenAI-compatible endpoints).
+- Tool schemas are generated from the existing ToolRegistry. All calls still pass through the same argument validation, permission checks, explicit confirmation flow, duplicate-call cache and Game Mode execution guard.
+- Providers without a native adapter, including the current Ollama and Cloudflare paths, retain the existing text-protocol fallback. Native support is capability-based, not assumed from a provider name.
+- Native tool request rounds are non-streaming; ordinary final answers continue through the existing streamed chat path.
