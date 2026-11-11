@@ -42,3 +42,9 @@ Character specialization and generated portraits. The implementation is complete
 - Character specialties do not alter shared model routes, tools, permissions or safety policy.
 - Restored Kira's original profile portrait by selecting the existing `assets/characters/kira.svg` asset, unchanged from the earlier releases. Ren and Mika continue using their separate generated JPEG assets; their JPEG corruption warning remains a separate follow-up.
 - Portable regression tests cover the specialty prompts. Windows GUI image rendering still needs a user-side check.
+
+
+## Game detector self-identification fix
+- Root cause: the generic large-foreground-window heuristic did not exclude Ai1's own process. Its full-size window could therefore trigger the game suggestion.
+- Fix: `GameModeMonitor.poll()` now ignores `os.getpid()` before title/process hints and window-size heuristics.
+- Regression test covers the `Project Kira 1 stable` title, current process ID and full-screen geometry; it must emit no `game_detected` signal.
