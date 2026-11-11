@@ -5,7 +5,6 @@ and emits transcripts. It never records to disk or uploads audio to a cloud STT 
 """
 from __future__ import annotations
 
-import queue
 import re
 
 import numpy as np
@@ -48,28 +47,6 @@ class GameAudioListener(QThread):
     def stop(self):
         self._run = False
         self.wait(4000)
-
-    @staticmethod
-    def _wasapi_output(sd):
-        default = sd.default.device
-        output_index = default[1] if isinstance(default, (tuple, list)) else -1
-        devices = sd.query_devices()
-        hostapis = sd.query_hostapis()
-        candidates = []
-        if isinstance(output_index, int) and output_index >= 0:
-            candidates.append(output_index)
-        candidates.extend(
-            i for i, dev in enumerate(devices)
-            if dev.get("max_output_channels", 0) > 0
-            and "wasapi" in hostapis[dev["hostapi"]]["name"].lower()
-            and i not in candidates
-        )
-        for index in candidates:
-            dev = devices[index]
-            api = hostapis[dev["hostapi"]]["name"].lower()
-            if dev.get("max_output_channels", 0) > 0 and "wasapi" in api:
-                return index, dev
-        raise RuntimeError("خروجی صدای WASAPI پیدا نشد؛ خروجی ویندوز باید روی دستگاهی با WASAPI باشد.")
 
     def run(self):
         try:
