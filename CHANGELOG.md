@@ -131,3 +131,5 @@
 - Include `kira_persona_memory.json` and `kira_evidence.sqlite3` in legacy-data detection and per-file migration.
 - Include persona memory in rolling backups; keep evidence memory backed up through SQLite's online-backup API.
 - Add tests proving the external Windows data directory/override, non-destructive migration, and backup restoration data coverage.
+
+- Explicitly grant the release workflow `contents: write` so the GitHub Release action has the permission required to publish ZIP assets.

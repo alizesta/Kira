@@ -1,5 +1,8 @@
 name: Build Kira Update
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main, "next/2026-11-11-intelligence", "feature/characters-ren-mika"]
