@@ -54,6 +54,7 @@ from .ui_icons import make_icon
 from .ui_widgets import ChatInput, RouteChip, AttachmentTile
 from .theme import build_style, STYLE
 from . import winfx
+from .game_mode import GameModeMonitor
 
 WAKE_RE = re.compile(r"(?:(?:هی|سلام|hey|hi)[\s\u200c]*)?(?:کی[\s\u200c]?را|کایرا|کیرآ|کیارا|kira|keira|kyra|kiera)", re.I)
 STOP_RE = re.compile(r"^\W*(?:بس\s*کن|بسه|ساکت(?:\s*شو)?|صبر\s*کن|وایسا|وایستا|stop|be\s*quiet)\W*$", re.I)       # "just be quiet" is not a chat message
@@ -475,6 +476,8 @@ class MainWindow(QMainWindow):
         self._bench_busy = False
         self._ollama_models = []
         self.client = HybridRouter(self.settings)
+        self.game_mode = GameModeMonitor(self)
+        self._game_mode_enabled = False
         self.tool_agent = ToolAgent(self.settings, DATA_DIR, ROOT)      # Computer Awareness + Unified Tool System (kira/tools)
         usage.install(self.settings)                                    # usage ledger + limits (kira/usage.py); never blocks start-up
         evidence_memory.configure(self.settings)                        # facts with provenance (kira/evidence_memory.py); never blocks start-up
@@ -506,6 +509,11 @@ class MainWindow(QMainWindow):
         self._stream_timer = QTimer(self)
         self._stream_timer.setInterval(60)
         self._stream_timer.timeout.connect(self._stream_flush)
+        self._game_poll_timer = QTimer(self)
+        self._game_poll_timer.setInterval(2500)
+        self._game_poll_timer.timeout.connect(self.game_mode.poll)
+        self._game_poll_timer.start()
+        self.game_mode.game_detected.connect(self.on_game_detected)
         self.resize(900, 720)
         self.setMinimumSize(520, 540)
         self.setAcceptDrops(True)                          # drop images / files anywhere on the window to attach them
@@ -882,6 +890,15 @@ class MainWindow(QMainWindow):
         self.voice_btn = self.icon_button("speaker", True)
         self.voice_btn.setChecked(bool(self.settings.get("speak_replies", True)))
         self.voice_btn.clicked.connect(lambda: self.set_voice_enabled(self.voice_btn.isChecked()))
+        self.game_mode_btn = QToolButton()
+        self.game_mode_btn.setObjectName("gameModeBtn")
+        self.game_mode_btn.setText("🎮")
+        self.game_mode_btn.setCheckable(True)
+        self.game_mode_btn.setCursor(Qt.PointingHandCursor)
+        self.game_mode_btn.setFocusPolicy(Qt.NoFocus)
+        self.game_mode_btn.setToolTip("Game Mode خاموش است؛ برای فعال‌کردن دستی کلیک کن")
+        self.game_mode_btn.toggled.connect(self.set_game_mode)
+        bar.addWidget(self.game_mode_btn)
         self.stop_btn = self.icon_button("stop")
         self.stop_btn.clicked.connect(lambda *_: self.on_stop_clicked())
         for b, k in ((self.mic_btn, "mic"), (self.wake_btn, "wake"), (self.voice_btn, "voice"), (self.stop_btn, "stop")):
@@ -2750,6 +2767,42 @@ class MainWindow(QMainWindow):
             self.add_attachment_paths(paths)
             event.acceptProposedAction()
 
+    def set_game_mode(self, enabled):
+        self._game_mode_enabled = bool(enabled)
+        self.game_mode.set_enabled(self._game_mode_enabled)
+        self.game_mode_btn.setToolTip("Game Mode روشن است؛ تصویر پنجره بازی همراه پیام بعدی ارسال می‌شود" if enabled
+                                      else "Game Mode خاموش است؛ هیچ تصویری از بازی گرفته نمی‌شود")
+        self.add_chat("system", "🎮 Game Mode فعال شد. تصویر پنجره بازی فقط همراه پیام‌های بعدی ارسال می‌شود."
+                      if enabled else "Game Mode خاموش شد؛ دریافت تصویر بازی متوقف شد.")
+
+    def on_game_detected(self, info):
+        """Suggest Game Mode once per detected process. Detection never enables it."""
+        name = info.get("title") or info.get("exe") or "بازی"
+        note = f"🎮 به نظر می‌رسد «{name[:90]}» اجرا شده. اگر برای بازی به کمک نیاز داری، Game Mode را از دکمه 🎮 فعال کن."
+        self.add_chat("system", note)
+        tray = getattr(self, "tray", None)
+        if tray is not None and tray.isVisible():
+            tray.showMessage("Ai1 · Game Mode", "بازی شناسایی شد. برای کمک در حین بازی، Game Mode را خودت فعال کن.",
+                             QSystemTrayIcon.Information, 7000)
+
+    def _game_vision_attachment(self):
+        """Capture the last detected game window only after the user manually enables Game Mode."""
+        if not self._game_mode_enabled:
+            return None
+        pixmap = self.game_mode.capture_last_game()
+        if pixmap is None:
+            return None
+        try:
+            from PySide6.QtCore import QBuffer, QByteArray, QIODevice
+            data = QByteArray()
+            buffer = QBuffer(data)
+            if not buffer.open(QIODevice.WriteOnly) or not pixmap.save(buffer, "PNG"):
+                return None
+            return att.image_attachment(bytes(data), "game-screen.png", "image/png")
+        except Exception as exc:  # noqa: BLE001 - a failed capture must not block ordinary chat
+            self.add_chat("system", f"تصویر بازی گرفته نشد: {exc}")
+            return None
+
     def send_message(self):
         if self.attach_loading():
             self.status.setText("ضمیمه‌ها هنوز در حال بارگذاری‌اند؛ چند لحظه صبر کن.")
@@ -2778,6 +2831,10 @@ class MainWindow(QMainWindow):
                 self._pending.append((text, attachments))
                 self.status.setText(f"پیام در صف است ({len(self._pending)}) — بعد از پایان پاسخ فعلی ارسال می‌شود.")
             return
+        if self._game_mode_enabled and len(attachments or []) < att.MAX_FILES:
+            frame = self._game_vision_attachment()
+            if frame is not None:
+                attachments = list(attachments or []) + [frame]
         self._turn_voice = voice
         if self.speaker._began:
             self.director.event("user_interrupt")
@@ -3635,6 +3692,8 @@ class MainWindow(QMainWindow):
         self.tool_agent.request_cancel()
         self.client.cancel()
         self._stream_timer.stop()
+        self._game_poll_timer.stop()
+        self.game_mode.set_enabled(False)
         for name in ("worker", "_route_worker", "_bench_worker", "_scan_worker", "_provider_test_worker", "_ollama_worker"):
             w = getattr(self, name, None)
             if w is not None and w.isRunning():
