@@ -151,3 +151,22 @@
 **تغییرها:** `wincontrol.py` (دامنه‌ی desktop)، `builtin.py` (ثبت ماژول)، `protocol.py` (دسته‌ی desktop و `DESKTOP_RULES`)، `agent.py` (برچسب‌ها و قواعد).
 **عمداً پیاده نشد:** Word/Office (T5-C)، روشنایی/Wi-Fi (T5-D)، اسکرین‌شات و بینایی، کلید Windows و میانبرهای سیستمی.
 **هشدار صادقانه:** منطق سیاست‌ها تست شده؛ خود فراخوانی‌های Win32 و اسکریپت UI Automation فقط روی Windows قابل اجرا هستند و اینجا اجرا نشده‌اند.
+
+
+---
+
+## v15 — آواتار پیش‌فرض Kira و اتصال VRM
+
+**فایل مدل موجود:** `kira sample.vrm` در ریشه مخزن؛ فایل دوم از آن ساخته نمی‌شود.
+
+**فایل‌های جدید:** `kira/vrm/paths.py`، `tests/test_vrm_assets.py`.
+
+**تغییرها**
+- `kira/characters/registry.py` و `kira/characters/kira.py`: فعال‌سازی مدل پیش‌فرض برای پروفایل‌های قدیمی و جدید Kira، بدون اعمال آن به Ren/Mika.
+- `kira/main.py`: اتصال مدل پیش‌فرض/سفارشی به آواتار اصلی و Companion؛ مدل سفارشی اولویت دارد و «بازگشت به PNG» پیش‌فرض را هم غیرفعال می‌کند.
+- `kira/vrm/web/viewer.js`: نگاشت Emotionها، blink/sleep، نگاه استاندارد VRM و visemeهای تقریبی متصل به دامنه‌ی صدای Speaker.
+- `docs/VRM_AVATAR_FA.md` و README: توضیح مسیر مدل، مجوز read-only و محدودیت lip-sync مبتنی بر شدت صدا.
+
+**اعتبارسنجی CI:** ساخت bundle آفلاین Three.js/VRM، compile کد Python و تست فایل VRM واقعی موفق شدند؛ تست مدل، VRM 1.0، استخوان‌های Humanoid و Expressionها را تأیید می‌کند.
+
+**محدودیت باقی‌مانده:** lip-sync فعلی مبتنی بر شدت صدای خروجی است، نه هم‌ترازی دقیق واج/فونم؛ انیمیشن بدن از حرکت procedural استفاده می‌کند و فایل motion/VRMA جداگانه هنوز وارد نشده است.
