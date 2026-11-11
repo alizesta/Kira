@@ -110,3 +110,6 @@ Character specialization and generated portraits. The implementation is complete
 - Kira's evidence-backed SQLite index is not queried or mutated while Ren/Mika are active. They use only their own JSON persona memory.
 - Short-term chat history in `kira_memory.sqlite3` remains shared across profiles; the character prompts and Memory dialog must not claim otherwise.
 - Added regression tests for memory isolation and voice/joke state isolation. Run the full Windows-gated release workflow before publishing.
+
+- Stage 5 also extends Stage 4 storage handling to every character memory file. Kira's legacy path remains unchanged; Ren/Mika/custom profile files are included in migration and backups, with existing destination files preserved.
+- Character memory scope is context-local and restored after nested calls. Memory dialog text and prompt labels use the selected profile. Short-term chat history is still shared.

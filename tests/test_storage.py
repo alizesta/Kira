@@ -17,9 +17,9 @@ class UserDataStorageTests(unittest.TestCase):
     def test_memory_only_files_are_recognized_as_user_data(self):
         folder = self.root / "legacy"
         folder.mkdir()
-        (folder / storage.PERSONA_MEMORY_NAME).write_text("{}", encoding="utf-8")
+        (folder / "kira_persona_memory_ren.json").write_text("{}", encoding="utf-8")
         self.assertTrue(storage.has_user_data(folder))
-        (folder / storage.PERSONA_MEMORY_NAME).unlink()
+        (folder / "kira_persona_memory_ren.json").unlink()
         con = sqlite3.connect(folder / storage.EVIDENCE_DB_NAME)
         con.execute("CREATE TABLE facts (id INTEGER)")
         con.commit()
@@ -37,6 +37,9 @@ class UserDataStorageTests(unittest.TestCase):
         old.mkdir()
         new.mkdir()
         (old / storage.PERSONA_MEMORY_NAME).write_text('{"facts":[{"text":"remembered"}]}', encoding="utf-8")
+        (old / "kira_persona_memory_ren.json").write_text('{"facts":[{"text":"Ren fact"}]}', encoding="utf-8")
+        (old / "kira_persona_memory_mika.json").write_text('{"facts":[{"text":"Mika fact"}]}', encoding="utf-8")
+        (new / "kira_persona_memory_ren.json").write_text('{"facts":[{"text":"destination wins"}]}', encoding="utf-8")
         con = sqlite3.connect(old / storage.EVIDENCE_DB_NAME)
         con.execute("CREATE TABLE evidence_test (value TEXT)")
         con.execute("INSERT INTO evidence_test VALUES ('source-backed')")
@@ -48,6 +51,9 @@ class UserDataStorageTests(unittest.TestCase):
 
         self.assertIn(storage.PERSONA_MEMORY_NAME, note)
         self.assertTrue((new / storage.PERSONA_MEMORY_NAME).is_file())
+        self.assertTrue((new / "kira_persona_memory_mika.json").is_file())
+        self.assertEqual((new / "kira_persona_memory_ren.json").read_text(encoding="utf-8"),
+                         '{"facts":[{"text":"destination wins"}]}')
         self.assertEqual((new / storage.SETTINGS_NAME).read_text(encoding="utf-8"), '{"kept":true}')
         self.assertEqual(sqlite3.connect(new / storage.EVIDENCE_DB_NAME).execute(
             "SELECT value FROM evidence_test").fetchone(), ("source-backed",))
@@ -59,6 +65,8 @@ class UserDataStorageTests(unittest.TestCase):
         data.mkdir()
         (data / storage.SETTINGS_NAME).write_text('{"api":"encrypted"}', encoding="utf-8")
         (data / storage.PERSONA_MEMORY_NAME).write_text('{"voice":["sample"]}', encoding="utf-8")
+        (data / "kira_persona_memory_ren.json").write_text('{"voice":["ren sample"]}', encoding="utf-8")
+        (data / "kira_persona_memory_mika.json").write_text('{"voice":["mika sample"]}', encoding="utf-8")
         con = sqlite3.connect(data / storage.EVIDENCE_DB_NAME)
         con.execute("CREATE TABLE evidence_test (value TEXT)")
         con.execute("INSERT INTO evidence_test VALUES ('saved')")
@@ -69,6 +77,8 @@ class UserDataStorageTests(unittest.TestCase):
 
         self.assertIsNotNone(backup)
         self.assertEqual((backup / storage.PERSONA_MEMORY_NAME).read_text(encoding="utf-8"), '{"voice":["sample"]}')
+        self.assertEqual((backup / "kira_persona_memory_ren.json").read_text(encoding="utf-8"), '{"voice":["ren sample"]}')
+        self.assertEqual((backup / "kira_persona_memory_mika.json").read_text(encoding="utf-8"), '{"voice":["mika sample"]}')
         self.assertEqual(sqlite3.connect(backup / storage.EVIDENCE_DB_NAME).execute(
             "SELECT value FROM evidence_test").fetchone(), ("saved",))
 

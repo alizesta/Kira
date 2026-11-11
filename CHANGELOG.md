@@ -145,3 +145,7 @@
 - Keep the evidence-backed fact index Kira-only and prevent Ren/Mika prompts from retrieving Kira's indexed facts.
 - Bind the Memory dialog and memory maintenance to the active character. Short-term chat history remains shared.
 - Add tests for profile isolation, Kira compatibility, evidence-index isolation and per-character voice/joke state.
+
+- Extend migration and rolling backups to all per-character memory files; add Ren/Mika preservation and destination-wins regression tests.
+- Make memory prompt headings and Memory dialog wording follow the active character rather than hardcoding Kira.
+- Add context-scope restoration coverage for nested character memory calls.

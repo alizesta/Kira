@@ -588,7 +588,8 @@ def build_block(older: list[dict] | None = None, voice_samples: bool = True, now
     voice = data["voice"][-10:][::-1][::2][:VOICE_SHOWN]
     if voice and voice_samples:                  # her own recent banter is a style anchor: left out when the turn is a practical request
         samples = "\n".join(f"- {v}" for v in reversed(voice))
-        parts.append("How Kira really sounds (her own recent lines). Match this rhythm, slang, attitude and length in "
+        voice_name = "Kira" if _current_character.get() == "kira" else _current_character.get().title()
+        parts.append(f"How {voice_name} really sounds (her own recent lines). Match this rhythm, slang, attitude and length in "
                      "your reply; do not copy the sentences:\n" + samples)
     character_id = _current_character.get()
     character_name = character_id.title()
@@ -604,17 +605,20 @@ def build_block(older: list[dict] | None = None, voice_samples: bool = True, now
         parts.append(relevant)
     rel = habit_lines(now)
     if rel:
-        parts.append("The relationship and his habits:\n" + "\n".join(f"- {t}" for t in rel))
+        parts.append(("The relationship and his habits:\n" if character_id == "kira" else "The user's observed habits:\n")
+                     + "\n".join(f"- {t}" for t in rel))
     moments = [m for m in data["moments"] if not _expired(m, now) and (voice_samples or m.get("kind") != "joke")]
     if moments:
-        parts.append("Moments and things he told her (dated; they may be over by now, so ask rather than assume):\n"
+        heading = ("Moments and things he told her" if character_id == "kira" else f"Moments {character_name} remembers")
+        parts.append(heading + " (dated; they may be over by now, so ask rather than assume):\n"
                      + "\n".join(f"- {m['text']}" for m in moments[-MOMENTS_SHOWN:]))
     if data["summaries"]:
         parts.append("Older conversations (compressed summaries; may be incomplete):\n"
                      + "\n".join(f"- {m['text']}" for m in data["summaries"][-SUMMARIES_SHOWN:]))
     older_lines = digest(older or [])
     if older_lines:
-        parts.append("Earlier topics he raised (older than the messages below):\n" + "\n".join(f"- {t}" for t in older_lines))
+        heading = "Earlier topics he raised" if character_id == "kira" else f"Earlier topics the user raised with {character_name}"
+        parts.append(heading + " (older than the messages below):\n" + "\n".join(f"- {t}" for t in older_lines))
     if not parts:
         return ""
     if character_id == "kira":

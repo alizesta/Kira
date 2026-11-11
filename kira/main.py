@@ -327,7 +327,7 @@ class BenchWorker(QThread):
 
 
 class MemoryDialog(QDialog):
-    """What Kira remembers about the user (facts, dated moments, summaries): view, edit, delete, add a note, forget everything."""
+    """View, edit and delete the active character's isolated long-term memory."""
     GROUPS = {"fact": "درباره‌ی تو", "moment": "لحظه / رویداد", "summary": "خلاصه‌ی گفتگوهای قدیمی"}
 
     def __init__(self, parent=None, character_id="kira"):
@@ -357,7 +357,7 @@ class MemoryDialog(QDialog):
 
     def refresh(self):
         cur = mood.current()
-        self.info.setText(f"حال‌وهوای فعلی Kira: {cur['emotion']} ({cur['intensity']}/100). هرچه اینجا نباشد Kira نمی‌داند. حذف یا ویرایش فوری اثر می‌کند.")
+        self.info.setText(f"حال‌وهوای فعلی همراه: {cur['emotion']} ({cur['intensity']}/100). حافظه‌ی بلندمدت {self.character_name} جداست؛ هرچه اینجا نباشد در حافظه‌ی او ثبت نشده است. تاریخچه‌ی کوتاه‌مدت گفتگو همچنان مشترک است.")
         self.items.clear()
         with persona_memory.character_scope(self.character_id):
             saved_items = persona_memory.list_items()
@@ -371,7 +371,7 @@ class MemoryDialog(QDialog):
         return item.data(Qt.UserRole) if item else None
 
     def add_note(self):
-        text, ok = QInputDialog.getText(self, "یادداشت جدید", "چه چیزی را Kira یادش بماند؟")
+        text, ok = QInputDialog.getText(self, "یادداشت جدید", f"چه چیزی را {self.character_name} یادش بماند؟")
         if ok:
             with persona_memory.character_scope(self.character_id):
                 added = persona_memory.add_note(text)
@@ -400,7 +400,7 @@ class MemoryDialog(QDialog):
                 self.refresh()
 
     def forget_all(self):
-        if QMessageBox.question(self, "فراموش‌کردن همه", "همه‌ی چیزهایی که Kira درباره‌ی تو یادش مانده (و حال‌وهوایش) پاک شود؟ تاریخچه‌ی گفتگو دست‌نخورده می‌ماند.") == QMessageBox.Yes:
+        if QMessageBox.question(self, "فراموش‌کردن همه", f"همه‌ی چیزهایی که {self.character_name} در حافظه‌ی بلندمدتش درباره‌ی تو نگه داشته پاک شود؟ تاریخچه‌ی کوتاه‌مدت گفتگو و حافظه‌ی شخصیت‌های دیگر دست‌نخورده می‌ماند.") == QMessageBox.Yes:
             with persona_memory.character_scope(self.character_id):
                 persona_memory.forget_all()
             mood.reset()

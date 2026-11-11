@@ -60,6 +60,15 @@ class PersonaMemoryTests(unittest.TestCase):
             self.assertNotIn("RenUser", block)
             self.assertNotIn("MikaUser", block)
 
+    def test_character_scope_restores_previous_context(self):
+        self.assertEqual(pm.current_character_id(), "kira")
+        with pm.character_scope("ren"):
+            self.assertEqual(pm.current_character_id(), "ren")
+            with pm.character_scope("mika"):
+                self.assertEqual(pm.current_character_id(), "mika")
+            self.assertEqual(pm.current_character_id(), "ren")
+        self.assertEqual(pm.current_character_id(), "kira")
+
     def test_evidence_memory_is_written_only_for_kira(self):
         with mock.patch.object(pm._evidence, "record_user_message") as record:
             with pm.character_scope("ren"):
