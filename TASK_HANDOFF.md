@@ -40,5 +40,5 @@ Character specialization and generated portraits. The implementation is complete
 - Mika specializes in medical information and health education with explicit no-diagnosis/no-prescribing boundaries, emergency escalation and privacy-aware handling. Chat history remains shared; profile-level medical-memory isolation is not implemented.
 - Ren specializes in current news and intelligence analysis with date checks, independent-source comparison and fact/claim/opinion separation.
 - Character specialties do not alter shared model routes, tools, permissions or safety policy.
-- Replaced built-in SVG placeholder portraits with generated anime JPEG portraits stored as base64 text assets under `assets/characters/`; the native Qt Characters tab decodes them for display.
+- Restored Kira's original profile portrait by selecting the existing `assets/characters/kira.svg` asset, unchanged from the earlier releases. Ren and Mika continue using their separate generated JPEG assets; their JPEG corruption warning remains a separate follow-up.
 - Portable regression tests cover the specialty prompts. Windows GUI image rendering still needs a user-side check.
