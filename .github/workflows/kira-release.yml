@@ -31,12 +31,14 @@ on:
       - "tests/test_router_routes.py"
       - "tests/test_providers.py"
       - "tests/test_persona_memory.py"
-      - "tests/test_characters.py"
       - "tests/test_app_resolution.py"
       - "tests/test_persian_quality.py"
-      - "tests/test_release_package.py"
       - "scripts/build_release.py"
       - ".github/workflows/kira-release.yml"
+      - "PROJECT_CONTEXT.md"
+      - "ARCHITECTURE.md"
+      - "CHANGELOG.md"
+      - "TASK_HANDOFF.md"
   workflow_dispatch:
 
 permissions:
@@ -95,9 +97,9 @@ jobs:
           name: Kira Update ${{ steps.package.outputs.stamp }}
           body: |
             Kira source update.
-            
+
             The source archive uses the ProjectKira_YYMMDD_HHMM.zip format and Asia/Tehran local time.
-            
+
             Portable regression tests and Python syntax checks passed before packaging. GUI and Windows-specific tests are intentionally excluded from this Linux workflow. Windows batch files are normalized to CRLF in the release ZIP.
             Game Mode has manual Story and Competitive Safe profiles. Competitive Safe disables game capture, game/system loopback and local control tools; Story Mode keeps local-only WASAPI speech recognition. Ai1 Code adds an independent Code Agent, single-file Diff preview and explicit patch approval; shell commands require explicit user confirmation. Kira, Mika and Ren have separate coding, medical-information and news-analysis specialties with generated character portraits.
           files: ${{ steps.package.outputs.asset }}
