@@ -2,6 +2,12 @@
 
 ## 2026-11-11
 
+### Game detector self-identification fix
+- Exclude Ai1's own process ID before game title hints and large-window heuristics.
+- Add a regression test using the `Project Kira 1 stable` window title and a full-screen window rectangle.
+
+## 2026-11-11
+
 ### Linux regression and Windows ZIP fixes
 - Updated the requirements regression test to recognize the intentionally optional `psutil` dependency.
 - Added `.gitattributes` enforcement and release-time normalization so every packaged `.bat` file uses CRLF, including archives built on Linux.
