@@ -77,7 +77,7 @@ class NativeFunctionCallingTests(unittest.TestCase):
             {"role": "user", "content": "Open the browser"},
             {"role": "assistant", "content": None, "tool_calls": [
                 {"id": "call_1", "type": "function",
-                 "function": {"name": "open_app", "arguments": "{\\"app\\":\\"browser\\"}"}}
+                 "function": {"name": "open_app", "arguments": json.dumps({"app": "browser"})}}
             ]},
             {"role": "tool", "tool_call_id": "call_1", "name": "open_app", "content": "[ok] launched"},
             {"role": "user", "content": "Done?"},
@@ -108,7 +108,7 @@ class NativeFunctionCallingTests(unittest.TestCase):
             {"role": "user", "content": "Open the browser"},
             {"role": "assistant", "content": None, "tool_calls": [
                 {"id": "call_1", "type": "function",
-                 "function": {"name": "open_app", "arguments": "{}"}}
+                 "function": {"name": "open_app", "arguments": json.dumps({"app": "browser"})}}
             ]},
             {"role": "tool", "tool_call_id": "call_1", "name": "open_app", "content": "[ok] launched"},
         ]
