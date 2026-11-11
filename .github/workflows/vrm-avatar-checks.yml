@@ -44,13 +44,13 @@ jobs:
       - name: Commit refreshed offline bundle
         if: github.event_name == 'push'
         run: |
-          if git diff --quiet -- kira/vrm/web/package-lock.json kira/vrm/web/viewer.bundle.js; then
+          git add -f kira/vrm/web/package-lock.json kira/vrm/web/viewer.bundle.js
+          if git diff --cached --quiet; then
             echo "VRM bundle is already up to date."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add kira/vrm/web/package-lock.json kira/vrm/web/viewer.bundle.js
           git commit -m "Build bundled offline VRM viewer [skip ci]"
           git push
       - name: Compile VRM integration
