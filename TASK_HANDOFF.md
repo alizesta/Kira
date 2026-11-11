@@ -1,5 +1,9 @@
 # Task Handoff
 
+## Current release preparation
+- Ren and Mika built-in portrait files were removed for this release at the user's request. Their profiles remain available with blank portrait areas; add separate replacement artwork later.
+- Kira's original `assets/characters/kira.svg` remains unchanged.
+
 ## Current task
 Fix regression failures from `ProjectKira_261111_0603.zip`: batch-file CRLF packaging, stale requirements expectation, LeakGuard-aware streaming/persistence tests, and current GUI menu assertions. Linux CI is expected to validate portable tests; GUI offscreen and actual Windows runtime still require platform-specific verification.
 
@@ -40,7 +44,7 @@ Character specialization and generated portraits. The implementation is complete
 - Mika specializes in medical information and health education with explicit no-diagnosis/no-prescribing boundaries, emergency escalation and privacy-aware handling. Chat history remains shared; profile-level medical-memory isolation is not implemented.
 - Ren specializes in current news and intelligence analysis with date checks, independent-source comparison and fact/claim/opinion separation.
 - Character specialties do not alter shared model routes, tools, permissions or safety policy.
-- Restored Kira's original profile portrait by selecting the existing `assets/characters/kira.svg` asset, unchanged from the earlier releases. Ren and Mika continue using their separate generated JPEG assets; their JPEG corruption warning remains a separate follow-up.
+- Restored Kira's original profile portrait by selecting the existing `assets/characters/kira.svg` asset, unchanged from the earlier releases. Ren and Mika portrait files were removed for this build; their profiles render without portraits until replacement artwork is added.
 - Portable regression tests cover the specialty prompts. Windows GUI image rendering still needs a user-side check.
 
 
