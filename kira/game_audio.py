@@ -121,7 +121,6 @@ class GameAudioListener(QThread):
 
         segmenter = Segmenter(self.settings.get("mic_sensitivity", 100))
         pending = np.empty(0, dtype=np.float32)
-        calibrated = False
         self.state.emit("listening")
         try:
             while self._run:
