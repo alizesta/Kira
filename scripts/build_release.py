@@ -66,6 +66,15 @@ def source_files():
             yield path, relative
 
 
+def release_file_bytes(path: Path, relative: Path) -> bytes:
+    """Return deterministic release bytes; Windows batch scripts always use CRLF."""
+    data = Path(path).read_bytes()
+    if Path(relative).suffix.lower() == ".bat":
+        data = data.replace(b"\\r\\n", b"\\n").replace(b"\\r", b"\\n")
+        data = data.replace(b"\\n", b"\\r\\n")
+    return data
+
+
 def _write_github_output(values: dict[str, str]) -> None:
     target = os.environ.get("GITHUB_OUTPUT")
     if not target:
@@ -92,7 +101,7 @@ def main() -> Path:
                 except (OSError, UnicodeDecodeError, SyntaxError) as exc:
                     raise RuntimeError(f"Python source check failed for {relative}: {exc}") from exc
                 syntax_checked += 1
-            result.write(path, arcname=relative.as_posix())
+            result.writestr(relative.as_posix(), release_file_bytes(path, relative))
             included += 1
 
     size = archive.stat().st_size
