@@ -21,5 +21,5 @@ Implement manual Game Mode and optional game-window Vision capture in Ai1.
 - Capture requires Windows and a valid visible game window.
 - The selected chat Route must use a vision-capable model. Automatic vision-capability detection and route filtering are not implemented yet.
 - Test on the user's Windows PC: launch a game, confirm one suggestion, confirm Game Mode stays off until clicked, send a gameplay question with Game Mode on, then switch it off and confirm later messages no longer include a screenshot.
-- Confirm the selected model can accept image payloads and inspect actual screenshot content. Verify 1 FPS capture, 480p maximum dimensions, JPEG payload, and immediate timer shutdown.
+- Confirm the selected model can accept image payloads and inspect actual screenshot content. Verify 1 FPS capture, 480p maximum dimensions, JPEG payload, and immediate timer shutdown. The capture interval and JPEG quality are centralized constants in `kira/game_mode.py`.
 - Verify app startup, chat, and portable release workflow.
