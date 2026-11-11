@@ -87,7 +87,8 @@ class ReleaseTests(unittest.TestCase):
 
     def test_requirements_contain_no_unneeded_packages(self):
         names = {re.split(r"[<>=]", l)[0].strip().lower() for l in (ROOT / "requirements.txt").read_text().splitlines() if l.strip()}
-        self.assertEqual(names, {"pyside6", "requests", "numpy"})          # unchanged: nothing new was added in 1.4.6
+        self.assertEqual(names, {"pyside6", "requests", "numpy", "psutil"})
+        self.assertIn("optional", (ROOT / "requirements.txt").read_text(encoding="utf-8").lower())
 
     def test_bat_files_keep_crlf_and_call_installer(self):
         for name in ("install.bat", "download_model.bat", "start_kira.bat", "run_tests.bat"):
@@ -96,6 +97,21 @@ class ReleaseTests(unittest.TestCase):
             self.assertTrue(all(b < 128 for b in raw), name + " must stay ASCII for CMD")
         self.assertIn(b"install_deps.py", (ROOT / "install.bat").read_bytes())
         self.assertIn(b"qwen3.5:4b", (ROOT / "download_model.bat").read_bytes())
+
+    def test_release_batch_normalizer_forces_crlf_even_from_lf_sources(self):
+        from scripts.build_release import release_file_bytes
+        source = ROOT / "run_tests.bat"
+        normalized = release_file_bytes(source, Path("run_tests.bat"))
+        self.assertEqual(normalized.count(b"\\n"), normalized.count(b"\\r\\n"))
+        mixed = ROOT / "data" / "mixed_test.bat"
+        mixed.parent.mkdir(parents=True, exist_ok=True)
+        mixed.write_bytes(b"@echo off\\nlabel\\r\\ngoto label\\n")
+        try:
+            fixed = release_file_bytes(mixed, Path("mixed_test.bat"))
+            self.assertEqual(fixed.count(b"\\n"), fixed.count(b"\\r\\n"))
+            self.assertIn(b"goto label\\r\\n", fixed)
+        finally:
+            mixed.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
