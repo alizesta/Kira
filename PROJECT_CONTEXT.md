@@ -16,7 +16,7 @@
 Ai1 is a Windows desktop anime-style digital companion. It combines local and cloud chat models, persistent memory, character profiles, speech input/output, controlled desktop tools, and optional game-screen understanding.
 
 ## Character profiles
-- Kira's original profile portrait is `assets/characters/kira.svg` and must remain unchanged unless the user explicitly requests a replacement. Ren and Mika use their separate generated JPEG assets under `assets/characters/*.jpg.b64`.
+- Kira's original profile portrait is `assets/characters/kira.svg` and must remain unchanged unless the user explicitly requests a replacement. Ren and Mika currently have no built-in portraits; their image fields are intentionally empty until new portraits are supplied.
 - Kira: coding, architecture, debugging and technical support; use Ai1 Code for project-file workflows and never claim unperformed tests.
 - Mika: medical information and health education only, not diagnosis or independent prescribing; flag emergencies and preserve health-data privacy.
 - Ren: current news and intelligence analysis; verify dates and independent sources, distinguish facts from claims/opinion, and disclose unavailable live verification.
