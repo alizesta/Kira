@@ -26,14 +26,19 @@ def _normalise_profile(profile):
         raise ValueError("Character profile needs an id and a name.")
     if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", pid):
         raise ValueError("Character profile id contains unsupported path characters.")
+    avatar_model_path = str(profile.get("avatar_model_path") or "").strip()[:4096]
+    default_avatar = profile.get("avatar_default_enabled")
+    if default_avatar is None:
+        default_avatar = pid == DEFAULT_CHARACTER_ID and not avatar_model_path
     clean = {
         "id": pid[:80],
         "name": name[:80],
         "description": str(profile.get("description") or "").strip()[:4000],
         "notes": str(profile.get("notes") or "").strip()[:12000],
         "system_prompt": str(profile.get("system_prompt") or "").strip()[:30000],
-        # A path only: the VRM asset stays in the user's private storage and is never copied to releases.
-        "avatar_model_path": str(profile.get("avatar_model_path") or "").strip()[:4096],
+        # Custom paths stay in user data; Kira's default is resolved from the project root.
+        "avatar_model_path": avatar_model_path,
+        "avatar_default_enabled": bool(default_avatar),
         "traits": {},
         "built_in": bool(profile.get("built_in", False)),
     }
@@ -157,7 +162,7 @@ class CharacterRegistry:
         profile_id = str(profile_id or "")
         if profile_id not in self.profiles:
             raise KeyError(profile_id)
-        allowed = {"name", "description", "notes", "system_prompt", "traits", "avatar_model_path"}
+        allowed = {"name", "description", "notes", "system_prompt", "traits", "avatar_model_path", "avatar_default_enabled"}
         current = deepcopy(self.profiles[profile_id])
         for key, value in changes.items():
             if key in allowed:
