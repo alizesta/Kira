@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import difflib
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal, QProcess, QDir
@@ -9,7 +10,7 @@ from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QSplitter, QWidget, QLabel, QPushButton,
     QTreeView, QFileSystemModel, QPlainTextEdit, QLineEdit, QTextBrowser,
-    QFileDialog, QMessageBox, QInputDialog, QGroupBox, QFormLayout, QProgressBar,
+    QFileDialog, QMessageBox, QInputDialog, QGroupBox, QFormLayout, QProgressBar, QDialogButtonBox,
 )
 
 from .code_agent import CodeAgentEngine, build_project_context, safe_project_file, SKIP_DIRS
@@ -21,13 +22,14 @@ class _CodeAskWorker(QThread):
     done = Signal(str)
     failed = Signal(str)
 
-    def __init__(self, engine, request, context, parent=None):
+    def __init__(self, engine, request, context, mode="ask", parent=None):
         super().__init__(parent)
-        self.engine, self.request, self.context = engine, request, context
+        self.engine, self.request, self.context, self.mode = engine, request, context, mode
 
     def run(self):
         try:
-            answer = self.engine.ask(self.request, self.context, self.chunk.emit)
+            answer = (self.engine.propose_replacement(self.request, self.context, self.chunk.emit)
+                       if self.mode == "patch" else self.engine.ask(self.request, self.context, self.chunk.emit))
             self.done.emit(answer)
         except Exception as exc:  # noqa: BLE001
             self.failed.emit(str(exc)[:800])
@@ -42,6 +44,9 @@ class CodeWorkspaceDialog(QDialog):
         self.engine = CodeAgentEngine(self.router)
         self.project_root = None
         self.current_file = None
+        self._file_original_bytes = None
+        self._patch_base_text = None
+        self._pending_patch = None
         self._worker = None
         self._agent_stream_buffer = ""
         self._process = None
@@ -118,10 +123,13 @@ class CodeWorkspaceDialog(QDialog):
         self.agent_input = QLineEdit()
         self.agent_input.setPlaceholderText("مثلاً: علت این خطا را پیدا کن و راه‌حل کم‌ریسک پیشنهاد بده")
         self.agent_input.returnPressed.connect(self.ask_agent)
-        self.ask_btn = QPushButton("ارسال به Code Agent")
+        self.ask_btn = QPushButton("تحلیل")
         self.ask_btn.clicked.connect(self.ask_agent)
+        self.patch_btn = QPushButton("پیشنهاد تغییر")
+        self.patch_btn.clicked.connect(self.propose_patch)
         agent_row.addWidget(self.agent_input, 1)
         agent_row.addWidget(self.ask_btn)
+        agent_row.addWidget(self.patch_btn)
         agent_l.addLayout(agent_row)
         self.agent_progress = QProgressBar()
         self.agent_progress.setRange(0, 0)
@@ -176,6 +184,8 @@ class CodeWorkspaceDialog(QDialog):
             return
         self.project_root = resolved
         self.current_file = None
+        self._file_original_bytes = None
+        self._pending_patch = None
         self.editor.clear()
         self.editor.document().setModified(False)
         self.file_label.setText("فایلی باز نیست")
@@ -220,6 +230,7 @@ class CodeWorkspaceDialog(QDialog):
             if answer != QMessageBox.Yes:
                 return
         self.current_file = target
+        self._file_original_bytes = target.read_bytes()
         self.editor.setPlainText(content)
         self.editor.document().setModified(False)
         self.file_label.setText(target.relative_to(self.project_root).as_posix())
@@ -248,17 +259,27 @@ class CodeWorkspaceDialog(QDialog):
             temp.write_text(text, encoding="utf-8", newline="")
             temp.replace(target)
             self.editor.document().setModified(False)
+            self._file_original_bytes = target.read_bytes()
             self.status_label.setText("فایل ذخیره شد؛ نسخه پشتیبان کنار فایل باقی ماند.")
         except Exception as exc:
             QMessageBox.critical(self, "ذخیره ناموفق", str(exc))
 
     def ask_agent(self):
+        self._start_agent_request("ask")
+
+    def propose_patch(self):
+        self._start_agent_request("patch")
+
+    def _start_agent_request(self, mode):
         request = self.agent_input.text().strip()
         if not request or not self.project_root:
             if not self.project_root:
                 QMessageBox.information(self, "Ai1 Code", "اول پوشه پروژه را انتخاب کن.")
             return
         if self._worker is not None and self._worker.isRunning():
+            return
+        if mode == "patch" and not self.current_file:
+            QMessageBox.information(self, "Ai1 Code", "برای پیشنهاد تغییر، اول یک فایل متنی را باز کن.")
             return
         try:
             selected = self.current_file if self.current_file and self.current_file.exists() else None
@@ -269,14 +290,17 @@ class CodeWorkspaceDialog(QDialog):
             return
         self.agent_input.clear()
         self._agent_stream_buffer = ""
+        self._active_mode = mode
+        self._patch_base_text = self.editor.toPlainText() if mode == "patch" else None
         self.agent_output.append(f"<b>تو:</b> {request}")
         self.agent_output.append("<b>Code Agent:</b> ")
         self.ask_btn.setEnabled(False)
+        self.patch_btn.setEnabled(False)
         self.agent_progress.show()
         self.status_label.setText("Code Agent در حال تحلیل است…")
-        worker = _CodeAskWorker(self.engine, request, context, self)
+        worker = _CodeAskWorker(self.engine, request, context, mode, self)
         worker.chunk.connect(self._agent_chunk)
-        worker.done.connect(self._agent_done)
+        worker.done.connect(self._patch_done if mode == "patch" else self._agent_done)
         worker.failed.connect(self._agent_failed)
         worker.finished.connect(self._agent_finished)
         self._worker = worker
@@ -295,12 +319,74 @@ class CodeWorkspaceDialog(QDialog):
         if not self._agent_stream_buffer:
             self.agent_output.append(answer)
 
+
+    def _patch_done(self, replacement):
+        self._pending_patch = replacement
+        self.status_label.setText("پیشنهاد آماده است؛ هنوز هیچ فایلی تغییر نکرده.")
+        self._show_patch_preview(replacement)
+
+    def _show_patch_preview(self, replacement):
+        if not self.current_file:
+            return
+        old = self.editor.toPlainText()
+        rel = self.current_file.relative_to(self.project_root).as_posix()
+        diff = "".join(difflib.unified_diff(old.splitlines(True), replacement.splitlines(True),
+                                            fromfile=rel + " (current)", tofile=rel + " (proposed)"))
+        if not diff:
+            QMessageBox.information(self, "Ai1 Code", "مدل تغییری پیشنهاد نکرده است.")
+            self._pending_patch = None
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("بازبینی تغییرات پیشنهادی")
+        dialog.resize(900, 650)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("این فقط پیش‌نمایش است. فایل تا زمان تأیید صریح تو تغییر نمی‌کند."))
+        view = QPlainTextEdit()
+        view.setReadOnly(True)
+        view.setFont(QFont("Consolas", 9))
+        view.setPlainText(diff)
+        layout.addWidget(view, 1)
+        buttons = QDialogButtonBox()
+        buttons.addButton("تأیید و اعمال تغییر", QDialogButtonBox.AcceptRole)
+        buttons.addButton("رد کردن", QDialogButtonBox.RejectRole)
+        buttons.accepted.connect(lambda: self._apply_patch(dialog, replacement))
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
+
+    def _apply_patch(self, dialog, replacement):
+        try:
+            if not self.current_file or not self.project_root:
+                raise ValueError("فایل انتخاب‌شده دیگر معتبر نیست.")
+            target = safe_project_file(self.project_root, self.current_file)
+            if target.read_bytes() != self._file_original_bytes:
+                raise ValueError("فایل روی دیسک بعد از باز شدن تغییر کرده؛ برای جلوگیری از بازنویسی، Patch لغو شد. فایل را دوباره باز کن.")
+            if self.editor.toPlainText() != self._patch_base_text:
+                raise ValueError("محتوای ویرایشگر بعد از تولید Patch تغییر کرده؛ پیشنهاد قدیمی اعمال نشد.")
+            if len(replacement.encode("utf-8")) > 2 * 1024 * 1024:
+                raise ValueError("حجم فایل پیشنهادی از سقف ۲ مگابایت بیشتر است.")
+            backup = target.with_name(target.name + ".ai1code.bak")
+            if not backup.exists():
+                backup.write_bytes(target.read_bytes())
+            temp = target.with_name(target.name + ".ai1code.tmp")
+            temp.write_text(replacement, encoding="utf-8", newline="")
+            temp.replace(target)
+            self._file_original_bytes = target.read_bytes()
+            self.editor.setPlainText(replacement)
+            self.editor.document().setModified(False)
+            self._pending_patch = None
+            self.status_label.setText("Patch با تأیید تو اعمال شد؛ نسخه پشتیبان نگه داشته شد.")
+            dialog.accept()
+        except Exception as exc:
+            QMessageBox.critical(self, "اعمال Patch ناموفق", str(exc))
+
     def _agent_failed(self, message):
         self.agent_output.append(f"\n<b>خطا:</b> {message}")
         self.status_label.setText("تحلیل ناموفق بود")
 
     def _agent_finished(self):
         self.ask_btn.setEnabled(True)
+        self.patch_btn.setEnabled(True)
         self.agent_progress.hide()
         self._worker = None
 
