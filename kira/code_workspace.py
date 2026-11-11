@@ -1,4 +1,4 @@
-"""Ai1 Code workspace UI: project browser, editor, explicit PowerShell terminal and read-only Code Agent."""
+"""Ai1 Code workspace UI: project browser, editor, explicit PowerShell terminal and approval-gated Code Agent proposals."""
 from __future__ import annotations
 
 import os
@@ -36,7 +36,7 @@ class _CodeAskWorker(QThread):
 
 
 class CodeWorkspaceDialog(QDialog):
-    """Separate engineering workspace. Agent is read-only; command execution is always user initiated."""
+    """Separate engineering workspace. Agent proposes edits; workspace writes only after explicit approval. Commands are always user initiated."""
     def __init__(self, settings, router, parent=None):
         super().__init__(parent)
         self.settings = settings
@@ -113,7 +113,7 @@ class CodeWorkspaceDialog(QDialog):
         bottom = QWidget()
         bottom_l = QVBoxLayout(bottom)
         bottom_l.setContentsMargins(0, 0, 0, 0)
-        agent_box = QGroupBox("Code Agent · تحلیل فقط‌خواندنی")
+        agent_box = QGroupBox("Code Agent · تحلیل و پیشنهاد تغییر")
         agent_l = QVBoxLayout(agent_box)
         self.agent_output = QTextBrowser()
         self.agent_output.setOpenExternalLinks(False)
