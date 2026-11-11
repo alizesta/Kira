@@ -75,8 +75,8 @@ class CodeAgentContextTests(unittest.TestCase):
 
 
     def test_extract_replacement_requires_exact_markers(self):
-        source = "print('hello')\\n"
-        response = "proposal\\n" + PATCH_START + "\\n" + source + PATCH_END
+        source = "print('hello')"
+        response = "proposal\n" + PATCH_START + "\n" + source + "\n" + PATCH_END
         self.assertEqual(extract_replacement(response), source)
 
     def test_extract_replacement_rejects_missing_or_empty_content(self):
