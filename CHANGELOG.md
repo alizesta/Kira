@@ -44,3 +44,11 @@
 - Existing local Edge TTS and Windows speech fallbacks.
 - Existing independent STT configuration and chat Route Manager.
 - Game Mode remains off at startup and never auto-enables after a game is detected.
+
+
+### Ai1 Code phase 2: Diff and explicit patch approval
+- Added selected-file replacement proposals through the independent Code Agent.
+- Added strict response-marker validation and rejection of malformed or empty proposals.
+- Added read-only unified Diff preview and explicit user approval before writing.
+- Added stale-file/editor checks, one-time backup and atomic replacement for approved changes.
+- Added regression tests for patch-response validation. Windows GUI and PowerShell behavior still require manual testing on Windows 11.
