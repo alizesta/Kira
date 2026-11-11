@@ -96,3 +96,8 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 - Native tool request rounds are non-streaming; ordinary final answers continue through the existing streamed chat path.
 
 - The Ai1/Kira foreground-window identity check is isolated in kira/game_detection.py and covered by portable tests/test_game_detection.py, so title/PID exclusion logic is tested without importing the Windows/PySide6 monitor.
+
+
+## Game Mode Windows CI validation
+- The release workflow runs `tests.test_game_detection` and `tests.test_game_mode` on `windows-latest` with PySide6 and Qt's offscreen platform before the packaging/release job can start.
+- Linux portable coverage remains in place. This CI validates mocked foreground PID/title integration and safety behavior; it does not replace a real interactive Windows 11 test with the user's actual desktop/window title.

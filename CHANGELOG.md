@@ -2,6 +2,14 @@
 
 ## 2026-11-11
 
+### Game Mode Windows CI gate
+- Added a Windows runner for Game Mode identity and monitor regression tests using PySide6 with Qt offscreen.
+- Made the release packaging job depend on the Windows Game Mode test job, so a failed Windows regression blocks publishing the ZIP.
+- Kept the Linux portable test suite and syntax check unchanged.
+- Clarified that CI uses mocked foreground-window data and does not replace a real interactive Windows 11 smoke test.
+
+## 2026-11-11
+
 ### Temporary portrait removal for release build
 - Removed Ren and Mika portrait assets and cleared their built-in image references until replacement portraits are ready.
 - Updated the character card to support an intentionally empty portrait without substituting another character's artwork.

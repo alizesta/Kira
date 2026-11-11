@@ -107,3 +107,9 @@ Cloud Voice settings are written atomically outside the application installation
 - Routes without native support return to the existing text protocol. The current Ollama and Cloudflare adapters do not yet expose native calls. Tool-call rounds are non-streaming; final user-facing text remains streamed.
 
 - Pure foreground identity filtering lives in kira/game_detection.py and is covered by the portable tests.test_game_detection module; GameModeMonitor delegates current-PID and known Ai1/Kira title checks to it.
+
+
+## Game Mode CI matrix
+- Portable title/PID identity tests run in the Linux release job.
+- The Windows release gate runs `tests.test_game_detection` and `tests.test_game_mode` on `windows-latest` with `QT_QPA_PLATFORM=offscreen` before ZIP packaging.
+- The Windows job exercises the monitor's Qt integration with mocked foreground-window data. It cannot verify the user's real Ai1 window title, DPI/display setup, or foreground process state; those still require an interactive Windows 11 smoke test.

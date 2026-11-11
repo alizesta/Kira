@@ -63,3 +63,10 @@ Character specialization and generated portraits. The implementation is complete
 - CI must run tests.test_native_function_calling and Python compile checks before release packaging.
 
 - The Ai1/Kira window-identity predicate is isolated in kira/game_detection.py so its PID/title rules are exercised in portable CI independently of the Windows/PySide6 monitor integration.
+
+
+## Stage 1: Game Mode self-detection validation
+- Current source rejects Ai1's own PID and known Ai1/Kira window titles before game-name and large-window heuristics.
+- Portable tests cover the current PID, the `Project Kira 1 stable` title with a mismatched PID, the `Ai1` title, and a positive unrelated game-window case.
+- Added a required Windows CI job running `tests.test_game_detection` and `tests.test_game_mode` with PySide6/Qt offscreen. Release packaging is gated on that job.
+- CI does not emulate the user's actual desktop session. A final interactive smoke test on the user's Windows 11 machine remains necessary to confirm its live title/PID behavior.
