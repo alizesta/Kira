@@ -59,3 +59,12 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 - Code Agent uses the existing configured HybridRouter routes but owns a separate prompt/worker lifecycle. It has no Tool Registry access, filesystem write access, or shell execution.
 - Project context is bounded and excludes secret/configuration files, virtual environments, build output, dependency folders, databases and key material. Only the selected text file content is sent alongside a bounded file listing.
 - Agent-generated edits, automatic patch application, debugger integration, Git controls, breakpoints and test orchestration are not implemented yet. They are planned for the debugging phase.
+
+
+## Ai1 Code phase 2
+- Code Agent can propose a complete replacement for the currently selected text file.
+- Proposed content is parsed only when the explicit Ai1 markers are present and the result is non-empty and within the file-size limit.
+- The workspace shows a unified Diff preview. No file is written until the user explicitly approves the change.
+- Before applying, the workspace verifies that the on-disk file and editor base content have not changed since proposal generation; stale proposals are rejected.
+- Approved changes use the existing one-time `.ai1code.bak` backup and an atomic temporary-file replacement.
+- This phase does not add multi-file patches, automatic test execution, a debugger, or Git controls. GUI/PowerShell runtime still requires validation on Windows 11.
