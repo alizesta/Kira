@@ -10,6 +10,16 @@ on:
       - "tests/test_game_audio.py"
       - "kira/game_mode_policy.py"
       - "tests/test_game_mode_policy.py"
+      - "tests/test_streaming.py"
+      - "tests/test_chat_persistence.py"
+      - "tests/test_gui_routes.py"
+      - "tests/test_gui_offscreen.py"
+      - "tests/test_release.py"
+      - "tests/test_release_package.py"
+      - "tests/test_characters.py"
+      - "requirements.txt"
+      - ".gitattributes"
+      - "*.bat"
       - "tests/test_code_agent.py"
       - "kira/code_agent.py"
       - "kira/code_workspace.py"
@@ -66,6 +76,9 @@ jobs:
           tests.test_minimax_cloud_voice
           tests.test_game_mode_policy
           tests.test_code_agent
+          tests.test_streaming
+          tests.test_chat_persistence
+          tests.test_release
 
       - name: Check Python syntax
         run: python -m compileall -q kira scripts tests
@@ -85,7 +98,7 @@ jobs:
             
             The source archive uses the ProjectKira_YYMMDD_HHMM.zip format and Asia/Tehran local time.
             
-            Portable regression tests and Python syntax checks passed before packaging. GUI and Windows-specific tests are intentionally excluded.
+            Portable regression tests and Python syntax checks passed before packaging. GUI and Windows-specific tests are intentionally excluded from this Linux workflow. Windows batch files are normalized to CRLF in the release ZIP.
             Game Mode has manual Story and Competitive Safe profiles. Competitive Safe disables game capture, game/system loopback and local control tools; Story Mode keeps local-only WASAPI speech recognition. Ai1 Code adds an independent Code Agent, single-file Diff preview and explicit patch approval; shell commands require explicit user confirmation. Kira, Mika and Ren have separate coding, medical-information and news-analysis specialties with generated character portraits.
           files: ${{ steps.package.outputs.asset }}
           fail_on_unmatched_files: true
