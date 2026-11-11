@@ -23,6 +23,7 @@ DEFAULTS = {
     "ollama_url": "http://localhost:11434",
     "model": "qwen3.5:4b",
     "assistant_name": "Kira",
+    "active_character_id": "kira",
     # Extra user notes only. Kira's real character is defined in kira/personality.py and always applied.
     "persona": "",
     "temperature": 0.7,
