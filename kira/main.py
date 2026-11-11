@@ -36,6 +36,7 @@ from .emotion.backend_png import EmotionFaceAnimator
 from .emotion.director import EmotionDirector
 from .voice import Speaker
 from .listener import Listener
+from .game_audio import GameAudioListener, is_important_game_audio
 from . import cloud_voice
 from . import voice_caps
 from . import modes
@@ -479,6 +480,10 @@ class MainWindow(QMainWindow):
         self.game_mode = GameModeMonitor(self)
         self._game_mode_enabled = False
         self._latest_game_frame = None
+        self.game_audio_listener = None
+        self._game_audio_alerts = {}
+        self._game_prev_mic = False
+        self._game_prev_wake = False
         self.tool_agent = ToolAgent(self.settings, DATA_DIR, ROOT)      # Computer Awareness + Unified Tool System (kira/tools)
         usage.install(self.settings)                                    # usage ledger + limits (kira/usage.py); never blocks start-up
         evidence_memory.configure(self.settings)                        # facts with provenance (kira/evidence_memory.py); never blocks start-up
@@ -2775,15 +2780,65 @@ class MainWindow(QMainWindow):
         self._game_mode_enabled = bool(enabled)
         self.game_mode.set_enabled(self._game_mode_enabled)
         if self._game_mode_enabled:
+            self._game_prev_mic = self.mic_btn.isChecked()
+            self._game_prev_wake = self.wake_btn.isChecked()
+            if not self.wake_btn.isChecked():
+                self.wake_btn.setChecked(True)
+                self.toggle_wake()  # microphone wake-word listening; no ordinary speech is submitted while asleep
             self._capture_game_frame()
             self._game_capture_timer.start()
+            self._start_game_audio_listener()
         else:
             self._game_capture_timer.stop()
             self._latest_game_frame = None
-        self.game_mode_btn.setToolTip("Game Mode روشن است؛ تصویر 480p هر ۱ ثانیه ثبت و همراه پیام ارسال می‌شود" if enabled
-                                      else "Game Mode خاموش است؛ هیچ تصویری از بازی گرفته نمی‌شود")
-        self.add_chat("system", "🎮 Game Mode فعال شد. تصویر بازی با کیفیت 480p و نرخ ۱ فریم در ثانیه ثبت می‌شود؛ آخرین فریم همراه پیام ارسال خواهد شد."
-                      if enabled else "Game Mode خاموش شد؛ دریافت تصویر بازی متوقف شد.")
+            self._stop_game_audio_listener()
+            if not self._game_prev_wake and self.wake_btn.isChecked():
+                self.wake_btn.setChecked(False)
+                self.toggle_wake()
+            if not self._game_prev_mic and self.mic_btn.isChecked():
+                self.mic_btn.setChecked(False)
+                self.stop_listener()
+        self.game_mode_btn.setToolTip("Game Mode روشن است؛ Vision 480p/1FPS، شنیدن صدای سیستم و بیدارباش با نام Kira فعال است" if enabled
+                                      else "Game Mode خاموش است؛ تصویر و شنیدن صدای بازی متوقف است")
+        self.add_chat("system", "🎮 Game Mode فعال شد. Vision با کیفیت 480p و نرخ ۱ فریم در ثانیه فعال است؛ صدای بازی/سیستم به‌صورت محلی تحلیل می‌شود و Kira فقط با صدازدن یا تشخیص هشدار مهم واکنش نشان می‌دهد."
+                      if enabled else "Game Mode خاموش شد؛ تصویربرداری و شنیدن صدای بازی متوقف شد.")
+
+    def _start_game_audio_listener(self):
+        self._stop_game_audio_listener()
+        self.game_audio_listener = GameAudioListener(self.settings, self)
+        self.game_audio_listener.transcript.connect(self.on_game_audio_transcript)
+        self.game_audio_listener.error.connect(self.on_game_audio_error)
+        self.game_audio_listener.start()
+
+    def _stop_game_audio_listener(self):
+        listener = self.game_audio_listener
+        self.game_audio_listener = None
+        if listener is not None:
+            listener.stop()
+
+    def on_game_audio_error(self, message):
+        if self._game_mode_enabled:
+            self.add_chat("system", "🎧 " + message)
+
+    def on_game_audio_transcript(self, text):
+        if not self._game_mode_enabled or self.busy or not is_important_game_audio(text):
+            return
+        now = time.monotonic()
+        lower = text.casefold()
+        category = ("urgent" if re.search(r"low health|low hp|critical|danger|warning|خطر|هشدار|خونت کم|جونت کم", lower, re.I)
+                    else "complete" if re.search(r"mission complete|quest complete|victory|achievement|مرحله تمام|ماموریت تمام|دستاورد", lower, re.I)
+                    else "combat")
+        previous = self._game_audio_alerts.get(category, (0.0, ""))
+        if now - previous[0] < 25 or lower == previous[1]:
+            return
+        self._game_audio_alerts[category] = (now, lower)
+        alerts = {
+            "urgent": "حواست باشه، از صدای بازی هشدار خطر یا کمبود سلامتی شنیدم.",
+            "complete": "به نظر می‌رسه یک مرحله، مأموریت یا دستاورد مهم تکمیل شده.",
+            "combat": "به نظر می‌رسه اتفاق مهمی در مبارزه یا نزدیک‌شدن دشمن رخ داده.",
+        }
+        self.reply_local(alerts[category], "surprised" if category == "urgent" else "thinking")
+
 
     def _capture_game_frame(self):
         """Keep only the newest small frame; capture is timer-driven and never uploads in the background."""
@@ -3712,6 +3767,7 @@ class MainWindow(QMainWindow):
         self._game_poll_timer.stop()
         self._game_capture_timer.stop()
         self._latest_game_frame = None
+        self._stop_game_audio_listener()
         self.game_mode.set_enabled(False)
         for name in ("worker", "_route_worker", "_bench_worker", "_scan_worker", "_provider_test_worker", "_ollama_worker"):
             w = getattr(self, name, None)
