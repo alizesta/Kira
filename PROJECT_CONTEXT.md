@@ -20,7 +20,7 @@ Ai1 is a Windows desktop anime-style digital companion. It combines local and cl
 - Story Mode is intended for offline/story games and permits the existing game-window Vision sampling plus local-only WASAPI game/system audio speech analysis.
 - Competitive Safe is the default/fail-closed profile for online/PvP and unknown games. It disables game-window capture, Vision attachments, system/game loopback audio, local desktop/app/file/MCP/agent control tools; it retains ordinary chat, independent microphone/wake-word interaction and web tools.
 - Game detection is advisory only. It cannot reliably infer online/offline/PvP status from process metadata, so it recommends the conservative profile and never selects or enables one automatically.
-- Both profiles prohibit overlays, game-process memory access, code injection, graphics hooks, gameplay input automation, game-file modification and game-driver installation.
+- Story Mode keeps the existing user-requested desktop controls available for offline play. Competitive Safe blocks those controls. Both profiles prohibit overlays, game-process memory access, code injection, graphics hooks, game-file modification and game-driver installation.
 - Switching from Story Mode to Competitive Safe immediately stops capture/audio listeners and clears the cached frame. Disabling Game Mode stops all game capture/audio and restores the previous microphone/wake settings.
 - The foreground-game detector is advisory only and polls the foreground Windows process/window.
 - A game process receives one suggestion per process ID during the current Ai1 session.

@@ -5,12 +5,12 @@ Ai1 is the application. Kira, Ren and Mika are character profiles within Ai1.
 
 ## Game Mode profiles
 
-- `story`: manual opt-in for offline/story games. Enables the existing game-window Vision sampling and local WASAPI loopback speech analysis. Existing desktop tools remain available.
+- `story`: manual opt-in for offline/story games. Enables the existing game-window Vision sampling and local WASAPI loopback speech analysis. Existing desktop tools, including explicitly requested keyboard/mouse/UI control, remain available for offline play.
 - `competitive_safe`: manual opt-in and fail-closed default for online/PvP or unknown games. Disables game-window capture, Vision attachment creation, system/game audio loopback, and local desktop/app/file/MCP/agent tools. Ordinary chat, web tools, the user's own microphone and local wake-word interaction remain available.
 - Profile permissions are centralized in `kira/game_mode_policy.py`; unknown profile values resolve to the restrictive capability set.
 - The Game Mode toolbar menu exposes Story Mode, Competitive Safe and Off. Detection only recommends a profile; it never chooses or enables one.
 - A central `ToolRegistry.execution_guard` enforces Competitive Safe restrictions for direct tool calls, confirmation flows and planned Agent tasks.
-- Both profiles prohibit overlays, game-process memory access, code injection, graphics API hooks, gameplay input automation, game-file modification and game-driver installation. Competitive Safe reduces interaction but cannot guarantee that every anti-cheat permits Ai1 to run.
+- Competitive Safe blocks gameplay input and local desktop-control tools. Both profiles prohibit overlays, game-process memory access, code injection, graphics API hooks, game-file modification and game-driver installation. Competitive Safe reduces interaction but cannot guarantee that every anti-cheat permits Ai1 to run.
 
 ## Game Mode and Vision
 

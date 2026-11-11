@@ -25,7 +25,7 @@ class GameModePolicyTests(unittest.TestCase):
         for profile in (STORY_MODE, COMPETITIVE_SAFE_MODE):
             permissions = game_mode_permissions(profile)
             for key in ("overlay", "process_memory_read", "process_memory_write",
-                        "code_injection", "graphics_api_hooks", "input_automation",
+                        "code_injection", "graphics_api_hooks",
                         "game_file_modification", "driver_installation"):
                 self.assertFalse(permissions[key], (profile, key))
 
@@ -44,6 +44,10 @@ class GameModePolicyTests(unittest.TestCase):
     def test_story_mode_retains_existing_tool_permissions(self):
         self.assertTrue(tool_categories_allowed(STORY_MODE, ("desktop",)))
         self.assertTrue(tool_categories_allowed(STORY_MODE, ("apps",)))
+
+    def test_input_automation_is_profile_specific(self):
+        self.assertTrue(game_mode_permissions(STORY_MODE)["input_automation"])
+        self.assertFalse(game_mode_permissions(COMPETITIVE_SAFE_MODE)["input_automation"])
 
 
 if __name__ == "__main__":

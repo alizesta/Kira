@@ -7,7 +7,7 @@
 - Competitive Safe disables game-window Vision/capture, game/system WASAPI loopback and local desktop/app/file/MCP/agent control tools. It retains ordinary chat, web tools and independent microphone/wake-word interaction.
 - Added a central ToolRegistry execution guard so restrictions also apply to direct tool calls, confirmations and Agent tasks.
 - Unknown profiles fail closed to Competitive Safe; detection only recommends and never auto-enables a profile.
-- Both profiles keep code injection, game memory access, graphics hooks, gameplay input automation, overlays, game-file modification and driver installation disabled.
+- Story Mode retains existing user-requested desktop controls for offline play; Competitive Safe blocks desktop controls and gameplay input. Both profiles keep code injection, game memory access, graphics hooks, overlays, game-file modification and driver installation disabled.
 - Added pure-Python regression tests for profile capabilities and tool-category restrictions.
 
 ### Game Mode audio and wake update

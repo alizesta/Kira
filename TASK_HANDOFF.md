@@ -12,7 +12,7 @@ Implement dual Game Mode profiles with different capability and tool permissions
 - Competitive Safe disables game-window capture, Vision attachments and WASAPI game/system loopback. It also blocks local desktop/app/file/MCP/agent tools through a central ToolRegistry execution guard.
 - Competitive Safe retains ordinary chat, web research and the user's independent microphone/wake-word interaction.
 - Unknown game types/profiles fail closed to Competitive Safe. Detection recommends but never selects or enables a profile.
-- Both modes prohibit game-memory access, injection, graphics hooks, gameplay input automation, overlays, game-file changes and driver installation.
+- Story Mode retains existing explicitly requested desktop controls for offline play. Competitive Safe blocks desktop input and other local control tools. Both modes prohibit game-memory access, code injection, graphics hooks, overlays, game-file changes and driver installation.
 - Added `kira/game_mode.py` for Windows foreground process/window detection and guarded capture.
 - Added a 🎮 toggle to the chat toolbar.
 - Game detection adds a suggestion to chat and optionally the system tray; it does not activate Game Mode.
