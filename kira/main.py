@@ -1324,18 +1324,18 @@ class MainWindow(QMainWindow):
 
     def refresh_character_card(self, character_id=None):
         profile = characters.all_profiles(self.settings).get(character_id or characters.active_id(self.settings), characters.CHARACTERS["kira"])
-        image_path = ROOT / profile.get("image", "assets/characters/kira.jpg.b64")
+        image_name = str(profile.get("image") or "").strip()
         pixmap = QPixmap()
-        try:
-            if image_path.suffix == ".b64":
-                image_bytes = base64.b64decode(image_path.read_text(encoding="ascii").strip(), validate=True)
-                pixmap.loadFromData(image_bytes)
-            else:
-                pixmap.load(str(image_path))
-        except (OSError, ValueError):
-            pixmap = QPixmap()
-        if pixmap.isNull():
-            pixmap.load(str(ROOT / "assets" / "characters" / "ren.svg"))
+        if image_name:
+            image_path = ROOT / image_name
+            try:
+                if image_path.suffix == ".b64":
+                    image_bytes = base64.b64decode(image_path.read_text(encoding="ascii").strip(), validate=True)
+                    pixmap.loadFromData(image_bytes)
+                else:
+                    pixmap.load(str(image_path))
+            except (OSError, ValueError):
+                pixmap = QPixmap()
         self.character_portrait.setPixmap(pixmap)
         self.character_description.setText(profile.get("description", ""))
 
