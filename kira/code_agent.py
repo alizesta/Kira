@@ -163,6 +163,8 @@ Never request or reproduce API keys, passwords, tokens, private keys or other se
 
     def propose_replacement(self, request: str, project_context: str, on_chunk=None) -> str:
         """Ask for a full replacement of the selected file; caller must preview and approve it."""
+        if "[REDACTED]" in str(project_context or ""):
+            raise ValueError("این فایل شامل مقدار محرمانه‌ی ماسک‌شده است؛ برای جلوگیری از حذف یا خراب‌شدن کلیدها، پیشنهاد Patch برای آن مسدود شد.")
         prompt = (
             "TASK: Propose an edit to the selected project file.\n"
             "Return the COMPLETE replacement content of that one selected file, not a diff.\n"
