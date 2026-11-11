@@ -174,7 +174,6 @@ function applyFrame() {
     }
   }
 }
-}
 
 function resize() {
   if (!renderer) return;
