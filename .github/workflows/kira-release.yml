@@ -11,6 +11,7 @@ on:
       - "tests/test_game_mode.py"
       - "tests/test_game_detection.py"
       - "tests/test_native_function_calling.py"
+      - "tests/test_storage.py"
       - "kira/game_mode_policy.py"
       - "tests/test_game_mode_policy.py"
       - "tests/test_streaming.py"

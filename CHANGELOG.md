@@ -125,3 +125,9 @@
 - Added Gemini pagination regression coverage for the official model-list API, including filtering non-chat models and verifying the API key remains in the header.
 - Strengthened Google provider registration coverage to verify all discovered models remain visible while only the selected default model is activated as a Route.
 - Extended Route Manager source-level tests to cover asynchronous refresh, registry merge and model enable/disable wiring.
+
+
+### User-memory migration and backup hardening
+- Include `kira_persona_memory.json` and `kira_evidence.sqlite3` in legacy-data detection and per-file migration.
+- Include persona memory in rolling backups; keep evidence memory backed up through SQLite's online-backup API.
+- Add tests proving the external Windows data directory/override, non-destructive migration, and backup restoration data coverage.

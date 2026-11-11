@@ -14,6 +14,7 @@ from pathlib import Path
 SETTINGS_NAME = "settings.json"
 DB_NAME = "kira_memory.sqlite3"
 EVIDENCE_DB_NAME = "kira_evidence.sqlite3"            # facts with provenance (kira/evidence_memory.py); an index that can also be rebuilt from the chat
+PERSONA_MEMORY_NAME = "kira_persona_memory.json"      # local voice/fact/moment/digest memory
 CLOUD_VOICE_NAME = "cloud_voice.json"                     # Cloud Voice keys + settings (kept outside the program folder, like settings.json)
 MARKER = "migrated_from.txt"
 
@@ -29,7 +30,7 @@ def default_data_dir(root: Path) -> Path:
 
 
 def has_user_data(folder: Path) -> bool:
-    return any((folder / n).is_file() for n in (SETTINGS_NAME, DB_NAME, CLOUD_VOICE_NAME))
+    return any((folder / n).is_file() for n in (SETTINGS_NAME, DB_NAME, EVIDENCE_DB_NAME, PERSONA_MEMORY_NAME, CLOUD_VOICE_NAME))
 
 
 def legacy_candidates(root: Path):
@@ -57,7 +58,7 @@ def migrate_legacy(new_dir: Path, candidates) -> str | None:
     new_dir.mkdir(parents=True, exist_ok=True)
     if (new_dir / MARKER).exists():
         return None
-    missing = [name for name in (SETTINGS_NAME, DB_NAME, CLOUD_VOICE_NAME) if not (new_dir / name).is_file()]
+    missing = [name for name in (SETTINGS_NAME, DB_NAME, EVIDENCE_DB_NAME, PERSONA_MEMORY_NAME, CLOUD_VOICE_NAME) if not (new_dir / name).is_file()]
     if not missing:
         return None
     for source in candidates:
@@ -89,8 +90,9 @@ def backup_user_data(data_dir: Path, keep: int = 7, min_age_hours: float = 12.0)
     target.mkdir()
     if (data_dir / SETTINGS_NAME).is_file():
         shutil.copy2(data_dir / SETTINGS_NAME, target / SETTINGS_NAME)
-    if (data_dir / CLOUD_VOICE_NAME).is_file():
-        shutil.copy2(data_dir / CLOUD_VOICE_NAME, target / CLOUD_VOICE_NAME)
+    for name in (CLOUD_VOICE_NAME, PERSONA_MEMORY_NAME):
+        if (data_dir / name).is_file():
+            shutil.copy2(data_dir / name, target / name)
     for db_name in (DB_NAME, EVIDENCE_DB_NAME):
         if (data_dir / db_name).is_file():
             src = sqlite3.connect(data_dir / db_name)

@@ -113,3 +113,9 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 - Google uses the official `/v1beta/models` endpoint with API key in the header and pagination; only chat-capable Gemini models are retained. Gemini capability values not explicitly reported by the listing API remain Unknown.
 - The Route UI runs discovery asynchronously, merges new/unavailable models into the registry without silently deleting routes, and creates/enables a Route only when the user selects a model (apart from the provider's selected default).
 - Added regression coverage for multi-page Gemini discovery, filtering non-chat models, key handling, registration and Route Manager refresh/toggle wiring.
+
+
+## Stage 4: User-memory durability
+- Settings, chat history, persona memory JSON and evidence-backed SQLite memory live under the external user-data directory (Windows: `%LOCALAPPDATA%\\Kira`; `KIRA_DATA_DIR` is the test/override path).
+- Legacy migration now copies persona memory and the evidence database as well as settings/chat/Cloud Voice data, without overwriting files already present in the destination or deleting the source.
+- Rolling backups now include the persona memory JSON and evidence database. Added tests for data-directory resolution, legacy migration and backup coverage.

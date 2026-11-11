@@ -90,3 +90,9 @@ Character specialization and generated portraits. The implementation is complete
 - Registration keeps every discovered model in API Details while activating only the provider default; additional models require explicit selection. Refresh marks vanished models unavailable but preserves their existing Routes.
 - UI refresh is asynchronous and routes are created/disabled through the API Manager. Added source regression assertions for refresh and model toggle wiring.
 - Gemini capability fields not exposed by the model-list API stay Unknown rather than being guessed.
+
+
+## Stage 4: Persistent user-memory durability
+- The app already stores settings and chat history outside the install folder. This stage closes a migration/backup gap: persona-memory JSON was not included in legacy migration or rolling backups, and evidence DB was backed up but not included in legacy migration detection/copy.
+- `kira/storage.py` now detects, migrates and backs up persona memory and evidence-backed SQLite memory, preserving existing destination files and never deleting old source data.
+- Added `tests/test_storage.py` for Windows data-directory resolution, explicit override, non-destructive legacy migration and rolling backup content.
