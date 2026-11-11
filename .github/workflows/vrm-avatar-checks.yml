@@ -30,6 +30,7 @@ on:
       - "tests/test_vrm_metadata.py"
       - "tests/test_vrm_assets.py"
       - "docs/VRM_AVATAR_FA.md"
+      - "scripts/build_stage3_release.py"
       - "README.md"
       - ".github/workflows/vrm-avatar-checks.yml"
 
@@ -101,7 +102,7 @@ jobs:
                       continue
                   archive.write(path, relative.as_posix())
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_file:
-              output_file.write(f"archive_name={name}\\n")
+              output_file.write(f"archive_name={name}\n")
           print(f"Created {output} ({output.stat().st_size:,} bytes)")
           PY
       - name: Upload complete source ZIP
