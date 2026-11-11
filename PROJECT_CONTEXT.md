@@ -21,7 +21,9 @@ Ai1 is a Windows desktop anime-style digital companion. It combines local and cl
 - Game Mode starts disabled on every application launch and is enabled only by the user's explicit toggle.
 - Screen capture is prohibited while Game Mode is off. The capture timer runs only while the user has manually enabled Game Mode and is stopped immediately when disabled.
 - While enabled, the most recently detected game window is sampled once per second. Frames are downscaled to fit within 854×480 (aspect ratio preserved) and held in memory; only the newest JPEG frame is attached when the user sends a chat message. No frames are uploaded continuously.
-- Disabling Game Mode immediately disables further capture. It does not terminate the game or change its settings.
+- While Game Mode is active, the default Windows WASAPI output (game + system audio) is listened to in memory. Speech segments are transcribed with local faster-whisper only; game audio is not sent to cloud STT and is not saved to disk. A conservative keyword filter keeps ordinary dialogue silent and allows only selected critical/mission/combat alerts.
+- Game Mode temporarily enables the existing microphone wake-word listener. Kira stays asleep until the user says her wake name; unrelated microphone speech is ignored. Previous microphone/wake settings are restored when Game Mode is turned off.
+- Disabling Game Mode immediately stops image and audio capture and restores the previous microphone/wake state. It does not terminate the game or change its settings.
 - Detection uses process/window metadata and a conservative title/process/fullscreen heuristic; it is not guaranteed to identify every game.
 - Vision requests require a vision-capable model on the selected Route. Text-only models may reject image payloads; the existing provider error path explains this limitation.
 
@@ -29,7 +31,8 @@ Ai1 is a Windows desktop anime-style digital companion. It combines local and cl
 - `kira/voice.py`: sentence-level speech queue, pre-generation and playback.
 - `kira/cloud_voice.py`: cloud STT/TTS provider registry, key storage, validation, priorities, cooldowns and failover.
 - `kira/cloud_voice_ui.py`: Cloud Voice settings UI.
-- `kira/listener.py`: microphone/STT input pipeline.
+- `kira/listener.py`: microphone/STT input pipeline and wake-word handling.
+- `kira/game_audio.py`: Windows WASAPI loopback capture and local-only game speech transcription/important-event filtering.
 - Cloud Voice settings and protected API keys are stored outside the application folder.
 
 ## Active work
