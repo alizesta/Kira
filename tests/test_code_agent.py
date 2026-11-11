@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from kira.code_agent import build_project_context, project_tree, safe_project_file
+from kira.code_agent import (build_project_context, project_tree, safe_project_file,\n                              extract_replacement, PATCH_START, PATCH_END)
 
 
 class CodeAgentContextTests(unittest.TestCase):
@@ -69,6 +69,18 @@ class CodeAgentContextTests(unittest.TestCase):
                 self.skipTest("symlink unavailable")
             with self.assertRaises(ValueError):
                 safe_project_file(root, link)
+
+
+    def test_extract_replacement_requires_exact_markers(self):
+        source = "print('hello')\\n"
+        response = "proposal\\n" + PATCH_START + "\\n" + source + PATCH_END
+        self.assertEqual(extract_replacement(response), source)
+
+    def test_extract_replacement_rejects_missing_or_empty_content(self):
+        with self.assertRaises(ValueError):
+            extract_replacement("just an explanation")
+        with self.assertRaises(ValueError):
+            extract_replacement(PATCH_START + PATCH_END)
 
 
 if __name__ == "__main__":
