@@ -41,6 +41,18 @@ class GameModeMonitor(QObject):
         self._seen_pids = set()
         self._user32 = ctypes.windll.user32 if os.name == "nt" else None
         self._kernel32 = ctypes.windll.kernel32 if os.name == "nt" else None
+        if self._user32 is not None:
+            self._user32.GetForegroundWindow.restype = wintypes.HWND
+            self._user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+            self._user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+            self._user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+            self._user32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+            self._user32.IsWindow.argtypes = [wintypes.HWND]
+            self._kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+            self._kernel32.OpenProcess.restype = wintypes.HANDLE
+            self._kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR,
+                                                                   ctypes.POINTER(wintypes.DWORD)]
+            self._kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
 
     def _foreground_info(self):
         if self._user32 is None:
@@ -105,6 +117,11 @@ class GameModeMonitor(QObject):
             return None
         hwnd = int(self.last_game["hwnd"])
         if not self._user32.IsWindow(hwnd):
+            self.last_game = None
+            return None
+        current_pid = wintypes.DWORD()
+        self._user32.GetWindowThreadProcessId(hwnd, ctypes.byref(current_pid))
+        if int(current_pid.value) != int(self.last_game.get("pid", -1)):
             self.last_game = None
             return None
         screen = QApplication.primaryScreen()
