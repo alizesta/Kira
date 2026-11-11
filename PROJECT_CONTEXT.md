@@ -83,3 +83,7 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 - Before applying, the workspace verifies that the on-disk file and editor base content have not changed since proposal generation; stale proposals are rejected.
 - Approved changes use the existing one-time `.ai1code.bak` backup and an atomic temporary-file replacement.
 - This phase does not add multi-file patches, automatic test execution, a debugger, or Git controls. GUI/PowerShell runtime still requires validation on Windows 11.
+
+
+## Game detector self-exclusion
+- The foreground detector must ignore Ai1's own process ID before applying title hints or large-window heuristics. Ai1's main/companion windows share the same process and must never trigger a game suggestion.
