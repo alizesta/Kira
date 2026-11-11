@@ -1,0 +1,39 @@
+name: VRM Avatar Backend Checks
+
+on:
+  push:
+    branches: [feature/vrm-avatar-support]
+    paths:
+      - "kira/vrm/**"
+      - "kira/face.py"
+      - "kira/main.py"
+      - "kira/characters/registry.py"
+      - "tests/test_vrm_metadata.py"
+      - ".github/workflows/vrm-avatar-checks.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "kira/vrm/**"
+      - "kira/face.py"
+      - "kira/main.py"
+      - "kira/characters/registry.py"
+      - "tests/test_vrm_metadata.py"
+      - ".github/workflows/vrm-avatar-checks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  metadata-and-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile VRM integration
+        run: python -m compileall -q kira/vrm kira/face.py kira/main.py kira/characters/registry.py
+      - name: Run VRM metadata and profile tests
+        run: python -m unittest tests.test_vrm_metadata
