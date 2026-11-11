@@ -134,3 +134,5 @@ Cloud Voice settings are written atomically outside the application installation
 - The Windows default remains `%LOCALAPPDATA%\\Kira`; `KIRA_DATA_DIR` remains an explicit override.
 
 - The release workflow file itself is included in its path filters; workflow and permission changes therefore trigger validation.
+
+- The release workflow has one top-level `permissions: contents: write` declaration, required by the GitHub Release action. Avoid duplicate YAML permission keys.

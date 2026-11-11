@@ -100,3 +100,5 @@ Character specialization and generated portraits. The implementation is complete
 - The first Stage 4 workflow run passed Windows and portable tests but the GitHub Release action returned 403 because the workflow did not explicitly declare `contents: write`. The workflow now grants that minimum release permission; rerun and verify the published asset before treating Stage 4 as delivered.
 
 - Added the workflow YAML itself to the path filter so workflow permission/gate edits trigger CI. Added coverage for legacy folders containing only persona or evidence memory.
+
+- The permission fix initially duplicated the existing `permissions` YAML key, causing GitHub to reject the workflow before jobs were created. The workflow now retains exactly one `permissions: contents: write` block; the next push must prove Windows tests, storage tests and release publishing all run.

@@ -121,3 +121,5 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 - Rolling backups now include the persona memory JSON and evidence database. Added tests for data-directory resolution, legacy migration and backup coverage.
 
 - The release workflow now includes its own YAML file in the push path filter, so changes to release gates and permissions are validated by a fresh run rather than silently skipping the job.
+
+- Release workflow permission is declared once at the top level (`contents: write`); the duplicate declaration introduced during the first permission fix was removed after GitHub rejected the workflow before creating jobs.

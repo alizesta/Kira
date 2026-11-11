@@ -135,3 +135,5 @@
 - Explicitly grant the release workflow `contents: write` so the GitHub Release action has the permission required to publish ZIP assets.
 
 - Include the release workflow YAML in its own path filter and test that persona/evidence-only legacy folders are recognized as user data.
+
+- Remove the duplicate top-level workflow permissions key; retain one explicit `contents: write` permission for release publishing.
