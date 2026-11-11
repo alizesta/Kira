@@ -1,4 +1,6 @@
+import base64
 import unittest
+from pathlib import Path
 
 from kira import characters
 
@@ -20,6 +22,14 @@ class CharacterProfilesTests(unittest.TestCase):
         self.assertIn("same intelligence", mika["prompt"])
         self.assertIn("medical-information guide", mika["specialty_prompt"])
         self.assertIn("news and intelligence analysis", ren["specialty_prompt"])
+
+    def test_builtin_portraits_are_valid_embedded_jpegs(self):
+        root = Path(__file__).resolve().parents[1]
+        for profile in characters.CHARACTERS.values():
+            asset = root / profile["image"]
+            self.assertTrue(asset.is_file(), str(asset))
+            image_bytes = base64.b64decode(asset.read_text(encoding="ascii").strip(), validate=True)
+            self.assertTrue(image_bytes.startswith(b"\xff\xd8"), profile["id"])
 
     def test_unknown_profile_falls_back_to_kira(self):
         self.assertEqual(characters.active_id({"active_character_id": "missing"}), "kira")
