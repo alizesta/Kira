@@ -478,6 +478,7 @@ class MainWindow(QMainWindow):
         self.client = HybridRouter(self.settings)
         self.game_mode = GameModeMonitor(self)
         self._game_mode_enabled = False
+        self._latest_game_frame = None
         self.tool_agent = ToolAgent(self.settings, DATA_DIR, ROOT)      # Computer Awareness + Unified Tool System (kira/tools)
         usage.install(self.settings)                                    # usage ledger + limits (kira/usage.py); never blocks start-up
         evidence_memory.configure(self.settings)                        # facts with provenance (kira/evidence_memory.py); never blocks start-up
@@ -513,6 +514,9 @@ class MainWindow(QMainWindow):
         self._game_poll_timer.setInterval(2500)
         self._game_poll_timer.timeout.connect(self.game_mode.poll)
         self._game_poll_timer.start()
+        self._game_capture_timer = QTimer(self)
+        self._game_capture_timer.setInterval(1000)
+        self._game_capture_timer.timeout.connect(self._capture_game_frame)
         self.game_mode.game_detected.connect(self.on_game_detected)
         self.resize(900, 720)
         self.setMinimumSize(520, 540)
@@ -2770,13 +2774,29 @@ class MainWindow(QMainWindow):
     def set_game_mode(self, enabled):
         self._game_mode_enabled = bool(enabled)
         self.game_mode.set_enabled(self._game_mode_enabled)
-        self.game_mode_btn.setToolTip("Game Mode روشن است؛ تصویر پنجره بازی همراه پیام بعدی ارسال می‌شود" if enabled
+        if self._game_mode_enabled:
+            self._capture_game_frame()
+            self._game_capture_timer.start()
+        else:
+            self._game_capture_timer.stop()
+            self._latest_game_frame = None
+        self.game_mode_btn.setToolTip("Game Mode روشن است؛ تصویر 480p هر ۱ ثانیه ثبت و همراه پیام ارسال می‌شود" if enabled
                                       else "Game Mode خاموش است؛ هیچ تصویری از بازی گرفته نمی‌شود")
-        self.add_chat("system", "🎮 Game Mode فعال شد. تصویر پنجره بازی فقط همراه پیام‌های بعدی ارسال می‌شود."
+        self.add_chat("system", "🎮 Game Mode فعال شد. تصویر بازی با کیفیت 480p و نرخ ۱ فریم در ثانیه ثبت می‌شود؛ آخرین فریم همراه پیام ارسال خواهد شد."
                       if enabled else "Game Mode خاموش شد؛ دریافت تصویر بازی متوقف شد.")
 
+    def _capture_game_frame(self):
+        """Keep only the newest small frame; capture is timer-driven and never uploads in the background."""
+        if not self._game_mode_enabled:
+            self._latest_game_frame = None
+            return
+        pixmap = self.game_mode.capture_last_game()
+        self._latest_game_frame = pixmap.toImage() if pixmap is not None else None
+
     def on_game_detected(self, info):
-        """Suggest Game Mode once per detected process. Detection never enables it."""
+        """Suggest Game Mode once per detected process, unless the user already enabled it."""
+        if self._game_mode_enabled:
+            return
         name = info.get("title") or info.get("exe") or "بازی"
         note = f"🎮 به نظر می‌رسد «{name[:90]}» اجرا شده. اگر برای بازی به کمک نیاز داری، Game Mode را از دکمه 🎮 فعال کن."
         self.add_chat("system", note)
@@ -2786,21 +2806,18 @@ class MainWindow(QMainWindow):
                              QSystemTrayIcon.Information, 7000)
 
     def _game_vision_attachment(self):
-        """Capture the last detected game window only after the user manually enables Game Mode."""
-        if not self._game_mode_enabled:
-            return None
-        pixmap = self.game_mode.capture_last_game()
-        if pixmap is None:
+        """Attach only the newest 480p JPEG frame captured while Game Mode is manually enabled."""
+        if not self._game_mode_enabled or self._latest_game_frame is None:
             return None
         try:
             from PySide6.QtCore import QBuffer, QByteArray, QIODevice
             data = QByteArray()
             buffer = QBuffer(data)
-            if not buffer.open(QIODevice.WriteOnly) or not pixmap.save(buffer, "PNG"):
+            if not buffer.open(QIODevice.WriteOnly) or not self._latest_game_frame.save(buffer, "JPEG", 68):
                 return None
-            return att.image_attachment(bytes(data), "game-screen.png", "image/png")
+            return att.image_attachment(bytes(data), "game-screen.jpg", "image/jpeg")
         except Exception as exc:  # noqa: BLE001 - a failed capture must not block ordinary chat
-            self.add_chat("system", f"تصویر بازی گرفته نشد: {exc}")
+            self.add_chat("system", f"تصویر بازی آماده نشد: {exc}")
             return None
 
     def send_message(self):
@@ -3693,6 +3710,8 @@ class MainWindow(QMainWindow):
         self.client.cancel()
         self._stream_timer.stop()
         self._game_poll_timer.stop()
+        self._game_capture_timer.stop()
+        self._latest_game_frame = None
         self.game_mode.set_enabled(False)
         for name in ("worker", "_route_worker", "_bench_worker", "_scan_worker", "_provider_test_worker", "_ollama_worker"):
             w = getattr(self, name, None)
