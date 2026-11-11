@@ -2821,7 +2821,7 @@ class MainWindow(QMainWindow):
             self.add_chat("system", "🎧 " + message)
 
     def on_game_audio_transcript(self, text):
-        if not self._game_mode_enabled or self.busy or not is_important_game_audio(text):
+        if not self._game_mode_enabled or self.busy or self.speaker._began or not is_important_game_audio(text):
             return
         now = time.monotonic()
         lower = text.casefold()
