@@ -73,3 +73,11 @@ Cloud Voice settings are written atomically outside the application installation
 - `kira/code_agent.py` is the provider-neutral read-only coding engine. It uses the shared configured HybridRouter routes but does not inherit any companion character prompt and has no ToolAgent / MCP / desktop tools.
 - Project context construction is bounded, skips secret files and runtime/build/dependency directories, rejects symlinks/path escapes, and includes only the selected text file plus a bounded tree.
 - Code Agent cannot write files or run tests in this initial version. Future patch generation must show a diff and require explicit approval before writing. Debugger, breakpoints, Git UI and test orchestration remain future work.
+
+
+### Ai1 Code: proposal, Diff and approval flow
+- The Code Agent may return a complete replacement for only the selected file, wrapped in exact protocol markers. The engine validates markers, non-empty content and the 512 KiB proposal ceiling; malformed output is rejected.
+- `CodeWorkspaceDialog` renders a unified Diff in a read-only preview dialog. The user must choose the explicit apply action; closing/rejecting the preview leaves the file untouched.
+- Apply re-validates the selected path, compares current disk bytes with the snapshot taken when the file was opened, and compares editor text with the base text used for the proposal. Any stale state aborts the write.
+- Approved content is limited to 2 MiB, backed up once as `.ai1code.bak`, written to a temporary sibling file and atomically replaced. The editor and disk snapshot are refreshed only after success.
+- This is a single-file replacement workflow, not a general multi-file patch engine. The Agent itself still has no filesystem or shell write capability.
