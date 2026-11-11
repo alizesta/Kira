@@ -1,7 +1,7 @@
 # Task Handoff
 
 ## Current task
-Ai1 Code phase 2: validate the single-file proposal/Diff/approval workflow, then perform Windows 11 UI and PowerShell debugging.
+Character specialization and generated portraits. The implementation is complete in source; verify the new portraits and role prompts in the Windows 11 UI. The earlier Ai1 Code phase 2 Windows validation remains outstanding.
 
 ## Branch
 `feature/characters-ren-mika`
@@ -30,3 +30,12 @@ Ai1 Code phase 2: validate the single-file proposal/Diff/approval workflow, then
 - Debugger and breakpoints.
 - Git status/diff/commit controls.
 - Windows runtime debugging based on the user's actual machine logs.
+
+
+## Character specialization update
+- Kira has a coding/software-development specialty prompt and directs project-file workflows to Ai1 Code without claiming tests or edits that did not happen.
+- Mika specializes in medical information and health education with explicit no-diagnosis/no-prescribing boundaries, emergency escalation and health-data privacy.
+- Ren specializes in current news and intelligence analysis with date checks, independent-source comparison and fact/claim/opinion separation.
+- Character specialties do not alter shared model routes, tools, permissions or safety policy.
+- Replaced built-in SVG placeholder portraits with generated anime JPEG portraits stored as base64 text assets under `assets/characters/`; the native Qt Characters tab decodes them for display.
+- Portable regression tests cover the specialty prompts. Windows GUI image rendering still needs a user-side check.
