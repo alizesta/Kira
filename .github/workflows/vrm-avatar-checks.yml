@@ -14,6 +14,7 @@ on:
       - "tests/test_vrm_metadata.py"
       - "tests/test_vrm_assets.py"
       - "docs/VRM_AVATAR_FA.md"
+      - "scripts/build_stage3_release.py"
       - "README.md"
       - ".github/workflows/vrm-avatar-checks.yml"
   pull_request:
@@ -66,6 +67,48 @@ jobs:
           git commit -m "Build bundled offline VRM viewer [skip ci]"
           git push
       - name: Compile VRM integration
-        run: python -m compileall -q kira/vrm kira/face.py kira/main.py kira/characters/registry.py kira/characters/kira.py
+        run: python -m compileall -q kira/vrm kira/face.py kira/main.py kira/characters/registry.py kira/characters/kira.py scripts/build_stage3_release.py
       - name: Run VRM metadata and profile tests
         run: python -m unittest tests.test_vrm_metadata tests.test_vrm_assets
+      - name: Package complete source ZIP
+        if: github.event_name == 'push'
+        id: package
+        run: |
+          python - <<'PY'
+          from datetime import datetime
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          from zoneinfo import ZoneInfo
+          import os
+
+          excluded_dirs = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "node_modules", "logs", "dist"}
+          excluded_names = {".env", "secrets.json", "api_keys.json", "settings.local.json", "user_settings.json"}
+          excluded_suffixes = {".pyc", ".pyo", ".log", ".db", ".sqlite", ".sqlite3", ".key", ".pem", ".p12", ".pfx", ".zip", ".7z", ".rar"}
+          stamp = datetime.now(ZoneInfo("Asia/Tehran")).strftime("%y%m%d_%H%M")
+          name = f"ProjectKira_{stamp}.zip"
+          output = Path("dist") / name
+          output.parent.mkdir(parents=True, exist_ok=True)
+          with ZipFile(output, "w", ZIP_DEFLATED, compresslevel=7) as archive:
+              for path in Path(".").rglob("*"):
+                  if not path.is_file():
+                      continue
+                  relative = path.relative_to(".")
+                  if any(part in excluded_dirs for part in relative.parts):
+                      continue
+                  if path.name.lower() in excluded_names or path.suffix.lower() in excluded_suffixes:
+                      continue
+                  if path.name.lower().startswith(".env.") and path.name.lower() != ".env.example":
+                      continue
+                  archive.write(path, relative.as_posix())
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output_file:
+              output_file.write(f"archive_name={name}\\n")
+          print(f"Created {output} ({output.stat().st_size:,} bytes)")
+          PY
+      - name: Upload complete source ZIP
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.archive_name }}
+          path: dist/${{ steps.package.outputs.archive_name }}
+          if-no-files-found: error
+          retention-days: 14
