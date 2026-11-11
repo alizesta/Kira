@@ -4,7 +4,7 @@ from pathlib import Path
 
 from kira.code_agent import (
     build_project_context, project_tree, safe_project_file,
-    extract_replacement, PATCH_START, PATCH_END,
+    extract_replacement, PATCH_START, PATCH_END, CodeAgentEngine,
 )
 
 
@@ -84,6 +84,15 @@ class CodeAgentContextTests(unittest.TestCase):
             extract_replacement("just an explanation")
         with self.assertRaises(ValueError):
             extract_replacement(PATCH_START + PATCH_END)
+
+
+    def test_patch_proposal_is_blocked_when_context_contains_redacted_secret(self):
+        class NoCallRouter:
+            def chat_stream(self, *args, **kwargs):
+                raise AssertionError("router must not receive secret-bearing patch context")
+        engine = CodeAgentEngine(NoCallRouter())
+        with self.assertRaises(ValueError):
+            engine.propose_replacement("edit config", "[REDACTED]")
 
 
 if __name__ == "__main__":
