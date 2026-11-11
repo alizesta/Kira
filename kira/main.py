@@ -910,13 +910,13 @@ class MainWindow(QMainWindow):
         self.game_mode_menu = QMenu(self.game_mode_btn)
         self.game_mode_story_action = QAction("Story Mode · آفلاین و داستانی", self.game_mode_menu)
         self.game_mode_story_action.setCheckable(True)
-        self.game_mode_story_action.triggered.connect(lambda: self.set_game_mode_profile(STORY_MODE))
+        self.game_mode_story_action.triggered.connect(lambda checked=False: self.set_game_mode_profile(STORY_MODE))
         self.game_mode_safe_action = QAction("Competitive Safe · آنلاین و PvP", self.game_mode_menu)
         self.game_mode_safe_action.setCheckable(True)
         self.game_mode_safe_action.setChecked(True)
-        self.game_mode_safe_action.triggered.connect(lambda: self.set_game_mode_profile(COMPETITIVE_SAFE_MODE))
+        self.game_mode_safe_action.triggered.connect(lambda checked=False: self.set_game_mode_profile(COMPETITIVE_SAFE_MODE))
         self.game_mode_off_action = QAction("خاموش‌کردن Game Mode", self.game_mode_menu)
-        self.game_mode_off_action.triggered.connect(lambda: self.set_game_mode(False))
+        self.game_mode_off_action.triggered.connect(lambda checked=False: self.set_game_mode(False))
         self.game_mode_menu.addAction(self.game_mode_story_action)
         self.game_mode_menu.addAction(self.game_mode_safe_action)
         self.game_mode_menu.addSeparator()
@@ -2810,7 +2810,13 @@ class MainWindow(QMainWindow):
 
         # Capture is gated by the selected profile, not only by the master toggle.
         self.game_mode.set_enabled(enabled and vision_allowed)
-        self.tool_agent.set_competitive_safe_mode(enabled and self._game_mode_profile == COMPETITIVE_SAFE_MODE)
+        safe_profile = enabled and self._game_mode_profile == COMPETITIVE_SAFE_MODE
+        self.tool_agent.set_competitive_safe_mode(safe_profile)
+        # Safe mode does not keep polling foreground process metadata while an online game is running.
+        if safe_profile:
+            self._game_poll_timer.stop()
+        elif not self._game_poll_timer.isActive():
+            self._game_poll_timer.start()
 
         if enabled:
             if not was_enabled:

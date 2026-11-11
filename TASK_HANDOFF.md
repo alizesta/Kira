@@ -9,7 +9,7 @@ Implement dual Game Mode profiles with different capability and tool permissions
 ## Implemented
 - Added a toolbar menu with Story Mode, Competitive Safe and Off. Profile selection is always manual.
 - Story Mode enables existing game-window Vision capture and local-only game/system audio speech analysis.
-- Competitive Safe disables game-window capture, Vision attachments and WASAPI game/system loopback. It also blocks local desktop/app/file/MCP/agent tools through a central ToolRegistry execution guard.
+- Competitive Safe disables game-window capture, Vision attachments, WASAPI game/system loopback and foreground-process polling. It also blocks local desktop/app/file/MCP/agent tools through a central ToolRegistry execution guard.
 - Competitive Safe retains ordinary chat, web research and the user's independent microphone/wake-word interaction.
 - Unknown game types/profiles fail closed to Competitive Safe. Detection recommends but never selects or enables a profile.
 - Story Mode retains existing explicitly requested desktop controls for offline play. Competitive Safe blocks desktop input and other local control tools. Both modes prohibit game-memory access, code injection, graphics hooks, overlays, game-file changes and driver installation.
