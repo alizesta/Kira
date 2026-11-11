@@ -120,6 +120,8 @@ function clamp01(value) {
 }
 
 function applyFrame() {
+  // Drive VRM 1.0 preset expressions from the shared desktop animator state.
+  // Audio-level visemes are approximate; phoneme-aligned lip sync is a separate future upgrade.
   if (!vrm?.expressionManager) return;
   for (const name of moodExpressions) setExpression(name, 0);
   for (const name of mouthExpressions) setExpression(name, 0);
