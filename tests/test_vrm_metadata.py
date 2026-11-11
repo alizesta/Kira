@@ -105,5 +105,18 @@ class VrmMetadataTests(unittest.TestCase):
         self.assertEqual(selected["avatar_model_path"], r"C:\Users\Local\AppData\Kira\characters\kira\avatar.vrm")
 
 
+class CharacterAvatarPathPersistenceTests(unittest.TestCase):
+    def test_character_registry_persists_private_vrm_path_between_restarts(self):
+        from kira.characters import CharacterRegistry
+
+        with tempfile.TemporaryDirectory() as folder:
+            local_path = r"C:\Users\Example\AppData\Local\Kira\characters\kira\avatar.vrm"
+            registry = CharacterRegistry(folder)
+            registry.update("kira", avatar_model_path=local_path)
+
+            restarted = CharacterRegistry(folder)
+            self.assertEqual(restarted.get("kira")["avatar_model_path"], local_path)
+
+
 if __name__ == "__main__":
     unittest.main()
