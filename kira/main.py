@@ -1377,7 +1377,7 @@ class MainWindow(QMainWindow):
             f"نام: {info.title}\nنسخه: VRM {info.vrm_version}\n"
             f"استخوان‌های Humanoid: {len(info.humanoid_bones)}\n"
             f"Expressionها: {len(info.expressions)}\nSpring Bone: {info.spring_bone_groups} گروه\n\n"
-            f"مجوز ثبت‌شده در فایل (بدون تغییر):\\n{license_text}\\n\\n"
+            f"مجوز ثبت‌شده در فایل (بدون تغییر):\n{license_text}\n\n"
             "Ai1 فایل VRM را تغییر نمی‌دهد یا در نسخه عمومی کپی نمی‌کند؛ فقط مسیر محلی آن را ذخیره می‌کند."
         )
         if info.license_metadata.get("avatarPermission") == "onlyAuthor" or info.license_metadata.get("allowedUserName") == "OnlyAuthor":
