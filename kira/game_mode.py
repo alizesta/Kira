@@ -102,6 +102,10 @@ class GameModeMonitor(QObject):
         info = self._foreground_info()
         if not info:
             return
+        # Ai1's main and companion windows share this process. Exclude the
+        # current process before title hints or large-window heuristics.
+        if int(info.get("pid", -1)) == os.getpid():
+            return
         exe = info["exe"]
         title = info["title"]
         if not exe or exe in _NON_GAME or not title:
