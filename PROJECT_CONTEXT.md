@@ -64,6 +64,7 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 ## Ai1 Code phase 2
 - Code Agent can propose a complete replacement for the currently selected text file.
 - Proposed content is parsed only when the explicit Ai1 markers are present and the result is non-empty and within the file-size limit.
+- Patch proposals are blocked when the selected context contains redacted secrets, preventing masked credentials from being written back over real values.
 - The workspace shows a unified Diff preview. No file is written until the user explicitly approves the change.
 - Before applying, the workspace verifies that the on-disk file and editor base content have not changed since proposal generation; stale proposals are rejected.
 - Approved changes use the existing one-time `.ai1code.bak` backup and an atomic temporary-file replacement.
