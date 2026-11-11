@@ -76,6 +76,7 @@ jobs:
             The source archive uses the ProjectKira_YYMMDD_HHMM.zip format and Asia/Tehran local time.
             
             Portable regression tests and Python syntax checks passed before packaging. GUI and Windows-specific tests are intentionally excluded.
+            Game Mode includes local WASAPI loopback speech recognition; no game audio is sent to cloud STT.
           files: ${{ steps.package.outputs.asset }}
           fail_on_unmatched_files: true
           draft: false
