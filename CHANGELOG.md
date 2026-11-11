@@ -2,6 +2,13 @@
 
 ## 2026-11-11
 
+### Temporary portrait removal for release build
+- Removed Ren and Mika portrait assets and cleared their built-in image references until replacement portraits are ready.
+- Updated the character card to support an intentionally empty portrait without substituting another character's artwork.
+- Kept Kira's original SVG portrait unchanged.
+
+## 2026-11-11
+
 ### Game detector self-identification fix
 - Exclude Ai1's own process ID before game title hints and large-window heuristics.
 - Add a regression test using the `Project Kira 1 stable` window title and a full-screen window rectangle.
@@ -19,7 +26,7 @@
 - Defined Kira as the coding/software-development specialist, Mika as the medical-information guide, and Ren as the news and intelligence analyst.
 - Added scope-aware specialty prompts while keeping model routes, tools and permissions shared across characters.
 - Added medical safety boundaries: no definitive diagnosis or independent prescribing, emergency red flags, reputable evidence and privacy-aware handling of sensitive health details.
-- Restored Kira's original SVG portrait as her active profile image. Ren and Mika retain their separate generated JPEG portrait assets; JPEG decode warnings for those assets remain a separate issue to investigate.
+- Restored Kira's original SVG portrait as her active profile image. Removed the unfinished Ren and Mika portrait assets; their profile image fields are empty until replacement portraits are supplied.
 - Added regression coverage for each built-in character's specialty prompt.
 
 ### Ai1 Code workspace (initial foundation)
