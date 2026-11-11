@@ -1,0 +1,55 @@
+name: Publish uploaded Ai1 archive
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".release-trigger/1734.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-ai1-261111-1734
+  cancel-in-progress: false
+
+jobs:
+  inspect-patch-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download latest release archive for ChangeLog comparison
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist/previous
+          PREVIOUS_TAG="$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty')"
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "Comparing against release: $PREVIOUS_TAG"
+            gh release download "$PREVIOUS_TAG" --pattern "*.zip" --dir dist/previous || true
+          else
+            echo "No previous release archive found."
+          fi
+
+      - name: Validate uploaded ZIP and patch undocumented ChangeLog entries
+        run: python scripts/publish_uploaded_ai1_archive.py
+
+      - name: Publish Ai1 GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "ai1-261111_1734" \
+            "dist/ProjectKira_261111_1734.zip" \
+            "dist/SHA256SUMS.txt" \
+            --title "Ai1 Update 261111_1734" \
+            --notes-file "dist/release-notes.md" \
+            --target main \
+            --latest
