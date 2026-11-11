@@ -22,6 +22,7 @@ let frameState = { emotion: "neutral", blink: 0, mouth: 0, open: 0, speaking: 0,
 const baseBoneRotations = new Map();
 const moodExpressions = ["happy", "sad", "angry", "surprised", "relaxed", "neutral"];
 const mouthExpressions = ["aa", "ih", "ou", "ee", "oh"];
+const gazeExpressions = ["lookUp", "lookDown", "lookLeft", "lookRight"];
 const expressionNames = new Set();
 
 function reportError(message) {
@@ -114,37 +115,65 @@ function updateBones() {
   if (root) root.rotation.y = yaw + Math.sin(t * 0.22) * 0.012;
 }
 
+function clamp01(value) {
+  return THREE.MathUtils.clamp(Number(value) || 0, 0, 1);
+}
+
 function applyFrame() {
   if (!vrm?.expressionManager) return;
   for (const name of moodExpressions) setExpression(name, 0);
   for (const name of mouthExpressions) setExpression(name, 0);
-  setExpression("blink", frameState.blink || 0);
-  setExpression("blinkLeft", frameState.blink || 0);
-  setExpression("blinkRight", frameState.blink || 0);
+  for (const name of gazeExpressions) setExpression(name, 0);
+
+  const blink = frameState.sleeping ? 1 : clamp01(frameState.blink);
+  setExpression("blink", blink);
+  setExpression("blinkLeft", blink);
+  setExpression("blinkRight", blink);
 
   const emotionMap = {
     happy: ["happy", 0.72], excited: ["happy", 0.92], shy: ["happy", 0.34],
-    sad: ["sad", 0.72], angry: ["angry", 0.76], surprised: ["surprised", 0.82],
-    disgusted: ["angry", 0.28], playful: ["happy", 0.42], teasing: ["happy", 0.38],
-    relaxed: ["relaxed", 0.42], sleepy: ["relaxed", 0.28], bored: ["relaxed", 0.2]
+    embarrassed: ["happy", 0.26], affectionate: ["happy", 0.42], proud: ["happy", 0.48],
+    playful: ["happy", 0.52], teasing: ["happy", 0.4],
+    sad: ["sad", 0.72], hurt: ["sad", 0.58], anxious: ["sad", 0.3],
+    angry: ["angry", 0.76], frustrated: ["angry", 0.48], jealous: ["angry", 0.42],
+    disgusted: ["angry", 0.28], surprised: ["surprised", 0.82],
+    confused: ["surprised", 0.3], curious: ["surprised", 0.24], fearful: ["surprised", 0.38],
+    relaxed: ["relaxed", 0.42], calm: ["relaxed", 0.3], sleepy: ["relaxed", 0.3],
+    sleeping: ["relaxed", 0.22], bored: ["relaxed", 0.2], thinking: ["relaxed", 0.24],
+    neutral: ["neutral", 0]
   };
-  const mood = emotionMap[frameState.emotion];
+  const mood = emotionMap[String(frameState.emotion || "neutral").toLowerCase()];
   if (mood) setExpression(mood[0], mood[1]);
 
-  const speech = Math.max(0.0, frameState.speaking || 0);
-  const mouth = Math.max((frameState.mouth || 0) * speech, frameState.open || 0);
+  const lookX = THREE.MathUtils.clamp(Number(frameState.look?.[0] || 0), -1, 1);
+  const lookY = THREE.MathUtils.clamp(Number(frameState.look?.[1] || 0), -1, 1);
+  if (lookX > 0.12) setExpression("lookRight", lookX * 0.38);
+  else if (lookX < -0.12) setExpression("lookLeft", -lookX * 0.38);
+  if (lookY < -0.12) setExpression("lookUp", -lookY * 0.34);
+  else if (lookY > 0.12) setExpression("lookDown", lookY * 0.34);
+
+  // Speaker.level -> EmotionFaceAnimator.set_mouth_target -> this frame state.
+  // The live audio amplitude drives an approximate, smoothly blended viseme cycle.
+  const speech = clamp01(frameState.speaking);
+  const audioLevel = clamp01(frameState.mouth);
+  const emotionOpen = clamp01(frameState.open);
+  const speechDrive = speech > 0.035 ? Math.max(audioLevel * 0.92, speech * 0.34) : 0;
+  const mouth = Math.max(emotionOpen, speechDrive);
   if (mouth > 0.025) {
-    if (speech < 0.035) {
+    if (speech <= 0.035) {
       setExpression("aa", mouth * 0.55);
     } else {
-      const phase = elapsed * 8.2;
-      setExpression("aa", mouth * (0.44 + 0.22 * (0.5 + 0.5 * Math.sin(phase))));
-      setExpression("ih", mouth * (0.16 + 0.15 * (0.5 + 0.5 * Math.sin(phase + 1.4))));
-      setExpression("ou", mouth * (0.18 + 0.18 * (0.5 + 0.5 * Math.sin(phase + 2.2))));
-      setExpression("ee", mouth * (0.12 + 0.14 * (0.5 + 0.5 * Math.sin(phase + 3.1))));
-      setExpression("oh", mouth * (0.2 + 0.16 * (0.5 + 0.5 * Math.sin(phase + 4.0))));
+      const phase = ((elapsed * 4.6) % 1 + 1) % 1;
+      const visemes = [["aa", 0.02], ["ih", 0.22], ["ee", 0.42], ["ou", 0.62], ["oh", 0.82]];
+      for (const [name, center] of visemes) {
+        const rawDistance = Math.abs(phase - center);
+        const distance = Math.min(rawDistance, 1 - rawDistance);
+        const weight = Math.max(0, 1 - distance / 0.25);
+        setExpression(name, mouth * weight);
+      }
     }
   }
+}
 }
 
 function resize() {
@@ -227,7 +256,7 @@ async function loadModel() {
   camera.lookAt(0, modelCenterY, 0);
 
   for (const name of ["hips", "spine", "chest", "neck", "head"]) captureBone(name);
-  for (const name of ["blink", "blinkLeft", "blinkRight", ...moodExpressions, ...mouthExpressions]) {
+  for (const name of ["blink", "blinkLeft", "blinkRight", ...moodExpressions, ...mouthExpressions, ...gazeExpressions]) {
     if (vrm.expressionManager?.getExpression(name)) expressionNames.add(name);
   }
   resize();
