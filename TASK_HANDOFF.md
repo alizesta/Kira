@@ -82,3 +82,11 @@ Character specialization and generated portraits. The implementation is complete
 - The existing ToolAgent registry/permission/confirmation/Game Mode guard remains the only execution path.
 
 - First Stage 2 CI run stopped at import time because the new Ollama round-trip test had invalid string escaping. The fixture now uses `json.dumps`; rerun the complete Windows-gated workflow before publishing this stage.
+
+
+## Stage 3: Model Discovery and Route Manager
+- Provider discovery and model registry were already implemented in the current branch for Gemini, Groq, Mistral, OpenRouter, Cloudflare and custom OpenAI-compatible endpoints; Ollama model discovery uses its own local scan.
+- Verified Gemini's direct official model-list path and its pagination. Added tests that ensure non-chat models are filtered and the key is sent only in the header.
+- Registration keeps every discovered model in API Details while activating only the provider default; additional models require explicit selection. Refresh marks vanished models unavailable but preserves their existing Routes.
+- UI refresh is asynchronous and routes are created/disabled through the API Manager. Added source regression assertions for refresh and model toggle wiring.
+- Gemini capability fields not exposed by the model-list API stay Unknown rather than being guessed.

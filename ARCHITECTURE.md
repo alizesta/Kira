@@ -118,3 +118,10 @@ Cloud Voice settings are written atomically outside the application installation
 - The Windows test fixture creates a QApplication even in offscreen mode because the generic large-window heuristic queries QApplication.primaryScreen().
 
 - The Ollama native message round-trip test builds the serialized assistant arguments with `json.dumps`, then verifies the adapter restores the structured object in the outgoing Ollama request.
+
+
+## Model Discovery / Route Manager validation
+- Discovery is provider-family based: official Google model listing with pagination, OpenAI-compatible `/models`, Cloudflare model search, and Ollama's local `/api/tags` scan.
+- The API Manager registry is metadata-only and never stores API keys. Refresh marks vanished models unavailable while preserving existing Routes; newly listed models are visible but not automatically enabled.
+- Gemini's listing endpoint does not report all runtime capabilities. Tool Calling / Vision remain Unknown unless the provider explicitly reports them; actual request success is still the runtime authority.
+- UI discovery runs in TaskWorker and updates the API Details table after completion. Tests now cover Gemini pagination and the Route Manager's refresh/model-toggle wiring.

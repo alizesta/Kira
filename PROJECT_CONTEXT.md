@@ -106,3 +106,10 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 - The Windows Game Mode test fixture initializes QApplication before exercising the monitor's large-window heuristic; CI runs the Qt integration offscreen.
 
 - Native Ollama regression tests use JSON serialization for assistant tool-call arguments so the multi-round message fixture remains valid Python and verifies the actual JSON object sent to Ollama.
+
+
+## Stage 3: Model Discovery and Route Manager verification
+- Automatic model discovery is already implemented for Google Gemini, Groq, Mistral, OpenRouter, Cloudflare and generic OpenAI-compatible providers. Ollama has its separate local installed-model scan.
+- Google uses the official `/v1beta/models` endpoint with API key in the header and pagination; only chat-capable Gemini models are retained. Gemini capability values not explicitly reported by the listing API remain Unknown.
+- The Route UI runs discovery asynchronously, merges new/unavailable models into the registry without silently deleting routes, and creates/enables a Route only when the user selects a model (apart from the provider's selected default).
+- Added regression coverage for multi-page Gemini discovery, filtering non-chat models, key handling, registration and Route Manager refresh/toggle wiring.

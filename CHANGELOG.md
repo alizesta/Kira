@@ -119,3 +119,9 @@
 
 ### Native Function Calling test fixture correction
 - Build the assistant tool-call argument string with `json.dumps` in the Ollama multi-round regression fixture to avoid invalid Python escaping.
+
+
+### Model Discovery and Route Manager validation
+- Added Gemini pagination regression coverage for the official model-list API, including filtering non-chat models and verifying the API key remains in the header.
+- Strengthened Google provider registration coverage to verify all discovered models remain visible while only the selected default model is activated as a Route.
+- Extended Route Manager source-level tests to cover asynchronous refresh, registry merge and model enable/disable wiring.
