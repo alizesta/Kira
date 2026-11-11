@@ -1329,7 +1329,7 @@ class MainWindow(QMainWindow):
         try:
             if image_path.suffix == ".b64":
                 image_bytes = base64.b64decode(image_path.read_text(encoding="ascii").strip(), validate=True)
-                pixmap.loadFromData(image_bytes, "JPG")
+                pixmap.loadFromData(image_bytes)
             else:
                 pixmap.load(str(image_path))
         except (OSError, ValueError):
