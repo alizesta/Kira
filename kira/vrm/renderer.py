@@ -15,7 +15,6 @@ from PySide6.QtCore import QObject, QTimer, Qt, QUrl, Signal, Slot
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
-from ..config import DATA_DIR
 from .metadata import inspect_vrm
 
 
@@ -227,7 +226,6 @@ class VrmAvatarWidget(QWidget):
             return
         self._disposed = True
         self._timer.stop()
-        self.animator.changed.disconnect(self._push_frame) if hasattr(self.animator, "changed") else None
         if self._server is not None:
             self._server.close()
             self._server = None
