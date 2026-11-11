@@ -6,6 +6,12 @@
 - Kira specializes in coding and software development; Mika specializes in safe medical information and health education; Ren specializes in current news, fact-checking and intelligence analysis. Their specialties shape prompts and presentation only; shared routes, tools and permissions remain common.
 - Game Mode is a manually enabled gameplay feature. Game detection may suggest it, but must never enable it automatically.
 
+## Release packaging safeguards
+- Git checkout uses `.gitattributes` with `*.bat text eol=crlf`; Windows batch files must remain ASCII and CRLF in working trees.
+- `scripts/build_release.py` independently normalizes all `.bat` bytes to CRLF when writing the ZIP, so package correctness does not depend on the build host's checkout settings.
+- Release tests include optional `psutil` and must not treat its intentional presence as an unexpected dependency.
+- Streaming tests must respect LeakGuard's 48-character undecided preamble buffer: short normal answers are released at stream completion, while short fragments are not promised to display before the guard can classify them.
+
 ## Purpose
 Ai1 is a Windows desktop anime-style digital companion. It combines local and cloud chat models, persistent memory, character profiles, speech input/output, controlled desktop tools, and optional game-screen understanding.
 
