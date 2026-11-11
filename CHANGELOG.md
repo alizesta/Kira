@@ -2,6 +2,13 @@
 
 ## 2026-11-11
 
+### Linux regression and Windows ZIP fixes
+- Updated the requirements regression test to recognize the intentionally optional `psutil` dependency.
+- Added `.gitattributes` enforcement and release-time normalization so every packaged `.bat` file uses CRLF, including archives built on Linux.
+- Updated stream/persistence test fixtures to account for LeakGuard's deliberate short-preamble buffering without weakening its filtering behavior.
+- Updated GUI navigation tests for the current menu, including the separator and Ai1 Code entry.
+- Expanded CI coverage to include streaming, chat persistence and release regression modules.
+
 ### Character specialties and generated portraits
 - Defined Kira as the coding/software-development specialist, Mika as the medical-information guide, and Ren as the news and intelligence analyst.
 - Added scope-aware specialty prompts while keeping model routes, tools and permissions shared across characters.
