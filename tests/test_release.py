@@ -102,13 +102,13 @@ class ReleaseTests(unittest.TestCase):
         from scripts.build_release import release_file_bytes
         source = ROOT / "run_tests.bat"
         normalized = release_file_bytes(source, Path("run_tests.bat"))
-        self.assertEqual(normalized.count(b"\\n"), normalized.count(b"\\r\\n"))
+        self.assertEqual(normalized.count(b"\n"), normalized.count(b"\r\n"))
         mixed = ROOT / "data" / "mixed_test.bat"
         mixed.parent.mkdir(parents=True, exist_ok=True)
         mixed.write_bytes(b"@echo off\\nlabel\\r\\ngoto label\\n")
         try:
             fixed = release_file_bytes(mixed, Path("mixed_test.bat"))
-            self.assertEqual(fixed.count(b"\\n"), fixed.count(b"\\r\\n"))
+            self.assertEqual(fixed.count(b"\n"), fixed.count(b"\r\n"))
             self.assertIn(b"goto label\\r\\n", fixed)
         finally:
             mixed.unlink(missing_ok=True)
