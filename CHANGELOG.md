@@ -2,6 +2,13 @@
 
 ## 2026-11-11
 
+### Game Mode Vision update
+- Capture the active game window once per second only while Game Mode is manually enabled.
+- Downscale frames to a maximum 854×480 while preserving aspect ratio.
+- Keep only the newest frame in memory; attach it as JPEG (quality 68) when the user sends a message. No continuous upload.
+- Stop the capture timer and clear the cached frame immediately when Game Mode is disabled.
+- Suppress game-mode suggestions if Game Mode is already enabled.
+
 ### Added
 - MiniMax Global as a TTS-only Cloud Voice provider.
 - Manual Game Mode toggle in the chat toolbar.
