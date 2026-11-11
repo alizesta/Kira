@@ -34,7 +34,7 @@ Character specialization and generated portraits. The implementation is complete
 
 ## Character specialization update
 - Kira has a coding/software-development specialty prompt and directs project-file workflows to Ai1 Code without claiming tests or edits that did not happen.
-- Mika specializes in medical information and health education with explicit no-diagnosis/no-prescribing boundaries, emergency escalation and health-data privacy.
+- Mika specializes in medical information and health education with explicit no-diagnosis/no-prescribing boundaries, emergency escalation and privacy-aware handling. Chat history remains shared; profile-level medical-memory isolation is not implemented.
 - Ren specializes in current news and intelligence analysis with date checks, independent-source comparison and fact/claim/opinion separation.
 - Character specialties do not alter shared model routes, tools, permissions or safety policy.
 - Replaced built-in SVG placeholder portraits with generated anime JPEG portraits stored as base64 text assets under `assets/characters/`; the native Qt Characters tab decodes them for display.
