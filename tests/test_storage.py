@@ -14,6 +14,18 @@ class UserDataStorageTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.addCleanup(self.tmp.cleanup)
 
+    def test_memory_only_files_are_recognized_as_user_data(self):
+        folder = self.root / "legacy"
+        folder.mkdir()
+        (folder / storage.PERSONA_MEMORY_NAME).write_text("{}", encoding="utf-8")
+        self.assertTrue(storage.has_user_data(folder))
+        (folder / storage.PERSONA_MEMORY_NAME).unlink()
+        con = sqlite3.connect(folder / storage.EVIDENCE_DB_NAME)
+        con.execute("CREATE TABLE facts (id INTEGER)")
+        con.commit()
+        con.close()
+        self.assertTrue(storage.has_user_data(folder))
+
     def test_windows_default_and_explicit_data_directory(self):
         with mock.patch.dict(os.environ, {"KIRA_DATA_DIR": "", "LOCALAPPDATA": str(self.root / "Local")}, clear=False):
             self.assertEqual(storage.default_data_dir(self.root), self.root / "Local" / "Kira")

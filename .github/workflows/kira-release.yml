@@ -7,6 +7,7 @@ on:
   push:
     branches: [main, "next/2026-11-11-intelligence", "feature/characters-ren-mika"]
     paths:
+      - ".github/workflows/kira-release.yml"
       - "kira/**"
       - "assets/characters/**"
       - "install.bat"

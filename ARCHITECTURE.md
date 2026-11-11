@@ -132,3 +132,5 @@ Cloud Voice settings are written atomically outside the application installation
 - `migrate_legacy` copies each missing file independently, preserving destination files and leaving legacy sources untouched. Persona memory and evidence DB are now included, preventing loss when an older data folder is migrated.
 - `backup_user_data` copies persona JSON and Cloud Voice JSON, and uses SQLite's online backup API for both chat and evidence databases.
 - The Windows default remains `%LOCALAPPDATA%\\Kira`; `KIRA_DATA_DIR` remains an explicit override.
+
+- The release workflow file itself is included in its path filters; workflow and permission changes therefore trigger validation.

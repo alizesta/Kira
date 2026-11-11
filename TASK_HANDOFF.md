@@ -98,3 +98,5 @@ Character specialization and generated portraits. The implementation is complete
 - Added `tests/test_storage.py` for Windows data-directory resolution, explicit override, non-destructive legacy migration and rolling backup content.
 
 - The first Stage 4 workflow run passed Windows and portable tests but the GitHub Release action returned 403 because the workflow did not explicitly declare `contents: write`. The workflow now grants that minimum release permission; rerun and verify the published asset before treating Stage 4 as delivered.
+
+- Added the workflow YAML itself to the path filter so workflow permission/gate edits trigger CI. Added coverage for legacy folders containing only persona or evidence memory.

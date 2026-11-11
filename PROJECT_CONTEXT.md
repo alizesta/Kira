@@ -119,3 +119,5 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 - Settings, chat history, persona memory JSON and evidence-backed SQLite memory live under the external user-data directory (Windows: `%LOCALAPPDATA%\\Kira`; `KIRA_DATA_DIR` is the test/override path).
 - Legacy migration now copies persona memory and the evidence database as well as settings/chat/Cloud Voice data, without overwriting files already present in the destination or deleting the source.
 - Rolling backups now include the persona memory JSON and evidence database. Added tests for data-directory resolution, legacy migration and backup coverage.
+
+- The release workflow now includes its own YAML file in the push path filter, so changes to release gates and permissions are validated by a fresh run rather than silently skipping the job.
