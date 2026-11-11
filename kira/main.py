@@ -3631,6 +3631,9 @@ class MainWindow(QMainWindow):
             self.listener.muted = False
 
     def toggle_mic(self):
+        if self._game_mode_enabled and not self.mic_btn.isChecked():
+            self.mic_btn.setChecked(True)
+            return
         if self.mic_btn.isChecked():
             self.start_listener()
         else:
@@ -3681,6 +3684,10 @@ class MainWindow(QMainWindow):
             self.engine_lbl.setText(self.t({"whisper": "engine_whisper", "google": "engine_google"}.get(eng, "engine_none")))
 
     def toggle_wake(self):
+        if self._game_mode_enabled and not self.wake_btn.isChecked():
+            self.wake_btn.setChecked(True)
+            self.go_sleep()
+            return
         if self.wake_btn.isChecked():
             if not self.mic_btn.isChecked():
                 self.mic_btn.setChecked(True)
