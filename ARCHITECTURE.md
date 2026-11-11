@@ -94,3 +94,7 @@ Cloud Voice settings are written atomically outside the application installation
 - Apply re-validates the selected path, compares current disk bytes with the snapshot taken when the file was opened, and compares editor text with the base text used for the proposal. Any stale state aborts the write.
 - Approved content is limited to 2 MiB, backed up once as `.ai1code.bak`, written to a temporary sibling file and atomically replaced. The editor and disk snapshot are refreshed only after success.
 - This is a single-file replacement workflow, not a general multi-file patch engine. The Agent itself still has no filesystem or shell write capability.
+
+
+## Game detector self-exclusion
+- `GameModeMonitor.poll()` rejects the current process ID before any game-name/title heuristics or large-window checks. This prevents Ai1's own full-size window (for example, `Project Kira 1 stable`) from being suggested as a game.
