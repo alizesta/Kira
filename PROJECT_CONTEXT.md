@@ -2,13 +2,21 @@
 
 ## Product identity
 - **Ai1** is the desktop application and product name.
-- **Kira**, Mika and Ren are selectable companion characters inside Ai1; Kira is not the application name.\n- Kira specializes in coding and software development; Mika specializes in safe medical information and health education; Ren specializes in current news, fact-checking and intelligence analysis. Their specialties shape prompts and presentation only; shared routes, tools and permissions remain common.
+- **Kira**, Mika and Ren are selectable companion characters inside Ai1; Kira is not the application name.
+- Kira specializes in coding and software development; Mika specializes in safe medical information and health education; Ren specializes in current news, fact-checking and intelligence analysis. Their specialties shape prompts and presentation only; shared routes, tools and permissions remain common.
 - Game Mode is a manually enabled gameplay feature. Game detection may suggest it, but must never enable it automatically.
 
 ## Purpose
 Ai1 is a Windows desktop anime-style digital companion. It combines local and cloud chat models, persistent memory, character profiles, speech input/output, controlled desktop tools, and optional game-screen understanding.
 
-## Character profiles\n- Character portraits are generated image assets stored as base64-encoded JPEG text files under `assets/characters/*.jpg.b64`; the Characters tab decodes them in memory for `QPixmap` display.\n- Kira: coding, architecture, debugging and technical support; use Ai1 Code for project-file workflows and never claim unperformed tests.\n- Mika: medical information and health education only, not diagnosis or independent prescribing; flag emergencies and preserve health-data privacy.\n- Ren: current news and intelligence analysis; verify dates and independent sources, distinguish facts from claims/opinion, and disclose unavailable live verification.\n- All three share the same Route Manager, model intelligence, tools, computer permissions and safety policy. Specialty is not an access-control boundary.\n\n## Current platform
+## Character profiles
+- Character portraits are generated image assets stored as base64-encoded JPEG text files under `assets/characters/*.jpg.b64`; the Characters tab decodes them in memory for `QPixmap` display.
+- Kira: coding, architecture, debugging and technical support; use Ai1 Code for project-file workflows and never claim unperformed tests.
+- Mika: medical information and health education only, not diagnosis or independent prescribing; flag emergencies and preserve health-data privacy.
+- Ren: current news and intelligence analysis; verify dates and independent sources, distinguish facts from claims/opinion, and disclose unavailable live verification.
+- All three share the same Route Manager, model intelligence, tools, computer permissions and safety policy. Specialty is not an access-control boundary.
+
+## Current platform
 - Windows 11
 - Python / PySide6 desktop application
 - Local chat through Ollama
