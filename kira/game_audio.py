@@ -11,7 +11,6 @@ import re
 import numpy as np
 from PySide6.QtCore import QThread, Signal
 
-from .listener import Listener
 from .speech_text import is_hallucination
 from .vad import BLOCK, RATE, Segmenter
 
@@ -108,16 +107,19 @@ class GameAudioListener(QThread):
             self.error.emit(f"صدای بازی/سیستم دریافت نشد: {exc}")
             return
 
-        recognizer = Listener(
-            self.settings.get("whisper_model", "small"),
-            self.settings.get("stt_language", "fa"),
-            settings=self.settings,
-        )
-        if not recognizer._load_local() or recognizer.engine != "whisper":
+        try:
+            from faster_whisper import WhisperModel
+            recognizer = WhisperModel(
+                self.settings.get("whisper_model", "small"), device="cpu",
+                compute_type="int8", cpu_threads=1, num_workers=1,
+            )
+        except Exception as exc:
             stream.stop()
             stream.close()
-            self.error.emit("برای تشخیص صدای بازی، موتور محلی faster-whisper لازم است. صدای بازی به سرویس ابری ارسال نمی‌شود.")
+            self.error.emit(f"موتور محلی faster-whisper برای صدای بازی آماده نشد: {exc}")
             return
+        language = self.settings.get("stt_language", "fa")
+        language = None if language in ("", "auto") else language
 
         segmenter = Segmenter(self.settings.get("mic_sensitivity", 100))
         pending = np.empty(0, dtype=np.float32)
@@ -146,8 +148,8 @@ class GameAudioListener(QThread):
                             continue
                         self.state.emit("transcribing")
                         try:
-                            segments, _ = recognizer._model.transcribe(
-                                event[1], language=recognizer.language, beam_size=1,
+                            segments, _ = recognizer.transcribe(
+                                event[1], language=language, beam_size=1,
                                 vad_filter=True, condition_on_previous_text=False,
                                 no_speech_threshold=0.60, compression_ratio_threshold=2.2,
                             )
