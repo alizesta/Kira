@@ -5,6 +5,8 @@ on:
     branches: [main, "next/2026-11-11-intelligence", "feature/characters-ren-mika"]
     paths:
       - "kira/**"
+      - "install.bat"
+      - "tests/test_game_audio.py"
       - "docs/**"
       - "tests/test_api_manager.py"
       - "tests/test_routes.py"
