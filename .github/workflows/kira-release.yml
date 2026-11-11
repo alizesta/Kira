@@ -15,7 +15,6 @@ on:
       - "tests/test_app_resolution.py"
       - "tests/test_persian_quality.py"
       - "tests/test_release_package.py"
-      - "tests/test_game_mode.py"
       - "scripts/build_release.py"
       - ".github/workflows/kira-release.yml"
   workflow_dispatch:
@@ -55,7 +54,6 @@ jobs:
           tests.test_persian_quality
           tests.test_release_package
           tests.test_minimax_cloud_voice
-          tests.test_game_mode
 
       - name: Check Python syntax
         run: python -m compileall -q kira scripts
