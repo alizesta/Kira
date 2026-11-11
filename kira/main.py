@@ -44,6 +44,7 @@ from .speech_fixes import SpeechFixes
 from .strings import STR, TEST_LINES
 from .personality import build_system_prompt
 from .characters import CharacterRegistry
+from .vrm.metadata import inspect_vrm, VrmFileError
 from .character.traits import BASE_TRAITS
 from . import persona_memory
 from . import evidence_memory
@@ -1074,6 +1075,9 @@ class MainWindow(QMainWindow):
         av.setContentsMargins(8, 8, 8, 10)
         av.setSpacing(4)
         self.avatar = AvatarView(self.animator, QRectF(150, 0, 520, 680))
+        self.avatar.set_vrm_path(self.active_character().get("avatar_model_path", ""))
+        if getattr(self.companion, "view", None) is not None:
+            self.companion.view.set_vrm_path(self.active_character().get("avatar_model_path", ""))
         self.avatar.setMinimumSize(150, 190)
         self.avatar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         av.addWidget(self.avatar, 1)
@@ -1256,6 +1260,25 @@ class MainWindow(QMainWindow):
         self.character_notes_edit = QTextEdit()
         self.character_notes_edit.setMinimumHeight(110)
         self.row(form, "character_notes", self.character_notes_edit)
+
+        # Per-character VRM avatar. Only the local path is stored; model bytes are never copied into the app.
+        self.character_avatar_path_edit = QLineEdit()
+        self.character_avatar_path_edit.setReadOnly(True)
+        self.character_avatar_path_edit.setPlaceholderText("بدون مدل سه‌بعدی، آواتار PNG استفاده می‌شود")
+        avatar_controls = QHBoxLayout()
+        self.character_avatar_browse_btn = QPushButton("انتخاب مدل VRM…")
+        self.character_avatar_clear_btn = QPushButton("بازگشت به PNG")
+        self.character_avatar_browse_btn.clicked.connect(self.choose_character_vrm)
+        self.character_avatar_clear_btn.clicked.connect(self.clear_character_vrm)
+        avatar_controls.addWidget(self.character_avatar_path_edit, 1)
+        avatar_controls.addWidget(self.character_avatar_browse_btn)
+        avatar_controls.addWidget(self.character_avatar_clear_btn)
+        form.addRow(QLabel("آواتار سه‌بعدی (VRM)"), avatar_controls)
+        avatar_hint = QLabel("مدل از مسیر محلی خوانده می‌شود و داخل ZIP یا پوشه نصب کپی نمی‌شود. برای نمایش سه‌بعدی، اینترنت برای بارگذاری کتابخانه‌های رندر لازم است؛ در صورت خطا آواتار PNG باقی می‌ماند.")
+        avatar_hint.setObjectName("hint")
+        avatar_hint.setWordWrap(True)
+        form.addRow(avatar_hint)
+
         hint = QLabel()
         hint.setObjectName("hint")
         hint.setWordWrap(True)
@@ -1295,6 +1318,8 @@ class MainWindow(QMainWindow):
         self.character_name_edit.setText(profile.get("name", ""))
         self.character_description_edit.setPlainText(profile.get("description", ""))
         self.character_notes_edit.setPlainText(profile.get("notes", ""))
+        self.character_avatar_path_edit.setText(profile.get("avatar_model_path", ""))
+        self.character_avatar_clear_btn.setEnabled(bool(profile.get("avatar_model_path")))
         self.character_delete_btn.setEnabled(profile.get("id") != "kira")
         self.refresh_personality_controls()
 
@@ -1311,12 +1336,69 @@ class MainWindow(QMainWindow):
             self.settings["persona"] = profile.get("notes", "")
             save_settings(self.settings)
             self.refresh_character_fields()
+            self._apply_active_character_avatar()
             self.retranslate()
             self.update_mood_indicator()
             self.add_chat("system", self.t("character_activated", name=profile["name"]))
         except Exception as exc:
             QMessageBox.warning(self, self.t("character_error_title"), str(exc))
             self.refresh_character_list()
+
+    def _apply_active_character_avatar(self):
+        """Apply the active profile's private VRM path to the main and floating avatar views."""
+        profile = self.active_character()
+        path = str(profile.get("avatar_model_path") or "")
+        views = (getattr(self, "avatar", None), getattr(getattr(self, "companion", None), "view", None))
+        for view in views:
+            if view is not None and hasattr(view, "set_vrm_path"):
+                view.set_vrm_path(path)
+
+    def choose_character_vrm(self):
+        """Validate a user-owned VRM, show its embedded license metadata, and store its local path."""
+        profile = self.active_character()
+        path, _ = QFileDialog.getOpenFileName(
+            self, "انتخاب مدل آواتار VRM", "", "VRM model (*.vrm)"
+        )
+        if not path:
+            return
+        try:
+            info = inspect_vrm(path)
+        except VrmFileError as exc:
+            QMessageBox.warning(self, "فایل VRM نامعتبر", str(exc))
+            return
+        except OSError as exc:
+            QMessageBox.warning(self, "خواندن فایل VRM", str(exc))
+            return
+
+        license_text = json.dumps(info.license_metadata, ensure_ascii=False) if info.license_metadata else "اطلاعات مجوز در metadata ثبت نشده است."
+        details = (
+            f"نام: {info.title}\\nنسخه: VRM {info.vrm_version}\\n"
+            f"استخوان‌های Humanoid: {len(info.humanoid_bones)}\\n"
+            f"Expressionها: {len(info.expressions)}\\nSpring Bone: {info.spring_bone_groups} گروه\\n\\n"
+            f"مجوز ثبت‌شده در فایل (بدون تغییر):\\n{license_text}\\n\\n"
+            "Ai1 فایل VRM را تغییر نمی‌دهد یا در نسخه عمومی کپی نمی‌کند؛ فقط مسیر محلی آن را ذخیره می‌کند."
+        )
+        if info.license_metadata.get("avatarPermission") == "onlyAuthor" or info.license_metadata.get("allowedUserName") == "OnlyAuthor":
+            details += "\\n\\nتوجه: metadata فعلی استفاده را به نویسنده محدود می‌کند. تنظیم مجوز را فقط در ابزار سازنده و مطابق حقوق واقعی فایل انجام بده."
+        QMessageBox.information(self, "مدل VRM شناسایی شد", details)
+
+        try:
+            self.characters.update(profile["id"], avatar_model_path=info.path)
+            self.refresh_character_fields()
+            self._apply_active_character_avatar()
+            self.add_chat("system", f"مدل سه‌بعدی {profile['name']} ثبت شد: {info.title}")
+        except Exception as exc:
+            QMessageBox.warning(self, "ذخیره مدل VRM", str(exc))
+
+    def clear_character_vrm(self):
+        profile = self.active_character()
+        try:
+            self.characters.update(profile["id"], avatar_model_path="")
+            self.refresh_character_fields()
+            self._apply_active_character_avatar()
+            self.add_chat("system", f"آواتار {profile['name']} به PNG برگشت.")
+        except Exception as exc:
+            QMessageBox.warning(self, "حذف مدل VRM از پروفایل", str(exc))
 
     def create_character_profile(self):
         name, ok = QInputDialog.getText(self, self.t("character_new_title"), self.t("character_new_prompt"))
