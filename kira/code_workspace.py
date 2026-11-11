@@ -43,6 +43,7 @@ class CodeWorkspaceDialog(QDialog):
         self.project_root = None
         self.current_file = None
         self._worker = None
+        self._agent_stream_buffer = ""
         self._process = None
         self._closing = False
         self.setWindowTitle("Ai1 Code")
@@ -267,6 +268,7 @@ class CodeWorkspaceDialog(QDialog):
             QMessageBox.warning(self, "Code Agent", str(exc))
             return
         self.agent_input.clear()
+        self._agent_stream_buffer = ""
         self.agent_output.append(f"<b>تو:</b> {request}")
         self.agent_output.append("<b>Code Agent:</b> ")
         self.ask_btn.setEnabled(False)
@@ -281,6 +283,7 @@ class CodeWorkspaceDialog(QDialog):
         worker.start()
 
     def _agent_chunk(self, text):
+        self._agent_stream_buffer += text
         cursor = self.agent_output.textCursor()
         cursor.movePosition(cursor.End)
         cursor.insertText(text)
@@ -289,7 +292,7 @@ class CodeWorkspaceDialog(QDialog):
 
     def _agent_done(self, answer):
         self.status_label.setText("تحلیل کامل شد؛ هیچ فایلی تغییر نکرد.")
-        if self.agent_output.document().isEmpty():
+        if not self._agent_stream_buffer:
             self.agent_output.append(answer)
 
     def _agent_failed(self, message):
