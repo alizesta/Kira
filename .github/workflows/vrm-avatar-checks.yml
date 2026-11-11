@@ -8,7 +8,13 @@ on:
       - "kira/face.py"
       - "kira/main.py"
       - "kira/characters/registry.py"
+      - "kira/characters/kira.py"
+      - "kira/vrm/paths.py"
+      - "kira sample.vrm"
       - "tests/test_vrm_metadata.py"
+      - "tests/test_vrm_assets.py"
+      - "docs/VRM_AVATAR_FA.md"
+      - "README.md"
       - ".github/workflows/vrm-avatar-checks.yml"
   pull_request:
     branches: [main]
@@ -17,7 +23,13 @@ on:
       - "kira/face.py"
       - "kira/main.py"
       - "kira/characters/registry.py"
+      - "kira/characters/kira.py"
+      - "kira/vrm/paths.py"
+      - "kira sample.vrm"
       - "tests/test_vrm_metadata.py"
+      - "tests/test_vrm_assets.py"
+      - "docs/VRM_AVATAR_FA.md"
+      - "README.md"
       - ".github/workflows/vrm-avatar-checks.yml"
 
 permissions:
@@ -54,6 +66,6 @@ jobs:
           git commit -m "Build bundled offline VRM viewer [skip ci]"
           git push
       - name: Compile VRM integration
-        run: python -m compileall -q kira/vrm kira/face.py kira/main.py kira/characters/registry.py
+        run: python -m compileall -q kira/vrm kira/face.py kira/main.py kira/characters/registry.py kira/characters/kira.py
       - name: Run VRM metadata and profile tests
-        run: python -m unittest tests.test_vrm_metadata
+        run: python -m unittest tests.test_vrm_metadata tests.test_vrm_assets
