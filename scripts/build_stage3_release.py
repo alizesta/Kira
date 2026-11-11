@@ -73,8 +73,16 @@ def should_skip(path: Path) -> bool:
 
 
 def main() -> None:
-    if not SOURCE_ARCHIVE.is_file():
-        raise FileNotFoundError(f"Missing Stage 3 source archive: {SOURCE_ARCHIVE}")
+    source_archive = SOURCE_ARCHIVE
+    if not source_archive.is_file():
+        candidates = sorted(
+            Path(".").glob("ProjectKira_*.zip"),
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        )
+        if not candidates:
+            raise FileNotFoundError(f"Missing Stage 3 source archive: {SOURCE_ARCHIVE}")
+        source_archive = candidates[0]
     for required in (THEME_SOURCE, MOOD_SOURCE, EMOTIONS_SOURCE, DEFAULT_VRM_SOURCE):
         if not required.is_file():
             raise FileNotFoundError(f"Missing reviewed Kira source: {required}")
@@ -86,7 +94,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="kira-stage3-") as temp_dir:
         extracted = Path(temp_dir) / "payload"
         extracted.mkdir()
-        safe_extract(SOURCE_ARCHIVE, extracted)
+        safe_extract(source_archive, extracted)
 
         kira_dir, main_file = locate_kira_package(extracted)
         theme_target = kira_dir / "theme.py"
@@ -241,7 +249,7 @@ def main() -> None:
                 result.write(path, arcname=relative.as_posix())
                 included += 1
 
-    print(f"Stage 3 source: {SOURCE_ARCHIVE}")
+    print(f"Stage 3 source: {source_archive}")
     print("Applied visual theme update: kira/theme.py")
     print("Applied layered emotional runtime: emotions, behavior, energy, relationship and emotional memory")
     print(f"Python syntax checks: passed")
