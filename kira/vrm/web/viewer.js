@@ -100,6 +100,10 @@ function updateBones() {
   const chest = vrm?.humanoid?.getNormalizedBoneNode("chest");
   const neck = vrm?.humanoid?.getNormalizedBoneNode("neck");
   const head = vrm?.humanoid?.getNormalizedBoneNode("head");
+  const leftUpperArm = vrm?.humanoid?.getNormalizedBoneNode("leftUpperArm");
+  const rightUpperArm = vrm?.humanoid?.getNormalizedBoneNode("rightUpperArm");
+  const leftLowerArm = vrm?.humanoid?.getNormalizedBoneNode("leftLowerArm");
+  const rightLowerArm = vrm?.humanoid?.getNormalizedBoneNode("rightLowerArm");
   const t = elapsed;
   const apply = (node, key, dx, dy, dz) => {
     const base = baseBoneRotations.get(key);
@@ -112,6 +116,14 @@ function updateBones() {
   apply(neck, "neck", Math.sin(t * 0.5) * 0.012 + lookY * 0.035, lookX * 0.045, 0);
   apply(head, "head", Math.sin(t * 0.62 + 0.7) * 0.018 + lookY * 0.04,
     Math.sin(t * 0.38) * 0.035 + lookX * 0.085, Math.sin(t * 0.54) * 0.012);
+
+  // VRM files commonly store the neutral bind pose as a T-pose. Lower the
+  // upper arms into a relaxed standing pose, then add only a tiny idle sway.
+  // These are normalized humanoid nodes, so the pose is independent of model scale.
+  apply(leftUpperArm, "leftUpperArm", 0, 0, 0.62 + Math.sin(t * 0.72) * 0.012);
+  apply(rightUpperArm, "rightUpperArm", 0, 0, -0.62 - Math.sin(t * 0.72) * 0.012);
+  apply(leftLowerArm, "leftLowerArm", 0, 0, -0.08 + Math.sin(t * 0.58 + 0.4) * 0.008);
+  apply(rightLowerArm, "rightLowerArm", 0, 0, 0.08 - Math.sin(t * 0.58 + 0.4) * 0.008);
   if (root) root.rotation.y = yaw + Math.sin(t * 0.22) * 0.012;
 }
 
@@ -256,7 +268,8 @@ async function loadModel() {
   camera.position.set(0, modelCenterY, cameraDistance);
   camera.lookAt(0, modelCenterY, 0);
 
-  for (const name of ["hips", "spine", "chest", "neck", "head"]) captureBone(name);
+  for (const name of ["hips", "spine", "chest", "neck", "head",
+    "leftUpperArm", "rightUpperArm", "leftLowerArm", "rightLowerArm"]) captureBone(name);
   for (const name of ["blink", "blinkLeft", "blinkRight", ...moodExpressions, ...mouthExpressions, ...gazeExpressions]) {
     if (vrm.expressionManager?.getExpression(name)) expressionNames.add(name);
   }
