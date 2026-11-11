@@ -64,7 +64,9 @@ class _LoopbackModelServer:
                 if route in ("/", "/index.html"):
                     target, mime = owner.web_dir / "index.html", "text/html; charset=utf-8"
                 elif route == "/viewer.js":
-                    target, mime = owner.web_dir / "viewer.js", "text/javascript; charset=utf-8"
+                    bundled = owner.web_dir / "viewer.bundle.js"
+                    target = bundled if bundled.is_file() else owner.web_dir / "viewer.js"
+                    mime = "text/javascript; charset=utf-8"
                 elif route == "/model.vrm":
                     target, mime = owner.model_path, "model/gltf-binary"
                 elif route == "/health":
