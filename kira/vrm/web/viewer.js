@@ -206,6 +206,7 @@ window.ai1SetFrame = (state) => {
 };
 
 async function loadModel() {
+  if (!renderer) throw new Error("WebGL روی این سیستم فعال نشد؛ آواتار PNG استفاده می‌شود.");
   const loader = new GLTFLoader();
   loader.register((parser) => new VRMLoaderPlugin(parser));
   const gltf = await loader.loadAsync("/model.vrm");
