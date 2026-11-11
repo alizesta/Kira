@@ -3,7 +3,7 @@
 ## 2026-11-11
 
 ### Game Mode audio and wake update
-- Added Windows WASAPI loopback capture for default system/game output.
+- Added Windows WASAPI loopback capture via PyAudioWPatch for default system/game output.
 - Game speech is segmented and transcribed locally with faster-whisper; audio is neither saved nor sent to cloud STT.
 - Ordinary game dialogue stays silent. A conservative keyword filter with cooldowns allows selected critical, mission and combat alerts.
 - Game Mode temporarily enables microphone wake-word listening. Kira stays quiet until called; previous mic/wake states are restored when Game Mode is disabled.
