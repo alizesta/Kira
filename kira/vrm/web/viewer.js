@@ -7,6 +7,7 @@ const statusNode = document.getElementById("status");
 const params = new URLSearchParams(location.search);
 const draggable = params.get("draggable") === "1";
 let bridge = null;
+let pendingBridgeEvent = null;
 let vrm = null;
 let renderer = null;
 let camera = null;
@@ -28,16 +29,21 @@ function reportError(message) {
   statusNode.textContent = text;
   statusNode.style.display = "block";
   if (bridge) bridge.onError(text);
+  else pendingBridgeEvent = { kind: "error", text };
 }
 
 function reportReady() {
   statusNode.style.display = "none";
   if (bridge) bridge.onReady();
+  else pendingBridgeEvent = { kind: "ready" };
 }
 
 if (window.qt && window.qt.webChannelTransport && window.QWebChannel) {
   new QWebChannel(qt.webChannelTransport, (channel) => {
     bridge = channel.objects.ai1;
+    if (pendingBridgeEvent?.kind === "error") bridge.onError(pendingBridgeEvent.text);
+    else if (pendingBridgeEvent?.kind === "ready") bridge.onReady();
+    pendingBridgeEvent = null;
   });
 } else {
   reportError("Qt WebChannel is unavailable. Reinstall the Qt WebEngine components.");
@@ -125,14 +131,19 @@ function applyFrame() {
   const mood = emotionMap[frameState.emotion];
   if (mood) setExpression(mood[0], mood[1]);
 
-  const mouth = Math.max(frameState.mouth || 0, frameState.open || 0) * Math.max(0.0, frameState.speaking || 0.35);
+  const speech = Math.max(0.0, frameState.speaking || 0);
+  const mouth = Math.max((frameState.mouth || 0) * speech, frameState.open || 0);
   if (mouth > 0.025) {
-    const phase = elapsed * 8.2;
-    setExpression("aa", mouth * (0.44 + 0.22 * (0.5 + 0.5 * Math.sin(phase))));
-    setExpression("ih", mouth * (0.16 + 0.15 * (0.5 + 0.5 * Math.sin(phase + 1.4))));
-    setExpression("ou", mouth * (0.18 + 0.18 * (0.5 + 0.5 * Math.sin(phase + 2.2))));
-    setExpression("ee", mouth * (0.12 + 0.14 * (0.5 + 0.5 * Math.sin(phase + 3.1))));
-    setExpression("oh", mouth * (0.2 + 0.16 * (0.5 + 0.5 * Math.sin(phase + 4.0))));
+    if (speech < 0.035) {
+      setExpression("aa", mouth * 0.55);
+    } else {
+      const phase = elapsed * 8.2;
+      setExpression("aa", mouth * (0.44 + 0.22 * (0.5 + 0.5 * Math.sin(phase))));
+      setExpression("ih", mouth * (0.16 + 0.15 * (0.5 + 0.5 * Math.sin(phase + 1.4))));
+      setExpression("ou", mouth * (0.18 + 0.18 * (0.5 + 0.5 * Math.sin(phase + 2.2))));
+      setExpression("ee", mouth * (0.12 + 0.14 * (0.5 + 0.5 * Math.sin(phase + 3.1))));
+      setExpression("oh", mouth * (0.2 + 0.16 * (0.5 + 0.5 * Math.sin(phase + 4.0))));
+    }
   }
 }
 
@@ -196,7 +207,7 @@ window.ai1SetFrame = (state) => {
 
 async function loadModel() {
   const loader = new GLTFLoader();
-  loader.register((parser) => new VRMLoaderPlugin(parser, { autoUpdateHumanBones: true }));
+  loader.register((parser) => new VRMLoaderPlugin(parser));
   const gltf = await loader.loadAsync("/model.vrm");
   vrm = gltf.userData.vrm;
   if (!vrm) throw new Error("No VRM extension was found in the selected model.");
@@ -207,14 +218,14 @@ async function loadModel() {
   const box = new THREE.Box3().setFromObject(root);
   const size = box.getSize(new THREE.Vector3());
   if (!Number.isFinite(size.y) || size.y <= 0) throw new Error("The VRM model has invalid dimensions.");
-  root.position.y -= box.min.y;
+  const center = box.getCenter(new THREE.Vector3());
+  root.position.set(-center.x, -box.min.y, -center.z);
   modelCenterY = size.y * 0.52;
   cameraDistance = Math.max(1.5, size.y * 1.95);
   camera.position.set(0, modelCenterY, cameraDistance);
   camera.lookAt(0, modelCenterY, 0);
 
   for (const name of ["hips", "spine", "chest", "neck", "head"]) captureBone(name);
-  for (const item of vrm.expressionManager?.expressions || []) expressionNames.add(item.expressionName);
   for (const name of ["blink", "blinkLeft", "blinkRight", ...moodExpressions, ...mouthExpressions]) {
     if (vrm.expressionManager?.getExpression(name)) expressionNames.add(name);
   }
