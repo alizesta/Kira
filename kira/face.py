@@ -414,6 +414,7 @@ class AvatarView(QWidget):
         pm = animator.pix
         self.src = src if src is not None else QRectF(0, 0, REF_W, REF_H)
         self.draggable = draggable
+        self._vrm_widget = None
         self._key = None
         self._geo = None
         self._press = None
@@ -453,7 +454,56 @@ class AvatarView(QWidget):
             a.tile_cache[key] = cached
         self._pms, self._dst_rects, self._bx, self._by = cached
 
+    def set_vrm_path(self, path):
+        """Show a user-selected VRM while keeping the PNG avatar as a safe fallback."""
+        path = str(path or "").strip()
+        if not path:
+            if self._vrm_widget is not None:
+                widget, self._vrm_widget = self._vrm_widget, None
+                widget.shutdown()
+                widget.deleteLater()
+            self.setToolTip("")
+            self.update()
+            return True
+        if self._vrm_widget is not None and self._vrm_widget.model_path == str(Path(path).expanduser().resolve()):
+            return True
+        if self._vrm_widget is not None:
+            old, self._vrm_widget = self._vrm_widget, None
+            old.shutdown()
+            old.deleteLater()
+        try:
+            from .vrm.metadata import inspect_vrm
+            from .vrm.renderer import VrmAvatarWidget
+            inspect_vrm(path)
+            widget = VrmAvatarWidget(path, self.anim, draggable=self.draggable, parent=self)
+            widget.clicked.connect(self.clicked.emit)
+            widget.failed.connect(self._on_vrm_failed)
+            self._vrm_widget = widget
+            widget.setGeometry(self.rect())
+            widget.show()
+            self.setToolTip("آواتار سه‌بعدی VRM")
+            return True
+        except Exception as exc:
+            self.setToolTip(f"VRM بارگذاری نشد: {exc}")
+            self.update()
+            return False
+
+    def _on_vrm_failed(self, message):
+        widget, self._vrm_widget = self._vrm_widget, None
+        if widget is not None:
+            widget.shutdown()
+            widget.deleteLater()
+        self.setToolTip(f"نمایش VRM ناموفق بود؛ آواتار PNG فعال است. {message}")
+        self.update()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._vrm_widget is not None:
+            self._vrm_widget.setGeometry(self.rect())
+
     def paintEvent(self, event):
+        if self._vrm_widget is not None and self._vrm_widget.isVisible():
+            return
         a, src = self.anim, self.src
         if a.pix.isNull():
             return
