@@ -4,9 +4,11 @@ from kira import characters
 
 
 class CharacterProfilesTests(unittest.TestCase):
-    def test_kira_is_default_and_has_no_extra_prompt(self):
+    def test_kira_is_default_and_has_coding_specialty(self):
         self.assertEqual(characters.active_id({}), "kira")
-        self.assertEqual(characters.prompt_for({}), "")
+        prompt = characters.prompt_for({})
+        self.assertIn("coding and software-development specialist", prompt)
+        self.assertIn("Ai1 Code", prompt)
 
     def test_ren_and_mika_are_distinct_profiles(self):
         ren = characters.CHARACTERS["ren"]
@@ -16,6 +18,8 @@ class CharacterProfilesTests(unittest.TestCase):
         self.assertNotEqual(ren["prompt"], mika["prompt"])
         self.assertIn("same intelligence", ren["prompt"])
         self.assertIn("same intelligence", mika["prompt"])
+        self.assertIn("medical-information guide", mika["specialty_prompt"])
+        self.assertIn("news and intelligence analysis", ren["specialty_prompt"])
 
     def test_unknown_profile_falls_back_to_kira(self):
         self.assertEqual(characters.active_id({"active_character_id": "missing"}), "kira")
@@ -24,6 +28,8 @@ class CharacterProfilesTests(unittest.TestCase):
     def test_prompt_uses_selected_character(self):
         self.assertIn("You are Ren", characters.prompt_for({"active_character_id": "ren"}))
         self.assertIn("You are Mika", characters.prompt_for({"active_character_id": "mika"}))
+        self.assertIn("medical-information guide", characters.prompt_for({"active_character_id": "mika"}))
+        self.assertIn("news and intelligence analysis", characters.prompt_for({"active_character_id": "ren"}))
 
     def test_custom_profiles_and_hidden_builtins(self):
         settings = {
