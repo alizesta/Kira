@@ -102,9 +102,10 @@ Cloud Voice settings are written atomically outside the application installation
 
 ## Native function calling
 - Tool.json_schema() is the single schema source. HybridRouter.chat_with_tools() selects an eligible route and invokes native calls only when its adapter exposes that capability.
-- The OpenAI-compatible adapter sends tools with tool_choice=auto, parses structured tool_calls, and preserves assistant/tool messages in the next request.
+- The OpenAI-compatible adapter sends tools with tool_choice=auto, parses structured tool_calls, and preserves assistant/tool messages in the next request. Google AI Studio uses Google's OpenAI-compatible endpoint, so Gemini routes use this adapter.
+- Ollama uses `/api/chat` with native `tools` definitions and maps assistant tool-call/tool-result messages to Ollama's message shape. A model that explicitly rejects tools reports native support as unavailable so the router can use another native route or fall back to the text protocol.
 - ToolAgent executes the structured call through the existing registry. Validation, access manager, one-shot confirmation grants, per-turn de-duplication, and Competitive Safe guard are unchanged and remain authoritative.
-- Routes without native support return to the existing text protocol. The current Ollama and Cloudflare adapters do not yet expose native calls. Tool-call rounds are non-streaming; final user-facing text remains streamed.
+- Cloudflare and routes without native support return to the existing text protocol. Tool-call rounds are non-streaming; final user-facing text remains streamed.
 
 - Pure foreground identity filtering lives in kira/game_detection.py and is covered by the portable tests.test_game_detection module; GameModeMonitor delegates current-PID and known Ai1/Kira title checks to it.
 

@@ -109,3 +109,10 @@
 ### Windows Game Mode test fixture correction
 - Initialize a Qt application in the Game Mode test fixture so the primary-screen geometry query is available on Windows CI's offscreen platform.
 - Include both Game Mode test modules in workflow path filters so future edits trigger the release gate.
+
+
+### Native Function Calling: Gemini and Ollama
+- Confirmed Google AI Studio/Gemini native tools through the existing OpenAI-compatible adapter and added a regression test for the official Google endpoint.
+- Added Ollama `/api/chat` native tool requests, response parsing and assistant/tool-result message preservation.
+- Added safe capability fallback: Ollama models that explicitly reject tool calling are marked unsupported so the router can continue to another native route or use the text protocol.
+- Kept ToolRegistry validation, permission checks, confirmation flow, duplicate-call protection and Game Mode execution guard unchanged.

@@ -85,18 +85,36 @@ def model_installed(models, wanted):
     return resolve_model(models, wanted) is not None
 
 
-def fit_messages(messages, system_prompt, num_ctx, reserve=REPLY_RESERVE_TOKENS):
+def fit_messages(messages, system_prompt, num_ctx, reserve=REPLY_RESERVE_TOKENS, preserve_tool_messages=False):
     """Keep the newest messages that fit the context budget (system prompt always kept)."""
     budget = max(200, int((clamp_num_ctx(num_ctx) - reserve) * CHARS_PER_TOKEN) - len(system_prompt or ""))
     kept, used = [], 0
     for item in reversed(messages):
+        role = item.get("role")
         content = str(item.get("content") or "")
         if kept and used + len(content) > budget:
             break
         if not kept and len(content) > budget:          # newest message alone is too long: trim its start
             content = content[-budget:]
-        entry = {"role": item["role"], "content": content}
-        if item.get("images"):                              # Ollama vision models take a plain list of base64 strings
+        entry = {"role": role, "content": content}
+        if preserve_tool_messages and role == "assistant" and item.get("tool_calls"):
+            calls = []
+            for call in item.get("tool_calls") or []:
+                fn = call.get("function") or {}
+                name = str(fn.get("name") or "").strip()
+                raw_args = fn.get("arguments", {})
+                try:
+                    args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                except (TypeError, ValueError):
+                    args = {}
+                if name:
+                    calls.append({"function": {"name": name, "arguments": args if isinstance(args, dict) else {}}})
+            if calls:
+                entry["tool_calls"] = calls
+        if preserve_tool_messages and role == "tool":
+            # Ollama's /api/chat tool result message uses role=tool and content; it has no OpenAI call-id field.
+            entry = {"role": "tool", "content": content}
+        elif item.get("images"):                              # Ollama vision models take a plain list of base64 strings
             entry["images"] = [i["b64"] for i in item["images"] if isinstance(i, dict) and i.get("b64")]
         kept.append(entry)
         used += len(content)
@@ -335,6 +353,88 @@ class OllamaClient:
             detail = msg.get("thinking") or data.get("error") or "The model returned no visible content."
             raise OllamaError("مدل پاسخ مفیدی نداد (خالی بود). " + str(detail)[:240], "empty")
         return content
+
+    # ---------- native function calling ----------
+    def chat_with_tools(self, messages, system_prompt, temperature=0.4, tools=None):
+        """One native tool-call round through Ollama's /api/chat tools schema.
+
+        Return None only when the selected model explicitly rejects tool calling. The router can then
+        continue to another native route or let ToolAgent use its safe text-protocol fallback.
+        """
+        if not tools:
+            return {"text": "", "tool_calls": []}
+        from .hybrid_ai import normalize_messages
+        clean = fit_messages(
+            normalize_messages(messages, preserve_tool_messages=True),
+            system_prompt, self.num_ctx, preserve_tool_messages=True,
+        )
+        if not clean:
+            raise OllamaError("هیچ پیام کاربری برای ارسال وجود ندارد.", "request")
+        ollama_tools = []
+        for schema in tools:
+            if isinstance(schema, dict) and str(schema.get("name") or "").strip():
+                ollama_tools.append({"type": "function", "function": schema})
+        if not ollama_tools:
+            return {"text": "", "tool_calls": []}
+        payload = {
+            "model": self.active_model,
+            "messages": [{"role": "system", "content": system_prompt}, *clean],
+            "tools": ollama_tools,
+            "stream": False,
+            "keep_alive": self.keep_alive,
+            "options": {"temperature": float(temperature), "num_ctx": self.num_ctx,
+                        "num_predict": self.num_predict},
+        }
+        if not self._no_think:
+            payload["think"] = False
+        r = self._post("/api/chat", payload, self.timeout)
+        if r.status_code == 400 and "think" in (r.text or "").lower() and "think" in payload:
+            payload.pop("think")
+            self._no_think = True
+            r = self._post("/api/chat", payload, self.timeout)
+        if r.status_code == 404 and self.resolve_installed() and self.active_model != payload["model"]:
+            payload["model"] = self.active_model
+            r = self._post("/api/chat", payload, self.timeout)
+        if r.status_code in (400, 422):
+            detail = self._error_text(r).lower()
+            unsupported = (
+                "does not support tools", "doesn't support tools", "tool calling is not supported",
+                "tools are not supported", "does not support tool calls", "unsupported tools",
+                "tool use is not supported",
+            )
+            if any(term in detail for term in unsupported):
+                return None
+        if r.status_code == 404:
+            raise self._missing()
+        if r.status_code >= 400:
+            detail = self._error_text(r)
+            kind = "memory" if "memory" in detail.lower() else "error"
+            raise OllamaError(f"خطای Ollama ({r.status_code}): {detail}", kind)
+        try:
+            data = r.json()
+        except ValueError as exc:
+            raise OllamaError("پاسخ Ollama قابل خواندن نبود.", "response") from exc
+        msg = data.get("message") or {}
+        content = re.sub(r"<think>.*?</think>", "", str(msg.get("content") or ""), flags=re.S)
+        content = re.sub(r"<think>.*$", "", content, flags=re.S).strip()
+        calls = []
+        for index, item in enumerate(msg.get("tool_calls") or []):
+            if not isinstance(item, dict):
+                continue
+            fn = item.get("function") or {}
+            name = str(fn.get("name") or "").strip()
+            raw_args = fn.get("arguments", {})
+            try:
+                args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+            except (TypeError, ValueError):
+                args = {}
+            if name:
+                calls.append({"id": str(item.get("id") or f"ollama_{index}"), "tool": name,
+                              "args": args if isinstance(args, dict) else {}})
+        if not content and not calls:
+            detail = msg.get("thinking") or data.get("error") or "The model returned no visible content."
+            raise OllamaError("مدل در پاسخ Native Function Calling متن یا فراخوانی ابزار برنگرداند. " + str(detail)[:240], "empty")
+        return {"text": content, "tool_calls": calls}
 
     # ---------- streaming ----------
     def abort(self):

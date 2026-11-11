@@ -10,6 +10,7 @@ on:
       - "tests/test_game_audio.py"
       - "tests/test_game_mode.py"
       - "tests/test_game_detection.py"
+      - "tests/test_native_function_calling.py"
       - "kira/game_mode_policy.py"
       - "tests/test_game_mode_policy.py"
       - "tests/test_streaming.py"

@@ -90,9 +90,10 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 
 
 ## Native Function Calling (2026-11-11)
-- Added native OpenAI-compatible function calling for routes using the OpenAI Chat Completions tools schema (Groq, Mistral, OpenRouter and configured OpenAI-compatible endpoints).
+- Native function calling is available through OpenAI-compatible routes, including Google AI Studio/Gemini, Groq, Mistral, OpenRouter and configured OpenAI-compatible endpoints.
+- Ollama uses its native `/api/chat` tools schema when the selected local model supports tool calling. Models that explicitly reject tools are treated as unsupported and return to the existing text-protocol path.
 - Tool schemas are generated from the existing ToolRegistry. All calls still pass through the same argument validation, permission checks, explicit confirmation flow, duplicate-call cache and Game Mode execution guard.
-- Providers without a native adapter, including the current Ollama and Cloudflare paths, retain the existing text-protocol fallback. Native support is capability-based, not assumed from a provider name.
+- Cloudflare and any provider/model without a compatible native adapter retain the existing text-protocol fallback. Native support is capability-based, not assumed from a provider name.
 - Native tool request rounds are non-streaming; ordinary final answers continue through the existing streamed chat path.
 
 - The Ai1/Kira foreground-window identity check is isolated in kira/game_detection.py and covered by portable tests/test_game_detection.py, so title/PID exclusion logic is tested without importing the Windows/PySide6 monitor.

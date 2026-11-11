@@ -72,3 +72,11 @@ Character specialization and generated portraits. The implementation is complete
 - CI does not emulate the user's actual desktop session. A final interactive smoke test on the user's Windows 11 machine remains necessary to confirm its live title/PID behavior.
 
 - First Windows CI attempt exposed a test-fixture issue: the positive large-window test called QApplication.primaryScreen() without an application instance. The fixture now initializes QApplication; the Windows job must be rerun before this stage is considered complete.
+
+
+## Stage 2: Native Function Calling provider coverage
+- OpenAI-compatible native tools already cover Google AI Studio/Gemini, Groq, Mistral, OpenRouter and custom compatible providers. Gemini uses Google's official OpenAI-compatible base URL.
+- Added native Ollama `/api/chat` tool calling, including structured arguments and multi-round assistant/tool result messages.
+- Ollama models that explicitly reject tool support return an unsupported signal; HybridRouter does not count that route as native-capable and can fall back to another native route or the existing text protocol.
+- New offline tests cover Google/Gemini request shape, Ollama request/response parsing, tool-message round trips and unsupported-model fallback.
+- The existing ToolAgent registry/permission/confirmation/Game Mode guard remains the only execution path.

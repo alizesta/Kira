@@ -1004,10 +1004,13 @@ class HybridRouter:
                     native = getattr(provider, "chat_with_tools", None)
                     if not callable(native):
                         continue
-                    supported = True
                     emit({"phase": "connecting", **info})
                     self._active = provider
                     result = native(messages, system_prompt, temperature, tools)
+                    if result is None:                         # this model/provider explicitly lacks native tool support
+                        self._active = None
+                        continue
+                    supported = True
                     elapsed = int((time.monotonic() - started) * 1000)
                     self._mark_success(route, elapsed)
                     self.last_provider, self.last_model, self.last_route_id = route["provider"], route["model"], route["id"]
