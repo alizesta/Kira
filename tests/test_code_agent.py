@@ -2,7 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from kira.code_agent import (build_project_context, project_tree, safe_project_file,\n                              extract_replacement, PATCH_START, PATCH_END)
+from kira.code_agent import (
+    build_project_context, project_tree, safe_project_file,
+    extract_replacement, PATCH_START, PATCH_END,
+)
 
 
 class CodeAgentContextTests(unittest.TestCase):
