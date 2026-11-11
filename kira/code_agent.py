@@ -105,6 +105,33 @@ def build_project_context(root, selected_file=None, selected_text=None) -> str:
     return "\n\n".join(parts)[:MAX_CONTEXT_CHARS + 12_000]
 
 
+PATCH_START = "<<<AI1_FILE_CONTENT_START>>>"
+PATCH_END = "<<<AI1_FILE_CONTENT_END>>>"
+
+
+def extract_replacement(response: str) -> str:
+    """Extract a complete replacement file from the agent's explicit response markers."""
+    text = str(response or "")
+    start = text.find(PATCH_START)
+    end = text.find(PATCH_END, start + len(PATCH_START)) if start >= 0 else -1
+    if start < 0 or end < 0:
+        raise ValueError("پاسخ مدل قالب Patch معتبر ندارد؛ هیچ فایلی تغییر نکرد.")
+    replacement = text[start + len(PATCH_START):end]
+    if replacement.startswith("\\r\\n"):
+        replacement = replacement[2:]
+    elif replacement.startswith("\\n"):
+        replacement = replacement[1:]
+    if replacement.endswith("\\r\\n"):
+        replacement = replacement[:-2]
+    elif replacement.endswith("\\n"):
+        replacement = replacement[:-1]
+    if not replacement.strip():
+        raise ValueError("مدل محتوای خالی پیشنهاد داده است؛ Patch رد شد.")
+    if len(replacement.encode("utf-8")) > MAX_FILE_BYTES:
+        raise ValueError("حجم فایل پیشنهادی از سقف ۵۱۲ کیلوبایت بیشتر است.")
+    return replacement
+
+
 class CodeAgentEngine:
     """Read-only coding assistant that uses Ai1's current shared model routes."""
     SYSTEM_PROMPT = """You are Ai1 Code Agent, an independent software engineering agent inside Ai1.
@@ -133,3 +160,29 @@ Never request or reproduce API keys, passwords, tokens, private keys or other se
         if not answer:
             raise RuntimeError("مدل پاسخ متنی برنگرداند.")
         return answer
+
+    def propose_replacement(self, request: str, project_context: str, on_chunk=None) -> str:
+        """Ask for a full replacement of the selected file; caller must preview and approve it."""
+        prompt = (
+            "TASK: Propose an edit to the selected project file.\n"
+            "Return the COMPLETE replacement content of that one selected file, not a diff.\n"
+            "Do not include explanations, markdown fences, or any text outside these exact markers:\n"
+            + PATCH_START + "\\n<complete file content>\\n" + PATCH_END
+            + "\\nDo not propose changes to other files. Preserve unrelated content. "
+            "If the request cannot safely be completed, explain that instead of emitting markers. "
+            "Never include secrets.\n\nUSER REQUEST:\\n"
+            + str(request or "").strip()[:5000]
+            + "\\n\\nPROJECT CONTEXT:\\n" + str(project_context or "")[:MAX_CONTEXT_CHARS + 12_000]
+        )
+        result = self.router.chat_stream(
+            [{"role": "user", "content": prompt}],
+            self.SYSTEM_PROMPT + "\\nYou may propose a complete replacement for the selected file, but you cannot apply it. "
+            "Never claim a change was saved or tests were run.",
+            temperature=0.1,
+            on_chunk=on_chunk,
+        )
+        answer = str((result or {}).get("text") or "").strip()
+        if not answer:
+            raise RuntimeError("مدل پاسخ متنی برنگرداند.")
+        return extract_replacement(answer)
+
