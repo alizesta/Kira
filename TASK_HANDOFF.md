@@ -1,49 +1,31 @@
 # Task Handoff
 
 ## Current task
-Implement dual Game Mode profiles with different capability and tool permissions: Story Mode for offline/story games, Competitive Safe for online/PvP.
+Ai1 Code phase 2: validate the single-file proposal/Diff/approval workflow, then perform Windows 11 UI and PowerShell debugging.
 
 ## Branch
 `feature/characters-ren-mika`
 
-## Implemented
-- Added a toolbar menu with Story Mode, Competitive Safe and Off. Profile selection is always manual.
-- Story Mode enables existing game-window Vision capture and local-only game/system audio speech analysis.
-- Competitive Safe disables game-window capture, Vision attachments, WASAPI game/system loopback and foreground-process polling. It also blocks local desktop/app/file/MCP/agent tools through a central ToolRegistry execution guard.
-- Competitive Safe retains ordinary chat, web research and the user's independent microphone/wake-word interaction.
-- Unknown game types/profiles fail closed to Competitive Safe. Detection recommends but never selects or enables a profile.
-- Story Mode retains existing explicitly requested desktop controls for offline play. Competitive Safe blocks desktop input and other local control tools. Both modes prohibit game-memory access, code injection, graphics hooks, overlays, game-file changes and driver installation.
-- Added `kira/game_mode.py` for Windows foreground process/window detection and guarded capture.
-- Added a 🎮 toggle to the chat toolbar.
-- Game detection adds a suggestion to chat and optionally the system tray; it does not activate Game Mode.
-- Suggestions are emitted once per detected process ID in the current app session.
-- Game Mode starts disabled on each launch.
-- When enabled, the last detected game window is sampled once per second. Frames are reduced to at most 854×480 with aspect ratio preserved; only the newest frame is kept in memory and attached as JPEG (quality 68) when a user sends a message.
-- Turning it off immediately stops the capture timer and clears the cached frame. No continuous upload occurs.
-- Added `kira/game_audio.py` for Windows WASAPI output loopback using the PyAudioWPatch package (installed by `install.bat`). It segments game/system speech and transcribes locally with faster-whisper; it does not save audio or send it to cloud STT.
-- Ordinary dialogue is ignored. Selected critical/mission/combat phrases can produce short spoken alerts with per-category cooldowns.
-- Game Mode temporarily turns on microphone wake-word listening. Kira stays quiet until called; previous microphone/wake settings are restored when Game Mode is disabled.
-- Ai1 is the application name; Kira is a character name.
+## Implemented in phase 2
+- Code Agent can propose a complete replacement for the selected file only.
+- Proposal parsing requires exact start/end markers, rejects empty output and enforces a 512 KiB model-output ceiling.
+- Workspace presents a read-only unified Diff and requires an explicit apply action.
+- Apply is rejected if the file on disk or editor content changed after the proposal was created.
+- Approved changes preserve a one-time `.ai1code.bak` backup and use a temporary sibling file followed by atomic replacement.
+- Added tests for valid marker parsing and malformed/empty proposal rejection.
 
-## Known limitations / test plan
-- Competitive Safe reduces game observation/control but cannot guarantee acceptance by every anti-cheat or override game terms.
-- Verify on Windows that switching Story -> Competitive Safe immediately stops capture and loopback, clears the cached frame, prevents image attachments and denies desktop/app/file/MCP/agent tools, including pending confirmations.
-- Verify Safe mode retains ordinary chat, web research and microphone/wake-word interaction.
-- Verify unknown game types are recommended for Competitive Safe and no profile is auto-enabled.
-- Detection is heuristic and may miss windowed games or suggest immersive non-game apps.
-- Capture requires Windows and a valid visible game window.
-- The selected chat Route must use a vision-capable model. Automatic vision-capability detection and route filtering are not implemented yet.
-- Test on the user's Windows PC: launch a game, confirm one suggestion, confirm Game Mode stays off until clicked, send a gameplay question with Game Mode on, then switch it off and confirm later messages no longer include a screenshot.
-- Confirm the selected model can accept image payloads and inspect actual screenshot content. Verify 1 FPS capture, 480p maximum dimensions, JPEG payload, and immediate timer shutdown. The capture interval and JPEG quality are centralized constants in `kira/game_mode.py`.
-- Verify app startup, chat, and portable release workflow.
-- On Windows, verify the active output device exposes WASAPI loopback; confirm game/system speech is transcribed locally, ordinary dialogue is ignored, important alerts are spoken once, the microphone wakes only on the Kira name, and both audio inputs stop when Game Mode is turned off.
-- If `faster-whisper` or WASAPI loopback is unavailable, confirm Vision remains usable and a clear audio error is shown.
+## What remains for user-side validation
+1. Run the latest ZIP on Windows 11 and open Ai1 Code.
+2. Select a small text/code file and ask for a simple one-file change.
+3. Confirm the Diff is readable and rejecting the dialog leaves the file unchanged.
+4. Generate another proposal, approve it, and confirm the file changes and the backup exists.
+5. Modify the file externally after opening it; confirm stale Patch application is blocked.
+6. Test PowerShell with a harmless read-only command and inspect output/exit code.
+7. Capture any traceback or UI freeze. GUI/PySide6/PowerShell are not exercised by portable CI.
 
-
-## Ai1 Code foundation
-- Added the Ai1 Code workspace entry to the main navigation menu.
-- Added project selection, file tree, UTF-8 text editor, explicit save with a one-time backup, and PowerShell terminal with a confirmation prompt for each command.
-- Added an independent read-only Code Agent engine that uses the shared configured routes but no character identity, ToolAgent, MCP, or desktop permissions.
-- The agent receives a bounded project tree and selected text file only. Sensitive files and folders, symlinks and paths outside the workspace are excluded/rejected.
-- No agent-written file edits or automatic command execution exist in this first version.
-- Next phase: run the app on Windows, debug the UI/runtime, then implement diff preview + explicit patch approval, test runner, debugger and Git integration.
+## Not implemented yet
+- Multi-file coordinated patches and cross-file Diff.
+- Automated test runner and test-result UI.
+- Debugger and breakpoints.
+- Git status/diff/commit controls.
+- Windows runtime debugging based on the user's actual machine logs.
