@@ -15,7 +15,7 @@ Ai1 is the application. Kira, Ren and Mika are character profiles within Ai1.
 - Turning Game Mode off stops the capture timer immediately, clears the cached frame, and ensures the next message is sent without a game frame.
 
 ### Game audio and quiet companion behavior
-- `kira/game_audio.py` captures the default Windows WASAPI output device using `sounddevice` loopback. It listens to the combined game/system output, segments speech with the existing VAD, and transcribes speech locally through `faster-whisper`.
+- `kira/game_audio.py` captures the default Windows WASAPI output device using `PyAudioWPatch` WASAPI loopback devices. It listens to the combined game/system output, segments speech with the existing VAD, and transcribes speech locally through `faster-whisper`.
 - Game audio is not written to disk and is not sent to cloud STT. If local faster-whisper is unavailable or WASAPI loopback cannot open, Game Mode remains active for Vision and shows a clear audio error.
 - A local keyword filter suppresses ordinary game dialogue. Only selected urgent, mission-completion and combat phrases can trigger a short spoken alert; per-category cooldowns suppress repetition.
 - Enabling Game Mode temporarily enables the microphone and existing wake-word mode. The microphone is used for the user's wake phrase and commands; while Kira is asleep, unrelated speech is ignored. The previous mic/wake toggle states are restored when Game Mode is disabled.
