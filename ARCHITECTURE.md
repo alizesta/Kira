@@ -1,4 +1,28 @@
-# Project Kira Architecture
+# Ai1 Architecture
+
+## Product identity
+Ai1 is the application. Kira, Ren and Mika are character profiles within Ai1.
+
+## Game Mode and Vision
+
+### Components
+- `kira/game_mode.py` owns foreground-window/process inspection and game-window capture.
+- `GameModeMonitor.poll()` emits a detection signal once per process ID during the current application session. Detection never changes the manual enabled state.
+- `MainWindow` owns the visible Game Mode toggle and the suggestion message.
+- The manual toggle starts off on every launch; no persisted preference can silently enable capture.
+- `capture_last_game()` returns a window pixmap only while the monitor's enabled flag is true.
+- On a user message, MainWindow converts the captured frame to the existing `kira.attachments.image_attachment` structure. The existing attachment composer and HybridRouter image payload path carry it with that message.
+- Turning Game Mode off disables capture immediately. The next message is sent without a game frame.
+
+### Detection limits
+- Detection is based on the foreground process executable, window title and window dimensions. Known desktop apps and launchers are excluded.
+- A game is suggested when its process/title resembles a game or its foreground window is sufficiently large.
+- This is a heuristic, not a complete game catalogue. Some games may be missed and some immersive non-game applications may be suggested.
+- A suggestion is informational; the user must click the Game Mode toggle manually.
+- Only the last detected game window is captured. If the window closes, capture returns no frame.
+
+### Vision model compatibility
+The existing provider-neutral image pipeline sends image attachments to the selected Route. Ai1 does not yet automatically classify every provider/model as vision-capable or reroute around text-only models. Users should select a vision-capable model in Route Manager for Game Mode image questions. A text-only model may reject the image request.
 
 ## Cloud Voice
 Cloud Voice is independent of chat model routing. It maintains its own provider order, API keys, enabled flags, selected models, voice IDs and cooldown state.
@@ -18,9 +42,8 @@ Cloud Voice is independent of chat model routing. It maintains its own provider 
 - Models: `speech-2.8-turbo`, `speech-2.8-hd`
 - Output: MP3, hex-encoded in the JSON response
 - MiniMax is TTS-only. It does not register an STT model.
-- Model IDs are presented from a built-in catalogue because the integration does not rely on an unverified model-list endpoint.
-- Key validation performs a short real synthesis request; this consumes a small amount of TTS quota.
+- API key validation performs a short real synthesis request and consumes a small amount of TTS quota.
 - API key persistence reuses CloudVoiceStore and Windows DPAPI protection.
 
 ## Shared storage
-Cloud Voice settings are written atomically to `%LOCALAPPDATA%\\Kira\\cloud_voice.json`, separate from the program installation directory.
+Cloud Voice settings are written atomically outside the application installation directory.
