@@ -28,7 +28,7 @@ def all_profiles(settings):
     custom = settings.get("characters") or []
     if isinstance(custom, list):
         for item in custom:
-            if isinstance(item, dict) and item.get("id") and item["id"] != "kira":
+            if isinstance(item, dict) and item.get("id") and item["id"] != "kira" and str(item["id"]) not in hidden:
                 profiles[str(item["id"])] = {**CHARACTERS.get(str(item["id"]), {}), **item}
     profiles["kira"] = dict(CHARACTERS["kira"])
     return profiles
