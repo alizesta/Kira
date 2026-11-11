@@ -21,6 +21,20 @@ class GameModeSafetyTests(unittest.TestCase):
         self.assertEqual(fit_capture_size(1280, 1024), (600, 480))
         self.assertEqual(fit_capture_size(640, 360), (640, 360))
 
+    def test_poll_ignores_ai1_own_process_even_when_window_is_large(self):
+        import os
+        monitor = GameModeMonitor()
+        monitor._foreground_info = mock.Mock(return_value={
+            "hwnd": 123, "pid": os.getpid(),
+            "exe": "python.exe", "title": "Project Kira 1 stable",
+            "rect": (0, 0, 1920, 1080),
+        })
+        detected = mock.Mock()
+        monitor.game_detected.connect(detected)
+        monitor.poll()
+        self.assertIsNone(monitor.last_game)
+        detected.assert_not_called()
+
     def test_poll_is_safe_without_windows_api(self):
         monitor = GameModeMonitor()
         monitor._user32 = None
