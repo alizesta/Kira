@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Ai1 VRM Avatar</title>
+  <style>
+    html, body { width:100%; height:100%; margin:0; overflow:hidden; background:transparent; }
+    body { font-family: "Segoe UI", sans-serif; user-select:none; }
+    #stage { position:absolute; inset:0; overflow:hidden; background:transparent; }
+    canvas { width:100%; height:100%; display:block; touch-action:none; outline:none; }
+    #status { position:absolute; left:8px; right:8px; bottom:8px; display:none; color:#ffd3e9;
+      background:rgba(16,18,35,.88); border:1px solid rgba(255,120,190,.55); border-radius:8px;
+      padding:7px 9px; font:12px/1.5 "Segoe UI",sans-serif; white-space:pre-wrap; direction:rtl; }
+  </style>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="status"></div>
+  <script type="module">
+    try {
+      await import("/viewer.js");
+    } catch (error) {
+      const message = "کتابخانه نمایش سه‌بعدی بارگذاری نشد. اتصال اینترنت و دسترسی به jsDelivr را بررسی کن.\\n" + (error?.message || error);
+      const node = document.getElementById("status");
+      node.textContent = message;
+      node.style.display = "block";
+      if (window.qt && window.qt.webChannelTransport && window.QWebChannel) {
+        new QWebChannel(qt.webChannelTransport, (channel) => channel.objects.ai1.onError(message));
+      }
+    }
+  </script>
+</body>
+</html>

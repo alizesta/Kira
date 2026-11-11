@@ -1,0 +1,16 @@
+{
+  "name": "ai1-vrm-viewer",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Offline browser bundle for the local Ai1 VRM avatar renderer",
+  "scripts": {
+    "build": "esbuild viewer.js --bundle --minify --format=esm --platform=browser --target=es2020 --legal-comments=inline --outfile=viewer.bundle.js"
+  },
+  "dependencies": {
+    "@pixiv/three-vrm": "3.5.5",
+    "three": "0.180.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}
