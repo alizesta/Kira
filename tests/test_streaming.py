@@ -10,6 +10,7 @@ from tests.helpers import Resp, StreamResp, sse, ndjson, CANARY
 from kira import routes, hybrid_ai
 from kira.hybrid_ai import HybridRouter, ThinkFilter, ProviderError
 from kira.ollama_client import OllamaClient, OllamaError
+from kira.leak_guard import LeakGuard
 
 MSGS = [{"role": "user", "content": "سلام"}]
 SYS = "persona"
@@ -43,6 +44,18 @@ def run(router, **kw):
     chunks, events = [], []
     res = router.chat_stream(MSGS, SYS, 0.7, on_chunk=chunks.append, on_event=events.append, **kw)
     return res, chunks, events
+
+
+class LeakGuardBufferTests(unittest.TestCase):
+    def test_short_plain_text_is_released_at_end_of_stream_not_mid_preamble(self):
+        guard = LeakGuard()
+        self.assertEqual(guard.feed("a"), "")
+        self.assertEqual(guard.finish(), "a")
+
+    def test_short_normal_reply_is_not_lost_when_stream_finishes(self):
+        guard = LeakGuard()
+        self.assertEqual(guard.feed("سلام"), "")
+        self.assertEqual(guard.finish(), "سلام")
 
 
 class ThinkFilterTests(unittest.TestCase):
