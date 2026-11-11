@@ -152,7 +152,8 @@ class ProviderBox(QGroupBox):
         for kind, title in (("stt", "cv_models_stt"), ("tts", "cv_models_tts")):
             entries = store.models(self.provider, kind)
             names = ", ".join(e["id"] + (f" ({t('cv_keys_n', n=len(e['keys']))})" if len(e["keys"]) > 1 else "") for e in entries) or t("cv_none")
-            catalog = any((k.get("detected") or {}).get("stt_source") == "catalog" for k in keys) and kind == "stt" and entries
+            source_key = "stt_source" if kind == "stt" else "tts_source"
+            catalog = any((k.get("detected") or {}).get(source_key) == "catalog" for k in keys) and bool(entries)
             lines.append(f"{t(title)} {names}" + (f" {t('cv_catalog')}" if catalog else ""))
         self.models.setText("\n".join(lines))
 
