@@ -51,4 +51,5 @@
 - Added strict response-marker validation and rejection of malformed or empty proposals.
 - Added read-only unified Diff preview and explicit user approval before writing.
 - Added stale-file/editor checks, one-time backup and atomic replacement for approved changes.
+- Blocked patch proposals for contexts containing redacted credentials to avoid overwriting real secrets with placeholders.
 - Added regression tests for patch-response validation. Windows GUI and PowerShell behavior still require manual testing on Windows 11.
