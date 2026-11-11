@@ -19,8 +19,8 @@ Ai1 is a Windows desktop anime-style digital companion. It combines local and cl
 - The foreground-game detector is advisory only and polls the foreground Windows process/window.
 - A game process receives one suggestion per process ID during the current Ai1 session.
 - Game Mode starts disabled on every application launch and is enabled only by the user's explicit toggle.
-- Screen capture is prohibited while Game Mode is off.
-- While enabled, the most recently detected game window is captured when the user sends a chat message; the frame is attached through the existing image pipeline.
+- Screen capture is prohibited while Game Mode is off. The capture timer runs only while the user has manually enabled Game Mode and is stopped immediately when disabled.
+- While enabled, the most recently detected game window is sampled once per second. Frames are downscaled to fit within 854×480 (aspect ratio preserved) and held in memory; only the newest JPEG frame is attached when the user sends a chat message. No frames are uploaded continuously.
 - Disabling Game Mode immediately disables further capture. It does not terminate the game or change its settings.
 - Detection uses process/window metadata and a conservative title/process/fullscreen heuristic; it is not guaranteed to identify every game.
 - Vision requests require a vision-capable model on the selected Route. Text-only models may reject image payloads; the existing provider error path explains this limitation.
