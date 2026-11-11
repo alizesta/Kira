@@ -63,3 +63,13 @@ Cloud Voice is independent of chat model routing. It maintains its own provider 
 
 ## Shared storage
 Cloud Voice settings are written atomically outside the application installation directory.
+
+
+## Ai1 Code workspace
+
+- Entry point: `kira/code_workspace.py`, opened from the main navigation menu.
+- The workspace owns a project root, QFileSystemModel tree, text editor and explicit-save path. Save creates a one-time `.ai1code.bak` backup before replacing the file.
+- The PowerShell terminal runs only after a per-command confirmation. Commands execute as the current Windows user in the selected project working directory; they are not sandboxed and may affect paths outside the project.
+- `kira/code_agent.py` is the provider-neutral read-only coding engine. It uses the shared configured HybridRouter routes but does not inherit any companion character prompt and has no ToolAgent / MCP / desktop tools.
+- Project context construction is bounded, skips secret files and runtime/build/dependency directories, rejects symlinks/path escapes, and includes only the selected text file plus a bounded tree.
+- Code Agent cannot write files or run tests in this initial version. Future patch generation must show a diff and require explicit approval before writing. Debugger, breakpoints, Git UI and test orchestration remain future work.

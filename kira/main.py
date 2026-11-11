@@ -57,6 +57,7 @@ from .theme import build_style, STYLE
 from . import winfx
 from .game_mode import GameModeMonitor, CAPTURE_INTERVAL_MS, CAPTURE_JPEG_QUALITY
 from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
+from .code_workspace import CodeWorkspaceDialog
 
 WAKE_RE = re.compile(r"(?:(?:هی|سلام|hey|hi)[\s\u200c]*)?(?:کی[\s\u200c]?را|کایرا|کیرآ|کیارا|kira|keira|kyra|kiera)", re.I)
 STOP_RE = re.compile(r"^\W*(?:بس\s*کن|بسه|ساکت(?:\s*شو)?|صبر\s*کن|وایسا|وایستا|stop|be\s*quiet)\W*$", re.I)       # "just be quiet" is not a chat message
@@ -571,6 +572,10 @@ class MainWindow(QMainWindow):
             action = self.nav_menu.addAction(self.t(key))
             action.triggered.connect(lambda checked=False, idx=i: self.go_tab(idx))
             self._menu_actions.append(action)
+        self.nav_menu.addSeparator()
+        self.code_workspace_action = self.nav_menu.addAction("Ai1 Code")
+        self.code_workspace_action.triggered.connect(self.open_code_workspace)
+        self.code_workspace = None
         central = QWidget()
         central_layout = QVBoxLayout(central)
         central_layout.setContentsMargins(10, 8, 10, 10)
@@ -631,6 +636,16 @@ class MainWindow(QMainWindow):
                 action.setText(self.t(key))
         if getattr(self, "cloud_page", None) is not None:
             self.cloud_page.retranslate(self.t)
+
+    def open_code_workspace(self):
+        """Open the independent Ai1 Code workspace; it shares configured routes, not character identity."""
+        if self.code_workspace is None:
+            self.code_workspace = CodeWorkspaceDialog(self.settings, self.client, self)
+        else:
+            self.code_workspace.update_runtime(self.settings, self.client)
+        self.code_workspace.show()
+        self.code_workspace.raise_()
+        self.code_workspace.activateWindow()
 
     def on_voice_error(self, message):
         """Voice failures (e.g. no internet for edge-tts) are shown once per 10 minutes, not after every reply."""

@@ -38,3 +38,12 @@ Implement dual Game Mode profiles with different capability and tool permissions
 - Verify app startup, chat, and portable release workflow.
 - On Windows, verify the active output device exposes WASAPI loopback; confirm game/system speech is transcribed locally, ordinary dialogue is ignored, important alerts are spoken once, the microphone wakes only on the Kira name, and both audio inputs stop when Game Mode is turned off.
 - If `faster-whisper` or WASAPI loopback is unavailable, confirm Vision remains usable and a clear audio error is shown.
+
+
+## Ai1 Code foundation
+- Added the Ai1 Code workspace entry to the main navigation menu.
+- Added project selection, file tree, UTF-8 text editor, explicit save with a one-time backup, and PowerShell terminal with a confirmation prompt for each command.
+- Added an independent read-only Code Agent engine that uses the shared configured routes but no character identity, ToolAgent, MCP, or desktop permissions.
+- The agent receives a bounded project tree and selected text file only. Sensitive files and folders, symlinks and paths outside the workspace are excluded/rejected.
+- No agent-written file edits or automatic command execution exist in this first version.
+- Next phase: run the app on Windows, debug the UI/runtime, then implement diff preview + explicit patch approval, test runner, debugger and Git integration.

@@ -2,6 +2,13 @@
 
 ## 2026-11-11
 
+### Ai1 Code workspace (initial foundation)
+- Added a separate Ai1 Code workspace with project folder selection, file tree, bounded UTF-8 editor and explicit save with a one-time backup.
+- Added a PowerShell terminal that requires confirmation for every command; it runs as the current Windows user and is not a sandbox.
+- Added a read-only Code Agent that uses shared configured routes without inheriting Kira/Ren/Mika persona prompts or ToolAgent/MCP permissions.
+- Project context is bounded and excludes secret/configuration files, runtime/build/dependency directories and symlinks/path escapes.
+- Automatic edits, approved Diff application, debugger, breakpoints, Git controls and test orchestration are deferred to the debugging phase.
+
 ### Dual Game Mode profiles and permission boundaries
 - Added manual Story Mode for offline/story games and Competitive Safe for online/PvP or unknown games.
 - Competitive Safe disables game-window Vision/capture, game/system WASAPI loopback and local desktop/app/file/MCP/agent control tools. It retains ordinary chat, web tools and independent microphone/wake-word interaction.

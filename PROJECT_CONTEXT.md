@@ -51,3 +51,11 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 - Add regression tests for provider-specific behavior and safety-sensitive capture behavior.
 - Do not claim real-time streaming unless audio chunks are actually played before synthesis completes.
 - Every completed project change should produce a timestamped `ProjectKira_YYMMDD_HHMM.zip` release when CI succeeds.
+
+
+## Ai1 Code
+- Ai1 Code is a separate engineering workspace inside the Ai1 application; it is not a character and does not change Kira/Ren/Mika identity.
+- The first workspace provides project-folder selection, a file tree, a bounded UTF-8 text editor, explicit save with a one-time backup, a PowerShell terminal with per-command user confirmation, and a read-only Code Agent.
+- Code Agent uses the existing configured HybridRouter routes but owns a separate prompt/worker lifecycle. It has no Tool Registry access, filesystem write access, or shell execution.
+- Project context is bounded and excludes secret/configuration files, virtual environments, build output, dependency folders, databases and key material. Only the selected text file content is sent alongside a bounded file listing.
+- Agent-generated edits, automatic patch application, debugger integration, Git controls, breakpoints and test orchestration are not implemented yet. They are planned for the debugging phase.
