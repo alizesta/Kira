@@ -117,13 +117,13 @@ def extract_replacement(response: str) -> str:
     if start < 0 or end < 0:
         raise ValueError("پاسخ مدل قالب Patch معتبر ندارد؛ هیچ فایلی تغییر نکرد.")
     replacement = text[start + len(PATCH_START):end]
-    if replacement.startswith("\\r\\n"):
+    if replacement.startswith("\r\n"):
         replacement = replacement[2:]
-    elif replacement.startswith("\\n"):
+    elif replacement.startswith("\n"):
         replacement = replacement[1:]
-    if replacement.endswith("\\r\\n"):
+    if replacement.endswith("\r\n"):
         replacement = replacement[:-2]
-    elif replacement.endswith("\\n"):
+    elif replacement.endswith("\n"):
         replacement = replacement[:-1]
     if not replacement.strip():
         raise ValueError("مدل محتوای خالی پیشنهاد داده است؛ Patch رد شد.")
@@ -167,16 +167,16 @@ Never request or reproduce API keys, passwords, tokens, private keys or other se
             "TASK: Propose an edit to the selected project file.\n"
             "Return the COMPLETE replacement content of that one selected file, not a diff.\n"
             "Do not include explanations, markdown fences, or any text outside these exact markers:\n"
-            + PATCH_START + "\\n<complete file content>\\n" + PATCH_END
-            + "\\nDo not propose changes to other files. Preserve unrelated content. "
+            + PATCH_START + "\n<complete file content>\n" + PATCH_END
+            + "\nDo not propose changes to other files. Preserve unrelated content. "
             "If the request cannot safely be completed, explain that instead of emitting markers. "
-            "Never include secrets.\n\nUSER REQUEST:\\n"
+            "Never include secrets.\n\nUSER REQUEST:\n"
             + str(request or "").strip()[:5000]
-            + "\\n\\nPROJECT CONTEXT:\\n" + str(project_context or "")[:MAX_CONTEXT_CHARS + 12_000]
+            + "\n\nPROJECT CONTEXT:\n" + str(project_context or "")[:MAX_CONTEXT_CHARS + 12_000]
         )
         result = self.router.chat_stream(
             [{"role": "user", "content": prompt}],
-            self.SYSTEM_PROMPT + "\\nYou may propose a complete replacement for the selected file, but you cannot apply it. "
+            self.SYSTEM_PROMPT + "\nYou may propose a complete replacement for the selected file, but you cannot apply it. "
             "Never claim a change was saved or tests were run.",
             temperature=0.1,
             on_chunk=on_chunk,
