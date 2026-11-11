@@ -94,3 +94,6 @@
 ### Game Mode detector hardening
 - Added an explicit product-window-title exclusion for Project Kira 1 stable / Kira / Ai1 windows in addition to the current-process-ID guard.
 - Added regression tests for a mismatched reported PID and a positive large-game-window detection to avoid suppressing real games.
+
+### Portable Game Mode identity regression coverage
+- Extracted the current-process and known Ai1/Kira window-title exclusion into a pure-Python helper and added CI coverage for the false-positive case and a real-game negative control.

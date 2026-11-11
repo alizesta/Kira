@@ -13,6 +13,7 @@ from ctypes import wintypes
 from PySide6.QtCore import QObject, Signal, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QApplication
+from .game_detection import is_ai1_window
 
 _NON_GAME = {
     "explorer.exe", "dwm.exe", "applicationframehost.exe", "searchhost.exe",
@@ -43,7 +44,6 @@ _GAME_HINTS = re.compile(
     r"eldenring|elden ring|cyberpunk|valorant|league of legends|"
     r"fortnite|minecraft|gta5|witcher|steam_app)", re.I
 )
-_AI1_WINDOW_TITLE = re.compile(r"^(?:Project\\s+)?Kira(?:\\s+\\d+(?:\\.\\d+)*)?(?:\\s+stable)?$|^Ai1(?:\\s+.*)?$", re.I)
 
 
 class GameModeMonitor(QObject):
@@ -105,7 +105,7 @@ class GameModeMonitor(QObject):
             return
         # Ai1's main and companion windows share this process. Exclude the
         # current process and known product window titles before game heuristics.
-        if int(info.get("pid", -1)) == os.getpid() or _AI1_WINDOW_TITLE.fullmatch(str(info.get("title") or "").strip()):
+        if is_ai1_window(info, os.getpid()):
             return
         exe = info["exe"]
         title = info["title"]

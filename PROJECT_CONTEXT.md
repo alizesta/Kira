@@ -94,3 +94,5 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 - Tool schemas are generated from the existing ToolRegistry. All calls still pass through the same argument validation, permission checks, explicit confirmation flow, duplicate-call cache and Game Mode execution guard.
 - Providers without a native adapter, including the current Ollama and Cloudflare paths, retain the existing text-protocol fallback. Native support is capability-based, not assumed from a provider name.
 - Native tool request rounds are non-streaming; ordinary final answers continue through the existing streamed chat path.
+
+- The Ai1/Kira foreground-window identity check is isolated in kira/game_detection.py and covered by portable tests/test_game_detection.py, so title/PID exclusion logic is tested without importing the Windows/PySide6 monitor.

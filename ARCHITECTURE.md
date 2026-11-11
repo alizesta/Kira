@@ -105,3 +105,5 @@ Cloud Voice settings are written atomically outside the application installation
 - The OpenAI-compatible adapter sends tools with tool_choice=auto, parses structured tool_calls, and preserves assistant/tool messages in the next request.
 - ToolAgent executes the structured call through the existing registry. Validation, access manager, one-shot confirmation grants, per-turn de-duplication, and Competitive Safe guard are unchanged and remain authoritative.
 - Routes without native support return to the existing text protocol. The current Ollama and Cloudflare adapters do not yet expose native calls. Tool-call rounds are non-streaming; final user-facing text remains streamed.
+
+- Pure foreground identity filtering lives in kira/game_detection.py and is covered by the portable tests.test_game_detection module; GameModeMonitor delegates current-PID and known Ai1/Kira title checks to it.
