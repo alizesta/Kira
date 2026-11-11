@@ -2,6 +2,13 @@
 
 ## 2026-11-11
 
+### Character specialties and generated portraits
+- Defined Kira as the coding/software-development specialist, Mika as the medical-information guide, and Ren as the news and intelligence analyst.
+- Added scope-aware specialty prompts while keeping model routes, tools and permissions shared across characters.
+- Added medical safety boundaries: no definitive diagnosis or independent prescribing, emergency red flags, reputable evidence and health-data privacy.
+- Replaced built-in vector placeholder portraits in the Characters tab with generated anime portrait image assets; the tab decodes JPEG data in memory for native Qt display.
+- Added regression coverage for each built-in character's specialty prompt.
+
 ### Ai1 Code workspace (initial foundation)
 - Added a separate Ai1 Code workspace with project folder selection, file tree, bounded UTF-8 editor and explicit save with a one-time backup.
 - Added a PowerShell terminal that requires confirmation for every command; it runs as the current Windows user and is not a sandbox.
