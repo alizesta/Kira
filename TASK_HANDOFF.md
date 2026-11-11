@@ -9,6 +9,7 @@ Ai1 Code phase 2: validate the single-file proposal/Diff/approval workflow, then
 ## Implemented in phase 2
 - Code Agent can propose a complete replacement for the selected file only.
 - Proposal parsing requires exact start/end markers, rejects empty output and enforces a 512 KiB model-output ceiling.
+- Patch generation is blocked whenever the selected context contains redacted credentials.
 - Workspace presents a read-only unified Diff and requires an explicit apply action.
 - Apply is rejected if the file on disk or editor content changed after the proposal was created.
 - Approved changes preserve a one-time `.ai1code.bak` backup and use a temporary sibling file followed by atomic replacement.
