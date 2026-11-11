@@ -7,6 +7,10 @@ on:
       - "kira/**"
       - "install.bat"
       - "tests/test_game_audio.py"
+      - "kira/game_mode_policy.py"
+      - "tests/test_game_mode_policy.py"
+      - "kira/tools/agent.py"
+      - "kira/tools/registry.py"
       - "docs/**"
       - "tests/test_api_manager.py"
       - "tests/test_routes.py"
@@ -56,6 +60,7 @@ jobs:
           tests.test_persian_quality
           tests.test_release_package
           tests.test_minimax_cloud_voice
+          tests.test_game_mode_policy
 
       - name: Check Python syntax
         run: python -m compileall -q kira scripts tests
@@ -76,7 +81,7 @@ jobs:
             The source archive uses the ProjectKira_YYMMDD_HHMM.zip format and Asia/Tehran local time.
             
             Portable regression tests and Python syntax checks passed before packaging. GUI and Windows-specific tests are intentionally excluded.
-            Game Mode includes local WASAPI loopback speech recognition; no game audio is sent to cloud STT.
+            Game Mode has manual Story and Competitive Safe profiles. Competitive Safe disables game capture, game/system loopback and local control tools; Story Mode keeps local-only WASAPI speech recognition.
           files: ${{ steps.package.outputs.asset }}
           fail_on_unmatched_files: true
           draft: false

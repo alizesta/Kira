@@ -27,6 +27,7 @@ from .access import PathPolicy
 from .builtin import build_registry
 from .registry import ToolResult, NEEDS_CONFIRM, BAD_ARGS, OK, LEVEL_NAMES, clip
 from ..webintel.session import CANCEL as WEB_CANCEL
+from ..game_mode_policy import tool_categories_allowed
 
 CONFIRM_TTL = 300                 # seconds a pending confirmation stays valid
 MEMO_TTL = 1800                   # seconds a "recent tool result" note stays in the prompt (session only, never saved)
@@ -96,6 +97,8 @@ class ToolAgent(AutonomyMixin):
         self.settings = settings
         self.policy = PathPolicy(settings, data_dir, program_root)
         self.registry = build_registry(self.policy)
+        self._competitive_safe_mode = False
+        self.registry.execution_guard = self._game_mode_execution_guard
         self.registry.access.require_grants = True           # production: a confirmed execution needs a grant made from the user's own confirmation message
         self.mcp = None
         try:                                              # external MCP servers + independent agents (kira/mcp); optional, in the background
@@ -113,6 +116,24 @@ class ToolAgent(AutonomyMixin):
         self._last_used_turn = -99
         self.last_results: list[ToolResult] = []
         self._init_autonomy(data_dir)            # task plans, task state, user control of a running task
+
+    # ------------------------------------------------------------ game-mode permission boundary
+    def set_competitive_safe_mode(self, enabled: bool):
+        """Restrict local control tools while an online/PvP safety profile is active."""
+        self._competitive_safe_mode = bool(enabled)
+        if self._competitive_safe_mode:
+            self.registry.access.revoke_grants()
+            pending = self._pending
+            if pending is not None:
+                tool = self.registry.get(pending.tool)
+                if tool is None or not tool_categories_allowed("competitive_safe", tool.categories):
+                    self._pending = None
+
+    def _game_mode_execution_guard(self, tool):
+        if self._competitive_safe_mode and not tool_categories_allowed("competitive_safe", tool.categories):
+            return ("Competitive Safe دسترسی ابزارهای محلی و کنترلی، دسکتاپ، برنامه‌ها، فایل‌ها، MCP و Agent را مسدود کرده است. "
+                    "فقط ابزارهای وب مستقل مجازند.")
+        return None
 
     # ------------------------------------------------------------ settings
     def set_settings(self, settings: dict):
@@ -151,6 +172,10 @@ class ToolAgent(AutonomyMixin):
             return None
         plan = self.decide(text, self._plan_simple(text))
         if plan is not None:
+            if self._competitive_safe_mode:
+                plan.categories.intersection_update({"web"})
+                if not plan.categories:
+                    return None
             plan.web = "web" in plan.categories and (bool(protocol.detect_categories(text) & {"web"}) or self._web_resume(text))
         return plan
 

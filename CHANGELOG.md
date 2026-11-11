@@ -2,6 +2,14 @@
 
 ## 2026-11-11
 
+### Dual Game Mode profiles and permission boundaries
+- Added manual Story Mode for offline/story games and Competitive Safe for online/PvP or unknown games.
+- Competitive Safe disables game-window Vision/capture, game/system WASAPI loopback and local desktop/app/file/MCP/agent control tools. It retains ordinary chat, web tools and independent microphone/wake-word interaction.
+- Added a central ToolRegistry execution guard so restrictions also apply to direct tool calls, confirmations and Agent tasks.
+- Unknown profiles fail closed to Competitive Safe; detection only recommends and never auto-enables a profile.
+- Both profiles keep code injection, game memory access, graphics hooks, gameplay input automation, overlays, game-file modification and driver installation disabled.
+- Added pure-Python regression tests for profile capabilities and tool-category restrictions.
+
 ### Game Mode audio and wake update
 - Added Windows WASAPI loopback capture via PyAudioWPatch for default system/game output.
 - Game speech is segmented and transcribed locally with faster-whisper; audio is neither saved nor sent to cloud STT.

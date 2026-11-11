@@ -1,12 +1,18 @@
 # Task Handoff
 
 ## Current task
-Implement manual Game Mode and optional game-window Vision capture in Ai1.
+Implement dual Game Mode profiles with different capability and tool permissions: Story Mode for offline/story games, Competitive Safe for online/PvP.
 
 ## Branch
 `feature/characters-ren-mika`
 
 ## Implemented
+- Added a toolbar menu with Story Mode, Competitive Safe and Off. Profile selection is always manual.
+- Story Mode enables existing game-window Vision capture and local-only game/system audio speech analysis.
+- Competitive Safe disables game-window capture, Vision attachments and WASAPI game/system loopback. It also blocks local desktop/app/file/MCP/agent tools through a central ToolRegistry execution guard.
+- Competitive Safe retains ordinary chat, web research and the user's independent microphone/wake-word interaction.
+- Unknown game types/profiles fail closed to Competitive Safe. Detection recommends but never selects or enables a profile.
+- Both modes prohibit game-memory access, injection, graphics hooks, gameplay input automation, overlays, game-file changes and driver installation.
 - Added `kira/game_mode.py` for Windows foreground process/window detection and guarded capture.
 - Added a 🎮 toggle to the chat toolbar.
 - Game detection adds a suggestion to chat and optionally the system tray; it does not activate Game Mode.
@@ -20,6 +26,10 @@ Implement manual Game Mode and optional game-window Vision capture in Ai1.
 - Ai1 is the application name; Kira is a character name.
 
 ## Known limitations / test plan
+- Competitive Safe reduces game observation/control but cannot guarantee acceptance by every anti-cheat or override game terms.
+- Verify on Windows that switching Story -> Competitive Safe immediately stops capture and loopback, clears the cached frame, prevents image attachments and denies desktop/app/file/MCP/agent tools, including pending confirmations.
+- Verify Safe mode retains ordinary chat, web research and microphone/wake-word interaction.
+- Verify unknown game types are recommended for Competitive Safe and no profile is auto-enabled.
 - Detection is heuristic and may miss windowed games or suggest immersive non-game apps.
 - Capture requires Windows and a valid visible game window.
 - The selected chat Route must use a vision-capable model. Automatic vision-capability detection and route filtering are not implemented yet.

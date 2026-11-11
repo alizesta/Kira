@@ -56,6 +56,7 @@ from .ui_widgets import ChatInput, RouteChip, AttachmentTile
 from .theme import build_style, STYLE
 from . import winfx
 from .game_mode import GameModeMonitor, CAPTURE_INTERVAL_MS, CAPTURE_JPEG_QUALITY
+from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
 
 WAKE_RE = re.compile(r"(?:(?:هی|سلام|hey|hi)[\s\u200c]*)?(?:کی[\s\u200c]?را|کایرا|کیرآ|کیارا|kira|keira|kyra|kiera)", re.I)
 STOP_RE = re.compile(r"^\W*(?:بس\s*کن|بسه|ساکت(?:\s*شو)?|صبر\s*کن|وایسا|وایستا|stop|be\s*quiet)\W*$", re.I)       # "just be quiet" is not a chat message
@@ -479,6 +480,7 @@ class MainWindow(QMainWindow):
         self.client = HybridRouter(self.settings)
         self.game_mode = GameModeMonitor(self)
         self._game_mode_enabled = False
+        self._game_mode_profile = COMPETITIVE_SAFE_MODE
         self._latest_game_frame = None
         self.game_audio_listener = None
         self._game_audio_alerts = {}
@@ -902,11 +904,26 @@ class MainWindow(QMainWindow):
         self.game_mode_btn = QToolButton()
         self.game_mode_btn.setObjectName("gameModeBtn")
         self.game_mode_btn.setText("🎮")
-        self.game_mode_btn.setCheckable(True)
+        self.game_mode_btn.setCheckable(False)
         self.game_mode_btn.setCursor(Qt.PointingHandCursor)
         self.game_mode_btn.setFocusPolicy(Qt.NoFocus)
-        self.game_mode_btn.setToolTip("Game Mode خاموش است؛ برای فعال‌کردن دستی کلیک کن")
-        self.game_mode_btn.toggled.connect(self.set_game_mode)
+        self.game_mode_menu = QMenu(self.game_mode_btn)
+        self.game_mode_story_action = QAction("Story Mode · آفلاین و داستانی", self.game_mode_menu)
+        self.game_mode_story_action.setCheckable(True)
+        self.game_mode_story_action.triggered.connect(lambda: self.set_game_mode_profile(STORY_MODE))
+        self.game_mode_safe_action = QAction("Competitive Safe · آنلاین و PvP", self.game_mode_menu)
+        self.game_mode_safe_action.setCheckable(True)
+        self.game_mode_safe_action.setChecked(True)
+        self.game_mode_safe_action.triggered.connect(lambda: self.set_game_mode_profile(COMPETITIVE_SAFE_MODE))
+        self.game_mode_off_action = QAction("خاموش‌کردن Game Mode", self.game_mode_menu)
+        self.game_mode_off_action.triggered.connect(lambda: self.set_game_mode(False))
+        self.game_mode_menu.addAction(self.game_mode_story_action)
+        self.game_mode_menu.addAction(self.game_mode_safe_action)
+        self.game_mode_menu.addSeparator()
+        self.game_mode_menu.addAction(self.game_mode_off_action)
+        self.game_mode_btn.setMenu(self.game_mode_menu)
+        self.game_mode_btn.setPopupMode(QToolButton.InstantPopup)
+        self.game_mode_btn.setToolTip("انتخاب حالت بازی: Story یا Competitive Safe")
         bar.addWidget(self.game_mode_btn)
         self.stop_btn = self.icon_button("stop")
         self.stop_btn.clicked.connect(lambda *_: self.on_stop_clicked())
@@ -2776,18 +2793,42 @@ class MainWindow(QMainWindow):
             self.add_attachment_paths(paths)
             event.acceptProposedAction()
 
+    def set_game_mode_profile(self, profile):
+        """Apply a manually selected gameplay profile; never infer or enable it automatically."""
+        self._game_mode_profile = normalize_game_mode_profile(profile)
+        self.game_mode_story_action.setChecked(self._game_mode_profile == STORY_MODE)
+        self.game_mode_safe_action.setChecked(self._game_mode_profile == COMPETITIVE_SAFE_MODE)
+        self.set_game_mode(True)
+
     def set_game_mode(self, enabled):
-        self._game_mode_enabled = bool(enabled)
-        self.game_mode.set_enabled(self._game_mode_enabled)
-        if self._game_mode_enabled:
-            self._game_prev_mic = self.mic_btn.isChecked()
-            self._game_prev_wake = self.wake_btn.isChecked()
+        enabled = bool(enabled)
+        was_enabled = self._game_mode_enabled
+        self._game_mode_enabled = enabled
+        permissions = game_mode_permissions(self._game_mode_profile)
+        vision_allowed = bool(permissions["vision_capture"])
+        audio_allowed = bool(permissions["game_audio_loopback"])
+
+        # Capture is gated by the selected profile, not only by the master toggle.
+        self.game_mode.set_enabled(enabled and vision_allowed)
+        self.tool_agent.set_competitive_safe_mode(enabled and self._game_mode_profile == COMPETITIVE_SAFE_MODE)
+
+        if enabled:
+            if not was_enabled:
+                self._game_prev_mic = self.mic_btn.isChecked()
+                self._game_prev_wake = self.wake_btn.isChecked()
             if not self.wake_btn.isChecked():
                 self.wake_btn.setChecked(True)
-                self.toggle_wake()  # microphone wake-word listening; no ordinary speech is submitted while asleep
-            self._capture_game_frame()
-            self._game_capture_timer.start()
-            self._start_game_audio_listener()
+                self.toggle_wake()
+            if vision_allowed:
+                self._capture_game_frame()
+                self._game_capture_timer.start()
+            else:
+                self._game_capture_timer.stop()
+                self._latest_game_frame = None
+            if audio_allowed:
+                self._start_game_audio_listener()
+            else:
+                self._stop_game_audio_listener()
         else:
             self._game_capture_timer.stop()
             self._latest_game_frame = None
@@ -2798,10 +2839,16 @@ class MainWindow(QMainWindow):
             if not self._game_prev_mic and self.mic_btn.isChecked():
                 self.mic_btn.setChecked(False)
                 self.stop_listener()
-        self.game_mode_btn.setToolTip("Game Mode روشن است؛ Vision 480p/1FPS، شنیدن صدای سیستم و بیدارباش با نام Kira فعال است" if enabled
-                                      else "Game Mode خاموش است؛ تصویر و شنیدن صدای بازی متوقف است")
-        self.add_chat("system", "🎮 Game Mode فعال شد. Vision با کیفیت 480p و نرخ ۱ فریم در ثانیه فعال است؛ صدای بازی/سیستم به‌صورت محلی تحلیل می‌شود و Kira فقط با صدازدن یا تشخیص هشدار مهم واکنش نشان می‌دهد."
-                      if enabled else "Game Mode خاموش شد؛ تصویربرداری و شنیدن صدای بازی متوقف شد.")
+
+        if not enabled:
+            self.game_mode_btn.setToolTip("Game Mode خاموش است؛ برای فعال‌کردن دستی کلیک کن")
+            self.add_chat("system", "🎮 Game Mode خاموش شد؛ تمام Captureها و شنود صدای بازی متوقف شدند.")
+        elif self._game_mode_profile == STORY_MODE:
+            self.game_mode_btn.setToolTip("Story Mode فعال است؛ Vision و تحلیل محلی صدای بازی فعال‌اند")
+            self.add_chat("system", "🎮 Story Mode فعال شد. Vision و تحلیل محلی صدای بازی فعال‌اند. دست‌کاری پردازش، حافظه یا ورودی بازی همچنان ممنوع است.")
+        else:
+            self.game_mode_btn.setToolTip("Competitive Safe فعال است؛ بدون Vision، Capture، شنود بازی یا کنترل دسکتاپ")
+            self.add_chat("system", "🛡️ Competitive Safe فعال شد. Vision، Capture، شنود صدای بازی و ابزارهای کنترل دسکتاپ/MCP مسدودند. فقط چت، جست‌وجوی وب و میکروفون/Wake Word مستقل فعال‌اند.")
 
     def _start_game_audio_listener(self):
         self._stop_game_audio_listener()
@@ -2817,11 +2864,14 @@ class MainWindow(QMainWindow):
             listener.stop()
 
     def on_game_audio_error(self, message):
-        if self._game_mode_enabled:
+        if (self._game_mode_enabled
+                and game_mode_permissions(self._game_mode_profile)["game_audio_loopback"]):
             self.add_chat("system", "🎧 " + message)
 
     def on_game_audio_transcript(self, text):
-        if not self._game_mode_enabled or self.busy or self.speaker._began or not is_important_game_audio(text):
+        if (not self._game_mode_enabled
+                or not game_mode_permissions(self._game_mode_profile)["automatic_game_audio_alerts"]
+                or self.busy or self.speaker._began or not is_important_game_audio(text)):
             return
         now = time.monotonic()
         lower = text.casefold()
@@ -2842,7 +2892,7 @@ class MainWindow(QMainWindow):
 
     def _capture_game_frame(self):
         """Keep only the newest small frame; capture is timer-driven and never uploads in the background."""
-        if not self._game_mode_enabled:
+        if not self._game_mode_enabled or not game_mode_permissions(self._game_mode_profile)["vision_capture"]:
             self._latest_game_frame = None
             return
         pixmap = self.game_mode.capture_last_game()
@@ -2853,7 +2903,7 @@ class MainWindow(QMainWindow):
         if self._game_mode_enabled:
             return
         name = info.get("title") or info.get("exe") or "بازی"
-        note = f"🎮 به نظر می‌رسد «{name[:90]}» اجرا شده. اگر برای بازی به کمک نیاز داری، Game Mode را از دکمه 🎮 فعال کن."
+        note = (f"🎮 بازی «{name[:90]}» شناسایی شد. اگر آفلاین/داستانی است Story Mode و اگر آنلاین/PvP یا نامشخص است Competitive Safe را انتخاب کن. انتخاب با خودت است.")
         self.add_chat("system", note)
         tray = getattr(self, "tray", None)
         if tray is not None and tray.isVisible():
@@ -2862,7 +2912,9 @@ class MainWindow(QMainWindow):
 
     def _game_vision_attachment(self):
         """Attach only the newest 480p JPEG frame captured while Game Mode is manually enabled."""
-        if not self._game_mode_enabled or self._latest_game_frame is None:
+        if (not self._game_mode_enabled
+                or not game_mode_permissions(self._game_mode_profile)["vision_capture"]
+                or self._latest_game_frame is None):
             return None
         try:
             from PySide6.QtCore import QBuffer, QByteArray, QIODevice
