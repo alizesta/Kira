@@ -56,7 +56,7 @@ jobs:
           tests.test_minimax_cloud_voice
 
       - name: Check Python syntax
-        run: python -m compileall -q kira scripts
+        run: python -m compileall -q kira scripts tests
 
       - name: Build timestamped source ZIP
         id: package
