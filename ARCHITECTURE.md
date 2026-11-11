@@ -9,7 +9,7 @@ Ai1 is the application. Kira, Ren and Mika are character profiles within Ai1.
 - `kira/game_mode.py` owns foreground-window/process inspection and game-window capture.
 - `GameModeMonitor.poll()` emits a detection signal once per process ID during the current application session. Detection never changes the manual enabled state.
 - `MainWindow` owns the visible Game Mode toggle and the suggestion message.
-- The manual toggle starts off on every launch; no persisted preference can silently enable capture. Capture interval is currently fixed at one frame per second.
+- The manual toggle starts off on every launch; no persisted preference can silently enable capture. Capture interval and JPEG quality are centralized as `CAPTURE_INTERVAL_MS` and `CAPTURE_JPEG_QUALITY` constants in `kira/game_mode.py`.
 - `capture_last_game()` returns a window pixmap only while the monitor's enabled flag is true.
 - While Game Mode is enabled, a 1,000 ms Qt timer samples the detected game window. `GameModeMonitor` downsizes each captured frame to fit within 854×480 while preserving aspect ratio. MainWindow retains only the newest frame in memory and encodes it as JPEG (quality 68) when a user sends a message. The existing attachment composer and HybridRouter image payload path carry only that latest frame; no continuous background upload occurs.
 - Turning Game Mode off stops the capture timer immediately, clears the cached frame, and ensures the next message is sent without a game frame.
