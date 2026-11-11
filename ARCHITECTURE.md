@@ -77,6 +77,7 @@ Cloud Voice settings are written atomically outside the application installation
 
 ### Ai1 Code: proposal, Diff and approval flow
 - The Code Agent may return a complete replacement for only the selected file, wrapped in exact protocol markers. The engine validates markers, non-empty content and the 512 KiB proposal ceiling; malformed output is rejected.
+- If the selected context contains `[REDACTED]`, patch generation is blocked so a masked credential can never be accidentally written over its original value.
 - `CodeWorkspaceDialog` renders a unified Diff in a read-only preview dialog. The user must choose the explicit apply action; closing/rejecting the preview leaves the file untouched.
 - Apply re-validates the selected path, compares current disk bytes with the snapshot taken when the file was opened, and compares editor text with the base text used for the proposal. Any stale state aborts the write.
 - Approved content is limited to 2 MiB, backed up once as `.ai1code.bak`, written to a temporary sibling file and atomically replaced. The editor and disk snapshot are refreshed only after success.
