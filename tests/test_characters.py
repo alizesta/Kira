@@ -25,6 +25,17 @@ class CharacterProfilesTests(unittest.TestCase):
         self.assertIn("You are Ren", characters.prompt_for({"active_character_id": "ren"}))
         self.assertIn("You are Mika", characters.prompt_for({"active_character_id": "mika"}))
 
+    def test_custom_profiles_and_hidden_builtins(self):
+        settings = {
+            "active_character_id": "custom_1",
+            "characters": [{"id": "custom_1", "name": "Nova", "name_fa": "نوا",
+                            "description": "custom", "prompt": "You are Nova"}],
+            "deleted_character_ids": ["ren"],
+        }
+        self.assertNotIn("ren", characters.all_profiles(settings))
+        self.assertEqual(characters.display_name(settings), "Nova")
+        self.assertIn("You are Nova", characters.prompt_for(settings))
+
 
 if __name__ == "__main__":
     unittest.main()
