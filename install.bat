@@ -66,7 +66,7 @@ if errorlevel 1 goto netfail
 echo.
 echo [2/2] Installing voice packages one by one...
 if exist voice_failed.txt del voice_failed.txt
-set "PKGS=Pillow sounddevice edge-tts SpeechRecognition"
+set "PKGS=Pillow sounddevice PyAudioWPatch edge-tts SpeechRecognition"
 set "SKIPPED="
 python -c "import sys; sys.exit(0 if sys.version_info[:2]<=(3,12) else 1)" >nul 2>nul
 if errorlevel 1 (
