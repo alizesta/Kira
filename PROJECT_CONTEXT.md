@@ -104,3 +104,5 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 - Linux portable coverage remains in place. This CI validates mocked foreground PID/title integration and safety behavior; it does not replace a real interactive Windows 11 test with the user's actual desktop/window title.
 
 - The Windows Game Mode test fixture initializes QApplication before exercising the monitor's large-window heuristic; CI runs the Qt integration offscreen.
+
+- Native Ollama regression tests use JSON serialization for assistant tool-call arguments so the multi-round message fixture remains valid Python and verifies the actual JSON object sent to Ollama.

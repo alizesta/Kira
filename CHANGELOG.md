@@ -116,3 +116,6 @@
 - Added Ollama `/api/chat` native tool requests, response parsing and assistant/tool-result message preservation.
 - Added safe capability fallback: Ollama models that explicitly reject tool calling are marked unsupported so the router can continue to another native route or use the text protocol.
 - Kept ToolRegistry validation, permission checks, confirmation flow, duplicate-call protection and Game Mode execution guard unchanged.
+
+### Native Function Calling test fixture correction
+- Build the assistant tool-call argument string with `json.dumps` in the Ollama multi-round regression fixture to avoid invalid Python escaping.

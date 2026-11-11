@@ -80,3 +80,5 @@ Character specialization and generated portraits. The implementation is complete
 - Ollama models that explicitly reject tool support return an unsupported signal; HybridRouter does not count that route as native-capable and can fall back to another native route or the existing text protocol.
 - New offline tests cover Google/Gemini request shape, Ollama request/response parsing, tool-message round trips and unsupported-model fallback.
 - The existing ToolAgent registry/permission/confirmation/Game Mode guard remains the only execution path.
+
+- First Stage 2 CI run stopped at import time because the new Ollama round-trip test had invalid string escaping. The fixture now uses `json.dumps`; rerun the complete Windows-gated workflow before publishing this stage.

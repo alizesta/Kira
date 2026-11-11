@@ -116,3 +116,5 @@ Cloud Voice settings are written atomically outside the application installation
 - The Windows job exercises the monitor's Qt integration with mocked foreground-window data. It cannot verify the user's real Ai1 window title, DPI/display setup, or foreground process state; those still require an interactive Windows 11 smoke test.
 
 - The Windows test fixture creates a QApplication even in offscreen mode because the generic large-window heuristic queries QApplication.primaryScreen().
+
+- The Ollama native message round-trip test builds the serialized assistant arguments with `json.dumps`, then verifies the adapter restores the structured object in the outgoing Ollama request.
