@@ -149,3 +149,7 @@
 - Extend migration and rolling backups to all per-character memory files; add Ren/Mika preservation and destination-wins regression tests.
 - Make memory prompt headings and Memory dialog wording follow the active character rather than hardcoding Kira.
 - Add context-scope restoration coverage for nested character memory calls.
+
+- Prevent Ren/Mika long-term memory from digesting or summarizing shared legacy chat rows that lack a character ID.
+- Clear shared-chat voice/digest samples for all profiles when the shared chat is cleared, while preserving each profile's facts, moments and habits; only Kira resets the currently shared mood state.
+- Document the legacy evidence-index limitation: historical facts cannot be attributed to a character because older chat rows lack character IDs.

@@ -60,6 +60,15 @@ class PersonaMemoryTests(unittest.TestCase):
             self.assertNotIn("RenUser", block)
             self.assertNotIn("MikaUser", block)
 
+    def test_non_kira_memory_never_digests_shared_legacy_chat_history(self):
+        shared = [{"role": "user", "content": "A private topic from Kira's old conversation"}]
+        with pm.character_scope("ren"):
+            block = pm.build_block(shared)
+            self.assertNotIn("private topic", block)
+        with pm.character_scope("kira"):
+            block = pm.build_block(shared)
+            self.assertIn("private topic", block)
+
     def test_character_scope_restores_previous_context(self):
         self.assertEqual(pm.current_character_id(), "kira")
         with pm.character_scope("ren"):

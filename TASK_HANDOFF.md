@@ -113,3 +113,6 @@ Character specialization and generated portraits. The implementation is complete
 
 - Stage 5 also extends Stage 4 storage handling to every character memory file. Kira's legacy path remains unchanged; Ren/Mika/custom profile files are included in migration and backups, with existing destination files preserved.
 - Character memory scope is context-local and restored after nested calls. Memory dialog text and prompt labels use the selected profile. Short-term chat history is still shared.
+
+- Follow-up hardening: Ren/Mika no longer receive a digest of Kira's shared historical chat and do not summarize the global chat database. Clearing shared chat resets voice/digest samples for all characters but leaves their facts/moments/habits intact. Kira alone resets the shared mood state.
+- The existing Kira evidence DB may contain unattributed facts backfilled from pre-isolation shared chat; this cannot be safely split because legacy chat rows lack character IDs. New Ren/Mika messages are not written to that index.

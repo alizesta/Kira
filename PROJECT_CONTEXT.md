@@ -131,3 +131,5 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 - The Memory dialog reads/edits/forgets only the active character's long-term memory. Short-term chat history remains shared and is explicitly described as shared in character profiles.
 
 - Character memory migration and rolling backup enumerate all `kira_persona_memory*.json` files, including Ren/Mika and future custom profiles. Existing destination files remain authoritative.
+
+- Ren/Mika memory no longer digests shared legacy chat rows or summarizes the global chat database. Clearing the shared chat resets voice/digest samples for all profiles but preserves each profile's facts/moments/habits. The legacy Kira evidence index may contain unattributed pre-isolation facts because older chat rows have no character ID; new Ren/Mika messages are not added to it.

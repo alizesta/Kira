@@ -145,3 +145,6 @@ Cloud Voice settings are written atomically outside the application installation
 - The Memory dialog is bound to the active character. Short-term SQLite chat history remains shared; this change isolates long-term persona memory only.
 
 - The storage layer discovers every `kira_persona_memory*.json` file for migration and rolling backups, so the newly separated Ren/Mika memory stores survive data-folder migration and recovery.
+
+- The old SQLite chat schema has no character ID, so Ren/Mika must not digest its older rows or run per-profile summaries against the global chat. Kira alone retains the legacy history digest. Clearing the shared chat resets voice/digest state for all profiles while preserving their facts/moments/habits.
+- The pre-existing Kira evidence index may include unattributed facts backfilled from shared historical chat. New Ren/Mika messages are excluded; no historical attribution is invented.

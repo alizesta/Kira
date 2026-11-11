@@ -403,7 +403,8 @@ class MemoryDialog(QDialog):
         if QMessageBox.question(self, "فراموش‌کردن همه", f"همه‌ی چیزهایی که {self.character_name} در حافظه‌ی بلندمدتش درباره‌ی تو نگه داشته پاک شود؟ تاریخچه‌ی کوتاه‌مدت گفتگو و حافظه‌ی شخصیت‌های دیگر دست‌نخورده می‌ماند.") == QMessageBox.Yes:
             with persona_memory.character_scope(self.character_id):
                 persona_memory.forget_all()
-            mood.reset()
+            if self.character_id == "kira":       # mood is still a shared state, not part of Ren/Mika's isolated memory
+                mood.reset()
             self.refresh()
 
 
@@ -3240,8 +3241,10 @@ class MainWindow(QMainWindow):
         mode = self.detect_mode(context)                          # Active Mode of THIS message (None = switched off in settings)
         try:
             older = recent_messages(window + 40)[:-window] if window else []
-            # her own recent banter is a style anchor for casual talk only; a practical request does not get it
+            # Short-term history is shared, but only Kira owns the legacy history digest/evidence index.
             character_id = characters.active_id(self.settings)
+            if character_id != "kira":
+                older = []
             with persona_memory.character_scope(character_id):
                 memory_block = persona_memory.build_block(
                     older, voice_samples=(mode is None or mode.name == modes.CHAT),
@@ -3249,7 +3252,7 @@ class MainWindow(QMainWindow):
                     budget=evidence_memory.budget_for(self.settings, self.client),
                 )
                 total = message_count()
-                if persona_memory.needs_summary(total, window):   # each character maintains its own digest cursor
+                if character_id == "kira" and persona_memory.needs_summary(total, window):
                     persona_memory.maintain(recent_messages(min(total, 3000)), window)
         except Exception:                                         # noqa: BLE001 - memory is a bonus, never block a reply
             memory_block = ""
@@ -3898,8 +3901,11 @@ class MainWindow(QMainWindow):
         if QMessageBox.question(self, self.t("clear_t"), self.t("clear_q")) == QMessageBox.Yes:
             try:
                 clear_memory()                  # saves a snapshot first; nothing is deleted if that fails
-                with persona_memory.character_scope(characters.active_id(self.settings)):
-                    persona_memory.forget_conversation()
+                # The SQLite chat is shared, so clear the voice/digest layer for every profile.
+                # Facts, moments and habits remain in each character's own memory file.
+                for character_id in characters.all_profiles(self.settings):
+                    with persona_memory.character_scope(character_id):
+                        persona_memory.forget_conversation()
                 self.tool_agent.clear_tasks()   # the unfinished task (its goal is the user's own words) goes with the chat
                 brain.reset_state()
             except ChatStoreError as exc:
