@@ -79,10 +79,15 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.win.sessions["kira"].client.chat_stream = lambda messages, system, temperature=0.7, on_chunk=None, **kw: (
             on_chunk(text) if on_chunk else None, {"text": text})[1]
 
-    def script_model(self, *replies):
+    def script_model(self, *replies, plan="1. inspect\n2. fix\n3. test", review="CLEAN"):
+        from kira import auto_agent as aa
         queue = list(replies)
 
         def chat_stream(messages, system, temperature=0.7, on_chunk=None, **kw):
+            if system == aa.PLAN_PROMPT:
+                return {"text": plan}
+            if "independent code reviewer" in str(system).lower():
+                return {"text": review}
             r = queue.pop(0)
             return {"text": r if isinstance(r, str) else json.dumps(r)}
         self.win.sessions["kira"].client.chat_stream = chat_stream
@@ -173,7 +178,7 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.cc.auto_dir = self.proj.parent / (self.proj.name + "_out")
         self.cc.auto_python = sys.executable
         self.script_model("TASK", {"action": "write", "path": "x.txt", "content": "1"}, {"action": "run", "args": ["python", "-m", "compileall", "-q", "."]},
-                          {"action": "finish", "summary": "ساخته شد"})
+                          {"action": "review"}, {"action": "finish", "summary": "ساخته شد"})
         self.win.input.setText("این تابع رو درست کن")
         self.win.send_message()
         self.assertTrue(pump(lambda: list(self.cc.auto_dir.glob("*.zip")), 20), "the agent never delivered")
@@ -304,6 +309,7 @@ class ChatCodeGuiTests(unittest.TestCase):
             {"action": "search", "pattern": "def save"},
             {"action": "replace", "path": "app.py", "old": "return 1", "new": "return 2"},
             {"action": "run", "args": ["python", "-m", "unittest", "-v"]},
+            {"action": "review"},
             {"action": "finish", "summary": "save() fixed"})
         self.send("باگ تابع save را پیدا کن و درست کن، تست‌ها را هم بزن")
         text = self.chat_text()
