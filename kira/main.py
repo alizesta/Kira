@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QStackedWidget, QDoubleSpinBox, QButtonGroup, QGraphicsDropShadowEffect
 )
 from .config import load_settings, save_settings, ROOT, VERSION, LOAD_WARNINGS, DATA_DIR
+from . import about
 from . import storage
 from . import memory as chat_store
 from .memory import init_db, add_message, conversation_context, clear_memory, recent_messages, message_count, ChatStoreError
@@ -1780,7 +1781,15 @@ class MainWindow(QMainWindow):
         self.import_chat_btn = QPushButton("ورود گفتگو از نسخه‌ی قدیمی…")
         self.import_chat_btn.clicked.connect(lambda: self.import_old_chat())
         f2.addRow(self.import_chat_btn)
-        self.tabs.addTab(self.page(box1, box2), "")
+        # About (mandatory version metadata: Version, Gregorian build date, 24h build time, detected developer)
+        box3, f3 = self.group("g_about")
+        self.about_labels = {}
+        for key, value in about.about_rows(VERSION):
+            label = QLabel(value)
+            label.setObjectName(key)
+            label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            self.about_labels[key] = self.row(f3, key, label)
+        self.tabs.addTab(self.page(box1, box2, box3), "")
 
     def build_ai_tab(self):
         """Route Manager: ordered list of routes (drag & drop), per-route editor, providers (keys), benchmark."""
