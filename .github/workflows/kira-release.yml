@@ -31,6 +31,8 @@ on:
       - "tests/test_chat_code_gui.py"
       - "tests/test_chat_render.py"
       - "tests/test_body.py"
+      - "tests/test_build_metadata.py"
+      - "scripts/build_metadata.py"
       - "kira/code_agent.py"
       - "kira/tools/agent.py"
       - "kira/tools/registry.py"
@@ -93,6 +95,9 @@ jobs:
       - name: Install portable test dependency
         run: python -m pip install requests
 
+      - name: Validate version and build metadata
+        run: python scripts/build_metadata.py --check
+
       - name: Run portable regression tests (GUI and Windows tests excluded)
         run: >-
           python -m unittest
@@ -118,6 +123,7 @@ jobs:
           tests.test_chat_persistence
           tests.test_chat_render
           tests.test_body
+          tests.test_build_metadata
           tests.test_release
 
       - name: Check Python syntax
@@ -138,7 +144,7 @@ jobs:
 
             The source archive uses the ProjectKira_YYMMDD_HHMM.zip format and Asia/Tehran local time.
 
-            Portable regression tests and Python syntax checks passed before packaging. A separate Windows runner validates Game Mode identity, game-audio filtering and monitor regressions with Qt offscreen, plus the Ai1 Code chat GUI suite; other full interactive Windows runtime checks remain manual. Windows batch files are normalized to CRLF in the release ZIP.
+            Portable regression tests and Python syntax checks passed before packaging. Version and build metadata (version, Gregorian build date, 24-hour build time and the auto-detected developer) were validated, and incomplete metadata stops the release. The About section in Settings → General shows these values. A separate Windows runner validates Game Mode identity, game-audio filtering and monitor regressions with Qt offscreen, plus the Ai1 Code chat GUI suite; other full interactive Windows runtime checks remain manual. Windows batch files are normalized to CRLF in the release ZIP.
             Game Mode has manual Story and Competitive Safe profiles. Competitive Safe disables game capture, game/system loopback and local control tools; Story Mode keeps local-only WASAPI speech recognition. Ai1 Code adds an independent Code Agent, single-file Diff preview and explicit patch approval; shell commands require explicit user confirmation. Kira, Mika and Ren have separate coding, medical-information and news-analysis specialties with generated character portraits.
           files: ${{ steps.package.outputs.asset }}
           fail_on_unmatched_files: true

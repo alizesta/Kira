@@ -12,6 +12,17 @@
 - Release tests include optional `psutil` and must not treat its intentional presence as an unexpected dependency.
 - Streaming tests must respect LeakGuard's 48-character undecided preamble buffer: short normal answers are released at stream completion, while short fragments are not promised to display before the guard can classify them.
 
+## Version metadata and developer attribution (mandatory)
+This rule binds every developer and every AI agent (Codex, OpenCode, Claude Code, ChatGPT) that changes this repository.
+
+- **About section.** Settings → General shows an About group with four rows: Version, Build Date, Build Time and Developer. No About values are typed by hand.
+- **Formats.** Build Date is Gregorian `YYYY-MM-DD`; Build Time is 24-hour `HH:MM` (Asia/Tehran build time); Developer is exactly one of `Codex`, `OpenCode`, `Claude Code`, `ChatGPT`.
+- **Single sources.** The version lives only in `VERSION` (`kira/config.py`). The build stamp lives only in `kira/build_info.py`, a generated file (never edit it by hand); `kira/about.py` reads it for the About rows.
+- **Automatic developer detection.** `scripts/build_metadata.py` resolves the developer in this order: explicit `KIRA_DEVELOPER` override → build-host markers (`CLAUDECODE`/`CLAUDE_CODE_ENTRYPOINT`, `CODEX_SANDBOX`/`CODEX_HOME`, `OPENCODE`/`OPENCODE_SESSION_ID`, `AI_AGENT`, `AGENT`) → previously recorded `kira/build_info.py` → git author/committer name. An unknown or unresolvable value is an error, not a default.
+- **Changelog coupling.** In addition to updating `CHANGELOG.md` / release notes, every change updates the version and authors the build metadata. The release check requires the current `VERSION` string to appear in `CHANGELOG.md`.
+- **Build/release gate.** `scripts/build_metadata.py` re-stamps `kira/build_info.py` and validates version, date, time, developer and the changelog. `scripts/build_release.py` runs `ensure_release_metadata()` before packaging, and CI runs `python scripts/build_metadata.py --check`. Any missing or malformed field stops the release with a non-zero exit code.
+- **How to work.** Bump `VERSION` when the release changes, add the matching `CHANGELOG.md` entry, run `python scripts/build_metadata.py --check` (and let the build stamp the file), and add regression tests for behaviour you change.
+
 ## Purpose
 Ai1 is a Windows desktop anime-style digital companion. It combines local and cloud chat models, persistent memory, character profiles, speech input/output, controlled desktop tools, and optional game-screen understanding.
 
@@ -66,6 +77,7 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 - Add regression tests for provider-specific behavior and safety-sensitive capture behavior.
 - Do not claim real-time streaming unless audio chunks are actually played before synthesis completes.
 - Every completed project change should produce a timestamped `ProjectKira_YYMMDD_HHMM.zip` release when CI succeeds.
+- **Mandatory version metadata:** every change must keep `VERSION` (`kira/config.py`), the generated build stamp (`kira/build_info.py`) and `CHANGELOG.md` in sync. The developer is auto-detected (Codex / OpenCode / Claude Code / ChatGPT), never typed by hand. Incomplete metadata stops the build and release. See "Version metadata and developer attribution" below and `docs/VERSION_METADATA_FA.md`.
 
 
 ## Ai1 Code

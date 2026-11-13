@@ -20,7 +20,7 @@ except Exception:                                    # pragma: no cover
     HAVE_QT = False
 
 import requests
-from kira import config, memory
+from kira import about, config, memory
 from kira.code_agent import PATCH_START, PATCH_END
 
 if HAVE_QT:
@@ -117,6 +117,18 @@ class ChatCodeGuiTests(unittest.TestCase):
         """Give Kira a project folder (the way the first coding request would)."""
         self.assertTrue(self.cc.choose_project())
         self.assertEqual(self.cc.root, self.proj.resolve())
+
+    # ---- mandatory version metadata (PROJECT_CONTEXT.md)
+    def test_about_shows_version_build_date_time_and_developer(self):
+        labels = self.win.about_labels
+        self.assertEqual(list(labels), list(about.ROW_KEYS))
+        expected = dict(about.about_rows(config.VERSION))
+        for key in about.ROW_KEYS:
+            self.assertEqual(labels[key].text(), expected[key], key)
+        self.assertEqual(labels["about_version"].text(), config.VERSION)
+        self.assertRegex(labels["about_build_date"].text(), r"^\d{4}-\d{2}-\d{2}$")
+        self.assertRegex(labels["about_build_time"].text(), r"^([01]\d|2[0-3]):[0-5]\d$")
+        self.assertIn(labels["about_developer"].text(), ("Codex", "OpenCode", "Claude Code", "ChatGPT"))
 
     # ---- no button, Kira understands
     def test_no_button_and_not_in_menu(self):

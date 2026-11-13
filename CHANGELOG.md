@@ -1,5 +1,17 @@
 # Changelog
 
+## Version
+
+- Current version: `1 stable` (single source: `VERSION` in `kira/config.py`).
+- Build metadata: `kira/build_info.py`, stamped automatically by `scripts/build_metadata.py`; the developer is detected from the build environment (Codex / OpenCode / Claude Code / ChatGPT), never typed by hand. Rule: `docs/VERSION_METADATA_FA.md`.
+
+## 2026-11-13 (mandatory version metadata and developer attribution)
+
+- The Settings → General page now has an About section showing Version, Build date (Gregorian `YYYY-MM-DD`), Build time (`HH:MM`, 24-hour) and Developer. The build stamp is generated, not hand-edited.
+- New `kira/build_rules.py`, `kira/about.py`, `kira/build_info.py` and `scripts/build_metadata.py`: the developer tool is auto-detected (explicit `KIRA_DEVELOPER` override → build-host markers → recorded stamp → git author) and must be one of the four approved tools.
+- Release gate: the workflow runs `python scripts/build_metadata.py --check`, and `scripts/build_release.py` re-stamps then validates version, date, time, developer and the CHANGELOG entry, so an incomplete metadata set stops the release.
+- Tests: `tests/test_build_metadata.py` (portable) plus an About assertion in the Windows GUI suite.
+
 ## 2026-11-13 (no `</>` button: Kira understands coding requests by herself)
 
 - The `</>` button and the on/off mode are gone. Kira's tab decides from the wording (text or voice) whether the person wants a coding mission, a question about the project, or ordinary talk (`chat_code.classify_intent`, project vocabulary, and a one-word model check for ambiguous messages; any doubt = normal chat). The project folder is asked once, the first time it is needed; "change the project folder" works in words. `/off` was removed; the other slash commands stay as optional shortcuts.
