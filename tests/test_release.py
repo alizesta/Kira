@@ -87,7 +87,7 @@ class ReleaseTests(unittest.TestCase):
 
     def test_requirements_contain_no_unneeded_packages(self):
         names = {re.split(r"[<>=]", l)[0].strip().lower() for l in (ROOT / "requirements.txt").read_text().splitlines() if l.strip()}
-        self.assertEqual(names, {"pyside6", "requests", "numpy", "psutil"})
+        self.assertEqual(names, {"pyside6", "requests", "numpy", "psutil", "ruff"})
         self.assertIn("optional", (ROOT / "requirements.txt").read_text(encoding="utf-8").lower())
 
     def test_bat_files_keep_crlf_and_call_installer(self):

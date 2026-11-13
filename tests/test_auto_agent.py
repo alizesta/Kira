@@ -11,11 +11,20 @@ from kira import auto_agent as aa
 
 
 class Script:
-    """A router that replays prepared model replies (dicts become JSON) and records what it was shown."""
-    def __init__(self, *replies):
+    """A router that replays prepared model replies (dicts become JSON) and records what it was shown.
+
+    Planner and reviewer calls are answered from their own slots so ``replies`` only describes the
+    agent's decision loop: those two are infrastructure calls, not scripted agent steps.
+    """
+    def __init__(self, *replies, plan="1. inspect\n2. make the smallest correct change\n3. run focused tests", review="CLEAN"):
         self.replies, self.seen = list(replies), []
+        self.plan, self.review = plan, review
 
     def chat_stream(self, messages, system, temperature=0.2, on_chunk=None, **kw):
+        if system == aa.PLAN_PROMPT:
+            return {"text": self.plan}
+        if "independent code reviewer" in str(system).lower():
+            return {"text": self.review}
         self.seen.append([m["content"] for m in messages])
         r = self.replies.pop(0)
         return {"text": r if isinstance(r, str) else json.dumps(r)}
@@ -62,6 +71,7 @@ class FullLoopTests(AgentBase):
             {"action": "run", "args": ["python", "-m", "unittest", "-v"]},          # fails: the bug is still there
             {"action": "replace", "path": "calc.py", "old": "return a - b", "new": "return a + b"},
             {"action": "run", "args": ["python", "-m", "unittest", "-v"]},          # passes
+            {"action": "review"},
             {"action": "finish", "summary": "add() subtracted; fixed, tests pass"},
         )
         result = self.agent(router).run()
@@ -88,21 +98,28 @@ class FullLoopTests(AgentBase):
 
 
 class SafetyTests(AgentBase):
-    def run_one(self, action, **kw):
-        router = Script(action, {"action": "finish", "summary": "x"}, {"action": "finish", "summary": "x"})   # 2nd finish: after the gate
+    def run_one(self, action, verify=True, **kw):
+        # a changed working copy must pass a check and a clean review before finish is accepted
+        if verify:
+            router = Script(action,
+                            {"action": "run", "args": ["python", "-m", "compileall", "-q", "."]},
+                            {"action": "review"},
+                            {"action": "finish", "summary": "x"})
+        else:
+            router = Script(action, {"action": "finish", "summary": "x"})
         result = self.agent(router, **kw).run()
         return router.seen[1][-1], result
 
     def test_paths_cannot_escape_or_touch_secrets(self):
         for bad in ("../evil.py", "/etc/passwd", "C:/Windows/x.py", ".env", "node_modules/a.js"):
-            obs, _ = self.run_one({"action": "write", "path": bad, "content": "x"})
+            obs, _ = self.run_one({"action": "write", "path": bad, "content": "x"}, verify=False)
             self.assertIn("ERROR", obs, bad)
         self.assertFalse((self.proj.parent / "evil.py").exists())
 
     def test_only_python_checks_run_without_approval(self):
         for args in (["python", "-c", "print(1)"], ["powershell", "-Command", "ls"], ["python", "-m", "pip", "install", "x"],
                      ["python", "-m", "unittest", "../x"], ["python", "-m", "unittest", "a;b"]):
-            obs, result = self.run_one({"action": "run", "args": args})
+            obs, result = self.run_one({"action": "run", "args": args}, verify=False)
             self.assertIn("ERROR", obs, args)
             self.assertEqual(result["runs"], [])
 
@@ -110,22 +127,25 @@ class SafetyTests(AgentBase):
         asked = []
         shell = (sys.executable, ["-c"])
         obs, result = self.run_one({"action": "shell", "command": "print('hi-from-shell')"}, shell=shell,
-                                   approve=lambda c: asked.append(c) or False)
+                                   approve=lambda c: asked.append(c) or False, verify=False)
         self.assertIn("تأیید نکرد", obs)
         self.assertEqual(result["runs"], [])
         obs, result = self.run_one({"action": "shell", "command": "print('hi-from-shell')"}, shell=shell,
-                                   approve=lambda c: asked.append(c) or True)
+                                   approve=lambda c: asked.append(c) or True, verify=False)
         self.assertIn("hi-from-shell", obs)
         self.assertEqual(len(asked), 2)
-        obs, _ = self.run_one({"action": "shell", "command": "ls"}, shell=None, approve=lambda c: True)    # no shell on this OS
-        self.assertIn("ERROR", obs)
+        router = Script({"action": "shell", "command": "ls"}, {"action": "finish", "summary": "x"})
+        agent = self.agent(router, approve=lambda c: True)
+        agent.shell = None                                                                # simulate an OS without a shell
+        agent.run()
+        self.assertIn("ERROR", router.seen[1][-1])
 
     def test_deleting_a_file_is_free_but_a_folder_needs_approval(self):
         (self.proj / "pkg").mkdir()
         (self.proj / "pkg" / "m.py").write_text("x", encoding="utf-8")
         obs, result = self.run_one({"action": "delete", "path": "calc.py"})
         self.assertEqual(result["removed"], ["calc.py"])
-        obs, result = self.run_one({"action": "delete", "path": "pkg"}, approve=lambda c: False)
+        obs, result = self.run_one({"action": "delete", "path": "pkg"}, approve=lambda c: False, verify=False)
         self.assertIn("تأیید نکرد", obs)
         self.assertEqual(result["removed"], [])
         obs, result = self.run_one({"action": "delete", "path": "pkg"}, approve=lambda c: True)
@@ -134,11 +154,11 @@ class SafetyTests(AgentBase):
 
     def test_secrets_are_masked_in_what_the_model_reads(self):
         (self.proj / "cfg.py").write_text('password = "hunter2"\n', encoding="utf-8")
-        obs, _ = self.run_one({"action": "read", "path": "cfg.py"})
+        obs, _ = self.run_one({"action": "read", "path": "cfg.py"}, verify=False)
         self.assertNotIn("hunter2", obs)
 
     def test_unknown_action_and_bad_json_are_survivable_but_bounded(self):
-        obs, _ = self.run_one({"action": "format_disk"})
+        obs, _ = self.run_one({"action": "format_disk"}, verify=False)
         self.assertIn("not available", obs)
         result = self.agent(Script("no json", "still no", "nope")).run()
         self.assertIn("JSON", result["summary"])
@@ -151,9 +171,11 @@ class SafetyTests(AgentBase):
         flag = {"stop": False}
 
         class Stopper(Script):
-            def chat_stream(s, *a, **k):
-                flag["stop"] = True
-                return super().chat_stream(*a, **k)
+            def chat_stream(s, messages, system, *a, **k):
+                reply = super().chat_stream(messages, system, *a, **k)
+                if system != aa.PLAN_PROMPT:
+                    flag["stop"] = True
+                return reply
         result = self.agent(Stopper({"action": "list"}, {"action": "list"}), should_stop=lambda: flag["stop"]).run()
         self.assertTrue(result["stopped"])
         self.assertTrue(result["zip"].exists())
@@ -185,7 +207,11 @@ class QualityTests(AgentBase):
     def test_syntax_error_is_reported_to_the_model_immediately(self):
         router = Script({"action": "write", "path": "calc.py", "content": "def add(a, b)\n    return a + b\n"},
                         {"action": "write", "path": "data.json", "content": "{bad"},
-                        {"action": "finish", "summary": "x"}, {"action": "finish", "summary": "x"})
+                        {"action": "write", "path": "calc.py", "content": "def add(a, b):\n    return a + b\n"},
+                        {"action": "write", "path": "data.json", "content": "{}"},
+                        {"action": "run", "args": ["python", "-m", "compileall", "-q", "."]},
+                        {"action": "review"},
+                        {"action": "finish", "summary": "x"})
         self.agent(router).run()
         self.assertIn("SYNTAX ERROR in calc.py line 1", router.seen[1][-1])
         self.assertIn("INVALID JSON", router.seen[2][-1])
@@ -195,18 +221,24 @@ class QualityTests(AgentBase):
         router = Script({"action": "replace", "path": "calc.py", "old": "a - b", "new": "a + b"},
                         {"action": "finish", "summary": "done"},                               # too early
                         {"action": "run", "args": ["python", "-m", "unittest"]},
+                        {"action": "review"},
                         {"action": "finish", "summary": "done, tests pass"})
         result = self.agent(router).run()
         self.assertIn("GATE", router.seen[2][-1])
         self.assertEqual(result["summary"], "done, tests pass")
         self.assertEqual(result["runs"][0][1], 0)
 
-    def test_gate_does_not_loop_forever_and_never_applies_to_unchanged_projects(self):
+    def test_gate_requires_a_check_and_a_clean_review_after_a_change(self):
         router = Script({"action": "write", "path": "new.txt", "content": "x"},
-                        {"action": "finish", "summary": "a"}, {"action": "finish", "summary": "final"})
-        self.assertEqual(self.agent(router).run()["summary"], "final")                       # the second finish is accepted
+                        {"action": "finish", "summary": "a"},                                  # too early
+                        {"action": "run", "args": ["python", "-m", "compileall", "-q", "."]},
+                        {"action": "review"},
+                        {"action": "finish", "summary": "final"})
+        result = self.agent(router).run()
+        self.assertIn("GATE", router.seen[2][-1])                                              # the check gate spoke
+        self.assertEqual(result["summary"], "final")
         router = Script({"action": "read", "path": "calc.py"}, {"action": "finish", "summary": "just looked"})
-        self.assertEqual(self.agent(router).run()["summary"], "just looked")                 # nothing changed: no gate
+        self.assertEqual(self.agent(router).run()["summary"], "just looked")                   # nothing changed: no gate
 
     def test_first_message_has_brief_history_and_goal_in_the_users_words(self):
         router = Script({"action": "finish", "summary": "x"})

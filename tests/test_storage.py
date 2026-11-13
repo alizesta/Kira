@@ -55,8 +55,11 @@ class UserDataStorageTests(unittest.TestCase):
         self.assertEqual((new / "kira_persona_memory_ren.json").read_text(encoding="utf-8"),
                          '{"facts":[{"text":"destination wins"}]}')
         self.assertEqual((new / storage.SETTINGS_NAME).read_text(encoding="utf-8"), '{"kept":true}')
-        self.assertEqual(sqlite3.connect(new / storage.EVIDENCE_DB_NAME).execute(
-            "SELECT value FROM evidence_test").fetchone(), ("source-backed",))
+        con = sqlite3.connect(new / storage.EVIDENCE_DB_NAME)
+        try:
+            self.assertEqual(con.execute("SELECT value FROM evidence_test").fetchone(), ("source-backed",))
+        finally:
+            con.close()
         self.assertTrue((old / storage.PERSONA_MEMORY_NAME).is_file())
         self.assertTrue((old / storage.EVIDENCE_DB_NAME).is_file())
 
@@ -79,8 +82,11 @@ class UserDataStorageTests(unittest.TestCase):
         self.assertEqual((backup / storage.PERSONA_MEMORY_NAME).read_text(encoding="utf-8"), '{"voice":["sample"]}')
         self.assertEqual((backup / "kira_persona_memory_ren.json").read_text(encoding="utf-8"), '{"voice":["ren sample"]}')
         self.assertEqual((backup / "kira_persona_memory_mika.json").read_text(encoding="utf-8"), '{"voice":["mika sample"]}')
-        self.assertEqual(sqlite3.connect(backup / storage.EVIDENCE_DB_NAME).execute(
-            "SELECT value FROM evidence_test").fetchone(), ("saved",))
+        con = sqlite3.connect(backup / storage.EVIDENCE_DB_NAME)
+        try:
+            self.assertEqual(con.execute("SELECT value FROM evidence_test").fetchone(), ("saved",))
+        finally:
+            con.close()
 
 
 if __name__ == "__main__":
