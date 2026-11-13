@@ -29,7 +29,8 @@ class ChatStoreError(RuntimeError):
 
 
 _lock = threading.RLock()
-_pending: list[tuple[str, str]] = []        # messages that could not be written yet (database problem)
+_pending: list[tuple[str, str, str]] = []   # (role, content, character_id) that could not be written yet (database problem)
+DEFAULT_CHARACTER = "kira"                  # rows written before per-character chats existed belong to Kira
 last_error: str | None = None
 startup_notes: list[str] = []
 
@@ -50,8 +51,24 @@ def _create(con):
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        character_id TEXT NOT NULL DEFAULT 'kira'
     )""")
+    cols = [r[1] for r in con.execute("PRAGMA table_info(messages)")]
+    if "character_id" not in cols:                      # database made by an older version: every old row is Kira's
+        con.execute("ALTER TABLE messages ADD COLUMN character_id TEXT NOT NULL DEFAULT 'kira'")
+
+
+def _cid(character_id) -> str:
+    value = str(character_id or "").strip().lower()
+    return value or DEFAULT_CHARACTER
+
+
+def _row4(row):
+    """(role, content, created_at[, character_id]) -> 4-tuple."""
+    role, content, ts = row[0], row[1], row[2] if len(row) > 2 else ""
+    cid = row[3] if len(row) > 3 else DEFAULT_CHARACTER
+    return (role, content, ts, _cid(cid))
 
 
 def _data_dir() -> Path:
@@ -88,7 +105,13 @@ def _healthy(path: Path) -> bool:
 
 def read_rows(path) -> list[tuple[str, str, str]]:
     """(role, content, created_at) of every readable message in a database file; partial result for a damaged file."""
-    rows: list[tuple[str, str, str]] = []
+    return [(r, c, t) for r, c, t, _ in read_rows_full(path)]
+
+
+def read_rows_full(path) -> list[tuple[str, str, str, str]]:
+    """(role, content, created_at, character_id) of every readable message; partial result for a damaged file.
+    A database from before per-character chats has no character column: those rows are Kira's."""
+    rows: list[tuple[str, str, str, str]] = []
     path = Path(path)
     if not path.is_file():
         return rows
@@ -97,7 +120,12 @@ def read_rows(path) -> list[tuple[str, str, str]]:
     except sqlite3.Error:
         return rows
     try:
-        cur = con.execute("SELECT role, content, COALESCE(created_at, '') FROM messages ORDER BY id")
+        try:
+            has_cid = any(r[1] == "character_id" for r in con.execute("PRAGMA table_info(messages)"))
+        except sqlite3.Error:
+            has_cid = False
+        cid_sql = "COALESCE(character_id, 'kira')" if has_cid else "'kira'"
+        cur = con.execute(f"SELECT role, content, COALESCE(created_at, ''), {cid_sql} FROM messages ORDER BY id")
         while True:
             try:
                 batch = cur.fetchmany(200)
@@ -105,7 +133,7 @@ def read_rows(path) -> list[tuple[str, str, str]]:
                 break                        # keep what was readable before the damaged page
             if not batch:
                 break
-            rows.extend((str(r), str(c), str(t)) for r, c, t in batch if r in ("user", "assistant", "system") and str(c).strip())
+            rows.extend((str(r), str(c), str(t), _cid(k)) for r, c, t, k in batch if r in ("user", "assistant", "system") and str(c).strip())
     except sqlite3.Error:
         pass
     finally:
@@ -117,14 +145,15 @@ def _merge(*sources):
     """Union of row lists without duplicates, oldest first. Earlier sources win ties inside the same second."""
     seen, out = set(), []
     for order, rows in enumerate(sources):
-        for i, (role, content, ts) in enumerate(rows):
-            key = (role, content, ts)
+        for i, row in enumerate(rows):
+            role, content, ts, cid = _row4(row)
+            key = (role, content, ts, cid)
             if key in seen:
                 continue
             seen.add(key)
-            out.append((ts or "", order, i, role, content))
+            out.append((ts or "", order, i, role, content, cid))
     out.sort(key=lambda x: (x[0], x[1], x[2]))
-    return [(r, c, t) for t, _, _, r, c in out]
+    return [(r, c, t, k) for t, _, _, r, c, k in out]
 
 
 def _write_all(rows):
@@ -132,7 +161,8 @@ def _write_all(rows):
     with _db() as con:
         _create(con)
         con.execute("DELETE FROM messages")
-        con.executemany("INSERT INTO messages(role, content, created_at) VALUES (?, ?, NULLIF(?, ''))", rows)
+        con.executemany("INSERT INTO messages(role, content, created_at, character_id) VALUES (?, ?, NULLIF(?, ''), ?)",
+                        [_row4(r) for r in rows])
 
 
 def _backup_dirs():
@@ -204,22 +234,22 @@ def _flush_pending_locked():
         return
     with _db() as con:
         _create(con)
-        con.executemany("INSERT INTO messages(role, content) VALUES (?, ?)", _pending)
+        con.executemany("INSERT INTO messages(role, content, character_id) VALUES (?, ?, ?)", _pending)
     _pending.clear()
 
 
-def add_message(role, content) -> bool:
+def add_message(role, content, character_id=None) -> bool:
     """Save one message. Returns True when it is on disk; False when the database failed (the message is kept in memory
     and written with the next successful call, so nothing is lost while the program stays open)."""
     global last_error
-    role, content = str(role), str(content)
+    role, content, cid = str(role), str(content), _cid(character_id)
     with _lock:
         for attempt in (1, 2):
             try:
                 _flush_pending_locked()
                 with _db() as con:
                     _create(con)
-                    con.execute("INSERT INTO messages(role, content) VALUES (?, ?)", (role, content))
+                    con.execute("INSERT INTO messages(role, content, character_id) VALUES (?, ?, ?)", (role, content, cid))
                 last_error = None
                 return True
             except (sqlite3.Error, OSError) as exc:
@@ -231,18 +261,23 @@ def add_message(role, content) -> bool:
                     except (sqlite3.Error, OSError, ChatStoreError) as rec:
                         _note_error(rec)
                 break
-        _pending.append((role, content))
+        _pending.append((role, content, cid))
         del _pending[:-500]                         # bounded
         return False
 
 
-def recent_messages(limit=12):
+def recent_messages(limit=12, character_id=None):
+    """Newest `limit` messages, oldest first. character_id=None: every character (the old shared chat); otherwise only that character's chat."""
     with _lock:
         for attempt in (1, 2):
             try:
                 _flush_pending_locked()
                 with _db() as con:
-                    rows = con.execute("SELECT role, content FROM messages ORDER BY id DESC LIMIT ?", (int(limit),)).fetchall()
+                    if character_id is None:
+                        rows = con.execute("SELECT role, content FROM messages ORDER BY id DESC LIMIT ?", (int(limit),)).fetchall()
+                    else:
+                        rows = con.execute("SELECT role, content FROM messages WHERE character_id = ? ORDER BY id DESC LIMIT ?",
+                                           (_cid(character_id), int(limit))).fetchall()
                 return [{"role": role, "content": content} for role, content in reversed(rows)]
             except (sqlite3.Error, OSError) as exc:
                 _note_error(exc)
@@ -254,16 +289,21 @@ def recent_messages(limit=12):
                         _note_error(rec)
                 break
         # database unusable right now: the conversation continues from what is held in memory
-        return [{"role": r, "content": c} for r, c in _pending[-int(limit):]]
+        kept = [(r, c) for r, c, k in _pending if character_id is None or k == _cid(character_id)]
+        return [{"role": r, "content": c} for r, c in kept[-int(limit):]]
 
 
-def rows_with_ids(limit=3000, after_id=0):
+def rows_with_ids(limit=3000, after_id=0, character_id=None):
     """[(id, role, content, created_at)] oldest first: the newest `limit` messages with id > after_id. Read-only; [] when the store is unusable.
     Used by the evidence memory to point each fact at the exact message it came from."""
     try:
         with _lock, _db() as con:
-            rows = con.execute("SELECT id, role, content, created_at FROM messages WHERE id > ? ORDER BY id DESC LIMIT ?",
-                               (int(after_id), int(limit))).fetchall()
+            if character_id is None:
+                rows = con.execute("SELECT id, role, content, created_at FROM messages WHERE id > ? ORDER BY id DESC LIMIT ?",
+                                   (int(after_id), int(limit))).fetchall()
+            else:
+                rows = con.execute("SELECT id, role, content, created_at FROM messages WHERE id > ? AND character_id = ? ORDER BY id DESC LIMIT ?",
+                                   (int(after_id), _cid(character_id), int(limit))).fetchall()
         return [(int(i), str(r), str(c), str(ts or "")) for i, r, c, ts in reversed(rows)]
     except (sqlite3.Error, OSError):
         return []
@@ -277,10 +317,12 @@ def max_message_id() -> int:
         return 0
 
 
-def message_count() -> int:
+def message_count(character_id=None) -> int:
     try:
         with _db() as con:
-            return int(con.execute("SELECT COUNT(*) FROM messages").fetchone()[0])
+            if character_id is None:
+                return int(con.execute("SELECT COUNT(*) FROM messages").fetchone()[0])
+            return int(con.execute("SELECT COUNT(*) FROM messages WHERE character_id = ?", (_cid(character_id),)).fetchone()[0])
     except (sqlite3.Error, OSError):
         return 0
 
@@ -321,8 +363,9 @@ def list_snapshots(kind="cleared"):
         return []
 
 
-def clear_memory():
-    """Delete the whole chat history - only after a snapshot was saved. If the snapshot cannot be made nothing is deleted."""
+def clear_memory(character_id=None):
+    """Delete the chat history (every character, or only `character_id`'s chat) - only after a snapshot was saved.
+    If the snapshot cannot be made nothing is deleted."""
     with _lock:
         try:
             if message_count():
@@ -332,10 +375,16 @@ def clear_memory():
         try:
             with _db() as con:
                 _create(con)
-                con.execute("DELETE FROM messages")
+                if character_id is None:
+                    con.execute("DELETE FROM messages")
+                else:
+                    con.execute("DELETE FROM messages WHERE character_id = ?", (_cid(character_id),))
         except (sqlite3.Error, OSError) as exc:
             raise ChatStoreError(f"پاک‌سازی ناموفق بود: {exc}") from exc
-        _pending.clear()
+        if character_id is None:
+            _pending.clear()
+        else:
+            _pending[:] = [p for p in _pending if p[2] != _cid(character_id)]
 
 
 def import_messages(source) -> int:
@@ -344,15 +393,15 @@ def import_messages(source) -> int:
     source = Path(source)
     if not source.is_file():
         raise ChatStoreError("فایل انتخاب‌شده پیدا نشد.")
-    incoming = read_rows(source)
+    incoming = read_rows_full(source)
     if not incoming:
         return 0
     with _lock:
         try:
             with _db() as con:
                 _create(con)
-                current = [(str(r), str(c), str(t)) for r, c, t in
-                           con.execute("SELECT role, content, COALESCE(created_at, '') FROM messages ORDER BY id")]
+                current = [(str(r), str(c), str(t), _cid(k)) for r, c, t, k in
+                           con.execute("SELECT role, content, COALESCE(created_at, ''), character_id FROM messages ORDER BY id")]
         except (sqlite3.Error, OSError) as exc:
             raise ChatStoreError(f"ورود چت ناموفق بود (چیزی تغییر نکرد): {exc}") from exc
         merged = _merge(current, incoming)
@@ -377,9 +426,9 @@ def restore_last_cleared() -> int:
     raise ChatStoreError("هیچ پاک‌سازی قبلی برای بازگردانی پیدا نشد.")
 
 
-def conversation_context(limit=12, max_chars=12000):
-    """Provider-neutral chat history, newest messages retained within a size budget."""
-    messages = recent_messages(max(1, int(limit)))
+def conversation_context(limit=12, max_chars=12000, character_id=None):
+    """Provider-neutral chat history, newest messages retained within a size budget (one character's chat when given)."""
+    messages = recent_messages(max(1, int(limit)), character_id)
     kept = []
     used = 0
     for item in reversed(messages):

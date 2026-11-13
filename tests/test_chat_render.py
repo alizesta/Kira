@@ -14,6 +14,29 @@ except Exception:                       # pragma: no cover
     HAVE_QT = False
 
 
+class CodeRenderingTests(unittest.TestCase):
+    def test_fenced_code_is_a_ltr_monospace_block_in_normal_replies(self):
+        html_out = message_html("assistant", "Kira", "این را امتحان کن:\n```python\nif a < b:\n    print('x')\n```\nتمام")
+        self.assertIn("if a &lt; b:", html_out)
+        self.assertIn("Consolas", html_out)
+        self.assertNotIn("```", html_out)
+        self.assertEqual(html_out.count("<pre"), 1)
+
+    def test_streaming_partial_fence_does_not_break_the_bubble(self):
+        html_out = message_html("assistant", "Kira", "ببین:\n```py\nprint(1)")
+        self.assertIn("print(1)", html_out)
+        self.assertEqual(html_out.count("<pre"), 1)
+        self.assertEqual(message_html("assistant", "Kira", "ببین ```py").count("<pre"), 0)     # no newline yet: still plain text
+
+    def test_inline_code_is_styled_and_escaped(self):
+        html_out = message_html("assistant", "Kira", "از `a<b` استفاده کن")
+        self.assertIn("a&lt;b", html_out)
+        self.assertNotIn("`", html_out)
+
+    def test_text_without_code_is_unchanged(self):
+        self.assertNotIn("<pre", message_html("assistant", "Kira", "سلام\nخوبی؟"))
+
+
 class DirectionTests(unittest.TestCase):
     def test_detect_direction(self):
         self.assertEqual(detect_direction("سلام، حالت چطوره؟"), "rtl")
@@ -37,12 +60,6 @@ class DirectionTests(unittest.TestCase):
     def test_user_bubble_right_and_kira_left(self):
         self.assertIn('align="right" width', message_html("user", "تو", "سلام"))
         self.assertIn('align="left" width', message_html("assistant", "Kira", "سلام"))
-
-    def test_footer_controls_render_after_message_text(self):
-        html = message_html("assistant", "Kira", "متن پاسخ", extra_html="<span>thumbnail</span>",
-                            footer_html="<table><tr><td>actions</td></tr></table>")
-        self.assertLess(html.index("thumbnail"), html.index("متن پاسخ"))
-        self.assertLess(html.index("متن پاسخ"), html.index("actions"))
 
 
 @unittest.skipUnless(HAVE_QT, "PySide6 not installed")

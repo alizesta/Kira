@@ -382,12 +382,12 @@ class WindowPersistenceTests(IsolatedDb):
     def test_closing_the_window_mid_answer_keeps_the_partial_reply(self):
         w = self.win
         gate = threading.Event()
-        lines = sse("نیمه‌ی پاسخ", done=False) + [lambda: gate.wait(5)] + sse(" بقیه")
+        lines = sse("نیمه‌ی پاسخ " + "الف" * 45, done=False) + [lambda: gate.wait(5)] + sse(" بقیه")
         with mock.patch("requests.post", side_effect=lambda *a, **k: StreamResp(list(lines))):
             w.input.setText("سوال")
             w.send_message()
             end = time.time() + 6
-            while time.time() < end and "نیمه‌ی پاسخ" not in w.chat.toPlainText():
+            while time.time() < end and ("نیمه‌ی پاسخ " + "الف" * 45) not in w.chat.toPlainText():
                 QCoreApplication.processEvents()
                 time.sleep(0.01)
             w.companion.close()
@@ -395,7 +395,7 @@ class WindowPersistenceTests(IsolatedDb):
             gate.set()
             w.worker.wait(3000)
             QCoreApplication.processEvents()
-        self.assertEqual(self.texts(), ["سوال", "نیمه‌ی پاسخ"])                  # saved once, no late duplicate
+        self.assertEqual(self.texts(), ["سوال", "نیمه‌ی پاسخ " + "الف" * 45])                  # saved once, no late duplicate
 
     def test_error_while_starting_a_request_never_leaves_the_window_busy(self):
         w = self.win

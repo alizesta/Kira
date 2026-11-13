@@ -15,6 +15,7 @@ from PySide6.QtGui import (QCursor, QTransform, QPixmap, QPainter, QColor, QPen,
 from PySide6.QtWidgets import QWidget
 
 from .rig import Rig, region_at
+from . import avatar_art
 
 IMG = Path(__file__).resolve().parent.parent / "assets" / "kira_character.png"
 
@@ -56,11 +57,25 @@ class FaceAnimator(QObject):
     """Holds the animated state; any number of AvatarView widgets can draw it."""
     changed = Signal()
     mood_changed = Signal(str)
+    gesture = Signal(str)                # body motion for the 3D (VRM) avatar: 'hop', 'wave', ... (kira/vrm_avatar.py)
+    body = Signal(str)                   # chat-commanded body poses for the VRM avatar: JSON list of names (kira/body.py)
+    art_changed = Signal()               # another character's picture (or Kira's own) is now shown
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.pix = QPixmap(str(IMG))
         self.master = self.pix.toImage()
+        # which picture is shown: Kira's animated PNG by default (face overlays on), or another character's art
+        self._kira_art = (self.pix, self.master)
+        self.art_serial = 0
+        self.face_overlays = True
+        self.body_enabled = False        # True once a VRM avatar is ready: the chat may then move the body (kira/body.py)
+        self.kira_art_active = True      # False while another character's picture is shown (the VRM avatar is Kira's)
+        self.motion_gain = 1.0
+        self.full_rect = QRectF(0, 0, REF_W, REF_H)
+        self.card_rect = QRectF(*avatar_art.KIRA_CARD)
+        self.clip_rect = None
+        self.window_ratio = None         # None = the companion window keeps its Kira proportions
         self.img_w, self.img_h = REF_W, REF_H
         self.rig = Rig()
         self.look_anchor = None          # callable -> QPoint (screen) the character "looks from"
@@ -114,6 +129,44 @@ class FaceAnimator(QObject):
         t = np.array(tiles, dtype=np.float64)
         self.tile_cx = (t[:, 0] + t[:, 2]) / 2
         self.tile_cy = (t[:, 1] + t[:, 3]) / 2
+
+    def set_character_art(self, path=None):
+        """Show a character's picture (path to an image file) or, with None / an unreadable file, Kira's own
+        animated PNG. Only Kira's art gets the eyelid / mouth overlays: they are measured on her face."""
+        image = QImage(str(path)) if path else QImage()
+        if image.isNull():
+            self.pix, self.master = self._kira_art
+            self.face_overlays = True
+            self.kira_art_active = True
+            self.motion_gain = 1.0
+            self.full_rect = QRectF(0, 0, REF_W, REF_H)
+            self.card_rect = QRectF(*avatar_art.KIRA_CARD)
+            self.clip_rect = None
+            self.window_ratio = None
+        else:
+            lay = avatar_art.layout(image.width(), image.height())
+            ax, ay, aw, ah = lay["art"]
+            S = 2                                          # same 2x detail as Kira's 1664 x 2496 master
+            canvas = QImage(REF_W * S, REF_H * S, QImage.Format_RGBA8888_Premultiplied)
+            canvas.fill(0)
+            art = scale_hq_image(image, max(1, round(aw * S)), max(1, round(ah * S)))
+            q = QPainter(canvas)
+            q.drawImage(round(ax * S), round(ay * S), art)
+            q.end()
+            self.master = canvas
+            self.pix = QPixmap.fromImage(canvas)
+            self.face_overlays = False
+            self.kira_art_active = False
+            self.motion_gain = 0.55                        # gentler sway: the rig regions are measured on Kira
+            self.clip_rect = QRectF(*lay["content"])
+            self.full_rect = QRectF(*lay["content"])
+            self.card_rect = QRectF(*lay["card"])
+            self.window_ratio = lay["window_ratio"]
+        self._build_tiles()
+        self.tile_cache.clear()
+        self.art_serial += 1
+        self.art_changed.emit()
+        self.changed.emit()
 
     # ---- public API -------------------------------------------------
     def set_expression(self, name, hold=None):
@@ -408,11 +461,13 @@ class AvatarView(QWidget):
     """Draws the character (or a crop of it) as warped tiles + face overlays."""
     clicked = Signal(str)
 
-    def __init__(self, animator, src=None, parent=None, draggable=False):
+    def __init__(self, animator, src=None, parent=None, draggable=False, view="full"):
+        """view="full": the whole visible picture (floating companion); view="card": the head-and-torso crop of
+        the narrow chat-page card. Both follow the active character's picture; an explicit src overrides them."""
         super().__init__(parent)
         self.anim = animator
-        pm = animator.pix
-        self.src = src if src is not None else QRectF(0, 0, REF_W, REF_H)
+        self._fixed_src = src
+        self._view = view
         self.draggable = draggable
         self._key = None
         self._geo = None
@@ -421,9 +476,15 @@ class AvatarView(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         animator.changed.connect(self.update)
 
+    @property
+    def src(self):
+        if self._fixed_src is not None:
+            return self._fixed_src
+        return self.anim.card_rect if self._view == "card" else self.anim.full_rect
+
     def _build(self, dpr, pw, ph):
         a = self.anim
-        key = (pw, ph, round(dpr, 2))
+        key = (pw, ph, round(dpr, 2), a.art_serial)
         cached = a.tile_cache.get(key)
         if cached is None:
             img = scale_hq_image(a.master, pw, ph)
@@ -461,8 +522,8 @@ class AvatarView(QWidget):
         w, h = self.width(), self.height()
         s = min(w / src.width(), h / src.height())
         pw, ph = max(1, round(a.img_w * s * dpr)), max(1, round(a.img_h * s * dpr))
-        if (pw, ph) != self._key:
-            self._key = (pw, ph)
+        if (pw, ph, a.art_serial) != self._key:
+            self._key = (pw, ph, a.art_serial)
             self._build(dpr, pw, ph)
         ox = (w - src.width() * s) / 2 - src.x() * s
         oy = (h - src.height() * s) / 2 - src.y() * s
@@ -474,17 +535,24 @@ class AvatarView(QWidget):
         A, Bm, C, D = m11.tolist(), m12.tolist(), m21.tolist(), m22.tolist()
         p = QPainter(self)
         p.setRenderHint(QPainter.SmoothPixmapTransform)
+        if a.clip_rect is not None:                         # other characters: keep the sway inside the picture frame
+            cr = a.clip_rect
+            frame = QPainterPath()
+            frame.addRoundedRect(QRectF(ox + cr.x() * s, oy + cr.y() * s, cr.width() * s, cr.height() * s),
+                                 14 * s, 14 * s)
+            p.setClipPath(frame)
         pms, dr = self._pms, self._dst_rects
         for i in vis:
             p.setTransform(QTransform(A[i], Bm[i], C[i], D[i], Xl[i], Yl[i]))
             p.drawPixmap(dr[i], pms[i], pms[i].rect())
         p.resetTransform()
-        fx, fy, f11, f12, f21, f22 = a.rig.affine(np.array([FACE_C[0]]), np.array([FACE_C[1]]))
-        p.translate(ox + (FACE_C[0] + fx[0]) * s, oy + (FACE_C[1] + fy[0]) * s)
-        p.rotate(math.degrees(math.atan2(float(f12[0]), float(f11[0]))))
-        p.scale(s, s)
-        p.translate(-FACE_C[0], -FACE_C[1])
-        paint_overlays(p, a)
+        if a.face_overlays:                                 # eyelid / mouth overlays are measured on Kira's face only
+            fx, fy, f11, f12, f21, f22 = a.rig.affine(np.array([FACE_C[0]]), np.array([FACE_C[1]]))
+            p.translate(ox + (FACE_C[0] + fx[0]) * s, oy + (FACE_C[1] + fy[0]) * s)
+            p.rotate(math.degrees(math.atan2(float(f12[0]), float(f11[0]))))
+            p.scale(s, s)
+            p.translate(-FACE_C[0], -FACE_C[1])
+            paint_overlays(p, a)
         p.end()
 
     # ---- clicks / dragging ----

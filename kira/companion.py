@@ -5,7 +5,7 @@ from PySide6.QtGui import QGuiApplication, QPixmap, QFontMetrics
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QPushButton, QFrame, QToolButton, QLabel,
                                QFileDialog)
 from . import attachments as att
-from .face import AvatarView
+from .vrm_avatar import KiraAvatar
 from .chat_render import message_html
 from .ui_widgets import ChatInput
 
@@ -22,7 +22,9 @@ class CompanionWindow(QWidget):
                          | Qt.NoDropShadowWindowHint)
         self.setWindowTitle("Kira Companion")
         self.setAttribute(Qt.WA_TranslucentBackground, True)   # no background at all
-        self.view = AvatarView(animator, draggable=True)
+        self.ratio = RATIO
+        self.view = KiraAvatar(animator, draggable=True)
+        animator.art_changed.connect(self.apply_art)
         self.clicked = self.view.clicked
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -43,9 +45,15 @@ class CompanionWindow(QWidget):
         if was:
             self.show()
 
+    def apply_art(self):
+        """The active character changed: keep the window height, adopt the proportions of the new picture."""
+        ratio = self.view.anim.window_ratio
+        self.ratio = ratio if ratio else RATIO
+        self.set_height(self.height())
+
     def set_height(self, h):
         h = int(max(300, min(1100, h)))
-        self.resize(int(h / RATIO), h)
+        self.resize(int(h / self.ratio), h)
 
     def showEvent(self, e):
         self.visibility.emit(True)

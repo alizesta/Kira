@@ -4,6 +4,10 @@
   "conflicts": [
     [
       "happy",
+      "sad"
+    ],
+    [
+      "happy",
       "angry"
     ],
     [
@@ -21,6 +25,14 @@
     [
       "excited",
       "bored"
+    ],
+    [
+      "excited",
+      "sad"
+    ],
+    [
+      "affectionate",
+      "sad"
     ],
     [
       "protective",
@@ -116,81 +128,6 @@
       ],
       "mode": "replace",
       "result": "tsundere"
-    },
-    {
-      "id": "happy_sad",
-      "name": "Happy + Sad (Bittersweet)",
-      "members": [
-        "happy",
-        "sad"
-      ],
-      "mode": "blend",
-      "weights": [
-        0.55,
-        0.45
-      ]
-    },
-    {
-      "id": "excited_fearful",
-      "name": "Excited + Fearful",
-      "members": [
-        "excited",
-        "fearful"
-      ],
-      "mode": "blend",
-      "weights": [
-        0.55,
-        0.45
-      ]
-    },
-    {
-      "id": "angry_protective",
-      "name": "Angry + Protective",
-      "members": [
-        "angry",
-        "protective"
-      ],
-      "mode": "blend",
-      "weights": [
-        0.55,
-        0.45
-      ]
-    },
-    {
-      "id": "confident_shy",
-      "name": "Confident + Shy",
-      "members": [
-        "confident",
-        "shy"
-      ],
-      "mode": "blend",
-      "weights": [
-        0.55,
-        0.45
-      ]
-    },
-    {
-      "id": "jealous_affectionate",
-      "name": "Jealous + Affectionate",
-      "members": [
-        "jealous",
-        "affectionate"
-      ],
-      "mode": "replace",
-      "result": "tsundere"
-    },
-    {
-      "id": "curious_worried",
-      "name": "Curious + Fearful",
-      "members": [
-        "curious",
-        "fearful"
-      ],
-      "mode": "blend",
-      "weights": [
-        0.5,
-        0.5
-      ]
     }
   ]
 }

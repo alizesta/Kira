@@ -158,6 +158,7 @@ class ToolRegistry:
     def __init__(self):
         self._tools: dict[str, Tool] = {}
         self._tools_lock = threading.RLock()   # external tools (MCP) are added from a background thread
+        self.execution_guard = None             # optional app-level gate, checked before every tool execution
         from .sysaccess import AccessManager            # lazy: sysaccess imports this module
         self.access = AccessManager(self)             # the ONE permission / confirmation / journal authority (see sysaccess.py)
 
@@ -252,6 +253,10 @@ class ToolRegistry:
             return res
 
         try:
+            if self.execution_guard is not None:
+                blocked_reason = self.execution_guard(tool)
+                if blocked_reason:
+                    return done(DENIED, str(blocked_reason), args if isinstance(args, dict) else {})
             clean = self.clean_args(tool, args)
             why[0] = acc.confirmation_reason(tool, pol)
             if why[0]:

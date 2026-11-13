@@ -192,7 +192,7 @@ class RouteGuiTests(unittest.TestCase):
         w = self.win
         self.cloud("groq")
         gate = threading.Event()
-        lines = sse("[happy]\n", "سلام ", done=False) + [lambda: gate.wait(5)] + sse("دنیای زیبا", done=True)
+        lines = sse("[happy]\n", "سلام " + "الف" * 45, done=False) + [lambda: gate.wait(5)] + sse("دنیای زیبا", done=True)
         with mock.patch("requests.post", table({"groq": StreamResp(lines)})):
             self.send("hello")
             self.assertTrue(pump(lambda: "سلام" in w.chat.toPlainText().split("hello")[-1]))
@@ -205,10 +205,10 @@ class RouteGuiTests(unittest.TestCase):
             gate.set()
             self.assertTrue(self.done())
         final = w.chat.toPlainText()
-        self.assertEqual(final.count("سلام دنیای زیبا"), 1)                  # one bubble, no duplicated text
+        self.assertEqual(final.count("سلام " + "الف" * 45 + "دنیای زیبا"), 1)                  # one bubble, no duplicated text
         self.assertEqual(final.count("hello"), 1)
         self.assertFalse(w.gen_stop_btn.isVisibleTo(w))
-        self.assertEqual(memory.recent_messages(5)[-1]["content"], "[happy]\nسلام دنیای زیبا")
+        self.assertEqual(memory.recent_messages(5)[-1]["content"], "[happy]\nسلام " + "الف" * 45 + "دنیای زیبا")
 
     def test_ui_stays_responsive_during_a_slow_stream(self):
         w = self.win
@@ -228,19 +228,19 @@ class RouteGuiTests(unittest.TestCase):
         w = self.win
         self.cloud("groq")
         gate = threading.Event()
-        mapping = {"groq": [StreamResp(sse("نیمه‌ی اول", done=False) + [lambda: gate.wait(5)] + sse("نباید دیده شود")), StreamResp(sse("پاسخ بعدی"))]}
+        mapping = {"groq": [StreamResp(sse("نیمه‌ی اول " + "الف" * 45, done=False) + [lambda: gate.wait(5)] + sse("نباید دیده شود")), StreamResp(sse("پاسخ بعدی"))]}
         with mock.patch("requests.post", table(mapping)):
             self.send("first")
-            self.assertTrue(pump(lambda: "نیمه‌ی اول" in w.chat.toPlainText()))
+            self.assertTrue(pump(lambda: ("نیمه‌ی اول " + "الف" * 45) in w.chat.toPlainText()))
             w.gen_stop_btn.click()
             gate.set()
             self.assertTrue(self.done())
             text = w.chat.toPlainText()
-            self.assertIn("نیمه‌ی اول", text)
+            self.assertIn("نیمه‌ی اول " + "الف" * 45, text)
             self.assertNotIn("نباید دیده شود", text)
             self.assertIn("متوقف شد", text)
             self.assertEqual(w.route_badge.text()[:9], "■ Stopped")
-            self.assertEqual(memory.recent_messages(5)[-1]["content"], "نیمه‌ی اول")
+            self.assertEqual(memory.recent_messages(5)[-1]["content"], "نیمه‌ی اول " + "الف" * 45)
             self.send("second")
             self.assertTrue(self.done())
         self.assertIn("پاسخ بعدی", w.chat.toPlainText())
@@ -249,13 +249,13 @@ class RouteGuiTests(unittest.TestCase):
     def test_connection_lost_mid_answer_keeps_partial_once_and_does_not_restart_elsewhere(self):
         w = self.win
         self.cloud("groq", "cloudflare")
-        groq = StreamResp(sse("بخش اول", done=False) + [requests.ConnectionError("reset")])
+        groq = StreamResp(sse("بخش اول " + "الف" * 45, done=False) + [requests.ConnectionError("reset")])
         f = table({"groq": groq, "cloudflare": AssertionError("must not repeat the answer on another route")})
         with mock.patch("requests.post", f):
             self.send("hi")
             self.assertTrue(self.done())
         text = w.chat.toPlainText()
-        self.assertEqual(text.count("بخش اول"), 1)
+        self.assertEqual(text.count("بخش اول " + "الف" * 45), 1)
         self.assertIn("قطع شد", text)
         self.assertEqual(len(f.calls), 1)
         self.assertTrue(w.send_btn.isEnabled())
@@ -472,9 +472,9 @@ class RouteGuiTests(unittest.TestCase):
         w = self.win
         self.cloud("groq")
         gate = threading.Event()
-        with mock.patch("requests.post", table({"groq": StreamResp(sse("a", done=False) + [lambda: gate.wait(1.5)] + sse("b"))})):
+        with mock.patch("requests.post", table({"groq": StreamResp(sse("a" * 48, done=False) + [lambda: gate.wait(1.5)] + sse("b"))})):
             self.send("x")
-            self.assertTrue(pump(lambda: "a" in w.chat.toPlainText()))
+            self.assertTrue(pump(lambda: "a" * 48 in w.chat.toPlainText()))
             t0 = time.time()
             w.close()
             self.assertLess(time.time() - t0, 6)

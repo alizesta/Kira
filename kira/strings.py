@@ -2,14 +2,9 @@
 STR = {
  "fa": {
   "app": "Project Kira", "tagline": "دستیار دسکتاپ تو", "save": "ذخیره تنظیمات", "saved": "تنظیمات ذخیره شد.",
-  "tab_chat": "گفتگو", "tab_characters": "شخصیت‌ها", "tab_voice": "صدا و میکروفون", "tab_personality": "شخصیت و رفتار", "tab_preferences": "تنظیمات", "tab_ai": "Route", "tab_help": "راهنما",
-  "g_characters": "کتابخانه‌ی شخصیت‌ها", "character_select": "شخصیت فعال", "character_name": "نام شخصیت", "character_description": "معرفی شخصیت", "character_notes": "دستورالعمل‌ها و لحن اختصاصی", "characters_hint": "هر شخصیت پروفایل، یادداشت‌ها و ویژگی‌های رفتاری خودش را دارد. Kira یک شخصیت پیش‌فرض است؛ نام برنامه و موتور هوش مصنوعی به او وابسته نیستند.",
-  "character_new": "شخصیت جدید", "character_save": "ذخیره‌ی پروفایل", "character_delete": "حذف شخصیت", "character_new_title": "ساخت شخصیت", "character_new_prompt": "نام شخصیت جدید:", "character_error_title": "خطای مدیریت شخصیت", "character_activated": "شخصیت فعال تغییر کرد: {name}", "character_saved": "پروفایل «{name}» ذخیره شد.", "character_delete_title": "حذف شخصیت", "character_delete_confirm": "شخصیت «{name}» حذف شود؟", "character_save_traits": "ذخیره‌ی ویژگی‌ها", "character_traits_saved": "ویژگی‌های رفتاری «{name}» ذخیره شد.",
-  "g_personality_traits": "ویژگی‌های پایه‌ی شخصیت", "trait_playfulness": "بازیگوشی", "trait_warmth": "صمیمیت", "trait_curiosity": "کنجکاوی", "trait_confidence": "اعتمادبه‌نفس", "trait_assertiveness": "قاطعیت", "trait_teasing": "شیطنت و سربه‌سر گذاشتن", "trait_empathy": "همدلی", "trait_independence": "استقلال", "trait_patience": "صبوری", "trait_carefulness": "دقت و احتیاط", "personality_hint": "این ویژگی‌ها فقط رفتار پایه‌ی شخصیت فعال را شکل می‌دهند؛ احساسات و مود لحظه‌ای جداگانه و با گذر زمان تغییر می‌کنند.",
-  "g_behavior": "رفتار عمومی برنامه", "g_help_updates": "دریافت و به‌روزرسانی", "help_description": "از این بخش می‌توانی نسخه‌ی جدید، فایل نصب/فشرده و تغییرات آن را از صفحه‌ی رسمی پروژه پیدا کنی.", "help_latest": "آخرین نسخه و دانلود", "help_repository": "مخزن کد در GitHub", "help_guide": "راهنمای استفاده", "help_troubleshooting": "عیب‌یابی و مشکلات رایج", "help_changes": "تغییرات و تاریخچه نسخه‌ها", "help_data": "حافظه و معماری شخصیت‌ها", "g_help_about": "درباره‌ی برنامه", "help_about_text": "این برنامه یک هسته‌ی هوش مصنوعی با قابلیت انتخاب شخصیت است. پروفایل Kira فقط یکی از شخصیت‌هاست و نام تجاری برنامه در تنظیمات مستقل نگه‌داری می‌شود.",
-
+  "tab_chat": "گفتگو", "tab_assistant": "دستیار", "tab_voice": "صدا و میکروفون", "tab_char": "شخصیت", "tab_general": "عمومی", "tab_ai": "Route",
   "send": "ارسال", "nav_menu_tip": "بخش‌ها و تنظیمات", "route_idle": "● آماده · انتخاب خودکار", "route_none": "هیچ مسیر فعالی نیست", "route_open": "مدیریت Route…", "input_ph": "پیامت رو بنویس… (مثلاً: ماشین حساب رو باز کن)",
-  "mic": "میکروفون", "wake": "حالت بیدارباش", "voice": "صدای گفتار", "stop": "قطع صدا",
+  "mic": "میکروفون", "wake": "حالت بیدارباش", "voice": "صدای Kira", "stop": "قطع صدا",
   "show_char": "نمایش شخصیت روی دسکتاپ", "hide_char": "مخفی کردن شخصیت",
   "g_assistant": "هویت و شخصیت", "g_model": "مدل محلی (Ollama)", "g_tts": "خروجی صدا", "g_stt": "میکروفون و تشخیص گفتار",
   "g_char": "شخصیت روی دسکتاپ", "g_lang": "زبان برنامه", "g_memory": "حافظه",
@@ -44,14 +39,9 @@ STR = {
  },
  "en": {
   "app": "Project Kira", "tagline": "Your desktop assistant", "save": "Save settings", "saved": "Settings saved.",
-  "tab_chat": "Chat", "tab_characters": "Characters", "tab_voice": "Voice and Mic", "tab_personality": "Personality", "tab_preferences": "Preferences", "tab_ai": "Routes", "tab_help": "Help",
-  "g_characters": "Character Library", "character_select": "Active character", "character_name": "Character name", "character_description": "Character description", "character_notes": "Character-specific instructions and tone", "characters_hint": "Each character has its own profile, notes and behavioral traits. Kira is the built-in starter character; the app brand and AI core do not depend on her.",
-  "character_new": "New character", "character_save": "Save profile", "character_delete": "Delete character", "character_new_title": "Create character", "character_new_prompt": "Name the new character:", "character_error_title": "Character management error", "character_activated": "Active character changed: {name}", "character_saved": "Profile “{name}” saved.", "character_delete_title": "Delete character", "character_delete_confirm": "Delete character “{name}”?", "character_save_traits": "Save traits", "character_traits_saved": "Behavioral traits for “{name}” saved.",
-  "g_personality_traits": "Character baseline traits", "trait_playfulness": "Playfulness", "trait_warmth": "Warmth", "trait_curiosity": "Curiosity", "trait_confidence": "Confidence", "trait_assertiveness": "Assertiveness", "trait_teasing": "Teasing", "trait_empathy": "Empathy", "trait_independence": "Independence", "trait_patience": "Patience", "trait_carefulness": "Carefulness", "personality_hint": "These traits shape the active character’s baseline behavior. Momentary emotions and mood remain separate and change over time.",
-  "g_behavior": "General app behavior", "g_help_updates": "Downloads and updates", "help_description": "Find the latest version, release download and change notes on the official project page.", "help_latest": "Latest release and download", "help_repository": "GitHub source repository", "help_guide": "User guide", "help_troubleshooting": "Troubleshooting", "help_changes": "Changelog and commit history", "help_data": "Memory and character architecture", "g_help_about": "About", "help_about_text": "This app provides an AI core with selectable character profiles. Kira is one character; the application brand is managed independently.",
-
+  "tab_chat": "Chat", "tab_assistant": "Assistant", "tab_voice": "Voice and Mic", "tab_char": "Character", "tab_general": "General", "tab_ai": "Routes",
   "nav_menu_tip": "Sections and settings", "route_idle": "● Ready · automatic", "route_none": "No active route", "route_open": "Route Manager…", "send": "Send", "input_ph": "Type a message… (e.g. open calculator)",
-  "mic": "Microphone", "wake": "Wake mode", "voice": "Speech voice", "stop": "Stop voice",
+  "mic": "Microphone", "wake": "Wake mode", "voice": "Kira voice", "stop": "Stop voice",
   "show_char": "Show character on desktop", "hide_char": "Hide character",
   "g_assistant": "Identity and personality", "g_model": "AI model (Ollama)", "g_tts": "Voice output", "g_stt": "Microphone and speech recognition",
   "g_char": "Desktop character", "g_lang": "Language", "g_memory": "Memory",

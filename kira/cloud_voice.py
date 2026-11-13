@@ -1,4 +1,4 @@
-"""Cloud Voice: speech-to-text (STT) and text-to-speech (TTS) through Google AI Studio, Groq and ElevenLabs.
+"""Cloud Voice: speech-to-text (STT) and text-to-speech (TTS) through Google AI Studio, Groq, ElevenLabs and MiniMax.
 
 Rules this module keeps:
   * Voice models are NOT chat models: their keys, models and priority are stored here (cloud_voice.json), separate from the chat routes.
@@ -34,15 +34,18 @@ import requests
 from .secret_store import protect, unprotect
 
 FILE_NAME = "cloud_voice.json"
-PROVIDERS = ("groq", "google", "elevenlabs")
-LABELS = {"groq": "Groq", "google": "Google AI Studio", "elevenlabs": "ElevenLabs"}
+PROVIDERS = ("groq", "google", "elevenlabs", "minimax")
+LABELS = {"groq": "Groq", "google": "Google AI Studio", "elevenlabs": "ElevenLabs", "minimax": "MiniMax"}
 KEY_URLS = {"groq": "https://console.groq.com/keys", "google": "https://aistudio.google.com/apikey",
-            "elevenlabs": "https://elevenlabs.io/app/settings/api-keys"}
+            "elevenlabs": "https://elevenlabs.io/app/settings/api-keys", "minimax": "https://platform.minimax.io/user-center/basic-information/interface-key"}
 KINDS = ("stt", "tts")
 
 GOOGLE_BASE = "https://generativelanguage.googleapis.com/v1beta"
 GROQ_BASE = "https://api.groq.com/openai/v1"
 ELEVEN_BASE = "https://api.elevenlabs.io/v1"
+MINIMAX_BASE = "https://api.minimax.io/v1"
+MINIMAX_MODELS = ("speech-2.8-turbo", "speech-2.8-hd")
+MINIMAX_DEFAULT_VOICE = "female-shaonv"
 
 # ElevenLabs does not list its speech-to-text models through the API: this small catalogue is used and labelled as such.
 ELEVEN_STT_CATALOG = ["scribe_v2", "scribe_v1"]
@@ -64,6 +67,8 @@ def tts_caps(provider: str, model: str = "") -> set:
     model = str(model or "").lower()
     if provider == "google":
         return {"style"}
+    if provider == "minimax":
+        return {"rate", "style"}
     if provider == "elevenlabs":
         caps = {"rate"} if any(t in model for t in ("multilingual_v2", "turbo_v2_5", "flash_v2_5", "turbo_v2", "flash_v2")) else set()
         if "multilingual_v2" in model:
@@ -286,6 +291,13 @@ def detect(provider: str, key: str) -> dict:
                 stt.append(mid)                              # a Gemini model that takes audio in and writes text out
         return {"stt": sorted(set(stt)), "tts": sorted(set(tts)), "voices": [{"id": v, "name": v} for v in GOOGLE_VOICES] if tts else [],
                 "tts_langs": {}, "stt_source": "api"}
+    if provider == "minimax":
+        # MiniMax has no dependable account-scoped TTS model/voice catalogue.
+        # Probe the real TTS endpoint with a short Persian phrase; model IDs are labelled as a built-in catalogue.
+        _tts_minimax(key, "speech-2.8-turbo", "سلام.", MINIMAX_DEFAULT_VOICE, "fa", {})
+        return {"stt": [], "tts": list(MINIMAX_MODELS),
+                "voices": [{"id": MINIMAX_DEFAULT_VOICE, "name": MINIMAX_DEFAULT_VOICE}],
+                "tts_langs": {}, "tts_source": "catalog", "stt_source": "api"}
     if provider == "elevenlabs":
         r = _request("get", provider, f"{ELEVEN_BASE}/models", key, headers={"xi-api-key": key})
         data = r.json()
@@ -383,6 +395,51 @@ def _tts_eleven(key, model, text, voice, lang, opts=None):
     return r.content, "mp3"
 
 
+def _tts_minimax(key, model, text, voice, lang, opts=None):
+    """MiniMax T2A v2. Returns MP3 bytes; API keys are never included in diagnostics."""
+    if not text or len(text) > 9999:
+        raise CVError("other", "MiniMax text must contain 1-9999 characters")
+    opts = opts or {}
+    speed = max(0.5, min(2.0, 1.0 + float(opts.get("rate", 0) or 0) / 100.0))
+    style = str(opts.get("style") or "")
+    emotion = {"cheerful": "happy", "energetic": "happy", "serious": "neutral"}.get(style)
+    voice_setting = {"voice_id": voice or MINIMAX_DEFAULT_VOICE, "speed": round(speed, 2), "vol": 1.0, "pitch": 0}
+    if emotion:
+        voice_setting["emotion"] = emotion
+    body = {
+        "model": model or "speech-2.8-turbo",
+        "text": text,
+        "stream": False,
+        "voice_setting": voice_setting,
+        "audio_setting": {"sample_rate": 32000, "bitrate": 128000, "format": "mp3", "channel": 1},
+        "language_boost": "auto",
+        "output_format": "hex",
+    }
+    response = _request("post", "minimax", f"{MINIMAX_BASE}/t2a_v2", key,
+                        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                        json=body, timeout=90).json()
+    base = response.get("base_resp") or {}
+    code = base.get("status_code", 0)
+    if code not in (0, "0", None):
+        message = _scrub(str(base.get("status_msg") or f"MiniMax error {code}"), key)
+        low = message.lower()
+        kind = "quota" if any(x in low for x in ("quota", "balance", "credit", "insufficient")) else (
+            "auth" if any(x in low for x in ("api key", "unauthorized", "authentication")) else (
+            "model" if any(x in low for x in ("model", "voice")) else "other"))
+        raise CVError(kind, message)
+    data = response.get("data") or {}
+    audio_hex = data.get("audio") or response.get("audio")
+    if not audio_hex:
+        raise CVError("other", "MiniMax response contained no audio")
+    try:
+        audio = bytes.fromhex(audio_hex)
+    except (TypeError, ValueError) as exc:
+        raise CVError("other", "MiniMax returned invalid hexadecimal audio") from exc
+    if not audio:
+        raise CVError("other", "MiniMax returned empty audio")
+    return audio, "mp3"
+
+
 def _tts_google(key, model, text, voice, lang, opts=None):
     style = STYLE_PROMPTS.get(str((opts or {}).get("style") or ""), "")
     spoken = f"Say {style}: {text}" if style else text                  # Gemini TTS takes its style from a natural-language instruction
@@ -400,7 +457,7 @@ def _tts_google(key, model, text, voice, lang, opts=None):
 
 
 STT_CALLS = {"groq": _stt_groq, "elevenlabs": _stt_eleven, "google": _stt_google}
-TTS_CALLS = {"groq": _tts_groq, "elevenlabs": _tts_eleven, "google": _tts_google}
+TTS_CALLS = {"groq": _tts_groq, "elevenlabs": _tts_eleven, "google": _tts_google, "minimax": _tts_minimax}
 
 
 # ---------------------------------------------------------------- the store (cloud_voice.json)
@@ -674,6 +731,8 @@ class CloudVoice:
             return v
         if provider == "google":
             return "Kore"
+        if provider == "minimax":
+            return MINIMAX_DEFAULT_VOICE
         if provider == "groq":
             return (GROQ_VOICES.get(model) or ["autumn"])[0]
         listed = self.store.voices(provider)

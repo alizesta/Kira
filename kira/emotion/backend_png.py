@@ -67,6 +67,7 @@ class EmotionFaceAnimator(FaceAnimator):
     _passthrough = False
     _driving = False
     _serial_seen = 0
+    last_frame = None                    # newest engine Frame (read by the VRM avatar, kira/vrm_avatar.py)
 
     def __init__(self, parent=None, director=None):
         super().__init__(parent)
@@ -105,6 +106,7 @@ class EmotionFaceAnimator(FaceAnimator):
             self.rig.set_overlay(frame.pose if (frame.active and not self.sleeping) else {}, float(self.rig.intensity))
         else:
             self.rig.set_overlay({}, 0.0)
+        self.last_frame = frame
         FaceAnimator._tick(self)
         if frame is not None and frame.active and not self.sleeping:
             if self._driving:

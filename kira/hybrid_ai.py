@@ -37,43 +37,58 @@ class ProviderError(RuntimeError):
         self.retry_after = retry_after
 
 
-def normalize_messages(messages):
-    """Provider-neutral cleanup: only user/assistant, no empty text, roles merged when repeated,
-    starts and ends with a user message (several APIs reject anything else).
-    A message may carry "images": [{"mime", "b64"}]; they are kept (and merged) for vision-capable adapters."""
+def normalize_messages(messages, preserve_tool_messages=False):
+    """Provider-neutral cleanup. Native OpenAI-compatible tool turns may preserve assistant/tool messages."""
     out = []
+    allowed = ("user", "assistant", "tool") if preserve_tool_messages else ("user", "assistant")
     for item in messages or []:
         role = item.get("role")
+        if role not in allowed:
+            continue
         content = str(item.get("content") or "").strip()
         images = [i for i in (item.get("images") or []) if isinstance(i, dict) and i.get("b64")] if role == "user" else []
-        if role not in ("user", "assistant") or not (content or images):
+        tool_calls = item.get("tool_calls") if role == "assistant" and preserve_tool_messages else None
+        if role == "tool":
+            call_id = str(item.get("tool_call_id") or "").strip()
+            if not call_id or not content:
+                continue
+            out.append({"role": "tool", "tool_call_id": call_id, "name": str(item.get("name") or ""), "content": content})
             continue
-        content = content or "(تصویر ضمیمه)"
-        if out and out[-1]["role"] == role:
-            out[-1]["content"] += "\n\n" + content
+        if not (content or images or tool_calls):
+            continue
+        content = content or ("(تصویر ضمیمه)" if images else "")
+        if out and out[-1]["role"] == role and role != "tool" and not tool_calls and not out[-1].get("tool_calls"):
+            out[-1]["content"] += ("\n\n" if out[-1]["content"] and content else "") + content
             if images:
                 out[-1].setdefault("images", []).extend(images)
         else:
             entry = {"role": role, "content": content}
             if images:
                 entry["images"] = list(images)
+            if tool_calls:
+                entry["tool_calls"] = list(tool_calls)
             out.append(entry)
-    while out and out[0]["role"] == "assistant":
+    while out and out[0]["role"] == "assistant" and not out[0].get("tool_calls"):
         out.pop(0)
-    while out and out[-1]["role"] == "assistant":
+    while out and out[-1]["role"] == "assistant" and not out[-1].get("tool_calls"):
         out.pop()
     return out
 
 
 def _openai_message(item):
-    """OpenAI-style message; a user message with images becomes a list of text + image_url parts."""
+    """OpenAI-style message, preserving native tool-call turns and image parts."""
+    role = item["role"]
+    if role == "tool":
+        return {"role": "tool", "tool_call_id": item["tool_call_id"], "name": item.get("name") or "", "content": item["content"]}
+    if item.get("tool_calls"):
+        return {"role": "assistant", "content": item.get("content") or None, "tool_calls": item["tool_calls"]}
     images = item.get("images")
     if not images:
-        return {"role": item["role"], "content": item["content"]}
+        return {"role": role, "content": item["content"]}
     parts = [{"type": "text", "text": item["content"]}]
     for img in images:
         parts.append({"type": "image_url", "image_url": {"url": f"data:{img.get('mime') or 'image/png'};base64,{img['b64']}"}})
-    return {"role": item["role"], "content": parts}
+    return {"role": role, "content": parts}
 
 
 def redact(text, *secrets):
@@ -340,7 +355,7 @@ class OpenAICompatibleProvider(BaseProvider):
             raise self._fail("API Key یا مدل تنظیم نشده است.", False, kind="auth")
         if not self._base():
             raise self._fail("آدرس (Base URL) تنظیم نشده است.", False, kind="request")
-        clean = normalize_messages(messages)
+        clean = normalize_messages(messages, preserve_tool_messages=True)
         if not clean:
             raise self._fail("هیچ پیام کاربری برای ارسال وجود ندارد.", False, kind="request")
         url = self._base() + "/chat/completions"
@@ -373,6 +388,37 @@ class OpenAICompatibleProvider(BaseProvider):
         if not content:
             raise self._fail("مدل پاسخ خالی برگرداند.", True, kind="response")
         return content
+
+    def chat_with_tools(self, messages, system_prompt, temperature=0.7, tools=None):
+        """One non-streaming native function-calling round for OpenAI-compatible endpoints."""
+        if not tools:
+            return {"text": "", "tool_calls": []}
+        url, headers, payload = self._prepare(messages, system_prompt, temperature, False)
+        payload["tools"] = [{"type": "function", "function": schema} for schema in tools]
+        payload["tool_choice"] = "auto"
+        data = self._post_json(url, headers, payload)
+        try:
+            message = data["choices"][0]["message"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise self._fail("ساختار پاسخ Function Calling شناخته‌شده نیست.", True, kind="response") from exc
+        content = message.get("content")
+        if isinstance(content, list):
+            content = "\n".join(str(x.get("text", "")) for x in content if isinstance(x, dict))
+        calls = []
+        for item in (message.get("tool_calls") or []):
+            if not isinstance(item, dict):
+                continue
+            fn = item.get("function") or {}
+            name = str(fn.get("name") or "").strip()
+            raw_args = fn.get("arguments", "{}")
+            try:
+                args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+            except (TypeError, ValueError):
+                args = None
+            if name:
+                calls.append({"id": str(item.get("id") or ""), "tool": name,
+                              "args": args if isinstance(args, dict) else {}})
+        return {"text": str(content or "").strip(), "tool_calls": calls}
 
     @staticmethod
     def _extract(obj):
@@ -932,6 +978,67 @@ class HybridRouter:
         Failover happens only before the first token. Once text has arrived it is never repeated: a connection that dies
         later ends the answer as 'interrupted' (result["interrupted"] holds the reason). Returns the result dict."""
         return self._execute(messages, system_prompt, temperature, True, on_chunk, on_event, retry_index)
+
+    # ---------- native function calling ----------
+    def chat_with_tools(self, messages, system_prompt, temperature=0.4, tools=None, on_event=None):
+        """Try one eligible OpenAI-compatible route with native JSON-schema tools; return None if no route supports it."""
+        if not tools:
+            return None
+        if not self._lock.acquire(blocking=False):
+            raise RuntimeError("درخواست قبلی هنوز در حال انجام است؛ درخواست تکراری ارسال نشد.")
+        self._cancel.clear()
+        started = time.monotonic()
+        supported = False
+        failures = []
+        emit = on_event or (lambda event: None)
+        try:
+            for route in self._candidates():
+                if self._cancel.is_set():
+                    return {"text": "", "tool_calls": [], "stopped": True, "interrupted": None}
+                ok, reason = self.eligibility(route)
+                if not ok:
+                    continue
+                info = self.route_info(route)
+                try:
+                    provider = self._make_provider(route)
+                    native = getattr(provider, "chat_with_tools", None)
+                    if not callable(native):
+                        continue
+                    emit({"phase": "connecting", **info})
+                    self._active = provider
+                    result = native(messages, system_prompt, temperature, tools)
+                    if result is None:                         # this model/provider explicitly lacks native tool support
+                        self._active = None
+                        continue
+                    supported = True
+                    elapsed = int((time.monotonic() - started) * 1000)
+                    self._mark_success(route, elapsed)
+                    self.last_provider, self.last_model, self.last_route_id = route["provider"], route["model"], route["id"]
+                    self.last_kind, self.last_error, self.last_duration_ms = info["kind"], None, elapsed
+                    metrics = {"request_id": uuid.uuid4().hex[:8], "started_at": datetime.now(timezone.utc).isoformat(),
+                               "stream": False, "retries": 0, "failovers": len(failures), "provider": route["provider"],
+                               "model": route["model"], "route_id": route["id"], "kind": info["kind"],
+                               "total_ms": elapsed, "result": "tool_call" if result.get("tool_calls") else "success",
+                               "chars": len(result.get("text") or ""), "role": self._role or None}
+                    self.last_metrics = metrics
+                    self.metrics.append(metrics)
+                    return {**result, "provider": route["provider"], "model": route["model"], "route_id": route["id"],
+                            "kind": info["kind"], "label": info["label"], "metrics": metrics,
+                            "stopped": False, "interrupted": None}
+                except Exception as exc:                              # noqa: BLE001
+                    if self._cancel.is_set():
+                        return {"text": "", "tool_calls": [], "stopped": True, "interrupted": None}
+                    secrets = (self._provider_cfg(route).get("api_key"),)
+                    kind, status, _cooldown = self._mark_failure(route, exc, secrets)
+                    failures.append(f"{route['id']}: {redact(exc, *secrets)}")
+                    self.last_attempts.append({"provider": route["provider"], "route_id": route["id"],
+                                               "result": "error", "error_kind": kind, "status_code": status})
+            if not supported:
+                return None
+            raise RuntimeError("همه‌ی Routeهای سازگار با Native Function Calling ناموفق بودند:\n" + "\n".join(failures))
+        finally:
+            self._active = None
+            self._lock.release()
 
     # ---------- tests / benchmark (explicit, one route at a time, never parallel) ----------
     def test_route(self, route_id):

@@ -84,6 +84,30 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(det.state, "invalid")
         self.assertNotIn(GROQ_KEY, det.message)
 
+    def test_google_gemini_discovery_follows_pages_and_filters_non_chat_models(self):
+        pages = [
+            R(200, {"models": [
+                {"name": "models/gemini-2.5-flash", "displayName": "Gemini 2.5 Flash",
+                 "supportedGenerationMethods": ["generateContent"], "inputTokenLimit": 1000},
+                {"name": "models/imagen-4", "supportedGenerationMethods": ["generateContent"]},
+            ], "nextPageToken": "next-page"}),
+            R(200, {"models": [
+                {"name": "models/gemini-2.5-pro", "displayName": "Gemini 2.5 Pro",
+                 "supportedGenerationMethods": ["generateContent"], "inputTokenLimit": 2000},
+            ]}),
+        ]
+        calls = []
+        def get(url, headers=None, params=None, timeout=None):
+            calls.append((url, dict(headers or {}), dict(params or {})))
+            return pages.pop(0)
+        with mock.patch.object(discovery.requests, "get", side_effect=get):
+            det = am.detect(GOOGLE_KEY)
+        self.assertEqual((det.state, det.service), ("ok", "google"))
+        self.assertEqual([m["id"] for m in det.models], ["gemini-2.5-flash", "gemini-2.5-pro"])
+        self.assertEqual(calls[1][2]["pageToken"], "next-page")
+        self.assertEqual(calls[0][1]["x-goog-api-key"], GOOGLE_KEY)
+        self.assertNotIn(GOOGLE_KEY, calls[0][0])
+
     def test_google_wrong_key_is_400_and_key_travels_in_header_not_url(self):
         bad = R(400, {"error": {"message": "API key not valid. Please pass a valid API key."}}, text="API key not valid")
         det, net = run_detect({"generativelanguage": bad}, GOOGLE_KEY)
@@ -200,6 +224,9 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual((cfg["base_url"], cfg["service"], cfg["type"]), (am.SERVICES["google"]["base_url"], "google", "openai_compat"))
         self.assertEqual([r["model"] for r in rm.get_routes(s) if r["provider"] == pid], ["gemini-2.5-flash"])
         self.assertEqual(am.service_of(pid, cfg), "google")
+        details = am.api_details(s, pid)
+        self.assertEqual({m["id"] for m in details["models"]}, {"gemini-2.5-flash", "gemini-2.5-pro"})
+        self.assertEqual(sum(r["provider"] == pid and r["enabled"] for r in rm.get_routes(s)), 1)
 
     def test_existing_unkeyed_gemini_provider_is_reused(self):
         s = fresh()
@@ -443,6 +470,9 @@ class UiSourceTests(unittest.TestCase):
         src = (Path(__file__).resolve().parent.parent / "kira" / "main.py").read_text(encoding="utf-8")
         for needle in ("Add API", "Registered APIs", "View Details", "Refresh / Rediscover Models", "Enable / Disable", "api_manager.detect",
                        "build_ollama_group", "def api_move", "def api_delete", "def api_edit"):
+            self.assertIn(needle, src, needle)
+        for needle in ("def api_refresh", "api_manager.rediscover", "def on_api_refreshed", "api_manager.apply_models",
+                       "def on_api_model_toggled", "api_manager.set_model_enabled"):
             self.assertIn(needle, src, needle)
         for gone in ("def rebuild_providers", "provider_widgets", "def discover_models_ui", "def begin_provider_edit"):
             self.assertNotIn(gone, src, gone)

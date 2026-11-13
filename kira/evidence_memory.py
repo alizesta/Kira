@@ -498,7 +498,7 @@ def _backfill_once() -> None:
         with _lock, _db() as con:
             upto = int(_meta_get(con, "seen_upto", "0") or 0)
             first_run = _meta_get(con, "backfilled") != "1"
-        rows = rows_with_ids(limit=BACKFILL_MESSAGES, after_id=upto)
+        rows = rows_with_ids(limit=BACKFILL_MESSAGES, after_id=upto, character_id="kira")
         persona_items = persona_memory.list_items() if first_run else []      # read BEFORE taking our lock (lock order: never persona inside evidence)
         with _lock, _db() as con:
             newest = upto

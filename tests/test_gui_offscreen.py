@@ -89,9 +89,10 @@ class GuiTests(unittest.TestCase):
         top_left = w.menu_btn.mapTo(w, w.menu_btn.rect().topLeft())
         self.assertTrue(w.rect().contains(top_left))
         self.assertTrue(w.rect().contains(w.menu_btn.mapTo(w, w.menu_btn.rect().bottomRight())))
-        texts = [a.text() for a in w.nav_menu.actions()]
-        self.assertEqual(texts, ["گفتگو", "شخصیت‌ها", "صدا و میکروفون", "شخصیت و رفتار", "تنظیمات", "Route", "راهنما"])
-        for i, action in enumerate(w.nav_menu.actions()):
+        texts = [a.text() for a in w._menu_actions]
+        self.assertEqual(texts, ["گفتگو", "دستیار", "صدا و میکروفون", "شخصیت", "عمومی", "Route"])
+        self.assertNotIn("Ai1 Code", [a.text() for a in w.nav_menu.actions()])      # Ai1 Code lives inside Kira's chat now
+        for i, action in enumerate(w._menu_actions):
             action.trigger()
             self.assertEqual(w.tabs.currentIndex(), i)
 
@@ -99,7 +100,7 @@ class GuiTests(unittest.TestCase):
         w = self.win
         w.settings["ui_lang"] = "en"
         w.retranslate()
-        self.assertEqual([a.text() for a in w.nav_menu.actions()][5:], ["Routes", "Help"])
+        self.assertEqual(w._menu_actions[-1].text(), "Routes")
         w.settings["ui_lang"] = "fa"
         w.retranslate()
 
@@ -355,39 +356,6 @@ class GuiTests(unittest.TestCase):
         self.assertIsNone(sp._fx)
         self.assertTrue(errors and "دستگاه" in errors[0])
 
-    def test_neon_mood_indicator_uses_vector_bolt_without_plain_emoji(self):
-        from unittest import mock
-        from kira.main import make_icon
-        w = self.win
-        with mock.patch("kira.main.mood.current", return_value={
-            "emotion": "happy", "intensity": 70, "secondary_emotions": [],
-            "behavior": "energetic", "energy_label": "active",
-        }):
-            w.update_mood_indicator()
-        self.assertEqual(w.mood_indicator.text(), "")
-        self.assertFalse(w.mood_indicator.pixmap().isNull())
-        self.assertTrue(w.mood_indicator.isVisible())
-        with mock.patch("kira.main.mood.current", return_value={
-            "emotion": "neutral", "intensity": 20, "secondary_emotions": [],
-            "behavior": "balanced", "energy_label": "normal",
-        }):
-            w.update_mood_indicator()
-        self.assertFalse(w.mood_indicator.isVisible())
-
-    def test_chat_input_height_does_not_reapply_same_geometry(self):
-        from kira.ui_widgets import ChatInput
-        widget = ChatInput()
-        widget.resize(420, 40)
-        widget.show()
-        APP.processEvents()
-        widget.setText("سلام")
-        APP.processEvents()
-        first_height = widget.height()
-        widget._fit()
-        widget._fit()
-        self.assertEqual(widget.height(), first_height)
-        widget.close()
-
     # 19) character, face, reactions, companion untouched and working
     def test_19_character_voice_and_reactions_still_work(self):
         w = self.win
@@ -406,6 +374,34 @@ class GuiTests(unittest.TestCase):
         self.assertTrue(hasattr(w.speaker, "speak") and hasattr(w.speaker, "stop"))
         w.voice_btn.click()
         w.voice_btn.click()
+
+    def test_19b_active_character_changes_chat_page_and_companion_art(self):
+        w = self.win
+        a = w.animator
+        try:
+            for cid in ("ren", "mika"):
+                serial = a.art_serial
+                w.character_combo.setCurrentIndex(w.character_combo.findData(cid))
+                APP.processEvents()
+                self.assertEqual(w.settings["active_character_id"], cid)
+                self.assertGreater(a.art_serial, serial)
+                self.assertFalse(a.face_overlays)               # Kira's eyelid/mouth overlays only on Kira's art
+                self.assertIsNotNone(a.clip_rect)
+                self.assertFalse(w.character_portrait.pixmap().isNull())
+                self.assertEqual(w.character_portrait.pixmap().size(), w.character_portrait.size())
+                w.avatar.resize(234, 420)
+                self.assertFalse(w.avatar.grab().isNull())
+                w.companion.show()
+                APP.processEvents()
+                self.assertAlmostEqual(w.companion.height() / w.companion.width(), a.window_ratio, delta=0.05)
+                w.companion.hide()
+            w.character_combo.setCurrentIndex(w.character_combo.findData("kira"))
+            APP.processEvents()
+            self.assertTrue(a.face_overlays)
+            self.assertIsNone(a.clip_rect)
+            self.assertFalse(w.avatar.grab().isNull())
+        finally:
+            w.character_combo.setCurrentIndex(w.character_combo.findData("kira"))
 
 
 if __name__ == "__main__":

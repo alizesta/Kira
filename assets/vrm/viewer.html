@@ -1,0 +1,434 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;height:100%;overflow:hidden;background:transparent}canvas{display:block;width:100%;height:100%}</style>
+<script type="importmap">
+{"imports":{"three":"./vendor/three.module.js","three/addons/":"./vendor/addons/","three/examples/jsm/":"./vendor/addons/","@pixiv/three-vrm":"./vendor/three-vrm.module.js"}}
+</script>
+</head><body>
+<script type="module">
+// Kira VRM viewer. Python (kira/vrm_avatar.py) pushes the animator state with window.kiraSet(state) ~30x/s;
+// this page only draws: idle pose (arms down, breathing, sway), blink, emotion -> VRM expressions, lip-sync, eye look.
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+
+window.kiraStatus = 'loading';
+const VIEW = new URLSearchParams(location.search).get('view') || 'full';
+const fail = (m) => { window.kiraStatus = 'error: ' + m; console.error(m); };
+window.addEventListener('error', (e) => fail(String(e.message || e)));
+window.addEventListener('unhandledrejection', (e) => fail(String(e.reason)));
+
+const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, premultipliedAlpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setClearColor(0x000000, 0);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(28, 1, 0.05, 50);
+const sun = new THREE.DirectionalLight(0xffffff, Math.PI * 0.9);
+sun.position.set(0.6, 1.0, 1.0).normalize();
+scene.add(sun, new THREE.AmbientLight(0xffffff, 0.35));
+const lookTarget = new THREE.Object3D();
+scene.add(lookTarget);
+
+// ---------- emotion id -> VRM preset weights (+ small head tilt: [pitch, yaw, roll] radians) ----------
+const EMO = {
+  happy: { happy: .8 }, sad: { sad: .8, head: [.12, 0, .03] }, angry: { angry: .8 }, surprised: { surprised: .9, head: [-.05, 0, 0] },
+  curious: { surprised: .25, head: [0, 0, .09] }, proud: { relaxed: .5, happy: .2, head: [-.07, 0, 0] },
+  arrogant: { relaxed: .4, angry: .15, head: [-.1, 0, 0] }, smug: { happy: .35, angry: .1, head: [-.05, 0, .05] },
+  playful: { happy: .7, head: [0, 0, .06] }, teasing: { happy: .5, head: [0, .05, .07] },
+  tsundere: { angry: .3, happy: .15, head: [0, -.1, 0] }, bored: { relaxed: .5, head: [.06, 0, .06] },
+  frustrated: { angry: .5 }, affectionate: { happy: .5, relaxed: .3, head: [0, 0, .06] },
+  flirty: { happy: .4, relaxed: .3, head: [0, 0, .08] }, shy: { sad: .2, happy: .25, head: [.12, .08, .04] },
+  embarrassed: { sad: .25, happy: .3, head: [.14, .1, 0] }, jealous: { angry: .3, sad: .2, head: [0, -.08, 0] },
+  laughing: { happy: 1.0, head: [-.04, 0, 0] }, annoyed: { angry: .5, head: [0, -.06, 0] },
+  protective: { angry: .25, relaxed: .2 }, excited: { happy: .8, surprised: .3 }, thinking: { relaxed: .2, head: [-.04, .1, .05] },
+};
+const MOOD = { happy: 'happy', sad: 'sad', angry: 'angry', surprised: 'surprised', shy: 'shy', excited: 'excited', thinking: 'thinking', bored: 'bored' };
+const PRESETS = ['happy', 'angry', 'sad', 'relaxed', 'surprised', 'aa', 'ih', 'ou', 'ee', 'oh', 'blink'];
+
+let vrm = null, S = { lid: 0, blink: 0, mouth: 0, open: 0, smile: 0.35, members: [], expr: 'neutral', sleeping: false, look: [0, 0] };
+const W = Object.fromEntries(PRESETS.map((p) => [p, 0]));   // smoothed weights
+let sign = 1, headBase = new THREE.Vector3(), poke = 0, clock = new THREE.Clock(), tAcc = 0, headTilt = [0, 0, 0];
+const bone = (n) => vrm && vrm.humanoid.getNormalizedBoneNode(n);
+const lerp = (a, b, k) => a + (b - a) * k;
+
+window.kiraSet = (s) => { S = Object.assign(S, s); };
+window.kiraPoke = () => { window.kiraReact('shake'); };
+const GDUR = { flinch: .7, shake: 1.0, nod: 1.0, tilt: 1.4, hop: .9, spin: 1.5, wave: 1.7, step: 1.2, stomp: .9, lean: 1.3, arm_l_flap: 1.0, arm_r_flap: 1.0, hand_wave: 1.5 };
+let react = null, hipsBase = null;
+window.kiraReact = (name) => { if (GDUR[name]) react = { name, t0: tAcc, dur: GDUR[name] }; };
+
+function targets() {
+  const T = Object.fromEntries(PRESETS.map((p) => [p, 0]));
+  let tilt = [0, 0, 0];
+  const add = (spec, k) => {
+    for (const p of ['happy', 'angry', 'sad', 'relaxed', 'surprised']) if (spec[p]) T[p] += spec[p] * k;
+    if (spec.head) for (let i = 0; i < 3; i++) tilt[i] += spec.head[i] * k;
+  };
+  if (S.members && S.members.length) {
+    for (const m of S.members) { const spec = EMO[m[0]]; if (spec) add(spec, (m[1] / 100) * m[2]); }
+  } else if (MOOD[S.expr]) {
+    const spec = EMO[MOOD[S.expr]] || ({ shy: EMO.shy, bored: EMO.bored })[S.expr];
+    if (spec) add(spec, 0.8);
+  }
+  for (const p of ['happy', 'angry', 'sad', 'relaxed', 'surprised']) T[p] *= 1.5;   // VRM presets are subtle: make moods readable
+  for (let i = 0; i < 3; i++) tilt[i] *= 1.3;
+  T.relaxed += 0.1;                                            // soft resting face
+  const open = Math.max(0, Math.min(1, S.mouth || 0));
+  const t = tAcc;
+  T.aa = open * (0.55 + 0.45 * (0.5 + 0.5 * Math.sin(t * 9.0)));
+  T.oh = open * 0.5 * Math.max(0, Math.sin(t * 5.3 + 1)) + (S.open || 0) * 0.6;
+  T.ou = open * 0.35 * Math.max(0, Math.sin(t * 3.7 + 2));
+  T.ih = open * 0.3 * Math.max(0, Math.sin(t * 7.1 + 4));
+  T.ee = open * 0.25 * Math.max(0, Math.sin(t * 6.1 + 5));
+  const squint = Math.min(1, T.happy + T.relaxed * 0.3);
+  T.blink = Math.max(S.blink || 0, (S.lid || 0) * (1 - 0.6 * squint));
+  for (const k of PRESETS) T[k] = Math.max(0, Math.min(1, T[k]));
+  return { T, tilt };
+}
+
+const ALL_BONES = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head', 'leftEye', 'rightEye', 'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'leftToes',
+  'rightUpperLeg', 'rightLowerLeg', 'rightFoot', 'rightToes', 'leftShoulder', 'leftUpperArm', 'leftLowerArm', 'leftHand', 'rightShoulder', 'rightUpperArm',
+  'rightLowerArm', 'rightHand', 'leftThumbMetacarpal', 'leftThumbProximal', 'leftThumbDistal', 'rightThumbMetacarpal', 'rightThumbProximal', 'rightThumbDistal',
+  ...['left', 'right'].flatMap((sd) => ['Index', 'Middle', 'Ring', 'Little'].flatMap((f) => ['Proximal', 'Intermediate', 'Distal'].map((p) => sd + f + p)))];
+function applyPose(dt) {
+  for (const n of ALL_BONES) { const b = bone(n); if (b) b.quaternion.identity(); }   // every frame starts from the rest pose
+  const t = tAcc, talk = Math.min(1, (S.mouth || 0) * 1.6), sleep = S.sleeping ? 1 : 0;
+  const breath = Math.sin(t * 1.5);
+  const set = (n, x, y, z) => { const b = bone(n); if (b) b.rotation.set(x, y, z); };
+  const ARM = 1.22, c = 0.0;
+  set('leftUpperArm', 0.05, 0, -sign * ARM);
+  set('rightUpperArm', 0.05, 0, sign * ARM);
+  set('leftLowerArm', 0, 0, -sign * 0.12);
+  set('rightLowerArm', 0, 0, sign * 0.12);
+  set('leftShoulder', 0, 0, sign * 0.05 * breath);
+  set('rightShoulder', 0, 0, -sign * 0.05 * breath);
+  for (const side of ['left', 'right']) {                      // relaxed fingers, curled a little
+    const s = side === 'left' ? -sign : sign;
+    for (const f of ['Index', 'Middle', 'Ring', 'Little']) {
+      set(side + f + 'Proximal', 0, 0, s * 0.22);
+      set(side + f + 'Intermediate', 0, 0, s * 0.3);
+      set(side + f + 'Distal', 0, 0, s * 0.18);
+    }
+    set(side + 'ThumbProximal', 0, 0, 0);
+  }
+  const sway = Math.sin(t * 0.45), jig = 0.018 * Math.sin(t * 6.2) * talk;
+  set('upperChest', -0.035 * breath + jig, 0, 0);
+  set('chest', -0.03 * breath + jig, 0, 0.01 * sway);
+  set('spine', 0.014 * breath + 0.12 * sleep, 0, 0.014 * sway);
+  set('hips', 0, 0.02 * Math.sin(t * 0.3), 0.012 * sway);
+  const e = 0.5 + 0.5 * breath;                                // chest expands on the in-breath (raw bones: the normalized rig has no scale)
+  const sx = 1 + 0.008 * e, sy = 1 + 0.004 * e, sz = 1 + 0.025 * e;
+  const raw = (n) => vrm.humanoid.getRawBoneNode(n);
+  const rc = raw('chest'); if (rc) rc.scale.set(sx, sy, sz);
+  for (const n of ['neck', 'leftShoulder', 'rightShoulder']) { const r = raw(n); if (r) r.scale.set(1 / sx, 1 / sy, 1 / sz); }   // keep head and arms unscaled
+  const hp = bone('hips');
+  if (hp && hipsBase) { hp.position.copy(hipsBase); hp.position.y += 0.006 * breath; hp.position.x += 0.006 * Math.sin(t * 0.45); }
+  const lx = S.look[0] || 0, ly = S.look[1] || 0;
+  const bob = 0.03 * Math.sin(t * 5.2) * talk;
+  poke = Math.max(0, poke - dt * 1.6);
+  set('neck', 0.4 * (headTilt[0] + 0.12 * ly + 0.25 * sleep), 0.4 * (headTilt[1] + 0.2 * lx), 0.4 * headTilt[2]);
+  set('head', 0.6 * (headTilt[0] + 0.12 * ly + 0.25 * sleep) + bob + 0.015 * Math.sin(t * 0.9),
+      0.6 * (headTilt[1] + 0.2 * lx) + 0.04 * Math.sin(t * 0.37),
+      0.6 * headTilt[2] + 0.12 * poke * Math.sin(poke * 14) + 0.015 * Math.sin(t * 0.7));
+}
+
+function addRot(n, x, y, z) { const b = bone(n); if (b) { b.rotation.x += x; b.rotation.y += y; b.rotation.z += z; } }
+function applyGesture() {
+  if (!react) return;
+  const u = (tAcc - react.t0) / react.dur;
+  if (u >= 1) { react = null; return; }
+  const env = Math.sin(Math.PI * u), fade = 1 - u, sg = sign;
+  const hips = bone('hips');
+  switch (react.name) {
+    case 'flinch': addRot('spine', -0.14 * env, 0, 0); addRot('head', -0.2 * env, 0, 0); addRot('leftShoulder', 0, 0, sg * 0.12 * env); addRot('rightShoulder', 0, 0, -sg * 0.12 * env); break;
+    case 'shake': addRot('head', 0, 0.38 * Math.sin(u * 6 * Math.PI) * fade, 0); addRot('spine', 0, 0.08 * Math.sin(u * 6 * Math.PI) * fade, 0); break;
+    case 'nod': addRot('head', 0.26 * Math.sin(u * 4 * Math.PI) * fade, 0, 0); addRot('spine', 0.05 * Math.sin(u * 4 * Math.PI) * fade, 0, 0); break;
+    case 'tilt': addRot('head', 0, 0, 0.28 * env); addRot('spine', 0, 0, 0.06 * env); break;
+    case 'hop': if (hips) hips.position.y += 0.05 * Math.abs(Math.sin(u * 2 * Math.PI)) * fade; addRot('leftUpperArm', 0, 0, sg * 0.15 * env); addRot('rightUpperArm', 0, 0, -sg * 0.15 * env); break;
+    case 'spin': if (hips) hips.rotation.y += 2 * Math.PI * (u * u * (3 - 2 * u)); break;
+    case 'wave': addRot('leftUpperArm', 0, 0, sg * (ARM_A + 0.1) * Math.min(1, env * 1.6)); addRot('leftLowerArm', 0, 0, sg * (0.9 + 0.35 * Math.sin(u * 10 * Math.PI)) * Math.min(1, env * 1.6)); addRot('head', 0, 0, 0.08 * env); break;
+    case 'hand_wave': addRot('leftLowerArm', 0, 0, sg * 0.7 * env); addRot('leftHand', 0, 0, sg * 0.45 * Math.sin(u * 10 * Math.PI) * env); addRot('rightHand', 0, 0, -sg * 0.3 * Math.sin(u * 10 * Math.PI + 1) * env); break;
+    case 'step': {
+      const la = u < 0.5 ? Math.sin(2 * Math.PI * u) : 0, ra = u >= 0.5 ? Math.sin(2 * Math.PI * (u - 0.5)) : 0;
+      addRot('leftUpperLeg', -0.45 * la, 0, 0); addRot('leftLowerLeg', 0.6 * la, 0, 0);
+      addRot('rightUpperLeg', -0.45 * ra, 0, 0); addRot('rightLowerLeg', 0.6 * ra, 0, 0);
+      if (hips) hips.position.y += 0.012 * (la + ra); break;
+    }
+    case 'stomp': addRot('rightUpperLeg', -0.5 * env, 0, 0); addRot('rightLowerLeg', 0.5 * env, 0, 0); addRot('head', 0.1 * Math.sin(u * 5 * Math.PI) * fade, 0, 0); if (hips) hips.position.y -= 0.015 * Math.max(0, Math.sin(u * 3 * Math.PI)); break;
+    case 'lean': addRot('spine', 0, 0, 0.15 * env); addRot('head', 0, 0, -0.1 * env); addRot('hips', 0, 0.15 * env, 0); break;
+    case 'arm_l_flap': addRot('rightUpperArm', 0, 0, -sg * 0.5 * env * (0.6 + 0.4 * Math.sin(u * 8 * Math.PI))); addRot('rightLowerArm', 0, 0, -sg * 0.3 * env); break;
+    case 'arm_r_flap': addRot('leftUpperArm', 0, 0, sg * 0.5 * env * (0.6 + 0.4 * Math.sin(u * 8 * Math.PI))); addRot('leftLowerArm', 0, 0, sg * 0.3 * env); break;
+  }
+}
+const ARM_A = 1.22;
+
+// ---------- body control from the chat (python: kira/body.py; commands arrive through window.kiraBody) ----------
+// Held poses are blended in/out smoothly on top of the idle pose + gestures. 'abs' replaces the bone rotation (arms),
+// 'add' adds to it (torso, head, legs). Axes (normalized VRM rig, character faces +Z): x+ = bend/nod forward, y+ = turn to
+// her left, z = roll; legs: x- = knee forward. Left/right are the CHARACTER's own sides. Tune the numbers here.
+// lift(side,a): arm angle above horizontal (idle arm = -1.22), fwdY(side,a): swing forward.
+const lift = (side, a) => (side === 'left' ? sign : -sign) * a;
+const fwdY = (side, a) => (side === 'left' ? -a : a);
+const SIDES = ['left', 'right'];
+const LEG = { t: 0.42, s: 0.42 };                         // thigh / shin length in metres (measured on load)
+let baseYaw = 0, yawCur = 0, yawVel = 0, stepPh = 0;
+const clampf = (v, a, b) => Math.max(a, Math.min(b, v));
+function smoothDamp(cur, target, vel, smoothTime, maxSpeed, dt) {   // eased, speed-limited move (human-like start, peak speed, slow stop)
+  const om = 2 / smoothTime, x = om * dt, ex = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+  const maxCh = maxSpeed * smoothTime, ch = clampf(cur - target, -maxCh, maxCh), tg = cur - ch;
+  const tmp = (vel + om * ch) * dt;
+  let nv = (vel - om * tmp) * ex, out = tg + (ch + tmp) * ex;
+  if ((target - cur > 0) === (out > target)) { out = target; nv = 0; }
+  return [out, nv];
+}
+const HOLD_S = 150;                                       // a held pose lets go by itself after this long
+const ALL_GROUPS = ['armL', 'armR', 'torso', 'yaw', 'head', 'legs'];
+const raiseHand = (s, osc) => [[s + 'UpperArm', 'abs', 0.05, fwdY(s, 0.35), lift(s, 0.55)], [s + 'LowerArm', 'abs', 0, fwdY(s, 0.25), lift(s, 1.0 + osc)]];
+const crouchAngles = (a) => { const b = a + Math.asin(Math.min(1, LEG.t * Math.sin(a) / LEG.s)); return { a, b, drop: (LEG.t + LEG.s) - (LEG.t * Math.cos(a) + LEG.s * Math.cos(b - a)) }; };
+const legsBent = (a, b) => SIDES.flatMap((s) => [[s + 'UpperLeg', 'add', -a, 0, 0], [s + 'LowerLeg', 'add', b, 0, 0], [s + 'Foot', 'add', a - b, 0, 0]]);
+const POSE = {
+  raise_right_hand: { g: ['armR'], f: () => raiseHand('right', 0) },
+  raise_left_hand: { g: ['armL'], f: () => raiseHand('left', 0) },
+  arms_up: { g: ['armL', 'armR'], f: () => SIDES.flatMap((s) => [[s + 'UpperArm', 'abs', 0, fwdY(s, 0.1), lift(s, 1.45)], [s + 'LowerArm', 'abs', 0, 0, lift(s, 0.08)]]) },
+  arms_out: { g: ['armL', 'armR'], f: () => SIDES.flatMap((s) => [[s + 'UpperArm', 'abs', 0, 0, lift(s, 0.05)], [s + 'LowerArm', 'abs', 0, 0, 0]]) },
+  arms_forward: { g: ['armL', 'armR'], f: () => SIDES.flatMap((s) => [[s + 'UpperArm', 'abs', 0, fwdY(s, 1.3), lift(s, 0)], [s + 'LowerArm', 'abs', 0, fwdY(s, 0.5), 0]]) },
+  wave_right_hand: { g: ['armR'], ttl: 4, f: (t) => [...raiseHand('right', 0.3 * Math.sin(t * 9)), ['rightHand', 'abs', 0, 0, -sign * 0.25 * Math.sin(t * 9 + 1)]] },
+  wave_left_hand: { g: ['armL'], ttl: 4, f: (t) => [...raiseHand('left', 0.3 * Math.sin(t * 9)), ['leftHand', 'abs', 0, 0, sign * 0.25 * Math.sin(t * 9 + 1)]] },
+  hands_on_hips: { g: ['armL', 'armR'], f: () => SIDES.flatMap((s) => [[s + 'UpperArm', 'abs', 0, 0, lift(s, -0.85)], [s + 'LowerArm', 'abs', 0, 0, lift(s, -0.95)]]) },
+  bow: { g: ['torso'], ttl: 2.4, f: () => [['spine', 'add', 0.4, 0, 0], ['chest', 'add', 0.35, 0, 0], ['upperChest', 'add', 0.2, 0, 0], ['neck', 'add', 0.1, 0, 0], ['head', 'add', 0.2, 0, 0]] },
+  bend_forward: { g: ['torso'], f: () => [['spine', 'add', 0.35, 0, 0], ['chest', 'add', 0.3, 0, 0], ['upperChest', 'add', 0.15, 0, 0], ['head', 'add', 0.1, 0, 0]] },
+  bend_back: { g: ['torso'], f: () => [['spine', 'add', -0.12, 0, 0], ['chest', 'add', -0.12, 0, 0], ['upperChest', 'add', -0.1, 0, 0], ['head', 'add', -0.08, 0, 0]] },
+  lean_left: { g: ['torso'], f: () => [['spine', 'add', 0, 0, -0.15], ['chest', 'add', 0, 0, -0.15], ['upperChest', 'add', 0, 0, -0.1], ['head', 'add', 0, 0, 0.12]] },
+  lean_right: { g: ['torso'], f: () => [['spine', 'add', 0, 0, 0.15], ['chest', 'add', 0, 0, 0.15], ['upperChest', 'add', 0, 0, 0.1], ['head', 'add', 0, 0, -0.12]] },
+  turn_back: { g: ['yaw'], yaw: Math.PI, f: () => [] },
+  turn_left: { g: ['yaw'], yaw: Math.PI / 2, f: () => [] },
+  turn_right: { g: ['yaw'], yaw: -Math.PI / 2, f: () => [] },
+  head_down: { g: ['head'], f: () => [['neck', 'add', 0.15, 0, 0], ['head', 'add', 0.35, 0, 0]] },
+  head_up: { g: ['head'], f: () => [['neck', 'add', -0.12, 0, 0], ['head', 'add', -0.3, 0, 0]] },
+  head_left: { g: ['head'], f: () => [['neck', 'add', 0, 0.3, 0], ['head', 'add', 0, 0.5, 0]] },
+  head_right: { g: ['head'], f: () => [['neck', 'add', 0, -0.3, 0], ['head', 'add', 0, -0.5, 0]] },
+  head_tilt_left: { g: ['head'], f: () => [['neck', 'add', 0, 0, -0.15], ['head', 'add', 0, 0, -0.3]] },
+  head_tilt_right: { g: ['head'], f: () => [['neck', 'add', 0, 0, 0.15], ['head', 'add', 0, 0, 0.3]] },
+  sit: { g: ['legs'], drop: () => LEG.t, f: () => legsBent(1.45, 1.45) },
+  crouch: { g: ['legs'], drop: () => crouchAngles(1.05).drop, f: () => { const c = crouchAngles(1.05); return [...legsBent(c.a, c.b), ['spine', 'add', 0.22, 0, 0]]; } },
+  raise_right_leg: { g: ['legs'], f: () => [['rightUpperLeg', 'add', -0.9, 0, 0], ['rightLowerLeg', 'add', 1.1, 0, 0], ['rightFoot', 'add', -0.2, 0, 0]] },
+  dance: { g: ['armL', 'armR', 'torso', 'legs', 'head'], ttl: 40, drop: (t) => 0.025 * (0.5 + 0.5 * Math.sin(t * 5.6)), f: (t) => {
+    const p = t * 5.6, h = Math.sin(p / 2), hb = Math.sin(p / 2 + Math.PI);
+    const arm = (s, ph) => [[s + 'UpperArm', 'abs', 0, fwdY(s, 0.35 + 0.2 * Math.sin(p + ph)), lift(s, 0.9 + 0.5 * Math.sin(p / 2 + ph))], [s + 'LowerArm', 'abs', 0, 0, lift(s, 0.9 + 0.4 * Math.sin(p + 1 + ph))]];
+    return [...arm('left', 0), ...arm('right', Math.PI),
+      ['hips', 'add', 0, 0.22 * h, 0.07 * h], ['spine', 'add', 0.04 * Math.sin(p), 0, -0.1 * h], ['chest', 'add', 0.05 * Math.sin(p), 0.18 * h, 0], ['head', 'add', 0, 0.15 * h, 0.12 * Math.sin(p / 2 + 0.8)],
+      ['leftUpperLeg', 'add', -0.12 - 0.1 * Math.max(0, h), 0, 0], ['leftLowerLeg', 'add', 0.25 + 0.3 * Math.max(0, h), 0, 0],
+      ['rightUpperLeg', 'add', -0.12 - 0.1 * Math.max(0, hb), 0, 0], ['rightLowerLeg', 'add', 0.25 + 0.3 * Math.max(0, hb), 0, 0]];
+  } },
+  dance_sway: { g: ['armL', 'armR', 'torso', 'legs', 'head'], ttl: 40, drop: (t) => 0.012 * (0.5 + 0.5 * Math.sin(t * 3.2)), f: (t) => {
+    const p = t * 3.2, h = Math.sin(p / 2);
+    const arm = (s, ph) => [[s + 'UpperArm', 'abs', 0, fwdY(s, 0.15), lift(s, 0.1 + 0.35 * Math.sin(p / 2 + ph))], [s + 'LowerArm', 'abs', 0, fwdY(s, 0.2), lift(s, 0.5 + 0.2 * Math.sin(p + ph))]];
+    return [...arm('left', 0), ...arm('right', Math.PI),
+      ['hips', 'add', 0, 0.15 * h, 0.06 * h], ['spine', 'add', 0, 0, -0.08 * h], ['chest', 'add', 0, 0.12 * h, 0], ['head', 'add', 0.03, 0.1 * h, 0.15 * Math.sin(p / 2 + 0.6)],
+      ['leftUpperLeg', 'add', -0.06, 0, 0], ['leftLowerLeg', 'add', 0.12 + 0.12 * Math.max(0, h), 0, 0],
+      ['rightUpperLeg', 'add', -0.06, 0, 0], ['rightLowerLeg', 'add', 0.12 + 0.12 * Math.max(0, -h), 0, 0]];
+  } },
+  raise_left_leg: { g: ['legs'], f: () => [['leftUpperLeg', 'add', -0.9, 0, 0], ['leftLowerLeg', 'add', 1.1, 0, 0], ['leftFoot', 'add', -0.2, 0, 0]] },
+};
+const bodyState = {};                                      // pose name -> { w (0..1 blend), active, t0, ttl }
+function bodyClear(groups) { for (const [n, st] of Object.entries(bodyState)) if (st.active && POSE[n].g.some((g) => groups.includes(g))) st.active = false; }
+function bodyDo(name) {
+  if (name === 'reset') { bodyClear(ALL_GROUPS); react = null; return; }
+  if (name === 'lower_hands') return bodyClear(['armL', 'armR']);
+  if (name === 'stand_up') return bodyClear(['torso', 'legs']);
+  if (name === 'face_front') return bodyClear(['yaw']);
+  if (name === 'head_front') return bodyClear(['head']);
+  if (GDUR[name]) { window.kiraReact(name); return; }
+  const p = POSE[name];
+  if (!p) return;
+  bodyClear(p.g);
+  const st = bodyState[name] || (bodyState[name] = { w: 0, active: false, t0: 0, ttl: 0 });
+  st.active = true; st.t0 = tAcc; st.ttl = p.ttl || HOLD_S;
+}
+// arg: JSON text or array of command names, e.g. ["raise_right_hand","turn_back"]
+window.kiraBody = (arg) => {
+  let list = arg;
+  if (typeof arg === 'string') { try { list = JSON.parse(arg); } catch (e) { list = [arg]; } }
+  if (!Array.isArray(list)) list = [list];
+  for (const n of list) bodyDo(String(n));
+  return 'ok';
+};
+window.kiraBodyState = () => Object.entries(bodyState).filter(([, st]) => st.w > 0.002 || st.active).map(([n, st]) => n + ':' + st.w.toFixed(2));
+function applyBody(dt) {
+  let yawT = 0, drop = 0;
+  const kk = 1 - Math.exp(-dt * 5);
+  for (const [name, st] of Object.entries(bodyState)) {
+    const p = POSE[name];
+    if (st.active && tAcc - st.t0 > st.ttl) st.active = false;
+    st.w += ((st.active ? 1 : 0) - st.w) * kk;
+    if (!st.active && st.w < 0.002) { st.w = 0; continue; }
+    const w = st.w;
+    for (const [bn, mode, x, y, z] of p.f(tAcc - st.t0)) {
+      const b = bone(bn);
+      if (!b) continue;
+      if (mode === 'abs') b.rotation.set(lerp(b.rotation.x, x, w), lerp(b.rotation.y, y, w), lerp(b.rotation.z, z, w));
+      else { b.rotation.x += x * w; b.rotation.y += y * w; b.rotation.z += z * w; }
+    }
+    if (p.yaw && st.active) yawT += p.yaw;
+    if (p.drop) drop += p.drop(tAcc - st.t0) * w;
+  }
+  // Turning like a person: eased, speed-limited yaw; the head leads, the chest lags behind, the feet step, the hips dip a little.
+  [yawCur, yawVel] = smoothDamp(yawCur, yawT, yawVel, 0.32, 3.2, dt);
+  if (vrm) vrm.scene.rotation.y = baseYaw + yawCur;
+  const av = Math.abs(yawVel), tk = Math.min(1, av / 1.1);
+  if (tk > 0.01) {
+    addRot('head', 0, clampf(yawVel * 0.16, -0.55, 0.55), 0); addRot('neck', 0, clampf(yawVel * 0.08, -0.3, 0.3), 0);
+    addRot('chest', 0, -clampf(yawVel * 0.05, -0.2, 0.2), 0); addRot('spine', 0, -clampf(yawVel * 0.04, -0.15, 0.15), 0);
+    stepPh += av * dt * 1.7;                                       // one half-step per ~0.6 rad of turning
+    const sp = Math.sin((stepPh % 1) * Math.PI) * tk, side = Math.floor(stepPh) % 2 === 0 ? 'left' : 'right';
+    addRot(side + 'UpperLeg', -0.4 * sp, 0, 0); addRot(side + 'LowerLeg', 0.55 * sp, 0, 0); addRot(side + 'Foot', -0.15 * sp, 0, 0);
+    drop += 0.012 * sp;
+    for (const sd of SIDES) addRot(sd + 'UpperArm', (sd === side ? 0.12 : -0.12) * tk, 0, 0);   // arms swing a little against the legs
+  }
+  const hp = bone('hips');
+  if (hp && drop) hp.position.y -= drop;                           // sitting / crouching lowers the hips
+}
+
+// ---------- click picking: nearest body part on screen -> region name used by reactions.json ----------
+window.kiraPick = (nx, ny) => {
+  if (!vrm || !frameBox) return '';
+  scene.updateMatrixWorld(true);
+  const cw = renderer.domElement.clientWidth || 1, ch = renderer.domElement.clientHeight || 1;
+  const half = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  const ppm = ch / (2 * camera.position.z * half);                 // pixels per metre at the character
+  const B = frameBox.body;
+  const scr = (v) => { const p = v.clone().project(camera); return [(p.x + 1) / 2 * cw, (1 - p.y) / 2 * ch]; };
+  const wp = (n) => { const b = bone(n); return b ? b.getWorldPosition(new THREE.Vector3()) : null; };
+  const px = nx * cw, py = ny * ch;
+  const segd = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l2 = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((px - a[0]) * dx + (py - a[1]) * dy) / l2)); return Math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy)); };
+  const head = wp('head'), hips = wp('hips'), chest = wp('chest') || wp('spine');
+  if (!head || !hips) return '';
+  const off = (v, x, y) => v.clone().add(new THREE.Vector3(x, y, 0));
+  const cand = [];
+  const add = (region, pts, r, w) => { const S2 = pts.map(scr); let d = Infinity;
+    if (S2.length === 1) d = Math.hypot(px - S2[0][0], py - S2[0][1]); else for (let i = 0; i < S2.length - 1; i++) d = Math.min(d, segd(S2[i], S2[i + 1]));
+    cand.push([d / (r * B * ppm) * (w || 1), region]); };
+  add('face', [off(head, 0, 0.06 * B)], 0.075);
+  add('hair', [off(head, 0, 0.16 * B)], 0.07);
+  add('hair', [off(head, 0.075 * B, 0.03 * B)], 0.05);
+  add('hair', [off(head, -0.075 * B, 0.03 * B)], 0.05);
+  add('torso', [chest, hips], 0.13);
+  add('clothes', [hips, off(hips, 0, -0.12 * B)], 0.13);
+  const hx = scr(hips)[0];
+  for (const side of ['left', 'right']) {
+    const ua = wp(side + 'UpperArm'), la = wp(side + 'LowerArm'), hd = wp(side + 'Hand');
+    if (ua && la && hd) {
+      const region = scr(ua)[0] < hx ? 'arm_l' : 'arm_r';
+      add(region, [ua, la, hd], 0.05); add('hand', [hd], 0.055, 0.8);
+    }
+    const ul = wp(side + 'UpperLeg'), ll = wp(side + 'LowerLeg'), ft = wp(side + 'Foot'), ts = wp(side + 'Toes');
+    if (ul && ll && ft) { add('legs', [ul, ll, ft], 0.07); if (ts) add('feet', [ft, ts], 0.06, 0.85); else add('feet', [ft], 0.06, 0.85); }
+  }
+  cand.sort((a, b) => a[0] - b[0]);
+  return cand[0][0] <= 1.3 ? cand[0][1] : '';
+};
+
+function frame() {
+  if (!vrm) return;
+  const cam = camera;
+  const w = renderer.domElement.clientWidth || window.innerWidth, h = renderer.domElement.clientHeight || window.innerHeight;
+  if (w > 0 && h > 0 && (renderer.domElement.width !== Math.round(w * renderer.getPixelRatio()) || cam.userData.h !== h)) { resize(); }
+}
+
+function loop() {
+  requestAnimationFrame(loop);
+  if (!vrm) return;
+  const dt = Math.min(clock.getDelta(), 0.1);
+  tAcc += dt;
+  const { T, tilt } = targets();
+  const k = 1 - Math.exp(-dt * 12);
+  for (const p of PRESETS) W[p] = lerp(W[p], T[p], p === 'blink' ? 1 - Math.exp(-dt * 40) : k);
+  for (let i = 0; i < 3; i++) headTilt[i] = lerp(headTilt[i], tilt[i], 1 - Math.exp(-dt * 4));
+  applyPose(dt);
+  applyGesture();
+  applyBody(dt);
+  const em = vrm.expressionManager;
+  if (em) for (const p of PRESETS) em.setValue(p, W[p]);
+  if (vrm.lookAt) {
+    const hp = bone('head').getWorldPosition(new THREE.Vector3());
+    lookTarget.position.set(hp.x + (S.look[0] || 0) * 1.4, hp.y - (S.look[1] || 0) * 0.9, hp.z + 1.6);
+  }
+  vrm.update(dt);
+  frame();
+  renderer.render(scene, camera);
+}
+
+function resize() {
+  const w = renderer.domElement.clientWidth || window.innerWidth, h = renderer.domElement.clientHeight || window.innerHeight;
+  if (w < 2 || h < 2) return;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.userData.h = h;
+  fitCamera();
+}
+window.addEventListener('resize', resize);
+
+let frameBox = null;
+function fitCamera() {
+  if (!frameBox) return;
+  const { yTop, yBot, x, need } = frameBox;
+  const H = yTop - yBot, cy = (yTop + yBot) / 2, half = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+  let d = (H / 2) / half * 1.04;
+  const wNeed = need / (2 * half * camera.aspect);
+  d = Math.max(d, wNeed);
+  camera.position.set(x, cy, d);
+  camera.lookAt(x, cy, 0);
+  camera.updateProjectionMatrix();
+}
+
+const loader = new GLTFLoader();
+loader.register((p) => new VRMLoaderPlugin(p));
+loader.load('./kira.vrm', (gltf) => {
+  try {
+    vrm = gltf.userData.vrm;
+    if (!vrm) throw new Error('not a VRM file');
+    if (VRMUtils.removeUnnecessaryVertices) VRMUtils.removeUnnecessaryVertices(gltf.scene);
+    if (VRMUtils.combineSkeletons) VRMUtils.combineSkeletons(gltf.scene);
+    else if (VRMUtils.removeUnnecessaryJoints) VRMUtils.removeUnnecessaryJoints(gltf.scene);
+    vrm.scene.traverse((o) => { o.frustumCulled = false; });
+    if (vrm.meta && vrm.meta.metaVersion === '0' && VRMUtils.rotateVRM0) VRMUtils.rotateVRM0(vrm);
+    baseYaw = vrm.scene.rotation.y;                            // VRM 0.x models are turned by PI to face the camera
+    scene.add(vrm.scene);
+    if (vrm.lookAt) { vrm.lookAt.target = lookTarget; vrm.lookAt.autoUpdate = true; }
+    // arms: pick the rotation direction that really lowers the hand (T-pose -> relaxed idle)
+    applyPose(0); scene.updateMatrixWorld(true);
+    const ua = bone('leftUpperArm').getWorldPosition(new THREE.Vector3());
+    const hd = bone('leftHand').getWorldPosition(new THREE.Vector3());
+    if (hd.y > ua.y - 0.1) { sign = -1; applyPose(0); scene.updateMatrixWorld(true); }
+    try {
+      const mgr = vrm.springBoneManager;
+      if (mgr && mgr.joints) for (const j of mgr.joints) {
+        const nm = (j.bone && j.bone.name) || '';
+        if (/Bust/i.test(nm)) { j.settings.stiffness = 0.25; j.settings.dragForce = 0.18; }
+      }
+    } catch (e) { console.warn('bust springs', e); }
+    vrm.update(0);
+    if (vrm.springBoneManager && vrm.springBoneManager.reset) vrm.springBoneManager.reset();
+    // framing from the real body proportions: hair top down to the soles of the feet, for both views
+    const v3 = new THREE.Vector3();
+    const head = bone('head').getWorldPosition(new THREE.Vector3());
+    const ys = [];
+    for (const n of ['leftFoot', 'rightFoot', 'leftToes', 'rightToes']) { const b = bone(n); if (b) ys.push(b.getWorldPosition(v3).y); }
+    const low = ys.length ? Math.min(...ys) : head.y - 1.2;
+    const body = Math.max(0.3, head.y - low);
+    const sole = low - 0.03 * body;
+    hipsBase = bone('hips').position.clone();
+    try {                                                      // leg bone lengths drive the sit / crouch height
+      const lu = bone('leftUpperLeg').getWorldPosition(new THREE.Vector3()), ll = bone('leftLowerLeg').getWorldPosition(new THREE.Vector3()), lf = bone('leftFoot').getWorldPosition(new THREE.Vector3());
+      if (lu.distanceTo(ll) > 0.1 && ll.distanceTo(lf) > 0.1) { LEG.t = lu.distanceTo(ll); LEG.s = ll.distanceTo(lf); }
+    } catch (e) { console.warn('leg lengths', e); }
+    frameBox = { yTop: head.y + 0.19 * body, yBot: sole - 0.02 * body, x: head.x, need: 0.6 * body, body };
+    resize();
+    window.kiraStatus = 'ready';
+  } catch (e) { fail(e && e.message ? e.message : String(e)); }
+}, undefined, (e) => fail('load: ' + (e && e.message ? e.message : e)));
+loop();
+</script>
+</body></html>

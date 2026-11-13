@@ -65,5 +65,16 @@ def install(path, runner=None, out=print):
     return 1
 
 
+def fetch_vrm_viewer(out=print):
+    """Optional: the three small JS files of the 3D (VRM) avatar. Never fails the install; Kira retries on first start."""
+    try:
+        subprocess.run([sys.executable, "-m", "kira.vrm_vendor"], cwd=str(__import__("pathlib").Path(__file__).resolve().parent), check=False)
+    except Exception as exc:  # noqa: BLE001
+        out(f"VRM viewer files were not downloaded ({exc}); Kira will try again on first start.")
+
+
 if __name__ == "__main__":
-    sys.exit(install(sys.argv[1] if len(sys.argv) > 1 else "requirements.txt"))
+    code = install(sys.argv[1] if len(sys.argv) > 1 else "requirements.txt")
+    if code == 0:
+        fetch_vrm_viewer()
+    sys.exit(code)

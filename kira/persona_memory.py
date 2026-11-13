@@ -1,15 +1,15 @@
-"""Model-independent application memory: user facts and continuity shared with the active character.
+"""Kira's model-independent memory: three layers that keep her the same person on every model.
 
 The chat history alone cannot do that: a model that only sees the last few messages copies its own habits.
 These layers are stored locally and injected into the system prompt on every request, whichever provider answers:
 
-1. Voice memory   - The active character's own past replies that capture their style (short, in character). Shown as samples so a new
+1. Voice memory   - Kira's own past replies that sound like her (short, in character). Shown as samples so a new
                     model imitates the real rhythm, slang and attitude instead of its default style.
 2. Fact memory    - lasting things about the user and the relationship (name, likes, "remember that ..."),
-                    extracted locally from the user's messages. No extra model call is needed.
+                    extracted locally from what he writes. No extra model call is needed.
 3. Digest memory  - a compact digest of what was talked about earlier, beyond the messages sent verbatim.
-4. Relationship memory - dated moments the user mentioned (exams, trips, promises), lines from the active character that made the user laugh, preferences the user
-                    stated, habits OBSERVED from timing (marked as observed, never as something the user stated), and compressed
+4. Relationship memory - dated moments he mentioned (exams, trips, promises), lines of hers that made him laugh, preferences he
+                    stated, habits OBSERVED from timing (marked as observed, never as something he said), and compressed
                     summaries of old conversations. Everything is local, rule-based (no extra model call), listable, editable
                     and deletable (list_items / update_item / delete_item / forget_all).
 
@@ -19,11 +19,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import contextmanager
+from contextvars import ContextVar
 import os
 import re
 import threading
 import time
-from pathlib import Path
 
 from . import evidence_memory as _evidence      # facts with provenance + relevance-based recall (this module stays the owner of the editable list)
 from .config import DATA_DIR
@@ -45,31 +46,36 @@ HABIT_MIN_MESSAGES = 15            # habits are only reported after this many me
 DAY = 86400
 TTL = {"event": 45 * DAY, "promise": 30 * DAY, "joke": 120 * DAY}
 
-_lock = threading.RLock()
-_ACTIVE_CHARACTER_ID = "kira"
+_lock = threading.Lock()
+_current_character = ContextVar("ai1_persona_memory_character", default="kira")
+
+
+def _safe_character_id(value):
+    value = re.sub(r"[^a-z0-9_-]", "", str(value or "kira").strip().lower())[:32]
+    return value or "kira"
+
+
+@contextmanager
+def character_scope(character_id="kira"):
+    """Select the isolated long-term memory file for one character in this execution context."""
+    token = _current_character.set(_safe_character_id(character_id))
+    try:
+        yield
+    finally:
+        _current_character.reset(token)
+
+
+def current_character_id():
+    return _current_character.get()
+
+
 _TAG = re.compile(r"^\s*\[[^\]\n]{1,30}\]\s*")
 _BAD_VOICE = ("http://", "https://", "```", "[نتایج", "language model", "as an ai", "مدل زبانی", "به عنوان یک هوش", "how can i help", "چطور می‌توانم کمک")
 
 
 def _path():
-    """Shared user facts, moments and summaries (backward-compatible location)."""
-    return DATA_DIR / FILE_NAME
-
-
-def _voice_path():
-    """One independent style-sample store per character; Kira keeps the legacy voice field."""
-    if _ACTIVE_CHARACTER_ID == "kira":
-        return None
-    return DATA_DIR / "characters" / _ACTIVE_CHARACTER_ID / "voice_memory.json"
-
-
-def set_active_character(character_id):
-    """Switch the style-sample store without switching the shared user-memory store."""
-    global _ACTIVE_CHARACTER_ID, _last_reply
-    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", str(character_id or "kira"))[:80] or "kira"
-    _ACTIVE_CHARACTER_ID = safe_id
-    _last_reply = ""
-    return _ACTIVE_CHARACTER_ID
+    character_id = _current_character.get()
+    return DATA_DIR / (FILE_NAME if character_id == "kira" else f"kira_persona_memory_{character_id}.json")
 
 
 def _empty() -> dict:
@@ -91,43 +97,15 @@ def _load() -> dict:
             data["summarized"] = int(raw.get("summarized") or 0)
     except (OSError, ValueError, TypeError):
         pass
-    voice_path = _voice_path()
-    if voice_path is not None:
-        try:
-            voice_payload = json.loads(voice_path.read_text(encoding="utf-8"))
-            samples = voice_payload.get("voice", []) if isinstance(voice_payload, dict) else []
-            data["voice"] = [str(x) for x in samples if isinstance(x, str)][-MAX_VOICE:]
-        except (OSError, ValueError, TypeError):
-            data["voice"] = []
     return data
-
-
-def _write_json(path: Path, payload: dict):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
-    os.replace(tmp, path)
 
 
 def _save(data: dict):
     path = _path()
+    tmp = path.with_suffix(".tmp")
     try:
-        voice_path = _voice_path()
-        if voice_path is None:
-            _write_json(path, data)
-        else:
-            # Save style samples privately, and preserve Kira's legacy voice samples in the shared file.
-            _write_json(voice_path, {"schema": 1, "character_id": _ACTIVE_CHARACTER_ID,
-                                     "voice": list(data.get("voice") or [])[-MAX_VOICE:]})
-            try:
-                shared = json.loads(path.read_text(encoding="utf-8"))
-                if not isinstance(shared, dict):
-                    shared = _empty()
-            except (OSError, ValueError, TypeError):
-                shared = _empty()
-            for key in ("facts", "moments", "summaries", "habits", "summarized"):
-                shared[key] = data.get(key, _empty()[key])
-            _write_json(path, shared)
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
+        os.replace(tmp, path)
     except OSError:
         pass                                                      # memory is a bonus; never break the chat
 
@@ -177,7 +155,7 @@ _PREF_RULES = (
     (re.compile(r"(?:صدام\s*کن|بهم\s*بگو|منو\s*صدا\s*کن)\s+([^\s.,!؟?،]{2,20})|call\s+me\s+([A-Za-z][\w'-]{1,20})", re.I), "nick", "He likes to be called {}"),
 )
 _LABELS = {"pref_len": "{}", "nick": "He likes to be called {}", "name": "His name is {}", "age": "He is {} years old", "like": "He likes {}", "dislike": "He dislikes {}",
-           "job": "His work: {}", "place": "He is from/lives in {}", "note": "User asked the active character to remember: {}"}
+           "job": "His work: {}", "place": "He is from/lives in {}", "note": "He asked her to remember: {}"}
 
 
 _QUESTION_RX = re.compile(
@@ -219,7 +197,7 @@ def _clean_value(kind: str, value: str) -> str:
 # U+FF1F is the fullwidth question mark; it counts as a question mark like "?" and the Persian "؟" (U+061F).
 def extract_facts_detailed(text: str) -> list[dict]:
     """Facts found in one user message, each with the evidence that justifies it:
-    {'kind', 'label' (the stored sentence), 'value', 'quote' (the exact words the user wrote), 'uncertain' (he hedged), 'correction' (he corrected himself)}.
+    {'kind', 'label' (the stored sentence), 'value', 'quote' (the exact words he wrote), 'uncertain' (he hedged), 'correction' (he corrected himself)}.
     Only short statements; questions are ignored."""
     found = []
     for m_part in re.finditer(r"([^\n.!؟?\uff1f]+)([.!؟?\uff1f]*)", str(text or "")):
@@ -290,7 +268,7 @@ _TIME_RX = re.compile(r"امروز|دیروز|دیشب|امشب|فردا|پس\s*
 _EVENT_RX = re.compile(r"امتحان|مصاحبه|قرار|تولد|سفر|عروسی|جلسه|کنکور|دکتر|پروژه|تحویل|نتیجه|\bexam\b|\binterview\b|\bbirthday\b|\btrip\b|\bwedding\b|\bmeeting\b|\bdoctor\b|\bdeadline\b|\bproject\b", re.I)
 _PROMISE_RX = re.compile(r"قول\s*(?:می\s*دم|میدم|دادم)|بهت\s*(?:خبر\s*)?می\s*دم|بعداً?\s*بهت\s*می\s*گم|\bi\s+promise\b", re.I)
 _LAUGH_RX = re.compile(r"😂|🤣|هاها|ههه|هه\s*هه|\blol\b|\blmao\b", re.I)
-_last_reply = ""
+_last_reply = {}
 
 
 def _sentences(text: str):
@@ -301,7 +279,7 @@ def _sentences(text: str):
 
 
 def extract_moments(text: str) -> list[tuple[str, str]]:
-    """(kind, sentence) for dated events and promises stated by the user. Conservative: time word + event word, or an explicit promise."""
+    """(kind, sentence) for dated events and promises he states. Conservative: time word + event word, or an explicit promise."""
     out = []
     for part in _sentences(text):
         norm = _norm_part(part)
@@ -327,7 +305,7 @@ def _label_moment(kind: str, text: str, now: float) -> str:
     day = time.strftime("%Y-%m-%d", time.localtime(now))
     if kind == "joke":
         return text
-    return f"{day}: user said \"{text[:140]}\"" + (" (a promise)" if kind == "promise" else "")
+    return f"{day}: he said \"{text[:140]}\"" + (" (a promise)" if kind == "promise" else "")
 
 
 def _note_habits(content: str, now: float):
@@ -345,35 +323,35 @@ def _note_habits(content: str, now: float):
 
 
 def habit_lines(now=None) -> list[str]:
-    """Habits measured from timing/length, clearly marked as observed (the user never stated them). Empty until there is enough data."""
+    """Habits measured from timing/length, clearly marked as observed (he never said them). Empty until there is enough data."""
     with _lock:
         h = _load()["habits"]
     lines = []
     if h["first_seen"] and len(h["days"]) >= 2:
-        lines.append(f"They have been talking since {time.strftime('%Y-%m-%d', time.localtime(h['first_seen']))}; the user has chatted on {len(h['days'])} different days.")
+        lines.append(f"They have been talking since {time.strftime('%Y-%m-%d', time.localtime(h['first_seen']))}; he has chatted on {len(h['days'])} different days.")
     if h["messages"] >= HABIT_MIN_MESSAGES:
         bands = {"at night (00-06)": sum(h["hours"][0:6]), "in the morning (06-12)": sum(h["hours"][6:12]),
                  "in the afternoon (12-18)": sum(h["hours"][12:18]), "in the evening (18-24)": sum(h["hours"][18:24])}
         name, count = max(bands.items(), key=lambda kv: kv[1])
         if count / h["messages"] >= 0.45:
-            lines.append(f"Observed (not user-stated): the user most often chats during {name}.")
+            lines.append(f"Observed (he never said it): he mostly talks to her {name}.")
         avg = h["chars"] / h["messages"]
         if avg < 35:
-            lines.append("Observed: the user usually writes short messages.")
+            lines.append("Observed: he usually writes short messages.")
         elif avg > 180:
-            lines.append("Observed: the user usually writes long, detailed messages.")
+            lines.append("Observed: he usually writes long, detailed messages.")
     return lines
 
 
 # ---------------- observing the conversation ----------------
 def observe(role: str, content: str, now=None):
-    """Called for every saved message. Learns active-character voice samples (when enabled), user facts, moments, jokes and habits. Never raises."""
-    global _last_reply
+    """Called for every saved message. Learns only into the active character's local memory file. Never raises."""
+    character_id = _current_character.get()
     now = time.time() if now is None else now
     try:
         if role == "assistant":
             text = clean_reply(content)
-            _last_reply = text
+            _last_reply[character_id] = text
             if is_voice_sample(text):
                 with _lock:
                     data = _load()
@@ -391,9 +369,11 @@ def observe(role: str, content: str, now=None):
                 label = _label_moment(kind, sentence, now)
                 add_moment(kind, label, now)
                 moment_ids.append((kind, sentence, _id(kind, label)))
-            _evidence.record_user_message(content, facts=details, moments=moment_ids, now=now)      # provenance + contradiction handling (never raises)
-            if _last_reply and _LAUGH_RX.search(str(content)) and is_voice_sample(_last_reply):
-                add_moment("joke", f"A line from the active character that made the user laugh: \"{_last_reply[:140]}\"", now)
+            if character_id == "kira":
+                _evidence.record_user_message(content, facts=details, moments=moment_ids, now=now)  # Kira's evidence index remains Kira-only
+            last_reply = _last_reply.get(character_id, "")
+            if last_reply and _LAUGH_RX.search(str(content)) and is_voice_sample(last_reply):
+                add_moment("joke", f"A line of {character_id.title()} that made the user laugh: \"{last_reply[:140]}\"", now)
             _note_habits(str(content), now)
     except Exception:                                             # noqa: BLE001
         pass
@@ -401,8 +381,7 @@ def observe(role: str, content: str, now=None):
 
 def forget_conversation():
     """Chat history was cleared: drop the voice samples and the summaries made from it (facts, moments and habits stay until forgotten explicitly)."""
-    global _last_reply
-    _last_reply = ""
+    _last_reply[_current_character.get()] = ""
     with _lock:
         data = _load()
         data["voice"] = []
@@ -412,28 +391,12 @@ def forget_conversation():
 
 
 def forget_all():
-    """Clear shared user memory and every character's saved voice samples."""
-    global _last_reply
-    _last_reply = ""
+    """Everything Kira stored about him and the relationship (not the chat history itself)."""
+    _last_reply[_current_character.get()] = ""
     with _lock:
         _save(_empty())
-        try:
-            shared_path = _path()
-            try:
-                shared = json.loads(shared_path.read_text(encoding="utf-8"))
-                if not isinstance(shared, dict):
-                    shared = _empty()
-            except (OSError, ValueError, TypeError):
-                shared = _empty()
-            shared["voice"] = []
-            _write_json(shared_path, shared)
-            root = DATA_DIR / "characters"
-            if root.exists():
-                for path in root.glob("*/voice_memory.json"):
-                    _write_json(path, {"schema": 1, "character_id": path.parent.name, "voice": []})
-        except OSError:
-            pass
-    _evidence.forget_all()
+    if _current_character.get() == "kira":
+        _evidence.forget_all()
 
 
 # ---------------- view / edit ----------------
@@ -454,15 +417,17 @@ def list_items(now=None) -> list[dict]:
                 continue
             kind = it.get("kind", "summary" if group == "summary" else "fact")
             out.append({"id": it.get("id") or _id(kind, it["text"]), "group": group, "kind": kind, "text": it["text"], "ts": it.get("ts", 0)})
-    out.extend(_evidence.list_extra_items({i["id"] for i in out}))        # facts only the evidence layer holds: the window must show everything she knows
+    if _current_character.get() == "kira":
+        out.extend(_evidence.list_extra_items({i["id"] for i in out}))    # evidence-backed facts belong to Kira only
     return out
 
 
 def delete_item(item_id: str) -> bool:
     if str(item_id).startswith("ev:"):
-        return _evidence.delete_extra(item_id)
+        return _evidence.delete_extra(item_id) if _current_character.get() == "kira" else False
     removed = _delete_persona_item(item_id)
-    _evidence.delete_by_persona_id(item_id)                              # the corresponding evidence record is deleted too
+    if _current_character.get() == "kira":
+        _evidence.delete_by_persona_id(item_id)                          # the evidence of what he deleted goes too
     return removed
 
 
@@ -483,7 +448,7 @@ def update_item(item_id: str, text: str) -> bool:
     if len(text) < 2:
         return False
     if str(item_id).startswith("ev:"):
-        return _evidence.delete_extra(item_id) and _evidence.add_manual(text)
+        return (_evidence.delete_extra(item_id) and _evidence.add_manual(text)) if _current_character.get() == "kira" else False
     sync = None
     with _lock:
         data = _load()
@@ -500,8 +465,8 @@ def update_item(item_id: str, text: str) -> bool:
                 break
     if sync is None:
         return False
-    if sync[0] == "facts":                                              # outside the lock: the two stores never wait for each other
-        _evidence.update_by_persona_id(item_id, sync[1], text)          # the user's own wording replaces the stored fact
+    if sync[0] == "facts" and _current_character.get() == "kira":      # outside the lock: the two stores never wait for each other
+        _evidence.update_by_persona_id(item_id, sync[1], text)          # his own wording replaces the stored fact
     return True
 
 
@@ -511,13 +476,14 @@ def add_note(text: str, now=None) -> bool:
         return False
     label = _LABELS["note"].format(text)
     add_fact("note", label, now)
-    _evidence.add_manual(label, now, persona_id=_id("note", label))
+    if _current_character.get() == "kira":
+        _evidence.add_manual(label, now, persona_id=_id("note", label))
     return True
 
 
 # ---------------- summaries of old conversations ----------------
 def summarize(chunk: list[dict]) -> str:
-    """Compact, extractive summary of old messages (no model call): the most informative distinct lines written by the user + broad interaction signals."""
+    """Compact, extractive summary of old messages (no model call): the most informative distinct lines he wrote + counts of how he felt."""
     from . import mood
     users = []
     for item in chunk:
@@ -595,14 +561,14 @@ def digest(older: list[dict]) -> list[str]:
 
 
 # ---------------- the block that goes into the system prompt ----------------
-HEADER = ("Shared app memory about the user (real, stored on this computer; available to the active character whichever model is writing the reply). "
-          "Use it naturally and sparingly; never recite it or mention that it is a list. It is everything the active character knows about the user: "
-          "anything not listed here is unknown to the active character and must not be invented.")
+HEADER = ("Kira's own memory (real, stored on this computer; it stays the same whichever model is writing the reply). "
+          "Use it naturally and sparingly; never recite it or mention that it is a list. It is everything she knows about him: "
+          "anything not listed here she does not know, and she must not pretend to.")
 
 
-HEADER_RELEVANT = ("Shared app memory about the user (real, stored on this computer; available to the active character whichever model is writing the reply). "
+HEADER_RELEVANT = ("Kira's own memory (real, stored on this computer; it stays the same whichever model is writing the reply). "
                    "Use it naturally and sparingly; never recite it or mention that it is a list. The facts below are only the ones that fit this "
-                   "message; if the user asks about something that is not listed, the active character does not remember it and must say so instead of guessing.")
+                   "message; if he asks about something that is not listed, she does not remember it and must say so instead of guessing.")
 
 
 def build_block(older: list[dict] | None = None, voice_samples: bool = True, now=None, query: str | None = None, budget: int | None = None) -> str:
@@ -611,7 +577,7 @@ def build_block(older: list[dict] | None = None, voice_samples: bool = True, now
     now = time.time() if now is None else now
     budget = int(budget or BLOCK_BUDGET)
     relevant = None
-    if query is not None:
+    if query is not None and _current_character.get() == "kira":
         try:
             relevant = _evidence.build_block(query, budget=max(300, int(budget * 0.45)))
         except Exception:                                              # noqa: BLE001 - never let the index break the prompt
@@ -620,33 +586,47 @@ def build_block(older: list[dict] | None = None, voice_samples: bool = True, now
         data = _load()
     parts = []
     voice = data["voice"][-10:][::-1][::2][:VOICE_SHOWN]
-    if voice and voice_samples:                  # the active character's own recent banter is a style anchor: left out when the turn is a practical request
+    if voice and voice_samples:                  # her own recent banter is a style anchor: left out when the turn is a practical request
         samples = "\n".join(f"- {v}" for v in reversed(voice))
-        parts.append("How the active character really sounds (their own recent lines). Match this rhythm, slang, attitude and length in "
+        voice_name = "Kira" if _current_character.get() == "kira" else _current_character.get().title()
+        parts.append(f"How {voice_name} really sounds (their own recent lines). Match this rhythm, slang, attitude and length in "
                      "your reply; do not copy the sentences:\n" + samples)
+    character_id = _current_character.get()
+    character_name = character_id.title()
     if relevant is None:
         fact_lines = [f["text"] for f in data["facts"]]
-        notes = [t for t in fact_lines if t.startswith("He asked her") or t.startswith("User asked the active character")]
-        rest = [t for t in fact_lines if not (t.startswith("He asked her") or t.startswith("User asked the active character"))]
+        notes = [t for t in fact_lines if t.startswith("He asked her")]
+        rest = [t for t in fact_lines if not t.startswith("He asked her")]
         shown = (rest[-(FACTS_SHOWN - min(len(notes), 6)):] + notes[-6:])
         if shown:
-            parts.append("What the active character knows about the user:\n" + "\n".join(f"- {t}" for t in shown))
+            heading = "What she knows about him:" if character_id == "kira" else f"What {character_name} knows about the user:"
+            parts.append(heading + "\n" + "\n".join(f"- {t}" for t in shown))
     elif relevant:
         parts.append(relevant)
     rel = habit_lines(now)
     if rel:
-        parts.append("The user's observed habits and interaction patterns:\n" + "\n".join(f"- {t}" for t in rel))
+        parts.append(("The relationship and his habits:\n" if character_id == "kira" else "The user's observed habits:\n")
+                     + "\n".join(f"- {t}" for t in rel))
     moments = [m for m in data["moments"] if not _expired(m, now) and (voice_samples or m.get("kind") != "joke")]
     if moments:
-        parts.append("Dated moments shared by the user (they may be over by now, so ask rather than assume):\n"
+        heading = ("Moments and things he told her" if character_id == "kira" else f"Moments {character_name} remembers")
+        parts.append(heading + " (dated; they may be over by now, so ask rather than assume):\n"
                      + "\n".join(f"- {m['text']}" for m in moments[-MOMENTS_SHOWN:]))
     if data["summaries"]:
         parts.append("Older conversations (compressed summaries; may be incomplete):\n"
                      + "\n".join(f"- {m['text']}" for m in data["summaries"][-SUMMARIES_SHOWN:]))
-    older_lines = digest(older or [])
+    # Older chat rows have no character ID in the legacy SQLite schema; never attribute that shared history to Ren/Mika.
+    older_lines = digest(older or []) if character_id == "kira" else []
     if older_lines:
-        parts.append("Earlier topics the user raised (older than the messages below):\n" + "\n".join(f"- {t}" for t in older_lines))
+        heading = "Earlier topics he raised" if character_id == "kira" else f"Earlier topics the user raised with {character_name}"
+        parts.append(heading + " (older than the messages below):\n" + "\n".join(f"- {t}" for t in older_lines))
     if not parts:
         return ""
-    block = (HEADER if relevant is None else HEADER_RELEVANT) + "\n\n" + "\n\n".join(parts)
+    if character_id == "kira":
+        header = HEADER if relevant is None else HEADER_RELEVANT
+    else:
+        header = (f"{character_name}'s own memory (real, stored on this computer and isolated from other characters). "
+                  "Use it naturally and sparingly; never recite it or mention that it is a list. It contains only what this character knows about the user; "
+                  "anything not listed here is not remembered and must not be guessed.")
+    block = header + "\n\n" + "\n\n".join(parts)
     return block[:budget]

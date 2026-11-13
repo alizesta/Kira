@@ -17,17 +17,14 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 CONFIG_PATH = DATA_DIR / "settings.json"
 DB_PATH = DATA_DIR / "kira_memory.sqlite3"
 
-APP_NAME = "Project Kira"  # change this to rebrand the desktop application
-PROJECT_URL = "https://github.com/alizesta/Kira"
-RELEASES_URL = PROJECT_URL + "/releases/latest"
 VERSION = "1 stable"
 
 DEFAULTS = {
     "ollama_url": "http://localhost:11434",
     "model": "qwen3.5:4b",
-    "assistant_name": "Kira",  # legacy compatibility; active identity is stored in characters/profiles.json
+    "assistant_name": "Kira",
     "active_character_id": "kira",
-    # Legacy character-note mirror. The active profile owns its own notes.
+    # Extra user notes only. Kira's real character is defined in kira/personality.py and always applied.
     "persona": "",
     "temperature": 0.7,
     "web_search": True,                  # Kira may search the web when a message needs current information
@@ -66,6 +63,7 @@ DEFAULTS = {
     "ui_lang": "fa",
     "window_effect": "acrylic",          # Windows 11: acrylic | mica | off (ignored elsewhere)
     "click_reactions": True,
+    "body_control": True,                 # chat commands move the 3D body (raise hand, turn back, bend ...; kira/body.py)
     "companion_height": 620,
     "follow_strength": 1.0,
     "motion_strength": 1.0,
@@ -73,11 +71,6 @@ DEFAULTS = {
     "minimize_to_tray": True,            # minimize button hides the window to the system tray
     "close_to_tray": False,              # close (X) hides to the tray instead of quitting
     "idle_talk": True,
-    "initiative_enabled": False,             # opt-in proactive check-ins; disabled until the user explicitly enables them
-    "initiative_min_idle_seconds": 2700,      # wait at least 45 minutes since the last user message
-    "initiative_cooldown_seconds": 14400,     # at most one proactive check-in every 4 hours
-    "initiative_quiet_start_hour": 22,        # local quiet hours: 22:00 -> 09:00
-    "initiative_quiet_end_hour": 9,
     "provider_order": ["groq", "cloudflare", "mistral", "openrouter", "ollama"],
     "memory_context_limit": 12,
     # Evidence memory (kira/evidence_memory.py, docs/MEMORY_EVIDENCE_FA.md): facts with their source quote, recalled by relevance.

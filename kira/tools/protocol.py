@@ -124,6 +124,9 @@ Rules:
 - Tools marked [needs user confirmation] are NOT run by you: the result will say needs_confirmation. Then tell the user exactly what will happen and ask them to answer "تأیید" to proceed or "لغو" to cancel. Do not call it again.
 - If the request is ambiguous (which app? which file?), ask ONE short question instead of guessing. Prefer the safest way to get the job done.
 - Do not repeat a call that already succeeded.
+- For a Persian request to open or launch a program (for example «اپرا جی ایکس رو باز کن»، «دیسکورد رو اجرا کن» or «برنامه‌ی تلگرام رو باز کن»), use open_app on the FIRST request. Persian app names are valid; do not ask the user to say the name in English. Pass only the app name in the name argument, without «باز کن»، «برنامه» or other command words. Preserve the user's spoken name; the app resolver handles common Persian pronunciations.
+- If open_app reports a clear close match, use that returned name once; if the result is ambiguous, ask which app. Never guess an unrelated application.
+- Do not use web search to find or launch a program installed on this PC.
 - Read-only tools never change anything. Use real paths from earlier results; do not make paths up (search_files / list_folder find them).
 Tools:"""
 
@@ -252,7 +255,7 @@ GATES = {
                   r"مشخصات", r"\bspec", r"سخت\s*افزار", r"hardware", r"هارد", r"درایو", r"دیسک", r"\bdisk\b", r"فضا(?:ی)?\s*(?:آزاد|خالی|باقی)", r"storage",
                   r"اینترنت", r"\bنت\b", r"شبکه", r"network", r"wi-?fi", r"وای\s*فای", r"\bip\b", r"آی\s*پی", r"زبان\s*سیستم", r"مصرف", r"منابع",
                   r"سیستم(?:م)?\s", r"کامپیوتر", r"لپ\s*تاپ", r"\bpc\b", r"memory\s*usage", r"performance", r"کند\s*(?:شده|ه)", r"داغ"),
-    "apps": _rx(r"باز\s*کن", r"بازش\s*کن", r"اجرا\s*کن", r"اجراش\s*کن", r"\bopen\b", r"\blaunch\b", r"\bstart\b", r"برنامه", r"\bapp\b", r"\bapps\b", r"پنجره",
+    "apps": _rx(r"باز\s*کن", r"بازش\s*کن", r"اجرا\s*کن", r"اجراش\s*کن", r"بالا\s*بیار", r"راه\s*اندازی\s*کن", r"\bopen\b", r"\blaunch\b", r"\bstart\b", r"برنامه", r"\bapp\b", r"\bapps\b", r"پنجره",
                 r"\bwindow", r"دیسکورد", r"discord", r"کروم", r"chrome", r"استیم", r"steam", r"تلگرام", r"telegram", r"نوت\s*پد", r"notepad",
                 r"ماشین\s*حساب", r"calculator", r"در\s*حال\s*(?:استفاده|اجرا)", r"چی\s*باز", r"کدوم\s*برنامه", r"مرورگر", r"browser", r"لینک", r"سایت\s*(?:رو|را)?\s*باز"),
     "bluetooth": _rx(r"بلو\s*توث", r"بلو\s*توس", r"بلوتوث", r"bluetooth", r"\bbt\b"),
@@ -283,7 +286,7 @@ def set_gate_words(name: str, words) -> None:
         return
     extra = [r"\b" + re.escape(str(w).strip().lower()) + r"\b" for w in (words or []) if str(w).strip()]
     GATES[name] = _rx(base, *extra) if extra else _rx(base)
-STRONG_RX = _rx(r"باز\s*کن", r"اجرا\s*کن", r"ساعت\s*چند", r"چقدر\s*(?:رم|ram|cpu|فضا|باتری)", r"فایل", r"\bopen\b", r"what\s*time", r"find\s*(?:the\s*)?file")
+STRONG_RX = _rx(r"باز\s*کن", r"اجرا\s*کن", r"بالا\s*بیار", r"راه\s*اندازی\s*کن", r"ساعت\s*چند", r"چقدر\s*(?:رم|ram|cpu|فضا|باتری)", r"فایل", r"\bopen\b", r"what\s*time", r"find\s*(?:the\s*)?file")
 
 
 def detect_categories(text: str) -> set:

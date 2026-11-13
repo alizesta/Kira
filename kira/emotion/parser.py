@@ -6,6 +6,8 @@ Only if the model wrote no usable tag does a weak keyword fallback look at the t
 """
 import re
 
+from .. import body as _body
+
 _TOKEN = re.compile(r"\[([^\[\]\n]{1,60})\]")
 _SPLIT = re.compile(r"\s*[+&/,]\s*|\s+and\s+", re.I)
 _JUNK_FIRST_LINE = re.compile(r"^\s*\[[A-Za-z_+&/:|=, 0-9%.-]{1,50}\]\s*$")
@@ -16,10 +18,11 @@ _MOOD_LINE = re.compile(r"(?im)^\s*(?:mood|emotion|\u60c5\u7eea|حالت)\s*[:\u
 
 class ReplyMeta:
     """Visible text plus the emotion metadata detected for it."""
-    __slots__ = ("text", "emotions", "intensity", "source")
+    __slots__ = ("text", "emotions", "intensity", "source", "body")
 
-    def __init__(self, text, emotions=(), intensity=None, source="none"):
+    def __init__(self, text, emotions=(), intensity=None, source="none", body=()):
         self.text, self.emotions, self.intensity, self.source = text, list(emotions), intensity, source
+        self.body = list(body)                                 # body commands the model wrote as [body:...] tags (kira/body.py)
 
     def __repr__(self):
         return f"ReplyMeta({self.emotions}, {self.intensity}, {self.source!r}, text={self.text[:30]!r})"
@@ -49,6 +52,7 @@ def parse_token(content, library):
 
 def parse_reply(reply, library, rules=None):
     raw = re.sub(r"<think>.*?(</think>|$)", "", str(reply or ""), flags=re.S)
+    raw, body_cmds = _body.extract(raw)                      # [body:raise_right_hand] tags: removed from the text, returned separately
     found, strip_spans = None, []
     for m in _TOKEN.finditer(raw):
         parsed = parse_token(m.group(1), library)
@@ -71,11 +75,11 @@ def parse_reply(reply, library, rules=None):
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip(" \t\r\n-:")
     if found:
-        return ReplyMeta(text, found[0], found[1], "tag")
+        return ReplyMeta(text, found[0], found[1], "tag", body_cmds)
     guess = detect_from_text(text, library, rules)
     if guess:
-        return ReplyMeta(text, [guess[0]], guess[1], "keywords")
-    return ReplyMeta(text, [], None, "none")
+        return ReplyMeta(text, [guess[0]], guess[1], "keywords", body_cmds)
+    return ReplyMeta(text, [], None, "none", body_cmds)
 
 
 def detect_from_text(text, library, rules=None):

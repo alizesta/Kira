@@ -1,5 +1,5 @@
 {
-  "_help": "Edit freely. Per area: lines (fa/en), expression, pitch/rate offsets for a different voice, and kicks [part, channel, strength]. Put your own audio files (wav/mp3) in assets/sounds/<area>/ to play them instead of text-to-speech. Areas: face, hair, hand, arm_l, arm_r, torso, clothes, legs, feet.",
+  "_help": "Edit freely. Per area: lines (fa/en), expression, pitch/rate offsets for a different voice, and kicks [part, channel, strength]. Put your own audio files (wav/mp3) in assets/sounds/<area>/ to play them instead of text-to-speech. Areas: face, hair, hand, arm_l, arm_r, torso, clothes, legs, feet. Each area has 'variants' (at least 3): one is picked at random per click (never the same twice in a row); a variant can override expression, gesture (VRM body motion: flinch, shake, nod, tilt, hop, spin, wave, hand_wave, step, stomp, lean, arm_l_flap, arm_r_flap), pitch, rate, kicks, fa, en. Fields outside 'variants' are the defaults.",
   "face": {
     "expression": "surprised",
     "pitch": 10,
@@ -50,7 +50,89 @@
           50
         ]
       ]
-    }
+    },
+    "variants": [
+      {
+        "expression": "surprised",
+        "pitch": 10,
+        "rate": 5,
+        "kicks": [
+          [
+            "head",
+            "ang",
+            55
+          ],
+          [
+            "head",
+            "tx",
+            45
+          ]
+        ],
+        "fa": [
+          "هی! صورتم رو دست نزن!",
+          "هیی، قلقلکم میاد!",
+          "بله؟ کاری داشتی؟"
+        ],
+        "en": [
+          "Hey! Don't poke my face!",
+          "Hehe, that tickles!",
+          "Yes? Need something?"
+        ],
+        "gesture": "flinch"
+      },
+      {
+        "expression": "shy",
+        "gesture": "tilt",
+        "pitch": 10,
+        "rate": 5,
+        "kicks": [
+          [
+            "head",
+            "ang",
+            55
+          ],
+          [
+            "head",
+            "tx",
+            45
+          ]
+        ],
+        "fa": [
+          "اینقدر نزدیک نیا، خجالت می‌کشم!",
+          "هی... صورتم داغ شد."
+        ],
+        "en": [
+          "Don't get so close, I'm getting shy!",
+          "Hey... my face is warm now."
+        ]
+      },
+      {
+        "expression": "playful",
+        "gesture": "nod",
+        "pitch": 10,
+        "rate": 5,
+        "kicks": [
+          [
+            "head",
+            "ang",
+            55
+          ],
+          [
+            "head",
+            "tx",
+            45
+          ]
+        ],
+        "fa": [
+          "هه، دوست داری صورتم رو لمس کنی؟",
+          "باشه باشه، قبول، بامزه‌ای."
+        ],
+        "en": [
+          "Heh, do you like poking my face?",
+          "Fine, fine. You're cute."
+        ]
+      }
+    ]
   },
   "hair": {
     "expression": "surprised",
@@ -103,7 +185,102 @@
           -150
         ]
       ]
-    }
+    },
+    "variants": [
+      {
+        "expression": "surprised",
+        "pitch": 4,
+        "rate": 0,
+        "kicks": [
+          [
+            "hair_l",
+            "ang",
+            90
+          ],
+          [
+            "hair_r",
+            "ang",
+            -90
+          ],
+          [
+            "head",
+            "ang",
+            -30
+          ]
+        ],
+        "fa": [
+          "موهام رو خراب نکن!",
+          "وای، تازه شونه‌شون کرده بودم!"
+        ],
+        "en": [
+          "Don't mess up my hair!",
+          "I just brushed it!"
+        ],
+        "gesture": "shake"
+      },
+      {
+        "expression": "annoyed",
+        "gesture": "shake",
+        "pitch": 4,
+        "rate": 0,
+        "kicks": [
+          [
+            "hair_l",
+            "ang",
+            90
+          ],
+          [
+            "hair_r",
+            "ang",
+            -90
+          ],
+          [
+            "head",
+            "ang",
+            -30
+          ]
+        ],
+        "fa": [
+          "موهام رو بهم نریز! تازه درستشون کرده بودم.",
+          "هیی، با موهام بازی نکن!"
+        ],
+        "en": [
+          "Don't mess up my hair, I just fixed it!",
+          "Hey, stop playing with my hair!"
+        ]
+      },
+      {
+        "expression": "happy",
+        "gesture": "tilt",
+        "pitch": 4,
+        "rate": 0,
+        "kicks": [
+          [
+            "hair_l",
+            "ang",
+            90
+          ],
+          [
+            "hair_r",
+            "ang",
+            -90
+          ],
+          [
+            "head",
+            "ang",
+            -30
+          ]
+        ],
+        "fa": [
+          "هه، خوشم اومد... نه، منظورم اینه که ولش کن!",
+          "موهام نرمه، مگه نه؟"
+        ],
+        "en": [
+          "Hehe, that felt nice... I mean, let go!",
+          "My hair is soft, isn't it?"
+        ]
+      }
+    ]
   },
   "hand": {
     "expression": "excited",
@@ -130,6 +307,88 @@
       "Hi hi!",
       "Bye bye~",
       "See? I'm waving!"
+    ],
+    "variants": [
+      {
+        "expression": "excited",
+        "pitch": 8,
+        "rate": 8,
+        "kicks": [
+          [
+            "arm_l",
+            "ang",
+            260
+          ],
+          [
+            "head",
+            "ang",
+            25
+          ]
+        ],
+        "fa": [
+          "سلام سلام!",
+          "بای بای~",
+          "دیدی دست تکون دادم؟"
+        ],
+        "en": [
+          "Hi hi!",
+          "Bye bye~",
+          "See? I'm waving!"
+        ],
+        "gesture": "wave"
+      },
+      {
+        "expression": "shy",
+        "gesture": "tilt",
+        "pitch": 8,
+        "rate": 8,
+        "kicks": [
+          [
+            "arm_l",
+            "ang",
+            260
+          ],
+          [
+            "head",
+            "ang",
+            25
+          ]
+        ],
+        "fa": [
+          "دستم رو نگه نداری ها... باشه، یه کم.",
+          "دستت گرمه."
+        ],
+        "en": [
+          "Don't hold my hand... okay, just a little.",
+          "Your hand is warm."
+        ]
+      },
+      {
+        "expression": "happy",
+        "gesture": "hand_wave",
+        "pitch": 8,
+        "rate": 8,
+        "kicks": [
+          [
+            "arm_l",
+            "ang",
+            260
+          ],
+          [
+            "head",
+            "ang",
+            25
+          ]
+        ],
+        "fa": [
+          "های‌فایو!",
+          "سلام به دست‌های خوب!"
+        ],
+        "en": [
+          "High five!",
+          "Hello to good hands!"
+        ]
+      }
     ]
   },
   "arm_l": {
@@ -150,6 +409,71 @@
     "en": [
       "Don't pull my sleeve!",
       "Hm?"
+    ],
+    "variants": [
+      {
+        "expression": "neutral",
+        "pitch": 0,
+        "rate": 0,
+        "kicks": [
+          [
+            "arm_l",
+            "ang",
+            150
+          ]
+        ],
+        "fa": [
+          "آستینم رو نکش!",
+          "هوم؟"
+        ],
+        "en": [
+          "Don't pull my sleeve!",
+          "Hm?"
+        ],
+        "gesture": "arm_l_flap"
+      },
+      {
+        "expression": "surprised",
+        "gesture": "flinch",
+        "pitch": 0,
+        "rate": 0,
+        "kicks": [
+          [
+            "arm_l",
+            "ang",
+            150
+          ]
+        ],
+        "fa": [
+          "وای! ترسیدم!",
+          "یهو دستم رو نگیر!"
+        ],
+        "en": [
+          "Whoa! You scared me!",
+          "Don't grab my arm out of nowhere!"
+        ]
+      },
+      {
+        "expression": "happy",
+        "gesture": "tilt",
+        "pitch": 0,
+        "rate": 0,
+        "kicks": [
+          [
+            "arm_l",
+            "ang",
+            150
+          ]
+        ],
+        "fa": [
+          "داری عضله‌هام رو چک می‌کنی؟",
+          "بازوم رو می‌خوای چی کار؟"
+        ],
+        "en": [
+          "Checking my muscles?",
+          "What do you want with my arm?"
+        ]
+      }
     ]
   },
   "arm_r": {
@@ -175,6 +499,86 @@
     "en": [
       "Ouch! My arm!",
       "Let go, I'm kidding."
+    ],
+    "variants": [
+      {
+        "expression": "surprised",
+        "pitch": -4,
+        "rate": 0,
+        "kicks": [
+          [
+            "arm_r",
+            "ang",
+            -130
+          ],
+          [
+            "body",
+            "tx",
+            -30
+          ]
+        ],
+        "fa": [
+          "آخ! دستم!",
+          "ولم کن، شوخی کردم."
+        ],
+        "en": [
+          "Ouch! My arm!",
+          "Let go, I'm kidding."
+        ],
+        "gesture": "arm_r_flap"
+      },
+      {
+        "expression": "annoyed",
+        "gesture": "arm_r_flap",
+        "pitch": -4,
+        "rate": 0,
+        "kicks": [
+          [
+            "arm_r",
+            "ang",
+            -130
+          ],
+          [
+            "body",
+            "tx",
+            -30
+          ]
+        ],
+        "fa": [
+          "بازوم رو ول کن!",
+          "هی، حواست کجاست؟"
+        ],
+        "en": [
+          "Let go of my arm!",
+          "Hey, where's your head at?"
+        ]
+      },
+      {
+        "expression": "playful",
+        "gesture": "tilt",
+        "pitch": -4,
+        "rate": 0,
+        "kicks": [
+          [
+            "arm_r",
+            "ang",
+            -130
+          ],
+          [
+            "body",
+            "tx",
+            -30
+          ]
+        ],
+        "fa": [
+          "می‌خوای دستم رو بگیری؟",
+          "فقط برای امروز اجازه دادم."
+        ],
+        "en": [
+          "Want to take my arm?",
+          "Only for today, okay."
+        ]
+      }
     ]
   },
   "torso": {
@@ -233,7 +637,117 @@
           -60
         ]
       ]
-    }
+    },
+    "variants": [
+      {
+        "expression": "happy",
+        "pitch": 6,
+        "rate": -4,
+        "kicks": [
+          [
+            "body",
+            "sc",
+            0.7
+          ],
+          [
+            "head",
+            "ty",
+            40
+          ],
+          [
+            "hair_l",
+            "ang",
+            40
+          ],
+          [
+            "hair_r",
+            "ang",
+            -40
+          ]
+        ],
+        "fa": [
+          "هی، قلقلک نده!",
+          "هههه، نکن!"
+        ],
+        "en": [
+          "Hey, no tickling!",
+          "Hahaha, stop it!"
+        ],
+        "gesture": "hop"
+      },
+      {
+        "expression": "annoyed",
+        "gesture": "lean",
+        "pitch": 6,
+        "rate": -4,
+        "kicks": [
+          [
+            "body",
+            "sc",
+            0.7
+          ],
+          [
+            "head",
+            "ty",
+            40
+          ],
+          [
+            "hair_l",
+            "ang",
+            40
+          ],
+          [
+            "hair_r",
+            "ang",
+            -40
+          ]
+        ],
+        "fa": [
+          "اون‌جا نه! کجا دست می‌زنی؟",
+          "جدی می‌گم، یه کم فاصله بگیر."
+        ],
+        "en": [
+          "Not there! Where are you touching?",
+          "I mean it, back off a little."
+        ]
+      },
+      {
+        "expression": "shy",
+        "gesture": "flinch",
+        "pitch": 6,
+        "rate": -4,
+        "kicks": [
+          [
+            "body",
+            "sc",
+            0.7
+          ],
+          [
+            "head",
+            "ty",
+            40
+          ],
+          [
+            "hair_l",
+            "ang",
+            40
+          ],
+          [
+            "hair_r",
+            "ang",
+            -40
+          ]
+        ],
+        "fa": [
+          "وای... یهو اومدی!",
+          "قلبم تند زد."
+        ],
+        "en": [
+          "Whoa... you came out of nowhere!",
+          "My heart skipped a beat."
+        ]
+      }
+    ]
   },
   "legs": {
     "expression": "neutral",
@@ -263,6 +777,101 @@
     "en": [
       "My legs are tired!",
       "Want me to take a walk?"
+    ],
+    "variants": [
+      {
+        "expression": "neutral",
+        "pitch": -6,
+        "rate": -6,
+        "kicks": [
+          [
+            "leg_l",
+            "ang",
+            22
+          ],
+          [
+            "leg_r",
+            "ang",
+            -22
+          ],
+          [
+            "body",
+            "tx",
+            20
+          ]
+        ],
+        "fa": [
+          "پاهام خسته شد!",
+          "می‌خوای راه برم؟"
+        ],
+        "en": [
+          "My legs are tired!",
+          "Want me to take a walk?"
+        ],
+        "gesture": "step"
+      },
+      {
+        "expression": "surprised",
+        "gesture": "hop",
+        "pitch": -6,
+        "rate": -6,
+        "kicks": [
+          [
+            "leg_l",
+            "ang",
+            22
+          ],
+          [
+            "leg_r",
+            "ang",
+            -22
+          ],
+          [
+            "body",
+            "tx",
+            20
+          ]
+        ],
+        "fa": [
+          "هیی! پاهام قلقلکیه!",
+          "نکن، تعادلم رو از دست میدم!"
+        ],
+        "en": [
+          "Hey! My legs are ticklish!",
+          "Don't, I'll lose my balance!"
+        ]
+      },
+      {
+        "expression": "annoyed",
+        "gesture": "stomp",
+        "pitch": -6,
+        "rate": -6,
+        "kicks": [
+          [
+            "leg_l",
+            "ang",
+            22
+          ],
+          [
+            "leg_r",
+            "ang",
+            -22
+          ],
+          [
+            "body",
+            "tx",
+            20
+          ]
+        ],
+        "fa": [
+          "پام رو ول کن!",
+          "می‌زنم‌ها!"
+        ],
+        "en": [
+          "Leave my leg alone!",
+          "I'll stomp, I swear!"
+        ]
+      }
     ]
   },
   "feet": {
@@ -298,6 +907,116 @@
     "en": [
       "Oh! My foot!",
       "Careful, I'll jump!"
+    ],
+    "variants": [
+      {
+        "expression": "excited",
+        "pitch": 12,
+        "rate": 10,
+        "kicks": [
+          [
+            "body",
+            "ty",
+            -170
+          ],
+          [
+            "head",
+            "ty",
+            -60
+          ],
+          [
+            "hair_l",
+            "ang",
+            70
+          ],
+          [
+            "hair_r",
+            "ang",
+            -70
+          ]
+        ],
+        "fa": [
+          "اوه! پام!",
+          "نکن، می‌پرم هوا!"
+        ],
+        "en": [
+          "Oh! My foot!",
+          "Careful, I'll jump!"
+        ],
+        "gesture": "hop"
+      },
+      {
+        "expression": "happy",
+        "gesture": "step",
+        "pitch": 12,
+        "rate": 10,
+        "kicks": [
+          [
+            "body",
+            "ty",
+            -170
+          ],
+          [
+            "head",
+            "ty",
+            -60
+          ],
+          [
+            "hair_l",
+            "ang",
+            70
+          ],
+          [
+            "hair_r",
+            "ang",
+            -70
+          ]
+        ],
+        "fa": [
+          "هاها، پاهامو قلقلک نده!",
+          "ول کن، می‌خندم!"
+        ],
+        "en": [
+          "Haha, don't tickle my feet!",
+          "Stop, I'm laughing!"
+        ]
+      },
+      {
+        "expression": "surprised",
+        "gesture": "flinch",
+        "pitch": 12,
+        "rate": 10,
+        "kicks": [
+          [
+            "body",
+            "ty",
+            -170
+          ],
+          [
+            "head",
+            "ty",
+            -60
+          ],
+          [
+            "hair_l",
+            "ang",
+            70
+          ],
+          [
+            "hair_r",
+            "ang",
+            -70
+          ]
+        ],
+        "fa": [
+          "وای! یهو پام رو گرفتی!",
+          "ترسیدم!"
+        ],
+        "en": [
+          "Whoa! You grabbed my foot!",
+          "You scared me!"
+        ]
+      }
     ]
   },
   "_idle": {
@@ -365,6 +1084,103 @@
           50
         ]
       ]
-    }
+    },
+    "variants": [
+      {
+        "expression": "surprised",
+        "pitch": 2,
+        "rate": 0,
+        "kicks": [
+          [
+            "strap_l",
+            "ang",
+            260
+          ],
+          [
+            "strap_r",
+            "ang",
+            -260
+          ],
+          [
+            "skirt",
+            "ang",
+            120
+          ]
+        ],
+        "fa": [
+          "لباسم رو نکش!",
+          "هی، بندهام!",
+          "مواظب باش، خراب می‌شه!"
+        ],
+        "en": [
+          "Don't pull my clothes!",
+          "Hey, my straps!",
+          "Careful, you'll ruin it!"
+        ],
+        "gesture": "spin"
+      },
+      {
+        "expression": "shy",
+        "gesture": "flinch",
+        "pitch": 2,
+        "rate": 0,
+        "kicks": [
+          [
+            "strap_l",
+            "ang",
+            260
+          ],
+          [
+            "strap_r",
+            "ang",
+            -260
+          ],
+          [
+            "skirt",
+            "ang",
+            120
+          ]
+        ],
+        "fa": [
+          "لباسم رو مرتب نگه دار، لطفا.",
+          "اینجوری دست نزن!"
+        ],
+        "en": [
+          "Please keep my outfit tidy.",
+          "Don't touch it like that!"
+        ]
+      },
+      {
+        "expression": "angry",
+        "gesture": "tilt",
+        "pitch": 2,
+        "rate": 0,
+        "kicks": [
+          [
+            "strap_l",
+            "ang",
+            260
+          ],
+          [
+            "strap_r",
+            "ang",
+            -260
+          ],
+          [
+            "skirt",
+            "ang",
+            120
+          ]
+        ],
+        "fa": [
+          "لباسم رو خراب می‌کنی!",
+          "با لباسم کاری نداشته باش."
+        ],
+        "en": [
+          "You'll ruin my outfit!",
+          "Leave my clothes alone."
+        ]
+      }
+    ]
   }
 }

@@ -33,7 +33,66 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(sum(f.startswith("His name") for f in facts), 1)      # newest name replaces the old
         self.assertTrue(any("Ali" in f for f in facts))
         self.assertTrue(any("امتحان" in f for f in facts))
-        self.assertIn("What the active character knows about the user", pm.build_block())
+        self.assertIn("What she knows about him", pm.build_block())
+
+    def test_long_term_memory_is_separate_for_each_character_and_keeps_kira_legacy_file(self):
+        with pm.character_scope("kira"):
+            pm.observe("user", "my name is KiraUser")
+            pm.observe("assistant", "این هم یک جواب خودمانی مخصوص کیراست، همین‌قدر ساده و مستقیم.")
+            self.assertTrue((Path(self.tmp.name) / pm.FILE_NAME).exists())
+        with pm.character_scope("ren"):
+            pm.observe("user", "my name is RenUser")
+            block = pm.build_block()
+            self.assertIn("RenUser", block)
+            self.assertIn("Ren's own memory", block)
+            self.assertNotIn("KiraUser", block)
+            self.assertTrue((Path(self.tmp.name) / "kira_persona_memory_ren.json").exists())
+        with pm.character_scope("mika"):
+            pm.observe("user", "my name is MikaUser")
+            block = pm.build_block()
+            self.assertIn("MikaUser", block)
+            self.assertNotIn("RenUser", block)
+            self.assertNotIn("KiraUser", block)
+            self.assertTrue((Path(self.tmp.name) / "kira_persona_memory_mika.json").exists())
+        with pm.character_scope("kira"):
+            block = pm.build_block()
+            self.assertIn("KiraUser", block)
+            self.assertNotIn("RenUser", block)
+            self.assertNotIn("MikaUser", block)
+
+    def test_non_kira_memory_never_digests_shared_legacy_chat_history(self):
+        shared = [{"role": "user", "content": "A private topic from Kira's old conversation"}]
+        with pm.character_scope("ren"):
+            block = pm.build_block(shared)
+            self.assertNotIn("private topic", block)
+        with pm.character_scope("kira"):
+            block = pm.build_block(shared)
+            self.assertIn("private topic", block)
+
+    def test_character_scope_restores_previous_context(self):
+        self.assertEqual(pm.current_character_id(), "kira")
+        with pm.character_scope("ren"):
+            self.assertEqual(pm.current_character_id(), "ren")
+            with pm.character_scope("mika"):
+                self.assertEqual(pm.current_character_id(), "mika")
+            self.assertEqual(pm.current_character_id(), "ren")
+        self.assertEqual(pm.current_character_id(), "kira")
+
+    def test_evidence_memory_is_written_only_for_kira(self):
+        with mock.patch.object(pm._evidence, "record_user_message") as record:
+            with pm.character_scope("ren"):
+                pm.observe("user", "my name is Ren")
+            record.assert_not_called()
+            with pm.character_scope("kira"):
+                pm.observe("user", "my name is Kira")
+            record.assert_called_once()
+
+    def test_last_reply_voice_and_joke_memory_do_not_cross_characters(self):
+        with pm.character_scope("kira"):
+            pm.observe("assistant", "این یک جمله‌ی مخصوص کیراست که برای نمونه‌ی لحن ذخیره می‌شود.")
+        with pm.character_scope("ren"):
+            pm.observe("user", "😂")
+            self.assertFalse(any(m["kind"] == "joke" for m in pm._load()["moments"]))
 
     def test_questions_are_not_facts(self):
         pm.observe("user", "من چی دوست دارم؟")
@@ -44,7 +103,7 @@ class PersonaMemoryTests(unittest.TestCase):
         block = pm.build_block(older)
         self.assertIn("شیراز", block)
         prompt = build_system_prompt({"assistant_name": "Kira"}, "FORMAT", block)
-        self.assertLess(prompt.index("Shared app memory about the user"), prompt.index("FORMAT"))
+        self.assertLess(prompt.index("Kira's own memory"), prompt.index("FORMAT"))
         self.assertIn("You are Kira", prompt)
 
     def test_empty_memory_adds_nothing_and_forget(self):

@@ -10,6 +10,7 @@ from tests.helpers import Resp, StreamResp, sse, ndjson, CANARY
 from kira import routes, hybrid_ai
 from kira.hybrid_ai import HybridRouter, ThinkFilter, ProviderError
 from kira.ollama_client import OllamaClient, OllamaError
+from kira.leak_guard import LeakGuard
 
 MSGS = [{"role": "user", "content": "سلام"}]
 SYS = "persona"
@@ -43,6 +44,18 @@ def run(router, **kw):
     chunks, events = [], []
     res = router.chat_stream(MSGS, SYS, 0.7, on_chunk=chunks.append, on_event=events.append, **kw)
     return res, chunks, events
+
+
+class LeakGuardBufferTests(unittest.TestCase):
+    def test_short_plain_text_is_released_at_end_of_stream_not_mid_preamble(self):
+        guard = LeakGuard()
+        self.assertEqual(guard.feed("a"), "")
+        self.assertEqual(guard.finish(), "a")
+
+    def test_short_normal_reply_is_not_lost_when_stream_finishes(self):
+        guard = LeakGuard()
+        self.assertEqual(guard.feed("سلام"), "")
+        self.assertEqual(guard.finish(), "سلام")
 
 
 class ThinkFilterTests(unittest.TestCase):
@@ -175,10 +188,10 @@ class ProviderStreamTests(unittest.TestCase):
 class RouterStreamTests(unittest.TestCase):
     def test_events_follow_connecting_waiting_streaming_with_real_route(self):
         s, r = make("groq")
-        with mock.patch("requests.post", post_table({"groq": StreamResp(sse("a", "b"))})):
+        with mock.patch("requests.post", post_table({"groq": StreamResp(sse("a" * 48, "b"))})):
             res, chunks, events = run(r)
-        self.assertEqual(chunks, ["a", "b"])
-        self.assertEqual(res["text"], "ab")
+        self.assertEqual(chunks, ["a" * 48, "b"])
+        self.assertEqual(res["text"], "a" * 48 + "b")
         self.assertEqual([e["phase"] for e in events], ["connecting", "waiting", "streaming"])
         self.assertTrue(all(e["provider"] == "groq" and e["model"] == "openai/gpt-oss-120b" and e["kind"] == "cloud" for e in events))
         m = res["metrics"]
@@ -211,12 +224,12 @@ class RouterStreamTests(unittest.TestCase):
 
     def test_connection_lost_after_partial_text_never_repeats_or_fails_over(self):
         s, r = make("groq", "cloudflare")
-        groq = StreamResp(sse("نیمه‌ی ", "اول", done=False) + [requests.ConnectionError("reset by peer")])
+        groq = StreamResp(sse("نیمه‌ی " + "الف" * 45, "اول", done=False) + [requests.ConnectionError("reset by peer")])
         f = post_table({"groq": groq, "cloudflare": AssertionError("must NOT restart the answer elsewhere")})
         with mock.patch("requests.post", f):
             res, chunks, events = run(r)
-        self.assertEqual(res["text"], "نیمه‌ی اول")
-        self.assertEqual(chunks, ["نیمه‌ی ", "اول"])                    # shown once, exactly as received
+        self.assertEqual(res["text"], "نیمه‌ی " + "الف" * 45 + "اول")
+        self.assertEqual(chunks, ["نیمه‌ی " + "الف" * 45, "اول"])                    # shown once, exactly as received
         self.assertIsNotNone(res["interrupted"])
         self.assertEqual(len(f.calls), 1)
         self.assertEqual(res["metrics"]["result"], "interrupted")
@@ -225,7 +238,7 @@ class RouterStreamTests(unittest.TestCase):
 
     def test_stop_button_keeps_partial_text_and_does_not_penalise_the_route(self):
         s, r = make("groq", "cloudflare")
-        resp = StreamResp(sse("a", "b", "c", "d", done=False))
+        resp = StreamResp(sse("a" * 48, "b", "c", "d", done=False))
         chunks = []
 
         def on_chunk(c):
@@ -235,7 +248,7 @@ class RouterStreamTests(unittest.TestCase):
         with mock.patch("requests.post", post_table({"groq": resp, "cloudflare": AssertionError("no failover on Stop")})):
             res = r.chat_stream(MSGS, SYS, on_chunk=on_chunk)
         self.assertTrue(res["stopped"])
-        self.assertEqual(res["text"], "ab")
+        self.assertEqual(res["text"], "a" * 48 + "b")
         self.assertTrue(resp.closed)
         self.assertNotIn("groq", r.cooldowns)
         self.assertEqual(res["metrics"]["result"], "stopped")
