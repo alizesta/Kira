@@ -10,6 +10,11 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
 
+try:                                                     # imported as scripts.build_release (tests)
+    from . import build_metadata
+except ImportError:                                      # executed as `python scripts/build_release.py`
+    import build_metadata  # type: ignore
+
 SKIP_DIRS = {
     ".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".mypy_cache",
     ".ruff_cache", ".tox", "node_modules", "logs", "data", "dist", "build",
@@ -85,6 +90,13 @@ def _write_github_output(values: dict[str, str]) -> None:
 
 
 def main() -> Path:
+    # Mandatory gate: refresh the build stamp from the environment and stop when version metadata,
+    # build date/time, developer or the CHANGELOG entry is missing or invalid.
+    try:
+        metadata = build_metadata.ensure_release_metadata()
+    except build_metadata.MetadataError as exc:
+        raise SystemExit(f"Release stopped: {exc}") from None
+
     stamp = release_stamp()
     archive = DIST / f"ProjectKira_{stamp}.zip"
     DIST.mkdir(parents=True, exist_ok=True)
@@ -105,6 +117,7 @@ def main() -> Path:
             included += 1
 
     size = archive.stat().st_size
+    print(f"Version metadata: {metadata['version']} | build {metadata['build_date']} {metadata['build_time']} | developer {metadata['developer']}")
     print(f"Release timestamp (Asia/Tehran): {stamp}")
     print(f"Python files syntax-checked: {syntax_checked}")
     print(f"Files included: {included}")

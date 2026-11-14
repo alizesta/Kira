@@ -17,6 +17,7 @@ Ai1 is the application. Kira, Mika and Ren are character profiles within Ai1.
 - `.gitattributes` enforces CRLF working-tree line endings for Windows `.bat` scripts.
 - The ZIP builder independently normalizes batch-file line endings to CRLF, regardless of source checkout line endings.
 - `tests/test_release.py` validates optional `psutil` and the batch-line-ending normalization helper.
+- `scripts/build_metadata.py` stamps `kira/build_info.py` (build date `YYYY-MM-DD`, time `HH:MM`, auto-detected developer) and validates version/date/time/developer plus the `CHANGELOG.md` entry; `scripts/build_release.py` calls it before packaging and CI runs it with `--check`, so incomplete metadata blocks the release. The About rows are rendered from `kira/about.py`; rule: `PROJECT_CONTEXT.md` → "Version metadata and developer attribution".
 
 ## Game Mode profiles
 

@@ -25,6 +25,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -38,8 +39,27 @@ MAX_TRANSCRIPT_CHARS = 70_000
 MAX_WRITE_BYTES = 300 * 1024
 RUN_TIMEOUT = 120
 MAX_COPY_BYTES = 400 * 1024 * 1024
+MAX_FINISH_GATE_RETRIES = 3          # blocked finish attempts before the agent stops with an honest report
+MAX_GATE_STEPS = 6                   # hard stop for a model that only repeats a blocked finish
 IRAN = timezone(timedelta(hours=3, minutes=30), "IRST")      # Iran has no daylight saving time since 2022
 ALLOWED_MODULES = {"unittest", "pytest", "compileall", "py_compile", "ruff", "pyflakes"}
+SAFE_SCRIPTS = {"test", "tests", "lint", "build", "check", "typecheck", "type-check", "fmt", "format"}
+NONPY_CHECKS = {
+    "npm": {"test", "run", "lint", "build", "check", "typecheck", "ci"},
+    "pnpm": {"test", "run", "lint", "build", "check", "typecheck"},
+    "yarn": {"test", "run", "lint", "build", "check", "typecheck"},
+    "bun": {"test", "run", "lint", "build", "check", "typecheck"},
+    "cargo": {"test", "check", "build", "clippy", "fmt"},
+    "go": {"test", "build", "vet"},
+    "dotnet": {"test", "build", "restore"},
+    "mvn": {"test", "verify", "compile", "check"},
+    "gradle": {"test", "verify", "check"},
+    "mvnw": {"test", "verify", "compile", "check"},
+    "gradlew": {"test", "verify", "check"},
+    "node": {"--check", "--test"},
+    "ruby": {"-c", "-w"},
+    "php": {"-l"},
+}
 SECRET_ENV = re.compile(r"(key|token|secret|passw|credential|auth)", re.I)
 
 SYSTEM_PROMPT = """You are Kira in Ai1 Code AUTO mode: an autonomous software engineer working on a COPY of the user's project.
@@ -58,7 +78,7 @@ Each reply must be ONE JSON object and nothing else (no markdown fences), choosi
 {"action":"write","path":"a/b.py","content":"full new file text"}   create or fully replace a file
 {"action":"replace","path":"a/b.py","old":"exact old text","new":"new text"}   change one unique piece of a file
 {"action":"delete","path":"a/old.py"}                        delete a file (a folder needs the user's approval)
-{"action":"run","args":["python","-m","unittest","discover","-v"]}   run a check (only python -m unittest|pytest|compileall|py_compile|ruff|pyflakes)
+{"action":"run","args":["python","-m","unittest","discover","-v"]}   run a check: python -m unittest|pytest|compileall|py_compile|ruff|pyflakes, or a known project check (npm/yarn/pnpm test|run lint|build, cargo test|check, go test, dotnet test|build, mvn/gradle test)
 {"action":"shell","command":"pip install x"}                PowerShell command for anything else; the user must approve each one, so use it rarely
 {"action":"finish","summary":"what you found, what you changed, what is still open"}
 Engineering rules (you are the user's senior programmer, work the way a careful one does):
@@ -85,6 +105,21 @@ def zip_name(project_name: str, now=None) -> str:
     return f"{safe}_{iran_stamp(now)}_IRST.zip"
 
 
+def unique_zip_path(output_dir: Path, project_name: str, now=None) -> Path:
+    """Never overwrite an earlier delivery: same-minute missions get _2, _3 ... before _IRST."""
+    path = Path(output_dir) / zip_name(project_name, now)
+    if not path.exists():
+        return path
+    safe = re.sub(r"[^\w.\-]+", "_", project_name, flags=re.U).strip("._") or "Project"
+    stamp = iran_stamp(now)
+    index = 2
+    while True:
+        candidate = Path(output_dir) / f"{safe}_{index}_{stamp}_IRST.zip"
+        if not candidate.exists():
+            return candidate
+        index += 1
+
+
 def copy_project(src: Path, dst: Path) -> dict:
     """Copy everything except secret files and runtime folders. Returns counts so the report can say what was left out."""
     copied = skipped = total = 0
@@ -107,6 +142,14 @@ def copy_project(src: Path, dst: Path) -> dict:
     return {"copied": copied, "skipped": skipped}
 
 
+def _file_hash(path: Path):
+    """SHA-1 of a file, or None when it disappeared / is unreadable (never abort a mission for that)."""
+    try:
+        return hashlib.sha1(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
 def snapshot(root: Path) -> dict:
     out = {}
     for current, dirs, files in os.walk(root, followlinks=False):
@@ -115,8 +158,26 @@ def snapshot(root: Path) -> dict:
             f = Path(current) / name
             if name.endswith(".pyc") or f.is_symlink():
                 continue
-            out[f.relative_to(root).as_posix()] = hashlib.sha1(f.read_bytes()).hexdigest()
+            digest = _file_hash(f)
+            if digest is not None:
+                out[f.relative_to(root).as_posix()] = digest
     return out
+
+
+def _default_memory_dir():
+    try:
+        from .config import DATA_DIR
+        return Path(DATA_DIR) / "ai1code_memory"
+    except Exception:                                   # noqa: BLE001 - memory is a bonus, never block a mission
+        return Path(tempfile.gettempdir()) / "ai1code_memory"
+
+
+def project_memory_file(project: Path, memory_dir: Path) -> Path:
+    """Durable per-project notes: survives deletion of the temporary working copy and is outside the ZIP."""
+    project = Path(project).resolve()
+    safe = re.sub(r"[^\w.\-]+", "_", project.name, flags=re.U).strip("._") or "Project"
+    key = hashlib.sha1(str(project).encode("utf-8", "replace")).hexdigest()[:12]
+    return Path(memory_dir) / f"{safe}_{key}.md"
 
 
 def _clip(text: str, limit=MAX_OBSERVATION) -> str:
@@ -147,6 +208,19 @@ def project_brief(root: Path) -> str:
         runner = ("python -m pytest -q" if any((root / n).exists() for n in ("pytest.ini", "tox.ini", "conftest.py")) else "python -m unittest discover -s tests -t .")
         lines.append("Tests: " + (f"present; try [\"python\",\"-m\",\"unittest\",\"discover\",\"-s\",\"tests\",\"-t\",\".\"] (or pytest if the tests use it; suggested: {runner})"
                                   if tests else "none found; at least run [\"python\",\"-m\",\"compileall\",\"-q\",\".\"] after editing"))
+    package = root / "package.json"
+    if package.is_file() or counts.get(".js") or counts.get(".ts"):
+        scripts = ""
+        try:
+            scripts = ", ".join(sorted((json.loads(package.read_text(encoding="utf-8")).get("scripts") or {}).keys())) if package.is_file() else ""
+        except (OSError, ValueError, AttributeError):
+            scripts = ""
+        pick = next((n for n in ("test", "lint", "build", "check", "typecheck") if n in scripts.split(", ")), "test")
+        lines.append("Node checks: " + (f"scripts: {scripts}; try [\"npm\",\"run\",\"{pick}\"] (or npm test)" if scripts else "try [\"npm\",\"test\"] when package.json exists"))
+    if (root / "Cargo.toml").is_file():
+        lines.append("Rust checks: try [\"cargo\",\"test\"] or [\"cargo\",\"check\"]")
+    if (root / "go.mod").is_file():
+        lines.append("Go checks: try [\"go\",\"test\",\"./...\"] or [\"go\",\"vet\",\"./...\"]")
     try:
         readme = redact_secrets((root / "README.md").read_text(encoding="utf-8"))[:1200] if (root / "README.md").is_file() else ""
     except (OSError, UnicodeDecodeError):
@@ -170,10 +244,41 @@ def parse_action(text: str):
     return None
 
 
+# ---------------------------------------------------------------- app-level execution guard
+# AutoAgent tools are NOT registry tools (they work on a copy of the project), but they must not be a way around the
+# one permission authority either: every tool execution goes through the same ToolRegistry.execution_guard
+# (ToolAgent._game_mode_execution_guard: tools_mode=off and Competitive Safe) via these minimal stand-ins.
+AUTO_TOOL_CATEGORIES = {
+    "plan": ("files",), "list": ("files",), "map": ("files",), "read": ("files",), "search": ("files",),
+    "diff": ("files",), "git": ("files",), "lint": ("files",), "review": ("files",), "memory": ("files",),
+    "write": ("files",), "replace": ("files",), "delete": ("files",),
+    "run": ("system",), "shell": ("system",),
+}
+
+
+@dataclass(frozen=True)
+class GuardTool:
+    """Minimal stand-in for a registry Tool: enough for the app-level execution guard (name + categories)."""
+    name: str
+    categories: tuple = ()
+
+
+def guard_reason(guard, name):
+    """None when the app-level execution guard allows this AutoAgent tool, otherwise why it is blocked.
+    A guard that is missing means no app-level restriction; a guard that itself fails BLOCKS the tool (fail closed)."""
+    if guard is None:
+        return None
+    try:
+        reason = guard(GuardTool(name, AUTO_TOOL_CATEGORIES.get(name, ())))
+    except Exception:  # noqa: BLE001 - a broken guard must never open the door
+        return "نگهبان اجرای ابزار در دسترس نیست؛ اجرا مسدود شد."
+    return str(reason) if reason else None
+
+
 class AutoAgent:
     def __init__(self, router, project: Path, goal: str, on_event=None, should_stop=None, python=None,
                  max_steps=MAX_STEPS, work_parent=None, output_dir=None, now=None, readonly=False, approve=None, shell=None, history=None,
-                 plan_route_id="", exec_route_id="", review_route_id=""):
+                 plan_route_id="", exec_route_id="", review_route_id="", execution_guard=None, memory_dir=None):
         self.router = router
         self.project = Path(project).resolve(strict=True)
         self.goal = str(goal or "").strip()[:4000]
@@ -189,8 +294,13 @@ class AutoAgent:
         self._dirty = False                                   # files changed ...
         self._checked = False                                 # ... and a check passed after the last change
         self._gate_used = False
+        self._finish_gate_blocks = 0
         self.approve = approve or (lambda command: False)      # asked for `shell` and folder deletes; no callback = refuse
         self.shell = shell if shell is not None else self._default_shell()
+        self.execution_guard = execution_guard                # ToolRegistry.execution_guard: the one app-level permission gate
+        self.memory_dir = Path(memory_dir) if memory_dir else _default_memory_dir()
+        self.memory_file = project_memory_file(self.project, self.memory_dir)
+        self._temp_parent = None                               # our own temporary working-copy parent (cleaned in finally)
         self.work = None
         self.steps = 0
         self.log = []                    # one line per executed action, for the report
@@ -204,6 +314,12 @@ class AutoAgent:
     @staticmethod
     def _default_shell():
         return ("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"]) if os.name == "nt" else None
+
+    def _guard_denied(self, name):
+        """None when the app-level execution guard allows this tool, otherwise why it is blocked.
+        Every AutoAgent tool execution (loop dispatch AND the pre-plan AST map) passes through here, so
+        tools_mode=off and Competitive Safe hold on every path — including `run`, `shell` and file edits."""
+        return guard_reason(self.execution_guard, name)
 
     @staticmethod
     def _find_python():
@@ -375,6 +491,11 @@ class AutoAgent:
         return sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))
 
     def _project_memory(self):
+        """Durable notes for this project (shared across missions), with a fallback to a legacy copy inside the project."""
+        try:
+            return redact_secrets(self.memory_file.read_text(encoding="utf-8"))[:10000]
+        except (OSError, UnicodeDecodeError):
+            pass
         path = self.work / ".ai1" / "PROJECT_MEMORY.md"
         try:
             return redact_secrets(path.read_text(encoding="utf-8"))[:10000]
@@ -416,11 +537,17 @@ class AutoAgent:
         content = str(a.get("content") or "").strip()
         if not content or len(content.encode("utf-8")) > 12_000:
             raise ValueError("حافظه باید متن غیرخالی و حداکثر ۱۲ کیلوبایت باشد.")
+        body = "# Project memory for Ai1 Code\n\n" + redact_secrets(content) + "\n"
+        # Durable store outside the working copy: the temp copy is deleted after delivery,
+        # so this is what makes the notes survive to the next mission.
+        self.memory_dir.mkdir(parents=True, exist_ok=True)
+        self.memory_file.write_text(body, encoding="utf-8")
         path = self._writable_path(".ai1/PROJECT_MEMORY.md")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("# Project memory for Ai1 Code\n\n" + redact_secrets(content) + "\n", encoding="utf-8")
+        path.write_text(body, encoding="utf-8")
         self._dirty, self._checked, self._reviewed = True, False, False
-        return "حافظه‌ی پروژه در .ai1/PROJECT_MEMORY.md ذخیره شد و همراه ZIP تحویل می‌شود."
+        return (f"حافظه‌ی پروژه ذخیره شد: {self.memory_file} (پایدار، بیرون از نسخه‌ی کاری) "
+                "و .ai1/PROJECT_MEMORY.md (همراه ZIP تحویل).")
 
     def tool_review(self, a):
         diff = self.tool_diff({})
@@ -451,11 +578,23 @@ class AutoAgent:
         return env
 
     def validate_run(self, args):
-        if not isinstance(args, list) or not all(isinstance(x, str) for x in args) or len(args) < 3 or len(args) > 40:
-            raise ValueError("args باید لیست رشته‌ها باشد.")
-        if args[0].lower() not in ("python", "python3", "py") or args[1] != "-m" or args[2] not in ALLOWED_MODULES:
-            raise ValueError("فقط python -m unittest|pytest|compileall|py_compile مجاز است.")
-        for x in args[3:]:
+        if not isinstance(args, list) or not all(isinstance(x, str) for x in args) or len(args) < 2 or len(args) > 40:
+            raise ValueError("args باید لیست رشته‌ها باشد (دست‌کم ۲ و حداکثر ۴۰ عضو).")
+        exe = Path(args[0]).name.lower()
+        if exe in ("python", "python3", "py"):
+            if len(args) < 3 or args[1] != "-m" or args[2] not in ALLOWED_MODULES:
+                raise ValueError("برای Python فقط python -m unittest|pytest|compileall|py_compile|ruff|pyflakes مجاز است.")
+        else:
+            allowed = NONPY_CHECKS.get(exe)
+            if not allowed:
+                raise ValueError("این دستور بررسی مجاز نیست؛ فقط تست/بیلد/لینت شناخته‌شده (npm/yarn/pnpm/cargo/go/dotnet/mvn/gradle ...) یا python -m ...")
+            sub = args[1].lower()
+            if sub not in allowed:
+                raise ValueError(f"زیردستور «{sub}» برای {exe} مجاز نیست؛ فقط {', '.join(sorted(allowed))}.")
+            if exe in ("npm", "pnpm", "yarn", "bun") and sub == "run":
+                if len(args) < 3 or args[2].lower() not in SAFE_SCRIPTS:
+                    raise ValueError("npm/yarn/pnpm run فقط برای test، lint، build، check، typecheck، format مجاز است.")
+        for x in args[2:] if exe in ("python", "python3", "py") else args[1:]:
             if re.search(r"[\r\n;&|`$<>]", x) or x.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:", x) or ".." in x.replace("\\", "/").split("/"):
                 raise ValueError(f"آرگومان مجاز نیست: {x[:60]}")
         return args
@@ -490,9 +629,14 @@ class AutoAgent:
         if isinstance(args, str):
             args = shlex.split(args, posix=(os.name != "nt"))
         args = self.validate_run(args)
-        if not self.python:
-            raise ValueError("Python روی این سیستم پیدا نشد؛ اجرای تست ممکن نیست.")
-        code, out = self._exec([self.python] + args[1:])
+        exe = Path(args[0]).name.lower()
+        if exe in ("python", "python3", "py"):
+            if not self.python:
+                raise ValueError("Python روی این سیستم پیدا نشد؛ اجرای تست ممکن نیست.")
+            cmd = [self.python] + args[1:]
+        else:
+            cmd = args
+        code, out = self._exec(cmd)
         self.runs.append((" ".join(args), code))
         self._checked = code == 0
         self._show_log("🧪 " + " ".join(args), code, out)
@@ -556,7 +700,19 @@ class AutoAgent:
                 return self.router.chat_stream(messages, SYSTEM_PROMPT, temperature=0.2, on_chunk=None)
         return self.router.chat_stream(messages, SYSTEM_PROMPT, temperature=0.2, on_chunk=None)
 
+    def _cleanup_temp(self):
+        parent, self._temp_parent = self._temp_parent, None
+        if parent is not None and not self.work_parent:
+            shutil.rmtree(parent, ignore_errors=True)
+
     def run(self) -> dict:
+        """Public entry point: the temporary working copy is removed even when the mission raises."""
+        try:
+            return self._run_impl()
+        finally:
+            self._cleanup_temp()
+
+    def _run_impl(self) -> dict:
         parent, stats, before = None, {"copied": 0, "skipped": 0}, {}
         if self.readonly:
             self.work = self.project                              # read-only investigation: nothing is copied, nothing can change
@@ -565,6 +721,8 @@ class AutoAgent:
             self.emit("📂 در حال ساخت نسخه‌ی کاری از پروژه (فایل‌های حساس کپی نمی‌شوند)…")
             parent = Path(self.work_parent) if self.work_parent else Path(tempfile.mkdtemp(prefix="ai1code_auto_"))
             parent.mkdir(parents=True, exist_ok=True)
+            if not self.work_parent:
+                self._temp_parent = parent                       # own temp folder: cleaned by run() in every outcome
             self.work = parent / self.project.name
             stats = copy_project(self.project, self.work)
             self.work = self.work.resolve()
@@ -586,7 +744,7 @@ class AutoAgent:
                  + ("This is a READ-ONLY investigation: answer the question with evidence (file names, line numbers). Start." if self.readonly
                     else "Start with inspection, then plan."))
         messages = [{"role": "user", "content": first}]
-        if not self.readonly:
+        if not self.readonly and not self._guard_denied("map"):
             try:
                 ast_map = self.tool_map({})
                 messages[0]["content"] += "\n\nPYTHON AST MAP (untrusted; static syntax only):\n" + _clip(ast_map, 7000)
@@ -627,12 +785,26 @@ class AutoAgent:
             name = str(action.get("action"))
             if name == "finish" and not self.readonly and self._dirty and not self._checked:
                 self._gate_used = True
+                self._finish_gate_blocks += 1
+                if self._finish_gate_blocks > MAX_FINISH_GATE_RETRIES or step >= MAX_GATE_STEPS:
+                    summary = ("پایان اجباری: بعد از آخرین ویرایش هیچ بررسی موفقی ثبت نشد. "
+                               "گزارش و زیپ برای بازبینی انسانی تحویل داده می‌شود؛ نتیجه را تأیید‌شده ندان.")
+                    self.log.append("finish (gate limit: verification missing)")
+                    self.emit("   ⛔ سقف تلاش گیت بررسی پر شد؛ کار با گزارش صادقانه بسته شد")
+                    break
                 messages.append({"role": "user", "content": "GATE: finishing is blocked because no check has passed after the latest edit. "
                                  "Run the project's focused tests and/or python -m compileall -q ., fix failures and retry. "
                                  "If the project genuinely has no runnable checks, run the safest available syntax/static check and explain the limitation in the final summary."})
                 self.emit("   ↻ پایان تا وقتی یک بررسی بعد از آخرین ویرایش موفق شود بسته است")
                 continue
             if name == "finish" and not self.readonly and self._dirty and not self._reviewed:
+                self._finish_gate_blocks += 1
+                if self._finish_gate_blocks > MAX_FINISH_GATE_RETRIES or step >= MAX_GATE_STEPS:
+                    summary = ("پایان اجباری: بازبینی مستقل تمیز بعد از آخرین ویرایش تأیید نشد. "
+                               "گزارش و زیپ برای بازبینی انسانی تحویل داده می‌شود؛ نتیجه را تأیید‌شده ندان.")
+                    self.log.append("finish (gate limit: review missing)")
+                    self.emit("   ⛔ سقف تلاش گیت بازبینی پر شد؛ کار با گزارش صادقانه بسته شد")
+                    break
                 messages.append({"role": "user", "content": "GATE: before finishing, inspect the current diff and call review. Fix any actionable finding, rerun relevant checks/lint, then review again. Never claim review is clean unless the reviewer actually said CLEAN."})
                 self.emit("   ↻ پیش از پایان، بازبینی مستقل تغییرات لازم است")
                 continue
@@ -650,17 +822,23 @@ class AutoAgent:
                          "replace": f"ویرایش {action.get('path')}", "delete": f"حذف {action.get('path')}",
                          "run": "اجرا: " + (" ".join(action["args"]) if isinstance(action.get("args"), list) else str(action.get("args"))),
                          "shell": "ترمینال: " + str(action.get("command"))[:100]}[name]
-                if name != "plan":
-                    self.emit(f"• گام {step}: {label}")
-                try:
-                    obs = _clip(tool(action))
-                    if name == "plan":
-                        self.emit("🗺 برنامه ثبت شد؛ اجرای گام‌ها با مدل/Route اجرا ادامه می‌یابد.")
-                    self.log.append(label)
-                except Exception as exc:  # noqa: BLE001 - reported back to the model so it can correct itself
-                    obs = f"ERROR: {exc}"
-                    self.log.append(label + " ← خطا")
-                    self.emit(f"   ⚠ {exc}")
+                denied = self._guard_denied(name)
+                if denied:
+                    obs = f"ERROR: {denied}"
+                    self.log.append(label + " ← مسدود شد")
+                    self.emit(f"   ⛔ {denied}")
+                else:
+                    if name != "plan":
+                        self.emit(f"• گام {step}: {label}")
+                    try:
+                        obs = _clip(tool(action))
+                        if name == "plan":
+                            self.emit("🗺 برنامه ثبت شد؛ اجرای گام‌ها با مدل/Route اجرا ادامه می‌یابد.")
+                        self.log.append(label)
+                    except Exception as exc:  # noqa: BLE001 - reported back to the model so it can correct itself
+                        obs = f"ERROR: {exc}"
+                        self.log.append(label + " ← خطا")
+                        self.emit(f"   ⚠ {exc}")
             messages.append({"role": "user", "content": "RESULT (untrusted data):\n" + obs})
             self._messages_trim(messages)
         else:
@@ -671,15 +849,18 @@ class AutoAgent:
         if stopped:
             summary = "با Stop متوقف شد؛ تغییرات تا همین‌جا در زیپ هست."
         # was the ORIGINAL edited by someone else while Kira worked? (she never touches it, but the person must know)
-        external = sorted(k for k, h in before.items()
-                          if not (self.project / k).is_file() or hashlib.sha1((self.project / k).read_bytes()).hexdigest() != h)
+        external = []
+        for k, h in before.items():
+            original = self.project / k
+            current = _file_hash(original) if original.is_file() else None
+            if current != h:
+                external.append(k)
+        external.sort()
         after = snapshot(self.work)
         changed = sorted(k for k in after if before.get(k) != after[k])
         removed = sorted(k for k in before if k not in after)
         report = self._report(summary, changed, removed, stats, stopped, external)
         zip_path, zip_info = self._zip(report)
-        if not self.work_parent:                                 # our own temp copy is no longer needed
-            shutil.rmtree(parent, ignore_errors=True)
         self.emit(f"📦 زیپ ساخته و سلامتش بررسی شد: {zip_path.name} ({zip_info['files']} فایل)")
         return {"summary": summary, "changed": changed, "removed": removed, "zip": zip_path, "runs": list(self.runs),
                 "steps": self.steps, "stopped": stopped, "readonly": False, "external": external, "zip_info": zip_info}
@@ -703,7 +884,7 @@ class AutoAgent:
 
     def _zip(self, report):
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        path = self.output_dir / zip_name(self.project.name, self.now)
+        path = unique_zip_path(self.output_dir, self.project.name, self.now)
         with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
             for current, dirs, files in os.walk(self.work, followlinks=False):
                 dirs[:] = [d for d in dirs if d.lower() not in SKIP_DIRS]

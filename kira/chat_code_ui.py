@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox
 from . import characters
 from . import chat_code as cc
 from .chat_render import message_html
-from .auto_agent import AutoAgent, MAX_STEPS
+from .auto_agent import AutoAgent, MAX_STEPS, guard_reason
 from .brain import route_for
 from .code_agent import project_tree
 from .config import save_settings, DATA_DIR
@@ -62,6 +62,7 @@ class CodeChat(QObject):
         self.auto_stop = False
         self.auto_dir = Path(DATA_DIR) / "ai1code_output"       # where the delivered zips go
         self.auto_results = {}
+        self._auto_result_seq = 0                               # monotonic ids: never reused after a removal/restart
         self.auto_python = None                                 # tests may override; None = auto-detect
         self.auto_shell = None                                  # tests may override; None = the agent's default (PowerShell on Windows)
         self.shell = self._default_shell()
@@ -236,6 +237,11 @@ class CodeChat(QObject):
     def _route(self, text, intent):
         """A coding request: make sure a project folder exists, then hand it to the agent (task) or the read-only investigation."""
         w = self.win
+        if cc.wants_project_change(text):
+            # "پوشه‌ی پروژه را عوض کن" (with or without ZWNJ) is a folder request, never a mission:
+            # on first run it must only ask for the folder, and later it switches instead of running the agent.
+            self.change_project()
+            return True
         w.add_chat("user", text)
         w.save_message("user", text)
         if not self.ensure_project():
@@ -250,20 +256,29 @@ class CodeChat(QObject):
         self._classifying = True
         token = object()
         self._class_token = token
-        router = w.cur.client
-        top = sorted(p.name + ("/" if p.is_dir() else "") for p in self.root.iterdir() if not p.name.startswith("."))[:40]
-        prompt = cc.classifier_prompt(self.root.name, top, self._history(), text)
-        job = _Job(lambda chunk: router.chat_stream([{"role": "user", "content": prompt}], cc.CLASSIFY_SYSTEM, temperature=0.0,
-                                                    on_chunk=None).get("text", ""), self)
-        job.done.connect(lambda answer: self._classified(token, text, voice, answer))
-        job.failed.connect(lambda err: self._classified(token, text, voice, None))
-        job.finished.connect(job.deleteLater)
-        self._class_job = job
-        QTimer.singleShot(25_000, lambda: self._classified(token, text, voice, None))      # never leave the message hanging
-        w.status.setText("کیرا در حال فهمیدن درخواستت است…")
-        job.start()
+        session = w.cur                                            # the chat that asked: results must never land in another tab
+        try:
+            root = self.root
+            if root is None or not Path(root).is_dir():             # deleted / moved / invalid project folder
+                raise FileNotFoundError(f"project folder unavailable: {root}")
+            router = session.client
+            if router is None:
+                raise RuntimeError("no model router")
+            top = sorted(p.name + ("/" if p.is_dir() else "") for p in Path(root).iterdir() if not p.name.startswith("."))[:40]
+            prompt = cc.classifier_prompt(Path(root).name, top, self._history(), text)
+            job = _Job(lambda chunk: router.chat_stream([{"role": "user", "content": prompt}], cc.CLASSIFY_SYSTEM,
+                                                        temperature=0.0, on_chunk=None).get("text", ""), self)
+            job.done.connect(lambda answer: self._classified(token, text, voice, answer, session))
+            job.failed.connect(lambda err: self._classified(token, text, voice, None, session))
+            job.finished.connect(job.deleteLater)
+            self._class_job = job
+            QTimer.singleShot(25_000, lambda: self._classified(token, text, voice, None, session))   # never leave it hanging
+            w.status.setText("کیرا در حال فهمیدن درخواستت است…")
+            job.start()
+        except Exception:  # noqa: BLE001 - a broken project path must end the decision (normal chat), never crash or stay stuck
+            self._classified(token, text, voice, None, session)
 
-    def _classified(self, token, text, voice, answer):
+    def _classified(self, token, text, voice, answer, session=None):
         if getattr(self, "_class_token", None) is not token:
             return                                              # already decided (the timeout and the answer may both arrive)
         self._class_token = None
@@ -274,18 +289,22 @@ class CodeChat(QObject):
         queued, self._class_queue = self._class_queue, []
         if w._closing:
             return
-        if intent in ("task", "question"):
-            self._route(text, intent)
-        else:
-            self._bypass = True
-            w._voice_next = voice
-            try:
-                w.submit(text)
-            finally:
-                self._bypass = False                            # (if the message was only queued, it is classified afresh later)
-        for t, v in queued:                                     # messages typed while we were deciding, in order
-            w._voice_next = v
-            w.submit(t)
+        session = w.cur if session is None else session
+        if session.cid not in w.sessions:
+            return                                              # the chat was closed while deciding: nothing to leak into
+        with w._as(session):                                    # decide / answer in the chat that asked, even from another tab
+            if intent in ("task", "question"):
+                self._route(text, intent)
+            else:
+                self._bypass = True
+                w._voice_next = voice
+                try:
+                    w.submit(text)
+                finally:
+                    self._bypass = False                        # (if the message was only queued, it is classified afresh later)
+            for t, v in queued:                                 # messages typed while we were deciding, in order
+                w._voice_next = v
+                w.submit(t)
 
     # ------------------------------------------------------------ ask / patch
     def _begin_busy(self):
@@ -362,9 +381,11 @@ class CodeChat(QObject):
             w.status.setText(f"کیرا در حال بررسی کد است… ({self._streamed:,} نویسه)")
 
     def _job_cleanup(self):
-        job, self.job = self.job, None
+        job = self.sender()
+        if job is self.job or job is None:
+            self.job = None
         if job is not None:
-            job.deleteLater()
+            job.deleteLater()                                # never delete a newer job that replaced this one
 
     def _finished(self, sess, done, result):
         w = self.win
@@ -467,6 +488,16 @@ class CodeChat(QObject):
         if not goal:
             self._say("system", "بعد از /auto مأموریت را بنویس، مثلاً: /auto کل پروژه را چک کن، باگ‌ها را درست کن و تست‌ها را بزن")
             return
+        tool_agent = getattr(w, "tool_agent", None)
+        guard = getattr(getattr(tool_agent, "registry", None), "execution_guard", None)
+        if tool_agent is not None and tool_agent.mode() == "off":
+            self._say("system", "ابزارها خاموش است (tools_mode = off)؛ مأموریت خودکار اجرا نمی‌شود. "
+                                "برای اجرا، حالت ابزارها را در تنظیمات از Off خارج کن.")
+            return
+        denied = guard_reason(guard, "read" if readonly else "run")
+        if denied:                                             # e.g. Competitive Safe blocks local tools: never start
+            self._say("system", str(denied))
+            return
         if not readonly and not self.confirm(
                 "تأیید مأموریت خودکار",
                 "کیرا روی یک کپی از پروژه کار می‌کند (فایل‌های حساس کپی نمی‌شوند) و پروژه‌ی اصلی تغییر نمی‌کند. "
@@ -491,7 +522,8 @@ class CodeChat(QObject):
                           max_steps=15 if readonly else MAX_STEPS, shell=self.auto_shell, history=history,
                           plan_route_id=route_for("deep", w.settings),
                           exec_route_id=route_for("surface", w.settings),
-                          review_route_id=route_for("reflection", w.settings))
+                          review_route_id=route_for("reflection", w.settings),
+                          execution_guard=guard)
         self._begin_busy()
         sess = self.session
         job = _Job(lambda chunk: (setattr(agent, "emit", chunk), agent.run())[1], self)
@@ -512,6 +544,15 @@ class CodeChat(QObject):
         with w._as(sess):
             self._bubble("system", cc.answer_html(line), name="")
 
+    def _store_auto_result(self, zip_path):
+        """Register one delivered ZIP under a stable, monotonic id (never len()+1)."""
+        self._auto_result_seq += 1
+        rid = str(self._auto_result_seq)
+        self.auto_results[rid] = Path(zip_path)
+        while len(self.auto_results) > 100:                     # bounded: old links stop working instead of leaking memory
+            self.auto_results.pop(next(iter(self.auto_results)))
+        return rid
+
     def _auto_done(self, goal, result):
         w = self.win
         if result.get("readonly"):
@@ -520,8 +561,7 @@ class CodeChat(QObject):
             self._remember(goal, result["summary"])
             return
         zip_path = Path(result["zip"])
-        rid = str(len(self.auto_results) + 1)
-        self.auto_results[rid] = zip_path
+        rid = self._store_auto_result(zip_path)
         changed = result["changed"]
         runs = result["runs"]
         lines = [f"کار خودکار تمام شد ({result['steps']} گام).", "", result["summary"], ""]
@@ -544,6 +584,12 @@ class CodeChat(QObject):
         command = str(command or "").strip()
         if not command:
             self._say("system", "بعد از /run دستور را بنویس.")
+            return
+        tool_agent = getattr(w, "tool_agent", None)
+        guard = getattr(getattr(tool_agent, "registry", None), "execution_guard", None)
+        denied = guard_reason(guard, "shell")
+        if denied:                                             # tools_mode = off / Competitive Safe: no direct PowerShell either
+            self._say("system", str(denied))
             return
         if self.shell is None:
             self._say("system", "اجرای دستور در این نسخه فقط روی Windows (PowerShell) فعال است.")
@@ -616,10 +662,23 @@ class CodeChat(QObject):
         return False
 
     def shutdown(self):
+        self.auto_stop = True
         self._stop_timer()
         if self.proc is not None and self.proc.state() != QProcess.NotRunning:
             self.proc.kill()
             self.proc.waitForFinished(1000)
-        if self.job is not None and self.job.isRunning():
-            self.job.requestInterruption()
-            self.job.wait(1500)
+        self.proc = None
+        class_job, self._class_job = getattr(self, "_class_job", None), None
+        if class_job is not None and class_job.isRunning():
+            class_job.requestInterruption()
+            if not class_job.wait(1000):
+                class_job.terminate()
+                class_job.wait(500)
+        job, self.job = self.job, None
+        if job is not None and job.isRunning():
+            job.requestInterruption()                       # AutoAgent checks should_stop between steps
+            if not job.wait(5000):
+                job.terminate()                             # last resort during window shutdown
+                job.wait(1000)
+        if job is not None:
+            job.deleteLater()

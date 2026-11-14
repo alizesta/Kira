@@ -121,7 +121,7 @@
       },
       "transition": {
         "in": 0.2,
-        "out": 1.0
+        "out": 1
       },
       "fallback": "frustrated",
       "keywords": {
@@ -432,7 +432,7 @@
       },
       "transition": {
         "in": 0.6,
-        "out": 1.0
+        "out": 1
       },
       "fallback": "neutral",
       "keywords": {
@@ -500,7 +500,7 @@
       },
       "transition": {
         "in": 0.5,
-        "out": 1.0
+        "out": 1
       },
       "fallback": "happy",
       "keywords": {
@@ -537,7 +537,7 @@
       },
       "transition": {
         "in": 0.5,
-        "out": 1.0
+        "out": 1
       },
       "fallback": "playful",
       "keywords": {
@@ -745,7 +745,7 @@
       },
       "transition": {
         "in": 0.25,
-        "out": 1.0
+        "out": 1
       },
       "fallback": "angry",
       "keywords": {
@@ -829,6 +829,329 @@
           "hmm",
           "let's see"
         ]
+      }
+    },
+    {
+      "id": "fearful",
+      "name": "Fearful",
+      "category": "basic",
+      "aliases": [
+        "afraid",
+        "scared",
+        "fear"
+      ],
+      "meaning": "Worried, cautious or startled by a perceived threat.",
+      "default_intensity": 52,
+      "priority": 58,
+      "duration": 7,
+      "reaction": "guard",
+      "animation": {
+        "png_softbody": "guard"
+      },
+      "transition": {
+        "in": 0.3,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "ترسیدم",
+          "می‌ترسم",
+          "نگرانم"
+        ],
+        "en": [
+          "afraid",
+          "scared",
+          "frightened"
+        ]
+      }
+    },
+    {
+      "id": "disgusted",
+      "name": "Disgusted",
+      "category": "basic",
+      "aliases": [
+        "disgust",
+        "repulsed",
+        "revulsed"
+      ],
+      "meaning": "Strong aversion or dislike toward something.",
+      "default_intensity": 48,
+      "priority": 36,
+      "duration": 5,
+      "reaction": "irritation",
+      "animation": {
+        "png_softbody": "irritation"
+      },
+      "transition": {
+        "in": 0.25,
+        "out": 0.8
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [
+          "چندش",
+          "حالم به هم خورد",
+          "منزجر"
+        ],
+        "en": [
+          "disgusting",
+          "gross",
+          "repulsive"
+        ]
+      }
+    },
+    {
+      "id": "calm",
+      "name": "Calm",
+      "category": "state",
+      "aliases": [],
+      "meaning": "steady and settled",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "hopeful",
+      "name": "Hopeful",
+      "category": "state",
+      "aliases": [],
+      "meaning": "expects a positive outcome",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "disappointed",
+      "name": "Disappointed",
+      "category": "state",
+      "aliases": [],
+      "meaning": "expectations were not met",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "lonely",
+      "name": "Lonely",
+      "category": "state",
+      "aliases": [],
+      "meaning": "feels socially disconnected",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "guilty",
+      "name": "Guilty",
+      "category": "state",
+      "aliases": [],
+      "meaning": "regrets an action",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "grateful",
+      "name": "Grateful",
+      "category": "state",
+      "aliases": [],
+      "meaning": "feels thankful",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "nostalgic",
+      "name": "Nostalgic",
+      "category": "state",
+      "aliases": [],
+      "meaning": "emotionally recalls the past",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "confident",
+      "name": "Confident",
+      "category": "state",
+      "aliases": [],
+      "meaning": "feels capable and assured",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "confused",
+      "name": "Confused",
+      "category": "state",
+      "aliases": [],
+      "meaning": "uncertain or puzzled",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "relieved",
+      "name": "Relieved",
+      "category": "state",
+      "aliases": [],
+      "meaning": "tension has eased",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
+      }
+    },
+    {
+      "id": "content",
+      "name": "Content",
+      "category": "state",
+      "aliases": [],
+      "meaning": "quietly satisfied",
+      "default_intensity": 42,
+      "priority": 24,
+      "duration": 7,
+      "reaction": "neutral",
+      "animation": {
+        "png_softbody": "neutral"
+      },
+      "transition": {
+        "in": 0.4,
+        "out": 0.9
+      },
+      "fallback": "neutral",
+      "keywords": {
+        "fa": [],
+        "en": []
       }
     }
   ]

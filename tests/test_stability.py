@@ -91,6 +91,27 @@ class StabilityTests(unittest.TestCase):
         with mock.patch("requests.post", return_value=StreamResp(sse("ok"))):
             self.assertEqual(r.chat_stream(MSGS, "p")["text"], "ok")
 
+    def test_role_scope_is_isolated_between_threads(self):
+        s, r = make()
+        routes.ensure_routes(s)
+        eligible = [x for x in r.routes() if r.eligibility(x)[0]][:2]
+        self.assertEqual(len(eligible), 2)
+        first, second = eligible[0]["id"], eligible[1]["id"]
+        barrier, results = threading.Barrier(2), {}
+
+        def worker(role, route_id):
+            with r.role_scope(role, route_id):
+                barrier.wait(5)
+                results[role] = r._candidates()[0]["id"]
+
+        threads = [threading.Thread(target=worker, args=("deep", first)),
+                   threading.Thread(target=worker, args=("surface", second))]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(5)
+        self.assertEqual(results, {"deep": first, "surface": second})
+
 
 if __name__ == "__main__":
     unittest.main()

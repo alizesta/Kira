@@ -69,6 +69,14 @@ def current_character_id():
     return _current_character.get()
 
 
+def set_active_character(character_id):
+    """Switch the memory store used by the app for the active character profile."""
+    safe_id = _safe_character_id(character_id)
+    _current_character.set(safe_id)
+    _last_reply[safe_id] = ""
+    return safe_id
+
+
 _TAG = re.compile(r"^\s*\[[^\]\n]{1,30}\]\s*")
 _BAD_VOICE = ("http://", "https://", "```", "[نتایج", "language model", "as an ai", "مدل زبانی", "به عنوان یک هوش", "how can i help", "چطور می‌توانم کمک")
 
@@ -76,6 +84,14 @@ _BAD_VOICE = ("http://", "https://", "```", "[نتایج", "language model", "as
 def _path():
     character_id = _current_character.get()
     return DATA_DIR / (FILE_NAME if character_id == "kira" else f"kira_persona_memory_{character_id}.json")
+
+
+def _voice_path():
+    """Kira keeps her voice samples in the legacy store; other characters get their own file."""
+    character_id = _current_character.get()
+    if character_id == "kira":
+        return None
+    return DATA_DIR / "characters" / character_id / "voice_memory.json"
 
 
 def _empty() -> dict:
@@ -97,13 +113,28 @@ def _load() -> dict:
             data["summarized"] = int(raw.get("summarized") or 0)
     except (OSError, ValueError, TypeError):
         pass
+    voice_path = _voice_path()
+    if voice_path is not None:
+        try:
+            payload = json.loads(voice_path.read_text(encoding="utf-8"))
+            samples = payload.get("voice", []) if isinstance(payload, dict) else []
+            data["voice"] = [str(x) for x in samples if isinstance(x, str)][-MAX_VOICE:]
+        except (OSError, ValueError, TypeError):
+            pass                                                  # keep whatever the character's memory file holds
     return data
 
 
 def _save(data: dict):
     path = _path()
-    tmp = path.with_suffix(".tmp")
+    voice_path = _voice_path()
     try:
+        if voice_path is not None:
+            voice_path.parent.mkdir(parents=True, exist_ok=True)
+            voice_path.write_text(json.dumps(
+                {"schema": 1, "character_id": _current_character.get(),
+                 "voice": list(data.get("voice") or [])[-MAX_VOICE:]},
+                ensure_ascii=False, indent=1), encoding="utf-8")
+        tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
         os.replace(tmp, path)
     except OSError:

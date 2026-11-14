@@ -6,6 +6,7 @@ Secrets come from the local settings file and are redacted from every error mess
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import json
 import threading
 import time
@@ -24,6 +25,11 @@ COOLDOWN_RATE_LIMIT = 300      # seconds after HTTP 429 (or Retry-After, capped)
 COOLDOWN_TRANSIENT = 45        # network / timeout / 5xx (default; each route can override it)
 COOLDOWN_CONFIG = 60           # bad key / bad model: stop retrying on every message (reset when settings are saved)
 METRICS_KEEP = 200             # in-memory history of request metrics (bounded: no memory growth)
+
+# Brain-role scope is per logical request, not per router instance: two sessions (or a
+# background reviewer and the visible chat) may use the same router from different threads.
+_ROLE = contextvars.ContextVar("kira_route_role", default="")
+_PREFER = contextvars.ContextVar("kira_route_prefer", default="")
 
 
 class ProviderError(RuntimeError):
@@ -260,10 +266,11 @@ class BaseProvider:
             raise self._fail(f"درخواست نامعتبر ({code}): {detail}{hint}", False, code, "request")
 
     def _send_args(self, headers, payload):
-        """requests keyword args: plain json normally, a progress-reporting body when the upload is big (images / large files)."""
+        """requests keyword args: plain json normally, a progress-reporting body when the upload is big (images / large files).
+        A long prompt is not an upload: text-only requests keep the plain ``json=`` body."""
         if self.upload_progress:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-            if getattr(self, "_sent_images", False) or len(body) > 20000:
+            if getattr(self, "_sent_images", False) or len(body) > 1_000_000:
                 return {"data": ProgressBody(body, self.upload_progress), "headers": {**headers, "Content-Type": "application/json"}}
         return {"json": payload, "headers": headers}
 
@@ -614,8 +621,6 @@ class HybridRouter:
         self._lock = threading.Lock()
         self._cancel = threading.Event()
         self._active = None
-        self._role = ""                                # brain role of the request in progress (surface | deep | reflection | memory); "" = unspecified
-        self._prefer = ""                              # route id the role asked for first ("" = the normal order)
 
     # ---------- logging ----------
     @staticmethod
@@ -667,16 +672,28 @@ class HybridRouter:
             return False, "cooldown"
         return True, "ok"
 
+    @property
+    def _role(self):
+        """The active brain role for this context (read-only view of the ContextVar)."""
+        return _ROLE.get()
+
+    @property
+    def _prefer(self):
+        """The route a role asked for first in this context (read-only view of the ContextVar)."""
+        return _PREFER.get()
+
     @contextlib.contextmanager
     def role_scope(self, role="", route_id=""):
         """Requests made inside this block belong to a brain role: the role is written to the metrics, and `route_id` (when it names an
-        existing route) is tried FIRST. If that route is unusable the normal order follows, so a role never stops the conversation."""
-        previous = (self._role, self._prefer)
-        self._role, self._prefer = str(role or ""), str(route_id or "")
+        existing route) is tried FIRST. If that route is unusable the normal order follows, so a role never stops the conversation.
+        The scope is stored in a ContextVar, so concurrent requests on the same router cannot overwrite each other."""
+        role_token = _ROLE.set(str(role or ""))
+        route_token = _PREFER.set(str(route_id or ""))
         try:
             yield self
         finally:
-            self._role, self._prefer = previous
+            _PREFER.reset(route_token)
+            _ROLE.reset(role_token)
 
     def _candidates(self):
         """Routes in the order they will be tried: a role's own route (if any), then the manual choice, then priority order (unless failover is off)."""
@@ -689,10 +706,11 @@ class HybridRouter:
             base = [chosen]
         else:
             base = [chosen] + [r for r in routes if r["id"] != chosen["id"]]
-        prefer = self._prefer
+        prefer = _PREFER.get()
+        role = _ROLE.get()
         try:
             from . import usage as _usage
-            if prefer and not _usage.role_allowed(self._role):
+            if prefer and not _usage.role_allowed(role):
                 prefer = ""                                            # an expensive role over its blocking limit goes back to the normal path
             base = _usage.apply_limits(base, lambda r: self.eligibility(r)[0])
         except Exception:                                              # noqa: BLE001
@@ -810,7 +828,7 @@ class HybridRouter:
             metrics = {"request_id": uuid.uuid4().hex[:8], "started_at": datetime.now(timezone.utc).isoformat(),
                        "stream": bool(stream), "retries": int(retry_index), "failovers": 0, "provider": None, "model": None,
                        "route_id": None, "kind": None, "connect_ms": None, "first_token_ms": None, "total_ms": None,
-                       "result": None, "chars": 0, "role": self._role or None}
+                       "result": None, "chars": 0, "role": _ROLE.get() or None}
             failures = []
             emit = on_event or (lambda e: None)
             for route in self._candidates():
@@ -1019,7 +1037,7 @@ class HybridRouter:
                                "stream": False, "retries": 0, "failovers": len(failures), "provider": route["provider"],
                                "model": route["model"], "route_id": route["id"], "kind": info["kind"],
                                "total_ms": elapsed, "result": "tool_call" if result.get("tool_calls") else "success",
-                               "chars": len(result.get("text") or ""), "role": self._role or None}
+                               "chars": len(result.get("text") or ""), "role": _ROLE.get() or None}
                     self.last_metrics = metrics
                     self.metrics.append(metrics)
                     return {**result, "provider": route["provider"], "model": route["model"], "route_id": route["id"],

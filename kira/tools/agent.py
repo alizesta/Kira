@@ -130,6 +130,11 @@ class ToolAgent(AutonomyMixin):
                     self._pending = None
 
     def _game_mode_execution_guard(self, tool):
+        """The ONE app-level gate for tool execution (ToolRegistry.execution_guard). It must hold on every path,
+        including AutoAgent tools and direct shell / file access: fail closed, never bypassed."""
+        if self.mode() == "off":
+            return ("ابزارها خاموش است (tools_mode = off)؛ هیچ ابزاری اجرا نمی‌شود. "
+                    "برای اجرای ابزار، حالت ابزارها را در تنظیمات از Off خارج کن.")
         if self._competitive_safe_mode and not tool_categories_allowed("competitive_safe", tool.categories):
             return ("Competitive Safe دسترسی ابزارهای محلی و کنترلی، دسکتاپ، برنامه‌ها، فایل‌ها، MCP و Agent را مسدود کرده است. "
                     "فقط ابزارهای وب مستقل مجازند.")
