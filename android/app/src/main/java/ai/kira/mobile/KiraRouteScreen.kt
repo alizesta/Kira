@@ -1,34 +1,16 @@
 package ai.kira.mobile
 
-import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import ai.kira.mobile.core.LocalKiraCore
+import ai.kira.mobile.core.LocalProvider
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -36,269 +18,99 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import ai.kira.mobile.core.KiraCoreClient
-import org.json.JSONArray
-import org.json.JSONObject
 import java.util.concurrent.Executors
-
-private data class KiraCloudRoute(
-    val id: String,
-    val provider: String,
-    val model: String,
-    val enabled: Boolean,
-    val configured: Boolean
-)
 
 @Composable
 internal fun KiraRouteScreen() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val preferences = remember {
-        context.getSharedPreferences("kira_core_config", Context.MODE_PRIVATE)
-    }
-    val serverUrl = remember { preferences.getString("server_url", "") ?: "" }
-    val executor = remember { Executors.newSingleThreadExecutor() }
-    val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val routes = remember { mutableStateListOf<KiraCloudRoute>() }
-    var revision by remember { mutableStateOf(0) }
-    var sharedSettings by remember { mutableStateOf(JSONObject()) }
-
+    val context=androidx.compose.ui.platform.LocalContext.current
+    val core=remember { LocalKiraCore(context) }
+    val executor=remember { Executors.newSingleThreadExecutor() }
+    val handler=remember { Handler(Looper.getMainLooper()) }
+    val routes=remember { mutableStateListOf<LocalProvider>() }
     var providerId by remember { mutableStateOf("openrouter") }
+    var model by remember { mutableStateOf("openai/gpt-4o-mini") }
+    var baseUrl by remember { mutableStateOf("https://openrouter.ai/api/v1") }
     var apiKey by remember { mutableStateOf("") }
-    var providerAccountId by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("Routeهای Cloud در Kira Core بین ویندوز و اندروید مشترک‌اند.") }
+    var status by remember { mutableStateOf("کلیدها رمزنگاری‌شده و فقط روی همین گوشی ذخیره می‌شوند.") }
 
-    DisposableEffect(executor) {
-        onDispose { executor.shutdownNow() }
-    }
+    DisposableEffect(executor) { onDispose { executor.shutdownNow() } }
+    fun refresh() { routes.clear(); routes.addAll(core.providers()) }
+    LaunchedEffect(Unit) { refresh() }
 
-    fun loadRoutes() {
-        if (serverUrl.isBlank()) {
-            status = "ابتدا آدرس سرور را در تنظیمات وارد کن."
+    fun save() {
+        if(busy || providerId.isBlank() || model.isBlank() || baseUrl.isBlank()) return
+        if(apiKey.isBlank() && routes.none { it.id==providerId && it.hasKey }) {
+            status="برای Provider جدید باید API Key وارد کنی."
             return
         }
-        if (busy) return
-        busy = true
+        val id=providerId.trim(); val modelId=model.trim(); val endpoint=baseUrl.trim(); val key=apiKey
+        busy=true; status="در حال ذخیره امن تنظیمات محلی…"
         executor.execute {
             try {
-                val client = KiraCoreClient(context, serverUrl)
-                if (!client.hasSession()) throw IllegalStateException("ابتدا وارد حساب Kira شو.")
-                val response = client.getSettings()
-                val settings = response.optJSONObject("settings") ?: JSONObject()
-                val routeArray = settings.optJSONArray("routes") ?: JSONArray()
-                val configured = mutableSetOf<String>()
-                val cloudRoutes = response.optJSONArray("cloud_routes") ?: JSONArray()
-                for (i in 0 until cloudRoutes.length()) {
-                    cloudRoutes.optJSONObject(i)?.optString("provider_id")?.takeIf { it.isNotBlank() }?.let(configured::add)
-                }
-                val result = mutableListOf<KiraCloudRoute>()
-                for (i in 0 until routeArray.length()) {
-                    val route = routeArray.optJSONObject(i) ?: continue
-                    val provider = route.optString("provider")
-                    if (provider.isBlank() || provider == "ollama") continue
-                    result += KiraCloudRoute(
-                        id = route.optString("id"),
-                        provider = provider,
-                        model = route.optString("model"),
-                        enabled = route.optBoolean("enabled", true),
-                        configured = provider in configured
-                    )
-                }
-                mainHandler.post {
-                    revision = response.optInt("revision", 0)
-                    sharedSettings = JSONObject(settings.toString())
-                    routes.clear()
-                    routes.addAll(result)
-                    status = if (result.isEmpty()) "هنوز Route ابری در حساب ذخیره نشده است. تنظیمات را ابتدا از ویندوز همگام کن یا کلید Provider اضافه کن."
-                    else "Routeهای حساب مشترک بارگذاری شدند."
-                    busy = false
-                }
-            } catch (error: Exception) {
-                mainHandler.post {
-                    status = error.message ?: "خواندن Routeها ناموفق بود."
-                    busy = false
-                }
+                core.saveProvider(id,modelId,endpoint,key,true)
+                val list=core.providers()
+                handler.post { routes.clear(); routes.addAll(list); apiKey=""; status="Provider ذخیره شد. درخواست‌ها مستقیماً از گوشی به API می‌روند."; busy=false }
+            } catch(e:Exception) {
+                handler.post { status=e.message ?: "ذخیره Provider ناموفق بود."; busy=false }
             }
         }
     }
-
-    LaunchedEffect(serverUrl) { loadRoutes() }
-
-    fun updateRoute(routeId: String, enabled: Boolean? = null, moveDelta: Int = 0) {
-        if (busy) return
-        val updated = JSONObject(sharedSettings.toString())
-        val array = updated.optJSONArray("routes") ?: JSONArray()
-        val routeList = mutableListOf<JSONObject>()
-        for (i in 0 until array.length()) {
-            array.optJSONObject(i)?.let { routeList.add(it) }
-        }
-        val index = routeList.indexOfFirst { it.optString("id") == routeId }
-        if (index < 0) return
-        if (enabled != null) routeList[index].put("enabled", enabled)
-        if (moveDelta != 0) {
-            val target = (index + moveDelta).coerceIn(0, routeList.lastIndex)
-            if (target != index) {
-                val moved = routeList.removeAt(index)
-                routeList.add(target, moved)
-            }
-        }
-        val reordered = JSONArray()
-        routeList.forEach { reordered.put(it) }
-        updated.put("routes", reordered)
-        val expectedRevision = revision
-        busy = true
-        status = "در حال ذخیره‌ی اولویت و وضعیت Route…"
+    fun change(route:LocalProvider,enabled:Boolean?=null,delta:Int=0) {
+        if(busy) return
+        busy=true
         executor.execute {
             try {
-                val client = KiraCoreClient(context, serverUrl)
-                if (!client.hasSession()) throw IllegalStateException("ابتدا وارد حساب Kira شو.")
-                val response = client.saveSettings(expectedRevision, updated)
-                mainHandler.post {
-                    revision = response.optInt("revision", revision + 1)
-                    sharedSettings = updated
-                    busy = false
-                    status = "تنظیمات Route روی حساب مشترک ذخیره شد."
-                    loadRoutes()
-                }
-            } catch (error: Exception) {
-                mainHandler.post {
-                    status = error.message ?: "ذخیره‌ی Route ناموفق بود. در صورت تعارض، لیست را بازیابی کن."
-                    busy = false
-                }
-            }
+                if(enabled!=null) core.setProviderEnabled(route.id,enabled)
+                if(delta!=0) core.moveProvider(route.id,delta)
+                val list=core.providers()
+                handler.post { routes.clear(); routes.addAll(list); status="تنظیمات Route روی همین دستگاه ذخیره شد."; busy=false }
+            } catch(e:Exception) { handler.post { status=e.message ?: "تغییر Route ناموفق بود."; busy=false } }
         }
     }
 
-    fun saveCredential() {
-        if (providerId.isBlank() || apiKey.isBlank() || busy) return
-        if (serverUrl.isBlank()) {
-            status = "آدرس سرور Kira Core تنظیم نشده است."
-            return
-        }
-        val requestedProviderId = providerId.trim()
-        val requestedApiKey = apiKey.trim()
-        val requestedAccountId = providerAccountId.trim().ifBlank { null }
-        busy = true
-        status = "در حال ذخیره امن کلید Provider…"
-        executor.execute {
-            try {
-                val client = KiraCoreClient(context, serverUrl)
-                if (!client.hasSession()) throw IllegalStateException("ابتدا وارد حساب Kira شو.")
-                client.saveProviderCredential(requestedProviderId, requestedApiKey, requestedAccountId)
-                mainHandler.post {
-                    apiKey = ""
-                    status = "کلید $requestedProviderId در Kira Core رمزنگاری و ذخیره شد."
-                    busy = false
-                    loadRoutes()
-                }
-            } catch (error: Exception) {
-                mainHandler.post {
-                    status = error.message ?: "ذخیره کلید ناموفق بود."
-                    busy = false
-                }
-            }
-        }
-    }
-
-    Column(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF0B0E15)).padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
+    Column(Modifier.fillMaxSize().background(Color(0xFF0B0E15)).padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween) {
             Column {
-                Text("ROUTE MANAGER", color = Color(0xFFB9A5FF), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
-                Text("مسیرهای مشترک", color = Color(0xFFF4F2FA), fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text("LOCAL ROUTE MANAGER",color=Color(0xFFB9A5FF),fontSize=10.sp,fontWeight=FontWeight.Bold,letterSpacing=2.sp)
+                Text("اتصال مستقیم API",color=Color(0xFFF4F2FA),fontSize=21.sp,fontWeight=FontWeight.Bold)
             }
-            Button(onClick = { loadRoutes() }, enabled = !busy, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF242D40))) {
-                Text("بازیابی")
+            OutlinedButton(onClick={refresh()},enabled=!busy) { Text("بازیابی") }
+        }
+        Text("Providerهای آماده: OpenRouter، Groq، Mistral، DeepSeek و Gemini. برای هرکدام کلید و Model ID خودت را وارد کن.",color=Color(0xFF9BA5B8),fontSize=11.sp,lineHeight=17.sp)
+        Surface(color=Color(0xFF151C2B),shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value=providerId,onValueChange={providerId=it},label={Text("Provider ID مثل openrouter یا gemini")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                OutlinedTextField(value=model,onValueChange={model=it},label={Text("Model ID")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                OutlinedTextField(value=baseUrl,onValueChange={baseUrl=it},label={Text("Base URL")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                OutlinedTextField(value=apiKey,onValueChange={apiKey=it},label={Text("API Key")},visualTransformation=PasswordVisualTransformation(),singleLine=true,modifier=Modifier.fillMaxWidth())
+                Button(onClick={save()},enabled=!busy && providerId.isNotBlank() && model.isNotBlank() && baseUrl.isNotBlank(),modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF7661D8))) { Text("ذخیره کلید و فعال‌سازی") }
             }
         }
-
-        Surface(color = Color(0xFF151C2B), shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("افزودن یا تغییر کلید Cloud", color = Color(0xFFF1EFF8), fontWeight = FontWeight.SemiBold)
-                OutlinedTextField(
-                    value = providerId,
-                    onValueChange = { providerId = it },
-                    label = { Text("شناسه Provider مثل openrouter یا groq") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = apiKey,
-                    onValueChange = { apiKey = it },
-                    label = { Text("API Key") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                    value = providerAccountId,
-                    onValueChange = { providerAccountId = it },
-                    label = { Text("Account ID (فقط اگر لازم است)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Button(
-                    onClick = { saveCredential() },
-                    enabled = !busy && providerId.isNotBlank() && apiKey.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7661D8))
-                ) { Text("ذخیره رمزنگاری‌شده روی سرور") }
-            }
-        }
-
-        Text("اولویت‌ها و وضعیت Providerها", color = Color(0xFFF1EFF8), fontWeight = FontWeight.SemiBold)
-        LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            itemsIndexed(routes, key = { _, route -> route.id }) { index, route ->
-                Surface(color = Color(0xFF151C2B), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text("${index + 1}. ${route.provider}", color = Color(0xFFF1EFF8), fontWeight = FontWeight.SemiBold)
-                                Text(route.model.ifBlank { "مدل انتخاب نشده" }, color = Color(0xFF9BA5B8), fontSize = 11.sp)
-                                Text(if (route.enabled) "فعال" else "غیرفعال", color = Color(0xFFB9A5FF), fontSize = 10.sp)
+        Text("ترتیب Route و Failover",color=Color(0xFFF1EFF8),fontWeight=FontWeight.SemiBold)
+        LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(7.dp)) {
+            itemsIndexed(routes,key={_,r->r.id}) { index,route ->
+                Surface(color=Color(0xFF151C2B),shape=RoundedCornerShape(13.dp),modifier=Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(11.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween) {
+                            Column(Modifier.weight(1f)) {
+                                Text((index+1).toString()+". "+route.id,color=Color(0xFFF1EFF8),fontWeight=FontWeight.SemiBold)
+                                Text(route.model,color=Color(0xFF9BA5B8),fontSize=10.sp)
+                                Text(if(route.hasKey) "کلید ذخیره‌شده" else "بدون کلید API",color=if(route.hasKey) Color(0xFF8FD6B0) else Color(0xFFFFC27A),fontSize=10.sp)
                             }
-                            Text(
-                                if (route.configured) "کلید ذخیره است" else "بدون کلید",
-                                color = if (route.configured) Color(0xFF8FD6B0) else Color(0xFFFFC27A),
-                                fontSize = 10.sp
-                            )
+                            Text(if(route.enabled) "فعال" else "خاموش",color=Color(0xFFB9A5FF),fontSize=10.sp)
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Button(
-                                onClick = { updateRoute(route.id, enabled = !route.enabled) },
-                                enabled = !busy,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF303A50))
-                            ) { Text(if (route.enabled) "غیرفعال‌کردن" else "فعال‌کردن") }
-                            Button(
-                                onClick = { updateRoute(route.id, moveDelta = -1) },
-                                enabled = !busy && index > 0,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF303A50))
-                            ) { Text("↑") }
-                            Button(
-                                onClick = { updateRoute(route.id, moveDelta = 1) },
-                                enabled = !busy && index < routes.lastIndex,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF303A50))
-                            ) { Text("↓") }
+                        Row(horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                            OutlinedButton(onClick={change(route,enabled=!route.enabled)},enabled=!busy) { Text(if(route.enabled) "خاموش" else "روشن") }
+                            OutlinedButton(onClick={change(route,delta=-1)},enabled=!busy && index>0) { Text("↑") }
+                            OutlinedButton(onClick={change(route,delta=1)},enabled=!busy && index<routes.lastIndex) { Text("↓") }
+                            TextButton(onClick={providerId=route.id;model=route.model;baseUrl=route.baseUrl;apiKey=""},enabled=!busy) { Text("ویرایش") }
                         }
                     }
                 }
             }
-            if (routes.isEmpty()) item {
-                Text("لیست Route پس از اتصال حساب و همگام‌سازی تنظیمات ظاهر می‌شود.", color = Color(0xFF8995AA), fontSize = 12.sp)
-            }
         }
-        if (busy) CircularProgressIndicator(color = Color(0xFFB9A5FF), modifier = Modifier.height(22.dp))
-        Text(status, color = Color(0xFF9BA5B8), fontSize = 10.sp, lineHeight = 15.sp)
-        Spacer(Modifier.height(2.dp))
+        if(busy) LinearProgressIndicator(Modifier.fillMaxWidth(),color=Color(0xFFB9A5FF))
+        Text(status,color=Color(0xFF9BA5B8),fontSize=10.sp,lineHeight=15.sp)
     }
 }
