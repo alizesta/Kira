@@ -16,7 +16,7 @@ The clients remain separate native applications. Device-only capabilities (Windo
 - Device registration and account snapshot/restore, including character profiles, full message history and per-character memory.
 - Idempotent import of approved desktop settings, messages and memory. The server does not delete the original desktop data.
 - Google Sign-In is deliberately not implemented yet. It is intended to link to the existing Account ID, not create a second Kira identity.
-- Initial HTTP adapters are present in kira/core_client.py (Windows) and android/.../core/KiraCoreClient.kt (Android), including device/session token storage. Android now has an email/password account screen; the Windows account UI and the existing chat/Route/settings screen wiring are still pending.
+- HTTP adapters are present in kira/core_client.py (Windows) and android/.../core/KiraCoreClient.kt (Android). Both clients have email/password account UI, encrypted session storage and device registration. Windows has an explicit Cloud Route/settings sync action and a previewed, non-destructive import of local character profiles, chat history and persona memory. Android has Core-backed chat/history, Cloud Route credential management and long-term memory screens.
 
 The service is an initial backend implementation, not yet a deployed public service. Client apps do not automatically synchronize until the Core is deployed and both clients have a server URL plus account/session integration.
 
@@ -79,5 +79,6 @@ The OpenAPI contract is maintained at shared/contracts/kira-core-api-v1.yaml. Th
 - Chat requests currently return a complete response rather than SSE streaming.
 - Attachments are not stored by this initial Core implementation yet.
 - Google OAuth, password reset/email verification, account deletion UI, billing and rate-limit administration are not implemented.
-- The first desktop import path is an API contract and server handler; the Windows import-preview/client workflow still needs to be connected.
-- Windows and Android still need their login/session UI and Core API adapters wired into their existing chat, settings and Route layers. The current adapters are the transport/session foundation, not a completed UI integration.
+- The Windows main chat still uses its local HybridRouter; routing ordinary desktop chat through Core is the next major integration step.
+- The Android and Windows chat clients currently use complete-response HTTP requests; streaming parity is not implemented yet.
+- The desktop migration import is explicit and non-destructive, but it is a one-time snapshot rather than continuous two-way reconciliation.
