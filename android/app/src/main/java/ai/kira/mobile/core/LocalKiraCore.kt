@@ -351,6 +351,9 @@ class LocalKiraCore(context:Context) {
         require(path.count { it=='{' }==placeholders.size && path.count { it=='}' }==placeholders.size) { "قالب مسیر معتبر نیست." }
         val cid=characterId.lowercase()
         require(cid in setOf("global","kira","ren","mika")) { "شخصیت معتبر نیست." }
+        require(!db.rawQuery("SELECT 1 FROM skills WHERE name=?",arrayOf(skillName)).use { it.moveToFirst() }) {
+            "این نام از قبل در کتابخانه وجود دارد؛ برای جلوگیری از جایگزینی ناخواسته، نام دیگری انتخاب کن."
+        }
         val connectorId="$skillName-query"
         val folder=java.io.File(app.filesDir,"kira/library/"+skillName)
         if(!folder.exists() && !folder.mkdirs()) throw IllegalStateException("ساخت پوشه Skill ناموفق بود.")
