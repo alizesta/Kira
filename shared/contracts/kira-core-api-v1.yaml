@@ -1,0 +1,365 @@
+openapi: 3.1.0
+info:
+  title: Kira Core API
+  version: 1.0.0
+  description: |
+    Single shared backend for the Windows and Android Kira clients.
+    Core owns identity, conversation orchestration, shared settings, cloud
+    routing, chat history, memory and cross-device synchronization.
+servers:
+  - url: https://{coreHost}
+    variables:
+      coreHost:
+        default: kira-core.example.com
+security:
+  - bearerAuth: []
+paths:
+  /v1/health:
+    get:
+      security: []
+      summary: Core health check
+      responses:
+        "200":
+          description: Core is reachable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok] }
+                  api_version: { type: string }
+  /v1/auth/register:
+    post:
+      security: []
+      summary: Create a Kira account using email and password
+      description: Initial identity provider. Google Sign-In will later link to the same account ID.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 12, maxLength: 256 }
+                display_name: { type: string, maxLength: 80 }
+      responses:
+        "201":
+          description: Account created and session issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "409": { description: Email already registered }
+  /v1/auth/login:
+    post:
+      security: []
+      summary: Sign in to an existing Kira account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                device: { $ref: "#/components/schemas/DeviceInfo" }
+      responses:
+        "200":
+          description: Session issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "401": { description: Invalid credentials }
+  /v1/auth/refresh:
+    post:
+      security: []
+      summary: Rotate refresh token and issue a new access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        "200":
+          description: New token pair
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "401": { description: Invalid or revoked refresh token }
+  /v1/auth/logout:
+    post:
+      summary: Revoke current refresh token
+      responses:
+        "204": { description: Signed out }
+  /v1/account:
+    get:
+      summary: Read account profile and stable account ID
+      responses:
+        "200":
+          description: Account profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  account_id: { type: string, format: uuid }
+                  email: { type: string, format: email }
+                  display_name: { type: string }
+                  linked_identities:
+                    type: array
+                    items: { type: string }
+                  created_at: { type: string, format: date-time }
+  /v1/settings:
+    get:
+      summary: Read shared account settings and cloud routes (never returns secrets)
+      responses:
+        "200":
+          description: Shared settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SharedSettings" }
+    put:
+      summary: Replace shared settings using optimistic revision control
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision, settings]
+              properties:
+                revision: { type: integer, minimum: 0 }
+                settings: { type: object }
+      responses:
+        "200": { description: Settings saved and new revision returned }
+        "409": { description: Revision conflict; client must fetch and merge }
+  /v1/settings/providers/{providerId}/credential:
+    put:
+      summary: Add or replace a Cloud Provider credential
+      description: Secret is encrypted at rest and is never included in settings GET responses.
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [api_key]
+              properties:
+                api_key: { type: string, minLength: 1 }
+                account_id: { type: string }
+      responses:
+        "204": { description: Credential stored securely }
+    delete:
+      summary: Remove a Cloud Provider credential
+      parameters:
+        - name: providerId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Credential removed }
+  /v1/conversations:
+    get:
+      summary: List account conversations across devices
+      parameters:
+        - name: character_id
+          in: query
+          schema: { type: string }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        "200": { description: Conversation page }
+    post:
+      summary: Create a conversation for a character
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [character_id]
+              properties:
+                character_id: { type: string }
+                title: { type: string }
+      responses:
+        "201": { description: Conversation created }
+  /v1/conversations/{conversationId}/messages:
+    get:
+      summary: Read messages from the shared account history
+      parameters:
+        - name: conversationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        "200": { description: Message page }
+  /v1/chat/messages:
+    post:
+      summary: Send a message to the single shared Kira Brain
+      description: |
+        Clients send user content and context metadata only. Core chooses the character
+        prompt, retrieves account memory, selects a cloud route, performs failover,
+        stores the conversation and returns the same result to both clients. Provider
+        credentials and the canonical system prompt are never accepted from clients.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [conversation_id, character_id, content]
+              properties:
+                conversation_id: { type: string, format: uuid }
+                character_id: { type: string }
+                content: { type: string, minLength: 1 }
+                attachment_ids:
+                  type: array
+                  items: { type: string, format: uuid }
+                approved_screen_context:
+                  type: boolean
+                  default: false
+                device_id: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Stored user message and shared-brain response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_message_id: { type: string, format: uuid }
+                  assistant_message_id: { type: string, format: uuid }
+                  content: { type: string }
+                  character_id: { type: string }
+                  conversation_id: { type: string, format: uuid }
+                  route:
+                    type: object
+                    properties:
+                      provider: { type: string }
+                      model: { type: string }
+                  created_at: { type: string, format: date-time }
+        "429": { description: Account or provider rate limit }
+  /v1/memory/{characterId}:
+    get:
+      summary: Read shared long-term memory for one character
+      parameters:
+        - name: characterId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Memory items and revision }
+    put:
+      summary: Update shared memory with optimistic revision control
+      parameters:
+        - name: characterId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision, items]
+              properties:
+                revision: { type: integer, minimum: 0 }
+                items: { type: array, items: { type: object } }
+      responses:
+        "200": { description: Memory saved }
+        "409": { description: Revision conflict }
+  /v1/devices:
+    get:
+      summary: List devices connected to this account
+      responses:
+        "200": { description: Registered devices }
+    post:
+      summary: Register or update the current client device
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeviceInfo" }
+      responses:
+        "201": { description: Device registered }
+  /v1/sync/snapshot:
+    get:
+      summary: Restore the latest shared account snapshot on a new device
+      responses:
+        "200":
+          description: Settings, conversations, memory and shared profile state
+          content:
+            application/json:
+              schema: { type: object }
+  /v1/sync/import:
+    post:
+      summary: Import existing desktop data after explicit user confirmation
+      description: Idempotent import. Local source data is never deleted by Core.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [import_id, shared_data]
+              properties:
+                import_id: { type: string, format: uuid }
+                shared_data: { type: object }
+                provider_credentials:
+                  type: object
+                  description: Optional secrets; each credential transfer requires explicit opt-in.
+      responses:
+        "200": { description: Import completed or previously applied }
+        "409": { description: Import needs conflict resolution }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Session:
+      type: object
+      required: [account_id, access_token, refresh_token, token_type, expires_in]
+      properties:
+        account_id: { type: string, format: uuid }
+        access_token: { type: string }
+        refresh_token: { type: string }
+        token_type: { type: string, enum: [Bearer] }
+        expires_in: { type: integer }
+    DeviceInfo:
+      type: object
+      required: [device_id, platform, app_version]
+      properties:
+        device_id: { type: string, format: uuid }
+        platform: { type: string, enum: [windows, android] }
+        device_name: { type: string }
+        app_version: { type: string }
+        local_capabilities:
+          type: array
+          items: { type: string }
+    SharedSettings:
+      type: object
+      properties:
+        account_id: { type: string, format: uuid }
+        revision: { type: integer }
+        settings: { type: object }
+        cloud_routes: { type: array, items: { type: object } }
+        updated_at: { type: string, format: date-time }
