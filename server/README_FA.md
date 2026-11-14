@@ -16,7 +16,7 @@ The clients remain separate native applications. Device-only capabilities (Windo
 - Device registration and account snapshot/restore, including character profiles, full message history and per-character memory.
 - Idempotent import of approved desktop settings, messages and memory. The server does not delete the original desktop data.
 - Google Sign-In is deliberately not implemented yet. It is intended to link to the existing Account ID, not create a second Kira identity.
-- Initial HTTP adapters are present in kira/core_client.py (Windows) and android/.../core/KiraCoreClient.kt (Android), including device/session token storage. The existing chat/Route/settings screens are not wired to these adapters yet.
+- Initial HTTP adapters are present in kira/core_client.py (Windows) and android/.../core/KiraCoreClient.kt (Android), including device/session token storage. Android now has an email/password account screen; the Windows account UI and the existing chat/Route/settings screen wiring are still pending.
 
 The service is an initial backend implementation, not yet a deployed public service. Client apps do not automatically synchronize until the Core is deployed and both clients have a server URL plus account/session integration.
 
