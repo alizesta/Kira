@@ -108,6 +108,17 @@ class LocalKiraCore(context:Context) {
         return out
     }
 
+    fun recommendedFreeModel(providerId:String,models:List<String>):String {
+        require(models.isNotEmpty()) { "فهرست مدل‌های رایگان خالی است." }
+        val priorities=when(providerId) {
+            "gemini" -> listOf("gemini-3.8-flash","gemini-2.5-flash","gemini-2.5-flash-lite")
+            "mistral" -> listOf("labs-leanstral-2603")
+            "openrouter" -> listOf("nvidia/nemotron-3-ultra:free","minimax/minimax-m3:free","qwen/qwen3.5-32b:free","google/gemma-4-26b-a4b-it:free")
+            else -> emptyList()
+        }
+        return priorities.firstOrNull { it in models } ?: models.first()
+    }
+
 
     /** Detects the provider from a key fingerprint, then verifies it against the live model endpoint. */
     @Synchronized fun detectProviderAndDiscoverModels(apiKey:String):Pair<String,List<String>> {
@@ -157,15 +168,42 @@ class LocalKiraCore(context:Context) {
                 val item=arr.optJSONObject(i) ?: continue
                 val name=item.optString("id",item.optString("name")).removePrefix("models/")
                 if(name.isBlank()) continue
-                if(id=="gemini") {
-                    val methods=item.optJSONArray("supportedGenerationMethods") ?: JSONArray()
-                    if((0 until methods.length()).none { methods.optString(it)=="generateContent" }) continue
+                val isChat=when(id) {
+                    "gemini" -> {
+                        val methods=item.optJSONArray("supportedGenerationMethods") ?: JSONArray()
+                        (0 until methods.length()).any { methods.optString(it)=="generateContent" }
+                    }
+                    "mistral" -> item.optJSONObject("capabilities")?.optBoolean("completion_chat",false)==true
+                    "openrouter" -> {
+                        val output=item.optJSONObject("architecture")?.optJSONArray("output_modalities")
+                        output==null || (0 until output.length()).any { output.optString(it)=="text" }
+                    }
+                    else -> false
                 }
-                found+=name
+                if(!isChat) continue
+                val isFree=when(id) {
+                    "gemini" -> name in setOf("gemini-3.8-flash","gemini-2.5-flash","gemini-2.5-flash-lite")
+                    "openrouter" -> {
+                        val pricing=item.optJSONObject("pricing")
+                        val prompt=pricing?.optString("prompt")?.toDoubleOrNull()
+                        val completion=pricing?.optString("completion")?.toDoubleOrNull()
+                        name.endsWith(":free") && prompt==0.0 && completion==0.0
+                    }
+                    "mistral" -> name=="labs-leanstral-2603"
+                    else -> false
+                }
+                if(isFree) found+=name
             }
             found.distinct().sorted()
         } finally { conn.disconnect() }
-        if(models.isEmpty()) throw IllegalStateException("Provider هیچ مدل قابل استفاده‌ای برنگرداند.")
+        if(models.isEmpty()) throw IllegalStateException(
+            when(id) {
+                "deepseek" -> "DeepSeek API مدل رایگان دائمی ندارد؛ کلید آن برای مدل‌های پولی است و در فهرست رایگان Kira نمایش داده نمی‌شود."
+                "groq" -> "فهرست فعلی Groq مدل چت رایگانِ با قیمت صفر مشخص نمی‌کند؛ برای جلوگیری از هزینه، هیچ مدلی اضافه نشد."
+                "mistral" -> "در فهرست فعلی Mistral مدل چت رایگانِ سازگار پیدا نشد. فقط مدل‌های رایگان دارای قابلیت چت پذیرفته می‌شوند."
+                else -> "هیچ مدل چت رایگانی با قیمت صفر برای این Provider پیدا نشد. هیچ مدل پولی اضافه یا انتخاب نشد."
+            }
+        )
         db.beginTransaction()
         try {
             db.delete("provider_models","provider_id=?",arrayOf(id))
