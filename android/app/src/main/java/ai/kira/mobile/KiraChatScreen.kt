@@ -50,7 +50,7 @@ internal fun KiraChatScreen(character:String,onCharacterChange:(String)->Unit) {
         val who=character
         input=""
         busy=true
-        status="در حال پاسخ از Provider محلی…"
+        status="در حال دریافت پاسخ…"
         executor.execute {
             try {
                 val reply=core.sendMessage(who,text)
@@ -102,8 +102,9 @@ internal fun KiraChatScreen(character:String,onCharacterChange:(String)->Unit) {
         }
         Text(status,color=Color(0xFF9BA5B8),fontSize=10.sp,lineHeight=15.sp)
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.Bottom,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(value=input,onValueChange={input=it},modifier=Modifier.weight(1f),placeholder={Text("پیامت را بنویس…")},maxLines=4,
-                keyboardOptions=KeyboardOptions(imeAction=ImeAction.Send),keyboardActions=KeyboardActions(onSend={send()}),shape=RoundedCornerShape(18.dp))
+            OutlinedTextField(value=input,onValueChange={input=it},modifier=Modifier.weight(1f),placeholder={Text("پیامت را بنویس…",color=Color(0xFFD7D1E8))},maxLines=4,
+                keyboardOptions=KeyboardOptions(imeAction=ImeAction.Send),keyboardActions=KeyboardActions(onSend={send()}),shape=RoundedCornerShape(18.dp),
+                colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,disabledTextColor=Color.White,cursorColor=Color.White,focusedPlaceholderColor=Color(0xFFD7D1E8),unfocusedPlaceholderColor=Color(0xFFD7D1E8)))
             Button(onClick={send()},enabled=!busy && input.isNotBlank(),modifier=Modifier.height(54.dp),colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF7661D8))) { Text("ارسال") }
         }
     }
