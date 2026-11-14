@@ -2108,6 +2108,10 @@ class MainWindow(QMainWindow):
         self.core_sync_btn = QPushButton("همگام‌سازی Route و تنظیمات Cloud با حساب")
         self.core_sync_btn.clicked.connect(lambda: self.core_account_action("sync"))
         core_form.addRow(self.core_sync_btn)
+        self.core_chat_chk = QCheckBox("استفاده از Kira Core به‌عنوان مغز چت ویندوز")
+        self.core_chat_chk.setChecked(bool(self.settings.get("core_chat_enabled", False)))
+        self.core_chat_chk.setToolTip("برای پیام‌های متنی معمولی از همان تاریخچه و موتور ابری مشترک Android استفاده می‌کند. ابزارهای محلی و پیام‌های دارای فایل همچنان روی ویندوز اجرا می‌شوند.")
+        core_form.addRow(self.core_chat_chk)
         self.core_import_btn = QPushButton("انتقال تاریخچه، شخصیت‌ها و حافظه‌ی محلی به حساب")
         self.core_import_btn.clicked.connect(lambda: self.core_account_action("import"))
         self.core_import_btn.setEnabled(not bool(self.settings.get("core_migration_imported")))
@@ -3279,6 +3283,7 @@ class MainWindow(QMainWindow):
             "ui_lang": self.ui_lang.currentData(),
             "window_effect": self.window_effect.currentData(),
             "core_url": self.core_url.text().strip(),
+            "core_chat_enabled": self.core_chat_chk.isChecked(),
             "tavily_api_key": self.tavily_key.text().strip(),
             "web_depth": self.web_depth.currentData(),
             "web_fallback": self.web_fallback_chk.isChecked(),
@@ -3924,6 +3929,7 @@ class MainWindow(QMainWindow):
                 action_result = run_safe_action(text)                                  # tools switched off (tools_mode = off): the old fixed shortcuts
         self._tool_plan = None if action_result else self.tool_agent.plan(text)
         self.save_message("user", packed["stored"] if packed else text)
+        self._last_submitted_text = text
         if action_result:
             self.reply_local(action_result)
             return
@@ -3952,6 +3958,10 @@ class MainWindow(QMainWindow):
         self.begin_reply()
 
     def begin_reply(self):
+        if (self.settings.get("core_chat_enabled") and not self._turn_attach_kinds
+                and not self._web_found and not self._tool_plan):
+            self.start_core_reply()
+            return
         try:
             self.start_worker(plain=False)
         except Exception as exc:                                  # noqa: BLE001 - never leave the window stuck in 'busy'
@@ -3959,6 +3969,82 @@ class MainWindow(QMainWindow):
             self.add_chat("error", self.t("reply_err", e=f"{type(exc).__name__}: {exc}"))
             self.finish_request(None)
             self.set_badge("error")
+
+    def start_core_reply(self):
+        """Send ordinary text chat to the same account-owned Core brain used by Android."""
+        try:
+            url = str(self.settings.get("core_url") or "").strip()
+            character_id = str(self.cur.cid or "kira")
+            user_text = str(self._turn_extra.get("model") if self._turn_extra else "")
+            if not user_text:
+                user_text = str(self._last_submitted_text or "")
+            if not user_text:
+                # The current turn is the final user message in the local context.
+                user_text = next((m.get("content", "") for m in reversed(conversation_context(2, character_id=character_id))
+                                  if m.get("role") == "user"), "")
+            def work():
+                client = KiraCoreClient(url)
+                if not client.authenticated:
+                    raise KiraCoreError(401, "ابتدا در بخش حساب مشترک وارد Kira Core شو.")
+                rows = client.conversations(character_id).get("items") or []
+                conversation_id = str(rows[0].get("id") or "") if rows else ""
+                if not conversation_id:
+                    created = client.create_conversation(character_id)
+                    conversation_id = str(created.get("id") or "")
+                if not conversation_id:
+                    raise KiraCoreError(502, "ساخت گفت‌وگوی مشترک ناموفق بود.")
+                response = client.send_message(conversation_id, character_id, user_text)
+                return response
+            self._core_chat_worker = TaskWorker(work)
+            self._core_chat_worker.done.connect(self.on_core_chat_done)
+            self._core_chat_worker.finished.connect(self._core_chat_worker.deleteLater)
+            self.set_status("st_thinking")
+            self.set_badge("connecting", None)
+            self._core_chat_worker.start()
+        except Exception as exc:
+            self.add_chat("error", f"اتصال به Kira Core ناموفق بود: {exc}")
+            self.finish_request(None)
+            self.set_badge("error")
+
+    def on_core_chat_done(self, result):
+        if self._closing:
+            return
+        ok, value = result
+        if not ok:
+            self.add_chat("error", f"پاسخ از Kira Core دریافت نشد: {value}")
+            self.director.event("response_failed")
+            self.finish_request(None)
+            self.set_badge("error")
+            self._send_next_pending()
+            return
+        raw = str(value.get("content") or "")
+        meta = self.director.parse_reply(raw)
+        self.run_body(meta.body)
+        text = meta.text.strip()
+        if not text:
+            self.add_chat("error", self.t("empty"))
+            self.director.event("response_failed")
+            self.finish_request(None)
+            self.set_badge("error")
+            self._send_next_pending()
+            return
+        self.add_chat("assistant", text)
+        self.save_message("assistant", raw)
+        if not self._emotion_applied:
+            self.director.on_reply(meta)
+        self.say(text)
+        route = value.get("route") if isinstance(value.get("route"), dict) else {}
+        provider = str(route.get("provider") or "Kira Core")
+        model = str(route.get("model") or "")
+        route_id = str(route.get("route_id") or "")
+        self.finish_request({
+            "provider": provider,
+            "model": model,
+            "route_id": route_id,
+            "label": provider,
+            "kind": "cloud",
+        })
+        self._send_next_pending()
 
     # ---- web search ----
     def toggle_web_search(self, on):
