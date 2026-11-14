@@ -7,8 +7,8 @@
 - MainActivity.kt: پوسته و ناوبری
 - assistant/AiAssistantOverlayService.kt: دسترسی شناور Android
 - core/KiraCoreClient.kt: اتصال API مشترک، نشست و ذخیره‌ی امن Token با Android Keystore
-- KiraChatScreen.kt: چت و بازیابی تاریخچه از حساب مشترک
-- KiraRouteScreen.kt: مشاهده‌ی Routeهای Cloud و ذخیره‌ی رمزنگاری‌شده‌ی کلید Provider
+- KiraChatScreen.kt: چت Kira/Ren/Mika و بازیابی تاریخچه از حساب مشترک
+- KiraRouteScreen.kt: مشاهده، فعال/غیرفعال‌کردن و جابه‌جایی اولویت Routeهای Cloud و ذخیره‌ی رمزنگاری‌شده‌ی کلید Provider
 - KiraMemoryScreen.kt: مشاهده و ویرایش حافظه‌ی بلندمدت مشترک
 - ../shared/contracts/: قرارداد هم‌ارزی قابلیت‌ها و API مشترک
 - ../docs/ANDROID_PORT_ROADMAP_FA.md: معماری و مراحل توسعه
