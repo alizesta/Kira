@@ -80,6 +80,7 @@ internal fun KiraChatScreen() {
             return
         }
         if (busy) return
+        val requestedCharacterId = characterId
         busy = true
         executor.execute {
             try {
@@ -87,7 +88,7 @@ internal fun KiraChatScreen() {
                 if (!client.hasSession()) {
                     throw IllegalStateException("برای استفاده از چت مشترک، ابتدا وارد حساب Kira شو.")
                 }
-                val list = client.conversations(characterId).optJSONArray("items") ?: JSONArray()
+                val list = client.conversations(requestedCharacterId).optJSONArray("items") ?: JSONArray()
                 var selectedId = ""
                 var loaded = JSONArray()
                 if (list.length() > 0) {
@@ -95,7 +96,7 @@ internal fun KiraChatScreen() {
                     selectedId = first.optString("id")
                     loaded = client.messages(selectedId).optJSONArray("items") ?: JSONArray()
                 } else {
-                    selectedId = client.createConversation(characterId).optString("id")
+                    selectedId = client.createConversation(requestedCharacterId).optString("id")
                 }
                 val result = mutableListOf<KiraChatMessage>()
                 for (i in 0 until loaded.length()) {
@@ -142,6 +143,7 @@ internal fun KiraChatScreen() {
             status = "ابتدا آدرس Kira Core را در تنظیمات وارد کن."
             return
         }
+        val requestedCharacterId = characterId
         busy = true
         input = ""
         status = "Kira در حال پاسخ‌دادن است…"
@@ -154,7 +156,7 @@ internal fun KiraChatScreen() {
                 var id = conversationId
                 if (id.isBlank()) id = client.createConversation("kira").optString("id")
                 if (id.isBlank()) throw IllegalStateException("ساخت گفت‌وگو ناموفق بود.")
-                val response = client.sendMessage(id, characterId, text)
+                val response = client.sendMessage(id, requestedCharacterId, text)
                 val route = response.optJSONObject("route")?.let {
                     listOf(it.optString("provider"), it.optString("model"))
                         .filter(String::isNotBlank).joinToString(" · ")
