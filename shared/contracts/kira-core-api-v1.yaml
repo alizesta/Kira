@@ -96,6 +96,15 @@ paths:
   /v1/auth/logout:
     post:
       summary: Revoke current refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
       responses:
         "204": { description: Signed out }
   /v1/account:
@@ -140,12 +149,12 @@ paths:
       responses:
         "200": { description: Settings saved and new revision returned }
         "409": { description: Revision conflict; client must fetch and merge }
-  /v1/settings/providers/{providerId}/credential:
+  /v1/settings/providers/{provider_id}/credential:
     put:
       summary: Add or replace a Cloud Provider credential
       description: Secret is encrypted at rest and is never included in settings GET responses.
       parameters:
-        - name: providerId
+        - name: provider_id
           in: path
           required: true
           schema: { type: string }
@@ -164,7 +173,7 @@ paths:
     delete:
       summary: Remove a Cloud Provider credential
       parameters:
-        - name: providerId
+        - name: provider_id
           in: path
           required: true
           schema: { type: string }
@@ -196,11 +205,11 @@ paths:
                 title: { type: string }
       responses:
         "201": { description: Conversation created }
-  /v1/conversations/{conversationId}/messages:
+  /v1/conversations/{conversation_id}/messages:
     get:
       summary: Read messages from the shared account history
       parameters:
-        - name: conversationId
+        - name: conversation_id
           in: path
           required: true
           schema: { type: string, format: uuid }
@@ -255,11 +264,11 @@ paths:
                       model: { type: string }
                   created_at: { type: string, format: date-time }
         "429": { description: Account or provider rate limit }
-  /v1/memory/{characterId}:
+  /v1/memory/{character_id}:
     get:
       summary: Read shared long-term memory for one character
       parameters:
-        - name: characterId
+        - name: character_id
           in: path
           required: true
           schema: { type: string }
@@ -268,7 +277,7 @@ paths:
     put:
       summary: Update shared memory with optimistic revision control
       parameters:
-        - name: characterId
+        - name: character_id
           in: path
           required: true
           schema: { type: string }
@@ -321,7 +330,9 @@ paths:
               required: [import_id, shared_data]
               properties:
                 import_id: { type: string, format: uuid }
-                shared_data: { type: object }
+                shared_data:
+                  type: object
+                  description: May include settings, conversations with their messages, and per-character memory.
                 provider_credentials:
                   type: object
                   description: Optional secrets; each credential transfer requires explicit opt-in.
