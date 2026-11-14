@@ -570,12 +570,19 @@ def _normalize_character_profile(character_id: str, profile: dict) -> dict:
                 traits[str(key)[:64]] = max(0.0, min(1.0, float(value)))
             except (TypeError, ValueError):
                 continue
+    system_prompt = str(profile.get("system_prompt") or "").strip()
+    if not system_prompt:
+        system_prompt = "\n\n".join(
+            str(profile.get(key) or "").strip()
+            for key in ("prompt", "specialty_prompt")
+            if str(profile.get(key) or "").strip()
+        )
     return {
         "id": character_id,
         "name": name[:80],
         "description": str(profile.get("description") or "")[:4000],
         "notes": str(profile.get("notes") or "")[:12000],
-        "system_prompt": str(profile.get("system_prompt") or "")[:30000],
+        "system_prompt": system_prompt[:30000],
         "traits": traits,
     }
 
@@ -595,8 +602,8 @@ def _profile_for(character_id: str, settings: dict, db: Session, account_id: str
         profile.update(stored.profile or {})
     if not profile:
         raise HTTPException(status_code=404, detail="Character profile not found.")
-    prompt = "\n\n".join(x for x in (
-        str(profile.get("system_prompt") or ""),
+    stored_prompt = str(profile.get("system_prompt") or "").strip()
+    prompt = stored_prompt or "\n\n".join(x for x in (
         str(profile.get("prompt") or ""),
         str(profile.get("specialty_prompt") or ""),
     ) if x.strip())
