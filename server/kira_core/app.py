@@ -102,6 +102,17 @@ class Message(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class CharacterProfile(Base):
+    __tablename__ = "character_profiles"
+    __table_args__ = (UniqueConstraint("account_id", "character_id", name="uq_account_character_profile"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    account_id: Mapped[str] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    character_id: Mapped[str] = mapped_column(String(80))
+    revision: Mapped[int] = mapped_column(Integer, default=0)
+    profile: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class CharacterMemory(Base):
     __tablename__ = "character_memory"
     __table_args__ = (UniqueConstraint("account_id", "character_id", name="uq_account_character_memory"),)
@@ -349,6 +360,11 @@ class ChatRequest(BaseModel):
     approved_screen_context: bool = False
 
 
+class CharacterProfileRequest(BaseModel):
+    revision: int = Field(ge=0)
+    profile: dict
+
+
 class MemoryRequest(BaseModel):
     revision: int = Field(ge=0)
     items: list[dict] = Field(max_length=5000)
@@ -539,15 +555,48 @@ def list_messages(conversation_id: str, account: Account = Depends(current_accou
     ]}
 
 
-def _profile_for(character_id: str, settings: dict) -> dict:
+def _normalize_character_profile(character_id: str, profile: dict) -> dict:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", character_id):
+        raise HTTPException(status_code=422, detail="Invalid character identifier.")
+    if not isinstance(profile, dict):
+        raise HTTPException(status_code=422, detail="Character profile must be an object.")
+    name = str(profile.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Character profile name is required.")
+    traits = {}
+    if isinstance(profile.get("traits"), dict):
+        for key, value in profile["traits"].items():
+            try:
+                traits[str(key)[:64]] = max(0.0, min(1.0, float(value)))
+            except (TypeError, ValueError):
+                continue
+    return {
+        "id": character_id,
+        "name": name[:80],
+        "description": str(profile.get("description") or "")[:4000],
+        "notes": str(profile.get("notes") or "")[:12000],
+        "system_prompt": str(profile.get("system_prompt") or "")[:30000],
+        "traits": traits,
+    }
+
+
+def _profile_for(character_id: str, settings: dict, db: Session, account_id: str) -> dict:
+    from kira.personas import all_profiles
     if character_id == "kira":
         from kira.characters.kira import PROFILE
-        return PROFILE
-    from kira.personas import all_profiles
-    profile = all_profiles(settings).get(character_id)
+        profile = dict(PROFILE)
+    else:
+        profile = dict(all_profiles(settings).get(character_id) or {})
+    stored = db.scalar(select(CharacterProfile).where(
+        CharacterProfile.account_id == account_id,
+        CharacterProfile.character_id == character_id,
+    ))
+    if stored is not None:
+        profile.update(stored.profile or {})
     if not profile:
         raise HTTPException(status_code=404, detail="Character profile not found.")
     prompt = "\n\n".join(x for x in (
+        str(profile.get("system_prompt") or ""),
         str(profile.get("prompt") or ""),
         str(profile.get("specialty_prompt") or ""),
     ) if x.strip())
@@ -558,6 +607,73 @@ def _profile_for(character_id: str, settings: dict) -> dict:
         "notes": profile.get("notes") or "",
         "system_prompt": prompt,
     }
+
+
+@app.get("/v1/characters")
+def list_characters(account: Account = Depends(current_account), db: Session = Depends(get_db)):
+    state = _account_settings(db, account.id)
+    from kira.personas import all_profiles
+    profiles = {key: dict(value) for key, value in all_profiles(state.settings).items()}
+    overrides = db.scalars(select(CharacterProfile).where(
+        CharacterProfile.account_id == account.id)).all()
+    revisions = {}
+    for row in overrides:
+        profiles[row.character_id] = {**profiles.get(row.character_id, {}), **(row.profile or {})}
+        revisions[row.character_id] = row.revision
+    return {
+        "items": [
+            {**profile, "revision": revisions.get(character_id, 0)}
+            for character_id, profile in sorted(profiles.items())
+        ]
+    }
+
+
+@app.put("/v1/characters/{character_id}")
+def put_character(
+    character_id: str,
+    payload: CharacterProfileRequest,
+    account: Account = Depends(current_account),
+    db: Session = Depends(get_db),
+):
+    normalized = _normalize_character_profile(character_id, payload.profile)
+    row = db.scalar(select(CharacterProfile).where(
+        CharacterProfile.account_id == account.id,
+        CharacterProfile.character_id == character_id,
+    ))
+    current_revision = row.revision if row else 0
+    if payload.revision != current_revision:
+        raise HTTPException(status_code=409, detail={
+            "message": "Character profile revision conflict.",
+            "current_revision": current_revision,
+        })
+    if row is None:
+        row = CharacterProfile(
+            account_id=account.id,
+            character_id=character_id,
+            revision=1,
+            profile=normalized,
+        )
+        db.add(row)
+    else:
+        row.profile = normalized
+        row.revision += 1
+        row.updated_at = utcnow()
+    db.commit()
+    return {"character_id": character_id, "revision": row.revision, "profile": normalized}
+
+
+@app.delete("/v1/characters/{character_id}", status_code=204)
+def delete_character(character_id: str, account: Account = Depends(current_account), db: Session = Depends(get_db)):
+    if character_id == "kira":
+        raise HTTPException(status_code=409, detail="The default Kira profile cannot be removed.")
+    row = db.scalar(select(CharacterProfile).where(
+        CharacterProfile.account_id == account.id,
+        CharacterProfile.character_id == character_id,
+    ))
+    if row is not None:
+        db.delete(row)
+        db.commit()
+    return None
 
 
 def _memory_block(db: Session, account_id: str, character_id: str) -> str:
@@ -627,7 +743,7 @@ def _core_chat_sync(db: Session, account: Account, payload: ChatRequest):
     messages = [{"role": row.role, "content": row.content} for row in reversed(history)]
     messages.append({"role": "user", "content": payload.content})
     memory_block = _memory_block(db, account.id, payload.character_id)
-    profile = _profile_for(payload.character_id, settings)
+    profile = _profile_for(payload.character_id, settings, db, account.id)
     system_prompt = build_system_prompt(settings, memory_block=memory_block, character_profile=profile)
     router = HybridRouter(settings)
     # Server-side usage telemetry is account-scoped elsewhere; never append shared-user requests
