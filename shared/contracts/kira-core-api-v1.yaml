@@ -179,6 +179,50 @@ paths:
           schema: { type: string }
       responses:
         "204": { description: Credential removed }
+  /v1/characters:
+    get:
+      summary: List built-in and account-customized character profiles
+      responses:
+        "200":
+          description: Character profiles with account revision numbers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { type: object }
+  /v1/characters/{character_id}:
+    put:
+      summary: Save an account-owned character profile
+      parameters:
+        - name: character_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [revision, profile]
+              properties:
+                revision: { type: integer, minimum: 0 }
+                profile: { type: object }
+      responses:
+        "200": { description: Profile saved and new revision returned }
+        "409": { description: Revision conflict }
+    delete:
+      summary: Remove a profile override or custom profile; built-in profile falls back to its default
+      parameters:
+        - name: character_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Profile override removed }
   /v1/conversations:
     get:
       summary: List account conversations across devices
@@ -332,7 +376,7 @@ paths:
                 import_id: { type: string, format: uuid }
                 shared_data:
                   type: object
-                  description: May include settings, conversations with their messages, and per-character memory.
+                  description: May include settings, character profile overrides, conversations with their messages, and per-character memory.
                 provider_credentials:
                   type: object
                   description: Optional secrets; each credential transfer requires explicit opt-in.
