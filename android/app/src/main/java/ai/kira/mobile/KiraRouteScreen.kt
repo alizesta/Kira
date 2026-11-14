@@ -114,14 +114,7 @@ internal fun KiraRouteScreen() {
         Text("فقط API Key را وارد کن. Kira نوع Provider را تشخیص می‌دهد، مدل‌ها را می‌گیرد و تنظیمات اتصال را خودش انجام می‌دهد.",color=Color(0xFF9BA5B8),fontSize=12.sp,lineHeight=18.sp)
         Surface(color=Color(0xFF151C2B),shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(9.dp)) {
-                Box {
-                    OutlinedButton(onClick={providerMenu=true},modifier=Modifier.fillMaxWidth(),enabled=!busy) { Text("Provider: ${selectedProvider.label}") }
-                    DropdownMenu(expanded=providerMenu,onDismissRequest={providerMenu=false}) {
-                        providerPresets.forEach { preset ->
-                            DropdownMenuItem(text={Text(preset.label)},onClick={providerMenu=false;providerId=preset.id})
-                        }
-                    }
-                }
+                Text("Provider به‌صورت خودکار از روی API Key تشخیص داده می‌شود.",color=Color(0xFFB9A5FF),fontSize=11.sp)
                 OutlinedTextField(value=apiKey,onValueChange={apiKey=it},label={Text("API Key",color=Color.White)},visualTransformation=PasswordVisualTransformation(),singleLine=true,modifier=Modifier.fillMaxWidth(),colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,disabledTextColor=Color.White,cursorColor=Color.White,focusedLabelColor=Color.White,unfocusedLabelColor=Color.White))
                 Button(onClick={connect()},enabled=!busy && apiKey.isNotBlank(),modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF7661D8))) {
                     Text(if(busy) "در حال اتصال…" else "تشخیص Provider و دریافت مدل‌ها")
