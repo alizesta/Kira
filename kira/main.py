@@ -2248,7 +2248,7 @@ class MainWindow(QMainWindow):
                 return {
                     "account_id": client.account_id,
                     "message": f"انتقال اطلاعات انجام شد: {result.get('imported_conversations', 0)} گفتگو. داده‌ی محلی حذف نشد.",
-                    "imported": result.get("status") == "imported",
+                    "imported": result.get("status") in ("imported", "already_imported"),
                 }
             if action == "sync":
                 if not client.authenticated:
