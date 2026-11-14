@@ -2108,6 +2108,9 @@ class MainWindow(QMainWindow):
         self.core_sync_btn = QPushButton("همگام‌سازی Route و تنظیمات Cloud با حساب")
         self.core_sync_btn.clicked.connect(lambda: self.core_account_action("sync"))
         core_form.addRow(self.core_sync_btn)
+        self.core_pull_btn = QPushButton("بازیابی Route و تنظیمات مشترک از حساب")
+        self.core_pull_btn.clicked.connect(lambda: self.core_account_action("pull"))
+        core_form.addRow(self.core_pull_btn)
         self.core_chat_chk = QCheckBox("استفاده از Kira Core به‌عنوان مغز چت ویندوز")
         self.core_chat_chk.setChecked(bool(self.settings.get("core_chat_enabled", False)))
         self.core_chat_chk.setToolTip("برای پیام‌های متنی معمولی از همان تاریخچه و موتور ابری مشترک Android استفاده می‌کند. ابزارهای محلی و پیام‌های دارای فایل همچنان روی ویندوز اجرا می‌شوند.")
@@ -2183,6 +2186,16 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.Yes:
                 return
 
+        elif action == "pull":
+            answer = QMessageBox.question(
+                self, "بازیابی تنظیمات Kira Core",
+                "تنظیمات Cloud، اولویت Route و پروفایل‌های مشترک از حساب دریافت می‌شوند. "
+                "کلیدهای API ذخیره‌شده‌ی این ویندوز و تنظیمات Ollama/دستگاه حفظ می‌شوند. ادامه می‌دهی؟",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return
+
         elif action == "import":
             if self.settings.get("core_migration_imported"):
                 self.core_status.setText("انتقال اطلاعات محلی قبلاً تأیید و ثبت شده است.")
@@ -2220,7 +2233,7 @@ class MainWindow(QMainWindow):
             return
 
         self.core_status.setText("در حال ارتباط با Kira Core…")
-        for button in (self.core_register_btn, self.core_login_btn, self.core_restore_btn, self.core_logout_btn, self.core_sync_btn, self.core_import_btn):
+        for button in (self.core_register_btn, self.core_login_btn, self.core_restore_btn, self.core_logout_btn, self.core_sync_btn, self.core_pull_btn, self.core_import_btn):
             button.setEnabled(False)
 
         def work():
@@ -2253,6 +2266,14 @@ class MainWindow(QMainWindow):
                     "account_id": client.account_id,
                     "message": f"انتقال اطلاعات انجام شد: {result.get('imported_conversations', 0)} گفتگو. داده‌ی محلی حذف نشد.",
                     "imported": result.get("status") in ("imported", "already_imported"),
+                }
+            if action == "pull":
+                if not client.authenticated:
+                    raise KiraCoreError(401, "ابتدا وارد حساب Kira Core شو.")
+                return {
+                    "account_id": client.account_id,
+                    "message": "تنظیمات مشترک از حساب دریافت شد.",
+                    "remote_settings": client.get_settings(),
                 }
             if action == "sync":
                 if not client.authenticated:
@@ -2288,13 +2309,85 @@ class MainWindow(QMainWindow):
         worker.finished.connect(worker.deleteLater)
         worker.start()
 
+    def _apply_core_shared_settings(self, remote_payload):
+        remote = remote_payload.get("settings") if isinstance(remote_payload, dict) else {}
+        if not isinstance(remote, dict):
+            raise ValueError("تنظیمات مشترک دریافتی معتبر نیستند.")
+        local = self.settings
+        local_providers = local.get("providers") or {}
+        remote_providers = remote.get("providers") or {}
+        merged_providers = {}
+        for pid, cfg in remote_providers.items():
+            if not isinstance(cfg, dict):
+                continue
+            item = dict(cfg)
+            local_cfg = local_providers.get(pid) or {}
+            if local_cfg.get("api_key"):
+                item["api_key"] = local_cfg["api_key"]
+            merged_providers[pid] = item
+        local_routes = [
+            dict(route) for route in route_model.get_routes(local)
+            if route_model.provider_kind(route.get("provider", ""), local_providers.get(route.get("provider", ""))) == "local"
+        ]
+        for pid, cfg in local_providers.items():
+            if route_model.provider_kind(pid, cfg) == "local":
+                merged_providers[pid] = dict(cfg)
+        cloud_routes = [
+            dict(route) for route in (remote.get("routes") or [])
+            if isinstance(route, dict) and route_model.provider_kind(
+                route.get("provider", ""), merged_providers.get(route.get("provider", ""))
+            ) == "cloud"
+        ]
+        local_route_ids = {route.get("id") for route in local_routes}
+        old_manual = str(local.get("manual_route_id") or "")
+        shared_keys = (
+            "active_character_id", "temperature", "persona", "active_modes",
+            "brain_mode", "brain_reflection", "brain_memory_writer", "role_routes",
+            "failover_enabled", "default_route_id", "api_registry", "characters",
+            "deleted_character_ids", "character_traits", "shared_skills",
+        )
+        for key in shared_keys:
+            if key in remote:
+                local[key] = remote[key]
+        local["providers"] = merged_providers
+        local["routes"] = cloud_routes + local_routes
+        local["provider_order"] = list(remote.get("provider_order") or []) + [
+            pid for pid in local_providers
+            if route_model.provider_kind(pid, local_providers.get(pid)) == "local"
+        ]
+        remote_manual = str(remote.get("manual_route_id") or "")
+        valid_ids = {route.get("id") for route in local["routes"]}
+        local["manual_route_id"] = remote_manual if remote_manual in valid_ids else (
+            old_manual if old_manual in local_route_ids else ""
+        )
+        route_model.ensure_routes(local)
+        save_settings(local)
+        old_states = self.client.states
+        cooldowns = {}
+        for session in self.sessions.values():
+            router = HybridRouter(local)
+            router.states, router.cooldowns = old_states, cooldowns
+            session.client = router
+        self.tool_agent.set_settings(local)
+        usage.install(local)
+        evidence_memory.configure(local)
+        self.ollama_client = OllamaClient.from_settings(local)
+        self.refresh_route_list()
+        self.set_badge("idle", self.client.preview_route())
+
     def _on_core_account_done(self, action, result):
         ok, value = result
-        for button in (self.core_register_btn, self.core_login_btn, self.core_restore_btn, self.core_logout_btn, self.core_sync_btn, self.core_import_btn):
+        for button in (self.core_register_btn, self.core_login_btn, self.core_restore_btn, self.core_logout_btn, self.core_sync_btn, self.core_pull_btn, self.core_import_btn):
             button.setEnabled(True)
         if not ok:
             self.core_status.setText(f"خطا: {value}")
             return
+        if action == "pull":
+            try:
+                self._apply_core_shared_settings(value.get("remote_settings") or {})
+            except Exception as exc:
+                self.core_status.setText(f"بازیابی تنظیمات انجام نشد: {exc}")
+                return
         self.core_status.setText(f"{value.get('message', 'انجام شد')}\nAccount ID: {value.get('account_id') or '—'}")
         if action == "import" and value.get("imported"):
             self.settings["core_migration_imported"] = True
