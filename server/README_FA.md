@@ -79,6 +79,6 @@ The OpenAPI contract is maintained at shared/contracts/kira-core-api-v1.yaml. Th
 - Chat requests currently return a complete response rather than SSE streaming.
 - Attachments are not stored by this initial Core implementation yet.
 - Google OAuth, password reset/email verification, account deletion UI, billing and rate-limit administration are not implemented.
-- The Windows main chat still uses its local HybridRouter; routing ordinary desktop chat through Core is the next major integration step.
+- The Windows Core-backed chat path is optional and currently handles ordinary text only. Local tools, attachments, web-research handoff and streaming still use the existing local desktop flow.
 - The Android and Windows chat clients currently use complete-response HTTP requests; streaming parity is not implemented yet.
 - The desktop migration import is explicit and non-destructive, but it is a one-time snapshot rather than continuous two-way reconciliation.
