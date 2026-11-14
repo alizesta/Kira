@@ -6,6 +6,7 @@
 - app/: رابط Native با Kotlin و Jetpack Compose
 - MainActivity.kt: پوسته و ناوبری
 - assistant/AiAssistantOverlayService.kt: دسترسی شناور Android
+- core/KiraCoreClient.kt: اتصال API مشترک، نشست و ذخیره‌ی امن Token با Android Keystore
 - ../shared/contracts/: قرارداد هم‌ارزی قابلیت‌ها و API مشترک
 - ../docs/ANDROID_PORT_ROADMAP_FA.md: معماری و مراحل توسعه
 
@@ -34,7 +35,7 @@ Android قرار نیست موتور گفتگو، Providerها یا حافظه�
 - مدل محلی گوشی و تنظیمات مخصوص دستگاه مستقل می‌مانند.
 - Google Sign-In بعداً به همان حساب داخلی متصل خواهد شد.
 
-قرارداد API در shared/contracts/kira-core-api-v1.yaml تعریف شده است. تا زمان استقرار Core Server، قابلیت Sync ابری هنوز فعال نیست.
+قرارداد API در shared/contracts/kira-core-api-v1.yaml تعریف شده است. Adapter ارتباطی و ذخیره‌ی امن نشست هم اضافه شده، اما صفحه ورود و اتصال جریان اصلی چت هنوز به آن وصل نشده‌اند. تا زمان استقرار Core Server، قابلیت Sync ابری فعال نیست.
 
 ## AI Assistant
 
@@ -48,4 +49,4 @@ Android قرار نیست موتور گفتگو، Providerها یا حافظه�
 
 ## وضعیت فعلی
 
-در این مرحله، پوسته‌ی Compose و حباب شناور موجود است. اتصال کامل چت، Route، حافظه، Voice، فایل‌ها و Kira Core هنوز در حال توسعه است. APK این مرحله برای آزمایش پوسته‌ی موبایل است، نه نسخه‌ی نهایی همگام‌شده.
+در این مرحله، پوسته‌ی Compose، حباب شناور و Adapter اولیه‌ی Kira Core موجودند. اتصال صفحه‌های چت/Route/حافظه، ورود حساب، Voice و فایل‌ها به سرویس هنوز کامل نشده است. APK این مرحله برای آزمایش پوسته‌ی موبایل است، نه نسخه‌ی نهایی همگام‌شده.
