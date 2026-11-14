@@ -14,11 +14,23 @@
 - Android Studio با پشتیبانی از Android Gradle Plugin 9.5.x
 - JDK 17
 - Android SDK Platform 36
-- Gradle 9.6.0 یا جدیدتر
+- Gradle Wrapper 9.9.1 (همراه پروژه)
 - Kotlin 2.4.21
 - Jetpack Compose BOM 2026.09.00
 
-پروژه را از پوشه‌ی `android/` در Android Studio باز کن. اگر Gradle Wrapper در محیط توسعه موجود نیست، Gradle 9.6.0 یا جدیدتر را نصب کن و Wrapper را از ریشه‌ی همین پوشه بساز.
+پروژه را از پوشه‌ی `android/` در Android Studio باز کن. برای ساخت APK دیباگ در ویندوز اجرا کن:
+
+```powershell
+.\\gradlew.bat :app:assembleDebug
+```
+
+در Linux/macOS:
+
+```bash
+./gradlew :app:assembleDebug
+```
+
+خروجی در `app/build/outputs/apk/debug/app-debug.apk` قرار می‌گیرد.
 
 ## AI Assistant در اندروید
 
@@ -42,6 +54,7 @@
 ## وضعیت فعلی
 
 - [x] ساختار Native اندروید
+- [x] Gradle Wrapper
 - [x] پوسته‌ی Compose و بخش‌های اصلی ناوبری
 - [x] حباب شناور با مجوز صریح کاربر
 - [x] قرارداد اولیه‌ی هم‌ارزی قابلیت‌ها
