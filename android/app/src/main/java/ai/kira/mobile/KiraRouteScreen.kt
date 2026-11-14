@@ -40,31 +40,28 @@ internal fun KiraRouteScreen() {
     var providerId by remember { mutableStateOf("gemini") }
     var apiKey by remember { mutableStateOf("") }
     var selectedModel by remember { mutableStateOf("") }
-    var providerMenu by remember { mutableStateOf(false) }
     var modelMenu by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("فقط API Key را وارد کن؛ Kira مدل‌ها را خودش دریافت می‌کند.") }
-    val selectedProvider=providerPresets.first { it.id==providerId }
 
     DisposableEffect(executor) { onDispose { executor.shutdownNow() } }
     fun refresh() { routes.clear(); routes.addAll(core.providers()) }
     LaunchedEffect(Unit) { refresh() }
-    LaunchedEffect(providerId) {
-        models.clear()
-        models.addAll(core.discoveredModels(providerId))
-        selectedModel=models.firstOrNull().orEmpty()
+    LaunchedEffect(Unit) {
+        val saved=core.providers().firstOrNull { it.enabled && it.hasKey }
+        if(saved!=null) providerId=saved.id
+        models.clear(); models.addAll(core.discoveredModels(providerId)); selectedModel=models.firstOrNull().orEmpty()
     }
 
     fun connect() {
         if(busy || apiKey.isBlank()) { status="API Key را وارد کن."; return }
-        val id=providerId
         val key=apiKey.trim()
-        val endpoint=selectedProvider.endpoint
         busy=true
         status="در حال اتصال و دریافت خودکار فهرست مدل‌ها…"
         executor.execute {
             try {
-                val found=core.discoverModels(id,key)
+                val (id,found)=core.detectProviderAndDiscoverModels(key)
+                val endpoint=providerPresets.first { it.id==id }.endpoint
                 val preferred=when(id) {
                     "gemini" -> found.firstOrNull { it.contains("flash",true) } ?: found.first()
                     "deepseek" -> found.firstOrNull { it.contains("chat",true) } ?: found.first()
@@ -73,6 +70,7 @@ internal fun KiraRouteScreen() {
                 core.saveProvider(id,preferred,endpoint,key,true)
                 val list=core.providers()
                 handler.post {
+                    providerId=id
                     models.clear(); models.addAll(found)
                     selectedModel=preferred
                     routes.clear(); routes.addAll(list)
@@ -113,7 +111,7 @@ internal fun KiraRouteScreen() {
 
     Column(Modifier.fillMaxSize().background(Color(0xFF0B0E15)).padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
         Text("اتصال هوشمند مدل‌ها",color=Color(0xFFF4F2FA),fontSize=22.sp,fontWeight=FontWeight.Bold)
-        Text("Provider را انتخاب کن و فقط کلید API را بده. آدرس سرویس و فهرست مدل‌ها خودکار تنظیم می‌شوند.",color=Color(0xFF9BA5B8),fontSize=12.sp,lineHeight=18.sp)
+        Text("فقط API Key را وارد کن. Kira نوع Provider را تشخیص می‌دهد، مدل‌ها را می‌گیرد و تنظیمات اتصال را خودش انجام می‌دهد.",color=Color(0xFF9BA5B8),fontSize=12.sp,lineHeight=18.sp)
         Surface(color=Color(0xFF151C2B),shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(9.dp)) {
                 Box {
@@ -124,9 +122,9 @@ internal fun KiraRouteScreen() {
                         }
                     }
                 }
-                OutlinedTextField(value=apiKey,onValueChange={apiKey=it},label={Text("API Key")},visualTransformation=PasswordVisualTransformation(),singleLine=true,modifier=Modifier.fillMaxWidth())
+                OutlinedTextField(value=apiKey,onValueChange={apiKey=it},label={Text("API Key",color=Color.White)},visualTransformation=PasswordVisualTransformation(),singleLine=true,modifier=Modifier.fillMaxWidth(),colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,disabledTextColor=Color.White,cursorColor=Color.White,focusedLabelColor=Color.White,unfocusedLabelColor=Color.White))
                 Button(onClick={connect()},enabled=!busy && apiKey.isNotBlank(),modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF7661D8))) {
-                    Text(if(busy) "در حال اتصال…" else "اتصال و دریافت خودکار مدل‌ها")
+                    Text(if(busy) "در حال اتصال…" else "تشخیص Provider و دریافت مدل‌ها")
                 }
                 if(models.isNotEmpty()) {
                     Text("مدل پیش‌فرض چت",color=Color(0xFFF1EFF8),fontWeight=FontWeight.SemiBold,fontSize=12.sp)
