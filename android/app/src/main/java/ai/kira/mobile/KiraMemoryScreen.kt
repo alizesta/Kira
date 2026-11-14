@@ -72,12 +72,13 @@ internal fun KiraMemoryScreen() {
             return
         }
         if (busy) return
+        val requestedCharacterId = characterId
         busy = true
         executor.execute {
             try {
                 val client = KiraCoreClient(context, serverUrl)
                 if (!client.hasSession()) throw IllegalStateException("ابتدا وارد حساب Kira شو.")
-                val response = client.getMemory(characterId)
+                val response = client.getMemory(requestedCharacterId)
                 val array = response.optJSONArray("items") ?: JSONArray()
                 val result = mutableListOf<KiraMemoryItem>()
                 for (i in 0 until array.length()) {
@@ -105,6 +106,8 @@ internal fun KiraMemoryScreen() {
 
     fun persist(updated: List<KiraMemoryItem>, successMessage: String) {
         if (busy) return
+        val requestedCharacterId = characterId
+        val expectedRevision = revision
         busy = true
         executor.execute {
             try {
@@ -112,7 +115,7 @@ internal fun KiraMemoryScreen() {
                 if (!client.hasSession()) throw IllegalStateException("ابتدا وارد حساب Kira شو.")
                 val array = JSONArray()
                 updated.forEach { array.put(it.raw) }
-                val response = client.saveMemory(characterId, revision, array)
+                val response = client.saveMemory(requestedCharacterId, expectedRevision, array)
                 mainHandler.post {
                     revision = response.optInt("revision", revision + 1)
                     items.clear()
