@@ -98,16 +98,19 @@ Routeهای Cloud و تنظیماتشان حساب‌محورند. Route محل�
 - [x] قرارداد اولیه‌ی هم‌ارزی قابلیت‌ها
 - [x] تثبیت مسیر Build اندروید روی SDK مورد نیاز Compose
 - [x] پیاده‌سازی اولیه‌ی Kira Core Server و API حساب/چت/تنظیمات/حافظه/Sync
-- [x] قرارداد و Adapter اولیه‌ی Android و Windows برای API مشترک و نشست
+- [x] قرارداد و Adapterهای Android و Windows برای API مشترک و نشست
 - [x] ذخیره‌ی امن Token موبایل با Android Keystore و نشست ویندوز با DPAPI
 - [ ] استقرار Kira Core روی هاست واقعی با PostgreSQL و HTTPS
 - [x] صفحه‌ی حساب Android با ثبت‌نام/ورود ایمیلی و بازیابی نشست
-- [ ] صفحه‌ی ورود و بازیابی نشست Windows
-- [ ] انتقال امن Provider credentialها از UI موجود ویندوز به Core با تأیید کاربر
-- [ ] اتصال جریان اصلی چت، Route و تنظیمات Windows به Core و مهاجرت پیش‌نمایش‌دار اطلاعات موجود
-- [ ] اتصال UI چت، Route و حافظه‌ی Android به همان Core
-- [ ] Sync تاریخچه، حافظه و تنظیمات حساب
-- [ ] اتصال کامل چت، Route، شخصیت‌ها، Voice و Attachment در Android
+- [x] صفحه‌ی حساب Windows با ثبت‌نام/ورود و بازیابی نشست
+- [x] انتقال صریح تنظیمات Cloud و کلیدهای Provider از Windows به Core با رمزنگاری سمت سرور
+- [x] صفحه‌ی چت Android متصل به تاریخچه و Chat API مشترک
+- [x] صفحه‌ی Route Android متصل به Routeها و ذخیره‌ی امن کلید Cloud
+- [x] صفحه‌ی حافظه‌ی Android متصل به حافظه‌ی بلندمدت حساب
+- [ ] اتصال جریان اصلی چت Windows به Core؛ تا آن زمان چت Windows همچنان از Router محلی استفاده می‌کند
+- [ ] مهاجرت پیش‌نمایش‌دار تاریخچه و حافظه‌ی محلی Windows به حساب
+- [ ] تکمیل Sync دوطرفه‌ی تاریخچه، شخصیت‌ها، Skills و تنظیمات
+- [ ] اتصال کامل Voice، Attachment و AI Assistant/Screen Context در Android
 - [ ] اتصال Google Sign-In به حساب موجود
 
 ## قانون توسعه‌ی موازی
