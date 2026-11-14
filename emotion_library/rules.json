@@ -5,13 +5,13 @@
     "min_hold_s": 1.6,
     "preempt_priority_margin": 20,
     "switch_budget": {
-      "window_s": 10.0,
+      "window_s": 10,
       "max_switches": 4
     },
-    "pending_ttl_s": 4.0,
+    "pending_ttl_s": 4,
     "max_blend": 2,
     "same_emotion_refresh_mix": 0.6,
-    "default_duration_s": 6.0,
+    "default_duration_s": 6,
     "min_visible_intensity": 6,
     "hold_while_speaking": true,
     "keyword_intensity": {
@@ -20,6 +20,26 @@
       "max": 55,
       "min_hits": 1
     },
-    "speaking_fade_in_s": 0.15
+    "speaking_fade_in_s": 0.15,
+    "emotional_runtime": {
+      "emotion_half_life_s": 1320,
+      "behavior_half_life_s": 3300,
+      "energy_start": 76,
+      "energy_recovery_per_second": 0.0032,
+      "user_message_energy_cost": 0.7,
+      "reply_energy_cost": 0.35,
+      "away_after_s": 21600,
+      "relationship_deltas": {
+        "thanks_closeness": 0.12,
+        "thanks_comfort": 0.1,
+        "apology_tension": -0.8,
+        "apology_trust": 0.08,
+        "hostile_tension": 0.5,
+        "hostile_comfort": -0.12,
+        "familiarity_per_message": 0.025
+      },
+      "memory_limit": 120,
+      "event_limit": 80
+    }
   }
 }

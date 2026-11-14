@@ -161,7 +161,12 @@ _TASK_VERBS = re.compile(
 _EXPLAIN_Q = re.compile(r"(چرا|چطور|چگونه|توضیح|یعنی\s*چی|\b(?:why|how|explain)\b)", re.I)
 _ANY_Q = re.compile(r"(\?|؟|چیه|چیست|کجاست|کجا|کدام|چند|آیا|\b(?:what|where|which)\b)", re.I)
 _TRACE = re.compile(r"(Traceback \(most recent call last\)|^\s*File \".+\", line \d+|\b\w*(?:Error|Exception):)", re.M)
-_CHANGE_PROJECT = re.compile(r"(?:پوشه|مسیر)\s*(?:ی\s*)?پروژه.*(?:عوض|تغییر|انتخاب)|(?:change|switch|choose)\s+(?:the\s+)?project\s+(?:folder|path)", re.I)
+_CHANGE_PROJECT = re.compile(
+    r"(?:پوشه|مسیر|فولدر|دایرکتوری)[\s\u200c]*(?:ی[\s\u200c]*)?(?:این[\s\u200c]+)?پروژه"
+    r"[\s\u200c]*(?:رو|را)?[\s\u200c]*.*(?:عوض|تغییر|انتخاب|جابه[\s\u200c]*جا)|"
+    r"(?:change|switch|choose)\s+(?:the\s+)?project\s+(?:folder|path|directory)",
+    re.I,
+)
 _GENERIC_STEMS = {"all", "any", "the", "and", "for", "get", "set", "new", "old", "tmp", "bak", "src", "log", "doc", "main", "test", "tests", "init", "utils", "util", "data", "config", "setup", "index", "app", "readme", "license", "build", "dist", "docs", "src", "lib"}
 
 
@@ -215,7 +220,10 @@ def classify_intent(text: str, vocabulary=frozenset()):
 
 
 def wants_project_change(text: str) -> bool:
-    return bool(_CHANGE_PROJECT.search(str(text or "")))
+    """True for "پوشه‌ی پروژه را عوض کن" / "change the project folder". ZWNJ (نیم‌فاصله) and Arabic
+    direction marks are treated as spaces, so the natural Persian spelling is recognised too."""
+    normalized = re.sub(r"[\u200c\u200e\u200f]", " ", str(text or ""))
+    return bool(_CHANGE_PROJECT.search(normalized))
 
 
 CLASSIFY_SYSTEM = ("You route the user's latest chat message to Kira, a coding specialist. Decide if it asks Kira to work on THE USER'S OWN "

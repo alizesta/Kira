@@ -6,6 +6,7 @@ import unittest
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 from kira import auto_agent as aa
 
@@ -277,6 +278,155 @@ class ReadonlyTests(AgentBase):
         self.assertIn("read-only", router.seen[3][-1])
         self.assertIn("a - b", (self.proj / "calc.py").read_text(encoding="utf-8"))
         self.assertFalse(self.out.exists())
+
+
+class ExecutionGuardTests(AgentBase):
+    """Task 004: no AutoAgent path (run / shell / file tools, pre-plan AST map) bypasses the app-level
+    ToolRegistry.execution_guard (tools_mode=off, Competitive Safe). The guard must fail closed."""
+
+    def test_guard_blocks_every_execution_and_file_tool(self):
+        approved, denied = [], []
+        router = Script(
+            {"action": "write", "path": "calc.py", "content": "def add(a, b):\n    return a + b\n"},
+            {"action": "run", "args": ["python", "-m", "unittest", "-v"]},
+            {"action": "shell", "command": "echo pwned > pwned.txt"},
+            {"action": "delete", "path": "calc.py"},
+            {"action": "finish", "summary": "blocked"},
+        )
+        result = self.agent(router, approve=lambda c: approved.append(c) or True,
+                            execution_guard=lambda tool: denied.append(tool.name) or "ابزارها خاموش است.").run()
+        self.assertEqual(result["summary"], "blocked")
+        self.assertEqual(result["changed"], [])                # nothing was written to the working copy
+        self.assertEqual(result["runs"], [])                   # no process ran: neither python nor PowerShell
+        self.assertEqual(approved, [])                         # shell / folder-delete approvals were never even asked
+        self.assertEqual(denied, ["map", "write", "run", "shell", "delete"])
+        self.assertTrue(any("⛔" in e for e in self.events))
+        self.assertIn("ERROR: ابزارها خاموش است.", router.seen[1][-1])
+
+    def test_guard_receives_a_name_and_categories(self):
+        seen = []
+
+        def guard(tool):
+            seen.append((tool.name, tuple(tool.categories)))
+            return "blocked"
+
+        router = Script({"action": "run", "args": ["python", "-m", "unittest", "-v"]}, {"action": "finish", "summary": "x"})
+        self.agent(router, execution_guard=guard).run()
+        self.assertIn(("run", ("system",)), seen)
+
+    def test_guard_failure_fails_closed(self):
+        def broken(tool):
+            raise RuntimeError("guard down")
+
+        router = Script({"action": "write", "path": "calc.py", "content": "def add(a, b):\n    return a + b\n"},
+                        {"action": "finish", "summary": "x"})
+        result = self.agent(router, execution_guard=broken).run()
+        self.assertEqual(result["changed"], [])                # a broken guard must never open the door
+        self.assertTrue(any("مسدود" in e for e in self.events))
+
+    def test_guard_may_allow_reads_but_still_blocks_execution(self):
+        def guard(tool):
+            return None if tool.name in ("list", "map", "read", "search") else "فقط خواندن مجاز است."
+
+        router = Script({"action": "read", "path": "calc.py"},
+                        {"action": "run", "args": ["python", "-m", "unittest", "-v"]},
+                        {"action": "finish", "summary": "done"})
+        result = self.agent(router, execution_guard=guard).run()
+        self.assertEqual(result["summary"], "done")
+        self.assertEqual(result["runs"], [])
+        self.assertIn("1: def add", router.seen[1][-1])        # the allowed read really happened
+        self.assertIn("ERROR: فقط خواندن مجاز است.", router.seen[2][-1])
+
+    def test_guard_blocks_the_pre_plan_ast_map_too(self):
+        denied = []
+
+        def guard(tool):
+            r = "مسدود" if tool.name != "plan" else None
+            if r:
+                denied.append(tool.name)
+            return r
+
+        router = Script({"action": "finish", "summary": "x"})
+        self.agent(router, execution_guard=guard).run()
+        self.assertIn("map", denied)                           # the direct pre-step AST map is guarded as well
+        self.assertNotIn("PYTHON AST MAP", router.seen[0][0])
+
+
+class TaskFiveStabilityTests(AgentBase):
+    """Task 005: bounded review gate, non-Python checks, safe delivery and durable memory."""
+
+    def test_finish_gate_is_bounded_when_the_model_never_verifies(self):
+        router = Script({"action": "write", "path": "note.txt", "content": "x"},
+                        *[{"action": "finish", "summary": "done"}] * 10)
+        result = self.agent(router, max_steps=20).run()
+        self.assertLessEqual(result["steps"], aa.MAX_GATE_STEPS)
+        self.assertIn("بررسی", result["summary"])
+        self.assertTrue(result["zip"].exists())                 # an honest report is still delivered
+        self.assertEqual(result["changed"], ["note.txt"])
+
+    def test_non_python_project_checks_are_allowed(self):
+        agent = self.agent(Script({"action": "finish", "summary": "x"}))
+        for args in (["npm", "test"], ["npm", "run", "build"], ["yarn", "test"], ["cargo", "test"],
+                     ["go", "test", "./..."], ["dotnet", "build"], ["gradle", "test"], ["node", "--check", "app.js"]):
+            self.assertEqual(agent.validate_run(list(args)), args)
+        for args in (["npm", "install"], ["npm", "run", "deploy"], ["cargo", "publish"],
+                     ["npx", "anything"], ["bash", "test"], ["go", "run", "main.go"]):
+            with self.assertRaises(ValueError, msg=args):
+                agent.validate_run(list(args))
+
+    def test_non_python_check_is_executed_as_given(self):
+        agent = self.agent(Script({"action": "finish", "summary": "x"}))
+        agent.work = self.proj
+        calls = []
+        agent._exec = lambda cmd: (calls.append(cmd), (0, "ok"))[1]
+        obs = agent.tool_run({"args": ["npm", "test"]})
+        self.assertIn("exit code: 0", obs)
+        self.assertEqual(calls, [["npm", "test"]])
+
+    def test_zip_delivery_never_overwrites_an_earlier_zip(self):
+        first = self.agent(Script({"action": "finish", "summary": "one"})).run()
+        second = self.agent(Script({"action": "finish", "summary": "two"})).run()
+        self.assertNotEqual(first["zip"], second["zip"])
+        self.assertTrue(first["zip"].exists())
+        self.assertTrue(second["zip"].exists())
+        self.assertIn("_2_", second["zip"].name)
+        self.assertTrue(second["zip"].name.endswith("_IRST.zip"))
+
+    def test_project_memory_is_durable_outside_the_working_copy(self):
+        memory_dir = Path(self.tmp.name) / "durable-memory"
+        router = Script({"action": "memory", "content": "Always run npm test before delivery."},
+                        {"action": "run", "args": ["python", "-m", "compileall", "-q", "."]},
+                        {"action": "review"},
+                        {"action": "finish", "summary": "stored"})
+        result = self.agent(router, memory_dir=memory_dir).run()
+        files = list(memory_dir.glob("*.md"))
+        self.assertEqual(len(files), 1)
+        self.assertIn("npm test", files[0].read_text(encoding="utf-8"))
+        self.assertIn(".ai1/PROJECT_MEMORY.md", zipfile.ZipFile(result["zip"]).namelist())
+        later = Script({"action": "finish", "summary": "read it"})
+        self.agent(later, memory_dir=memory_dir).run()
+        self.assertIn("Always run npm test before delivery.", later.seen[0][0])
+
+    def test_working_copy_is_removed_when_the_mission_raises(self):
+        parent = Path(self.tmp.name) / "temp-work"
+        class Boom(Script):
+            def chat_stream(self, *a, **k):
+                raise RuntimeError("model exploded")
+        with mock.patch.object(aa.tempfile, "mkdtemp", return_value=str(parent)):
+            with self.assertRaises(RuntimeError):
+                self.agent(Boom()).run()
+        self.assertFalse(parent.exists())
+
+    def test_snapshot_skips_unreadable_files_instead_of_crashing(self):
+        with mock.patch.object(aa.Path, "read_bytes", side_effect=OSError("access denied")):
+            self.assertEqual(aa.snapshot(self.proj), {})
+
+    def test_unique_zip_path_keeps_the_timestamp_pattern(self):
+        out = Path(self.tmp.name) / "out"
+        out.mkdir()
+        (out / aa.zip_name("Demo", FIXED_NOW)).write_bytes(b"old")
+        path = aa.unique_zip_path(out, "Demo", FIXED_NOW)
+        self.assertEqual(path.name, "Demo_2_2026-11-12_14-24_IRST.zip")
 
 
 class HelperTests(unittest.TestCase):

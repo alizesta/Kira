@@ -15,7 +15,8 @@ from PySide6.QtWidgets import (
     QDialogButtonBox, QFrame, QFileDialog, QSizePolicy, QSystemTrayIcon, QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog,
     QStackedWidget, QDoubleSpinBox, QButtonGroup, QGraphicsDropShadowEffect
 )
-from .config import load_settings, save_settings, ROOT, VERSION, LOAD_WARNINGS, DATA_DIR
+from .config import (load_settings, save_settings, ROOT, VERSION, LOAD_WARNINGS, DATA_DIR,
+                     APP_NAME, PROJECT_URL, RELEASES_URL)
 from . import about
 from . import storage
 from . import memory as chat_store
@@ -31,7 +32,7 @@ from .actions import run_safe_action
 from .tools import ToolAgent
 from .leak_guard import scrub_lines
 from .companion import CompanionWindow, CompanionBubble
-from .chat_render import sources_html, message_html, detect_direction
+from .chat_render import sources_html, message_html, detect_direction, bubble_accent
 from .face import AvatarView
 from .vrm_avatar import KiraAvatar
 from .emotion.backend_png import EmotionFaceAnimator
@@ -52,6 +53,8 @@ from . import brain
 from . import usage
 from . import mood
 from . import characters
+from .characters.kira import PROFILE as KIRA_PROFILE
+from .character.traits import BASE_TRAITS
 from . import avatar_art
 from . import body as body_ctl
 from .rig import MOODS
@@ -588,6 +591,10 @@ class MainWindow(QMainWindow):
         self._load_tiles = []              # cards of the batch currently being read
         self._upload_tiles = []            # cards shown while the message is being sent to the model
         self._upload_token, self._upload_done, self._att_seq = 0, False, 0
+        self._chat_action_seq = 0                       # ids of the per-message action chips (copy / edit / speak)
+        self._chat_action_texts = {}
+        self._neon_animations = []
+        self._mood_emotion_glow = None
         self._turn_extra = None            # full text + images of the message being answered (history keeps a short form)
         self._turn_attach_kinds = []       # kinds ("image"/"text") of what the user attached to the message being answered
         self._voice_next = False           # the next submit() comes from the microphone (the model is told it may contain mishearings)
@@ -655,9 +662,9 @@ class MainWindow(QMainWindow):
             self.setAttribute(Qt.WA_TranslucentBackground, True)    # the DWM paints the glass behind the transparent window
         self.tabs = QTabWidget()
         self.build_chat_tab()
-        self.build_assistant_tab()
+        self.build_assistant_section()
         self.build_voice_tab()
-        self.build_char_tab()
+        self.build_characters_tab()
         self.build_general_tab()
         self.build_ai_tab()
         self.save_btn = QPushButton()
@@ -710,6 +717,11 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
         self.tabs.currentChanged.connect(self._sync_nav)
         self._sync_nav()
+        self._mood_ui_timer = QTimer(self)                 # the neon mood chips follow the persisted emotional state
+        self._mood_ui_timer.setInterval(1500)
+        self._mood_ui_timer.timeout.connect(self.update_mood_indicator)
+        self._mood_ui_timer.start()
+        self.update_mood_indicator()
         self.animator.mood_changed.connect(self.on_mood_changed)
         self.companion.clicked.connect(self.on_region_clicked)
         self.avatar.clicked.connect(self.on_region_clicked)
@@ -801,7 +813,11 @@ class MainWindow(QMainWindow):
         return view
 
     def on_chat_link(self, url):
-        """Web / mail links open in the default app; kira-code:// links are the Diff approve / reject buttons of Ai1 Code mode."""
+        """Web / mail links open in the default app; kira-code:// links are the Diff approve / reject buttons of Ai1 Code mode;
+        kira-action:// links are the per-message copy / edit / speak chips."""
+        if url.scheme() == "kira-action":
+            self.handle_chat_link(url)
+            return
         if url.scheme() == "kira-code":
             code_chat = getattr(self, "code_chat", None)
             if code_chat is not None:
@@ -809,6 +825,36 @@ class MainWindow(QMainWindow):
             return
         if url.scheme() in ("http", "https", "mailto"):
             QDesktopServices.openUrl(url)
+
+    def active_character(self):
+        """Full profile of the character in front. Kira keeps her canonical identity (the profiles list only carries UI data)."""
+        cid = getattr(getattr(self, "cur", None), "cid", "") or characters.active_id(self.settings)
+        if cid == "kira":
+            profile = dict(KIRA_PROFILE)
+        else:
+            profile = dict(characters.all_profiles(self.settings).get(cid) or characters.active(self.settings))
+        traits = (self.settings.get("character_traits") or {}).get(cid)
+        if isinstance(traits, dict):
+            profile["traits"] = {**profile.get("traits", {}), **traits}
+        return profile
+
+    def character_traits(self, cid, profile=None):
+        """Baseline traits of one character (settings overrides win over the built-in defaults)."""
+        profile = profile if isinstance(profile, dict) else (characters.all_profiles(self.settings).get(cid) or {})
+        traits = dict(profile.get("traits") or {})
+        override = (self.settings.get("character_traits") or {}).get(cid)
+        if isinstance(override, dict):
+            traits.update(override)
+        return traits
+
+    def _sync_mood_character(self):
+        """Point the persisted mood at the character in front so its neon chips and prompt follow that profile."""
+        cid = getattr(getattr(self, "cur", None), "cid", "") or characters.active_id(self.settings)
+        profile = characters.all_profiles(self.settings).get(cid) or {}
+        try:
+            mood.set_active_character(cid, self.character_traits(cid, profile))
+        except Exception:                                   # noqa: BLE001 - mood is a bonus, never block the UI
+            pass
 
     def _ensure_session(self, cid, profile):
         sess = self.sessions.get(cid)
@@ -901,6 +947,10 @@ class MainWindow(QMainWindow):
         self.front = self.cur = sess
         sess.unread = False
         self.settings["active_character_id"] = cid
+        try:
+            mood.set_active_character(cid, self.character_traits(cid, characters.all_profiles(self.settings).get(cid)))
+        except Exception:                               # noqa: BLE001 - never block switching tabs
+            pass
         self.chat_stack.setCurrentWidget(sess.view)
         if old is not sess:
             self.input.setText(sess.draft)
@@ -918,6 +968,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, "character_combo"):
             self.refresh_character_choices()
             self.refresh_character_card(cid)
+        self.refresh_personality_controls()
+        self.update_mood_indicator()
         bar = sess.view.verticalScrollBar()
         bar.setValue(bar.maximum())
         if save:
@@ -970,14 +1022,167 @@ class MainWindow(QMainWindow):
         """Append one message bubble; direction is decided per line so Persian reads right-to-left.
         images: attachment dicts whose thumbnails are shown at the top of the bubble."""
         if name is None:
-            name = {"user": self.t("you"), "assistant": characters.display_name(self.settings),
+            name = {"user": self.t("you"), "assistant": self.active_character().get("name", "Character"),
                     "error": self.t("error"), "system": ""}.get(kind, "")
         ui_dir = "rtl" if self.settings.get("ui_lang", "fa") == "fa" else "ltr"
-        self.chat.append(message_html(kind, name, text, ui_dir, self.thumbnail_html(images), accent=self.accent()))
+        extra = self.thumbnail_html(images)
+        footer = self.chat_actions_html(kind, text)
+        with bubble_accent(self.accent()):
+            self.chat.append(message_html(kind, name, text, ui_dir, extra, footer))
         if getattr(self, "bubble", None) is not None:
             self.bubble.push(kind, name, text, ui_dir)
         bar = self.chat.verticalScrollBar()
         bar.setValue(bar.maximum())
+
+    def update_mood_indicator(self):
+        """Render the active character's current emotion as a custom neon face; chat-message emoji are untouched."""
+        label = getattr(self, "mood_indicator", None)
+        face_label = getattr(self, "mood_emotion_icon", None)
+        if label is None or face_label is None:
+            return
+        self._sync_mood_character()
+
+        face_map = {
+            "neutral": "neutral", "happy": "happy", "sad": "sad", "angry": "angry",
+            "fearful": "fearful", "disgusted": "disgusted", "surprised": "surprised",
+            "curious": "curious", "proud": "proud", "arrogant": "smug", "smug": "smug",
+            "playful": "playful", "teasing": "teasing", "tsundere": "angry", "bored": "bored",
+            "frustrated": "angry", "affectionate": "affectionate", "flirty": "flirty",
+            "shy": "shy", "embarrassed": "shy", "jealous": "jealous", "laughing": "laughing",
+            "annoyed": "angry", "protective": "protective", "excited": "excited",
+            "thinking": "curious", "calm": "calm", "hopeful": "hopeful",
+            "disappointed": "sad", "lonely": "sad", "guilty": "sad", "grateful": "affectionate",
+            "nostalgic": "soft", "confident": "proud", "confused": "surprised",
+            "relieved": "relieved", "content": "calm",
+        }
+        emotion_colors = {
+            "neutral": "#B9D4F5", "calm": "#8FE8F2", "content": "#8FE8F2",
+            "happy": "#FFD36E", "excited": "#FFC45E", "laughing": "#FFE078",
+            "hopeful": "#A9F0C2", "grateful": "#FF9CE5",
+            "sad": "#72B9FF", "disappointed": "#72B9FF", "lonely": "#78A8EE",
+            "guilty": "#9AAFEF", "nostalgic": "#B4A8FF",
+            "angry": "#FF668C", "frustrated": "#FF718A", "annoyed": "#FF7A91",
+            "tsundere": "#FF8AAE", "jealous": "#FF79B8",
+            "fearful": "#B59BFF", "disgusted": "#A4D77D",
+            "surprised": "#64E7FF", "confused": "#73DFFF", "curious": "#67DFFF",
+            "thinking": "#75DDF8", "proud": "#C7A0FF", "arrogant": "#C7A0FF",
+            "smug": "#C7A0FF", "confident": "#C7A0FF",
+            "playful": "#FFAE78", "teasing": "#FF9CCB",
+            "affectionate": "#FF87D2", "flirty": "#FF78C5",
+            "shy": "#FF9FCB", "embarrassed": "#FFA0C8",
+            "protective": "#80D9C2", "relieved": "#9BEAD7",
+            "bored": "#A9B7D2",
+        }
+
+        try:
+            state = mood.current()
+            emotion = str(state.get("emotion", "neutral") or "neutral").lower()
+            icon_name = face_map.get(emotion, "neutral")
+            neon = emotion_colors.get(emotion, "#69E5FF")
+            face_icon = make_icon(
+                f"emotion_{icon_name}", normal=neon, hover=neon,
+                checked=neon, disabled="#52617B",
+            )
+            face_label.setPixmap(face_icon.pixmap(QSize(30, 30)))
+            face_label.setStyleSheet(
+                "QLabel#moodEmotionIcon { background: rgba(12, 20, 43, 0.96); "
+                f"border: 1px solid {neon}; border-radius: 11px; padding: 2px; }}"
+            )
+            glow = getattr(self, "_mood_emotion_glow", None)
+            if glow is not None:
+                glow_colour = QColor(neon)
+                glow_colour.setAlpha(215)
+                glow.setColor(glow_colour)
+
+            # Behaviour and energy are represented by vector neon glyphs only.
+            # Never place a plain Unicode emoji beside the neon emotion face.
+            behaviour = str(state.get("behavior", "balanced"))
+            energy = str(state.get("energy_label", "normal"))
+            show_bolt = energy in {"active", "hyper"} or behaviour == "energetic"
+            if show_bolt:
+                bolt_colour = "#FFE36B" if energy == "hyper" else "#72F4FF"
+                bolt = make_icon(
+                    "energy_bolt", normal=bolt_colour, hover="#FFFFFF",
+                    checked=bolt_colour, disabled="#52617B",
+                )
+                label.setPixmap(bolt.pixmap(QSize(23, 23)))
+                label.setStyleSheet(
+                    "QLabel#moodIndicator { background: rgba(22, 28, 65, 0.62); "
+                    f"border: 1px solid {bolt_colour}; border-radius: 10px; padding: 2px; }}"
+                )
+                label.setVisible(True)
+            else:
+                label.clear()
+                label.setVisible(False)
+            intensity = int(state.get("intensity", 0))
+            secondary = ", ".join(name for name, _ in state.get("secondary_emotions", [])[:2])
+            tooltip = (
+                f"احساس: {emotion} ({intensity}/100)\n"
+                f"رفتار: {behaviour}\n"
+                f"انرژی: {energy}"
+            )
+            if secondary:
+                tooltip += f"\nاحساسات همراه: {secondary}"
+            face_label.setToolTip(tooltip)
+            label.setToolTip(tooltip)
+        except Exception:                                    # noqa: BLE001 - the indicator must never break the window
+            fallback = make_icon("emotion_neutral", normal="#B9D4F5", hover="#B9D4F5",
+                                 checked="#B9D4F5", disabled="#52617B")
+            face_label.setPixmap(fallback.pixmap(QSize(30, 30)))
+            label.setText("")
+            face_label.setToolTip("حال‌وهوای شخصیت فعال")
+
+    def chat_actions_html(self, kind, text):
+        """Neon icon chips with generous separation; labels stay in tooltips to keep the chat compact."""
+        if kind not in ("assistant", "user") or not str(text or "").strip():
+            return ""
+        self._chat_action_seq += 1
+        key = str(self._chat_action_seq)
+        self._chat_action_texts[key] = str(text)
+        if len(self._chat_action_texts) > 300:
+            self._chat_action_texts.pop(next(iter(self._chat_action_texts)))
+        actions = [
+            ("copy", "⧉", "#8CF5FF", "#103A52", "#39DFFF", "کپی"),
+            ("edit", "✎", "#E0C8FF", "#30214F", "#B18AFF", "ویرایش"),
+            ("speak", "♫", "#FFC0E9", "#4B2044", "#FF83D0", "خواندن"),
+        ]
+        cells = []
+        for action, glyph, colour, background, border, tooltip in actions:
+            cells.append(
+                f'<td bgcolor="{background}" style="border:1px solid {border};border-radius:10px;'
+                f'padding:4px 11px;">'
+                f'<a href="kira-action://{action}/{key}" title="{tooltip}" '
+                f'style="color:{colour};text-decoration:none;font-size:13pt;font-weight:700;">{glyph}</a>'
+                f'</td>'
+            )
+        links = "".join(cells)
+        return (
+            '<table dir="rtl" align="right" border="0" cellspacing="9" cellpadding="0" '
+            'style="margin-top:10px;border-top:1px solid #314968;padding-top:7px;">'
+            f'<tr>{links}</tr></table>'
+        )
+
+    def handle_chat_link(self, url):
+        """Handle local message actions while preserving normal external links."""
+        if url.scheme() == "kira-action":
+            action = url.host()
+            key = url.path().strip("/")
+            text = self._chat_action_texts.get(key)
+            if text is None:
+                return
+            if action == "copy":
+                QApplication.clipboard().setText(text)
+                self.set_status("st_ready")
+            elif action == "edit":
+                self.input.setText(text)
+                self.input.setFocus()
+                self.input.moveCursor(QTextCursor.End)
+            elif action == "speak":
+                self.safe_stop_speaker()
+                self.speaker.speak(text)
+            return
+        if url.scheme() in ("http", "https", "mailto"):
+            QDesktopServices.openUrl(url)
 
     def thumbnail_html(self, images):
         parts = []
@@ -1140,6 +1345,28 @@ class MainWindow(QMainWindow):
         self.title.setObjectName("title")
         header.addWidget(self.title)
         header.addStretch(1)
+        self.mood_emotion_icon = QLabel()
+        self.mood_emotion_icon.setObjectName("moodEmotionIcon")
+        self.mood_emotion_icon.setAlignment(Qt.AlignCenter)
+        self.mood_emotion_icon.setFixedSize(38, 38)
+        self.mood_emotion_icon.setToolTip("احساس فعلی شخصیت فعال")
+        self.mood_emotion_icon.setStyleSheet(
+            "QLabel#moodEmotionIcon { background: rgba(12, 20, 43, 0.96); "
+            "border: 1px solid rgba(105, 229, 255, 0.85); border-radius: 11px; padding: 2px; }"
+        )
+        header.addWidget(self.mood_emotion_icon)
+        self.mood_indicator = QLabel()
+        self.mood_indicator.setObjectName("moodIndicator")
+        self.mood_indicator.setAlignment(Qt.AlignCenter)
+        self.mood_indicator.hide()
+        self.mood_indicator.setFixedSize(32, 32)
+        self.mood_indicator.setToolTip("رفتار و انرژی فعلی شخصیت فعال")
+        self.mood_indicator.setStyleSheet(
+            "QLabel#moodIndicator { background: rgba(20, 24, 62, 0.92); "
+            "border: 1px solid rgba(137, 112, 255, 0.88); border-radius: 11px; "
+            "padding: 4px 7px; font-size: 16px; color: #F2E9FF; }"
+        )
+        header.addWidget(self.mood_indicator)
         self.companion_btn = self.icon_button("user", True)
         self.companion_btn.clicked.connect(self.toggle_companion)
         header.addWidget(self.companion_btn)
@@ -1282,7 +1509,7 @@ class MainWindow(QMainWindow):
             self.glow_effects.append(glow)
         self.tabs.addTab(page, "")
 
-    def build_assistant_tab(self):
+    def build_assistant_section(self):
         s = self.settings
         box1, f1 = self.group("g_assistant")
         self.name = self.row(f1, "name", QLineEdit(s["assistant_name"]))
@@ -1537,7 +1764,7 @@ class MainWindow(QMainWindow):
             self._cloud_note_at = last
             self.add_chat("system", "🔁 " + message)
 
-    def build_char_tab(self):
+    def build_characters_tab(self):
         s = self.settings
         box, f = self.group("g_char")
         # Character selector: every profile shares the same brain, routes, tools and permissions.
@@ -1612,7 +1839,67 @@ class MainWindow(QMainWindow):
         note.setWordWrap(True)
         self.reg(note.setText, "char_note")
         f.addRow(note)
-        self.tabs.addTab(self.page(box), "")
+        subtabs = QTabWidget()
+        subtabs.addTab(self.page(box), "")
+        subtabs.addTab(self.build_personality_tab(), "")
+        self.character_subtabs = subtabs
+        self.reg(lambda text: subtabs.setTabText(0, text), "tab_characters")
+        self.reg(lambda text: subtabs.setTabText(1, text), "tab_personality")
+        self.tabs.addTab(self.page(subtabs), "")
+
+    def build_personality_tab(self):
+        """Baseline behavioral traits of the active character (learning may move them only inside a narrow band)."""
+        box, form = self.group("g_personality_traits")
+        labels = {
+            "playfulness": "trait_playfulness", "warmth": "trait_warmth",
+            "curiosity": "trait_curiosity", "confidence": "trait_confidence",
+            "assertiveness": "trait_assertiveness", "teasing": "trait_teasing",
+            "empathy": "trait_empathy", "independence": "trait_independence",
+            "patience": "trait_patience", "carefulness": "trait_carefulness",
+        }
+        self.personality_sliders = {}
+        for key, translation_key in labels.items():
+            slider = QSlider(Qt.Horizontal)
+            slider.setRange(0, 100)
+            slider.setValue(int(round(float(BASE_TRAITS.get(key, 0.5)) * 100)))
+            self.row(form, translation_key, slider)
+            self.personality_sliders[key] = slider
+        note = QLabel()
+        note.setObjectName("hint")
+        note.setWordWrap(True)
+        self.reg(note.setText, "personality_hint")
+        form.addRow(note)
+        save = QPushButton()
+        self.reg(save.setText, "character_save_traits")
+        save.clicked.connect(self.save_personality_profile)
+        form.addRow(save)
+        self.refresh_personality_controls()
+        return self.page(box)
+
+    def refresh_personality_controls(self):
+        if not getattr(self, "personality_sliders", None):
+            return
+        traits = self.character_traits(self.active_character().get("id", "kira")) or BASE_TRAITS
+        for key, slider in self.personality_sliders.items():
+            slider.blockSignals(True)
+            slider.setValue(int(round(float(traits.get(key, BASE_TRAITS.get(key, 0.5))) * 100)))
+            slider.blockSignals(False)
+
+    def save_personality_profile(self, silent=False):
+        profile = self.active_character()
+        cid = profile.get("id", "kira")
+        traits = {key: slider.value() / 100.0 for key, slider in self.personality_sliders.items()}
+        try:
+            self.settings.setdefault("character_traits", {})[cid] = traits
+            mood.set_active_character(cid, traits)
+            self.refresh_personality_controls()
+            if not silent:
+                self.add_chat("system", self.t("character_traits_saved", name=profile.get("name", cid)))
+            return True
+        except Exception as exc:                            # noqa: BLE001
+            if not silent:
+                QMessageBox.warning(self, self.t("character_error_title"), str(exc))
+            return False
 
     def refresh_character_choices(self):
         current = characters.active_id(self.settings)
@@ -1789,7 +2076,56 @@ class MainWindow(QMainWindow):
             label.setObjectName(key)
             label.setTextInteractionFlags(Qt.TextSelectableByMouse)
             self.about_labels[key] = self.row(f3, key, label)
-        self.tabs.addTab(self.page(box1, box2, box3), "")
+        subtabs = QTabWidget()
+        subtabs.addTab(self.page(box1, box2, box3), "")
+        subtabs.addTab(self.build_help_tab(), "")
+        self.general_subtabs = subtabs
+        self.reg(lambda text: subtabs.setTabText(0, text), "tab_preferences")
+        self.reg(lambda text: subtabs.setTabText(1, text), "tab_help")
+        self.tabs.addTab(self.page(subtabs), "")
+
+    def build_help_tab(self):
+        """Guide, troubleshooting, changelog and project links (the About metadata stays in Preferences)."""
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(8, 8, 8, 8)
+        update_box, update_form = self.group("g_help_updates")
+        version_label = QLabel(f"{APP_NAME} · {VERSION}")
+        version_label.setObjectName("title")
+        update_form.addRow(version_label)
+        description = QLabel()
+        description.setWordWrap(True)
+        self.reg(description.setText, "help_description")
+        update_form.addRow(description)
+        latest_btn = QPushButton()
+        repo_btn = QPushButton()
+        guide_btn = QPushButton()
+        troubleshoot_btn = QPushButton()
+        changes_btn = QPushButton()
+        data_btn = QPushButton()
+        self.reg(latest_btn.setText, "help_latest")
+        self.reg(repo_btn.setText, "help_repository")
+        self.reg(guide_btn.setText, "help_guide")
+        self.reg(troubleshoot_btn.setText, "help_troubleshooting")
+        self.reg(changes_btn.setText, "help_changes")
+        self.reg(data_btn.setText, "help_data")
+        latest_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(RELEASES_URL)))
+        repo_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(PROJECT_URL)))
+        guide_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(PROJECT_URL + "/blob/main/docs/USAGE_FA.md")))
+        troubleshoot_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(PROJECT_URL + "/blob/main/docs/WINDOWS11_CHECKLIST_FA.md")))
+        changes_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(PROJECT_URL + "/commits/main")))
+        data_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(PROJECT_URL + "/blob/main/docs/CHARACTER_PROFILES_FA.md")))
+        for button in (latest_btn, repo_btn, guide_btn, troubleshoot_btn, changes_btn, data_btn):
+            update_form.addRow(button)
+        about_box, about_form = self.group("g_help_about")
+        about_label = QLabel()
+        about_label.setWordWrap(True)
+        self.reg(about_label.setText, "help_about_text")
+        about_form.addRow(about_label)
+        layout.addWidget(update_box)
+        layout.addWidget(about_box)
+        layout.addStretch(1)
+        return self.page(page)
 
     def build_ai_tab(self):
         """Route Manager: ordered list of routes (drag & drop), per-route editor, providers (keys), benchmark."""
@@ -1894,7 +2230,7 @@ class MainWindow(QMainWindow):
         self.route_model_edit.activated.connect(lambda *_: self.route_edit_changed())
         root_layout.addWidget(rbox)
         root_layout.addWidget(ebox)
-        root_layout.addWidget(self.build_ollama_group())
+        root_layout.addWidget(self.build_local_model_group())
         root_layout.addStretch()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -1926,6 +2262,10 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(container, "")
         self.refresh_route_list()
         self.refresh_api_table()
+
+    def build_local_model_group(self):
+        """Backwards-compatible name for the Route local-provider group."""
+        return self.build_ollama_group()
 
     def build_ollama_group(self):
         """Local Ollama provider: enable switch + Edit for its address (Local Model settings stay exactly as before)."""
@@ -3593,7 +3933,8 @@ class MainWindow(QMainWindow):
         except Exception:                                         # noqa: BLE001
             mood_block = ""
         prompt = build_system_prompt(self.settings, "" if plain else self.director.format_hint(), memory_block,
-                                     voice_input=self._turn_voice, mode=mode, mood_block=mood_block)
+                                     voice_input=self._turn_voice, mode=mode, mood_block=mood_block,
+                                     character_profile=self.active_character())
         # The selected character changes identity and conversational style only; all shared tools and policies stay intact.
         character_layer = characters.prompt_for(self.settings)
         if character_layer:
@@ -3993,9 +4334,10 @@ class MainWindow(QMainWindow):
         except Exception as exc:                                  # noqa: BLE001
             ok = False
             chat_store.last_error = f"{type(exc).__name__}: {exc}"
-        with persona_memory.character_scope(characters.active_id(self.settings)):
+        with persona_memory.character_scope(self.cur.cid):
             persona_memory.observe(role, content)
         try:
+            self._sync_mood_character()
             if role == "user":
                 mood.on_user_message(content)
                 self.apply_mood_to_avatar()

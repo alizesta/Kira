@@ -130,6 +130,30 @@ class ProviderPayloadTests(unittest.TestCase):
             p.chat([{"role": "user", "content": "plain"}], "sys", 0.5)
             self.assertIn("json", calls[1])
 
+    def test_long_text_prompt_is_not_treated_as_a_file_upload(self):
+        calls = []
+
+        class Resp:
+            status_code = 200
+            def json(self):
+                return {"choices": [{"message": {"content": "ok"}}]}
+
+        def fake_post(url, **kw):
+            calls.append(kw)
+            body = kw.get("data")
+            if body is not None:
+                while body.read(4096):
+                    pass
+            return Resp()
+
+        p = CustomOpenAIProvider({"base_url": "http://x/v1", "api_key": "k" * 8, "model": "m"}, name="gemini")
+        p.upload_progress = lambda *_: None
+        long_prompt = "قانون " * 4000            # over 20 KB once encoded, but still a plain text message
+        with mock.patch("kira.hybrid_ai.requests.post", fake_post):
+            self.assertEqual(p.chat([{"role": "user", "content": long_prompt}], "sys", 0.5), "ok")
+        self.assertIn("json", calls[0])
+        self.assertNotIn("data", calls[0])
+
     def test_ollama_gets_plain_base64_list(self):
         kept = fit_messages(normalize_messages(self.messages()), "sys", 4096)
         self.assertEqual(kept[0]["images"], ["QUJD"])

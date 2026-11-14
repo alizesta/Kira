@@ -72,6 +72,15 @@ class IntentTests(unittest.TestCase):
         self.assertEqual(cc.parse_request("پوشه پروژه رو عوض کن").kind, "project")
         self.assertNotEqual(cc.parse_request("این پروژه رو عوض کن").kind, "project")
 
+    def test_zwnj_and_natural_folder_requests_are_recognised(self):
+        for text in ("پوشه‌ی پروژه را عوض کن", "پوشه‌ی پروژه رو عوض کن", "پوشه‌ی پروژه را انتخاب کن",
+                     "مسیر پروژه را تغییر بده", "change the project folder"):
+            self.assertTrue(cc.wants_project_change(text), text)
+            self.assertEqual(cc.parse_request(text).kind, "project", text)
+        # replacing the project's content is a mission, not a project-folder switch
+        for text in ("این پروژه رو عوض کن", "پروژه رو بررسی کن و تست‌ها رو بزن"):
+            self.assertFalse(cc.wants_project_change(text), text)
+
     def test_vocabulary_comes_from_the_projects_own_names(self):
         import tempfile
         with tempfile.TemporaryDirectory() as d:

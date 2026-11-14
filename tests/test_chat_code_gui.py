@@ -3,6 +3,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -207,6 +208,79 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.win.send_message()
         self.assertTrue(pump(lambda: calls))
 
+    def test_classifier_error_on_a_deleted_or_invalid_project_path_does_not_get_stuck(self):
+        self.turn_on()
+        for bad in (self.proj / "deleted_project", self.proj / "app.py"):
+            calls = self.spy_submit()
+            self.cc.root = bad                                  # deleted folder / a file instead of a folder
+            self.win.input.setText("این تابع رو درست کن")
+            self.win.send_message()
+            self.assertTrue(pump(lambda: calls), f"the message was dropped for {bad}")
+            self.assertEqual(calls, ["این تابع رو درست کن"], bad)
+            self.assertFalse(self.cc._classifying, bad)
+
+    def test_classification_result_stays_in_kira_when_another_tab_is_in_front(self):
+        self.turn_on()
+        started, release = threading.Event(), threading.Event()
+
+        def slow_model(messages, system, temperature=0.7, on_chunk=None, **kw):
+            started.set()
+            release.wait(5)
+            return {"text": "QUESTION"}
+
+        self.win.sessions["kira"].client.chat_stream = slow_model
+        kira, ren = self.win.sessions["kira"], self.win.sessions["ren"]
+        kira_before, ren_before = kira.view.toPlainText(), ren.view.toPlainText()
+        with mock.patch.object(self.cc, "start_auto") as started_auto:
+            self.win.input.setText("این تابع رو درست کن")
+            self.win.send_message()
+            self.assertTrue(started.wait(5), "the classifier never ran")
+            self.win.switch_session("ren")
+            APP.processEvents()
+            release.set()
+            self.assertTrue(pump(lambda: not self.cc._classifying, 10), "the decision never finished")
+        self.assertEqual(self.win.cur.cid, "ren")              # the visible tab never moved
+        self.assertIn("این تابع رو درست کن", kira.view.toPlainText())
+        self.assertNotEqual(kira.view.toPlainText(), kira_before)
+        self.assertEqual(ren.view.toPlainText(), ren_before)   # Ren's conversation untouched
+        kira_saved = [m["content"] for m in memory.recent_messages(20, "kira")]
+        ren_saved = [m["content"] for m in memory.recent_messages(20, "ren")]
+        self.assertIn("این تابع رو درست کن", kira_saved)
+        self.assertNotIn("این تابع رو درست کن", ren_saved)
+        started_auto.assert_called_once()
+        self.assertFalse(kira.busy)
+        self.assertFalse(ren.busy)
+
+    def test_chat_decision_is_submitted_to_kira_not_to_the_visible_tab(self):
+        self.turn_on()
+        started, release = threading.Event(), threading.Event()
+
+        def slow_model(messages, system, temperature=0.7, on_chunk=None, **kw):
+            started.set()
+            release.wait(5)
+            return {"text": "CHAT"}
+
+        self.win.sessions["kira"].client.chat_stream = slow_model
+        original_submit, seen = self.win.submit, []
+
+        def submit_spy(text, attachments=None):
+            if self.cc._bypass:
+                seen.append((text, self.win.cur.cid))
+            else:
+                original_submit(text, attachments)
+
+        self.win.submit = submit_spy
+        self.win.input.setText("این تابع رو درست کن")
+        self.win.send_message()
+        self.assertTrue(started.wait(5), "the classifier never ran")
+        self.win.switch_session("ren")
+        APP.processEvents()
+        release.set()
+        self.assertTrue(pump(lambda: seen, 10), "the message never reached the normal chat")
+        self.assertEqual(seen, [("این تابع رو درست کن", "kira")])
+        self.assertEqual(self.win.cur.cid, "ren")
+        self.assertFalse(self.cc._classifying)
+
     # ---- ask
     def test_question_is_answered_in_chat_and_saved(self):
         self.turn_on()
@@ -343,6 +417,29 @@ class ChatCodeGuiTests(unittest.TestCase):
             self.win.on_chat_link(QUrl("kira-code://open/99"))
             opened.assert_called_once()
 
+    def test_auto_result_ids_are_monotonic_and_unique(self):
+        first = self.cc._store_auto_result(Path("one.zip"))
+        second = self.cc._store_auto_result(Path("two.zip"))
+        self.assertEqual((first, second), ("1", "2"))
+        self.assertEqual(set(self.cc.auto_results), {"1", "2"})
+        self.assertEqual(self.cc.auto_results["2"], Path("two.zip"))
+
+    def test_shutdown_stops_running_jobs_and_clears_them(self):
+        job = mock.Mock()
+        job.isRunning.return_value = True
+        job.wait.return_value = True
+        class_job = mock.Mock()
+        class_job.isRunning.return_value = True
+        class_job.wait.return_value = True
+        self.cc.job, self.cc._class_job = job, class_job
+        self.cc.shutdown()
+        self.assertTrue(self.cc.auto_stop)
+        self.assertIsNone(self.cc.job)
+        self.assertIsNone(self.cc._class_job)
+        job.requestInterruption.assert_called_once()
+        job.deleteLater.assert_called_once()
+        class_job.requestInterruption.assert_called_once()
+
     def test_declining_the_start_confirmation_runs_nothing(self):
         self.prepare_auto()
         self.cc.confirm = lambda *a, **k: False
@@ -380,6 +477,46 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.send("پروژه را چک کن و درست کن")
         self.assertNotIn("must-not-run'", self.chat_text().replace("print('must-not-run')", ""))
         self.assertIn("کار خودکار تمام شد", self.chat_text())
+
+    # ---- execution guard (Task 004): tools_mode=off / Competitive Safe hold on every path
+    def test_tools_mode_off_blocks_every_registry_tool(self):
+        agent = self.win.tool_agent
+        self.win.settings["tools_mode"] = "off"
+        blocked = agent.registry.execute("get_datetime", {})
+        self.assertEqual(blocked.status, "denied")
+        self.assertIn("خاموش", blocked.text)
+        self.win.settings["tools_mode"] = "auto"
+        allowed = agent.registry.execute("get_datetime", {})
+        self.assertNotEqual(allowed.status, "denied")           # the allowed path is unchanged
+
+    def test_auto_mission_refuses_when_tools_mode_is_off(self):
+        self.prepare_auto()
+        self.win.settings["tools_mode"] = "off"
+        self.cc.start_auto("کل پروژه را چک کن")
+        self.assertIn("خاموش", self.chat_text())
+        self.assertIsNone(self.cc.job)
+        self.assertFalse(self.win.busy)
+
+    def test_auto_mission_refuses_in_competitive_safe_mode(self):
+        self.prepare_auto()
+        self.win.tool_agent.set_competitive_safe_mode(True)
+        self.cc.start_auto("کل پروژه را چک کن")
+        self.assertIn("Competitive Safe", self.chat_text())
+        self.assertIsNone(self.cc.job)
+        self.assertFalse(self.win.busy)
+
+    def test_direct_run_is_blocked_by_tools_off_and_competitive_safe(self):
+        self.turn_on()
+        self.cc.shell = (sys.executable, ["-c"])
+        self.win.settings["tools_mode"] = "off"
+        self.cc.run_command("print('must-not-run')")
+        self.assertIn("خاموش", self.chat_text())
+        self.assertIsNone(self.cc.proc)                         # no QProcess was started
+        self.win.settings["tools_mode"] = "auto"
+        self.win.tool_agent.set_competitive_safe_mode(True)
+        self.cc.run_command("print('must-not-run')")
+        self.assertIn("Competitive Safe", self.chat_text())
+        self.assertIsNone(self.cc.proc)
 
     # ---- local commands
     def test_files_command(self):
@@ -425,6 +562,28 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.cc.pick_folder = lambda: str(other)
         self.send("پوشه پروژه رو عوض کن")
         self.assertEqual(self.cc.root, other.resolve())
+
+    # ---- ZWNJ (نیم‌فاصله) wording and first-run ordering
+    def test_zwnj_folder_request_on_first_run_asks_for_the_folder_and_starts_no_mission(self):
+        asked = []
+        self.cc.pick_folder = lambda: (asked.append(1), str(self.proj))[1]
+        with mock.patch.object(self.cc, "start_auto") as started:
+            self.send("پوشه‌ی پروژه را عوض کن")
+        self.assertEqual(asked, [1])
+        self.assertEqual(self.cc.root, self.proj.resolve())
+        started.assert_not_called()                            # never a coding mission before the folder exists
+
+    def test_long_folder_request_switches_project_without_a_mission(self):
+        self.turn_on()
+        other = Path(tempfile.mkdtemp())
+        self.cc.pick_folder = lambda: str(other)
+        text = ("لطفاً پوشه‌ی پروژه را عوض کن چون می‌خواهم از این به بعد روی یک پروژه‌ی دیگر کار کنم "
+                "و مأموریت قبلی را ادامه نده")
+        self.assertGreaterEqual(len(text), 80)                 # parse_request leaves long messages alone; the route guard decides
+        with mock.patch.object(self.cc, "start_auto") as started:
+            self.send(text)
+        self.assertEqual(self.cc.root, other.resolve())
+        started.assert_not_called()
 
 
 if __name__ == "__main__":

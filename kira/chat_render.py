@@ -6,12 +6,28 @@ lines (a Persian sentence containing English words) follow whichever script domi
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import html
 import re
 import unicodedata
 from urllib.parse import unquote, urlparse
 
 RTL, LTR = "rtl", "ltr"
+
+# Per-message bubble tint used when the caller does not pass an `accent` explicitly
+# (keeps the character's chat colours without changing the historical call signature).
+_BUBBLE_ACCENT = contextvars.ContextVar("kira_chat_bubble_accent", default=None)
+
+
+@contextlib.contextmanager
+def bubble_accent(accent):
+    """Tint assistant bubbles with `accent` ({"bubble": "#rrggbb", "name": "#rrggbb"}) inside this block."""
+    token = _BUBBLE_ACCENT.set(accent)
+    try:
+        yield
+    finally:
+        _BUBBLE_ACCENT.reset(token)
 
 # kind -> (bubble colour, name colour, text colour, physical side of the bubble)
 STYLES = {
@@ -120,9 +136,11 @@ def rich_body_html(text: str, colour: str, ui_dir: str = RTL, italic: bool = Fal
     return "".join(out)
 
 
-def message_html(kind: str, name: str, text: str, ui_dir: str = RTL, extra_html: str = "", accent=None) -> str:
+def message_html(kind: str, name: str, text: str, ui_dir: str = RTL, extra_html: str = "",
+                 footer_html: str = "", accent=None) -> str:
     """accent: optional {"bubble": "#rrggbb", "name": "#rrggbb"} - the active character's tint for ITS bubbles (assistant only)."""
     bubble, name_colour, text_colour, side = STYLES.get(kind, STYLES["assistant"])
+    accent = accent if accent is not None else _BUBBLE_ACCENT.get()
     if accent and kind == "assistant":
         bubble, name_colour = accent.get("bubble", bubble), accent.get("name", name_colour)
     lines = _lines(text)
@@ -134,4 +152,4 @@ def message_html(kind: str, name: str, text: str, ui_dir: str = RTL, extra_html:
                           force_dir=detect_direction(lines[0], ui_dir))
     table_side = "right" if side == "right" else "left"
     return (f'<table align="{table_side}" width="86%" cellspacing="0" cellpadding="10" style="margin:7px 4px;">'
-            f'<tr><td bgcolor="{bubble}">{head}{extra_html}{body}</td></tr></table><p style="margin:0;font-size:3pt;">&nbsp;</p>')
+            f'<tr><td bgcolor="{bubble}">{head}{extra_html}{body}{footer_html or ""}</td></tr></table><p style="margin:0;font-size:3pt;">&nbsp;</p>')
