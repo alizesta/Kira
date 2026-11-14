@@ -122,19 +122,19 @@ private fun KiraApp() {
                     )
                     KiraTab.CHAT -> PlaceholderScreen(
                         title = "چت شخصیت‌ها",
-                        description = "چت Kira، Ren و Mika به هسته‌ی مشترک گفتگو و Route متصل خواهد شد."
+                        description = "چت Kira، Ren و Mika از همان Kira Core، همان تاریخچه و همان حساب ویندوز استفاده می‌کند. اتصال سرور در حال آماده‌سازی است."
                     )
                     KiraTab.ROUTE -> PlaceholderScreen(
                         title = "Route Manager",
-                        description = "اتصال Providerها، کشف مدل‌ها، اولویت‌بندی و Failover در این بخش پیاده‌سازی می‌شود."
+                        description = "Routeهای Cloud، کلیدهای Provider و ترتیب Failover در سطح حساب مشترک‌اند. مدل‌های محلی فقط روی همان دستگاه نمایش داده می‌شوند."
                     )
                     KiraTab.MEMORY -> PlaceholderScreen(
                         title = "حافظه",
-                        description = "حافظه‌ی کوتاه‌مدت و بلندمدت مستقل روی گوشی ذخیره خواهد شد."
+                        description = "حافظه‌ی بلندمدت و تاریخچه به حساب Kira متصل می‌شوند و با ورود به همان حساب روی ویندوز و موبایل بازیابی خواهند شد."
                     )
                     KiraTab.SETTINGS -> PlaceholderScreen(
                         title = "تنظیمات",
-                        description = "تنظیمات، امنیت کلیدها و مجوزهای نسخه اندروید."
+                        description = "تنظیمات مشترک حساب از سرور دریافت می‌شوند؛ مجوزها، صدا و تنظیمات سخت‌افزاری مخصوص همین دستگاه می‌مانند."
                     )
                 }
             }
@@ -171,7 +171,7 @@ private fun AssistantScreen(
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "نسخه مستقل موبایل، با شخصیت و قابلیت‌های مشترک Kira",
+            text = "کلاینت موبایل Kira؛ متصل به همان حساب و هسته‌ی ویندوز",
             color = Color(0xFF9BA5B8),
             fontSize = 13.sp
         )
@@ -218,7 +218,7 @@ private fun AssistantScreen(
         InfoPanel(
             title = "درک محتوای صفحه",
             description = "معادل اندرویدی بخش Vision در Game Mode ویندوز: دستیار می‌تواند با اجازه‌ی صریح کاربر، محتوای صفحه را برای پاسخ به سؤال بررسی کند.",
-            status = "در حال ساخت"
+            status = "در حال اتصال به Core مشترک"
         )
 
         InfoPanel(
