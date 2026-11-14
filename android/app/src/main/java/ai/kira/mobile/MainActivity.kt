@@ -130,10 +130,7 @@ private fun KiraApp() {
                     )
                     KiraTab.CHAT -> KiraChatScreen()
                     KiraTab.ROUTE -> KiraRouteScreen()
-                    KiraTab.MEMORY -> PlaceholderScreen(
-                        title = "حافظه",
-                        description = "حافظه‌ی بلندمدت و تاریخچه به حساب Kira متصل می‌شوند و با ورود به همان حساب روی ویندوز و موبایل بازیابی خواهند شد."
-                    )
+                    KiraTab.MEMORY -> KiraMemoryScreen()
                     KiraTab.SETTINGS -> CoreAccountScreen()
                 }
             }
