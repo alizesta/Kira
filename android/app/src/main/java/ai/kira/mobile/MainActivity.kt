@@ -129,10 +129,7 @@ private fun KiraApp() {
                         }
                     )
                     KiraTab.CHAT -> KiraChatScreen()
-                    KiraTab.ROUTE -> PlaceholderScreen(
-                        title = "Route Manager",
-                        description = "Routeهای Cloud، کلیدهای Provider و ترتیب Failover در سطح حساب مشترک‌اند. مدل‌های محلی فقط روی همان دستگاه نمایش داده می‌شوند."
-                    )
+                    KiraTab.ROUTE -> KiraRouteScreen()
                     KiraTab.MEMORY -> PlaceholderScreen(
                         title = "حافظه",
                         description = "حافظه‌ی بلندمدت و تاریخچه به حساب Kira متصل می‌شوند و با ورود به همان حساب روی ویندوز و موبایل بازیابی خواهند شد."
