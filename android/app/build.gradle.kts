@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "ai.kira.mobile"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "ai.kira.mobile"
