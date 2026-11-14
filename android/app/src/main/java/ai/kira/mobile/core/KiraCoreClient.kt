@@ -142,6 +142,19 @@ class KiraCoreClient(
     }
 
     fun account(): JSONObject = request("GET", "/v1/account")
+    fun characters(): JSONObject = request("GET", "/v1/characters")
+
+    fun saveCharacterProfile(characterId: String, revision: Int, profile: JSONObject): JSONObject =
+        request(
+            "PUT",
+            "/v1/characters/$characterId",
+            JSONObject().put("revision", revision).put("profile", profile)
+        )
+
+    fun deleteCharacterProfile(characterId: String) {
+        request("DELETE", "/v1/characters/$characterId")
+    }
+
     fun getSettings(): JSONObject = request("GET", "/v1/settings")
 
     fun saveSettings(revision: Int, settings: JSONObject): JSONObject =
