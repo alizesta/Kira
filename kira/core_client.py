@@ -132,6 +132,17 @@ class KiraCoreClient:
     def account(self) -> dict:
         return self._request("GET", "/v1/account")
 
+    def characters(self) -> dict:
+        return self._request("GET", "/v1/characters")
+
+    def save_character_profile(self, character_id: str, revision: int, profile: dict) -> dict:
+        return self._request("PUT", f"/v1/characters/{quote(character_id, safe='')}", {
+            "revision": int(revision), "profile": profile,
+        })
+
+    def delete_character_profile(self, character_id: str) -> None:
+        self._request("DELETE", f"/v1/characters/{quote(character_id, safe='')}")
+
     def get_settings(self) -> dict:
         return self._request("GET", "/v1/settings")
 
