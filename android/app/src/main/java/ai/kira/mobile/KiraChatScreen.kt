@@ -65,6 +65,7 @@ internal fun KiraChatScreen() {
     val listState = rememberLazyListState()
 
     var conversationId by remember { mutableStateOf("") }
+    var characterId by remember { mutableStateOf("kira") }
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("در حال آماده‌سازی چت مشترک Kira…") }
@@ -86,7 +87,7 @@ internal fun KiraChatScreen() {
                 if (!client.hasSession()) {
                     throw IllegalStateException("برای استفاده از چت مشترک، ابتدا وارد حساب Kira شو.")
                 }
-                val list = client.conversations("kira").optJSONArray("items") ?: JSONArray()
+                val list = client.conversations(characterId).optJSONArray("items") ?: JSONArray()
                 var selectedId = ""
                 var loaded = JSONArray()
                 if (list.length() > 0) {
@@ -94,7 +95,7 @@ internal fun KiraChatScreen() {
                     selectedId = first.optString("id")
                     loaded = client.messages(selectedId).optJSONArray("items") ?: JSONArray()
                 } else {
-                    selectedId = client.createConversation("kira").optString("id")
+                    selectedId = client.createConversation(characterId).optString("id")
                 }
                 val result = mutableListOf<KiraChatMessage>()
                 for (i in 0 until loaded.length()) {
@@ -125,7 +126,9 @@ internal fun KiraChatScreen() {
         }
     }
 
-    LaunchedEffect(serverUrl) {
+    LaunchedEffect(serverUrl, characterId) {
+        conversationId = ""
+        messages.clear()
         loadHistory()
     }
     LaunchedEffect(messages.size) {
@@ -151,7 +154,7 @@ internal fun KiraChatScreen() {
                 var id = conversationId
                 if (id.isBlank()) id = client.createConversation("kira").optString("id")
                 if (id.isBlank()) throw IllegalStateException("ساخت گفت‌وگو ناموفق بود.")
-                val response = client.sendMessage(id, "kira", text)
+                val response = client.sendMessage(id, characterId, text)
                 val route = response.optJSONObject("route")?.let {
                     listOf(it.optString("provider"), it.optString("model"))
                         .filter(String::isNotBlank).joinToString(" · ")
@@ -198,6 +201,21 @@ internal fun KiraChatScreen() {
                     enabled = !busy,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF242D40))
                 ) { Text("بازیابی") }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                listOf("kira" to "Kira", "ren" to "Ren", "mika" to "Mika").forEach { (id, label) ->
+                    Button(
+                        onClick = { characterId = id },
+                        enabled = !busy,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (characterId == id) Color(0xFF7661D8) else Color(0xFF20293A)
+                        )
+                    ) { Text(label) }
+                }
             }
 
             LazyColumn(
