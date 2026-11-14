@@ -282,8 +282,9 @@ class SkillsPage(QWidget):
         for skill in self.manager.list_skills():
             active = self.manager.is_enabled(skill, cid)
             scope = "Global" if skill.get("scope") == "global" else "Character"
+            kind = "API reference" if isinstance(skill.get("api_entry"), dict) else "Skill"
             label = "●" if active else "○"
-            row = QListWidgetItem(f"{label}  {skill['name']}  ·  {scope}")
+            row = QListWidgetItem(f"{label}  {skill['name']}  ·  {kind}  ·  {scope}")
             row.setData(Qt.UserRole, skill["name"])
             self.installed.addItem(row)
             if skill["name"] == selected:
@@ -301,8 +302,16 @@ class SkillsPage(QWidget):
         self.enabled.setChecked(bool(detail) and self.manager.is_enabled(detail, self.character.currentData() or "kira"))
         self.enabled.blockSignals(False)
         if detail:
+            api_entry = detail.get("api_entry") if isinstance(detail.get("api_entry"), dict) else None
+            api_status = ""
+            if api_entry:
+                api_status = (
+                    f"  |  API: {api_entry.get('category', '')}  |  Auth: {api_entry.get('auth', 'Unknown')}"
+                    f"  |  HTTPS: {api_entry.get('https', 'Unknown')}  |  CORS: {api_entry.get('cors', 'Unknown')}"
+                    "  |  فقط مرجع کاتالوگ؛ اتصال زنده هنوز ندارد."
+                )
             self.installed_detail.setText(
-                f"{detail.get('description', '')}  |  منبع: {detail.get('source', '')}  |  مجوز: {detail.get('license', 'مشخص نشده')}"
+                f"{detail.get('description', '')}  |  منبع: {detail.get('source', '')}  |  مجوز: {detail.get('license', 'مشخص نشده')}{api_status}"
             )
         else:
             self.installed_detail.setText("")
