@@ -276,7 +276,7 @@ class SharedSkillsManager:
             slug = re.sub(r"[^a-z0-9]+", "-", str(entry.get("name") or "").casefold()).strip("-")[:38] or "api"
             skill_name = f"api-{slug}-{str(entry.get('id') or '')[:6]}"
             def quoted(value):
-                return '"' + str(value or "").replace("\\\\", "\\\\\\\\").replace('"', '\\"').replace("\n", " ") + '"'
+                return json.dumps(str(value or "").replace("\n", " "), ensure_ascii=False)
             description = f"API reference for {entry.get('name', 'external API')}: {entry.get('description', '')}"[:1024]
             markdown = (
                 "---\n"
