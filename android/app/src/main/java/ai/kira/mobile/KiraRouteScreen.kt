@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -59,6 +59,8 @@ internal fun KiraRouteScreen() {
     val executor = remember { Executors.newSingleThreadExecutor() }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val routes = remember { mutableStateListOf<KiraCloudRoute>() }
+    var revision by remember { mutableStateOf(0) }
+    var sharedSettings by remember { mutableStateOf(JSONObject()) }
 
     var providerId by remember { mutableStateOf("openrouter") }
     var apiKey by remember { mutableStateOf("") }
@@ -103,6 +105,8 @@ internal fun KiraRouteScreen() {
                     )
                 }
                 mainHandler.post {
+                    revision = response.optInt("revision", 0)
+                    sharedSettings = JSONObject(settings.toString())
                     routes.clear()
                     routes.addAll(result)
                     status = if (result.isEmpty()) "هنوز Route ابری در حساب ذخیره نشده است. تنظیمات را ابتدا از ویندوز همگام کن یا کلید Provider اضافه کن."
@@ -119,6 +123,50 @@ internal fun KiraRouteScreen() {
     }
 
     LaunchedEffect(serverUrl) { loadRoutes() }
+
+    fun updateRoute(routeId: String, enabled: Boolean? = null, moveDelta: Int = 0) {
+        if (busy) return
+        val updated = JSONObject(sharedSettings.toString())
+        val array = updated.optJSONArray("routes") ?: JSONArray()
+        val routeList = mutableListOf<JSONObject>()
+        for (i in 0 until array.length()) {
+            array.optJSONObject(i)?.let { routeList.add(it) }
+        }
+        val index = routeList.indexOfFirst { it.optString("id") == routeId }
+        if (index < 0) return
+        if (enabled != null) routeList[index].put("enabled", enabled)
+        if (moveDelta != 0) {
+            val target = (index + moveDelta).coerceIn(0, routeList.lastIndex)
+            if (target != index) {
+                val moved = routeList.removeAt(index)
+                routeList.add(target, moved)
+            }
+        }
+        val reordered = JSONArray()
+        routeList.forEach { reordered.put(it) }
+        updated.put("routes", reordered)
+        busy = true
+        status = "در حال ذخیره‌ی اولویت و وضعیت Route…"
+        executor.execute {
+            try {
+                val client = KiraCoreClient(context, serverUrl)
+                if (!client.hasSession()) throw IllegalStateException("ابتدا وارد حساب Kira شو.")
+                val response = client.saveSettings(revision, updated)
+                mainHandler.post {
+                    revision = response.optInt("revision", revision + 1)
+                    sharedSettings = updated
+                    busy = false
+                    status = "تنظیمات Route روی حساب مشترک ذخیره شد."
+                    loadRoutes()
+                }
+            } catch (error: Exception) {
+                mainHandler.post {
+                    status = error.message ?: "ذخیره‌ی Route ناموفق بود. در صورت تعارض، لیست را بازیابی کن."
+                    busy = false
+                }
+            }
+        }
+    }
 
     fun saveCredential() {
         if (providerId.isBlank() || apiKey.isBlank() || busy) return
@@ -202,23 +250,42 @@ internal fun KiraRouteScreen() {
 
         Text("اولویت‌ها و وضعیت Providerها", color = Color(0xFFF1EFF8), fontWeight = FontWeight.SemiBold)
         LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(routes, key = { it.id }) { route ->
+            itemsIndexed(routes, key = { _, route -> route.id }) { index, route ->
                 Surface(color = Color(0xFF151C2B), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.padding(13.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text(route.provider, color = Color(0xFFF1EFF8), fontWeight = FontWeight.SemiBold)
-                            Text(route.model.ifBlank { "مدل انتخاب نشده" }, color = Color(0xFF9BA5B8), fontSize = 11.sp)
-                            Text(if (route.enabled) "فعال" else "غیرفعال", color = Color(0xFFB9A5FF), fontSize = 10.sp)
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                Text("${index + 1}. ${route.provider}", color = Color(0xFFF1EFF8), fontWeight = FontWeight.SemiBold)
+                                Text(route.model.ifBlank { "مدل انتخاب نشده" }, color = Color(0xFF9BA5B8), fontSize = 11.sp)
+                                Text(if (route.enabled) "فعال" else "غیرفعال", color = Color(0xFFB9A5FF), fontSize = 10.sp)
+                            }
+                            Text(
+                                if (route.configured) "کلید ذخیره است" else "بدون کلید",
+                                color = if (route.configured) Color(0xFF8FD6B0) else Color(0xFFFFC27A),
+                                fontSize = 10.sp
+                            )
                         }
-                        Text(
-                            if (route.configured) "کلید ذخیره است" else "بدون کلید",
-                            color = if (route.configured) Color(0xFF8FD6B0) else Color(0xFFFFC27A),
-                            fontSize = 10.sp
-                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Button(
+                                onClick = { updateRoute(route.id, enabled = !route.enabled) },
+                                enabled = !busy,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF303A50))
+                            ) { Text(if (route.enabled) "غیرفعال‌کردن" else "فعال‌کردن") }
+                            Button(
+                                onClick = { updateRoute(route.id, moveDelta = -1) },
+                                enabled = !busy && index > 0,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF303A50))
+                            ) { Text("↑") }
+                            Button(
+                                onClick = { updateRoute(route.id, moveDelta = 1) },
+                                enabled = !busy && index < routes.lastIndex,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF303A50))
+                            ) { Text("↓") }
+                        }
                     }
                 }
             }
