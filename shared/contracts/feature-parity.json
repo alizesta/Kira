@@ -1,43 +1,99 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "product": "Kira",
-  "principle": "feature-parity-with-native-platform-adapters",
-  "platforms": ["windows", "android"],
+  "architecture": "two-native-clients-one-shared-core",
+  "principle": "same-account-same-brain-same-cloud-settings-device-native-adapters",
+  "platforms": [
+    "windows",
+    "android"
+  ],
+  "shared_core": {
+    "service": "Kira Core Server",
+    "api_contract": "shared/contracts/kira-core-api-v1.yaml",
+    "owns": [
+      "account_identity",
+      "character_profiles",
+      "conversation_history",
+      "shared_long_term_memory",
+      "cloud_provider_credentials",
+      "cloud_routes_and_failover",
+      "shared_brain_settings",
+      "skills_library",
+      "cross_device_sync"
+    ],
+    "authentication": {
+      "initial_provider": "email_password",
+      "google_sign_in": "deferred",
+      "account_identity_is_provider_independent": true
+    }
+  },
+  "data_scopes": {
+    "account_shared": [
+      "characters",
+      "chat_history",
+      "long_term_memory",
+      "cloud_provider_connections",
+      "cloud_route_priority",
+      "brain_settings",
+      "shared_preferences",
+      "skills"
+    ],
+    "device_local": [
+      "microphone_and_speaker_devices",
+      "os_permissions",
+      "local_file_paths",
+      "local_model_runtime",
+      "local_ollama_endpoint",
+      "screen_capture_session",
+      "window_and_display_preferences",
+      "device_tool_permissions"
+    ],
+    "api_keys": "cloud_provider_keys_are_encrypted_at_rest_on_core_and_never_returned_by_read_endpoints"
+  },
   "capabilities": [
     {
       "id": "characters",
       "title": "Character profiles",
-      "profiles": ["kira", "ren", "mika"],
+      "profiles": [
+        "kira",
+        "ren",
+        "mika"
+      ],
       "windows": "implemented",
       "android": "planned",
-      "parity": "same-user-experience"
+      "core": "shared",
+      "parity": "same-account-same-profile-data"
     },
     {
       "id": "conversation",
       "title": "Chat and streaming responses",
       "windows": "implemented",
       "android": "planned",
-      "parity": "same-user-experience"
+      "core": "shared",
+      "parity": "same-core-brain-and-history"
     },
     {
       "id": "route_manager",
       "title": "Provider and model routing",
       "windows": "implemented",
       "android": "planned",
-      "parity": "same-providers-and-routing-policy"
+      "core": "shared",
+      "parity": "same-cloud-routes-priority-and-failover"
     },
     {
       "id": "memory",
       "title": "Short-term and long-term memory",
       "windows": "implemented",
       "android": "planned",
-      "parity": "same-memory-contract-local-storage"
+      "core": "shared",
+      "parity": "same-account-memory-and-conversation-context"
     },
     {
       "id": "voice",
       "title": "Speech input and spoken responses",
       "windows": "implemented",
       "android": "planned",
+      "core": "shared-policy-native-adapters",
       "parity": "platform-adapted"
     },
     {
@@ -45,7 +101,8 @@
       "title": "Image and file attachments",
       "windows": "implemented",
       "android": "planned",
-      "parity": "same-supported-content-types"
+      "core": "shared",
+      "parity": "same-supported-content-types-and-account-storage"
     },
     {
       "id": "screen_context",
@@ -54,6 +111,7 @@
       "windows_name": "Game Mode",
       "android": "in_progress",
       "android_name": "AI Assistant",
+      "core": "shared",
       "parity": "platform-adapted-explicit-user-consent"
     },
     {
@@ -61,6 +119,7 @@
       "title": "Quick access companion",
       "windows": "implemented",
       "android": "in_progress",
+      "core": "shared-character-state-native-ui",
       "parity": "platform-native-overlay"
     },
     {
@@ -68,13 +127,15 @@
       "title": "Shared Skills System",
       "windows": "implemented",
       "android": "planned",
-      "parity": "same-skill-contract"
+      "core": "shared",
+      "parity": "same-account-skill-library"
     },
     {
       "id": "ai1_code",
       "title": "Ai1 Code workspace",
       "windows": "implemented",
       "android": "planned",
+      "core": "shared-task-contract-device-executors",
       "parity": "same-workflow-with-mobile-execution-limits"
     },
     {
@@ -82,6 +143,7 @@
       "title": "Local model runtime",
       "windows": "implemented",
       "android": "planned",
+      "core": "device-local",
       "parity": "platform-specific-runtime-same-route-contract"
     },
     {
@@ -89,6 +151,7 @@
       "title": "System tools and device actions",
       "windows": "implemented",
       "android": "planned",
+      "core": "shared-permission-policy-native-adapters",
       "parity": "permission-bounded-platform-adapters"
     }
   ],
@@ -98,6 +161,13 @@
     "capture": "on-demand-only",
     "user_consent_required": true,
     "continuous_background_upload": false,
-    "android_implementation": "MediaProjection with a user-approved session and a foreground service"
+    "android_implementation": "MediaProjection with a user-approved session and a foreground service",
+    "core_upload": "only the user-approved frame or content excerpt for the active request"
+  },
+  "migration_policy": {
+    "local_data_is_preserved_until_server_acknowledges_import": true,
+    "provider_secrets_require_explicit_import_consent": true,
+    "local_model_routes_are_device_scoped": true,
+    "google_identity_linking_must_preserve_existing_account_id": true
   }
 }
