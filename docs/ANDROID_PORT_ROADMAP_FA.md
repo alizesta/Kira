@@ -101,10 +101,11 @@ Routeهای Cloud و تنظیماتشان حساب‌محورند. Route محل�
 - [x] قرارداد و Adapter اولیه‌ی Android و Windows برای API مشترک و نشست
 - [x] ذخیره‌ی امن Token موبایل با Android Keystore و نشست ویندوز با DPAPI
 - [ ] استقرار Kira Core روی هاست واقعی با PostgreSQL و HTTPS
-- [ ] اتصال UI ورود و بازیابی نشست در هر دو کلاینت
+- [x] صفحه‌ی حساب Android با ثبت‌نام/ورود ایمیلی و بازیابی نشست
+- [ ] صفحه‌ی ورود و بازیابی نشست Windows
 - [ ] انتقال امن Provider credentialها از UI موجود ویندوز به Core با تأیید کاربر
 - [ ] اتصال جریان اصلی چت، Route و تنظیمات Windows به Core و مهاجرت پیش‌نمایش‌دار اطلاعات موجود
-- [ ] اتصال جریان اصلی چت، Route، حافظه و تنظیمات Android به همان Core
+- [ ] اتصال UI چت، Route و حافظه‌ی Android به همان Core
 - [ ] Sync تاریخچه، حافظه و تنظیمات حساب
 - [ ] اتصال کامل چت، Route، شخصیت‌ها، Voice و Attachment در Android
 - [ ] اتصال Google Sign-In به حساب موجود
