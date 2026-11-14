@@ -186,9 +186,15 @@ private fun CoreAccountScreen() {
             try {
                 val client = KiraCoreClient(context, configuredUrl)
                 val result = action(client)
+                val stillSignedIn = client.hasSession()
+                val currentAccountId = if (stillSignedIn) {
+                    runCatching { client.account().optString("account_id") }.getOrDefault("")
+                } else {
+                    ""
+                }
                 mainHandler.post {
-                    connected = true
-                    accountId = client.account().optString("account_id").ifBlank { accountId }
+                    connected = stillSignedIn
+                    accountId = currentAccountId
                     status = result
                     busy = false
                 }
