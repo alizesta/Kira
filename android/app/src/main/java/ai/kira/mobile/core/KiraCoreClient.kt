@@ -113,6 +113,9 @@ class KiraCoreClient(
         require(baseUrl.isNotBlank()) { "Kira Core URL is not configured." }
     }
 
+    fun hasSession(): Boolean =
+        sessionStore.accessToken().isNotBlank() && sessionStore.refreshToken().isNotBlank()
+
     fun register(email: String, password: String, displayName: String = ""): JSONObject {
         val body = JSONObject()
             .put("email", email)
