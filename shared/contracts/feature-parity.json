@@ -19,7 +19,9 @@
       "cloud_routes_and_failover",
       "shared_brain_settings",
       "skills_library",
-      "cross_device_sync"
+      "cross_device_sync",
+      "device_registry",
+      "explicit_desktop_migration"
     ],
     "authentication": {
       "initial_provider": "email_password",
@@ -52,6 +54,14 @@
   },
   "capabilities": [
     {
+      "id": "account",
+      "title": "Shared account and cross-device restore",
+      "windows": "in_progress",
+      "android": "in_progress",
+      "core": "shared-identity-and-session",
+      "parity": "one-account-restores-shared-data-on-both-native-clients"
+    },
+    {
       "id": "characters",
       "title": "Character profiles",
       "profiles": [
@@ -60,7 +70,7 @@
         "mika"
       ],
       "windows": "implemented",
-      "android": "planned",
+      "android": "in_progress",
       "core": "shared",
       "parity": "same-account-same-profile-data"
     },
@@ -68,7 +78,7 @@
       "id": "conversation",
       "title": "Chat and streaming responses",
       "windows": "implemented",
-      "android": "planned",
+      "android": "in_progress",
       "core": "shared",
       "parity": "same-core-brain-and-history"
     },
@@ -76,7 +86,7 @@
       "id": "route_manager",
       "title": "Provider and model routing",
       "windows": "implemented",
-      "android": "planned",
+      "android": "in_progress",
       "core": "shared",
       "parity": "same-cloud-routes-priority-and-failover"
     },
@@ -84,7 +94,7 @@
       "id": "memory",
       "title": "Short-term and long-term memory",
       "windows": "implemented",
-      "android": "planned",
+      "android": "in_progress",
       "core": "shared",
       "parity": "same-account-memory-and-conversation-context"
     },
