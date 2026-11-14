@@ -151,7 +151,7 @@ class LocalKiraCore(context:Context) {
         require(apiKey.isNotBlank()) { "API Key خالی است." }
         val id=providerId.lowercase()
         val endpoint=when(id) {
-            "gemini" -> "https://generativelanguage.googleapis.com/v1beta/models?key="+URLEncoder.encode(apiKey,"UTF-8")
+            "gemini" -> "https://generativelanguage.googleapis.com/v1beta/models"
             "groq" -> "https://api.groq.com/openai/v1/models"
             "mistral" -> "https://api.mistral.ai/v1/models"
             "deepseek" -> "https://api.deepseek.com/models"
@@ -162,7 +162,8 @@ class LocalKiraCore(context:Context) {
         val models=try {
             conn.requestMethod="GET"; conn.connectTimeout=15000; conn.readTimeout=30000
             conn.setRequestProperty("Accept","application/json")
-            if(id!="gemini") conn.setRequestProperty("Authorization","Bearer "+apiKey)
+            if(id=="gemini") conn.setRequestProperty("x-goog-api-key",apiKey)
+            else conn.setRequestProperty("Authorization","Bearer "+apiKey)
             val code=conn.responseCode
             val raw=(if(code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
             if(code !in 200..299) {
@@ -236,6 +237,9 @@ class LocalKiraCore(context:Context) {
         }
         return out
     }
+
+    @Synchronized fun freeProviders():List<LocalProvider> =
+        providers().filter { it.hasKey && isKnownFreeChatModel(it.id,it.model) }
 
     @Synchronized fun saveProvider(id:String,model:String,baseUrl:String,apiKey:String,enabled:Boolean=true) {
         val pid=id.trim().lowercase()
@@ -395,6 +399,7 @@ class LocalKiraCore(context:Context) {
             "برای اطلاعات هواشناسی از مختصات به‌دست‌آمده از weather-location استفاده کن. latitude و longitude الزامی‌اند. پارامتر current را با متغیرهایی مانند temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m درخواست کن و timezone را متناسب با شهر تنظیم کن. زمان و واحدهای برگشتی را در پاسخ حفظ کن.",
             "https://api.open-meteo.com","/v1/forecast",listOf("latitude","longitude","current","daily","timezone","forecast_days","temperature_unit","wind_speed_unit"),"","global","builtin"
         )
+        db.execSQL("UPDATE skills SET source='builtin' WHERE name IN ('currency-rates','weather-location','weather-forecast')")
     }
 
     private fun connectorPrompt(characterId:String):String {
@@ -471,7 +476,7 @@ class LocalKiraCore(context:Context) {
         require(url.protocol=="https" && url.host.equals(URL(row[2]).host,true) &&
             (url.port==-1 || url.port==443) && isPublicHost(url.host)) { "مقصد Connector معتبر یا عمومی نیست." }
         val conn=url.openConnection() as HttpURLConnection
-        try {
+        return try {
             conn.requestMethod="GET";conn.instanceFollowRedirects=false
             conn.connectTimeout=10000;conn.readTimeout=20000
             conn.setRequestProperty("Accept","application/json")
@@ -585,7 +590,7 @@ class LocalKiraCore(context:Context) {
         repeat(4) { round ->
             val body=JSONObject().put("systemInstruction",system).put("contents",contents)
                 .put("generationConfig",JSONObject().put("temperature",0.75))
-            val endpoint=p.baseUrl.trimEnd('/')+"/models/"+URLEncoder.encode(p.model,"UTF-8")+":generateContent?key="+URLEncoder.encode(key,"UTF-8")
+            val endpoint=p.baseUrl.trimEnd('/')+"/models/"+URLEncoder.encode(p.model,"UTF-8")+":generateContent"
             val response=request(endpoint,"",body,"gemini")
             val parts=response.optJSONArray("candidates")?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: JSONArray()
             val answer=(0 until parts.length()).mapNotNull { parts.optJSONObject(it)?.optString("text") }.filter { it.isNotBlank() }.joinToString("\n").trim()
@@ -604,7 +609,10 @@ class LocalKiraCore(context:Context) {
         try {
             conn.requestMethod="POST"; conn.connectTimeout=15000; conn.readTimeout=90000; conn.doOutput=true
             conn.setRequestProperty("Content-Type","application/json"); conn.setRequestProperty("Accept","application/json")
-            if(key.isNotBlank()) conn.setRequestProperty("Authorization","Bearer "+key)
+            if(key.isNotBlank()) {
+                if(provider=="gemini") conn.setRequestProperty("x-goog-api-key",key)
+                else conn.setRequestProperty("Authorization","Bearer "+key)
+            }
             if(provider=="openrouter") { conn.setRequestProperty("HTTP-Referer","https://github.com/alizesta/Kira"); conn.setRequestProperty("X-Title","Kira") }
             conn.outputStream.use { it.write(body.toString().toByteArray(StandardCharsets.UTF_8)) }
             val code=conn.responseCode; val stream=if(code in 200..299) conn.inputStream else conn.errorStream

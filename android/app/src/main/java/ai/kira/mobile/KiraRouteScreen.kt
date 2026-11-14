@@ -48,7 +48,7 @@ internal fun KiraRouteScreen() {
 
     fun refreshRoutes() {
         routes.clear()
-        routes.addAll(core.providers().filter { it.hasKey })
+        routes.addAll(core.freeProviders())
     }
 
     LaunchedEffect(Unit) {
@@ -74,7 +74,7 @@ internal fun KiraRouteScreen() {
                         models.addAll(fresh)
                         selectedModel=chosen
                         routes.clear()
-                        routes.addAll(list.filter { it.hasKey })
+                        routes.addAll(core.freeProviders())
                         status="فهرست رایگان به‌روز شد · " + fresh.size + " مدل · " + chosen
                         busy=false
                     }
@@ -83,7 +83,7 @@ internal fun KiraRouteScreen() {
                     val list=core.providers()
                     handler.post {
                         routes.clear()
-                        routes.addAll(list.filter { it.hasKey })
+                        routes.addAll(core.freeProviders())
                         if(cached.isEmpty()) {
                             models.clear()
                             selectedModel=""
@@ -121,7 +121,7 @@ internal fun KiraRouteScreen() {
                     models.addAll(found)
                     selectedModel=preferred
                     routes.clear()
-                    routes.addAll(list.filter { it.hasKey })
+                    routes.addAll(core.freeProviders())
                     apiKey=""
                     status="اتصال برقرار شد · " + found.size + " مدل رایگان · انتخاب خودکار: " + preferred
                     busy=false
@@ -146,7 +146,7 @@ internal fun KiraRouteScreen() {
                 val list=core.providers()
                 handler.post {
                     routes.clear()
-                    routes.addAll(list.filter { it.hasKey })
+                    routes.addAll(core.freeProviders())
                     status="مدل رایگان انتخاب‌شده: " + model
                     busy=false
                 }
@@ -180,7 +180,7 @@ internal fun KiraRouteScreen() {
                     models.addAll(fresh)
                     selectedModel=chosen
                     routes.clear()
-                    routes.addAll(list.filter { it.hasKey })
+                    routes.addAll(core.freeProviders())
                     status="مدل پیشنهادی رایگان به‌روزرسانی شد: " + chosen
                     busy=false
                 }
@@ -200,7 +200,7 @@ internal fun KiraRouteScreen() {
                 val list=core.providers()
                 handler.post {
                     routes.clear()
-                    routes.addAll(list.filter { it.hasKey })
+                    routes.addAll(core.freeProviders())
                     status="تنظیمات اتصال ذخیره شد."
                     busy=false
                 }
