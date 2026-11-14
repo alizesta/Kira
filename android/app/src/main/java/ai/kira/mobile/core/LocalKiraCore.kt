@@ -40,13 +40,15 @@ private class LocalKeyVault {
         val cipher=Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE,key)
         return Base64.encodeToString(cipher.iv+cipher.doFinal(value.toByteArray(StandardCharsets.UTF_8)),Base64.NO_WRAP)
     }
-    fun decrypt(value:String):String=try {
+    fun decrypt(value:String):String {
         if(value.isBlank()) return ""
-        val raw=Base64.decode(value,Base64.NO_WRAP); require(raw.size>12)
-        val cipher=Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE,key,GCMParameterSpec(128,raw.copyOfRange(0,12)))
-        String(cipher.doFinal(raw.copyOfRange(12,raw.size)),StandardCharsets.UTF_8)
-    } catch(_:Exception) { "" }
+        return try {
+            val raw=Base64.decode(value,Base64.NO_WRAP); require(raw.size>12)
+            val cipher=Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE,key,GCMParameterSpec(128,raw.copyOfRange(0,12)))
+            String(cipher.doFinal(raw.copyOfRange(12,raw.size)),StandardCharsets.UTF_8)
+        } catch(_:Exception) { "" }
+    }
 }
 
 private class LocalDb(context:Context):SQLiteOpenHelper(context.applicationContext,"kira_local_core.db",null,1) {
