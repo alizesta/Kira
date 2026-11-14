@@ -2294,7 +2294,8 @@ class MainWindow(QMainWindow):
                 ]
                 shared["provider_order"] = [pid for pid in self.settings.get("provider_order", []) if pid in cloud_providers]
                 shared["manual_route_id"] = self.settings.get("manual_route_id", "")
-                for key in ("model", "ollama_url"):
+                for key in ("model", "ollama_url", "core_url", "core_device_id",
+                            "core_chat_enabled", "core_migration_import_id", "core_migration_imported"):
                     shared.pop(key, None)
                 remote = client.get_settings()
                 client.save_settings(int(remote.get("revision", 0)), shared)
