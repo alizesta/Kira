@@ -1,0 +1,41 @@
+# Secrets and deployment environment files
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+server/.env
+
+# Local databases, credentials and runtime data
+server/data/
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+kira/data/
+data/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+ENV/
+
+# Android / Gradle
+.gradle/
+**/.gradle/
+**/build/
+local.properties
+*.jks
+*.keystore
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
