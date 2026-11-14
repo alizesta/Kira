@@ -65,6 +65,7 @@ DEFAULTS = {
     "voice_ja": "ja-JP-NanamiNeural",
     "ui_lang": "fa",
     "window_effect": "acrylic",          # Windows 11: acrylic | mica | off (ignored elsewhere)
+    "core_url": "",                      # shared Kira Core endpoint; credentials are stored separately via DPAPI
     "click_reactions": True,
     "body_control": True,                 # chat commands move the 3D body (raise hand, turn back, bend ...; kira/body.py)
     "companion_height": 620,
