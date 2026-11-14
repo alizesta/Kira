@@ -24,6 +24,7 @@ internal fun KiraSkillsScreen() {
     var refresh by remember { mutableIntStateOf(0) }
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var instructions by remember { mutableStateOf("") }
     var baseUrl by remember { mutableStateOf("https://api.example.com") }
     var endpoint by remember { mutableStateOf("/v1/search") }
     var parameters by remember { mutableStateOf("q") }
@@ -72,6 +73,14 @@ internal fun KiraSkillsScreen() {
         Text("فقط درخواست HTTPS GET. هیچ اسکریپت یا کد دانلودشده‌ای اجرا نمی‌شود. کلید اختیاری با Android Keystore رمزنگاری می‌شود.",color=Color(0xFF9BA5B8),fontSize=11.sp,lineHeight=17.sp)
         OutlinedTextField(value=name,onValueChange={name=it.lowercase().replace(Regex("[^a-z0-9-]"),"-").replace(Regex("-+"),"-").trim('-')},label={Text("شناسه مهارت (انگلیسی)")},singleLine=true,modifier=Modifier.fillMaxWidth())
         OutlinedTextField(value=description,onValueChange={description=it},label={Text("توضیح کوتاه")},modifier=Modifier.fillMaxWidth())
+        OutlinedTextField(
+            value=instructions,
+            onValueChange={instructions=it},
+            label={Text("دستور استفاده از این API")},
+            placeholder={Text("مثلاً: برای تبدیل ارز، کد ارز مبدأ و مقصد را بگیر، نرخ مرجع را دریافت کن و تاریخ داده را اعلام کن.")},
+            minLines=3,
+            modifier=Modifier.fillMaxWidth()
+        )
         OutlinedTextField(value=baseUrl,onValueChange={baseUrl=it},label={Text("Base URL")},singleLine=true,modifier=Modifier.fillMaxWidth())
         OutlinedTextField(value=endpoint,onValueChange={endpoint=it},label={Text("مسیر Endpoint")},singleLine=true,modifier=Modifier.fillMaxWidth())
         OutlinedTextField(value=parameters,onValueChange={parameters=it},label={Text("پارامترهای مجاز با کاما")},singleLine=true,modifier=Modifier.fillMaxWidth())
@@ -79,8 +88,8 @@ internal fun KiraSkillsScreen() {
         Button(
             onClick={
                 try {
-                    core.installApiSkill(name,description,description,baseUrl,endpoint,parameters.split(",").map { it.trim() },apiKey,character)
-                    name="";description="";apiKey="";status="Connector نصب شد و برای دامنه انتخاب‌شده فعال است.";refresh++
+                    core.installApiSkill(name,description,instructions.ifBlank { description },baseUrl,endpoint,parameters.split(",").map { it.trim() },apiKey,character)
+                    name="";description="";instructions="";apiKey="";status="Connector نصب شد و برای دامنه انتخاب‌شده فعال است.";refresh++
                 } catch(e:Exception) { status=e.message ?: "نصب Connector ناموفق بود." }
             },
             enabled=name.isNotBlank() && description.isNotBlank() && endpoint.startsWith("/"),
