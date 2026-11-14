@@ -1,6 +1,6 @@
 """Discovery and explicit registration of APIs listed by public-apis/public-apis.
 
-The upstream repository is a catalogue, not a gateway. Entries registered here are
+The upstream repository is a catalogue, not a gateway. Registered entries remain
 reference-only until Kira has an explicit, reviewed connector for that API. This
 module never calls third-party APIs and never stores API keys.
 """
@@ -28,35 +28,31 @@ class ApiCatalogError(RuntimeError):
 
 
 def _clean_cell(value: str) -> str:
-    value = re.sub(r"\\[|]", "|", str(value or ""))
+    value = str(value or "").replace("\\|", "|")
     value = re.sub(r"<[^>]+>", "", value)
-    return value.strip().strip("`").strip()
+    return value.strip().strip(chr(96)).strip()
 
 
 def _parse_row(line: str, category: str) -> dict | None:
     cells = [x.strip() for x in line.strip().strip("|").split("|")]
     if len(cells) < 5:
         return None
-    first = re.search(r"\\[([^\\]]+)\\]\\((https?://[^)]+)\\)", cells[0])
+    first = re.search(r"\[([^\]]+)\]\((https?://[^)]+)\)", cells[0])
     if not first:
         return None
     name, url = _clean_cell(first.group(1)), first.group(2).strip()
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         return None
-    description = _clean_cell(cells[1])
-    auth = _clean_cell(cells[2]) or "Unknown"
-    https = _clean_cell(cells[3]).replace("**", "") or "Unknown"
-    cors = _clean_cell(cells[4]).replace("**", "") or "Unknown"
     stable = hashlib.sha256((name.casefold() + "|" + url.casefold()).encode("utf-8")).hexdigest()[:20]
     return {
         "id": stable,
         "name": name[:120],
         "category": category[:80],
-        "description": description[:500],
-        "auth": auth[:80],
-        "https": https[:20],
-        "cors": cors[:20],
+        "description": _clean_cell(cells[1])[:500],
+        "auth": (_clean_cell(cells[2]) or "Unknown")[:80],
+        "https": (_clean_cell(cells[3]) or "Unknown")[:20],
+        "cors": (_clean_cell(cells[4]) or "Unknown")[:20],
         "url": url[:1000],
         "source": SOURCE_URL,
         "integration_status": "catalog_only",
@@ -64,15 +60,14 @@ def _parse_row(line: str, category: str) -> dict | None:
 
 
 def parse_public_apis_readme(markdown: str) -> list[dict]:
-    """Parse category tables under the README Index; ignore promo and non-API tables."""
-    lines = str(markdown or "").splitlines()
+    """Parse category tables beneath README Index; skip promotional and MCP tables."""
     in_index = False
     category = ""
     in_table = False
     out: list[dict] = []
     seen: set[str] = set()
-    for line in lines:
-        heading = re.match(r"^(#{2,3})\\s+(.+?)\\s*$", line)
+    for line in str(markdown or "").splitlines():
+        heading = re.match(r"^(#{2,3})\s+(.+?)\s*$", line)
         if heading:
             level, title = len(heading.group(1)), heading.group(2).strip()
             if level == 2:
@@ -124,7 +119,8 @@ class PublicApiCatalog:
 
     def refresh(self, force: bool = False) -> int:
         cached = self._read_cache()
-        if not force and cached["items"] and time.time() - float(cached.get("fetched_at") or 0) < CACHE_TTL_SECONDS:
+        fetched_at = float(cached.get("fetched_at") or 0)
+        if not force and cached["items"] and time.time() - fetched_at < CACHE_TTL_SECONDS:
             return len(cached["items"])
         headers = {"User-Agent": _USER_AGENT, "Accept": "text/plain"}
         if cached.get("etag"):
@@ -173,11 +169,13 @@ class PublicApiCatalog:
         if len(query) < 2:
             raise ApiCatalogError("برای جست‌وجو حداقل دو نویسه وارد کن.")
         self.refresh(force=refresh)
-        terms = [x for x in re.findall(r"[a-z0-9][a-z0-9+_.-]*|[\\u0600-\\u06ff]{2,}", query) if x]
+        terms = re.findall(r"[a-z0-9][a-z0-9+_.-]*|[^\W\d_]{2,}", query, flags=re.UNICODE)
         ranked = []
         for item in self._read_cache()["items"]:
-            haystack = " ".join(str(item.get(k) or "") for k in ("name", "category", "description", "auth")).casefold()
-            score = sum(4 if term == str(item.get("name", "")).casefold() else 2 if term in str(item.get("category", "")).casefold() else 1 for term in terms if term in haystack)
+            name = str(item.get("name") or "").casefold()
+            category = str(item.get("category") or "").casefold()
+            haystack = " ".join(str(item.get(key) or "") for key in ("name", "category", "description", "auth")).casefold()
+            score = sum(4 if term == name else 2 if term in category else 1 for term in terms if term in haystack)
             if score:
                 ranked.append((score, item))
         ranked.sort(key=lambda pair: (-pair[0], pair[1]["category"].casefold(), pair[1]["name"].casefold()))
@@ -192,7 +190,7 @@ class PublicApiCatalog:
 
 
 class PublicApiRegistry:
-    """Local user-data registry for APIs explicitly attached to Kira/ Ren/ Mika."""
+    """Local user-data registry for APIs explicitly attached to Kira, Ren, or Mika."""
 
     def __init__(self, data_dir: str | Path):
         self.path = Path(data_dir) / "public_api_registry.json"
@@ -213,8 +211,7 @@ class PublicApiRegistry:
         temp.replace(self.path)
 
     def register(self, entry: dict, scope: str = "character", character_id: str = "kira") -> dict:
-        required = ("id", "name", "url")
-        if not isinstance(entry, dict) or any(not str(entry.get(key) or "").strip() for key in required):
+        if not isinstance(entry, dict) or any(not str(entry.get(key) or "").strip() for key in ("id", "name", "url")):
             raise ApiCatalogError("اطلاعات API برای ثبت کامل نیست.")
         parsed = urlparse(str(entry["url"]))
         if parsed.scheme not in ("https", "http") or not parsed.netloc:
@@ -244,17 +241,20 @@ class PublicApiRegistry:
             data["items"].append(current)
         if normalized_scope == "global":
             current["scope"] = "global"
-        elif current.get("scope") != "global" and cid not in current.setdefault("characters", []):
-            current["characters"].append(cid)
+            current["characters"] = []
+        elif current.get("scope") != "global":
+            current.setdefault("characters", [])
+            if cid not in current["characters"]:
+                current["characters"].append(cid)
         self._save(data)
         return dict(current)
 
     def list_for_character(self, character_id: str) -> list[dict]:
         cid = str(character_id or "kira")[:80]
-        items = []
-        for item in self._load()["items"]:
-            if item.get("scope") == "global" or cid in item.get("characters", []):
-                items.append(dict(item))
+        items = [
+            dict(item) for item in self._load()["items"]
+            if item.get("scope") == "global" or cid in item.get("characters", [])
+        ]
         return sorted(items, key=lambda x: (x.get("category", "").casefold(), x.get("name", "").casefold()))
 
     def remove(self, api_id: str, character_id: str | None = None) -> bool:
@@ -274,7 +274,7 @@ class PublicApiRegistry:
         return changed
 
     def set_connector(self, api_id: str, connector_id: str) -> dict:
-        """Mark a reviewed application connector as available; this does not create or execute code."""
+        """Mark an existing reviewed application connector as available; never creates or runs code."""
         data = self._load()
         item = next((x for x in data["items"] if x.get("id") == str(api_id)), None)
         if item is None:
