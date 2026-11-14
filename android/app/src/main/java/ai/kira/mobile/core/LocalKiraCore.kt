@@ -93,6 +93,25 @@ class LocalKiraCore(context:Context) {
         return out
     }
 
+
+    /** Detects the provider from a key fingerprint, then verifies it against the live model endpoint. */
+    @Synchronized fun detectProviderAndDiscoverModels(apiKey:String):Pair<String,List<String>> {
+        val key=apiKey.trim()
+        require(key.isNotBlank()) { "API Key خالی است." }
+        val hinted=when {
+            key.startsWith("AIza") -> listOf("gemini")
+            key.startsWith("gsk_") -> listOf("groq")
+            key.startsWith("sk-or-") -> listOf("openrouter")
+            else -> listOf("mistral","deepseek","openrouter","groq","gemini")
+        }
+        val failures=mutableListOf<String>()
+        for(id in hinted) {
+            try { return id to discoverModels(id,key) }
+            catch(e:Exception) { failures += "$id: ${e.message.orEmpty().take(100)}" }
+        }
+        throw IllegalStateException("نوع API Key شناسایی نشد یا دسترسی مدل‌ها رد شد. "+failures.joinToString(" | "))
+    }
+
     /** Fetches the provider's live model catalog using only its API key. */
     @Synchronized fun discoverModels(providerId:String,apiKey:String):List<String> {
         require(apiKey.isNotBlank()) { "API Key خالی است." }
