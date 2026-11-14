@@ -56,7 +56,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: kira-update-release-${{ github.ref }}
+  group: kira-update-release-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
