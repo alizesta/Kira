@@ -276,28 +276,28 @@ class SharedSkillsManager:
             slug = re.sub(r"[^a-z0-9]+", "-", str(entry.get("name") or "").casefold()).strip("-")[:38] or "api"
             skill_name = f"api-{slug}-{str(entry.get('id') or '')[:6]}"
             def quoted(value):
-                return '"' + str(value or "").replace("\\\\", "\\\\\\\\").replace('"', '\\"').replace("\\n", " ") + '"'
+                return '"' + str(value or "").replace("\\\\", "\\\\\\\\").replace('"', '\\"').replace("\n", " ") + '"'
             description = f"API reference for {entry.get('name', 'external API')}: {entry.get('description', '')}"[:1024]
             markdown = (
-                "---\\n"
-                f"name: {skill_name}\\n"
-                f"description: {quoted(description)}\\n"
-                'license: "Catalogue reference; check the API provider terms"\\n'
-                "---\\n"
-                f"# {entry.get('name', '')}\\n\\n"
-                f"- Category: {entry.get('category', '')}\\n"
-                f"- Provider documentation: {entry.get('url', '')}\\n"
-                f"- Authentication listed by catalogue: {entry.get('auth', 'Unknown')}\\n"
-                f"- HTTPS: {entry.get('https', 'Unknown')}\\n"
-                f"- CORS: {entry.get('cors', 'Unknown')}\\n\\n"
-                "## Integration status\\n"
+                "---\n"
+                f"name: {skill_name}\n"
+                f"description: {quoted(description)}\n"
+                'license: "Catalogue reference; check the API provider terms"\n'
+                "---\n"
+                f"# {entry.get('name', '')}\n\n"
+                f"- Category: {entry.get('category', '')}\n"
+                f"- Provider documentation: {entry.get('url', '')}\n"
+                f"- Authentication listed by catalogue: {entry.get('auth', 'Unknown')}\n"
+                f"- HTTPS: {entry.get('https', 'Unknown')}\n"
+                f"- CORS: {entry.get('cors', 'Unknown')}\n\n"
+                "## Integration status\n"
                 "This is a catalogue reference only. It does not create an API connector, "
                 "does not grant network permissions, and does not store credentials. "
                 "Do not claim to have queried this API. Before live use, Kira must have an "
                 "explicit reviewed connector for this service, the user must configure any "
                 "required credential, and the connector must enforce HTTPS, timeouts, response "
                 "size limits, and data minimisation. Check the provider's current pricing, "
-                "terms, and rate limits before enabling it.\\n"
+                "terms, and rate limits before enabling it.\n"
             )
             preview = self._make_preview(
                 {"SKILL.md": markdown.encode("utf-8")},
