@@ -441,7 +441,7 @@ def get_settings(account: Account = Depends(current_account), db: Session = Depe
     return {
         "account_id": account.id,
         "revision": state.revision,
-        "settings": state.settings,
+        "settings": _safe_settings(state.settings),
         "cloud_routes": [
             {"provider_id": item.provider_id, "credential_configured": True, "updated_at": item.updated_at.isoformat()}
             for item in credentials
