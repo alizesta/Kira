@@ -57,6 +57,7 @@ internal fun KiraMemoryScreen() {
     val items = remember { mutableStateListOf<KiraMemoryItem>() }
 
     var revision by remember { mutableStateOf(0) }
+    var characterId by remember { mutableStateOf("kira") }
     var note by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("حافظه‌ی بلندمدت حساب Kira بین دستگاه‌ها مشترک است.") }
@@ -76,7 +77,7 @@ internal fun KiraMemoryScreen() {
             try {
                 val client = KiraCoreClient(context, serverUrl)
                 if (!client.hasSession()) throw IllegalStateException("ابتدا وارد حساب Kira شو.")
-                val response = client.getMemory("kira")
+                val response = client.getMemory(characterId)
                 val array = response.optJSONArray("items") ?: JSONArray()
                 val result = mutableListOf<KiraMemoryItem>()
                 for (i in 0 until array.length()) {
@@ -100,7 +101,7 @@ internal fun KiraMemoryScreen() {
         }
     }
 
-    LaunchedEffect(serverUrl) { loadMemory() }
+    LaunchedEffect(serverUrl, characterId) { items.clear(); loadMemory() }
 
     fun persist(updated: List<KiraMemoryItem>, successMessage: String) {
         if (busy) return
@@ -111,7 +112,7 @@ internal fun KiraMemoryScreen() {
                 if (!client.hasSession()) throw IllegalStateException("ابتدا وارد حساب Kira شو.")
                 val array = JSONArray()
                 updated.forEach { array.put(it.raw) }
-                val response = client.saveMemory("kira", revision, array)
+                val response = client.saveMemory(characterId, revision, array)
                 mainHandler.post {
                     revision = response.optInt("revision", revision + 1)
                     items.clear()
@@ -137,6 +138,20 @@ internal fun KiraMemoryScreen() {
             "یادداشت‌هایی که اینجا ذخیره می‌کنی، همراه حساب Kira روی دستگاه‌های دیگر هم در دسترس خواهند بود.",
             color = Color(0xFF9BA5B8), fontSize = 12.sp, lineHeight = 19.sp
         )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            listOf("kira" to "Kira", "ren" to "Ren", "mika" to "Mika").forEach { (id, label) ->
+                Button(
+                    onClick = { characterId = id },
+                    enabled = !busy,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (characterId == id) Color(0xFF7661D8) else Color(0xFF20293A)
+                    )
+                ) { Text(label) }
+            }
+        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
