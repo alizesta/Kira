@@ -1,6 +1,8 @@
 name: Android APK
 
 on:
+  push:
+    branches: [feature/android-ai-assistant]
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
