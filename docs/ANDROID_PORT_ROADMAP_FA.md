@@ -97,11 +97,14 @@ Routeهای Cloud و تنظیماتشان حساب‌محورند. Route محل�
 - [x] پوسته‌ی Compose، ناوبری اولیه و حباب شناور
 - [x] قرارداد اولیه‌ی هم‌ارزی قابلیت‌ها
 - [x] تثبیت مسیر Build اندروید روی SDK مورد نیاز Compose
-- [ ] پیاده‌سازی و استقرار Kira Core Server
-- [ ] حساب ایمیل/رمز عبور و مدیریت نشست
-- [ ] انتقال امن Provider credentialها به سرور
-- [ ] اتصال کلاینت Windows به Core و مهاجرت اطلاعات موجود
-- [ ] اتصال Android به همان Core
+- [x] پیاده‌سازی اولیه‌ی Kira Core Server و API حساب/چت/تنظیمات/حافظه/Sync
+- [x] قرارداد و Adapter اولیه‌ی Android و Windows برای API مشترک و نشست
+- [x] ذخیره‌ی امن Token موبایل با Android Keystore و نشست ویندوز با DPAPI
+- [ ] استقرار Kira Core روی هاست واقعی با PostgreSQL و HTTPS
+- [ ] اتصال UI ورود و بازیابی نشست در هر دو کلاینت
+- [ ] انتقال امن Provider credentialها از UI موجود ویندوز به Core با تأیید کاربر
+- [ ] اتصال جریان اصلی چت، Route و تنظیمات Windows به Core و مهاجرت پیش‌نمایش‌دار اطلاعات موجود
+- [ ] اتصال جریان اصلی چت، Route، حافظه و تنظیمات Android به همان Core
 - [ ] Sync تاریخچه، حافظه و تنظیمات حساب
 - [ ] اتصال کامل چت، Route، شخصیت‌ها، Voice و Attachment در Android
 - [ ] اتصال Google Sign-In به حساب موجود
