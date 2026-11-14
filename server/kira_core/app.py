@@ -664,8 +664,7 @@ def put_character(
 
 @app.delete("/v1/characters/{character_id}", status_code=204)
 def delete_character(character_id: str, account: Account = Depends(current_account), db: Session = Depends(get_db)):
-    if character_id == "kira":
-        raise HTTPException(status_code=409, detail="The default Kira profile cannot be removed.")
+    # Deleting an override restores the built-in profile; it never removes the built-in character.
     row = db.scalar(select(CharacterProfile).where(
         CharacterProfile.account_id == account.id,
         CharacterProfile.character_id == character_id,
@@ -853,7 +852,11 @@ def sync_snapshot(account: Account = Depends(current_account), db: Session = Dep
     return {
         "account_id": account.id,
         "settings_revision": state.revision,
-        "settings": state.settings,
+        "settings": _safe_settings(state.settings),
+        "characters": [
+            {**(row.profile or {}), "revision": row.revision}
+            for row in db.scalars(select(CharacterProfile).where(CharacterProfile.account_id == account.id)).all()
+        ],
         "conversations": [
             {"id": c.id, "character_id": c.character_id, "title": c.title,
              "created_at": c.created_at.isoformat(), "updated_at": c.updated_at.isoformat(),
@@ -891,6 +894,25 @@ def sync_import(payload: ImportRequest, account: Account = Depends(current_accou
         state.settings = _safe_settings(settings)
         state.revision = 1
         state.updated_at = utcnow()
+
+    characters = shared.get("characters")
+    if isinstance(characters, list):
+        for item in characters:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            character_id = str(item.get("id"))[:80]
+            normalized = _normalize_character_profile(character_id, item)
+            row = db.scalar(select(CharacterProfile).where(
+                CharacterProfile.account_id == account.id,
+                CharacterProfile.character_id == character_id,
+            ))
+            if row is None:
+                db.add(CharacterProfile(
+                    account_id=account.id,
+                    character_id=character_id,
+                    revision=1,
+                    profile=normalized,
+                ))
 
     memories = shared.get("memory")
     if isinstance(memories, list):
