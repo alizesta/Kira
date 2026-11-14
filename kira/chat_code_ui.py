@@ -404,6 +404,10 @@ class CodeChat(QObject):
             return
         with w._as(sess):
             w.add_chat("error", f"Code Agent: {error}")
+            page = getattr(w, "code_workspace_page", None)
+            if page is not None:
+                page.append_agent_event("خطا: " + str(error))
+                page._agent_finished()
             self._end_busy()
 
     def _remember(self, user_text, answer):
@@ -543,6 +547,9 @@ class CodeChat(QObject):
             return
         with w._as(sess):
             self._bubble("system", cc.answer_html(line), name="")
+        page = getattr(w, "code_workspace_page", None)
+        if page is not None:
+            page.append_agent_event(line)
 
     def _store_auto_result(self, zip_path):
         """Register one delivered ZIP under a stable, monotonic id (never len()+1)."""
@@ -559,6 +566,9 @@ class CodeChat(QObject):
             self._bubble("assistant", cc.answer_html(result["summary"]))
             w.save_message("assistant", result["summary"])
             self._remember(goal, result["summary"])
+            page = getattr(w, "code_workspace_page", None)
+            if page is not None:
+                page.show_agent_result(result)
             return
         zip_path = Path(result["zip"])
         rid = self._store_auto_result(zip_path)
@@ -577,6 +587,9 @@ class CodeChat(QObject):
         self._bubble("assistant", body)
         w.save_message("assistant", "\n".join(lines))
         self._remember("/auto " + goal, result["summary"])
+        page = getattr(w, "code_workspace_page", None)
+        if page is not None:
+            page.show_agent_result(result)
 
     # ------------------------------------------------------------ /run
     def run_command(self, command):
@@ -630,6 +643,10 @@ class CodeChat(QObject):
     def _command_done(self, sess, proc, command, out, code):
         self._stop_timer()
         out.append(bytes(proc.readAllStandardOutput()).decode("utf-8", "replace"))
+        w = self.win
+        page = getattr(w, "code_workspace_page", None)
+        if page is not None:
+            page.append_terminal(command, "".join(out).rstrip(), code)
         self.proc = None
         proc.deleteLater()
         w = self.win
@@ -648,6 +665,9 @@ class CodeChat(QObject):
         if not w._closing and sess.cid in w.sessions:
             with w._as(sess):
                 w.add_chat("error", f"اجرای دستور ناموفق بود: {error}")
+                page = getattr(w, "code_workspace_page", None)
+                if page is not None:
+                    page.append_terminal("", f"خطا: {error}", -1)
                 self._end_busy()
         proc.deleteLater()
 

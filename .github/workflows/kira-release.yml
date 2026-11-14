@@ -2,7 +2,7 @@ name: Build Kira Update
 
 on:
   push:
-    branches: [main, "next/2026-11-11-intelligence", "feature/characters-ren-mika", "feature/shared-skills-system"]
+    branches: [main, "next/2026-11-11-intelligence", "feature/characters-ren-mika", "feature/shared-skills-system", "feature/ai1-code-workspace"]
     paths:
       - ".github/workflows/kira-release.yml"
       - "kira/**"

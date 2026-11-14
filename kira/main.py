@@ -69,6 +69,7 @@ from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_perm
 from .chat_code_ui import CodeChat
 from .skills import SharedSkillsManager
 from .skills_ui import SkillsPage
+from .code_workspace import Ai1CodeWorkspace
 
 WAKE_RE = re.compile(r"(?:(?:هی|سلام|hey|hi)[\s\u200c]*)?(?:کی[\s\u200c]?را|کایرا|کیرآ|کیارا|kira|keira|kyra|kiera)", re.I)
 STOP_RE = re.compile(r"^\W*(?:بس\s*کن|بسه|ساکت(?:\s*شو)?|صبر\s*کن|وایسا|وایستا|stop|be\s*quiet)\W*$", re.I)       # "just be quiet" is not a chat message
@@ -670,6 +671,8 @@ class MainWindow(QMainWindow):
         self.build_characters_tab()
         self.build_general_tab()
         self.build_ai_tab()
+        self.code_workspace_page = Ai1CodeWorkspace(self)
+        self.tabs.addTab(self.code_workspace_page, "")
         self.skills_page = SkillsPage(self.skills_manager, lambda: self.settings, self)
         self.tabs.addTab(self.skills_page, "")
         self.save_btn = QPushButton()
@@ -678,7 +681,7 @@ class MainWindow(QMainWindow):
         self.save_btn.setIconSize(QSize(16, 16))
         self.save_btn.clicked.connect(self.apply_settings)
         self.reg(self.save_btn.setText, "save")
-        self.tab_keys = ["tab_chat", "tab_assistant", "tab_voice", "tab_char", "tab_general", "tab_ai", "tab_skills"]
+        self.tab_keys = ["tab_chat", "tab_assistant", "tab_voice", "tab_char", "tab_general", "tab_ai", "tab_code", "tab_skills"]
         self.tidy_forms()                      # field widths follow their content (done once every page exists)
         for i, key in enumerate(self.tab_keys):
             self.reg(lambda s, i=i: self.tabs.setTabText(i, s), key)
@@ -688,6 +691,9 @@ class MainWindow(QMainWindow):
         self.nav_chat_btn = self.icon_button("chat", True)
         self.nav_chat_btn.clicked.connect(lambda: self.go_tab(0))
         self.reg(self.nav_chat_btn.setToolTip, "tab_chat")
+        self.nav_code_btn = self.icon_button("code", True)
+        self.nav_code_btn.clicked.connect(lambda: self.go_tab(self.tab_keys.index("tab_code")))
+        self.reg(self.nav_code_btn.setToolTip, "tab_code")
         self.nav_route_btn = self.icon_button("route", True)
         self.nav_route_btn.clicked.connect(lambda: self.go_tab(ai_index))
         self.reg(self.nav_route_btn.setToolTip, "tab_ai")
@@ -713,6 +719,7 @@ class MainWindow(QMainWindow):
         toolbar.setContentsMargins(0, 0, 0, 0)
         toolbar.setSpacing(4)
         toolbar.addWidget(self.nav_chat_btn)
+        toolbar.addWidget(self.nav_code_btn)
         toolbar.addWidget(self.nav_route_btn)
         toolbar.addWidget(self.menu_btn)
         toolbar.addStretch(1)
@@ -1223,8 +1230,11 @@ class MainWindow(QMainWindow):
     def _sync_nav(self, _index=None):
         i = self.tabs.currentIndex()
         self.nav_chat_btn.setChecked(i == 0)
+        self.nav_code_btn.setChecked(i == self.tab_keys.index("tab_code"))
         self.nav_route_btn.setChecked(i == self.tab_keys.index("tab_ai"))
-        self.save_btn.setVisible(i not in (0, self.tab_keys.index("tab_skills")))  # chat and Skills have no pending settings form
+        self.save_btn.setVisible(i not in (0, self.tab_keys.index("tab_code"), self.tab_keys.index("tab_skills")))
+        if i == self.tab_keys.index("tab_code") and hasattr(self, "code_workspace_page"):
+            self.code_workspace_page.refresh()
         if i == self.tab_keys.index("tab_skills") and hasattr(self, "skills_page"):
             self.skills_page.set_character(self.cur.cid)
         if hasattr(self, "_voice_form") and i == self.tab_keys.index("tab_voice"):

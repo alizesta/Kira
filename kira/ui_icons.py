@@ -131,6 +131,10 @@ def _shapes(name):
             nodes.addEllipse(QPointF(cx, cy), 2.2, 2.2)
         return [(nodes, False), (_poly([(7.2, 6), (12, 6), (12, 12), (16.8, 12)]), False),
                 (_poly([(7.2, 18), (12, 18), (12, 12)]), False)]
+    if name == "code":
+        return [(_poly([(9, 6), (4, 12), (9, 18)]), False),
+                (_poly([(15, 6), (20, 12), (15, 18)]), False),
+                (_poly([(13.5, 4), (10.5, 20)]), False)]
     if name == "menu":
         return [(_poly([(4, 7), (20, 7)]), False), (_poly([(4, 12), (20, 12)]), False), (_poly([(4, 17), (20, 17)]), False)]
     if name == "check":
