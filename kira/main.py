@@ -24,6 +24,7 @@ from .memory import init_db, add_message, conversation_context, clear_memory, re
 from .ollama_client import OllamaClient, model_installed, parse_keep_alive, clamp_num_ctx, clamp_num_predict, DEFAULT_NUM_PREDICT, DEFAULT_NUM_CTX, DEFAULT_KEEP_ALIVE
 from .hybrid_ai import HybridRouter, probe_provider
 from . import routes as route_model
+from .core_client import KiraCoreClient, KiraCoreError
 from . import discovery
 from . import api_manager
 from . import websearch
@@ -2071,6 +2072,43 @@ class MainWindow(QMainWindow):
         self.web_test_btn = QPushButton("آزمایش جست‌وجوی وب")
         self.web_test_btn.clicked.connect(self.test_web_search)
         f1.addRow("", self.web_test_btn)
+        # Shared account / Core connection. Login tokens are stored using Windows DPAPI.
+        core_box = QGroupBox("حساب مشترک Kira Core")
+        core_form = QFormLayout(core_box)
+        self.core_url = QLineEdit(self.settings.get("core_url", ""))
+        self.core_url.setPlaceholderText("https://kira.example.com")
+        self.core_url.setLayoutDirection(Qt.LeftToRight)
+        core_form.addRow("آدرس سرور", self.core_url)
+        self.core_email = QLineEdit()
+        self.core_email.setPlaceholderText("email@example.com")
+        self.core_email.setLayoutDirection(Qt.LeftToRight)
+        core_form.addRow("ایمیل حساب", self.core_email)
+        self.core_password = QLineEdit()
+        self.core_password.setEchoMode(QLineEdit.Password)
+        self.core_password.setPlaceholderText("حداقل ۱۲ کاراکتر برای ساخت حساب")
+        core_form.addRow("رمز عبور", self.core_password)
+        self.core_display_name = QLineEdit()
+        self.core_display_name.setPlaceholderText("نام نمایشی")
+        core_form.addRow("نام", self.core_display_name)
+        core_actions = QHBoxLayout()
+        self.core_register_btn = QPushButton("ساخت حساب")
+        self.core_login_btn = QPushButton("ورود")
+        self.core_restore_btn = QPushButton("بازیابی نشست")
+        self.core_logout_btn = QPushButton("خروج")
+        self.core_register_btn.clicked.connect(lambda: self.core_account_action("register"))
+        self.core_login_btn.clicked.connect(lambda: self.core_account_action("login"))
+        self.core_restore_btn.clicked.connect(lambda: self.core_account_action("restore"))
+        self.core_logout_btn.clicked.connect(lambda: self.core_account_action("logout"))
+        for button in (self.core_register_btn, self.core_login_btn, self.core_restore_btn, self.core_logout_btn):
+            core_actions.addWidget(button)
+        core_form.addRow(core_actions)
+        self.core_sync_btn = QPushButton("همگام‌سازی Route و تنظیمات Cloud با حساب")
+        self.core_sync_btn.clicked.connect(lambda: self.core_account_action("sync"))
+        core_form.addRow(self.core_sync_btn)
+        self.core_status = QLabel("برای بازیابی بین دستگاه‌ها، به همان Kira Core در موبایل و ویندوز وارد شو.")
+        self.core_status.setWordWrap(True)
+        core_form.addRow(self.core_status)
+        f1.addRow(core_box)
         box2, f2 = self.group("g_memory")
         btn = QPushButton()
         self.reg(btn.setText, "clear_mem")
@@ -2100,6 +2138,104 @@ class MainWindow(QMainWindow):
         self.reg(lambda text: subtabs.setTabText(0, text), "tab_preferences")
         self.reg(lambda text: subtabs.setTabText(1, text), "tab_help")
         self.tabs.addTab(self.page(subtabs), "")
+
+    def core_account_action(self, action):
+        """Account calls run off the GUI thread. Cloud settings/keys move only after explicit confirmation."""
+        url = self.core_url.text().strip()
+        if not url:
+            self.core_status.setText("آدرس سرور Kira Core را وارد کن.")
+            return
+        self.settings["core_url"] = url
+        try:
+            save_settings(self.settings)
+        except Exception as exc:
+            self.core_status.setText(f"ذخیره آدرس سرور ناموفق بود: {exc}")
+            return
+
+        if action == "register":
+            email, password, display_name = self.core_email.text().strip(), self.core_password.text(), self.core_display_name.text().strip()
+            if not email or len(password) < 12:
+                self.core_status.setText("ایمیل معتبر و رمز حداقل ۱۲ کاراکتری لازم است.")
+                return
+        elif action == "login":
+            email, password = self.core_email.text().strip(), self.core_password.text()
+            if not email or not password:
+                self.core_status.setText("ایمیل و رمز عبور را وارد کن.")
+                return
+        elif action == "sync":
+            answer = QMessageBox.question(
+                self, "همگام‌سازی Kira Core",
+                "تنظیمات مشترک و کلیدهای API مربوط به Providerهای ابری به حساب Kira منتقل می‌شوند. "
+                "کلیدها در سرور رمزنگاری می‌شوند. مدل‌های محلی و آدرس Ollama منتقل نمی‌شوند. ادامه می‌دهی؟",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return
+
+        self.core_status.setText("در حال ارتباط با Kira Core…")
+        for button in (self.core_register_btn, self.core_login_btn, self.core_restore_btn, self.core_logout_btn, self.core_sync_btn):
+            button.setEnabled(False)
+
+        def work():
+            client = KiraCoreClient(url)
+            if action == "register":
+                result = client.register(email, password, display_name)
+                return {"account_id": result.get("account_id", ""), "message": "حساب Kira ساخته شد."}
+            if action == "login":
+                result = client.login(email, password)
+                return {"account_id": result.get("account_id", ""), "message": "ورود به حساب Kira موفق بود."}
+            if action == "restore":
+                if not client.authenticated:
+                    raise KiraCoreError(401, "نشست ذخیره‌شده‌ای روی این ویندوز وجود ندارد.")
+                result = client.account()
+                return {"account_id": result.get("account_id", ""), "message": "نشست و حساب قبلی بازیابی شد."}
+            if action == "logout":
+                client.logout()
+                return {"account_id": "", "message": "از حساب Kira خارج شدی."}
+            if action == "sync":
+                if not client.authenticated:
+                    raise KiraCoreError(401, "ابتدا وارد حساب Kira Core شو.")
+                cloud_providers = {
+                    pid: dict(cfg) for pid, cfg in (self.settings.get("providers") or {}).items()
+                    if route_model.provider_kind(pid, cfg) == "cloud"
+                }
+                shared = json.loads(json.dumps(self.settings))
+                shared["providers"] = cloud_providers
+                shared["routes"] = [
+                    route for route in route_model.get_routes(self.settings)
+                    if route_model.provider_kind(route.get("provider", ""), cloud_providers.get(route.get("provider", ""))) == "cloud"
+                ]
+                shared["provider_order"] = [pid for pid in self.settings.get("provider_order", []) if pid in cloud_providers]
+                shared["manual_route_id"] = self.settings.get("manual_route_id", "")
+                for key in ("model", "ollama_url"):
+                    shared.pop(key, None)
+                remote = client.get_settings()
+                client.save_settings(int(remote.get("revision", 0)), shared)
+                transferred = 0
+                for pid, cfg in cloud_providers.items():
+                    api_key = str(cfg.get("api_key") or "").strip()
+                    if api_key:
+                        client.save_provider_credential(pid, api_key, cfg.get("account_id"))
+                        transferred += 1
+                return {"account_id": client.account_id, "message": f"تنظیمات Cloud همگام شد؛ {transferred} کلید Provider به‌صورت رمزنگاری‌شده منتقل شد."}
+            raise ValueError("عملیات حساب ناشناخته است.")
+
+        worker = TaskWorker(work)
+        self._core_worker = worker
+        worker.done.connect(lambda result, action=action: self._on_core_account_done(action, result))
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+
+    def _on_core_account_done(self, action, result):
+        ok, value = result
+        for button in (self.core_register_btn, self.core_login_btn, self.core_restore_btn, self.core_logout_btn, self.core_sync_btn):
+            button.setEnabled(True)
+        if not ok:
+            self.core_status.setText(f"خطا: {value}")
+            return
+        self.core_status.setText(f"{value.get('message', 'انجام شد')}\nAccount ID: {value.get('account_id') or '—'}")
+        if action in ("register", "login"):
+            self.core_password.clear()
 
     def build_help_tab(self):
         """Guide, troubleshooting, changelog and project links (the About metadata stays in Preferences)."""
@@ -3080,6 +3216,7 @@ class MainWindow(QMainWindow):
             "minimize_to_tray": self.tray_min_chk.isChecked(), "close_to_tray": self.tray_close_chk.isChecked(),
             "ui_lang": self.ui_lang.currentData(),
             "window_effect": self.window_effect.currentData(),
+            "core_url": self.core_url.text().strip(),
             "tavily_api_key": self.tavily_key.text().strip(),
             "web_depth": self.web_depth.currentData(),
             "web_fallback": self.web_fallback_chk.isChecked(),
