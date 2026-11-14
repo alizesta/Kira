@@ -2,7 +2,7 @@ name: Android APK
 
 on:
   push:
-    branches: [feature/android-ai-assistant]
+    branches: [feature/android-ai-assistant, feature/shared-skills-connectors-v1]
   pull_request:
     types: [opened, synchronize, reopened]
   workflow_dispatch:

@@ -66,6 +66,7 @@ private fun KiraApp() {
                     KiraTab.SETTINGS -> when(settingsPage) {
                         "route" -> SettingsSubpage("اتصال API و مدل‌ها",{settingsPage="home"}) { KiraRouteScreen() }
                         "memory" -> SettingsSubpage("حافظه بلندمدت",{settingsPage="home"}) { KiraMemoryScreen() }
+                        "skills" -> SettingsSubpage("مهارت‌ها و اتصال API",{settingsPage="home"}) { KiraSkillsScreen() }
                         "assistant" -> SettingsSubpage("دستیار و ویس",{settingsPage="home"}) {
                             AssistantScreen(
                                 hasOverlayPermission=hasOverlayPermission,
@@ -87,7 +88,8 @@ private fun KiraApp() {
                         else -> KiraSettingsHome(
                             onRoute={settingsPage="route"},
                             onMemory={settingsPage="memory"},
-                            onAssistant={settingsPage="assistant"}
+                            onAssistant={settingsPage="assistant"},
+                            onSkills={settingsPage="skills"}
                         )
                     }
                 }
@@ -108,7 +110,7 @@ private fun SettingsSubpage(title:String,onBack:()->Unit,content:@Composable ()-
 }
 
 @Composable
-private fun KiraSettingsHome(onRoute:()->Unit,onMemory:()->Unit,onAssistant:()->Unit) {
+private fun KiraSettingsHome(onRoute:()->Unit,onMemory:()->Unit,onAssistant:()->Unit,onSkills:()->Unit) {
     val context=LocalContext.current
     val core=remember { ai.kira.mobile.core.LocalKiraCore(context) }
     val skills=remember { core.installedSkills() }
@@ -118,7 +120,8 @@ private fun KiraSettingsHome(onRoute:()->Unit,onMemory:()->Unit,onAssistant:()->
         SettingsCard("اتصال API و مدل‌ها","افزودن کلید، دریافت خودکار مدل‌ها و مدیریت اولویت و جایگزینی",onRoute)
         SettingsCard("حافظه بلندمدت","مدیریت یادداشت‌هایی که Kira، Ren و Mika به خاطر می‌سپارند",onMemory)
         SettingsCard("ویس و دستیار شناور","تنظیم دسترسی صوتی و حباب دستیار",onAssistant)
-        SettingsCard("هسته محلی","SQLite محلی، کتابخانه مهارت‌ها و امنیت کلیدها",{})
+        SettingsCard("مهارت‌ها و APIها","نصب، فعال‌سازی جداگانه برای شخصیت‌ها و اتصال APIهای واقعی",onSkills)
+        SettingsCard("هسته محلی","SQLite محلی و رمزنگاری کلیدها",{})
         Text("کتابخانه: "+core.libraryDirectory(),color=Color(0xFF7F8A9E),fontSize=10.sp)
         Text("مهارت‌های نصب‌شده: "+skills.size,color=Color(0xFF7F8A9E),fontSize=11.sp)
         Text("API Keyها با Android Keystore رمزنگاری می‌شوند و مستقیماً از گوشی به Provider ارسال می‌شوند.",color=Color(0xFF7F8A9E),fontSize=11.sp,lineHeight=17.sp)
