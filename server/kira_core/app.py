@@ -718,9 +718,21 @@ def list_devices(account: Account = Depends(current_account), db: Session = Depe
 
 @app.get("/v1/sync/snapshot")
 def sync_snapshot(account: Account = Depends(current_account), db: Session = Depends(get_db)):
+    """Return all account-scoped data needed to restore a second client. Provider secrets are never included."""
     state = _account_settings(db, account.id)
     conversations = db.scalars(select(Conversation).where(
-        Conversation.account_id == account.id).order_by(Conversation.updated_at.desc()).limit(200)).all()
+        Conversation.account_id == account.id).order_by(Conversation.updated_at.desc())).all()
+    message_rows = db.scalars(select(Message).where(
+        Message.account_id == account.id).order_by(Message.created_at.asc())).all()
+    messages_by_conversation: dict[str, list[dict]] = {}
+    for message in message_rows:
+        messages_by_conversation.setdefault(message.conversation_id, []).append({
+            "id": message.id,
+            "role": message.role,
+            "content": message.content,
+            "route": message.route,
+            "created_at": message.created_at.isoformat(),
+        })
     memory_rows = db.scalars(select(CharacterMemory).where(CharacterMemory.account_id == account.id)).all()
     return {
         "account_id": account.id,
@@ -728,7 +740,8 @@ def sync_snapshot(account: Account = Depends(current_account), db: Session = Dep
         "settings": state.settings,
         "conversations": [
             {"id": c.id, "character_id": c.character_id, "title": c.title,
-             "created_at": c.created_at.isoformat(), "updated_at": c.updated_at.isoformat()}
+             "created_at": c.created_at.isoformat(), "updated_at": c.updated_at.isoformat(),
+             "messages": messages_by_conversation.get(c.id, [])}
             for c in conversations
         ],
         "memory": [
@@ -744,6 +757,7 @@ def sync_snapshot(account: Account = Depends(current_account), db: Session = Dep
 
 @app.post("/v1/sync/import")
 def sync_import(payload: ImportRequest, account: Account = Depends(current_account), db: Session = Depends(get_db)):
+    """Idempotently import one explicit user-approved desktop backup into the account."""
     try:
         uuid.UUID(payload.import_id)
     except ValueError as exc:
@@ -761,21 +775,80 @@ def sync_import(payload: ImportRequest, account: Account = Depends(current_accou
         state.settings = _safe_settings(settings)
         state.revision = 1
         state.updated_at = utcnow()
+
     memories = shared.get("memory")
     if isinstance(memories, list):
         for item in memories:
             if not isinstance(item, dict) or not item.get("character_id") or not isinstance(item.get("items"), list):
                 continue
+            character_id = str(item["character_id"])[:80]
             row = db.scalar(select(CharacterMemory).where(
-                CharacterMemory.account_id == account.id, CharacterMemory.character_id == str(item["character_id"])))
+                CharacterMemory.account_id == account.id, CharacterMemory.character_id == character_id))
             if row is None:
-                db.add(CharacterMemory(account_id=account.id, character_id=str(item["character_id"]),
-                                       revision=1, items=item["items"]))
+                db.add(CharacterMemory(account_id=account.id, character_id=character_id,
+                                       revision=1, items=item["items"][:5000]))
+
+    def imported_time(value):
+        if not value:
+            return utcnow()
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            return parsed.replace(tzinfo=timezone.utc) if parsed.tzinfo is None else parsed
+        except (TypeError, ValueError):
+            return utcnow()
+
+    conversation_id_map = {}
+    conversations = shared.get("conversations")
+    if isinstance(conversations, list):
+        for item in conversations:
+            if not isinstance(item, dict):
+                continue
+            character_id = str(item.get("character_id") or "kira")[:80]
+            local_id = str(item.get("id") or item.get("local_id") or "")
+            requested_id = local_id
+            try:
+                uuid.UUID(requested_id)
+                collision = db.get(Conversation, requested_id)
+                conversation_id = requested_id if collision is None else str(uuid.uuid4())
+            except (ValueError, AttributeError):
+                conversation_id = str(uuid.uuid4())
+            conversation = Conversation(
+                id=conversation_id,
+                account_id=account.id,
+                character_id=character_id,
+                title=str(item.get("title") or character_id.title())[:200],
+                created_at=imported_time(item.get("created_at")),
+                updated_at=imported_time(item.get("updated_at")),
+            )
+            db.add(conversation)
+            if local_id:
+                conversation_id_map[local_id] = conversation_id
+            messages = item.get("messages")
+            if isinstance(messages, list):
+                for message in messages:
+                    if not isinstance(message, dict):
+                        continue
+                    role = str(message.get("role") or "").lower()
+                    message_text = str(message.get("content") or "")
+                    if role not in ("user", "assistant") or not message_text:
+                        continue
+                    db.add(Message(
+                        account_id=account.id,
+                        conversation_id=conversation_id,
+                        role=role,
+                        content=message_text[:100000],
+                        route=message.get("route") if isinstance(message.get("route"), dict) else None,
+                        created_at=imported_time(message.get("created_at")),
+                    ))
+
     credentials = payload.provider_credentials or {}
     for provider_id, value in credentials.items():
         if not isinstance(value, dict) or not value.get("api_key"):
             continue
-        # Each secret import is explicit and encrypted before the database write.
+        # Each secret import is a separate opt-in and is encrypted before the database write.
+        provider_id = str(provider_id)
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", provider_id):
+            continue
         encrypted = _fernet().encrypt(json.dumps({
             "api_key": str(value["api_key"]),
             "account_id": value.get("account_id"),
@@ -789,4 +862,10 @@ def sync_import(payload: ImportRequest, account: Account = Depends(current_accou
             row.updated_at = utcnow()
     db.add(ImportBatch(account_id=account.id, import_id=payload.import_id))
     db.commit()
-    return {"import_id": payload.import_id, "status": "imported"}
+    return {
+        "import_id": payload.import_id,
+        "status": "imported",
+        "imported_conversations": len(conversation_id_map),
+        "conversation_id_map": conversation_id_map,
+        "source_data_deleted": False,
+    }
