@@ -2270,10 +2270,14 @@ class MainWindow(QMainWindow):
             if action == "pull":
                 if not client.authenticated:
                     raise KiraCoreError(401, "ابتدا وارد حساب Kira Core شو.")
+                remote_settings = client.get_settings()
+                remote_values = remote_settings.get("settings") or {}
+                if int(remote_settings.get("revision", 0)) == 0 and not remote_values.get("routes"):
+                    raise KiraCoreError(404, "هنوز تنظیمات مشترکی در حساب وجود ندارد؛ ابتدا از ویندوز همگام‌سازی را اجرا کن.")
                 return {
                     "account_id": client.account_id,
                     "message": "تنظیمات مشترک از حساب دریافت شد.",
-                    "remote_settings": client.get_settings(),
+                    "remote_settings": remote_settings,
                 }
             if action == "sync":
                 if not client.authenticated:
