@@ -143,223 +143,35 @@ private fun KiraApp() {
 @Composable
 private fun CoreAccountScreen() {
     val context = LocalContext.current
-    val preferences = remember {
-        context.getSharedPreferences("kira_core_config", android.content.Context.MODE_PRIVATE)
-    }
-    val executor = remember { Executors.newSingleThreadExecutor() }
-    val mainHandler = remember { Handler(Looper.getMainLooper()) }
-
-    var serverUrl by remember { mutableStateOf(preferences.getString("server_url", "") ?: "") }
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var displayName by remember { mutableStateOf("") }
-    var accountId by remember { mutableStateOf("") }
-    var connected by remember { mutableStateOf(false) }
-    var busy by remember { mutableStateOf(false) }
-    var status by remember {
-        mutableStateOf("برای اتصال، آدرس HTTPS سرور Kira Core را وارد کن. سرور هنوز به‌صورت عمومی میزبانی نشده است.")
-    }
-
-    DisposableEffect(executor) {
-        onDispose { executor.shutdownNow() }
-    }
-
-    fun runCoreAction(action: (KiraCoreClient) -> String) {
-        if (busy) return
-        val configuredUrl = serverUrl.trim()
-        if (configuredUrl.isBlank()) {
-            status = "اول آدرس سرور Kira Core را وارد کن."
-            return
-        }
-        busy = true
-        status = "در حال اتصال به Kira Core…"
-        preferences.edit().putString("server_url", configuredUrl).apply()
-
-        executor.execute {
-            try {
-                val client = KiraCoreClient(context, configuredUrl)
-                val result = action(client)
-                val stillSignedIn = client.hasSession()
-                if (stillSignedIn) {
-                    val devicePreferences = context.getSharedPreferences("kira_device", android.content.Context.MODE_PRIVATE)
-                    val deviceId = devicePreferences.getString("device_id", null) ?: UUID.randomUUID().toString().also {
-                        devicePreferences.edit().putString("device_id", it).apply()
-                    }
-                    runCatching {
-                        client.registerDevice(
-                            deviceId,
-                            Build.MODEL ?: "Android device",
-                            "0.1.1",
-                            org.json.JSONArray()
-                                .put("shared_chat")
-                                .put("shared_route")
-                                .put("shared_memory")
-                                .put("floating_assistant")
-                        )
-                    }
-                }
-                val currentAccountId = if (stillSignedIn) {
-                    runCatching { client.account().optString("account_id") }.getOrDefault("")
-                } else {
-                    ""
-                }
-                mainHandler.post {
-                    connected = stillSignedIn
-                    accountId = currentAccountId
-                    status = result
-                    busy = false
-                }
-            } catch (error: Exception) {
-                mainHandler.post {
-                    status = error.message ?: "اتصال به Kira Core ناموفق بود."
-                    connected = false
-                    busy = false
-                }
-            }
-        }
-    }
-
+    val core = remember { ai.kira.mobile.core.LocalKiraCore(context) }
+    val skills = remember { core.installedSkills() }
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 24.dp),
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text(
-            text = "حساب مشترک KIRA",
-            color = Color(0xFFF4F2FA),
-            fontSize = 24.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = "با همین حساب در ویندوز و موبایل وارد می‌شوی. تنظیمات مشترک، تاریخچه، شخصیت‌ها و حافظه از یک Kira Core بازیابی می‌شوند.",
-            color = Color(0xFF9BA5B8),
-            fontSize = 13.sp,
-            lineHeight = 20.sp
-        )
-
+        Text("KIRA LOCAL CORE", color = Color(0xFFB9A5FF), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+        Text("هسته روی همین دستگاه", color = Color(0xFFF4F2FA), fontSize = 24.sp, fontWeight = FontWeight.Bold)
         InfoPanel(
-            title = "سرور Kira Core",
-            description = "آدرس سرور خودت را وارد کن. برای استفاده از اینترنت باید سرور با HTTPS در دسترس باشد.",
-            status = if (connected) "متصل" else "هنوز متصل نیست"
+            title = "وضعیت هسته",
+            description = "چت، Routeها، حافظه و کتابخانه مهارت‌ها محلی هستند. برای استفاده از مدل ابری فقط کلید API خودت را در بخش Route وارد کن.",
+            status = "آماده · بدون نیاز به حساب یا سرور Kira"
         ) {
-            OutlinedTextField(
-                value = serverUrl,
-                onValueChange = { serverUrl = it },
-                label = { Text("آدرس سرور، مثل https://kira.example.com") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Text("پایگاه داده: SQLite محلی", color = Color(0xFF8FD6B0), fontSize = 12.sp)
+            Text("محل Library: " + core.libraryDirectory(), color = Color(0xFF9BA5B8), fontSize = 10.sp, lineHeight = 16.sp)
+            Text("مهارت‌های نصب‌شده: " + skills.size, color = Color(0xFF9BA5B8), fontSize = 11.sp)
+            if (skills.isNotEmpty()) Text(skills.joinToString("، "), color = Color(0xFFEDEBF4), fontSize = 12.sp)
         }
-
         InfoPanel(
-            title = "ورود یا ساخت حساب Kira",
-            description = "فعلاً ورود با ایمیل و رمز عبور است. Google Sign-In بعداً به همین شناسه‌ی حساب متصل می‌شود.",
-            status = if (connected) "حساب فعال" else "نیازمند ورود"
-        ) {
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it },
-                label = { Text("ایمیل") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("رمز عبور") },
-                visualTransformation = PasswordVisualTransformation(),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = displayName,
-                onValueChange = { displayName = it },
-                label = { Text("نام نمایشی (برای ساخت حساب)") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = {
-                        runCoreAction { client ->
-                            val session = client.register(email.trim(), password, displayName.trim())
-                            "حساب ساخته شد: " + session.optString("account_id")
-                        }
-                    },
-                    enabled = !busy && email.isNotBlank() && password.length >= 12,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7661D8))
-                ) {
-                    Text("ساخت حساب")
-                }
-                OutlinedButton(
-                    onClick = {
-                        runCoreAction { client ->
-                            val session = client.login(email.trim(), password)
-                            "وارد شدی: " + session.optString("account_id")
-                        }
-                    },
-                    enabled = !busy && email.isNotBlank() && password.isNotBlank(),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("ورود")
-                }
-            }
-            OutlinedButton(
-                onClick = {
-                    runCoreAction { client ->
-                        val account = client.account()
-                        "نشست قبلی بازیابی شد: " + account.optString("account_id")
-                    }
-                },
-                enabled = !busy && !connected && serverUrl.isNotBlank(),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("بازیابی نشست ذخیره‌شده")
-            }
-            if (connected) {
-                Text(
-                    text = "شناسه حساب: $accountId",
-                    color = Color(0xFFB9A5FF),
-                    fontSize = 11.sp
-                )
-                OutlinedButton(
-                    onClick = {
-                        runCoreAction { client ->
-                            client.logout()
-                            "از حساب Kira خارج شدی."
-                        }
-                        connected = false
-                        accountId = ""
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !busy
-                ) {
-                    Text("خروج از حساب")
-                }
-            }
-        }
-
-        if (busy) {
-            CircularProgressIndicator(color = Color(0xFFB9A5FF))
-        }
-        Text(
-            text = status,
-            color = if (connected) Color(0xFF8FD6B0) else Color(0xFFB9A5FF),
-            fontSize = 12.sp,
-            lineHeight = 18.sp
-        )
-        Text(
-            text = "امنیت نشست: Tokenها با Android Keystore روی همین گوشی رمزنگاری می‌شوند. کلیدهای Provider روی سرور می‌مانند و داخل گوشی ذخیره نمی‌شوند.",
-            color = Color(0xFF7F8A9E),
-            fontSize = 11.sp,
-            lineHeight = 17.sp
-        )
+            title = "امنیت API Key",
+            description = "کلیدها با AES/GCM و Android Keystore رمزنگاری می‌شوند و به هیچ سرور Kira ارسال نمی‌شوند.",
+            status = "ذخیره‌سازی خصوصی برنامه"
+        ) {}
+        InfoPanel(
+            title = "همگام‌سازی ویندوز و اندروید",
+            description = "هر دستگاه Core محلی خودش را دارد. انتقال یا همگام‌سازی اختیاری را بعداً می‌توان با فایل رمزنگاری‌شده یا اتصال مستقیم بین دستگاه‌ها اضافه کرد.",
+            status = "فعلاً داده‌ها روی همین دستگاه می‌مانند"
+        ) {}
+        Text("برای افزودن مدل و کلید API وارد تب Route شو. Kira درخواست را مستقیماً به Provider انتخاب‌شده می‌فرستد.", color = Color(0xFF9BA5B8), fontSize = 12.sp, lineHeight = 19.sp)
     }
 }
 
