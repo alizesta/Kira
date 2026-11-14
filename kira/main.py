@@ -27,6 +27,7 @@ from .ollama_client import OllamaClient, model_installed, parse_keep_alive, clam
 from .hybrid_ai import HybridRouter, probe_provider
 from . import routes as route_model
 from .core_client import KiraCoreClient, KiraCoreError
+from .core_migration import build_import_payload
 from . import discovery
 from . import api_manager
 from . import websearch
@@ -2107,6 +2108,10 @@ class MainWindow(QMainWindow):
         self.core_sync_btn = QPushButton("همگام‌سازی Route و تنظیمات Cloud با حساب")
         self.core_sync_btn.clicked.connect(lambda: self.core_account_action("sync"))
         core_form.addRow(self.core_sync_btn)
+        self.core_import_btn = QPushButton("انتقال تاریخچه، شخصیت‌ها و حافظه‌ی محلی به حساب")
+        self.core_import_btn.clicked.connect(lambda: self.core_account_action("import"))
+        self.core_import_btn.setEnabled(not bool(self.settings.get("core_migration_imported")))
+        core_form.addRow(self.core_import_btn)
         self.core_status = QLabel("برای بازیابی بین دستگاه‌ها، به همان Kira Core در موبایل و ویندوز وارد شو.")
         self.core_status.setWordWrap(True)
         core_form.addRow(self.core_status)
@@ -2174,6 +2179,34 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.Yes:
                 return
 
+        elif action == "import":
+            if self.settings.get("core_migration_imported"):
+                self.core_status.setText("انتقال اطلاعات محلی قبلاً تأیید و ثبت شده است.")
+                return
+            try:
+                import_data, import_credentials, counts = build_import_payload(self.settings)
+            except Exception as exc:
+                self.core_status.setText(f"آماده‌سازی اطلاعات برای انتقال ناموفق بود: {exc}")
+                return
+            preview = (
+                f"شخصیت‌ها: {counts['characters']}\n"
+                f"گفتگوها: {counts['conversations']}\n"
+                f"پیام‌ها: {counts['messages']}\n"
+                f"موارد حافظه: {counts['memory_items']}\n"
+                f"کلیدهای Cloud: {counts['provider_credentials']}\n\n"
+                "این اطلاعات به حساب Kira کپی می‌شوند. فایل‌ها و دیتابیس محلی دست‌نخورده می‌مانند. "
+                "کلیدهای Provider جداگانه در سرور رمزنگاری می‌شوند. انتقال انجام شود؟"
+            )
+            answer = QMessageBox.question(
+                self, "پیش‌نمایش انتقال اطلاعات Kira", preview,
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return
+            import_id = str(self.settings.get("core_migration_import_id") or uuid.uuid4())
+            self.settings["core_migration_import_id"] = import_id
+            save_settings(self.settings)
+
         device_id = str(self.settings.get("core_device_id") or uuid.uuid4())
         self.settings["core_device_id"] = device_id
         try:
@@ -2183,7 +2216,7 @@ class MainWindow(QMainWindow):
             return
 
         self.core_status.setText("در حال ارتباط با Kira Core…")
-        for button in (self.core_register_btn, self.core_login_btn, self.core_restore_btn, self.core_logout_btn, self.core_sync_btn):
+        for button in (self.core_register_btn, self.core_login_btn, self.core_restore_btn, self.core_logout_btn, self.core_sync_btn, self.core_import_btn):
             button.setEnabled(False)
 
         def work():
@@ -2205,6 +2238,18 @@ class MainWindow(QMainWindow):
             if action == "logout":
                 client.logout()
                 return {"account_id": "", "message": "از حساب Kira خارج شدی."}
+            if action == "import":
+                if not client.authenticated:
+                    raise KiraCoreError(401, "ابتدا وارد حساب Kira Core شو.")
+                remote = client.get_settings()
+                if int(remote.get("revision", 0)) > 0:
+                    import_data.pop("settings", None)
+                result = client.import_desktop_data(import_id, import_data, import_credentials)
+                return {
+                    "account_id": client.account_id,
+                    "message": f"انتقال اطلاعات انجام شد: {result.get('imported_conversations', 0)} گفتگو. داده‌ی محلی حذف نشد.",
+                    "imported": result.get("status") == "imported",
+                }
             if action == "sync":
                 if not client.authenticated:
                     raise KiraCoreError(401, "ابتدا وارد حساب Kira Core شو.")
@@ -2241,12 +2286,16 @@ class MainWindow(QMainWindow):
 
     def _on_core_account_done(self, action, result):
         ok, value = result
-        for button in (self.core_register_btn, self.core_login_btn, self.core_restore_btn, self.core_logout_btn, self.core_sync_btn):
+        for button in (self.core_register_btn, self.core_login_btn, self.core_restore_btn, self.core_logout_btn, self.core_sync_btn, self.core_import_btn):
             button.setEnabled(True)
         if not ok:
             self.core_status.setText(f"خطا: {value}")
             return
         self.core_status.setText(f"{value.get('message', 'انجام شد')}\nAccount ID: {value.get('account_id') or '—'}")
+        if action == "import" and value.get("imported"):
+            self.settings["core_migration_imported"] = True
+            self.core_import_btn.setEnabled(False)
+            save_settings(self.settings)
         if action in ("register", "login"):
             self.core_password.clear()
 
