@@ -270,21 +270,27 @@ def _email(value: str) -> str:
 
 
 def _safe_settings(data: dict) -> dict:
-    blocked = {"api_key", "password", "access_token", "refresh_token", "secret", "token"}
-    result = {}
-    for key, value in data.items():
-        name = str(key)
-        if name.lower() in blocked:
-            continue
-        if name == "providers" and isinstance(value, dict):
-            providers = {}
-            for provider_id, config in value.items():
-                if isinstance(config, dict):
-                    providers[str(provider_id)] = {k: v for k, v in config.items() if str(k).lower() not in blocked}
-            result[name] = providers
-        else:
-            result[name] = value
-    return result
+    """Strip every credential-like field recursively before account settings reach storage."""
+    blocked = {
+        "api_key", "apikey", "tavily_api_key", "password", "password_hash",
+        "access_token", "refresh_token", "token", "secret", "authorization",
+        "credential", "credentials", "private_key",
+    }
+
+    def clean(value):
+        if isinstance(value, dict):
+            safe = {}
+            for key, item in value.items():
+                name = re.sub(r"[^a-z0-9]+", "_", str(key).casefold()).strip("_")
+                if name in blocked or name.endswith(("_api_key", "_password", "_secret", "_token", "_credential")):
+                    continue
+                safe[str(key)] = clean(item)
+            return safe
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        return value
+
+    return clean(data) if isinstance(data, dict) else {}
 
 
 def _account_settings(db: Session, account_id: str) -> AccountSettings:
@@ -568,10 +574,12 @@ def _memory_block(db: Session, account_id: str, character_id: str) -> str:
 
 
 def _server_router_settings(db: Session, account_id: str, stored: dict) -> dict:
+    """Build a request-only router view: decrypt cloud keys in memory, never expose local routes to the server."""
+    from kira import routes as route_model
+
     settings = json.loads(json.dumps(stored))
     settings.setdefault("providers", {})
     secret_rows = db.scalars(select(ProviderCredential).where(ProviderCredential.account_id == account_id)).all()
-    credential_ids = {row.provider_id for row in secret_rows}
     for row in secret_rows:
         try:
             data = json.loads(_fernet().decrypt(row.ciphertext.encode("ascii")).decode("utf-8"))
@@ -587,9 +595,9 @@ def _server_router_settings(db: Session, account_id: str, stored: dict) -> dict:
         if not isinstance(route, dict):
             continue
         provider_id = str(route.get("provider") or "")
-        if provider_id == "ollama":
-            continue
         provider = settings["providers"].get(provider_id) or {}
+        if route_model.provider_kind(provider_id, provider) != "cloud":
+            continue
         if not provider.get("enabled", True) or not provider.get("api_key") or not route.get("model"):
             continue
         enabled_routes.append(route)
