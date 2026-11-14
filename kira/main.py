@@ -67,6 +67,8 @@ from . import winfx
 from .game_mode import GameModeMonitor, CAPTURE_INTERVAL_MS, CAPTURE_JPEG_QUALITY
 from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
 from .chat_code_ui import CodeChat
+from .skills import SharedSkillsManager
+from .skills_ui import SkillsPage
 
 WAKE_RE = re.compile(r"(?:(?:هی|سلام|hey|hi)[\s\u200c]*)?(?:کی[\s\u200c]?را|کایرا|کیرآ|کیارا|kira|keira|kyra|kiera)", re.I)
 STOP_RE = re.compile(r"^\W*(?:بس\s*کن|بسه|ساکت(?:\s*شو)?|صبر\s*کن|وایسا|وایستا|stop|be\s*quiet)\W*$", re.I)       # "just be quiet" is not a chat message
@@ -618,6 +620,7 @@ class MainWindow(QMainWindow):
         self._game_prev_mic = False
         self._game_prev_wake = False
         self.tool_agent = ToolAgent(self.settings, DATA_DIR, ROOT)      # Computer Awareness + Unified Tool System (kira/tools)
+        self.skills_manager = SharedSkillsManager(DATA_DIR)
         usage.install(self.settings)                                    # usage ledger + limits (kira/usage.py); never blocks start-up
         evidence_memory.configure(self.settings)                        # facts with provenance (kira/evidence_memory.py); never blocks start-up
         self._tool_plan = None             # tool plan of the message being answered (None = ordinary chat, nothing added to the prompt)
@@ -667,13 +670,15 @@ class MainWindow(QMainWindow):
         self.build_characters_tab()
         self.build_general_tab()
         self.build_ai_tab()
+        self.skills_page = SkillsPage(self.skills_manager, lambda: self.settings, self)
+        self.tabs.addTab(self.skills_page, "")
         self.save_btn = QPushButton()
         self.save_btn.setObjectName("save")
         self.save_btn.setIcon(make_icon("check", normal="#ffffff", hover="#ffffff"))
         self.save_btn.setIconSize(QSize(16, 16))
         self.save_btn.clicked.connect(self.apply_settings)
         self.reg(self.save_btn.setText, "save")
-        self.tab_keys = ["tab_chat", "tab_assistant", "tab_voice", "tab_char", "tab_general", "tab_ai"]
+        self.tab_keys = ["tab_chat", "tab_assistant", "tab_voice", "tab_char", "tab_general", "tab_ai", "tab_skills"]
         self.tidy_forms()                      # field widths follow their content (done once every page exists)
         for i, key in enumerate(self.tab_keys):
             self.reg(lambda s, i=i: self.tabs.setTabText(i, s), key)
@@ -1219,7 +1224,9 @@ class MainWindow(QMainWindow):
         i = self.tabs.currentIndex()
         self.nav_chat_btn.setChecked(i == 0)
         self.nav_route_btn.setChecked(i == self.tab_keys.index("tab_ai"))
-        self.save_btn.setVisible(i != 0)            # the chat page needs no Save button
+        self.save_btn.setVisible(i not in (0, self.tab_keys.index("tab_skills")))  # chat and Skills have no pending settings form
+        if i == self.tab_keys.index("tab_skills") and hasattr(self, "skills_page"):
+            self.skills_page.set_character(self.cur.cid)
         if hasattr(self, "_voice_form") and i == self.tab_keys.index("tab_voice"):
             self.refresh_voice_caps()               # Cloud Voice may have been changed in the Route section meanwhile
 
@@ -3939,6 +3946,14 @@ class MainWindow(QMainWindow):
         character_layer = characters.prompt_for(self.settings)
         if character_layer:
             prompt += "\n\n" + character_layer
+        try:
+            skill_layer = self.skills_manager.prompt_for(
+                self.cur.cid, next((m.get("content", "") for m in reversed(context) if m.get("role") == "user"), "")
+            )
+            if skill_layer:
+                prompt += "\n\n" + skill_layer
+        except Exception:  # noqa: BLE001 - an unavailable skill must never block chat
+            pass
         if self.body_active():                                    # she can move her 3D body: tell the model how (tags) and what the app already did
             prompt += ("" if plain else body_ctl.format_hint()) + body_ctl.done_note(self._body_done)
         try:                                                      # brain stage: deterministic, no model call; any problem = the normal path
