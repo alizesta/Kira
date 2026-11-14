@@ -128,10 +128,7 @@ private fun KiraApp() {
                             overlayStarted = false
                         }
                     )
-                    KiraTab.CHAT -> PlaceholderScreen(
-                        title = "چت شخصیت‌ها",
-                        description = "چت Kira، Ren و Mika از همان Kira Core، همان تاریخچه و همان حساب ویندوز استفاده می‌کند. اتصال سرور در حال آماده‌سازی است."
-                    )
+                    KiraTab.CHAT -> KiraChatScreen()
                     KiraTab.ROUTE -> PlaceholderScreen(
                         title = "Route Manager",
                         description = "Routeهای Cloud، کلیدهای Provider و ترتیب Failover در سطح حساب مشترک‌اند. مدل‌های محلی فقط روی همان دستگاه نمایش داده می‌شوند."
