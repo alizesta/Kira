@@ -3,6 +3,8 @@ import base64
 import json
 import random
 import time
+import uuid
+import socket
 from pathlib import Path
 import re
 import sys
@@ -2172,6 +2174,14 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.Yes:
                 return
 
+        device_id = str(self.settings.get("core_device_id") or uuid.uuid4())
+        self.settings["core_device_id"] = device_id
+        try:
+            save_settings(self.settings)
+        except Exception as exc:
+            self.core_status.setText(f"ذخیره شناسه دستگاه ناموفق بود: {exc}")
+            return
+
         self.core_status.setText("در حال ارتباط با Kira Core…")
         for button in (self.core_register_btn, self.core_login_btn, self.core_restore_btn, self.core_logout_btn, self.core_sync_btn):
             button.setEnabled(False)
@@ -2180,14 +2190,17 @@ class MainWindow(QMainWindow):
             client = KiraCoreClient(url)
             if action == "register":
                 result = client.register(email, password, display_name)
+                client.register_device(device_id, socket.gethostname(), VERSION, ["shared_chat", "shared_route", "shared_memory", "windows_game_mode"])
                 return {"account_id": result.get("account_id", ""), "message": "حساب Kira ساخته شد."}
             if action == "login":
                 result = client.login(email, password)
+                client.register_device(device_id, socket.gethostname(), VERSION, ["shared_chat", "shared_route", "shared_memory", "windows_game_mode"])
                 return {"account_id": result.get("account_id", ""), "message": "ورود به حساب Kira موفق بود."}
             if action == "restore":
                 if not client.authenticated:
                     raise KiraCoreError(401, "نشست ذخیره‌شده‌ای روی این ویندوز وجود ندارد.")
                 result = client.account()
+                client.register_device(device_id, socket.gethostname(), VERSION, ["shared_chat", "shared_route", "shared_memory", "windows_game_mode"])
                 return {"account_id": result.get("account_id", ""), "message": "نشست و حساب قبلی بازیابی شد."}
             if action == "logout":
                 client.logout()
