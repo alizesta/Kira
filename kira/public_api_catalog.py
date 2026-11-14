@@ -260,15 +260,23 @@ class PublicApiRegistry:
     def remove(self, api_id: str, character_id: str | None = None) -> bool:
         data = self._load()
         before = len(data["items"])
+        changed = False
         if character_id:
             cid = str(character_id)[:80]
             for item in data["items"]:
                 if item.get("id") == str(api_id) and item.get("scope") != "global":
-                    item["characters"] = [x for x in item.get("characters", []) if x != cid]
-            data["items"] = [x for x in data["items"] if x.get("scope") == "global" or x.get("characters")]
+                    remaining = [x for x in item.get("characters", []) if x != cid]
+                    if remaining != item.get("characters", []):
+                        item["characters"] = remaining
+                        changed = True
+            filtered = [x for x in data["items"] if x.get("scope") == "global" or x.get("characters")]
+            if len(filtered) != len(data["items"]):
+                changed = True
+            data["items"] = filtered
         else:
-            data["items"] = [x for x in data["items"] if x.get("id") != str(api_id)]
-        changed = before != len(data["items"])
+            filtered = [x for x in data["items"] if x.get("id") != str(api_id)]
+            changed = len(filtered) != before
+            data["items"] = filtered
         if changed:
             self._save(data)
         return changed
