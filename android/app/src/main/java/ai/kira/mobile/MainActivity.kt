@@ -48,9 +48,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ai.kira.mobile.assistant.AiAssistantOverlayService
-import ai.kira.mobile.core.KiraCoreClient
 import java.util.concurrent.Executors
-import java.util.UUID
 import android.os.Build
 
 class MainActivity : ComponentActivity() {
@@ -204,7 +202,7 @@ private fun AssistantScreen(
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "کلاینت موبایل Kira؛ متصل به همان حساب و هسته‌ی ویندوز",
+            text = "هسته‌ی مستقل Kira روی همین گوشی، با اتصال مستقیم به API Providerها",
             color = Color(0xFF9BA5B8),
             fontSize = 13.sp
         )
