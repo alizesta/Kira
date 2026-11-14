@@ -66,7 +66,7 @@ private class LocalDb(context:Context):SQLiteOpenHelper(context.applicationConte
             arrayOf("gemini","gemini-2.5-flash","https://generativelanguage.googleapis.com/v1beta")
         )
         defaults.forEachIndexed { i,row ->
-            db.execSQL("INSERT INTO providers(id,model,base_url,priority) VALUES(?,?,?,?)",arrayOf(row[0],row[1],row[2],i))
+            db.execSQL("INSERT INTO providers(id,model,base_url,priority) VALUES(?,?,?,?)",arrayOf<Any>(row[0],row[1],row[2],i))
         }
     }
     override fun onUpgrade(db:SQLiteDatabase,oldVersion:Int,newVersion:Int)=Unit
@@ -109,13 +109,13 @@ class LocalKiraCore(context:Context) {
     }
 
     @Synchronized fun setProviderEnabled(id:String,enabled:Boolean) {
-        db.execSQL("UPDATE providers SET enabled=? WHERE id=?",arrayOf(if(enabled) 1 else 0,id))
+        db.execSQL("UPDATE providers SET enabled=? WHERE id=?",arrayOf<Any>(if(enabled) 1 else 0,id))
     }
     @Synchronized fun moveProvider(id:String,delta:Int) {
         val rows=providers().toMutableList(); val i=rows.indexOfFirst { it.id==id }; if(i<0) return
         val target=(i+delta).coerceIn(0,rows.lastIndex); if(target==i) return
         val item=rows.removeAt(i); rows.add(target,item); db.beginTransaction()
-        try { rows.forEachIndexed { index,p -> db.execSQL("UPDATE providers SET priority=? WHERE id=?",arrayOf(index,p.id)) }; db.setTransactionSuccessful() }
+        try { rows.forEachIndexed { index,p -> db.execSQL("UPDATE providers SET priority=? WHERE id=?",arrayOf<Any>(index,p.id)) }; db.setTransactionSuccessful() }
         finally { db.endTransaction() }
     }
 
@@ -129,7 +129,7 @@ class LocalKiraCore(context:Context) {
     @Synchronized fun clearHistory(characterId:String) { db.delete("messages","character_id=?",arrayOf(characterId)) }
     @Synchronized fun addMemory(characterId:String,text:String) {
         require(text.isNotBlank())
-        db.execSQL("INSERT INTO memories(character_id,text,created_at) VALUES(?,?,?)",arrayOf(characterId,text.trim(),System.currentTimeMillis()))
+        db.execSQL("INSERT INTO memories(character_id,text,created_at) VALUES(?,?,?)",arrayOf<Any>(characterId,text.trim(),System.currentTimeMillis()))
     }
     @Synchronized fun memories(characterId:String):List<Pair<Long,String>> {
         val out=mutableListOf<Pair<Long,String>>()
@@ -142,7 +142,7 @@ class LocalKiraCore(context:Context) {
 
     @Synchronized fun sendMessage(characterId:String,text:String):LocalChatReply {
         require(text.isNotBlank()) { "پیام خالی است." }
-        db.execSQL("INSERT INTO messages(character_id,role,content,route,created_at) VALUES(?,?,?,?,?)",arrayOf(characterId,"user",text.trim(),"",System.currentTimeMillis()))
+        db.execSQL("INSERT INTO messages(character_id,role,content,route,created_at) VALUES(?,?,?,?,?)",arrayOf<Any>(characterId,"user",text.trim(),"",System.currentTimeMillis()))
         val active=providers().filter { it.enabled && it.hasKey }
         if(active.isEmpty()) throw IllegalStateException("هیچ Provider فعالی با API Key ذخیره‌شده وجود ندارد. از بخش Route یک کلید اضافه کن.")
         val errors=mutableListOf<String>()
@@ -150,7 +150,7 @@ class LocalKiraCore(context:Context) {
             try {
                 val key=readKey(p.id)
                 val answer=if(p.id=="gemini") callGemini(p,key,characterId) else callOpenAi(p,key,characterId)
-                db.execSQL("INSERT INTO messages(character_id,role,content,route,created_at) VALUES(?,?,?,?,?)",arrayOf(characterId,"assistant",answer,p.id+" · "+p.model,System.currentTimeMillis()))
+                db.execSQL("INSERT INTO messages(character_id,role,content,route,created_at) VALUES(?,?,?,?,?)",arrayOf<Any>(characterId,"assistant",answer,p.id+" · "+p.model,System.currentTimeMillis()))
                 return LocalChatReply(answer,p.id,p.model)
             } catch(e:Exception) { errors.add(p.id+": "+(e.message ?: "request failed").take(220)) }
         }
