@@ -145,13 +145,14 @@ internal fun KiraRouteScreen() {
         val reordered = JSONArray()
         routeList.forEach { reordered.put(it) }
         updated.put("routes", reordered)
+        val expectedRevision = revision
         busy = true
         status = "در حال ذخیره‌ی اولویت و وضعیت Route…"
         executor.execute {
             try {
                 val client = KiraCoreClient(context, serverUrl)
                 if (!client.hasSession()) throw IllegalStateException("ابتدا وارد حساب Kira شو.")
-                val response = client.saveSettings(revision, updated)
+                val response = client.saveSettings(expectedRevision, updated)
                 mainHandler.post {
                     revision = response.optInt("revision", revision + 1)
                     sharedSettings = updated
@@ -174,16 +175,19 @@ internal fun KiraRouteScreen() {
             status = "آدرس سرور Kira Core تنظیم نشده است."
             return
         }
+        val requestedProviderId = providerId.trim()
+        val requestedApiKey = apiKey.trim()
+        val requestedAccountId = providerAccountId.trim().ifBlank { null }
         busy = true
         status = "در حال ذخیره امن کلید Provider…"
         executor.execute {
             try {
                 val client = KiraCoreClient(context, serverUrl)
                 if (!client.hasSession()) throw IllegalStateException("ابتدا وارد حساب Kira شو.")
-                client.saveProviderCredential(providerId.trim(), apiKey.trim(), providerAccountId.trim().ifBlank { null })
+                client.saveProviderCredential(requestedProviderId, requestedApiKey, requestedAccountId)
                 mainHandler.post {
                     apiKey = ""
-                    status = "کلید $providerId در Kira Core رمزنگاری و ذخیره شد."
+                    status = "کلید $requestedProviderId در Kira Core رمزنگاری و ذخیره شد."
                     busy = false
                     loadRoutes()
                 }
