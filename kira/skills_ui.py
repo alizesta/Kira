@@ -45,7 +45,9 @@ class SkillsPage(QWidget):
 
         intro = QLabel(
             "کتابخانه‌ی مهارت‌ها بین Kira، Ren و Mika مشترک است. هر مهارت فقط یک‌بار نصب می‌شود؛ "
-            "فعال‌بودن آن برای هر شخصیت جداگانه تنظیم می‌شود. فایل‌های اجرایی مهارت به‌صورت خودکار اجرا نمی‌شوند."
+            "فعال‌بودن آن برای هر شخصیت جداگانه تنظیم می‌شود. منبع Public APIs هم برای ثبت مرجع APIهاست، "
+            "نه اتصال خودکار؛ هر API برای استفاده‌ی زنده به Connector امن و تأییدشده نیاز دارد. "
+            "فایل‌های اجرایی مهارت به‌صورت خودکار اجرا نمی‌شوند."
         )
         intro.setWordWrap(True)
         intro.setObjectName("hint")
@@ -57,6 +59,7 @@ class SkillsPage(QWidget):
         self.source = QComboBox()
         self.source.addItem("Skills.sh", "skills.sh")
         self.source.addItem("GitHub", "github")
+        self.source.addItem("Public APIs", "public-apis")
         self.query = QLineEdit()
         self.query.setPlaceholderText("نام مهارت یا موضوع موردنظر…")
         self.search_btn = QPushButton("جست‌وجو")
