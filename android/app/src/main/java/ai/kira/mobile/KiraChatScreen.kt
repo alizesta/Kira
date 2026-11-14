@@ -24,14 +24,13 @@ import androidx.compose.ui.unit.sp
 import java.util.concurrent.Executors
 
 @Composable
-internal fun KiraChatScreen() {
+internal fun KiraChatScreen(character:String,onCharacterChange:(String)->Unit) {
     val context=androidx.compose.ui.platform.LocalContext.current
     val core=remember { LocalKiraCore(context) }
     val executor=remember { Executors.newSingleThreadExecutor() }
     val handler=remember { Handler(Looper.getMainLooper()) }
     val messages=remember { mutableStateListOf<LocalChatMessage>() }
     val listState=rememberLazyListState()
-    var character by remember { mutableStateOf("kira") }
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("هسته محلی آماده است. کلید API را در Route وارد کن.") }
@@ -76,18 +75,13 @@ internal fun KiraChatScreen() {
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween) {
             Column {
                 Text("KIRA LOCAL CORE",color=Color(0xFFB9A5FF),fontSize=10.sp,fontWeight=FontWeight.Bold,letterSpacing=2.sp)
-                Text("چت محلی",color=Color(0xFFF4F2FA),fontSize=21.sp,fontWeight=FontWeight.Bold)
+                Text("گفت‌وگو با "+character.replaceFirstChar { it.uppercase() },color=Color(0xFFF4F2FA),fontSize=21.sp,fontWeight=FontWeight.Bold)
             }
             OutlinedButton(onClick={load()},enabled=!busy) { Text("بازیابی") }
         }
-        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-            listOf("kira" to "Kira","ren" to "Ren","mika" to "Mika").forEach { (id,label) ->
-                Button(onClick={character=id},enabled=!busy,colors=ButtonDefaults.buttonColors(containerColor=if(character==id) Color(0xFF7661D8) else Color(0xFF20293A))) { Text(label) }
-            }
-        }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(),state=listState,verticalArrangement=Arrangement.spacedBy(9.dp)) {
             if(messages.isEmpty()) item {
-                Text("این چت فقط روی همین گوشی ذخیره می‌شود. API Key را در Route اضافه کن تا Kira پاسخ بدهد.",color=Color(0xFF8995AA),fontSize=13.sp,lineHeight=20.sp,modifier=Modifier.padding(vertical=20.dp))
+                Text("این چت فقط روی همین گوشی ذخیره می‌شود. API Key را از تنظیمات اضافه کن تا Kira پاسخ بدهد.",color=Color(0xFF8995AA),fontSize=13.sp,lineHeight=20.sp,modifier=Modifier.padding(vertical=20.dp))
             }
             items(messages,key={it.id}) { message ->
                 val user=message.role=="user"
