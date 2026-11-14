@@ -15,7 +15,7 @@
 - JDK 17
 - Android SDK Platform 36
 - Gradle Wrapper 9.9.1 (همراه پروژه)
-- Kotlin 2.4.21
+- Kotlin 2.4.21 از مسیر Built-in Kotlin در AGP 9 (بدون پلاگین تکراری Kotlin Android)
 - Jetpack Compose BOM 2026.09.00
 
 پروژه را از پوشه‌ی `android/` در Android Studio باز کن. برای ساخت APK دیباگ در ویندوز اجرا کن:
