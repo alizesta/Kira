@@ -10,9 +10,10 @@ The clients remain separate native applications. Device-only capabilities (Windo
 - Short-lived access tokens and rotating refresh tokens.
 - Account-scoped settings with optimistic revision checks.
 - Cloud Provider API keys encrypted at rest with Fernet; credential read endpoints return only configured/not-configured metadata.
+- Account-owned character profile overrides, with the built-in Kira/Ren/Mika profiles shared by both clients.
 - Shared character conversations and message history.
 - Per-character account memory.
-- Device registration and account snapshot/restore.
+- Device registration and account snapshot/restore, including character profiles, full message history and per-character memory.
 - Idempotent import of approved desktop settings, messages and memory. The server does not delete the original desktop data.
 - Google Sign-In is deliberately not implemented yet. It is intended to link to the existing Account ID, not create a second Kira identity.
 - Initial HTTP adapters are present in kira/core_client.py (Windows) and android/.../core/KiraCoreClient.kt (Android), including device/session token storage. The existing chat/Route/settings screens are not wired to these adapters yet.
