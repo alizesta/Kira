@@ -102,10 +102,17 @@ class LocalKiraCore(context:Context) {
     }
 
 
+    private fun isKnownFreeChatModel(providerId:String,modelId:String):Boolean = when(providerId) {
+        "gemini" -> modelId in setOf("gemini-3.8-flash","gemini-2.5-flash","gemini-2.5-flash-lite")
+        "openrouter" -> modelId.endsWith(":free")
+        "mistral" -> modelId=="labs-leanstral-2603"
+        else -> false
+    }
+
     @Synchronized fun discoveredModels(providerId:String):List<String> {
         val out=mutableListOf<String>()
         db.rawQuery("SELECT model_id FROM provider_models WHERE provider_id=? ORDER BY model_id",arrayOf(providerId)).use { c -> while(c.moveToNext()) out+=c.getString(0) }
-        return out
+        return out.filter { isKnownFreeChatModel(providerId,it) }
     }
 
     fun recommendedFreeModel(providerId:String,models:List<String>):String {
@@ -147,7 +154,7 @@ class LocalKiraCore(context:Context) {
             "groq" -> "https://api.groq.com/openai/v1/models"
             "mistral" -> "https://api.mistral.ai/v1/models"
             "deepseek" -> "https://api.deepseek.com/models"
-            "openrouter" -> "https://openrouter.ai/api/v1/models"
+            "openrouter" -> "https://openrouter.ai/api/v1/models?sort=most-popular"
             else -> throw IllegalArgumentException("این Provider هنوز فهرست خودکار مدل‌ها را پشتیبانی نمی‌کند.")
         }
         val conn=URL(endpoint).openConnection() as HttpURLConnection
@@ -181,20 +188,19 @@ class LocalKiraCore(context:Context) {
                     else -> false
                 }
                 if(!isChat) continue
+                val pricing=item.optJSONObject("pricing")
+                val openRouterIsFree=pricing!=null &&
+                    pricing.optString("prompt").toDoubleOrNull()==0.0 &&
+                    pricing.optString("completion").toDoubleOrNull()==0.0
                 val isFree=when(id) {
-                    "gemini" -> name in setOf("gemini-3.8-flash","gemini-2.5-flash","gemini-2.5-flash-lite")
-                    "openrouter" -> {
-                        val pricing=item.optJSONObject("pricing")
-                        val prompt=pricing?.optString("prompt")?.toDoubleOrNull()
-                        val completion=pricing?.optString("completion")?.toDoubleOrNull()
-                        name.endsWith(":free") && prompt==0.0 && completion==0.0
-                    }
-                    "mistral" -> name=="labs-leanstral-2603"
+                    "gemini","mistral" -> isKnownFreeChatModel(id,name)
+                    "openrouter" -> name.endsWith(":free") && openRouterIsFree
                     else -> false
                 }
                 if(isFree) found+=name
             }
-            found.distinct().sorted()
+            val distinct=found.distinct()
+            if(id=="openrouter") distinct else distinct.sorted()
         } finally { conn.disconnect() }
         if(models.isEmpty()) throw IllegalStateException(
             when(id) {
@@ -234,6 +240,7 @@ class LocalKiraCore(context:Context) {
         val pid=id.trim().lowercase()
         require(pid.matches(Regex("[a-z0-9][a-z0-9_-]{1,39}"))) { "شناسه Provider معتبر نیست." }
         require(model.isNotBlank()) { "Model ID را وارد کن." }
+        require(isKnownFreeChatModel(pid,model.trim())) { "این مدل در فهرست رایگان تأییدشده Kira نیست؛ برای جلوگیری از هزینه ذخیره نشد." }
         require(baseUrl.startsWith("https://")) { "آدرس Provider باید HTTPS باشد." }
         val old=db.rawQuery("SELECT encrypted_key FROM providers WHERE id=?",arrayOf(pid)).use { if(it.moveToFirst()) vault.decrypt(it.getString(0)) else "" }
         val priority=providers().indexOfFirst { it.id==pid }.let { if(it<0) providers().size else it }
@@ -494,7 +501,7 @@ class LocalKiraCore(context:Context) {
     @Synchronized fun sendMessage(characterId:String,text:String):LocalChatReply {
         require(text.isNotBlank()) { "پیام خالی است." }
         db.execSQL("INSERT INTO messages(character_id,role,content,route,created_at) VALUES(?,?,?,?,?)",arrayOf<Any>(characterId,"user",text.trim(),"",System.currentTimeMillis()))
-        val active=providers().filter { it.enabled && it.hasKey }
+        val active=providers().filter { it.enabled && it.hasKey && isKnownFreeChatModel(it.id,it.model) }
         if(active.isEmpty()) throw IllegalStateException("هیچ Provider فعالی با API Key ذخیره‌شده وجود ندارد. از بخش Route یک کلید اضافه کن.")
         val errors=mutableListOf<String>()
         for(p in active) {

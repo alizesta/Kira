@@ -48,7 +48,7 @@ internal fun KiraRouteScreen() {
 
     fun refreshRoutes() {
         routes.clear()
-        routes.addAll(core.providers())
+        routes.addAll(core.providers().filter { it.hasKey })
     }
 
     LaunchedEffect(Unit) {
@@ -94,7 +94,7 @@ internal fun KiraRouteScreen() {
                     models.addAll(found)
                     selectedModel=preferred
                     routes.clear()
-                    routes.addAll(list)
+                    routes.addAll(list.filter { it.hasKey })
                     apiKey=""
                     status="اتصال برقرار شد · " + found.size + " مدل رایگان · انتخاب خودکار: " + preferred
                     busy=false
@@ -119,7 +119,7 @@ internal fun KiraRouteScreen() {
                 val list=core.providers()
                 handler.post {
                     routes.clear()
-                    routes.addAll(list)
+                    routes.addAll(list.filter { it.hasKey })
                     status="مدل رایگان انتخاب‌شده: " + model
                     busy=false
                 }
@@ -147,7 +147,7 @@ internal fun KiraRouteScreen() {
                 val list=core.providers()
                 handler.post {
                     routes.clear()
-                    routes.addAll(list)
+                    routes.addAll(list.filter { it.hasKey })
                     status="تنظیمات اتصال ذخیره شد."
                     busy=false
                 }
