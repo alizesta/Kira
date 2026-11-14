@@ -60,12 +60,39 @@ internal fun KiraRouteScreen() {
             val cached=core.discoveredModels(saved.id)
             models.clear()
             models.addAll(cached)
-            val chosen=if(saved.model in cached) saved.model else if(cached.isNotEmpty()) core.recommendedFreeModel(saved.id,cached) else ""
-            selectedModel=chosen
-            if(chosen.isNotBlank() && chosen!=saved.model) {
-                executor.execute {
-                    runCatching { core.saveProvider(saved.id,chosen,saved.baseUrl,"",saved.enabled) }
-                    handler.post { refreshRoutes() }
+            if(cached.isNotEmpty()) selectedModel=if(saved.model in cached) saved.model else core.recommendedFreeModel(saved.id,cached)
+            busy=true
+            status="در حال تازه‌سازی مدل‌های رایگان از Provider…"
+            executor.execute {
+                try {
+                    val fresh=core.refreshFreeModels(saved.id)
+                    val chosen=if(saved.model in fresh) saved.model else core.recommendedFreeModel(saved.id,fresh)
+                    core.saveProvider(saved.id,chosen,saved.baseUrl,"",saved.enabled)
+                    val list=core.providers()
+                    handler.post {
+                        models.clear()
+                        models.addAll(fresh)
+                        selectedModel=chosen
+                        routes.clear()
+                        routes.addAll(list.filter { it.hasKey })
+                        status="فهرست رایگان به‌روز شد · " + fresh.size + " مدل · " + chosen
+                        busy=false
+                    }
+                } catch(e:Exception) {
+                    if(cached.isEmpty()) core.setProviderEnabled(saved.id,false)
+                    val list=core.providers()
+                    handler.post {
+                        routes.clear()
+                        routes.addAll(list.filter { it.hasKey })
+                        if(cached.isEmpty()) {
+                            models.clear()
+                            selectedModel=""
+                            status="برای این Provider مدل رایگان قابل تأیید نیست؛ اتصال برای جلوگیری از هزینه غیرفعال شد."
+                        } else {
+                            status="به‌روزرسانی ناموفق بود؛ فهرست رایگان ذخیره‌شده حفظ شد."
+                        }
+                        busy=false
+                    }
                 }
             }
         }
@@ -135,6 +162,32 @@ internal fun KiraRouteScreen() {
     fun selectRecommended() {
         if(models.isEmpty() || busy) return
         selectModel(core.recommendedFreeModel(providerId,models))
+    }
+
+    fun refreshModels() {
+        val route=routes.firstOrNull { it.id==providerId && it.hasKey } ?: return
+        if(busy) return
+        busy=true
+        status="در حال دریافت مدل‌های رایگان…"
+        executor.execute {
+            try {
+                val fresh=core.refreshFreeModels(route.id)
+                val chosen=core.recommendedFreeModel(route.id,fresh)
+                core.saveProvider(route.id,chosen,route.baseUrl,"",route.enabled)
+                val list=core.providers()
+                handler.post {
+                    models.clear()
+                    models.addAll(fresh)
+                    selectedModel=chosen
+                    routes.clear()
+                    routes.addAll(list.filter { it.hasKey })
+                    status="مدل پیشنهادی رایگان به‌روزرسانی شد: " + chosen
+                    busy=false
+                }
+            } catch(e:Exception) {
+                handler.post { status=e.message ?: "دریافت مدل‌های رایگان ناموفق بود.";busy=false }
+            }
+        }
     }
 
     fun change(route:LocalProvider,enabled:Boolean?=null,delta:Int=0) {
@@ -220,6 +273,9 @@ internal fun KiraRouteScreen() {
                         }
                         OutlinedButton(onClick={selectRecommended()},enabled=!busy,modifier=Modifier.height(48.dp)) {
                             Text("خودکار",fontSize=12.sp)
+                        }
+                        OutlinedButton(onClick={refreshModels()},enabled=!busy,modifier=Modifier.height(48.dp)) {
+                            Text("تازه‌سازی",fontSize=12.sp)
                         }
                     }
                 } else {

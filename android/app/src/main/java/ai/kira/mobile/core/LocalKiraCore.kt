@@ -325,7 +325,8 @@ class LocalKiraCore(context:Context) {
         pathTemplate:String,
         allowedParameters:List<String>,
         apiKey:String="",
-        characterId:String="global"
+        characterId:String="global",
+        source:String="custom-api"
     ) {
         val skillName=name.trim().lowercase()
         require(skillName.matches(Regex("[a-z0-9]+(?:-[a-z0-9]+)*")) && skillName.length<=64) { "نام Skill فقط باید شامل حروف کوچک انگلیسی، عدد و خط تیره باشد." }
@@ -366,7 +367,7 @@ class LocalKiraCore(context:Context) {
             val skillValues=ContentValues().apply {
                 put("name",skillName);put("description",safeDescription);put("character_id","global")
                 put("enabled",1);put("created_at",System.currentTimeMillis())
-                put("instructions",safeInstructions);put("source","custom-api")
+                put("instructions",safeInstructions);put("source",source)
             }
             db.insertWithOnConflict("skills",null,skillValues,SQLiteDatabase.CONFLICT_REPLACE)
             db.insertWithOnConflict("skill_assignments",null,ContentValues().apply {
@@ -382,17 +383,17 @@ class LocalKiraCore(context:Context) {
         if(!exists("currency-rates")) installApiSkill(
             "currency-rates","نرخ مرجع ارز از Frankfurter",
             "برای نرخ مرجع ارز از Connector استفاده کن. این نرخ‌ها قیمت لحظه‌ای بازار یا نرخ صرافی نیستند؛ تاریخ داده را در پاسخ ذکر کن. برای تبدیل مبلغ، نرخ را دریافت و مقدار را محاسبه کن.",
-            "https://api.frankfurter.dev","/v2/rate/{base}/{quote}",listOf("base","quote"),"","global"
+            "https://api.frankfurter.dev","/v2/rate/{base}/{quote}",listOf("base","quote"),"","global","builtin"
         )
         if(!exists("weather-location")) installApiSkill(
             "weather-location","جست‌وجوی مختصات شهر با Open-Meteo",
             "برای پیدا کردن مختصات شهر قبل از درخواست پیش‌بینی هوا استفاده کن. نام شهر را به زبان کاربر بده و در صورت چند نتیجه، کشور و منطقه را بررسی کن.",
-            "https://geocoding-api.open-meteo.com","/v1/search",listOf("name","count","language"),"","global"
+            "https://geocoding-api.open-meteo.com","/v1/search",listOf("name","count","language"),"","global","builtin"
         )
         if(!exists("weather-forecast")) installApiSkill(
             "weather-forecast","پیش‌بینی و وضعیت فعلی هوا با Open-Meteo",
             "برای اطلاعات هواشناسی از مختصات به‌دست‌آمده از weather-location استفاده کن. latitude و longitude الزامی‌اند. پارامتر current را با متغیرهایی مانند temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m درخواست کن و timezone را متناسب با شهر تنظیم کن. زمان و واحدهای برگشتی را در پاسخ حفظ کن.",
-            "https://api.open-meteo.com","/v1/forecast",listOf("latitude","longitude","current","daily","timezone","forecast_days","temperature_unit","wind_speed_unit"),"","global"
+            "https://api.open-meteo.com","/v1/forecast",listOf("latitude","longitude","current","daily","timezone","forecast_days","temperature_unit","wind_speed_unit"),"","global","builtin"
         )
     }
 
@@ -533,6 +534,8 @@ class LocalKiraCore(context:Context) {
         if(key.isBlank()) throw IllegalStateException("API Key برای "+id+" ذخیره نشده است.")
         return key
     }
+
+    @Synchronized fun refreshFreeModels(providerId:String):List<String> = discoverModels(providerId,readKey(providerId))
     private fun systemPrompt(characterId:String):String {
         val memory=memories(characterId).take(12).joinToString("\n") { it.second }
         val persona=when(characterId) {

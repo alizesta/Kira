@@ -59,8 +59,10 @@ internal fun KiraSkillsScreen() {
                             refresh++
                         })
                     }
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {
-                        TextButton(onClick={ core.removeSkill(skill.name);refresh++ }) { Text("حذف",color=Color(0xFFFF8A9A)) }
+                    if(skill.source!="builtin") {
+                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {
+                            TextButton(onClick={ core.removeSkill(skill.name);refresh++ }) { Text("حذف",color=Color(0xFFFF8A9A)) }
+                        }
                     }
                 }
             }
