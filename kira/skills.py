@@ -196,6 +196,18 @@ class SharedSkillsManager:
         query = str(query or "").strip()
         if len(query) < 2:
             raise SkillError("برای جست‌وجو حداقل دو نویسه وارد کن.")
+        if source == "public-apis":
+            from .public_api_catalog import PublicApiCatalog, ApiCatalogError
+            try:
+                rows = PublicApiCatalog(self.root.parent).search(query)
+            except ApiCatalogError as exc:
+                raise SkillError(str(exc)) from exc
+            return [{
+                **row,
+                "source_type": "public-api",
+                "source": f"Public APIs · {row.get('category', '')}",
+                "installs": 0,
+            } for row in rows]
         if source == "skills.sh":
             payload = self._request_json("https://skills.sh/api/v1/skills/search", {"q": query, "limit": 30})
             rows = payload.get("data", [])
@@ -253,6 +265,46 @@ class SharedSkillsManager:
     def preview_remote(self, item: dict) -> dict:
         if not isinstance(item, dict):
             raise SkillError("نتیجه‌ی انتخاب‌شده معتبر نیست.")
+        if item.get("source_type") == "public-api":
+            from .public_api_catalog import PublicApiCatalog, ApiCatalogError
+            try:
+                entry = PublicApiCatalog(self.root.parent).get(str(item.get("id") or ""))
+            except ApiCatalogError as exc:
+                raise SkillError(str(exc)) from exc
+            if entry is None:
+                raise SkillError("این API دیگر در فهرست منبع پیدا نشد؛ دوباره جست‌وجو کن.")
+            slug = re.sub(r"[^a-z0-9]+", "-", str(entry.get("name") or "").casefold()).strip("-")[:38] or "api"
+            skill_name = f"api-{slug}-{str(entry.get('id') or '')[:6]}"
+            def quoted(value):
+                return '"' + str(value or "").replace("\\\\", "\\\\\\\\").replace('"', '\\"').replace("\\n", " ") + '"'
+            description = f"API reference for {entry.get('name', 'external API')}: {entry.get('description', '')}"[:1024]
+            markdown = (
+                "---\\n"
+                f"name: {skill_name}\\n"
+                f"description: {quoted(description)}\\n"
+                'license: "Catalogue reference; check the API provider terms"\\n'
+                "---\\n"
+                f"# {entry.get('name', '')}\\n\\n"
+                f"- Category: {entry.get('category', '')}\\n"
+                f"- Provider documentation: {entry.get('url', '')}\\n"
+                f"- Authentication listed by catalogue: {entry.get('auth', 'Unknown')}\\n"
+                f"- HTTPS: {entry.get('https', 'Unknown')}\\n"
+                f"- CORS: {entry.get('cors', 'Unknown')}\\n\\n"
+                "## Integration status\\n"
+                "This is a catalogue reference only. It does not create an API connector, "
+                "does not grant network permissions, and does not store credentials. "
+                "Do not claim to have queried this API. Before live use, Kira must have an "
+                "explicit reviewed connector for this service, the user must configure any "
+                "required credential, and the connector must enforce HTTPS, timeouts, response "
+                "size limits, and data minimisation. Check the provider's current pricing, "
+                "terms, and rate limits before enabling it.\\n"
+            )
+            preview = self._make_preview(
+                {"SKILL.md": markdown.encode("utf-8")},
+                f"https://github.com/public-apis/public-apis · {entry.get('category', '')}"
+            )
+            preview["api_entry"] = entry
+            return preview
         if item.get("source_type") == "skills.sh":
             skill_id = str(item.get("id") or "")
             parts = skill_id.split("/")
@@ -394,10 +446,25 @@ class SharedSkillsManager:
         name = str(preview.get("name") or "")
         if not _NAME_RX.fullmatch(name):
             raise SkillError("نام Skill معتبر نیست.")
-        if any(x.get("name") == name for x in self._manifest["skills"]):
-            raise SkillError(f"Skill «{name}» از قبل نصب شده است؛ کتابخانه مشترک است و دوباره نصب نمی‌شود.")
         scope = "global" if scope == "global" else "character"
         cid = str(character_id or "kira")[:80]
+        existing = next((x for x in self._manifest["skills"] if x.get("name") == name), None)
+        if existing is not None:
+            api_entry = preview.get("api_entry")
+            existing_api = existing.get("api_entry") or {}
+            if not api_entry or existing_api.get("id") != api_entry.get("id"):
+                raise SkillError(f"Skill «{name}» از قبل نصب شده است؛ کتابخانه مشترک است و دوباره نصب نمی‌شود.")
+            if scope == "global":
+                existing["scope"] = "global"
+                existing["characters"] = []
+            elif existing.get("scope") != "global":
+                existing.setdefault("characters", [])
+                if cid not in existing["characters"]:
+                    existing["characters"].append(cid)
+            self._save()
+            from .public_api_catalog import PublicApiRegistry
+            PublicApiRegistry(self.root.parent).register(api_entry, scope, cid)
+            return dict(existing)
         staging = self.library / f".staging-{name}-{os.getpid()}-{time.time_ns()}"
         target = self.library / name
         try:
@@ -428,6 +495,7 @@ class SharedSkillsManager:
             "enabled": True, "character_enabled": {},
             "security_findings": list(preview.get("security_findings") or [])[:20],
             "installed_at": int(time.time()), "file_count": int(preview.get("file_count") or count),
+            "api_entry": dict(preview["api_entry"]) if isinstance(preview.get("api_entry"), dict) else None,
         }
         self._manifest["skills"].append(record)
         try:
@@ -436,6 +504,13 @@ class SharedSkillsManager:
             self._manifest["skills"] = [x for x in self._manifest["skills"] if x.get("name") != name]
             shutil.rmtree(target, ignore_errors=True)
             raise
+        if record.get("api_entry"):
+            try:
+                from .public_api_catalog import PublicApiRegistry
+                PublicApiRegistry(self.root.parent).register(record["api_entry"], scope, cid)
+            except Exception:
+                self.remove(name)
+                raise
         return dict(record)
 
     def list_skills(self) -> list[dict]:
@@ -479,6 +554,19 @@ class SharedSkillsManager:
         shutil.rmtree(target, ignore_errors=True)
         self._manifest["skills"] = [x for x in self._manifest["skills"] if x.get("name") != name]
         self._save()
+        api_entry = item.get("api_entry") if isinstance(item.get("api_entry"), dict) else None
+        if api_entry and api_entry.get("id"):
+            try:
+                from .public_api_catalog import PublicApiRegistry
+                registry = PublicApiRegistry(self.root.parent)
+                if item.get("scope") == "global":
+                    registry.remove(str(api_entry["id"]))
+                else:
+                    for cid in item.get("characters", []):
+                        registry.remove(str(api_entry["id"]), str(cid))
+            except Exception:
+                # The skill itself is already removed; a stale catalogue record is harmless and can be removed later.
+                pass
         return True
 
     def prompt_for(self, character_id: str, user_text: str) -> str:
