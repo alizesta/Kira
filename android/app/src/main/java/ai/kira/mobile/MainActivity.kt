@@ -50,6 +50,8 @@ import androidx.compose.ui.unit.sp
 import ai.kira.mobile.assistant.AiAssistantOverlayService
 import ai.kira.mobile.core.KiraCoreClient
 import java.util.concurrent.Executors
+import java.util.UUID
+import android.os.Build
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -178,6 +180,24 @@ private fun CoreAccountScreen() {
                 val client = KiraCoreClient(context, configuredUrl)
                 val result = action(client)
                 val stillSignedIn = client.hasSession()
+                if (stillSignedIn) {
+                    val devicePreferences = context.getSharedPreferences("kira_device", android.content.Context.MODE_PRIVATE)
+                    val deviceId = devicePreferences.getString("device_id", null) ?: UUID.randomUUID().toString().also {
+                        devicePreferences.edit().putString("device_id", it).apply()
+                    }
+                    runCatching {
+                        client.registerDevice(
+                            deviceId,
+                            Build.MODEL ?: "Android device",
+                            "0.1.1",
+                            org.json.JSONArray()
+                                .put("shared_chat")
+                                .put("shared_route")
+                                .put("shared_memory")
+                                .put("floating_assistant")
+                        )
+                    }
+                }
                 val currentAccountId = if (stillSignedIn) {
                     runCatching { client.account().optString("account_id") }.getOrDefault("")
                 } else {
