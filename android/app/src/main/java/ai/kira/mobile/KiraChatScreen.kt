@@ -154,7 +154,7 @@ internal fun KiraChatScreen() {
                     throw IllegalStateException("ابتدا وارد حساب Kira شو.")
                 }
                 var id = conversationId
-                if (id.isBlank()) id = client.createConversation("kira").optString("id")
+                if (id.isBlank()) id = client.createConversation(requestedCharacterId).optString("id")
                 if (id.isBlank()) throw IllegalStateException("ساخت گفت‌وگو ناموفق بود.")
                 val response = client.sendMessage(id, requestedCharacterId, text)
                 val route = response.optJSONObject("route")?.let {
