@@ -2,7 +2,7 @@ name: Build Kira Update
 
 on:
   push:
-    branches: [main, "next/2026-11-11-intelligence", "feature/characters-ren-mika"]
+    branches: [main, "next/2026-11-11-intelligence", "feature/characters-ren-mika", "feature/shared-skills-system"]
     paths:
       - ".github/workflows/kira-release.yml"
       - "kira/**"
@@ -138,7 +138,7 @@ jobs:
         with:
           target_commitish: ${{ github.sha }}
           tag_name: kira-${{ steps.package.outputs.stamp }}-${{ github.run_number }}
-          name: Kira Update ${{ steps.package.outputs.stamp }}
+          name: Kira Update ${{ steps.package.outputs.stamp }}${{ github.ref_name != 'main' && ' · Unstable' || '' }}
           body: |
             Kira source update.
 
@@ -149,6 +149,6 @@ jobs:
           files: ${{ steps.package.outputs.asset }}
           fail_on_unmatched_files: true
           draft: false
-          prerelease: false
+          prerelease: ${{ github.ref_name != 'main' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
