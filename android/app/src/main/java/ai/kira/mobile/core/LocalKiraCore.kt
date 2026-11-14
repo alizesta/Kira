@@ -51,13 +51,14 @@ private class LocalKeyVault {
     }
 }
 
-private class LocalDb(context:Context):SQLiteOpenHelper(context.applicationContext,"kira_local_core.db",null,1) {
+private class LocalDb(context:Context):SQLiteOpenHelper(context.applicationContext,"kira_local_core.db",null,2) {
     override fun onCreate(db:SQLiteDatabase) {
         db.execSQL("CREATE TABLE providers(id TEXT PRIMARY KEY,model TEXT NOT NULL,base_url TEXT NOT NULL,encrypted_key TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 0,priority INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE TABLE messages(id INTEGER PRIMARY KEY AUTOINCREMENT,character_id TEXT NOT NULL,role TEXT NOT NULL,content TEXT NOT NULL,route TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL)")
         db.execSQL("CREATE INDEX idx_messages_character ON messages(character_id,id)")
         db.execSQL("CREATE TABLE memories(id INTEGER PRIMARY KEY AUTOINCREMENT,character_id TEXT NOT NULL,text TEXT NOT NULL,created_at INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE skills(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL UNIQUE,description TEXT NOT NULL DEFAULT '',character_id TEXT NOT NULL DEFAULT 'global',enabled INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL)")
+        db.execSQL("CREATE TABLE provider_models(provider_id TEXT NOT NULL,model_id TEXT NOT NULL,capabilities TEXT NOT NULL DEFAULT 'chat',PRIMARY KEY(provider_id,model_id))")
         val defaults=listOf(
             arrayOf("openrouter","openai/gpt-4o-mini","https://openrouter.ai/api/v1"),
             arrayOf("groq","openai/gpt-oss-120b","https://api.groq.com/openai/v1"),
@@ -69,7 +70,7 @@ private class LocalDb(context:Context):SQLiteOpenHelper(context.applicationConte
             db.execSQL("INSERT INTO providers(id,model,base_url,priority) VALUES(?,?,?,?)",arrayOf<Any>(row[0],row[1],row[2],i))
         }
     }
-    override fun onUpgrade(db:SQLiteDatabase,oldVersion:Int,newVersion:Int)=Unit
+    override fun onUpgrade(db:SQLiteDatabase,oldVersion:Int,newVersion:Int) { if(oldVersion<2) db.execSQL("CREATE TABLE IF NOT EXISTS provider_models(provider_id TEXT NOT NULL,model_id TEXT NOT NULL,capabilities TEXT NOT NULL DEFAULT 'chat',PRIMARY KEY(provider_id,model_id))") }
 }
 
 /** Independent on-device Core. API keys are encrypted with Android Keystore. */
@@ -83,6 +84,70 @@ class LocalKiraCore(context:Context) {
         listOf(root,java.io.File(root,"library"),java.io.File(root,"skills")).forEach {
             if(!it.exists() && !it.mkdirs()) throw IllegalStateException("ساخت پوشه محلی Kira ناموفق بود: "+it.name)
         }
+    }
+
+
+    @Synchronized fun discoveredModels(providerId:String):List<String> {
+        val out=mutableListOf<String>()
+        db.rawQuery("SELECT model_id FROM provider_models WHERE provider_id=? ORDER BY model_id",arrayOf(providerId)).use { c -> while(c.moveToNext()) out+=c.getString(0) }
+        return out
+    }
+
+    /** Fetches the provider's live model catalog using only its API key. */
+    @Synchronized fun discoverModels(providerId:String,apiKey:String):List<String> {
+        require(apiKey.isNotBlank()) { "API Key خالی است." }
+        val id=providerId.lowercase()
+        val endpoint=when(id) {
+            "gemini" -> "https://generativelanguage.googleapis.com/v1beta/models?key="+URLEncoder.encode(apiKey,"UTF-8")
+            "groq" -> "https://api.groq.com/openai/v1/models"
+            "mistral" -> "https://api.mistral.ai/v1/models"
+            "deepseek" -> "https://api.deepseek.com/models"
+            "openrouter" -> "https://openrouter.ai/api/v1/models"
+            else -> throw IllegalArgumentException("این Provider هنوز فهرست خودکار مدل‌ها را پشتیبانی نمی‌کند.")
+        }
+        val conn=URL(endpoint).openConnection() as HttpURLConnection
+        val models=try {
+            conn.requestMethod="GET"; conn.connectTimeout=15000; conn.readTimeout=30000
+            conn.setRequestProperty("Accept","application/json")
+            if(id!="gemini") conn.setRequestProperty("Authorization","Bearer "+apiKey)
+            val code=conn.responseCode
+            val raw=(if(code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
+            if(code !in 200..299) {
+                val detail=runCatching { JSONObject(raw).optJSONObject("error")?.optString("message") }.getOrNull().orEmpty()
+                throw IllegalStateException("دریافت مدل‌ها ناموفق بود: HTTP $code "+detail.take(220))
+            }
+            val root=JSONObject(raw)
+            val arr=root.optJSONArray(if(id=="gemini") "models" else "data") ?: JSONArray()
+            val found=mutableListOf<String>()
+            for(i in 0 until arr.length()) {
+                val item=arr.optJSONObject(i) ?: continue
+                val name=item.optString("id",item.optString("name")).removePrefix("models/")
+                if(name.isBlank()) continue
+                if(id=="gemini") {
+                    val methods=item.optJSONArray("supportedGenerationMethods") ?: JSONArray()
+                    if((0 until methods.length()).none { methods.optString(it)=="generateContent" }) continue
+                }
+                found+=name
+            }
+            found.distinct().sorted()
+        } finally { conn.disconnect() }
+        if(models.isEmpty()) throw IllegalStateException("Provider هیچ مدل قابل استفاده‌ای برنگرداند.")
+        db.beginTransaction()
+        try {
+            db.delete("provider_models","provider_id=?",arrayOf(id))
+            models.forEach { modelId ->
+                val caps=when {
+                    modelId.contains("embedding",true) -> "embedding"
+                    modelId.contains("tts",true) || modelId.contains("audio",true) || modelId.contains("speech",true) -> "audio"
+                    modelId.contains("vision",true) || modelId.contains("image",true) || modelId.contains("4o",true) || modelId.contains("gemini",true) -> "chat,vision"
+                    else -> "chat"
+                }
+                val values=ContentValues().apply { put("provider_id",id);put("model_id",modelId);put("capabilities",caps) }
+                db.insertWithOnConflict("provider_models",null,values,SQLiteDatabase.CONFLICT_REPLACE)
+            }
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+        return models
     }
 
     @Synchronized fun providers():List<LocalProvider> {
