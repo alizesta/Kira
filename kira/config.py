@@ -57,6 +57,9 @@ DEFAULTS = {
     "output_device": "",                  # "" = Windows default speaker; otherwise the device description
     "mic_device": "",                     # "" = Windows default microphone; otherwise the device name
     "mic_gain": 100,                      # 50-300 %: software gain of the microphone (independent of the speaker volume)
+    "local_voice_asr": True,              # Qwen3-ASR 0.6B first; Cloud Voice is the fallback
+    "local_voice_tts": True,              # Mana Persian Piper first; Cloud Voice is the fallback
+    "local_voice_asr_model": "Qwen/Qwen3-ASR-0.6B",
     "whisper_model": "small",
     "stt_language": "fa",
     "wake_timeout": 25,
