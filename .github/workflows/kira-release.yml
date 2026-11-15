@@ -63,8 +63,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  windows-game-mode:
+  windows-full-suite:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -74,14 +75,6 @@ jobs:
           python-version: "3.12"
       - name: Install Windows test dependencies
         run: python -m pip install PySide6 requests numpy
-      - name: Run Game Mode identity, audio and monitor regression tests
-        run: python -m unittest tests.test_game_detection tests.test_game_mode tests.test_game_audio
-        env:
-          QT_QPA_PLATFORM: offscreen
-      - name: Run Ai1 Code chat GUI regression tests
-        run: python -m unittest tests.test_chat_code_gui
-        env:
-          QT_QPA_PLATFORM: offscreen
       - name: Run the complete Windows test suite
         run: python -m unittest discover -s tests -t . -v
         env:
