@@ -269,14 +269,16 @@ class Listener(QThread):
             if not local_voice.asr_ready():
                 return None
             self.fixes.refresh()
-            return local_voice.transcribe(
+            text = local_voice.transcribe(
                 audio, RATE, self.language or "fa",
                 initial_prompt(self.language, self.fixes.hotwords_text()),
                 str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B"),
             )
+            # An empty Qwen result is not a successful transcription: let Whisper / Cloud Voice try.
+            return str(text or "").strip() or None
         except Exception as exc:
             self._local_asr_failed = True
-            self.note.emit(f"STT محلی Qwen3-ASR در دسترس نبود؛ Cloud Voice جایگزین می‌شود. ({type(exc).__name__})")
+            self.note.emit(f"STT محلی Qwen3-ASR در دسترس نبود؛ موتور جایگزین بعدی امتحان می‌شود. ({type(exc).__name__})")
             return None
 
     def _transcribe_whisper(self, audio):

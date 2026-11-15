@@ -1,5 +1,6 @@
 """Microphone input: noise handling, pauses, end of speech, barge-in (synthetic audio, no microphone needed) and text clean-up."""
 import unittest
+from unittest import mock
 
 import numpy as np
 
@@ -36,6 +37,18 @@ def run(seg, sig, **kw):
 
 def kinds(events):
     return [e[0] for e in events]
+
+
+class LocalASRFallbackTests(unittest.TestCase):
+    def test_empty_qwen_result_falls_through_to_next_engine(self):
+        from kira.listener import Listener
+        from kira import local_voice
+
+        listener = Listener(settings={"local_voice_asr": True})
+        with mock.patch.object(local_voice, "asr_ready", return_value=True), \
+             mock.patch.object(local_voice, "transcribe", return_value="  \n "):
+            self.assertIsNone(listener._transcribe_local_qwen(np.zeros(RATE, dtype=np.float32)))
+        self.assertFalse(listener._local_asr_failed)
 
 
 class SegmenterTests(unittest.TestCase):
