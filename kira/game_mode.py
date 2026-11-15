@@ -156,8 +156,8 @@ class GameModeMonitor(QObject):
     def set_enabled(self, enabled):
         self.enabled = bool(enabled)
 
-    def capture_last_game(self):
-        """Return a PNG QPixmap for the last detected game window, only in manual Game Mode."""
+    def capture_last_game(self, max_width=CAPTURE_MAX_WIDTH, max_height=CAPTURE_MAX_HEIGHT):
+        """Return a bounded QPixmap for the last detected game window, only in manual Game Mode."""
         if not self.enabled or self._user32 is None or not self.last_game:
             return None
         hwnd = int(self.last_game["hwnd"])
@@ -175,7 +175,7 @@ class GameModeMonitor(QObject):
         pixmap = screen.grabWindow(hwnd)
         if pixmap.isNull():
             return None
-        target = fit_capture_size(pixmap.width(), pixmap.height())
+        target = fit_capture_size(pixmap.width(), pixmap.height(), max_width, max_height)
         if pixmap.width() > target[0] or pixmap.height() > target[1]:
             pixmap = pixmap.scaled(target[0], target[1], Qt.KeepAspectRatio, Qt.FastTransformation)
         return pixmap
