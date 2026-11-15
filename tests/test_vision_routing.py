@@ -1,8 +1,9 @@
 """Regression tests for role-aware image routing in the streamed chat worker."""
 import contextlib
 import unittest
+from types import SimpleNamespace
 
-from kira.main import StreamWorker
+from kira.main import MainWindow, StreamWorker
 
 
 class FakeRouter:
@@ -49,7 +50,69 @@ class ProbeWorker(StreamWorker):
         return {"answer": "ok"}
 
 
+class FakeTimer:
+    def __init__(self):
+        self.started = False
+        self.stopped = False
+
+    def start(self):
+        self.started = True
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+        self.started = False
+
+
+class FakeGameMode:
+    def __init__(self):
+        self.enabled = None
+
+    def set_enabled(self, enabled):
+        self.enabled = bool(enabled)
+
+
+class FakeVisionWorker:
+    def __init__(self, running=True):
+        self.running = running
+        self.cancelled = False
+
+    def isRunning(self):
+        return self.running
+
+    def cancel_request(self):
+        self.cancelled = True
+
+
 class VisionRoutingTests(unittest.TestCase):
+    def test_disabling_vision_capture_cancels_an_in_flight_analysis(self):
+        worker = FakeVisionWorker()
+        timer = FakeTimer()
+        state = SimpleNamespace(
+            game_mode=FakeGameMode(),
+            _game_capture_timer=timer,
+            _latest_game_frame=object(),
+            _vision_worker=worker,
+        )
+        MainWindow._set_game_vision_capture(state, False)
+        self.assertFalse(state.game_mode.enabled)
+        self.assertTrue(timer.stopped)
+        self.assertIsNone(state._latest_game_frame)
+        self.assertTrue(worker.cancelled)
+
+    def test_enabling_vision_capture_starts_capture_and_timer(self):
+        timer = FakeTimer()
+        state = SimpleNamespace(
+            game_mode=FakeGameMode(),
+            _game_capture_timer=timer,
+            _capture_game_frame=lambda: setattr(state, "captured", True),
+            _cancel_vision_worker=lambda: setattr(state, "cancelled", True),
+        )
+        MainWindow._set_game_vision_capture(state, True)
+        self.assertTrue(state.game_mode.enabled)
+        self.assertTrue(timer.started)
+        self.assertTrue(state.captured)
+
     def test_image_route_is_selected_inside_role_and_kept_as_preference(self):
         router = FakeRouter()
         worker = ProbeWorker(

@@ -3662,6 +3662,23 @@ class MainWindow(QMainWindow):
                 self._game_capture_timer.start()
         self.game_mode_btn.setToolTip(f"Game Mode · Vision {policy.name} · هر {policy.interval_seconds:g} ثانیه")
 
+    def _set_game_vision_capture(self, allowed):
+        """Synchronize capture permission and cancel in-flight analysis whenever Vision is disallowed."""
+        allowed = bool(allowed)
+        self.game_mode.set_enabled(allowed)
+        if allowed:
+            self._capture_game_frame()
+            self._game_capture_timer.start()
+        else:
+            self._game_capture_timer.stop()
+            self._latest_game_frame = None
+            self._cancel_vision_worker()
+
+    def _cancel_vision_worker(self):
+        worker = getattr(self, "_vision_worker", None)
+        if worker is not None and worker.isRunning():
+            worker.cancel_request()
+
     def set_game_mode_profile(self, profile):
         """Apply a manually selected gameplay profile; never infer or enable it automatically."""
         self._game_mode_profile = normalize_game_mode_profile(profile)
@@ -3678,7 +3695,7 @@ class MainWindow(QMainWindow):
         audio_allowed = bool(permissions["game_audio_loopback"])
 
         # Capture is gated by the selected profile, not only by the master toggle.
-        self.game_mode.set_enabled(enabled and vision_allowed)
+        self._set_game_vision_capture(enabled and vision_allowed)
         safe_profile = enabled and self._game_mode_profile == COMPETITIVE_SAFE_MODE
         self.tool_agent.set_competitive_safe_mode(safe_profile)
         # Safe mode does not keep polling foreground process metadata while an online game is running.
@@ -3694,22 +3711,11 @@ class MainWindow(QMainWindow):
             if not self.wake_btn.isChecked():
                 self.wake_btn.setChecked(True)
                 self.toggle_wake()
-            if vision_allowed:
-                self._capture_game_frame()
-                self._game_capture_timer.start()
-            else:
-                self._game_capture_timer.stop()
-                self._latest_game_frame = None
             if audio_allowed:
                 self._start_game_audio_listener()
             else:
                 self._stop_game_audio_listener()
         else:
-            self._game_capture_timer.stop()
-            self._latest_game_frame = None
-            worker = getattr(self, "_vision_worker", None)
-            if worker is not None and worker.isRunning():
-                worker.cancel_request()
             self._stop_game_audio_listener()
             if not self._game_prev_wake and self.wake_btn.isChecked():
                 self.wake_btn.setChecked(False)
@@ -4823,11 +4829,7 @@ class MainWindow(QMainWindow):
             if sess.timer is not None:
                 sess.timer.stop()
         self._game_poll_timer.stop()
-        self._game_capture_timer.stop()
-        self._latest_game_frame = None
-        vision_worker = getattr(self, "_vision_worker", None)
-        if vision_worker is not None and vision_worker.isRunning():
-            vision_worker.cancel_request()
+        self._set_game_vision_capture(False)
         self._stop_game_audio_listener()
         self.game_mode.set_enabled(False)
         for sess in self.sessions.values():
