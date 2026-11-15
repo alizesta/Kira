@@ -20,13 +20,39 @@ MARKER = "migrated_from.txt"
 
 
 def default_data_dir(root: Path) -> Path:
+    """Keep all persistent Kira data in the dedicated A: drive folder.
+
+    KIRA_DATA_DIR remains an explicit override for tests and portable setups.
+    If A: is unavailable, fall back safely to the normal per-user data folder.
+    """
     env = os.environ.get("KIRA_DATA_DIR")
     if env:
-        return Path(env)
-    local = os.environ.get("LOCALAPPDATA")
-    if local:
-        return Path(local) / "Kira"
-    return root / "data"                      # non-Windows development fallback
+        data_dir = Path(env)
+    else:
+        preferred = Path("A:/Project KIRA/Kira Attachments")
+        if os.name == "nt" and Path("A:/").exists():
+            data_dir = preferred
+        else:
+            local = os.environ.get("LOCALAPPDATA")
+            data_dir = Path(local) / "Kira" if local else root / "data"
+    configure_cache_environment(data_dir)
+    return data_dir
+
+
+def configure_cache_environment(data_dir: Path) -> None:
+    """Route common AI/runtime caches into the same persistent Kira data folder."""
+    cache_root = Path(data_dir) / "cache"
+    paths = {
+        "HF_HOME": Path(data_dir) / "huggingface",
+        "HUGGINGFACE_HUB_CACHE": Path(data_dir) / "huggingface" / "hub",
+        "HF_HUB_CACHE": Path(data_dir) / "huggingface" / "hub",
+        "TRANSFORMERS_CACHE": Path(data_dir) / "huggingface" / "hub",
+        "TORCH_HOME": cache_root / "torch",
+        "XDG_CACHE_HOME": cache_root,
+        "PIP_CACHE_DIR": cache_root / "pip",
+    }
+    for name, path in paths.items():
+        os.environ[name] = str(path)
 
 
 def persona_memory_files(folder: Path):
