@@ -181,6 +181,14 @@ class CodeChat(QObject):
         if self._classifying:                                   # a decision is still pending: keep the order of messages
             self._class_queue.append((text, voice))
             return True
+        if cc.wants_project_location(text):
+            w.add_chat("user", text)
+            w.save_message("user", text)
+            if self.root is not None and self.root.is_dir():
+                self._say("system", f"مسیر پوشه‌ی پروژه‌ی فعلی: {self.root}")
+            else:
+                self._say("system", "هنوز پوشه‌ی پروژه‌ای برای Ai1 Code انتخاب نشده؛ برای انتخاب پوشه بگو «پوشه‌ی پروژه را عوض کن».")
+            return True
         req = cc.parse_request(text)
         if req.kind in ("files", "project", "apply", "reject", "help", "run", "auto") or req.explicit:
             return self._explicit(req, text)
