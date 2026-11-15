@@ -167,20 +167,20 @@ _SOFTWARE_SURFACE = re.compile(
     r"(آیکون|ایموجی|دکمه|صفحه|پنجره|منو|نوار|نوار ابزار|چت|پیام|فیلد|کادر|"
     r"ضمیمه|پیوست|فایل|پوشه|عکس|تصویر|صدا|میکروفون|اسپیکر|تنظیمات|"
     r"برنامه|اپلیکیشن|رابط کاربری|ظاهر|رنگ|اندازه|فونت|مدل|کیرا|"
-    r"\\b(?:button|icon|emoji|screen|window|menu|toolbar|chat|message|attachment|file|folder|"
-    r"image|audio|microphone|settings|app|interface|layout|colour|color|font|model)\\b)", re.I)
+    r"\b(?:button|icon|emoji|screen|window|menu|toolbar|chat|message|attachment|file|folder|"
+    r"image|audio|microphone|settings|app|interface|layout|colour|color|font|model)\b)", re.I)
 _NATURAL_CHANGE = re.compile(
-    r"(کار\\s*نمی\\s*کنه|کار\\s*نمی\\s*کند|کار\\s*نمی\\s*کنه|"
-    r"باز\\s*نمی\\s*شه|باز\\s*نمی\\s*شود|باز\\s*نمیشه|"
-    r"فعال\\s*نیست|غیرفعال|از\\s*کار\\s*افتاده|خراب(?:ه|\\s*شده)?|"
-    r"به\\s*هم\\s*ریخته|قاتی\\s*شده|درست\\s*نمایش\\s*نمی\\s*ده|"
-    r"نمایش\\s*نمی\\s*ده|نمی\\s*ذاره|نمی\\s*گذاره|"
-    r"بزرگ(?:تر)?\\s*شده|کوچیک(?:تر)?\\s*شده|کوچک(?:تر)?\\s*شده|"
-    r"زیاد(?:ه)?|کم(?:ه)?|می\\s*لرزه|می\\s*پره|بسته\\s*می\\s*شه|"
-    r"رو\\s*مخه|اعصاب\\s*خرد\\s*کن|"
-    r"می\\s*خوام|می\\s*خام|می\\s*خواهم|باید|کاری\\s*کن|"
-    r"\\b(?:doesn['’]?t work|not working|broken|won['’]?t open|disabled|"
-    r"messed up|too big|too small|make it|please fix|I want)\\b)", re.I)
+    r"(کار\s*نمی\s*کنه|کار\s*نمی\s*کند|کار\s*نمی\s*کنه|"
+    r"باز\s*نمی\s*شه|باز\s*نمی\s*شود|باز\s*نمیشه|"
+    r"فعال\s*نیست|غیرفعال|از\s*کار\s*افتاده|خراب(?:ه|\s*شده)?|"
+    r"به\s*هم\s*ریخته|قاتی\s*شده|درست\s*نمایش\s*نمی\s*ده|"
+    r"نمایش\s*نمی\s*ده|نمی\s*ذاره|نمی\s*گذاره|"
+    r"بزرگ(?:تر)?\s*شده|کوچیک(?:تر)?\s*شده|کوچک(?:تر)?\s*شده|"
+    r"زیاد(?:ه)?|کم(?:ه)?|می\s*لرزه|می\s*پره|بسته\s*می\s*شه|"
+    r"رو\s*مخه|اعصاب\s*خرد\s*کن|"
+    r"می\s*خوام|می\s*خام|می\s*خواهم|باید|کاری\s*کن|"
+    r"\b(?:doesn['’]?t work|not working|broken|won['’]?t open|disabled|"
+    r"messed up|too big|too small|make it|please fix|I want)\b)", re.I)
 _CHANGE_PROJECT = re.compile(
     r"(?:پوشه|مسیر|فولدر|دایرکتوری)[\s\u200c]*(?:ی[\s\u200c]*)?(?:این[\s\u200c]+)?پروژه"
     r"[\s\u200c]*(?:رو|را)?[\s\u200c]*.*(?:عوض|تغییر|انتخاب|جابه[\s\u200c]*جا)|"
