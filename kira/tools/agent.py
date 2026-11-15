@@ -122,7 +122,8 @@ class ToolAgent(AutonomyMixin):
         """Restrict local control tools while an online/PvP safety profile is active."""
         self._competitive_safe_mode = bool(enabled)
         if self._competitive_safe_mode:
-            self.registry.access.revoke_grants()
+            # Revoke pending approvals and stop any multi-step local task immediately.
+            self.request_cancel()
             pending = self._pending
             if pending is not None:
                 tool = self.registry.get(pending.tool)

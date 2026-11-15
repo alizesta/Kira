@@ -3687,6 +3687,12 @@ class MainWindow(QMainWindow):
         if worker is not None and worker.isRunning():
             worker.cancel_request()
 
+    def _stop_local_code_jobs(self):
+        code_chat = getattr(self, "code_chat", None)
+        session = getattr(code_chat, "session", None) if code_chat is not None else None
+        if session is not None:
+            code_chat.stop(session)
+
     def set_game_mode_profile(self, profile):
         """Apply a manually selected gameplay profile; never infer or enable it automatically."""
         self._game_mode_profile = normalize_game_mode_profile(profile)
@@ -3709,6 +3715,7 @@ class MainWindow(QMainWindow):
         # Safe mode does not keep polling foreground process metadata while an online game is running.
         if safe_profile:
             self._game_poll_timer.stop()
+            self._stop_local_code_jobs()
         elif not self._game_poll_timer.isActive():
             self._game_poll_timer.start()
 

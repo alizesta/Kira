@@ -129,6 +129,21 @@ class VisionRoutingTests(unittest.TestCase):
         self.assertTrue(router.cancelled)
         self.assertEqual(results, [])
 
+    def test_competitive_safe_stops_active_code_chat_job(self):
+        session = object()
+        class FakeCodeChat:
+            def __init__(self):
+                self.session = session
+                self.stopped = None
+
+            def stop(self, target):
+                self.stopped = target
+
+        code_chat = FakeCodeChat()
+        state = SimpleNamespace(code_chat=code_chat)
+        MainWindow._stop_local_code_jobs(state)
+        self.assertIs(code_chat.stopped, session)
+
     def test_disabling_vision_capture_cancels_an_in_flight_analysis(self):
         worker = FakeVisionWorker()
         timer = FakeTimer()
