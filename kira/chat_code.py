@@ -228,16 +228,15 @@ def classify_intent(text: str, vocabulary=frozenset()):
     project_ref = file_ref or project_word or trace or (vocab_hit and (verb or question)) or ((bool(_FEATURE.search(t)) or bool(_BUG.search(t))) and verb)
     if "```" in t and not (file_ref or project_word):
         return "chat", True                                    # code pasted into the message: Kira helps in the normal chat
+    # A concrete UI/file behaviour complaint is a change request even without an imperative verb.
+    if _SOFTWARE_SURFACE.search(normalized) and (_NATURAL_CHANGE.search(normalized) or verb):
+        return "task", True
     if project_ref:
         if verb and not explain:
             return "task", True
         if question or trace:
             return "question", True
         return "question", False
-    # Natural-language UI complaints and desired behaviour are coding requests when a
-    # project is open, even if the user never says "code", "bug", "function" or a filename.
-    if _SOFTWARE_SURFACE.search(normalized) and (_NATURAL_CHANGE.search(normalized) or verb):
-        return "task", True
     techy = bool(_TECHY.search(t)) or vocab_hit
     if (verb or question) and ((code_noun and len(t) >= 8) or (techy and len(t) >= 18)):
         return "chat", False                                   # could be about the project or general: a model decides
