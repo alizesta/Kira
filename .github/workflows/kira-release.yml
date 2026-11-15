@@ -127,7 +127,7 @@ jobs:
 
   package-and-release:
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next/2026-11-11-intelligence' || github.ref == 'refs/heads/feature/characters-ren-mika'
-    needs: [windows-game-mode, portable-regression]
+    needs: [windows-full-suite, portable-regression]
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
