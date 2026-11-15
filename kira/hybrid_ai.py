@@ -624,6 +624,7 @@ class HybridRouter:
         self._lock = threading.Lock()
         self._cancel = threading.Event()
         self._active = None
+        self._vision_capability_cache = {}
 
     # ---------- logging ----------
     @staticmethod
@@ -737,15 +738,38 @@ class HybridRouter:
                 return str(route.get("id") or "")
         return None
 
-    @staticmethod
-    def _route_supports_vision(route, cfg):
+    def _route_supports_vision(self, route, cfg):
         model = str(route.get("model") or "").lower()
+        provider = str(route.get("provider") or "").lower()
         known = (
             "gemini", "gpt-4o", "gpt-4.1", "gpt-5", "claude-3", "claude-sonnet",
             "claude-opus", "llava", "qwen-vl", "qwen2.5-vl", "qwen3-vl",
-            "minicpm-v", "pixtral", "molmo", "internvl", "llama-3.2-vision",
+            "qwen3.5", "qwen35", "minicpm-v", "pixtral", "molmo", "internvl",
+            "llama-3.2-vision",
         )
-        return cfg.get("vision_enabled") is True or any(token in model for token in known)
+        if cfg.get("vision_enabled") is True or any(token in model for token in known):
+            return True
+        if provider != "ollama":
+            return False
+        # Ollama exposes model capabilities through /api/show on current releases.
+        # Cache the result for five minutes; an unavailable endpoint fails closed.
+        key = (provider, model)
+        cached = self._vision_capability_cache.get(key)
+        now = time.monotonic()
+        if cached and now - cached[0] < 300:
+            return cached[1]
+        capable = False
+        try:
+            client = self._make_provider(route)
+            response = client._post("/api/show", {"model": route.get("model") or client.model}, 6)
+            if response.status_code < 400:
+                data = response.json()
+                caps = data.get("capabilities") or []
+                capable = any(str(item).lower() == "vision" for item in caps)
+        except Exception:
+            capable = False
+        self._vision_capability_cache[key] = (now, capable)
+        return capable
 
     @contextlib.contextmanager
     def vision_scope(self, route_id=""):
