@@ -747,29 +747,32 @@ class HybridRouter:
             "qwen3.5", "qwen35", "minicpm-v", "pixtral", "molmo", "internvl",
             "llama-3.2-vision",
         )
-        if cfg.get("vision_enabled") is True or any(token in model for token in known):
+        if cfg.get("vision_enabled") is True:
             return True
-        if provider != "ollama":
-            return False
-        # Ollama exposes model capabilities through /api/show on current releases.
-        # Cache the result for five minutes; an unavailable endpoint fails closed.
-        key = (provider, model)
-        cached = self._vision_capability_cache.get(key)
-        now = time.monotonic()
-        if cached and now - cached[0] < 300:
-            return cached[1]
-        capable = False
-        try:
-            client = self._make_provider(route)
-            response = client._post("/api/show", {"model": route.get("model") or client.model}, 6)
-            if response.status_code < 400:
-                data = response.json()
-                caps = data.get("capabilities") or []
-                capable = any(str(item).lower() == "vision" for item in caps)
-        except Exception:
+        if provider == "ollama":
+            # Prefer Ollama's declared model capabilities; cache for five minutes.
+            key = (provider, model)
+            cached = self._vision_capability_cache.get(key)
+            now = time.monotonic()
+            if cached and now - cached[0] < 300:
+                return cached[1]
             capable = False
-        self._vision_capability_cache[key] = (now, capable)
-        return capable
+            try:
+                client = self._make_provider(route)
+                response = client._post("/api/show", {"model": route.get("model") or client.model}, 6)
+                if response.status_code < 400:
+                    data = response.json()
+                    caps = data.get("capabilities")
+                    if isinstance(caps, list):
+                        capable = any(str(item).lower() == "vision" for item in caps)
+                    else:
+                        # Older Ollama versions omit capabilities; use conservative model-family hints.
+                        capable = any(token in model for token in known)
+            except Exception:
+                capable = any(token in model for token in known)
+            self._vision_capability_cache[key] = (now, capable)
+            return capable
+        return any(token in model for token in known)
 
     @contextlib.contextmanager
     def vision_scope(self, route_id=""):
