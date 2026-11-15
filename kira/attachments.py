@@ -160,6 +160,8 @@ def _pdf_text(path: str, progress=None, cancelled=None) -> str:
             if progress:
                 progress(min(99, int(i * 100 / max(1, len(pages)))))
         return "\n\n".join(out)
+    except AttachmentError:
+        raise
     except Exception as exc:                                  # noqa: BLE001 - corrupt / encrypted file
         raise AttachmentError("فایل PDF خوانده نشد (خراب یا قفل‌دار).") from exc
 
