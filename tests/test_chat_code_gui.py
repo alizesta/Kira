@@ -85,7 +85,7 @@ class ChatCodeGuiTests(unittest.TestCase):
         queue = list(replies)
 
         def chat_stream(messages, system, temperature=0.7, on_chunk=None, **kw):
-            if system == aa.PLAN_PROMPT:
+            if system == aa.PLAN_PROMPT or "senior software architect" in str(system).lower():
                 return {"text": plan}
             if "independent code reviewer" in str(system).lower():
                 return {"text": review}
@@ -391,8 +391,10 @@ class ChatCodeGuiTests(unittest.TestCase):
             "import unittest\nfrom app import save\n\nclass T(unittest.TestCase):\n    def test(self):\n        self.assertEqual(save(), 2)\n", encoding="utf-8")
         self.prepare_auto()
         self.script_model(
-            {"action": "list"}, {"action": "plan", "steps": ["find save", "fix", "test"]},
+            {"action": "list"},
             {"action": "search", "pattern": "def save"},
+            {"action": "read", "path": "app.py"},          # source must be read before planning
+            {"action": "plan", "steps": ["find save", "fix", "test"]},
             {"action": "replace", "path": "app.py", "old": "return 1", "new": "return 2"},
             {"action": "run", "args": ["python", "-m", "unittest", "-v"]},
             {"action": "review"},
