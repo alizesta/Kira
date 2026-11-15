@@ -516,7 +516,7 @@ class VisionAnalysisWorker(QThread):
                 + (("زمینه/سؤال کاربر: " + self.context + "\n") if self.context else "")
                 + (("متن استخراج‌شده‌ی محلی از تصویر: " + ocr_text[:1800]) if ocr_text else "")
             )
-            with self.router.role_scope("vision", route_id):
+            with self.router.vision_scope(route_id):
                 result = self.router.chat(
                     [{"role": "user", "content": self.context or "فریم فعلی بازی را بررسی کن.", "images": [self.image]}],
                     prompt, 0.2,
