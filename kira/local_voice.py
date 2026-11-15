@@ -10,12 +10,12 @@ import os
 import threading
 from pathlib import Path
 
-# Keep downloaded Hugging Face model weights in a user-level cache so they
-# survive project/virtualenv replacement. Respect an explicitly configured path.
-if not os.environ.get("HF_HOME"):
-    _local_app_data = os.environ.get("LOCALAPPDATA")
-    if _local_app_data:
-        os.environ["HF_HOME"] = str(Path(_local_app_data) / "Kira" / "huggingface")
+# Keep model/runtime caches beside Kira's persistent data, not on C: or
+# inside the replaceable application folder.
+from .storage import configure_cache_environment, default_data_dir
+
+_DATA_ROOT = default_data_dir(Path(__file__).resolve().parents[1])
+configure_cache_environment(_DATA_ROOT)
 
 _asr_lock = threading.RLock()
 _tts_lock = threading.RLock()
