@@ -237,15 +237,18 @@ class StreamWorker(QThread):
     def run(self):
         try:
             has_images = any(bool(item.get("images")) for item in (self.messages or []) if isinstance(item, dict))
-            vision_context = contextlib.nullcontext()
-            if has_images:
-                vision_route = self.router.vision_route_id()
-                if not vision_route:
-                    raise RuntimeError("برای تحلیل این تصویر هیچ مدل Vision فعالی در Route Manager پیدا نشد. یک مدل بینایی انتخاب کن.")
-                vision_context = self.router.vision_scope(vision_route)
             scope = getattr(self.router, "role_scope", None)
-            with vision_context:
-                with (scope(self.role, self.route_id) if scope else contextlib.nullcontext()):
+            # Establish the brain role first: vision_route_id() must see the role's
+            # usage limits, and vision_scope() must be the innermost scope so its
+            # selected Vision route is not overwritten by role_scope's preference.
+            with (scope(self.role, self.route_id) if scope else contextlib.nullcontext()):
+                if has_images:
+                    vision_route = self.router.vision_route_id()
+                    if not vision_route:
+                        raise RuntimeError("برای تحلیل این تصویر هیچ مدل Vision فعالی در Route Manager پیدا نشد. یک مدل بینایی انتخاب کن.")
+                    with self.router.vision_scope(vision_route):
+                        result = self._run_request()
+                else:
                     result = self._run_request()
             self.finished_ok.emit(result)
         except Exception as e:                                    # noqa: BLE001 - shown to the user, never crashes the UI

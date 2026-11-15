@@ -21,6 +21,8 @@ on:
       - "tests/test_gui_offscreen.py"
       - "tests/test_release.py"
       - "tests/test_release_package.py"
+      - "tests/test_vision_pipeline.py"
+      - "tests/test_vision_routing.py"
       - "tests/test_characters.py"
       - "requirements.txt"
       - ".gitattributes"
@@ -78,6 +80,10 @@ jobs:
           QT_QPA_PLATFORM: offscreen
       - name: Run Ai1 Code chat GUI regression tests
         run: python -m unittest tests.test_chat_code_gui
+        env:
+          QT_QPA_PLATFORM: offscreen
+      - name: Run the complete Windows test suite
+        run: python -m unittest discover -s tests -t . -v
         env:
           QT_QPA_PLATFORM: offscreen
 

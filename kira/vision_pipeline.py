@@ -72,7 +72,7 @@ class FrameGate:
     def __init__(self, policy: VisionPolicy | None = None, clock=time.monotonic):
         self.policy = policy or policy_for("economic")
         self._clock = clock
-        self._last_at = 0.0
+        self._last_at = None
         self._last_signature = b""
         self._last_visual_sample = b""
         self.captured = 0
@@ -85,7 +85,7 @@ class FrameGate:
         self.reset()
 
     def reset(self):
-        self._last_at = 0.0
+        self._last_at = None
         self._last_signature = b""
         self._last_visual_sample = b""
 
@@ -95,7 +95,7 @@ class FrameGate:
         if not jpeg:
             return False
         signature = frame_signature(jpeg)
-        if not force and self._last_at and now - self._last_at < self.policy.interval_seconds:
+        if not force and self._last_at is not None and now - self._last_at < self.policy.interval_seconds:
             return False
         if not force and visual_sample and self._last_visual_sample and len(visual_sample) == len(self._last_visual_sample):
             delta = sum(abs(a - b) for a, b in zip(visual_sample, self._last_visual_sample))
