@@ -3887,6 +3887,9 @@ class MainWindow(QMainWindow):
         self.game_audio_listener = None
         if listener is not None:
             listener.stop()
+            if listener.isRunning():
+                self._stopping_game_audio_listener = listener
+                listener.finished.connect(lambda: setattr(self, "_stopping_game_audio_listener", None))
 
     def on_game_audio_error(self, message):
         if (self._game_mode_enabled
@@ -4877,8 +4880,11 @@ class MainWindow(QMainWindow):
 
     def stop_listener(self):
         if self.listener:
-            self.listener.stop()
-            self.listener = None
+            listener, self.listener = self.listener, None
+            listener.stop()
+            if listener.isRunning():
+                self._stopping_listener = listener
+                listener.finished.connect(lambda: setattr(self, "_stopping_listener", None))
         self.set_status("st_ready")
         self.update_engine_label()
 
@@ -4976,11 +4982,47 @@ class MainWindow(QMainWindow):
         self.companion_btn.setToolTip(self.t("hide_char" if shown else "show_char"))
         self.companion_btn.setChecked(shown)
 
+    def _running_background_workers(self):
+        """Return every owned QThread that must finish before Qt destroys the window."""
+        workers = []
+        for session in getattr(self, "sessions", {}).values():
+            workers.extend((getattr(session, "worker", None), getattr(session, "_search_worker", None)))
+        for name in (
+            "_local_voice_worker", "_api_worker", "_route_worker", "_bench_worker",
+            "_scan_worker", "_provider_test_worker", "_ollama_worker", "_vision_worker",
+            "_web_test_worker", "_attach_worker", "_stopping_listener",
+            "_stopping_game_audio_listener", "game_audio_listener", "listener",
+        ):
+            workers.append(getattr(self, name, None))
+        unique = []
+        seen = set()
+        for worker in workers:
+            if worker is None or id(worker) in seen:
+                continue
+            seen.add(id(worker))
+            try:
+                if worker.isRunning():
+                    unique.append(worker)
+            except RuntimeError:
+                continue
+        return unique
+
+    def _resume_close_after_workers(self):
+        if getattr(self, "_closing", False):
+            QTimer.singleShot(0, self.close)
+
     def closeEvent(self, event):
         if (getattr(self, "tray", None) is not None and self.settings.get("close_to_tray")
                 and not getattr(self, "_quitting", False)):
             event.ignore()                                           # X only hides; "Exit" in the tray menu really quits
             self.hide_to_tray()
+            return
+        if getattr(self, "_closing", False):
+            if self._running_background_workers():
+                event.ignore()
+                return
+            event.accept()
+            QTimer.singleShot(0, QApplication.quit)
             return
         local_worker = getattr(self, "_local_voice_worker", None)
         if local_worker is not None and local_worker.isRunning():
@@ -5001,6 +5043,9 @@ class MainWindow(QMainWindow):
             self.tray.hide()
         self.bubble.close()
         self.tool_agent.request_cancel()
+        # Stop attachment reads as soon as shutdown starts; a large file must not
+        # keep the window alive for the full read when the user already cancelled.
+        self.cancel_attachments()
         for sess in self.sessions.values():
             if sess.client is not None:
                 sess.client.cancel()
@@ -5014,13 +5059,30 @@ class MainWindow(QMainWindow):
             for w in (sess.worker, sess._search_worker):
                 if w is not None and w.isRunning():
                     w.wait(3000)
-        for name in ("_route_worker", "_bench_worker", "_scan_worker", "_provider_test_worker", "_ollama_worker", "_vision_worker"):
+        for name in ("_api_worker", "_route_worker", "_bench_worker", "_scan_worker", "_provider_test_worker",
+                     "_ollama_worker", "_vision_worker", "_web_test_worker", "_attach_worker"):
             w = getattr(self, name, None)
             if w is not None and w.isRunning():
                 w.wait(5000)
         self.stop_listener()
         self.safe_stop_speaker()
         self.companion.close()
+        running = self._running_background_workers()
+        if running:
+            self.add_chat(
+                "system",
+                "چند کار پس‌زمینه هنوز در حال پایان‌اند؛ پنجره بعد از پایان امن آن‌ها بسته می‌شود."
+            )
+            for worker in running:
+                try:
+                    worker.finished.connect(self._resume_close_after_workers)
+                except RuntimeError:
+                    pass
+            event.ignore()
+            # Cover the race where a worker finishes while its finished slot is connected.
+            if not self._running_background_workers():
+                QTimer.singleShot(0, self.close)
+            return
         event.accept()
         QTimer.singleShot(0, QApplication.quit)                     # the tray keeps 'last window closed' from quitting by itself
     def reload_chat_view(self):
