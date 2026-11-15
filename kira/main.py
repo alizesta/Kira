@@ -1401,10 +1401,23 @@ class MainWindow(QMainWindow):
         self.attach_err = QLabel()
         self.attach_err.setObjectName("hint")
         self.attach_err.setWordWrap(True)
-        self.attach_err.hide()
+        self.attach_err_close = QToolButton()
+        self.attach_err_close.setObjectName("attClose")
+        self.attach_err_close.setText("✕")
+        self.attach_err_close.setToolTip("لغو بارگذاری ضمیمه‌ها / بستن پیام")
+        self.attach_err_close.setCursor(Qt.PointingHandCursor)
+        self.attach_err_close.setFixedSize(20, 20)
+        self.attach_err_close.clicked.connect(self.cancel_attachments)
+        self.attach_err_row = QHBoxLayout()
+        self.attach_err_row.setContentsMargins(0, 0, 0, 0)
+        self.attach_err_row.addWidget(self.attach_err, 1)
+        self.attach_err_row.addWidget(self.attach_err_close)
+        self.attach_err_widget = QWidget()
+        self.attach_err_widget.setLayout(self.attach_err_row)
+        self.attach_err_widget.hide()
         co.addWidget(self.send_strip)
         co.addWidget(self.attach_strip)
-        co.addWidget(self.attach_err)
+        co.addWidget(self.attach_err_widget)
         self.input = ChatInput()
         self.input.filesDropped.connect(self.add_attachment_paths)
         self.input.imagePasted.connect(self.add_pasted_image)
@@ -3384,8 +3397,19 @@ class MainWindow(QMainWindow):
         strip.setVisible(strip.row.count() > 1)
 
     def show_attach_error(self, messages):
-        self.attach_err.setText("\n".join("✕ " + m for m in messages))
-        self.attach_err.setVisible(bool(messages))
+        self.attach_err.setText("\n".join(str(m) for m in messages))
+        self.attach_err_widget.setVisible(bool(messages))
+        self.attach_err_close.setVisible(bool(messages))
+
+    def cancel_attachments(self):
+        """Cancel every pending file read and remove its preview from the composer."""
+        worker = getattr(self, "_attach_worker", None)
+        if worker is not None and worker.isRunning():
+            for index in range(len(getattr(self, "_load_tiles", []))):
+                worker.cancel(index)
+        for tile in list(self._tiles):
+            self.remove_attachment_tile(tile)
+        self.show_attach_error([])
 
     # -- choosing files --
     def attach_loading(self):
@@ -3419,13 +3443,21 @@ class MainWindow(QMainWindow):
         self._attach_worker.loaded.connect(self.on_attach_loaded)
         self._attach_worker.failed.connect(self.on_attach_failed)
         self._attach_worker.finished.connect(lambda: self.send_btn.setEnabled(not self.busy))
+        self._attach_worker.finished.connect(self.on_attach_finished)
         self.send_btn.setEnabled(False)
+        self.attach_err.setText("در حال بارگذاری ضمیمه‌ها؛ برای لغو روی ضربدر بزن.")
+        self.attach_err_close.setVisible(True)
+        self.attach_err_widget.show()
         self._attach_worker.start()
 
     def on_attach_progress(self, index, percent):
         tile = self._load_tiles[index] if index < len(self._load_tiles) else None
         if tile is not None and not tile.deleted:
             tile.set_progress(percent)
+
+    def on_attach_finished(self):
+        if self.attach_err.text().startswith("در حال بارگذاری"):
+            self.show_attach_error([])
 
     def on_attach_loaded(self, index, attachment):
         tile = self._load_tiles[index] if index < len(self._load_tiles) else None
