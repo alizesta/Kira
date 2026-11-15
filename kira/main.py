@@ -3,6 +3,7 @@ import base64
 import json
 import random
 import time
+import threading
 from pathlib import Path
 import re
 import sys
@@ -253,7 +254,7 @@ class StreamWorker(QThread):
 
 
 class AttachWorker(QThread):
-    """Reads attachments off the GUI thread: progress(index, percent), loaded(index, attachment), failed(index, message)."""
+    """Reads attachments off the GUI thread; each queued file can be cancelled independently."""
     progress = Signal(int, int)
     loaded = Signal(int, dict)
     failed = Signal(int, str)
@@ -261,14 +262,27 @@ class AttachWorker(QThread):
     def __init__(self, paths):
         super().__init__()
         self.paths = list(paths)
+        self._cancelled = [threading.Event() for _ in self.paths]
+
+    def cancel(self, index):
+        if 0 <= int(index) < len(self._cancelled):
+            self._cancelled[int(index)].set()
 
     def run(self):
         for i, path in enumerate(self.paths):
+            cancelled = self._cancelled[i]
+            if cancelled.is_set():
+                continue
             self.progress.emit(i, 0)
             try:
-                self.loaded.emit(i, att.load_attachment(path, lambda pct, i=i: self.progress.emit(i, pct)))
+                attachment = att.load_attachment(
+                    path, lambda pct, i=i: self.progress.emit(i, pct), cancelled=cancelled.is_set
+                )
+                if not cancelled.is_set():
+                    self.loaded.emit(i, attachment)
             except (att.AttachmentError, OSError) as exc:
-                self.failed.emit(i, str(exc))
+                if not cancelled.is_set():
+                    self.failed.emit(i, str(exc))
 
 
 class SearchWorker(QThread):
@@ -3337,7 +3351,7 @@ class MainWindow(QMainWindow):
         exts = " ".join("*" + e for e in sorted(att.IMAGE_TYPES))
         paths, _ = QFileDialog.getOpenFileNames(
             self, "انتخاب عکس یا فایل", "",
-            f"عکس و فایل‌های پشتیبانی‌شده ({exts} *.txt *.md *.json *.csv *.log *.py *.js *.html *.xml *.yaml *.yml *.ini *.docx *.pdf);;همه‌ی فایل‌ها (*)")
+            f"عکس و فایل‌های پشتیبانی‌شده ({exts} *.txt *.md *.json *.csv *.log *.py *.js *.html *.xml *.yaml *.yml *.ini *.docx *.pdf *.zip);;همه‌ی فایل‌ها (*)")
         if paths:
             self.add_attachment_paths(paths)
 
@@ -3443,6 +3457,12 @@ class MainWindow(QMainWindow):
 
     def remove_attachment_tile(self, tile):
         tile.deleted = True
+        worker = getattr(self, "_attach_worker", None)
+        if worker is not None and worker.isRunning():
+            try:
+                worker.cancel(self._load_tiles.index(tile))
+            except (ValueError, AttributeError):
+                pass
         if tile in self._tiles:
             self._tiles.remove(tile)
         self.strip_remove(self.attach_strip, tile)
