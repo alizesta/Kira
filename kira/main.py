@@ -3788,6 +3788,9 @@ class MainWindow(QMainWindow):
             self._latest_game_frame = None
             self._vision_gate.reset()
             return
+        # Re-check the foreground immediately before every capture; the slower
+        # suggestion timer alone could leave a background game capturable for seconds.
+        self.game_mode.poll()
         pixmap = self.game_mode.capture_last_game(
             self._vision_gate.policy.max_width, self._vision_gate.policy.max_height
         )
