@@ -520,10 +520,18 @@ class VisionAnalysisWorker(QThread):
                 + (("متن استخراج‌شده‌ی محلی از تصویر: " + ocr_text[:1800]) if ocr_text else "")
             )
             with self.router.vision_scope(route_id):
-                result = self.router.chat(
+                response = self.router.chat_stream(
                     [{"role": "user", "content": self.context or "فریم فعلی بازی را بررسی کن.", "images": [self.image]}],
                     prompt, 0.2,
                 )
+            if self._cancelled.is_set():
+                return
+            if isinstance(response, dict):
+                if response.get("interrupted") or response.get("stopped"):
+                    raise RuntimeError("تحلیل Vision پیش از تکمیل متوقف شد.")
+                result = response.get("text", "")
+            else:
+                result = response
             if not self._cancelled.is_set():
                 self.done.emit(True, str(result or "").strip(), int((time.monotonic() - began) * 1000))
         except Exception as exc:

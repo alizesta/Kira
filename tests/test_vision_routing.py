@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 from tests import helpers
 from kira.hybrid_ai import HybridRouter
-from kira.main import MainWindow, StreamWorker
+from kira.main import MainWindow, StreamWorker, VisionAnalysisWorker
 
 
 class FakeRouter:
@@ -87,7 +87,48 @@ class FakeVisionWorker:
         self.cancelled = True
 
 
+class FakeVisionAnalysisRouter:
+    def __init__(self):
+        self.cancelled = False
+        self.stream_called = False
+        self.worker = None
+
+    def vision_route_id(self):
+        return "vision-route"
+
+    @contextlib.contextmanager
+    def vision_scope(self, route_id):
+        assert route_id == "vision-route"
+        yield self
+
+    def chat_stream(self, messages, prompt, temperature):
+        self.stream_called = True
+        return {"text": "تحلیل آماده", "interrupted": None, "stopped": False}
+
+    def cancel(self):
+        self.cancelled = True
+
+
 class VisionRoutingTests(unittest.TestCase):
+    def test_background_vision_uses_streaming_request_for_interruptible_http(self):
+        router = FakeVisionAnalysisRouter()
+        worker = VisionAnalysisWorker(router, {"b64": "invalid-base64"}, "کدام مسیر؟")
+        results = []
+        worker.done.connect(lambda ok, text, latency: results.append((ok, text)))
+        worker.run()
+        self.assertTrue(router.stream_called)
+        self.assertEqual(results, [(True, "تحلیل آماده")])
+
+    def test_cancelled_background_vision_does_not_publish_partial_result(self):
+        router = FakeVisionAnalysisRouter()
+        worker = VisionAnalysisWorker(router, {"b64": "invalid-base64"}, "تحلیل")
+        router.chat_stream = lambda *args: (worker.cancel_request(), {"text": "partial"})[1]
+        results = []
+        worker.done.connect(lambda *args: results.append(args))
+        worker.run()
+        self.assertTrue(router.cancelled)
+        self.assertEqual(results, [])
+
     def test_disabling_vision_capture_cancels_an_in_flight_analysis(self):
         worker = FakeVisionWorker()
         timer = FakeTimer()
