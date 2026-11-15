@@ -28,8 +28,8 @@ MiniMax از API جهانی `https://api.minimax.io/v1/t2a_v2` استفاده م
 
 ترتیب کلی استفاده در Kira:
 - STT: Qwen3-ASR محلی (اگر نصب و فعال باشد) → Providerهای Cloud Voice به ترتیب انتخاب‌شده → Whisper محلی یا Google recognizer قدیمی.
-- TTS فارسی: Mana Persian Piper محلی (اگر نصب و فعال باشد) → Providerهای Cloud Voice → Edge TTS → Windows SAPI.
-- TTS زبان‌های دیگر: Providerهای Cloud Voice → Edge TTS → Windows SAPI.
+- TTS فارسی: Mana Persian Piper محلی → Windows SAPI آفلاین (اگر صدای فارسی نصب باشد) → Edge TTS → Providerهای Cloud Voice.
+- TTS زبان‌های دیگر: Windows SAPI آفلاین → Edge TTS → Providerهای Cloud Voice.
 
 موتورهای محلی فقط تبدیل گفتار/متن را انجام می‌دهند و در منطق چت دخالت ندارند. اولویت STT و TTS مستقل است؛ خرابی یکی مسیر دیگری را تغییر نمی‌دهد. خطای شبکه/سرور Provider باعث رفتن مستقیم به Provider بعدی می‌شود (کلیدها بی‌دلیل امتحان نمی‌شوند).
 
