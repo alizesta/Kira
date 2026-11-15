@@ -1296,9 +1296,13 @@ class MainWindow(QMainWindow):
                         widget.setMaximumWidth(lim["line"])
 
     def icon_button(self, name, checkable=False):
-        """Small borderless icon button; its tooltip carries the (translated) meaning."""
+        """Small neon icon button using the active character's own accent colours."""
         b = QToolButton()
-        b.setIcon(make_icon(name))
+        cid = characters.active_id(self.settings)
+        profile = characters.all_profiles(self.settings).get(cid, {})
+        palette = theme_mod.character_theme(cid, profile)
+        b.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
+                            checked=palette["main"], disabled="#52617B"))
         b.setIconSize(QSize(20, 20))
         b.setCheckable(checkable)
         b.setCursor(Qt.PointingHandCursor)
@@ -1413,7 +1417,7 @@ class MainWindow(QMainWindow):
         self.route_badge = RouteChip()
         self.route_badge.setObjectName("routeChip")
         self.route_badge.setText("● Ready")
-        self.route_badge.setIcon(make_icon("chevron_up", normal="#9aa0b8", hover="#ffffff"))
+        self.route_badge.setIcon(make_icon("chevron_up", normal="#4FD8FF", hover="#FFFFFF"))
         self.route_badge.setIconSize(QSize(12, 12))
         self.route_badge.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.route_badge.setCursor(Qt.PointingHandCursor)
