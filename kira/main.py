@@ -2649,21 +2649,151 @@ class MainWindow(QMainWindow):
         return self.page(page)
 
     def build_ai_tab(self):
-        """Route Manager: ordered list of routes (drag & drop), per-route editor, providers (keys), benchmark."""
+        """Unified cloud/local model catalogue with advanced route and provider controls."""
         page = QWidget()
-        root_layout = QVBoxLayout(page)
-        intro = QLabel("هر Route یک مدل است که از طریق یک Provider در دسترس است. ترتیب فهرست همان اولویت و ترتیب Failover است "
-                       "(با کشیدن و رها کردن یا ▲▼ جابه‌جا کن). تغییرات همین‌جا خودکار ذخیره می‌شوند. تست و Benchmark ممکن است از سهمیه API مصرف کنند.")
-        intro.setWordWrap(True)
-        intro.setObjectName("hint")
-        root_layout.addWidget(intro)
-        # --- API Manager (replaces the per-provider boxes: Groq / Mistral / Google / Cloudflare are registered by key)
-        for box in self.build_api_boxes():
-            root_layout.addWidget(box)
-        # --- routes list
-        rbox, rform = self.group("Routeها (مدل‌ها و اولویت اجرا)")
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(7)
+
+        # One API field: the key is checked against Chat, STT and TTS capabilities.
+        add_box, list_box, det_box = self.build_api_boxes()
+        layout.addWidget(add_box)
+
+        import_row = QHBoxLayout()
+        self.import_model_btn = QPushButton("＋ معرفی مدل از فایل یا پوشه‌ی سیستم")
+        self.import_model_btn.setToolTip("فایل GGUF برای Chat، مدل CTranslate2/Qwen برای STT یا Piper ONNX برای TTS")
+        self.import_model_btn.clicked.connect(self.import_local_model)
+        import_row.addWidget(self.import_model_btn)
+        import_row.addStretch(1)
+        layout.addLayout(import_row)
+
+        cloud_box, cloud_form = self.group("مدل‌های Cloud")
+        cloud_note = QLabel("هر مدل فقط در دسته‌ی قابلیتی نمایش داده می‌شود که API واقعاً گزارش کرده است. مدل‌های صوتی مستقل از مدل‌های چت نگه داشته می‌شوند.")
+        cloud_note.setObjectName("hint")
+        cloud_note.setWordWrap(True)
+        cloud_form.addRow(cloud_note)
+        self.cloud_model_tabs = QTabWidget()
+        self.cloud_model_lists = {}
+        for kind, title in (("chat", "Chat"), ("stt", "STT"), ("tts", "TTS")):
+            pane = QWidget()
+            pane_layout = QVBoxLayout(pane)
+            pane_layout.setContentsMargins(2, 2, 2, 2)
+            model_list = QListWidget()
+            model_list.setAlternatingRowColors(True)
+            model_list.setMinimumHeight(105)
+            model_list.setMaximumHeight(170)
+            model_list.itemChanged.connect(lambda item, category=kind: self.on_cloud_model_item_changed(category, item))
+            pane_layout.addWidget(model_list)
+            self.cloud_model_lists[kind] = model_list
+            self.cloud_model_tabs.addTab(pane, title)
+        cloud_form.addRow(self.cloud_model_tabs)
+        layout.addWidget(cloud_box)
+
+        local_box, local_form = self.group("مدل‌های Local")
+        self.local_model_tabs = QTabWidget()
+
+        # Local Chat: Ollama remains the provider, but every installed model is listed here.
+        local_chat = QWidget()
+        local_chat_layout = QVBoxLayout(local_chat)
+        local_chat_layout.setContentsMargins(3, 3, 3, 3)
+        local_chat_layout.addWidget(self.build_ollama_group())
+        self.local_model_list = QListWidget()
+        self.local_model_list.setAlternatingRowColors(True)
+        self.local_model_list.setMinimumHeight(90)
+        self.local_model_list.setMaximumHeight(150)
+        self.local_model_list.itemChanged.connect(self.on_local_chat_item_changed)
+        local_chat_layout.addWidget(QLabel("مدل‌های چت نصب‌شده‌ی Ollama"))
+        local_chat_layout.addWidget(self.local_model_list)
+        scan_local = QPushButton("یافتن مدل‌های نصب‌شده")
+        scan_local.clicked.connect(self.scan_ollama)
+        local_chat_layout.addWidget(scan_local)
+        self.local_model_tabs.addTab(local_chat, "Chat")
+
+        # Local STT: Qwen ASR and faster-whisper can use a downloaded local directory.
+        local_stt = QWidget()
+        local_stt_layout = QVBoxLayout(local_stt)
+        local_stt_layout.setContentsMargins(3, 3, 3, 3)
+        self.local_asr_chk = QCheckBox("استفاده از Qwen3-ASR محلی")
+        self.local_asr_chk.setChecked(bool(self.settings.get("local_voice_asr", True)))
+        self.local_asr_chk.toggled.connect(lambda on: self.set_local_voice_option("local_voice_asr", on))
+        local_stt_layout.addWidget(self.local_asr_chk)
+        self.local_asr_path_edit = QLineEdit(str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B"))
+        self.local_asr_path_edit.setPlaceholderText("شناسه Hugging Face یا مسیر پوشه‌ی مدل")
+        self.local_asr_path_edit.setLayoutDirection(Qt.LeftToRight)
+        asr_path_row = QHBoxLayout()
+        asr_path_row.addWidget(self.local_asr_path_edit, 1)
+        self.local_asr_browse_btn = QPushButton("انتخاب پوشه")
+        self.local_asr_browse_btn.clicked.connect(self.choose_local_asr_folder)
+        asr_path_row.addWidget(self.local_asr_browse_btn)
+        local_stt_layout.addLayout(asr_path_row)
+        self.local_asr_load_btn = QPushButton("بارگذاری Qwen")
+        self.local_asr_load_btn.clicked.connect(self.load_local_asr)
+        local_stt_layout.addWidget(self.local_asr_load_btn)
+        local_stt_layout.addWidget(QLabel("Whisper محلی"))
+        self.local_whisper_path = QLineEdit(str(self.settings.get("whisper_model") or "small"))
+        self.local_whisper_path.setLayoutDirection(Qt.LeftToRight)
+        whisper_row = QHBoxLayout()
+        whisper_row.addWidget(self.local_whisper_path, 1)
+        whisper_apply = QPushButton("اعمال")
+        whisper_apply.clicked.connect(self.apply_local_whisper_model)
+        whisper_row.addWidget(whisper_apply)
+        local_stt_layout.addLayout(whisper_row)
+        self.local_model_tabs.addTab(local_stt, "STT")
+
+        # Local TTS: bundled Persian Piper or a user-selected ONNX voice.
+        local_tts = QWidget()
+        local_tts_layout = QVBoxLayout(local_tts)
+        local_tts_layout.setContentsMargins(3, 3, 3, 3)
+        self.local_tts_chk = QCheckBox("استفاده از Piper محلی")
+        self.local_tts_chk.setChecked(bool(self.settings.get("local_voice_tts", True)))
+        self.local_tts_chk.toggled.connect(lambda on: self.set_local_voice_option("local_voice_tts", on))
+        local_tts_layout.addWidget(self.local_tts_chk)
+        self.local_tts_model_path = QLineEdit(str(self.settings.get("local_voice_tts_model") or ""))
+        self.local_tts_model_path.setPlaceholderText("مسیر Piper ONNX؛ خالی = صدای فارسی پیش‌فرض")
+        self.local_tts_model_path.setLayoutDirection(Qt.LeftToRight)
+        tts_path_row = QHBoxLayout()
+        tts_path_row.addWidget(self.local_tts_model_path, 1)
+        self.local_tts_browse_btn = QPushButton("انتخاب ONNX")
+        self.local_tts_browse_btn.clicked.connect(self.choose_local_tts_model)
+        tts_path_row.addWidget(self.local_tts_browse_btn)
+        local_tts_layout.addLayout(tts_path_row)
+        self.local_tts_test_btn = QPushButton("تست صدای محلی")
+        self.local_tts_test_btn.clicked.connect(self.test_local_tts)
+        local_tts_layout.addWidget(self.local_tts_test_btn)
+        self.local_model_tabs.addTab(local_tts, "TTS")
+
+        self.local_voice_status = QLabel()
+        self.local_voice_status.setWordWrap(True)
+        self.local_voice_status.setObjectName("hint")
+        local_form.addRow(self.local_model_tabs)
+        local_form.addRow(self.local_voice_status)
+        local_status_row = QHBoxLayout()
+        local_refresh = QPushButton("بررسی وضعیت موتورهای صوتی")
+        local_refresh.clicked.connect(self.refresh_local_voice_status)
+        local_status_row.addWidget(local_refresh)
+        local_status_row.addStretch(1)
+        local_form.addRow(local_status_row)
+        layout.addWidget(local_box)
+
+        # Advanced controls remain available but are collapsed by default.
+        self.connections_advanced_btn = QToolButton()
+        self.connections_advanced_btn.setText("تنظیمات پیشرفته و مدیریت Providerها")
+        self.connections_advanced_btn.setCheckable(True)
+        self.connections_advanced_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.connections_advanced_btn.setArrowType(Qt.RightArrow)
+        self.connections_advanced_body = QWidget()
+        advanced_layout = QVBoxLayout(self.connections_advanced_body)
+        advanced_layout.setContentsMargins(0, 0, 0, 0)
+        advanced_layout.addWidget(list_box)
+        advanced_layout.addWidget(det_box)
+        self.cloud_page = self.build_cloud_voice_tab()
+        advanced_layout.addWidget(self.cloud_page)
+
+        # Existing ordered route/failover editor is preserved for fine control.
+        rbox, rform = self.group("Routeها و اولویت Failover")
         self.route_list = QListWidget()
-        self.route_list.setMinimumHeight(190)
+        self.route_list.setMinimumHeight(125)
+        self.route_list.setMaximumHeight(190)
         self.route_list.setDragDropMode(QAbstractItemView.InternalMove)
         self.route_list.setDefaultDropAction(Qt.MoveAction)
         self.route_list.setSelectionMode(QAbstractItemView.SingleSelection)
@@ -2673,7 +2803,7 @@ class MainWindow(QMainWindow):
         self.route_manual_lbl = QLabel()
         self.route_manual_lbl.setObjectName("hint")
         rform.addRow(self.route_manual_lbl)
-        self.failover_chk = QCheckBox("Failover: اگر مسیر انتخاب‌شده خراب بود، به Route بعدی برو")
+        self.failover_chk = QCheckBox("در صورت خطا به مدل بعدی برو")
         self.failover_chk.setChecked(bool(self.settings.get("failover_enabled", True)))
         self.failover_chk.toggled.connect(self.on_failover_toggled)
         rform.addRow(self.failover_chk)
@@ -2683,7 +2813,7 @@ class MainWindow(QMainWindow):
         self.route_add_btn = QPushButton("افزودن Route")
         self.route_del_btn = QPushButton("حذف")
         self.route_default_btn = QPushButton("پیش‌فرض")
-        self.route_use_btn = QPushButton("استفاده‌ی دستی")
+        self.route_use_btn = QPushButton("انتخاب دستی")
         self.route_auto_btn = QPushButton("خودکار")
         self.route_up_btn.clicked.connect(lambda: self.move_selected(-1))
         self.route_down_btn.clicked.connect(lambda: self.move_selected(1))
@@ -2692,17 +2822,16 @@ class MainWindow(QMainWindow):
         self.route_default_btn.clicked.connect(self.default_selected_route)
         self.route_use_btn.clicked.connect(lambda: self.select_route(self._selected_route_id() or ""))
         self.route_auto_btn.clicked.connect(lambda: self.select_route(""))
-        for w in (self.route_up_btn, self.route_down_btn, self.route_add_btn, self.route_del_btn, self.route_default_btn,
-                  self.route_use_btn, self.route_auto_btn):
+        for w in (self.route_up_btn, self.route_down_btn, self.route_add_btn, self.route_del_btn,
+                  self.route_default_btn, self.route_use_btn, self.route_auto_btn):
             b1.addWidget(w)
         rform.addRow(b1)
-        # --- selected route editor
-        ebox, eform = self.group("تنظیمات Route انتخاب‌شده")
+        ebox, eform = self.group("جزئیات Route انتخاب‌شده")
         self.route_provider_lbl = QLabel("-")
         eform.addRow("Provider", self.route_provider_lbl)
         self.route_model_edit = ModelCombo("")
         eform.addRow("Model ID", self.route_model_edit)
-        self.route_enabled_chk = QCheckBox("فعال (غیرفعال کردن موقت، بدون حذف تنظیمات)")
+        self.route_enabled_chk = QCheckBox("فعال")
         eform.addRow(self.route_enabled_chk)
         self.route_timeout = QSpinBox()
         self.route_timeout.setRange(5, 600)
@@ -2711,7 +2840,7 @@ class MainWindow(QMainWindow):
         self.route_cooldown = QSpinBox()
         self.route_cooldown.setRange(0, 3600)
         self.route_cooldown.setSuffix(" s")
-        eform.addRow("Cooldown بعد از خطا", self.route_cooldown)
+        eform.addRow("Cooldown", self.route_cooldown)
         self.route_ctx = QSpinBox()
         self.route_ctx.setRange(0, 32768)
         self.route_ctx.setSingleStep(1024)
@@ -2720,69 +2849,245 @@ class MainWindow(QMainWindow):
         self.route_predict.setRange(0, 4096)
         self.route_predict.setSingleStep(64)
         self.route_predict.setSpecialValueText("پیش‌فرض Provider")
-        eform.addRow("Context (فقط Ollama)", self.route_ctx)
-        eform.addRow("Num Predict (فقط Ollama)", self.route_predict)
+        eform.addRow("Context (Ollama)", self.route_ctx)
+        eform.addRow("Num Predict (Ollama)", self.route_predict)
         self.route_status = QLabel("Route‌ای انتخاب نشده.")
         self.route_status.setWordWrap(True)
         eform.addRow(self.route_status)
-        b2 = QHBoxLayout()
+        actions = QHBoxLayout()
         self.route_test_btn = QPushButton("تست اتصال")
-        self.route_scan_btn = QPushButton("یافتن مدل‌های Ollama")
         self.route_bench_btn = QPushButton("Benchmark این Route")
-        self.route_bench_all_btn = QPushButton("Benchmark همه‌ی فعال‌ها")
+        self.route_bench_all_btn = QPushButton("Benchmark همه‌ی مدل‌ها")
         self.route_test_btn.clicked.connect(self.test_selected_route)
-        self.route_scan_btn.clicked.connect(self.scan_ollama)
         self.route_bench_btn.clicked.connect(lambda: self.run_benchmark(False))
         self.route_bench_all_btn.clicked.connect(lambda: self.run_benchmark(True))
-        for w in (self.route_test_btn, self.route_scan_btn, self.route_bench_btn, self.route_bench_all_btn):
-            b2.addWidget(w)
-        eform.addRow(b2)
+        for w in (self.route_test_btn, self.route_bench_btn, self.route_bench_all_btn):
+            actions.addWidget(w)
+        eform.addRow(actions)
         self.bench_out = QTextEdit()
         self.bench_out.setReadOnly(True)
-        self.bench_out.setMinimumHeight(110)
+        self.bench_out.setMinimumHeight(80)
+        self.bench_out.setMaximumHeight(150)
         self.bench_out.setLayoutDirection(Qt.LeftToRight)
-        self.bench_out.setPlaceholderText("نتیجه‌ی Benchmark اینجا نمایش داده می‌شود (Routeها یکی‌یکی و نه هم‌زمان تست می‌شوند).")
         eform.addRow(self.bench_out)
-        for w in (self.route_enabled_chk,):
-            w.toggled.connect(lambda *_: self.route_edit_changed())
+        self.route_enabled_chk.toggled.connect(lambda *_: self.route_edit_changed())
         for w in (self.route_timeout, self.route_cooldown, self.route_ctx, self.route_predict):
             w.valueChanged.connect(lambda *_: self.route_edit_changed())
         self.route_model_edit.lineEdit().editingFinished.connect(self.route_edit_changed)
         self.route_model_edit.activated.connect(lambda *_: self.route_edit_changed())
-        root_layout.addWidget(rbox)
-        root_layout.addWidget(ebox)
-        root_layout.addWidget(self.build_local_model_group())
-        root_layout.addStretch()
+        advanced_layout.addWidget(rbox)
+        advanced_layout.addWidget(ebox)
+
+        self.connections_advanced_body.setVisible(False)
+        self.connections_advanced_btn.toggled.connect(self.connections_advanced_body.setVisible)
+        self.connections_advanced_btn.toggled.connect(
+            lambda on: self.connections_advanced_btn.setArrowType(Qt.DownArrow if on else Qt.RightArrow)
+        )
+        layout.addWidget(self.connections_advanced_btn)
+        layout.addWidget(self.connections_advanced_body)
+        layout.addStretch(1)
+
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(page)
-        # The Route section has two views that work the same way (Providers, keys, enable / disable, status, priority, fallback):
-        # chat models and voice (Cloud Voice). Their settings stay separate: a voice model is never a chat route.
-        container = QWidget()
-        cbox = QVBoxLayout(container)
-        cbox.setContentsMargins(0, 0, 0, 0)
-        cbox.setSpacing(6)
-        switch = QHBoxLayout()
-        switch.setContentsMargins(8, 6, 8, 0)
-        self.route_view_chat_btn = QPushButton()
-        self.route_view_voice_btn = QPushButton()
-        for b in (self.route_view_chat_btn, self.route_view_voice_btn):
-            b.setCheckable(True)
-            switch.addWidget(b)
-        switch.addStretch(1)
-        self.reg(self.route_view_chat_btn.setText, "route_view_chat")
-        self.reg(self.route_view_voice_btn.setText, "route_view_voice")
-        self.route_stack = QStackedWidget()
-        self.route_stack.addWidget(scroll)
-        self.route_stack.addWidget(self.build_cloud_voice_tab())
-        self.route_view_chat_btn.clicked.connect(lambda: self.set_route_view(0))
-        self.route_view_voice_btn.clicked.connect(lambda: self.set_route_view(1))
-        cbox.addLayout(switch)
-        cbox.addWidget(self.route_stack, 1)
-        self.set_route_view(0)
-        self.tabs.addTab(container, "")
+        self.tabs.addTab(scroll, "")
         self.refresh_route_list()
         self.refresh_api_table()
+        self.refresh_unified_models()
+        self.refresh_local_voice_status()
+
+    def _make_model_list(self, kind, cloud=True):
+        model_list = QListWidget()
+        model_list.setAlternatingRowColors(True)
+        model_list.setMinimumHeight(105)
+        model_list.setMaximumHeight(170)
+        model_list.setSelectionMode(QAbstractItemView.SingleSelection)
+        if cloud:
+            model_list.itemChanged.connect(lambda item, category=kind: self.on_cloud_model_item_changed(category, item))
+        else:
+            model_list.itemChanged.connect(self.on_local_chat_item_changed)
+        return model_list
+
+    def refresh_unified_models(self):
+        """Populate the three cloud capability lists and the three local model lists."""
+        if not hasattr(self, "cloud_model_lists"):
+            return
+        for widget in self.cloud_model_lists.values():
+            widget.blockSignals(True)
+            widget.clear()
+        api_manager.ensure_registry(self.settings)
+        free_only = str(self.settings.get("model_filter_mode") or "all") == "free"
+        for pid, entry in api_manager.registry(self.settings).items():
+            cfg = self.settings.get("providers", {}).get(pid, {})
+            label = route_model.provider_label(pid, cfg)
+            for mid, meta in (entry.get("models") or {}).items():
+                if meta.get("status") == "unavailable" or meta.get("text") == "No":
+                    continue
+                low = str(mid).lower()
+                if any(token in low for token in ("tts", "text-to-speech", "embedding", "whisper", "speech-to-text")):
+                    continue
+                if free_only and meta.get("free") is not True:
+                    continue
+                item = QListWidgetItem(f"{label}  ·  {mid}" + ("  · رایگان" if meta.get("free") is True else ""))
+                item.setData(Qt.UserRole, {"provider": pid, "model": mid})
+                item.setToolTip(f"Text: {meta.get('text') or 'Unknown'} | Vision: {meta.get('vision') or 'Unknown'} | Tools: {meta.get('tools') or 'Unknown'}")
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                enabled = any(r.get("provider") == pid and r.get("model") == mid and r.get("enabled")
+                              for r in route_model.get_routes(self.settings))
+                item.setCheckState(Qt.Checked if enabled else Qt.Unchecked)
+                self.cloud_model_lists["chat"].addItem(item)
+        store = cloud_voice.service().store
+        for kind in ("stt", "tts"):
+            for provider in cloud_voice.PROVIDERS:
+                for entry in store.models(provider, kind):
+                    # Cloud Voice does not expose plan pricing for these catalogues. In free-only mode
+                    # an unknown price must not be mislabelled as free.
+                    if free_only:
+                        continue
+                    item = QListWidgetItem(f"{cloud_voice.LABELS[provider]}  ·  {entry['id']}")
+                    item.setData(Qt.UserRole, {"provider": provider, "model": entry["id"]})
+                    item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                    chosen = store.data[kind]["model"].get(provider) == entry["id"]
+                    enabled = bool(store.data[kind]["enabled"].get(provider, True)) and chosen and store.data[kind]["use_cloud"]
+                    item.setCheckState(Qt.Checked if enabled else Qt.Unchecked)
+                    self.cloud_model_lists[kind].addItem(item)
+        for widget in self.cloud_model_lists.values():
+            widget.blockSignals(False)
+
+        if hasattr(self, "local_model_list"):
+            self.local_model_list.blockSignals(True)
+            self.local_model_list.clear()
+            for route in route_model.get_routes(self.settings):
+                if route.get("provider") != "ollama" or not route.get("model"):
+                    continue
+                item = QListWidgetItem(route["model"])
+                item.setData(Qt.UserRole, route.get("id"))
+                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+                item.setCheckState(Qt.Checked if route.get("enabled") else Qt.Unchecked)
+                self.local_model_list.addItem(item)
+            self.local_model_list.blockSignals(False)
+
+    def on_cloud_model_item_changed(self, kind, item):
+        data = item.data(Qt.UserRole) or {}
+        provider, model = data.get("provider"), data.get("model")
+        if not provider or not model:
+            return
+        checked = item.checkState() == Qt.Checked
+        if kind == "chat":
+            try:
+                api_manager.set_model_enabled(self.settings, provider, model, checked)
+            except Exception as exc:
+                self.api_add_status.setText("✕ " + str(exc))
+            self._api_changed(provider)
+            self.refresh_unified_models()
+            return
+        store = cloud_voice.service().store
+        store.set_option(kind, "model", provider, model if checked else "")
+        store.set_option(kind, "enabled", provider, checked)
+        if checked:
+            store.set_use_cloud(kind, True)
+        elif not any(store.data[kind]["enabled"].get(p, False) for p in cloud_voice.PROVIDERS):
+            store.set_use_cloud(kind, False)
+        self.refresh_unified_models()
+        if hasattr(self, "cloud_page"):
+            self.cloud_page.refresh()
+
+    def on_local_chat_item_changed(self, item):
+        route_id = item.data(Qt.UserRole)
+        if not route_id:
+            return
+        route_model.update_route(self.settings, route_id, enabled=item.checkState() == Qt.Checked)
+        self.save_now()
+        self.refresh_route_list()
+        self.refresh_unified_models()
+
+    def _discover_unified_api_key(self, key, account=""):
+        chat = api_manager.detect(key, account)
+        voice = {}
+        # These are independent capability endpoints: a successful Chat listing never implies STT or TTS.
+        for provider in cloud_voice.PROVIDERS:
+            voice[provider] = cloud_voice.validate(provider, key)
+        return {"chat": chat, "voice": voice}
+
+    def _store_detected_voice_key(self, key, voice_results):
+        store = cloud_voice.service().store
+        added = []
+        for provider, result in (voice_results or {}).items():
+            if not isinstance(result, dict) or result.get("status") != "valid":
+                continue
+            detected = result.get("detected") or {}
+            if not detected.get("stt") and not detected.get("tts"):
+                continue
+            if any(rec.get("key") == key for rec in store.keys(provider)):
+                continue
+            store.add_key(provider, key, result=result)
+            added.append(f"{cloud_voice.LABELS[provider]} ({'STT' if detected.get('stt') else ''}{' / ' if detected.get('stt') and detected.get('tts') else ''}{'TTS' if detected.get('tts') else ''})")
+        return added
+
+    def api_add(self):
+        if self._api_busy():
+            return
+        key = self.api_key_edit.text().strip()
+        problem = api_manager.key_problem(key)
+        if problem:
+            self.api_add_status.setText("✕ " + problem)
+            return
+        self.api_add_btn.setEnabled(False)
+        self.api_add_status.setText("در حال تشخیص Chat، STT و TTS از APIهای رسمی…")
+        self._api_worker = TaskWorker(lambda: self._discover_unified_api_key(key))
+        self._api_worker.done.connect(lambda result, k=key: self.on_api_detected(result, k))
+        self._api_worker.start()
+
+    def on_api_detected(self, result, key, account=""):
+        self.api_add_btn.setEnabled(True)
+        ok, payload = result
+        if not ok:
+            self.api_add_status.setText("✕ " + str(payload))
+            return
+        chat_detection = payload.get("chat")
+        voice_results = payload.get("voice") or {}
+        voice_added = self._store_detected_voice_key(key, voice_results)
+
+        if chat_detection and chat_detection.state == "needs_account" and not account:
+            account_id, accepted = QInputDialog.getText(self, "Cloudflare", "Account ID:")
+            if accepted and account_id.strip():
+                self.api_add_btn.setEnabled(False)
+                self.api_add_status.setText("در حال تکمیل شناسایی Cloudflare…")
+                self._api_worker = TaskWorker(lambda: {
+                    "chat": api_manager.detect(key, account_id.strip()),
+                    "voice": voice_results,
+                })
+                self._api_worker.done.connect(lambda res, k=key, a=account_id.strip(): self.on_api_detected(res, k, a))
+                self._api_worker.start()
+                return
+
+        chat_added = ""
+        if chat_detection and chat_detection.ok:
+            duplicate = api_manager.find_duplicate(self.settings, key)
+            if not duplicate:
+                try:
+                    chat_added = api_manager.register(self.settings, chat_detection, key)
+                except ValueError as exc:
+                    self.api_add_status.setText("✕ " + str(exc))
+            else:
+                chat_added = duplicate
+        if chat_added:
+            self._api_changed(chat_added)
+        elif voice_added:
+            self.save_now()
+            self.refresh_api_table()
+        self.refresh_unified_models()
+        if hasattr(self, "cloud_page"):
+            self.cloud_page.refresh()
+        if chat_added or voice_added:
+            self.api_key_edit.clear()
+            self.api_add_status.setText(
+                "✓ API شناسایی شد · " +
+                (", ".join(([route_model.provider_label(chat_added, self.settings["providers"][chat_added])] if chat_added else []) + voice_added) or "قابلیت تازه‌ای یافت نشد")
+            )
+        else:
+            message = api_manager.describe_failure(chat_detection) if chat_detection else "هیچ قابلیتی از این API شناسایی نشد."
+            self.api_add_status.setText("✕ " + message + "؛ کلید ثبت نشد.")
 
     def build_local_model_group(self):
         """Backwards-compatible name for the Route local-provider group."""
