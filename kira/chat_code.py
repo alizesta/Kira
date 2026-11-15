@@ -226,6 +226,21 @@ def wants_project_change(text: str) -> bool:
     return bool(_CHANGE_PROJECT.search(normalized))
 
 
+def wants_project_location(text: str) -> bool:
+    """Recognise a question asking where the currently selected project folder is."""
+    normalized = re.sub(r"[\u200c\u200e\u200f]", " ", str(text or "").lower())
+    if wants_project_change(normalized):
+        return False
+    patterns = (
+        r"(?:مسیر|آدرس).{0,28}(?:پروژه|پوشه)",
+        r"(?:پوشه|دایرکتوری).{0,28}(?:پروژه|کاری).{0,20}(?:کجاست|کجا(?:ست)?|چیه|چیست|رو کجا)",
+        r"(?:پروژه|پوشه کاری).{0,20}(?:کجاست|کجا(?:ست)?|چیه|چیست)",
+        r"where.{0,24}(?:project|workspace).{0,16}(?:folder|directory|path)",
+        r"(?:project|workspace).{0,16}(?:folder|directory|path).{0,16}where",
+    )
+    return any(re.search(pattern, normalized, re.I) for pattern in patterns)
+
+
 CLASSIFY_SYSTEM = ("You route the user's latest chat message to Kira, a coding specialist. Decide if it asks Kira to work on THE USER'S OWN "
                    "software project (look at, debug, change, build, test or explain something that lives in its files). "
                    "Answer with exactly one word: TASK (wants something fixed, changed, added, removed, built or checked in the project), "
