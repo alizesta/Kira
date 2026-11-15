@@ -94,6 +94,7 @@ class VisionRoutingTests(unittest.TestCase):
             _latest_game_frame=object(),
             _vision_worker=worker,
         )
+        state._cancel_vision_worker = lambda: MainWindow._cancel_vision_worker(state)
         MainWindow._set_game_vision_capture(state, False)
         self.assertFalse(state.game_mode.enabled)
         self.assertTrue(timer.stopped)
