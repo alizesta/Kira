@@ -48,6 +48,7 @@ class Listener(QThread):
         self._model = None              # the local engine's model, loaded lazily when Cloud Voice is first in line
         self.via = ""                   # "cloud:<provider>" or "local" - what recognised the last sentence
         self._cloud_failed = False      # last cloud attempt failed (the note is sent once per streak)
+        self._local_asr_failed = False  # avoid retrying a broken local model for every segment
         self._hotwords_ok = True        # becomes False if the installed faster-whisper does not know `hotwords`
         self._pending, self._pending_until, self._pending_since = "", 0.0, 0.0
 
@@ -90,7 +91,14 @@ class Listener(QThread):
             return
         self.state.emit("loading")
         self.engine = None
-        if not self._cloud_ready() and not self._load_local():      # Cloud Voice first: the local engine then loads only if it is needed
+        local_ready = False
+        if bool(self.settings.get("local_voice_asr", True)):
+            try:
+                from . import local_voice
+                local_ready = local_voice.asr_ready()
+            except Exception:
+                local_ready = False
+        if not local_ready and not self._cloud_ready() and not self._load_local():
             return
         model = self._model
 
@@ -252,7 +260,29 @@ class Listener(QThread):
             self.note.emit("Cloud Voice (STT): " + " ← ".join(info["failovers"]) + f" → {info['provider']} / {info['key']}")
         return text
 
+    def _transcribe_local_qwen(self, audio):
+        """Qwen3-ASR is the first STT engine; None means use the next engine."""
+        if self._local_asr_failed or not bool(self.settings.get("local_voice_asr", True)):
+            return None
+        try:
+            from . import local_voice
+            if not local_voice.asr_ready():
+                return None
+            self.fixes.refresh()
+            return local_voice.transcribe(
+                audio, RATE, self.language or "fa",
+                initial_prompt(self.language, self.fixes.hotwords_text()),
+            )
+        except Exception as exc:
+            self._local_asr_failed = True
+            self.note.emit(f"STT محلی Qwen3-ASR در دسترس نبود؛ Cloud Voice جایگزین می‌شود. ({type(exc).__name__})")
+            return None
+
     def _transcribe(self, model, audio):
+        text = self._transcribe_local_qwen(audio)
+        if text is not None:
+            self.via = "local:qwen3-asr"
+            return text
         text = self._transcribe_cloud(audio)
         if text is not None:
             return text
