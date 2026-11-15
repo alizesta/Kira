@@ -3747,7 +3747,7 @@ class MainWindow(QMainWindow):
         if self._latest_game_frame is None or self._vision_worker is not None and self._vision_worker.isRunning():
             return
         # Never compete with a user chat request for the same provider route.
-        if self.busy or self.speaker._began:
+        if self.busy or self.client.busy or self.speaker._began:
             return
         try:
             from PySide6.QtCore import QBuffer, QByteArray, QIODevice
@@ -3758,7 +3758,10 @@ class MainWindow(QMainWindow):
             if not self._latest_game_frame.save(buffer, "JPEG", self._vision_gate.policy.jpeg_quality):
                 return
             jpeg = bytes(data)
-            if not self._vision_gate.accept(jpeg):
+            # Compare a tiny grayscale thumbnail, not compressed JPEG bytes, to detect real scene changes.
+            thumb = self._latest_game_frame.scaled(32, 18, Qt.IgnoreAspectRatio, Qt.FastTransformation).convertToFormat(QImage.Format_Grayscale8)
+            visual_sample = bytes(thumb.pixelColor(x, y).red() for y in range(thumb.height()) for x in range(thumb.width()))
+            if not self._vision_gate.accept(jpeg, visual_sample=visual_sample):
                 return
             image = att.image_attachment(jpeg, "game-screen.jpg", "image/jpeg")
             self._vision_worker = VisionAnalysisWorker(self.client, image)
