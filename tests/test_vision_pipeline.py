@@ -1,5 +1,9 @@
 """Unit tests for the bounded desktop/game vision pipeline and optional OCR."""
+import base64
+import sys
+import types
 import unittest
+from unittest import mock
 
 from kira.vision_pipeline import FrameGate, LatestFrameQueue, frame_signature, policy_for
 from kira.vision_ocr import extract_local_text
@@ -59,6 +63,41 @@ class VisionPipelineTests(unittest.TestCase):
         gate = FrameGate(policy_for("economic"), clock=clock)
         self.assertTrue(gate.accept(b"first"))
         self.assertTrue(gate.accept(b"second", force=True))
+
+    def test_optional_ocr_uses_a_timeout_and_rejects_oversized_images(self):
+        class FakeImage:
+            def __init__(self, width=100, height=100):
+                self.width, self.height = width, height
+
+            def thumbnail(self, size):
+                self.thumbnail_size = size
+
+        class FakeImageContext:
+            def __init__(self, image):
+                self.image = image
+
+            def __enter__(self):
+                return self.image
+
+            def __exit__(self, *args):
+                return False
+
+        fake_image = FakeImage()
+        pil = types.ModuleType("PIL")
+        pil.Image = types.SimpleNamespace(open=lambda _stream: FakeImageContext(fake_image))
+        pytesseract = types.ModuleType("pytesseract")
+        pytesseract.image_to_string = mock.Mock(return_value="  HELLO  \nworld")
+        encoded = base64.b64encode(b"fake-image").decode("ascii")
+        with mock.patch.dict(sys.modules, {"PIL": pil, "pytesseract": pytesseract}):
+            self.assertEqual(extract_local_text({"b64": encoded}), "HELLO world")
+        pytesseract.image_to_string.assert_called_once()
+        self.assertEqual(pytesseract.image_to_string.call_args.kwargs["timeout"], 4)
+
+        fake_image.width = fake_image.height = 10000
+        pytesseract.image_to_string.reset_mock()
+        with mock.patch.dict(sys.modules, {"PIL": pil, "pytesseract": pytesseract}):
+            self.assertEqual(extract_local_text({"b64": encoded}), "")
+        pytesseract.image_to_string.assert_not_called()
 
     def test_optional_ocr_fails_closed_for_missing_or_invalid_image_data(self):
         self.assertEqual(extract_local_text({}), "")
