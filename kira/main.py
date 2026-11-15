@@ -1873,9 +1873,17 @@ class MainWindow(QMainWindow):
         self._local_voice_worker = worker
         def completed(result):
             button.setEnabled(True)
-            self._local_voice_worker = None
             callback(result)
+
+        def worker_finished():
+            if self._local_voice_worker is worker:
+                self._local_voice_worker = None
+            if getattr(self, "_close_after_local_voice", False):
+                self._close_after_local_voice = False
+                QTimer.singleShot(0, self.close)
+
         worker.done.connect(completed)
+        worker.finished.connect(worker_finished)
         worker.start()
 
     def load_local_asr(self):
@@ -4973,6 +4981,13 @@ class MainWindow(QMainWindow):
                 and not getattr(self, "_quitting", False)):
             event.ignore()                                           # X only hides; "Exit" in the tray menu really quits
             self.hide_to_tray()
+            return
+        local_worker = getattr(self, "_local_voice_worker", None)
+        if local_worker is not None and local_worker.isRunning():
+            if not getattr(self, "_close_after_local_voice", False):
+                self._close_after_local_voice = True
+                self.add_chat("system", "بارگذاری یا آزمایش موتور صوتی هنوز در حال اجراست؛ Kira پس از پایان امن آن بسته می‌شود.")
+            event.ignore()
             return
         for sess in list(self.sessions.values()):
             with self._as(sess):
