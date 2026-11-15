@@ -19,6 +19,17 @@ CONTROLS = ("rate", "pitch", "style", "style_degree")
 def chain(settings=None) -> list:
     """[(engine label, capability set)] in the order they would be tried."""
     out = []
+    # Offline Persian Piper has no exposed rate/pitch/style controls.
+    try:
+        from . import local_voice
+        if local_voice.tts_ready():
+            out.append(("Persian Piper", set()))
+    except Exception:
+        pass
+    if sys.platform == "win32":
+        out.append((LOCAL_LABELS["sapi"], set(LOCAL_CAPS["sapi"])))
+    if importlib.util.find_spec("edge_tts") is not None:
+        out.append((LOCAL_LABELS["edge"], set(LOCAL_CAPS["edge"])))
     try:
         svc = cloud_voice.service()
         if svc.store.data["tts"]["use_cloud"]:
@@ -27,10 +38,6 @@ def chain(settings=None) -> list:
                 out.append((cloud_voice.LABELS.get(p, p), cloud_voice.tts_caps(p, model)))
     except Exception:                                              # noqa: BLE001 - never let this break the settings screen
         pass
-    if importlib.util.find_spec("edge_tts") is not None:
-        out.append((LOCAL_LABELS["edge"], set(LOCAL_CAPS["edge"])))
-    if sys.platform == "win32":
-        out.append((LOCAL_LABELS["sapi"], set(LOCAL_CAPS["sapi"])))
     return out
 
 
