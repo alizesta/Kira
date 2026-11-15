@@ -122,7 +122,7 @@ def _zip_text(path: str, progress=None, cancelled=None) -> str:
             lines.append(f"[{omitted} فایل دیگر در فهرست کوتاه شد.]")
         if progress:
             progress(100)
-        return "\\n".join(lines)
+        return "\n".join(lines)
 
 def _docx_text(path: str) -> str:
     try:
