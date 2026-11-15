@@ -10,6 +10,7 @@ permissions:
 
 jobs:
   build-debug-apk:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.head_ref, 'feature/android') || startsWith(github.head_ref, 'feature/shared-skills')
     name: Build installable debug APK
     runs-on: ubuntu-latest
     steps:
