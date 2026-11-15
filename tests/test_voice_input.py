@@ -44,7 +44,15 @@ class LocalASRFallbackTests(unittest.TestCase):
         from kira.listener import Listener
         from kira import local_voice
 
-        listener = Listener(settings={"local_voice_asr": True})
+        class Fixes:
+            def refresh(self):
+                pass
+
+            def hotwords_text(self):
+                return ""
+
+        with mock.patch("kira.listener.SpeechFixes", return_value=Fixes()):
+            listener = Listener(settings={"local_voice_asr": True})
         with mock.patch.object(local_voice, "asr_ready", return_value=True), \
              mock.patch.object(local_voice, "transcribe", return_value="  \n "):
             self.assertIsNone(listener._transcribe_local_qwen(np.zeros(RATE, dtype=np.float32)))
