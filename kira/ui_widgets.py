@@ -150,7 +150,6 @@ class AttachmentTile(QFrame):
         self.overlay.setText("…" if percent < 0 else ("✓" if percent >= 100 else f"{int(percent)}%"))
         self.overlay.raise_()
         self.overlay.show()
-        self.close_btn.setEnabled(True)
         self.close_btn.raise_()
         if percent >= 100:
             self._hide_timer.start(1200)
