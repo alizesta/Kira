@@ -3696,6 +3696,9 @@ class MainWindow(QMainWindow):
         else:
             self._game_capture_timer.stop()
             self._latest_game_frame = None
+            worker = getattr(self, "_vision_worker", None)
+            if worker is not None and worker.isRunning():
+                worker.cancel_request()
             self._stop_game_audio_listener()
             if not self._game_prev_wake and self.wake_btn.isChecked():
                 self.wake_btn.setChecked(False)
@@ -4811,6 +4814,9 @@ class MainWindow(QMainWindow):
         self._game_poll_timer.stop()
         self._game_capture_timer.stop()
         self._latest_game_frame = None
+        vision_worker = getattr(self, "_vision_worker", None)
+        if vision_worker is not None and vision_worker.isRunning():
+            vision_worker.cancel_request()
         self._stop_game_audio_listener()
         self.game_mode.set_enabled(False)
         for sess in self.sessions.values():
