@@ -1,8 +1,16 @@
 # Changelog
 
+## 2026-11-15 (desktop attachment, project path and neon icon fixes)
+
+- Chat attachments now accept files up to 50 MB and ZIP archives. ZIP files are read in place without extraction, with limits on archive size, entry count, per-file size and total uncompressed size; only bounded text content is sent to the model.
+- The file picker now lists ZIP archives. Attachment loading can be cancelled from its tile, including while a file is still being read.
+- Kira directly reports the currently selected Ai1 Code project folder when asked where it is.
+- Toolbar vector icons use the active character's neon accent palette instead of the old grey defaults.
+- Added regression coverage for ZIP parsing, large files, cancellation and project-folder questions.
+
 ## Version
 
-- Current version: `1 stable` (single source: `VERSION` in `kira/config.py`).
+- Current version: `1.1` (single source: `VERSION` in `kira/config.py`).
 - Build metadata: `kira/build_info.py`, stamped automatically by `scripts/build_metadata.py`; the developer is detected from the build environment (Codex / OpenCode / Claude Code / ChatGPT), never typed by hand. Rule: `docs/VERSION_METADATA_FA.md`.
 
 ## 2026-11-13 (mandatory version metadata and developer attribution)
