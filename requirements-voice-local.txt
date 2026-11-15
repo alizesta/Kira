@@ -1,3 +1,4 @@
 # Optional offline voice engines; install separately from the main application requirements.
 qwen-asr
 persian-speech
+piper-tts>=1.2.0

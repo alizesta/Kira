@@ -67,6 +67,7 @@ class ProviderBox(QGroupBox):
         self.caps.setWordWrap(True)
         self.add_btn = QPushButton()
         self.add_btn.clicked.connect(self.add_key)
+        self.add_btn.hide()  # all API keys are registered in the unified model page
         self.link = QLabel(f'<a href="{cv.KEY_URLS[provider]}">…</a>')
         self.link.setOpenExternalLinks(True)
         top.addWidget(self.caps, 1)

@@ -739,7 +739,7 @@ class CloudVoice:
         return listed[0]["id"] if listed else ""
 
     # ---- main loop ----
-    def _run(self, kind, lang, call, budget):
+    def _run(self, kind, lang, call, budget, voice_overrides=None):
         """call(provider, key_record, model, extra) -> result. Walks providers -> keys; returns (result, info)."""
         started, attempts, failovers = time.monotonic(), [], []
         providers = self.providers_in_use(kind)
@@ -748,7 +748,7 @@ class CloudVoice:
         for provider in providers:
             for entry in self._model_order(provider, kind, lang):
                 model = entry["id"]
-                voice = self._voice_for(provider, model, lang) if kind == "tts" else ""
+                voice = ((voice_overrides or {}).get(provider) or self._voice_for(provider, model, lang)) if kind == "tts" else ""
                 if kind == "tts" and provider in ("elevenlabs",) and not voice:
                     attempts.append((provider, "-", "صدایی انتخاب یا شناسایی نشده"))
                     continue
@@ -797,7 +797,7 @@ class CloudVoice:
 
         def call(provider, rec, model, voice):
             return TTS_CALLS[provider](rec["key"], model, text, voice, lang, opts)
-        (audio, ext), info = self._run("tts", lang, call, budget=40)
+        (audio, ext), info = self._run("tts", lang, call, budget=40, voice_overrides=(opts or {}).get("voices") or {})
         return audio, ext, info
 
 
