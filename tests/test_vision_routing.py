@@ -6,7 +6,7 @@ from unittest import mock
 from types import SimpleNamespace
 
 from tests import helpers
-from kira.hybrid_ai import HybridRouter
+from kira.hybrid_ai import HybridRouter, ProgressBody
 from kira.main import MainWindow, StreamWorker, VisionAnalysisWorker
 
 
@@ -132,6 +132,13 @@ class VisionRoutingTests(unittest.TestCase):
         self.assertTrue(router.cancelled)
         self.assertFalse(router.stream_called)
         self.assertEqual(results, [])
+
+    def test_cancelled_image_upload_stops_reading_request_body(self):
+        cancelled = threading.Event()
+        cancelled.set()
+        body = ProgressBody(b"large-image-payload", None, cancelled)
+        with self.assertRaises(RuntimeError):
+            body.read(8)
 
     def test_router_rejects_an_already_cancelled_background_request(self):
         settings = helpers.fresh_settings()

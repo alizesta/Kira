@@ -177,13 +177,16 @@ def iter_sse(response):
 
 class ProgressBody:
     """File-like request body that reports how much has been handed to the socket (requests reads it in blocks)."""
-    def __init__(self, data: bytes, callback):
+    def __init__(self, data: bytes, callback, cancel_event=None):
         self._data, self._pos, self._cb, self._last = data, 0, callback, -1
+        self._cancel_event = cancel_event
 
     def __len__(self):
         return len(self._data)
 
     def read(self, size=-1):
+        if self._cancel_event is not None and self._cancel_event.is_set():
+            raise RuntimeError("درخواست لغو شده است.")
         end = len(self._data) if size is None or size < 0 else min(len(self._data), self._pos + size)
         chunk = self._data[self._pos:end]
         self._pos = end
@@ -272,7 +275,8 @@ class BaseProvider:
         if self.upload_progress:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             if getattr(self, "_sent_images", False) or len(body) > 1_000_000:
-                return {"data": ProgressBody(body, self.upload_progress), "headers": {**headers, "Content-Type": "application/json"}}
+                return {"data": ProgressBody(body, self.upload_progress, getattr(self, "cancel_event", None)),
+                        "headers": {**headers, "Content-Type": "application/json"}}
         return {"json": payload, "headers": headers}
 
     def _post_json(self, url, headers, payload):
@@ -931,6 +935,7 @@ class HybridRouter:
                     provider = self._make_provider(route)
                     if cancel_event is not None and cancel_event.is_set():
                         break
+                    provider.cancel_event = cancel_event
                     provider.upload_progress = lambda pct, _i=info: emit({"phase": "uploading", "percent": pct, **_i})
                     guard = LeakGuard()                                   # internal analysis never becomes part of the answer
                     if not stream:
