@@ -41,17 +41,9 @@ def tts_ready() -> bool:
         return False
 
 
-def transcribe(audio, sample_rate=16000, language="fa", prompt="", model_name="Qwen/Qwen3-ASR-0.6B") -> str:
-    """Transcribe one mono float32 numpy segment locally. Returns empty text on empty input.
-
-    Model loading is lazy. The first call downloads Qwen/Qwen3-ASR-0.6B unless it is cached.
-    """
+def load_asr(model_name="Qwen/Qwen3-ASR-0.6B"):
+    """Load Qwen3-ASR explicitly (used by the settings UI); returns only when ready."""
     global _asr, _asr_error
-    import numpy as np
-
-    samples = np.asarray(audio, dtype=np.float32).reshape(-1)
-    if samples.size == 0:
-        return ""
     with _asr_lock:
         if _asr is None:
             try:
@@ -68,6 +60,18 @@ def transcribe(audio, sample_rate=16000, language="fa", prompt="", model_name="Q
             except Exception as exc:
                 _asr_error = exc
                 raise RuntimeError(f"Qwen3-ASR load failed: {type(exc).__name__}: {exc}") from exc
+        return True
+
+
+def transcribe(audio, sample_rate=16000, language="fa", prompt="", model_name="Qwen/Qwen3-ASR-0.6B") -> str:
+    """Transcribe one mono float32 numpy segment locally. Model loading is lazy."""
+    import numpy as np
+
+    samples = np.asarray(audio, dtype=np.float32).reshape(-1)
+    if samples.size == 0:
+        return ""
+    load_asr(model_name)
+    with _asr_lock:
         lang = {"fa": "Persian", "en": "English", "ar": "Arabic"}.get(language, None)
         results = _asr.transcribe(
             audio=(samples, int(sample_rate)),
@@ -101,6 +105,11 @@ def synthesize_persian(text: str) -> bytes:
     if not isinstance(payload, (bytes, bytearray)) or not payload.startswith(b"RIFF"):
         raise RuntimeError("Persian Piper returned invalid WAV data")
     return bytes(payload)
+
+
+def cache_directory() -> str:
+    """Return the effective Hugging Face model cache location."""
+    return str(Path(os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface"))
 
 
 def status() -> dict:

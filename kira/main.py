@@ -1661,6 +1661,33 @@ class MainWindow(QMainWindow):
         self.wake_timeout = self.row(f2, "wake_timeout", QSpinBox())
         self.wake_timeout.setRange(5, 120); self.wake_timeout.setValue(int(s["wake_timeout"]))
         self.engine_lbl = self.row(f2, "engine", QLabel())
+
+        # Optional offline Persian engines: visible status + independent controls.
+        local_box, local_form = self.group("موتورهای صوتی محلی فارسی")
+        self.local_asr_chk = QCheckBox("استفاده از Qwen3-ASR برای تشخیص گفتار (STT)")
+        self.local_asr_chk.setChecked(bool(s.get("local_voice_asr", True)))
+        self.local_asr_chk.toggled.connect(lambda on: self.set_local_voice_option("local_voice_asr", on))
+        local_form.addRow(self.local_asr_chk)
+        self.local_tts_chk = QCheckBox("استفاده از Mana Persian Piper برای تولید صدا (TTS)")
+        self.local_tts_chk.setChecked(bool(s.get("local_voice_tts", True)))
+        self.local_tts_chk.toggled.connect(lambda on: self.set_local_voice_option("local_voice_tts", on))
+        local_form.addRow(self.local_tts_chk)
+        self.local_voice_status = QLabel()
+        self.local_voice_status.setWordWrap(True)
+        self.local_voice_status.setObjectName("hint")
+        local_form.addRow(self.local_voice_status)
+        local_actions = QHBoxLayout()
+        self.local_voice_refresh_btn = QPushButton("بررسی وضعیت")
+        self.local_asr_load_btn = QPushButton("بارگذاری Qwen")
+        self.local_tts_test_btn = QPushButton("تست صدای فارسی")
+        self.local_voice_refresh_btn.clicked.connect(self.refresh_local_voice_status)
+        self.local_asr_load_btn.clicked.connect(self.load_local_asr)
+        self.local_tts_test_btn.clicked.connect(self.test_local_tts)
+        for btn in (self.local_voice_refresh_btn, self.local_asr_load_btn, self.local_tts_test_btn):
+            local_actions.addWidget(btn)
+        local_form.addRow(local_actions)
+        self.refresh_local_voice_status()
+
         self._voice_save_timer = QTimer(self)
         self._voice_save_timer.setSingleShot(True)
         self._voice_save_timer.setInterval(600)
@@ -1670,7 +1697,77 @@ class MainWindow(QMainWindow):
         for w in (self.voice_style, self.out_device, self.mic_device):
             w.currentIndexChanged.connect(lambda *_: self._voice_save_timer.start())
         self.refresh_voice_caps()
-        self.tabs.addTab(self.page(box1, box2), "")
+        self.tabs.addTab(self.page(box1, local_box, box2), "")
+
+    # ---- local Persian voice engines ----
+    def set_local_voice_option(self, key, enabled):
+        self.settings[key] = bool(enabled)
+        self.save_now()
+
+    def refresh_local_voice_status(self):
+        try:
+            from . import local_voice
+            state = local_voice.status()
+            asr = ("نصب است" if state["asr_installed"] else "نصب نیست")
+            asr += " · مدل بارگذاری شده" if state["asr_loaded"] else " · مدل هنوز بارگذاری نشده"
+            if state.get("asr_error"):
+                asr += " · خطا: " + state["asr_error"]
+            tts = ("نصب است" if state["tts_installed"] else "نصب نیست")
+            tts += " · مدل بارگذاری شده" if state["tts_loaded"] else " · مدل هنوز بارگذاری نشده"
+            if state.get("tts_error"):
+                tts += " · خطا: " + state["tts_error"]
+            self.local_voice_status.setText(f"Qwen3-ASR: {asr}\nMana Persian Piper: {tts}\nمسیر کش مدل‌ها: {local_voice.cache_directory()}")
+        except Exception as exc:
+            self.local_voice_status.setText(f"بررسی موتورهای صوتی ناموفق بود: {type(exc).__name__}: {exc}")
+
+    def _run_local_voice_task(self, fn, button, callback):
+        worker = getattr(self, "_local_voice_worker", None)
+        if worker is not None and worker.isRunning():
+            return
+        button.setEnabled(False)
+        worker = TaskWorker(fn)
+        self._local_voice_worker = worker
+        def completed(result):
+            button.setEnabled(True)
+            self._local_voice_worker = None
+            callback(result)
+        worker.done.connect(completed)
+        worker.start()
+
+    def load_local_asr(self):
+        from . import local_voice
+        self._run_local_voice_task(local_voice.load_asr, self.local_asr_load_btn, self._on_local_asr_loaded)
+
+    def _on_local_asr_loaded(self, result):
+        ok, value = result
+        if ok:
+            self.local_voice_status.setText("Qwen3-ASR با موفقیت بارگذاری شد. تشخیص گفتار محلی آماده است.")
+        else:
+            self.local_voice_status.setText(f"بارگذاری Qwen3-ASR ناموفق بود: {value}")
+        self.refresh_local_voice_status()
+
+    def test_local_tts(self):
+        from . import local_voice
+        self._run_local_voice_task(
+            lambda: local_voice.synthesize_persian("سلام، من کیرا هستم. این صدای فارسی محلی من است."),
+            self.local_tts_test_btn, self._on_local_tts_tested
+        )
+
+    def _on_local_tts_tested(self, result):
+        ok, value = result
+        if not ok:
+            self.local_voice_status.setText(f"تولید صدای Piper ناموفق بود: {value}")
+            self.refresh_local_voice_status()
+            return
+        try:
+            test_path = DATA_DIR / "voice_cache" / "local_persian_test.wav"
+            test_path.parent.mkdir(parents=True, exist_ok=True)
+            test_path.write_bytes(value)
+            self.speaker.play_file(str(test_path))
+            self.local_voice_status.setText("صدای آزمایشی Piper ساخته شد و در حال پخش است.")
+        except Exception as exc:
+            self.local_voice_status.setText(f"ساخت یا پخش فایل آزمایشی ناموفق بود: {type(exc).__name__}: {exc}")
+        self.refresh_local_voice_status()
 
     # ---- voice: devices, supported controls, autosave ----
     def fill_output_devices(self, current):
