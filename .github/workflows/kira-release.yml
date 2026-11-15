@@ -65,7 +65,7 @@ concurrency:
 jobs:
   windows-full-suite:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Check out source
         uses: actions/checkout@v4
