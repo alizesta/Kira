@@ -206,6 +206,17 @@ class VisionRoutingTests(unittest.TestCase):
         self.assertEqual(seen, ["kira"])
         self.assertEqual(state.cur, "ren")
 
+    def test_queued_message_is_not_started_after_window_shutdown(self):
+        session = SimpleNamespace(cid="kira")
+        state = SimpleNamespace(
+            _closing=True,
+            sessions={"kira": session},
+            _as=lambda target: contextlib.nullcontext(),
+            submit=mock.Mock(),
+        )
+        MainWindow._submit_for(state, session, ("hello", None, False))
+        state.submit.assert_not_called()
+
     def test_vision_finished_relay_flushes_the_pending_queue(self):
         calls = []
         relay = SimpleNamespace(_run=lambda name: calls.append(name))

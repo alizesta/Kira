@@ -4567,7 +4567,7 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, lambda t=nxt, sess=self.cur: self._submit_for(sess, t))
 
     def _submit_for(self, session, args):
-        if session.cid in self.sessions:
+        if not self._closing and session.cid in self.sessions:
             with self._as(session):
                 self.submit(*args)
 
