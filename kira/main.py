@@ -1875,7 +1875,8 @@ class MainWindow(QMainWindow):
             if source.resolve() != target.resolve():
                 shutil.copy2(source, target)
             target_meta = Path(str(target) + ".json")
-            shutil.copy2(metadata, target_meta)
+            if metadata.resolve() != target_meta.resolve():
+                shutil.copy2(metadata, target_meta)
             self.settings["local_voice_tts_model"] = str(target)
             self.local_tts_model_path.setText(str(target))
             self.save_now()

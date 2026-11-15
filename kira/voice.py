@@ -351,7 +351,12 @@ class Speaker(QObject):
         sig = cloud.tts_signature() if cloud else ""
         style = str(self.settings.get("voice_style") or "")
         degree = int(self.settings.get("voice_style_degree", 50))
-        key = hashlib.sha1(f"local-piper-v1|{bool(self.settings.get('local_voice_tts', True))}|{voice}|{r}|{p}|{text}|{sig}|{style}|{degree}".encode("utf-8")).hexdigest()[:20]
+        local_model = str(self.settings.get("local_voice_tts_model") or "")
+        cloud_voices = json.dumps(self.settings.get("cloud_voices", {}) or {}, ensure_ascii=False, sort_keys=True)
+        key = hashlib.sha1(
+            f"local-piper-v2|{bool(self.settings.get('local_voice_tts', True))}|{local_model}|{cloud_voices}|"
+            f"{voice}|{r}|{p}|{text}|{sig}|{style}|{degree}".encode("utf-8")
+        ).hexdigest()[:20]
         tag = f"kira_{s.gen}_{idx}"
         base = str(CACHE_DIR) if s.cache else self._tmp
         cw, cj = os.path.join(base, key + ".wav"), os.path.join(base, key + ".json")

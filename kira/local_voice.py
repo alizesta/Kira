@@ -6,6 +6,7 @@ This module performs speech conversion only; it contains no chat or agent logic.
 """
 from __future__ import annotations
 
+import gc
 import io
 import os
 import threading
@@ -22,6 +23,7 @@ configure_cache_environment(_DATA_ROOT)
 _asr_lock = threading.RLock()
 _tts_lock = threading.RLock()
 _asr = None
+_asr_model_name = None
 _tts = None
 _asr_error = None
 _tts_error = None
@@ -52,25 +54,35 @@ def tts_ready(model_path="") -> bool:
 
 
 def load_asr(model_name="Qwen/Qwen3-ASR-0.6B"):
-    """Load Qwen3-ASR explicitly (used by the settings UI); returns only when ready."""
-    global _asr, _asr_error
+    """Load the selected Qwen3-ASR model; a changed model id/path replaces the previous instance."""
+    global _asr, _asr_error, _asr_model_name
+    selected = str(model_name or "Qwen/Qwen3-ASR-0.6B")
     with _asr_lock:
-        if _asr is None:
-            try:
-                import torch
-                from qwen_asr import Qwen3ASRModel
-                _asr = Qwen3ASRModel.from_pretrained(
-                    str(model_name or "Qwen/Qwen3-ASR-0.6B"),
-                    dtype=torch.float32,
-                    device_map="cpu",
-                    max_inference_batch_size=1,
-                    max_new_tokens=256,
-                )
-                _asr_error = None
-            except Exception as exc:
-                _asr_error = exc
-                raise RuntimeError(f"Qwen3-ASR load failed: {type(exc).__name__}: {exc}") from exc
-        return True
+        if _asr is not None and _asr_model_name == selected:
+            return True
+        try:
+            import torch
+            from qwen_asr import Qwen3ASRModel
+            old_model, _asr = _asr, None
+            _asr_model_name = None
+            if old_model is not None:
+                del old_model
+                gc.collect()
+            _asr = Qwen3ASRModel.from_pretrained(
+                selected,
+                dtype=torch.float32,
+                device_map="cpu",
+                max_inference_batch_size=1,
+                max_new_tokens=256,
+            )
+            _asr_model_name = selected
+            _asr_error = None
+        except Exception as exc:
+            _asr = None
+            _asr_model_name = None
+            _asr_error = exc
+            raise RuntimeError(f"Qwen3-ASR load failed: {type(exc).__name__}: {exc}") from exc
+    return True
 
 
 def transcribe(audio, sample_rate=16000, language="fa", prompt="", model_name="Qwen/Qwen3-ASR-0.6B") -> str:
@@ -149,7 +161,9 @@ def status(model_path="") -> dict:
         "asr_installed": asr_ready(),
         "tts_installed": tts_ready(model_path),
         "asr_loaded": _asr is not None,
+        "asr_model": _asr_model_name or "",
         "tts_loaded": _tts is not None or bool(_custom_tts),
+        "tts_model": next(iter(_custom_tts), "") or ("bundled" if _tts is not None else ""),
         "asr_error": str(_asr_error)[:240] if _asr_error else "",
         "tts_error": str(_tts_error)[:240] if _tts_error else "",
     }
