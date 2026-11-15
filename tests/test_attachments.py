@@ -66,7 +66,7 @@ class AttachmentTests(unittest.TestCase):
     def test_file_size_limit_is_higher_than_ten_megabytes(self):
         p = self.path("larger.txt", b"")
         with open(p, "wb") as fh:
-            fh.truncate(10 * 1024 * 1024 + 1)
+            fh.write(b"a" * (10 * 1024 * 1024 + 1))
         self.assertEqual(att.load_attachment(p)["size"], 10 * 1024 * 1024 + 1)
 
     def test_loading_can_be_cancelled(self):
