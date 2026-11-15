@@ -66,6 +66,7 @@ from . import theme as theme_mod
 from .chat_sessions import ChatSession, NOOP, SESSION_FIELDS, session_property, front_only_property
 from . import winfx
 from .game_mode import GameModeMonitor, CAPTURE_INTERVAL_MS, CAPTURE_JPEG_QUALITY
+from .vision_pipeline import FrameGate, policy_for
 from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
 from .chat_code_ui import CodeChat
 
@@ -470,6 +471,36 @@ class ModelCombo(QComboBox):
         self.blockSignals(False)
 
 
+
+class VisionAnalysisWorker(QThread):
+    """One bounded, non-streaming image analysis request outside the GUI thread."""
+    done = Signal(bool, str, int)
+
+    def __init__(self, router, image, started_at):
+        super().__init__()
+        self.router = router
+        self.image = dict(image)
+        self.started_at = started_at
+
+    def run(self):
+        began = time.monotonic()
+        try:
+            prompt = (
+                "این تصویر، فریم فعلی بازی کاربر است. فقط چیزهایی را که واقعاً در تصویر دیده می‌شوند "
+                "توصیف کن. اگر سؤال یا درخواست قبلی مشخصی وجود ندارد، یک گزارش خیلی کوتاه و کاربردی بده: "
+                "وضعیت فعلی، خطر یا هدف قابل مشاهده، و یک پیشنهاد فوری در صورت نیاز. "
+                "متن‌های داخل تصویر را فقط وقتی واضح‌اند نقل کن. چیزی را حدس نزن."
+            )
+            result = self.router.chat(
+                [{"role": "user", "content": "فریم فعلی بازی را بررسی کن.", "images": [self.image]}],
+                prompt,
+                0.2,
+            )
+            self.done.emit(True, str(result or "").strip(), int((time.monotonic() - began) * 1000))
+        except Exception as exc:
+            self.done.emit(False, str(exc)[:350], int((time.monotonic() - began) * 1000))
+
+
 class OllamaTaskWorker(QThread):
     """Runs one blocking Ollama call off the GUI thread. fn() returns (ok, text) or raises."""
     done = Signal(bool, str)
@@ -627,6 +658,9 @@ class MainWindow(QMainWindow):
         self._game_mode_enabled = False
         self._game_mode_profile = COMPETITIVE_SAFE_MODE
         self._latest_game_frame = None
+        self._vision_gate = FrameGate(policy_for(self.settings.get('vision_mode', 'economic')))
+        self._vision_worker = None
+        self._vision_last_note = ''
         self.game_audio_listener = None
         self._game_audio_alerts = {}
         self._game_prev_mic = False
@@ -665,7 +699,7 @@ class MainWindow(QMainWindow):
         self._game_poll_timer.timeout.connect(self.game_mode.poll)
         self._game_poll_timer.start()
         self._game_capture_timer = QTimer(self)
-        self._game_capture_timer.setInterval(CAPTURE_INTERVAL_MS)
+        self._game_capture_timer.setInterval(int(self._vision_gate.policy.interval_seconds * 1000))
         self._game_capture_timer.timeout.connect(self._capture_game_frame)
         self.game_mode.game_detected.connect(self.on_game_detected)
         self.resize(900, 720)
@@ -3677,12 +3711,53 @@ class MainWindow(QMainWindow):
 
 
     def _capture_game_frame(self):
-        """Keep only the newest small frame; capture is timer-driven and never uploads in the background."""
+        """Capture a bounded frame and analyze only changed frames at the selected low-cost rate."""
         if not self._game_mode_enabled or not game_mode_permissions(self._game_mode_profile)["vision_capture"]:
             self._latest_game_frame = None
+            self._vision_gate.reset()
             return
         pixmap = self.game_mode.capture_last_game()
         self._latest_game_frame = pixmap.toImage() if pixmap is not None else None
+        if self._latest_game_frame is None or self._vision_worker is not None and self._vision_worker.isRunning():
+            return
+        # Never compete with a user chat request for the same provider route.
+        if self.busy or self.speaker._began:
+            return
+        try:
+            from PySide6.QtCore import QBuffer, QByteArray, QIODevice
+            data = QByteArray()
+            buffer = QBuffer(data)
+            if not buffer.open(QIODevice.WriteOnly):
+                return
+            if not self._latest_game_frame.save(buffer, "JPEG", self._vision_gate.policy.jpeg_quality):
+                return
+            jpeg = bytes(data)
+            if not self._vision_gate.accept(jpeg):
+                return
+            image = att.image_attachment(jpeg, "game-screen.jpg", "image/jpeg")
+            self._vision_worker = VisionAnalysisWorker(self.client, image, time.monotonic())
+            self._vision_worker.done.connect(self._on_game_vision_result)
+            self._vision_worker.start()
+        except Exception as exc:  # noqa: BLE001 - vision must never interrupt the game/chat
+            self.add_chat("system", f"Vision: آماده‌سازی فریم ناموفق بود: {str(exc)[:180]}")
+
+    def _on_game_vision_result(self, ok, result, latency_ms):
+        self._vision_gate.mark_latency(latency_ms)
+        if (not self._game_mode_enabled
+                or not game_mode_permissions(self._game_mode_profile)["vision_capture"]):
+            return
+        if not ok:
+            # Unsupported image models are reported once, not every sampling interval.
+            message = str(result or "تحلیل تصویر ناموفق بود.")
+            if message != self._vision_last_note:
+                self._vision_last_note = message
+                self.add_chat("system", "Vision: " + message[:300])
+            return
+        text = str(result or "").strip()
+        if not text or text == self._vision_last_note:
+            return
+        self._vision_last_note = text
+        self.add_chat("system", "👁️ " + text[:900])
 
     def on_game_detected(self, info):
         """Suggest Game Mode once per detected process, unless the user already enabled it."""
