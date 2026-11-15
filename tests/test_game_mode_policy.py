@@ -1,4 +1,8 @@
 import unittest
+from types import SimpleNamespace
+from unittest import mock
+
+from kira.tools.agent import ToolAgent
 
 from kira.game_mode_policy import (
     STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions,
@@ -40,6 +44,21 @@ class GameModePolicyTests(unittest.TestCase):
         self.assertFalse(tool_categories_allowed(COMPETITIVE_SAFE_MODE, ("mcp",)))
         self.assertFalse(tool_categories_allowed(COMPETITIVE_SAFE_MODE, ()))
         self.assertFalse(tool_categories_allowed(COMPETITIVE_SAFE_MODE, ("web", "desktop")))
+
+    def test_entering_competitive_safe_cancels_running_tool_tasks(self):
+        agent = object.__new__(ToolAgent)
+        agent._competitive_safe_mode = False
+        agent.registry = SimpleNamespace(access=SimpleNamespace(revoke_grants=mock.Mock()))
+        agent._pending = None
+        agent.request_cancel = mock.Mock()
+        agent.set_competitive_safe_mode(True)
+        self.assertTrue(agent._competitive_safe_mode)
+        agent.request_cancel.assert_called_once_with()
+        agent.set_competitive_safe_mode(True)
+        agent.request_cancel.assert_called_once_with()
+        agent.set_competitive_safe_mode(False)
+        self.assertFalse(agent._competitive_safe_mode)
+        agent.request_cancel.assert_called_once_with()
 
     def test_story_mode_retains_existing_tool_permissions(self):
         self.assertTrue(tool_categories_allowed(STORY_MODE, ("desktop",)))

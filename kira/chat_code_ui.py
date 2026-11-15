@@ -181,6 +181,14 @@ class CodeChat(QObject):
         if self._classifying:                                   # a decision is still pending: keep the order of messages
             self._class_queue.append((text, voice))
             return True
+        if cc.wants_project_location(text):
+            w.add_chat("user", text)
+            w.save_message("user", text)
+            if self.root is not None and self.root.is_dir():
+                self._say("system", f"مسیر پوشه‌ی پروژه‌ی فعلی: {self.root}")
+            else:
+                self._say("system", "هنوز پوشه‌ی پروژه‌ای برای Ai1 Code انتخاب نشده؛ برای انتخاب پوشه بگو «پوشه‌ی پروژه را عوض کن».")
+            return True
         req = cc.parse_request(text)
         if req.kind in ("files", "project", "apply", "reject", "help", "run", "auto") or req.explicit:
             return self._explicit(req, text)
@@ -559,6 +567,18 @@ class CodeChat(QObject):
             self._bubble("assistant", cc.answer_html(result["summary"]))
             w.save_message("assistant", result["summary"])
             self._remember(goal, result["summary"])
+            return
+        if not result.get("zip"):
+            changed = result.get("changed") or []
+            lines = ["مأموریت خودکار به تحویل نهایی نرسید.", "", result.get("summary") or "نتیجه تأیید نشده است."]
+            if result.get("resume_available"):
+                lines.append("وضعیت و نسخه‌ی کاری ذخیره شد؛ اجرای دوباره‌ی همین درخواست از آخرین checkpoint ادامه پیدا می‌کند.")
+            if changed:
+                lines.extend(["", "تغییرات انجام‌شده فقط در نسخه‌ی کاری موقت بوده‌اند و ZIP نهایی ساخته نشده:", "، ".join(changed[:20])])
+            body = cc.answer_html("\\n".join(lines))
+            self._bubble("assistant", body)
+            w.save_message("assistant", "\\n".join(lines))
+            self._remember("/auto " + goal, result.get("summary") or "مأموریت ناتمام")
             return
         zip_path = Path(result["zip"])
         rid = self._store_auto_result(zip_path)

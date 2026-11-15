@@ -44,6 +44,36 @@ class AttachmentTests(unittest.TestCase):
             z.writestr("word/document.xml", xml)
         self.assertEqual(att.load_attachment(p)["text"], "Hello\nWorld")
 
+
+    def test_zip_reads_text_files_and_lists_non_text_without_extracting(self):
+        p = os.path.join(self.dir.name, "project.zip")
+        with zipfile.ZipFile(p, "w") as z:
+            z.writestr("src/main.py", "print('hello')")
+            z.writestr("assets/icon.png", b"\\x89PNG")
+            z.writestr("../outside.txt", "must not be extracted")
+        result = att.load_attachment(p)
+        self.assertEqual(result["kind"], "text")
+        self.assertIn("src/main.py", result["text"])
+        self.assertIn("print('hello')", result["text"])
+        self.assertIn("assets/icon.png", result["text"])
+        self.assertIn("../outside.txt", result["text"])
+        self.assertFalse(os.path.exists(os.path.join(self.dir.name, "..", "outside.txt")))
+
+    def test_zip_rejects_corrupt_archive(self):
+        with self.assertRaises(att.AttachmentError):
+            att.load_attachment(self.path("broken.zip", b"not a zip"))
+
+    def test_file_size_limit_is_higher_than_ten_megabytes(self):
+        p = self.path("larger.txt", b"")
+        with open(p, "wb") as fh:
+            fh.write(b"a" * (10 * 1024 * 1024 + 1))
+        self.assertEqual(att.load_attachment(p)["size"], 10 * 1024 * 1024 + 1)
+
+    def test_loading_can_be_cancelled(self):
+        p = self.path("cancel.txt", b"x" * (1024 * 1024))
+        with self.assertRaisesRegex(att.AttachmentError, "لغو"):
+            att.load_attachment(p, cancelled=lambda: True)
+
     def test_image_and_compose(self):
         img = att.load_attachment(self.path("p.png", PNG))
         txt = att.load_attachment(self.path("n.txt", b"line one"))

@@ -2,7 +2,7 @@ name: Build Kira Update
 
 on:
   push:
-    branches: [main, "next/2026-11-11-intelligence", "feature/characters-ren-mika"]
+    branches: [main, "next/2026-11-11-intelligence", "feature/characters-ren-mika", "fix/desktop-attachments-project-icons"]
     paths:
       - ".github/workflows/kira-release.yml"
       - "kira/**"
@@ -21,6 +21,9 @@ on:
       - "tests/test_gui_offscreen.py"
       - "tests/test_release.py"
       - "tests/test_release_package.py"
+      - "tests/test_vision_pipeline.py"
+      - "tests/test_actions.py"
+      - "tests/test_vision_routing.py"
       - "tests/test_characters.py"
       - "requirements.txt"
       - ".gitattributes"
@@ -38,6 +41,7 @@ on:
       - "kira/tools/registry.py"
       - "docs/**"
       - "tests/test_api_manager.py"
+      - "tests/test_attachments.py"
       - "tests/test_routes.py"
       - "tests/test_router_routes.py"
       - "tests/test_providers.py"
@@ -56,12 +60,13 @@ permissions:
   contents: write
 
 concurrency:
-  group: kira-update-release
+  group: kira-update-release-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
-  windows-game-mode:
+  windows-full-suite:
     runs-on: windows-latest
+    timeout-minutes: 60
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -71,17 +76,60 @@ jobs:
           python-version: "3.12"
       - name: Install Windows test dependencies
         run: python -m pip install PySide6 requests numpy
-      - name: Run Game Mode identity, audio and monitor regression tests
-        run: python -m unittest tests.test_game_detection tests.test_game_mode tests.test_game_audio
-        env:
-          QT_QPA_PLATFORM: offscreen
-      - name: Run Ai1 Code chat GUI regression tests
-        run: python -m unittest tests.test_chat_code_gui
+      - name: Run the complete Windows test suite
+        run: python -m unittest discover -s tests -t . -v
         env:
           QT_QPA_PLATFORM: offscreen
 
+  portable-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install portable test dependency
+        run: python -m pip install requests
+      - name: Validate version and build metadata
+        run: python scripts/build_metadata.py --check
+      - name: Run portable regression tests
+        run: >-
+          python -m unittest
+          tests.test_api_manager
+          tests.test_attachments
+          tests.test_routes
+          tests.test_router_routes
+          tests.test_providers
+          tests.test_persona_memory
+          tests.test_characters
+          tests.test_avatar_art
+          tests.test_app_resolution
+          tests.test_persian_quality
+          tests.test_release_package
+          tests.test_minimax_cloud_voice
+          tests.test_game_mode_policy
+          tests.test_code_agent
+          tests.test_chat_code
+          tests.test_auto_agent
+          tests.test_native_function_calling
+          tests.test_storage
+          tests.test_game_detection
+          tests.test_streaming
+          tests.test_chat_persistence
+          tests.test_chat_render
+          tests.test_body
+          tests.test_build_metadata
+          tests.test_release
+          tests.test_actions
+          tests.test_vision_pipeline
+      - name: Check Python syntax
+        run: python -m compileall -q kira scripts tests
+
   package-and-release:
-    needs: windows-game-mode
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next/2026-11-11-intelligence' || github.ref == 'refs/heads/feature/characters-ren-mika'
+    needs: [windows-full-suite, portable-regression]
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -102,6 +150,7 @@ jobs:
         run: >-
           python -m unittest
           tests.test_api_manager
+          tests.test_attachments
           tests.test_routes
           tests.test_router_routes
           tests.test_providers

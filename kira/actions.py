@@ -10,7 +10,9 @@ ACTIONS = {
     "clock": ("Clock", ["explorer.exe", "ms-clock:"]),
 }
 
-def run_safe_action(text):
+def run_safe_action(text, allow_desktop=True):
+    if not allow_desktop:
+        return "در حالت Competitive Safe اجرای میانبرهای دسکتاپ غیرفعال است."
     t = text.strip().lower()
     aliases = {
         "نوت پد": "notepad", "نوت‌پد": "notepad", "notepad": "notepad",

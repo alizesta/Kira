@@ -30,6 +30,7 @@ METRICS_KEEP = 200             # in-memory history of request metrics (bounded: 
 # background reviewer and the visible chat) may use the same router from different threads.
 _ROLE = contextvars.ContextVar("kira_route_role", default="")
 _PREFER = contextvars.ContextVar("kira_route_prefer", default="")
+_VISION_ONLY = contextvars.ContextVar("kira_vision_only", default=False)
 
 
 class ProviderError(RuntimeError):
@@ -176,13 +177,16 @@ def iter_sse(response):
 
 class ProgressBody:
     """File-like request body that reports how much has been handed to the socket (requests reads it in blocks)."""
-    def __init__(self, data: bytes, callback):
+    def __init__(self, data: bytes, callback, cancel_event=None):
         self._data, self._pos, self._cb, self._last = data, 0, callback, -1
+        self._cancel_event = cancel_event
 
     def __len__(self):
         return len(self._data)
 
     def read(self, size=-1):
+        if self._cancel_event is not None and self._cancel_event.is_set():
+            raise RuntimeError("درخواست لغو شده است.")
         end = len(self._data) if size is None or size < 0 else min(len(self._data), self._pos + size)
         chunk = self._data[self._pos:end]
         self._pos = end
@@ -271,7 +275,8 @@ class BaseProvider:
         if self.upload_progress:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             if getattr(self, "_sent_images", False) or len(body) > 1_000_000:
-                return {"data": ProgressBody(body, self.upload_progress), "headers": {**headers, "Content-Type": "application/json"}}
+                return {"data": ProgressBody(body, self.upload_progress, getattr(self, "cancel_event", None)),
+                        "headers": {**headers, "Content-Type": "application/json"}}
         return {"json": payload, "headers": headers}
 
     def _post_json(self, url, headers, payload):
@@ -475,6 +480,8 @@ class CloudflareProvider(BaseProvider):
         clean = normalize_messages(messages)
         if not clean:
             raise self._fail("هیچ پیام کاربری برای ارسال وجود ندارد.", False, kind="request")
+        if any(item.get("images") for item in clean):
+            raise self._fail("مدل انتخاب‌شده در Cloudflare این مسیر تصویر را پشتیبانی نمی‌کند؛ برای تحلیل تصویر یک مدل Vision انتخاب کن.", False, kind="request")
         url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{self.model}"
         headers = {"Authorization": f"Bearer {self.secret}", "Content-Type": "application/json"}
         payload = {"messages": [{"role": "system", "content": system_prompt}, *[{"role": m["role"], "content": m["content"]} for m in clean]],
@@ -621,6 +628,7 @@ class HybridRouter:
         self._lock = threading.Lock()
         self._cancel = threading.Event()
         self._active = None
+        self._vision_capability_cache = {}
 
     # ---------- logging ----------
     @staticmethod
@@ -715,10 +723,80 @@ class HybridRouter:
             base = _usage.apply_limits(base, lambda r: self.eligibility(r)[0])
         except Exception:                                              # noqa: BLE001
             pass
+        if _VISION_ONLY.get():
+            base = [r for r in base if self._route_supports_vision(r, self._provider_cfg(r))]
         preferred = next((r for r in routes if r["id"] == prefer and r in base), None) if prefer else None
         if preferred is None:
             return base
         return [preferred] + [r for r in base if r["id"] != preferred["id"]]
+
+    def vision_route_id(self):
+        """Return the first eligible route explicitly marked or recognizably capable of image input.
+
+        Unknown models are deliberately excluded: a text-only route must never receive a screen frame.
+        Custom providers can opt in with providers[provider].vision_enabled = true.
+        """
+        for route in self._candidates():
+            ok, _ = self.eligibility(route)
+            if ok and self._route_supports_vision(route, self._provider_cfg(route)):
+                return str(route.get("id") or "")
+        return None
+
+    def _route_supports_vision(self, route, cfg):
+        model = str(route.get("model") or "").lower()
+        provider = str(route.get("provider") or "").lower()
+        known = (
+            "gemini", "gpt-4o", "gpt-4.1", "gpt-5", "claude-3", "claude-sonnet",
+            "claude-opus", "claude-haiku", "claude-4", "llava", "qwen-vl", "qwen2.5-vl", "qwen3-vl",
+            "qwen3.5", "qwen35", "minicpm-v", "pixtral", "molmo", "internvl",
+            "llama-3.2-vision",
+        )
+        if cfg.get("vision_enabled") is True:
+            return True
+        # Embedding endpoints do not accept conversational image input, even when
+        # their provider family also offers multimodal generation models.
+        if "embedding" in model or model.startswith("text-embedding"):
+            return False
+        if provider == "ollama":
+            # Capabilities belong to a specific Ollama server + model pair.
+            endpoint = str(self.settings.get("ollama_url") or "http://localhost:11434").rstrip("/")
+            key = (provider, endpoint, model)
+            cached = self._vision_capability_cache.get(key)
+            now = time.monotonic()
+            if cached and now - cached[0] < 300:
+                return cached[1]
+            capable = any(token in model for token in known)
+            cacheable = False
+            try:
+                client = self._make_provider(route)
+                response = client._post("/api/show", {"model": route.get("model") or client.model}, 6)
+                if response.status_code < 400:
+                    data = response.json()
+                    caps = data.get("capabilities")
+                    if isinstance(caps, list):
+                        capable = any(str(item).lower() == "vision" for item in caps)
+                        cacheable = True
+                    else:
+                        # Older Ollama versions omit capabilities; use conservative model-family hints.
+                        cacheable = True
+            except Exception:
+                # An unavailable server is not evidence that the model lacks Vision.
+                pass
+            if cacheable:
+                self._vision_capability_cache[key] = (now, capable)
+            return capable
+        return any(token in model for token in known)
+
+    @contextlib.contextmanager
+    def vision_scope(self, route_id=""):
+        """Restrict this request and all failovers to routes known to accept images."""
+        prefer_token = _PREFER.set(str(route_id or ""))
+        vision_token = _VISION_ONLY.set(True)
+        try:
+            yield self
+        finally:
+            _VISION_ONLY.reset(vision_token)
+            _PREFER.reset(prefer_token)
 
     def preview_route(self):
         """The route the next request would try first (for the indicator before sending). None if nothing is usable."""
@@ -815,9 +893,12 @@ class HybridRouter:
         return self._lock.locked()
 
     # ---------- the request loop ----------
-    def _execute(self, messages, system_prompt, temperature, stream, on_chunk=None, on_event=None, retry_index=0):
+    def _execute(self, messages, system_prompt, temperature, stream, on_chunk=None, on_event=None, retry_index=0, cancel_event=None):
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("درخواست قبلی هنوز در حال انجام است؛ درخواست تکراری ارسال نشد.")
+        if cancel_event is not None and cancel_event.is_set():
+            self._lock.release()
+            raise RuntimeError("درخواست لغو شده است.")
         self._cancel.clear()
         try:
             started = time.monotonic()
@@ -832,7 +913,7 @@ class HybridRouter:
             failures = []
             emit = on_event or (lambda e: None)
             for route in self._candidates():
-                if self._cancel.is_set():
+                if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
                     break
                 ok, reason = self.eligibility(route)
                 rid = route["id"]
@@ -852,6 +933,9 @@ class HybridRouter:
                 provider = None
                 try:
                     provider = self._make_provider(route)
+                    if cancel_event is not None and cancel_event.is_set():
+                        break
+                    provider.cancel_event = cancel_event
                     provider.upload_progress = lambda pct, _i=info: emit({"phase": "uploading", "percent": pct, **_i})
                     guard = LeakGuard()                                   # internal analysis never becomes part of the answer
                     if not stream:
@@ -866,6 +950,10 @@ class HybridRouter:
                             connect_at = time.monotonic()
                             emit({"phase": "waiting", "failovers": metrics["failovers"], **info})
                         gen = provider.stream(messages, system_prompt, temperature, on_connect=on_connect)
+                        if cancel_event is not None and cancel_event.is_set():
+                            gen.close()
+                            return self._finish(route, info, parts, metrics, started, attempt_started, connect_at, first_at, provider,
+                                                stopped=True, failures=failures)
                         try:
                             for chunk in gen:
                                 if not chunk:
@@ -878,9 +966,9 @@ class HybridRouter:
                                     parts.append(chunk)
                                     if on_chunk:
                                         on_chunk(chunk)
-                                if self._cancel.is_set():
+                                if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
                                     break
-                            if not self._cancel.is_set():
+                            if not self._cancel.is_set() and not (cancel_event is not None and cancel_event.is_set()):
                                 tail = guard.finish()
                                 if tail:
                                     parts.append(tail)
@@ -888,11 +976,11 @@ class HybridRouter:
                                         on_chunk(tail)
                         finally:
                             gen.close()                                   # closes the HTTP stream even after Stop
-                        if not parts and not self._cancel.is_set():
+                        if not parts and not self._cancel.is_set() and not (cancel_event is not None and cancel_event.is_set()):
                             raise ProviderError(route["provider"], ("مدل فقط متن تحلیل داخلی برگرداند و چیزی برای نمایش نبود؛ Route بعدی امتحان می‌شود."
                                                                     if guard.leaked else "مدل پاسخ خالی برگرداند."), True, kind="empty")
                 except Exception as exc:                                  # noqa: BLE001 - every provider failure is contained here
-                    if self._cancel.is_set():                             # user pressed Stop: not a failure of the route
+                    if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):  # Stop: not a failure of the route
                         return self._finish(route, info, parts, metrics, started, attempt_started, connect_at, first_at, provider,
                                             stopped=True, failures=failures)
                     safe = RuntimeError(redact(exc, *secrets)) if not isinstance(exc, (ProviderError, OllamaError)) else exc
@@ -910,12 +998,12 @@ class HybridRouter:
                     metrics["failovers"] += 1
                     continue
                 return self._finish(route, info, parts, metrics, started, attempt_started, connect_at, first_at, provider,
-                                    stopped=self._cancel.is_set(), failures=failures)
+                                    stopped=self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()), failures=failures)
             # nothing worked
             self.last_provider = self.last_model = self.last_route_id = self.last_kind = None
             self.last_error = "; ".join(failures) or "هیچ Route فعالی تنظیم نشده است."
             self.last_duration_ms = int((time.monotonic() - started) * 1000)
-            if self._cancel.is_set():
+            if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
                 metrics.update(result="stopped", total_ms=self.last_duration_ms)
                 self.metrics.append(metrics)
                 self.last_metrics = metrics
@@ -989,13 +1077,14 @@ class HybridRouter:
         """Whole answer at once (kept for tests, tools and as the non-streaming fallback)."""
         return self._execute(messages, system_prompt, temperature, False)["text"]
 
-    def chat_stream(self, messages, system_prompt, temperature=0.7, on_chunk=None, on_event=None, retry_index=0):
+    def chat_stream(self, messages, system_prompt, temperature=0.7, on_chunk=None, on_event=None, retry_index=0, cancel_event=None):
         """Streamed answer. on_chunk(text) gets each piece; on_event(dict) gets phase changes
         (connecting / waiting / streaming / failover) with the REAL route taken from the router.
+        An optional external Event lets background workers cancel before or during provider startup.
 
         Failover happens only before the first token. Once text has arrived it is never repeated: a connection that dies
         later ends the answer as 'interrupted' (result["interrupted"] holds the reason). Returns the result dict."""
-        return self._execute(messages, system_prompt, temperature, True, on_chunk, on_event, retry_index)
+        return self._execute(messages, system_prompt, temperature, True, on_chunk, on_event, retry_index, cancel_event)
 
     # ---------- native function calling ----------
     def chat_with_tools(self, messages, system_prompt, temperature=0.4, tools=None, on_event=None):

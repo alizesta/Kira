@@ -61,6 +61,24 @@ class IntentTests(unittest.TestCase):
     def test_ambiguous_wording_is_left_to_the_model(self):
         self.assertEqual(self.intent("این تابع رو درست کن")[1], False)
 
+    def test_colloquial_ui_complaints_are_project_tasks_without_code_terms(self):
+        for text in (
+            "رنگ آیکون‌های نئونی به هم ریخته، درستش کن",
+            "ایموجی ساده رو پاک کن",
+            "کادر چت داره می‌لرزه",
+            "وقتی ضربدر ضمیمه رو می‌زنم کار نمی‌کنه",
+            "فایل زیپ بزرگ‌تر از ده مگ رو نمی‌ذاره ضمیمه کنم",
+            "دکمه ارسال غیرفعاله",
+            "می‌خوام اندازه دکمه‌ها کوچیک‌تر بشه",
+            "وقتی پوشه رو باز می‌کنم برنامه بسته می‌شه",
+            "the chat window is too big, make it smaller",
+        ):
+            self.assertEqual(self.intent(text), ("task", True), text)
+
+    def test_general_programming_questions_are_not_project_tasks(self):
+        for text in ("پایتون چیه؟", "تفاوت جاوا و پایتون چیه؟", "چطور حلقه for کار می‌کنه؟"):
+            self.assertEqual(self.intent(text)[0], "chat", text)  # ambiguous cases go to the normal chat after model classification
+
     def test_classifier_answers_are_parsed_safely(self):
         self.assertEqual(cc.parse_classification("TASK"), "task")
         self.assertEqual(cc.parse_classification("  question."), "question")
@@ -80,6 +98,13 @@ class IntentTests(unittest.TestCase):
         # replacing the project's content is a mission, not a project-folder switch
         for text in ("این پروژه رو عوض کن", "پروژه رو بررسی کن و تست‌ها رو بزن"):
             self.assertFalse(cc.wants_project_change(text), text)
+
+    def test_project_location_questions_are_distinguished_from_folder_changes(self):
+        for text in ("پوشه پروژه کجاست؟", "مسیر پوشه پروژه چیه؟", "آدرس پروژه کجاست؟",
+                     "پوشه کاری کیرا کجا ذخیره شده؟", "where is the project folder?"):
+            self.assertTrue(cc.wants_project_location(text), text)
+        for text in ("پوشه پروژه رو عوض کن", "پوشه پروژه را انتخاب کن", "سلام"):
+            self.assertFalse(cc.wants_project_location(text), text)
 
     def test_vocabulary_comes_from_the_projects_own_names(self):
         import tempfile

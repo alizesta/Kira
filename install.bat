@@ -41,14 +41,15 @@ if not exist .venv\Scripts\python.exe (
     %PY% -m venv .venv
   ) else (
     echo.
-    echo Your Python is too new for some Kira packages ^(voice, microphone^).
+    echo Your Python version is outside the supported range ^(3.11 or 3.12^).
     echo Downloading a private copy of Python 3.12 automatically. Please wait...
     if not exist .uvboot\Scripts\python.exe %PY% -m venv .uvboot
     .uvboot\Scripts\python.exe -m pip install --retries 10 --timeout 60 uv
     if not errorlevel 1 .uvboot\Scripts\uv.exe venv --seed --python 3.12 .venv
     if not exist .venv\Scripts\python.exe (
-      echo Could not download Python 3.12. Continuing with your own Python.
-      %PY% -m venv .venv
+      echo ERROR: Could not install a supported Python 3.12 environment.
+      echo Install Python 3.12 from python.org, then run install.bat again.
+      goto fail
     )
   )
 )

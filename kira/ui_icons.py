@@ -217,7 +217,7 @@ def _pixmap(name, colour):
     return pm
 
 
-def make_icon(name, normal="#9aa0b8", hover="#ffffff", checked="#b9a7ff", disabled="#555a70"):
+def make_icon(name, normal="#4FD8FF", hover="#FFFFFF", checked="#8F6BFF", disabled="#52617B"):
     key = (name, normal, hover, checked, disabled)
     icon = _CACHE.get(key)
     if icon is None:

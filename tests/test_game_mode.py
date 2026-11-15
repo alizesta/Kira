@@ -24,6 +24,23 @@ class GameModeSafetyTests(unittest.TestCase):
         self.assertIsNone(monitor.capture_last_game())
         monitor._user32.IsWindow.assert_not_called()
 
+    def test_disabling_game_mode_clears_cached_game_window(self):
+        monitor = GameModeMonitor()
+        monitor.last_game = {"hwnd": 123, "pid": 456}
+        monitor.set_enabled(False)
+        self.assertIsNone(monitor.last_game)
+
+    def test_poll_clears_stale_game_when_foreground_is_not_a_game(self):
+        monitor = GameModeMonitor()
+        monitor.last_game = {"hwnd": 123, "pid": 456}
+        monitor._foreground_info = mock.Mock(return_value={
+            "hwnd": 789, "pid": 999999,
+            "exe": "notepad.exe", "title": "Untitled - Notepad",
+            "rect": (0, 0, 100, 100),
+        })
+        monitor.poll()
+        self.assertIsNone(monitor.last_game)
+
     def test_capture_size_is_bounded_to_480p_and_keeps_aspect_ratio(self):
         self.assertEqual(fit_capture_size(1920, 1080), (853, 480))
         self.assertEqual(fit_capture_size(1280, 1024), (600, 480))

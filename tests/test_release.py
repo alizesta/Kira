@@ -42,7 +42,7 @@ class ReleaseTests(unittest.TestCase):
             self.assertFalse((ROOT / forbidden).exists() and not (ROOT / "data").samefile(config.DATA_DIR), forbidden)
 
     def test_version(self):
-        self.assertEqual(config.VERSION, "1 stable")
+        self.assertEqual(config.VERSION, "1.1")
 
     # 15) real SQLite history is provider-neutral and ordered
     def test_15_memory_context_is_ordered_and_bounded(self):
@@ -95,7 +95,10 @@ class ReleaseTests(unittest.TestCase):
             raw = (ROOT / name).read_bytes()
             self.assertEqual(raw.count(b"\n"), raw.count(b"\r\n"), name)
             self.assertTrue(all(b < 128 for b in raw), name + " must stay ASCII for CMD")
-        self.assertIn(b"install_deps.py", (ROOT / "install.bat").read_bytes())
+        installer = (ROOT / "install.bat").read_bytes()
+        self.assertIn(b"install_deps.py", installer)
+        self.assertIn(b"Install Python 3.12", installer)
+        self.assertNotIn(b"Continuing with your own Python", installer)
         self.assertIn(b"qwen3.5:4b", (ROOT / "download_model.bat").read_bytes())
 
     def test_release_batch_normalizer_forces_crlf_even_from_lf_sources(self):

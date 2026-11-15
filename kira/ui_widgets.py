@@ -108,6 +108,7 @@ class AttachmentTile(QFrame):
         self.overlay.setObjectName("attOverlay")
         self.overlay.setGeometry(0, 0, self.THUMB, self.THUMB)
         self.overlay.setAlignment(Qt.AlignCenter)
+        self.overlay.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         self.overlay.hide()
         self.close_btn = QToolButton(self)
         self.close_btn.setObjectName("attClose")
@@ -137,6 +138,7 @@ class AttachmentTile(QFrame):
                 self.thumb.setPixmap(pm)
 
     def set_removable(self, on):
+        self.close_btn.setEnabled(bool(on))
         self.close_btn.setVisible(bool(on))
 
     def set_progress(self, percent):
@@ -148,5 +150,6 @@ class AttachmentTile(QFrame):
         self.overlay.setText("…" if percent < 0 else ("✓" if percent >= 100 else f"{int(percent)}%"))
         self.overlay.raise_()
         self.overlay.show()
+        self.close_btn.raise_()
         if percent >= 100:
             self._hide_timer.start(1200)

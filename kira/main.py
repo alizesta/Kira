@@ -3,6 +3,7 @@ import base64
 import json
 import random
 import time
+import threading
 from pathlib import Path
 import re
 import sys
@@ -64,7 +65,8 @@ from .theme import build_style, STYLE
 from . import theme as theme_mod
 from .chat_sessions import ChatSession, NOOP, SESSION_FIELDS, session_property, front_only_property
 from . import winfx
-from .game_mode import GameModeMonitor, CAPTURE_INTERVAL_MS, CAPTURE_JPEG_QUALITY
+from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
+from .vision_pipeline import FrameGate, policy_for
 from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
 from .chat_code_ui import CodeChat
 
@@ -234,9 +236,20 @@ class StreamWorker(QThread):
 
     def run(self):
         try:
+            has_images = any(bool(item.get("images")) for item in (self.messages or []) if isinstance(item, dict))
             scope = getattr(self.router, "role_scope", None)
+            # Establish the brain role first: vision_route_id() must see the role's
+            # usage limits, and vision_scope() must be the innermost scope so its
+            # selected Vision route is not overwritten by role_scope's preference.
             with (scope(self.role, self.route_id) if scope else contextlib.nullcontext()):
-                result = self._run_request()
+                if has_images:
+                    vision_route = self.router.vision_route_id()
+                    if not vision_route:
+                        raise RuntimeError("برای تحلیل این تصویر هیچ مدل Vision فعالی در Route Manager پیدا نشد. یک مدل بینایی انتخاب کن.")
+                    with self.router.vision_scope(vision_route):
+                        result = self._run_request()
+                else:
+                    result = self._run_request()
             self.finished_ok.emit(result)
         except Exception as e:                                    # noqa: BLE001 - shown to the user, never crashes the UI
             self.failed.emit(str(e))
@@ -253,7 +266,7 @@ class StreamWorker(QThread):
 
 
 class AttachWorker(QThread):
-    """Reads attachments off the GUI thread: progress(index, percent), loaded(index, attachment), failed(index, message)."""
+    """Reads attachments off the GUI thread; each queued file can be cancelled independently."""
     progress = Signal(int, int)
     loaded = Signal(int, dict)
     failed = Signal(int, str)
@@ -261,14 +274,27 @@ class AttachWorker(QThread):
     def __init__(self, paths):
         super().__init__()
         self.paths = list(paths)
+        self._cancelled = [threading.Event() for _ in self.paths]
+
+    def cancel(self, index):
+        if 0 <= int(index) < len(self._cancelled):
+            self._cancelled[int(index)].set()
 
     def run(self):
         for i, path in enumerate(self.paths):
+            cancelled = self._cancelled[i]
+            if cancelled.is_set():
+                continue
             self.progress.emit(i, 0)
             try:
-                self.loaded.emit(i, att.load_attachment(path, lambda pct, i=i: self.progress.emit(i, pct)))
+                attachment = att.load_attachment(
+                    path, lambda pct, i=i: self.progress.emit(i, pct), cancelled=cancelled.is_set
+                )
+                if not cancelled.is_set():
+                    self.loaded.emit(i, attachment)
             except (att.AttachmentError, OSError) as exc:
-                self.failed.emit(i, str(exc))
+                if not cancelled.is_set():
+                    self.failed.emit(i, str(exc))
 
 
 class SearchWorker(QThread):
@@ -456,6 +482,67 @@ class ModelCombo(QComboBox):
         self.blockSignals(False)
 
 
+
+class VisionAnalysisWorker(QThread):
+    """Bounded image analysis; uses only a route marked/recognized as Vision-capable."""
+    done = Signal(bool, str, int)
+
+    def __init__(self, router, image, context=""):
+        super().__init__()
+        self.router = router
+        self.image = dict(image)
+        self.context = str(context or "").strip()[:1200]
+        self._cancelled = threading.Event()
+
+    def cancel_request(self):
+        self._cancelled.set()
+        # HybridRouter closes the active HTTP response, which interrupts network waits.
+        try:
+            self.router.cancel()
+        except Exception:
+            pass
+
+    def run(self):
+        began = time.monotonic()
+        try:
+            if self._cancelled.is_set():
+                return
+            route_id = self.router.vision_route_id()
+            if self._cancelled.is_set():
+                return
+            if not route_id:
+                raise RuntimeError("هیچ مدل Vision فعالی پیدا نشد. یک Route بینایی انتخاب کن یا برای Provider سفارشی vision_enabled را فعال کن.")
+            from .vision_ocr import extract_local_text
+            ocr_text = extract_local_text(self.image)
+            prompt = (
+                "این تصویر، فریم بازی کاربر است. فقط شواهد قابل مشاهده را گزارش کن و حدس نزن. "
+                "اگر متن OCR در اختیار داری، آن را به‌عنوان سرنخ کمکی در نظر بگیر، نه حقیقت قطعی. "
+                "اگر زمینه یا سؤال کاربر داده شده، دقیقاً به همان پاسخ بده؛ در غیر این صورت وضعیت، خطر، هدف و اقدام فوری را کوتاه بگو.\n"
+                + (("زمینه/سؤال کاربر: " + self.context + "\n") if self.context else "")
+                + (("متن استخراج‌شده‌ی محلی از تصویر: " + ocr_text[:1800]) if ocr_text else "")
+            )
+            if self._cancelled.is_set():
+                return
+            with self.router.vision_scope(route_id):
+                response = self.router.chat_stream(
+                    [{"role": "user", "content": self.context or "فریم فعلی بازی را بررسی کن.", "images": [self.image]}],
+                    prompt, 0.2, cancel_event=self._cancelled,
+                )
+            if self._cancelled.is_set():
+                return
+            if isinstance(response, dict):
+                if response.get("interrupted") or response.get("stopped"):
+                    raise RuntimeError("تحلیل Vision پیش از تکمیل متوقف شد.")
+                result = response.get("text", "")
+            else:
+                result = response
+            if not self._cancelled.is_set():
+                self.done.emit(True, str(result or "").strip(), int((time.monotonic() - began) * 1000))
+        except Exception as exc:
+            if not self._cancelled.is_set():
+                self.done.emit(False, str(exc)[:350], int((time.monotonic() - began) * 1000))
+
+
 class OllamaTaskWorker(QThread):
     """Runs one blocking Ollama call off the GUI thread. fn() returns (ok, text) or raises."""
     done = Signal(bool, str)
@@ -522,6 +609,14 @@ class SessionRelay(QObject):
     @Slot(int, bool, object)
     def search_done(self, token, ok, result):
         self._run("on_web_done", token, ok, result)
+
+    @Slot(bool, str, int)
+    def game_vision_done(self, ok, result, latency_ms):
+        self._run("_on_game_vision_result", ok, result, latency_ms)
+
+    @Slot()
+    def game_vision_finished(self):
+        self._run("_send_next_pending")
 
 
 class MainWindow(QMainWindow):
@@ -613,6 +708,9 @@ class MainWindow(QMainWindow):
         self._game_mode_enabled = False
         self._game_mode_profile = COMPETITIVE_SAFE_MODE
         self._latest_game_frame = None
+        self._vision_gate = FrameGate(policy_for(self.settings.get('vision_mode', 'economic')))
+        self._vision_worker = None
+        self._vision_last_note = ''
         self.game_audio_listener = None
         self._game_audio_alerts = {}
         self._game_prev_mic = False
@@ -651,7 +749,7 @@ class MainWindow(QMainWindow):
         self._game_poll_timer.timeout.connect(self.game_mode.poll)
         self._game_poll_timer.start()
         self._game_capture_timer = QTimer(self)
-        self._game_capture_timer.setInterval(CAPTURE_INTERVAL_MS)
+        self._game_capture_timer.setInterval(int(self._vision_gate.policy.interval_seconds * 1000))
         self._game_capture_timer.timeout.connect(self._capture_game_frame)
         self.game_mode.game_detected.connect(self.on_game_detected)
         self.resize(900, 720)
@@ -947,6 +1045,7 @@ class MainWindow(QMainWindow):
         self.front = self.cur = sess
         sess.unread = False
         self.settings["active_character_id"] = cid
+        self.refresh_navigation_icons()
         try:
             mood.set_active_character(cid, self.character_traits(cid, characters.all_profiles(self.settings).get(cid)))
         except Exception:                               # noqa: BLE001 - never block switching tabs
@@ -1282,14 +1381,33 @@ class MainWindow(QMainWindow):
                         widget.setMaximumWidth(lim["line"])
 
     def icon_button(self, name, checkable=False):
-        """Small borderless icon button; its tooltip carries the (translated) meaning."""
+        """Small neon icon button using the active character's own accent colours."""
         b = QToolButton()
-        b.setIcon(make_icon(name))
+        cid = characters.active_id(self.settings)
+        profile = characters.all_profiles(self.settings).get(cid, {})
+        palette = theme_mod.character_theme(cid, profile)
+        b.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
+                            checked=palette["main"], disabled="#52617B"))
         b.setIconSize(QSize(20, 20))
         b.setCheckable(checkable)
         b.setCursor(Qt.PointingHandCursor)
         b.setFocusPolicy(Qt.NoFocus)
         return b
+
+    def refresh_navigation_icons(self):
+        """Keep shared navigation glyphs in sync when the active character changes."""
+        cid = characters.active_id(self.settings)
+        profile = characters.all_profiles(self.settings).get(cid, {})
+        palette = theme_mod.character_theme(cid, profile)
+        for attr, name in (("nav_chat_btn", "chat"), ("nav_route_btn", "route"), ("menu_btn", "menu")):
+            button = getattr(self, attr, None)
+            if button is not None:
+                button.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
+                                          checked=palette["main"], disabled="#52617B"))
+        badge = getattr(self, "route_badge", None)
+        if badge is not None:
+            badge.setIcon(make_icon("chevron_up", normal=palette["second"], hover="#FFFFFF",
+                                    checked=palette["main"], disabled="#52617B"))
 
     def build_chat_tab(self):
         page = QWidget()
@@ -1383,10 +1501,23 @@ class MainWindow(QMainWindow):
         self.attach_err = QLabel()
         self.attach_err.setObjectName("hint")
         self.attach_err.setWordWrap(True)
-        self.attach_err.hide()
+        self.attach_err_close = QToolButton()
+        self.attach_err_close.setObjectName("attClose")
+        self.attach_err_close.setText("✕")
+        self.attach_err_close.setToolTip("لغو بارگذاری ضمیمه‌ها / بستن پیام")
+        self.attach_err_close.setCursor(Qt.PointingHandCursor)
+        self.attach_err_close.setFixedSize(20, 20)
+        self.attach_err_close.clicked.connect(self.cancel_attachments)
+        self.attach_err_row = QHBoxLayout()
+        self.attach_err_row.setContentsMargins(0, 0, 0, 0)
+        self.attach_err_row.addWidget(self.attach_err, 1)
+        self.attach_err_row.addWidget(self.attach_err_close)
+        self.attach_err_widget = QWidget()
+        self.attach_err_widget.setLayout(self.attach_err_row)
+        self.attach_err_widget.hide()
         co.addWidget(self.send_strip)
         co.addWidget(self.attach_strip)
-        co.addWidget(self.attach_err)
+        co.addWidget(self.attach_err_widget)
         self.input = ChatInput()
         self.input.filesDropped.connect(self.add_attachment_paths)
         self.input.imagePasted.connect(self.add_pasted_image)
@@ -1399,7 +1530,7 @@ class MainWindow(QMainWindow):
         self.route_badge = RouteChip()
         self.route_badge.setObjectName("routeChip")
         self.route_badge.setText("● Ready")
-        self.route_badge.setIcon(make_icon("chevron_up", normal="#9aa0b8", hover="#ffffff"))
+        self.route_badge.setIcon(make_icon("chevron_up", normal="#4FD8FF", hover="#FFFFFF"))
         self.route_badge.setIconSize(QSize(12, 12))
         self.route_badge.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.route_badge.setCursor(Qt.PointingHandCursor)
@@ -1460,6 +1591,15 @@ class MainWindow(QMainWindow):
         self.game_mode_safe_action.triggered.connect(lambda checked=False: self.set_game_mode_profile(COMPETITIVE_SAFE_MODE))
         self.game_mode_off_action = QAction("خاموش‌کردن Game Mode", self.game_mode_menu)
         self.game_mode_off_action.triggered.connect(lambda checked=False: self.set_game_mode(False))
+        self.vision_rate_menu = self.game_mode_menu.addMenu("سرعت Vision")
+        self.vision_rate_actions = {}
+        for mode, label in (("economic", "اقتصادی · هر ۵ ثانیه"), ("smart", "هوشمند · هر ۱ ثانیه"), ("fast", "سریع · هر نیم‌ثانیه")):
+            action = QAction(label, self.vision_rate_menu)
+            action.setCheckable(True)
+            action.setChecked(mode == self._vision_gate.policy.name)
+            action.triggered.connect(lambda checked=False, selected=mode: self.set_vision_mode(selected))
+            self.vision_rate_menu.addAction(action)
+            self.vision_rate_actions[mode] = action
         self.game_mode_menu.addAction(self.game_mode_story_action)
         self.game_mode_menu.addAction(self.game_mode_safe_action)
         self.game_mode_menu.addSeparator()
@@ -3337,7 +3477,7 @@ class MainWindow(QMainWindow):
         exts = " ".join("*" + e for e in sorted(att.IMAGE_TYPES))
         paths, _ = QFileDialog.getOpenFileNames(
             self, "انتخاب عکس یا فایل", "",
-            f"عکس و فایل‌های پشتیبانی‌شده ({exts} *.txt *.md *.json *.csv *.log *.py *.js *.html *.xml *.yaml *.yml *.ini *.docx *.pdf);;همه‌ی فایل‌ها (*)")
+            f"عکس و فایل‌های پشتیبانی‌شده ({exts} *.txt *.md *.json *.csv *.log *.py *.js *.html *.xml *.yaml *.yml *.ini *.docx *.pdf *.zip);;همه‌ی فایل‌ها (*)")
         if paths:
             self.add_attachment_paths(paths)
 
@@ -3366,8 +3506,19 @@ class MainWindow(QMainWindow):
         strip.setVisible(strip.row.count() > 1)
 
     def show_attach_error(self, messages):
-        self.attach_err.setText("\n".join("✕ " + m for m in messages))
-        self.attach_err.setVisible(bool(messages))
+        self.attach_err.setText("\n".join(str(m) for m in messages))
+        self.attach_err_widget.setVisible(bool(messages))
+        self.attach_err_close.setVisible(bool(messages))
+
+    def cancel_attachments(self):
+        """Cancel pending file reads; when idle, the same control only dismisses the error."""
+        worker = getattr(self, "_attach_worker", None)
+        if worker is not None and worker.isRunning():
+            for index in range(len(getattr(self, "_load_tiles", []))):
+                worker.cancel(index)
+            for tile in list(self._tiles):
+                self.remove_attachment_tile(tile)
+        self.show_attach_error([])
 
     # -- choosing files --
     def attach_loading(self):
@@ -3401,13 +3552,21 @@ class MainWindow(QMainWindow):
         self._attach_worker.loaded.connect(self.on_attach_loaded)
         self._attach_worker.failed.connect(self.on_attach_failed)
         self._attach_worker.finished.connect(lambda: self.send_btn.setEnabled(not self.busy))
+        self._attach_worker.finished.connect(self.on_attach_finished)
         self.send_btn.setEnabled(False)
+        self.attach_err.setText("در حال بارگذاری ضمیمه‌ها؛ برای لغو روی ضربدر بزن.")
+        self.attach_err_close.setVisible(True)
+        self.attach_err_widget.show()
         self._attach_worker.start()
 
     def on_attach_progress(self, index, percent):
         tile = self._load_tiles[index] if index < len(self._load_tiles) else None
         if tile is not None and not tile.deleted:
             tile.set_progress(percent)
+
+    def on_attach_finished(self):
+        if self.attach_err.text().startswith("در حال بارگذاری"):
+            self.show_attach_error([])
 
     def on_attach_loaded(self, index, attachment):
         tile = self._load_tiles[index] if index < len(self._load_tiles) else None
@@ -3443,6 +3602,12 @@ class MainWindow(QMainWindow):
 
     def remove_attachment_tile(self, tile):
         tile.deleted = True
+        worker = getattr(self, "_attach_worker", None)
+        if worker is not None and worker.isRunning():
+            try:
+                worker.cancel(self._load_tiles.index(tile))
+            except (ValueError, AttributeError):
+                pass
         if tile in self._tiles:
             self._tiles.remove(tile)
         self.strip_remove(self.attach_strip, tile)
@@ -3501,6 +3666,50 @@ class MainWindow(QMainWindow):
             self.add_attachment_paths(paths)
             event.acceptProposedAction()
 
+    def set_vision_mode(self, mode):
+        """Change analysis cadence without changing the manual Game Mode safety gate."""
+        policy = policy_for(mode)
+        self._vision_gate.set_policy(policy)
+        self.settings["vision_mode"] = policy.name
+        save_settings(self.settings)
+        if hasattr(self, "vision_rate_actions"):
+            for key, action in self.vision_rate_actions.items():
+                action.setChecked(key == policy.name)
+        self._game_capture_timer.setInterval(max(250, int(policy.interval_seconds * 1000)))
+        if self._game_mode_enabled and game_mode_permissions(self._game_mode_profile)["vision_capture"]:
+            self._capture_game_frame()
+            if not self._game_capture_timer.isActive():
+                self._game_capture_timer.start()
+        self.game_mode_btn.setToolTip(f"Game Mode · Vision {policy.name} · هر {policy.interval_seconds:g} ثانیه")
+
+    def _set_game_vision_capture(self, allowed):
+        """Synchronize capture permission and cancel in-flight analysis whenever Vision is disallowed."""
+        allowed = bool(allowed)
+        self.game_mode.set_enabled(allowed)
+        if allowed:
+            self._capture_game_frame()
+            self._game_capture_timer.start()
+        else:
+            self._game_capture_timer.stop()
+            self._latest_game_frame = None
+            gate = getattr(self, "_vision_gate", None)
+            if gate is not None:
+                gate.reset()
+            self._vision_last_note = ""
+            self._cancel_vision_worker()
+
+    def _cancel_vision_worker(self):
+        worker = getattr(self, "_vision_worker", None)
+        if worker is not None and worker.isRunning():
+            worker.cancel_request()
+
+    def _stop_local_code_jobs(self):
+        code_chat = getattr(self, "code_chat", None)
+        session = getattr(code_chat, "session", None) if code_chat is not None else None
+        if session is not None:
+            with self._as(session):
+                code_chat.stop(session)
+
     def set_game_mode_profile(self, profile):
         """Apply a manually selected gameplay profile; never infer or enable it automatically."""
         self._game_mode_profile = normalize_game_mode_profile(profile)
@@ -3517,12 +3726,13 @@ class MainWindow(QMainWindow):
         audio_allowed = bool(permissions["game_audio_loopback"])
 
         # Capture is gated by the selected profile, not only by the master toggle.
-        self.game_mode.set_enabled(enabled and vision_allowed)
+        self._set_game_vision_capture(enabled and vision_allowed)
         safe_profile = enabled and self._game_mode_profile == COMPETITIVE_SAFE_MODE
         self.tool_agent.set_competitive_safe_mode(safe_profile)
         # Safe mode does not keep polling foreground process metadata while an online game is running.
         if safe_profile:
             self._game_poll_timer.stop()
+            self._stop_local_code_jobs()
         elif not self._game_poll_timer.isActive():
             self._game_poll_timer.start()
 
@@ -3533,19 +3743,11 @@ class MainWindow(QMainWindow):
             if not self.wake_btn.isChecked():
                 self.wake_btn.setChecked(True)
                 self.toggle_wake()
-            if vision_allowed:
-                self._capture_game_frame()
-                self._game_capture_timer.start()
-            else:
-                self._game_capture_timer.stop()
-                self._latest_game_frame = None
             if audio_allowed:
                 self._start_game_audio_listener()
             else:
                 self._stop_game_audio_listener()
         else:
-            self._game_capture_timer.stop()
-            self._latest_game_frame = None
             self._stop_game_audio_listener()
             if not self._game_prev_wake and self.wake_btn.isChecked():
                 self.wake_btn.setChecked(False)
@@ -3605,12 +3807,74 @@ class MainWindow(QMainWindow):
 
 
     def _capture_game_frame(self):
-        """Keep only the newest small frame; capture is timer-driven and never uploads in the background."""
+        """Capture a bounded frame and analyze only changed frames at the selected low-cost rate."""
         if not self._game_mode_enabled or not game_mode_permissions(self._game_mode_profile)["vision_capture"]:
             self._latest_game_frame = None
+            self._vision_gate.reset()
             return
-        pixmap = self.game_mode.capture_last_game()
+        # Re-check the foreground immediately before every capture; the slower
+        # suggestion timer alone could leave a background game capturable for seconds.
+        self.game_mode.poll()
+        pixmap = self.game_mode.capture_last_game(
+            self._vision_gate.policy.max_width, self._vision_gate.policy.max_height
+        )
         self._latest_game_frame = pixmap.toImage() if pixmap is not None else None
+        if self._latest_game_frame is None or self._vision_worker is not None and self._vision_worker.isRunning():
+            return
+        # Never compete with a user chat request for the same provider route.
+        if self.busy or self.client.busy or self.speaker._began:
+            return
+        try:
+            from PySide6.QtCore import QBuffer, QByteArray, QIODevice
+            data = QByteArray()
+            buffer = QBuffer(data)
+            if not buffer.open(QIODevice.WriteOnly):
+                return
+            if not self._latest_game_frame.save(buffer, "JPEG", self._vision_gate.policy.jpeg_quality):
+                return
+            jpeg = bytes(data)
+            # Compare a tiny grayscale thumbnail, not compressed JPEG bytes, to detect real scene changes.
+            thumb = self._latest_game_frame.scaled(32, 18, Qt.IgnoreAspectRatio, Qt.FastTransformation).convertToFormat(QImage.Format_Grayscale8)
+            visual_sample = bytes(thumb.pixelColor(x, y).red() for y in range(thumb.height()) for x in range(thumb.width()))
+            if not self._vision_gate.accept(jpeg, visual_sample=visual_sample):
+                return
+            image = att.image_attachment(jpeg, "game-screen.jpg", "image/jpeg")
+            session = self.cur
+            self._vision_worker = VisionAnalysisWorker(self.client, image)
+            self._vision_worker.done.connect(session.relay.game_vision_done)
+            self._vision_worker.finished.connect(session.relay.game_vision_finished)
+            self._vision_worker.start()
+        except Exception as exc:  # noqa: BLE001 - vision must never interrupt the game/chat
+            self.add_chat("system", f"Vision: آماده‌سازی فریم ناموفق بود: {str(exc)[:180]}")
+
+    def _send_pending_for_session(self, session):
+        if self._closing or session is None or session.cid not in self.sessions:
+            return
+        with self._as(session):
+            self._send_next_pending()
+
+    def _on_game_vision_result(self, ok, result, latency_ms):
+        self._vision_gate.mark_latency(latency_ms)
+        stats = self._vision_gate.snapshot()
+        self.game_mode_btn.setToolTip(
+            f"Vision {stats['mode']} · تحلیل: {stats['analysis_count']} · "
+            f"فریم تکراری ردشده: {stats['unchanged_skips']} · تأخیر آخرین تحلیل: {latency_ms}ms"
+        )
+        if (not self._game_mode_enabled
+                or not game_mode_permissions(self._game_mode_profile)["vision_capture"]):
+            return
+        if not ok:
+            # Unsupported image models are reported once, not every sampling interval.
+            message = str(result or "تحلیل تصویر ناموفق بود.")
+            if message != self._vision_last_note:
+                self._vision_last_note = message
+                self.add_chat("system", "Vision: " + message[:300])
+            return
+        text = str(result or "").strip()
+        if not text or text == self._vision_last_note:
+            return
+        self._vision_last_note = text
+        self.add_chat("system", "👁️ " + text[:900])
 
     def on_game_detected(self, info):
         """Suggest Game Mode once per detected process, unless the user already enabled it."""
@@ -3652,8 +3916,23 @@ class MainWindow(QMainWindow):
             self.input.clear()
             self.submit(text, files)
 
-    def submit(self, text, attachments=None):
-        voice, self._voice_next = self._voice_next, False
+    def submit(self, text, attachments=None, _voice=None):
+        if _voice is None:
+            voice, self._voice_next = self._voice_next, False
+        else:
+            voice, self._voice_next = bool(_voice), False
+        vision_worker = getattr(self, "_vision_worker", None)
+        if (not self.busy and vision_worker is not None and vision_worker.isRunning()
+                and getattr(vision_worker, "router", None) is self.client):
+            if len(self._pending) < 3:
+                self._pending.append((text, attachments, voice))
+                self.status.setText(
+                    f"پیام در صف است ({len(self._pending)}) — تحلیل Vision متوقف می‌شود و پیام بعد از آن ارسال خواهد شد."
+                )
+                vision_worker.cancel_request()
+                if not vision_worker.isRunning():
+                    QTimer.singleShot(0, lambda owner=self.cur: self._send_pending_for_session(owner))
+            return
         if self.busy and not attachments:
             try:
                 control = self.tool_agent.control_running(text)        # "وضعیت / توقف / لغو کار / مرحله اضافه کن" act between two steps of a running task
@@ -3666,7 +3945,7 @@ class MainWindow(QMainWindow):
             # Policy: typing never blocks. A message sent while an answer is being generated waits in a small queue
             # (max 3) and is sent automatically, in order, when the current answer ends.
             if len(self._pending) < 3:
-                self._pending.append((text, attachments))
+                self._pending.append((text, attachments, voice))
                 self.status.setText(f"پیام در صف است ({len(self._pending)}) — بعد از پایان پاسخ فعلی ارسال می‌شود.")
             return
         if not attachments and getattr(self, "code_chat", None) is not None and self.code_chat.handle(text, voice):
@@ -3705,7 +3984,9 @@ class MainWindow(QMainWindow):
                 if action_result is None:
                     action_result = self.tool_agent.handle_task_command(text)         # status / pause / cancel / add a step of an unfinished task: decided in code too
             else:
-                action_result = run_safe_action(text)                                  # tools switched off (tools_mode = off): the old fixed shortcuts
+                action_result = run_safe_action(
+                    text, allow_desktop=self._game_mode_profile != COMPETITIVE_SAFE_MODE
+                )                                                                       # fixed shortcuts remain gated in Competitive Safe
         self._tool_plan = None if action_result else self.tool_agent.plan(text)
         self.save_message("user", packed["stored"] if packed else text)
         if action_result:
@@ -4281,12 +4562,14 @@ class MainWindow(QMainWindow):
         self._send_next_pending()
 
     def _send_next_pending(self):
+        if self._closing:
+            return
         if self._pending and not self.busy:
             nxt = self._pending.pop(0)
             QTimer.singleShot(0, lambda t=nxt, sess=self.cur: self._submit_for(sess, t))
 
     def _submit_for(self, session, args):
-        if session.cid in self.sessions:
+        if not self._closing and session.cid in self.sessions:
             with self._as(session):
                 self.submit(*args)
 
@@ -4608,18 +4891,17 @@ class MainWindow(QMainWindow):
             if sess.timer is not None:
                 sess.timer.stop()
         self._game_poll_timer.stop()
-        self._game_capture_timer.stop()
-        self._latest_game_frame = None
+        self._set_game_vision_capture(False)
         self._stop_game_audio_listener()
         self.game_mode.set_enabled(False)
         for sess in self.sessions.values():
             for w in (sess.worker, sess._search_worker):
                 if w is not None and w.isRunning():
                     w.wait(3000)
-        for name in ("_route_worker", "_bench_worker", "_scan_worker", "_provider_test_worker", "_ollama_worker"):
+        for name in ("_route_worker", "_bench_worker", "_scan_worker", "_provider_test_worker", "_ollama_worker", "_vision_worker"):
             w = getattr(self, name, None)
             if w is not None and w.isRunning():
-                w.wait(3000)
+                w.wait(5000)
         self.stop_listener()
         self.safe_stop_speaker()
         self.companion.close()

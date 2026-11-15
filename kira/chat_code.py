@@ -161,6 +161,26 @@ _TASK_VERBS = re.compile(
 _EXPLAIN_Q = re.compile(r"(چرا|چطور|چگونه|توضیح|یعنی\s*چی|\b(?:why|how|explain)\b)", re.I)
 _ANY_Q = re.compile(r"(\?|؟|چیه|چیست|کجاست|کجا|کدام|چند|آیا|\b(?:what|where|which)\b)", re.I)
 _TRACE = re.compile(r"(Traceback \(most recent call last\)|^\s*File \".+\", line \d+|\b\w*(?:Error|Exception):)", re.M)
+# Natural Persian requests about visible software behaviour. People should not need to know
+# filenames, programming terms or slash commands to ask Kira to fix their own app.
+_SOFTWARE_SURFACE = re.compile(
+    r"(آیکون|ایموجی|دکمه|صفحه|پنجره|منو|نوار|نوار ابزار|چت|پیام|فیلد|کادر|"
+    r"ضمیمه|پیوست|فایل|پوشه|عکس|تصویر|صدا|میکروفون|اسپیکر|تنظیمات|"
+    r"برنامه|اپلیکیشن|رابط کاربری|ظاهر|رنگ|اندازه|فونت|مدل|کیرا|"
+    r"\b(?:button|icon|emoji|screen|window|menu|toolbar|chat|message|attachment|file|folder|"
+    r"image|audio|microphone|settings|app|interface|layout|colour|color|font|model)\b)", re.I)
+_NATURAL_CHANGE = re.compile(
+    r"(کار\s*نمی\s*کنه|کار\s*نمی\s*کند|کار\s*نمی\s*کنه|"
+    r"باز\s*نمی\s*شه|باز\s*نمی\s*شود|باز\s*نمیشه|"
+    r"فعال\s*نیست|غیرفعال|از\s*کار\s*افتاده|خراب(?:ه|\s*شده)?|"
+    r"به\s*هم\s*ریخته|قاتی\s*شده|درست\s*نمایش\s*نمی\s*ده|"
+    r"نمایش\s*نمی\s*ده|نمی\s*ذاره|نمی\s*گذاره|"
+    r"بزرگ(?:تر)?\s*شده|کوچیک(?:تر)?\s*شده|کوچک(?:تر)?\s*شده|"
+    r"زیاد(?:ه)?|کم(?:ه)?|می\s*لرزه|می\s*پره|بسته\s*می\s*شه|"
+    r"رو\s*مخه|اعصاب\s*خرد\s*کن|"
+    r"می\s*خوام|می\s*خام|می\s*خواهم|باید|کاری\s*کن|"
+    r"\b(?:doesn['’]?t work|not working|broken|won['’]?t open|disabled|"
+    r"messed up|too big|too small|make it|please fix|I want)\b)", re.I)
 _CHANGE_PROJECT = re.compile(
     r"(?:پوشه|مسیر|فولدر|دایرکتوری)[\s\u200c]*(?:ی[\s\u200c]*)?(?:این[\s\u200c]+)?پروژه"
     r"[\s\u200c]*(?:رو|را)?[\s\u200c]*.*(?:عوض|تغییر|انتخاب|جابه[\s\u200c]*جا)|"
@@ -193,6 +213,7 @@ def classify_intent(text: str, vocabulary=frozenset()):
     """(intent, sure). intent: 'task' (change / build / fix / check something in the project), 'question' (answer needs the
     project's files) or 'chat'. sure=False means the wording is ambiguous and a model should decide."""
     t = str(text or "").strip()
+    normalized = re.sub(r"[\u200c\u200e\u200f]", " ", t)
     if len(t) < 6:
         return "chat", True
     file_ref = bool(_FILE_REF.search(t))
@@ -207,6 +228,9 @@ def classify_intent(text: str, vocabulary=frozenset()):
     project_ref = file_ref or project_word or trace or (vocab_hit and (verb or question)) or ((bool(_FEATURE.search(t)) or bool(_BUG.search(t))) and verb)
     if "```" in t and not (file_ref or project_word):
         return "chat", True                                    # code pasted into the message: Kira helps in the normal chat
+    # A concrete UI/file behaviour complaint is a change request even without an imperative verb.
+    if _SOFTWARE_SURFACE.search(normalized) and (_NATURAL_CHANGE.search(normalized) or verb):
+        return "task", True
     if project_ref:
         if verb and not explain:
             return "task", True
@@ -226,11 +250,31 @@ def wants_project_change(text: str) -> bool:
     return bool(_CHANGE_PROJECT.search(normalized))
 
 
-CLASSIFY_SYSTEM = ("You route the user's latest chat message to Kira, a coding specialist. Decide if it asks Kira to work on THE USER'S OWN "
-                   "software project (look at, debug, change, build, test or explain something that lives in its files). "
-                   "Answer with exactly one word: TASK (wants something fixed, changed, added, removed, built or checked in the project), "
-                   "QUESTION (wants an answer that needs reading the project's files), or CHAT (casual talk, feelings, general programming "
-                   "knowledge, anything that needs no project files). If unsure, answer CHAT.")
+def wants_project_location(text: str) -> bool:
+    """Recognise a question asking where the currently selected project folder is."""
+    normalized = re.sub(r"[\u200c\u200e\u200f]", " ", str(text or "").lower())
+    if wants_project_change(normalized):
+        return False
+    patterns = (
+        r"(?:مسیر|آدرس).{0,28}(?:پروژه|پوشه)",
+        r"(?:پوشه|دایرکتوری).{0,28}(?:پروژه|کاری).{0,20}(?:کجاست|کجا(?:ست)?|چیه|چیست|رو کجا)",
+        r"(?:پروژه|پوشه کاری).{0,20}(?:کجاست|کجا(?:ست)?|چیه|چیست)",
+        r"where.{0,24}(?:project|workspace).{0,16}(?:folder|directory|path)",
+        r"(?:project|workspace).{0,16}(?:folder|directory|path).{0,16}where",
+    )
+    return any(re.search(pattern, normalized, re.I) for pattern in patterns)
+
+
+CLASSIFY_SYSTEM = ("You route the user's latest message in Kira's ordinary chat. Decide whether they are asking Kira to work on "
+                   "the currently selected software project. Understand natural everyday language, especially colloquial Persian. "
+                   "The user is NOT expected to know programming vocabulary, filenames, code syntax or slash commands. "
+                   "Requests like 'این دکمه کار نمی‌کنه درستش کن', 'رنگ آیکون‌ها قاطی شده', 'وقتی می‌زنم برنامه بسته می‌شه', "
+                   "'کوچیک‌ترش کن', 'این قابلیت رو اضافه کن' and follow-ups like 'همین رو هم درست کن' are TASK when context points "
+                   "to the user's project. Use recent conversation to resolve 'این', 'اون', 'همین', 'مثل قبلی' and omitted subjects. "
+                   "TASK means make or investigate a requested project change; QUESTION means inspect project files to answer; "
+                   "CHAT means general conversation or general programming education that does not ask to change this project. "
+                   "Do not require technical terms or an explicit file reference. If it is clearly about the project, prefer TASK/QUESTION; "
+                   "if it is clearly general conversation, choose CHAT. Answer with exactly one word: TASK, QUESTION or CHAT.")
 
 
 def classifier_prompt(project_name: str, top_level, history, text: str) -> str:

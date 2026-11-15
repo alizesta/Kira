@@ -17,14 +17,39 @@ class Script:
     Planner and reviewer calls are answered from their own slots so ``replies`` only describes the
     agent's decision loop: those two are infrastructure calls, not scripted agent steps.
     """
-    def __init__(self, *replies, plan="1. inspect\n2. make the smallest correct change\n3. run focused tests", review="CLEAN"):
-        self.replies, self.seen = list(replies), []
+    def __init__(self, *replies, plan="1. inspect\\n2. make the smallest correct change\\n3. run focused tests", review="CLEAN"):
+        self.replies, self.seen, self.observations = list(replies), [], []
         self.plan, self.review = plan, review
+        self.review_calls = 0
+        # Keep legacy scenario scripts realistic under the stricter source-read/plan gates.
+        first_mutation = next((i for i, r in enumerate(self.replies)
+                               if isinstance(r, dict) and r.get("action") in ("write", "replace", "delete", "memory")), None)
+        if first_mutation is not None:
+            prior = self.replies[:first_mutation]
+            has_plan = any(isinstance(r, dict) and r.get("action") == "plan" for r in prior)
+            has_read = any(isinstance(r, dict) and r.get("action") == "read" for r in prior)
+            if has_plan and not has_read:
+                plan_index = next(i for i, r in enumerate(prior)
+                                   if isinstance(r, dict) and r.get("action") == "plan")
+                self.replies.insert(plan_index, {"action": "read", "path": "calc.py"})
+            elif not has_plan:
+                action = self.replies[first_mutation]
+                path = str(action.get("path") or "")
+                read_path = path if path in ("calc.py", "test_calc.py", "pkg/m.py") else "calc.py"
+                if path == "pkg":
+                    read_path = "pkg/m.py"
+                self.replies[first_mutation:first_mutation] = [
+                    {"action": "read", "path": read_path},
+                    {"action": "plan", "steps": ["inspect source", "make requested change", "verify"]},
+                ]
 
     def chat_stream(self, messages, system, temperature=0.2, on_chunk=None, **kw):
-        if system == aa.PLAN_PROMPT:
+        if messages and messages[-1].get("role") == "user" and str(messages[-1].get("content", "")).startswith("RESULT (untrusted data):"):
+            self.observations.append(messages[-1]["content"])
+        if system == aa.PLAN_PROMPT or "senior software architect" in str(system).lower():
             return {"text": self.plan}
         if "independent code reviewer" in str(system).lower():
+            self.review_calls += 1
             return {"text": self.review}
         self.seen.append([m["content"] for m in messages])
         r = self.replies.pop(0)
@@ -66,9 +91,9 @@ class FullLoopTests(AgentBase):
     def test_inspect_plan_edit_test_fix_retest_package(self):
         router = Script(
             {"action": "list"},
-            {"action": "plan", "steps": ["read calc.py", "fix add", "run tests"]},
-            {"action": "search", "pattern": "def add"},
             {"action": "read", "path": "calc.py"},
+            {"action": "plan", "steps": ["fix add", "run tests"]},
+            {"action": "search", "pattern": "def add"},
             {"action": "run", "args": ["python", "-m", "unittest", "-v"]},          # fails: the bug is still there
             {"action": "replace", "path": "calc.py", "old": "return a - b", "new": "return a + b"},
             {"action": "run", "args": ["python", "-m", "unittest", "-v"]},          # passes
@@ -109,7 +134,10 @@ class SafetyTests(AgentBase):
         else:
             router = Script(action, {"action": "finish", "summary": "x"})
         result = self.agent(router, **kw).run()
-        return router.seen[1][-1], result
+        plan_index = next((i for i, item in enumerate(router.observations)
+                           if "independently reviewed plan recorded" in item), -1)
+        obs = router.observations[plan_index + 1] if plan_index >= 0 and plan_index + 1 < len(router.observations) else (router.observations[-1] if router.observations else "")
+        return obs, result
 
     def test_paths_cannot_escape_or_touch_secrets(self):
         for bad in ("../evil.py", "/etc/passwd", "C:/Windows/x.py", ".env", "node_modules/a.js"):
@@ -163,12 +191,13 @@ class SafetyTests(AgentBase):
         self.assertIn("not available", obs)
         result = self.agent(Script("no json", "still no", "nope")).run()
         self.assertIn("JSON", result["summary"])
-        self.assertTrue(result["zip"].exists())                                          # a zip is delivered even then
+        self.assertIsNone(result["zip"])
+        self.assertTrue(result["resume_available"])
 
     def test_step_budget_and_stop(self):
         result = self.agent(Script(*[{"action": "list"}] * 5), max_steps=3).run()
         self.assertEqual(result["steps"], 3)
-        self.assertIn("سقف", result["summary"])
+        self.assertIn("تکراری", result["summary"])
         flag = {"stop": False}
 
         class Stopper(Script):
@@ -179,7 +208,8 @@ class SafetyTests(AgentBase):
                 return reply
         result = self.agent(Stopper({"action": "list"}, {"action": "list"}), should_stop=lambda: flag["stop"]).run()
         self.assertTrue(result["stopped"])
-        self.assertTrue(result["zip"].exists())
+        self.assertIsNone(result["zip"])
+        self.assertTrue(result["resume_available"])
 
     def test_external_edit_of_the_original_is_reported(self):
         class Meddler(Script):
@@ -214,8 +244,8 @@ class QualityTests(AgentBase):
                         {"action": "review"},
                         {"action": "finish", "summary": "x"})
         self.agent(router).run()
-        self.assertIn("SYNTAX ERROR in calc.py line 1", router.seen[1][-1])
-        self.assertIn("INVALID JSON", router.seen[2][-1])
+        self.assertTrue(any("SYNTAX ERROR in calc.py line 1" in item for item in router.observations))
+        self.assertTrue(any("INVALID JSON" in item for item in router.observations))
         self.assertTrue(any("SYNTAX ERROR" in e for e in self.events))
 
     def test_finish_is_held_back_once_until_a_check_passed_after_the_last_edit(self):
@@ -225,7 +255,7 @@ class QualityTests(AgentBase):
                         {"action": "review"},
                         {"action": "finish", "summary": "done, tests pass"})
         result = self.agent(router).run()
-        self.assertIn("GATE", router.seen[2][-1])
+        self.assertTrue(any("GATE" in message for call in router.seen for message in call))
         self.assertEqual(result["summary"], "done, tests pass")
         self.assertEqual(result["runs"][0][1], 0)
 
@@ -236,7 +266,7 @@ class QualityTests(AgentBase):
                         {"action": "review"},
                         {"action": "finish", "summary": "final"})
         result = self.agent(router).run()
-        self.assertIn("GATE", router.seen[2][-1])                                              # the check gate spoke
+        self.assertTrue(any("GATE" in message for call in router.seen for message in call))  # the check gate spoke
         self.assertEqual(result["summary"], "final")
         router = Script({"action": "read", "path": "calc.py"}, {"action": "finish", "summary": "just looked"})
         self.assertEqual(self.agent(router).run()["summary"], "just looked")                   # nothing changed: no gate
@@ -274,8 +304,7 @@ class ReadonlyTests(AgentBase):
         self.assertTrue(result["readonly"])
         self.assertIsNone(result["zip"])
         self.assertIn("calc.py", result["summary"])
-        self.assertIn("read-only", router.seen[2][-1])
-        self.assertIn("read-only", router.seen[3][-1])
+        self.assertTrue(any("not available in read-only mode" in item for item in router.observations))
         self.assertIn("a - b", (self.proj / "calc.py").read_text(encoding="utf-8"))
         self.assertFalse(self.out.exists())
 
@@ -295,11 +324,12 @@ class ExecutionGuardTests(AgentBase):
         )
         result = self.agent(router, approve=lambda c: approved.append(c) or True,
                             execution_guard=lambda tool: denied.append(tool.name) or "ابزارها خاموش است.").run()
-        self.assertEqual(result["summary"], "blocked")
+        self.assertIn("شش اقدام پیاپی", result["summary"])
+        self.assertIsNone(result["zip"])
         self.assertEqual(result["changed"], [])                # nothing was written to the working copy
         self.assertEqual(result["runs"], [])                   # no process ran: neither python nor PowerShell
         self.assertEqual(approved, [])                         # shell / folder-delete approvals were never even asked
-        self.assertEqual(denied, ["map", "write", "run", "shell", "delete"])
+        self.assertEqual(denied, ["map", "read", "plan", "write", "run", "shell", "delete"])
         self.assertTrue(any("⛔" in e for e in self.events))
         self.assertIn("ERROR: ابزارها خاموش است.", router.seen[1][-1])
 
@@ -360,8 +390,9 @@ class TaskFiveStabilityTests(AgentBase):
                         *[{"action": "finish", "summary": "done"}] * 10)
         result = self.agent(router, max_steps=20).run()
         self.assertLessEqual(result["steps"], aa.MAX_GATE_STEPS)
-        self.assertIn("بررسی", result["summary"])
-        self.assertTrue(result["zip"].exists())                 # an honest report is still delivered
+        self.assertIn("تکراری", result["summary"])
+        self.assertIsNone(result["zip"])                       # unfinished work is never packaged as final
+        self.assertTrue(result["resume_available"])
         self.assertEqual(result["changed"], ["note.txt"])
 
     def test_non_python_project_checks_are_allowed(self):
@@ -407,18 +438,18 @@ class TaskFiveStabilityTests(AgentBase):
         self.agent(later, memory_dir=memory_dir).run()
         self.assertIn("Always run npm test before delivery.", later.seen[0][0])
 
-    def test_working_copy_is_removed_when_the_mission_raises(self):
-        parent = Path(self.tmp.name) / "temp-work"
+    def test_working_copy_checkpoint_survives_when_the_mission_raises(self):
         class Boom(Script):
             def chat_stream(self, *a, **k):
                 raise RuntimeError("model exploded")
-        with mock.patch.object(aa.tempfile, "mkdtemp", return_value=str(parent)):
-            with self.assertRaises(RuntimeError):
-                self.agent(Boom()).run()
-        self.assertFalse(parent.exists())
+        agent = self.agent(Boom())
+        with self.assertRaises(RuntimeError):
+            agent.run()
+        self.assertTrue(agent.session_file.exists())
+        self.assertTrue((agent.session_dir / "Demo").exists())
 
     def test_snapshot_skips_unreadable_files_instead_of_crashing(self):
-        with mock.patch.object(aa.Path, "read_bytes", side_effect=OSError("access denied")):
+        with mock.patch.object(aa.Path, "open", side_effect=OSError("access denied")):
             self.assertEqual(aa.snapshot(self.proj), {})
 
     def test_unique_zip_path_keeps_the_timestamp_pattern(self):
@@ -440,6 +471,198 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(aa.parse_action('بله:\n```json\n{"action":"list"}\n```')["action"], "list")
         self.assertIsNone(aa.parse_action("no json here"))
         self.assertEqual(aa.parse_action('{"x":1} {"action":"read","path":"a"}')["action"], "read")
+
+
+class ReliabilityTests(AgentBase):
+    def test_mutation_requires_complete_source_read_and_independent_plan(self):
+        agent = self.agent(Script({"action": "write", "path": "calc.py", "content": "bad"}))
+        agent.work = self.proj
+        agent._before_hashes = aa.snapshot(self.proj)
+        with self.assertRaisesRegex(ValueError, "action=plan|برنامه"):
+            agent.tool_write({"path": "calc.py", "content": "bad"})
+        with self.assertRaisesRegex(ValueError, "خواندن"):
+            agent.tool_plan({"steps": ["edit calc.py"]})
+        agent.tool_read({"path": "calc.py"})
+        result = agent.tool_plan({"steps": ["edit calc.py", "verify"]})
+        self.assertIn("independently reviewed plan", result)
+        self.assertTrue(agent._planned)
+
+    def test_stopped_or_invalid_mission_does_not_deliver_unfinished_zip(self):
+        result = self.agent(Script("not json", "still not json", "third invalid")).run()
+        self.assertIsNone(result["zip"])
+        self.assertTrue(result["resume_available"])
+        self.assertTrue((self.out / ".ai1code_sessions").exists())
+
+    def test_repeated_action_cycle_stops_without_zip(self):
+        result = self.agent(Script(
+            {"action": "list"}, {"action": "map"},
+            {"action": "list"}, {"action": "map"},
+        )).run()
+        self.assertIsNone(result["zip"])
+        self.assertIn("تکراری", result["summary"])
+
+    def test_interrupted_mission_resumes_from_checkpoint(self):
+        first = self.agent(Script(
+            {"action": "read", "path": "calc.py"},
+            {"action": "plan", "steps": ["fix calc.py", "verify"]},
+            {"action": "replace", "path": "calc.py", "old": "a - b", "new": "a + b"},
+        ), max_steps=3)
+        partial = first.run()
+        self.assertIsNone(partial["zip"])
+        self.assertTrue(partial["resume_available"])
+        self.assertTrue((first.session_dir / "Demo" / "calc.py").is_file())
+
+        second = self.agent(Script(
+            {"action": "run", "args": ["python", "-m", "compileall", "-q", "."]},
+            {"action": "review"},
+            {"action": "finish", "summary": "resumed and verified"},
+        ))
+        resumed = second.run()
+        self.assertEqual(resumed["summary"], "resumed and verified")
+        self.assertIsNotNone(resumed["zip"])
+        self.assertIn("a + b", self.zip_text(resumed, "calc.py"))
+        self.assertFalse(second.session_dir.exists())
+
+
+    def test_shell_mutation_invalidates_source_plan_check_and_review(self):
+        router = Script({"action": "finish", "summary": "x"})
+        agent = self.agent(router, shell=(sys.executable, ["-c"]), approve=lambda command: True)
+        agent.work = self.proj
+        agent._before_hashes = aa.snapshot(self.proj)
+        agent._observed_snapshot = dict(agent._before_hashes)
+        agent._planned = agent._checked = agent._reviewed = True
+        agent._checked_fingerprint = agent._reviewed_fingerprint = agent._state_fingerprint()
+        agent._read_paths.add("calc.py")
+        obs = agent.tool_shell({"command": "open('calc.py', 'w', encoding='utf-8').write('changed')"})
+        self.assertIn("Workspace changed by shell", obs)
+        self.assertFalse(agent._planned)
+        self.assertFalse(agent._checked)
+        self.assertFalse(agent._reviewed)
+        self.assertNotIn("calc.py", agent._read_paths)
+
+    def test_not_clean_is_never_accepted_as_clean_review(self):
+        router = Script(review="NOT CLEAN: the diff contains a regression")
+        agent = self.agent(router)
+        agent.work = self.proj
+        agent._before_hashes = aa.snapshot(self.proj)
+        (self.proj / "note.txt").write_text("new content\n", encoding="utf-8")
+        agent._baseline_texts["note.txt"] = ""
+        agent._observed_snapshot = aa.snapshot(self.proj)
+        agent._dirty = agent._planned = True
+        agent._checked = True
+        agent._checked_fingerprint = agent._state_fingerprint()
+        result = agent.tool_review({})
+        self.assertIn("NOT CLEAN", result)
+        self.assertFalse(agent._reviewed)
+
+    def test_review_covers_all_changed_files_not_only_first_fifty(self):
+        router = Script(review="CLEAN")
+        agent = self.agent(router)
+        agent.work = self.proj
+        agent._before_hashes = aa.snapshot(self.proj)
+        for index in range(55):
+            rel = f"changed_{index:02d}.txt"
+            (self.proj / rel).write_text(f"changed {index}\n", encoding="utf-8")
+            agent._baseline_texts[rel] = ""
+        agent._observed_snapshot = aa.snapshot(self.proj)
+        agent._dirty = agent._planned = True
+        agent._checked = True
+        agent._checked_fingerprint = agent._state_fingerprint()
+        result = agent.tool_review({})
+        self.assertTrue(agent._reviewed, result)
+        self.assertEqual(router.review_calls, 55)
+
+    def test_finish_detects_out_of_band_change_after_review(self):
+        agent = self.agent(Script({"action": "finish", "summary": "x"}))
+        agent.work = self.proj
+        agent._before_hashes = aa.snapshot(self.proj)
+        agent._observed_snapshot = dict(agent._before_hashes)
+        agent._planned = agent._checked = agent._reviewed = True
+        agent._checked_fingerprint = agent._reviewed_fingerprint = agent._state_fingerprint()
+        (self.proj / "surprise.txt").write_text("external change", encoding="utf-8")
+        agent._refresh_gates()
+        self.assertTrue(agent._dirty)
+        self.assertFalse(agent._planned)
+        self.assertFalse(agent._checked)
+        self.assertFalse(agent._reviewed)
+
+
+
+    def test_run_that_mutates_workspace_invalidates_all_quality_gates(self):
+        agent = self.agent(Script({"action": "finish", "summary": "x"}))
+        agent.work = self.proj
+        agent._before_hashes = aa.snapshot(self.proj)
+        agent._observed_snapshot = dict(agent._before_hashes)
+        agent._planned = True
+        agent._exec = lambda cmd: ((self.proj / "generated.txt").write_text("created by test", encoding="utf-8") or 0, "ok")
+        # Use a deterministic fake check runner that mutates the working copy.
+        def mutating_exec(cmd):
+            (self.proj / "generated.txt").write_text("created by test", encoding="utf-8")
+            return 0, "ok"
+        agent._exec = mutating_exec
+        obs = agent.tool_run({"args": ["python", "-m", "compileall", "-q", "."]})
+        self.assertIn("Workspace changed during check", obs)
+        self.assertFalse(agent._planned)
+        self.assertFalse(agent._checked)
+        self.assertFalse(agent._reviewed)
+        self.assertEqual(agent._changed_paths(), ["generated.txt"])
+
+    def test_review_chunks_never_exceed_budget_even_for_single_long_line(self):
+        agent = self.agent(Script(review="CLEAN"))
+        agent.work = self.proj
+        agent._before_hashes = aa.snapshot(self.proj)
+        long_content = "x" * (aa.MAX_REVIEW_CHUNK_CHARS * 3 + 17)
+        (self.proj / "minified.js").write_text(long_content, encoding="utf-8")
+        agent._baseline_texts["minified.js"] = ""
+        agent._observed_snapshot = aa.snapshot(self.proj)
+        agent._dirty = agent._planned = True
+        agent._checked = True
+        agent._checked_fingerprint = agent._state_fingerprint()
+        chunks = agent._review_chunks()
+        self.assertGreaterEqual(len(chunks), 4)
+        self.assertTrue(all(len(chunk) <= aa.MAX_REVIEW_CHUNK_CHARS for _, chunk in chunks))
+
+
+
+    def test_sensitive_files_created_by_shell_are_never_reviewed_or_packaged(self):
+        agent = self.agent(Script(review="CLEAN"))
+        agent.work = self.proj
+        agent._before_hashes = aa.snapshot(self.proj)
+        (self.proj / ".env").write_text("API_KEY=do-not-leak", encoding="utf-8")
+        agent._baseline_texts[".env"] = ""
+        agent._observed_snapshot = aa.snapshot(self.proj)
+        agent._dirty = agent._planned = agent._checked = True
+        agent._checked_fingerprint = agent._state_fingerprint()
+        with self.assertRaisesRegex(RuntimeError, "فایل حساس تغییر کرده"):
+            agent.tool_review({})
+        path, _ = agent._zip("report")
+        with zipfile.ZipFile(path) as zf:
+            self.assertNotIn(".env", zf.namelist())
+            self.assertNotIn("do-not-leak", zf.read("AI1CODE_REPORT.md").decode("utf-8"))
+
+
+
+    def test_delivery_report_redacts_secrets_from_goal_summary_and_commands(self):
+        agent = self.agent(Script({"action": "finish", "summary": "x"}),
+                           goal="fix bug; API_KEY=super-secret-value")
+        agent.runs.append(("deploy --token=another-secret", 0))
+        report = agent._report("completed; password=hunter2", [], [], {"skipped": 0}, False)
+        self.assertNotIn("super-secret-value", report)
+        self.assertNotIn("another-secret", report)
+        self.assertNotIn("hunter2", report)
+        self.assertIn("[REDACTED]", report)
+
+
+
+    def test_truncated_read_does_not_satisfy_full_source_read_gate(self):
+        agent = self.agent(Script({"action": "finish", "summary": "x"}))
+        agent.work = self.proj
+        (self.proj / "large.txt").write_text("x" * (aa.MAX_OBSERVATION * 2), encoding="utf-8")
+        agent._before_hashes = aa.snapshot(self.proj)
+        result = agent.tool_read({"path": "large.txt"})
+        self.assertIn("READ TRUNCATED", result)
+        self.assertNotIn("large.txt", agent._read_paths)
+
 
 
 if __name__ == "__main__":

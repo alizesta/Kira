@@ -270,7 +270,7 @@ class RouteGuiTests(unittest.TestCase):
             self.send("q1")
             self.assertTrue(pump(lambda: w.busy and w.worker.isRunning()))
             self.send("q2")
-            self.assertEqual(w._pending, [("q2", [])])
+            self.assertEqual(w._pending, [("q2", [], False)])   # (text, attachments, voice)
             self.assertNotIn("q2", w.chat.toPlainText())                      # not shown until it is really sent
             gate.set()
             self.assertTrue(pump(lambda: "two" in w.chat.toPlainText() and not w.busy and not w._pending))
