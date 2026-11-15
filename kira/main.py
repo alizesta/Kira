@@ -1036,6 +1036,8 @@ class MainWindow(QMainWindow):
         sess = self.sessions.get(cid)
         if sess is None:
             return
+        if cid != self.front.cid:
+            self._flush_character_autosave()
         old = self.front
         if old is not sess:
             old.draft = self.input.text()
@@ -2432,6 +2434,12 @@ class MainWindow(QMainWindow):
             self.character_notes_edit.setPlainText(str(notes))
             self.character_notes_edit.blockSignals(False)
         self.apply_character_voice_settings()
+
+    def _flush_character_autosave(self):
+        timer = getattr(self, "_character_save_timer", None)
+        if timer is not None and timer.isActive():
+            timer.stop()
+            self.save_character_settings(silent=True)
 
     def save_character_settings(self, silent=False):
         cid = characters.active_id(self.settings)
