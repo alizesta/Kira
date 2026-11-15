@@ -11,34 +11,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REQ = ROOT / "requirements-voice-local.txt"
 MODEL = "Qwen/Qwen3-ASR-0.6B"
-PREFERRED_DATA_DIR = Path("A:/Project KIRA/Kira Attachments")
-
-
 def configure_data_paths() -> Path:
-    """Use the shared Kira data directory for settings, speech models and caches."""
-    configured = os.environ.get("KIRA_DATA_DIR")
-    if configured:
-        data_dir = Path(configured)
-    elif os.name == "nt" and Path("A:/").exists():
-        data_dir = PREFERRED_DATA_DIR
-    else:
-        local = os.environ.get("LOCALAPPDATA")
-        data_dir = Path(local) / "Kira" if local else ROOT / "data"
+    """Use the same writable persistent-data resolver as the desktop application."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from kira.storage import configure_cache_environment, default_data_dir
+
+    data_dir = default_data_dir(ROOT)
     data_dir.mkdir(parents=True, exist_ok=True)
     os.environ["KIRA_DATA_DIR"] = str(data_dir)
-    cache_root = data_dir / "cache"
-    cache_paths = {
-        "HF_HOME": data_dir / "huggingface",
-        "HUGGINGFACE_HUB_CACHE": data_dir / "huggingface" / "hub",
-        "HF_HUB_CACHE": data_dir / "huggingface" / "hub",
-        "TRANSFORMERS_CACHE": data_dir / "huggingface" / "hub",
-        "TORCH_HOME": cache_root / "torch",
-        "XDG_CACHE_HOME": cache_root,
-        "PIP_CACHE_DIR": cache_root / "pip",
-    }
-    for name, path in cache_paths.items():
-        path.mkdir(parents=True, exist_ok=True)
-        os.environ[name] = str(path)
+    configure_cache_environment(data_dir)
     return data_dir
 
 

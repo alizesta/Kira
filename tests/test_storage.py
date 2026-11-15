@@ -32,6 +32,34 @@ class UserDataStorageTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"KIRA_DATA_DIR": str(self.root / "override")}, clear=False):
             self.assertEqual(storage.default_data_dir(self.root), self.root / "override")
 
+    def test_unwritable_override_falls_back_and_reconfigures_all_caches(self):
+        requested = self.root / "read-only"
+        fallback = self.root / "Local" / "Kira"
+        requested.mkdir()
+        real_check = storage._writable_directory
+
+        def check(path):
+            return False if Path(path) == requested else real_check(path)
+
+        with mock.patch.dict(os.environ, {
+            "KIRA_DATA_DIR": str(requested),
+            "LOCALAPPDATA": str(self.root / "Local"),
+        }, clear=False), mock.patch.object(storage, "_writable_directory", side_effect=check):
+            resolved = storage.default_data_dir(self.root)
+            self.assertEqual(resolved, fallback)
+            self.assertEqual(os.environ["KIRA_DATA_DIR"], str(fallback))
+            self.assertEqual(os.environ["HF_HOME"], str(fallback / "huggingface"))
+            self.assertEqual(os.environ["TORCH_HOME"], str(fallback / "cache" / "torch"))
+            self.assertIn("قابل نوشتن نبود", storage.DATA_DIR_WARNING or "")
+
+    def test_cache_environment_uses_the_selected_data_directory(self):
+        data = self.root / "Kira Attachments"
+        storage.configure_cache_environment(data)
+        self.assertEqual(os.environ["HF_HOME"], str(data / "huggingface"))
+        self.assertEqual(os.environ["HF_HUB_CACHE"], str(data / "huggingface" / "hub"))
+        self.assertEqual(os.environ["XDG_CACHE_HOME"], str(data / "cache"))
+        self.assertEqual(os.environ["PIP_CACHE_DIR"], str(data / "cache" / "pip"))
+
     def test_legacy_migration_copies_persona_and_evidence_memory_without_overwriting(self):
         old, new = self.root / "old", self.root / "new"
         old.mkdir()

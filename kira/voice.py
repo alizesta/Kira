@@ -1,5 +1,5 @@
-"""Kira's voice: Microsoft Edge neural TTS (free, needs internet) -> WAV -> QSoundEffect.
-The loudness envelope of the audio drives the mouth movement."""
+"""Kira's speech pipeline: local Persian Piper -> Windows SAPI -> Edge TTS -> Cloud Voice.
+Audio is played through Qt; its loudness envelope drives the mouth movement."""
 import asyncio
 import hashlib
 import json

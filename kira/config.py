@@ -10,8 +10,8 @@ from .personality import STOCK_PERSONAS
 ROOT = Path(__file__).resolve().parent.parent
 from . import storage
 
-# User data (settings, API keys, chat history) lives outside the program folder: %LOCALAPPDATA%\\Kira.
-# KIRA_DATA_DIR overrides it (used by the automated tests).
+# Persistent user data and AI caches live in A:\\Project KIRA\\Kira Attachments on Windows.
+# KIRA_DATA_DIR overrides the location; an unwritable path falls back to the per-user data folder.
 DATA_DIR = storage.default_data_dir(ROOT)
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 CONFIG_PATH = DATA_DIR / "settings.json"
@@ -154,7 +154,7 @@ def _backup_corrupt(path):
 
 def prepare_user_data():
     """Carry old data over (copy only) and keep a rolling backup. Never raises."""
-    notes = []
+    notes = [storage.DATA_DIR_WARNING] if storage.DATA_DIR_WARNING else []
     try:
         if not os.environ.get("KIRA_DATA_DIR"):
             note = storage.migrate_legacy(DATA_DIR, storage.legacy_candidates(ROOT))

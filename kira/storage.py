@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import shutil
 import sqlite3
+import tempfile
 import time
 from pathlib import Path
 
@@ -18,26 +19,70 @@ EVIDENCE_DB_NAME = "kira_evidence.sqlite3"            # facts with provenance (k
 PERSONA_MEMORY_NAME = "kira_persona_memory.json"      # local voice/fact/moment/digest memory
 CLOUD_VOICE_NAME = "cloud_voice.json"                     # Cloud Voice keys + settings (kept outside the program folder, like settings.json)
 MARKER = "migrated_from.txt"
+DATA_DIR_WARNING: str | None = None
+
+
+def _writable_directory(path: Path) -> bool:
+    """Create a directory and verify that this process can actually write to it."""
+    try:
+        path = Path(path)
+        path.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(prefix=".kira-write-check-", dir=str(path)):
+            pass
+        return True
+    except OSError:
+        return False
 
 
 def default_data_dir(root: Path) -> Path:
-    """Keep all persistent Kira data in the dedicated A: drive folder.
+    """Resolve Kira's persistent data folder and verify it is writable before startup.
 
-    KIRA_DATA_DIR remains an explicit override for tests and portable setups.
-    If A: is unavailable, fall back safely to the normal per-user data folder.
+    KIRA_DATA_DIR is an explicit override (also used by tests and portable installs).
+    On Windows, A:\\Project KIRA\\Kira Attachments is preferred. If the selected
+    location exists but is read-only / disconnected / out of reach, fall back to
+    the per-user data directory instead of crashing during configuration import.
     """
-    env = os.environ.get("KIRA_DATA_DIR")
+    global DATA_DIR_WARNING
+    env = str(os.environ.get("KIRA_DATA_DIR") or "").strip()
     if env:
-        data_dir = Path(env)
+        primary = Path(env)
+    elif os.name == "nt" and Path("A:/").exists():
+        primary = Path("A:/Project KIRA/Kira Attachments")
     else:
-        preferred = Path("A:/Project KIRA/Kira Attachments")
-        if os.name == "nt" and Path("A:/").exists():
-            data_dir = preferred
-        else:
-            local = os.environ.get("LOCALAPPDATA")
-            data_dir = Path(local) / "Kira" if local else root / "data"
-    configure_cache_environment(data_dir)
-    return data_dir
+        local = os.environ.get("LOCALAPPDATA")
+        primary = Path(local) / "Kira" if local else Path(root) / "data"
+
+    local = os.environ.get("LOCALAPPDATA")
+    fallbacks = []
+    if local:
+        fallbacks.append(Path(local) / "Kira")
+    fallbacks.append(Path(root) / "data")
+
+    seen = set()
+    candidates = [primary, *fallbacks]
+    for candidate in candidates:
+        key = str(candidate).casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        if _writable_directory(candidate):
+            data_dir = candidate
+            if candidate != primary:
+                DATA_DIR_WARNING = (
+                    f"مسیر ذخیره‌سازی اصلی «{primary}» قابل نوشتن نبود؛ "
+                    f"اطلاعات Kira موقتاً در «{candidate}» ذخیره می‌شود."
+                )
+            else:
+                DATA_DIR_WARNING = None
+            # Keep child processes and model libraries on exactly the same path.
+            os.environ["KIRA_DATA_DIR"] = str(data_dir)
+            configure_cache_environment(data_dir)
+            return data_dir
+
+    raise OSError(
+        "هیچ مسیر قابل‌نوشتنی برای اطلاعات Kira پیدا نشد. "
+        "دسترسی درایو A و فضای خالی AppData را بررسی کن."
+    )
 
 
 def configure_cache_environment(data_dir: Path) -> None:
