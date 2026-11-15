@@ -121,6 +121,7 @@ jobs:
           tests.test_body
           tests.test_build_metadata
           tests.test_release
+          tests.test_actions
           tests.test_vision_pipeline
       - name: Check Python syntax
         run: python -m compileall -q kira scripts tests
