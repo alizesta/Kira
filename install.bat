@@ -145,7 +145,11 @@ goto voice_done
 echo Skipped local voice engines. You can install them later from this folder.
 :voice_done
 echo.
-echo Next: install Ollama, run download_model.bat, then start_kira.bat.
+echo For local chat models, install Ollama, then run:
+echo   configure_ollama_storage.bat
+echo   download_model.bat
+echo Restart Ollama from its tray icon after changing its model location.
+echo Finally run start_kira.bat.
 pause
 exit /b 0
 

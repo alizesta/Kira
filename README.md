@@ -5,7 +5,7 @@
 ## نصب و اجرا
 1. Python 3.11 یا 3.12 را نصب کن (گزینه‌ی Add Python to PATH فعال باشد).
 2. `install.bat` را یک بار اجرا کن، بعد `start_kira.bat`.
-3. برای مدل محلی: Ollama را نصب کن و `download_model.bat` را اجرا کن (اختیاری).
+3. برای مدل محلی: Ollama را نصب کن؛ یک‌بار `configure_ollama_storage.bat` را اجرا کن تا محل مدل‌ها به پوشهٔ پیوست‌های A کپی/تنظیم شود؛ بعد `download_model.bat` را اجرا کن (اختیاری). راهنما: `docs/OLLAMA_STORAGE_FA.md`.
 4. برای مدل ابری: تب Route ← **Add API** ← فقط کلید API را بزن (Kira سرویس را تشخیص می‌دهد و مدل‌ها را می‌گیرد) ← در جزئیات مدل‌های دلخواه را تیک بزن. راهنما: `docs/API_MANAGER_FA.md`.
 
 ## Ai1 Code (Agent داخل چت کیرا)
