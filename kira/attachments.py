@@ -14,7 +14,10 @@ IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                ".gif": "image/gif", ".bmp": "image/bmp"}
 MAX_FILES = 5
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
-MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_FILE_BYTES = 50 * 1024 * 1024
+MAX_ARCHIVE_ENTRIES = 200
+MAX_ARCHIVE_MEMBER_BYTES = 2 * 1024 * 1024
+MAX_ARCHIVE_UNPACKED_BYTES = 40 * 1024 * 1024
 MAX_IMAGE_SIDE = 1568                  # larger images are shrunk: vision models downscale anyway and big payloads get rejected
 MAX_TEXT_CHARS = 30000                 # text sent to the model for one file
 HISTORY_EXCERPT = 3000                 # part of a file kept in the saved chat so Kira can still refer to it later
@@ -37,12 +40,14 @@ def _decode_text(data: bytes) -> str:
     return data.decode("latin-1", errors="replace")
 
 
-def _read_file(path: str, progress=None) -> bytes:
+def _read_file(path: str, progress=None, cancelled=None) -> bytes:
     """Read a whole file in blocks and report 0-100 while doing it."""
     total = max(1, os.path.getsize(path))
     chunks, done = [], 0
     with open(path, "rb") as fh:
         while True:
+            if cancelled and cancelled():
+                raise AttachmentError("بارگذاری فایل لغو شد.")
             block = fh.read(256 * 1024)
             if not block:
                 break
@@ -52,6 +57,72 @@ def _read_file(path: str, progress=None) -> bytes:
                 progress(min(99, int(done * 100 / total)))
     return b"".join(chunks)
 
+
+
+_ARCHIVE_TEXT_EXTENSIONS = {
+    ".txt", ".md", ".rst", ".json", ".jsonl", ".csv", ".tsv", ".log", ".py", ".pyi",
+    ".js", ".jsx", ".ts", ".tsx", ".html", ".htm", ".css", ".scss", ".xml", ".yaml",
+    ".yml", ".toml", ".ini", ".cfg", ".conf", ".bat", ".cmd", ".ps1", ".sh", ".sql",
+    ".java", ".kt", ".kts", ".c", ".h", ".cpp", ".hpp", ".cs", ".go", ".rs", ".php",
+    ".rb", ".swift", ".dart", ".vue", ".svelte", ".gradle", ".properties",
+}
+
+
+def _zip_text(path: str, progress=None, cancelled=None) -> str:
+    """Read a ZIP without extracting it; reject zip bombs and include only bounded text files."""
+    try:
+        archive = zipfile.ZipFile(path, "r")
+    except (zipfile.BadZipFile, OSError) as exc:
+        raise AttachmentError("فایل ZIP خراب است یا باز نمی‌شود.") from exc
+    with archive:
+        infos = [info for info in archive.infolist() if not info.is_dir()]
+        visible = infos[:MAX_ARCHIVE_ENTRIES]
+        omitted = max(0, len(infos) - len(visible))
+        unpacked = sum(max(0, info.file_size) for info in infos)
+        if unpacked > MAX_ARCHIVE_UNPACKED_BYTES:
+            raise AttachmentError("حجم بازشده‌ی فایل ZIP بیش از سقف امن ۴۰ مگابایت است.")
+        lines = ["فهرست فایل ZIP:"]
+        total_chars = MAX_TEXT_CHARS
+        for index, info in enumerate(visible):
+            if cancelled and cancelled():
+                raise AttachmentError("بارگذاری فایل لغو شد.")
+            name = info.filename.replace("\\", "/")
+            if info.flag_bits & 0x1:
+                lines.append(f"[رمزگذاری‌شده، خوانده نشد] {name}")
+                continue
+            if info.file_size > MAX_ARCHIVE_MEMBER_BYTES:
+                lines.append(f"[بزرگ‌تر از ۲ مگابایت، محتوا خوانده نشد] {name}")
+                continue
+            ext = os.path.splitext(name)[1].lower()
+            if ext not in _ARCHIVE_TEXT_EXTENSIONS:
+                lines.append(f"[فایل غیرمتنی، فقط نام ثبت شد] {name}")
+                continue
+            try:
+                with archive.open(info, "r") as member:
+                    data = member.read(MAX_ARCHIVE_MEMBER_BYTES + 1)
+                if len(data) > MAX_ARCHIVE_MEMBER_BYTES:
+                    lines.append(f"[محتوا از سقف امن بیشتر بود] {name}")
+                    continue
+                body = _decode_text(data).strip()
+            except (AttachmentError, OSError, RuntimeError, zipfile.BadZipFile):
+                lines.append(f"[محتوا خوانده نشد] {name}")
+                continue
+            if not body:
+                lines.append(f"[فایل خالی] {name}")
+                continue
+            if total_chars <= 0:
+                lines.append("[بقیه‌ی محتوا به‌دلیل محدودیت حجم ارسال نشد.]")
+                break
+            body = body[:total_chars]
+            lines.extend([f"--- {name} ---", body])
+            total_chars -= len(body)
+            if progress:
+                progress(min(99, int((index + 1) * 100 / max(1, len(visible)))))
+        if omitted:
+            lines.append(f"[{omitted} فایل دیگر در فهرست کوتاه شد.]")
+        if progress:
+            progress(100)
+        return "\\n".join(lines)
 
 def _docx_text(path: str) -> str:
     try:
@@ -115,7 +186,7 @@ def image_attachment(data: bytes, name: str, mime: str = "image/png") -> dict:
     return {"name": name, "kind": "image", "mime": mime, "b64": base64.b64encode(data).decode("ascii"), "size": len(data)}
 
 
-def load_attachment(path: str, progress=None) -> dict:
+def load_attachment(path: str, progress=None, cancelled=None) -> dict:
     """Read one file -> {'name','kind':'image'|'text', ...}. Raises AttachmentError with a Persian message.
     progress(percent) is called while the file is being read / parsed."""
     progress = progress or (lambda pct: None)
@@ -134,13 +205,15 @@ def load_attachment(path: str, progress=None) -> dict:
         return result
     if size > MAX_FILE_BYTES:
         raise AttachmentError(f"فایل «{name}» بزرگ‌تر از {MAX_FILE_BYTES // (1024 * 1024)} مگابایت است.")
-    if ext == ".docx":
+    if ext == ".zip":
+        text = _zip_text(path, progress, cancelled)
+    elif ext == ".docx":
         progress(30)
         text = _docx_text(path)
     elif ext == ".pdf":
         text = _pdf_text(path, progress)
     else:
-        text = _decode_text(_read_file(path, progress))
+        text = _decode_text(_read_file(path, progress, cancelled))
     text = text.replace("\r\n", "\n").strip()
     if not text:
         raise AttachmentError(f"در فایل «{name}» متنی پیدا نشد.")
