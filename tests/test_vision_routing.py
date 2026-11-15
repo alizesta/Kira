@@ -1,6 +1,7 @@
 """Regression tests for role-aware image routing in the streamed chat worker."""
 import contextlib
 import unittest
+import threading
 from unittest import mock
 from types import SimpleNamespace
 
@@ -101,8 +102,9 @@ class FakeVisionAnalysisRouter:
         assert route_id == "vision-route"
         yield self
 
-    def chat_stream(self, messages, prompt, temperature):
+    def chat_stream(self, messages, prompt, temperature, cancel_event=None):
         self.stream_called = True
+        self.cancel_event = cancel_event
         return {"text": "تحلیل آماده", "interrupted": None, "stopped": False}
 
     def cancel(self):
@@ -117,7 +119,28 @@ class VisionRoutingTests(unittest.TestCase):
         worker.done.connect(lambda ok, text, latency: results.append((ok, text)))
         worker.run()
         self.assertTrue(router.stream_called)
+        self.assertIs(worker._cancelled, router.cancel_event)
         self.assertEqual(results, [(True, "تحلیل آماده")])
+
+    def test_cancel_during_route_discovery_prevents_provider_request(self):
+        router = FakeVisionAnalysisRouter()
+        worker = VisionAnalysisWorker(router, {"b64": "invalid-base64"}, "تحلیل")
+        router.vision_route_id = lambda: (worker.cancel_request(), "vision-route")[1]
+        results = []
+        worker.done.connect(lambda *args: results.append(args))
+        worker.run()
+        self.assertTrue(router.cancelled)
+        self.assertFalse(router.stream_called)
+        self.assertEqual(results, [])
+
+    def test_router_rejects_an_already_cancelled_background_request(self):
+        settings = helpers.fresh_settings()
+        router = HybridRouter(settings)
+        cancelled = threading.Event()
+        cancelled.set()
+        with self.assertRaises(RuntimeError):
+            router.chat_stream([{"role": "user", "content": "image"}], "prompt", cancel_event=cancelled)
+        self.assertFalse(router.busy)
 
     def test_cancelled_background_vision_does_not_publish_partial_result(self):
         router = FakeVisionAnalysisRouter()
