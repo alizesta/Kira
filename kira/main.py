@@ -473,31 +473,51 @@ class ModelCombo(QComboBox):
 
 
 class VisionAnalysisWorker(QThread):
-    """One bounded, non-streaming image analysis request outside the GUI thread."""
+    """Bounded image analysis; uses only a route marked/recognized as Vision-capable."""
     done = Signal(bool, str, int)
 
-    def __init__(self, router, image):
+    def __init__(self, router, image, context=""):
         super().__init__()
         self.router = router
         self.image = dict(image)
+        self.context = str(context or "").strip()[:1200]
+        self._cancelled = threading.Event()
+
+    def cancel_request(self):
+        self._cancelled.set()
+        # HybridRouter closes the active HTTP response, which interrupts network waits.
+        try:
+            self.router.cancel()
+        except Exception:
+            pass
 
     def run(self):
         began = time.monotonic()
         try:
+            if self._cancelled.is_set():
+                return
+            route_id = self.router.vision_route_id()
+            if not route_id:
+                raise RuntimeError("هیچ مدل Vision فعالی پیدا نشد. یک Route بینایی انتخاب کن یا برای Provider سفارشی vision_enabled را فعال کن.")
+            from .vision_ocr import extract_local_text
+            ocr_text = extract_local_text(self.image)
             prompt = (
-                "این تصویر، فریم فعلی بازی کاربر است. فقط چیزهایی را که واقعاً در تصویر دیده می‌شوند "
-                "توصیف کن. اگر سؤال یا درخواست قبلی مشخصی وجود ندارد، یک گزارش خیلی کوتاه و کاربردی بده: "
-                "وضعیت فعلی، خطر یا هدف قابل مشاهده، و یک پیشنهاد فوری در صورت نیاز. "
-                "متن‌های داخل تصویر را فقط وقتی واضح‌اند نقل کن. چیزی را حدس نزن."
+                "این تصویر، فریم بازی کاربر است. فقط شواهد قابل مشاهده را گزارش کن و حدس نزن. "
+                "اگر متن OCR در اختیار داری، آن را به‌عنوان سرنخ کمکی در نظر بگیر، نه حقیقت قطعی. "
+                "اگر زمینه یا سؤال کاربر داده شده، دقیقاً به همان پاسخ بده؛ در غیر این صورت وضعیت، خطر، هدف و اقدام فوری را کوتاه بگو.\n"
+                + (("زمینه/سؤال کاربر: " + self.context + "\n") if self.context else "")
+                + (("متن استخراج‌شده‌ی محلی از تصویر: " + ocr_text[:1800]) if ocr_text else "")
             )
-            result = self.router.chat(
-                [{"role": "user", "content": "فریم فعلی بازی را بررسی کن.", "images": [self.image]}],
-                prompt,
-                0.2,
-            )
-            self.done.emit(True, str(result or "").strip(), int((time.monotonic() - began) * 1000))
+            with self.router.role_scope("vision", route_id):
+                result = self.router.chat(
+                    [{"role": "user", "content": self.context or "فریم فعلی بازی را بررسی کن.", "images": [self.image]}],
+                    prompt, 0.2,
+                )
+            if not self._cancelled.is_set():
+                self.done.emit(True, str(result or "").strip(), int((time.monotonic() - began) * 1000))
         except Exception as exc:
-            self.done.emit(False, str(exc)[:350], int((time.monotonic() - began) * 1000))
+            if not self._cancelled.is_set():
+                self.done.emit(False, str(exc)[:350], int((time.monotonic() - began) * 1000))
 
 
 class OllamaTaskWorker(QThread):
