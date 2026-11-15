@@ -64,6 +64,7 @@ class IntentTests(unittest.TestCase):
     def test_colloquial_ui_complaints_are_project_tasks_without_code_terms(self):
         for text in (
             "رنگ آیکون‌های نئونی به هم ریخته، درستش کن",
+            "ایموجی ساده رو پاک کن",
             "کادر چت داره می‌لرزه",
             "وقتی ضربدر ضمیمه رو می‌زنم کار نمی‌کنه",
             "فایل زیپ بزرگ‌تر از ده مگ رو نمی‌ذاره ضمیمه کنم",
