@@ -42,7 +42,7 @@ class ReleaseTests(unittest.TestCase):
             self.assertFalse((ROOT / forbidden).exists() and not (ROOT / "data").samefile(config.DATA_DIR), forbidden)
 
     def test_version(self):
-        self.assertEqual(config.VERSION, "1 stable")
+        self.assertEqual(config.VERSION, "1.1")
 
     # 15) real SQLite history is provider-neutral and ordered
     def test_15_memory_context_is_ordered_and_bounded(self):
