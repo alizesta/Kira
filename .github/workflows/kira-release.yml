@@ -2,7 +2,7 @@ name: Build Kira Update
 
 on:
   push:
-    branches: [main, "next/2026-11-11-intelligence", "feature/characters-ren-mika"]
+    branches: [main, "next/2026-11-11-intelligence", "feature/characters-ren-mika", "fix/desktop-attachments-project-icons"]
     paths:
       - ".github/workflows/kira-release.yml"
       - "kira/**"
