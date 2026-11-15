@@ -142,7 +142,7 @@ def _docx_text(path: str) -> str:
     return "\n".join(paragraphs)
 
 
-def _pdf_text(path: str, progress=None) -> str:
+def _pdf_text(path: str, progress=None, cancelled=None) -> str:
     try:
         try:
             from pypdf import PdfReader
@@ -154,6 +154,8 @@ def _pdf_text(path: str, progress=None) -> str:
         reader = PdfReader(path)
         pages, out = list(reader.pages), []
         for i, page in enumerate(pages, 1):
+            if cancelled and cancelled():
+                raise AttachmentError("بارگذاری فایل لغو شد.")
             out.append(page.extract_text() or "")
             if progress:
                 progress(min(99, int(i * 100 / max(1, len(pages)))))
@@ -218,10 +220,12 @@ def load_attachment(path: str, progress=None, cancelled=None) -> dict:
         progress(30)
         text = _docx_text(path)
     elif ext == ".pdf":
-        text = _pdf_text(path, progress)
+        text = _pdf_text(path, progress, cancelled)
     else:
         text = _decode_text(_read_file(path, progress, cancelled))
     text = text.replace("\r\n", "\n").strip()
+    if len(text) > MAX_TEXT_CHARS:
+        text = text[:MAX_TEXT_CHARS + 1]          # compose() adds the visible truncation marker
     if not text:
         raise AttachmentError(f"در فایل «{name}» متنی پیدا نشد.")
     progress(100)
