@@ -3402,13 +3402,13 @@ class MainWindow(QMainWindow):
         self.attach_err_close.setVisible(bool(messages))
 
     def cancel_attachments(self):
-        """Cancel every pending file read and remove its preview from the composer."""
+        """Cancel pending file reads; when idle, the same control only dismisses the error."""
         worker = getattr(self, "_attach_worker", None)
         if worker is not None and worker.isRunning():
             for index in range(len(getattr(self, "_load_tiles", []))):
                 worker.cancel(index)
-        for tile in list(self._tiles):
-            self.remove_attachment_tile(tile)
+            for tile in list(self._tiles):
+                self.remove_attachment_tile(tile)
         self.show_attach_error([])
 
     # -- choosing files --
