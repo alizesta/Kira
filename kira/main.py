@@ -5619,13 +5619,14 @@ class MainWindow(QMainWindow):
     def start_listener(self):
         # A stopped QThread cannot be restarted. Wait for its finished signal before
         # creating the replacement, otherwise rapid mic toggles can open two streams.
+        if self.listener is not None:
+            self.stop_listener()
         previous = getattr(self, "_stopping_listener", None)
         if previous is not None and previous.isRunning():
             self._restart_listener_after_stop = True
             self.set_status("st_loading")
             return
         self._restart_listener_after_stop = False
-        self.stop_listener()
         self.listener = Listener(self.settings["whisper_model"], self.settings["stt_language"], self,
                                  sensitivity=self.settings.get("mic_sensitivity", 100), barge_in=self.settings.get("barge_in", True),
                                  settings=self.settings)
