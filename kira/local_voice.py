@@ -6,7 +6,16 @@ This module performs speech conversion only; it contains no chat or agent logic.
 """
 from __future__ import annotations
 
+import os
 import threading
+from pathlib import Path
+
+# Keep downloaded Hugging Face model weights in a user-level cache so they
+# survive project/virtualenv replacement. Respect an explicitly configured path.
+if not os.environ.get("HF_HOME"):
+    _local_app_data = os.environ.get("LOCALAPPDATA")
+    if _local_app_data:
+        os.environ["HF_HOME"] = str(Path(_local_app_data) / "Kira" / "huggingface")
 
 _asr_lock = threading.RLock()
 _tts_lock = threading.RLock()
