@@ -272,6 +272,7 @@ class Listener(QThread):
             return local_voice.transcribe(
                 audio, RATE, self.language or "fa",
                 initial_prompt(self.language, self.fixes.hotwords_text()),
+                str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B"),
             )
         except Exception as exc:
             self._local_asr_failed = True
