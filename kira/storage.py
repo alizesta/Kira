@@ -1,7 +1,8 @@
 """Where Kira keeps the user's data, and how it is carried over / backed up.
 
-User data lives OUTSIDE the program folder (%LOCALAPPDATA%\\Kira on Windows) so replacing the program folder with
-a new version never touches settings, API keys or chat history. Old data is only ever COPIED, never moved or deleted.
+User data lives OUTSIDE the program folder in A:\\Project KIRA\\Kira Attachments on Windows (with a safe
+per-user fallback when A: is unavailable), so replacing the program folder never touches settings, API keys,
+chat history or model caches. Old data is only ever COPIED, never moved or deleted.
 """
 from __future__ import annotations
 
@@ -70,8 +71,7 @@ def has_user_data(folder: Path) -> bool:
 
 
 def legacy_candidates(root: Path):
-    """Old data folders, newest first: the program's own ./data, then ./data of sibling Kira folders
-    (people unzip every new version next to the old one)."""
+    """Find the previous per-user folder, this program's ./data, and sibling Kira ./data folders."""
     found = []
     # Previous releases stored user data and model caches under %LOCALAPPDATA%\\Kira.
     local = os.environ.get("LOCALAPPDATA")
@@ -91,7 +91,7 @@ def legacy_candidates(root: Path):
 
 
 def migrate_legacy(new_dir: Path, candidates) -> str | None:
-    """Copy settings and/or chat history from an old data folder into the new one. COPY ONLY, never overwrites.
+    """Copy settings, chat history and caches from old data folders. COPY ONLY, never overwrites.
 
     Each file is carried over on its own: a new folder that already has settings.json but no chat database still gets the
     old chat history (this used to be skipped, which looked like 'my chats disappeared after updating').
