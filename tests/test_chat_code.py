@@ -81,6 +81,13 @@ class IntentTests(unittest.TestCase):
         for text in ("این پروژه رو عوض کن", "پروژه رو بررسی کن و تست‌ها رو بزن"):
             self.assertFalse(cc.wants_project_change(text), text)
 
+    def test_project_location_questions_are_distinguished_from_folder_changes(self):
+        for text in ("پوشه پروژه کجاست؟", "مسیر پوشه پروژه چیه؟", "آدرس پروژه کجاست؟",
+                     "پوشه کاری کیرا کجا ذخیره شده؟", "where is the project folder?"):
+            self.assertTrue(cc.wants_project_location(text), text)
+        for text in ("پوشه پروژه رو عوض کن", "پوشه پروژه را انتخاب کن", "سلام"):
+            self.assertFalse(cc.wants_project_location(text), text)
+
     def test_vocabulary_comes_from_the_projects_own_names(self):
         import tempfile
         with tempfile.TemporaryDirectory() as d:
