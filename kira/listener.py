@@ -78,8 +78,9 @@ class Listener(QThread):
         return None                                          # that microphone is not connected now: use the default
 
     def stop(self):
+        # Never block the GUI thread for the old 4-second wait. The owner keeps the
+        # QThread reference until finished and the window's close handler defers shutdown.
         self._run = False
-        self.wait(4000)
 
     # ---- thread ----
     def run(self):

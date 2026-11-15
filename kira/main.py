@@ -5617,35 +5617,51 @@ class MainWindow(QMainWindow):
             self.stop_listener()
 
     def start_listener(self):
+        # A stopped QThread cannot be restarted. Wait for its finished signal before
+        # creating the replacement, otherwise rapid mic toggles can open two streams.
+        previous = getattr(self, "_stopping_listener", None)
+        if previous is not None and previous.isRunning():
+            self._restart_listener_after_stop = True
+            self.set_status("st_loading")
+            return
+        self._restart_listener_after_stop = False
         self.stop_listener()
         self.listener = Listener(self.settings["whisper_model"], self.settings["stt_language"], self,
                                  sensitivity=self.settings.get("mic_sensitivity", 100), barge_in=self.settings.get("barge_in", True),
                                  settings=self.settings)
-        self.listener.heard.connect(self.on_heard)
-        self.listener.interrupted.connect(self.on_user_barge_in)
-        self.listener.state.connect(self.on_listener_state)
-        self.listener.error.connect(self.on_listener_error)
-        self.listener.note.connect(self.on_cloud_note)
-        self.listener.finished.connect(lambda listener=self.listener: self._listener_finished(listener))
-        self.listener.start()
+        listener = self.listener
+        listener.heard.connect(self.on_heard)
+        listener.interrupted.connect(self.on_user_barge_in)
+        listener.state.connect(self.on_listener_state)
+        listener.error.connect(self.on_listener_error)
+        listener.note.connect(self.on_cloud_note)
+        listener.finished.connect(lambda current=listener: self._listener_finished(current))
+        listener.start()
 
     def stop_listener(self):
+        self._restart_listener_after_stop = False
         if self.listener:
             listener, self.listener = self.listener, None
             listener.stop()
             if listener.isRunning():
                 self._stopping_listener = listener
-                listener.finished.connect(lambda: setattr(self, "_stopping_listener", None))
         self.set_status("st_ready")
         self.update_engine_label()
 
     def _listener_finished(self, listener):
-        if self.listener is listener:
+        was_current = self.listener is listener
+        if was_current:
             self.listener = None
-        self.mic_btn.setChecked(False)
+            self.mic_btn.setChecked(False)
+        if getattr(self, "_stopping_listener", None) is listener:
+            self._stopping_listener = None
         self.update_engine_label()
         if not self._closing:
-            self.set_status("st_ready")
+            if getattr(self, "_restart_listener_after_stop", False) and self.mic_btn.isChecked():
+                self._restart_listener_after_stop = False
+                QTimer.singleShot(0, self.start_listener)
+            elif was_current:
+                self.set_status("st_ready")
 
     def on_listener_error(self, msg):
         self.add_chat("error", msg)
@@ -5654,10 +5670,8 @@ class MainWindow(QMainWindow):
             self.wake_btn.setChecked(False)
             self.animator.set_sleeping(False)
             self.wake_timer.stop()
-        listener = self.listener
-        self.listener = None
-        if listener is not None:
-            listener.stop()
+        # Keep the worker owned until its stream has closed; stop() is non-blocking.
+        self.stop_listener()
 
     def on_listener_state(self, state):
         if state == "listening":
