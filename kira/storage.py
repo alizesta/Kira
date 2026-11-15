@@ -19,6 +19,10 @@ EVIDENCE_DB_NAME = "kira_evidence.sqlite3"            # facts with provenance (k
 PERSONA_MEMORY_NAME = "kira_persona_memory.json"      # local voice/fact/moment/digest memory
 CLOUD_VOICE_NAME = "cloud_voice.json"                     # Cloud Voice keys + settings (kept outside the program folder, like settings.json)
 MARKER = "migrated_from.txt"
+# Capture the caller's original choice before default_data_dir writes the resolved path
+# back for child libraries. This lets startup distinguish a deliberate custom path
+# from the standard A: location selected by the launch scripts.
+DATA_DIR_WAS_EXPLICIT = bool(str(os.environ.get("KIRA_DATA_DIR") or "").strip())
 DATA_DIR_WARNING: str | None = None
 
 
@@ -30,6 +34,16 @@ def _writable_directory(path: Path) -> bool:
         with tempfile.NamedTemporaryFile(prefix=".kira-write-check-", dir=str(path)):
             pass
         return True
+    except OSError:
+        return False
+
+
+def is_preferred_data_dir(data_dir: Path) -> bool:
+    """Whether this is the standard persistent A: location on Windows."""
+    if os.name != "nt":
+        return False
+    try:
+        return Path(data_dir).resolve() == Path("A:/Project KIRA/Kira Attachments").resolve()
     except OSError:
         return False
 

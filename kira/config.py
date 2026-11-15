@@ -156,7 +156,7 @@ def prepare_user_data():
     """Carry old data over (copy only) and keep a rolling backup. Never raises."""
     notes = [storage.DATA_DIR_WARNING] if storage.DATA_DIR_WARNING else []
     try:
-        if not os.environ.get("KIRA_DATA_DIR"):
+        if not storage.DATA_DIR_WAS_EXPLICIT or storage.is_preferred_data_dir(DATA_DIR):
             note = storage.migrate_legacy(DATA_DIR, storage.legacy_candidates(ROOT))
             if note:
                 notes.append(note)

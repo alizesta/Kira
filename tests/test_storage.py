@@ -41,6 +41,8 @@ class UserDataStorageTests(unittest.TestCase):
         def check(path):
             return False if Path(path) == requested else real_check(path)
 
+        previous_warning = storage.DATA_DIR_WARNING
+        self.addCleanup(setattr, storage, "DATA_DIR_WARNING", previous_warning)
         with mock.patch.dict(os.environ, {
             "KIRA_DATA_DIR": str(requested),
             "LOCALAPPDATA": str(self.root / "Local"),
