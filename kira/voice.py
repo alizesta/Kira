@@ -371,27 +371,30 @@ class Speaker(QObject):
                 if "local-tts-down" not in s.notes:
                     s.notes.add("local-tts-down")
                     self.cloud_note.emit(f"TTS محلی فارسی ناموفق بود؛ موتور بعدی امتحان می‌شود. ({type(e).__name__})")
-        if cloud is not None:                  # 1) Cloud Voice (Google AI Studio / Groq / ElevenLabs, in the user's order)
+        # Offline Windows voices are tried before any network-backed TTS service.
+        if sys.platform == "win32":
+            try:
+                return self._synth_sapi(tag, text, voice, r, s.cache, cw, cj)
+            except Exception as e:
+                errors.append(f"Windows: {e}")
+        # Edge neural voices are network-backed but remain a legacy fallback before Cloud Voice.
+        try:
+            return self._synth_edge(tag, text, voice, r, p, s.cache, base, key, cw, cj)
+        except Exception as e:
+            errors.append(f"edge-tts: {type(e).__name__}: {e}")
+        # Cloud Voice is the final TTS provider fallback, after the available local engines.
+        if cloud is not None:
             try:
                 audio, ext, info = cloud.synthesize(text, opts={"rate": r, "style": style, "style_degree": degree})
                 if info.get("failovers") and "failover" not in s.notes:
                     s.notes.add("failover")
                     self.cloud_note.emit("Cloud Voice (TTS): " + " ← ".join(info["failovers"]) + f" → {info['provider']} / {info['key']}")
                 return self._synth_cloud(tag, audio, ext, s.cache, base, key, cw, cj)
-            except Exception as e:             # AllFailed or any decoding problem: continue with the local voice (this sentence only)
+            except Exception as e:
                 errors.append(f"cloud: {e}")
                 if "cloud-down" not in s.notes:
                     s.notes.add("cloud-down")
-                    self.cloud_note.emit(f"Cloud Voice (TTS) ناموفق بود؛ با صدای محلی ادامه می‌دهم. ({str(e)[:160]})")
-        try:                                   # 2) Microsoft Edge neural voices (online, best quality)
-            return self._synth_edge(tag, text, voice, r, p, s.cache, base, key, cw, cj)
-        except Exception as e:
-            errors.append(f"edge-tts: {type(e).__name__}: {e}")
-        if sys.platform == "win32":
-            try:                               # 3) Windows built-in voices (offline, no packages)
-                return self._synth_sapi(tag, text, voice, r, s.cache, cw, cj)
-            except Exception as e:
-                errors.append(f"Windows: {e}")
+                    self.cloud_note.emit(f"Cloud Voice (TTS) ناموفق بود؛ همهٔ موتورهای صوتی امتحان شدند. ({str(e)[:160]})")
         if not s.error_sent:
             s.error_sent = True
             self._failed.emit(s.gen, "ساخت صدا ناموفق بود. " + " | ".join(errors))
