@@ -4,6 +4,8 @@ import json
 import random
 import time
 import threading
+import shutil
+import subprocess
 from pathlib import Path
 import re
 import sys
@@ -14,7 +16,7 @@ from PySide6.QtWidgets import (
     QPushButton, QMessageBox, QComboBox, QFormLayout, QSpinBox, QTabWidget, QGroupBox, QCheckBox,
     QSlider, QScrollArea, QToolButton, QMenu, QListWidget, QListWidgetItem, QAbstractItemView, QDialog,
     QDialogButtonBox, QFrame, QFileDialog, QSizePolicy, QSystemTrayIcon, QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog,
-    QStackedWidget, QDoubleSpinBox, QButtonGroup, QGraphicsDropShadowEffect
+    QStackedWidget, QDoubleSpinBox, QButtonGroup, QGraphicsDropShadowEffect, QColorDialog
 )
 from .config import (load_settings, save_settings, ROOT, VERSION, LOAD_WARNINGS, DATA_DIR,
                      APP_NAME, PROJECT_URL, RELEASES_URL)
@@ -763,6 +765,7 @@ class MainWindow(QMainWindow):
         self.build_assistant_section()
         self.build_voice_tab()
         self.build_characters_tab()
+        self.build_appearance_tab()
         self.build_general_tab()
         self.build_ai_tab()
         self.save_btn = QPushButton()
@@ -771,7 +774,7 @@ class MainWindow(QMainWindow):
         self.save_btn.setIconSize(QSize(16, 16))
         self.save_btn.clicked.connect(self.apply_settings)
         self.reg(self.save_btn.setText, "save")
-        self.tab_keys = ["tab_chat", "tab_assistant", "tab_voice", "tab_char", "tab_general", "tab_ai"]
+        self.tab_keys = ["tab_chat", "tab_assistant", "tab_voice", "tab_char", "tab_appearance", "tab_general", "tab_ai"]
         self.tidy_forms()                      # field widths follow their content (done once every page exists)
         for i, key in enumerate(self.tab_keys):
             self.reg(lambda s, i=i: self.tabs.setTabText(i, s), key)
@@ -825,6 +828,7 @@ class MainWindow(QMainWindow):
         self.avatar.clicked.connect(self.on_region_clicked)
         self.companion.visibility.connect(self.on_companion_visibility)
         self.animator.look_anchor = self.look_anchor
+        self.apply_appearance(save=False)
         self.apply_runtime()
         self.retranslate()
         self.set_badge("idle", self.client.preview_route())
@@ -1080,10 +1084,13 @@ class MainWindow(QMainWindow):
     def apply_chat_theme(self):
         """Glass + neon colours of the chat in front (same glass, the character's own colours)."""
         theme = self.front.theme or theme_mod.character_theme("kira")
-        self.chat_page.setStyleSheet(theme_mod.character_style(theme, getattr(self, "_effect", "off")))
+        self.chat_page.setStyleSheet(theme_mod.character_style(theme, getattr(self, "_effect", "off"), self.settings.get("appearance", {})))
         r, g, b = (int(theme["main"].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
         for glow in self.glow_effects:
-            glow.setColor(QColor(r, g, b, 150))
+            appearance = self.settings.get("appearance", {})
+            intensity = max(0, min(100, int(appearance.get("glow", 34))))
+            glow.setBlurRadius(6 + intensity * 0.30)
+            glow.setColor(QColor(r, g, b, round(28 + intensity * 0.78)))
 
     def greeting_text(self):
         profile = characters.active(self.settings)
@@ -1386,6 +1393,7 @@ class MainWindow(QMainWindow):
         cid = characters.active_id(self.settings)
         profile = characters.all_profiles(self.settings).get(cid, {})
         palette = theme_mod.character_theme(cid, profile)
+        b.setProperty("kiraIconName", name)
         b.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
                             checked=palette["main"], disabled="#52617B"))
         b.setIconSize(QSize(20, 20))
@@ -1802,32 +1810,6 @@ class MainWindow(QMainWindow):
         self.wake_timeout.setRange(5, 120); self.wake_timeout.setValue(int(s["wake_timeout"]))
         self.engine_lbl = self.row(f2, "engine", QLabel())
 
-        # Optional offline Persian engines: visible status + independent controls.
-        local_box, local_form = self.group("موتورهای صوتی محلی فارسی")
-        self.local_asr_chk = QCheckBox("استفاده از Qwen3-ASR برای تشخیص گفتار (STT)")
-        self.local_asr_chk.setChecked(bool(s.get("local_voice_asr", True)))
-        self.local_asr_chk.toggled.connect(lambda on: self.set_local_voice_option("local_voice_asr", on))
-        local_form.addRow(self.local_asr_chk)
-        self.local_tts_chk = QCheckBox("استفاده از Mana Persian Piper برای تولید صدا (TTS)")
-        self.local_tts_chk.setChecked(bool(s.get("local_voice_tts", True)))
-        self.local_tts_chk.toggled.connect(lambda on: self.set_local_voice_option("local_voice_tts", on))
-        local_form.addRow(self.local_tts_chk)
-        self.local_voice_status = QLabel()
-        self.local_voice_status.setWordWrap(True)
-        self.local_voice_status.setObjectName("hint")
-        local_form.addRow(self.local_voice_status)
-        local_actions = QHBoxLayout()
-        self.local_voice_refresh_btn = QPushButton("بررسی وضعیت")
-        self.local_asr_load_btn = QPushButton("بارگذاری Qwen")
-        self.local_tts_test_btn = QPushButton("تست صدای فارسی")
-        self.local_voice_refresh_btn.clicked.connect(self.refresh_local_voice_status)
-        self.local_asr_load_btn.clicked.connect(self.load_local_asr)
-        self.local_tts_test_btn.clicked.connect(self.test_local_tts)
-        for btn in (self.local_voice_refresh_btn, self.local_asr_load_btn, self.local_tts_test_btn):
-            local_actions.addWidget(btn)
-        local_form.addRow(local_actions)
-        self.refresh_local_voice_status()
-
         self._voice_save_timer = QTimer(self)
         self._voice_save_timer.setSingleShot(True)
         self._voice_save_timer.setInterval(600)
@@ -1837,7 +1819,7 @@ class MainWindow(QMainWindow):
         for w in (self.voice_style, self.out_device, self.mic_device):
             w.currentIndexChanged.connect(lambda *_: self._voice_save_timer.start())
         self.refresh_voice_caps()
-        self.tabs.addTab(self.page(box1, local_box, box2), "")
+        self.tabs.addTab(self.page(box1, box2), "")
 
     # ---- local Persian voice engines ----
     def set_local_voice_option(self, key, enabled):
@@ -2278,14 +2260,6 @@ class MainWindow(QMainWindow):
         self.ui_lang.addItem("فارسی", "fa")
         self.ui_lang.addItem("English", "en")
         self.ui_lang.setCurrentIndex(0 if self.settings.get("ui_lang", "fa") == "fa" else 1)
-        self.window_effect = QComboBox()
-        for label, value in (("شیشه‌ای (Acrylic)", "acrylic"), ("شیشه‌ای ملایم (Mica)", "mica"), ("ساده (تیره)", "off")):
-            self.window_effect.addItem(label, value)
-        self.window_effect.setCurrentIndex(max(0, self.window_effect.findData(self.settings.get("window_effect", "acrylic"))))
-        if not winfx.supported():
-            self.window_effect.setEnabled(False)
-            self.window_effect.setToolTip("حالت شیشه‌ای فقط روی Windows 11 (نسخه‌ی 22H2 به بالا) کار می‌کند.")
-        f1.addRow("ظاهر پنجره", self.window_effect)
         self.tavily_key = QLineEdit(self.settings.get("tavily_api_key", ""))
         self.tavily_key.setEchoMode(QLineEdit.Password)
         self.tavily_key.setPlaceholderText("tvly-…  (رایگان از tavily.com)")
@@ -3279,7 +3253,7 @@ class MainWindow(QMainWindow):
         """Settings changed: restyle now. Switching glass on/off at runtime needs a restart to be fully clean."""
         new = winfx.active_effect(wanted)
         old, self._effect = self._effect, new
-        QApplication.instance().setStyleSheet(build_style(new))
+        QApplication.instance().setStyleSheet(build_style(new, self.settings.get("appearance", {})))
         self.apply_chat_theme()
         winfx.apply_effect(self.winId(), new)
         if (old == "off") != (new == "off"):
@@ -4855,9 +4829,6 @@ class MainWindow(QMainWindow):
             self.listener.muted = False
 
     def toggle_mic(self):
-        if self._game_mode_enabled and not self.mic_btn.isChecked():
-            self.mic_btn.setChecked(True)
-            return
         if self.mic_btn.isChecked():
             self.start_listener()
         else:
@@ -4876,6 +4847,7 @@ class MainWindow(QMainWindow):
         self.listener.state.connect(self.on_listener_state)
         self.listener.error.connect(self.on_listener_error)
         self.listener.note.connect(self.on_cloud_note)
+        self.listener.finished.connect(lambda listener=self.listener: self._listener_finished(listener))
         self.listener.start()
 
     def stop_listener(self):
@@ -4888,10 +4860,21 @@ class MainWindow(QMainWindow):
         self.set_status("st_ready")
         self.update_engine_label()
 
+    def _listener_finished(self, listener):
+        if self.listener is listener:
+            self.listener = None
+        self.mic_btn.setChecked(False)
+        self.update_engine_label()
+        if not self._closing:
+            self.set_status("st_ready")
+
     def on_listener_error(self, msg):
         self.add_chat("error", msg)
         self.mic_btn.setChecked(False)
+        listener = self.listener
         self.listener = None
+        if listener is not None:
+            listener.stop()
 
     def on_listener_state(self, state):
         if state == "listening":
