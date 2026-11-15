@@ -3916,13 +3916,16 @@ class MainWindow(QMainWindow):
             self.input.clear()
             self.submit(text, files)
 
-    def submit(self, text, attachments=None):
-        voice, self._voice_next = self._voice_next, False
+    def submit(self, text, attachments=None, _voice=None):
+        if _voice is None:
+            voice, self._voice_next = self._voice_next, False
+        else:
+            voice, self._voice_next = bool(_voice), False
         vision_worker = getattr(self, "_vision_worker", None)
         if (not self.busy and vision_worker is not None and vision_worker.isRunning()
                 and getattr(vision_worker, "router", None) is self.client):
             if len(self._pending) < 3:
-                self._pending.append((text, attachments))
+                self._pending.append((text, attachments, voice))
                 self.status.setText(
                     f"پیام در صف است ({len(self._pending)}) — تحلیل Vision متوقف می‌شود و پیام بعد از آن ارسال خواهد شد."
                 )
@@ -3942,7 +3945,7 @@ class MainWindow(QMainWindow):
             # Policy: typing never blocks. A message sent while an answer is being generated waits in a small queue
             # (max 3) and is sent automatically, in order, when the current answer ends.
             if len(self._pending) < 3:
-                self._pending.append((text, attachments))
+                self._pending.append((text, attachments, voice))
                 self.status.setText(f"پیام در صف است ({len(self._pending)}) — بعد از پایان پاسخ فعلی ارسال می‌شود.")
             return
         if not attachments and getattr(self, "code_chat", None) is not None and self.code_chat.handle(text, voice):

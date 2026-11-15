@@ -167,6 +167,21 @@ class VisionRoutingTests(unittest.TestCase):
         self.assertTrue(router.cancelled)
         self.assertEqual(results, [])
 
+    def test_user_message_queues_and_cancels_background_vision_without_losing_voice_flag(self):
+        client = object()
+        worker = SimpleNamespace(router=client, isRunning=lambda: True, cancel_request=mock.Mock())
+        state = SimpleNamespace(
+            busy=False,
+            _voice_next=True,
+            _vision_worker=worker,
+            client=client,
+            _pending=[],
+            status=SimpleNamespace(setText=mock.Mock()),
+        )
+        MainWindow.submit(state, "voice question")
+        self.assertEqual(state._pending, [("voice question", None, True)])
+        worker.cancel_request.assert_called_once_with()
+
     def test_vision_result_relay_runs_in_its_owning_character_session(self):
         session = SimpleNamespace(cid="kira")
         state = SimpleNamespace(cur="ren")
