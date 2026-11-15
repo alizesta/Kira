@@ -213,6 +213,7 @@ def classify_intent(text: str, vocabulary=frozenset()):
     """(intent, sure). intent: 'task' (change / build / fix / check something in the project), 'question' (answer needs the
     project's files) or 'chat'. sure=False means the wording is ambiguous and a model should decide."""
     t = str(text or "").strip()
+    normalized = re.sub(r"[\u200c\u200e\u200f]", " ", t)
     if len(t) < 6:
         return "chat", True
     file_ref = bool(_FILE_REF.search(t))
@@ -235,7 +236,7 @@ def classify_intent(text: str, vocabulary=frozenset()):
         return "question", False
     # Natural-language UI complaints and desired behaviour are coding requests when a
     # project is open, even if the user never says "code", "bug", "function" or a filename.
-    if _SOFTWARE_SURFACE.search(t) and _NATURAL_CHANGE.search(t):
+    if _SOFTWARE_SURFACE.search(normalized) and (_NATURAL_CHANGE.search(normalized) or verb):
         return "task", True
     techy = bool(_TECHY.search(t)) or vocab_hit
     if (verb or question) and ((code_noun and len(t) >= 8) or (techy and len(t) >= 18)):
