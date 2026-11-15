@@ -200,7 +200,9 @@ def load_attachment(path: str, progress=None, cancelled=None) -> dict:
     if ext in IMAGE_TYPES:
         if size > MAX_IMAGE_BYTES:
             raise AttachmentError(f"تصویر «{name}» بزرگ‌تر از {MAX_IMAGE_BYTES // (1024 * 1024)} مگابایت است.")
-        result = image_attachment(_read_file(path, progress), name, IMAGE_TYPES[ext])
+        if cancelled and cancelled():
+            raise AttachmentError("بارگذاری فایل لغو شد.")
+        result = image_attachment(_read_file(path, progress, cancelled), name, IMAGE_TYPES[ext])
         progress(100)
         return result
     if size > MAX_FILE_BYTES:
