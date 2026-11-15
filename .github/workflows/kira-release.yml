@@ -81,8 +81,53 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
 
+  portable-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install portable test dependency
+        run: python -m pip install requests
+      - name: Validate version and build metadata
+        run: python scripts/build_metadata.py --check
+      - name: Run portable regression tests
+        run: >-
+          python -m unittest
+          tests.test_api_manager
+          tests.test_attachments
+          tests.test_routes
+          tests.test_router_routes
+          tests.test_providers
+          tests.test_persona_memory
+          tests.test_characters
+          tests.test_avatar_art
+          tests.test_app_resolution
+          tests.test_persian_quality
+          tests.test_release_package
+          tests.test_minimax_cloud_voice
+          tests.test_game_mode_policy
+          tests.test_code_agent
+          tests.test_chat_code
+          tests.test_auto_agent
+          tests.test_native_function_calling
+          tests.test_storage
+          tests.test_game_detection
+          tests.test_streaming
+          tests.test_chat_persistence
+          tests.test_chat_render
+          tests.test_body
+          tests.test_build_metadata
+          tests.test_release
+      - name: Check Python syntax
+        run: python -m compileall -q kira scripts tests
+
   package-and-release:
-    needs: windows-game-mode
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next/2026-11-11-intelligence' || github.ref == 'refs/heads/feature/characters-ren-mika'
+    needs: [windows-game-mode, portable-regression]
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
