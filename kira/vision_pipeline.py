@@ -5,7 +5,6 @@ Only the newest frame is retained; stale frames are discarded instead of queued.
 """
 from __future__ import annotations
 
-from collections import deque
 from dataclasses import dataclass
 import hashlib
 import time
