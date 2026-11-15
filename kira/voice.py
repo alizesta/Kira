@@ -360,7 +360,7 @@ class Speaker(QObject):
                 return cw, json.load(f)
         errors = []
         # 0) Offline Persian TTS. It only converts text to audio; chat remains on the selected chat route.
-        if bool(self.settings.get("local_voice_tts", True)) and re.search(r"[\\u0600-\\u06FF]", text):
+        if bool(self.settings.get("local_voice_tts", True)) and re.search(r"[\u0600-\u06FF]", text):
             try:
                 from . import local_voice
                 if local_voice.tts_ready():
