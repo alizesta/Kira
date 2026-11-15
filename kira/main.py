@@ -3831,11 +3831,30 @@ class MainWindow(QMainWindow):
             if not self._vision_gate.accept(jpeg, visual_sample=visual_sample):
                 return
             image = att.image_attachment(jpeg, "game-screen.jpg", "image/jpeg")
+            session = self.cur
             self._vision_worker = VisionAnalysisWorker(self.client, image)
-            self._vision_worker.done.connect(self._on_game_vision_result)
+            self._vision_worker.done.connect(
+                lambda ok, result, latency, owner=session:
+                    self._deliver_game_vision_result(owner, ok, result, latency)
+            )
+            self._vision_worker.finished.connect(
+                lambda owner=session: self._send_pending_for_session(owner)
+            )
             self._vision_worker.start()
         except Exception as exc:  # noqa: BLE001 - vision must never interrupt the game/chat
             self.add_chat("system", f"Vision: آماده‌سازی فریم ناموفق بود: {str(exc)[:180]}")
+
+    def _deliver_game_vision_result(self, session, ok, result, latency_ms):
+        if session is None or session.cid not in self.sessions:
+            return
+        with self._as(session):
+            self._on_game_vision_result(ok, result, latency_ms)
+
+    def _send_pending_for_session(self, session):
+        if self._closing or session is None or session.cid not in self.sessions:
+            return
+        with self._as(session):
+            self._send_next_pending()
 
     def _on_game_vision_result(self, ok, result, latency_ms):
         self._vision_gate.mark_latency(latency_ms)
@@ -3902,6 +3921,18 @@ class MainWindow(QMainWindow):
 
     def submit(self, text, attachments=None):
         voice, self._voice_next = self._voice_next, False
+        vision_worker = getattr(self, "_vision_worker", None)
+        if (not self.busy and vision_worker is not None and vision_worker.isRunning()
+                and getattr(vision_worker, "router", None) is self.client):
+            if len(self._pending) < 3:
+                self._pending.append((text, attachments))
+                self.status.setText(
+                    f"پیام در صف است ({len(self._pending)}) — تحلیل Vision متوقف می‌شود و پیام بعد از آن ارسال خواهد شد."
+                )
+                vision_worker.cancel_request()
+                if not vision_worker.isRunning():
+                    QTimer.singleShot(0, lambda owner=self.cur: self._send_pending_for_session(owner))
+            return
         if self.busy and not attachments:
             try:
                 control = self.tool_agent.control_running(text)        # "وضعیت / توقف / لغو کار / مرحله اضافه کن" act between two steps of a running task

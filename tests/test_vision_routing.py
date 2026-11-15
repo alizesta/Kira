@@ -167,6 +167,42 @@ class VisionRoutingTests(unittest.TestCase):
         self.assertTrue(router.cancelled)
         self.assertEqual(results, [])
 
+    def test_vision_result_is_delivered_to_its_owning_character_session(self):
+        session = SimpleNamespace(cid="kira")
+        state = SimpleNamespace(sessions={"kira": session}, cur="ren")
+        seen = []
+
+        @contextlib.contextmanager
+        def as_session(target):
+            previous = state.cur
+            state.cur = target
+            try:
+                yield
+            finally:
+                state.cur = previous
+
+        state._as = as_session
+        state._on_game_vision_result = lambda *args: seen.append(state.cur.cid)
+        MainWindow._deliver_game_vision_result(state, session, True, "game state", 10)
+        self.assertEqual(seen, ["kira"])
+        self.assertEqual(state.cur, "ren")
+
+    def test_vision_finished_flushes_pending_messages_in_the_owning_session(self):
+        session = SimpleNamespace(cid="kira")
+        state = SimpleNamespace(sessions={"kira": session}, _closing=False)
+        sent = []
+
+        @contextlib.contextmanager
+        def as_session(target):
+            sent.append(target.cid)
+            yield
+
+        state._as = as_session
+        state._send_next_pending = mock.Mock()
+        MainWindow._send_pending_for_session(state, session)
+        self.assertEqual(sent, ["kira"])
+        state._send_next_pending.assert_called_once_with()
+
     def test_competitive_safe_stops_active_code_chat_job(self):
         session = object()
         class FakeCodeChat:
