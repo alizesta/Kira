@@ -65,13 +65,19 @@ def persona_memory_files(folder: Path):
 
 def has_user_data(folder: Path) -> bool:
     return (any((folder / n).is_file() for n in (SETTINGS_NAME, DB_NAME, EVIDENCE_DB_NAME, CLOUD_VOICE_NAME))
-            or bool(persona_memory_files(folder)))
+            or bool(persona_memory_files(folder))
+            or any((folder / name).is_dir() for name in ("huggingface", "voice_cache", "cache")))
 
 
 def legacy_candidates(root: Path):
     """Old data folders, newest first: the program's own ./data, then ./data of sibling Kira folders
     (people unzip every new version next to the old one)."""
     found = []
+    # Previous releases stored user data and model caches under %LOCALAPPDATA%\\Kira.
+    local = os.environ.get("LOCALAPPDATA")
+    previous_user_dir = Path(local) / "Kira" if local else None
+    if previous_user_dir and has_user_data(previous_user_dir):
+        found.append(previous_user_dir)
     own = root / "data"
     if has_user_data(own):
         found.append(own)
@@ -100,7 +106,9 @@ def migrate_legacy(new_dir: Path, candidates) -> str | None:
             continue
         missing = [name for name in fixed_names if not (new_dir / name).is_file()]
         missing.extend(p.name for p in persona_memory_files(source_path) if not (new_dir / p.name).is_file())
-        if not missing:
+        copy_dirs = ("huggingface", "voice_cache", "cache")
+        dirs_to_copy = [name for name in copy_dirs if (source_path / name).is_dir()]
+        if not missing and not dirs_to_copy:
             continue
         copied = []
         for name in missing:
@@ -108,6 +116,17 @@ def migrate_legacy(new_dir: Path, candidates) -> str | None:
             if src.is_file():
                 shutil.copy2(src, new_dir / name)
                 copied.append(name)
+        for dirname in dirs_to_copy:
+            source_dir = source_path / dirname
+            for src in source_dir.rglob("*"):
+                if not src.is_file():
+                    continue
+                relative = src.relative_to(source_dir)
+                dst = new_dir / dirname / relative
+                if not dst.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dst)
+                    copied.append(f"{dirname}/{relative}")
         if not copied:
             continue
         (new_dir / MARKER).write_text(f"{source}\n", encoding="utf-8")
