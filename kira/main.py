@@ -610,6 +610,14 @@ class SessionRelay(QObject):
     def search_done(self, token, ok, result):
         self._run("on_web_done", token, ok, result)
 
+    @Slot(bool, str, int)
+    def game_vision_done(self, ok, result, latency_ms):
+        self._run("_on_game_vision_result", ok, result, latency_ms)
+
+    @Slot()
+    def game_vision_finished(self):
+        self._run("_send_next_pending")
+
 
 class MainWindow(QMainWindow):
     # Per-chat state: one ChatSession per character; these names read/write the session that is current (see chat_sessions.py).
@@ -3833,22 +3841,11 @@ class MainWindow(QMainWindow):
             image = att.image_attachment(jpeg, "game-screen.jpg", "image/jpeg")
             session = self.cur
             self._vision_worker = VisionAnalysisWorker(self.client, image)
-            self._vision_worker.done.connect(
-                lambda ok, result, latency, owner=session:
-                    self._deliver_game_vision_result(owner, ok, result, latency)
-            )
-            self._vision_worker.finished.connect(
-                lambda owner=session: self._send_pending_for_session(owner)
-            )
+            self._vision_worker.done.connect(session.relay.game_vision_done)
+            self._vision_worker.finished.connect(session.relay.game_vision_finished)
             self._vision_worker.start()
         except Exception as exc:  # noqa: BLE001 - vision must never interrupt the game/chat
             self.add_chat("system", f"Vision: آماده‌سازی فریم ناموفق بود: {str(exc)[:180]}")
-
-    def _deliver_game_vision_result(self, session, ok, result, latency_ms):
-        if session is None or session.cid not in self.sessions:
-            return
-        with self._as(session):
-            self._on_game_vision_result(ok, result, latency_ms)
 
     def _send_pending_for_session(self, session):
         if self._closing or session is None or session.cid not in self.sessions:
@@ -4560,6 +4557,8 @@ class MainWindow(QMainWindow):
         self._send_next_pending()
 
     def _send_next_pending(self):
+        if self._closing:
+            return
         if self._pending and not self.busy:
             nxt = self._pending.pop(0)
             QTimer.singleShot(0, lambda t=nxt, sess=self.cur: self._submit_for(sess, t))
