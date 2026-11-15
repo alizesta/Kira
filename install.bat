@@ -1,6 +1,23 @@
 @echo off
 setlocal
 cd /d "%~dp0"
+rem --- Keep Kira data, speech models and runtime caches on the dedicated A: drive.
+if exist "A:\" (
+  set "KIRA_DATA_DIR=A:\Project KIRA\Kira Attachments"
+) else (
+  set "KIRA_DATA_DIR=%LOCALAPPDATA%\Kira"
+  echo WARNING: Drive A: is unavailable. Kira data will use %KIRA_DATA_DIR%.
+)
+set "HF_HOME=%KIRA_DATA_DIR%\huggingface"
+set "HUGGINGFACE_HUB_CACHE=%KIRA_DATA_DIR%\huggingface\hub"
+set "HF_HUB_CACHE=%KIRA_DATA_DIR%\huggingface\hub"
+set "TRANSFORMERS_CACHE=%KIRA_DATA_DIR%\huggingface\hub"
+set "TORCH_HOME=%KIRA_DATA_DIR%\cache\torch"
+set "XDG_CACHE_HOME=%KIRA_DATA_DIR%\cache"
+set "PIP_CACHE_DIR=%KIRA_DATA_DIR%\cache\pip"
+if not exist "%KIRA_DATA_DIR%" mkdir "%KIRA_DATA_DIR%"
+if not exist "%HF_HOME%" mkdir "%HF_HOME%"
+
 title Project Kira Setup
 echo =====================================
 echo       Project Kira - Setup
@@ -23,11 +40,8 @@ if not defined PY (
 echo Using: %PY%
 %PY% --version
 
-rem --- Keep downloaded AI model files outside the project and virtual environment.
-if not defined HF_HOME set "HF_HOME=%LOCALAPPDATA%\Kira\huggingface"
-if not exist "%HF_HOME%" mkdir "%HF_HOME%"
-setx HF_HOME "%HF_HOME%" >nul 2>nul
-echo AI model cache: %HF_HOME%
+rem --- AI model cache is kept in the shared Kira data folder above.
+echo Kira data and AI model cache: %KIRA_DATA_DIR%
 
 set "GOOD=0"
 %PY% -c "import sys; sys.exit(0 if (3,11)<=sys.version_info[:2]<=(3,12) else 1)" >nul 2>nul
