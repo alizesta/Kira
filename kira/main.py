@@ -1848,15 +1848,19 @@ class MainWindow(QMainWindow):
         try:
             from . import local_voice
             state = local_voice.status()
-            asr = ("نصب است" if state["asr_installed"] else "نصب نیست")
-            asr += " · مدل بارگذاری شده" if state["asr_loaded"] else " · مدل هنوز بارگذاری نشده"
+            asr = ("پکیج Python نصب است" if state["asr_installed"] else "پکیج Python نصب نیست")
+            asr += " · مدل در حافظه بارگذاری شده" if state["asr_loaded"] else " · مدل هنوز در حافظه بارگذاری نشده"
             if state.get("asr_error"):
                 asr += " · خطا: " + state["asr_error"]
-            tts = ("نصب است" if state["tts_installed"] else "نصب نیست")
-            tts += " · مدل بارگذاری شده" if state["tts_loaded"] else " · مدل هنوز بارگذاری نشده"
+            tts = ("پکیج Python نصب است" if state["tts_installed"] else "پکیج Python نصب نیست")
+            tts += " · موتور در حافظه بارگذاری شده" if state["tts_loaded"] else " · موتور هنوز در حافظه بارگذاری نشده"
             if state.get("tts_error"):
                 tts += " · خطا: " + state["tts_error"]
-            self.local_voice_status.setText(f"Qwen3-ASR: {asr}\nMana Persian Piper: {tts}\nمسیر کش مدل‌ها: {local_voice.cache_directory()}")
+            self.local_voice_status.setText(
+                f"Qwen3-ASR: {asr}\nMana Persian Piper: {tts}\n"
+                f"کش مدل‌ها: {local_voice.cache_directory()}\n"
+                "نصب پکیج با دانلود وزن مدل یکی نیست؛ بارگذاری اول ممکن است دانلود انجام دهد."
+            )
         except Exception as exc:
             self.local_voice_status.setText(f"بررسی موتورهای صوتی ناموفق بود: {type(exc).__name__}: {exc}")
 
