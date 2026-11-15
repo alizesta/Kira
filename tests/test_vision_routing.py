@@ -68,6 +68,14 @@ class FakeTimer:
         self.started = False
 
 
+class FakeVisionGate:
+    def __init__(self):
+        self.reset_count = 0
+
+    def reset(self):
+        self.reset_count += 1
+
+
 class FakeGameMode:
     def __init__(self):
         self.enabled = None
@@ -182,12 +190,16 @@ class VisionRoutingTests(unittest.TestCase):
             _game_capture_timer=timer,
             _latest_game_frame=object(),
             _vision_worker=worker,
+            _vision_gate=FakeVisionGate(),
+            _vision_last_note="previous analysis",
         )
         state._cancel_vision_worker = lambda: MainWindow._cancel_vision_worker(state)
         MainWindow._set_game_vision_capture(state, False)
         self.assertFalse(state.game_mode.enabled)
         self.assertTrue(timer.stopped)
         self.assertIsNone(state._latest_game_frame)
+        self.assertEqual(state._vision_gate.reset_count, 1)
+        self.assertEqual(state._vision_last_note, "")
         self.assertTrue(worker.cancelled)
 
     def test_enabling_vision_capture_starts_capture_and_timer(self):

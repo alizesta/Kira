@@ -3684,6 +3684,10 @@ class MainWindow(QMainWindow):
         else:
             self._game_capture_timer.stop()
             self._latest_game_frame = None
+            gate = getattr(self, "_vision_gate", None)
+            if gate is not None:
+                gate.reset()
+            self._vision_last_note = ""
             self._cancel_vision_worker()
 
     def _cancel_vision_worker(self):
