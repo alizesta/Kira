@@ -23,6 +23,12 @@ if not defined PY (
 echo Using: %PY%
 %PY% --version
 
+rem --- Keep downloaded AI model files outside the project and virtual environment.
+if not defined HF_HOME set "HF_HOME=%LOCALAPPDATA%\Kira\huggingface"
+if not exist "%HF_HOME%" mkdir "%HF_HOME%"
+setx HF_HOME "%HF_HOME%" >nul 2>nul
+echo AI model cache: %HF_HOME%
+
 set "GOOD=0"
 %PY% -c "import sys; sys.exit(0 if (3,11)<=sys.version_info[:2]<=(3,12) else 1)" >nul 2>nul
 if not errorlevel 1 set "GOOD=1"
@@ -60,12 +66,12 @@ python --version
 python -m pip install --upgrade pip --retries 10 --timeout 60
 
 echo.
-echo [1/2] Installing core packages...
+echo [1/3] Installing core packages...
 python install_deps.py requirements.txt
 if errorlevel 1 goto netfail
 
 echo.
-echo [2/2] Installing voice packages one by one...
+echo [2/3] Installing voice packages one by one...
 if exist voice_failed.txt del voice_failed.txt
 set "PKGS=Pillow sounddevice PyAudioWPatch edge-tts SpeechRecognition"
 set "SKIPPED="
@@ -99,6 +105,32 @@ if exist voice_failed.txt (
     echo lip-sync were skipped. Kira uses online microphone and approximate lip-sync.
   )
 )
+echo.
+echo [3/3] Optional local Persian voice engines
+echo Qwen3-ASR and its runtime dependencies can require several GB of downloads.
+echo Their Python packages will be installed in this Kira .venv.
+echo Downloaded Hugging Face model files are kept in:
+echo   %HF_HOME%
+choice /C YN /N /M "Install local voice engines now? [Y/N] "
+if errorlevel 2 goto voice_skip
+if not exist requirements-voice-local.txt (
+  echo ERROR: requirements-voice-local.txt was not found beside install.bat.
+  echo Download the complete Kira branch archive and try again.
+  goto voice_done
+)
+python -m pip install --retries 10 --timeout 60 -r requirements-voice-local.txt
+if errorlevel 1 (
+  echo Local voice engines could not be installed. Kira will continue without them.
+  echo You can retry later by running:
+  echo   .venv\Scripts\python.exe -m pip install -r requirements-voice-local.txt
+) else (
+  echo Local voice packages installed. Model weights download on first use.
+)
+goto voice_done
+:voice_skip
+echo Skipped local voice engines. You can install them later from this folder.
+:voice_done
+echo.
 echo Next: install Ollama, run download_model.bat, then start_kira.bat.
 pause
 exit /b 0
