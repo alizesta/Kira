@@ -54,6 +54,8 @@ class GameModePolicyTests(unittest.TestCase):
         agent.set_competitive_safe_mode(True)
         self.assertTrue(agent._competitive_safe_mode)
         agent.request_cancel.assert_called_once_with()
+        agent.set_competitive_safe_mode(True)
+        agent.request_cancel.assert_called_once_with()
         agent.set_competitive_safe_mode(False)
         self.assertFalse(agent._competitive_safe_mode)
         agent.request_cancel.assert_called_once_with()

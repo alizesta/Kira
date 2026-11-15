@@ -120,10 +120,12 @@ class ToolAgent(AutonomyMixin):
     # ------------------------------------------------------------ game-mode permission boundary
     def set_competitive_safe_mode(self, enabled: bool):
         """Restrict local control tools while an online/PvP safety profile is active."""
+        was_safe = self._competitive_safe_mode
         self._competitive_safe_mode = bool(enabled)
         if self._competitive_safe_mode:
-            # Revoke pending approvals and stop any multi-step local task immediately.
-            self.request_cancel()
+            # Cancel once on entry; repeated profile refreshes must not stop allowed web research.
+            if not was_safe:
+                self.request_cancel()
             pending = self._pending
             if pending is not None:
                 tool = self.registry.get(pending.tool)
