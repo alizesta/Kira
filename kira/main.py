@@ -961,6 +961,7 @@ class MainWindow(QMainWindow):
         self.front = self.cur = sess
         sess.unread = False
         self.settings["active_character_id"] = cid
+        self.refresh_navigation_icons()
         try:
             mood.set_active_character(cid, self.character_traits(cid, characters.all_profiles(self.settings).get(cid)))
         except Exception:                               # noqa: BLE001 - never block switching tabs
@@ -1308,6 +1309,21 @@ class MainWindow(QMainWindow):
         b.setCursor(Qt.PointingHandCursor)
         b.setFocusPolicy(Qt.NoFocus)
         return b
+
+    def refresh_navigation_icons(self):
+        """Keep shared navigation glyphs in sync when the active character changes."""
+        cid = characters.active_id(self.settings)
+        profile = characters.all_profiles(self.settings).get(cid, {})
+        palette = theme_mod.character_theme(cid, profile)
+        for attr, name in (("nav_chat_btn", "chat"), ("nav_route_btn", "route"), ("menu_btn", "menu")):
+            button = getattr(self, attr, None)
+            if button is not None:
+                button.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
+                                          checked=palette["main"], disabled="#52617B"))
+        badge = getattr(self, "route_badge", None)
+        if badge is not None:
+            badge.setIcon(make_icon("chevron_up", normal=palette["second"], hover="#FFFFFF",
+                                    checked=palette["main"], disabled="#52617B"))
 
     def build_chat_tab(self):
         page = QWidget()
