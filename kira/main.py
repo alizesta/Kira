@@ -3740,7 +3740,9 @@ class MainWindow(QMainWindow):
             self._latest_game_frame = None
             self._vision_gate.reset()
             return
-        pixmap = self.game_mode.capture_last_game()
+        pixmap = self.game_mode.capture_last_game(
+            self._vision_gate.policy.max_width, self._vision_gate.policy.max_height
+        )
         self._latest_game_frame = pixmap.toImage() if pixmap is not None else None
         if self._latest_game_frame is None or self._vision_worker is not None and self._vision_worker.isRunning():
             return
