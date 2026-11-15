@@ -36,7 +36,7 @@ class GameModeSafetyTests(unittest.TestCase):
         monitor._foreground_info = mock.Mock(return_value={
             "hwnd": 789, "pid": 999999,
             "exe": "notepad.exe", "title": "Untitled - Notepad",
-            "rect": (0, 0, 500, 400),
+            "rect": (0, 0, 100, 100),
         })
         monitor.poll()
         self.assertIsNone(monitor.last_game)
