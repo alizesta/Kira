@@ -3517,44 +3517,6 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, lambda p=pid: self._api_changed(p))          # redraw after this signal has finished (the table is rebuilt)
 
     # ---- Add ----
-    def api_add(self):
-        if self._api_busy():
-            return
-        key = self.api_key_edit.text().strip()
-        account = self.api_account_edit.text().strip()
-        problem = api_manager.key_problem(key)
-        dup = api_manager.find_duplicate(self.settings, key) if not problem else ""
-        if problem or dup:
-            self.api_add_status.setText("✕ " + (problem or f"این کلید قبلاً به‌عنوان «{route_model.provider_label(dup, self.settings['providers'][dup])}» ثبت شده است."))
-            return
-        self.api_add_btn.setEnabled(False)
-        self.api_add_status.setText("در حال شناسایی سرویس و اعتبارسنجی…")
-        self._api_worker = TaskWorker(lambda: api_manager.detect(key, account))
-        self._api_worker.done.connect(lambda result, k=key: self.on_api_detected(result, k))
-        self._api_worker.start()
-
-    def on_api_detected(self, result, key):
-        self.api_add_btn.setEnabled(True)
-        ok, det = result
-        if not ok:
-            self.api_add_status.setText("✕ " + str(det))
-            return
-        if not det.ok:
-            self.api_add_status.setText(api_manager.describe_failure(det))
-            if det.state == "needs_account":
-                self.api_account_edit.setFocus()
-            return
-        try:
-            pid = api_manager.register(self.settings, det, key)
-        except ValueError as exc:
-            self.api_add_status.setText("✕ " + str(exc))
-            return
-        self.api_key_edit.clear()
-        self.api_account_edit.clear()
-        label = route_model.provider_label(pid, self.settings["providers"][pid])
-        self.api_add_status.setText(f"✓ {label} شناسایی و ثبت شد · {len(det.models)} مدل قابل‌دسترسی پیدا شد. مدل‌های دلخواه را در جزئیات فعال کن.")
-        self._api_changed(pid)
-
     # ---- Refresh / Rediscover ----
     def api_refresh(self, pid, quiet=False):
         if not pid or pid not in self.settings.get("providers", {}) or self._api_busy():
@@ -5666,6 +5628,10 @@ class MainWindow(QMainWindow):
     def on_listener_error(self, msg):
         self.add_chat("error", msg)
         self.mic_btn.setChecked(False)
+        if self.wake_btn.isChecked():
+            self.wake_btn.setChecked(False)
+            self.animator.set_sleeping(False)
+            self.wake_timer.stop()
         listener = self.listener
         self.listener = None
         if listener is not None:

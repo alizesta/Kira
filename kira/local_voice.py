@@ -36,12 +36,14 @@ def asr_ready() -> bool:
 
 
 def tts_ready(model_path="") -> bool:
-    if model_path and Path(str(model_path)).is_file():
+    if model_path:
+        if not Path(str(model_path)).is_file():
+            return False
         try:
             import piper  # noqa: F401
             return True
         except ImportError:
-            pass
+            return False
     try:
         import persian_speech_runtime  # noqa: F401
         return True
@@ -147,7 +149,7 @@ def status(model_path="") -> dict:
         "asr_installed": asr_ready(),
         "tts_installed": tts_ready(model_path),
         "asr_loaded": _asr is not None,
-        "tts_loaded": _tts is not None,
+        "tts_loaded": _tts is not None or bool(_custom_tts),
         "asr_error": str(_asr_error)[:240] if _asr_error else "",
         "tts_error": str(_tts_error)[:240] if _tts_error else "",
     }
