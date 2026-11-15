@@ -38,6 +38,7 @@ on:
       - "kira/tools/registry.py"
       - "docs/**"
       - "tests/test_api_manager.py"
+      - "tests/test_attachments.py"
       - "tests/test_routes.py"
       - "tests/test_router_routes.py"
       - "tests/test_providers.py"
@@ -102,6 +103,7 @@ jobs:
         run: >-
           python -m unittest
           tests.test_api_manager
+          tests.test_attachments
           tests.test_routes
           tests.test_router_routes
           tests.test_providers
