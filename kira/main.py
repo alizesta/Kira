@@ -476,11 +476,10 @@ class VisionAnalysisWorker(QThread):
     """One bounded, non-streaming image analysis request outside the GUI thread."""
     done = Signal(bool, str, int)
 
-    def __init__(self, router, image, started_at):
+    def __init__(self, router, image):
         super().__init__()
         self.router = router
         self.image = dict(image)
-        self.started_at = started_at
 
     def run(self):
         began = time.monotonic()
@@ -3760,7 +3759,7 @@ class MainWindow(QMainWindow):
             if not self._vision_gate.accept(jpeg):
                 return
             image = att.image_attachment(jpeg, "game-screen.jpg", "image/jpeg")
-            self._vision_worker = VisionAnalysisWorker(self.client, image, time.monotonic())
+            self._vision_worker = VisionAnalysisWorker(self.client, image)
             self._vision_worker.done.connect(self._on_game_vision_result)
             self._vision_worker.start()
         except Exception as exc:  # noqa: BLE001 - vision must never interrupt the game/chat
@@ -4788,10 +4787,10 @@ class MainWindow(QMainWindow):
             for w in (sess.worker, sess._search_worker):
                 if w is not None and w.isRunning():
                     w.wait(3000)
-        for name in ("_route_worker", "_bench_worker", "_scan_worker", "_provider_test_worker", "_ollama_worker"):
+        for name in ("_route_worker", "_bench_worker", "_scan_worker", "_provider_test_worker", "_ollama_worker", "_vision_worker"):
             w = getattr(self, name, None)
             if w is not None and w.isRunning():
-                w.wait(3000)
+                w.wait(5000)
         self.stop_listener()
         self.safe_stop_speaker()
         self.companion.close()
