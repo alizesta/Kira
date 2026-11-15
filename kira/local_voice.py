@@ -6,8 +6,10 @@ This module performs speech conversion only; it contains no chat or agent logic.
 """
 from __future__ import annotations
 
+import io
 import os
 import threading
+import wave
 from pathlib import Path
 
 # Keep model/runtime caches beside Kira's persistent data, not on C: or
@@ -33,7 +35,13 @@ def asr_ready() -> bool:
         return False
 
 
-def tts_ready() -> bool:
+def tts_ready(model_path="") -> bool:
+    if model_path and Path(str(model_path)).is_file():
+        try:
+            import piper  # noqa: F401
+            return True
+        except ImportError:
+            pass
     try:
         import persian_speech_runtime  # noqa: F401
         return True
@@ -83,25 +91,46 @@ def transcribe(audio, sample_rate=16000, language="fa", prompt="", model_name="Q
         return str(getattr(results[0], "text", "") or "").strip()
 
 
-def synthesize_persian(text: str) -> bytes:
-    """Return a complete WAV payload from the local Mana Persian Piper engine."""
+def synthesize_persian(text: str, model_path="") -> bytes:
+    """Return WAV from a chosen Piper ONNX voice or the bundled Persian engine."""
     global _tts, _tts_error
     clean = str(text or "").strip()
     if not clean:
         return b""
+    selected = str(model_path or "").strip()
     with _tts_lock:
-        if _tts is None:
+        if selected:
+            path = Path(selected).expanduser().resolve()
+            if not path.is_file() or path.suffix.lower() != ".onnx":
+                raise RuntimeError(f"Custom Piper model does not exist: {path}")
             try:
-                from persian_speech_runtime import PiperSpeechEngine
-                _tts = PiperSpeechEngine()
+                voice = _custom_tts.get(str(path))
+                if voice is None:
+                    from piper import PiperVoice
+                    voice = PiperVoice.load(str(path))
+                    _custom_tts.clear()
+                    _custom_tts[str(path)] = voice
+                output = io.BytesIO()
+                with wave.open(output, "wb") as wav_file:
+                    voice.synthesize_wav(clean, wav_file)
+                payload = output.getvalue()
                 _tts_error = None
             except Exception as exc:
                 _tts_error = exc
-                raise RuntimeError(f"Persian Piper load failed: {type(exc).__name__}: {exc}") from exc
-        try:
-            payload = _tts.stream(clean)
-        except Exception as exc:
-            raise RuntimeError(f"Persian Piper synthesis failed: {type(exc).__name__}: {exc}") from exc
+                raise RuntimeError(f"Custom Piper synthesis failed: {type(exc).__name__}: {exc}") from exc
+        else:
+            if _tts is None:
+                try:
+                    from persian_speech_runtime import PiperSpeechEngine
+                    _tts = PiperSpeechEngine()
+                    _tts_error = None
+                except Exception as exc:
+                    _tts_error = exc
+                    raise RuntimeError(f"Persian Piper load failed: {type(exc).__name__}: {exc}") from exc
+            try:
+                payload = _tts.stream(clean)
+            except Exception as exc:
+                raise RuntimeError(f"Persian Piper synthesis failed: {type(exc).__name__}: {exc}") from exc
     if not isinstance(payload, (bytes, bytearray)) or not payload.startswith(b"RIFF"):
         raise RuntimeError("Persian Piper returned invalid WAV data")
     return bytes(payload)
@@ -112,11 +141,11 @@ def cache_directory() -> str:
     return str(Path(os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface"))
 
 
-def status() -> dict:
+def status(model_path="") -> dict:
     """Small diagnostic snapshot; does not load either model."""
     return {
         "asr_installed": asr_ready(),
-        "tts_installed": tts_ready(),
+        "tts_installed": tts_ready(model_path),
         "asr_loaded": _asr is not None,
         "tts_loaded": _tts is not None,
         "asr_error": str(_asr_error)[:240] if _asr_error else "",

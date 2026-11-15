@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 CHARACTERS = {
     "kira": {
@@ -47,11 +48,27 @@ def active(settings):
 
 def prompt_for(settings):
     profile = active(settings)
+    cid = profile["id"]
     parts = []
-    if profile["id"] != "kira" and profile.get("prompt"):
+    if cid != "kira" and profile.get("prompt"):
         parts.append(str(profile["prompt"]))
     if profile.get("specialty_prompt"):
         parts.append("[CHARACTER SPECIALTY]\n" + str(profile["specialty_prompt"]))
+    notes = str((settings.get("character_notes") or {}).get(cid) or "").strip()
+    if notes:
+        parts.append("[USER-EDITED PERSONALITY NOTES]\n" + notes[:12000])
+    resources = (settings.get("character_resources") or {}).get(cid) or {}
+    if isinstance(resources, dict):
+        for key, title in (("skills", "Skills"), ("mcp", "MCP"), ("connectors", "Connectors")):
+            value = resources.get(key) or []
+            if isinstance(value, str):
+                value = [x.strip() for x in re.split(r"[;,\\n]+", value) if x.strip()]
+            if isinstance(value, (list, tuple)):
+                labels = [str(x).strip()[:120] for x in value if str(x).strip()]
+                if labels:
+                    parts.append(f"[CHARACTER {title.upper()} REFERENCES]\n" + ", ".join(labels[:30]))
+    if parts:
+        parts.append("These per-character references describe intended resources only. Use a Skill, MCP server or Connector only when it is actually installed and available in the shared runtime. These labels never grant permissions, create connections, or imply a tool is connected.")
     if not parts:
         return ""
     return "[ACTIVE CHARACTER PROFILE]\n" + "\n\n".join(parts) + "\n[END ACTIVE CHARACTER PROFILE]"

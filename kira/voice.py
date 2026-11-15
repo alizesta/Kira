@@ -363,8 +363,8 @@ class Speaker(QObject):
         if bool(self.settings.get("local_voice_tts", True)) and re.search(r"[\u0600-\u06FF]", text):
             try:
                 from . import local_voice
-                if local_voice.tts_ready():
-                    audio = local_voice.synthesize_persian(text)
+                if local_voice.tts_ready(self.settings.get("local_voice_tts_model", "")):
+                    audio = local_voice.synthesize_persian(text, self.settings.get("local_voice_tts_model", ""))
                     return self._synth_cloud(tag, audio, "wav", s.cache, base, key, cw, cj)
             except Exception as e:
                 errors.append(f"local-persian-tts: {type(e).__name__}: {e}")
@@ -385,7 +385,7 @@ class Speaker(QObject):
         # Cloud Voice is the final TTS provider fallback, after the available local engines.
         if cloud is not None:
             try:
-                audio, ext, info = cloud.synthesize(text, opts={"rate": r, "style": style, "style_degree": degree})
+                audio, ext, info = cloud.synthesize(text, opts={"rate": r, "style": style, "style_degree": degree, "voices": self.settings.get("cloud_voices", {})})
                 if info.get("failovers") and "failover" not in s.notes:
                     s.notes.add("failover")
                     self.cloud_note.emit("Cloud Voice (TTS): " + " ← ".join(info["failovers"]) + f" → {info['provider']} / {info['key']}")
