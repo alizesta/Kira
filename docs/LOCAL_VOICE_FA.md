@@ -5,12 +5,14 @@ Kira از دو موتور مستقل و صرفاً صوتی استفاده می�
 - STT: Qwen3-ASR 0.6B، اجرای CPU و پشتیبانی از فارسی.
 - TTS: Mana Persian Piper از بستهٔ `persian-speech`، خروجی WAV فارسی و اجرای CPU.
 
-## نصب اختیاری
-در محیط مجازی Kira اجرا کنید:
+## نصب
+در اجرای `install.bat`، نصب موتورهای صوتی محلی در مرحلهٔ جداگانه پرسیده می‌شود؛ چون وابستگی‌های Qwen ممکن است چند گیگابایت دانلود داشته باشند. اگر آن مرحله را رد کردید، در پوشهٔ اصلی پروژه و با محیط Kira فعال اجرا کنید:
 
 ```powershell
-pip install -r requirements-voice-local.txt
+.venv\\Scripts\\python.exe -m pip install -r requirements-voice-local.txt
 ```
+
+بسته‌های Python داخل `.venv` همان نصب Kira قرار می‌گیرند. کش مدل‌های Hugging Face به‌صورت پیش‌فرض در `%LOCALAPPDATA%\\Kira\\huggingface` ذخیره می‌شود و با حذف یا جایگزینی پوشهٔ پروژه باقی می‌ماند. مسیر سفارشی `HF_HOME` نیز حفظ می‌شود.
 
 وزن‌های Qwen و مدل صدای Piper در اولین استفاده دریافت/آماده می‌شوند. بعد از آماده‌شدن مدل‌ها، تبدیل صدا به متن و متن به صدا محلی است و صدایی به Cloud Voice ارسال نمی‌شود.
 
