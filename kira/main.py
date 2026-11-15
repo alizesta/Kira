@@ -1073,8 +1073,6 @@ class MainWindow(QMainWindow):
             self.refresh_character_choices()
             self.refresh_character_card(cid)
         self.refresh_personality_controls()
-        if hasattr(self, "char_voice_fa"):
-            self.refresh_character_controls()
         self.update_mood_indicator()
         bar = sess.view.verticalScrollBar()
         bar.setValue(bar.maximum())
@@ -1419,6 +1417,8 @@ class MainWindow(QMainWindow):
         if badge is not None:
             badge.setIcon(make_icon("chevron_up", normal=palette["second"], hover="#FFFFFF",
                                     checked=palette["main"], disabled="#52617B"))
+        if hasattr(self, "_refresh_icon_glow"):
+            self._refresh_icon_glow()
 
     def build_chat_tab(self):
         page = QWidget()
@@ -2139,6 +2139,7 @@ class MainWindow(QMainWindow):
     def autosave_voice(self):
         """Voice sliders / devices are saved as soon as they are changed (the Save button is not needed for them)."""
         self.collect_voice_settings()
+        self.apply_character_voice_settings()
         self.save_now()
 
     def build_cloud_voice_tab(self):
@@ -2339,7 +2340,7 @@ class MainWindow(QMainWindow):
         self.character_notes_edit = QTextEdit()
         self.character_notes_edit.setMaximumHeight(96)
         self.character_notes_edit.setPlaceholderText("لحن، رفتار، علاقه‌ها و مرزهای شخصیت را اینجا بنویس…")
-        self.character_notes_edit.textChanged.connect(lambda: getattr(self, "_character_save_timer", QTimer()).start())
+        self.character_notes_edit.textChanged.connect(lambda: self._character_save_timer.start())
         form.addRow("پرسونالیتی و یادداشت‌های شخصیت", self.character_notes_edit)
         for key, translation_key in labels.items():
             slider = QSlider(Qt.Horizontal)
@@ -2463,11 +2464,13 @@ class MainWindow(QMainWindow):
         traits = {key: slider.value() / 100.0 for key, slider in self.personality_sliders.items()}
         try:
             self.settings.setdefault("character_traits", {})[cid] = traits
-            self.save_character_settings(silent=True)
             mood.set_active_character(cid, traits)
-            self.refresh_personality_controls()
+            if hasattr(self, "character_notes_edit"):
+                self.settings.setdefault("character_notes", {})[cid] = self.character_notes_edit.toPlainText().strip()
             self.save_character_settings(silent=True)
+            self.refresh_personality_controls()
             if not silent:
+                self.save_now()
                 self.add_chat("system", self.t("character_traits_saved", name=profile.get("name", cid)))
             return True
         except Exception as exc:                            # noqa: BLE001
@@ -2842,7 +2845,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(import_row)
 
         cloud_box, cloud_form = self.group("مدل‌های Cloud")
-        cloud_note = QLabel("هر مدل فقط در دسته‌ی قابلیتی نمایش داده می‌شود که API واقعاً گزارش کرده است. مدل‌های صوتی مستقل از مدل‌های چت نگه داشته می‌شوند.")
+        cloud_note = QLabel("هر مدل فقط در دسته‌ی قابلیتی نمایش داده می‌شود که API واقعاً گزارش کرده است. در فیلتر رایگان، مدل‌های صوتی که Provider قیمتشان را اعلام نمی‌کند پنهان می‌مانند.")
         cloud_note.setObjectName("hint")
         cloud_note.setWordWrap(True)
         cloud_form.addRow(cloud_note)
@@ -4112,6 +4115,7 @@ class MainWindow(QMainWindow):
         self.refresh_route_list()
         self.set_badge("idle", self.client.preview_route())
         self.apply_runtime()
+        self.apply_character_voice_settings()
         self.apply_appearance(save=False)
         self.retranslate()
         self.check_status()
@@ -5685,10 +5689,6 @@ class MainWindow(QMainWindow):
             self.engine_lbl.setText(self.t({"whisper": "engine_whisper", "google": "engine_google"}.get(eng, "engine_none")))
 
     def toggle_wake(self):
-        if self._game_mode_enabled and not self.wake_btn.isChecked():
-            self.wake_btn.setChecked(True)
-            self.go_sleep()
-            return
         if self.wake_btn.isChecked():
             if not self.mic_btn.isChecked():
                 self.mic_btn.setChecked(True)
