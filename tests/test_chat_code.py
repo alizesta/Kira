@@ -77,7 +77,7 @@ class IntentTests(unittest.TestCase):
 
     def test_general_programming_questions_are_not_project_tasks(self):
         for text in ("پایتون چیه؟", "تفاوت جاوا و پایتون چیه؟", "چطور حلقه for کار می‌کنه؟"):
-            self.assertEqual(self.intent(text), ("chat", True), text)
+            self.assertEqual(self.intent(text)[0], "chat", text)  # ambiguous cases go to the normal chat after model classification
 
     def test_classifier_answers_are_parsed_safely(self):
         self.assertEqual(cc.parse_classification("TASK"), "task")
