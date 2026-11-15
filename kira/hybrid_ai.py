@@ -889,9 +889,12 @@ class HybridRouter:
         return self._lock.locked()
 
     # ---------- the request loop ----------
-    def _execute(self, messages, system_prompt, temperature, stream, on_chunk=None, on_event=None, retry_index=0):
+    def _execute(self, messages, system_prompt, temperature, stream, on_chunk=None, on_event=None, retry_index=0, cancel_event=None):
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("درخواست قبلی هنوز در حال انجام است؛ درخواست تکراری ارسال نشد.")
+        if cancel_event is not None and cancel_event.is_set():
+            self._lock.release()
+            raise RuntimeError("درخواست لغو شده است.")
         self._cancel.clear()
         try:
             started = time.monotonic()
@@ -906,7 +909,7 @@ class HybridRouter:
             failures = []
             emit = on_event or (lambda e: None)
             for route in self._candidates():
-                if self._cancel.is_set():
+                if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
                     break
                 ok, reason = self.eligibility(route)
                 rid = route["id"]
@@ -926,6 +929,8 @@ class HybridRouter:
                 provider = None
                 try:
                     provider = self._make_provider(route)
+                    if cancel_event is not None and cancel_event.is_set():
+                        break
                     provider.upload_progress = lambda pct, _i=info: emit({"phase": "uploading", "percent": pct, **_i})
                     guard = LeakGuard()                                   # internal analysis never becomes part of the answer
                     if not stream:
@@ -940,6 +945,10 @@ class HybridRouter:
                             connect_at = time.monotonic()
                             emit({"phase": "waiting", "failovers": metrics["failovers"], **info})
                         gen = provider.stream(messages, system_prompt, temperature, on_connect=on_connect)
+                        if cancel_event is not None and cancel_event.is_set():
+                            gen.close()
+                            return self._finish(route, info, parts, metrics, started, attempt_started, connect_at, first_at, provider,
+                                                stopped=True, failures=failures)
                         try:
                             for chunk in gen:
                                 if not chunk:
@@ -952,9 +961,9 @@ class HybridRouter:
                                     parts.append(chunk)
                                     if on_chunk:
                                         on_chunk(chunk)
-                                if self._cancel.is_set():
+                                if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
                                     break
-                            if not self._cancel.is_set():
+                            if not self._cancel.is_set() and not (cancel_event is not None and cancel_event.is_set()):
                                 tail = guard.finish()
                                 if tail:
                                     parts.append(tail)
@@ -962,11 +971,11 @@ class HybridRouter:
                                         on_chunk(tail)
                         finally:
                             gen.close()                                   # closes the HTTP stream even after Stop
-                        if not parts and not self._cancel.is_set():
+                        if not parts and not self._cancel.is_set() and not (cancel_event is not None and cancel_event.is_set()):
                             raise ProviderError(route["provider"], ("مدل فقط متن تحلیل داخلی برگرداند و چیزی برای نمایش نبود؛ Route بعدی امتحان می‌شود."
                                                                     if guard.leaked else "مدل پاسخ خالی برگرداند."), True, kind="empty")
                 except Exception as exc:                                  # noqa: BLE001 - every provider failure is contained here
-                    if self._cancel.is_set():                             # user pressed Stop: not a failure of the route
+                    if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):  # Stop: not a failure of the route
                         return self._finish(route, info, parts, metrics, started, attempt_started, connect_at, first_at, provider,
                                             stopped=True, failures=failures)
                     safe = RuntimeError(redact(exc, *secrets)) if not isinstance(exc, (ProviderError, OllamaError)) else exc
@@ -984,12 +993,12 @@ class HybridRouter:
                     metrics["failovers"] += 1
                     continue
                 return self._finish(route, info, parts, metrics, started, attempt_started, connect_at, first_at, provider,
-                                    stopped=self._cancel.is_set(), failures=failures)
+                                    stopped=self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()), failures=failures)
             # nothing worked
             self.last_provider = self.last_model = self.last_route_id = self.last_kind = None
             self.last_error = "; ".join(failures) or "هیچ Route فعالی تنظیم نشده است."
             self.last_duration_ms = int((time.monotonic() - started) * 1000)
-            if self._cancel.is_set():
+            if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
                 metrics.update(result="stopped", total_ms=self.last_duration_ms)
                 self.metrics.append(metrics)
                 self.last_metrics = metrics
@@ -1063,13 +1072,14 @@ class HybridRouter:
         """Whole answer at once (kept for tests, tools and as the non-streaming fallback)."""
         return self._execute(messages, system_prompt, temperature, False)["text"]
 
-    def chat_stream(self, messages, system_prompt, temperature=0.7, on_chunk=None, on_event=None, retry_index=0):
+    def chat_stream(self, messages, system_prompt, temperature=0.7, on_chunk=None, on_event=None, retry_index=0, cancel_event=None):
         """Streamed answer. on_chunk(text) gets each piece; on_event(dict) gets phase changes
         (connecting / waiting / streaming / failover) with the REAL route taken from the router.
+        An optional external Event lets background workers cancel before or during provider startup.
 
         Failover happens only before the first token. Once text has arrived it is never repeated: a connection that dies
         later ends the answer as 'interrupted' (result["interrupted"] holds the reason). Returns the result dict."""
-        return self._execute(messages, system_prompt, temperature, True, on_chunk, on_event, retry_index)
+        return self._execute(messages, system_prompt, temperature, True, on_chunk, on_event, retry_index, cancel_event)
 
     # ---------- native function calling ----------
     def chat_with_tools(self, messages, system_prompt, temperature=0.4, tools=None, on_event=None):

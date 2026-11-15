@@ -122,7 +122,7 @@ class VisionRoutingTests(unittest.TestCase):
     def test_cancelled_background_vision_does_not_publish_partial_result(self):
         router = FakeVisionAnalysisRouter()
         worker = VisionAnalysisWorker(router, {"b64": "invalid-base64"}, "تحلیل")
-        router.chat_stream = lambda *args: (worker.cancel_request(), {"text": "partial"})[1]
+        router.chat_stream = lambda *args, **kwargs: (worker.cancel_request(), {"text": "partial"})[1]
         results = []
         worker.done.connect(lambda *args: results.append(args))
         worker.run()

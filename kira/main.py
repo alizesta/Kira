@@ -508,6 +508,8 @@ class VisionAnalysisWorker(QThread):
             if self._cancelled.is_set():
                 return
             route_id = self.router.vision_route_id()
+            if self._cancelled.is_set():
+                return
             if not route_id:
                 raise RuntimeError("هیچ مدل Vision فعالی پیدا نشد. یک Route بینایی انتخاب کن یا برای Provider سفارشی vision_enabled را فعال کن.")
             from .vision_ocr import extract_local_text
@@ -519,10 +521,12 @@ class VisionAnalysisWorker(QThread):
                 + (("زمینه/سؤال کاربر: " + self.context + "\n") if self.context else "")
                 + (("متن استخراج‌شده‌ی محلی از تصویر: " + ocr_text[:1800]) if ocr_text else "")
             )
+            if self._cancelled.is_set():
+                return
             with self.router.vision_scope(route_id):
                 response = self.router.chat_stream(
                     [{"role": "user", "content": self.context or "فریم فعلی بازی را بررسی کن.", "images": [self.image]}],
-                    prompt, 0.2,
+                    prompt, 0.2, cancel_event=self._cancelled,
                 )
             if self._cancelled.is_set():
                 return
