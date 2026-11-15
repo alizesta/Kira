@@ -1,8 +1,7 @@
 """Which voice controls the speech engines in use really support (so the settings screen only offers real options).
 
-The chain that can speak a sentence is: Cloud Voice providers (when switched on and ready, in the user's order) -> Microsoft Edge neural
-voices (package edge-tts) -> Windows voices (SAPI). A control is offered when at least one engine of that chain honours it, and the
-engines that honour it are named next to it. Volume is applied by Kira's own player, so it always works.
+The TTS chain is local Persian Piper -> Windows SAPI -> Edge TTS -> Cloud Voice. A control is offered when at least one engine
+in that chain honours it, and the engines that honour it are named next to it. Volume is applied by Kira's own player.
 """
 from __future__ import annotations
 
