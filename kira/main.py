@@ -3769,6 +3769,11 @@ class MainWindow(QMainWindow):
 
     def _on_game_vision_result(self, ok, result, latency_ms):
         self._vision_gate.mark_latency(latency_ms)
+        stats = self._vision_gate.snapshot()
+        self.game_mode_btn.setToolTip(
+            f"Vision {stats['mode']} · تحلیل: {stats['analysis_count']} · "
+            f"فریم تکراری ردشده: {stats['unchanged_skips']} · تأخیر آخرین تحلیل: {latency_ms}ms"
+        )
         if (not self._game_mode_enabled
                 or not game_mode_permissions(self._game_mode_profile)["vision_capture"]):
             return
