@@ -359,7 +359,19 @@ class Speaker(QObject):
             with open(cj, encoding="utf-8") as f:
                 return cw, json.load(f)
         errors = []
-        if cloud is not None:                  # 0) Cloud Voice (Google AI Studio / Groq / ElevenLabs, in the user's order)
+        # 0) Offline Persian TTS. It only converts text to audio; chat remains on the selected chat route.
+        if bool(self.settings.get("local_voice_tts", True)) and re.search(r"[\\u0600-\\u06FF]", text):
+            try:
+                from . import local_voice
+                if local_voice.tts_ready():
+                    audio = local_voice.synthesize_persian(text)
+                    return self._synth_cloud(tag, audio, "wav", s.cache, base, key, cw, cj)
+            except Exception as e:
+                errors.append(f"local-persian-tts: {type(e).__name__}: {e}")
+                if "local-tts-down" not in s.notes:
+                    s.notes.add("local-tts-down")
+                    self.cloud_note.emit(f"TTS محلی فارسی ناموفق بود؛ موتور بعدی امتحان می‌شود. ({type(e).__name__})")
+        if cloud is not None:                  # 1) Cloud Voice (Google AI Studio / Groq / ElevenLabs, in the user's order)
             try:
                 audio, ext, info = cloud.synthesize(text, opts={"rate": r, "style": style, "style_degree": degree})
                 if info.get("failovers") and "failover" not in s.notes:
@@ -371,12 +383,12 @@ class Speaker(QObject):
                 if "cloud-down" not in s.notes:
                     s.notes.add("cloud-down")
                     self.cloud_note.emit(f"Cloud Voice (TTS) ناموفق بود؛ با صدای محلی ادامه می‌دهم. ({str(e)[:160]})")
-        try:                                   # 1) Microsoft Edge neural voices (online, best quality)
+        try:                                   # 2) Microsoft Edge neural voices (online, best quality)
             return self._synth_edge(tag, text, voice, r, p, s.cache, base, key, cw, cj)
         except Exception as e:
             errors.append(f"edge-tts: {type(e).__name__}: {e}")
         if sys.platform == "win32":
-            try:                               # 2) Windows built-in voices (offline, no packages)
+            try:                               # 3) Windows built-in voices (offline, no packages)
                 return self._synth_sapi(tag, text, voice, r, s.cache, cw, cj)
             except Exception as e:
                 errors.append(f"Windows: {e}")
