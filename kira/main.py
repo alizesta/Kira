@@ -3984,7 +3984,9 @@ class MainWindow(QMainWindow):
                 if action_result is None:
                     action_result = self.tool_agent.handle_task_command(text)         # status / pause / cancel / add a step of an unfinished task: decided in code too
             else:
-                action_result = run_safe_action(text)                                  # tools switched off (tools_mode = off): the old fixed shortcuts
+                action_result = run_safe_action(
+                    text, allow_desktop=self._game_mode_profile != COMPETITIVE_SAFE_MODE
+                )                                                                       # fixed shortcuts remain gated in Competitive Safe
         self._tool_plan = None if action_result else self.tool_agent.plan(text)
         self.save_message("user", packed["stored"] if packed else text)
         if action_result:
