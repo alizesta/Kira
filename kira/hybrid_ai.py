@@ -722,6 +722,28 @@ class HybridRouter:
             return base
         return [preferred] + [r for r in base if r["id"] != preferred["id"]]
 
+    def vision_route_id(self):
+        """Return the first eligible route explicitly marked or recognizably capable of image input.
+
+        Unknown models are deliberately excluded: a text-only route must never receive a screen frame.
+        Custom providers can opt in with providers[provider].vision_enabled = true.
+        """
+        known = (
+            "gemini", "gpt-4o", "gpt-4.1", "gpt-5", "claude-3", "claude-sonnet",
+            "claude-opus", "llava", "qwen-vl", "qwen2.5-vl", "qwen3-vl",
+            "minicpm-v", "pixtral", "molmo", "internvl", "llama-3.2-vision",
+        )
+        for route in self._candidates():
+            ok, _ = self.eligibility(route)
+            if not ok:
+                continue
+            provider = str(route.get("provider") or "").lower()
+            model = str(route.get("model") or "").lower()
+            cfg = self._provider_cfg(route)
+            if cfg.get("vision_enabled") is True or any(token in model for token in known):
+                return str(route.get("id") or "")
+        return None
+
     def preview_route(self):
         """The route the next request would try first (for the indicator before sending). None if nothing is usable."""
         for route in self._candidates():
