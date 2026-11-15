@@ -8,6 +8,17 @@ from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, 
 
 _SIZE = 96            # pixmap size; icons are designed on a 24 x 24 grid and shown smaller
 _CACHE = {}
+_GLOW_INTENSITY = 0.34
+
+
+def set_glow_intensity(value):
+    """Set the subtle icon bloom level (0..1) and rebuild cached glyphs."""
+    global _GLOW_INTENSITY
+    level = max(0.0, min(1.0, float(value)))
+    if abs(level - _GLOW_INTENSITY) > 0.001:
+        _GLOW_INTENSITY = level
+        _CACHE.clear()
+
 
 
 def _poly(points):
@@ -187,15 +198,15 @@ def _pixmap(name, colour):
     p.scale(_SIZE / 24.0, _SIZE / 24.0)
     base = QColor(colour)
     glow_colour = QColor(base)
-    glow_colour.setAlpha(118)
-    aura_pen = QPen(glow_colour, 6.4)
+    glow_colour.setAlpha(round(68 * _GLOW_INTENSITY))
+    aura_pen = QPen(glow_colour, 2.2 + 2.2 * _GLOW_INTENSITY)
     aura_pen.setCapStyle(Qt.RoundCap)
     aura_pen.setJoinStyle(Qt.RoundJoin)
-    core_pen = QPen(base, 2.35)
+    core_pen = QPen(base, 2.15)
     core_pen.setCapStyle(Qt.RoundCap)
     core_pen.setJoinStyle(Qt.RoundJoin)
-    highlight = QColor(224, 252, 255, 125)
-    highlight_pen = QPen(highlight, 0.72)
+    highlight = QColor(224, 252, 255, round(70 + 28 * _GLOW_INTENSITY))
+    highlight_pen = QPen(highlight, 0.48)
     highlight_pen.setCapStyle(Qt.RoundCap)
     highlight_pen.setJoinStyle(Qt.RoundJoin)
     for path, filled in _shapes(name):

@@ -151,19 +151,39 @@ QDialog QListWidget { background: rgba(255,255,255,0.06); }
 """
 
 
-def build_style(effect="off"):
-    """Return the neon stylesheet for 'off', 'mica', or 'acrylic'."""
-    if effect not in ("mica", "acrylic"):
-        return STYLE
-    alpha = "0.34" if effect == "acrylic" else "0.62"
+def build_style(effect="off", appearance=None):
+    """Build the neon-glass stylesheet with user-controlled background, brightness and transparency."""
+    appearance = appearance if isinstance(appearance, dict) else {}
+    color = str(appearance.get("background_color") or "#0A0A1C").strip()
+    if len(color) != 7 or not color.startswith("#"):
+        color = "#0A0A1C"
+    try:
+        rgb = _hex_to_rgb(color)
+    except (ValueError, TypeError):
+        rgb = (10, 10, 28)
+    brightness = max(40, min(150, int(appearance.get("brightness", 100)))) / 100.0
+    transparency = max(0, min(100, int(appearance.get("transparency", 28))))
+    alpha = max(0.10, min(0.96, 1.0 - transparency / 115.0))
+    if effect == "acrylic":
+        alpha = min(alpha, 0.42)
+    elif effect == "mica":
+        alpha = min(alpha, 0.68)
+    adjusted = tuple(max(0, min(255, round(c * brightness))) for c in rgb)
     css = STYLE.replace(
         "QMainWindow { background: #0A0A1C; }",
-        f"QMainWindow {{ background: rgba(7,10,22,{alpha}); }}",
+        f"QMainWindow {{ background: rgba({adjusted[0]},{adjusted[1]},{adjusted[2]},{alpha:.2f}); }}",
         1,
     )
     for opaque, tint in GLASS_TINTS.items():
         css = css.replace(opaque, tint)
-    return css + "\n" + GLASS_OPAQUE
+    glow = max(0, min(100, int(appearance.get("glow", 34))))
+    glow_alpha = 0.12 + glow * 0.003
+    override = f"""
+QGroupBox {{ border-color: rgba(255,79,200,{glow_alpha:.2f}); }}
+QToolButton:hover {{ background: rgba(255,79,200,{0.05 + glow * 0.0015:.2f}); border-color: rgba(255,79,200,{0.18 + glow * 0.004:.2f}); }}
+QPushButton {{ border-color: rgba(255,79,200,{0.22 + glow * 0.0038:.2f}); }}
+"""
+    return css + "\n" + GLASS_OPAQUE + "\n" + override
 
 
 # ---------------- per-character chat themes (neon glass; colours taken from each character's art) ----------------
@@ -198,27 +218,33 @@ def chat_accent(theme):
     return {"bubble": theme["bubble"], "name": theme["name"]}
 
 
-def character_style(theme, effect="off"):
-    """Stylesheet for the chat page of one character: glass cards whose tint, edge and tabs follow the character.
-    Still glass (translucent, so Mica/Acrylic shows through) and still neon (bright gradient edge, glowing controls)."""
+def character_style(theme, effect="off", appearance=None):
+    """Stylesheet for the active character; its tint follows the art and glow/transparency follow Appearance."""
+    appearance = appearance if isinstance(appearance, dict) else {}
     r, g, b = theme["deep"]
     main, second = theme["main"], theme["second"]
     mr, mg, mb = _hex_to_rgb(main)
     sr, sg, sb = _hex_to_rgb(second)
-    a_card = 0.50 if effect in ("mica", "acrylic") else 0.78
-    a_comp = 0.58 if effect in ("mica", "acrylic") else 0.86
+    transparency = max(0, min(100, int(appearance.get("transparency", 28))))
+    glow = max(0, min(100, int(appearance.get("glow", 34))))
+    a_card = max(0.28, min(0.92, 0.82 - transparency * 0.004))
+    a_comp = max(0.32, min(0.96, 0.88 - transparency * 0.003))
+    if effect in ("mica", "acrylic"):
+        a_card = min(a_card, 0.62 if effect == "mica" else 0.46)
+        a_comp = min(a_comp, 0.70 if effect == "mica" else 0.56)
+    border_alpha = 0.24 + glow * 0.005
     return f"""
 QFrame#avatarCard {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba({r + 14},{g + 14},{b + 24},{a_card}), stop:1 rgba({r},{g},{b},{a_card}));
-    border: 1px solid rgba({mr},{mg},{mb},0.85); border-radius: 19px;
+    border: 1px solid rgba({mr},{mg},{mb},{border_alpha:.2f}); border-radius: 19px;
 }}
 QFrame#chatCard {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba({r + 10},{g + 10},{b + 20},{a_card}), stop:1 rgba({max(r - 6, 0)},{max(g - 6, 0)},{max(b - 4, 0)},{a_card}));
-    border: 1px solid rgba({mr},{mg},{mb},0.80); border-radius: 19px;
+    border: 1px solid rgba({mr},{mg},{mb},{max(0.20, border_alpha - 0.05):.2f}); border-radius: 19px;
 }}
 QFrame#composer {{
     background: rgba({r + 22},{g + 22},{b + 34},{a_comp});
-    border: 1px solid rgba({sr},{sg},{sb},0.80); border-radius: 16px;
+    border: 1px solid rgba({sr},{sg},{sb},{max(0.25, border_alpha):.2f}); border-radius: 16px;
 }}
 QLabel#title {{ color: {second}; }}
 QTextEdit#chatView {{ selection-background-color: rgba({mr},{mg},{mb},0.55); }}
@@ -228,10 +254,10 @@ QToolButton:checked {{ background: rgba({mr},{mg},{mb},0.30); border: 1px solid 
 QToolButton:hover {{ background: rgba({sr},{sg},{sb},0.16); border: 1px solid rgba({sr},{sg},{sb},0.55); }}
 QFrame#charTabs {{ background: transparent; border: none; }}
 QPushButton#charTab {{
-    background: rgba({r + 20},{g + 20},{b + 32},0.55); border: 1px solid rgba({mr},{mg},{mb},0.35);
+    background: rgba({r + 20},{g + 20},{b + 32},0.55); border: 1px solid rgba({mr},{mg},{mb},{0.12 + glow * 0.003:.2f});
     border-radius: 13px; padding: 7px 18px; color: #D8E2F6; font-weight: 700;
 }}
-QPushButton#charTab:hover {{ border: 1px solid rgba({sr},{sg},{sb},0.85); color: #FFFFFF; }}
+QPushButton#charTab:hover {{ border: 1px solid rgba({sr},{sg},{sb},{0.25 + glow * 0.005:.2f}); color: #FFFFFF; }}
 QPushButton#charTab:checked {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba({mr},{mg},{mb},0.62), stop:1 rgba({sr},{sg},{sb},0.40));
     border: 1px solid {main}; color: #FFFFFF;

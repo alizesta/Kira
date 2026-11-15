@@ -60,6 +60,12 @@ DEFAULTS = {
     "local_voice_asr": True,              # Qwen3-ASR 0.6B first; Cloud Voice is the fallback
     "local_voice_tts": True,              # Mana Persian Piper first; Cloud Voice is the fallback
     "local_voice_asr_model": "Qwen/Qwen3-ASR-0.6B",
+    "local_voice_tts_model": "",
+    "model_filter_mode": "all",
+    "appearance": {"background_color": "#0A0A1C", "brightness": 100, "glow": 34, "transparency": 28},
+    "character_voice": {},
+    "character_notes": {},
+    "character_resources": {},
     "whisper_model": "small",
     "stt_language": "fa",
     "wake_timeout": 25,
