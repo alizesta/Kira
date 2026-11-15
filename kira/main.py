@@ -3158,7 +3158,17 @@ class MainWindow(QMainWindow):
                     enabled = bool(store.data[kind]["enabled"].get(provider, True)) and chosen and store.data[kind]["use_cloud"]
                     item.setCheckState(Qt.Checked if enabled else Qt.Unchecked)
                     self.cloud_model_lists[kind].addItem(item)
-        for widget in self.cloud_model_lists.values():
+        for kind, widget in self.cloud_model_lists.items():
+            if widget.count() == 0:
+                if free_only and kind in ("stt", "tts"):
+                    message = "قیمت این مدل‌های صوتی از API اعلام نشده؛ رایگان بودنشان قابل تأیید نیست."
+                elif free_only:
+                    message = "مدل رایگانِ تأییدشده‌ای پیدا نشد."
+                else:
+                    message = "برای نمایش مدل‌ها ابتدا API مربوط را اضافه و شناسایی کن."
+                empty = QListWidgetItem(message)
+                empty.setFlags(Qt.NoItemFlags)
+                widget.addItem(empty)
             widget.blockSignals(False)
 
         if hasattr(self, "local_model_list"):
@@ -3383,6 +3393,7 @@ class MainWindow(QMainWindow):
         self.model_filter.addItem("همه‌ی مدل‌ها", "all")
         self.model_filter.addItem("فقط مدل‌های رایگانِ تأییدشده", "free")
         self.model_filter.setCurrentIndex(max(0, self.model_filter.findData(self.settings.get("model_filter_mode", "all"))))
+        self.model_filter.setToolTip("در حالت رایگان فقط مدل‌هایی نمایش داده می‌شوند که Provider رایگان‌بودنشان را اعلام کرده باشد. مدل‌های صوتی با قیمت نامشخص پنهان می‌مانند.")
         self.model_filter.currentIndexChanged.connect(self.on_model_filter_changed)
         af.addRow("نمایش مدل‌ها", self.model_filter)
         self.api_add_status = QLabel("")
