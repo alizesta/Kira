@@ -1073,6 +1073,8 @@ class MainWindow(QMainWindow):
             self.refresh_character_choices()
             self.refresh_character_card(cid)
         self.refresh_personality_controls()
+        if hasattr(self, "char_voice_fa"):
+            self.refresh_character_controls()
         self.update_mood_indicator()
         bar = sess.view.verticalScrollBar()
         bar.setValue(bar.maximum())
@@ -2017,7 +2019,9 @@ class MainWindow(QMainWindow):
         profile_info.addWidget(self.character_combo)
         profile_info.addWidget(self.character_description)
         manager_row = QHBoxLayout()
-        self.character_add_btn = QPushButton("شخصیت جدید")
+        self.character_add_btn = QPushButton("＋")
+        self.character_add_btn.setFixedWidth(38)
+        self.character_add_btn.setToolTip("ساخت شخصیت جدید")
         self.character_edit_btn = QPushButton("ویرایش")
         self.character_delete_btn = QPushButton("حذف")
         self.character_add_btn.clicked.connect(self.add_character)
@@ -2029,6 +2033,71 @@ class MainWindow(QMainWindow):
         profile_info.addLayout(manager_row)
         profile_row.addLayout(profile_info, 1)
         f.addRow(profile_row)
+
+        voice_box, voice_form = self.group("تن صدا و سرعت شخصیت")
+        self.char_voice_fa = QComboBox()
+        self.char_voice_fa.setEditable(True)
+        self.char_voice_fa.addItems(EDGE_FA)
+        voice_form.addRow("صدای فارسی", self.char_voice_fa)
+        self.char_voice_en = QComboBox()
+        self.char_voice_en.setEditable(True)
+        self.char_voice_en.addItems(EDGE_EN)
+        voice_form.addRow("صدای انگلیسی", self.char_voice_en)
+        self.char_voice_rate = QSpinBox()
+        self.char_voice_rate.setRange(-50, 50)
+        self.char_voice_rate.setSuffix(" %")
+        voice_form.addRow("سرعت گفتار", self.char_voice_rate)
+        self.char_voice_pitch = QSpinBox()
+        self.char_voice_pitch.setRange(-50, 50)
+        self.char_voice_pitch.setSuffix(" Hz")
+        voice_form.addRow("زیر و بمی صدا", self.char_voice_pitch)
+        self.char_voice_volume = QSlider(Qt.Horizontal)
+        self.char_voice_volume.setRange(0, 100)
+        voice_form.addRow("بلندی صدا", self.char_voice_volume)
+        self.char_voice_style = QComboBox()
+        self.char_voice_style.addItem("پیش‌فرض", "")
+        for value, label in cloud_voice.STYLE_LABELS.items():
+            if value:
+                self.char_voice_style.addItem(label, value)
+        voice_form.addRow("حالت بیان", self.char_voice_style)
+        cloud_voice_row = QHBoxLayout()
+        self.char_cloud_provider = QComboBox()
+        self.char_cloud_provider.addItem("پیش‌فرض Provider", "")
+        for provider in cloud_voice.PROVIDERS:
+            self.char_cloud_provider.addItem(cloud_voice.LABELS[provider], provider)
+        self.char_cloud_voice_id = QLineEdit()
+        self.char_cloud_voice_id.setPlaceholderText("Voice ID ابری (اختیاری)")
+        self.char_cloud_voice_id.setLayoutDirection(Qt.LeftToRight)
+        cloud_voice_row.addWidget(self.char_cloud_provider)
+        cloud_voice_row.addWidget(self.char_cloud_voice_id, 1)
+        voice_form.addRow("صدای Cloud TTS", cloud_voice_row)
+        f.addRow(voice_box)
+
+        resource_box, resource_form = self.group("منابع اختصاصی شخصیت")
+        self.char_skills_edit = QLineEdit()
+        self.char_skills_edit.setPlaceholderText("نام Skillها، با کاما جدا کن")
+        resource_form.addRow("Skills", self.char_skills_edit)
+        self.char_mcp_edit = QLineEdit()
+        self.char_mcp_edit.setPlaceholderText("نام MCPها یا سرورها")
+        resource_form.addRow("MCP", self.char_mcp_edit)
+        self.char_connectors_edit = QLineEdit()
+        self.char_connectors_edit.setPlaceholderText("نام Connectorها")
+        resource_form.addRow("Connectors", self.char_connectors_edit)
+        f.addRow(resource_box)
+
+        self._character_save_timer = QTimer(self)
+        self._character_save_timer.setSingleShot(True)
+        self._character_save_timer.setInterval(550)
+        self._character_save_timer.timeout.connect(lambda: self.save_character_settings(silent=True))
+        for widget in (self.char_voice_fa, self.char_voice_en, self.char_voice_style, self.char_cloud_provider):
+            widget.currentIndexChanged.connect(lambda *_: self._character_save_timer.start())
+            widget.editTextChanged.connect(lambda *_: self._character_save_timer.start()) if widget.isEditable() else None
+        for widget in (self.char_voice_rate, self.char_voice_pitch, self.char_voice_volume):
+            signal = widget.valueChanged
+            signal.connect(lambda *_: self._character_save_timer.start())
+        for widget in (self.char_cloud_voice_id, self.char_skills_edit, self.char_mcp_edit, self.char_connectors_edit):
+            widget.textChanged.connect(lambda *_: self._character_save_timer.start())
+
         self.refresh_character_choices()
         self.character_combo.currentIndexChanged.connect(self.select_character)
         self.refresh_character_card()
@@ -2093,6 +2162,11 @@ class MainWindow(QMainWindow):
             "patience": "trait_patience", "carefulness": "trait_carefulness",
         }
         self.personality_sliders = {}
+        self.character_notes_edit = QTextEdit()
+        self.character_notes_edit.setMaximumHeight(96)
+        self.character_notes_edit.setPlaceholderText("لحن، رفتار، علاقه‌ها و مرزهای شخصیت را اینجا بنویس…")
+        self.character_notes_edit.textChanged.connect(lambda: getattr(self, "_character_save_timer", QTimer()).start())
+        form.addRow("پرسونالیتی و یادداشت‌های شخصیت", self.character_notes_edit)
         for key, translation_key in labels.items():
             slider = QSlider(Qt.Horizontal)
             slider.setRange(0, 100)
@@ -2111,9 +2185,98 @@ class MainWindow(QMainWindow):
         self.refresh_personality_controls()
         return self.page(box)
 
+    def refresh_character_controls(self):
+        cid = characters.active_id(self.settings)
+        voice = (self.settings.get("character_voice") or {}).get(cid) or {}
+        defaults = self.settings
+        pairs = (
+            (self.char_voice_fa, "voice_fa", EDGE_FA[0]),
+            (self.char_voice_en, "voice_en", EDGE_EN[0]),
+        )
+        for combo, key, fallback in pairs:
+            combo.blockSignals(True)
+            value = str(voice.get(key, defaults.get(key, fallback)) or fallback)
+            if combo.findText(value) < 0:
+                combo.addItem(value)
+            combo.setCurrentText(value)
+            combo.blockSignals(False)
+        for widget, key, fallback in (
+            (self.char_voice_rate, "voice_rate", 0),
+            (self.char_voice_pitch, "voice_pitch", 0),
+            (self.char_voice_volume, "voice_volume", 0.9),
+        ):
+            widget.blockSignals(True)
+            raw = voice.get(key, fallback if key != "voice_volume" else defaults.get(key, fallback))
+            widget.setValue(round(float(raw) * 100) if key == "voice_volume" else int(raw))
+            widget.blockSignals(False)
+        self.char_voice_style.blockSignals(True)
+        style = str(voice.get("voice_style", defaults.get("voice_style", "")) or "")
+        index = self.char_voice_style.findData(style)
+        self.char_voice_style.setCurrentIndex(max(0, index))
+        self.char_voice_style.blockSignals(False)
+        self.char_cloud_provider.blockSignals(True)
+        provider = str(voice.get("cloud_voice_provider") or "")
+        self.char_cloud_provider.setCurrentIndex(max(0, self.char_cloud_provider.findData(provider)))
+        self.char_cloud_provider.blockSignals(False)
+        self.char_cloud_voice_id.blockSignals(True)
+        self.char_cloud_voice_id.setText(str(voice.get("cloud_voice_id") or ""))
+        self.char_cloud_voice_id.blockSignals(False)
+        resources = (self.settings.get("character_resources") or {}).get(cid) or {}
+        for widget, key in ((self.char_skills_edit, "skills"), (self.char_mcp_edit, "mcp"),
+                            (self.char_connectors_edit, "connectors")):
+            widget.blockSignals(True)
+            value = resources.get(key) or []
+            widget.setText(", ".join(value) if isinstance(value, (list, tuple)) else str(value))
+            widget.blockSignals(False)
+        notes = (self.settings.get("character_notes") or {}).get(cid) or ""
+        if hasattr(self, "character_notes_edit"):
+            self.character_notes_edit.blockSignals(True)
+            self.character_notes_edit.setPlainText(str(notes))
+            self.character_notes_edit.blockSignals(False)
+        self.apply_character_voice_settings()
+
+    def save_character_settings(self, silent=False):
+        cid = characters.active_id(self.settings)
+        self.settings.setdefault("character_voice", {})[cid] = {
+            "voice_fa": self.char_voice_fa.currentText().strip() or EDGE_FA[0],
+            "voice_en": self.char_voice_en.currentText().strip() or EDGE_EN[0],
+            "voice_rate": self.char_voice_rate.value(),
+            "voice_pitch": self.char_voice_pitch.value(),
+            "voice_volume": self.char_voice_volume.value() / 100.0,
+            "voice_style": self.char_voice_style.currentData() or "",
+            "cloud_voice_provider": self.char_cloud_provider.currentData() or "",
+            "cloud_voice_id": self.char_cloud_voice_id.text().strip(),
+        }
+        def split(value):
+            return [part.strip() for part in re.split(r"[,;\\n]+", value or "") if part.strip()]
+        self.settings.setdefault("character_resources", {})[cid] = {
+            "skills": split(self.char_skills_edit.text()),
+            "mcp": split(self.char_mcp_edit.text()),
+            "connectors": split(self.char_connectors_edit.text()),
+        }
+        if hasattr(self, "character_notes_edit"):
+            self.settings.setdefault("character_notes", {})[cid] = self.character_notes_edit.toPlainText().strip()
+        self.apply_character_voice_settings()
+        if not silent:
+            self.save_now()
+
+    def apply_character_voice_settings(self):
+        """Give the speaker an isolated settings snapshot for the active character."""
+        cid = characters.active_id(self.settings)
+        override = (self.settings.get("character_voice") or {}).get(cid) or {}
+        effective = dict(self.settings)
+        effective.update({k: v for k, v in override.items()
+                          if k in ("voice_fa", "voice_en", "voice_rate", "voice_pitch", "voice_volume", "voice_style")})
+        provider = str(override.get("cloud_voice_provider") or "")
+        voice_id = str(override.get("cloud_voice_id") or "").strip()
+        effective["cloud_voices"] = {provider: voice_id} if provider and voice_id else {}
+        if getattr(self, "speaker", None) is not None:
+            self.speaker.settings = effective
+
     def refresh_personality_controls(self):
         if not getattr(self, "personality_sliders", None):
             return
+        self.refresh_character_controls()
         traits = self.character_traits(self.active_character().get("id", "kira")) or BASE_TRAITS
         for key, slider in self.personality_sliders.items():
             slider.blockSignals(True)
@@ -2126,8 +2289,10 @@ class MainWindow(QMainWindow):
         traits = {key: slider.value() / 100.0 for key, slider in self.personality_sliders.items()}
         try:
             self.settings.setdefault("character_traits", {})[cid] = traits
+            self.save_character_settings(silent=True)
             mood.set_active_character(cid, traits)
             self.refresh_personality_controls()
+            self.save_character_settings(silent=True)
             if not silent:
                 self.add_chat("system", self.t("character_traits_saved", name=profile.get("name", cid)))
             return True
@@ -2213,6 +2378,9 @@ class MainWindow(QMainWindow):
         profile = {"id": cid, "name": name.strip(), "name_fa": name.strip(), "gender": "unspecified",
                    "description": description.strip(), "image": "assets/characters/ren.svg", "prompt": prompt.strip()}
         self.settings.setdefault("characters", []).append(profile)
+        self.settings.setdefault("character_voice", {}).setdefault(cid, {})
+        self.settings.setdefault("character_notes", {}).setdefault(cid, "")
+        self.settings.setdefault("character_resources", {}).setdefault(cid, {})
         self.sync_sessions()                           # a new tab with its own conversation
         self.switch_session(cid)
         self.save_now()
@@ -2254,6 +2422,8 @@ class MainWindow(QMainWindow):
         else:
             self.settings["characters"] = [x for x in self.settings.get("characters", []) if x.get("id") != cid]
         self.settings["active_character_id"] = "kira"
+        for key in ("character_voice", "character_notes", "character_resources", "character_traits"):
+            self.settings.get(key, {}).pop(cid, None)
         self.sync_sessions()                           # its tab (and conversation view) goes away
         self.switch_session("kira")
         self.save_now()
