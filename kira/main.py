@@ -65,7 +65,7 @@ from .theme import build_style, STYLE
 from . import theme as theme_mod
 from .chat_sessions import ChatSession, NOOP, SESSION_FIELDS, session_property, front_only_property
 from . import winfx
-from .game_mode import GameModeMonitor, CAPTURE_INTERVAL_MS, CAPTURE_JPEG_QUALITY
+from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
 from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
 from .chat_code_ui import CodeChat
@@ -1541,6 +1541,15 @@ class MainWindow(QMainWindow):
         self.game_mode_safe_action.triggered.connect(lambda checked=False: self.set_game_mode_profile(COMPETITIVE_SAFE_MODE))
         self.game_mode_off_action = QAction("خاموش‌کردن Game Mode", self.game_mode_menu)
         self.game_mode_off_action.triggered.connect(lambda checked=False: self.set_game_mode(False))
+        self.vision_rate_menu = self.game_mode_menu.addMenu("سرعت Vision")
+        self.vision_rate_actions = {}
+        for mode, label in (("economic", "اقتصادی · هر ۵ ثانیه"), ("smart", "هوشمند · هر ۱ ثانیه"), ("fast", "سریع · هر نیم‌ثانیه")):
+            action = QAction(label, self.vision_rate_menu)
+            action.setCheckable(True)
+            action.setChecked(mode == self._vision_gate.policy.name)
+            action.triggered.connect(lambda checked=False, selected=mode: self.set_vision_mode(selected))
+            self.vision_rate_menu.addAction(action)
+            self.vision_rate_actions[mode] = action
         self.game_mode_menu.addAction(self.game_mode_story_action)
         self.game_mode_menu.addAction(self.game_mode_safe_action)
         self.game_mode_menu.addSeparator()
@@ -3606,6 +3615,22 @@ class MainWindow(QMainWindow):
         if paths:
             self.add_attachment_paths(paths)
             event.acceptProposedAction()
+
+    def set_vision_mode(self, mode):
+        """Change analysis cadence without changing the manual Game Mode safety gate."""
+        policy = policy_for(mode)
+        self._vision_gate.set_policy(policy)
+        self.settings["vision_mode"] = policy.name
+        save_settings(self.settings)
+        if hasattr(self, "vision_rate_actions"):
+            for key, action in self.vision_rate_actions.items():
+                action.setChecked(key == policy.name)
+        self._game_capture_timer.setInterval(max(250, int(policy.interval_seconds * 1000)))
+        if self._game_mode_enabled and game_mode_permissions(self._game_mode_profile)["vision_capture"]:
+            self._capture_game_frame()
+            if not self._game_capture_timer.isActive():
+                self._game_capture_timer.start()
+        self.game_mode_btn.setToolTip(f"Game Mode · Vision {policy.name} · هر {policy.interval_seconds:g} ثانیه")
 
     def set_game_mode_profile(self, profile):
         """Apply a manually selected gameplay profile; never infer or enable it automatically."""
