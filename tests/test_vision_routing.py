@@ -178,7 +178,7 @@ class VisionRoutingTests(unittest.TestCase):
                 self.stopped = target
 
         code_chat = FakeCodeChat()
-        state = SimpleNamespace(code_chat=code_chat)
+        state = SimpleNamespace(code_chat=code_chat, _as=lambda target: contextlib.nullcontext())
         MainWindow._stop_local_code_jobs(state)
         self.assertIs(code_chat.stopped, session)
 

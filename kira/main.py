@@ -3699,7 +3699,8 @@ class MainWindow(QMainWindow):
         code_chat = getattr(self, "code_chat", None)
         session = getattr(code_chat, "session", None) if code_chat is not None else None
         if session is not None:
-            code_chat.stop(session)
+            with self._as(session):
+                code_chat.stop(session)
 
     def set_game_mode_profile(self, profile):
         """Apply a manually selected gameplay profile; never infer or enable it automatically."""
