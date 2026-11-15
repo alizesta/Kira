@@ -61,6 +61,23 @@ class IntentTests(unittest.TestCase):
     def test_ambiguous_wording_is_left_to_the_model(self):
         self.assertEqual(self.intent("این تابع رو درست کن")[1], False)
 
+    def test_colloquial_ui_complaints_are_project_tasks_without_code_terms(self):
+        for text in (
+            "رنگ آیکون‌های نئونی به هم ریخته، درستش کن",
+            "کادر چت داره می‌لرزه",
+            "وقتی ضربدر ضمیمه رو می‌زنم کار نمی‌کنه",
+            "فایل زیپ بزرگ‌تر از ده مگ رو نمی‌ذاره ضمیمه کنم",
+            "دکمه ارسال غیرفعاله",
+            "می‌خوام اندازه دکمه‌ها کوچیک‌تر بشه",
+            "وقتی پوشه رو باز می‌کنم برنامه بسته می‌شه",
+            "the chat window is too big, make it smaller",
+        ):
+            self.assertEqual(self.intent(text), ("task", True), text)
+
+    def test_general_programming_questions_are_not_project_tasks(self):
+        for text in ("پایتون چیه؟", "تفاوت جاوا و پایتون چیه؟", "چطور حلقه for کار می‌کنه؟"):
+            self.assertEqual(self.intent(text), ("chat", True), text)
+
     def test_classifier_answers_are_parsed_safely(self):
         self.assertEqual(cc.parse_classification("TASK"), "task")
         self.assertEqual(cc.parse_classification("  question."), "question")
