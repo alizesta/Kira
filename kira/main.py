@@ -1832,22 +1832,191 @@ class MainWindow(QMainWindow):
         self.settings[key] = bool(enabled)
         self.save_now()
 
+    def choose_local_asr_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "پوشه‌ی مدل STT را انتخاب کن", str(Path.home()))
+        if not folder:
+            return
+        self.local_asr_path_edit.setText(folder)
+        self.settings["local_voice_asr_model"] = folder
+        self.save_now()
+        self.refresh_local_voice_status()
+
+    def apply_local_whisper_model(self):
+        value = self.local_whisper_path.text().strip() or "small"
+        self.settings["whisper_model"] = value
+        if hasattr(self, "whisper"):
+            if self.whisper.findText(value) < 0:
+                self.whisper.addItem(value)
+            self.whisper.setCurrentText(value)
+        self.save_now()
+        self.add_chat("system", "مدل STT محلی به‌روزرسانی شد.")
+
+    def choose_local_tts_model(self):
+        path, _ = QFileDialog.getOpenFileName(self, "مدل Piper ONNX", str(Path.home()), "Piper ONNX (*.onnx)")
+        if path:
+            self._install_piper_voice(Path(path))
+
+    def _install_piper_voice(self, source):
+        source = Path(source).expanduser().resolve()
+        if not source.is_file() or source.suffix.lower() != ".onnx":
+            QMessageBox.warning(self, "مدل TTS", "فایل انتخاب‌شده باید Piper ONNX باشد.")
+            return
+        metadata = Path(str(source) + ".json")
+        if not metadata.is_file():
+            sibling = source.with_suffix(".json")
+            metadata = sibling if sibling.is_file() else metadata
+        if not metadata.is_file():
+            QMessageBox.warning(self, "مدل TTS", "فایل پیکربندی کنار مدل (.onnx.json یا .json) پیدا نشد.")
+            return
+        try:
+            target_dir = DATA_DIR / "voice_models"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target = target_dir / source.name
+            if source.resolve() != target.resolve():
+                shutil.copy2(source, target)
+            target_meta = Path(str(target) + ".json")
+            shutil.copy2(metadata, target_meta)
+            self.settings["local_voice_tts_model"] = str(target)
+            self.local_tts_model_path.setText(str(target))
+            self.save_now()
+            self.refresh_local_voice_status()
+            self.api_add_status.setText("مدل Piper به پوشه‌ی داده‌ی Kira کپی شد و برای TTS انتخاب شد.")
+        except OSError as exc:
+            QMessageBox.warning(self, "مدل TTS", str(exc))
+
+    def import_local_model(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "معرفی مدل به Kira", str(Path.home()),
+            "Model files (*.gguf *.onnx *.bin *.safetensors *.pt *.pth *.json);;All files (*)"
+        )
+        if not path:
+            path = QFileDialog.getExistingDirectory(self, "یا پوشه‌ی مدل را انتخاب کن", str(Path.home()))
+        if not path:
+            return
+        self._import_local_model_path(Path(path))
+
+    def _import_local_model_path(self, source):
+        source = Path(source).expanduser().resolve()
+        if source.is_dir():
+            gguf = sorted(source.glob("*.gguf"))
+            onnx = sorted(source.glob("*.onnx"))
+            if gguf:
+                source = gguf[0]
+            elif onnx:
+                self._install_piper_voice(onnx[0])
+                return
+            elif (source / "model.bin").is_file():
+                self.local_whisper_path.setText(str(source))
+                self.apply_local_whisper_model()
+                return
+            elif (source / "config.json").is_file():
+                try:
+                    config_text = (source / "config.json").read_text(encoding="utf-8", errors="replace").lower()
+                except OSError:
+                    config_text = ""
+                if "qwen" in config_text or "asr" in config_text or "qwen" in source.name.lower():
+                    self.local_asr_path_edit.setText(str(source))
+                    self.settings["local_voice_asr_model"] = str(source)
+                    self.save_now()
+                    self.refresh_local_voice_status()
+                    return
+                category, ok = QInputDialog.getItem(self, "نوع مدل", "Kira این پوشه را خودکار نشناخت؛ نوع مدل چیست؟",
+                                                    ["STT · Whisper / Qwen", "TTS · Piper", "Chat · GGUF"], 0, False)
+                if not ok:
+                    return
+                if category.startswith("STT"):
+                    self.local_asr_path_edit.setText(str(source))
+                    self.settings["local_voice_asr_model"] = str(source)
+                    self.save_now()
+                    self.refresh_local_voice_status()
+                    return
+                QMessageBox.information(self, "معرفی مدل", "برای TTS فایل ONNX را انتخاب کن و برای Chat فایل GGUF را.")
+                return
+            else:
+                QMessageBox.warning(self, "مدل شناسایی نشد", "در پوشه، فایل GGUF، Piper ONNX، model.bin یا config.json پیدا نشد.")
+                return
+
+        if source.suffix.lower() == ".gguf":
+            self._create_ollama_model(source)
+        elif source.suffix.lower() == ".onnx":
+            self._install_piper_voice(source)
+        elif source.name.lower() == "model.bin":
+            self.local_whisper_path.setText(str(source.parent))
+            self.apply_local_whisper_model()
+        elif source.suffix.lower() in (".json", ".safetensors", ".pt", ".pth"):
+            parent = source.parent
+            self.local_asr_path_edit.setText(str(parent))
+            self.settings["local_voice_asr_model"] = str(parent)
+            self.save_now()
+            self.refresh_local_voice_status()
+            self.add_chat("system", "مسیر مدل برای STT ثبت شد. هنگام Load شدن، سازگاری معماری بررسی می‌شود.")
+        else:
+            QMessageBox.warning(self, "مدل شناسایی نشد", "پسوند فایل پشتیبانی نمی‌شود. GGUF برای Chat، Piper ONNX برای TTS و پوشه‌ی مدل برای STT را انتخاب کن.")
+
+    def _create_ollama_model(self, source):
+        if not shutil.which("ollama"):
+            QMessageBox.warning(self, "Ollama", "Ollama روی سیستم پیدا نشد.")
+            return
+        name = re.sub(r"[^a-zA-Z0-9._-]+", "-", source.stem.lower()).strip("-._")[:48] or "imported-model"
+        self.import_model_btn.setEnabled(False)
+        self.api_add_status.setText(f"در حال وارد کردن {source.name} به Ollama…")
+
+        def work():
+            target = DATA_DIR / "ollama_import"
+            target.mkdir(parents=True, exist_ok=True)
+            modelfile = target / f"{name}.Modelfile"
+            escaped = source.as_posix().replace('"', '\\"')
+            modelfile.write_text(f'FROM "{escaped}"\n', encoding="utf-8")
+            result = subprocess.run(["ollama", "create", name, "-f", str(modelfile)],
+                                    capture_output=True, text=True, timeout=1800, check=False)
+            if result.returncode:
+                raise RuntimeError((result.stderr or result.stdout or "ollama create failed")[-3000:])
+            return name
+
+        self._model_import_worker = TaskWorker(work)
+        self._model_import_worker.done.connect(self.on_local_model_imported)
+        self._model_import_worker.finished.connect(lambda: setattr(self, "_model_import_worker", None))
+        self._model_import_worker.start()
+
+    def on_local_model_imported(self, result):
+        self.import_model_btn.setEnabled(True)
+        ok, value = result
+        if not ok:
+            self.api_add_status.setText("✕ واردکردن مدل ناموفق بود: " + str(value))
+            return
+        model = str(value)
+        if hasattr(self, "model"):
+            if self.model.findText(model) < 0:
+                self.model.addItem(model)
+            self.model.setCurrentText(model)
+        self.settings["model"] = model
+        self.settings.setdefault("providers", {}).setdefault("ollama", {})["model"] = model
+        route_model.ensure_routes(self.settings)
+        route_model.add_ollama_models(self.settings, [model])
+        self.save_now()
+        self.refresh_route_list()
+        self.refresh_unified_models()
+        self.api_add_status.setText(f"✓ مدل «{model}» به Ollama اضافه شد.")
+
     def refresh_local_voice_status(self):
         try:
             from . import local_voice
-            state = local_voice.status()
+            asr_model = str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B")
+            tts_model = str(self.settings.get("local_voice_tts_model") or "")
+            state = local_voice.status(tts_model)
             asr = ("پکیج Python نصب است" if state["asr_installed"] else "پکیج Python نصب نیست")
-            asr += " · مدل در حافظه بارگذاری شده" if state["asr_loaded"] else " · مدل هنوز در حافظه بارگذاری نشده"
+            asr += " · مدل در حافظه بارگذاری شده" if state["asr_loaded"] else " · مدل هنوز بارگذاری نشده"
             if state.get("asr_error"):
-                asr += " · خطا: " + state["asr_error"]
-            tts = ("پکیج Python نصب است" if state["tts_installed"] else "پکیج Python نصب نیست")
-            tts += " · موتور در حافظه بارگذاری شده" if state["tts_loaded"] else " · موتور هنوز در حافظه بارگذاری نشده"
+                asr += " · " + state["asr_error"]
+            tts = ("Piper در دسترس است" if state["tts_installed"] else "Piper نصب نیست")
+            tts += " · موتور در حافظه بارگذاری شده" if state["tts_loaded"] else " · هنوز بارگذاری نشده"
             if state.get("tts_error"):
-                tts += " · خطا: " + state["tts_error"]
+                tts += " · " + state["tts_error"]
+            selected_tts = tts_model or "صدای فارسی پیش‌فرض"
             self.local_voice_status.setText(
-                f"Qwen3-ASR: {asr}\nMana Persian Piper: {tts}\n"
-                f"کش مدل‌ها: {local_voice.cache_directory()}\n"
-                "نصب پکیج با دانلود وزن مدل یکی نیست؛ بارگذاری اول ممکن است دانلود انجام دهد."
+                f"STT · Qwen3-ASR: {asr}\nمدل STT: {asr_model}\n"
+                f"TTS · Piper: {tts}\nمدل TTS: {selected_tts}\n"
+                f"کش مدل‌ها: {local_voice.cache_directory()}"
             )
         except Exception as exc:
             self.local_voice_status.setText(f"بررسی موتورهای صوتی ناموفق بود: {type(exc).__name__}: {exc}")
@@ -1876,7 +2045,8 @@ class MainWindow(QMainWindow):
 
     def load_local_asr(self):
         from . import local_voice
-        self._run_local_voice_task(local_voice.load_asr, self.local_asr_load_btn, self._on_local_asr_loaded)
+        model_name = str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B")
+        self._run_local_voice_task(lambda: local_voice.load_asr(model_name), self.local_asr_load_btn, self._on_local_asr_loaded)
 
     def _on_local_asr_loaded(self, result):
         ok, value = result
@@ -1889,7 +2059,10 @@ class MainWindow(QMainWindow):
     def test_local_tts(self):
         from . import local_voice
         self._run_local_voice_task(
-            lambda: local_voice.synthesize_persian("سلام، من کیرا هستم. این صدای فارسی محلی من است."),
+            lambda: local_voice.synthesize_persian(
+                "سلام، من کیرا هستم. این صدای فارسی محلی من است.",
+                self.settings.get("local_voice_tts_model", "")
+            ),
             self.local_tts_test_btn, self._on_local_tts_tested
         )
 
@@ -1976,14 +2149,15 @@ class MainWindow(QMainWindow):
         return self.cloud_page
 
     def show_voice_routes(self):
-        """Open the Route section on its voice (Cloud Voice) view."""
+        """Open the unified Connections page on its STT/TTS model section."""
         self.go_tab(self.tab_keys.index("tab_ai"))
-        self.set_route_view(1)
+        if hasattr(self, "cloud_model_tabs"):
+            self.cloud_model_tabs.setCurrentIndex(1)
 
     def set_route_view(self, index):
-        self.route_stack.setCurrentIndex(index)
-        self.route_view_chat_btn.setChecked(index == 0)
-        self.route_view_voice_btn.setChecked(index == 1)
+        # Backward-compatible helper for older UI actions; there is now one unified page.
+        if hasattr(self, "cloud_model_tabs") and int(index) == 1:
+            self.cloud_model_tabs.setCurrentIndex(1)
 
     def test_cloud_voice(self):
         if not cloud_voice.service().tts_ready():
@@ -3171,7 +3345,13 @@ class MainWindow(QMainWindow):
         line.addWidget(self.api_key_edit, 1)
         line.addWidget(self.api_add_btn)
         af.addRow(line)
-        af.addRow(self.api_account_edit)
+        self.api_account_edit.hide()
+        self.model_filter = QComboBox()
+        self.model_filter.addItem("همه‌ی مدل‌ها", "all")
+        self.model_filter.addItem("فقط مدل‌های رایگانِ تأییدشده", "free")
+        self.model_filter.setCurrentIndex(max(0, self.model_filter.findData(self.settings.get("model_filter_mode", "all"))))
+        self.model_filter.currentIndexChanged.connect(self.on_model_filter_changed)
+        af.addRow("نمایش مدل‌ها", self.model_filter)
         self.api_add_status = QLabel("")
         self.api_add_status.setWordWrap(True)
         af.addRow(self.api_add_status)
@@ -3231,6 +3411,11 @@ class MainWindow(QMainWindow):
         self._api_worker = None
         return add_box, list_box, det_box
 
+    def on_model_filter_changed(self, *_):
+        self.settings["model_filter_mode"] = self.model_filter.currentData() or "all"
+        self.save_now()
+        self.refresh_unified_models()
+
     def _api_selected(self):
         row = self.api_table.currentRow()
         item = self.api_table.item(row, 0) if row >= 0 else None
@@ -3248,6 +3433,8 @@ class MainWindow(QMainWindow):
         self.client.reset_cooldowns()
         self.save_now()
         self.refresh_api_table(select)
+        if hasattr(self, "cloud_model_lists"):
+            self.refresh_unified_models()
         self.refresh_route_list()
         if not self.busy:
             self.set_badge("idle", self.client.preview_route())
@@ -3786,6 +3973,7 @@ class MainWindow(QMainWindow):
         self.save_now()
         self.refresh_route_list()
         self.route_status.setText(f"✓ {len(value)} مدل نصب‌شده پیدا شد؛ {len(added)} Route جدید اضافه شد (به‌صورت غیرفعال تا خودت فعال کنی).")
+        self.refresh_unified_models()
 
     def run_benchmark(self, all_enabled):
         if self.busy:
@@ -5576,7 +5764,7 @@ class MainWindow(QMainWindow):
         for name in (
             "_local_voice_worker", "_api_worker", "_route_worker", "_bench_worker",
             "_scan_worker", "_provider_test_worker", "_ollama_worker", "_vision_worker",
-            "_web_test_worker", "_attach_worker", "_stopping_listener",
+            "_web_test_worker", "_attach_worker", "_model_import_worker", "_stopping_listener",
             "_stopping_game_audio_listener", "game_audio_listener", "listener",
         ):
             workers.append(getattr(self, name, None))
