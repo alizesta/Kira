@@ -4926,8 +4926,8 @@ class MainWindow(QMainWindow):
 
     def on_heard(self, text):
         self.animator.touch()
-        if self.busy:
-            return
+        # Keep processing voice input while a reply is generating: submit() owns
+        # the same bounded queue as typed messages and handles running-task controls.
         if self.wake_btn.isChecked():
             if not self.awake:
                 mt = WAKE_RE.search(text)

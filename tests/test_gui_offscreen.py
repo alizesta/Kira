@@ -311,6 +311,30 @@ class GuiTests(unittest.TestCase):
             w.check_status()
         self.assertEqual(w._status[0], "st_ok")
 
+    def test_voice_input_during_generation_is_queued_not_dropped(self):
+        w = self.win
+        w._pending.clear()
+        w.busy = True
+        try:
+            w.on_heard("سلام کیرا")
+            self.assertEqual(w._pending, [("سلام کیرا", None, True)])
+        finally:
+            w.busy = False
+            w._pending.clear()
+
+    def test_voice_stop_command_is_handled_immediately_while_busy(self):
+        w = self.win
+        w._pending.clear()
+        w.busy = True
+        try:
+            with mock.patch.object(w, "safe_stop_speaker") as stop:
+                w.on_heard("بس کن")
+            stop.assert_called_once_with()
+            self.assertEqual(w._pending, [])
+        finally:
+            w.busy = False
+            w._pending.clear()
+
     def test_stage1b_voice_error_is_shown_once_not_after_every_reply(self):
         w = self.win
         for _ in range(3):
