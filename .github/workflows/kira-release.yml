@@ -22,6 +22,7 @@ on:
       - "tests/test_release.py"
       - "tests/test_release_package.py"
       - "tests/test_vision_pipeline.py"
+      - "tests/test_actions.py"
       - "tests/test_vision_routing.py"
       - "tests/test_characters.py"
       - "requirements.txt"
