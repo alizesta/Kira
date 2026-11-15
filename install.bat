@@ -65,12 +65,12 @@ python --version
 python -m pip install --upgrade pip --retries 10 --timeout 60
 
 echo.
-echo [1/2] Installing core packages...
+echo [1/3] Installing core packages...
 python install_deps.py requirements.txt
 if errorlevel 1 goto netfail
 
 echo.
-echo [2/2] Installing voice packages one by one...
+echo [2/3] Installing voice packages one by one...
 if exist voice_failed.txt del voice_failed.txt
 set "PKGS=Pillow sounddevice PyAudioWPatch edge-tts SpeechRecognition"
 set "SKIPPED="
@@ -106,10 +106,10 @@ if exist voice_failed.txt (
 )
 echo.
 echo [3/3] Optional local Persian voice engines
- echo Qwen3-ASR and its runtime dependencies can require several GB of downloads.
- echo Their Python packages will be installed in this Kira .venv.
- echo Downloaded Hugging Face model files are kept in:
- echo   %HF_HOME%
+echo Qwen3-ASR and its runtime dependencies can require several GB of downloads.
+echo Their Python packages will be installed in this Kira .venv.
+echo Downloaded Hugging Face model files are kept in:
+echo   %HF_HOME%
 choice /C YN /N /M "Install local voice engines now? [Y/N] "
 if errorlevel 2 goto voice_skip
 if not exist requirements-voice-local.txt (
