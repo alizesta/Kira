@@ -83,6 +83,7 @@ def _zip_text(path: str, progress=None, cancelled=None) -> str:
             raise AttachmentError("حجم بازشده‌ی فایل ZIP بیش از سقف امن ۴۰ مگابایت است.")
         lines = ["فهرست فایل ZIP:"]
         total_chars = MAX_TEXT_CHARS
+        remaining_unpacked = MAX_ARCHIVE_UNPACKED_BYTES
         for index, info in enumerate(visible):
             if cancelled and cancelled():
                 raise AttachmentError("بارگذاری فایل لغو شد.")
@@ -97,12 +98,16 @@ def _zip_text(path: str, progress=None, cancelled=None) -> str:
             if ext not in _ARCHIVE_TEXT_EXTENSIONS:
                 lines.append(f"[فایل غیرمتنی، فقط نام ثبت شد] {name}")
                 continue
+            read_limit = min(MAX_ARCHIVE_MEMBER_BYTES, remaining_unpacked)
+            if info.file_size > read_limit:
+                lines.append(f"[از سقف امن محتوای ZIP بیشتر بود] {name}")
+                continue
             try:
                 with archive.open(info, "r") as member:
-                    data = member.read(MAX_ARCHIVE_MEMBER_BYTES + 1)
-                if len(data) > MAX_ARCHIVE_MEMBER_BYTES:
-                    lines.append(f"[محتوا از سقف امن بیشتر بود] {name}")
-                    continue
+                    data = member.read(read_limit + 1)
+                if len(data) > read_limit:
+                    raise AttachmentError("محتوای ZIP از سقف امن بیشتر است.")
+                remaining_unpacked -= len(data)
                 body = _decode_text(data).strip()
             except (AttachmentError, OSError, RuntimeError, zipfile.BadZipFile):
                 lines.append(f"[محتوا خوانده نشد] {name}")
