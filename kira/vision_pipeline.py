@@ -74,6 +74,7 @@ class FrameGate:
         self._clock = clock
         self._last_at = 0.0
         self._last_signature = b""
+        self._last_visual_sample = b""
         self.captured = 0
         self.analyzed = 0
         self.skipped_unchanged = 0
@@ -86,8 +87,9 @@ class FrameGate:
     def reset(self):
         self._last_at = 0.0
         self._last_signature = b""
+        self._last_visual_sample = b""
 
-    def accept(self, jpeg: bytes, force: bool = False) -> bool:
+    def accept(self, jpeg: bytes, force: bool = False, visual_sample: bytes | None = None) -> bool:
         self.captured += 1
         now = self._clock()
         if not jpeg:
@@ -95,11 +97,21 @@ class FrameGate:
         signature = frame_signature(jpeg)
         if not force and self._last_at and now - self._last_at < self.policy.interval_seconds:
             return False
-        if not force and self._last_signature and signature == self._last_signature:
+        if not force and visual_sample and self._last_visual_sample and len(visual_sample) == len(self._last_visual_sample):
+            delta = sum(abs(a - b) for a, b in zip(visual_sample, self._last_visual_sample))
+            change = delta / (255.0 * len(visual_sample))
+            if change < self.policy.change_threshold:
+                self.skipped_unchanged += 1
+                self._last_at = now
+                return False
+        elif not force and self._last_signature and signature == self._last_signature:
             self.skipped_unchanged += 1
+            self._last_at = now
             return False
         self._last_at = now
         self._last_signature = signature
+        if visual_sample:
+            self._last_visual_sample = bytes(visual_sample)
         self.analyzed += 1
         return True
 
