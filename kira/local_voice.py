@@ -32,7 +32,7 @@ def tts_ready() -> bool:
         return False
 
 
-def transcribe(audio, sample_rate=16000, language="fa", prompt="") -> str:
+def transcribe(audio, sample_rate=16000, language="fa", prompt="", model_name="Qwen/Qwen3-ASR-0.6B") -> str:
     """Transcribe one mono float32 numpy segment locally. Returns empty text on empty input.
 
     Model loading is lazy. The first call downloads Qwen/Qwen3-ASR-0.6B unless it is cached.
@@ -48,9 +48,8 @@ def transcribe(audio, sample_rate=16000, language="fa", prompt="") -> str:
             try:
                 import torch
                 from qwen_asr import Qwen3ASRModel
-                model_id = "Qwen/Qwen3-ASR-0.6B"
                 _asr = Qwen3ASRModel.from_pretrained(
-                    model_id,
+                    str(model_name or "Qwen/Qwen3-ASR-0.6B"),
                     dtype=torch.float32,
                     device_map="cpu",
                     max_inference_batch_size=1,
