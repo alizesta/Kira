@@ -1,8 +1,11 @@
 """Regression tests for role-aware image routing in the streamed chat worker."""
 import contextlib
 import unittest
+from unittest import mock
 from types import SimpleNamespace
 
+from tests import helpers
+from kira.hybrid_ai import HybridRouter
 from kira.main import MainWindow, StreamWorker
 
 
@@ -149,6 +152,48 @@ class VisionRoutingTests(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("Vision", errors[0])
         self.assertEqual(router.events, ["role-enter", "vision-select", "role-exit"])
+
+    def test_ollama_vision_capability_cache_is_scoped_to_server_and_model(self):
+        settings = helpers.fresh_settings()
+        router = HybridRouter(settings)
+        route = {"provider": "ollama", "model": "custom-local-model"}
+
+        def client_with_capabilities(capabilities):
+            response = SimpleNamespace(status_code=200, json=lambda: {"capabilities": capabilities})
+            return SimpleNamespace(model="custom-local-model", _post=lambda *args: response)
+
+        settings["ollama_url"] = "http://ollama-one:11434"
+        with mock.patch.object(
+            router,
+            "_make_provider",
+            side_effect=[client_with_capabilities(["completion", "vision"]),
+                         client_with_capabilities(["completion"])],
+        ) as make_provider:
+            self.assertTrue(router._route_supports_vision(route, {}))
+            settings["ollama_url"] = "http://ollama-two:11434"
+            self.assertFalse(router._route_supports_vision(route, {}))
+            self.assertEqual(make_provider.call_count, 2)
+
+    def test_ollama_unavailable_does_not_cache_a_negative_capability(self):
+        settings = helpers.fresh_settings()
+        router = HybridRouter(settings)
+        route = {"provider": "ollama", "model": "custom-local-model"}
+        failed_client = SimpleNamespace(
+            model="custom-local-model",
+            _post=mock.Mock(side_effect=ConnectionError("offline")),
+        )
+        good_response = SimpleNamespace(status_code=200, json=lambda: {"capabilities": ["vision"]})
+        good_client = SimpleNamespace(model="custom-local-model", _post=lambda *args: good_response)
+        with mock.patch.object(router, "_make_provider", side_effect=[failed_client, good_client]) as make_provider:
+            self.assertFalse(router._route_supports_vision(route, {}))
+            self.assertTrue(router._route_supports_vision(route, {}))
+            self.assertEqual(make_provider.call_count, 2)
+
+    def test_embedding_models_are_not_misclassified_as_vision_models(self):
+        settings = helpers.fresh_settings()
+        router = HybridRouter(settings)
+        route = {"provider": "gemini", "model": "gemini-embedding-001"}
+        self.assertFalse(router._route_supports_vision(route, {}))
 
     def test_text_only_request_does_not_enter_vision_scope(self):
         router = FakeRouter()

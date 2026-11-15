@@ -743,20 +743,26 @@ class HybridRouter:
         provider = str(route.get("provider") or "").lower()
         known = (
             "gemini", "gpt-4o", "gpt-4.1", "gpt-5", "claude-3", "claude-sonnet",
-            "claude-opus", "llava", "qwen-vl", "qwen2.5-vl", "qwen3-vl",
+            "claude-opus", "claude-haiku", "claude-4", "llava", "qwen-vl", "qwen2.5-vl", "qwen3-vl",
             "qwen3.5", "qwen35", "minicpm-v", "pixtral", "molmo", "internvl",
             "llama-3.2-vision",
         )
         if cfg.get("vision_enabled") is True:
             return True
+        # Embedding endpoints do not accept conversational image input, even when
+        # their provider family also offers multimodal generation models.
+        if "embedding" in model or model.startswith("text-embedding"):
+            return False
         if provider == "ollama":
-            # Prefer Ollama's declared model capabilities; cache for five minutes.
-            key = (provider, model)
+            # Capabilities belong to a specific Ollama server + model pair.
+            endpoint = str(self.settings.get("ollama_url") or "http://localhost:11434").rstrip("/")
+            key = (provider, endpoint, model)
             cached = self._vision_capability_cache.get(key)
             now = time.monotonic()
             if cached and now - cached[0] < 300:
                 return cached[1]
-            capable = False
+            capable = any(token in model for token in known)
+            cacheable = False
             try:
                 client = self._make_provider(route)
                 response = client._post("/api/show", {"model": route.get("model") or client.model}, 6)
@@ -765,12 +771,15 @@ class HybridRouter:
                     caps = data.get("capabilities")
                     if isinstance(caps, list):
                         capable = any(str(item).lower() == "vision" for item in caps)
+                        cacheable = True
                     else:
                         # Older Ollama versions omit capabilities; use conservative model-family hints.
-                        capable = any(token in model for token in known)
+                        cacheable = True
             except Exception:
-                capable = any(token in model for token in known)
-            self._vision_capability_cache[key] = (now, capable)
+                # An unavailable server is not evidence that the model lacks Vision.
+                pass
+            if cacheable:
+                self._vision_capability_cache[key] = (now, capable)
             return capable
         return any(token in model for token in known)
 
