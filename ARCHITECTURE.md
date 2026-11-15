@@ -135,10 +135,10 @@ UI side (`kira/chat_code_ui.py::CodeChat`, `kira/chat_code.py`):
 
 
 ## User-data migration and backup coverage
-- `storage.has_user_data` recognizes settings, chat SQLite, evidence SQLite, persona-memory JSON and Cloud Voice settings.
-- `migrate_legacy` copies each missing file independently, preserving destination files and leaving legacy sources untouched. Persona memory and evidence DB are now included, preventing loss when an older data folder is migrated.
+- `storage.has_user_data` recognizes settings, chat SQLite, evidence SQLite, persona-memory JSON, Cloud Voice settings and the Hugging Face / voice / runtime cache folders.
+- `migrate_legacy` copies each missing file independently, preserving destination files and leaving legacy sources untouched. On the standard A: destination it carries forward the previous AppData data and model caches without deleting the originals.
 - `backup_user_data` copies persona JSON and Cloud Voice JSON, and uses SQLite's online backup API for both chat and evidence databases.
-- The Windows default remains `%LOCALAPPDATA%\\Kira`; `KIRA_DATA_DIR` remains an explicit override.
+- Windows stores persistent Kira data and AI caches in `A:\\Project KIRA\\Kira Attachments`. If that location is absent or not writable, it falls back to `%LOCALAPPDATA%\\Kira`. `KIRA_DATA_DIR` remains an explicit override for portable/test setups.
 
 - The release workflow file itself is included in its path filters; workflow and permission changes therefore trigger validation.
 
