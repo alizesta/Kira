@@ -105,7 +105,7 @@ def transcribe(audio, sample_rate=16000, language="fa", prompt="", model_name="Q
         return str(getattr(results[0], "text", "") or "").strip()
 
 
-def synthesize_persian(text: str, model_path="") -> bytes:
+def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
     """Return WAV from a chosen Piper ONNX voice or the bundled Persian engine."""
     global _tts, _tts_error
     clean = str(text or "").strip()
@@ -147,6 +147,24 @@ def synthesize_persian(text: str, model_path="") -> bytes:
                 raise RuntimeError(f"Persian Piper synthesis failed: {type(exc).__name__}: {exc}") from exc
     if not isinstance(payload, (bytes, bytearray)) or not payload.startswith(b"RIFF"):
         raise RuntimeError("Persian Piper returned invalid WAV data")
+    # Piper exposes a stable WAV stream. Adjust its playback sample rate so per-character
+    # speed also applies when the selected offline voice is used (pitch changes slightly).
+    speed = max(0.5, min(1.5, 1.0 + float(rate or 0) / 100.0))
+    if abs(speed - 1.0) > 0.001:
+        try:
+            with wave.open(io.BytesIO(payload), "rb") as source:
+                params = source.getparams()
+                frames = source.readframes(source.getnframes())
+            output = io.BytesIO()
+            with wave.open(output, "wb") as target:
+                target.setnchannels(params.nchannels)
+                target.setsampwidth(params.sampwidth)
+                target.setframerate(max(8000, min(96000, round(params.framerate * speed))))
+                target.setcomptype(params.comptype, params.compname)
+                target.writeframes(frames)
+            payload = output.getvalue()
+        except (wave.Error, OSError, ValueError):
+            pass
     return bytes(payload)
 
 

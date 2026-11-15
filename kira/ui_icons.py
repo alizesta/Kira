@@ -8,7 +8,7 @@ from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, 
 
 _SIZE = 96            # pixmap size; icons are designed on a 24 x 24 grid and shown smaller
 _CACHE = {}
-_GLOW_INTENSITY = 0.34
+_GLOW_INTENSITY = 0.18
 
 
 def set_glow_intensity(value):
@@ -198,14 +198,16 @@ def _pixmap(name, colour):
     p.scale(_SIZE / 24.0, _SIZE / 24.0)
     base = QColor(colour)
     glow_colour = QColor(base)
-    glow_colour.setAlpha(round(68 * _GLOW_INTENSITY))
-    aura_pen = QPen(glow_colour, 2.2 + 2.2 * _GLOW_INTENSITY)
+    glow_colour.setAlpha(round(48 * _GLOW_INTENSITY))
+    aura_pen = QPen(glow_colour, 1.6 + 1.5 * _GLOW_INTENSITY)
     aura_pen.setCapStyle(Qt.RoundCap)
     aura_pen.setJoinStyle(Qt.RoundJoin)
-    core_pen = QPen(base, 2.15)
+    core_colour = QColor(base)
+    core_colour.setAlpha(220)
+    core_pen = QPen(core_colour, 2.0)
     core_pen.setCapStyle(Qt.RoundCap)
     core_pen.setJoinStyle(Qt.RoundJoin)
-    highlight = QColor(224, 252, 255, round(70 + 28 * _GLOW_INTENSITY))
+    highlight = QColor(210, 242, 248, round(28 + 24 * _GLOW_INTENSITY))
     highlight_pen = QPen(highlight, 0.48)
     highlight_pen.setCapStyle(Qt.RoundCap)
     highlight_pen.setJoinStyle(Qt.RoundJoin)

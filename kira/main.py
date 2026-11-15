@@ -1915,28 +1915,48 @@ class MainWindow(QMainWindow):
                     config_text = (source / "config.json").read_text(encoding="utf-8", errors="replace").lower()
                 except OSError:
                     config_text = ""
-                if "qwen" in config_text or "asr" in config_text or "qwen" in source.name.lower():
+                try:
+                    config_data = json.loads((source / "config.json").read_text(encoding="utf-8", errors="replace"))
+                except (OSError, ValueError, TypeError):
+                    config_data = {}
+                model_type = str(config_data.get("model_type") or "").lower()
+                architectures = " ".join(str(x) for x in (config_data.get("architectures") or [])).lower()
+                signature = " ".join((model_type, architectures, source.name.lower()))
+                if any(token in signature for token in ("whisper", "qwen3asr", "qwen_asr", "speechrecognition", "speech_to_text", "audioencoderdecoder")):
                     self.local_asr_path_edit.setText(str(source))
                     self.settings["local_voice_asr_model"] = str(source)
                     self.save_now()
                     self.refresh_local_voice_status()
                     return
-                category, ok = QInputDialog.getItem(self, "نوع مدل", "Kira این پوشه را خودکار نشناخت؛ نوع مدل چیست؟",
-                                                    ["STT · Whisper / Qwen", "TTS · Piper", "Chat · GGUF"], 0, False)
+                if any(token in signature for token in ("causallm", "forcausallm", "textgeneration", "llama", "qwen3for")):
+                    QMessageBox.information(self, "مدل Chat شناسایی شد",
+                        "این پوشه یک مدل متنی Hugging Face است، اما Ollama مستقیماً پوشه‌ی Transformers را وارد نمی‌کند. نسخه‌ی GGUF همین مدل را انتخاب کن.")
+                    return
+                category, ok = QInputDialog.getItem(
+                    self, "نوع مدل", "معماری مدل از روی فایل‌هایش قطعی نبود؛ نوع واقعی را انتخاب کن.",
+                    ["STT · Qwen3-ASR", "STT · Whisper", "TTS · Piper ONNX", "Chat · GGUF"], 0, False)
                 if not ok:
                     return
-                if category.startswith("STT"):
+                if category.startswith("STT · Qwen"):
                     self.local_asr_path_edit.setText(str(source))
                     self.settings["local_voice_asr_model"] = str(source)
                     self.save_now()
                     self.refresh_local_voice_status()
                     return
-                QMessageBox.information(self, "معرفی مدل", "برای TTS فایل ONNX را انتخاب کن و برای Chat فایل GGUF را.")
+                if category.startswith("STT · Whisper"):
+                    self.local_whisper_path.setText(str(source))
+                    self.apply_local_whisper_model()
+                    return
+                QMessageBox.information(self, "معرفی مدل", "برای TTS فایل Piper ONNX و برای Chat فایل GGUF را انتخاب کن.")
                 return
             else:
                 QMessageBox.warning(self, "مدل شناسایی نشد", "در پوشه، فایل GGUF، Piper ONNX، model.bin یا config.json پیدا نشد.")
                 return
 
+        if source.name.lower().endswith(".onnx.json"):
+            candidate = Path(str(source)[:-5])
+            if candidate.is_file():
+                source = candidate
         if source.suffix.lower() == ".gguf":
             self._create_ollama_model(source)
         elif source.suffix.lower() == ".onnx":
@@ -1945,12 +1965,7 @@ class MainWindow(QMainWindow):
             self.local_whisper_path.setText(str(source.parent))
             self.apply_local_whisper_model()
         elif source.suffix.lower() in (".json", ".safetensors", ".pt", ".pth"):
-            parent = source.parent
-            self.local_asr_path_edit.setText(str(parent))
-            self.settings["local_voice_asr_model"] = str(parent)
-            self.save_now()
-            self.refresh_local_voice_status()
-            self.add_chat("system", "مسیر مدل برای STT ثبت شد. هنگام Load شدن، سازگاری معماری بررسی می‌شود.")
+            self._import_local_model_path(source.parent)
         else:
             QMessageBox.warning(self, "مدل شناسایی نشد", "پسوند فایل پشتیبانی نمی‌شود. GGUF برای Chat، Piper ONNX برای TTS و پوشه‌ی مدل برای STT را انتخاب کن.")
 
@@ -2433,8 +2448,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, "character_notes_edit"):
             self.settings.setdefault("character_notes", {})[cid] = self.character_notes_edit.toPlainText().strip()
         self.apply_character_voice_settings()
-        if not silent:
-            self.save_now()
+        self.save_now()
 
     def apply_character_voice_settings(self):
         """Give the speaker an isolated settings snapshot for the active character."""
@@ -2608,7 +2622,7 @@ class MainWindow(QMainWindow):
 
     def build_appearance_tab(self):
         """Compact live controls for the window's colour, brightness, glow and transparency."""
-        defaults = {"background_color": "#0A0A1C", "brightness": 100, "glow": 34, "transparency": 28}
+        defaults = {"background_color": "#0A0A1C", "brightness": 100, "glow": 18, "transparency": 28}
         appearance = {**defaults, **(self.settings.get("appearance") or {})}
         box, form = self.group("ظاهر برنامه")
         self.window_effect = QComboBox()
@@ -2681,7 +2695,7 @@ class MainWindow(QMainWindow):
         self._appearance_color = "#0A0A1C"
         self.window_effect.setCurrentIndex(max(0, self.window_effect.findData("acrylic")))
         self.appearance_brightness.setValue(100)
-        self.appearance_glow.setValue(24)
+        self.appearance_glow.setValue(16)
         self.appearance_transparency.setValue(28)
         self._set_appearance_color_preview(self._appearance_color)
         self.schedule_appearance()
@@ -2702,6 +2716,13 @@ class MainWindow(QMainWindow):
             "glow": self.appearance_glow.value(),
             "transparency": self.appearance_transparency.value(),
         }
+        # Reduce the old high default once; subsequent values are entirely user-controlled.
+        if not self.settings.get("appearance_glow_adjusted"):
+            appearance["glow"] = min(int(appearance["glow"]), 18)
+            self.appearance_glow.blockSignals(True)
+            self.appearance_glow.setValue(appearance["glow"])
+            self.appearance_glow.blockSignals(False)
+            self.settings["appearance_glow_adjusted"] = True
         self.settings["appearance"] = appearance
         wanted = self.window_effect.currentData() or "acrylic"
         current = winfx.active_effect(wanted)

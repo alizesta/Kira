@@ -369,7 +369,7 @@ class Speaker(QObject):
             try:
                 from . import local_voice
                 if local_voice.tts_ready(self.settings.get("local_voice_tts_model", "")):
-                    audio = local_voice.synthesize_persian(text, self.settings.get("local_voice_tts_model", ""))
+                    audio = local_voice.synthesize_persian(text, self.settings.get("local_voice_tts_model", ""), r)
                     return self._synth_cloud(tag, audio, "wav", s.cache, base, key, cw, cj)
             except Exception as e:
                 errors.append(f"local-persian-tts: {type(e).__name__}: {e}")

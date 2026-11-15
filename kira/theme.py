@@ -176,7 +176,7 @@ def build_style(effect="off", appearance=None):
     )
     for opaque, tint in GLASS_TINTS.items():
         css = css.replace(opaque, tint)
-    glow = max(0, min(100, int(appearance.get("glow", 34))))
+    glow = max(0, min(100, int(appearance.get("glow", 18))))
     glow_alpha = 0.12 + glow * 0.003
     override = f"""
 QGroupBox {{ border-color: rgba(255,79,200,{glow_alpha:.2f}); }}
