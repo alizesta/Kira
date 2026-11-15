@@ -2020,12 +2020,19 @@ class MainWindow(QMainWindow):
             asr_model = str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B")
             tts_model = str(self.settings.get("local_voice_tts_model") or "")
             state = local_voice.status(tts_model)
+            asr_loaded_for_selection = bool(state["asr_loaded"] and state.get("asr_model") == asr_model)
+            selected_tts_loaded = bool(
+                state["tts_loaded"] and (
+                    (tts_model and state.get("tts_model") and Path(state["tts_model"]).resolve() == Path(tts_model).expanduser().resolve())
+                    or (not tts_model and state.get("tts_model") == "bundled")
+                )
+            )
             asr = ("پکیج Python نصب است" if state["asr_installed"] else "پکیج Python نصب نیست")
-            asr += " · مدل در حافظه بارگذاری شده" if state["asr_loaded"] else " · مدل هنوز بارگذاری نشده"
+            asr += " · همین مدل در حافظه است" if asr_loaded_for_selection else " · مدل انتخابی هنوز بارگذاری نشده"
             if state.get("asr_error"):
                 asr += " · " + state["asr_error"]
             tts = ("Piper در دسترس است" if state["tts_installed"] else "Piper نصب نیست")
-            tts += " · موتور در حافظه بارگذاری شده" if state["tts_loaded"] else " · هنوز بارگذاری نشده"
+            tts += " · همین صدا بارگذاری شده" if selected_tts_loaded else " · صدای انتخابی هنوز بارگذاری نشده"
             if state.get("tts_error"):
                 tts += " · " + state["tts_error"]
             selected_tts = tts_model or "صدای فارسی پیش‌فرض"
@@ -3123,7 +3130,8 @@ class MainWindow(QMainWindow):
                 if meta.get("status") == "unavailable" or meta.get("text") == "No":
                     continue
                 low = str(mid).lower()
-                if any(token in low for token in ("tts", "text-to-speech", "embedding", "whisper", "speech-to-text")):
+                if any(token in low for token in ("tts", "text-to-speech", "embedding", "whisper", "speech-to-text",
+                                                   "speech", "transcription", "audio", "asr")):
                     continue
                 if free_only and meta.get("free") is not True:
                     continue
