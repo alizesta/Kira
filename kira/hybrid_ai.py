@@ -30,6 +30,7 @@ METRICS_KEEP = 200             # in-memory history of request metrics (bounded: 
 # background reviewer and the visible chat) may use the same router from different threads.
 _ROLE = contextvars.ContextVar("kira_route_role", default="")
 _PREFER = contextvars.ContextVar("kira_route_prefer", default="")
+_VISION_ONLY = contextvars.ContextVar("kira_vision_only", default=False)
 
 
 class ProviderError(RuntimeError):
@@ -717,6 +718,8 @@ class HybridRouter:
             base = _usage.apply_limits(base, lambda r: self.eligibility(r)[0])
         except Exception:                                              # noqa: BLE001
             pass
+        if _VISION_ONLY.get():
+            base = [r for r in base if self._route_supports_vision(r, self._provider_cfg(r))]
         preferred = next((r for r in routes if r["id"] == prefer and r in base), None) if prefer else None
         if preferred is None:
             return base
@@ -728,21 +731,32 @@ class HybridRouter:
         Unknown models are deliberately excluded: a text-only route must never receive a screen frame.
         Custom providers can opt in with providers[provider].vision_enabled = true.
         """
+        for route in self._candidates():
+            ok, _ = self.eligibility(route)
+            if ok and self._route_supports_vision(route, self._provider_cfg(route)):
+                return str(route.get("id") or "")
+        return None
+
+    @staticmethod
+    def _route_supports_vision(route, cfg):
+        model = str(route.get("model") or "").lower()
         known = (
             "gemini", "gpt-4o", "gpt-4.1", "gpt-5", "claude-3", "claude-sonnet",
             "claude-opus", "llava", "qwen-vl", "qwen2.5-vl", "qwen3-vl",
             "minicpm-v", "pixtral", "molmo", "internvl", "llama-3.2-vision",
         )
-        for route in self._candidates():
-            ok, _ = self.eligibility(route)
-            if not ok:
-                continue
-            provider = str(route.get("provider") or "").lower()
-            model = str(route.get("model") or "").lower()
-            cfg = self._provider_cfg(route)
-            if cfg.get("vision_enabled") is True or any(token in model for token in known):
-                return str(route.get("id") or "")
-        return None
+        return cfg.get("vision_enabled") is True or any(token in model for token in known)
+
+    @contextlib.contextmanager
+    def vision_scope(self, route_id=""):
+        """Restrict this request and all failovers to routes known to accept images."""
+        prefer_token = _PREFER.set(str(route_id or ""))
+        vision_token = _VISION_ONLY.set(True)
+        try:
+            yield self
+        finally:
+            _VISION_ONLY.reset(vision_token)
+            _PREFER.reset(prefer_token)
 
     def preview_route(self):
         """The route the next request would try first (for the indicator before sending). None if nothing is usable."""
