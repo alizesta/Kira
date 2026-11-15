@@ -475,6 +475,8 @@ class CloudflareProvider(BaseProvider):
         clean = normalize_messages(messages)
         if not clean:
             raise self._fail("هیچ پیام کاربری برای ارسال وجود ندارد.", False, kind="request")
+        if any(item.get("images") for item in clean):
+            raise self._fail("مدل انتخاب‌شده در Cloudflare این مسیر تصویر را پشتیبانی نمی‌کند؛ برای تحلیل تصویر یک مدل Vision انتخاب کن.", False, kind="request")
         url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{self.model}"
         headers = {"Authorization": f"Bearer {self.secret}", "Content-Type": "application/json"}
         payload = {"messages": [{"role": "system", "content": system_prompt}, *[{"role": m["role"], "content": m["content"]} for m in clean]],
