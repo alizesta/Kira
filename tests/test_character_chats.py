@@ -344,6 +344,7 @@ class GuiSessionTests(IsolatedDb):
         self.assertIsNone(ren.relay)
         self.assertIsNone(ren.view)
         self.assertIsNone(ren.coordinator)
+        self.assertIsNone(ren.response_relay)
         self.assertFalse(ren.dispatch_scheduled)
 
     def test_shutdown_clears_every_session_coordinator_queue_and_scheduled_flag(self):
