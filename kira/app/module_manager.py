@@ -1,7 +1,7 @@
 """Dependency-aware lifecycle manager for optional application modules."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Any
 
@@ -53,6 +53,7 @@ class ModuleManager:
         self.event_bus = event_bus or EventBus()
         self._modules: dict[str, _ModuleRecord] = {}
         self._start_order: list[str] = []
+        self._creation_order: list[str] = []
 
     def register(
         self,
@@ -108,6 +109,7 @@ class ModuleManager:
 
             if record.instance is None:
                 record.instance = record.factory()
+                self._creation_order.append(module_id)
             self._validate_lifecycle(record.instance)
             if not record.registered:
                 record.instance.register(self.container, self.event_bus)
@@ -133,6 +135,8 @@ class ModuleManager:
                     pass
             record.instance = None
             record.registered = False
+            if module_id in self._creation_order:
+                self._creation_order.remove(module_id)
             record.state = ModuleState.FAILED
             record.error = f"{type(exc).__name__}: {exc}"
             if isinstance(exc, ModuleManagerError):
@@ -191,6 +195,8 @@ class ModuleManager:
                 ) from exc
         record.instance = None
         record.registered = False
+        if module_id in self._creation_order:
+            self._creation_order.remove(module_id)
         record.enabled = False
         record.state = ModuleState.DISABLED
         record.error = None
@@ -225,11 +231,13 @@ class ModuleManager:
                     f"Could not dispose module '{module_id}': {record.error}"
                 ) from exc
         self._modules.pop(module_id)
+        if module_id in self._creation_order:
+            self._creation_order.remove(module_id)
 
     def shutdown(self) -> dict[str, str]:
         """Stop in reverse dependency order and release every created module instance."""
         errors: dict[str, str] = {}
-        for module_id in tuple(reversed(self._start_order)):
+        for module_id in tuple(reversed(self._creation_order)):
             record = self._modules.get(module_id)
             if record is None:
                 continue
@@ -245,7 +253,10 @@ class ModuleManager:
             record.instance = None
             record.registered = False
             record.state = ModuleState.DISPOSED
-            self._start_order.remove(module_id)
+            if module_id in self._start_order:
+                self._start_order.remove(module_id)
+            if module_id in self._creation_order:
+                self._creation_order.remove(module_id)
         return errors
 
     def _active_dependents(self, module_id: str) -> list[str]:
