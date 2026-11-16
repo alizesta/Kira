@@ -32,8 +32,9 @@ startup_notes = repository.startup_notes
 
 
 def _sync_in():
+    # The repository is shared with the application service; never overwrite
+    # its latest error state with this compatibility module's stale mirror.
     repository._db_path = lambda: Path(DB_PATH)
-    repository.last_error = last_error
 
 
 def _sync_out():
