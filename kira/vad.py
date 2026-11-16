@@ -19,13 +19,13 @@ from collections import deque
 
 RATE = 16000
 BLOCK = 512
-CALIBRATION_BLOCKS = 25          # ~0.8 s of room noise measured at start
+CALIBRATION_BLOCKS = 12          # ~0.38 s of room noise measured at start
 ONSET_BLOCKS = 3                 # speech must persist ~0.1 s before it counts
 PRE_ROLL_BLOCKS = 12             # ~0.4 s kept from before the start, so the first syllable is not cut
-TAIL_BLOCKS = 8                  # ~0.25 s of the silence after the last voiced block is kept
+TAIL_BLOCKS = 6                  # ~0.19 s of the silence after the last voiced block is kept
 MIN_VOICED_S = 0.30              # less voiced audio than this is a bump, not a word
 MAX_SEGMENT_S = 25.0
-BARGE_CAL_BLOCKS = 22            # ~0.7 s at the start of Kira's speech used to learn how loud she is in the mic
+BARGE_CAL_BLOCKS = 14            # ~0.45 s at the start of Kira's speech used to learn how loud she is in the mic
 BARGE_BLOCKS = 12                # ~0.4 s of clearly louder sound than her own echo = the person is talking
 
 
@@ -123,7 +123,7 @@ class Segmenter:
         else:
             self.silence += 1
         voiced_s = self.voiced * self.block / self.rate
-        end_s = 0.55 + (0.35 if voiced_s < 1.0 else 0.0)        # a short utterance gets a longer pause allowance (hesitation)
+        end_s = 0.42 + (0.18 if voiced_s < 1.0 else 0.0)        # a short utterance gets a longer pause allowance (hesitation)
         if self.silence >= int(end_s * self.rate / self.block) or len(self.buf) * self.block / self.rate > MAX_SEGMENT_S:
             self._finish(events)
         return events
