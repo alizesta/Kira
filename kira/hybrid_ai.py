@@ -20,6 +20,7 @@ from typing import Any
 from . import routes as route_model
 from .leak_guard import LeakGuard, clean_final
 from .ollama_client import OllamaClient, OllamaError
+from .core.interfaces.chat_provider import ChatProvider
 
 COOLDOWN_RATE_LIMIT = 300      # seconds after HTTP 429 (or Retry-After, capped)
 COOLDOWN_TRANSIENT = 45        # network / timeout / 5xx (default; each route can override it)
@@ -200,7 +201,7 @@ class ProgressBody:
         return chunk
 
 
-class BaseProvider:
+class BaseProvider(ChatProvider):
     name = "base"
     upload_progress = None                  # optional callback(percent) - set by the router; used when a request carries images
     auth_hint = "کلید API نامعتبر است یا دسترسی ندارد"
