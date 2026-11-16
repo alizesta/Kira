@@ -294,6 +294,14 @@ class SqliteChatRepository:
             raise PersistenceError(
                 f"نسخه دیتابیس ({current_version}) از این نسخه برنامه جدیدتر است؛ برای جلوگیری از Downgrade، تغییر داده نشد."
             )
+        if self._has_table(con, "persistence_schema"):
+            recorded_versions = [
+                int(row[0]) for row in con.execute("SELECT version FROM persistence_schema")
+            ]
+            if recorded_versions and max(recorded_versions) > SCHEMA_VERSION:
+                raise PersistenceError(
+                    "نسخه ثبت‌شده Schema از این نسخه برنامه جدیدتر است؛ دیتابیس بدون تغییر باقی ماند."
+                )
         con.execute(
             "CREATE TABLE IF NOT EXISTS conversations ("
             "id TEXT PRIMARY KEY, character_id TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', "
@@ -335,9 +343,6 @@ class SqliteChatRepository:
         con.execute(
             "CREATE TABLE IF NOT EXISTS persistence_schema (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL, description TEXT NOT NULL)"
         )
-        schema_versions = [row[0] for row in con.execute("SELECT version FROM persistence_schema")]
-        if schema_versions and max(int(version) for version in schema_versions) > SCHEMA_VERSION:
-            raise PersistenceError("نسخه ثبت‌شده Schema از این نسخه برنامه جدیدتر است؛ دیتابیس بدون تغییر باقی ماند.")
         con.execute(
             "INSERT OR IGNORE INTO persistence_schema(version, applied_at, description) VALUES (?, ?, ?)",
             (SCHEMA_VERSION, _now(), "conversation ids, message metadata and stream status"),
