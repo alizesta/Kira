@@ -141,6 +141,7 @@ class SqliteChatRepositoryTests(unittest.TestCase):
             "mika", title="Imported conversation", metadata={"origin": "archive", "pinned": True}
         )
         source.add_message("user", "archived message", "mika", conversation_id=conversation["id"])
+        source_message_id = source.message_id_for("user", "archived message", "mika")
 
         self.assertEqual(self.persistence.import_messages(source_path), 1)
         restored = self.persistence.get_conversation(conversation["id"])
@@ -150,7 +151,28 @@ class SqliteChatRepositoryTests(unittest.TestCase):
             self.persistence.recent_messages(10, "mika", conversation["id"]),
             [{"role": "user", "content": "archived message"}],
         )
+        imported = self.persistence.get_messages(character_id="mika", conversation_id=conversation["id"])
+        self.assertEqual(imported[0]["id"], source_message_id)
         self.assertEqual(self.persistence.import_messages(source_path), 0)
+
+    def test_import_reassigns_only_colliding_ids_without_rewriting_existing_messages(self):
+        self.persistence.add_message("user", "target row", "kira")
+        existing = self.persistence.get_messages(character_id="kira")[0]
+        source_path = Path(self.temp.name) / "id-collision.sqlite3"
+        source = SqliteChatRepository(source_path)
+        source.init_db()
+        conversation = source.create_conversation("ren", title="source")
+        source.add_message("user", "source row", "ren", conversation_id=conversation["id"])
+        source_id = source.message_id_for("user", "source row", "ren")
+        self.assertEqual(source_id, existing["id"])
+
+        self.assertEqual(self.persistence.import_messages(source_path), 1)
+        after = self.persistence.get_messages(character_id="kira")
+        self.assertEqual([(row["id"], row["content"]) for row in after], [(existing["id"], "target row")])
+        imported = self.persistence.get_messages(character_id="ren", conversation_id=conversation["id"])
+        self.assertEqual(len(imported), 1)
+        self.assertNotEqual(imported[0]["id"], source_id)
+        self.assertGreater(imported[0]["id"], existing["id"])
 
     def test_stream_message_id_cannot_be_reused_by_another_character(self):
         kira = self.persistence.get_or_create_conversation("kira")
