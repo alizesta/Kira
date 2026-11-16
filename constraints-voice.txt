@@ -1,0 +1,2 @@
+# Keep Gradio 6.x compatible when installing optional voice engines.
+Pillow>=8,<13
