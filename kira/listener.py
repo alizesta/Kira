@@ -290,8 +290,10 @@ class Listener(QThread):
         model = self._model
         self.fixes.refresh()
         hot = self.fixes.hotwords_text()
-        kw = dict(language=self.language, beam_size=3, vad_filter=True,
-                  vad_parameters={"min_silence_duration_ms": 350, "speech_pad_ms": 200},
+        # Segmenter has already detected speech boundaries and trimmed silence before this
+        # method is called. Running Whisper's internal VAD a second time can discard
+        # almost the entire short utterance (especially Persian phrases).
+        kw = dict(language=self.language, beam_size=3, vad_filter=False,
                   condition_on_previous_text=False, initial_prompt=initial_prompt(self.language, hot),
                   no_speech_threshold=0.55, compression_ratio_threshold=2.2, log_prob_threshold=-1.0)
         try:
