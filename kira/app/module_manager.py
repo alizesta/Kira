@@ -242,10 +242,11 @@ class ModuleManager:
             if record is None:
                 continue
             if record.instance is not None:
-                try:
-                    record.instance.stop()
-                except Exception as exc:
-                    errors[module_id] = f"stop: {type(exc).__name__}: {exc}"
+                if record.state != ModuleState.STOPPED:
+                    try:
+                        record.instance.stop()
+                    except Exception as exc:
+                        errors[module_id] = f"stop: {type(exc).__name__}: {exc}"
                 try:
                     record.instance.dispose()
                 except Exception as exc:
