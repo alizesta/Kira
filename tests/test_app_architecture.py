@@ -60,6 +60,127 @@ class DependencyContainerTests(unittest.TestCase):
             DependencyContainer().resolve("missing")
 
 
+class ModuleManagerTests(unittest.TestCase):
+    class FakeModule:
+        def __init__(self, name, events, fail_start=False):
+            self.name = name
+            self.events = events
+            self.fail_start = fail_start
+
+        def register(self, container, event_bus):
+            self.events.append(("register", self.name))
+            self.container = container
+            self.event_bus = event_bus
+
+        def start(self):
+            self.events.append(("start", self.name))
+            if self.fail_start:
+                raise RuntimeError("intentional start failure")
+
+        def stop(self):
+            self.events.append(("stop", self.name))
+
+        def dispose(self):
+            self.events.append(("dispose", self.name))
+
+    def test_dependencies_start_before_dependent_and_receive_shared_services(self):
+        from kira.app.module_manager import ModuleManager, ModuleState
+
+        events = []
+        manager = ModuleManager()
+        manager.register("memory", lambda: self.FakeModule("memory", events))
+        manager.register(
+            "chat",
+            lambda: self.FakeModule("chat", events),
+            dependencies=("memory",),
+        )
+
+        manager.start("chat")
+
+        self.assertEqual(manager.state("memory"), ModuleState.STARTED)
+        self.assertEqual(manager.state("chat"), ModuleState.STARTED)
+        self.assertEqual(
+            events,
+            [
+                ("register", "memory"),
+                ("start", "memory"),
+                ("register", "chat"),
+                ("start", "chat"),
+            ],
+        )
+
+    def test_active_dependents_prevent_unsafe_disable(self):
+        from kira.app.module_manager import ModuleManager, ModuleManagerError
+
+        events = []
+        manager = ModuleManager()
+        manager.register("memory", lambda: self.FakeModule("memory", events))
+        manager.register(
+            "chat",
+            lambda: self.FakeModule("chat", events),
+            dependencies=("memory",),
+        )
+        manager.start("chat")
+
+        with self.assertRaisesRegex(ModuleManagerError, "Stop dependent"):
+            manager.disable("memory")
+
+    def test_disable_disposes_and_enable_recreates_module(self):
+        from kira.app.module_manager import ModuleManager, ModuleState
+
+        events = []
+        created = []
+        def factory():
+            instance = self.FakeModule(f"feature-{len(created) + 1}", events)
+            created.append(instance)
+            return instance
+
+        manager = ModuleManager()
+        manager.register("feature", factory)
+        manager.start("feature")
+        manager.disable("feature")
+        self.assertEqual(manager.state("feature"), ModuleState.DISABLED)
+        manager.enable("feature")
+
+        self.assertEqual(len(created), 2)
+        self.assertEqual(manager.state("feature"), ModuleState.STARTED)
+        self.assertIn(("dispose", "feature-1"), events)
+        self.assertIn(("start", "feature-2"), events)
+
+    def test_optional_failure_does_not_block_independent_modules(self):
+        from kira.app.module_manager import ModuleManager, ModuleState
+
+        events = []
+        manager = ModuleManager()
+        manager.register(
+            "broken",
+            lambda: self.FakeModule("broken", events, fail_start=True),
+            optional=True,
+        )
+        manager.register("healthy", lambda: self.FakeModule("healthy", events))
+
+        states = manager.start_all()
+
+        self.assertEqual(states["broken"], ModuleState.FAILED)
+        self.assertEqual(states["healthy"], ModuleState.STARTED)
+        self.assertIn("intentional start failure", manager.error("broken"))
+
+    def test_dependency_cycles_fail_without_starting_modules(self):
+        from kira.app.module_manager import ModuleManager, ModuleManagerError, ModuleState
+
+        events = []
+        manager = ModuleManager()
+        manager.register("a", lambda: self.FakeModule("a", events), dependencies=("b",))
+        manager.register("b", lambda: self.FakeModule("b", events), dependencies=("a",))
+
+        with self.assertRaisesRegex(ModuleManagerError, "cycle"):
+            manager.start("a")
+
+        self.assertEqual(manager.state("a"), ModuleState.FAILED)
+        self.assertEqual(manager.state("b"), ModuleState.FAILED)
+        self.assertEqual(events, [])
+
+
 class ApplicationServiceBoundaryTests(unittest.TestCase):
     def test_persona_memory_service_scopes_operations_by_character(self):
         from contextlib import nullcontext
