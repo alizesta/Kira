@@ -227,7 +227,6 @@ class MainWindow(QMainWindow):
         if chat_history_service is None:
             from .services.chat_history_service import SqliteChatHistoryService
             chat_history_service = SqliteChatHistoryService()
-        self.chat_history_service = chat_history_service
         self.chat_application_service = ChatApplicationService(
             persistence=self.chat_history_service,
             system_prompt_builder=build_system_prompt,
@@ -4128,6 +4127,19 @@ class MainWindow(QMainWindow):
             else:
                 return
         with self._as(session):
+            if (event.persistence_ok is False
+                    and event.kind in (
+                        ApplicationEventKind.REQUEST_COMPLETED,
+                        ApplicationEventKind.REQUEST_FAILED,
+                        ApplicationEventKind.REQUEST_CANCELLED,
+                    )
+                    and not self._save_warned):
+                self._save_warned = True
+                self.add_chat(
+                    "error",
+                    "ذخیره‌ی پاسخ روی دیسک ناموفق بود. پاسخ تا اولین ذخیره‌ی موفق در حافظه نگه داشته می‌شود."
+                    + (f"\nعلت: {event.error}" if event.error else ""),
+                )
             if event.kind is ApplicationEventKind.PROVIDER_CHUNK:
                 self.on_stream_chunk(event.chunk, event.content)
             elif event.kind is ApplicationEventKind.PROVIDER_FINAL and event.result is not None:
@@ -4920,9 +4932,9 @@ class MainWindow(QMainWindow):
                     mood.on_reply(meta.emotions, meta.intensity)
         except Exception:                                         # noqa: BLE001 - mood is a bonus, never block the chat
             pass
-        if ok:
+        if persist and ok:
             self._save_warned = False
-        elif not self._save_warned:
+        elif persist and not ok and not self._save_warned:
             self._save_warned = True
             self.add_chat("error", "ذخیره‌ی گفتگو روی دیسک ناموفق بود. گفتگو تا بسته‌شدن برنامه در حافظه می‌ماند و با اولین ذخیره‌ی موفق نوشته می‌شود."
                                    f"\nعلت: {self.chat_application_service.last_persistence_error}")
