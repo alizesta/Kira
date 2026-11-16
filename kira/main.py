@@ -3196,7 +3196,7 @@ class MainWindow(QMainWindow):
         local_tts_layout.addWidget(QLabel("مدل‌های دانلودشده‌ی TTS"))
         local_tts_layout.addWidget(self.local_tts_model_list)
         self.local_tts_model_path = QLineEdit(str(self.settings.get("local_voice_tts_model") or ""))
-        self.local_tts_model_path.setPlaceholderText("مسیر Piper ONNX؛ خالی = صدای فارسی پیش‌فرض")
+        self.local_tts_model_path.setPlaceholderText("مسیر فایل Piper ONNX یا شناسه مخزن Hugging Face؛ خالی = صدای پیش‌فرض")
         self.local_tts_model_path.setLayoutDirection(Qt.LeftToRight)
         tts_path_row = QHBoxLayout()
         tts_path_row.addWidget(self.local_tts_model_path, 1)
