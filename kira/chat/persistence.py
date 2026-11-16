@@ -236,6 +236,11 @@ class SqliteChatRepository:
         with self._db() as con:
             self._migrate_schema(con)
             for row in conversations:
+                existing = con.execute(
+                    "SELECT character_id FROM conversations WHERE id=?", (row["id"],)
+                ).fetchone()
+                if existing is not None and _character_id(existing["character_id"]) != _character_id(row["character_id"]):
+                    raise PersistenceError("شناسه گفتگو در فایل پشتیبان به شخصیت دیگری تعلق دارد.")
                 con.execute(
                     "INSERT INTO conversations(id, character_id, title, metadata, status, created_at, updated_at) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
@@ -310,12 +315,16 @@ class SqliteChatRepository:
         return merged
 
     def _ensure_conversation_row(self, con, conversation_id: str, character_id: str, created_at=None):
+        cid = _character_id(character_id)
         stamp = created_at or _now()
         con.execute(
             "INSERT OR IGNORE INTO conversations(id, character_id, title, metadata, status, created_at, updated_at) "
             "VALUES (?, ?, '', '{}', 'active', ?, ?)",
-            (conversation_id, _character_id(character_id), stamp, stamp),
+            (conversation_id, cid, stamp, stamp),
         )
+        row = con.execute("SELECT character_id FROM conversations WHERE id=?", (str(conversation_id),)).fetchone()
+        if row is None or _character_id(row["character_id"]) != cid:
+            raise PersistenceError("شناسه گفتگو به شخصیت دیگری تعلق دارد.")
 
     def _create_schema(self, con):
         """Run an additive, transactional, versioned migration. Never rebuilds or drops legacy tables."""
@@ -883,6 +892,11 @@ class SqliteChatRepository:
                 with self._db() as con:
                     self._migrate_schema(con)
                     for conversation in incoming_conversations:
+                        existing = con.execute(
+                            "SELECT character_id FROM conversations WHERE id=?", (conversation["id"],)
+                        ).fetchone()
+                        if existing is not None and _character_id(existing["character_id"]) != _character_id(conversation["character_id"]):
+                            raise PersistenceError("شناسه گفتگوی واردشده به شخصیت دیگری تعلق دارد.")
                         con.execute(
                             "INSERT OR IGNORE INTO conversations(id, character_id, title, metadata, status, created_at, updated_at) "
                             "VALUES (?, ?, ?, ?, ?, ?, ?)",
