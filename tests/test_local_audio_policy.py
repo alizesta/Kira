@@ -87,6 +87,42 @@ class LocalAudioPolicyTests(unittest.TestCase):
         self.assertEqual(len(envelope), 1)
         self.assertTrue(0.0 <= envelope[0] <= 1.0)
 
+    def test_selected_microphone_is_matched_by_name(self):
+        listener = Listener(settings={"mic_device": "Headset (B20)"})
+        devices = SimpleNamespace(query_devices=lambda: [
+            {"name": "Speakers", "max_input_channels": 0},
+            {"name": "Microphone", "max_input_channels": 1},
+            {"name": "Headset (B20)", "max_input_channels": 1},
+        ])
+        self.assertEqual(listener._input_device(devices), 2)
+
+    def test_missing_microphone_falls_back_to_system_default(self):
+        listener = Listener(settings={"mic_device": "disconnected headset"})
+        devices = SimpleNamespace(query_devices=lambda: [
+            {"name": "USB Microphone", "max_input_channels": 1},
+        ])
+        self.assertIsNone(listener._input_device(devices))
+
+    def test_microphone_stream_is_closed_even_when_stop_raises(self):
+        class BrokenStopStream:
+            def __init__(self):
+                self.closed = False
+
+            def stop(self):
+                raise RuntimeError("device already stopped")
+
+            def close(self):
+                self.closed = True
+
+        listener = Listener(settings={})
+        notes = []
+        listener.note.connect(notes.append)
+        stream = BrokenStopStream()
+        listener._close_stream(stream)
+        self.assertTrue(stream.closed)
+        self.assertEqual(len(notes), 1)
+        self.assertIn("RuntimeError", notes[0])
+
     def test_stt_falls_back_from_qwen_only_to_local_whisper(self):
         fake = SimpleNamespace(
             engine="whisper",
