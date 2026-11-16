@@ -25,6 +25,15 @@ class McpRegistryConfigTests(unittest.TestCase):
         self.assertEqual(cfg["env"]["ROOT_DIR"], "C:/Data")
         self.assertEqual(cfg["default_level"], "sensitive")
 
+    def test_named_package_arguments_keep_the_flag(self):
+        record = {"server": {"name": "server-with-args", "packages": [{
+            "registryType": "npm", "identifier": "example-mcp-server",
+            "packageArguments": [{"type": "named", "name": "--root", "value": "C:/Data"}],
+            "transport": {"type": "stdio"},
+        }]}}
+        _, cfg = server_config(record)
+        self.assertEqual(cfg["args"], ["-y", "example-mcp-server", "--root", "C:/Data"])
+
     def test_https_remote_is_supported(self):
         name, cfg = server_config({"server": {"name": "remote-search", "remotes": [{"url": "https://mcp.example.com/mcp"}]}})
         self.assertEqual(name, "remote-search")
