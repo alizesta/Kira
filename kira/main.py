@@ -21,8 +21,7 @@ from .config import (load_settings, save_settings, ROOT, VERSION, LOAD_WARNINGS,
                      APP_NAME, PROJECT_URL, RELEASES_URL)
 from . import about
 from . import storage
-from . import memory as chat_store
-from .memory import init_db, add_message, conversation_context, clear_memory, recent_messages, message_count, ChatStoreError
+from .core.exceptions import ChatHistoryError
 from .ollama_client import OllamaClient, model_installed, parse_keep_alive, clamp_num_ctx, clamp_num_predict, DEFAULT_NUM_PREDICT, DEFAULT_NUM_CTX, DEFAULT_KEEP_ALIVE
 from .hybrid_ai import HybridRouter, probe_provider
 from . import routes as route_model
@@ -197,7 +196,7 @@ class MainWindow(QMainWindow):
     input = front_only_property("input")
     voice_btn = front_only_property("voice_btn")
 
-    def __init__(self, memory_service=None, mood_service=None, character_service=None):
+    def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None):
         super().__init__()
         # Direct MainWindow construction remains supported for existing callers;
         # normal application startup injects these services from app.bootstrap.
@@ -213,11 +212,15 @@ class MainWindow(QMainWindow):
             from .services.character_service import CharacterProfileService
             character_service = CharacterProfileService()
         self.character_service = character_service
+        if chat_history_service is None:
+            from .services.chat_history_service import SqliteChatHistoryService
+            chat_history_service = SqliteChatHistoryService()
+        self.chat_history_service = chat_history_service
         self.settings = load_settings()
         self.sessions = {}
         self.cur = self.front = ChatSession(self.character_service.active_id(self.settings))
         self.sessions[self.cur.cid] = self.cur
-        self._db_notes = init_db()
+        self._db_notes = self.chat_history_service.init_db()
         self._save_warned = False
         self._emotion_applied = False
         self._closing = False
@@ -676,7 +679,7 @@ class MainWindow(QMainWindow):
     def restore_history(self, limit=40):
         """Show the saved conversation of the CURRENT chat again after a restart (it is already used as model context)."""
         try:
-            history = recent_messages(limit, self.cur.cid)
+            history = self.chat_history_service.recent_messages(limit, self.cur.cid)
         except Exception:
             history = []
         shown = 0
@@ -4913,7 +4916,7 @@ class MainWindow(QMainWindow):
         self._search_token += 1
         self._search_base = (base_text, images)
         self.status.setText(f"🌐 در حال جست‌وجوی وب: «{query[:60]}»…")
-        history = conversation_context(8, character_id=self.cur.cid)
+        history = self.chat_history_service.conversation_context(8, character_id=self.cur.cid)
         # The user's own words are sent unchanged. Only a short follow-up that points back at the chat is rewritten by the model.
         rewrite = (lambda c=self.client: self.make_search_query(history, query, c)) if websearch.is_followup(query) else None
         self._search_worker = SearchWorker(self._search_token, query, key, self.settings.get("web_depth", "basic"),
@@ -5009,10 +5012,10 @@ class MainWindow(QMainWindow):
 
     def start_worker(self, plain):
         window = int(self.settings.get("memory_context_limit", 12))
-        context = conversation_context(window, character_id=self.cur.cid)
+        context = self.chat_history_service.conversation_context(window, character_id=self.cur.cid)
         mode = self.detect_mode(context)                          # Active Mode of THIS message (None = switched off in settings)
         try:
-            older = recent_messages(window + 40, self.cur.cid)[:-window] if window else []
+            older = self.chat_history_service.recent_messages(window + 40, self.cur.cid)[:-window] if window else []
             # Every character has its own saved conversation; only Kira owns the legacy evidence index.
             character_id = self.cur.cid
             with persona_memory.character_scope(character_id):
@@ -5021,9 +5024,9 @@ class MainWindow(QMainWindow):
                     query=evidence_memory.query_from_context(context) if character_id == "kira" else None,
                     budget=evidence_memory.budget_for(self.settings, self.client),
                 )
-                total = message_count(character_id)
+                total = self.chat_history_service.message_count(character_id)
                 if persona_memory.needs_summary(total, window):
-                    persona_memory.maintain(recent_messages(min(total, 3000), character_id), window)
+                    persona_memory.maintain(self.chat_history_service.recent_messages(min(total, 3000), character_id), window)
         except Exception:                                         # noqa: BLE001 - memory is a bonus, never block a reply
             memory_block = ""
         try:                                                      # her persisted mood + how he seems right now (same text for every provider)
@@ -5080,7 +5083,7 @@ class MainWindow(QMainWindow):
             has_attachment = bool(self._turn_attach_kinds or (extra and (extra.get("images") or "--- فایل ضمیمه" in str(extra.get("model", "")))))
             earlier = users[:-1]
             try:                                                   # a "no jokes" request must outlive the short context window
-                longer = [m["content"] for m in recent_messages(80, self.cur.cid) if m.get("role") == "user"]
+                longer = [m["content"] for m in self.chat_history_service.recent_messages(80, self.cur.cid) if m.get("role") == "user"]
                 if len(longer) > len(users):
                     earlier = longer[:-1]
             except Exception:                                      # noqa: BLE001
@@ -5430,10 +5433,10 @@ class MainWindow(QMainWindow):
     def save_message(self, role, content):
         """Save to the chat database. A failure never blocks the chat: the text stays in memory and the person is told once."""
         try:
-            ok = add_message(role, content, self.cur.cid)
+            ok = self.chat_history_service.add_message(role, content, self.cur.cid)
         except Exception as exc:                                  # noqa: BLE001
             ok = False
-            chat_store.last_error = f"{type(exc).__name__}: {exc}"
+            self.chat_history_service.set_last_error(f"{type(exc).__name__}: {exc}")
         with persona_memory.character_scope(self.cur.cid):
             persona_memory.observe(role, content)
         try:
@@ -5452,7 +5455,7 @@ class MainWindow(QMainWindow):
         elif not self._save_warned:
             self._save_warned = True
             self.add_chat("error", "ذخیره‌ی گفتگو روی دیسک ناموفق بود. گفتگو تا بسته‌شدن برنامه در حافظه می‌ماند و با اولین ذخیره‌ی موفق نوشته می‌شود."
-                                   f"\nعلت: {chat_store.last_error}")
+                                   f"\nعلت: {self.chat_history_service.last_error}")
         return ok
 
     def safe_stop_speaker(self):
@@ -5831,13 +5834,13 @@ class MainWindow(QMainWindow):
                     if self.settings.get("ui_lang", "fa") == "fa" else f"Delete the saved history of {who}? (the other characters' chats stay)")
         if QMessageBox.question(self, self.t("clear_t"), question) == QMessageBox.Yes:
             try:
-                clear_memory(self.cur.cid)      # only THIS character's conversation; saves a snapshot first, nothing is deleted if that fails
+                self.chat_history_service.clear_memory(self.cur.cid)      # only THIS character's conversation; saves a snapshot first, nothing is deleted if that fails
                 # Facts, moments and habits remain in the character's own memory file.
                 with persona_memory.character_scope(self.cur.cid):
                     persona_memory.forget_conversation()
                 self.tool_agent.clear_tasks()   # the unfinished task (its goal is the user's own words) goes with the chat
                 brain.reset_state()
-            except ChatStoreError as exc:
+            except ChatHistoryError as exc:
                 QMessageBox.warning(self, self.t("clear_t"), str(exc))
                 return
             self.chat.clear()
@@ -5867,8 +5870,8 @@ class MainWindow(QMainWindow):
 
     def restore_cleared_chat(self):
         try:
-            n = chat_store.restore_last_cleared()
-        except ChatStoreError as exc:
+            n = self.chat_history_service.restore_last_cleared()
+        except ChatHistoryError as exc:
             QMessageBox.information(self, "بازگرداندن گفتگو", str(exc))
             return
         self.reload_chat_view()
@@ -5886,8 +5889,8 @@ class MainWindow(QMainWindow):
             if not path:
                 return
         try:
-            n = chat_store.import_messages(path)
-        except ChatStoreError as exc:
+            n = self.chat_history_service.import_messages(path)
+        except ChatHistoryError as exc:
             QMessageBox.warning(self, "ورود گفتگو", str(exc))
             return
         self.reload_chat_view()
