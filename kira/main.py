@@ -1838,6 +1838,9 @@ class MainWindow(QMainWindow):
         self.whisper.addItems(["base", "small", "medium", "large-v3-turbo", "large-v3", "parseh/whisper-fa-accuracy-ct2"])
         self.whisper.setCurrentText(s["whisper_model"])
         self.reg(self.whisper.setToolTip, "whisper_tip")
+        self.whisper_download_btn = QPushButton("دانلود مدل STT انتخاب‌شده")
+        self.whisper_download_btn.clicked.connect(self.download_local_whisper_model)
+        f2.addRow(self.whisper_download_btn)
         fixes_btn = QPushButton()
         self.reg(fixes_btn.setText, "open_fixes")
         fixes_btn.clicked.connect(self.open_speech_fixes)
@@ -1883,6 +1886,57 @@ class MainWindow(QMainWindow):
         self.settings["local_voice_asr_model"] = folder
         self.save_now()
         self.refresh_local_voice_status()
+
+    def download_local_whisper_model(self):
+        value = str(self.whisper.currentText() or "").strip()
+        aliases = {
+            "tiny": "Systran/faster-whisper-tiny",
+            "base": "Systran/faster-whisper-base",
+            "small": "Systran/faster-whisper-small",
+            "medium": "Systran/faster-whisper-medium",
+            "large-v3": "Systran/faster-whisper-large-v3",
+            "large-v3-turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+        }
+        repo_id = aliases.get(value, value)
+        if "/" not in repo_id:
+            self.local_voice_status.setText("برای دانلود، یک شناسه Hugging Face معتبر انتخاب کن.")
+            return
+        from . import local_voice
+        self._run_local_voice_task(lambda: local_voice.download_hf_model(repo_id),
+                                   self.whisper_download_btn, self._on_whisper_downloaded)
+
+    def _on_whisper_downloaded(self, result):
+        ok, value = result
+        if not ok:
+            self.local_voice_status.setText(f"دانلود مدل STT ناموفق بود: {value}")
+            return
+        self.settings["whisper_model"] = str(value)
+        self.whisper.setCurrentText(str(value))
+        self.save_now()
+        self.local_voice_status.setText(f"مدل STT دانلود شد و انتخاب شد: {value}")
+
+    def download_local_tts_model(self):
+        repo_id = str(self.local_tts_model_path.text() or "").strip()
+        if "/" not in repo_id or "\\" in repo_id:
+            self.local_voice_status.setText("شناسه مخزن Piper در Hugging Face را در کادر مدل TTS وارد کن.")
+            return
+        from . import local_voice
+        self._run_local_voice_task(lambda: local_voice.download_hf_model(repo_id),
+                                   self.local_tts_download_btn, self._on_local_tts_downloaded)
+
+    def _on_local_tts_downloaded(self, result):
+        ok, value = result
+        if not ok:
+            self.local_voice_status.setText(f"دانلود مدل TTS ناموفق بود: {value}")
+            return
+        try:
+            candidates = sorted(Path(value).rglob("*.onnx"))
+            if not candidates:
+                raise RuntimeError("در مخزن دانلودشده فایل Piper ONNX پیدا نشد.")
+            self._install_piper_voice(candidates[0])
+            self.local_voice_status.setText(f"مدل TTS دانلود و نصب شد: {candidates[0].name}")
+        except Exception as exc:
+            self.local_voice_status.setText(f"نصب مدل TTS ناموفق بود: {type(exc).__name__}: {exc}")
 
     def apply_local_whisper_model(self):
         value = self.local_whisper_path.text().strip() or "small"
@@ -3118,6 +3172,9 @@ class MainWindow(QMainWindow):
         self.local_tts_browse_btn = QPushButton("انتخاب ONNX")
         self.local_tts_browse_btn.clicked.connect(self.choose_local_tts_model)
         tts_path_row.addWidget(self.local_tts_browse_btn)
+        self.local_tts_download_btn = QPushButton("دانلود از Hugging Face")
+        self.local_tts_download_btn.clicked.connect(self.download_local_tts_model)
+        tts_path_row.addWidget(self.local_tts_download_btn)
         local_tts_layout.addLayout(tts_path_row)
         self.local_tts_test_btn = QPushButton("تست صدای محلی")
         self.local_tts_test_btn.clicked.connect(self.test_local_tts)
