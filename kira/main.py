@@ -647,7 +647,7 @@ class MainWindow(QMainWindow):
         phase, info = sess.badge
         self.set_badge(phase if sess.busy else "idle", info if sess.busy else self.client.preview_route())
         self.refresh_tab_buttons()
-        if hasattr(self, "character_combo"):
+        if hasattr(self, "character_page"):
             self.refresh_character_choices()
             self.refresh_character_card(cid)
         self.refresh_personality_controls()
@@ -2020,7 +2020,7 @@ class MainWindow(QMainWindow):
             "mcp": split(self.character_page.char_mcp_edit.text()),
             "connectors": split(self.character_page.char_connectors_edit.text()),
         }
-        if hasattr(self, "character_notes_edit"):
+        if hasattr(self.character_page, "character_notes_edit"):
             self.settings.setdefault("character_notes", {})[cid] = self.character_page.character_notes_edit.toPlainText().strip()
         self.apply_character_voice_settings()
         self.save_now()
@@ -2051,7 +2051,7 @@ class MainWindow(QMainWindow):
         try:
             self.settings.setdefault("character_traits", {})[cid] = traits
             mood.set_active_character(cid, traits)
-            if hasattr(self, "character_notes_edit"):
+            if hasattr(self.character_page, "character_notes_edit"):
                 self.settings.setdefault("character_notes", {})[cid] = self.character_page.character_notes_edit.toPlainText().strip()
             self.save_character_settings(silent=True)
             self.refresh_personality_controls()
@@ -2083,7 +2083,7 @@ class MainWindow(QMainWindow):
         self._refresh_character_theme_preview()
 
     def _refresh_character_theme_preview(self):
-        if not hasattr(self, "character_theme_color_preview"):
+        if not hasattr(self.character_page, "character_theme_color_preview"):
             return
         cid = self.character_service.active_id(self.settings)
         colour = self.theme_for_character(cid)["main"]
