@@ -64,7 +64,7 @@ from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
 from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
 from .chat_code_ui import CodeChat
-from .ui.components import McpRegistryPanel, ModelCombo, OllamaProviderPanel, RouteEditor
+from .ui.components import ApiAddPanel, McpRegistryPanel, ModelCombo, OllamaProviderPanel, RouteEditor
 from .ui.dialogs import MemoryDialog, ModelPickerDialog
 from .ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
 from .ui.workers import (
@@ -2848,39 +2848,23 @@ class MainWindow(QMainWindow):
                  "no key": "بدون کلید", "not validated yet": "هنوز اعتبارسنجی نشده"}
 
     def build_api_boxes(self):
-        """Add API + Registered APIs + details of the selected API. Returns the three group boxes."""
-        add_box, af = self.group("Add API")
-        hint = QLabel("فقط API Key را وارد کن؛ Kira خودش سرویس را (Groq، Mistral، Google AI Studio یا Cloudflare) از روی پاسخ رسمی آن تشخیص می‌دهد، "
-                      "کلید را اعتبارسنجی می‌کند و مدل‌های قابل‌دسترسی را می‌گیرد. اگر سرویس با قطعیت شناسایی نشود، چیزی ثبت نمی‌شود.")
-        hint.setObjectName("hint")
-        hint.setWordWrap(True)
-        af.addRow(hint)
-        self.api_key_edit = QLineEdit()
-        self.api_key_edit.setEchoMode(QLineEdit.Password)
-        self.api_key_edit.setPlaceholderText("API Key")
-        self.api_key_edit.setLayoutDirection(Qt.LeftToRight)
-        self.api_account_edit = QLineEdit()
-        self.api_account_edit.setPlaceholderText("Cloudflare Account ID (فقط اگر خواسته شد)")
-        self.api_account_edit.setLayoutDirection(Qt.LeftToRight)
-        self.api_add_btn = QPushButton("Add")
-        line = QHBoxLayout()
-        line.addWidget(self.api_key_edit, 1)
-        line.addWidget(self.api_add_btn)
-        af.addRow(line)
-        self.api_account_edit.hide()
-        self.model_filter = QComboBox()
-        self.model_filter.addItem("همه‌ی مدل‌ها", "all")
-        self.model_filter.addItem("فقط مدل‌های رایگانِ تأییدشده", "free")
-        self.model_filter.setCurrentIndex(max(0, self.model_filter.findData(self.settings.get("model_filter_mode", "all"))))
-        self.model_filter.setToolTip("در حالت رایگان فقط مدل‌هایی نمایش داده می‌شوند که Provider رایگان‌بودنشان را اعلام کرده باشد. مدل‌های صوتی با قیمت نامشخص پنهان می‌مانند.")
-        self.model_filter.currentIndexChanged.connect(self.on_model_filter_changed)
-        af.addRow("نمایش مدل‌ها", self.model_filter)
-        self.api_add_status = QLabel("")
-        self.api_add_status.setWordWrap(True)
-        af.addRow(self.api_add_status)
-        self.api_add_btn.clicked.connect(self.api_add)
-        self.api_key_edit.returnPressed.connect(self.api_add)
-
+        """Compose independent API credential form with the registered API/detail tables."""
+        self.api_add_panel = ApiAddPanel(
+            self.settings,
+            filter_options=(
+                ("all", "همه‌ی مدل‌ها"),
+                ("free", "فقط مدل‌های رایگانِ تأییدشده"),
+            ),
+            parent=self,
+        )
+        self.api_key_edit = self.api_add_panel.key_edit
+        self.api_account_edit = self.api_add_panel.account_edit
+        self.api_add_btn = self.api_add_panel.add_btn
+        self.model_filter = self.api_add_panel.model_filter
+        self.api_add_status = self.api_add_panel.status
+        self.api_add_panel.add_requested.connect(self.api_add)
+        self.api_add_panel.filter_changed.connect(self.on_model_filter_changed)
+        add_box = self.api_add_panel
         list_box, lf = self.group("Registered APIs")
         self.api_table = QTableWidget(0, len(self.API_COLUMNS))
         self.api_table.setHorizontalHeaderLabels(self.API_COLUMNS)
