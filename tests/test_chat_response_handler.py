@@ -165,5 +165,59 @@ class ResponseHandlerTests(unittest.TestCase):
             self.assertNotIn(forbidden, source)
 
 
+    def test_failure_in_one_session_does_not_interrupt_another_active_request(self):
+        self.handler.begin_request("ren-1", "ren")
+        self.handler.begin_request("mika-1", "mika")
+        self.handler.handle(ProviderEvent.chunk("ren-1", "ren", "partial ren"))
+        self.handler.handle(ProviderEvent.chunk("mika-1", "mika", "Mika"))
+
+        failed = self.handler.handle(
+            ProviderEvent.failed("ren-1", "ren", "ren provider failed")
+        )
+        still_active = self.handler.handle(
+            ProviderEvent.chunk("mika-1", "mika", " is active")
+        )
+        completed = self.handler.handle(
+            ProviderEvent.completed("mika-1", "mika", {"text": "Mika is active"})
+        )
+
+        self.assertEqual(failed.result.status, ResponseStatus.FAILED)
+        self.assertEqual(failed.result.content, "partial ren")
+        self.assertEqual(still_active.content, "Mika is active")
+        self.assertEqual(completed.result.status, ResponseStatus.COMPLETED)
+        self.assertEqual(completed.result.session_id, "mika")
+        self.assertEqual(self.handler.active_request_count, 0)
+
+    def test_concurrent_duplicate_terminal_callbacks_emit_only_one_final_result(self):
+        self.handler.begin_request("req-1", "kira")
+        barrier = threading.Barrier(2)
+        results = []
+
+        def finish(event):
+            barrier.wait(timeout=2)
+            results.append(self.handler.handle(event))
+
+        threads = [
+            threading.Thread(
+                target=finish,
+                args=(ProviderEvent.completed("req-1", "kira", {"text": "done"}),),
+            ),
+            threading.Thread(
+                target=finish,
+                args=(ProviderEvent.cancelled("req-1", "kira"),),
+            ),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=3)
+            self.assertFalse(thread.is_alive())
+
+        final_results = [item for item in results if item is not None]
+        self.assertEqual(len(final_results), 1)
+        self.assertEqual(final_results[0].kind, ResponseEventKind.FINAL)
+        self.assertEqual(self.handler.active_request_count, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
