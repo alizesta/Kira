@@ -132,8 +132,10 @@ class Speaker(QObject):
         if bool(self.settings.get("local_voice_tts", True)):
             try:
                 from . import local_voice
-                threading.Thread(target=lambda: local_voice.preload_tts(self.settings.get("local_voice_tts_model", "")),
-                                 daemon=True, name="kira-tts-warmup").start()
+                selected_tts = self.settings.get("local_voice_tts_model", "")
+                if local_voice.tts_ready(selected_tts):
+                    threading.Thread(target=lambda: local_voice.preload_tts(selected_tts),
+                                     daemon=True, name="kira-tts-warmup").start()
             except Exception:
                 pass
 
