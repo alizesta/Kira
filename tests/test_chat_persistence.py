@@ -173,11 +173,13 @@ class DatabaseErrorTests(IsolatedDb):
 class ClearRestoreImportTests(IsolatedDb):
     def test_clear_saves_a_snapshot_and_restore_brings_everything_back_in_order(self):
         self.fill(10)
+        original_ids = [row["id"] for row in memory.get_messages(limit=100)]
         memory.clear_memory()
         self.assertEqual(memory.message_count(), 0)
         self.assertEqual(len(memory.list_snapshots("cleared")), 1)
         self.assertEqual(memory.restore_last_cleared(), 10)
         self.assertEqual(self.texts(), [f"m{i}" for i in range(10)])
+        self.assertEqual([row["id"] for row in memory.get_messages(limit=100)], original_ids)
         self.assertEqual(memory.restore_last_cleared(), 0)                      # idempotent: no duplicates
 
     def test_clear_is_refused_when_the_snapshot_cannot_be_made(self):
