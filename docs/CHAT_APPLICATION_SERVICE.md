@@ -50,7 +50,7 @@ flowchart TD
     DB --> T[Terminal request status]
 ```
 
-Provider chunk and terminal callbacks are pinned to the immutable attempt/session identity captured at worker creation. MainWindow supplies a Qt signal dispatcher from the session relay, so worker-thread callbacks are marshalled to the GUI thread before ResponseHandler or UI observers run. The application service itself remains Qt-free. The service rejects mismatched, late and duplicate terminal events. The completed response is persisted before the completed event is published. Failed/interrupted/cancelled partial content is persisted with its corresponding status; a persistence failure is exposed in the application event and the service outcome rather than being silently treated as a durable write.
+Provider chunk and terminal callbacks are pinned to the immutable attempt/session identity captured at worker creation. MainWindow supplies a Qt signal dispatcher from the session relay, so worker-thread callbacks are marshalled to the GUI thread before ResponseHandler or UI observers run. The application service itself remains Qt-free. The service rejects mismatched, late and duplicate terminal events. The completed response is persisted before the completed event is published. Failed/interrupted/cancelled partial content is persisted with its corresponding status; a persistence failure is exposed in the application event and the service outcome rather than being silently treated as a durable write. Application shutdown uses the same cancellation/persistence path; MainWindow does not write the same partial stream a second time.
 
 ## Session isolation and concurrency
 
@@ -81,4 +81,4 @@ The request/response path uses direct service methods and the injected event cal
 
 ## Validation
 
-The focused suite is `python -m unittest tests.test_chat_application_service tests.test_chat_coordinator tests.test_chat_context_builder tests.test_chat_response_handler tests.test_chat_persistence_contract -v`. The tests are pure Python and do not require QApplication, Qt, Windows or GUI interaction. Broader history and character-session regressions should also be run where the environment permits.
+The focused suite is `python -m unittest tests.test_chat_application_service tests.test_chat_application_wiring tests.test_chat_coordinator tests.test_chat_context_builder tests.test_chat_response_handler tests.test_chat_persistence_contract -v`. The tests are pure Python and do not require QApplication, Qt, Windows or GUI interaction. The same modules are included in the portable regression workflow. Broader history and character-session regressions should also be run where the environment permits.
