@@ -485,9 +485,14 @@ class ChatApplicationService:
             if state.attempt and attempt_id in self._attempt_to_request:
                 self.handle_provider_event(ProviderEvent.cancelled(attempt_id, state.request.session_id))
             else:
+                outcome = self._persist_response(
+                    state, state.last_content, "cancelled", {"cancelled": True}
+                )
                 self._finalize(
                     state, RequestStatus.CANCELLED, content=state.last_content,
                     kind=ApplicationEventKind.REQUEST_CANCELLED,
+                    persistence_ok=outcome.ok,
+                    error=outcome.error,
                 )
             return True
         except Exception as exc:
