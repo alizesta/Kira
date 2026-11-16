@@ -171,7 +171,7 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
 
 
 def _ensure_pillow_compatible() -> None:
-    """Repair Pillow 13+ even when the requested voice runtime was already installed."""
+    """Force Gradio-compatible Pillow into Kira's active Python and verify it."""
     from importlib.metadata import PackageNotFoundError, version
     import subprocess
     import sys
@@ -179,36 +179,51 @@ def _ensure_pillow_compatible() -> None:
     try:
         installed = version("Pillow")
     except PackageNotFoundError:
-        return
+        installed = ""
+
     try:
-        incompatible = int(installed.split(".", 1)[0]) >= 13
+        if installed and int(installed.split(".", 1)[0]) < 13:
+            return
     except (TypeError, ValueError):
-        incompatible = False
-    if not incompatible:
-        return
+        pass
+
+    # --upgrade alone can leave an incompatible preinstalled Pillow untouched.
+    # Force-reinstall the compatible version, without allowing pip to alter
+    # unrelated packages while repairing this specific conflict.
     result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "5",
-         "--timeout", "60", "Pillow>=8,<13"],
+        [sys.executable, "-m", "pip", "install", "--force-reinstall", "--no-deps",
+         "--retries", "5", "--timeout", "60", "Pillow>=8,<13"],
         capture_output=True, text=True, timeout=1800, check=False,
     )
     if result.returncode:
         detail = (result.stderr or result.stdout or "Pillow compatibility fix failed")[-2500:]
         raise RuntimeError(f"اصلاح ناسازگاری Pillow ناموفق بود: {detail}")
 
+    try:
+        fixed = version("Pillow")
+        if int(fixed.split(".", 1)[0]) >= 13:
+            raise RuntimeError(f"نسخه ناسازگار Pillow هنوز نصب است: {fixed}")
+    except PackageNotFoundError as exc:
+        raise RuntimeError("پس از نصب، Pillow در محیط پایتون Kira پیدا نشد.") from exc
+
 
 def _install_voice_package(package: str) -> None:
-    """Install a voice runtime into Kira's active Python without breaking Gradio's Pillow pin."""
+    """Install a voice runtime, then enforce Gradio's Pillow<13 requirement."""
     import subprocess
     import sys
 
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "5",
-         "--timeout", "60", package, "Pillow>=8,<13"],
+         "--timeout", "60", package],
         capture_output=True, text=True, timeout=3600, check=False,
     )
     if result.returncode:
         detail = (result.stderr or result.stdout or f"pip install {package} failed")[-3500:]
         raise RuntimeError(f"نصب موتور {package} ناموفق بود: {detail}")
+
+    # Some voice packages pull Pillow 13 as a dependency. Repair it after
+    # their installation, and fail clearly if Gradio compatibility is not restored.
+    _ensure_pillow_compatible()
 
 
 def _download_voice_repo(repo_id: str) -> str:
