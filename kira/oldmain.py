@@ -234,7 +234,7 @@ class MainWindow(QMainWindow):
             from .services.chat_history_service import SqliteChatHistoryService
             chat_history_service = SqliteChatHistoryService()
         self.chat_application_service = ChatApplicationService(
-            persistence=self.chat_history_service,
+            persistence=chat_history_service,
             system_prompt_builder=build_system_prompt,
             prompt_enricher=lambda value: brain.extend_prompt(value, self._brain, self.settings, self.client),
             worker_factory=StreamWorker,
