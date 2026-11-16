@@ -173,7 +173,6 @@ class MainWindow(QMainWindow):
     _stream_pos = session_property("_stream_pos")
     _stream_dirty = session_property("_stream_dirty")
     _stream_mood = session_property("_stream_mood")
-    _partial_saved = session_property("_partial_saved")
     _emotion_applied = session_property("_emotion_applied")
     _body_done = session_property("_body_done")
     _t_req = session_property("_t_req")
@@ -251,7 +250,6 @@ class MainWindow(QMainWindow):
         self._save_warned = False
         self._emotion_applied = False
         self._closing = False
-        self._partial_saved = False
         self.reactions = load_reactions()
         self._last_variant = {}
         self._clicks = {}
@@ -4604,7 +4602,6 @@ class MainWindow(QMainWindow):
 
     def _stream_begin(self):
         self._stream_text, self._stream_pos, self._stream_dirty, self._stream_mood = "", None, False, None
-        self._partial_saved = False
         self._emotion_applied = False
         self._t_req = time.monotonic()
         self._t_first = None
@@ -5259,11 +5256,7 @@ class MainWindow(QMainWindow):
                 self.add_chat("system", "بارگذاری یا آزمایش موتور صوتی هنوز در حال اجراست؛ Kira پس از پایان امن آن بسته می‌شود.")
             event.ignore()
             return
-        for sess in list(self.sessions.values()):
-            with self._as(sess):
-                if self.busy and not self._bench_busy and self._stream_text.strip() and not self._partial_saved:
-                    self._partial_saved = True
-                    self.save_message("assistant", self._stream_text, status="interrupted", metadata={"stream": "window_closed"})  # retain the visible partial answer
+        # ChatApplicationService owns cancellation and persists partial output once.
         self._closing = True
         self._clear_chat_coordinator_queues()
         if getattr(self, "code_chat", None) is not None:
