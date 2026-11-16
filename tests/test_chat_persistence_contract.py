@@ -92,6 +92,11 @@ class SqliteChatRepositoryTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def test_fresh_database_is_created_without_a_fake_pre_migration_backup(self):
+        self.assertEqual(self.persistence.list_snapshots("pre-migration"), [])
+        self.persistence.add_message("user", "first message", "kira")
+        self.assertEqual(self.persistence.list_snapshots("pre-migration"), [])
+
     def test_factory_creates_real_replaceable_sqlite_repository(self):
         persistence = create_default_chat_persistence(Path(self.temp.name) / "factory.sqlite3")
         self.assertIsInstance(persistence._repository, SqliteChatRepository)
@@ -259,6 +264,23 @@ class SqliteChatRepositoryTests(unittest.TestCase):
 
         self.assertEqual(self.persistence.init_db(), [])
         self.assertEqual([row["content"] for row in self.persistence.get_messages(100, "kira")], ["keep me"])
+
+    def test_newer_persistence_schema_record_is_refused_before_schema_changes(self):
+        self.db.unlink()
+        con = sqlite3.connect(self.db)
+        con.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY, role TEXT, content TEXT, created_at TEXT)")
+        con.execute("CREATE TABLE persistence_schema (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL, description TEXT NOT NULL)")
+        con.execute("INSERT INTO persistence_schema(version, applied_at, description) VALUES (2, '2026-01-01', 'future')")
+        con.commit()
+        con.close()
+
+        notes = self.persistence.init_db()
+        self.assertTrue(notes)
+        self.assertIn("جدیدتر", notes[0])
+        con = sqlite3.connect(self.db)
+        columns = {row[1] for row in con.execute("PRAGMA table_info(messages)")}
+        con.close()
+        self.assertNotIn("conversation_id", columns)
 
     def test_newer_schema_version_is_refused_without_downgrade(self):
         self.db.unlink()
