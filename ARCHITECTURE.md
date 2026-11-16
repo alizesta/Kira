@@ -44,6 +44,16 @@ Kira is migrating incrementally toward independent UI, application logic, servic
 - TASK 003 changes only the legacy chat request-preparation call site in `kira/oldmain.py`; it does not alter `ChatCoordinator` or its queue/worker callback contracts from TASK 002. The coordinator remains the owner of request admission, pending FIFO work and provider-worker dispatch.
 - Ownership: `kira/chat/context_builder.py` and `tests/test_chat_context_builder.py` belong to TASK 003. `kira/chat/coordinator.py` and its TASK 002 tests remain owned by TASK 002. The integration call site in `kira/oldmain.py` is shared migration infrastructure and must not absorb new coordinator responsibilities.
 
+## Chat response lifecycle (TASK 004)
+
+- `kira/chat/response_handler.py` owns per-request provider-event processing, ordered stream aggregation, terminal-state classification and bounded cleanup. Its public boundary is `ResponseHandler.begin_request(request_id, session_id)` followed by `ResponseHandler.handle(ProviderEvent) -> ResponseStreamEvent | None`.
+- Provider events are request- and session-scoped. Chunk events carry the original chunk and the accumulated content snapshot; final events carry a `ChatResponseResult` with `request_id`, `session_id`, one of `completed` / `failed` / `cancelled`, content, optional normalized error and provider metadata.
+- The handler uses a lock to serialize concurrent callbacks, rejects session-mismatched and late events, ignores duplicate terminal callbacks, removes active request state atomically, and retains only a bounded set of terminal IDs to reject duplicates.
+- Empty successful responses remain explicitly marked as empty so the Chat application layer can preserve its existing plain-prompt retry policy. Failed/interrupted streams retain partial content and are marked incomplete; explicit or provider-reported cancellation has the `cancelled` status.
+- The handler imports only the Python standard library. It does not access UI, Qt, MainWindow, ChatSession, storage, provider clients, queues, Memory, tools or ContextBuilder.
+- `ProviderResponseRelay` in the legacy composition layer captures the immutable request/session IDs for each worker. It translates the normalized result into existing application callbacks; display, partial-response policy, persistence, speech, avatar reactions and queue draining remain outside the handler.
+- TASK 004 owns `kira/chat/response_handler.py` and `tests/test_chat_response_handler.py`. The request-specific relay and wiring in `kira/oldmain.py` are shared migration integration. TASK 002 coordinator files and TASK 003 context-builder files are not modified.
+
 ## Evidence-based migration map
 
 1. **Stabilize UI boundaries:** Help, Voice, Appearance, Characters, Assistant and Preferences page layouts are extracted. Continue with the Chat page and remaining registered-API/detail tables and model catalog settings subpages; each extraction keeps a compatibility import only where existing call sites need it.
