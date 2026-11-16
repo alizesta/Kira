@@ -25,6 +25,7 @@ _tts_lock = threading.RLock()
 _asr = None
 _asr_model_name = None
 _tts = None
+_custom_tts = {}  # Cache for user-selected Piper ONNX voices.
 _asr_error = None
 _tts_error = None
 
