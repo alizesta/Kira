@@ -56,30 +56,32 @@ Ai1 is the application. Kira, Mika and Ren are character profiles within Ai1.
 ### Vision model compatibility
 The existing provider-neutral image pipeline sends image attachments to the selected Route. Ai1 does not yet automatically classify every provider/model as vision-capable or reroute around text-only models. Users should select a vision-capable model in Route Manager for Game Mode image questions. A text-only model may reject the image request.
 
-## Cloud Voice
-Cloud Voice is independent of chat model routing. It maintains its own provider order, API keys, enabled flags, selected models, voice IDs and cooldown state.
+## Local-only speech pipeline
 
-### Request flow
-1. `Speaker` receives text and splits the response into complete sentences.
-2. `CloudVoice` checks the configured TTS provider order and available keys.
-3. A provider synthesizes audio for the current sentence.
-4. The audio is passed back to the existing playback pipeline.
-5. On quota/rate/auth failures, the affected key is cooled down and the next eligible key/provider is tried.
-6. If cloud synthesis fails, the existing Edge TTS and Windows voice fallbacks remain available.
+Speech recognition and synthesis are separate from chat Route selection. No microphone audio or TTS text is sent to Cloud Chat providers or online speech services.
 
-### MiniMax Global
-- Base URL: `https://api.minimax.io/v1`
-- HTTP endpoint: `POST /t2a_v2`
-- Authentication: `Authorization: Bearer <API_KEY>`
-- Models: `speech-2.8-turbo`, `speech-2.8-hd`
-- Output: MP3, hex-encoded in the JSON response
-- MiniMax is TTS-only. It does not register an STT model.
-- API key validation performs a short real synthesis request and consumes a small amount of TTS quota.
-- API key persistence reuses CloudVoiceStore and Windows DPAPI protection.
+### Input: microphone and STT
+1. `Listener` opens the selected microphone through `sounddevice` and receives 16 kHz mono blocks.
+2. `Segmenter` performs room calibration, voice activity detection, pause handling, barge-in detection and trims the captured utterance.
+3. `Qwen3-ASR` is loaded locally and used as the primary recognizer when enabled and available.
+4. If Qwen cannot load or returns no transcript, `faster-whisper` is the only fallback. It also runs locally.
+5. Transcript cleanup, hotwords and the personal speech-fixes dictionary are applied before the text is sent to chat.
 
-## Shared storage
-Cloud Voice settings are written atomically outside the application installation directory.
+### Output: local TTS and playback
+1. `Speaker` splits the cleaned reply into sentences and schedules local synthesis ahead of playback.
+2. `local_voice` uses Piper (Mana Persian runtime or a selected Piper ONNX voice) to produce WAV bytes.
+3. The WAV is validated, cached and played through Qt on the selected output device. The amplitude envelope drives the avatar lip animation.
+4. The selected Piper engine is warmed in the background. Synthesis, caching and playback do not call Edge TTS, Windows SAPI or remote TTS providers.
 
+### Failure policy
+- Qwen failure may fall back to local faster-whisper only.
+- Piper failure is reported to the user; it never silently switches to another voice service.
+- Missing local dependencies or model files produce explicit setup errors.
+- Downloading/installing model weights initially requires internet access. Recognition and synthesis run locally once those weights are present.
+
+## Chat Route boundary
+
+Route Manager is for chat generation only. Ollama and configured API providers remain available for text chat. Adding or validating a chat API key checks chat capability only and never probes STT/TTS endpoints.
 
 ## Ai1 Code mode (inside Kira's chat)
 
@@ -135,9 +137,9 @@ UI side (`kira/chat_code_ui.py::CodeChat`, `kira/chat_code.py`):
 
 
 ## User-data migration and backup coverage
-- `storage.has_user_data` recognizes settings, chat SQLite, evidence SQLite, persona-memory JSON, Cloud Voice settings and the Hugging Face / voice / runtime cache folders.
+- `storage.has_user_data` recognizes settings, chat SQLite, evidence SQLite, persona-memory JSON, legacy voice configuration files (preserved but never loaded by the speech runtime) and the Hugging Face / voice / runtime cache folders.
 - `migrate_legacy` copies each missing file independently, preserving destination files and leaving legacy sources untouched. On the standard A: destination it carries forward the previous AppData data and model caches without deleting the originals.
-- `backup_user_data` copies persona JSON and Cloud Voice JSON, and uses SQLite's online backup API for both chat and evidence databases.
+- `backup_user_data` copies persona JSON and any legacy Cloud Voice JSON for preservation only, and uses SQLite's online backup API for both chat and evidence databases.
 - Windows stores persistent Kira data and AI caches in `A:\\Project KIRA\\Kira Attachments`. If that location is absent or not writable, it falls back to `%LOCALAPPDATA%\\Kira`. `KIRA_DATA_DIR` remains an explicit override for portable/test setups.
 
 - The release workflow file itself is included in its path filters; workflow and permission changes therefore trigger validation.
