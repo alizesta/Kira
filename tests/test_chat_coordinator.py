@@ -72,6 +72,14 @@ class ChatCoordinatorTests(unittest.TestCase):
         self.assertNotIn("self._pending.append", submit_source)
         self.assertIn("take_next", drain_source)
 
+    def test_chat_session_exposes_a_per_session_coordinator_slot(self):
+        from kira.chat_sessions import ChatSession
+        first = ChatSession("kira")
+        second = ChatSession("ren")
+        self.assertIsNone(first.coordinator)
+        self.assertIsNone(second.coordinator)
+        first.coordinator = ChatCoordinator(lambda _request: None)
+        self.assertIsNot(first.coordinator, second.coordinator)
     def test_coordinator_has_no_ui_or_storage_imports(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / "kira" / "chat" / "coordinator.py").read_text(encoding="utf-8")
