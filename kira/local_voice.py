@@ -89,6 +89,10 @@ def load_asr(model_name="Qwen/Qwen3-ASR-0.6B"):
         try:
             import torch
             from qwen_asr import Qwen3ASRModel
+            try:
+                torch.set_num_threads(max(1, min(8, int(os.environ.get("KIRA_ASR_THREADS", "4")))))
+            except (AttributeError, TypeError, ValueError):
+                pass
             old_model, _asr = _asr, None
             _asr_model_name = None
             if old_model is not None:
@@ -137,6 +141,25 @@ def transcribe(audio, sample_rate=16000, language="fa", prompt="", model_name="Q
         else:
             text = getattr(first, "text", "")
         return str(text or "").strip()
+
+
+def preload_tts(model_path="") -> bool:
+    """Load the selected Piper voice in the background before the first reply."""
+    global _tts
+    selected = str(model_path or "").strip()
+    with _tts_lock:
+        if selected:
+            path = Path(selected).expanduser().absolute()
+            if not path.is_file() or path.suffix.lower() != ".onnx":
+                return False
+            if str(path) not in _custom_tts:
+                from piper import PiperVoice
+                _custom_tts[str(path)] = PiperVoice.load(str(path))
+            return True
+        if _tts is None:
+            from persian_speech_runtime import PiperSpeechEngine
+            _tts = PiperSpeechEngine()
+        return True
 
 
 def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
