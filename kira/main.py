@@ -1888,8 +1888,12 @@ class MainWindow(QMainWindow):
 
     def download_local_qwen_model(self):
         model_id = str(self.local_asr_path_edit.text() or "").strip()
-        if "/" not in model_id and not Path(model_id).is_dir():
-            self.local_voice_status.setText("شناسه Hugging Face یا مسیر پوشه مدل STT را وارد کن.")
+        if Path(model_id).expanduser().is_dir():
+            self.local_voice_status.setText("این مدل از قبل روی سیستم وجود دارد.")
+            self.refresh_local_voice_status()
+            return
+        if "/" not in model_id:
+            self.local_voice_status.setText("شناسه مخزن Hugging Face را به شکل owner/repository وارد کن.")
             return
         from . import local_voice
         self._run_local_voice_task(lambda: local_voice.download_hf_model(model_id),
