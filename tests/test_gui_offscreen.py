@@ -108,6 +108,11 @@ class GuiTests(unittest.TestCase):
             window.gen_stop_btn,
         ):
             self.assertTrue(window.chat_composer.isAncestorOf(widget))
+        from kira.ui.controllers import ChatAttachmentController
+        self.assertIsInstance(window.attachment_controller, ChatAttachmentController)
+        self.assertIs(window._tiles, window.attachment_controller.tiles)
+        self.assertIs(window._load_tiles, window.attachment_controller.loading_tiles)
+        self.assertIs(window.attachment_controller.attach_strip, window.chat_composer.attach_strip)
         self.assertIsInstance(window.mcp_registry_panel, McpRegistryPanel)
         self.assertTrue(window.mcp_registry_panel.isAncestorOf(window.mcp_registry_list))
         self.assertTrue(window.mcp_registry_panel.isAncestorOf(window.mcp_registry_query))
