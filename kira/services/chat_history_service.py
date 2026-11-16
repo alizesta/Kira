@@ -55,8 +55,14 @@ class SqliteChatHistoryService:
     def get_or_create_conversation(self, character_id=None):
         return self._persistence.get_or_create_conversation(character_id)
 
+    def get_conversation(self, conversation_id):
+        return self._persistence.get_conversation(conversation_id)
+
     def list_conversations(self, character_id=None):
         return self._persistence.list_conversations(character_id)
+
+    def update_conversation(self, conversation_id, **changes):
+        return self._persistence.update_conversation(conversation_id, **changes)
 
     def close_conversation(self, conversation_id):
         return self._persistence.close_conversation(conversation_id)
