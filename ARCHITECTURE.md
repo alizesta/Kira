@@ -27,9 +27,10 @@ Kira is migrating incrementally toward independent UI, application logic, servic
 - The application foundation exists in `kira/app`: bootstrap, EventBus and dependency container. A full module manager and module lifecycle are **not implemented yet**.
 - Consumer contracts currently include the voice service Protocol only. Chat, memory, character, avatar and provider contracts still need to be defined and wired.
 - Reusable UI pieces extracted from the legacy window are now in `kira/ui/components/model_combo.py` and `kira/ui/dialogs/{memory,model_picker}.py`. `kira/main.py` imports these public UI types; the old inline definitions have been removed.
-- After this extraction, `kira/main.py` is 6,140 lines. `MainWindow` still owns roughly 300 methods spanning Chat, Voice, Characters, Settings, Providers, Memory, Avatar, Vision, Web Research and tray/application behavior. It is **not yet a UI shell**.
+- Qt background adapters (`StreamWorker`, `AttachWorker`, `SearchWorker`, `TaskWorker`, `BenchWorker`, `ProviderTestWorker`, `VisionAnalysisWorker` and `OllamaTaskWorker`) now live in `kira/ui/workers.py`; `main.py` imports them through the UI package rather than defining them.
+- After these extractions, `kira/main.py` is 5,916 lines. `MainWindow` still owns roughly 300 methods spanning Chat, Voice, Characters, Settings, Providers, Memory, Avatar, Vision, Web Research and tray/application behavior. It is **not yet a UI shell**.
 - `kira/ui` currently contains reusable components and dialogs only. `kira/services` has no concrete services yet. A separate `kira/modules` package does not exist; existing packages such as `characters`, `webintel`, `mcp` and `emotion` are capability code, not yet lifecycle-managed modules.
-- The extracted UI imports have targeted unit coverage. Full Windows CI and a real Windows app launch are still required; this GitHub-only session cannot certify microphone, audio-device, VRM rendering or desktop behavior on the user's machine.
+- The extracted widget, dialog and worker import boundaries have targeted unit coverage. Full Windows CI and a real Windows app launch are still required; this GitHub-only session cannot certify microphone, audio-device, VRM rendering or desktop behavior on the user's machine.
 
 ## Evidence-based migration map
 
