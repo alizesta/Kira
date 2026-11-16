@@ -177,8 +177,21 @@ class ContextBuilder:
             )
             if candidate is None:
                 break
-            kept.pop(candidate)
-            dropped += 1
+
+            # Remove the oldest complete conversational turn, not just its
+            # user message. This avoids leaving an orphaned assistant answer.
+            end = candidate + 1
+            if kept[candidate].get("role") == "user":
+                next_user = next(
+                    (i for i in range(candidate + 1, len(kept))
+                     if kept[i].get("role") == "user"),
+                    None,
+                )
+                if next_user is not None:
+                    end = next_user
+            removed = end - candidate
+            del kept[candidate:end]
+            dropped += removed
             if newest_user is not None and candidate < newest_user:
-                newest_user -= 1
+                newest_user -= removed
         return kept, dropped
