@@ -1837,9 +1837,14 @@ class MainWindow(QMainWindow):
         self.whisper.addItems(["base", "small", "medium", "large-v3-turbo", "large-v3", "parseh/whisper-fa-accuracy-ct2"])
         self.whisper.setCurrentText(s["whisper_model"])
         self.reg(self.whisper.setToolTip, "whisper_tip")
+        whisper_model_actions = QHBoxLayout()
+        self.whisper_browse_btn = QPushButton("انتخاب پوشه مدل")
+        self.whisper_browse_btn.clicked.connect(self.choose_local_whisper_folder)
         self.whisper_download_btn = QPushButton("دانلود مدل STT انتخاب‌شده")
         self.whisper_download_btn.clicked.connect(self.download_local_whisper_model)
-        f2.addRow(self.whisper_download_btn)
+        whisper_model_actions.addWidget(self.whisper_browse_btn)
+        whisper_model_actions.addWidget(self.whisper_download_btn)
+        f2.addRow(whisper_model_actions)
         fixes_btn = QPushButton()
         self.reg(fixes_btn.setText, "open_fixes")
         fixes_btn.clicked.connect(self.open_speech_fixes)
@@ -1909,6 +1914,15 @@ class MainWindow(QMainWindow):
         self.save_now()
         self.refresh_local_voice_status()
         self.local_voice_status.setText(f"مدل STT دانلود شد: {value}")
+
+    def choose_local_whisper_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "پوشه مدل Whisper را انتخاب کن", str(Path.home()))
+        if not folder:
+            return
+        self.whisper.setCurrentText(folder)
+        self.settings["whisper_model"] = folder
+        self.save_now()
+        self.local_voice_status.setText(f"مدل Whisper از سیستم انتخاب شد: {folder}")
 
     def download_local_whisper_model(self):
         value = str(self.whisper.currentText() or "").strip()
