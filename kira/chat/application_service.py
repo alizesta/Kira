@@ -357,7 +357,7 @@ class ChatApplicationService:
             return None
         if normalized is None:
             return None
-        request_id = self._attempt_to_request.pop(event.request_id, None)
+        request_id = self._attempt_to_request.get(event.request_id)
         state = self._requests.get(request_id or "")
         if state is None or state.request.session_id != event.session_id:
             return None
@@ -370,6 +370,9 @@ class ChatApplicationService:
             self._emit(application_event)
             return application_event
 
+        # Keep the logical-to-attempt mapping for every chunk. Remove it only
+        # after ResponseHandler has produced the single terminal event.
+        self._attempt_to_request.pop(event.request_id, None)
         result = normalized.result
         if result is None:
             return None
