@@ -4385,6 +4385,7 @@ class MainWindow(QMainWindow):
             voice_input=self._turn_voice,
             mode=mode,
             body_context=body_context,
+            active_capabilities=tuple(sorted(getattr(self._tool_plan, "categories", ()) or ())),
             turn_extra=self._turn_extra,
             max_context_chars=self.settings.get("chat_context_char_limit", 0),
         ))
