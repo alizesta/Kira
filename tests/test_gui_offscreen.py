@@ -82,9 +82,12 @@ class GuiTests(unittest.TestCase):
         self.assertTrue(self.win.isVisible())
 
     def test_extracted_settings_pages_own_their_widgets(self):
-        from kira.ui.pages import AppearancePage, CharactersPage, VoicePage
+        from kira.ui.pages import AssistantPage, AppearancePage, CharactersPage, VoicePage
 
         window = self.win
+        self.assertIsInstance(window.assistant_page, AssistantPage)
+        self.assertTrue(window.assistant_page.isAncestorOf(window.model))
+        self.assertTrue(window.assistant_page.isAncestorOf(window.persona))
         self.assertIsInstance(window.appearance_page, AppearancePage)
         self.assertIsInstance(window.character_page, CharactersPage)
         self.assertIsInstance(window.voice_page, VoicePage)
