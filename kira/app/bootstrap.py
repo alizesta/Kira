@@ -16,19 +16,37 @@ def run_application() -> None:
     from ..config import load_settings
     from .dependency_container import DependencyContainer
     from .event_bus import EventBus
-    from .module_manager import ModuleManager
+    from .module_manager import ModuleManager, ModuleState
     from ..main import MainWindow
     from ..services import CharacterProfileService, PersonaMemoryService, MoodStateService, SqliteChatHistoryService
+    from ..modules import ServiceModule
     from ..theme import build_style
     from .. import winfx
 
     container = DependencyContainer()
-    container.register_factory("memory_service", PersonaMemoryService)
-    container.register_factory("mood_service", MoodStateService)
-    container.register_factory("character_service", CharacterProfileService)
-    container.register_factory("chat_history_service", SqliteChatHistoryService)
     event_bus = EventBus()
     module_manager = ModuleManager(container, event_bus)
+    service_modules = (
+        ("memory", "memory_service", PersonaMemoryService),
+        ("mood", "mood_service", MoodStateService),
+        ("characters", "character_service", CharacterProfileService),
+        ("chat_history", "chat_history_service", SqliteChatHistoryService),
+    )
+    for module_id, service_key, factory in service_modules:
+        module_manager.register(
+            module_id,
+            lambda key=service_key, service_factory=factory: ServiceModule(key, service_factory),
+            optional=False,
+        )
+    states = module_manager.start_all()
+    failed = {
+        module_id: module_manager.error(module_id)
+        for module_id, state in states.items()
+        if state != ModuleState.STARTED
+    }
+    if failed:
+        module_manager.shutdown()
+        raise RuntimeError(f"Required application modules failed to start: {failed}")
 
     app = QApplication(sys.argv)
     app.setStyleSheet(build_style(winfx.active_effect(load_settings().get("window_effect"))))
