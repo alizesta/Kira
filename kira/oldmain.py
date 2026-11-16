@@ -4082,6 +4082,74 @@ class MainWindow(QMainWindow):
 
     def _process_chat_request(self, text, attachments=None, _voice=False):
         voice = bool(_voice)
+        if not attachments and getattr(self, "code_chat", None) is not None and self.code_chat.handle(text, voice):
+            return                                              # Kira's chat: coding missions / project questions (decided from the wording)
+        if self._game_mode_enabled and len(attachments or []) < att.MAX_FILES:
+            frame = self._game_vision_attachment()
+            if frame is not None:
+                attachments = list(attachments or []) + [frame]
+        self._turn_voice = voice
+        if self.speaker._began:
+            self.director.event("user_interrupt")
+        self.safe_stop_speaker()
+        self.animator.touch()
+        self._body_done = []
+        try:
+            self.run_body(body_ctl.parse_user_command(text))            # "raise your hand" / "پشتتو کن": moves at once, before the model answers
+        except Exception:                                      # noqa: BLE001
+            pass
+        force_img = False
+        if attachments and any(a.get("kind") == "image" for a in attachments):
+            text, force_img = websearch.image_command(text)              # '/img ...' or '/عکس ...' = search this picture even if the switch is off
+        img_search = bool(attachments and any(a.get("kind") == "image" for a in attachments)
+                          and (force_img or self.settings.get("image_search", False)))
+        packed = att.compose(text, attachments, search=img_search) if attachments else None
+        self._turn_extra = packed
+        self._turn_attach_kinds = [str(a.get("kind")) for a in (attachments or [])]       # structured kinds: Active Mode must not guess from display text
+        self.add_chat("user", packed["display"] if packed else text, images=attachments if packed else None)
+        self.tool_agent.begin_turn()
+        action_result = None
+        if not packed:
+            action_result = usage.handle_command(text)                                 # "/usage [days]": numbers from the local ledger, no model call
+            if action_result is not None:
+                pass
+            elif self.tool_agent.enabled():
+                action_result = self.tool_agent.handle_confirmation_reply(text)       # "تأیید" / "لغو" for a pending sensitive action: decided in code, not by the model
+                if action_result is None:
+                    action_result = self.tool_agent.handle_task_command(text)         # status / pause / cancel / add a step of an unfinished task: decided in code too
+            else:
+                action_result = run_safe_action(
+                    text, allow_desktop=self._game_mode_profile != COMPETITIVE_SAFE_MODE
+                )                                                                       # fixed shortcuts remain gated in Competitive Safe
+        self._tool_plan = None if action_result else self.tool_agent.plan(text)
+        self.save_message("user", packed["stored"] if packed else text)
+        if action_result:
+            self.reply_local(action_result)
+            return
+        self.busy = True
+        self.gen_stop_btn.show()
+        self.set_status("st_thinking")
+        self.set_badge("connecting", self.client.preview_route())
+        self.show_upload_tiles(attachments)
+        self.director.event("user_message")
+        self.director.event("response_started")
+        self._plain_retry = False
+        self._web_found = None
+        self._image_search_turn = False
+        if img_search and packed:
+            self._image_search_turn = True
+            self.begin_image_search(text, packed["model"], packed["images"])
+            return
+        query, forced = websearch.plan(text) if self.settings.get("web_search", True) or text.lstrip().startswith("/") else (None, False)
+        if query and not forced and self._tool_plan is not None and self._tool_plan.strong:
+            query = None                                          # a request about this PC (files, apps, RAM...) is not a web question
+        if query and not forced and self._tool_plan is not None and getattr(self._tool_plan, "web", False):
+            query = None                                          # research / "read this page" requests go through the web tools (kira/webintel), not the one-shot search
+        if query:
+            self.begin_web_search(query, packed["model"] if packed else text, packed["images"] if packed else [])
+            return
+        self.begin_reply()
+
     def begin_reply(self):
         try:
             self.start_worker(plain=False)
