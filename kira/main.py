@@ -742,6 +742,10 @@ class MainWindow(QMainWindow):
         self.speaker.level.connect(self.animator.set_mouth_target)
         self.speaker.level.connect(self._on_kira_level)
         self.speaker.error.connect(self.on_voice_error)
+        self._local_tts_test_active = False
+        self.speaker.started.connect(self._on_local_tts_playback_started)
+        self.speaker.finished.connect(self._on_local_tts_playback_finished)
+        self.speaker.error.connect(self._on_local_tts_playback_error)
         self.speaker.cloud_note.connect(self.on_cloud_note)
         self.wake_timer = QTimer(self)
         self.wake_timer.setSingleShot(True)
@@ -2414,18 +2418,40 @@ class MainWindow(QMainWindow):
     def _on_local_tts_tested(self, result):
         ok, value = result
         if not ok:
+            # Keep the actionable synthesis error visible; a status refresh here used
+            # to overwrite it immediately with the generic installed/not-loaded text.
             self.local_voice_status.setText(f"تولید صدای Piper ناموفق بود: {value}")
-            self.refresh_local_voice_status()
             return
         try:
+            if not isinstance(value, (bytes, bytearray)) or not value.startswith(b"RIFF"):
+                raise RuntimeError("موتور TTS خروجی WAV معتبر تولید نکرد.")
             test_path = DATA_DIR / "voice_cache" / "local_persian_test.wav"
             test_path.parent.mkdir(parents=True, exist_ok=True)
             test_path.write_bytes(value)
+            self._local_tts_test_active = False
             self.speaker.play_file(str(test_path))
-            self.local_voice_status.setText("صدای آزمایشی Piper ساخته شد و در حال پخش است.")
+            self._local_tts_test_active = True
+            model = str(self.settings.get("local_voice_tts_model") or "Mana Persian Piper · صدای پیش‌فرض")
+            self.local_voice_status.setText(
+                f"تولید WAV موفق بود · مدل: {model} · حجم: {len(value):,} بایت\nدر انتظار شروع پخش از دستگاه خروجی…"
+            )
         except Exception as exc:
+            self._local_tts_test_active = False
             self.local_voice_status.setText(f"ساخت یا پخش فایل آزمایشی ناموفق بود: {type(exc).__name__}: {exc}")
-        self.refresh_local_voice_status()
+
+    def _on_local_tts_playback_started(self):
+        if self._local_tts_test_active:
+            self.local_voice_status.setText("تولید WAV موفق بود · پخش TTS شروع شد.")
+
+    def _on_local_tts_playback_finished(self):
+        if self._local_tts_test_active:
+            self._local_tts_test_active = False
+            self.local_voice_status.setText("تست TTS موفق بود: صدا کامل پخش شد.")
+
+    def _on_local_tts_playback_error(self, message):
+        if self._local_tts_test_active:
+            self._local_tts_test_active = False
+            self.local_voice_status.setText(f"تولید صدا موفق بود، اما پخش شکست خورد: {message}")
 
     # ---- voice: devices, supported controls, autosave ----
     def fill_output_devices(self, current):

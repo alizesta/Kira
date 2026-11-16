@@ -1,9 +1,10 @@
-"""Regression tests for the Windows SAPI TTS fallback."""
+"""Regression tests for TTS playback and the Windows SAPI fallback."""
 import unittest
 from types import SimpleNamespace
 from unittest import mock
 
 from kira.voice import SAPI_SCRIPT, Speaker
+from kira.main import MainWindow
 
 
 class SapiTtsTests(unittest.TestCase):
@@ -65,6 +66,44 @@ class SapiTtsTests(unittest.TestCase):
         self.assertTrue(player.stopped)
         self.assertTrue(player.deleted)
         self.assertTrue(output.deleted)
+
+
+    def test_local_tts_playback_callbacks_report_real_playback_state(self):
+        class Status:
+            def __init__(self):
+                self.value = ""
+            def setText(self, value):
+                self.value = value
+
+        fake = SimpleNamespace(_local_tts_test_active=True, local_voice_status=Status())
+        MainWindow._on_local_tts_playback_started(fake)
+        self.assertIn("پخش TTS شروع شد", fake.local_voice_status.value)
+
+        MainWindow._on_local_tts_playback_finished(fake)
+        self.assertIn("صدا کامل پخش شد", fake.local_voice_status.value)
+        self.assertFalse(fake._local_tts_test_active)
+
+    def test_local_tts_playback_error_is_not_hidden(self):
+        class Status:
+            def __init__(self):
+                self.value = ""
+            def setText(self, value):
+                self.value = value
+
+        fake = SimpleNamespace(_local_tts_test_active=True, local_voice_status=Status())
+        MainWindow._on_local_tts_playback_error(fake, "device unavailable")
+        self.assertIn("device unavailable", fake.local_voice_status.value)
+        self.assertFalse(fake._local_tts_test_active)
+
+    def test_local_tts_playback_callbacks_ignore_normal_speech(self):
+        class Status:
+            def setText(self, value):
+                raise AssertionError("normal speech must not alter the local TTS test log")
+
+        fake = SimpleNamespace(_local_tts_test_active=False, local_voice_status=Status())
+        MainWindow._on_local_tts_playback_started(fake)
+        MainWindow._on_local_tts_playback_finished(fake)
+        MainWindow._on_local_tts_playback_error(fake, "unrelated")
 
 if __name__ == "__main__":
     unittest.main()
