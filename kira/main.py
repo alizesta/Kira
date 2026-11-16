@@ -770,7 +770,7 @@ class MainWindow(QMainWindow):
         self.build_ai_tab()
         # Voice engines belong on the Voice page; keep Chat models in Connections.
         voice_page = self.tabs.widget(self.tab_keys.index("tab_voice")) if hasattr(self, "tab_keys") else self.tabs.widget(2)
-        voice_layout = voice_page.layout()
+        voice_layout = voice_page.widget().layout()
         if hasattr(self, "local_voice_box"):
             self.local_voice_box.setParent(None)
             voice_layout.addWidget(self.local_voice_box)
