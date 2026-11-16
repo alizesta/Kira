@@ -287,41 +287,47 @@ class ChatApplicationService:
         if state is None or state.status is not RequestStatus.RUNNING:
             raise ValueError("request is not active")
         owner = state.request.session_id
-        context_request = context if isinstance(context, ContextRequest) else ContextRequest(**dict(context))
-        context_result = self._context_builder.build(context_request)
-        state.attempt += 1
-        attempt_id = f"{state.request.request_id}:{state.attempt}"
-        self._attempt_to_request[attempt_id] = state.request.request_id
-        self._response_handler.begin_request(
-            attempt_id, owner,
-            metadata={"application_request_id": state.request.request_id, "attempt": state.attempt},
-        )
-        callbacks = dict(provider_callbacks or {})
-        callbacks.update({
-            "chunk": lambda piece, aid=attempt_id, sid=owner: self.handle_provider_event(
-                ProviderEvent.chunk(aid, sid, piece)
-            ),
-            "complete": lambda response, aid=attempt_id, sid=owner: self.handle_provider_event(
-                ProviderEvent.completed(aid, sid, response)
-            ),
-            "error": lambda error, aid=attempt_id, sid=owner: self.handle_provider_event(
-                ProviderEvent.failed(aid, sid, error)
-            ),
-        })
+        attempt_id = None
         try:
+            context_request = context if isinstance(context, ContextRequest) else ContextRequest(**dict(context))
+            context_result = self._context_builder.build(context_request)
+            state.attempt += 1
+            attempt_id = f"{state.request.request_id}:{state.attempt}"
+            self._response_handler.begin_request(
+                attempt_id, owner,
+                metadata={"application_request_id": state.request.request_id, "attempt": state.attempt},
+            )
+            self._attempt_to_request[attempt_id] = state.request.request_id
+            callbacks = dict(provider_callbacks or {})
+            callbacks.update({
+                "chunk": lambda piece, aid=attempt_id, sid=owner: self.handle_provider_event(
+                    ProviderEvent.chunk(aid, sid, piece)
+                ),
+                "complete": lambda response, aid=attempt_id, sid=owner: self.handle_provider_event(
+                    ProviderEvent.completed(aid, sid, response)
+                ),
+                "error": lambda error, aid=attempt_id, sid=owner: self.handle_provider_event(
+                    ProviderEvent.failed(aid, sid, error)
+                ),
+            })
             worker = self._coordinator(owner).start_provider_request(
                 callbacks=callbacks,
                 messages=[dict(message) for message in context_result.messages],
                 prompt=context_result.system_prompt,
                 **provider_request,
             )
+            state.worker = worker
+            return worker
         except Exception as exc:
-            self.handle_provider_event(ProviderEvent.failed(
-                attempt_id, owner, f"{type(exc).__name__}: {exc}"
-            ))
+            message = f"{type(exc).__name__}: {exc}"
+            if attempt_id is not None and attempt_id in self._attempt_to_request:
+                self.handle_provider_event(ProviderEvent.failed(attempt_id, owner, message))
+            else:
+                self._finalize(
+                    state, RequestStatus.FAILED, content=state.last_content,
+                    error=message, kind=ApplicationEventKind.REQUEST_FAILED,
+                )
             return None
-        state.worker = worker
-        return worker
 
     def handle_provider_event(self, event: ProviderEvent) -> ChatApplicationEvent | None:
         normalized = self._response_handler.handle(event)
