@@ -54,6 +54,9 @@ on:
       - "ARCHITECTURE.md"
       - "CHANGELOG.md"
       - "TASK_HANDOFF.md"
+  pull_request:
+    types: [opened, synchronize, reopened]
+
   workflow_dispatch:
 
 permissions:
