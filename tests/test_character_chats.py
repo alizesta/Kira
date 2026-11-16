@@ -212,6 +212,7 @@ class GuiSessionTests(IsolatedDb):
 
     def test_concurrent_session_completions_drain_their_own_queues_after_tab_switch(self):
         from kira.chat.coordinator import ChatRequest
+        from kira.oldmain import ProviderResponseRelay
         w = self.win
         scheduled = []
         dispatched = []
@@ -223,17 +224,22 @@ class GuiSessionTests(IsolatedDb):
         ren.busy = mika.busy = True
         w._chat_coordinator(ren).submit(ChatRequest.create("Ren queued"), busy=True)
         w._chat_coordinator(mika).submit(ChatRequest.create("Mika queued"), busy=True)
+        ren_request, mika_request = "ren-response-test", "mika-response-test"
+        w.response_handler.begin_request(ren_request, "ren")
+        w.response_handler.begin_request(mika_request, "mika")
+        ren.response_relay = ProviderResponseRelay(w, ren, ren_request)
+        mika.response_relay = ProviderResponseRelay(w, mika, mika_request)
 
         def completed(_result):
-            session = w.cur  # SessionRelay._run() establishes the originating session
+            session = w.cur  # ProviderResponseRelay establishes the originating session
             session.busy = False
             w._send_next_pending(session)
 
         w.on_stream_done = completed
         w.switch_session("kira")
-        ren.relay.done({"text": "Ren response"})
+        ren.response_relay.complete({"text": "Ren response"})
         w.switch_session("mika")
-        mika.relay.done({"text": "Mika response"})
+        mika.response_relay.complete({"text": "Mika response"})
         w.switch_session("kira")  # switch tabs before the queued callbacks execute
 
         self.assertEqual(len(scheduled), 2)
