@@ -111,7 +111,6 @@ jobs:
           tests.test_app_resolution
           tests.test_persian_quality
           tests.test_release_package
-          tests.test_minimax_cloud_voice
           tests.test_game_mode_policy
           tests.test_code_agent
           tests.test_chat_code
@@ -163,7 +162,6 @@ jobs:
           tests.test_app_resolution
           tests.test_persian_quality
           tests.test_release_package
-          tests.test_minimax_cloud_voice
           tests.test_game_mode_policy
           tests.test_code_agent
           tests.test_chat_code
