@@ -109,9 +109,12 @@ class ChatApplicationServiceTests(unittest.TestCase):
         self.assertEqual(worker.request["messages"][0]["content"], "hello")
         self.assertEqual(worker.request["prompt"], "system:test\n\ntools injected")
 
-        worker.chunk.emit("world")
+        worker.chunk.emit("wor")
+        worker.chunk.emit("ld")
         worker.finished_ok.emit({"text": "world", "provider": "fake"})
 
+        chunks = [e for e in self.events if e.kind is ApplicationEventKind.PROVIDER_CHUNK]
+        self.assertEqual([event.chunk for event in chunks], ["wor", "ld"])
         provider_final = [e for e in self.events if e.kind is ApplicationEventKind.PROVIDER_FINAL]
         self.assertEqual(len(provider_final), 1)
         self.assertEqual(provider_final[0].request_id, submission.request.request_id)
