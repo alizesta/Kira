@@ -2402,15 +2402,15 @@ class MainWindow(QMainWindow):
             hub = getattr(self.tool_agent, "mcp", None)
             if hub is not None:
                 hub.refresh_async()
-            self.mcp_registry_status.setText(f"سرور «{name}» ثبت شد؛ Kira در حال اتصال و کشف خودکار ابزارهاست.")
+            self.mcp_registry_panel.set_status(f"سرور «{name}» ثبت شد؛ Kira در حال اتصال و کشف خودکار ابزارهاست.")
         except Exception as exc:
-            self.mcp_registry_status.setText("افزودن سرور ناموفق بود: " + str(exc)[:240])
+            self.mcp_registry_panel.set_status("افزودن سرور ناموفق بود: " + str(exc)[:240])
 
     def refresh_model_catalogs(self):
         if getattr(self, "_model_catalog_worker", None) is not None and self._model_catalog_worker.isRunning():
             return
-        self.mcp_registry_refresh_btn.setEnabled(False)
-        self.mcp_registry_status.setText("در حال بررسی APIها و دریافت مدل‌های تازه…")
+        self.mcp_registry_panel.set_refreshing(True)
+        self.mcp_registry_panel.set_status("در حال بررسی APIها و دریافت مدل‌های تازه…")
         try:
             providers = [
                 (pid, dict(self.settings.get("providers", {}).get(pid, {})))
@@ -2428,14 +2428,14 @@ class MainWindow(QMainWindow):
             self.scan_ollama()
             self.refresh_local_voice_status()
         except Exception as exc:
-            self.mcp_registry_refresh_btn.setEnabled(True)
-            self.mcp_registry_status.setText("تازه‌سازی کامل نشد: " + str(exc)[:200])
+            self.mcp_registry_panel.set_refreshing(False)
+            self.mcp_registry_panel.set_status("تازه‌سازی کامل نشد: " + str(exc)[:200])
 
     def _on_model_catalog_refresh(self, result):
         self.mcp_registry_panel.set_refreshing(False)
         ok, value = result
         if not ok:
-            self.mcp_registry_status.setText("دریافت مدل‌های API ناموفق بود: " + str(value)[:200])
+            self.mcp_registry_panel.set_status("دریافت مدل‌های API ناموفق بود: " + str(value)[:200])
             return
         updated = 0
         failed = []
@@ -2450,7 +2450,7 @@ class MainWindow(QMainWindow):
         self.refresh_unified_models()
         self.refresh_api_table()
         suffix = ("؛ خطا در " + "، ".join(failed)) if failed else ""
-        self.mcp_registry_status.setText(f"مدل‌های API تازه‌سازی شد: {updated} مدل از {len(value)} اتصال{suffix}.")
+        self.mcp_registry_panel.set_status(f"مدل‌های API تازه‌سازی شد: {updated} مدل از {len(value)} اتصال{suffix}.")
 
     def build_ai_tab(self):
         """Unified cloud/local model catalogue with advanced route and provider controls."""
