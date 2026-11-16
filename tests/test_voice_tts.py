@@ -118,6 +118,29 @@ class SapiTtsTests(unittest.TestCase):
         Speaker._on_devices_changed(fake)
         self.assertEqual(events, ["error", "stop"])
 
+    def test_stop_emits_cancelled_for_an_active_session(self):
+        import threading
+
+        events = []
+        session = SimpleNamespace(
+            streaming=False,
+            input_done=True,
+            cond=threading.Condition(),
+            ready={},
+        )
+        fake = SimpleNamespace(
+            _gen=0,
+            _timer=SimpleNamespace(stop=lambda: None),
+            _session=session,
+            _fx=None,
+            _out=None,
+            _drop_player=lambda _fx, _out: None,
+            _end=lambda: None,
+            cancelled=SimpleNamespace(emit=lambda: events.append("cancelled")),
+        )
+        Speaker.stop(fake)
+        self.assertEqual(events, ["cancelled"])
+
     def test_cancelled_local_tts_test_does_not_report_success(self):
         class Status:
             def __init__(self):
