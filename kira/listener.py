@@ -102,6 +102,14 @@ class Listener(QThread):
                 local_ready = local_voice.asr_ready()
             except Exception:
                 local_ready = False
+        if local_ready:
+            try:
+                from . import local_voice
+                selected_asr = str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B")
+                local_voice.load_asr(selected_asr)
+            except Exception as exc:
+                local_ready = False
+                self.note.emit(f"بارگذاری اولیه STT محلی ناموفق بود؛ موتور جایگزین استفاده می‌شود. ({type(exc).__name__})")
         if not local_ready and not self._cloud_ready() and not self._load_local():
             return
         model = self._model
@@ -257,6 +265,9 @@ class Listener(QThread):
             if not self._cloud_failed:
                 self.note.emit(f"Cloud Voice (STT) خطا داد؛ موتور محلی جای آن را می‌گیرد: {type(e).__name__}")
             self._cloud_failed = True
+            return None
+        text = str(text or "").strip()
+        if not text:
             return None
         self._cloud_failed = False
         self.via = f"cloud:{info['provider']}"
