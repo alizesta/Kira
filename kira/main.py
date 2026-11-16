@@ -2344,6 +2344,59 @@ class MainWindow(QMainWindow):
             self.local_tts_test_btn, self._on_local_tts_tested
         )
 
+    def test_local_stt(self):
+        listener = getattr(self, "_local_stt_test_listener", None)
+        if listener is not None and listener.isRunning():
+            listener.stop()
+            self.local_stt_test_btn.setText("تست STT")
+            self.local_voice_status.setText("آزمایش STT متوقف شد.")
+            return
+
+        from .listener import Listener
+        model_name = str(self.settings.get("whisper_model") or "small")
+        language = str(self.settings.get("stt_language") or "fa")
+        listener = Listener(
+            model_name, language, self,
+            sensitivity=int(self.settings.get("mic_sensitivity", 100)),
+            barge_in=False, settings=self.settings,
+        )
+        self._local_stt_test_listener = listener
+        listener.heard.connect(self._on_local_stt_test_heard)
+        listener.error.connect(self._on_local_stt_test_error)
+        listener.state.connect(self._on_local_stt_test_state)
+        listener.finished.connect(lambda current=listener: self._on_local_stt_test_finished(current))
+        self.local_stt_test_btn.setText("توقف تست STT")
+        self.local_voice_status.setText("در حال آماده‌سازی میکروفن؛ صحبت کن تا متن تشخیص‌داده‌شده نمایش داده شود.")
+        listener.start()
+
+    def _on_local_stt_test_state(self, state):
+        labels = {
+            "loading": "در حال آماده‌سازی موتور STT…",
+            "listening": "میکروفن آماده است؛ صحبت کن…",
+            "hearing": "صدایت دریافت شد؛ در حال ضبط…",
+            "transcribing": "در حال تبدیل گفتار به متن…",
+        }
+        if state in labels:
+            self.local_voice_status.setText(labels[state])
+
+    def _on_local_stt_test_heard(self, text):
+        listener = getattr(self, "_local_stt_test_listener", None)
+        if listener is not None:
+            listener.stop()
+        self.local_voice_status.setText(f"نتیجه تست STT: {text}")
+
+    def _on_local_stt_test_error(self, message):
+        self.local_voice_status.setText(f"تست STT ناموفق بود: {message}")
+        listener = getattr(self, "_local_stt_test_listener", None)
+        if listener is not None:
+            listener.stop()
+
+    def _on_local_stt_test_finished(self, listener):
+        if getattr(self, "_local_stt_test_listener", None) is listener:
+            self._local_stt_test_listener = None
+        if hasattr(self, "local_stt_test_btn"):
+            self.local_stt_test_btn.setText("تست STT")
+
     def _on_local_tts_tested(self, result):
         ok, value = result
         if not ok:
@@ -3283,7 +3336,7 @@ class MainWindow(QMainWindow):
         self.local_tts_download_btn.clicked.connect(self.download_local_tts_model)
         tts_path_row.addWidget(self.local_tts_download_btn)
         local_tts_layout.addLayout(tts_path_row)
-        self.local_tts_test_btn = QPushButton("تست صدای محلی")
+        self.local_tts_test_btn = QPushButton("تست TTS")
         self.local_tts_test_btn.clicked.connect(self.test_local_tts)
         local_tts_layout.addWidget(self.local_tts_test_btn)
         self.local_model_tabs.addTab(local_tts, "TTS")
@@ -3301,12 +3354,12 @@ class MainWindow(QMainWindow):
         local_form.addRow(self.local_voice_status)
         local_form.addRow(self.local_voice_progress)
         self.local_voice_box = local_box
-        local_status_row = QHBoxLayout()
-        local_refresh = QPushButton("بررسی وضعیت موتورهای صوتی")
-        local_refresh.clicked.connect(self.refresh_local_voice_status)
-        local_status_row.addWidget(local_refresh)
-        local_status_row.addStretch(1)
-        local_form.addRow(local_status_row)
+        local_test_row = QHBoxLayout()
+        self.local_stt_test_btn = QPushButton("تست STT")
+        self.local_stt_test_btn.clicked.connect(self.test_local_stt)
+        local_test_row.addWidget(self.local_stt_test_btn)
+        local_test_row.addStretch(1)
+        local_form.addRow(local_test_row)
         layout.addWidget(local_box)
 
         # Advanced controls remain available but are collapsed by default.
