@@ -9,6 +9,7 @@ import base64
 import json
 import random
 import time
+import uuid
 import shutil
 import subprocess
 from pathlib import Path
@@ -67,6 +68,7 @@ from . import theme as theme_mod
 from .chat_sessions import ChatSession, NOOP, SESSION_FIELDS, session_property, front_only_property
 from .chat.coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
 from .chat.context_builder import ContextBuilder, ContextRequest
+from .chat.response_handler import ProviderEvent, ResponseHandler, ResponseEventKind, ResponseStatus
 from . import winfx
 from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
@@ -159,6 +161,68 @@ class SessionRelay(QObject):
         self._run("_send_next_pending")
 
 
+class ProviderResponseRelay(QObject):
+    """Binds provider callbacks to one immutable request/session identity."""
+
+    def __init__(self, window, session, request_id):
+        super().__init__(window)
+        self.w, self.s, self.request_id = window, session, str(request_id)
+
+    def _deliver(self, event):
+        # The session and request IDs are captured when the worker is created;
+        # a late signal can never be attributed to a newer request on this tab.
+        with self.w._as(self.s):
+            normalized = self.w.response_handler.handle(event)
+            if normalized is None:
+                return
+            if normalized.kind is ResponseEventKind.CHUNK:
+                self.w.on_stream_chunk(normalized.chunk, normalized.content)
+                return
+
+            result = normalized.result
+            if result is None:
+                return
+            self.w._stream_text = result.content
+            if result.status is ResponseStatus.FAILED:
+                if result.metadata.get("interrupted"):
+                    response = dict(result.metadata)
+                    response.update({
+                        "text": result.content,
+                        "interrupted": result.error.message if result.error else "Provider stream interrupted",
+                        "response_status": result.status.value,
+                        "request_id": result.request_id,
+                        "session_id": result.session_id,
+                    })
+                    self.w.on_stream_done(response)
+                else:
+                    message = result.error.message if result.error else "Provider request failed"
+                    self.w.on_error(message)
+                return
+
+            response = dict(result.metadata)
+            response.update({
+                "text": result.content,
+                "response_status": result.status.value,
+                "request_id": result.request_id,
+                "session_id": result.session_id,
+            })
+            if result.status is ResponseStatus.CANCELLED:
+                response.setdefault("stopped", True)
+            self.w.on_stream_done(response)
+
+    @Slot(str)
+    def chunk(self, piece):
+        self._deliver(ProviderEvent.chunk(self.request_id, self.s.cid, piece))
+
+    @Slot(dict)
+    def complete(self, response):
+        self._deliver(ProviderEvent.completed(self.request_id, self.s.cid, response))
+
+    @Slot(str)
+    def failed(self, error):
+        self._deliver(ProviderEvent.failed(self.request_id, self.s.cid, error))
+
+
 class MainWindow(QMainWindow):
     # Per-chat state: one ChatSession per character; these names read/write the session that is current (see chat_sessions.py).
     busy = session_property("busy")
@@ -230,6 +294,7 @@ class MainWindow(QMainWindow):
         self.chat_history_service = chat_history_service
         self.settings = load_settings()
         self.sessions = {}
+        self.response_handler = ResponseHandler()
         self.cur = self.front = ChatSession(self.character_service.active_id(self.settings))
         self.sessions[self.cur.cid] = self.cur
         self._db_notes = self.chat_history_service.init_db()
@@ -665,6 +730,10 @@ class MainWindow(QMainWindow):
         if session.relay is not None:
             session.relay.deleteLater()
             session.relay = None
+        response_relay = getattr(session, "response_relay", None)
+        if response_relay is not None:
+            response_relay.deleteLater()
+            session.response_relay = None
         if session.view is not None:
             self.chat_stack.removeWidget(session.view)
             session.view.deleteLater()
@@ -4455,18 +4524,27 @@ class MainWindow(QMainWindow):
         self._stream_begin()
         temperature = modes.temperature_for(mode, self.settings["temperature"]) if mode else self.settings["temperature"]
         relay = self.cur.relay
-        self.worker = self._chat_coordinator().start_provider_request(
-            router=self.client, messages=context, prompt=prompt, temperature=temperature,
-            retry_index=1 if plain else 0, agent=self.tool_agent, plan=self._tool_plan,
-            role=self._brain.stage, route_id=self._brain.route_id,
-            callbacks={
-                "tool_event": relay.tool,
-                "event": relay.stream_event,
-                "chunk": relay.chunk,
-                "complete": relay.done,
-                "error": relay.failed,
-            },
-        )
+        session = self.cur
+        request_id = uuid.uuid4().hex
+        self.response_handler.begin_request(request_id, session.cid)
+        response_relay = ProviderResponseRelay(self, session, request_id)
+        session.response_relay = response_relay
+        try:
+            self.worker = self._chat_coordinator().start_provider_request(
+                router=self.client, messages=context, prompt=prompt, temperature=temperature,
+                retry_index=1 if plain else 0, agent=self.tool_agent, plan=self._tool_plan,
+                role=self._brain.stage, route_id=self._brain.route_id,
+                callbacks={
+                    "tool_event": relay.tool,
+                    "event": relay.stream_event,
+                    "chunk": response_relay.chunk,
+                    "complete": response_relay.complete,
+                    "error": response_relay.failed,
+                },
+            )
+        except Exception as exc:  # A synchronous dispatch failure must also close the registered lifecycle.
+            response_relay.failed(f"{type(exc).__name__}: {exc}")
+            return
         self.refresh_tab_buttons()
 
     MODE_LABELS = {"chat": "گپ", "task": "کار / کمک", "strict": "فقط جواب"}
@@ -4556,8 +4634,11 @@ class MainWindow(QMainWindow):
         except Exception as exc:                                    # noqa: BLE001
             self.on_voice_error(f"صدا ناموفق بود: {type(exc).__name__}: {exc}")
 
-    def on_stream_chunk(self, piece):
-        self._stream_text += piece
+    def on_stream_chunk(self, piece, accumulated_content=None):
+        # ResponseHandler owns ordered aggregation; the window keeps only the
+        # current text snapshot required by its existing incremental renderer.
+        self._stream_text = (str(accumulated_content) if accumulated_content is not None
+                             else self._stream_text + str(piece))
         self._stream_dirty = True
 
     def _stream_flush(self, final=False):
