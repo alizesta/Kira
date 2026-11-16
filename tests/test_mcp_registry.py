@@ -1,6 +1,6 @@
 import unittest
 
-from kira.mcp.registry import server_config, search_servers
+from kira.mcp.registry import server_config
 
 
 class McpRegistryConfigTests(unittest.TestCase):
