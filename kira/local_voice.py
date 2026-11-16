@@ -1,8 +1,7 @@
-"""Optional offline Persian speech engines used before Cloud Voice.
+"""Offline speech engines used by Kira. No network recognition or synthesis fallback lives here.
 
-ASR: Qwen3-ASR 0.6B via the official qwen-asr package.
-TTS: Mana Persian Piper via persian-speech.
-This module performs speech conversion only; it contains no chat or agent logic.
+ASR: Qwen3-ASR 0.6B and faster-whisper (managed by Listener).
+TTS: Piper ONNX or the bundled Persian Piper runtime.
 """
 from __future__ import annotations
 
@@ -160,6 +159,16 @@ def preload_tts(model_path="") -> bool:
             from persian_speech_runtime import PiperSpeechEngine
             _tts = PiperSpeechEngine()
         return True
+
+
+def warmup_tts(model_path="") -> bool:
+    """Warm the selected local Piper engine without leaking background-thread exceptions."""
+    global _tts_error
+    try:
+        return bool(preload_tts(model_path))
+    except Exception as exc:
+        _tts_error = exc
+        return False
 
 
 def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
