@@ -81,6 +81,29 @@ class GuiTests(unittest.TestCase):
         self.assertIn("Ollama", self.win.status.text())
         self.assertTrue(self.win.isVisible())
 
+    def test_extracted_settings_pages_own_their_widgets(self):
+        from kira.ui.pages import AppearancePage, CharactersPage, VoicePage
+
+        window = self.win
+        self.assertIsInstance(window.appearance_page, AppearancePage)
+        self.assertIsInstance(window.character_page, CharactersPage)
+        self.assertIsInstance(window.voice_page, VoicePage)
+        self.assertFalse(hasattr(window, "window_effect"))
+        self.assertFalse(hasattr(window, "character_combo"))
+        self.assertFalse(hasattr(window, "mic_device"))
+        self.assertEqual(
+            set(window.character_page.personality_sliders),
+            {
+                "playfulness", "warmth", "curiosity", "confidence", "assertiveness",
+                "teasing", "empathy", "independence", "patience", "carefulness",
+            },
+        )
+        character_ids = {
+            window.character_page.character_combo.itemData(i)
+            for i in range(window.character_page.character_combo.count())
+        }
+        self.assertTrue({"kira", "ren", "mika"}.issubset(character_ids))
+
     # 17) hamburger menu
     def test_17_hamburger_visible_and_menu_complete(self):
         w = self.win
