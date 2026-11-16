@@ -1,7 +1,7 @@
 """One independent chat session per character (Qt-free helpers so they can be tested without a GUI).
 
 Every character (Kira / Ren / Mika / custom) has its own ChatSession: its own saved history, chat view, model router,
-generation worker, pending-message queue and stream state. Several sessions can therefore generate at the same time.
+generation worker and stream state. ChatApplicationService owns the per-session pending queues and request lifecycle.
 
 MainWindow keeps its familiar attribute names (busy, worker, _stream_text, ...): they are properties that read/write the
 session that is *current* while an event is handled (see MainWindow._as). Things that exist once per computer - the
