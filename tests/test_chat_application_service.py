@@ -347,6 +347,26 @@ class ChatApplicationServiceTests(unittest.TestCase):
             ],
         )
 
+    def test_dispose_persists_partial_response_as_interrupted_once(self):
+        submission = self.service.submit_message("kira", "hello")
+        worker = self._start_provider(submission)
+        worker.chunk.emit("partial answer")
+
+        self.service.dispose()
+
+        self.assertEqual(
+            self.service.get_request_status(submission.request.request_id),
+            RequestStatus.CANCELLED,
+        )
+        assistant_messages = [
+            item for item in self.persistence.messages if item[0] == "assistant"
+        ]
+        self.assertEqual(len(assistant_messages), 1)
+        self.assertEqual(assistant_messages[0][1], "partial answer")
+        self.assertEqual(assistant_messages[0][3]["status"], "interrupted")
+        self.assertTrue(assistant_messages[0][3]["metadata"]["interrupted"])
+        self.assertTrue(assistant_messages[0][3]["metadata"]["application_shutdown"])
+
     def test_service_is_qt_free(self):
         import ast
         from pathlib import Path
