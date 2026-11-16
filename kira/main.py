@@ -772,8 +772,7 @@ class MainWindow(QMainWindow):
         voice_page = self.tabs.widget(self.tab_keys.index("tab_voice")) if hasattr(self, "tab_keys") else self.tabs.widget(2)
         voice_layout = voice_page.widget().layout()
         if hasattr(self, "local_voice_box"):
-            self.local_voice_box.setParent(None)
-            voice_layout.addWidget(self.local_voice_box)
+            voice_layout.insertWidget(max(0, voice_layout.count() - 1), self.local_voice_box)
         if hasattr(self, "cloud_model_tabs"):
             self.voice_cloud_model_tabs = QTabWidget()
             for model_kind in ("stt", "tts"):
@@ -787,7 +786,7 @@ class MainWindow(QMainWindow):
             if self.voice_cloud_model_tabs.count():
                 cloud_voice_box, cloud_voice_form = self.group("مدل‌های صوتی Cloud")
                 cloud_voice_form.addRow(self.voice_cloud_model_tabs)
-                voice_layout.addWidget(cloud_voice_box)
+                voice_layout.insertWidget(max(0, voice_layout.count() - 1), cloud_voice_box)
         self.refresh_local_voice_status()
         self.save_btn = QPushButton()
         self.save_btn.setObjectName("save")
