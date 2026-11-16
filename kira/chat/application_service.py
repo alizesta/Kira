@@ -64,6 +64,7 @@ class ChatApplicationEvent:
     result: ChatResponseResult | None = None
     error: str | None = None
     persistence_ok: bool | None = None
+    metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -379,6 +380,7 @@ class ChatApplicationService:
                 else ApplicationEventKind.REQUEST_FAILED
             ),
             persistence_ok=outcome.ok,
+            metadata=result.metadata,
         )
         return ChatApplicationEvent(
             request_id, event.session_id,
@@ -386,7 +388,7 @@ class ChatApplicationService:
             else ApplicationEventKind.REQUEST_FAILED,
             terminal_status, content=result.content,
             result=result, error=result.error.message if result.error else None,
-            persistence_ok=outcome.ok,
+            persistence_ok=outcome.ok, metadata=result.metadata,
         )
 
     def complete_request(
@@ -517,6 +519,20 @@ class ChatApplicationService:
         coordinator = self._coordinators.get(str(session_id or ""))
         return coordinator.pending_count if coordinator is not None else 0
 
+    def has_pending_work(self, session_id: str) -> bool:
+        owner = str(session_id or "")
+        return bool(self.pending_count(owner) or owner in self._dispatch_scheduled)
+
+    def fail_request(self, request_id: str, error: str) -> bool:
+        state = self._requests.get(str(request_id or ""))
+        if state is None or state.status not in (RequestStatus.PENDING, RequestStatus.RUNNING):
+            return False
+        self._finalize(
+            state, RequestStatus.FAILED, content=state.last_content,
+            error=str(error), kind=ApplicationEventKind.REQUEST_FAILED,
+        )
+        return True
+
     def has_active_request(self, session_id: str) -> bool:
         return str(session_id or "") in self._active_by_session
 
@@ -546,6 +562,7 @@ class ChatApplicationService:
         error: str | None = None,
         kind: ApplicationEventKind,
         persistence_ok: bool | None = None,
+        metadata: Mapping[str, Any] | None = None,
     ) -> None:
         if state.status in (RequestStatus.COMPLETED, RequestStatus.FAILED, RequestStatus.CANCELLED):
             return
@@ -558,6 +575,7 @@ class ChatApplicationService:
             state.request.request_id, owner, kind, status,
             content=content or state.last_content,
             error=error, persistence_ok=persistence_ok,
+            metadata=dict(metadata or {}),
         ))
         self._prune_history()
 
