@@ -2,7 +2,7 @@ import ast
 import unittest
 from pathlib import Path
 
-from kira.chat.coordinator import ChatCoordinator, ChatRequest, SubmissionResult
+from kira.chat.coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
 
 
 class ChatCoordinatorTests(unittest.TestCase):
@@ -53,6 +53,59 @@ class ChatCoordinatorTests(unittest.TestCase):
             coordinator.submit(ChatRequest.create("hello"))
         self.assertEqual(coordinator.pending_count, 0)
 
+    def test_provider_dispatcher_wires_response_callbacks_without_ui_dependencies(self):
+        class Signal:
+            def __init__(self):
+                self.callback = None
+            def connect(self, callback):
+                self.callback = callback
+            def emit(self, *args):
+                self.callback(*args)
+
+        class Worker:
+            def __init__(self, **kwargs):
+                self.kwargs = kwargs
+                self.tool_event = Signal()
+                self.event = Signal()
+                self.chunk = Signal()
+                self.finished_ok = Signal()
+                self.failed = Signal()
+                self.started = False
+            def start(self):
+                self.started = True
+
+        created = []
+        received = []
+        def factory(**kwargs):
+            worker = Worker(**kwargs)
+            created.append(worker)
+            return worker
+        coordinator = ChatCoordinator(lambda _request: None,
+                                       provider_dispatcher=ChatProviderDispatcher(factory))
+        worker = coordinator.start_provider_request(
+            router="fake-router", messages=[{"role": "user", "content": "hi"}],
+            prompt="system", temperature=0.2,
+            callbacks={"chunk": received.append, "complete": lambda result: received.append(result["text"])},
+        )
+        self.assertIs(worker, created[0])
+        self.assertTrue(worker.started)
+        self.assertEqual(worker.kwargs["router"], "fake-router")
+        worker.chunk.emit("hello")
+        worker.finished_ok.emit({"text": " world"})
+        self.assertEqual(received, ["hello", " world"])
+
+    def test_provider_dispatcher_rejects_unknown_callback_ports(self):
+        class Worker:
+            pass
+        coordinator = ChatCoordinator(lambda _request: None,
+                                       provider_dispatcher=ChatProviderDispatcher(Worker))
+        with self.assertRaisesRegex(ValueError, "Unsupported provider callbacks"):
+            coordinator.start_provider_request(callbacks={"ui_widget": lambda: None})
+
+    def test_provider_dispatcher_must_be_configured(self):
+        coordinator = ChatCoordinator(lambda _request: None)
+        with self.assertRaisesRegex(RuntimeError, "No provider dispatcher"):
+            coordinator.start_provider_request(callbacks={})
     def test_dispatch_preserves_request_payload(self):
         sent = []
         coordinator = ChatCoordinator(sent.append)
