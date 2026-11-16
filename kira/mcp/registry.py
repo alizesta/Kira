@@ -52,7 +52,15 @@ def _safe_args(value) -> list[str]:
             out.append(item)
         elif isinstance(item, dict):
             raw = item.get("value")
-            if isinstance(raw, str) and len(raw) <= 300 and not any(ch in raw for ch in ("\x00", "\r", "\n")):
+            kind = str(item.get("type") or "positional").lower()
+            flag = str(item.get("name") or "").strip()
+            if not isinstance(raw, str) or len(raw) > 300 or any(ch in raw for ch in ("\x00", "\r", "\n")):
+                continue
+            if kind == "named":
+                if not re.fullmatch(r"--?[A-Za-z0-9_-]{1,64}", flag):
+                    continue
+                out.extend([flag, raw])
+            elif kind == "positional":
                 out.append(raw)
     return out
 
