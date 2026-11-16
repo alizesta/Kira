@@ -185,3 +185,29 @@ class LocalAudioPolicyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestApplicationArchitecture(unittest.TestCase):
+    def test_event_bus_subscribe_publish_and_unsubscribe(self):
+        from kira.app.event_bus import EventBus
+        bus = EventBus()
+        received = []
+        unsubscribe = bus.subscribe("voice.transcript", lambda **event: received.append(event["text"]))
+        bus.publish("voice.transcript", text="hello")
+        unsubscribe()
+        bus.publish("voice.transcript", text="ignored")
+        self.assertEqual(received, ["hello"])
+
+    def test_dependency_container_caches_factory(self):
+        from kira.app.dependency_container import DependencyContainer
+        calls = []
+        container = DependencyContainer()
+        container.register_factory("voice", lambda: calls.append(1) or object())
+        first = container.resolve("voice")
+        self.assertIs(first, container.resolve("voice"))
+        self.assertEqual(calls, [1])
+
+    def test_dependency_container_rejects_unknown_service(self):
+        from kira.app.dependency_container import DependencyContainer
+        with self.assertRaisesRegex(KeyError, "not registered"):
+            DependencyContainer().resolve("missing")
