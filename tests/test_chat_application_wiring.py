@@ -48,13 +48,23 @@ class ChatApplicationWiringTests(unittest.TestCase):
 
     def test_shutdown_delegates_partial_response_cleanup_to_application_service(self):
         close_event = self.method("closeEvent")
-        calls = [node for node in ast.walk(close_event) if isinstance(node, ast.Call)]
-        method_names = [
-            node.func.attr for node in calls
+        close_calls = [node for node in ast.walk(close_event) if isinstance(node, ast.Call)]
+        close_methods = [
+            node.func.attr for node in close_calls
             if isinstance(node.func, ast.Attribute)
         ]
-        self.assertIn("dispose", method_names)
-        self.assertNotIn("save_message", method_names)
+        self.assertIn("_clear_chat_coordinator_queues", close_methods)
+        self.assertNotIn("save_message", close_methods)
+
+        cleanup = self.method("_clear_chat_coordinator_queues")
+        cleanup_calls = [node for node in ast.walk(cleanup) if isinstance(node, ast.Call)]
+        self.assertTrue(any(
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "dispose"
+            and isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr == "chat_application_service"
+            for node in cleanup_calls
+        ))
 
 
 if __name__ == "__main__":
