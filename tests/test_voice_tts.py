@@ -118,6 +118,30 @@ class SapiTtsTests(unittest.TestCase):
         Speaker._on_devices_changed(fake)
         self.assertEqual(events, ["error", "stop"])
 
+    def test_device_change_forces_system_default_instead_of_stale_selection(self):
+        events = []
+        fake = SimpleNamespace(
+            _fx=object(),
+            _prefer_default_output=False,
+            error=SimpleNamespace(emit=lambda _message: events.append("error")),
+            stop=lambda: events.append("stop"),
+        )
+        Speaker._on_devices_changed(fake)
+        self.assertTrue(fake._prefer_default_output)
+        self.assertEqual(events, ["error", "stop"])
+
+    def test_sound_error_switches_future_playback_to_system_default(self):
+        events = []
+        fake = SimpleNamespace(
+            _fx=SimpleNamespace(status=lambda: QSoundEffect.Error),
+            _prefer_default_output=False,
+            error=SimpleNamespace(emit=lambda _message: events.append("error")),
+            stop=lambda: events.append("stop"),
+        )
+        Speaker._on_sound_status(fake)
+        self.assertTrue(fake._prefer_default_output)
+        self.assertEqual(events, ["error", "stop"])
+
     def test_stop_emits_cancelled_for_an_active_session(self):
         import threading
 
