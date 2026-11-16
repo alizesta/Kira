@@ -435,6 +435,9 @@ class ChatApplicationService:
         owner = str(session_id or "").strip()
         if not owner:
             return PersistenceOutcome(False, "session_id must not be empty")
+        request_state = self._requests.get(str(request_id or "")) if request_id else None
+        if conversation_id is None and request_state is not None:
+            conversation_id = request_state.request.conversation_id
         try:
             ok = self._persistence.add_message(
                 role, content, owner,
@@ -522,6 +525,40 @@ class ChatApplicationService:
     def has_pending_work(self, session_id: str) -> bool:
         owner = str(session_id or "")
         return bool(self.pending_count(owner) or owner in self._dispatch_scheduled)
+
+    def is_dispatch_scheduled(self, session_id: str) -> bool:
+        return str(session_id or "") in self._dispatch_scheduled
+
+    @property
+    def last_persistence_error(self) -> str | None:
+        return getattr(self._persistence, "last_error", None)
+
+    def set_persistence_error(self, message: str | None) -> None:
+        setter = getattr(self._persistence, "set_last_error", None)
+        if callable(setter):
+            setter(message)
+
+    def init_history(self) -> list[str]:
+        initializer = getattr(self._persistence, "init_db", None)
+        return list(initializer() or []) if callable(initializer) else []
+
+    def recent_messages(self, limit: int = 12, session_id: str | None = None):
+        return self._persistence.recent_messages(limit, session_id)
+
+    def conversation_context(self, limit: int = 12, max_chars: int = 12000, session_id: str | None = None):
+        return self._persistence.conversation_context(limit, max_chars, session_id)
+
+    def message_count(self, session_id: str | None = None) -> int:
+        return self._persistence.message_count(session_id)
+
+    def clear_history(self, session_id: str | None = None) -> Any:
+        return self._persistence.clear_memory(session_id)
+
+    def restore_history(self) -> int:
+        return self._persistence.restore_last_cleared()
+
+    def import_history(self, source: Any) -> int:
+        return self._persistence.import_messages(source)
 
     def fail_request(self, request_id: str, error: str) -> bool:
         state = self._requests.get(str(request_id or ""))
