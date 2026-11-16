@@ -25,6 +25,46 @@ class ServiceModuleTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             container.resolve("sample_service")
 
+    def test_module_enable_disable_recreates_and_releases_service(self):
+        container = DependencyContainer()
+        manager = ModuleManager(container, EventBus())
+        created = []
+
+        class Service:
+            def __init__(self):
+                self.started = False
+                self.stopped = False
+                self.closed = False
+                created.append(self)
+
+            def start(self):
+                self.started = True
+
+            def stop(self):
+                self.stopped = True
+
+            def close(self):
+                self.closed = True
+
+        manager.register("optional", lambda: ServiceModule("optional_service", Service))
+        manager.start("optional")
+        first = container.resolve("optional_service")
+        self.assertTrue(first.started)
+
+        manager.disable("optional")
+        self.assertTrue(first.stopped)
+        self.assertTrue(first.closed)
+        with self.assertRaises(KeyError):
+            container.resolve("optional_service")
+
+        manager.enable("optional")
+        second = container.resolve("optional_service")
+        self.assertIsNot(first, second)
+        self.assertTrue(second.started)
+        manager.shutdown()
+        self.assertTrue(second.stopped)
+        self.assertTrue(second.closed)
+
     def test_unrelated_service_modules_start_independently(self):
         container = DependencyContainer()
         manager = ModuleManager(container, EventBus())
