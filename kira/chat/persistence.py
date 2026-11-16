@@ -637,14 +637,18 @@ class SqliteChatRepository:
             return 0
 
     def message_count(self, character_id=None, conversation_id=None):
-        with self._lock, self._db() as con:
-            where, args = [], []
-            if character_id is not None:
-                where.append("character_id=?"); args.append(_character_id(character_id))
-            if conversation_id is not None:
-                where.append("conversation_id=?"); args.append(str(conversation_id))
-            clause = " WHERE " + " AND ".join(where) if where else ""
-            return int(con.execute(f"SELECT COUNT(*) FROM messages{clause}", args).fetchone()[0])
+        try:
+            with self._lock, self._db() as con:
+                where, args = [], []
+                if character_id is not None:
+                    where.append("character_id=?"); args.append(_character_id(character_id))
+                if conversation_id is not None:
+                    where.append("conversation_id=?"); args.append(str(conversation_id))
+                clause = " WHERE " + " AND ".join(where) if where else ""
+                return int(con.execute(f"SELECT COUNT(*) FROM messages{clause}", args).fetchone()[0])
+        except (sqlite3.Error, OSError) as exc:
+            self._note_error(exc)
+            return 0
 
     def pending_count(self):
         with self._lock:
@@ -777,7 +781,12 @@ class ChatPersistence:
         return self._repository.close_conversation(conversation_id)
 
     def delete_conversation(self, conversation_id):
-        return self._repository.delete_conversation(conversation_id)
+        try:
+            return self._repository.delete_conversation(conversation_id)
+        except PersistenceError:
+            raise
+        except Exception as exc:
+            raise PersistenceError(str(exc)) from exc
 
     def add_message(self, role, content, character_id=None, **options):
         return self._repository.add_message(role, content, character_id, **options)
@@ -813,13 +822,28 @@ class ChatPersistence:
         return self._repository.list_snapshots(kind)
 
     def clear_memory(self, character_id=None):
-        return self._repository.clear_memory(character_id)
+        try:
+            return self._repository.clear_memory(character_id)
+        except PersistenceError:
+            raise
+        except Exception as exc:
+            raise PersistenceError(str(exc)) from exc
 
     def restore_last_cleared(self):
-        return self._repository.restore_last_cleared()
+        try:
+            return self._repository.restore_last_cleared()
+        except PersistenceError:
+            raise
+        except Exception as exc:
+            raise PersistenceError(str(exc)) from exc
 
     def import_messages(self, source):
-        return self._repository.import_messages(source)
+        try:
+            return self._repository.import_messages(source)
+        except PersistenceError:
+            raise
+        except Exception as exc:
+            raise PersistenceError(str(exc)) from exc
 
 
 def create_default_chat_persistence(db_path=None) -> ChatPersistence:
