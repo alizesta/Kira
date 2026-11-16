@@ -50,12 +50,16 @@ def run_application() -> None:
 
     app = QApplication(sys.argv)
     app.setStyleSheet(build_style(winfx.active_effect(load_settings().get("window_effect"))))
-    window = MainWindow(
-        memory_service=container.resolve("memory_service"),
-        mood_service=container.resolve("mood_service"),
-        character_service=container.resolve("character_service"),
-        chat_history_service=container.resolve("chat_history_service"),
-    )
+    try:
+        window = MainWindow(
+            memory_service=container.resolve("memory_service"),
+            mood_service=container.resolve("mood_service"),
+            character_service=container.resolve("character_service"),
+            chat_history_service=container.resolve("chat_history_service"),
+        )
+    except Exception:
+        module_manager.shutdown()
+        raise
     # Retain the composition root for the lifetime of the application.
     window._dependency_container = container
     window._event_bus = event_bus
