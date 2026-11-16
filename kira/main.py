@@ -68,6 +68,8 @@ from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
 from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
 from .chat_code_ui import CodeChat
+from .ui.components import ModelCombo
+from .ui.dialogs import MemoryDialog, ModelPickerDialog
 
 WAKE_RE = re.compile(r"(?:(?:هی|سلام|hey|hi)[\s\u200c]*)?(?:کی[\s\u200c]?را|کایرا|کیرآ|کیارا|kira|keira|kyra|kiera)", re.I)
 STOP_RE = re.compile(r"^\W*(?:بس\s*کن|بسه|ساکت(?:\s*شو)?|صبر\s*کن|وایسا|وایستا|stop|be\s*quiet)\W*$", re.I)       # "just be quiet" is not a chat message
@@ -79,140 +81,6 @@ def load_reactions():
         return json.loads((ROOT / "reactions.json").read_text(encoding="utf-8"))
     except Exception:
         return {}
-
-
-class ModelPickerDialog(QDialog):
-    """Pick discovered models (or type one by hand) to add as Routes. Click anywhere on a row to tick it.
-    Models the provider marks (or is known) as paid can be hidden with the free-only switch."""
-    def __init__(self, parent, title, models, existing, error=None):
-        super().__init__(parent)
-        self.setWindowTitle(title)
-        self.setMinimumWidth(560)
-        self.existing = set(existing)
-        self._free = {m["id"]: m.get("free") for m in models}
-        lay = QVBoxLayout(self)
-        note = QLabel("بودن یک مدل در فهرست به معنی تضمین دسترسی یا داشتن سهمیه نیست؛ فقط هنگام استفاده‌ی واقعی معلوم می‌شود. "
-                      "روی هر ردیف کلیک کن تا انتخاب شود. 🆓 = رایگان، 💲 = پولی (برای Gemini تشخیص تقریبی است).")
-        note.setObjectName("hint")
-        note.setWordWrap(True)
-        lay.addWidget(note)
-        self.error_lbl = QLabel(("✕ " + error) if error else "")
-        self.error_lbl.setWordWrap(True)
-        self.error_lbl.setVisible(bool(error))
-        lay.addWidget(self.error_lbl)
-        self.free_only = QCheckBox("فقط مدل‌های رایگان (و نامشخص) را نشان بده")
-        has_paid = any(m.get("free") is False for m in models)
-        self.free_only.setChecked(has_paid)
-        self.free_only.setVisible(has_paid)
-        self.free_only.toggled.connect(lambda *_: self.apply_filter())
-        lay.addWidget(self.free_only)
-        self.filter = QLineEdit()
-        self.filter.setPlaceholderText("جست‌وجو در نام یا Model ID…")
-        self.filter.textChanged.connect(lambda *_: self.apply_filter())
-        lay.addWidget(self.filter)
-        self.list = QListWidget()
-        self.list.setMinimumHeight(260)
-        self.list.setLayoutDirection(Qt.LeftToRight)
-        self.list.itemClicked.connect(self.toggle_item)
-        lay.addWidget(self.list)
-        for m in models:
-            self.add_item(m["id"], m.get("name", ""), m.get("info", ""), free=m.get("free"))
-        bulk = QHBoxLayout()
-        all_btn = QPushButton("انتخاب همه‌ی نمایان")
-        none_btn = QPushButton("برداشتن همه")
-        all_btn.clicked.connect(lambda: self.set_visible_checked(True))
-        none_btn.clicked.connect(lambda: self.set_visible_checked(False))
-        bulk.addWidget(all_btn)
-        bulk.addWidget(none_btn)
-        bulk.addStretch(1)
-        lay.addLayout(bulk)
-        manual = QHBoxLayout()
-        self.manual = QLineEdit()
-        self.manual.setPlaceholderText("افزودن دستی: Model ID را بنویس")
-        self.manual.setLayoutDirection(Qt.LeftToRight)
-        add = QPushButton("افزودن دستی به فهرست")
-        add.clicked.connect(self.add_manual)
-        self.manual.returnPressed.connect(self.add_manual)
-        manual.addWidget(self.manual, 1)
-        manual.addWidget(add)
-        lay.addLayout(manual)
-        self.count_lbl = QLabel()
-        lay.addWidget(self.count_lbl)
-        box = QDialogButtonBox()
-        self.ok_btn = box.addButton("افزودن به Route Manager", QDialogButtonBox.AcceptRole)
-        box.addButton("انصراف", QDialogButtonBox.RejectRole)
-        box.accepted.connect(self.accept)
-        box.rejected.connect(self.reject)
-        lay.addWidget(box)
-        self.apply_filter()
-
-    def add_item(self, mid, name="", info="", checked=False, free=None):
-        mark = {True: "🆓 ", False: "💲 "}.get(free, "")
-        item = QListWidgetItem(mark + (f"{name}  —  {mid}" if name else mid) + ("   (از قبل موجود)" if mid in self.existing else ""))
-        item.setData(Qt.UserRole, mid)
-        item.setToolTip(info or mid)
-        self._free.setdefault(mid, free)
-        if mid in self.existing:
-            item.setFlags(Qt.ItemIsEnabled)
-            item.setForeground(QBrush(QColor("#8d93ab")))
-        else:
-            item.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-            item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
-        self.list.addItem(item)
-        return item
-
-    def _selectable(self, item):
-        return item.data(Qt.UserRole) not in self.existing
-
-    def toggle_item(self, item):
-        if self._selectable(item):
-            item.setCheckState(Qt.Unchecked if item.checkState() == Qt.Checked else Qt.Checked)
-            self.update_count()
-
-    def set_visible_checked(self, on):
-        for i in range(self.list.count()):
-            item = self.list.item(i)
-            if self._selectable(item) and not item.isHidden():
-                item.setCheckState(Qt.Checked if on else Qt.Unchecked)
-        self.update_count()
-
-    def add_manual(self):
-        mid = self.manual.text().strip()
-        if mid.startswith("models/"):
-            mid = mid[7:]
-        if not mid:
-            return
-        for i in range(self.list.count()):
-            item = self.list.item(i)
-            if item.data(Qt.UserRole) == mid:
-                if self._selectable(item):
-                    item.setCheckState(Qt.Checked)
-                    item.setHidden(False)
-                self.manual.clear()
-                self.update_count()
-                return
-        self.add_item(mid, "", "افزوده‌ی دستی", checked=True)
-        self.manual.clear()
-        self.apply_filter()
-
-    def apply_filter(self, *_):
-        text = self.filter.text().strip().lower()
-        hide_paid = self.free_only.isChecked()
-        for i in range(self.list.count()):
-            item = self.list.item(i)
-            mid = str(item.data(Qt.UserRole))
-            miss = bool(text) and text not in item.text().lower() and text not in mid.lower()
-            paid = hide_paid and self._free.get(mid) is False and item.checkState() != Qt.Checked
-            item.setHidden(miss or paid)
-        self.update_count()
-
-    def selected_ids(self):
-        return [self.list.item(i).data(Qt.UserRole) for i in range(self.list.count())
-                if self._selectable(self.list.item(i)) and self.list.item(i).checkState() == Qt.Checked]
-
-    def update_count(self):
-        shown = sum(1 for i in range(self.list.count()) if not self.list.item(i).isHidden())
-        self.count_lbl.setText(f"{shown} مدل نمایان از {self.list.count()} · {len(self.selected_ids())} انتخاب‌شده")
 
 
 class StreamWorker(QThread):
@@ -356,88 +224,6 @@ class BenchWorker(QThread):
             self.done.emit((False, str(exc)[:400]))
 
 
-class MemoryDialog(QDialog):
-    """View, edit and delete the active character's isolated long-term memory."""
-    GROUPS = {"fact": "درباره‌ی تو", "moment": "لحظه / رویداد", "summary": "خلاصه‌ی گفتگوهای قدیمی"}
-
-    def __init__(self, parent=None, character_id="kira"):
-        super().__init__(parent)
-        self.character_id = str(character_id or "kira")
-        profiles = characters.all_profiles(getattr(parent, "settings", {}))
-        self.character_name = str(profiles.get(self.character_id, {}).get("name") or self.character_id.title())
-        self.setWindowTitle(f"حافظه‌ی {self.character_name}")
-        self.resize(680, 480)
-        lay = QVBoxLayout(self)
-        self.info = QLabel()
-        self.info.setWordWrap(True)
-        lay.addWidget(self.info)
-        self.items = QListWidget()
-        self.items.setSelectionMode(QAbstractItemView.SingleSelection)
-        lay.addWidget(self.items, 1)
-        row = QHBoxLayout()
-        for text, fn in (("افزودن یادداشت", self.add_note), ("ویرایش", self.edit_item), ("حذف", self.delete_item), ("فراموش‌کردن همه", self.forget_all)):
-            btn = QPushButton(text)
-            btn.clicked.connect(lambda checked=False, f=fn: f())
-            row.addWidget(btn)
-        lay.addLayout(row)
-        close = QPushButton("بستن")
-        close.clicked.connect(self.accept)
-        lay.addWidget(close)
-        self.refresh()
-
-    def refresh(self):
-        cur = mood.current()
-        self.info.setText(f"حال‌وهوای فعلی همراه: {cur['emotion']} ({cur['intensity']}/100). حافظه‌ی بلندمدت {self.character_name} جداست؛ هرچه اینجا نباشد در حافظه‌ی او ثبت نشده است. تاریخچه‌ی کوتاه‌مدت گفتگو همچنان مشترک است.")
-        self.items.clear()
-        with persona_memory.character_scope(self.character_id):
-            saved_items = persona_memory.list_items()
-        for it in saved_items:
-            row = QListWidgetItem(f"[{self.GROUPS.get(it['group'], it['group'])}] {it['text']}")
-            row.setData(Qt.UserRole, it["id"])
-            self.items.addItem(row)
-
-    def _selected(self):
-        item = self.items.currentItem()
-        return item.data(Qt.UserRole) if item else None
-
-    def add_note(self):
-        text, ok = QInputDialog.getText(self, "یادداشت جدید", f"چه چیزی را {self.character_name} یادش بماند؟")
-        if ok:
-            with persona_memory.character_scope(self.character_id):
-                added = persona_memory.add_note(text)
-            if added:
-                self.refresh()
-
-    def edit_item(self):
-        iid = self._selected()
-        if not iid:
-            return
-        with persona_memory.character_scope(self.character_id):
-            current = next((i["text"] for i in persona_memory.list_items() if i["id"] == iid), "")
-        text, ok = QInputDialog.getText(self, "ویرایش", "متن:", QLineEdit.Normal, current)
-        if ok:
-            with persona_memory.character_scope(self.character_id):
-                updated = persona_memory.update_item(iid, text)
-            if updated:
-                self.refresh()
-
-    def delete_item(self):
-        iid = self._selected()
-        if iid:
-            with persona_memory.character_scope(self.character_id):
-                deleted = persona_memory.delete_item(iid)
-            if deleted:
-                self.refresh()
-
-    def forget_all(self):
-        if QMessageBox.question(self, "فراموش‌کردن همه", f"همه‌ی چیزهایی که {self.character_name} در حافظه‌ی بلندمدتش درباره‌ی تو نگه داشته پاک شود؟ تاریخچه‌ی کوتاه‌مدت گفتگو و حافظه‌ی شخصیت‌های دیگر دست‌نخورده می‌ماند.") == QMessageBox.Yes:
-            with persona_memory.character_scope(self.character_id):
-                persona_memory.forget_all()
-            if self.character_id == "kira":       # mood is still a shared state, not part of Ren/Mika's isolated memory
-                mood.reset()
-            self.refresh()
-
-
 class ProviderTestWorker(QThread):
     done = Signal(str, bool, str)
 
@@ -452,30 +238,6 @@ class ProviderTestWorker(QThread):
         except Exception as exc:
             ok, detail = False, str(exc)[:500]
         self.done.emit(self.name, ok, detail)
-
-
-class ModelCombo(QComboBox):
-    """Editable list of installed Ollama models that still behaves like a QLineEdit (text()/setText())."""
-    def __init__(self, text=""):
-        super().__init__()
-        self.setEditable(True)
-        self.setInsertPolicy(QComboBox.NoInsert)
-        self.setEditText(text)
-
-    def text(self):
-        return self.currentText()
-
-    def setText(self, value):
-        self.setEditText(str(value))
-
-    def set_models(self, names):
-        keep = self.currentText()
-        self.blockSignals(True)
-        self.clear()
-        self.addItems(list(names))
-        self.setEditText(keep)
-        self.blockSignals(False)
-
 
 
 class VisionAnalysisWorker(QThread):
