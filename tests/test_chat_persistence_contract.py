@@ -133,6 +133,39 @@ class SqliteChatRepositoryTests(unittest.TestCase):
         self.assertEqual(rows[0]["content"], "part 1 + part 2")
         self.assertEqual(rows[0]["status"], "interrupted")
 
+    def test_import_restores_conversation_metadata_and_is_idempotent(self):
+        source_path = Path(self.temp.name) / "import-source.sqlite3"
+        source = SqliteChatRepository(source_path)
+        source.init_db()
+        conversation = source.create_conversation(
+            "mika", title="Imported conversation", metadata={"origin": "archive", "pinned": True}
+        )
+        source.add_message("user", "archived message", "mika", conversation_id=conversation["id"])
+
+        self.assertEqual(self.persistence.import_messages(source_path), 1)
+        restored = self.persistence.get_conversation(conversation["id"])
+        self.assertEqual(restored["title"], "Imported conversation")
+        self.assertEqual(restored["metadata"], {"origin": "archive", "pinned": True})
+        self.assertEqual(
+            self.persistence.recent_messages(10, "mika", conversation["id"]),
+            [{"role": "user", "content": "archived message"}],
+        )
+        self.assertEqual(self.persistence.import_messages(source_path), 0)
+
+    def test_stream_message_id_cannot_be_reused_by_another_character(self):
+        kira = self.persistence.get_or_create_conversation("kira")
+        ren = self.persistence.get_or_create_conversation("ren")
+        self.persistence.update_stream_message(
+            9200, "Kira partial", character_id="kira", conversation_id=kira["id"]
+        )
+        with self.assertRaisesRegex(PersistenceError, "متعلق به"):
+            self.persistence.update_stream_message(
+                9200, "Ren overwrite", character_id="ren", conversation_id=ren["id"]
+            )
+        rows = self.persistence.get_messages(character_id="kira", conversation_id=kira["id"])
+        self.assertEqual([row["content"] for row in rows], ["Kira partial"])
+        self.assertEqual(self.persistence.message_count("ren"), 0)
+
     def test_deleting_conversation_does_not_touch_another_persona(self):
         ren = self.persistence.get_or_create_conversation("ren")
         mika = self.persistence.get_or_create_conversation("mika")
@@ -141,6 +174,19 @@ class SqliteChatRepositoryTests(unittest.TestCase):
         self.assertEqual(self.persistence.delete_conversation(ren["id"]), 1)
         self.assertEqual(self.persistence.message_count("ren"), 0)
         self.assertEqual(self.persistence.recent_messages(10, "mika"), [{"role": "user", "content": "mika"}])
+
+    def test_database_outage_keeps_pending_write_on_the_existing_active_conversation(self):
+        from unittest import mock
+
+        conversation = self.persistence.get_or_create_conversation("ren")
+        with mock.patch.object(self.repository, "_db", side_effect=sqlite3.OperationalError("database is locked")):
+            self.assertFalse(self.persistence.add_message("user", "pending", "ren"))
+        self.assertEqual(self.repository.pending_count(), 1)
+        self.assertEqual(self.repository._pending[0][3], conversation["id"])
+
+        self.assertTrue(self.persistence.add_message("assistant", "after recovery", "ren"))
+        rows = self.persistence.get_messages(character_id="ren", conversation_id=conversation["id"])
+        self.assertEqual([row["content"] for row in rows], ["pending", "after recovery"])
 
     def test_concurrent_saves_across_characters_are_not_lost(self):
         failures = []

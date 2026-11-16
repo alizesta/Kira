@@ -105,11 +105,11 @@ Kira is migrating incrementally toward independent UI, application logic, servic
 ## Chat request coordinator extraction (TASK 002)
 
 - `kira.chat.ChatCoordinator` is a Qt-free, per-chat request boundary. It owns the bounded FIFO queue (three pending requests), preserves attachment and voice metadata, dispatches idle requests through an injected callback, and delegates provider-worker construction/stream-signal wiring through `ChatProviderDispatcher`.
-- Each `ChatSession` owns an optional coordinator slot; `MainWindow` composes one coordinator per session and adapts queued requests to the existing chat request pipeline. Vision cancellation, coding-agent interception, message preparation, persistence, web/image search and response presentation remain in the application adapter. Worker creation and provider signal dispatch are routed through `ChatProviderDispatcher`; TASK 004 owns provider-event processing and normalized response lifecycle.
+- Each `ChatSession` owns an optional coordinator slot; `MainWindow` composes one coordinator per session and adapts queued requests to the existing chat request pipeline. Vision cancellation, coding-agent interception, message preparation, web/image search and response presentation remain in the application adapter. Message and conversation persistence is now owned by TASK 005's ChatPersistence service. Worker creation and provider signal dispatch are routed through `ChatProviderDispatcher`; TASK 004 owns provider-event processing and normalized response lifecycle.
 - The application adapter pins each drain operation to its originating `ChatSession`. A `dispatch_scheduled` reservation remains part of FIFO ordering: new submissions must queue behind it, and a dequeued request is dispatched directly rather than re-entering admission. Removed sessions remain alive while a worker, search, Vision operation, queued item or scheduled dispatch is pending; disposal clears the queue and releases the session's coordinator/adapter closure, worker references, router, timer, relay and view. Shutdown clears all pending queues and reservations. The per-request `ProviderResponseRelay` releases itself and its Session reference after a terminal event; completed Vision workers are also deleted when their owning session drains.
 - The coordinator imports no MainWindow, Qt, storage, Session Manager, Memory, Voice, Tools, Web Research or provider implementation. Those capabilities are not reimplemented or duplicated inside it.
 - Unit tests cover immediate dispatch, FIFO ordering, queue bounds, forced deferral, callback failure isolation, per-coordinator queue isolation and the legacy-window delegation boundary. Offscreen GUI regression tests cover two background sessions completing across tab switches, FIFO dispatch after completion, deferred disposal while a worker/request remains active, coordinator/worker/resource release after session removal, and queue clearing on application shutdown.
-- This is an incremental extraction, not completion of the full Chat feature migration: request preparation, search/tool policy, persistence and presentation still remain in the application adapter. Do not describe Chat as fully independent yet.
+- This is an incremental extraction, not completion of the full Chat feature migration: request preparation, search/tool policy and presentation still remain in the application adapter. Persistence is extracted behind the TASK 005 repository/service contract.
 ## Independent model-delegation contract
 
 A feature is ready to be assigned to a separate implementation model only when its boundary is explicit:
@@ -156,3 +156,38 @@ The migration reference is temporary. Its purpose is to preserve working behavio
 - The code and tests have been committed directly to `new-main`; the local working copy was not available in this environment, so no local Python import/compile or unittest command has been executed.
 - GitHub Actions still cannot provide test results: the recent workflow attempt failed both `portable-regression` and `windows-full-suite` before any step ran (`steps=[]`, `logs_url=null`). No test PASS is claimed.
 - Remaining acceptance gate: obtain a real run of the focused and full regression suites, including the offscreen Qt tests and a Windows application smoke test. Until those tests execute successfully, TASK 005 remains implemented but not fully verified.
+
+
+## Chat Session lifecycle and state ownership (TASK 007)
+
+- kira/chat/session_manager.py is the Qt-free owner of runtime Session registration, identity, activation, deactivation, lifecycle transitions, state notifications and graceful disposal. It manages the existing kira.chat_sessions.ChatSession model; no parallel Session record model is introduced.
+- Runtime session_id is a generated, immutable identifier for one in-memory Session lifetime. conversation_id remains the durable identifier owned by ChatPersistence and is resolved through the injected history adapter. The manager copies the reference but never creates, updates, deletes or stores conversation/message data itself.
+- Session states are created, active, idle, closing, closed and failed. A lock serializes transitions and guarantees at most one active Session. Closed identities cannot be reactivated; a closing Session may return to idle only before final resource disposal starts.
+- State changes are published as immutable SessionStateChanged notifications. Observer exceptions are isolated from lifecycle operations. Repeated deactivation and close requests are idempotent.
+- Closing uses graceful drain rather than silently changing the destination of in-flight work: the manager marks the Session closing, rejects activation and new admission, waits for the injected pending-work predicate to clear, invokes the injected disposer, then marks it closed. Existing queued requests continue through their original Session adapter. Closing one Session does not cancel or mutate another Session.
+- Qt resources remain in the legacy composition adapter. MainWindow supplies the pending-work predicate and resource-disposal callback; the SessionManager imports neither Qt nor MainWindow. kira/app/bootstrap.py creates the manager and injects it into MainWindow, while the existing character-keyed registry remains a read-only live compatibility view.
+- Chat persistence reads and writes are pinned to the Session's Persistence-owned conversation_id. The manager owns only runtime status and identity; Persistence remains the sole owner of durable conversations and message history.
+- Pure tests are in tests/test_chat_session_manager.py. They cover identity, state transitions, Kira/Ren/Mika isolation, graceful close with active work, idempotency, disposal retry, event delivery and concurrent activation. Windows and GUI tests are intentionally outside TASK 007's validation scope.
+- The base branch does not yet contain the TASK 006 Chat Application Service implementation. This task therefore wires the manager through the existing bootstrap/application composition boundary; MainWindow remains a compatibility adapter until TASK 006 provides its owning application-service contract. No parallel temporary Chat Application Service is introduced.
+
+### Session lifecycle state diagram
+
+\`\`\`mermaid
+stateDiagram-v2
+    [*] --> created
+    created --> active
+    created --> idle
+    active --> idle
+    idle --> active
+    created --> closing
+    active --> closing
+    idle --> closing
+    closing --> idle: character restored before disposal
+    closing --> closed: work drained and resources released
+    created --> failed
+    active --> failed
+    idle --> failed
+    closing --> failed: disposal error
+    failed --> closing: retry close
+    closed --> [*]
+\`\`\`

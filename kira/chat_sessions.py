@@ -11,6 +11,9 @@ face or overwrites the status of the character you are looking at.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from uuid import uuid4
+
 # name -> default factory. Everything a single request / conversation needs lives here.
 SESSION_FIELDS = {
     "busy": lambda: False,
@@ -45,8 +48,18 @@ SESSION_FIELDS = {
 
 
 class ChatSession:
-    def __init__(self, character_id: str):
+    """Existing per-character runtime model, extended with explicit lifecycle identity."""
+
+    def __init__(self, character_id: str, *, session_id: str | None = None):
         self.cid = str(character_id)
+        self.character_id = self.cid
+        self.session_id = str(session_id or uuid4())
+        self.conversation_id = None  # Stable durable ID supplied by ChatPersistence
+        self.status = "created"
+        self.created_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        self.updated_at = self.created_at
+        self.metadata = {}
+        self.last_error = None
         for name, factory in SESSION_FIELDS.items():
             setattr(self, name, factory())
         self.view = None            # QTextBrowser of this chat

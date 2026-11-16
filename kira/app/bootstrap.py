@@ -18,6 +18,8 @@ def run_application() -> None:
     from .module_manager import ModuleManager, ModuleState
     from ..oldmain import MainWindow
     from ..services import CharacterProfileService, PersonaMemoryService, MoodStateService, SqliteChatHistoryService
+    from ..chat.session_manager import SessionManager
+    from ..chat_sessions import ChatSession
     from ..modules import ServiceModule
     from ..theme import build_style
     from .. import winfx
@@ -49,12 +51,18 @@ def run_application() -> None:
 
     app = QApplication(sys.argv)
     app.setStyleSheet(build_style(winfx.active_effect(load_settings().get("window_effect"))))
+    chat_history_service = container.resolve("chat_history_service")
+    session_manager = SessionManager(
+        ChatSession,
+        conversation_resolver=chat_history_service.get_or_create_conversation,
+    )
     try:
         window = MainWindow(
             memory_service=container.resolve("memory_service"),
             mood_service=container.resolve("mood_service"),
             character_service=container.resolve("character_service"),
-            chat_history_service=container.resolve("chat_history_service"),
+            chat_history_service=chat_history_service,
+            session_manager=session_manager,
         )
     except Exception:
         module_manager.shutdown()
