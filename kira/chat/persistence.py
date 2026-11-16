@@ -253,30 +253,61 @@ class SqliteChatRepository:
         return self._read_rows_full(path)
 
     @staticmethod
+    def _message_fields(row):
+        """Normalize durable, merged and legacy tuple shapes to one message record."""
+        if len(row) >= 8:
+            message_id, role, body, stamp, cid, conv_id, metadata, status = row[:8]
+        else:
+            message_id = None
+            role, body = row[0], row[1]
+            stamp = row[2] if len(row) > 2 else ""
+            cid = row[3] if len(row) > 3 else None
+            conv_id = row[4] if len(row) > 4 else None
+            metadata = row[5] if len(row) > 5 else "{}"
+            status = row[6] if len(row) > 6 else "complete"
+        cid = _character_id(cid)
+        conv_id = str(conv_id) if conv_id else _legacy_conversation_id(cid)
+        return (
+            int(message_id) if message_id is not None else None,
+            str(role), str(body), str(stamp or ""), cid, conv_id,
+            json.dumps(_json_object(metadata), ensure_ascii=False), str(status or "complete"),
+        )
+
+    @staticmethod
+    def _message_key(row):
+        normalized = SqliteChatRepository._message_fields(row)
+        return normalized[1], normalized[2], normalized[3], normalized[4], normalized[5]
+
+    @staticmethod
     def _merge(*sources):
-        """Stable union by conversation + content + timestamp; source order breaks same-time ties."""
-        seen, output = set(), []
+        """Stable union preserving existing IDs when they do not collide."""
+        seen_keys, used_ids, output = set(), set(), []
         for source_order, rows in enumerate(sources):
-            for index, row in enumerate(rows):
-                if len(row) >= 8:
-                    _, role, body, stamp, cid, conv_id, metadata, status = row[:8]
-                else:
-                    role, body = row[0], row[1]
-                    stamp = row[2] if len(row) > 2 else ""
-                    cid = _character_id(row[3] if len(row) > 3 else None)
-                    conv_id = row[4] if len(row) > 4 and row[4] else _legacy_conversation_id(cid)
-                    metadata = row[5] if len(row) > 5 else "{}"
-                    status = row[6] if len(row) > 6 else "complete"
-                # Match the historical importer semantics: metadata/status changes do not
-                # turn an already imported message into a duplicate row.
-                key = (role, body, stamp or "", cid, conv_id)
-                if key in seen:
+            for index, raw_row in enumerate(rows):
+                message_id, role, body, stamp, cid, conv_id, metadata, status = (
+                    SqliteChatRepository._message_fields(raw_row)
+                )
+                key = (role, body, stamp, cid, conv_id)
+                if key in seen_keys:
                     continue
-                seen.add(key)
-                output.append((stamp or "", source_order, index, role, body, cid, conv_id, metadata or "{}", status or "complete"))
+                seen_keys.add(key)
+                if message_id is not None and message_id in used_ids:
+                    message_id = None
+                if message_id is not None:
+                    used_ids.add(message_id)
+                output.append((
+                    stamp, source_order, index, message_id, role, body, cid,
+                    conv_id, metadata, status,
+                ))
         output.sort(key=lambda item: (item[0], item[1], item[2]))
-        return [(role, body, stamp, cid, conv_id, metadata, status)
-                for stamp, _, _, role, body, cid, conv_id, metadata, status in output]
+        next_id = max(used_ids, default=0) + 1
+        merged = []
+        for stamp, _, _, message_id, role, body, cid, conv_id, metadata, status in output:
+            if message_id is None:
+                message_id = next_id
+                next_id += 1
+            merged.append((message_id, role, body, stamp, cid, conv_id, metadata, status))
+        return merged
 
     def _ensure_conversation_row(self, con, conversation_id: str, character_id: str, created_at=None):
         stamp = created_at or _now()
@@ -328,6 +359,7 @@ class SqliteChatRepository:
             con.execute("ALTER TABLE messages ADD COLUMN created_at TIMESTAMP")
         con.execute("CREATE INDEX IF NOT EXISTS messages_character_order ON messages(character_id, id)")
         con.execute("CREATE INDEX IF NOT EXISTS messages_conversation_order ON messages(conversation_id, id)")
+        con.execute("CREATE INDEX IF NOT EXISTS messages_timestamp_order ON messages(created_at, id)")
         con.execute("CREATE INDEX IF NOT EXISTS conversations_character_updated ON conversations(character_id, updated_at)")
         chars = [row[0] for row in con.execute(
             "SELECT DISTINCT COALESCE(NULLIF(LOWER(character_id), ''), 'kira') FROM messages"
@@ -371,24 +403,26 @@ class SqliteChatRepository:
         self._create_schema(con)
 
     def _write_all(self, rows):
+        """Transactional recovery rewrite that preserves non-conflicting message IDs."""
         with self._db() as con:
-            self._create_schema(con)
+            self._migrate_schema(con)
             con.execute("DELETE FROM messages")
-            for row in rows:
-                if len(row) >= 7:
-                    role, body, stamp, cid, conv_id, metadata, status = row[:7]
-                else:
-                    role, body, stamp = row[0], row[1], row[2] if len(row) > 2 else ""
-                    cid = _character_id(row[3] if len(row) > 3 else None)
-                    conv_id = _legacy_conversation_id(cid)
-                    metadata = "{}"
-                    status = "complete"
+            for raw_row in rows:
+                message_id, role, body, stamp, cid, conv_id, metadata, status = self._message_fields(raw_row)
                 self._ensure_conversation_row(con, conv_id, cid, stamp or None)
-                con.execute(
-                    "INSERT INTO messages(role, content, created_at, character_id, conversation_id, metadata, status) "
-                    "VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?)",
-                    (role, body, stamp or "", _character_id(cid), conv_id, metadata or "{}", status or "complete"),
-                )
+                fields = (role, body, stamp or "", cid, conv_id, metadata or "{}", status or "complete")
+                if message_id is None:
+                    con.execute(
+                        "INSERT INTO messages(role, content, created_at, character_id, conversation_id, metadata, status) "
+                        "VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?)",
+                        fields,
+                    )
+                else:
+                    con.execute(
+                        "INSERT INTO messages(id, role, content, created_at, character_id, conversation_id, metadata, status) "
+                        "VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?)",
+                        (message_id, *fields),
+                    )
 
     def _backup_dirs(self):
         root = self.db_path.parent / "backups"
@@ -711,7 +745,7 @@ class SqliteChatRepository:
                         where.append("conversation_id=?"); args.append(str(conversation_id))
                     clause = " WHERE " + " AND ".join(where) if where else ""
                     rows = con.execute(
-                        f"SELECT role, content FROM messages{clause} ORDER BY id DESC LIMIT ?", (*args, limit)
+                        f"SELECT role, content FROM messages{clause} ORDER BY COALESCE(created_at, '') DESC, id DESC LIMIT ?", (*args, limit)
                     ).fetchall()
                 return [{"role": row[0], "content": row[1]} for row in reversed(rows)]
             except (sqlite3.Error, OSError) as exc:
@@ -733,7 +767,7 @@ class SqliteChatRepository:
                 args.append(max(0, int(limit)))
                 rows = con.execute(
                     "SELECT id, role, content, created_at, character_id, conversation_id, metadata, status "
-                    f"FROM messages WHERE {' AND '.join(where)} ORDER BY id LIMIT ?", args
+                    f"FROM messages WHERE {' AND '.join(where)} ORDER BY COALESCE(created_at, '') ASC, id ASC LIMIT ?", args
                 ).fetchall()
             return [{
                 "id": int(row["id"]), "role": row["role"], "content": row["content"],
@@ -745,10 +779,10 @@ class SqliteChatRepository:
     def message_id_for(self, role, content, character_id=None):
         with self._db() as con:
             if character_id is None:
-                row = con.execute("SELECT id FROM messages WHERE role=? AND content=? ORDER BY id DESC LIMIT 1",
+                row = con.execute("SELECT id FROM messages WHERE role=? AND content=? ORDER BY COALESCE(created_at, '') DESC, id DESC LIMIT 1",
                                   (str(role), str(content))).fetchone()
             else:
-                row = con.execute("SELECT id FROM messages WHERE role=? AND content=? AND character_id=? ORDER BY id DESC LIMIT 1",
+                row = con.execute("SELECT id FROM messages WHERE role=? AND content=? AND character_id=? ORDER BY COALESCE(created_at, '') DESC, id DESC LIMIT 1",
                                   (str(role), str(content), _character_id(character_id))).fetchone()
         return int(row[0]) if row else None
 
@@ -814,6 +848,7 @@ class SqliteChatRepository:
                 self._pending[:] = [row for row in self._pending if row[2] != _character_id(character_id)]
 
     def import_messages(self, source) -> int:
+        """Append only missing messages; never rewrite existing message IDs."""
         source = Path(source)
         if not source.is_file():
             raise PersistenceError("فایل انتخاب‌شده پیدا نشد.")
@@ -823,14 +858,27 @@ class SqliteChatRepository:
             return 0
         with self._lock:
             try:
+                self._flush_pending_locked()
                 current = self._read_rows_full(self.db_path)
-                merged = self._merge(current, incoming)
-                added = len(merged) - len(current)
-                current_conversation_ids = {row["id"] for row in self._read_conversations(self.db_path)}
-                has_new_conversations = any(row["id"] not in current_conversation_ids for row in incoming_conversations)
-                if added <= 0 and not has_new_conversations:
+                seen_keys = {self._message_key(row) for row in current}
+                new_rows = []
+                for index, raw_row in enumerate(incoming):
+                    _, role, body, stamp, cid, conv_id, metadata, status = self._message_fields(raw_row)
+                    key = (role, body, stamp, cid, conv_id)
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    new_rows.append((stamp, index, role, body, cid, conv_id, metadata, status))
+                new_rows.sort(key=lambda row: (row[0], row[1]))
+                current_conversation_ids = {
+                    row["id"] for row in self._read_conversations(self.db_path)
+                }
+                has_new_conversations = any(
+                    row["id"] not in current_conversation_ids for row in incoming_conversations
+                )
+                if not new_rows and not has_new_conversations:
                     return 0
-                if current:
+                if current or current_conversation_ids:
                     self._snapshot("before-import")
                 with self._db() as con:
                     self._migrate_schema(con)
@@ -842,15 +890,15 @@ class SqliteChatRepository:
                              json.dumps(conversation["metadata"], ensure_ascii=False), conversation["status"],
                              conversation["created_at"], conversation["updated_at"]),
                         )
-                    self._ensure_conversation_rows(con, merged)
-                    con.execute("DELETE FROM messages")
-                    con.executemany(
-                        "INSERT INTO messages(role, content, created_at, character_id, conversation_id, metadata, status) "
-                        "VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?)",
-                        merged,
-                    )
-                return added
-            except (sqlite3.Error, OSError) as exc:
+                    for stamp, _, role, body, cid, conv_id, metadata, status in new_rows:
+                        self._ensure_conversation_row(con, conv_id, cid, stamp or None)
+                        con.execute(
+                            "INSERT INTO messages(role, content, created_at, character_id, conversation_id, metadata, status) "
+                            "VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?)",
+                            (role, body, stamp or "", cid, conv_id, metadata, status),
+                        )
+                return len(new_rows)
+            except (sqlite3.Error, OSError, PersistenceError) as exc:
                 raise PersistenceError(f"ورود چت ناموفق بود (چیزی تغییر نکرد): {exc}") from exc
 
     def _ensure_conversation_rows(self, con, rows):
