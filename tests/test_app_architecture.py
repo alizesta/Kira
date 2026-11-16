@@ -69,7 +69,7 @@ class ChatHistoryServiceBoundaryTests(unittest.TestCase):
         expected = [{"role": "user", "content": "hello"}]
         service = SqliteChatHistoryService()
         with patch(
-            "kira.services.chat_history_service.chat_store.recent_messages",
+            "kira.services.chat_history_service.chat_store.chat_persistence.recent_messages",
             return_value=expected,
         ) as recent:
             self.assertEqual(service.recent_messages(8, "mika"), expected)
@@ -85,7 +85,7 @@ class ChatHistoryServiceBoundaryTests(unittest.TestCase):
 
         service = SqliteChatHistoryService()
         with patch(
-            "kira.services.chat_history_service.chat_store.clear_memory",
+            "kira.services.chat_history_service.chat_store.chat_persistence.clear_memory",
             side_effect=ChatStoreError("snapshot unavailable"),
         ):
             with self.assertRaisesRegex(ChatHistoryError, "snapshot unavailable"):
@@ -97,9 +97,8 @@ class ChatHistoryServiceBoundaryTests(unittest.TestCase):
         from kira.services.chat_history_service import SqliteChatHistoryService
 
         service = SqliteChatHistoryService()
-        with patch("kira.services.chat_history_service.chat_store.last_error", None):
-            service.set_last_error("disk unavailable")
-            self.assertEqual(service.last_error, "disk unavailable")
+        service.set_last_error("disk unavailable")
+        self.assertEqual(service.last_error, "disk unavailable")
 
 
 class CharacterServiceBoundaryTests(unittest.TestCase):
