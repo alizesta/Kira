@@ -168,6 +168,48 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
     return bytes(payload)
 
 
+
+
+def install_and_download_qwen_asr(repo_id: str = "Qwen/Qwen3-ASR-0.6B") -> str:
+    """Install the Qwen ASR runtime into Kira's active Python and download its model."""
+    import subprocess
+    import sys
+
+    try:
+        import qwen_asr  # noqa: F401
+    except ImportError:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "5",
+             "--timeout", "60", "qwen-asr"],
+            capture_output=True, text=True, timeout=3600, check=False,
+        )
+        if result.returncode:
+            detail = (result.stderr or result.stdout or "pip install qwen-asr failed")[-3500:]
+            raise RuntimeError(f"نصب موتور Qwen ناموفق بود: {detail}")
+    from huggingface_hub import snapshot_download
+
+    selected = str(repo_id or "Qwen/Qwen3-ASR-0.6B").strip()
+    if "/" not in selected:
+        raise ValueError("شناسه مدل Qwen معتبر نیست.")
+    cache_dir = os.environ.get("HF_HUB_CACHE") or str(Path(_DATA_ROOT) / "huggingface" / "hub")
+    Path(cache_dir).mkdir(parents=True, exist_ok=True)
+    return str(Path(snapshot_download(
+        repo_id=selected, cache_dir=cache_dir, local_files_only=False,
+    )).resolve())
+
+
+
+def download_hf_model(repo_id: str) -> str:
+    """Download a public speech model into Kira's configured Hugging Face cache."""
+    selected = str(repo_id or "").strip()
+    if not selected or "/" not in selected:
+        raise ValueError("شناسه مدل باید به شکل owner/repository باشد.")
+    from huggingface_hub import snapshot_download
+    path = snapshot_download(repo_id=selected)
+    return str(Path(path).resolve())
+
+
+
 def cache_directory() -> str:
     """Return the effective Hugging Face model cache location."""
     return str(Path(os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface"))

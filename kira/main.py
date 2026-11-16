@@ -768,6 +768,26 @@ class MainWindow(QMainWindow):
         self.build_appearance_tab()
         self.build_general_tab()
         self.build_ai_tab()
+        # Voice engines belong on the Voice page; keep Chat models in Connections.
+        voice_page = self.tabs.widget(self.tab_keys.index("tab_voice")) if hasattr(self, "tab_keys") else self.tabs.widget(2)
+        voice_layout = voice_page.widget().layout()
+        if hasattr(self, "local_voice_box"):
+            voice_layout.insertWidget(max(0, voice_layout.count() - 1), self.local_voice_box)
+        if hasattr(self, "cloud_model_tabs"):
+            self.voice_cloud_model_tabs = QTabWidget()
+            for model_kind in ("stt", "tts"):
+                model_index = next((i for i in range(self.cloud_model_tabs.count())
+                                    if self.cloud_model_tabs.tabText(i).lower() == model_kind), -1)
+                if model_index >= 0:
+                    model_page = self.cloud_model_tabs.widget(model_index)
+                    model_title = self.cloud_model_tabs.tabText(model_index)
+                    self.cloud_model_tabs.removeTab(model_index)
+                    self.voice_cloud_model_tabs.addTab(model_page, model_title)
+            if self.voice_cloud_model_tabs.count():
+                cloud_voice_box, cloud_voice_form = self.group("مدل‌های صوتی Cloud")
+                cloud_voice_form.addRow(self.voice_cloud_model_tabs)
+                voice_layout.insertWidget(max(0, voice_layout.count() - 1), cloud_voice_box)
+        self.refresh_local_voice_status()
         self.save_btn = QPushButton()
         self.save_btn.setObjectName("save")
         self.save_btn.setIcon(make_icon("check", normal="#ffffff", hover="#ffffff"))
@@ -1817,6 +1837,14 @@ class MainWindow(QMainWindow):
         self.whisper.addItems(["base", "small", "medium", "large-v3-turbo", "large-v3", "parseh/whisper-fa-accuracy-ct2"])
         self.whisper.setCurrentText(s["whisper_model"])
         self.reg(self.whisper.setToolTip, "whisper_tip")
+        whisper_model_actions = QHBoxLayout()
+        self.whisper_browse_btn = QPushButton("انتخاب پوشه مدل")
+        self.whisper_browse_btn.clicked.connect(self.choose_local_whisper_folder)
+        self.whisper_download_btn = QPushButton("دانلود مدل STT انتخاب‌شده")
+        self.whisper_download_btn.clicked.connect(self.download_local_whisper_model)
+        whisper_model_actions.addWidget(self.whisper_browse_btn)
+        whisper_model_actions.addWidget(self.whisper_download_btn)
+        f2.addRow(whisper_model_actions)
         fixes_btn = QPushButton()
         self.reg(fixes_btn.setText, "open_fixes")
         fixes_btn.clicked.connect(self.open_speech_fixes)
@@ -1862,6 +1890,95 @@ class MainWindow(QMainWindow):
         self.settings["local_voice_asr_model"] = folder
         self.save_now()
         self.refresh_local_voice_status()
+
+    def download_local_qwen_model(self):
+        model_id = str(self.local_asr_path_edit.text() or "").strip() or "Qwen/Qwen3-ASR-0.6B"
+        if Path(model_id).expanduser().is_dir():
+            self.local_voice_status.setText("این مدل از قبل روی سیستم وجود دارد.")
+            self.refresh_local_voice_status()
+            return
+        if "/" not in model_id:
+            self.local_voice_status.setText("شناسه مخزن Hugging Face را به شکل owner/repository وارد کن.")
+            return
+        self.local_voice_status.setText("در حال آماده‌سازی موتور Qwen و دانلود مدل از Hugging Face؛ ممکن است چند گیگابایت باشد…")
+        from . import local_voice
+        self._run_local_voice_task(lambda: local_voice.install_and_download_qwen_asr(model_id),
+                                   self.local_asr_download_btn, self._on_local_qwen_downloaded)
+
+    def _on_local_qwen_downloaded(self, result):
+        ok, value = result
+        if not ok:
+            self.local_voice_status.setText(f"دانلود مدل Qwen ناموفق بود: {value}")
+            return
+        model_id = str(self.local_asr_path_edit.text() or "").strip() or "Qwen/Qwen3-ASR-0.6B"
+        self.settings["local_voice_asr_model"] = model_id
+        self.local_asr_path_edit.setText(model_id)
+        self.save_now()
+        self.refresh_local_voice_status()
+        self.local_voice_status.setText(f"موتور Qwen نصب شد و مدل دانلود شد: {value}")
+
+    def choose_local_whisper_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "پوشه مدل Whisper را انتخاب کن", str(Path.home()))
+        if not folder:
+            return
+        self.whisper.setCurrentText(folder)
+        self.settings["whisper_model"] = folder
+        self.save_now()
+        self.local_voice_status.setText(f"مدل Whisper از سیستم انتخاب شد: {folder}")
+
+    def download_local_whisper_model(self):
+        value = str(self.whisper.currentText() or "").strip()
+        if Path(value).expanduser().is_dir():
+            self.local_voice_status.setText("این مدل Whisper از قبل روی سیستم وجود دارد.")
+            return
+        aliases = {
+            "tiny": "Systran/faster-whisper-tiny",
+            "base": "Systran/faster-whisper-base",
+            "small": "Systran/faster-whisper-small",
+            "medium": "Systran/faster-whisper-medium",
+            "large-v3": "Systran/faster-whisper-large-v3",
+            "large-v3-turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
+        }
+        repo_id = aliases.get(value, value)
+        if "/" not in repo_id:
+            self.local_voice_status.setText("برای دانلود، یک شناسه Hugging Face معتبر انتخاب کن.")
+            return
+        from . import local_voice
+        self._run_local_voice_task(lambda: local_voice.download_hf_model(repo_id),
+                                   self.whisper_download_btn, self._on_whisper_downloaded)
+
+    def _on_whisper_downloaded(self, result):
+        ok, value = result
+        if not ok:
+            self.local_voice_status.setText(f"دانلود مدل STT ناموفق بود: {value}")
+            return
+        self.settings["whisper_model"] = str(value)
+        self.whisper.setCurrentText(str(value))
+        self.save_now()
+        self.local_voice_status.setText(f"مدل STT دانلود شد و انتخاب شد: {value}")
+
+    def download_local_tts_model(self):
+        repo_id = str(self.local_tts_model_path.text() or "").strip()
+        if "/" not in repo_id or "\\" in repo_id:
+            self.local_voice_status.setText("شناسه مخزن Piper در Hugging Face را در کادر مدل TTS وارد کن.")
+            return
+        from . import local_voice
+        self._run_local_voice_task(lambda: local_voice.download_hf_model(repo_id),
+                                   self.local_tts_download_btn, self._on_local_tts_downloaded)
+
+    def _on_local_tts_downloaded(self, result):
+        ok, value = result
+        if not ok:
+            self.local_voice_status.setText(f"دانلود مدل TTS ناموفق بود: {value}")
+            return
+        try:
+            candidates = sorted(Path(value).rglob("*.onnx"))
+            if not candidates:
+                raise RuntimeError("در مخزن دانلودشده فایل Piper ONNX پیدا نشد.")
+            self._install_piper_voice(candidates[0])
+            self.local_voice_status.setText(f"مدل TTS دانلود و نصب شد: {candidates[0].name}")
+        except Exception as exc:
+            self.local_voice_status.setText(f"نصب مدل TTS ناموفق بود: {type(exc).__name__}: {exc}")
 
     def apply_local_whisper_model(self):
         value = self.local_whisper_path.text().strip() or "small"
@@ -3062,9 +3179,14 @@ class MainWindow(QMainWindow):
         self.local_asr_browse_btn.clicked.connect(self.choose_local_asr_folder)
         asr_path_row.addWidget(self.local_asr_browse_btn)
         local_stt_layout.addLayout(asr_path_row)
-        self.local_asr_load_btn = QPushButton("بارگذاری Qwen")
+        asr_actions = QHBoxLayout()
+        self.local_asr_download_btn = QPushButton("نصب Qwen + دانلود مدل")
+        self.local_asr_download_btn.clicked.connect(self.download_local_qwen_model)
+        self.local_asr_load_btn = QPushButton("بارگذاری مدل")
         self.local_asr_load_btn.clicked.connect(self.load_local_asr)
-        local_stt_layout.addWidget(self.local_asr_load_btn)
+        asr_actions.addWidget(self.local_asr_download_btn)
+        asr_actions.addWidget(self.local_asr_load_btn)
+        local_stt_layout.addLayout(asr_actions)
         local_stt_layout.addWidget(QLabel("Whisper محلی"))
         self.local_whisper_path = QLineEdit(str(self.settings.get("whisper_model") or "small"))
         self.local_whisper_path.setLayoutDirection(Qt.LeftToRight)
@@ -3090,13 +3212,16 @@ class MainWindow(QMainWindow):
         local_tts_layout.addWidget(QLabel("مدل‌های دانلودشده‌ی TTS"))
         local_tts_layout.addWidget(self.local_tts_model_list)
         self.local_tts_model_path = QLineEdit(str(self.settings.get("local_voice_tts_model") or ""))
-        self.local_tts_model_path.setPlaceholderText("مسیر Piper ONNX؛ خالی = صدای فارسی پیش‌فرض")
+        self.local_tts_model_path.setPlaceholderText("مسیر فایل Piper ONNX یا شناسه مخزن Hugging Face؛ خالی = صدای پیش‌فرض")
         self.local_tts_model_path.setLayoutDirection(Qt.LeftToRight)
         tts_path_row = QHBoxLayout()
         tts_path_row.addWidget(self.local_tts_model_path, 1)
         self.local_tts_browse_btn = QPushButton("انتخاب ONNX")
         self.local_tts_browse_btn.clicked.connect(self.choose_local_tts_model)
         tts_path_row.addWidget(self.local_tts_browse_btn)
+        self.local_tts_download_btn = QPushButton("دانلود از Hugging Face")
+        self.local_tts_download_btn.clicked.connect(self.download_local_tts_model)
+        tts_path_row.addWidget(self.local_tts_download_btn)
         local_tts_layout.addLayout(tts_path_row)
         self.local_tts_test_btn = QPushButton("تست صدای محلی")
         self.local_tts_test_btn.clicked.connect(self.test_local_tts)
@@ -3108,6 +3233,7 @@ class MainWindow(QMainWindow):
         self.local_voice_status.setObjectName("hint")
         local_form.addRow(self.local_model_tabs)
         local_form.addRow(self.local_voice_status)
+        self.local_voice_box = local_box
         local_status_row = QHBoxLayout()
         local_refresh = QPushButton("بررسی وضعیت موتورهای صوتی")
         local_refresh.clicked.connect(self.refresh_local_voice_status)
