@@ -237,8 +237,10 @@ class SqliteChatRepository:
             self._migrate_schema(con)
             for row in conversations:
                 con.execute(
-                    "INSERT OR IGNORE INTO conversations(id, character_id, title, metadata, status, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO conversations(id, character_id, title, metadata, status, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
+                    "title=excluded.title, metadata=excluded.metadata, status=excluded.status, "
+                    "created_at=excluded.created_at, updated_at=excluded.updated_at",
                     (row["id"], row["character_id"], row["title"],
                      json.dumps(_json_object(row.get("metadata")), ensure_ascii=False),
                      row["status"], row["created_at"], row["updated_at"]),
@@ -615,6 +617,8 @@ class SqliteChatRepository:
                               conversation_id=None, metadata=None, status="streaming") -> bool:
         """Persist a stream snapshot under one stable message id (no duplicate rows per chunk)."""
         cid = _character_id(character_id)
+        if status not in ("streaming", "complete", "interrupted", "failed", "cancelled"):
+            raise ValueError("invalid message status")
         if conversation_id is None:
             conversation_id = self.get_or_create_conversation(cid)["id"]
         meta_json = json.dumps(_json_object(metadata), ensure_ascii=False, separators=(",", ":"))
@@ -771,7 +775,9 @@ class SqliteChatRepository:
                 current = self._read_rows_full(self.db_path)
                 merged = self._merge(current, incoming)
                 added = len(merged) - len(current)
-                if added <= 0:
+                current_conversation_ids = {row["id"] for row in self._read_conversations(self.db_path)}
+                has_new_conversations = any(row["id"] not in current_conversation_ids for row in incoming_conversations)
+                if added <= 0 and not has_new_conversations:
                     return 0
                 if current:
                     self._snapshot("before-import")
