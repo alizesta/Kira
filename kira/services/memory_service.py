@@ -28,3 +28,36 @@ class PersonaMemoryService:
     def forget_all(self, character_id: str) -> None:
         with persona_memory.character_scope(character_id):
             persona_memory.forget_all()
+
+    def forget_conversation(self, character_id: str) -> None:
+        with persona_memory.character_scope(character_id):
+            persona_memory.forget_conversation()
+
+    def observe(self, character_id: str, role: str, content: str) -> None:
+        with persona_memory.character_scope(character_id):
+            persona_memory.observe(role, content)
+
+    def build_block(
+        self,
+        character_id: str,
+        older: list[dict[str, Any]] | None = None,
+        *,
+        voice_samples: bool = True,
+        query: str | None = None,
+        budget: int | None = None,
+    ) -> str:
+        with persona_memory.character_scope(character_id):
+            return persona_memory.build_block(
+                older,
+                voice_samples=voice_samples,
+                query=query,
+                budget=budget,
+            )
+
+    def needs_summary(self, character_id: str, total: int, window: int) -> bool:
+        with persona_memory.character_scope(character_id):
+            return persona_memory.needs_summary(total, window)
+
+    def maintain(self, character_id: str, rows: list[dict[str, Any]], window: int) -> bool:
+        with persona_memory.character_scope(character_id):
+            return persona_memory.maintain(rows, window)
