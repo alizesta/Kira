@@ -4192,7 +4192,8 @@ class MainWindow(QMainWindow):
                 return
         request = ChatRequest.create(text, attachments, voice)
         result = self._chat_coordinator().submit(
-            request, busy=self.busy, force_queue=wait_for_vision
+            request, busy=self.busy,
+            force_queue=wait_for_vision or self.cur.dispatch_scheduled,
         )
         if result == SubmissionResult.QUEUED:
             count = self._chat_coordinator().pending_count
