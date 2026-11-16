@@ -46,8 +46,28 @@ class ChatRepository(Protocol):
     def recent_messages(self, limit: int = 12, character_id: str | None = None,
                         conversation_id: str | None = None) -> list[dict[str, str]]: ...
     def message_count(self, character_id: str | None = None, conversation_id: str | None = None) -> int: ...
-    def clear_memory(self, character_id: str | None = None) -> None: ...
-    def restore_last_cleared(self) -> int: ...
+    def clear_memory(self, character_id=None):
+        """Snapshot first, then delete only the requested character's messages."""
+        with self._lock:
+            try:
+                with self._db() as con:
+                    self._migrate_schema(con)
+                    count = int(con.execute("SELECT COUNT(*) FROM messages").fetchone()[0])
+                    if count:
+                        # Keep the write transaction open across backup and delete,
+                        # so a concurrent writer cannot slip a row in after the snapshot.
+                        self._snapshot("cleared")
+                    if character_id is None:
+                        con.execute("DELETE FROM messages")
+                    else:
+                        con.execute("DELETE FROM messages WHERE character_id=?", (_character_id(character_id),))
+            except (sqlite3.Error, OSError, PersistenceError) as exc:
+                raise PersistenceError(f"پاک‌سازی ناموفق بود؛ داده‌ها حذف نشدند یا Snapshot قبلی حفظ شد. ({exc})") from exc
+            if character_id is None:
+                self._pending.clear()
+            else:
+                self._pending[:] = [row for row in self._pending if row[2] != _character_id(character_id)]
+
     def import_messages(self, source: str | Path) -> int: ...
 
 
@@ -572,10 +592,10 @@ class SqliteChatRepository:
                     count = int(con.execute(
                         "SELECT COUNT(*) FROM messages WHERE conversation_id=?", (conv_id,)
                     ).fetchone()[0])
-                if count:
-                    self._snapshot("before-delete-conversation")
-                with self._db() as con:
-                    self._migrate_schema(con)
+                    if count:
+                        # Keep the write transaction open across backup and delete,
+                        # preventing another process from inserting rows between those steps.
+                        self._snapshot("before-delete-conversation")
                     con.execute("DELETE FROM messages WHERE conversation_id=?", (conv_id,))
                     con.execute("DELETE FROM conversations WHERE id=?", (conv_id,))
                 self._pending[:] = [row for row in self._pending if row[3] != conv_id]
