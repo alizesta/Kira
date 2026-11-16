@@ -244,7 +244,7 @@ class CharactersPage(QScrollArea):
         layout.addWidget(subtabs)
         self.setWidget(host)
 
-        self.character_combo.currentIndexChanged.connect(self.character_selected.emit)
+        self.character_combo.currentIndexChanged.connect(lambda index: self.character_selected.emit(index))
         self.retranslate()
 
     def _register(self, setter: Callable[[str], None], key: str) -> None:
