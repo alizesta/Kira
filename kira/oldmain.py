@@ -4641,9 +4641,8 @@ class MainWindow(QMainWindow):
             return
         request = self._chat_coordinator().take_next(busy=self.busy)
         if request is not None:
-            QTimer.singleShot(
-                0, lambda item=request, sess=self.cur: self._dispatch_coordinated_request(sess, item)
-            )
+            args = (request.text, list(request.attachments), request.voice)
+            QTimer.singleShot(0, lambda item=args, sess=self.cur: self._submit_for(sess, item))
 
     def _submit_for(self, session, args):
         if not self._closing and session.cid in self.sessions:
