@@ -95,14 +95,21 @@ def transcribe(audio, sample_rate=16000, language="fa", prompt="", model_name="Q
     load_asr(model_name)
     with _asr_lock:
         lang = {"fa": "Persian", "en": "English", "ar": "Arabic"}.get(language, None)
+        # qwen-asr's public transcribe() API does not accept a prompt
+        # keyword in all released versions. Passing it raises TypeError and
+        # makes Kira silently fall back to another STT engine.
         results = _asr.transcribe(
             audio=(samples, int(sample_rate)),
             language=lang,
-            prompt=(prompt or None),
         )
         if not results:
             return ""
-        return str(getattr(results[0], "text", "") or "").strip()
+        first = results[0]
+        if isinstance(first, dict):
+            text = first.get("text", "")
+        else:
+            text = getattr(first, "text", "")
+        return str(text or "").strip()
 
 
 def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
