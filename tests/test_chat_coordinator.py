@@ -27,7 +27,7 @@ class ChatCoordinatorTests(unittest.TestCase):
         self.assertEqual(coordinator.take_next().text, "second")
         self.assertIsNone(coordinator.take_next())
 
-    def test_enforces_pending_limit_without_dropping_existing_requests(self):
+    def test_new_idle_submission_cannot_bypass_existing_backlog(self):\n        sent = []\n        coordinator = ChatCoordinator(sent.append)\n        coordinator.submit(ChatRequest.create("queued first"), force_queue=True)\n        result = coordinator.submit(ChatRequest.create("queued second"))\n        self.assertEqual(result, SubmissionResult.QUEUED)\n        self.assertEqual(sent, [])\n        self.assertEqual(coordinator.take_next().text, "queued first")\n        self.assertEqual(coordinator.take_next().text, "queued second")\n    def test_enforces_pending_limit_without_dropping_existing_requests(self):
         coordinator = ChatCoordinator(lambda _request: None, max_pending=2)
         coordinator.submit(ChatRequest.create("one"), busy=True)
         coordinator.submit(ChatRequest.create("two"), busy=True)
