@@ -1280,8 +1280,9 @@ class MainWindow(QMainWindow):
         actions = [
             ("copy", "⧉", "#8CF5FF", "#103A52", "#39DFFF", "کپی"),
             ("edit", "✎", "#E0C8FF", "#30214F", "#B18AFF", "ویرایش"),
-            ("speak", "♫", "#FFC0E9", "#4B2044", "#FF83D0", "خواندن"),
         ]
+        if kind == "assistant":
+            actions.append(("speak", "♫", "#FFC0E9", "#4B2044", "#FF83D0", "خواندن"))
         cells = []
         for action, glyph, colour, background, border, tooltip in actions:
             cells.append(
