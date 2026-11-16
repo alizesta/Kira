@@ -31,6 +31,23 @@ class SapiTtsTests(unittest.TestCase):
         Speaker._on_playing(fake, False)
         finished.assert_called_once_with()
 
+    def test_qsound_playing_callback_supports_no_argument_signal(self):
+        started = mock.Mock()
+        finished = mock.Mock()
+        player = SimpleNamespace(isPlaying=mock.Mock(return_value=True))
+        fake = SimpleNamespace(_fx=player, _item_began=False,
+                               _item_started=started, _item_finished=finished)
+
+        Speaker._on_playing(fake)
+        player.isPlaying.assert_called_once_with()
+        started.assert_called_once_with()
+        finished.assert_not_called()
+
+        fake._item_began = True
+        player.isPlaying.return_value = False
+        Speaker._on_playing(fake)
+        finished.assert_called_once_with()
+
     def test_player_cleanup_stops_and_deletes_without_manual_disconnect(self):
         class FakePlayer:
             def __init__(self):
