@@ -637,6 +637,8 @@ class SqliteChatRepository:
             try:
                 with self._db() as con:
                     self._migrate_schema(con)
+                    if not con.in_transaction:
+                        con.execute("BEGIN IMMEDIATE")
                     count = int(con.execute(
                         "SELECT COUNT(*) FROM messages WHERE conversation_id=?", (conv_id,)
                     ).fetchone()[0])
@@ -882,6 +884,8 @@ class SqliteChatRepository:
             try:
                 with self._db() as con:
                     self._migrate_schema(con)
+                    if not con.in_transaction:
+                        con.execute("BEGIN IMMEDIATE")
                     count = int(con.execute("SELECT COUNT(*) FROM messages").fetchone()[0])
                     if count:
                         # The same BEGIN IMMEDIATE transaction stays open through
