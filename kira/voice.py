@@ -376,7 +376,7 @@ class Speaker(QObject):
                 errors.append(f"local-persian-tts: {type(e).__name__}: {e}")
                 if "local-tts-down" not in s.notes:
                     s.notes.add("local-tts-down")
-                    self.cloud_note.emit(f"TTS محلی فارسی ناموفق بود؛ موتور بعدی امتحان می‌شود. ({type(e).__name__})")
+                    self.cloud_note.emit(f"TTS محلی فارسی ناموفق بود؛ موتور بعدی امتحان می‌شود. ({type(e).__name__}: {str(e)[:220]})")
         # Offline Windows voices are tried before any network-backed TTS service.
         if sys.platform == "win32":
             try:
