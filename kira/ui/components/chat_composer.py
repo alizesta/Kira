@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QToolButton,
     QVBoxLayout,
+    QWidget,
 )
 
 
@@ -86,9 +87,7 @@ class ChatComposer(QFrame):
         self.attach_err_row.setContentsMargins(0, 0, 0, 0)
         self.attach_err_row.addWidget(self.attach_err, 1)
         self.attach_err_row.addWidget(self.attach_err_close)
-        self.attach_err_widget = __import__(
-            "PySide6.QtWidgets", fromlist=["QWidget"]
-        ).QWidget()
+        self.attach_err_widget = QWidget()
         self.attach_err_widget.setLayout(self.attach_err_row)
         self.attach_err_widget.hide()
         co.addWidget(self.send_strip)
