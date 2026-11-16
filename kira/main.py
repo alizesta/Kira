@@ -64,7 +64,7 @@ from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
 from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
 from .chat_code_ui import CodeChat
-from .ui.components import ApiAddPanel, McpRegistryPanel, ModelCombo, OllamaProviderPanel, RouteEditor
+from .ui.components import ApiAddPanel, ChatHeader, McpRegistryPanel, ModelCombo, OllamaProviderPanel, RouteEditor
 from .ui.dialogs import MemoryDialog, ModelPickerDialog
 from .ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
 from .ui.workers import (
@@ -1056,38 +1056,13 @@ class MainWindow(QMainWindow):
         cv = QVBoxLayout(chat_card)
         cv.setContentsMargins(12, 8, 12, 10)
         cv.setSpacing(6)
-        header = QHBoxLayout()
-        header.setSpacing(6)
-        self.title = QLabel("Project Kira")
-        self.title.setObjectName("title")
-        header.addWidget(self.title)
-        header.addStretch(1)
-        self.mood_emotion_icon = QLabel()
-        self.mood_emotion_icon.setObjectName("moodEmotionIcon")
-        self.mood_emotion_icon.setAlignment(Qt.AlignCenter)
-        self.mood_emotion_icon.setFixedSize(38, 38)
-        self.mood_emotion_icon.setToolTip("احساس فعلی شخصیت فعال")
-        self.mood_emotion_icon.setStyleSheet(
-            "QLabel#moodEmotionIcon { background: rgba(12, 20, 43, 0.96); "
-            "border: 1px solid rgba(105, 229, 255, 0.85); border-radius: 11px; padding: 2px; }"
-        )
-        header.addWidget(self.mood_emotion_icon)
-        self.mood_indicator = QLabel()
-        self.mood_indicator.setObjectName("moodIndicator")
-        self.mood_indicator.setAlignment(Qt.AlignCenter)
-        self.mood_indicator.hide()
-        self.mood_indicator.setFixedSize(32, 32)
-        self.mood_indicator.setToolTip("رفتار و انرژی فعلی شخصیت فعال")
-        self.mood_indicator.setStyleSheet(
-            "QLabel#moodIndicator { background: rgba(20, 24, 62, 0.92); "
-            "border: 1px solid rgba(137, 112, 255, 0.88); border-radius: 11px; "
-            "padding: 4px 7px; font-size: 16px; color: #F2E9FF; }"
-        )
-        header.addWidget(self.mood_indicator)
-        self.companion_btn = self.icon_button("user", True)
+        self.chat_header = ChatHeader(self.icon_button("user", True), parent=chat_card)
+        self.title = self.chat_header.title
+        self.mood_emotion_icon = self.chat_header.mood_emotion_icon
+        self.mood_indicator = self.chat_header.mood_indicator
+        self.companion_btn = self.chat_header.companion_btn
         self.companion_btn.clicked.connect(self.toggle_companion)
-        header.addWidget(self.companion_btn)
-        cv.addLayout(header)
+        cv.addWidget(self.chat_header)
         self.chat_stack = QStackedWidget()                 # one read-only chat view per character (created in make_session_view)
         cv.addWidget(self.chat_stack, 1)
         composer = QFrame()
