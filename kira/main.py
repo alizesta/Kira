@@ -45,7 +45,6 @@ from . import modes
 from .speech_fixes import SpeechFixes
 from .strings import STR
 from .personality import build_system_prompt
-from . import persona_memory
 from . import evidence_memory
 from . import brain
 from . import usage
@@ -5018,15 +5017,20 @@ class MainWindow(QMainWindow):
             older = self.chat_history_service.recent_messages(window + 40, self.cur.cid)[:-window] if window else []
             # Every character has its own saved conversation; only Kira owns the legacy evidence index.
             character_id = self.cur.cid
-            with persona_memory.character_scope(character_id):
-                memory_block = persona_memory.build_block(
-                    older, voice_samples=(mode is None or mode.name == modes.CHAT),
-                    query=evidence_memory.query_from_context(context) if character_id == "kira" else None,
-                    budget=evidence_memory.budget_for(self.settings, self.client),
+            memory_block = self.memory_service.build_block(
+                character_id,
+                older,
+                voice_samples=(mode is None or mode.name == modes.CHAT),
+                query=evidence_memory.query_from_context(context) if character_id == "kira" else None,
+                budget=evidence_memory.budget_for(self.settings, self.client),
+            )
+            total = self.chat_history_service.message_count(character_id)
+            if self.memory_service.needs_summary(character_id, total, window):
+                self.memory_service.maintain(
+                    character_id,
+                    self.chat_history_service.recent_messages(min(total, 3000), character_id),
+                    window,
                 )
-                total = self.chat_history_service.message_count(character_id)
-                if persona_memory.needs_summary(total, window):
-                    persona_memory.maintain(self.chat_history_service.recent_messages(min(total, 3000), character_id), window)
         except Exception:                                         # noqa: BLE001 - memory is a bonus, never block a reply
             memory_block = ""
         try:                                                      # her persisted mood + how he seems right now (same text for every provider)
@@ -5437,8 +5441,7 @@ class MainWindow(QMainWindow):
         except Exception as exc:                                  # noqa: BLE001
             ok = False
             self.chat_history_service.set_last_error(f"{type(exc).__name__}: {exc}")
-        with persona_memory.character_scope(self.cur.cid):
-            persona_memory.observe(role, content)
+        self.memory_service.observe(self.cur.cid, role, content)
         try:
             self._sync_mood_character()
             if role == "user":
@@ -5836,8 +5839,7 @@ class MainWindow(QMainWindow):
             try:
                 self.chat_history_service.clear_memory(self.cur.cid)      # only THIS character's conversation; saves a snapshot first, nothing is deleted if that fails
                 # Facts, moments and habits remain in the character's own memory file.
-                with persona_memory.character_scope(self.cur.cid):
-                    persona_memory.forget_conversation()
+                self.memory_service.forget_conversation(self.cur.cid)
                 self.tool_agent.clear_tasks()   # the unfinished task (its goal is the user's own words) goes with the chat
                 brain.reset_state()
             except ChatHistoryError as exc:
