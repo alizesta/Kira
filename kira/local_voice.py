@@ -54,6 +54,31 @@ def tts_ready(model_path="") -> bool:
         return False
 
 
+def _sanitize_asr_generation_config(asr) -> None:
+    """Remove inactive sampling flags and set explicit padding for greedy Qwen ASR."""
+    model = getattr(asr, "model", None)
+    generation = getattr(model, "generation_config", None)
+    if generation is None:
+        return
+    # Qwen3-ASR checkpoints ship temperature=1e-6 while do_sample=False.
+    # Transformers warns on every generate() call because temperature is unused.
+    if getattr(generation, "do_sample", False) is False and hasattr(generation, "temperature"):
+        generation.temperature = None
+    # Avoid repeatedly inferring pad_token_id from eos_token_id on every decode.
+    if getattr(generation, "pad_token_id", None) is None:
+        processor = getattr(asr, "processor", None)
+        tokenizer = getattr(processor, "tokenizer", None)
+        pad_id = getattr(tokenizer, "pad_token_id", None)
+        if pad_id is None:
+            config = getattr(model, "config", None)
+            pad_id = getattr(config, "pad_token_id", None)
+        if pad_id is None:
+            eos_id = getattr(generation, "eos_token_id", None)
+            pad_id = eos_id[0] if isinstance(eos_id, (list, tuple)) and eos_id else eos_id
+        if pad_id is not None:
+            generation.pad_token_id = int(pad_id)
+
+
 def load_asr(model_name="Qwen/Qwen3-ASR-0.6B"):
     """Load the selected Qwen3-ASR model; a changed model id/path replaces the previous instance."""
     global _asr, _asr_error, _asr_model_name
@@ -76,6 +101,7 @@ def load_asr(model_name="Qwen/Qwen3-ASR-0.6B"):
                 max_inference_batch_size=1,
                 max_new_tokens=256,
             )
+            _sanitize_asr_generation_config(_asr)
             _asr_model_name = selected
             _asr_error = None
         except Exception as exc:

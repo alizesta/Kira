@@ -127,6 +127,7 @@ class Speaker(QObject):
         # "AUDCLNT_E_DEVICE_INVALIDATED". Keeping a QMediaDevices alive lets Qt notice the change; each new
         # sentence is then bound to the CURRENT default output instead of a stale one.
         self._devices = None            # created lazily on first playback (needs a working audio backend)
+        self._prefer_default_output = False  # do not reuse a stale endpoint after Windows invalidates it
         self._stream_dead = False       # a live reply was stopped (barge-in / stop / device change): its rest is NOT spoken
 
     def _watch_devices(self):
@@ -140,7 +141,7 @@ class Speaker(QObject):
     def _default_output(self):
         """The speaker Kira uses: the one chosen in the settings (if it is still connected), otherwise the Windows default."""
         try:
-            wanted = str(self.settings.get("output_device") or "").strip()
+            wanted = "" if self._prefer_default_output else str(self.settings.get("output_device") or "").strip()
             if wanted:
                 for dev in QMediaDevices.audioOutputs():
                     if dev.description() == wanted:
@@ -151,15 +152,18 @@ class Speaker(QObject):
             return None
 
     def _on_devices_changed(self):
+        # Windows may invalidate an endpoint without removing its friendly name.
+        # Prefer the system default after a device-change notification.
+        self._prefer_default_output = True
         if self._fx is not None:
-            self.error.emit("دستگاه خروجی صدا تغییر کرد؛ پخش فعلی متوقف شد. پیام بعدی با دستگاه فعلی دوباره امتحان می‌شود.")
+            self.error.emit("دستگاه خروجی صدا تغییر کرد؛ پخش فعلی متوقف شد و از خروجی پیش‌فرض ویندوز استفاده می‌شود.")
         self.stop()
 
     def _on_sound_status(self):
         fx = self._fx
         if fx is not None and hasattr(fx, "status") and fx.status() == QSoundEffect.Error:
-            self.error.emit("خروجی صدا در دسترس نیست (دستگاه صدا عوض شده یا توسط برنامه‌ی دیگری گرفته شده). "
-                            "پیام بعدی با دستگاه فعلی دوباره امتحان می‌شود؛ اگر ادامه داشت Kira را دوباره اجرا کن.")
+            self._prefer_default_output = True
+            self.error.emit("خروجی صدا نامعتبر شد؛ پخش فعلی متوقف شد و پیام بعدی از خروجی پیش‌فرض ویندوز استفاده می‌کند.")
             self.stop()
 
     # ---- public ----
