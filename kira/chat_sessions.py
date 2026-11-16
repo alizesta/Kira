@@ -15,7 +15,6 @@ from __future__ import annotations
 SESSION_FIELDS = {
     "busy": lambda: False,
     "worker": lambda: None,
-    "_pending": lambda: [],               # messages typed while this character was answering (sent in order afterwards)
     "_stream_text": lambda: "",
     "_stream_pos": lambda: None,
     "_stream_dirty": lambda: False,
