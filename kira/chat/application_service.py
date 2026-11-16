@@ -587,14 +587,29 @@ class ChatApplicationService:
         initializer = getattr(self._persistence, "init_db", None)
         return list(initializer() or []) if callable(initializer) else []
 
-    def recent_messages(self, limit: int = 12, session_id: str | None = None):
-        return self._persistence.recent_messages(limit, session_id)
+    def get_or_create_conversation(self, session_id: str) -> dict[str, Any]:
+        """Resolve the durable conversation owned by one character session."""
+        owner = str(session_id or "").strip()
+        if not owner:
+            raise ValueError("session_id must not be empty")
+        return self._persistence.get_or_create_conversation(owner)
 
-    def conversation_context(self, limit: int = 12, max_chars: int = 12000, session_id: str | None = None):
-        return self._persistence.conversation_context(limit, max_chars, session_id)
+    def recent_messages(
+        self, limit: int = 12, session_id: str | None = None,
+        conversation_id: str | None = None,
+    ):
+        return self._persistence.recent_messages(limit, session_id, conversation_id)
 
-    def message_count(self, session_id: str | None = None) -> int:
-        return self._persistence.message_count(session_id)
+    def conversation_context(
+        self, limit: int = 12, max_chars: int = 12000,
+        session_id: str | None = None, conversation_id: str | None = None,
+    ):
+        return self._persistence.conversation_context(limit, max_chars, session_id, conversation_id)
+
+    def message_count(
+        self, session_id: str | None = None, conversation_id: str | None = None
+    ) -> int:
+        return self._persistence.message_count(session_id, conversation_id)
 
     def clear_history(self, session_id: str | None = None) -> Any:
         return self._persistence.clear_memory(session_id)
