@@ -3180,7 +3180,7 @@ class MainWindow(QMainWindow):
         asr_path_row.addWidget(self.local_asr_browse_btn)
         local_stt_layout.addLayout(asr_path_row)
         asr_actions = QHBoxLayout()
-        self.local_asr_download_btn = QPushButton("دانلود مدل STT")
+        self.local_asr_download_btn = QPushButton("نصب Qwen + دانلود مدل")
         self.local_asr_download_btn.clicked.connect(self.download_local_qwen_model)
         self.local_asr_load_btn = QPushButton("بارگذاری مدل")
         self.local_asr_load_btn.clicked.connect(self.load_local_asr)
