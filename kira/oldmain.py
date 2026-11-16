@@ -66,9 +66,7 @@ from .ui_widgets import ChatInput, RouteChip, AttachmentTile
 from .theme import build_style, STYLE
 from . import theme as theme_mod
 from .chat_sessions import ChatSession, NOOP, SESSION_FIELDS, session_property, front_only_property
-from .chat.coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
-from .chat.context_builder import ContextBuilder, ContextRequest
-from .chat.response_handler import ProviderEvent, ResponseHandler, ResponseEventKind, ResponseStatus
+from .chat.application_service import ChatApplicationService, ApplicationEventKind, RequestStatus
 from . import winfx
 from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
@@ -161,79 +159,6 @@ class SessionRelay(QObject):
         self._run("_send_next_pending")
 
 
-class ProviderResponseRelay(QObject):
-    """Binds provider callbacks to one immutable request/session identity."""
-
-    def __init__(self, window, session, request_id):
-        super().__init__(window)
-        self.w, self.s, self.request_id = window, session, str(request_id)
-
-    def _release(self):
-        if getattr(self.s, "response_relay", None) is self:
-            self.s.response_relay = None
-        self.deleteLater()
-
-    def _deliver(self, event):
-        # The session and request IDs are captured when the worker is created;
-        # a late signal can never be attributed to a newer request on this tab.
-        with self.w._as(self.s):
-            normalized = self.w.response_handler.handle(event)
-            if normalized is None:
-                return
-            if normalized.kind is ResponseEventKind.CHUNK:
-                self.w.on_stream_chunk(normalized.chunk, normalized.content)
-                return
-
-            result = normalized.result
-            if result is None:
-                return
-            self.w._stream_text = result.content
-            if result.status is ResponseStatus.FAILED:
-                try:
-                    if result.metadata.get("interrupted"):
-                        response = dict(result.metadata)
-                        response.update({
-                            "text": result.content,
-                            "interrupted": result.error.message if result.error else "Provider stream interrupted",
-                            "response_status": result.status.value,
-                            "request_id": result.request_id,
-                            "session_id": result.session_id,
-                        })
-                        self.w.on_stream_done(response)
-                    else:
-                        message = result.error.message if result.error else "Provider request failed"
-                        self.w.on_error(message)
-                finally:
-                    self._release()
-                return
-
-            response = dict(result.metadata)
-            response.update({
-                "text": result.content,
-                "response_status": result.status.value,
-                "request_id": result.request_id,
-                "session_id": result.session_id,
-            })
-            if result.status is ResponseStatus.CANCELLED:
-                response.setdefault("stopped", True)
-            try:
-                self.w.on_stream_done(response)
-            finally:
-                self._release()
-
-    @Slot(str)
-    def chunk(self, piece):
-        self._deliver(ProviderEvent.chunk(self.request_id, self.s.cid, piece))
-
-    @Slot(dict)
-    def complete(self, response):
-        self._deliver(ProviderEvent.completed(self.request_id, self.s.cid, response))
-
-    @Slot(str)
-    def failed(self, error):
-        self._deliver(ProviderEvent.failed(self.request_id, self.s.cid, error))
-
-
 class MainWindow(QMainWindow):
     # Per-chat state: one ChatSession per character; these names read/write the session that is current (see chat_sessions.py).
     busy = session_property("busy")
@@ -303,12 +228,21 @@ class MainWindow(QMainWindow):
             from .services.chat_history_service import SqliteChatHistoryService
             chat_history_service = SqliteChatHistoryService()
         self.chat_history_service = chat_history_service
+        self.chat_application_service = ChatApplicationService(
+            persistence=self.chat_history_service,
+            system_prompt_builder=build_system_prompt,
+            prompt_enricher=lambda value: brain.extend_prompt(value, self._brain, self.settings, self.client),
+            worker_factory=StreamWorker,
+            on_dispatch=self._dispatch_application_request,
+            on_event=self._on_chat_application_event,
+            schedule=lambda callback: QTimer.singleShot(0, callback),
+            cancel_provider=self._cancel_application_provider,
+        )
         self.settings = load_settings()
         self.sessions = {}
-        self.response_handler = ResponseHandler()
         self.cur = self.front = ChatSession(self.character_service.active_id(self.settings))
         self.sessions[self.cur.cid] = self.cur
-        self._db_notes = self.chat_history_service.init_db()
+        self._db_notes = self.chat_application_service.init_history()
         self._save_warned = False
         self._emotion_applied = False
         self._closing = False
@@ -703,9 +637,9 @@ class MainWindow(QMainWindow):
             return False
 
     def _session_has_pending_chat_work(self, session):
-        coordinator = getattr(session, "coordinator", None)
-        if (session.busy or getattr(session, "dispatch_scheduled", False)
-                or (coordinator is not None and coordinator.pending_count > 0)):
+        if (session.busy
+                or self.chat_application_service.has_active_request(session.cid)
+                or self.chat_application_service.has_pending_work(session.cid)):
             return True
         if self._worker_is_running(getattr(session, "worker", None)) or self._worker_is_running(
             getattr(session, "_search_worker", None)
@@ -718,10 +652,7 @@ class MainWindow(QMainWindow):
         """Release an idle, removed character session and all of its owned chat resources."""
         if self._session_has_pending_chat_work(session):
             return False
-        coordinator = getattr(session, "coordinator", None)
-        if coordinator is not None:
-            coordinator.clear()
-        session.coordinator = None  # release the MainWindow-bound dispatch closure with the removed session
+        self.chat_application_service.close_session(session.cid)
         session.dispatch_scheduled = False
         response_relay = getattr(session, "response_relay", None)
         if response_relay is not None:
@@ -4182,20 +4113,62 @@ class MainWindow(QMainWindow):
             self.input.clear()
             self.submit(text, files)
 
-    def _chat_coordinator(self, session=None):
-        session = session or self.cur
-        if session.coordinator is None:
-            session.coordinator = ChatCoordinator(
-                lambda request, target=session: self._dispatch_coordinated_request(target, request),
-                provider_dispatcher=ChatProviderDispatcher(StreamWorker),
-            )
-        return session.coordinator
+    def _cancel_application_provider(self, request, _worker):
+        session = self.sessions.get(request.session_id)
+        if session is not None and session.client is not None:
+            with self._as(session):
+                session.client.cancel()
 
-    def _dispatch_coordinated_request(self, session, request):
-        if self._closing or session.cid not in self.sessions:
+    def _dispatch_application_request(self, request):
+        session = self.sessions.get(request.session_id)
+        if self._closing or session is None:
+            self.chat_application_service.complete_local_request(request.request_id)
             return
         with self._as(session):
+            session.application_request_id = request.request_id
             self._process_chat_request(request.text, list(request.attachments), request.voice)
+
+    def _on_chat_application_event(self, event):
+        session = self.sessions.get(event.session_id)
+        if session is None:
+            return
+        if event.kind is ApplicationEventKind.REQUEST_STARTED:
+            return
+        if getattr(session, "application_request_id", None) != event.request_id:
+            if event.kind is ApplicationEventKind.REQUEST_FAILED and not getattr(session, "application_request_id", None):
+                session.application_request_id = event.request_id
+            else:
+                return
+        with self._as(session):
+            if event.kind is ApplicationEventKind.PROVIDER_CHUNK:
+                self.on_stream_chunk(event.chunk, event.content)
+            elif event.kind is ApplicationEventKind.PROVIDER_FINAL and event.result is not None:
+                result = event.result
+                response = dict(result.metadata)
+                response.update({
+                    "text": result.content,
+                    "response_status": result.status.value,
+                    "request_id": event.request_id,
+                    "session_id": event.session_id,
+                })
+                self.on_stream_done(response)
+            elif event.kind is ApplicationEventKind.REQUEST_CANCELLED:
+                self.on_stream_done({
+                    "text": event.content,
+                    "stopped": True,
+                    "request_id": event.request_id,
+                    "session_id": event.session_id,
+                })
+            elif event.kind is ApplicationEventKind.REQUEST_FAILED:
+                if event.metadata.get("interrupted"):
+                    self.on_stream_done({
+                        "text": event.content,
+                        "interrupted": event.error or "Provider stream interrupted",
+                        "request_id": event.request_id,
+                        "session_id": event.session_id,
+                    })
+                else:
+                    self.on_error(event.error or "Chat request failed")
 
     def submit(self, text, attachments=None, _voice=None):
         if _voice is None:
@@ -4215,13 +4188,14 @@ class MainWindow(QMainWindow):
             if control:
                 self.add_chat("system", control)
                 return
-        request = ChatRequest.create(text, attachments, voice)
-        result = self._chat_coordinator().submit(
-            request, busy=self.busy,
-            force_queue=wait_for_vision or self.cur.dispatch_scheduled,
+        result = self.chat_application_service.submit_message(
+            self.cur.cid, text, attachments, voice,
+            busy=self.busy, force_queue=wait_for_vision,
         )
-        if result == SubmissionResult.QUEUED:
-            count = self._chat_coordinator().pending_count
+        if not result.accepted:
+            return
+        if result.queued:
+            count = self.chat_application_service.pending_count(self.cur.cid)
             if wait_for_vision:
                 self.status.setText(
                     f"پیام در صف است ({count}) — تحلیل Vision متوقف می‌شود و پیام بعد از آن ارسال خواهد شد."
@@ -4238,7 +4212,8 @@ class MainWindow(QMainWindow):
     def _process_chat_request(self, text, attachments=None, _voice=False):
         voice = bool(_voice)
         if not attachments and getattr(self, "code_chat", None) is not None and self.code_chat.handle(text, voice):
-            return                                              # Kira's chat: coding missions / project questions (decided from the wording)
+            self.chat_application_service.complete_local_request(self.cur.application_request_id)
+            return                                              # Coding Agent owns this separate execution lifecycle
         if self._game_mode_enabled and len(attachments or []) < att.MAX_FILES:
             frame = self._game_vision_attachment()
             if frame is not None:
@@ -4525,52 +4500,36 @@ class MainWindow(QMainWindow):
         if self.body_active():                                    # preserve existing 3D body instruction and completed-action note
             body_context = ("" if plain else body_ctl.format_hint()) + body_ctl.done_note(self._body_done)
 
-        context_result = ContextBuilder(
-            build_system_prompt,
-            prompt_enricher=lambda value: brain.extend_prompt(value, self._brain, self.settings, self.client),
-        ).build(ContextRequest(
-            messages=history,
-            character_id=self.cur.cid,
-            character_profile=self.active_character(),
-            settings=self.settings,
-            memory=memory_block,
-            mood=mood_block,
-            character_context=character_layer,
-            format_hint="" if plain else self.director.format_hint(),
-            voice_input=self._turn_voice,
-            mode=mode,
-            body_context=body_context,
-            active_capabilities=tuple(sorted(getattr(self._tool_plan, "categories", ()) or ())),
-            turn_extra=self._turn_extra,
-            max_context_chars=self.settings.get("chat_context_char_limit", 0),
-        ))
-        context = [dict(message) for message in context_result.messages]
-        prompt = context_result.system_prompt
+        context = {
+            "messages": history,
+            "character_id": self.cur.cid,
+            "character_profile": self.active_character(),
+            "settings": self.settings,
+            "memory": memory_block,
+            "mood": mood_block,
+            "character_context": character_layer,
+            "format_hint": "" if plain else self.director.format_hint(),
+            "voice_input": self._turn_voice,
+            "mode": mode,
+            "body_context": body_context,
+            "active_capabilities": tuple(sorted(getattr(self._tool_plan, "categories", ()) or ())),
+            "turn_extra": self._turn_extra,
+            "max_context_chars": self.settings.get("chat_context_char_limit", 0),
+        }
 
         self._stream_begin()
         temperature = modes.temperature_for(mode, self.settings["temperature"]) if mode else self.settings["temperature"]
         relay = self.cur.relay
-        session = self.cur
-        request_id = uuid.uuid4().hex
-        self.response_handler.begin_request(request_id, session.cid)
-        response_relay = ProviderResponseRelay(self, session, request_id)
-        session.response_relay = response_relay
-        try:
-            self.worker = self._chat_coordinator().start_provider_request(
-                router=self.client, messages=context, prompt=prompt, temperature=temperature,
-                retry_index=1 if plain else 0, agent=self.tool_agent, plan=self._tool_plan,
-                role=self._brain.stage, route_id=self._brain.route_id,
-                callbacks={
-                    "tool_event": relay.tool,
-                    "event": relay.stream_event,
-                    "chunk": response_relay.chunk,
-                    "complete": response_relay.complete,
-                    "error": response_relay.failed,
-                },
-            )
-        except Exception as exc:  # A synchronous dispatch failure must also close the registered lifecycle.
-            response_relay.failed(f"{type(exc).__name__}: {exc}")
-            return
+        request_id = self.cur.application_request_id
+        if not request_id:
+            raise RuntimeError("No active Chat application request is associated with this session")
+        self.worker = self.chat_application_service.start_provider_request(
+            request_id, context,
+            provider_callbacks={"tool_event": relay.tool, "event": relay.stream_event},
+            router=self.client, temperature=temperature,
+            retry_index=1 if plain else 0, agent=self.tool_agent, plan=self._tool_plan,
+            role=self._brain.stage, route_id=self._brain.route_id,
+        )
         self.refresh_tab_buttons()
 
     MODE_LABELS = {"chat": "گپ", "task": "کار / کمک", "strict": "فقط جواب"}
@@ -4892,11 +4851,9 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, callback)
 
     def _send_next_pending(self, session=None):
-        """Drain only the queue owned by the session whose request just completed."""
+        """Ask the Chat application service to drain only the completed session's FIFO queue."""
         session = session or self.cur
         if self._closing or self.sessions.get(session.cid) is not session:
-            return
-        if session.dispatch_scheduled:
             return
         if self._vision_session is session and not self._worker_is_running(self._vision_worker):
             worker = self._vision_worker
@@ -4907,26 +4864,10 @@ class MainWindow(QMainWindow):
                     pass
                 self._vision_worker = None
             self._vision_session = None
-        coordinator = self._chat_coordinator(session)
-        request = coordinator.take_next(busy=session.busy)
-        if request is not None:
-            session.dispatch_scheduled = True
-            args = (request.text, list(request.attachments), request.voice)
-            self._schedule_chat_callback(
-                lambda item=args, target=session: self._submit_for(target, item)
-            )
-            return
+        self.chat_application_service.dispatch_next(session.cid, busy=session.busy)
         profiles = self.character_service.all_profiles(self.settings)
         if session.cid not in profiles and not self._session_has_pending_chat_work(session):
             self._schedule_chat_callback(self.sync_sessions)
-
-    def _submit_for(self, session, args):
-        """Dispatch a dequeued item directly; re-entering submit() would reorder the remaining FIFO backlog."""
-        session.dispatch_scheduled = False
-        if self._closing or self.sessions.get(session.cid) is not session:
-            return
-        request = ChatRequest.create(args[0], args[1], args[2])
-        self._dispatch_coordinated_request(session, request)
 
     def finish_request(self, res=None):
         self.clear_upload_tiles()
@@ -5287,10 +5228,8 @@ class MainWindow(QMainWindow):
 
     def _clear_chat_coordinator_queues(self):
         """Drop scheduled/pending messages during application shutdown; workers are cancelled separately."""
+        self.chat_application_service.dispose()
         for session in getattr(self, "sessions", {}).values():
-            coordinator = getattr(session, "coordinator", None)
-            if coordinator is not None:
-                coordinator.clear()
             session.dispatch_scheduled = False
 
     def closeEvent(self, event):
