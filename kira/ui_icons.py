@@ -136,6 +136,53 @@ def _shapes(name):
         bubble = QPainterPath()
         bubble.addRoundedRect(QRectF(3, 4, 18, 13), 4, 4)
         return [(bubble, False), (_poly([(8, 17), (7, 21), (12.5, 17)]), False)]
+    if name == "attachment":
+        path = QPainterPath()
+        path.moveTo(9, 8)
+        path.lineTo(15.5, 3.5)
+        path.cubicTo(21, 1.5, 24, 8, 20, 12)
+        path.lineTo(10, 21)
+        path.cubicTo(5, 25, 0.5, 19, 4.5, 15)
+        path.lineTo(14.5, 5.5)
+        path.cubicTo(17, 3, 20, 6, 17.5, 8.5)
+        path.lineTo(8, 18)
+        return [(path, False)]
+    if name == "globe":
+        ring = QPainterPath()
+        ring.addEllipse(QRectF(3, 3, 18, 18))
+        vertical = QPainterPath()
+        vertical.moveTo(12, 3)
+        vertical.cubicTo(6, 7, 6, 17, 12, 21)
+        vertical.cubicTo(18, 17, 18, 7, 12, 3)
+        horizontal = QPainterPath()
+        horizontal.moveTo(3.5, 12)
+        horizontal.lineTo(20.5, 12)
+        return [(ring, False), (vertical, False), (horizontal, False)]
+    if name == "search":
+        lens = QPainterPath()
+        lens.addEllipse(QRectF(3.5, 3.5, 12, 12))
+        handle = QPainterPath()
+        handle.moveTo(14.5, 14.5)
+        handle.lineTo(21, 21)
+        return [(lens, False), (handle, False)]
+    if name == "gamepad":
+        body = QPainterPath()
+        body.moveTo(6, 8)
+        body.cubicTo(3, 8, 2, 11, 2.5, 15)
+        body.cubicTo(3, 20, 6, 21, 9, 17)
+        body.lineTo(15, 17)
+        body.cubicTo(18, 21, 21, 20, 21.5, 15)
+        body.cubicTo(22, 11, 21, 8, 18, 8)
+        body.closeSubpath()
+        cross = QPainterPath()
+        cross.moveTo(6, 12.5)
+        cross.lineTo(11, 12.5)
+        cross.moveTo(8.5, 10)
+        cross.lineTo(8.5, 15)
+        dots = QPainterPath()
+        dots.addEllipse(QPointF(16, 11), 0.9, 0.9)
+        dots.addEllipse(QPointF(18.5, 14), 0.9, 0.9)
+        return [(body, False), (cross, False), (dots, True)]
     if name == "route":
         nodes = QPainterPath()
         for cx, cy in ((5, 6), (5, 18), (19, 12)):
