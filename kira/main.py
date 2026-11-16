@@ -69,6 +69,7 @@ from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_perm
 from .chat_code_ui import CodeChat
 from .ui.components import ModelCombo
 from .ui.dialogs import MemoryDialog, ModelPickerDialog
+from .ui.pages import HelpPage
 from .ui.workers import (
     AttachWorker,
     BenchWorker,
@@ -421,6 +422,8 @@ class MainWindow(QMainWindow):
         self.update_companion_btn()
         self.update_engine_label()
         self.refresh_tab_buttons()
+        if hasattr(self, "help_page"):
+            self.help_page.retranslate()
         if hasattr(self, "_menu_actions"):
             for action, key in zip(self._menu_actions, self.tab_keys):
                 action.setText(self.t(key))
@@ -2684,47 +2687,15 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.page(subtabs), "")
 
     def build_help_tab(self):
-        """Guide, troubleshooting, changelog and project links (the About metadata stays in Preferences)."""
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(8, 8, 8, 8)
-        update_box, update_form = self.group("g_help_updates")
-        version_label = QLabel(f"{APP_NAME} · {VERSION}")
-        version_label.setObjectName("title")
-        update_form.addRow(version_label)
-        description = QLabel()
-        description.setWordWrap(True)
-        self.reg(description.setText, "help_description")
-        update_form.addRow(description)
-        latest_btn = QPushButton()
-        repo_btn = QPushButton()
-        guide_btn = QPushButton()
-        troubleshoot_btn = QPushButton()
-        changes_btn = QPushButton()
-        data_btn = QPushButton()
-        self.reg(latest_btn.setText, "help_latest")
-        self.reg(repo_btn.setText, "help_repository")
-        self.reg(guide_btn.setText, "help_guide")
-        self.reg(troubleshoot_btn.setText, "help_troubleshooting")
-        self.reg(changes_btn.setText, "help_changes")
-        self.reg(data_btn.setText, "help_data")
-        latest_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(RELEASES_URL)))
-        repo_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(PROJECT_URL)))
-        guide_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(PROJECT_URL + "/blob/main/docs/USAGE_FA.md")))
-        troubleshoot_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(PROJECT_URL + "/blob/main/docs/WINDOWS11_CHECKLIST_FA.md")))
-        changes_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(PROJECT_URL + "/commits/main")))
-        data_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(PROJECT_URL + "/blob/main/docs/CHARACTER_PROFILES_FA.md")))
-        for button in (latest_btn, repo_btn, guide_btn, troubleshoot_btn, changes_btn, data_btn):
-            update_form.addRow(button)
-        about_box, about_form = self.group("g_help_about")
-        about_label = QLabel()
-        about_label.setWordWrap(True)
-        self.reg(about_label.setText, "help_about_text")
-        about_form.addRow(about_label)
-        layout.addWidget(update_box)
-        layout.addWidget(about_box)
-        layout.addStretch(1)
-        return self.page(page)
+        """Build the standalone Help/About page; it owns its content and translations."""
+        self.help_page = HelpPage(
+            self.t,
+            app_name=APP_NAME,
+            version=VERSION,
+            releases_url=RELEASES_URL,
+            project_url=PROJECT_URL,
+        )
+        return self.help_page
 
     def build_mcp_registry_group(self, parent_layout):
         box, form = self.group("افزونه‌ها و ابزارهای MCP")
