@@ -18,7 +18,7 @@ def run_application() -> None:
     from .event_bus import EventBus
     from .module_manager import ModuleManager
     from ..main import MainWindow
-    from ..services import CharacterProfileService, PersonaMemoryService, MoodStateService
+    from ..services import CharacterProfileService, PersonaMemoryService, MoodStateService, SqliteChatHistoryService
     from ..theme import build_style
     from .. import winfx
 
@@ -26,6 +26,7 @@ def run_application() -> None:
     container.register_factory("memory_service", PersonaMemoryService)
     container.register_factory("mood_service", MoodStateService)
     container.register_factory("character_service", CharacterProfileService)
+    container.register_factory("chat_history_service", SqliteChatHistoryService)
     event_bus = EventBus()
     module_manager = ModuleManager(container, event_bus)
 
@@ -35,6 +36,7 @@ def run_application() -> None:
         memory_service=container.resolve("memory_service"),
         mood_service=container.resolve("mood_service"),
         character_service=container.resolve("character_service"),
+        chat_history_service=container.resolve("chat_history_service"),
     )
     # Retain the composition root for the lifetime of the application.
     window._dependency_container = container
