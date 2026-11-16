@@ -82,7 +82,7 @@ def read_rows_full(path):
 
 def _merge(*sources):
     # Preserve the historical private helper's four-field row shape.
-    return [(row[0], row[1], row[2], row[3]) for row in repository._merge(*sources)]
+    return [(row[1], row[2], row[3], row[4]) for row in repository._merge(*sources)]
 
 
 def _write_all(rows):
