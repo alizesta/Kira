@@ -60,6 +60,38 @@ class DependencyContainerTests(unittest.TestCase):
             DependencyContainer().resolve("missing")
 
 
+class CharacterServiceBoundaryTests(unittest.TestCase):
+    def test_profile_service_delegates_active_profile_operations(self):
+        from unittest.mock import patch
+
+        from kira.services.character_service import CharacterProfileService
+
+        settings = {"active_character_id": "ren"}
+        profiles = {"kira": {"id": "kira"}, "ren": {"id": "ren"}}
+        service = CharacterProfileService()
+        with patch(
+            "kira.services.character_service.characters.active_id",
+            return_value="ren",
+        ) as active_id, patch(
+            "kira.services.character_service.characters.all_profiles",
+            return_value=profiles,
+        ) as all_profiles:
+            self.assertEqual(service.active_id(settings), "ren")
+            self.assertEqual(service.all_profiles(settings), profiles)
+
+        active_id.assert_called_once_with(settings)
+        all_profiles.assert_called_once_with(settings)
+
+    def test_profile_service_identifies_builtin_character_ids(self):
+        from kira.services.character_service import CharacterProfileService
+
+        service = CharacterProfileService()
+        self.assertTrue(service.is_builtin("kira"))
+        self.assertTrue(service.is_builtin("mika"))
+        self.assertTrue(service.is_builtin("ren"))
+        self.assertFalse(service.is_builtin("custom-profile"))
+
+
 class ModuleManagerTests(unittest.TestCase):
     class FakeModule:
         def __init__(self, name, events, fail_start=False):
