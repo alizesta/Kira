@@ -12,6 +12,7 @@ from enum import Enum
 from typing import Any, Callable, Mapping, Sequence
 from uuid import uuid4
 
+from ..core.interfaces.chat_history_service import ChatHistoryService
 from .context_builder import ContextBuilder, ContextRequest
 from .coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
 from .response_handler import (
@@ -102,7 +103,7 @@ class ChatApplicationService:
     def __init__(
         self,
         *,
-        persistence: Any,
+        persistence: ChatHistoryService,
         system_prompt_builder: Callable[..., str],
         worker_factory: Callable[..., Any],
         on_dispatch: Callable[[ChatApplicationRequest], Any],
