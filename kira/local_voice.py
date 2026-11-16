@@ -91,7 +91,7 @@ def load_asr(model_name="Qwen/Qwen3-ASR-0.6B"):
             from qwen_asr import Qwen3ASRModel
             try:
                 torch.set_num_threads(max(1, min(8, int(os.environ.get("KIRA_ASR_THREADS", "4")))))
-            except (AttributeError, TypeError, ValueError):
+            except (AttributeError, TypeError, ValueError, RuntimeError):
                 pass
             old_model, _asr = _asr, None
             _asr_model_name = None
