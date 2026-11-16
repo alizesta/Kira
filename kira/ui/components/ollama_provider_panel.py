@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QCheckBox, QFormLayout, QGroupBox, QHBoxLayout, QL
 
 class OllamaProviderPanel(QGroupBox):
     enabled_changed = Signal(bool)
+    cancel_requested = Signal()
     save_requested = Signal()
 
     def __init__(self, settings: dict, parent=None) -> None:
@@ -32,7 +33,7 @@ class OllamaProviderPanel(QGroupBox):
         form.addRow(row)
 
         self.edit_btn.clicked.connect(lambda: self.set_edit_mode(True))
-        self.cancel_btn.clicked.connect(lambda: self.set_edit_mode(False, (settings or {}).get("ollama_url", "http://localhost:11434")))
+        self.cancel_btn.clicked.connect(self.cancel_requested.emit)
         self.save_btn.clicked.connect(self.save_requested.emit)
 
         note = QLabel(
