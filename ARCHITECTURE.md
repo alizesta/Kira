@@ -18,25 +18,25 @@ Kira is migrating incrementally toward independent UI, application logic, servic
 - `kira/app/bootstrap.py` is the composition root. It creates QApplication, applies application style and constructs MainWindow.
 - `kira/app/event_bus.py` provides named in-process notifications. Subscribers can unsubscribe; publishing uses a snapshot so callbacks can safely change subscriptions.
 - `kira/app/dependency_container.py` provides explicit instance/factory registration and lazy singleton resolution.
-- `kira/core/interfaces/voice_service.py` defines the consumer-facing voice contract. The legacy voice implementation is not yet wired through it.
-- `kira/ui/` and `kira/services/` are destinations for staged extraction.
+- `kira/core/interfaces/` now defines Voice, Memory and Mood consumer contracts. The existing voice implementation is not yet wired through its contract.
+- `kira/services/` now contains character-scoped persona-memory and shared mood adapters; their APIs are explicit about character identity and do not import UI code.
 
 ## Verified migration status (2026-11-16)
 
 - The current migration branch is `feat/voice-performance-mcp-discovery`; work remains in PR #28 and is not merged to `main`.
 - The application foundation exists in `kira/app`: bootstrap, EventBus and dependency container. A full module manager and module lifecycle are **not implemented yet**.
-- Consumer contracts currently include the voice service Protocol only. Chat, memory, character, avatar and provider contracts still need to be defined and wired.
+- Consumer contracts now include Voice, Memory and Mood Protocols. MemoryDialog calls only the injected MemoryService and MoodService contracts; concrete adapters wrap the existing stores. Chat, character, avatar and provider contracts still need to be defined and wired.
 - Reusable UI pieces extracted from the legacy window are now in `kira/ui/components/model_combo.py` and `kira/ui/dialogs/{memory,model_picker}.py`. `kira/main.py` imports these public UI types; the old inline definitions have been removed.
 - Qt background adapters (`StreamWorker`, `AttachWorker`, `SearchWorker`, `TaskWorker`, `BenchWorker`, `ProviderTestWorker`, `VisionAnalysisWorker` and `OllamaTaskWorker`) now live in `kira/ui/workers.py`; `main.py` imports them through the UI package rather than defining them.
-- After these extractions, `kira/main.py` is 5,916 lines. `MainWindow` still owns roughly 300 methods spanning Chat, Voice, Characters, Settings, Providers, Memory, Avatar, Vision, Web Research and tray/application behavior. It is **not yet a UI shell**.
-- `kira/ui` currently contains reusable components and dialogs only. `kira/services` has no concrete services yet. A separate `kira/modules` package does not exist; existing packages such as `characters`, `webintel`, `mcp` and `emotion` are capability code, not yet lifecycle-managed modules.
-- The extracted widget, dialog and worker import boundaries have targeted unit coverage. Full Windows CI and a real Windows app launch are still required; this GitHub-only session cannot certify microphone, audio-device, VRM rendering or desktop behavior on the user's machine.
+- After the UI and memory-service extractions, `kira/main.py` is about 5,935 lines. `MainWindow` still owns roughly 300 methods spanning Chat, Voice, Characters, Settings, Providers, Memory, Avatar, Vision, Web Research and tray/application behavior. It is **not yet a UI shell**.
+- `kira/ui` contains reusable components, dialogs and background Qt workers. `kira/services` contains the first concrete Memory and Mood adapters. Normal application startup registers and resolves these through the DependencyContainer and injects them into MainWindow; direct `MainWindow()` construction retains a compatibility fallback for existing callers/tests. A separate `kira/modules` package does not exist; existing packages such as `characters`, `webintel`, `mcp` and `emotion` are capability code, not yet lifecycle-managed modules.
+- The extracted widget, dialog and worker import boundaries, plus Memory/Mood adapter behavior, have targeted unit coverage. Full Windows CI and a real Windows app launch are still required; this GitHub-only session cannot certify microphone, audio-device, VRM rendering or desktop behavior on the user's machine.
 
 ## Evidence-based migration map
 
 1. **Stabilize UI boundaries:** continue extracting independent dialogs, widgets and page views from `MainWindow`; each extraction keeps a compatibility import only where existing call sites need it.
 2. **Split the shell by page:** make the window responsible for navigation, shared theme and page hosting; move Chat, Settings, Voice and Characters page construction into independent view modules. Page actions must be delegated to controllers/services rather than calling other page internals.
-3. **Extract application services:** introduce explicit Chat, Memory, Voice, Character, Provider, Web Research and Coding Agent contracts; wire concrete implementations once in bootstrap and inject them into controllers.
+3. **Extract application services:** Memory and Mood have the first Protocols, concrete adapters and production bootstrap injection. Continue with explicit Chat, Voice, Character, Provider, Web Research and Coding Agent contracts; wire each implementation once in bootstrap and inject it into controllers.
 4. **Move persistence and adapters:** centralize database, settings storage, provider clients, model discovery, audio devices and logging behind infrastructure adapters. Preserve existing user-data formats and migration behavior.
 5. **Establish module manifests and lifecycle:** only after service contracts are stable, add module descriptors, dependency validation, register/start/stop/dispose lifecycle and safe enable/disable handling. Optional module failure must not prevent core chat from starting.
 6. **Enforce boundaries:** add import-boundary and lifecycle tests to prevent UI imports from services, direct cross-module implementation imports, circular dependencies and unload leaks.
