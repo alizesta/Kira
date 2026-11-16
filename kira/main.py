@@ -3309,6 +3309,98 @@ class MainWindow(QMainWindow):
         layout.addStretch(1)
         return self.page(page)
 
+    def build_mcp_registry_group(self, parent_layout):
+        box, form = self.group("افزونه‌ها و ابزارهای MCP")
+        row = QHBoxLayout()
+        self.mcp_registry_query = QLineEdit()
+        self.mcp_registry_query.setPlaceholderText("جستجوی سرور MCP (filesystem، github، browser)")
+        self.mcp_registry_search_btn = QPushButton("دریافت فهرست")
+        self.mcp_registry_search_btn.clicked.connect(self.search_mcp_registry)
+        self.mcp_registry_query.returnPressed.connect(self.search_mcp_registry)
+        row.addWidget(self.mcp_registry_query, 1)
+        row.addWidget(self.mcp_registry_search_btn)
+        form.addRow(row)
+        self.mcp_registry_list = QListWidget()
+        self.mcp_registry_list.setMaximumHeight(105)
+        self.mcp_registry_list.setSelectionMode(QAbstractItemView.SingleSelection)
+        form.addRow(self.mcp_registry_list)
+        actions = QHBoxLayout()
+        self.mcp_registry_add_btn = QPushButton("افزودن سرور انتخاب‌شده")
+        self.mcp_registry_add_btn.clicked.connect(self.add_mcp_registry_server)
+        self.mcp_registry_refresh_btn = QPushButton("تازه‌سازی مدل‌ها")
+        self.mcp_registry_refresh_btn.clicked.connect(self.refresh_model_catalogs)
+        actions.addWidget(self.mcp_registry_add_btn)
+        actions.addWidget(self.mcp_registry_refresh_btn)
+        form.addRow(actions)
+        self.mcp_registry_status = QLabel("در حال دریافت خودکار فهرست رسمی سرورهای MCP…")
+        self.mcp_registry_status.setObjectName("hint")
+        self.mcp_registry_status.setWordWrap(True)
+        form.addRow(self.mcp_registry_status)
+        parent_layout.addWidget(box)
+        QTimer.singleShot(1200, self.search_mcp_registry)
+
+    def search_mcp_registry(self):
+        from .mcp.registry import RegistrySearchWorker
+        worker = getattr(self, "_mcp_registry_worker", None)
+        if worker is not None and worker.isRunning():
+            return
+        self.mcp_registry_search_btn.setEnabled(False)
+        self.mcp_registry_status.setText("در حال دریافت فهرست رسمی MCP…")
+        self._mcp_registry_worker = RegistrySearchWorker(self.mcp_registry_query.text().strip(), self)
+        self._mcp_registry_worker.completed.connect(self._on_mcp_registry_results)
+        self._mcp_registry_worker.start()
+
+    def _on_mcp_registry_results(self, records, error):
+        self.mcp_registry_search_btn.setEnabled(True)
+        self.mcp_registry_list.clear()
+        if error:
+            self.mcp_registry_status.setText("دریافت فهرست ناموفق بود: " + str(error)[:240])
+            return
+        for record in records:
+            server = record.get("server", record)
+            name = str(server.get("name") or "Unnamed MCP")
+            desc = str(server.get("description") or "").replace("\\n", " ")
+            item = QListWidgetItem(name + (" · " + desc[:90] if desc else ""))
+            item.setData(Qt.UserRole, record)
+            self.mcp_registry_list.addItem(item)
+        self.mcp_registry_status.setText(f"{len(records)} سرور از رجیستری رسمی دریافت شد.")
+
+    def add_mcp_registry_server(self):
+        item = self.mcp_registry_list.currentItem()
+        if item is None:
+            self.mcp_registry_status.setText("اول یک سرور از فهرست انتخاب کن.")
+            return
+        from .mcp.registry import server_config
+        try:
+            name, cfg = server_config(item.data(Qt.UserRole))
+            path = DATA_DIR / "kira_mcp.json"
+            raw = json.loads(path.read_text(encoding="utf-8-sig")) if path.is_file() else {}
+            if not isinstance(raw, dict):
+                raise ValueError("ساختار kira_mcp.json معتبر نیست")
+            servers = raw.setdefault("servers", {})
+            if name in servers:
+                self.mcp_registry_status.setText(f"سرور «{name}» از قبل ثبت شده است.")
+                return
+            servers[name] = cfg
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
+            hub = getattr(self.tool_agent, "mcp", None)
+            if hub is not None:
+                hub.refresh_async()
+            self.mcp_registry_status.setText(f"سرور «{name}» ثبت شد؛ Kira در حال اتصال و کشف خودکار ابزارهاست.")
+        except Exception as exc:
+            self.mcp_registry_status.setText("افزودن سرور ناموفق بود: " + str(exc)[:240])
+
+    def refresh_model_catalogs(self):
+        try:
+            self.refresh_unified_models()
+            self.refresh_api_table()
+            self.scan_ollama()
+            self.refresh_local_voice_status()
+            self.mcp_registry_status.setText("فهرست مدل‌های ثبت‌شده، مدل‌های Ollama و وضعیت موتورهای صوتی تازه‌سازی شد.")
+        except Exception as exc:
+            self.mcp_registry_status.setText("تازه‌سازی کامل نشد: " + str(exc)[:200])
+
     def build_ai_tab(self):
         """Unified cloud/local model catalogue with advanced route and provider controls."""
         page = QWidget()
@@ -3328,6 +3420,7 @@ class MainWindow(QMainWindow):
         import_row.addStretch(1)
         layout.addLayout(import_row)
 
+        self.build_mcp_registry_group(layout)
         cloud_box, cloud_form = self.group("مدل‌های Cloud")
         cloud_note = QLabel("هر مدل فقط در دسته‌ی قابلیتی نمایش داده می‌شود که API واقعاً گزارش کرده است. در فیلتر رایگان، مدل‌های صوتی که Provider قیمتشان را اعلام نمی‌کند پنهان می‌مانند.")
         cloud_note.setObjectName("hint")
