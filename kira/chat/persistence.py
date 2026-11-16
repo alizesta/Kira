@@ -857,7 +857,7 @@ class SqliteChatRepository:
                 self._pending[:] = [row for row in self._pending if row[2] != _character_id(character_id)]
 
     def import_messages(self, source) -> int:
-        """Append only missing messages; never rewrite existing message IDs."""
+        """Append missing messages while preserving all non-conflicting message IDs."""
         source = Path(source)
         if not source.is_file():
             raise PersistenceError("فایل انتخاب‌شده پیدا نشد.")
@@ -870,14 +870,31 @@ class SqliteChatRepository:
                 self._flush_pending_locked()
                 current = self._read_rows_full(self.db_path)
                 seen_keys = {self._message_key(row) for row in current}
+                current_ids = {int(row[0]) for row in current}
+                source_ids = {
+                    fields[0] for fields in (self._message_fields(row) for row in incoming)
+                    if fields[0] is not None
+                }
+                used_ids = set(current_ids)
+                next_id = max({0, *current_ids, *source_ids}) + 1
                 new_rows = []
                 for index, raw_row in enumerate(incoming):
-                    _, role, body, stamp, cid, conv_id, metadata, status = self._message_fields(raw_row)
+                    source_id, role, body, stamp, cid, conv_id, metadata, status = self._message_fields(raw_row)
                     key = (role, body, stamp, cid, conv_id)
                     if key in seen_keys:
                         continue
                     seen_keys.add(key)
-                    new_rows.append((stamp, index, role, body, cid, conv_id, metadata, status))
+                    # Keep the source ID if unused; collisions receive a fresh ID
+                    # above every existing and source ID to avoid changing references.
+                    if source_id is None or source_id in used_ids:
+                        while next_id in used_ids:
+                            next_id += 1
+                        message_id = next_id
+                        next_id += 1
+                    else:
+                        message_id = source_id
+                    used_ids.add(message_id)
+                    new_rows.append((stamp, index, message_id, role, body, cid, conv_id, metadata, status))
                 new_rows.sort(key=lambda row: (row[0], row[1]))
                 current_conversation_ids = {
                     row["id"] for row in self._read_conversations(self.db_path)
@@ -904,12 +921,12 @@ class SqliteChatRepository:
                              json.dumps(conversation["metadata"], ensure_ascii=False), conversation["status"],
                              conversation["created_at"], conversation["updated_at"]),
                         )
-                    for stamp, _, role, body, cid, conv_id, metadata, status in new_rows:
+                    for stamp, _, message_id, role, body, cid, conv_id, metadata, status in new_rows:
                         self._ensure_conversation_row(con, conv_id, cid, stamp or None)
                         con.execute(
-                            "INSERT INTO messages(role, content, created_at, character_id, conversation_id, metadata, status) "
-                            "VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?)",
-                            (role, body, stamp or "", cid, conv_id, metadata, status),
+                            "INSERT INTO messages(id, role, content, created_at, character_id, conversation_id, metadata, status) "
+                            "VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?)",
+                            (message_id, role, body, stamp or "", cid, conv_id, metadata, status),
                         )
                 return len(new_rows)
             except (sqlite3.Error, OSError, PersistenceError) as exc:
