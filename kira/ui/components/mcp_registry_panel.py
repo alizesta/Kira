@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -35,7 +36,7 @@ class McpRegistryPanel(QGroupBox):
 
         self.results = QListWidget()
         self.results.setMaximumHeight(105)
-        self.results.setSelectionMode(QListWidget.SingleSelection)
+        self.results.setSelectionMode(QAbstractItemView.SingleSelection)
         form.addRow(self.results)
 
         actions = QHBoxLayout()
