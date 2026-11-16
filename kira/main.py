@@ -65,6 +65,7 @@ from .vision_pipeline import FrameGate, policy_for
 from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
 from .chat_code_ui import CodeChat
 from .ui.components import ApiAddPanel, ChatHeader, McpRegistryPanel, ModelCombo, OllamaProviderPanel, RouteEditor, ChatComposer
+from .ui.controllers import ChatAttachmentController
 from .ui.dialogs import MemoryDialog, ModelPickerDialog
 from .ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
 from .ui.workers import (
@@ -313,6 +314,21 @@ class MainWindow(QMainWindow):
             self.setAttribute(Qt.WA_TranslucentBackground, True)    # the DWM paints the glass behind the transparent window
         self.tabs = QTabWidget()
         self.build_chat_tab()
+        self.attachment_controller = ChatAttachmentController(
+            attach_strip=self.chat_composer.attach_strip,
+            error_label=self.chat_composer.attach_err,
+            error_widget=self.chat_composer.attach_err_widget,
+            error_close_button=self.chat_composer.attach_err_close,
+            send_button=self.send_btn,
+            is_chat_busy=lambda: self.busy,
+            tile_factory=AttachmentTile,
+            worker_factory=AttachWorker,
+            attachment_api=att,
+            max_files=att.MAX_FILES,
+        )
+        # Compatibility aliases remain while callers migrate to the controller contract.
+        self._tiles = self.attachment_controller.tiles
+        self._load_tiles = self.attachment_controller.loading_tiles
         self.build_assistant_section()
         self.build_voice_tab()
         self.build_characters_tab()
@@ -3667,116 +3683,37 @@ class MainWindow(QMainWindow):
         strip.setVisible(strip.row.count() > 1)
 
     def show_attach_error(self, messages):
-        self.attach_err.setText("\n".join(str(m) for m in messages))
-        self.attach_err_widget.setVisible(bool(messages))
-        self.attach_err_close.setVisible(bool(messages))
+        self.attachment_controller.show_error(messages)
 
     def cancel_attachments(self):
-        """Cancel pending file reads; when idle, the same control only dismisses the error."""
-        worker = getattr(self, "_attach_worker", None)
-        if worker is not None and worker.isRunning():
-            for index in range(len(getattr(self, "_load_tiles", []))):
-                worker.cancel(index)
-            for tile in list(self._tiles):
-                self.remove_attachment_tile(tile)
-        self.show_attach_error([])
+        self.attachment_controller.cancel()
 
-    # -- choosing files --
     def attach_loading(self):
-        worker = getattr(self, "_attach_worker", None)
-        return worker is not None and worker.isRunning()
+        return self.attachment_controller.is_loading()
 
     def add_attachment_paths(self, paths):
-        """Each chosen file becomes a card with a thumbnail and its own percentage while it is read in a worker thread."""
-        if self.attach_loading():
-            self.show_attach_error(["صبر کن؛ ضمیمه‌های قبلی هنوز در حال بارگذاری‌اند."])
-            return
-        paths = list(paths)
-        room = att.MAX_FILES - len(self._tiles)
-        errors = []
-        if len(paths) > room:
-            errors.append(f"حداکثر {att.MAX_FILES} ضمیمه برای هر پیام.")
-            paths = paths[:max(0, room)]
-        self.show_attach_error(errors)
-        if not paths:
-            return
-        self._load_tiles = []
-        for path in paths:
-            tile = AttachmentTile(Path(path).name)
-            tile.removeRequested.connect(self.remove_attachment_tile)
-            tile.set_progress(0)
-            self._tiles.append(tile)
-            self._load_tiles.append(tile)
-            self.strip_add(self.attach_strip, tile)
-        self._attach_worker = AttachWorker(paths)
-        self._attach_worker.progress.connect(self.on_attach_progress)
-        self._attach_worker.loaded.connect(self.on_attach_loaded)
-        self._attach_worker.failed.connect(self.on_attach_failed)
-        self._attach_worker.finished.connect(lambda: self.send_btn.setEnabled(not self.busy))
-        self._attach_worker.finished.connect(self.on_attach_finished)
-        self.send_btn.setEnabled(False)
-        self.attach_err.setText("در حال بارگذاری ضمیمه‌ها؛ برای لغو روی ضربدر بزن.")
-        self.attach_err_close.setVisible(True)
-        self.attach_err_widget.show()
-        self._attach_worker.start()
+        self.attachment_controller.add_paths(paths)
 
     def on_attach_progress(self, index, percent):
-        tile = self._load_tiles[index] if index < len(self._load_tiles) else None
-        if tile is not None and not tile.deleted:
-            tile.set_progress(percent)
+        self.attachment_controller.on_progress(index, percent)
 
     def on_attach_finished(self):
-        if self.attach_err.text().startswith("در حال بارگذاری"):
-            self.show_attach_error([])
+        self.attachment_controller.on_finished()
 
     def on_attach_loaded(self, index, attachment):
-        tile = self._load_tiles[index] if index < len(self._load_tiles) else None
-        if tile is not None and not tile.deleted:
-            tile.set_attachment(attachment)
-            tile.set_progress(100)
+        self.attachment_controller.on_loaded(index, attachment)
 
     def on_attach_failed(self, index, message):
-        tile = self._load_tiles[index] if index < len(self._load_tiles) else None
-        if tile is not None and not tile.deleted:
-            self.remove_attachment_tile(tile)
-        self.show_attach_error([message])
+        self.attachment_controller.on_failed(index, message)
 
     def add_pasted_image(self, image):
-        try:
-            from PySide6.QtCore import QBuffer, QIODevice
-            if len(self._tiles) >= att.MAX_FILES:
-                raise att.AttachmentError(f"حداکثر {att.MAX_FILES} ضمیمه برای هر پیام.")
-            buf = QBuffer()
-            buf.open(QIODevice.WriteOnly)
-            image.save(buf, "PNG")
-            self._att_seq += 1
-            attachment = att.image_attachment(bytes(buf.data()), f"clipboard-{self._att_seq}.png")
-        except (att.AttachmentError, AttributeError) as exc:
-            self.show_attach_error([str(exc)])
-            return
-        tile = AttachmentTile(attachment["name"])
-        tile.removeRequested.connect(self.remove_attachment_tile)
-        tile.set_attachment(attachment)
-        self._tiles.append(tile)
-        self.strip_add(self.attach_strip, tile)
-        self.show_attach_error([])
+        self.attachment_controller.add_image(image)
 
     def remove_attachment_tile(self, tile):
-        tile.deleted = True
-        worker = getattr(self, "_attach_worker", None)
-        if worker is not None and worker.isRunning():
-            try:
-                worker.cancel(self._load_tiles.index(tile))
-            except (ValueError, AttributeError):
-                pass
-        if tile in self._tiles:
-            self._tiles.remove(tile)
-        self.strip_remove(self.attach_strip, tile)
+        self.attachment_controller.remove_tile(tile)
 
     def clear_attachments(self):
-        for tile in list(self._tiles):
-            self.remove_attachment_tile(tile)
-        self.show_attach_error([])
+        self.attachment_controller.clear()
 
     # -- sending: cards with the upload percentage --
     @front_only
