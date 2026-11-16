@@ -16,7 +16,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
-from ... import characters, mood, persona_memory
+from ...core.interfaces.memory_service import MemoryService
+from ...core.interfaces.mood_service import MoodService
 
 
 class MemoryDialog(QDialog):
@@ -24,11 +25,22 @@ class MemoryDialog(QDialog):
 
     GROUPS = {"fact": "درباره‌ی تو", "moment": "لحظه / رویداد", "summary": "خلاصه‌ی گفتگوهای قدیمی"}
 
-    def __init__(self, parent=None, character_id="kira"):
+    def __init__(
+        self,
+        parent=None,
+        character_id="kira",
+        *,
+        character_name=None,
+        memory_service: MemoryService,
+        mood_service: MoodService,
+    ):
         super().__init__(parent)
         self.character_id = str(character_id or "kira")
-        profiles = characters.all_profiles(getattr(parent, "settings", {}))
-        self.character_name = str(profiles.get(self.character_id, {}).get("name") or self.character_id.title())
+        self.character_name = str(character_name or self.character_id.title())
+        self.memory_service = memory_service
+        self.mood_service = mood_service
+        if self.memory_service is None or self.mood_service is None:
+            raise ValueError("MemoryDialog requires injected memory_service and mood_service")
         self.setWindowTitle(f"حافظه‌ی {self.character_name}")
         self.resize(680, 480)
         lay = QVBoxLayout(self)
@@ -55,15 +67,14 @@ class MemoryDialog(QDialog):
         self.refresh()
 
     def refresh(self):
-        current = mood.current()
+        current = self.mood_service.current()
         self.info.setText(
             f"حال‌وهوای فعلی همراه: {current['emotion']} ({current['intensity']}/100). "
             f"حافظه‌ی بلندمدت {self.character_name} جداست؛ هرچه اینجا نباشد در حافظه‌ی او ثبت نشده است. "
             "تاریخچه‌ی کوتاه‌مدت گفتگو همچنان مشترک است."
         )
         self.items.clear()
-        with persona_memory.character_scope(self.character_id):
-            saved_items = persona_memory.list_items()
+        saved_items = self.memory_service.list_items(self.character_id)
         for memory_item in saved_items:
             row = QListWidgetItem(
                 f"[{self.GROUPS.get(memory_item['group'], memory_item['group'])}] {memory_item['text']}"
@@ -78,8 +89,7 @@ class MemoryDialog(QDialog):
     def add_note(self):
         text, ok = QInputDialog.getText(self, "یادداشت جدید", f"چه چیزی را {self.character_name} یادش بماند؟")
         if ok:
-            with persona_memory.character_scope(self.character_id):
-                added = persona_memory.add_note(text)
+            added = self.memory_service.add_note(self.character_id, text)
             if added:
                 self.refresh()
 
@@ -87,23 +97,20 @@ class MemoryDialog(QDialog):
         item_id = self._selected()
         if not item_id:
             return
-        with persona_memory.character_scope(self.character_id):
-            current = next(
-                (item["text"] for item in persona_memory.list_items() if item["id"] == item_id),
-                "",
-            )
+        current = next(
+            (item["text"] for item in self.memory_service.list_items(self.character_id) if item["id"] == item_id),
+            "",
+        )
         text, ok = QInputDialog.getText(self, "ویرایش", "متن:", QLineEdit.Normal, current)
         if ok:
-            with persona_memory.character_scope(self.character_id):
-                updated = persona_memory.update_item(item_id, text)
+            updated = self.memory_service.update_item(self.character_id, item_id, text)
             if updated:
                 self.refresh()
 
     def delete_item(self):
         item_id = self._selected()
         if item_id:
-            with persona_memory.character_scope(self.character_id):
-                deleted = persona_memory.delete_item(item_id)
+            deleted = self.memory_service.delete_item(self.character_id, item_id)
             if deleted:
                 self.refresh()
 
@@ -113,8 +120,7 @@ class MemoryDialog(QDialog):
             "تاریخچه‌ی کوتاه‌مدت گفتگو و حافظه‌ی شخصیت‌های دیگر دست‌نخورده می‌ماند."
         )
         if QMessageBox.question(self, "فراموش‌کردن همه", question) == QMessageBox.Yes:
-            with persona_memory.character_scope(self.character_id):
-                persona_memory.forget_all()
+            self.memory_service.forget_all(self.character_id)
             if self.character_id == "kira":
-                mood.reset()
+                self.mood_service.reset()
             self.refresh()
