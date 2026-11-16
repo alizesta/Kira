@@ -1,0 +1,16 @@
+"""Consumer-facing contract for character-scoped long-term memory."""
+from __future__ import annotations
+
+from typing import Any, Protocol
+
+
+class MemoryService(Protocol):
+    def list_items(self, character_id: str) -> list[dict[str, Any]]: ...
+
+    def add_note(self, character_id: str, text: str) -> bool: ...
+
+    def update_item(self, character_id: str, item_id: str, text: str) -> bool: ...
+
+    def delete_item(self, character_id: str, item_id: str) -> bool: ...
+
+    def forget_all(self, character_id: str) -> None: ...
