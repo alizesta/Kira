@@ -136,3 +136,18 @@ The monolithic application window is being retired through a controlled, reversi
 6. Keep the launch command, settings, user data, and user-visible behavior stable throughout the migration. Do not delete `oldmain.py` until all required features have moved and the full regression suite plus Windows launch acceptance have passed.
 
 The migration reference is temporary. Its purpose is to preserve working behavior while the new application structure takes ownership; it must not become a permanent service layer or an import target for new modules.
+
+
+## Chat persistence boundary (TASK 005 — in progress)
+
+- `kira/chat/persistence.py` defines the Qt-free `ChatRepository` Protocol and the application-facing `ChatPersistence` façade. Consumers depend on the contract rather than SQLite calls or MainWindow state.
+- `LegacyMemoryRepository` is the compatibility adapter for the established `kira.memory` store. It preserves the existing `kira_memory.sqlite3` file, per-character `character_id` filtering, ordering by the legacy message id, timestamp behavior, pending-write recovery, corruption quarantine, snapshots, restore and import behavior.
+- `SqliteChatHistoryService` remains the compatibility application service injected into MainWindow. It now delegates through `ChatPersistence`; existing call signatures and UI behavior are retained.
+- The new contract can receive another repository implementation through constructor injection. The feature module itself imports no Qt or UI module.
+- `tests/test_chat_persistence_contract.py` covers repository injection, character isolation, ordering delegation, scoped clearing, normalized persistence errors and the default compatibility adapter.
+
+### Explicit migration gaps
+
+- The current durable schema is still the legacy `messages(id, role, content, created_at, character_id)` table. It does **not** yet persist a stable conversation/session ID or structured message metadata. The adapter intentionally does not invent these fields or perform an implicit schema migration.
+- The legacy SQLite implementation remains in `kira.memory` for compatibility with evidence-memory consumers and existing database tests. Moving its transaction/recovery implementation into a repository-owned SQLite adapter requires a separate, fully tested migration; this task branch has not yet changed that implementation.
+- Consequently this is the first persistence-boundary extraction, not completion of the full TASK 005 acceptance criteria. Session-level conversation lifecycle, metadata persistence, partial-stream state, and removal of the remaining legacy storage implementation remain open work.
