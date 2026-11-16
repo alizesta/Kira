@@ -60,6 +60,48 @@ class DependencyContainerTests(unittest.TestCase):
             DependencyContainer().resolve("missing")
 
 
+class ChatHistoryServiceBoundaryTests(unittest.TestCase):
+    def test_history_service_delegates_character_scoped_reads(self):
+        from unittest.mock import patch
+
+        from kira.services.chat_history_service import SqliteChatHistoryService
+
+        expected = [{"role": "user", "content": "hello"}]
+        service = SqliteChatHistoryService()
+        with patch(
+            "kira.services.chat_history_service.chat_store.recent_messages",
+            return_value=expected,
+        ) as recent:
+            self.assertEqual(service.recent_messages(8, "mika"), expected)
+
+        recent.assert_called_once_with(8, "mika")
+
+    def test_history_service_translates_storage_errors_to_core_exception(self):
+        from unittest.mock import patch
+
+        from kira.core.exceptions import ChatHistoryError
+        from kira.memory import ChatStoreError
+        from kira.services.chat_history_service import SqliteChatHistoryService
+
+        service = SqliteChatHistoryService()
+        with patch(
+            "kira.services.chat_history_service.chat_store.clear_memory",
+            side_effect=ChatStoreError("snapshot unavailable"),
+        ):
+            with self.assertRaisesRegex(ChatHistoryError, "snapshot unavailable"):
+                service.clear_memory("ren")
+
+    def test_history_service_exposes_store_error_state(self):
+        from unittest.mock import patch
+
+        from kira.services.chat_history_service import SqliteChatHistoryService
+
+        service = SqliteChatHistoryService()
+        with patch("kira.services.chat_history_service.chat_store.last_error", None):
+            service.set_last_error("disk unavailable")
+            self.assertEqual(service.last_error, "disk unavailable")
+
+
 class CharacterServiceBoundaryTests(unittest.TestCase):
     def test_profile_service_delegates_active_profile_operations(self):
         from unittest.mock import patch
