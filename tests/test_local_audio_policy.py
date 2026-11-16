@@ -36,9 +36,18 @@ class LocalAudioPolicyTests(unittest.TestCase):
                 with self.subTest(file=relative, token=token):
                     self.assertNotIn(token.casefold(), source.casefold())
 
-    def test_cloud_voice_implementation_files_are_removed(self):
-        self.assertFalse((ROOT / "kira/cloud_voice.py").exists())
-        self.assertFalse((ROOT / "kira/cloud_voice_ui.py").exists())
+    def test_cloud_voice_implementation_and_guide_are_removed(self):
+        for relative in ("kira/cloud_voice.py", "kira/cloud_voice_ui.py", "docs/CLOUD_VOICE_GUIDE_FA.md"):
+            self.assertFalse((ROOT / relative).exists())
+
+    def test_installer_contains_only_local_speech_engines(self):
+        installer = (ROOT / "install.bat").read_text(encoding="utf-8").casefold()
+        self.assertNotIn("edge-tts", installer)
+        self.assertNotIn("speechrecognition", installer)
+        requirements = (ROOT / "requirements-voice-local.txt").read_text(encoding="utf-8").casefold()
+        self.assertIn("qwen-asr", requirements)
+        self.assertIn("faster-whisper", requirements)
+        self.assertIn("piper-tts", requirements)
 
     def test_disabled_local_tts_fails_without_trying_any_engine(self):
         fake = SimpleNamespace(settings={"local_voice_tts": False}, _tmp=tempfile.gettempdir())
