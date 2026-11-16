@@ -1,28 +1,60 @@
 @echo off
-setlocal
+setlocal EnableExtensions
 cd /d "%~dp0"
-rem --- Keep Kira data, speech models and runtime caches on the dedicated A: drive.
-if exist "A:\\" (
-  set "KIRA_DATA_DIR=A:\Project KIRA\Kira Attachments"
-) else (
-  set "KIRA_DATA_DIR=%LOCALAPPDATA%\Kira"
-  echo WARNING: Drive A: is unavailable. Kira data will use %KIRA_DATA_DIR%.
+title Project Kira - One Click Setup
+echo ============================================================
+echo                 PROJECT KIRA - ONE CLICK SETUP
+echo ============================================================
+echo.
+
+rem The install-state file survives application updates and ZIP replacement.
+set "KIRA_INSTALL_STATE=%LOCALAPPDATA%\ProjectKira"
+set "KIRA_INSTALL_PATH_FILE=%KIRA_INSTALL_STATE%\install_path.txt"
+if not exist "%KIRA_INSTALL_STATE%" mkdir "%KIRA_INSTALL_STATE%"
+if exist "%KIRA_INSTALL_PATH_FILE%" set /p "KIRA_DATA_DIR="<"%KIRA_INSTALL_PATH_FILE%"
+
+rem Recover the data location used by older releases before asking anything.
+if not defined KIRA_DATA_DIR if exist "A:\Project KIRA\Kira Attachments\settings.json" set "KIRA_DATA_DIR=A:\Project KIRA\Kira Attachments"
+if not defined KIRA_DATA_DIR if exist "A:\Project KIRA\Kira Attachments\huggingface" set "KIRA_DATA_DIR=A:\Project KIRA\Kira Attachments"
+if not defined KIRA_DATA_DIR if exist "%LOCALAPPDATA%\Kira\settings.json" set "KIRA_DATA_DIR=%LOCALAPPDATA%\Kira"
+if not defined KIRA_DATA_DIR if exist "%LOCALAPPDATA%\Kira\huggingface" set "KIRA_DATA_DIR=%LOCALAPPDATA%\Kira"
+if not defined KIRA_DATA_DIR if exist "%~dp0data\settings.json" set "KIRA_DATA_DIR=%~dp0data"
+
+if not defined KIRA_DATA_DIR (
+  if exist "A:\" (set "KIRA_DEFAULT_DATA_DIR=A:\Project KIRA\Kira Attachments") else (set "KIRA_DEFAULT_DATA_DIR=%LOCALAPPDATA%\ProjectKira\Data")
+  echo First installation. Choose the permanent data folder:
+  echo   [1] Default: %KIRA_DEFAULT_DATA_DIR%
+  echo   [2] Choose a custom folder
+  choice /C 12 /N /M "Select [1/2]: "
+  if errorlevel 2 goto choose_custom
+  set "KIRA_DATA_DIR=%KIRA_DEFAULT_DATA_DIR%"
+  goto save_data_path
+  :choose_custom
+  echo.
+  set /p "KIRA_DATA_DIR=Enter the full folder path: "
+  if not defined KIRA_DATA_DIR goto fail
 )
+:save_data_path
+if not exist "%KIRA_DATA_DIR%" mkdir "%KIRA_DATA_DIR%"
+if errorlevel 1 goto fail
+powershell -NoProfile -Command "[IO.File]::WriteAllText($env:KIRA_INSTALL_PATH_FILE, $env:KIRA_DATA_DIR)"
+if errorlevel 1 goto fail
+
 set "HF_HOME=%KIRA_DATA_DIR%\huggingface"
 set "HUGGINGFACE_HUB_CACHE=%KIRA_DATA_DIR%\huggingface\hub"
 set "HF_HUB_CACHE=%KIRA_DATA_DIR%\huggingface\hub"
 set "TORCH_HOME=%KIRA_DATA_DIR%\cache\torch"
 set "XDG_CACHE_HOME=%KIRA_DATA_DIR%\cache"
 set "PIP_CACHE_DIR=%KIRA_DATA_DIR%\cache\pip"
-if not exist "%KIRA_DATA_DIR%" mkdir "%KIRA_DATA_DIR%"
 if not exist "%HF_HOME%" mkdir "%HF_HOME%"
-
-title Project Kira Setup
-echo =====================================
-echo       Project Kira - Setup
-echo =====================================
+if not exist "%KIRA_DATA_DIR%\cache" mkdir "%KIRA_DATA_DIR%\cache"
+echo.
+echo Kira data, settings, chats and model downloads:
+echo   %KIRA_DATA_DIR%
+echo This location is remembered for future updates.
 echo.
 
+rem Python 3.11/3.12 is required by the local speech runtime.
 set "PY="
 py -3.12 -c "import sys" >nul 2>nul && set "PY=py -3.12"
 if not defined PY py -3.11 -c "import sys" >nul 2>nul && set "PY=py -3.11"
@@ -31,137 +63,134 @@ if not defined PY (
   if not errorlevel 1 set "PY=python"
 )
 if not defined PY (
-  echo ERROR: Python was not found.
-  echo Install Python from python.org and enable "Add Python to PATH".
-  pause
-  exit /b 1
+  echo ERROR: Python 3.11 or 3.12 was not found.
+  goto fail
 )
 echo Using: %PY%
 %PY% --version
-
-rem --- AI model cache is kept in the shared Kira data folder above.
-echo Kira data and AI model cache: %KIRA_DATA_DIR%
-
 set "GOOD=0"
 %PY% -c "import sys; sys.exit(0 if (3,11)<=sys.version_info[:2]<=(3,12) else 1)" >nul 2>nul
 if not errorlevel 1 set "GOOD=1"
 
-rem --- keep an existing environment only if it is Python 3.11 or 3.12
 if exist .venv\Scripts\python.exe (
   .venv\Scripts\python.exe -c "import sys; sys.exit(0 if (3,11)<=sys.version_info[:2]<=(3,12) else 1)" >nul 2>nul
   if errorlevel 1 (
-    echo Existing environment uses an unsupported Python version. Recreating it...
+    echo Recreating incompatible Python environment...
     rmdir /s /q .venv
   )
 )
-
 if not exist .venv\Scripts\python.exe (
   if "%GOOD%"=="1" (
     %PY% -m venv .venv
   ) else (
-    echo.
-    echo Your Python version is outside the supported range ^(3.11 or 3.12^).
-    echo Downloading a private copy of Python 3.12 automatically. Please wait...
+    echo Preparing a private Python 3.12 runtime...
     if not exist .uvboot\Scripts\python.exe %PY% -m venv .uvboot
-    .uvboot\Scripts\python.exe -m pip install --retries 10 --timeout 60 uv
+    .uvboot\Scripts\python.exe -m pip install --upgrade --retries 10 --timeout 60 uv
     if not errorlevel 1 .uvboot\Scripts\uv.exe venv --seed --python 3.12 .venv
-    if not exist .venv\Scripts\python.exe (
-      echo ERROR: Could not install a supported Python 3.12 environment.
-      echo Install Python 3.12 from python.org, then run install.bat again.
-      goto fail
-    )
   )
 )
 if not exist .venv\Scripts\python.exe goto fail
-
 call .venv\Scripts\activate.bat
-python --version
 python -m pip install --upgrade pip --retries 10 --timeout 60
+if errorlevel 1 goto netfail
 
 echo.
-echo [1/3] Installing core packages...
+echo [1/4] Installing core Kira dependencies...
 python install_deps.py requirements.txt
 if errorlevel 1 goto netfail
 
 echo.
-echo [2/3] Installing voice packages one by one...
+echo [2/4] Installing microphone and speech support...
 if exist voice_failed.txt del voice_failed.txt
-set "PKGS=Pillow sounddevice PyAudioWPatch edge-tts SpeechRecognition"
-set "SKIPPED="
-python -c "import sys; sys.exit(0 if sys.version_info[:2]<=(3,12) else 1)" >nul 2>nul
-if errorlevel 1 (
-  set "SKIPPED=1"
-) else (
-  set "PKGS=%PKGS% miniaudio faster-whisper"
-)
+set "PKGS=Pillow sounddevice PyAudioWPatch edge-tts SpeechRecognition miniaudio faster-whisper"
 for %%P in (%PKGS%) do (
-  echo.
   echo --- %%P
-  python -m pip install --retries 10 --timeout 60 %%P
+  python -m pip install --upgrade --retries 10 --timeout 60 %%P
   if errorlevel 1 echo %%P>>voice_failed.txt
 )
 
 echo.
-echo =====================================
-if exist voice_failed.txt (
-  echo These packages FAILED to install:
-  type voice_failed.txt
-  echo Kira will still run. Missing packages only disable the related feature:
-  echo   edge-tts = online voice ^(Windows offline voice is used instead^),
-  echo   sounddevice = microphone, Pillow = sharper picture.
-  echo If the error says "Failed to resolve", it is an internet or DNS problem.
-  echo Fix it and run install.bat again; finished packages are skipped quickly.
-) else (
-  echo Setup completed successfully.
-  if defined SKIPPED (
-    echo Note: Python 3.12 could not be downloaded, so offline microphone and exact
-    echo lip-sync were skipped. Kira uses online microphone and approximate lip-sync.
-  )
-)
-echo.
-echo [3/3] Optional local Persian voice engines
-echo Qwen3-ASR and its runtime dependencies can require several GB of downloads.
-echo Their Python packages will be installed in this Kira .venv.
-echo Downloaded Hugging Face model files are kept in:
-echo   %HF_HOME%
-choice /C YN /N /M "Install local voice engines now? [Y/N] "
-if errorlevel 2 goto voice_skip
-if not exist requirements-voice-local.txt (
-  echo ERROR: requirements-voice-local.txt was not found beside install.bat.
-  echo Download the complete Kira branch archive and try again.
-  goto voice_done
-)
+echo [3/4] Installing local Persian STT/TTS and downloading their models...
+echo Qwen ASR and its dependencies may require several GB of downloads.
 python scripts\setup_local_voice.py --install --prepare-models
 if errorlevel 1 (
-  echo Local voice engines could not be installed. Kira will continue without them.
-  echo Check that this environment uses Python 3.11 or 3.12.
-  echo To retry safely, run: install_local_voice.bat
-) else (
-  echo Local voice packages and model weights are prepared.
+  echo WARNING: Local voice setup reported an error. Kira core installation will continue.
+  set "VOICE_SETUP_FAILED=1"
 )
-goto voice_done
-:voice_skip
-echo Skipped local voice engines. You can install them later with install_local_voice.bat.
-:voice_done
+
 echo.
-echo For local chat models, install Ollama, then run:
-echo   configure_ollama_storage.bat
-echo   download_model.bat
-echo Restart Ollama from its tray icon after changing its model location.
-echo Finally run start_kira.bat.
+echo [4/4] Installing/configuring Ollama and the default local chat model...
+where ollama >nul 2>nul
+if errorlevel 1 (
+  where winget >nul 2>nul
+  if errorlevel 1 (
+    echo WARNING: winget is unavailable; automatic Ollama installation was skipped.
+    goto install_done
+  )
+  winget install --id Ollama.Ollama --exact --silent --accept-package-agreements --accept-source-agreements
+  if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Ollama"
+  if exist "%ProgramFiles%\Ollama\ollama.exe" set "PATH=%PATH%;%ProgramFiles%\Ollama"
+  where ollama >nul 2>nul
+  if errorlevel 1 (
+    echo WARNING: Ollama was not found after its installation attempt.
+    goto install_done
+  )
+)
+
+set "OLLAMA_TARGET=%KIRA_DATA_DIR%\ollama\models"
+if not exist "%OLLAMA_TARGET%" mkdir "%OLLAMA_TARGET%"
+if defined OLLAMA_MODELS (set "OLLAMA_SOURCE=%OLLAMA_MODELS%") else (set "OLLAMA_SOURCE=%USERPROFILE%\.ollama\models")
+if exist "%OLLAMA_SOURCE%\" if /I not "%OLLAMA_SOURCE%"=="%OLLAMA_TARGET%" (
+  echo Copying existing Ollama models. The old folder will be kept.
+  robocopy "%OLLAMA_SOURCE%" "%OLLAMA_TARGET%" /E /COPY:DAT /DCOPY:DAT /R:1 /W:1
+  if errorlevel 8 echo WARNING: Existing Ollama model copy failed; original files remain untouched.
+)
+set "OLLAMA_MODELS=%OLLAMA_TARGET%"
+setx OLLAMA_MODELS "%OLLAMA_TARGET%" >nul
+echo Ollama models: %OLLAMA_TARGET%
+echo Restarting Ollama to apply the new storage location...
+taskkill /IM ollama.exe /F >nul 2>nul
+timeout /t 2 /nobreak >nul
+start "" /b ollama serve
+timeout /t 8 /nobreak >nul
+ollama list >nul 2>nul
+if errorlevel 1 (
+  echo WARNING: Ollama service did not start. Local chat model download skipped.
+  goto install_done
+)
+ollama list | findstr /I "qwen3.5:4b" >nul
+if errorlevel 1 (
+  echo Downloading qwen3.5:4b...
+  ollama pull qwen3.5:4b
+  if errorlevel 1 echo WARNING: Local chat model download failed.
+) else (
+  echo qwen3.5:4b is already installed.
+)
+
+:install_done
+echo.
+echo ============================================================
+echo                    KIRA SETUP FINISHED
+echo ============================================================
+echo Data folder: %KIRA_DATA_DIR%
+echo Future updates will reuse this folder automatically.
+if defined VOICE_SETUP_FAILED echo WARNING: Local voice setup needs attention.
+if exist voice_failed.txt (
+  echo Some optional audio packages failed:
+  type voice_failed.txt
+)
+echo Start Kira with start_kira.bat.
 pause
 exit /b 0
 
 :netfail
 echo.
-echo DOWNLOAD FAILED. If you see "Failed to resolve" or "getaddrinfo failed",
-echo this is a DNS or internet problem on this computer.
-echo Try: change Windows DNS to 1.1.1.1 and 8.8.8.8, or use a VPN, then run install.bat again.
-echo To test, open CMD and run:  nslookup files.pythonhosted.org
+echo DOWNLOAD FAILED. Check internet/DNS and free disk space.
+echo Run install.bat again; completed downloads will be reused.
 goto fail
 
 :fail
 echo.
-echo SETUP FAILED. Copy the error text above and send it for troubleshooting.
+echo SETUP DID NOT COMPLETE. Copy the error text above for troubleshooting.
 pause
 exit /b 1
