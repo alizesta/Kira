@@ -228,15 +228,36 @@ def discover_cached_models() -> dict:
                         seen_tts.add(key)
     except OSError:
         pass
-    # Imported Piper voices are kept in this dedicated Kira folder.
+    # Piper downloads may be placed in Kira's data folder, the package-managed
+    # working-directory "models" folder, or alongside the runtime package.
+    search_roots = [
+        data_root / "voice_models",
+        data_root / "voice_cache",
+        data_root / "models",
+        Path(__file__).resolve().parents[1] / "models",
+        Path.cwd() / "models",
+    ]
     try:
-        for onnx in (data_root / "voice_models").glob("*.onnx"):
-            key = str(onnx.resolve()).casefold()
-            if key not in seen_tts:
-                tts_models.append({"name": onnx.stem, "path": str(onnx)})
-                seen_tts.add(key)
-    except OSError:
+        import importlib.util
+        spec = importlib.util.find_spec("persian_speech_runtime")
+        if spec and spec.origin:
+            search_roots.append(Path(spec.origin).resolve().parent)
+    except (ImportError, ValueError, OSError):
         pass
+    visited_roots = set()
+    for root in search_roots:
+        try:
+            resolved_root = root.resolve()
+            if resolved_root in visited_roots or not resolved_root.is_dir():
+                continue
+            visited_roots.add(resolved_root)
+            for onnx in resolved_root.rglob("*.onnx"):
+                key = str(onnx.resolve()).casefold()
+                if key not in seen_tts:
+                    tts_models.append({"name": onnx.stem, "path": str(onnx)})
+                    seen_tts.add(key)
+        except OSError:
+            continue
     asr_models.sort(key=lambda item: (item["id"].casefold() != "qwen/qwen3-asr-0.6b", item["id"].casefold()))
     tts_models.sort(key=lambda item: item["name"].casefold())
     return {"asr": asr_models, "tts": tts_models}
