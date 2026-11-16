@@ -50,7 +50,7 @@ flowchart TD
     DB --> T[Terminal request status]
 ```
 
-Provider chunk and terminal callbacks are pinned to the immutable attempt/session identity captured at worker creation. The service rejects mismatched, late and duplicate terminal events. The completed response is persisted before the completed event is published. Failed/interrupted/cancelled partial content is persisted with its corresponding status; a persistence failure is exposed in the application event and the service outcome rather than being silently treated as a durable write.
+Provider chunk and terminal callbacks are pinned to the immutable attempt/session identity captured at worker creation. MainWindow supplies a Qt signal dispatcher from the session relay, so worker-thread callbacks are marshalled to the GUI thread before ResponseHandler or UI observers run. The application service itself remains Qt-free. The service rejects mismatched, late and duplicate terminal events. The completed response is persisted before the completed event is published. Failed/interrupted/cancelled partial content is persisted with its corresponding status; a persistence failure is exposed in the application event and the service outcome rather than being silently treated as a durable write.
 
 ## Session isolation and concurrency
 
