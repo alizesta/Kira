@@ -1886,6 +1886,26 @@ class MainWindow(QMainWindow):
         self.save_now()
         self.refresh_local_voice_status()
 
+    def download_local_qwen_model(self):
+        model_id = str(self.local_asr_path_edit.text() or "").strip()
+        if "/" not in model_id and not Path(model_id).is_dir():
+            self.local_voice_status.setText("شناسه Hugging Face یا مسیر پوشه مدل STT را وارد کن.")
+            return
+        from . import local_voice
+        self._run_local_voice_task(lambda: local_voice.download_hf_model(model_id),
+                                   self.local_asr_download_btn, self._on_local_qwen_downloaded)
+
+    def _on_local_qwen_downloaded(self, result):
+        ok, value = result
+        if not ok:
+            self.local_voice_status.setText(f"دانلود مدل Qwen ناموفق بود: {value}")
+            return
+        self.settings["local_voice_asr_model"] = str(value)
+        self.local_asr_path_edit.setText(str(value))
+        self.save_now()
+        self.refresh_local_voice_status()
+        self.local_voice_status.setText(f"مدل STT دانلود شد: {value}")
+
     def download_local_whisper_model(self):
         value = str(self.whisper.currentText() or "").strip()
         aliases = {
@@ -3136,9 +3156,14 @@ class MainWindow(QMainWindow):
         self.local_asr_browse_btn.clicked.connect(self.choose_local_asr_folder)
         asr_path_row.addWidget(self.local_asr_browse_btn)
         local_stt_layout.addLayout(asr_path_row)
-        self.local_asr_load_btn = QPushButton("بارگذاری Qwen")
+        asr_actions = QHBoxLayout()
+        self.local_asr_download_btn = QPushButton("دانلود مدل STT")
+        self.local_asr_download_btn.clicked.connect(self.download_local_qwen_model)
+        self.local_asr_load_btn = QPushButton("بارگذاری مدل")
         self.local_asr_load_btn.clicked.connect(self.load_local_asr)
-        local_stt_layout.addWidget(self.local_asr_load_btn)
+        asr_actions.addWidget(self.local_asr_download_btn)
+        asr_actions.addWidget(self.local_asr_load_btn)
+        local_stt_layout.addLayout(asr_actions)
         local_stt_layout.addWidget(QLabel("Whisper محلی"))
         self.local_whisper_path = QLineEdit(str(self.settings.get("whisper_model") or "small"))
         self.local_whisper_path.setLayoutDirection(Qt.LeftToRight)
