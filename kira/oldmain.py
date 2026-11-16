@@ -162,7 +162,6 @@ class MainWindow(QMainWindow):
     # Per-chat state: one ChatSession per character; these names read/write the session that is current (see chat_sessions.py).
     busy = session_property("busy")
     worker = session_property("worker")
-    _pending = session_property("_pending")
     _stream_text = session_property("_stream_text")
     _stream_pos = session_property("_stream_pos")
     _stream_dirty = session_property("_stream_dirty")
@@ -256,7 +255,6 @@ class MainWindow(QMainWindow):
         self._turn_attach_kinds = []       # kinds ("image"/"text") of what the user attached to the message being answered
         self._voice_next = False           # the next submit() comes from the microphone (the model is told it may contain mishearings)
         self._turn_voice = False
-        self._pending = []                 # messages typed while an answer is being generated (sent one by one afterwards)
         self._stream_text, self._stream_pos, self._stream_dirty, self._stream_mood = "", None, False, None
         self._t_req = self._t_first = None
         self._route_info = None
