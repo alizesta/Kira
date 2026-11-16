@@ -8,7 +8,7 @@ from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, 
 
 _SIZE = 96            # pixmap size; icons are designed on a 24 x 24 grid and shown smaller
 _CACHE = {}
-_GLOW_INTENSITY = 0.18
+_GLOW_INTENSITY = 0.58
 
 
 def set_glow_intensity(value):
@@ -191,37 +191,54 @@ def _shapes(name):
 
 
 def _pixmap(name, colour):
+    """Render a crisp neon glyph with a multi-pass bloom and a white-hot inner edge."""
     pm = QPixmap(_SIZE, _SIZE)
     pm.fill(Qt.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.Antialiasing)
+    p.setRenderHint(QPainter.SmoothPixmapTransform)
     p.scale(_SIZE / 24.0, _SIZE / 24.0)
     base = QColor(colour)
-    glow_colour = QColor(base)
-    glow_colour.setAlpha(round(48 * _GLOW_INTENSITY))
-    aura_pen = QPen(glow_colour, 1.6 + 1.5 * _GLOW_INTENSITY)
-    aura_pen.setCapStyle(Qt.RoundCap)
-    aura_pen.setJoinStyle(Qt.RoundJoin)
+
+    def glow_pen(alpha, width):
+        shade = QColor(base)
+        shade.setAlpha(max(0, min(255, round(alpha))))
+        pen = QPen(shade, width)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        return pen
+
+    intensity = max(0.0, min(1.0, _GLOW_INTENSITY))
+    passes = (
+        (14 + 42 * intensity, 6.8 + 1.0 * intensity),
+        (24 + 62 * intensity, 4.4 + 0.7 * intensity),
+        (38 + 82 * intensity, 2.8 + 0.4 * intensity),
+    )
     core_colour = QColor(base)
-    core_colour.setAlpha(220)
-    core_pen = QPen(core_colour, 2.0)
+    core_colour.setAlpha(242)
+    core_pen = QPen(core_colour, 1.65)
     core_pen.setCapStyle(Qt.RoundCap)
     core_pen.setJoinStyle(Qt.RoundJoin)
-    highlight = QColor(210, 242, 248, round(28 + 24 * _GLOW_INTENSITY))
+    highlight = QColor(232, 250, 255, round(72 + 72 * intensity))
     highlight_pen = QPen(highlight, 0.48)
     highlight_pen.setCapStyle(Qt.RoundCap)
     highlight_pen.setJoinStyle(Qt.RoundJoin)
+
     for path, filled in _shapes(name):
+        p.setBrush(Qt.NoBrush)
+        for alpha, width in passes:
+            p.setPen(glow_pen(alpha, width))
+            p.drawPath(path)
         if filled:
             p.setPen(Qt.NoPen)
-            p.setBrush(QBrush(glow_colour))
+            fill = QColor(base)
+            fill.setAlpha(248)
+            p.setBrush(QBrush(fill))
             p.drawPath(path)
-            p.setBrush(QBrush(base))
+            p.setBrush(Qt.NoBrush)
+            p.setPen(highlight_pen)
             p.drawPath(path)
         else:
-            p.setPen(aura_pen)
-            p.setBrush(Qt.NoBrush)
-            p.drawPath(path)
             p.setPen(core_pen)
             p.drawPath(path)
             p.setPen(highlight_pen)

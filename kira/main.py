@@ -1092,8 +1092,9 @@ class MainWindow(QMainWindow):
         for glow in self.glow_effects:
             appearance = self.settings.get("appearance", {})
             intensity = max(0, min(100, int(appearance.get("glow", 34))))
-            glow.setBlurRadius(6 + intensity * 0.30)
-            glow.setColor(QColor(r, g, b, round(28 + intensity * 0.78)))
+            glow.setBlurRadius(14 + intensity * 0.38)
+            glow.setColor(QColor(r, g, b, round(54 + intensity * 0.92)))
+        self._apply_neon_glow_effects(self.settings.get("appearance", {}))
 
     def greeting_text(self):
         profile = characters.active(self.settings)
@@ -2637,7 +2638,7 @@ class MainWindow(QMainWindow):
 
     def build_appearance_tab(self):
         """Compact live controls for the window's colour, brightness, glow and transparency."""
-        defaults = {"background_color": "#0A0A1C", "brightness": 100, "glow": 18, "transparency": 28}
+        defaults = {"background_color": "#0A0A1C", "brightness": 100, "glow": 58, "transparency": 28}
         appearance = {**defaults, **(self.settings.get("appearance") or {})}
         box, form = self.group("ظاهر برنامه")
         self.window_effect = QComboBox()
@@ -2710,7 +2711,7 @@ class MainWindow(QMainWindow):
         self._appearance_color = "#0A0A1C"
         self.window_effect.setCurrentIndex(max(0, self.window_effect.findData("acrylic")))
         self.appearance_brightness.setValue(100)
-        self.appearance_glow.setValue(16)
+        self.appearance_glow.setValue(58)
         self.appearance_transparency.setValue(28)
         self._set_appearance_color_preview(self._appearance_color)
         self.schedule_appearance()
@@ -2738,6 +2739,15 @@ class MainWindow(QMainWindow):
             self.appearance_glow.setValue(appearance["glow"])
             self.appearance_glow.blockSignals(False)
             self.settings["appearance_glow_adjusted"] = True
+        # One-time migration from the restrained glow to the Neon Shooter bloom level.
+        # Preserve stronger user-selected values; only lift the old low default.
+        if not self.settings.get("appearance_neon_shooter_v1"):
+            if int(appearance["glow"]) < 42:
+                appearance["glow"] = 58
+            self.appearance_glow.blockSignals(True)
+            self.appearance_glow.setValue(int(appearance["glow"]))
+            self.appearance_glow.blockSignals(False)
+            self.settings["appearance_neon_shooter_v1"] = True
         self.settings["appearance"] = appearance
         wanted = self.window_effect.currentData() or "acrylic"
         current = winfx.active_effect(wanted)
@@ -2749,12 +2759,46 @@ class MainWindow(QMainWindow):
         if hasattr(self, "glow_effects"):
             self.apply_chat_theme()
         self._refresh_icon_glow()
+        self._apply_neon_glow_effects(appearance)
         winfx.apply_effect(self.winId(), current)
         self._set_appearance_color_preview(color)
         if (previous == "off") != (current == "off") and previous != current and getattr(self, "isVisible", lambda: False)():
             self.add_chat("system", "برای اعمال کامل حالت شیشه‌ای، برنامه را یک بار ببند و دوباره باز کن.")
         if save:
             save_settings(self.settings)
+
+    def _apply_neon_glow_effects(self, appearance=None):
+        """Bloom the glass panels and action controls without touching animated avatar widgets."""
+        appearance = appearance if isinstance(appearance, dict) else (self.settings.get("appearance") or {})
+        intensity = max(0, min(100, int(appearance.get("glow", 58))))
+        cid = characters.active_id(self.settings)
+        palette = theme_mod.character_theme(cid, characters.all_profiles(self.settings).get(cid, {}))
+        if not hasattr(self, "_neon_widget_effects"):
+            self._neon_widget_effects = {}
+
+        targets = []
+        for widget in self.findChildren(QGroupBox):
+            targets.append((widget, palette["main"], 12 + intensity * 0.16, 12 + intensity * 0.38))
+        for widget in self.findChildren(QFrame):
+            if widget.objectName() in ("avatarCard", "chatCard", "attTile"):
+                targets.append((widget, palette["second"], 20 + intensity * 0.18, 18 + intensity * 0.62))
+        for widget in self.findChildren(QToolButton):
+            if widget.property("kiraIconName") or widget.objectName() in ("sendBtn", "genStop", "menuBtn"):
+                targets.append((widget, palette["second"], 10 + intensity * 0.18, 18 + intensity * 0.68))
+        for widget in self.findChildren(QPushButton):
+            targets.append((widget, palette["main"], 11 + intensity * 0.16, 14 + intensity * 0.58))
+
+        for widget, colour, blur, alpha in targets:
+            effect = self._neon_widget_effects.get(widget)
+            if effect is None:
+                effect = QGraphicsDropShadowEffect(widget)
+                effect.setOffset(0, 0)
+                widget.setGraphicsEffect(effect)
+                self._neon_widget_effects[widget] = effect
+            effect.setBlurRadius(blur)
+            tint = QColor(colour)
+            tint.setAlpha(round(alpha if widget.isEnabled() else alpha * 0.22))
+            effect.setColor(tint)
 
     def _refresh_icon_glow(self):
         cid = characters.active_id(self.settings)
