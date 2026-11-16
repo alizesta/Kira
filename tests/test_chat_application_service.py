@@ -222,6 +222,42 @@ class ChatApplicationServiceTests(unittest.TestCase):
         submission = self.service.submit_message("kira", "fails")
         self.assertEqual(self.service.get_request_status(submission.request.request_id), RequestStatus.FAILED)
 
+    def test_context_builder_failure_finalizes_request(self):
+        service = ChatApplicationService(
+            persistence=self.persistence,
+            system_prompt_builder=lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("prompt failed")),
+            worker_factory=self._worker_factory,
+            on_dispatch=lambda _request: None,
+            on_event=self.events.append,
+        )
+        submission = service.submit_message("kira", "hello")
+        worker = service.start_provider_request(
+            submission.request.request_id, self._context(), router=object()
+        )
+        self.assertIsNone(worker)
+        self.assertEqual(service.get_request_status(submission.request.request_id), RequestStatus.FAILED)
+        self.assertEqual(self.events[-1].kind, ApplicationEventKind.REQUEST_FAILED)
+        self.assertIn("prompt failed", self.events[-1].error)
+
+    def test_cross_session_provider_event_cannot_complete_another_session(self):
+        submission = self.service.submit_message("kira", "hello")
+        worker = self._start_provider(submission)
+        worker.chunk.emit("private")
+        attempt_id = f"{submission.request.request_id}:1"
+        ignored = self.service.handle_provider_event(
+            ProviderEvent.completed(attempt_id, "ren", {"text": "wrong session"})
+        )
+        self.assertIsNone(ignored)
+        self.assertEqual(self.service.get_request_status(submission.request.request_id), RequestStatus.RUNNING)
+
+    def test_complete_request_is_exactly_once(self):
+        submission = self.service.submit_message("kira", "hello")
+        first = self.service.complete_request(submission.request.request_id, "answer")
+        second = self.service.complete_request(submission.request.request_id, "duplicate")
+        self.assertTrue(first.ok)
+        self.assertFalse(second.ok)
+        self.assertEqual(len(self.persistence.messages), 1)
+
     def test_service_is_qt_free(self):
         import ast
         from pathlib import Path
