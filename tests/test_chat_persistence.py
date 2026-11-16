@@ -35,6 +35,7 @@ class IsolatedDb(unittest.TestCase):
         self.patch.start()
         memory._pending.clear()
         memory.last_error = None
+        memory.repository.last_error = None
         memory.init_db()
 
     def tearDown(self):
@@ -103,16 +104,16 @@ class SaveAndRestoreTests(IsolatedDb):
 class DatabaseErrorTests(IsolatedDb):
     def test_locked_database_keeps_messages_in_memory_then_flushes_in_order(self):
         self.fill(2)
-        with mock.patch.object(memory, "_db", side_effect=sqlite3.OperationalError("database is locked")):
+        with mock.patch.object(memory.repository, "_db", side_effect=sqlite3.OperationalError("database is locked")):
             self.assertFalse(memory.add_message("user", "p1"))
             self.assertFalse(memory.add_message("assistant", "p2"))
             self.assertEqual(memory.pending_count(), 2)
             self.assertEqual(self.texts(), ["p1", "p2"])                        # chat context still works from memory
-            self.assertIn("locked", memory.last_error)
+            self.assertIn("locked", memory.repository.last_error)
         self.assertTrue(memory.add_message("user", "p3"))                      # disk is back: everything is written
         self.assertEqual(self.texts(), ["m0", "m1", "p1", "p2", "p3"])
         self.assertEqual(memory.pending_count(), 0)
-        self.assertIsNone(memory.last_error)
+        self.assertIsNone(memory.repository.last_error)
 
     def test_garbage_file_is_quarantined_never_deleted_and_a_fresh_db_is_created(self):
         self.fill(3)
@@ -179,7 +180,7 @@ class ClearRestoreImportTests(IsolatedDb):
 
     def test_clear_is_refused_when_the_snapshot_cannot_be_made(self):
         self.fill(5)
-        with mock.patch.object(memory, "_snapshot", side_effect=OSError("no space")):
+        with mock.patch.object(memory.repository, "_snapshot", side_effect=OSError("no space")):
             with self.assertRaises(memory.ChatStoreError):
                 memory.clear_memory()
         self.assertEqual(memory.message_count(), 5)                             # nothing was deleted
