@@ -65,6 +65,7 @@ from .ui_widgets import ChatInput, RouteChip, AttachmentTile
 from .theme import build_style, STYLE
 from . import theme as theme_mod
 from .chat_sessions import ChatSession, NOOP, SESSION_FIELDS, session_property, front_only_property
+from .chat.coordinator import ChatCoordinator, ChatRequest, SubmissionResult
 from . import winfx
 from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
@@ -231,6 +232,7 @@ class MainWindow(QMainWindow):
         self.sessions = {}
         self.cur = self.front = ChatSession(self.character_service.active_id(self.settings))
         self.sessions[self.cur.cid] = self.cur
+        self._chat_coordinators = {}
         self._db_notes = self.chat_history_service.init_db()
         self._save_warned = False
         self._emotion_applied = False
@@ -4028,106 +4030,62 @@ class MainWindow(QMainWindow):
             self.input.clear()
             self.submit(text, files)
 
+    def _chat_coordinator(self, session=None):
+        session = session or self.cur
+        key = id(session)
+        coordinator = self._chat_coordinators.get(key)
+        if coordinator is None:
+            coordinator = ChatCoordinator(
+                lambda request, target=session: self._dispatch_coordinated_request(target, request)
+            )
+            self._chat_coordinators[key] = coordinator
+        return coordinator
+
+    def _dispatch_coordinated_request(self, session, request):
+        if self._closing or session.cid not in self.sessions:
+            return
+        with self._as(session):
+            self._process_chat_request(request.text, list(request.attachments), request.voice)
+
     def submit(self, text, attachments=None, _voice=None):
         if _voice is None:
             voice, self._voice_next = self._voice_next, False
         else:
             voice, self._voice_next = bool(_voice), False
         vision_worker = getattr(self, "_vision_worker", None)
-        if (not self.busy and vision_worker is not None and vision_worker.isRunning()
-                and getattr(vision_worker, "router", None) is self.client):
-            if len(self._pending) < 3:
-                self._pending.append((text, attachments, voice))
-                self.status.setText(
-                    f"پیام در صف است ({len(self._pending)}) — تحلیل Vision متوقف می‌شود و پیام بعد از آن ارسال خواهد شد."
-                )
-                vision_worker.cancel_request()
-                if not vision_worker.isRunning():
-                    QTimer.singleShot(0, lambda owner=self.cur: self._send_pending_for_session(owner))
-            return
+        wait_for_vision = (
+            not self.busy and vision_worker is not None and vision_worker.isRunning()
+            and getattr(vision_worker, "router", None) is self.client
+        )
         if self.busy and not attachments:
             try:
-                control = self.tool_agent.control_running(text)        # "وضعیت / توقف / لغو کار / مرحله اضافه کن" act between two steps of a running task
-            except Exception:                                      # noqa: BLE001 - never block typing
+                control = self.tool_agent.control_running(text)
+            except Exception:  # noqa: BLE001 - never block typing
                 control = None
             if control:
                 self.add_chat("system", control)
                 return
-        if self.busy:
-            # Policy: typing never blocks. A message sent while an answer is being generated waits in a small queue
-            # (max 3) and is sent automatically, in order, when the current answer ends.
-            if len(self._pending) < 3:
-                self._pending.append((text, attachments, voice))
-                self.status.setText(f"پیام در صف است ({len(self._pending)}) — بعد از پایان پاسخ فعلی ارسال می‌شود.")
-            return
-        if not attachments and getattr(self, "code_chat", None) is not None and self.code_chat.handle(text, voice):
-            return                                              # Kira's chat: coding missions / project questions (decided from the wording)
-        if self._game_mode_enabled and len(attachments or []) < att.MAX_FILES:
-            frame = self._game_vision_attachment()
-            if frame is not None:
-                attachments = list(attachments or []) + [frame]
-        self._turn_voice = voice
-        if self.speaker._began:
-            self.director.event("user_interrupt")
-        self.safe_stop_speaker()
-        self.animator.touch()
-        self._body_done = []
-        try:
-            self.run_body(body_ctl.parse_user_command(text))            # "raise your hand" / "پشتتو کن": moves at once, before the model answers
-        except Exception:                                      # noqa: BLE001
-            pass
-        force_img = False
-        if attachments and any(a.get("kind") == "image" for a in attachments):
-            text, force_img = websearch.image_command(text)              # '/img ...' or '/عکس ...' = search this picture even if the switch is off
-        img_search = bool(attachments and any(a.get("kind") == "image" for a in attachments)
-                          and (force_img or self.settings.get("image_search", False)))
-        packed = att.compose(text, attachments, search=img_search) if attachments else None
-        self._turn_extra = packed
-        self._turn_attach_kinds = [str(a.get("kind")) for a in (attachments or [])]       # structured kinds: Active Mode must not guess from display text
-        self.add_chat("user", packed["display"] if packed else text, images=attachments if packed else None)
-        self.tool_agent.begin_turn()
-        action_result = None
-        if not packed:
-            action_result = usage.handle_command(text)                                 # "/usage [days]": numbers from the local ledger, no model call
-            if action_result is not None:
-                pass
-            elif self.tool_agent.enabled():
-                action_result = self.tool_agent.handle_confirmation_reply(text)       # "تأیید" / "لغو" for a pending sensitive action: decided in code, not by the model
-                if action_result is None:
-                    action_result = self.tool_agent.handle_task_command(text)         # status / pause / cancel / add a step of an unfinished task: decided in code too
+        request = ChatRequest.create(text, attachments, voice)
+        result = self._chat_coordinator().submit(
+            request, busy=self.busy, force_queue=wait_for_vision
+        )
+        if result == SubmissionResult.QUEUED:
+            count = self._chat_coordinator().pending_count
+            if wait_for_vision:
+                self.status.setText(
+                    f"پیام در صف است ({count}) — تحلیل Vision متوقف می‌شود و پیام بعد از آن ارسال خواهد شد."
+                )
+                vision_worker.cancel_request()
+                if not vision_worker.isRunning():
+                    QTimer.singleShot(0, lambda owner=self.cur: self._send_pending_for_session(owner))
             else:
-                action_result = run_safe_action(
-                    text, allow_desktop=self._game_mode_profile != COMPETITIVE_SAFE_MODE
-                )                                                                       # fixed shortcuts remain gated in Competitive Safe
-        self._tool_plan = None if action_result else self.tool_agent.plan(text)
-        self.save_message("user", packed["stored"] if packed else text)
-        if action_result:
-            self.reply_local(action_result)
+                self.status.setText(f"پیام در صف است ({count}) — بعد از پایان پاسخ فعلی ارسال می‌شود.")
             return
-        self.busy = True
-        self.gen_stop_btn.show()
-        self.set_status("st_thinking")
-        self.set_badge("connecting", self.client.preview_route())
-        self.show_upload_tiles(attachments)
-        self.director.event("user_message")
-        self.director.event("response_started")
-        self._plain_retry = False
-        self._web_found = None
-        self._image_search_turn = False
-        if img_search and packed:
-            self._image_search_turn = True
-            self.begin_image_search(text, packed["model"], packed["images"])
+        if result == SubmissionResult.FULL:
             return
-        query, forced = websearch.plan(text) if self.settings.get("web_search", True) or text.lstrip().startswith("/") else (None, False)
-        if query and not forced and self._tool_plan is not None and self._tool_plan.strong:
-            query = None                                          # a request about this PC (files, apps, RAM...) is not a web question
-        if query and not forced and self._tool_plan is not None and getattr(self._tool_plan, "web", False):
-            query = None                                          # research / "read this page" requests go through the web tools (kira/webintel), not the one-shot search
-        if query:
-            self.begin_web_search(query, packed["model"] if packed else text, packed["images"] if packed else [])
-            return
-        self.begin_reply()
 
+    def _process_chat_request(self, text, attachments=None, _voice=False):
+        voice = bool(_voice)
     def begin_reply(self):
         try:
             self.start_worker(plain=False)
@@ -4681,9 +4639,11 @@ class MainWindow(QMainWindow):
     def _send_next_pending(self):
         if self._closing:
             return
-        if self._pending and not self.busy:
-            nxt = self._pending.pop(0)
-            QTimer.singleShot(0, lambda t=nxt, sess=self.cur: self._submit_for(sess, t))
+        request = self._chat_coordinator().take_next(busy=self.busy)
+        if request is not None:
+            QTimer.singleShot(
+                0, lambda item=request, sess=self.cur: self._dispatch_coordinated_request(sess, item)
+            )
 
     def _submit_for(self, session, args):
         if not self._closing and session.cid in self.sessions:
