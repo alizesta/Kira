@@ -64,7 +64,7 @@ from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
 from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
 from .chat_code_ui import CodeChat
-from .ui.components import McpRegistryPanel, ModelCombo, RouteEditor
+from .ui.components import McpRegistryPanel, ModelCombo, OllamaProviderPanel, RouteEditor
 from .ui.dialogs import MemoryDialog, ModelPickerDialog
 from .ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
 from .ui.workers import (
@@ -2809,31 +2809,17 @@ class MainWindow(QMainWindow):
         return self.build_ollama_group()
 
     def build_ollama_group(self):
-        """Local Ollama provider: enable switch + Edit for its address (Local Model settings stay exactly as before)."""
-        local_cfg = self.settings.get("providers", {}).get("ollama", {})
-        lg, lf = self.group("Ollama · Local")
-        self.route_ollama_enabled = QCheckBox("فعال بودن Provider محلی Ollama")
-        self.route_ollama_enabled.setChecked(bool(local_cfg.get("enabled", True)))
-        self.route_ollama_enabled.toggled.connect(lambda *_: self.provider_changed())
-        lf.addRow(self.route_ollama_enabled)
-        self.ollama_url_edit = QLineEdit(self.settings.get("ollama_url", "http://localhost:11434"))
-        self.ollama_url_edit.setReadOnly(True)
-        lf.addRow("Base URL", self.ollama_url_edit)
-        self.ollama_edit_btn, self.ollama_save_btn, self.ollama_cancel_btn = QPushButton("Edit"), QPushButton("ذخیره"), QPushButton("Cancel")
-        self.ollama_save_btn.hide()
-        self.ollama_cancel_btn.hide()
-        oline = QHBoxLayout()
-        for b in (self.ollama_edit_btn, self.ollama_save_btn, self.ollama_cancel_btn):
-            oline.addWidget(b)
-        lf.addRow(oline)
-        self.ollama_edit_btn.clicked.connect(lambda: self.ollama_edit_mode(True))
-        self.ollama_cancel_btn.clicked.connect(lambda: self.ollama_edit_mode(False))
-        self.ollama_save_btn.clicked.connect(self.save_ollama_edit)
-        note = QLabel("Context، Keep-alive و Num Predict پیش‌فرض Ollama در تب «دستیار» است؛ هر Route محلی می‌تواند Context/Num Predict خودش را هم داشته باشد. مدل‌های نصب‌شده را با «یافتن مدل‌های Ollama» بالای صفحه بیاور.")
-        note.setObjectName("hint")
-        note.setWordWrap(True)
-        lf.addRow(note)
-        return lg
+        """Host the Ollama settings widget and delegate its intents to the app controller."""
+        self.ollama_panel = OllamaProviderPanel(self.settings, parent=self)
+        self.route_ollama_enabled = self.ollama_panel.enabled
+        self.ollama_url_edit = self.ollama_panel.url_edit
+        self.ollama_edit_btn = self.ollama_panel.edit_btn
+        self.ollama_save_btn = self.ollama_panel.save_btn
+        self.ollama_cancel_btn = self.ollama_panel.cancel_btn
+        self.ollama_panel.enabled_changed.connect(self.provider_changed)
+        self.ollama_panel.cancel_requested.connect(lambda: self.ollama_edit_mode(False))
+        self.ollama_panel.save_requested.connect(self.save_ollama_edit)
+        return self.ollama_panel
 
     def collect_provider_settings(self):
         """Only the local Ollama switch lives in the form now; API keys / enabled flags are changed by the API Manager actions directly."""
@@ -2841,12 +2827,7 @@ class MainWindow(QMainWindow):
         route_model.ensure_routes(self.settings)
 
     def ollama_edit_mode(self, on):
-        self.ollama_url_edit.setReadOnly(not on)
-        self.ollama_edit_btn.setVisible(not on)
-        self.ollama_save_btn.setVisible(on)
-        self.ollama_cancel_btn.setVisible(on)
-        if not on:
-            self.ollama_url_edit.setText(self.settings.get("ollama_url", "http://localhost:11434"))
+        self.ollama_panel.set_edit_mode(bool(on), self.settings.get("ollama_url") if not on else None)
 
     def save_ollama_edit(self):
         url = self.ollama_url_edit.text().strip().rstrip("/")
