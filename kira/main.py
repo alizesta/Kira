@@ -40,7 +40,7 @@ from .face import AvatarView
 from .vrm_avatar import KiraAvatar
 from .emotion.backend_png import EmotionFaceAnimator
 from .emotion.director import EmotionDirector
-from .voice import Speaker
+from .voice import Speaker, PIPER_FA
 from .listener import Listener
 from .game_audio import GameAudioListener, is_important_game_audio
 from . import cloud_voice
@@ -919,6 +919,15 @@ class MainWindow(QMainWindow):
             self.cur = prev
             self.settings["active_character_id"] = prev_cid
 
+    def theme_for_character(self, character_id, profile=None):
+        """Resolve a character palette with the saved user-selected accent colour."""
+        cid = str(character_id or "kira")
+        selected = dict(profile or characters.all_profiles(self.settings).get(cid, {}))
+        custom = (self.settings.get("character_theme_colors") or {}).get(cid)
+        if custom:
+            selected["theme_color"] = custom
+        return theme_mod.character_theme(cid, selected)
+
     def accent(self):
         theme = getattr(self.cur, "theme", None)
         return theme_mod.chat_accent(theme) if theme else None
@@ -999,7 +1008,7 @@ class MainWindow(QMainWindow):
             sess.timer.timeout.connect(sess.relay.tick)
         if sess.client is None:
             sess.client = self._new_router()
-        sess.theme = theme_mod.character_theme(cid, profile)
+        sess.theme = self.theme_for_character(cid, profile)
         if sess.cid not in self.char_tab_buttons:
             button = QPushButton()
             button.setObjectName("charTab")
@@ -1112,7 +1121,7 @@ class MainWindow(QMainWindow):
 
     def apply_chat_theme(self):
         """Glass + neon colours of the chat in front (same glass, the character's own colours)."""
-        theme = self.front.theme or theme_mod.character_theme("kira")
+        theme = self.front.theme or self.theme_for_character(self.front.cid)
         self.chat_page.setStyleSheet(theme_mod.character_style(theme, getattr(self, "_effect", "off"), self.settings.get("appearance", {})))
         r, g, b = (int(theme["main"].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
         for glow in self.glow_effects:
@@ -1423,7 +1432,7 @@ class MainWindow(QMainWindow):
         b = QToolButton()
         cid = characters.active_id(self.settings)
         profile = characters.all_profiles(self.settings).get(cid, {})
-        palette = theme_mod.character_theme(cid, profile)
+        palette = self.theme_for_character(cid, profile)
         b.setProperty("kiraIconName", name)
         b.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
                             checked=palette["main"], disabled="#52617B"))
@@ -1838,7 +1847,7 @@ class MainWindow(QMainWindow):
         self.speak_chk.toggled.connect(self.set_voice_enabled)
         self.reg(self.speak_chk.setText, "speak_on")
         f1.addRow(self.speak_chk)
-        self.voice_fa = self.voice_row(f1, "voice_fa", EDGE_FA, s["voice_fa"], "fa")
+        self.voice_fa = self.voice_row(f1, "voice_fa", EDGE_FA + [PIPER_FA], s["voice_fa"], "fa")
         self.voice_en = self.voice_row(f1, "voice_en", EDGE_EN, s["voice_en"], "en")
         self.volume = self.row(f1, "volume", QSlider(Qt.Horizontal))
         self.volume.setRange(0, 100)
@@ -2540,6 +2549,18 @@ class MainWindow(QMainWindow):
         manager_row.addWidget(self.character_edit_btn)
         manager_row.addWidget(self.character_delete_btn)
         profile_info.addLayout(manager_row)
+        theme_row = QHBoxLayout()
+        self.character_theme_color_btn = QPushButton("انتخاب رنگ تم")
+        self.character_theme_color_btn.clicked.connect(self.choose_character_theme_color)
+        self.character_theme_color_preview = QLabel("#9C7BFF")
+        self.character_theme_color_preview.setMinimumWidth(82)
+        self.character_theme_color_preview.setAlignment(Qt.AlignCenter)
+        theme_row.addWidget(self.character_theme_color_btn)
+        theme_row.addWidget(self.character_theme_color_preview)
+        self.character_theme_reset_btn = QPushButton("بازنشانی رنگ")
+        self.character_theme_reset_btn.clicked.connect(self.reset_character_theme_color)
+        theme_row.addWidget(self.character_theme_reset_btn)
+        profile_info.addLayout(theme_row)
         profile_row.addLayout(profile_info, 1)
         f.addRow(profile_row)
 
@@ -2833,6 +2854,44 @@ class MainWindow(QMainWindow):
         self.character_combo.blockSignals(False)
         self.character_edit_btn.setEnabled(current != "kira")
         self.character_delete_btn.setEnabled(current != "kira")
+        self._refresh_character_theme_preview()
+
+    def _refresh_character_theme_preview(self):
+        if not hasattr(self, "character_theme_color_preview"):
+            return
+        cid = characters.active_id(self.settings)
+        colour = self.theme_for_character(cid)["main"]
+        self.character_theme_color_preview.setText(colour)
+        self.character_theme_color_preview.setStyleSheet(
+            f"QLabel {{ background: {colour}; color: white; border: 1px solid rgba(255,255,255,0.5); "
+            "border-radius: 7px; padding: 5px; }"
+        )
+
+    def choose_character_theme_color(self):
+        cid = characters.active_id(self.settings)
+        current = QColor(self.theme_for_character(cid)["main"])
+        selected = QColorDialog.getColor(current, self, "رنگ تم شخصیت")
+        if not selected.isValid():
+            return
+        self.settings.setdefault("character_theme_colors", {})[cid] = selected.name()
+        for session in self.sessions.values():
+            session.theme = self.theme_for_character(session.cid)
+        self._refresh_character_theme_preview()
+        self.apply_chat_theme()
+        self.refresh_navigation_icons()
+        self._refresh_icon_glow()
+        self.save_now()
+
+    def reset_character_theme_color(self):
+        cid = characters.active_id(self.settings)
+        self.settings.setdefault("character_theme_colors", {}).pop(cid, None)
+        for session in self.sessions.values():
+            session.theme = self.theme_for_character(session.cid)
+        self._refresh_character_theme_preview()
+        self.apply_chat_theme()
+        self.refresh_navigation_icons()
+        self._refresh_icon_glow()
+        self.save_now()
 
     def refresh_character_card(self, character_id=None):
         profile = characters.all_profiles(self.settings).get(character_id or characters.active_id(self.settings), characters.CHARACTERS["kira"])
@@ -3081,7 +3140,7 @@ class MainWindow(QMainWindow):
         appearance = appearance if isinstance(appearance, dict) else (self.settings.get("appearance") or {})
         intensity = max(0, min(100, int(appearance.get("glow", 58))))
         cid = characters.active_id(self.settings)
-        palette = theme_mod.character_theme(cid, characters.all_profiles(self.settings).get(cid, {}))
+        palette = self.theme_for_character(cid, characters.all_profiles(self.settings).get(cid, {}))
         if not hasattr(self, "_neon_widget_effects"):
             self._neon_widget_effects = {}
 
