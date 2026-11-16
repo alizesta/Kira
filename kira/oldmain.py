@@ -653,14 +653,6 @@ class MainWindow(QMainWindow):
         if self._session_has_pending_chat_work(session):
             return False
         self.chat_application_service.close_session(session.cid)
-        session.dispatch_scheduled = False
-        response_relay = getattr(session, "response_relay", None)
-        if response_relay is not None:
-            try:
-                response_relay.deleteLater()
-            except RuntimeError:
-                pass
-            session.response_relay = None
         if session.client is not None:
             session.client.cancel()
             session.client = None
@@ -679,10 +671,6 @@ class MainWindow(QMainWindow):
         if session.relay is not None:
             session.relay.deleteLater()
             session.relay = None
-        response_relay = getattr(session, "response_relay", None)
-        if response_relay is not None:
-            response_relay.deleteLater()
-            session.response_relay = None
         if session.view is not None:
             self.chat_stack.removeWidget(session.view)
             session.view.deleteLater()
@@ -4130,7 +4118,7 @@ class MainWindow(QMainWindow):
 
     def _on_chat_application_event(self, event):
         session = self.sessions.get(event.session_id)
-        if session is None:
+        if session is None or self._closing:
             return
         if event.kind is ApplicationEventKind.REQUEST_STARTED:
             return
