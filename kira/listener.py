@@ -92,6 +92,8 @@ class Listener(QThread):
             return
         self.state.emit("loading")
         self.engine = None
+        if not self._run:
+            return
         local_ready = False
         if bool(self.settings.get("local_voice_asr", True)):
             try:
@@ -108,6 +110,8 @@ class Listener(QThread):
                 local_ready = False
                 self._local_asr_failed = True
                 self.note.emit(f"بارگذاری Qwen3-ASR ناموفق بود؛ تلاش برای Whisper محلی. ({type(exc).__name__})")
+        if not self._run:
+            return
         if not local_ready and not self._load_local():
             return
         model = self._model
