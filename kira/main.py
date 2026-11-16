@@ -195,6 +195,11 @@ class MainWindow(QMainWindow):
     send_btn = front_only_property("send_btn")
     input = front_only_property("input")
     voice_btn = front_only_property("voice_btn")
+    @property
+    def _attach_worker(self):
+        controller = getattr(self, "attachment_controller", None)
+        return controller.worker if controller is not None else None
+
 
     def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None):
         super().__init__()
