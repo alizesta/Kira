@@ -68,7 +68,19 @@ if not defined PY (
   if not errorlevel 1 set "PY=python"
 )
 if not defined PY (
-  echo ERROR: Python 3.11 or 3.12 was not found.
+  echo Python was not found. Trying automatic Python 3.12 installation...
+  where winget >nul 2>nul
+  if errorlevel 1 (
+    echo ERROR: Python is missing and Windows Package Manager is unavailable.
+    goto fail
+  )
+  winget install --id Python.Python.3.12 --exact --silent --accept-package-agreements --accept-source-agreements
+  if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" set "PY="%LOCALAPPDATA%\Programs\Python\Python312\python.exe""
+  if not defined PY if exist "%ProgramFiles%\Python312\python.exe" set "PY="%ProgramFiles%\Python312\python.exe""
+  if not defined PY py -3.12 -c "import sys" >nul 2>nul && set "PY=py -3.12"
+)
+if not defined PY (
+  echo ERROR: Could not install or locate Python 3.11/3.12.
   goto fail
 )
 echo Using: %PY%
