@@ -60,6 +60,43 @@ class DependencyContainerTests(unittest.TestCase):
             DependencyContainer().resolve("missing")
 
 
+class ApplicationServiceBoundaryTests(unittest.TestCase):
+    def test_persona_memory_service_scopes_operations_by_character(self):
+        from contextlib import nullcontext
+        from unittest.mock import patch
+
+        from kira.services.memory_service import PersonaMemoryService
+
+        expected_items = [{"id": "ren-1", "group": "fact", "text": "prefers concise answers"}]
+        service = PersonaMemoryService()
+        with patch(
+            "kira.services.memory_service.persona_memory.character_scope",
+            return_value=nullcontext(),
+        ) as scope, patch(
+            "kira.services.memory_service.persona_memory.list_items",
+            return_value=expected_items,
+        ) as list_items:
+            self.assertEqual(service.list_items("ren"), expected_items)
+
+        scope.assert_called_once_with("ren")
+        list_items.assert_called_once_with()
+
+    def test_mood_service_delegates_current_and_reset(self):
+        from unittest.mock import patch
+
+        from kira.services.mood_service import MoodStateService
+
+        current = {"emotion": "calm", "intensity": 20}
+        service = MoodStateService()
+        with patch("kira.services.mood_service.mood.current", return_value=current) as read:
+            self.assertEqual(service.current(), current)
+        with patch("kira.services.mood_service.mood.reset") as reset:
+            service.reset()
+
+        read.assert_called_once_with()
+        reset.assert_called_once_with()
+
+
 class ExtractedUiComponentTests(unittest.TestCase):
     def test_model_combo_is_exported_from_ui_components(self):
         from kira.ui.components import ModelCombo
