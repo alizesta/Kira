@@ -170,6 +170,32 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
 
 
 
+def _ensure_pillow_compatible() -> None:
+    """Repair Pillow 13+ even when the requested voice runtime was already installed."""
+    from importlib.metadata import PackageNotFoundError, version
+    import subprocess
+    import sys
+
+    try:
+        installed = version("Pillow")
+    except PackageNotFoundError:
+        return
+    try:
+        incompatible = int(installed.split(".", 1)[0]) >= 13
+    except (TypeError, ValueError):
+        incompatible = False
+    if not incompatible:
+        return
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "5",
+         "--timeout", "60", "Pillow>=8,<13"],
+        capture_output=True, text=True, timeout=1800, check=False,
+    )
+    if result.returncode:
+        detail = (result.stderr or result.stdout or "Pillow compatibility fix failed")[-2500:]
+        raise RuntimeError(f"اصلاح ناسازگاری Pillow ناموفق بود: {detail}")
+
+
 def _install_voice_package(package: str) -> None:
     """Install a voice runtime into Kira's active Python without breaking Gradio's Pillow pin."""
     import subprocess
@@ -200,6 +226,7 @@ def _download_voice_repo(repo_id: str) -> str:
 
 def install_and_download_qwen_asr(repo_id: str = "Qwen/Qwen3-ASR-0.6B") -> str:
     """Install Qwen runtime and download the selected model into Kira's data folder."""
+    _ensure_pillow_compatible()
     try:
         import qwen_asr  # noqa: F401
     except ImportError:
@@ -209,6 +236,7 @@ def install_and_download_qwen_asr(repo_id: str = "Qwen/Qwen3-ASR-0.6B") -> str:
 
 def install_and_download_whisper(repo_id: str) -> str:
     """Install faster-whisper and download a CTranslate2 Whisper model."""
+    _ensure_pillow_compatible()
     try:
         import faster_whisper  # noqa: F401
     except ImportError:
@@ -218,6 +246,7 @@ def install_and_download_whisper(repo_id: str) -> str:
 
 def install_and_download_piper_voice(repo_id: str) -> str:
     """Install Piper runtime and download a Piper ONNX voice."""
+    _ensure_pillow_compatible()
     try:
         import piper  # noqa: F401
     except ImportError:
