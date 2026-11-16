@@ -46,28 +46,7 @@ class ChatRepository(Protocol):
     def recent_messages(self, limit: int = 12, character_id: str | None = None,
                         conversation_id: str | None = None) -> list[dict[str, str]]: ...
     def message_count(self, character_id: str | None = None, conversation_id: str | None = None) -> int: ...
-    def clear_memory(self, character_id=None):
-        """Snapshot first, then delete only the requested character's messages."""
-        with self._lock:
-            try:
-                with self._db() as con:
-                    self._migrate_schema(con)
-                    count = int(con.execute("SELECT COUNT(*) FROM messages").fetchone()[0])
-                    if count:
-                        # Keep the write transaction open across backup and delete,
-                        # so a concurrent writer cannot slip a row in after the snapshot.
-                        self._snapshot("cleared")
-                    if character_id is None:
-                        con.execute("DELETE FROM messages")
-                    else:
-                        con.execute("DELETE FROM messages WHERE character_id=?", (_character_id(character_id),))
-            except (sqlite3.Error, OSError, PersistenceError) as exc:
-                raise PersistenceError(f"پاک‌سازی ناموفق بود؛ داده‌ها حذف نشدند یا Snapshot قبلی حفظ شد. ({exc})") from exc
-            if character_id is None:
-                self._pending.clear()
-            else:
-                self._pending[:] = [row for row in self._pending if row[2] != _character_id(character_id)]
-
+    def clear_memory(self, character_id: str | None = None) -> None: ...
     def import_messages(self, source: str | Path) -> int: ...
 
 
@@ -819,10 +798,10 @@ class SqliteChatRepository:
                 with self._db() as con:
                     self._migrate_schema(con)
                     count = int(con.execute("SELECT COUNT(*) FROM messages").fetchone()[0])
-                if count:
-                    self._snapshot("cleared")
-                with self._db() as con:
-                    self._migrate_schema(con)
+                    if count:
+                        # The same BEGIN IMMEDIATE transaction stays open through
+                        # snapshot and deletion, preventing concurrent inserts.
+                        self._snapshot("cleared")
                     if character_id is None:
                         con.execute("DELETE FROM messages")
                     else:
