@@ -4393,7 +4393,6 @@ class MainWindow(QMainWindow):
         prompt = context_result.system_prompt
 
         self._stream_begin()
-        extra = self._turn_extra
         temperature = modes.temperature_for(mode, self.settings["temperature"]) if mode else self.settings["temperature"]
         relay = self.cur.relay
         self.worker = self._chat_coordinator().start_provider_request(
