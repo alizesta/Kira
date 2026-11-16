@@ -87,6 +87,7 @@ class SqliteChatRepository:
         self._db_path = db_path if callable(db_path) else (lambda: Path(db_path or DB_PATH))
         self._lock = threading.RLock()
         self._pending: list[tuple] = []
+        self._active_conversations: dict[str, str] = {}
         self.last_error: str | None = None
         self.startup_notes: list[str] = []
 
@@ -434,6 +435,13 @@ class SqliteChatRepository:
                     notes.append(self._recover("بررسی سلامت فایل ناموفق بود"))
                 with self._db() as con:
                     self._migrate_schema(con)
+                    active_rows = con.execute(
+                        "SELECT id, character_id FROM conversations WHERE status='active' "
+                        "ORDER BY updated_at DESC, rowid DESC"
+                    ).fetchall()
+                    self._active_conversations.clear()
+                    for row in active_rows:
+                        self._active_conversations.setdefault(_character_id(row["character_id"]), str(row["id"]))
                 self.last_error = None
             except (sqlite3.Error, OSError, PersistenceError) as exc:
                 self._note_error(exc)
@@ -475,7 +483,9 @@ class SqliteChatRepository:
                 row = con.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
                 if row is None or row["character_id"] != cid:
                     raise PersistenceError("شناسه گفتگو متعلق به شخصیت دیگری است.")
-                return self._conversation_record(row)
+                record = self._conversation_record(row)
+                self._active_conversations[cid] = conv_id
+                return record
         except PersistenceError:
             raise
         except (sqlite3.Error, OSError) as exc:
@@ -493,7 +503,9 @@ class SqliteChatRepository:
                         (cid,),
                     ).fetchone()
                 if row is not None:
-                    return self._conversation_record(row)
+                    record = self._conversation_record(row)
+                    self._active_conversations[cid] = str(record["id"])
+                    return record
                 return self.create_conversation(cid)
             except (sqlite3.Error, OSError) as exc:
                 self._note_error(exc)
@@ -529,7 +541,14 @@ class SqliteChatRepository:
             return False
         changes.append("updated_at=?"); values.append(_now()); values.append(str(conversation_id))
         with self._lock, self._db() as con:
+            row = con.execute("SELECT character_id FROM conversations WHERE id=?", (str(conversation_id),)).fetchone()
             cur = con.execute(f"UPDATE conversations SET {', '.join(changes)} WHERE id=?", values)
+            if cur.rowcount and row is not None and status is not None:
+                cid = _character_id(row["character_id"])
+                if status == "active":
+                    self._active_conversations[cid] = str(conversation_id)
+                elif self._active_conversations.get(cid) == str(conversation_id):
+                    self._active_conversations.pop(cid, None)
             return cur.rowcount > 0
 
     def close_conversation(self, conversation_id: str) -> bool:
@@ -552,6 +571,9 @@ class SqliteChatRepository:
                     con.execute("DELETE FROM messages WHERE conversation_id=?", (conv_id,))
                     con.execute("DELETE FROM conversations WHERE id=?", (conv_id,))
                 self._pending[:] = [row for row in self._pending if row[3] != conv_id]
+                for cid, active_id in list(self._active_conversations.items()):
+                    if active_id == conv_id:
+                        self._active_conversations.pop(cid, None)
                 return count
             except (sqlite3.Error, OSError, PersistenceError) as exc:
                 raise PersistenceError(f"حذف گفتگو ناموفق بود؛ داده‌ها حفظ شدند. ({exc})") from exc
@@ -567,6 +589,7 @@ class SqliteChatRepository:
             raise ValueError("invalid message status")
         meta_json = json.dumps(_json_object(metadata), ensure_ascii=False, separators=(",", ":"))
         resolved_conv_id = str(conversation_id) if conversation_id else None
+        fallback_conv_id = resolved_conv_id or self._active_conversations.get(cid)
         with self._lock:
             for attempt in (1, 2):
                 try:
@@ -579,6 +602,7 @@ class SqliteChatRepository:
                                 (cid,),
                             ).fetchone()
                             resolved_conv_id = str(row["id"]) if row else str(uuid.uuid4())
+                            self._active_conversations[cid] = resolved_conv_id
                         row = con.execute("SELECT character_id FROM conversations WHERE id=?", (resolved_conv_id,)).fetchone()
                         if row is None:
                             self._ensure_conversation_row(con, resolved_conv_id, cid)
@@ -607,6 +631,7 @@ class SqliteChatRepository:
                                 (int(message_id), role, body, cid, resolved_conv_id, meta_json, status),
                             )
                         con.execute("UPDATE conversations SET updated_at=? WHERE id=?", (_now(), resolved_conv_id))
+                    self._active_conversations[cid] = resolved_conv_id
                     self.last_error = None
                     return True
                 except PersistenceError:
@@ -620,7 +645,7 @@ class SqliteChatRepository:
                         except (sqlite3.Error, OSError, PersistenceError) as recovery:
                             self._note_error(recovery)
                     break
-            pending_conv = resolved_conv_id or _legacy_conversation_id(cid)
+            pending_conv = resolved_conv_id or fallback_conv_id or _legacy_conversation_id(cid)
             self._pending.append((role, body, cid, pending_conv, meta_json, status))
             del self._pending[:-500]
             return False
