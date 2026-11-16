@@ -21,10 +21,10 @@ if not defined KIRA_DATA_DIR if exist "%LOCALAPPDATA%\Kira\huggingface" set "KIR
 if not defined KIRA_DATA_DIR if exist "%~dp0data\settings.json" set "KIRA_DATA_DIR=%~dp0data"
 
 if defined KIRA_DATA_DIR goto save_data_path
-if exist "A:\\" (
-  set "KIRA_DEFAULT_DATA_DIR=A:\\Project KIRA\\Kira Attachments"
+if exist "A:\" (
+  set "KIRA_DEFAULT_DATA_DIR=A:\Project KIRA\Kira Attachments"
 ) else (
-  set "KIRA_DEFAULT_DATA_DIR=%LOCALAPPDATA%\\ProjectKira\\Data"
+  set "KIRA_DEFAULT_DATA_DIR=%LOCALAPPDATA%\ProjectKira\Data"
 )
 echo First installation. Choose the permanent data folder:
 echo   [1] Default: %KIRA_DEFAULT_DATA_DIR%
