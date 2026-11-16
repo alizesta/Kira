@@ -387,6 +387,12 @@ class SqliteChatRepository:
                 self._ensure_conversation_row(con, row[3], row[2])
         self._pending.clear()
 
+    @staticmethod
+    def _conversation_record(row):
+        record = dict(row)
+        record["metadata"] = _json_object(record.get("metadata"))
+        return record
+
     def create_conversation(self, character_id=None, title="", metadata=None, conversation_id=None) -> dict[str, Any]:
         cid = _character_id(character_id)
         conv_id = str(conversation_id or uuid.uuid4())
@@ -402,7 +408,7 @@ class SqliteChatRepository:
                 row = con.execute("SELECT * FROM conversations WHERE id=?", (conv_id,)).fetchone()
                 if row is None or row["character_id"] != cid:
                     raise PersistenceError("شناسه گفتگو متعلق به شخصیت دیگری است.")
-                return dict(row)
+                return self._conversation_record(row)
         except PersistenceError:
             raise
         except (sqlite3.Error, OSError) as exc:
@@ -420,7 +426,7 @@ class SqliteChatRepository:
                         (cid,),
                     ).fetchone()
                 if row is not None:
-                    return dict(row)
+                    return self._conversation_record(row)
                 return self.create_conversation(cid)
             except (sqlite3.Error, OSError) as exc:
                 self._note_error(exc)
@@ -429,7 +435,7 @@ class SqliteChatRepository:
     def get_conversation(self, conversation_id: str) -> dict[str, Any] | None:
         with self._db() as con:
             row = con.execute("SELECT * FROM conversations WHERE id=?", (str(conversation_id),)).fetchone()
-            return dict(row) if row else None
+            return self._conversation_record(row) if row else None
 
     def list_conversations(self, character_id=None) -> list[dict[str, Any]]:
         with self._db() as con:
@@ -440,7 +446,7 @@ class SqliteChatRepository:
                     "SELECT * FROM conversations WHERE character_id=? ORDER BY updated_at DESC, rowid DESC",
                     (_character_id(character_id),),
                 ).fetchall()
-        return [dict(row) for row in rows]
+        return [self._conversation_record(row) for row in rows]
 
     def update_conversation(self, conversation_id: str, *, title=None, metadata=None, status=None) -> bool:
         changes, values = [], []
@@ -473,6 +479,7 @@ class SqliteChatRepository:
                 with self._db() as con:
                     con.execute("DELETE FROM messages WHERE conversation_id=?", (conv_id,))
                     con.execute("DELETE FROM conversations WHERE id=?", (conv_id,))
+                self._pending[:] = [row for row in self._pending if row[3] != conv_id]
                 return count
             except (sqlite3.Error, OSError) as exc:
                 raise PersistenceError(f"حذف گفتگو ناموفق بود؛ داده‌ها حفظ شدند. ({exc})") from exc
@@ -505,6 +512,15 @@ class SqliteChatRepository:
                             self._ensure_conversation_row(con, resolved_conv_id, cid)
                         elif row["character_id"] != cid:
                             raise PersistenceError("شناسه گفتگو متعلق به شخصیت دیگری است.")
+                        if message_id is not None:
+                            existing_message = con.execute(
+                                "SELECT character_id, conversation_id FROM messages WHERE id=?", (int(message_id),)
+                            ).fetchone()
+                            if existing_message and (
+                                existing_message["character_id"] != cid or
+                                existing_message["conversation_id"] != resolved_conv_id
+                            ):
+                                raise PersistenceError("شناسه پیام متعلق به گفتگوی دیگری است.")
                         if message_id is None:
                             con.execute(
                                 "INSERT INTO messages(role, content, character_id, conversation_id, metadata, status) "
@@ -557,6 +573,14 @@ class SqliteChatRepository:
             if row is not None and row["character_id"] != cid:
                 raise PersistenceError("شناسه گفتگو متعلق به شخصیت دیگری است.")
             self._ensure_conversation_row(con, str(conversation_id), cid)
+            existing_message = con.execute(
+                "SELECT character_id, conversation_id FROM messages WHERE id=?", (int(message_id),)
+            ).fetchone()
+            if existing_message and (
+                existing_message["character_id"] != cid or
+                existing_message["conversation_id"] != str(conversation_id)
+            ):
+                raise PersistenceError("شناسه پیام متعلق به گفتگوی دیگری است.")
             con.execute(
                 "INSERT INTO messages(id, role, content, character_id, conversation_id, metadata, status) "
                 "VALUES (?, 'assistant', ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET content=excluded.content, "
