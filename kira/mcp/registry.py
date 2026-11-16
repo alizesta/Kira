@@ -32,7 +32,15 @@ def search_servers(query: str = "", limit: int = MAX_RESULTS) -> list[dict]:
     with urllib.request.urlopen(request, timeout=15) as response:
         payload = json.loads(response.read(2_000_000).decode("utf-8"))
     records = payload.get("servers", []) if isinstance(payload, dict) else []
-    return [record for record in records if isinstance(record, dict)][:MAX_RESULTS]
+    active = []
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        meta = record.get("_meta", {}).get("io.modelcontextprotocol.registry/official", {})
+        if isinstance(meta, dict) and meta.get("status") not in (None, "active"):
+            continue
+        active.append(record)
+    return active[:MAX_RESULTS]
 
 
 def _safe_args(value) -> list[str]:
