@@ -1892,7 +1892,7 @@ class MainWindow(QMainWindow):
         self.refresh_local_voice_status()
 
     def download_local_qwen_model(self):
-        model_id = str(self.local_asr_path_edit.text() or "").strip()
+        model_id = str(self.local_asr_path_edit.text() or "").strip() or "Qwen/Qwen3-ASR-0.6B"
         if Path(model_id).expanduser().is_dir():
             self.local_voice_status.setText("این مدل از قبل روی سیستم وجود دارد.")
             self.refresh_local_voice_status()
@@ -1900,8 +1900,9 @@ class MainWindow(QMainWindow):
         if "/" not in model_id:
             self.local_voice_status.setText("شناسه مخزن Hugging Face را به شکل owner/repository وارد کن.")
             return
+        self.local_voice_status.setText("در حال آماده‌سازی موتور Qwen و دانلود مدل از Hugging Face؛ ممکن است چند گیگابایت باشد…")
         from . import local_voice
-        self._run_local_voice_task(lambda: local_voice.download_hf_model(model_id),
+        self._run_local_voice_task(lambda: local_voice.install_and_download_qwen_asr(model_id),
                                    self.local_asr_download_btn, self._on_local_qwen_downloaded)
 
     def _on_local_qwen_downloaded(self, result):
@@ -1909,11 +1910,12 @@ class MainWindow(QMainWindow):
         if not ok:
             self.local_voice_status.setText(f"دانلود مدل Qwen ناموفق بود: {value}")
             return
-        self.settings["local_voice_asr_model"] = str(value)
-        self.local_asr_path_edit.setText(str(value))
+        model_id = str(self.local_asr_path_edit.text() or "").strip() or "Qwen/Qwen3-ASR-0.6B"
+        self.settings["local_voice_asr_model"] = model_id
+        self.local_asr_path_edit.setText(model_id)
         self.save_now()
         self.refresh_local_voice_status()
-        self.local_voice_status.setText(f"مدل STT دانلود شد: {value}")
+        self.local_voice_status.setText(f"موتور Qwen نصب شد و مدل دانلود شد: {value}")
 
     def choose_local_whisper_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "پوشه مدل Whisper را انتخاب کن", str(Path.home()))
