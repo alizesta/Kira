@@ -39,10 +39,29 @@ class FakePersistence:
         self.result = result
         self.error = error
         self.messages = []
+        self.conversations = {}
+        self.history_calls = []
 
     @property
     def last_error(self):
         return self.error
+
+    def get_or_create_conversation(self, character_id=None):
+        return self.conversations.setdefault(
+            str(character_id), {"id": f"{character_id}-conversation"}
+        )
+
+    def recent_messages(self, limit=12, character_id=None, conversation_id=None):
+        self.history_calls.append(("recent", limit, character_id, conversation_id))
+        return []
+
+    def conversation_context(self, limit=12, max_chars=12000, character_id=None, conversation_id=None):
+        self.history_calls.append(("context", limit, max_chars, character_id, conversation_id))
+        return []
+
+    def message_count(self, character_id=None, conversation_id=None):
+        self.history_calls.append(("count", character_id, conversation_id))
+        return 0
 
     def add_message(self, role, content, character_id=None, **options):
         self.messages.append((role, content, character_id, options))
@@ -303,6 +322,30 @@ class ChatApplicationServiceTests(unittest.TestCase):
         self.assertEqual(self.service.pending_count("ren"), 0)
         with self.assertRaisesRegex(RuntimeError, "disposed"):
             self.service.submit_message("mika", "after shutdown")
+
+    def test_conversation_identity_is_preserved_for_history_and_persistence(self):
+        conversation = self.service.get_or_create_conversation("kira")
+        conversation_id = conversation["id"]
+        submission = self.service.submit_message(
+            "kira", "hello", conversation_id=conversation_id
+        )
+
+        outcome = self.service.complete_request(submission.request.request_id, "answer")
+        self.assertTrue(outcome.ok)
+        self.assertEqual(submission.request.conversation_id, conversation_id)
+        self.assertEqual(self.persistence.messages[0][3]["conversation_id"], conversation_id)
+
+        self.service.recent_messages(8, "kira", conversation_id)
+        self.service.conversation_context(8, 4000, "kira", conversation_id)
+        self.service.message_count("kira", conversation_id)
+        self.assertEqual(
+            self.persistence.history_calls,
+            [
+                ("recent", 8, "kira", conversation_id),
+                ("context", 8, 4000, "kira", conversation_id),
+                ("count", "kira", conversation_id),
+            ],
+        )
 
     def test_service_is_qt_free(self):
         import ast
