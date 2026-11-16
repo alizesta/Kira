@@ -902,7 +902,8 @@ class SqliteChatRepository:
                 raise PersistenceError(f"ورود چت ناموفق بود (چیزی تغییر نکرد): {exc}") from exc
 
     def _ensure_conversation_rows(self, con, rows):
-        for role, body, stamp, cid, conv_id, metadata, status in rows:
+        for raw_row in rows:
+            _, role, body, stamp, cid, conv_id, metadata, status = self._message_fields(raw_row)
             self._ensure_conversation_row(con, conv_id, cid, stamp or None)
 
     def restore_last_cleared(self):
