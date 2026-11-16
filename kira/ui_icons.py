@@ -272,6 +272,11 @@ def _shapes(name):
         w2.moveTo(18.5, 6.5)
         w2.cubicTo(22, 10, 22, 14, 18.5, 17.5)
         return [(cone, False), (w1, False), (w2, False)]
+    if name == "monitor":
+        screen = QPainterPath()
+        screen.addRoundedRect(QRectF(2.5, 3.5, 19, 13.5), 1.8, 1.8)
+        stand = _poly([(12, 17), (12, 20), (8, 20), (16, 20)])
+        return [(screen, False), (stand, False)]
     if name == "stop":
         sq = QPainterPath()
         sq.addRoundedRect(QRectF(7, 7, 10, 10), 2, 2)
