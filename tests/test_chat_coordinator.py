@@ -116,6 +116,7 @@ class ChatCoordinatorTests(unittest.TestCase):
         coordinator = ChatCoordinator(lambda _request: None)
         with self.assertRaisesRegex(RuntimeError, "No provider dispatcher"):
             coordinator.start_provider_request(callbacks={})
+
     def test_dispatch_preserves_request_payload(self):
         sent = []
         coordinator = ChatCoordinator(sent.append)
@@ -143,6 +144,7 @@ class ChatCoordinatorTests(unittest.TestCase):
         self.assertIsNone(second.coordinator)
         first.coordinator = ChatCoordinator(lambda _request: None)
         self.assertIsNot(first.coordinator, second.coordinator)
+
     def test_provider_worker_construction_is_owned_by_coordinator_adapter(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / "kira" / "oldmain.py").read_text(encoding="utf-8")
@@ -157,6 +159,7 @@ class ChatCoordinatorTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         source = (root / "kira" / "oldmain.py").read_text(encoding="utf-8")
         self.assertNotIn("self._pending", source)
+
     def test_coordinator_has_no_ui_or_storage_imports(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / "kira" / "chat" / "coordinator.py").read_text(encoding="utf-8")
@@ -168,6 +171,7 @@ class ChatCoordinatorTests(unittest.TestCase):
             elif isinstance(node, ast.ImportFrom):
                 imported.append(node.module or "")
         self.assertFalse(any(name.startswith(("PySide", "kira.oldmain", "kira.storage")) for name in imported))
+
     def test_clear_discards_only_this_coordinators_pending_requests(self):
         first = ChatCoordinator(lambda _request: None)
         second = ChatCoordinator(lambda _request: None)
