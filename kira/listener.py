@@ -46,7 +46,7 @@ class Listener(QThread):
         self._sr = None
         self._seg = None
         self.fixes = SpeechFixes()      # the user's dictionary (hotwords + word fixes), re-read when the file changes
-        self._model = None              # the local engine's model, loaded lazily when Cloud Voice is first in line
+        self._model = None              # faster-whisper model, loaded only when the local fallback is needed
         self.via = ""                   # local:qwen3-asr or local:whisper
         self._local_asr_failed = False  # avoid retrying a broken local model for every segment
         self._hotwords_ok = True        # becomes False if the installed faster-whisper does not know `hotwords`
@@ -238,7 +238,7 @@ class Listener(QThread):
             return str(text or "").strip() or None
         except Exception as exc:
             self._local_asr_failed = True
-            self.note.emit(f"STT محلی Qwen3-ASR در دسترس نبود؛ موتور جایگزین بعدی امتحان می‌شود. ({type(exc).__name__})")
+            self.note.emit(f"STT محلی Qwen3-ASR در دسترس نبود؛ Whisper محلی امتحان می‌شود. ({type(exc).__name__})")
             return None
 
     def _transcribe_whisper(self, audio):
