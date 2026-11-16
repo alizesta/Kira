@@ -73,5 +73,31 @@ class ExtractedUiComponentTests(unittest.TestCase):
         self.assertEqual(ModelPickerDialog.__module__, "kira.ui.dialogs.model_picker")
 
 
+class ExtractedWorkerTests(unittest.TestCase):
+    def test_background_workers_are_owned_by_ui_worker_module(self):
+        from kira.ui.workers import (
+            AttachWorker,
+            BenchWorker,
+            OllamaTaskWorker,
+            ProviderTestWorker,
+            SearchWorker,
+            StreamWorker,
+            TaskWorker,
+            VisionAnalysisWorker,
+        )
+
+        worker_types = (
+            AttachWorker,
+            BenchWorker,
+            OllamaTaskWorker,
+            ProviderTestWorker,
+            SearchWorker,
+            StreamWorker,
+            TaskWorker,
+            VisionAnalysisWorker,
+        )
+        self.assertTrue(all(worker.__module__ == "kira.ui.workers" for worker in worker_types))
+
+
 if __name__ == "__main__":
     unittest.main()
