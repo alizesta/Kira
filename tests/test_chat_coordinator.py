@@ -1,4 +1,6 @@
+import ast
 import unittest
+from pathlib import Path
 
 from kira.chat.coordinator import ChatCoordinator, ChatRequest, SubmissionResult
 
@@ -51,6 +53,36 @@ class ChatCoordinatorTests(unittest.TestCase):
             coordinator.submit(ChatRequest.create("hello"))
         self.assertEqual(coordinator.pending_count, 0)
 
+    def test_dispatch_preserves_request_payload(self):
+        sent = []
+        coordinator = ChatCoordinator(sent.append)
+        request = ChatRequest.create("voice note", [{"kind": "text", "name": "notes.txt"}], True)
+        coordinator.submit(request)
+        self.assertEqual(sent, [request])
+
+    def test_legacy_window_submission_delegates_queue_ownership(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "kira" / "oldmain.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        window = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "MainWindow")
+        methods = {node.name: node for node in window.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        submit_source = ast.get_source_segment(source, methods["submit"])
+        drain_source = ast.get_source_segment(source, methods["_send_next_pending"])
+        self.assertIn("_chat_coordinator", submit_source)
+        self.assertNotIn("self._pending.append", submit_source)
+        self.assertIn("take_next", drain_source)
+
+    def test_coordinator_has_no_ui_or_storage_imports(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "kira" / "chat" / "coordinator.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        imported = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                imported.append(node.module or "")
+        self.assertFalse(any(name.startswith(("PySide", "kira.oldmain", "kira.storage")) for name in imported))
     def test_clear_discards_only_this_coordinators_pending_requests(self):
         first = ChatCoordinator(lambda _request: None)
         second = ChatCoordinator(lambda _request: None)
