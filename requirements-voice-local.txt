@@ -1,4 +1,5 @@
 # Optional offline voice engines; install separately from the main application requirements.
+# Piper 1.3+ uses ONNX Runtime directly and avoids the legacy piper-phonemize dependency.
 qwen-asr
 persian-speech
-piper-tts>=1.2.0
+piper-tts>=1.3.0,<2

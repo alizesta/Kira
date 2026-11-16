@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 rem --- Keep Kira data, speech models and runtime caches on the dedicated A: drive.
-if exist "A:\" (
+if exist "A:\\" (
   set "KIRA_DATA_DIR=A:\Project KIRA\Kira Attachments"
 ) else (
   set "KIRA_DATA_DIR=%LOCALAPPDATA%\Kira"
@@ -31,6 +31,15 @@ if not exist ".venv\Scripts\python.exe" (
 )
 echo Using Python:
 .venv\Scripts\python.exe --version
+.venv\Scripts\python.exe -c "import sys; sys.exit(0 if sys.version_info[:2] in ((3,11),(3,12)) else 1)" >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo ERROR: This Kira environment uses an unsupported Python version.
+  echo Qwen ASR and ONNX Runtime currently need a compatible Python build.
+  echo Run install.bat to recreate .venv with Python 3.12, then retry this file.
+  pause
+  exit /b 1
+)
 echo Kira data and model cache: %KIRA_DATA_DIR%
 echo.
 echo This installs packages and downloads the Qwen ASR model.

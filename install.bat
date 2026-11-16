@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 rem --- Keep Kira data, speech models and runtime caches on the dedicated A: drive.
-if exist "A:\" (
+if exist "A:\\" (
   set "KIRA_DATA_DIR=A:\Project KIRA\Kira Attachments"
 ) else (
   set "KIRA_DATA_DIR=%LOCALAPPDATA%\Kira"
@@ -51,7 +51,7 @@ rem --- keep an existing environment only if it is Python 3.11 or 3.12
 if exist .venv\Scripts\python.exe (
   .venv\Scripts\python.exe -c "import sys; sys.exit(0 if (3,11)<=sys.version_info[:2]<=(3,12) else 1)" >nul 2>nul
   if errorlevel 1 (
-    echo Existing environment uses an unsuitable Python. Recreating it...
+    echo Existing environment uses an unsupported Python version. Recreating it...
     rmdir /s /q .venv
   )
 )
@@ -132,17 +132,17 @@ if not exist requirements-voice-local.txt (
   echo Download the complete Kira branch archive and try again.
   goto voice_done
 )
-python -m pip install --retries 10 --timeout 60 -r requirements-voice-local.txt
+python scripts\setup_local_voice.py --install
 if errorlevel 1 (
   echo Local voice engines could not be installed. Kira will continue without them.
-  echo You can retry later by running:
-  echo   .venv\Scripts\python.exe -m pip install -r requirements-voice-local.txt
+  echo Check that this environment uses Python 3.11 or 3.12.
+  echo To retry safely, run: install_local_voice.bat
 ) else (
   echo Local voice packages installed. Model weights download on first use.
 )
 goto voice_done
 :voice_skip
-echo Skipped local voice engines. You can install them later from this folder.
+echo Skipped local voice engines. You can install them later with install_local_voice.bat.
 :voice_done
 echo.
 echo For local chat models, install Ollama, then run:
