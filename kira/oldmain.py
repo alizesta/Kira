@@ -712,6 +712,13 @@ class MainWindow(QMainWindow):
             coordinator.clear()
         session.coordinator = None  # release the MainWindow-bound dispatch closure with the removed session
         session.dispatch_scheduled = False
+        response_relay = getattr(session, "response_relay", None)
+        if response_relay is not None:
+            try:
+                response_relay.deleteLater()
+            except RuntimeError:
+                pass
+            session.response_relay = None
         if session.client is not None:
             session.client.cancel()
             session.client = None
@@ -746,6 +753,13 @@ class MainWindow(QMainWindow):
         if self.sessions.get(session.cid) is session:
             del self.sessions[session.cid]
         if getattr(self, "_vision_session", None) is session:
+            vision_worker = getattr(self, "_vision_worker", None)
+            if vision_worker is not None:
+                try:
+                    vision_worker.deleteLater()
+                except RuntimeError:
+                    pass
+                self._vision_worker = None
             self._vision_session = None
         if self.front is session or self.cur is session:
             fallback = self.sessions.get("kira") or next(iter(self.sessions.values()), None)
