@@ -28,8 +28,9 @@ try { $s.SelectVoiceByHints([System.Speech.Synthesis.VoiceGender]::NotSet, [Syst
 $s.Rate = [int]$args[3]
 $s.SetOutputToWaveFile($args[1])
 $s.Speak([IO.File]::ReadAllText($args[0], [Text.Encoding]::UTF8))
+$culture = $s.Voice.Culture.Name
 $s.Dispose()
-Write-Output $s.Voice.Culture.Name
+Write-Output $culture
 """
 
 
