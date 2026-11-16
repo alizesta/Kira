@@ -38,6 +38,11 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIsInstance(persistence[0], ast.Name)
         self.assertEqual(persistence[0].id, "chat_history_service")
 
+    def test_session_conversation_identity_flows_through_application_service(self):
+        self.assertIn("self.chat_application_service.get_or_create_conversation(session.cid)", self.source)
+        self.assertIn("conversation_id=self.cur.conversation_id", self.source)
+        self.assertIn("self.cur.conversation_id", self.source)
+
     def test_main_window_does_not_import_chat_internal_components(self):
         self.assertNotIn("from .chat.coordinator import", self.source)
         self.assertNotIn("from .chat.context_builder import", self.source)
