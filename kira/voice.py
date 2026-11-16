@@ -614,10 +614,17 @@ class Speaker(QObject):
         elif state == QMediaPlayer.StoppedState and self._item_began:
             self._item_finished()
 
-    def _on_playing(self, playing: bool):
-        # QSoundEffect.playingChanged(bool) supplies the state directly.
-        if self._fx is None:
+    def _on_playing(self, playing: bool | None = None):
+        # PySide/Qt builds differ: playingChanged may invoke Python slots with
+        # the bool argument or with no arguments. Support both signal signatures.
+        fx = self._fx
+        if fx is None:
             return
+        if playing is None:
+            try:
+                playing = bool(fx.isPlaying())
+            except (AttributeError, RuntimeError):
+                return
         if playing:
             if not self._item_began:
                 self._item_started()
