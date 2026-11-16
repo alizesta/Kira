@@ -876,8 +876,6 @@ class MainWindow(QMainWindow):
         if hasattr(self, "_menu_actions"):
             for action, key in zip(self._menu_actions, self.tab_keys):
                 action.setText(self.t(key))
-        if getattr(self, "cloud_page", None) is not None:
-
     def on_voice_error(self, message):
         """Local voice failures are rate-limited so a broken model does not flood the chat."""
         now = time.monotonic()
@@ -1347,7 +1345,7 @@ class MainWindow(QMainWindow):
             button.setChecked(i == self._nav_icon_map[index][1])
         self.save_btn.setVisible(i != 0)            # the chat page needs no Save button
         if hasattr(self, "_voice_form") and i == self.tab_keys.index("tab_voice"):
-            self.refresh_voice_caps()               # Cloud Voice may have been changed in the Route section meanwhile
+            self.refresh_voice_caps()               # Refresh local-only speech status
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -1859,6 +1857,7 @@ class MainWindow(QMainWindow):
         f1.addRow("سرعت گفتار محلی", self.rate)
         self.voice_caps_note = QLabel("ورودی و خروجی گفتار فقط با موتورهای محلی اجرا می‌شوند.")
         self.voice_caps_note.setWordWrap(True)
+        f1.addRow(self.voice_caps_note)
         self._voice_form = f1
 
         host = QWidget()
@@ -1886,7 +1885,7 @@ class MainWindow(QMainWindow):
         self._voice_save_timer.setSingleShot(True)
         self._voice_save_timer.setInterval(400)
         self._voice_save_timer.timeout.connect(self.autosave_voice)
-        for w in (self.volume, self.mic_gain, self.mic_sens):
+        for w in (self.volume, self.mic_gain, self.mic_sens, self.rate):
             w.valueChanged.connect(lambda *_: self._voice_save_timer.start())
         for w in (self.out_device, self.mic_device):
             w.currentIndexChanged.connect(lambda *_: self._voice_save_timer.start())
@@ -3614,26 +3613,9 @@ class MainWindow(QMainWindow):
                               for r in route_model.get_routes(self.settings))
                 item.setCheckState(Qt.Checked if enabled else Qt.Unchecked)
                 self.cloud_model_lists["chat"].addItem(item)
-        store = cloud_voice.service().store
-        for kind in ("stt", "tts"):
-            for provider in cloud_voice.PROVIDERS:
-                for entry in store.models(provider, kind):
-                    # Cloud Voice does not expose plan pricing for these catalogues. In free-only mode
-                    # an unknown price must not be mislabelled as free.
-                    if free_only:
-                        continue
-                    item = QListWidgetItem(f"{cloud_voice.LABELS[provider]}  ·  {entry['id']}")
-                    item.setData(Qt.UserRole, {"provider": provider, "model": entry["id"]})
-                    item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                    chosen = store.data[kind]["model"].get(provider) == entry["id"]
-                    enabled = bool(store.data[kind]["enabled"].get(provider, True)) and chosen and store.data[kind]["use_cloud"]
-                    item.setCheckState(Qt.Checked if enabled else Qt.Unchecked)
-                    self.cloud_model_lists[kind].addItem(item)
         for kind, widget in self.cloud_model_lists.items():
             if widget.count() == 0:
-                if free_only and kind in ("stt", "tts"):
-                    message = "قیمت این مدل‌های صوتی از API اعلام نشده؛ رایگان بودنشان قابل تأیید نیست."
-                elif free_only:
+                if free_only:
                     message = "مدل رایگانِ تأییدشده‌ای پیدا نشد."
                 else:
                     message = "برای نمایش مدل‌ها ابتدا API مربوط را اضافه و شناسایی کن."
@@ -3656,29 +3638,19 @@ class MainWindow(QMainWindow):
             self.local_model_list.blockSignals(False)
 
     def on_cloud_model_item_changed(self, kind, item):
+        if kind != "chat":
+            return
         data = item.data(Qt.UserRole) or {}
         provider, model = data.get("provider"), data.get("model")
         if not provider or not model:
             return
         checked = item.checkState() == Qt.Checked
-        if kind == "chat":
-            try:
-                api_manager.set_model_enabled(self.settings, provider, model, checked)
-            except Exception as exc:
-                self.api_add_status.setText("✕ " + str(exc))
-            self._api_changed(provider)
-            self.refresh_unified_models()
-            return
-        store = cloud_voice.service().store
-        store.set_option(kind, "model", provider, model if checked else "")
-        store.set_option(kind, "enabled", provider, checked)
-        if checked:
-            store.set_use_cloud(kind, True)
-        elif not any(store.data[kind]["enabled"].get(p, False) for p in cloud_voice.PROVIDERS):
-            store.set_use_cloud(kind, False)
+        try:
+            api_manager.set_model_enabled(self.settings, provider, model, checked)
+        except Exception as exc:
+            self.api_add_status.setText("✕ " + str(exc))
+        self._api_changed(provider)
         self.refresh_unified_models()
-        if hasattr(self, "cloud_page"):
-            self.cloud_page.refresh()
 
     def on_local_chat_item_changed(self, item):
         route_id = item.data(Qt.UserRole)
@@ -3690,27 +3662,8 @@ class MainWindow(QMainWindow):
         self.refresh_unified_models()
 
     def _discover_unified_api_key(self, key, account=""):
-        chat = api_manager.detect(key, account)
-        voice = {}
-        # These are independent capability endpoints: a successful Chat listing never implies STT or TTS.
-        for provider in cloud_voice.PROVIDERS:
-            voice[provider] = cloud_voice.validate(provider, key)
-        return {"chat": chat, "voice": voice}
-
-    def _store_detected_voice_key(self, key, voice_results):
-        store = cloud_voice.service().store
-        added = []
-        for provider, result in (voice_results or {}).items():
-            if not isinstance(result, dict) or result.get("status") != "valid":
-                continue
-            detected = result.get("detected") or {}
-            if not detected.get("stt") and not detected.get("tts"):
-                continue
-            if any(rec.get("key") == key for rec in store.keys(provider)):
-                continue
-            store.add_key(provider, key, result=result)
-            added.append(f"{cloud_voice.LABELS[provider]} ({'STT' if detected.get('stt') else ''}{' / ' if detected.get('stt') and detected.get('tts') else ''}{'TTS' if detected.get('tts') else ''})")
-        return added
+        """Detect chat-model capability only; audio never uses remote APIs."""
+        return api_manager.detect(key, account)
 
     def api_add(self):
         if self._api_busy():
@@ -3721,61 +3674,46 @@ class MainWindow(QMainWindow):
             self.api_add_status.setText("✕ " + problem)
             return
         self.api_add_btn.setEnabled(False)
-        self.api_add_status.setText("در حال تشخیص Chat، STT و TTS از APIهای رسمی…")
+        self.api_add_status.setText("در حال شناسایی مدل‌های Chat از API…")
         self._api_worker = TaskWorker(lambda: self._discover_unified_api_key(key))
         self._api_worker.done.connect(lambda result, k=key: self.on_api_detected(result, k))
         self._api_worker.start()
 
     def on_api_detected(self, result, key, account=""):
         self.api_add_btn.setEnabled(True)
-        ok, payload = result
+        ok, detection = result
         if not ok:
-            self.api_add_status.setText("✕ " + str(payload))
+            self.api_add_status.setText("✕ " + str(detection))
             return
-        chat_detection = payload.get("chat")
-        voice_results = payload.get("voice") or {}
-        voice_added = self._store_detected_voice_key(key, voice_results)
-
-        if chat_detection and chat_detection.state == "needs_account" and not account:
+        if detection and detection.state == "needs_account" and not account:
             account_id, accepted = QInputDialog.getText(self, "Cloudflare", "Account ID:")
             if accepted and account_id.strip():
                 self.api_add_btn.setEnabled(False)
                 self.api_add_status.setText("در حال تکمیل شناسایی Cloudflare…")
-                self._api_worker = TaskWorker(lambda: {
-                    "chat": api_manager.detect(key, account_id.strip()),
-                    "voice": voice_results,
-                })
+                self._api_worker = TaskWorker(lambda: self._discover_unified_api_key(key, account_id.strip()))
                 self._api_worker.done.connect(lambda res, k=key, a=account_id.strip(): self.on_api_detected(res, k, a))
                 self._api_worker.start()
-                return
+            return
 
         chat_added = ""
-        if chat_detection and chat_detection.ok:
+        if detection and detection.ok:
             duplicate = api_manager.find_duplicate(self.settings, key)
             if not duplicate:
                 try:
-                    chat_added = api_manager.register(self.settings, chat_detection, key)
+                    chat_added = api_manager.register(self.settings, detection, key)
                 except ValueError as exc:
                     self.api_add_status.setText("✕ " + str(exc))
             else:
                 chat_added = duplicate
         if chat_added:
             self._api_changed(chat_added)
-        elif voice_added:
-            self.save_now()
-            self.refresh_api_table()
-        self.refresh_unified_models()
-        if hasattr(self, "cloud_page"):
-            self.cloud_page.refresh()
-        if chat_added or voice_added:
             self.api_key_edit.clear()
-            self.api_add_status.setText(
-                "✓ API شناسایی شد · " +
-                (", ".join(([route_model.provider_label(chat_added, self.settings["providers"][chat_added])] if chat_added else []) + voice_added) or "قابلیت تازه‌ای یافت نشد")
-            )
+            label = route_model.provider_label(chat_added, self.settings["providers"][chat_added])
+            self.api_add_status.setText("✓ اتصال Chat ثبت شد: " + label)
         else:
-            message = api_manager.describe_failure(chat_detection) if chat_detection else "هیچ قابلیتی از این API شناسایی نشد."
+            message = api_manager.describe_failure(detection) if detection else "هیچ مدل Chat قابل استفاده‌ای از این API شناسایی نشد."
             self.api_add_status.setText("✕ " + message + "؛ کلید ثبت نشد.")
+        self.refresh_unified_models()
 
     def build_local_model_group(self):
         """Backwards-compatible name for the Route local-provider group."""
@@ -4536,12 +4474,8 @@ class MainWindow(QMainWindow):
             "persona": self.persona.toPlainText().strip(), "active_modes": self.modes_chk.isChecked(),
             "temperature": float(self.temp.currentText()),
             "speak_replies": self.speak_chk.isChecked(), "stream_speech": self.stream_chk.isChecked(),
-            "voice_fa": self.voice_fa.currentText().strip() or EDGE_FA[0],
-            "voice_en": self.voice_en.currentText().strip() or EDGE_EN[0],
-            "voice_ja": self.voice_ja.currentText().strip() or EDGE_JA[0],
-            "voice_rate": self.rate.value(), "voice_pitch": self.pitch.value(),
+            "voice_rate": self.rate.value(),
             "voice_volume": self.volume.value() / 100.0,
-            "voice_style": self.voice_style.currentData() or "", "voice_style_degree": self.voice_style_deg.value(),
             "output_device": self.out_device.currentData() or "", "mic_device": self.mic_device.currentData() or "",
             "mic_gain": self.mic_gain.value(),
             "stt_language": self.stt_lang.currentText(), "whisper_model": self.whisper.currentText().strip() or "small",
@@ -4795,16 +4729,6 @@ class MainWindow(QMainWindow):
             client.unload()
             return client.describe()
         self._run_ollama_task(task, self.t("o_busy"))
-
-    def test_voice(self, voice, lang):
-        # use the values currently shown in the form, without saving them yet
-        self.settings.update({"voice_fa": self.voice_fa.currentText(), "voice_en": self.voice_en.currentText(),
-                              "voice_ja": self.voice_ja.currentText(), "voice_rate": self.rate.value(),
-                              "voice_pitch": self.pitch.value(), "voice_volume": self.volume.value() / 100.0,
-                              "voice_style": self.voice_style.currentData() or "", "voice_style_degree": self.voice_style_deg.value(),
-                              "output_device": self.out_device.currentData() or ""})
-        self.animator.set_expression("happy", hold=3)
-        self.speaker.speak(TEST_LINES[lang])
 
     # ---------- chat ----------
     def check_status(self):
@@ -6194,12 +6118,15 @@ class MainWindow(QMainWindow):
     def update_engine_label(self):
         eng = getattr(self.listener, "engine", None) if self.listener else None
         via = getattr(self.listener, "via", "") if self.listener else ""
-        if via.startswith("cloud:"):
-            self.engine_lbl.setText(f"{self.t('engine_cloud')} · {cloud_voice.LABELS.get(via[6:], via[6:])}")
-        elif not eng and self.listener and cloud_voice.service().stt_ready():
-            self.engine_lbl.setText(self.t("engine_cloud"))
+        if via == "local:qwen3-asr":
+            label = "Qwen3-ASR · Local"
+        elif via == "local:whisper" or eng == "whisper":
+            label = "Whisper · Local"
+        elif self.listener is not None and self.listener.isRunning():
+            label = "STT محلی"
         else:
-            self.engine_lbl.setText(self.t({"whisper": "engine_whisper", "google": "engine_google"}.get(eng, "engine_none")))
+            label = "—"
+        self.engine_lbl.setText(label)
 
     def toggle_wake(self):
         if self.wake_btn.isChecked():
