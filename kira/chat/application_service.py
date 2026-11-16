@@ -331,7 +331,27 @@ class ChatApplicationService:
             return None
 
     def handle_provider_event(self, event: ProviderEvent) -> ChatApplicationEvent | None:
-        normalized = self._response_handler.handle(event)
+        if not isinstance(event, ProviderEvent):
+            raise TypeError("event must be a ProviderEvent")
+        try:
+            normalized = self._response_handler.handle(event)
+        except Exception as exc:
+            request_id = self._attempt_to_request.pop(event.request_id, None)
+            state = self._requests.get(request_id or "")
+            if state is not None and state.status is RequestStatus.RUNNING:
+                try:
+                    self._response_handler.handle(ProviderEvent.failed(
+                        event.request_id, event.session_id,
+                        f"{type(exc).__name__}: {exc}",
+                    ))
+                except Exception:
+                    pass
+                self._finalize(
+                    state, RequestStatus.FAILED, content=state.last_content,
+                    error=f"{type(exc).__name__}: {exc}",
+                    kind=ApplicationEventKind.REQUEST_FAILED,
+                )
+            return None
         if normalized is None:
             return None
         request_id = self._attempt_to_request.pop(event.request_id, None)
@@ -472,11 +492,14 @@ class ChatApplicationService:
             return False
         if state.status is RequestStatus.PENDING:
             state.status = RequestStatus.CANCELLED
+            owner = state.request.session_id
             self._emit(ChatApplicationEvent(
-                state.request.request_id, state.request.session_id,
+                state.request.request_id, owner,
                 ApplicationEventKind.REQUEST_CANCELLED, RequestStatus.CANCELLED,
             ))
             self._prune_history()
+            if owner not in self._active_by_session:
+                self.dispatch_next(owner)
             return True
         try:
             if self._cancel_provider is not None:
@@ -496,11 +519,19 @@ class ChatApplicationService:
                 )
             return True
         except Exception as exc:
-            self._finalize(
-                state, RequestStatus.FAILED, content=state.last_content,
-                error=f"Cancellation failed: {type(exc).__name__}: {exc}",
-                kind=ApplicationEventKind.REQUEST_FAILED,
-            )
+            attempt_id = f"{state.request.request_id}:{state.attempt}"
+            message = f"Cancellation failed: {type(exc).__name__}: {exc}"
+            if attempt_id in self._attempt_to_request:
+                self.handle_provider_event(ProviderEvent.failed(attempt_id, state.request.session_id, message))
+            else:
+                outcome = self._persist_response(
+                    state, state.last_content, "failed", {"cancel_error": message}
+                )
+                self._finalize(
+                    state, RequestStatus.FAILED, content=state.last_content,
+                    error=message, kind=ApplicationEventKind.REQUEST_FAILED,
+                    persistence_ok=outcome.ok,
+                )
             return False
 
     def close_session(self, session_id: str) -> None:
@@ -513,6 +544,9 @@ class ChatApplicationService:
         coordinator = self._coordinators.pop(owner, None)
         if coordinator is not None:
             coordinator.clear()
+        for key in tuple(self._chat_request_ids):
+            if key[0] == owner:
+                self._chat_request_ids.pop(key, None)
         self._dispatch_scheduled.discard(owner)
         self._active_by_session.pop(owner, None)
 
