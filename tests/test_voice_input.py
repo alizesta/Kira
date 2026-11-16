@@ -39,6 +39,32 @@ def kinds(events):
     return [e[0] for e in events]
 
 
+class QwenGenerationConfigTests(unittest.TestCase):
+    def test_greedy_config_drops_unused_temperature_and_sets_padding(self):
+        from types import SimpleNamespace
+        from kira.local_voice import _sanitize_asr_generation_config
+
+        generation = SimpleNamespace(
+            do_sample=False, temperature=1e-6, pad_token_id=None, eos_token_id=[151643, 151645]
+        )
+        asr = SimpleNamespace(
+            model=SimpleNamespace(generation_config=generation, config=SimpleNamespace(pad_token_id=151643)),
+            processor=SimpleNamespace(tokenizer=SimpleNamespace(pad_token_id=151643)),
+        )
+        _sanitize_asr_generation_config(asr)
+        self.assertIsNone(generation.temperature)
+        self.assertEqual(generation.pad_token_id, 151643)
+
+    def test_sampling_temperature_is_preserved_when_sampling_is_enabled(self):
+        from types import SimpleNamespace
+        from kira.local_voice import _sanitize_asr_generation_config
+
+        generation = SimpleNamespace(do_sample=True, temperature=0.7, pad_token_id=9, eos_token_id=9)
+        asr = SimpleNamespace(model=SimpleNamespace(generation_config=generation))
+        _sanitize_asr_generation_config(asr)
+        self.assertEqual(generation.temperature, 0.7)
+
+
 class LocalASRFallbackTests(unittest.TestCase):
     def test_empty_qwen_result_falls_through_to_next_engine(self):
         from kira.listener import Listener
