@@ -800,7 +800,7 @@ class MainWindow(QMainWindow):
     def restore_history(self, limit=40):
         """Show the saved conversation of the CURRENT chat again after a restart (it is already used as model context)."""
         try:
-            history = self.chat_history_service.recent_messages(limit, self.cur.cid)
+            history = self.chat_application_service.recent_messages(limit, self.cur.cid)
         except Exception:
             history = []
         shown = 0
@@ -4206,9 +4206,6 @@ class MainWindow(QMainWindow):
             else:
                 self.status.setText(f"پیام در صف است ({count}) — بعد از پایان پاسخ فعلی ارسال می‌شود.")
             return
-        if result == SubmissionResult.FULL:
-            return
-
     def _process_chat_request(self, text, attachments=None, _voice=False):
         voice = bool(_voice)
         if not attachments and getattr(self, "code_chat", None) is not None and self.code_chat.handle(text, voice):
@@ -4284,10 +4281,9 @@ class MainWindow(QMainWindow):
         try:
             self.start_worker(plain=False)
         except Exception as exc:                                  # noqa: BLE001 - never leave the window stuck in 'busy'
-            self._stream_timer.stop()
-            self.add_chat("error", self.t("reply_err", e=f"{type(exc).__name__}: {exc}"))
-            self.finish_request(None)
-            self.set_badge("error")
+            self.chat_application_service.fail_request(
+                self.cur.application_request_id, f"{type(exc).__name__}: {exc}"
+            )
 
     # ---- web search ----
     def toggle_web_search(self, on):
@@ -4360,7 +4356,7 @@ class MainWindow(QMainWindow):
         self._search_token += 1
         self._search_base = (base_text, images)
         self.status.setText(f"🌐 در حال جست‌وجوی وب: «{query[:60]}»…")
-        history = self.chat_history_service.conversation_context(8, character_id=self.cur.cid)
+        history = self.chat_application_service.conversation_context(8, session_id=self.cur.cid)
         # The user's own words are sent unchanged. Only a short follow-up that points back at the chat is rewritten by the model.
         rewrite = (lambda c=self.client: self.make_search_query(history, query, c)) if websearch.is_followup(query) else None
         self._search_worker = SearchWorker(self._search_token, query, key, self.settings.get("web_depth", "basic"),
@@ -4456,10 +4452,10 @@ class MainWindow(QMainWindow):
 
     def start_worker(self, plain):
         window = int(self.settings.get("memory_context_limit", 12))
-        history = self.chat_history_service.conversation_context(window, character_id=self.cur.cid)
+        history = self.chat_application_service.conversation_context(window, session_id=self.cur.cid)
         mode = self.detect_mode(history)                          # Active Mode of THIS message (None = switched off in settings)
         try:
-            older = self.chat_history_service.recent_messages(window + 40, self.cur.cid)[:-window] if window else []
+            older = self.chat_application_service.recent_messages(window + 40, self.cur.cid)[:-window] if window else []
             # Every character has its own saved conversation; only Kira owns the legacy evidence index.
             character_id = self.cur.cid
             memory_block = self.memory_service.build_block(
@@ -4469,11 +4465,11 @@ class MainWindow(QMainWindow):
                 query=evidence_memory.query_from_context(history) if character_id == "kira" else None,
                 budget=evidence_memory.budget_for(self.settings, self.client),
             )
-            total = self.chat_history_service.message_count(character_id)
+            total = self.chat_application_service.message_count(character_id)
             if self.memory_service.needs_summary(character_id, total, window):
                 self.memory_service.maintain(
                     character_id,
-                    self.chat_history_service.recent_messages(min(total, 3000), character_id),
+                    self.chat_application_service.recent_messages(min(total, 3000), character_id),
                     window,
                 )
         except Exception:                                         # noqa: BLE001 - memory is a bonus, never block a reply
@@ -4546,7 +4542,7 @@ class MainWindow(QMainWindow):
             has_attachment = bool(self._turn_attach_kinds or (extra and (extra.get("images") or "--- فایل ضمیمه" in str(extra.get("model", "")))))
             earlier = users[:-1]
             try:                                                   # a "no jokes" request must outlive the short context window
-                longer = [m["content"] for m in self.chat_history_service.recent_messages(80, self.cur.cid) if m.get("role") == "user"]
+                longer = [m["content"] for m in self.chat_application_service.recent_messages(80, self.cur.cid) if m.get("role") == "user"]
                 if len(longer) > len(users):
                     earlier = longer[:-1]
             except Exception:                                      # noqa: BLE001
@@ -4559,17 +4555,17 @@ class MainWindow(QMainWindow):
     def stop_generation(self):
         """Stop button: ends the answer now; text received so far is kept."""
         if getattr(self, "code_chat", None) is not None and self.code_chat.stop(self.cur):
-            return                                                # a running Ai1 Code command was killed; its handler ends the turn
+            self.chat_application_service.complete_local_request(self.cur.application_request_id)
+            return                                                # the Coding Agent owns its separate task lifecycle
         if self._search_worker is not None and self._search_worker.isRunning():
             self._search_token += 1                                   # the late search result is ignored
             self.add_chat("system", "جست‌وجو متوقف شد.")
-            self.finish_request(None)
-            self._send_next_pending()
+            self.chat_application_service.cancel_request(self.cur.application_request_id)
             return
         if not any(o.busy for o in self.sessions.values() if o is not self.cur):
             self.tool_agent.request_cancel()                      # also stops a tool loop between two steps (the tool agent is shared:
                                                                   # not while another character is in the middle of its own task)
-        self.client.cancel()                                      # this chat's own router: the other characters keep answering
+        self.chat_application_service.cancel_request(self.cur.application_request_id)
         self.gen_stop_btn.setEnabled(False)
 
     # ---- body control (the 3D body moves on chat commands: kira/body.py) ----
@@ -4794,19 +4790,25 @@ class MainWindow(QMainWindow):
             self._plain_retry = True            # model answered with a tag only: ask again without tags (counted as a retry)
             self.start_worker(plain=True)
             return
+        if not res.get("stopped") and not res.get("interrupted"):
+            request_id = getattr(self.cur, "application_request_id", None)
+            if request_id:
+                self.chat_application_service.complete_request(
+                    request_id, raw, metadata=res, persist=bool(text.strip())
+                )
         self._stream_flush(final=True)
         self._stream_pos = None
         self.bubble.commit_live()
         self.finish_request(res)
         if res.get("stopped"):
             if text.strip():
-                self.save_message("assistant", raw, status="cancelled", metadata={"stream": "stopped"})
+                self.save_message("assistant", raw, status="cancelled", metadata={"stream": "stopped"}, persist=False)
             self.add_chat("system", "تولید پاسخ متوقف شد." + (" متن دریافت‌شده نگه داشته شد." if text.strip() else ""))
             if self._speech_live:
                 self.safe_stop_speaker()                           # the Stop button also silences the rest of the spoken reply
             self.animator.set_expression("neutral", hold=2)
         elif res.get("interrupted"):
-            self.save_message("assistant", raw, status="interrupted", metadata={"stream": "provider_interrupted"})
+            self.save_message("assistant", raw, status="interrupted", metadata={"stream": "provider_interrupted"}, persist=False)
             self.add_chat("error", f"ارتباط وسط پاسخ قطع شد؛ بخش دریافت‌شده نگه داشته شد و تکرار نمی‌شود.\n{res['interrupted']}")
             if self._speech_live:
                 self.speaker.stream_end()                          # what arrived is still spoken to its end
@@ -4815,7 +4817,7 @@ class MainWindow(QMainWindow):
             self.add_chat("error", self.t("empty"))
             self.director.event("response_failed")
         else:
-            self.save_message("assistant", raw)
+            self.save_message("assistant", raw, persist=False)
             try:                                                   # quiet second look (rules; optional background model call)
                 brain.after_turn(self.client, self.settings, getattr(self, "_brain", brain.Decision()), getattr(self, "_brain_user_text", ""),
                                  text, res.get("tools"), getattr(self, "_brain_mode_name", None), bool(self._tool_plan))
@@ -4903,21 +4905,21 @@ class MainWindow(QMainWindow):
     def reply_local(self, text, expression="happy"):
         self.add_chat("assistant", text)
         self.save_message("assistant", text)
+        self.chat_application_service.complete_local_request(self.cur.application_request_id)
         self.animator.set_expression(expression, hold=4)
         self.say(text)
 
-    def save_message(self, role, content, *, status="complete", metadata=None):
-        """Persist one message through the history contract; interrupted streams remain explicitly incomplete."""
-        try:
-            if status == "complete" and metadata is None:
-                ok = self.chat_history_service.add_message(role, content, self.cur.cid)
-            else:
-                ok = self.chat_history_service.add_message(
-                    role, content, self.cur.cid, status=status, metadata=metadata
-                )
-        except Exception as exc:                                  # noqa: BLE001
-            ok = False
-            self.chat_history_service.set_last_error(f"{type(exc).__name__}: {exc}")
+    def save_message(self, role, content, *, status="complete", metadata=None, persist=True):
+        """Persist through ChatApplicationService; keep character memory/mood observation in the UI adapter."""
+        if persist:
+            outcome = self.chat_application_service.persist_message(
+                self.cur.cid, role, content,
+                request_id=getattr(self.cur, "application_request_id", None),
+                status=status, metadata=metadata,
+            )
+            ok = outcome.ok
+        else:
+            ok = True
         self.memory_service.observe(self.cur.cid, role, content)
         try:
             self._sync_mood_character()
@@ -4935,7 +4937,7 @@ class MainWindow(QMainWindow):
         elif not self._save_warned:
             self._save_warned = True
             self.add_chat("error", "ذخیره‌ی گفتگو روی دیسک ناموفق بود. گفتگو تا بسته‌شدن برنامه در حافظه می‌ماند و با اولین ذخیره‌ی موفق نوشته می‌شود."
-                                   f"\nعلت: {self.chat_history_service.last_error}")
+                                   f"\nعلت: {self.chat_application_service.last_persistence_error}")
         return ok
 
     def safe_stop_speaker(self):
@@ -5321,7 +5323,7 @@ class MainWindow(QMainWindow):
                     if self.settings.get("ui_lang", "fa") == "fa" else f"Delete the saved history of {who}? (the other characters' chats stay)")
         if QMessageBox.question(self, self.t("clear_t"), question) == QMessageBox.Yes:
             try:
-                self.chat_history_service.clear_memory(self.cur.cid)      # only THIS character's conversation; saves a snapshot first, nothing is deleted if that fails
+                self.chat_application_service.clear_history(self.cur.cid)      # only THIS character's conversation; saves a snapshot first, nothing is deleted if that fails
                 # Facts, moments and habits remain in the character's own memory file.
                 self.memory_service.forget_conversation(self.cur.cid)
                 self.tool_agent.clear_tasks()   # the unfinished task (its goal is the user's own words) goes with the chat
@@ -5356,7 +5358,7 @@ class MainWindow(QMainWindow):
 
     def restore_cleared_chat(self):
         try:
-            n = self.chat_history_service.restore_last_cleared()
+            n = self.chat_application_service.restore_history()
         except ChatHistoryError as exc:
             QMessageBox.information(self, "بازگرداندن گفتگو", str(exc))
             return
@@ -5375,7 +5377,7 @@ class MainWindow(QMainWindow):
             if not path:
                 return
         try:
-            n = self.chat_history_service.import_messages(path)
+            n = self.chat_application_service.import_history(path)
         except ChatHistoryError as exc:
             QMessageBox.warning(self, "ورود گفتگو", str(exc))
             return
