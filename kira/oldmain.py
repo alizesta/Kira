@@ -65,7 +65,7 @@ from .ui_widgets import ChatInput, RouteChip, AttachmentTile
 from .theme import build_style, STYLE
 from . import theme as theme_mod
 from .chat_sessions import ChatSession, NOOP, SESSION_FIELDS, session_property, front_only_property
-from .chat.coordinator import ChatCoordinator, ChatRequest, SubmissionResult
+from .chat.coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
 from . import winfx
 from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
@@ -4033,7 +4033,8 @@ class MainWindow(QMainWindow):
         session = session or self.cur
         if session.coordinator is None:
             session.coordinator = ChatCoordinator(
-                lambda request, target=session: self._dispatch_coordinated_request(target, request)
+                lambda request, target=session: self._dispatch_coordinated_request(target, request),
+                provider_dispatcher=ChatProviderDispatcher(StreamWorker),
             )
         return session.coordinator
 
@@ -4376,16 +4377,19 @@ class MainWindow(QMainWindow):
         if extra and context and context[-1]["role"] == "user":          # this turn gets the full file text and the real images
             context[-1] = {"role": "user", "content": extra["model"], "images": extra["images"]}
         temperature = modes.temperature_for(mode, self.settings["temperature"]) if mode else self.settings["temperature"]
-        self.worker = StreamWorker(self.client, context, prompt, temperature, retry_index=1 if plain else 0,
-                                   agent=self.tool_agent, plan=self._tool_plan, role=self._brain.stage,
-                                   route_id=self._brain.route_id)
         relay = self.cur.relay
-        self.worker.tool_event.connect(relay.tool)
-        self.worker.event.connect(relay.stream_event)
-        self.worker.chunk.connect(relay.chunk)
-        self.worker.finished_ok.connect(relay.done)
-        self.worker.failed.connect(relay.failed)
-        self.worker.start()
+        self.worker = self._chat_coordinator().start_provider_request(
+            router=self.client, messages=context, prompt=prompt, temperature=temperature,
+            retry_index=1 if plain else 0, agent=self.tool_agent, plan=self._tool_plan,
+            role=self._brain.stage, route_id=self._brain.route_id,
+            callbacks={
+                "tool_event": relay.tool,
+                "event": relay.stream_event,
+                "chunk": relay.chunk,
+                "complete": relay.done,
+                "error": relay.failed,
+            },
+        )
         self.refresh_tab_buttons()
 
     MODE_LABELS = {"chat": "گپ", "task": "کار / کمک", "strict": "فقط جواب"}
