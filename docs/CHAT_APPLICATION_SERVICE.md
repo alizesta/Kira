@@ -17,7 +17,8 @@ The service receives persistence, system-prompt composition, provider worker con
 
 ## Public API
 
-- `submit_message(session_id, text, attachments, voice, ...)` creates a request ID and submits an immutable request to the owning session queue.
+- `get_or_create_conversation(session_id)` resolves the durable conversation bound to a character session.
+- `submit_message(session_id, text, attachments, voice, conversation_id=...)` creates a request ID and submits an immutable request to the owning session queue, preserving conversation identity.
 - `start_provider_request(request_id, context, provider_callbacks=..., **provider_request)` delegates prompt composition to ContextBuilder and provider worker creation to the session coordinator.
 - `handle_provider_event(event)` routes request/session-scoped provider events through ResponseHandler. A successful provider attempt emits `PROVIDER_FINAL`; the application may retry an empty answer before completing the logical request.
 - `complete_request(request_id, content, ...)` persists the final assistant message before emitting the completed lifecycle event.
@@ -27,9 +28,9 @@ The service receives persistence, system-prompt composition, provider worker con
 - `dispatch_next(session_id, busy=False)` schedules the next FIFO item for only that session.
 - `close_session(session_id)` cancels that session's pending/active requests and releases its coordinator.
 - `dispose()` closes every session and rejects future submissions.
-- `persist_message`, `recent_messages`, `conversation_context`, `message_count`, `clear_history`, `restore_history` and `import_history` are the application-facing history operations. The UI does not call the persistence adapter directly.
+- `persist_message`, `recent_messages`, `conversation_context` and `message_count` accept the session's `conversation_id`; `clear_history`, `restore_history` and `import_history` remain application-facing history operations. The UI does not call the persistence adapter directly.
 
-All public request/event contracts retain both `request_id` and `session_id`. Provider attempts use internal attempt IDs so a permitted plain-prompt retry can reuse the logical application request without violating ResponseHandler's duplicate-terminal protection.
+All public request/event contracts retain both `request_id` and `session_id`; requests additionally retain the durable `conversation_id`. Provider attempts use internal attempt IDs so a permitted plain-prompt retry can reuse the logical application request without violating ResponseHandler's duplicate-terminal protection.
 
 ## Request flow
 
@@ -55,6 +56,7 @@ Provider chunk and terminal callbacks are pinned to the immutable attempt/sessio
 ## Session isolation and concurrency
 
 - A coordinator and active logical request slot are maintained per session.
+- Each character session is bound to one stable persisted conversation ID; submit, history reads, context assembly and message writes carry that ID.
 - A queued request cannot overtake earlier queued work.
 - One session can complete while another session remains active.
 - Changing the visible tab does not alter the request's captured session ID.
