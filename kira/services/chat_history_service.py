@@ -22,10 +22,12 @@ class SqliteChatHistoryService:
 
     @property
     def last_error(self) -> str | None:
+        chat_store.last_error = self._persistence.last_error
         return self._persistence.last_error
 
     def set_last_error(self, message: str | None) -> None:
         self._persistence.set_last_error(message)
+        chat_store.last_error = self._persistence.last_error
 
     def init_db(self) -> list[str]:
         return self._persistence.init_db()
