@@ -129,7 +129,10 @@ class Listener(QThread):
 
         q = queue.Queue()
 
-        gain = max(0.5, min(3.0, float(self.settings.get("mic_gain", 100)) / 100.0)) if hasattr(self, "settings") else 1.0
+        try:
+            gain = max(0.5, min(3.0, float(self.settings.get("mic_gain", 100)) / 100.0))
+        except (TypeError, ValueError):
+            gain = 1.0
 
         def callback(indata, frames, t, status):
             block = indata[:, 0].copy()
