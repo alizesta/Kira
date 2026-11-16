@@ -1374,15 +1374,15 @@ class MainWindow(QMainWindow):
         self.reg(box.setTitle, key)
         form = QFormLayout(box)
         form.setLabelAlignment(Qt.AlignLeading)
-        form.setHorizontalSpacing(12)
-        form.setVerticalSpacing(8)
+        form.setHorizontalSpacing(8)
+        form.setVerticalSpacing(5)
         return box, form
 
     def page(self, *boxes):
         host = QWidget()
         lay = QVBoxLayout(host)
-        lay.setContentsMargins(8, 8, 8, 8)
-        lay.setSpacing(8)
+        lay.setContentsMargins(6, 6, 6, 6)
+        lay.setSpacing(6)
         for b in boxes:
             lay.addWidget(b)
         lay.addStretch()
@@ -3150,6 +3150,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(cloud_box)
 
         local_box, local_form = self.group("مدل‌های Local")
+        local_form.setContentsMargins(8, 6, 8, 6)
+        local_form.setHorizontalSpacing(8)
+        local_form.setVerticalSpacing(4)
         self.local_model_tabs = QTabWidget()
         self.local_model_tabs.setMaximumHeight(255)
 
