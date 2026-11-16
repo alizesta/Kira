@@ -1825,7 +1825,7 @@ class MainWindow(QMainWindow):
         self.stt_lang.setCurrentText(s["stt_language"])
         self.whisper = self.row(f2, "whisper", QComboBox())
         self.whisper.setEditable(True)
-        self.whisper.addItems(["Qwen/Qwen3-ASR-0.6B", "base", "small", "medium", "large-v3-turbo", "large-v3", "parseh/whisper-fa-accuracy-ct2"])
+        self.whisper.addItems(["base", "small", "medium", "large-v3-turbo", "large-v3", "parseh/whisper-fa-accuracy-ct2"])
         self.whisper.setCurrentText(s["whisper_model"])
         self.reg(self.whisper.setToolTip, "whisper_tip")
         self.whisper_browse_btn = QPushButton("انتخاب پوشه مدل")
@@ -4492,12 +4492,8 @@ class MainWindow(QMainWindow):
             "web_depth": self.web_depth.currentData(),
             "web_fallback": self.web_fallback_chk.isChecked(),
         })
-        selected_stt = self.whisper.currentText().strip() or "small"
-        if selected_stt.casefold() == "qwen/qwen3-asr-0.6b":
-            s["local_voice_asr"] = True
-            s["local_voice_asr_model"] = selected_stt
-        else:
-            s["local_voice_asr"] = False
+        # Qwen3-ASR enablement is controlled independently in Local Models;
+        # this picker only selects the offline faster-whisper fallback.
         self.collect_provider_settings()
         route_model.ensure_routes(s)
         primary = route_model.find_route(s, "ollama")
