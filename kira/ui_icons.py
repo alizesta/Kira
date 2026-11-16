@@ -183,6 +183,50 @@ def _shapes(name):
         dots.addEllipse(QPointF(16, 11), 0.9, 0.9)
         dots.addEllipse(QPointF(18.5, 14), 0.9, 0.9)
         return [(body, False), (cross, False), (dots, True)]
+    if name == "brain":
+        left = QPainterPath()
+        left.moveTo(12, 4)
+        left.cubicTo(8, 1.5, 4, 4.5, 5, 8)
+        left.cubicTo(1.5, 10, 3.5, 15, 6, 16)
+        left.cubicTo(5, 20, 9, 22, 12, 19)
+        right = QPainterPath()
+        right.moveTo(12, 4)
+        right.cubicTo(16, 1.5, 20, 4.5, 19, 8)
+        right.cubicTo(22.5, 10, 20.5, 15, 18, 16)
+        right.cubicTo(19, 20, 15, 22, 12, 19)
+        center = QPainterPath()
+        center.moveTo(12, 4)
+        center.lineTo(12, 20)
+        return [(left, False), (right, False), (center, False)]
+    if name == "palette":
+        plate = QPainterPath()
+        plate.addEllipse(QRectF(2.5, 2.5, 19, 19))
+        dots = QPainterPath()
+        for x, y in ((8, 8), (15, 7), (8, 15), (15, 15)):
+            dots.addEllipse(QPointF(x, y), 1.05, 1.05)
+        return [(plate, False), (dots, True)]
+    if name == "settings":
+        ring = QPainterPath()
+        ring.addEllipse(QRectF(6.5, 6.5, 11, 11))
+        spokes = QPainterPath()
+        import math
+        for angle in range(0, 360, 45):
+            rad = angle * math.pi / 180
+            x1, y1 = 12 + 7.0 * math.cos(rad), 12 + 7.0 * math.sin(rad)
+            x2, y2 = 12 + 10.0 * math.cos(rad), 12 + 10.0 * math.sin(rad)
+            spokes.moveTo(x1, y1)
+            spokes.lineTo(x2, y2)
+        return [(ring, False), (spokes, False)]
+    if name == "help":
+        circle = QPainterPath()
+        circle.addEllipse(QRectF(2.5, 2.5, 19, 19))
+        question = QPainterPath()
+        question.moveTo(8.5, 9)
+        question.cubicTo(8.5, 5.5, 15.5, 5.5, 15.5, 9)
+        question.cubicTo(15.5, 11.5, 12, 11.5, 12, 14)
+        dot = QPainterPath()
+        dot.addEllipse(QPointF(12, 17.5), 0.8, 0.8)
+        return [(circle, False), (question, False), (dot, True)]
     if name == "route":
         nodes = QPainterPath()
         for cx, cy in ((5, 6), (5, 18), (19, 12)):

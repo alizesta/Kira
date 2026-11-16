@@ -7,6 +7,64 @@ STYLE = r"""
 QMainWindow { background: #0A0A1C; }
 QWidget { background: transparent; color: #EAF2FF; font-family: "Segoe UI", "Vazirmatn", Tahoma; font-size: 10pt; }
 QLabel, QCheckBox, QRadioButton, QSlider, QToolButton { background: transparent; }
+
+/* Neon Shooter-inspired navigation rail: compact, glassy and readable. */
+QFrame#neonToolbar {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 rgba(25,18,58,0.78), stop:0.52 rgba(10,27,48,0.76), stop:1 rgba(24,15,52,0.78));
+    border: 1px solid rgba(111,91,210,0.62);
+    border-bottom: 1px solid rgba(53,217,242,0.54);
+    border-radius: 15px;
+}
+QToolButton#navTabBtn {
+    background: rgba(12,17,39,0.52);
+    border: 1px solid rgba(143,128,204,0.28);
+    border-radius: 10px;
+    padding: 5px;
+}
+QToolButton#navTabBtn:hover {
+    background: rgba(72,54,132,0.42);
+    border: 1px solid rgba(95,225,255,0.88);
+}
+QToolButton#navTabBtn:pressed {
+    background: rgba(100,73,180,0.62);
+    border: 1px solid #E5F9FF;
+}
+QToolButton#navTabBtn:checked {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(139,94,255,0.62), stop:1 rgba(42,190,224,0.34));
+    border: 1px solid rgba(193,244,255,0.94);
+}
+QToolButton#navTabBtn:focus { border: 1px solid #FFFFFF; }
+QLabel#characterPortrait {
+    background: rgba(13,10,31,0.96);
+    border: 1px solid rgba(90,224,255,0.72);
+    border-radius: 12px;
+    padding: 2px;
+}
+QGroupBox {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(36,27,75,0.34), stop:1 rgba(10,24,43,0.30));
+    border: 1px solid rgba(145,112,255,0.56);
+}
+QGroupBox:hover { border: 1px solid rgba(111,226,255,0.76); }
+QLineEdit:hover, QTextEdit:hover, QPlainTextEdit:hover,
+QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover {
+    border: 1px solid rgba(87,219,255,0.68);
+}
+QComboBox:focus, QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
+QSpinBox:focus, QDoubleSpinBox:focus {
+    border: 1px solid #B9F5FF;
+    background: rgba(75,64,130,0.20);
+}
+QCheckBox:hover, QRadioButton:hover { color: #FFFFFF; }
+QSlider::handle:horizontal:hover {
+    background: #FFFFFF;
+    border: 2px solid #7CEBFF;
+}
+QListWidget::item:hover, QTreeWidget::item:hover, QTableWidget::item:hover {
+    background: rgba(75,205,238,0.16);
+}
 QLabel#title { font-size: 13pt; font-weight: 800; color: #A6F7FF; }
 QLabel#hint { color: #A9B4D2; font-size: 9pt; }
 QLabel#status { color: #8E9BC4; font-size: 8.5pt; }

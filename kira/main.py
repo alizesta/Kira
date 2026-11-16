@@ -781,12 +781,20 @@ class MainWindow(QMainWindow):
         # Compact icon navigation. The QTabWidget stays as the page stack (its tab strip is hidden).
         self.tabs.tabBar().hide()
         ai_index = self.tab_keys.index("tab_ai")
-        self.nav_chat_btn = self.icon_button("chat", True)
-        self.nav_chat_btn.clicked.connect(lambda: self.go_tab(0))
-        self.reg(self.nav_chat_btn.setToolTip, "tab_chat")
-        self.nav_route_btn = self.icon_button("route", True)
-        self.nav_route_btn.clicked.connect(lambda: self.go_tab(ai_index))
-        self.reg(self.nav_route_btn.setToolTip, "tab_ai")
+        # Dedicated icon navigation for every primary page. The overflow menu remains
+        # available as an alternate route, but sections are now one tap away.
+        self._nav_icon_map = [("chat", 0), ("brain", 1), ("mic", 2), ("user", 3),
+                              ("palette", 4), ("settings", 5), ("route", ai_index)]
+        self.nav_buttons = []
+        for icon_name, tab_index in self._nav_icon_map:
+            button = self.icon_button(icon_name, True)
+            button.setObjectName("navTabBtn")
+            button.setFixedSize(38, 38)
+            button.clicked.connect(lambda checked=False, idx=tab_index: self.go_tab(idx))
+            self.reg(button.setToolTip, self.tab_keys[tab_index])
+            self.nav_buttons.append(button)
+        self.nav_chat_btn = self.nav_buttons[0]
+        self.nav_route_btn = self.nav_buttons[-1]
         self.menu_btn = QToolButton()
         self.menu_btn.setObjectName("menuBtn")
         self.menu_btn.setProperty("kiraIconName", "menu")
@@ -799,22 +807,25 @@ class MainWindow(QMainWindow):
         self.menu_btn.setMenu(self.nav_menu)
         self._menu_actions = []
         for i, key in enumerate(self.tab_keys):
-            action = self.nav_menu.addAction(self.t(key))
+            icon_name = next((name for name, idx in self._nav_icon_map if idx == i), "help")
+            action = self.nav_menu.addAction(make_icon(icon_name), self.t(key))
             action.triggered.connect(lambda checked=False, idx=i: self.go_tab(idx))
             self._menu_actions.append(action)
         central = QWidget()
         central_layout = QVBoxLayout(central)
         central_layout.setContentsMargins(10, 8, 10, 10)
         central_layout.setSpacing(8)
-        toolbar = QHBoxLayout()
-        toolbar.setContentsMargins(0, 0, 0, 0)
-        toolbar.setSpacing(4)
-        toolbar.addWidget(self.nav_chat_btn)
-        toolbar.addWidget(self.nav_route_btn)
+        toolbar_frame = QFrame()
+        toolbar_frame.setObjectName("neonToolbar")
+        toolbar = QHBoxLayout(toolbar_frame)
+        toolbar.setContentsMargins(7, 5, 7, 5)
+        toolbar.setSpacing(5)
+        for button in self.nav_buttons:
+            toolbar.addWidget(button)
         toolbar.addWidget(self.menu_btn)
         toolbar.addStretch(1)
         toolbar.addWidget(self.save_btn)
-        central_layout.addLayout(toolbar)
+        central_layout.addWidget(toolbar_frame)
         central_layout.addWidget(self.tabs, 1)
         self.setCentralWidget(central)
         self.tabs.currentChanged.connect(self._sync_nav)
@@ -1327,8 +1338,8 @@ class MainWindow(QMainWindow):
 
     def _sync_nav(self, _index=None):
         i = self.tabs.currentIndex()
-        self.nav_chat_btn.setChecked(i == 0)
-        self.nav_route_btn.setChecked(i == self.tab_keys.index("tab_ai"))
+        for index, button in enumerate(getattr(self, "nav_buttons", [])):
+            button.setChecked(i == self._nav_icon_map[index][1])
         self.save_btn.setVisible(i != 0)            # the chat page needs no Save button
         if hasattr(self, "_voice_form") and i == self.tab_keys.index("tab_voice"):
             self.refresh_voice_caps()               # Cloud Voice may have been changed in the Route section meanwhile
@@ -1411,11 +1422,16 @@ class MainWindow(QMainWindow):
         cid = characters.active_id(self.settings)
         profile = characters.all_profiles(self.settings).get(cid, {})
         palette = theme_mod.character_theme(cid, profile)
-        for attr, name in (("nav_chat_btn", "chat"), ("nav_route_btn", "route"), ("menu_btn", "menu")):
-            button = getattr(self, attr, None)
-            if button is not None:
-                button.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
+        for button, (name, _tab_index) in zip(getattr(self, "nav_buttons", []), getattr(self, "_nav_icon_map", [])):
+            button.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
+                                     checked=palette["main"], disabled="#52617B"))
+        menu_button = getattr(self, "menu_btn", None)
+        if menu_button is not None:
+            menu_button.setIcon(make_icon("menu", normal=palette["second"], hover="#FFFFFF",
                                           checked=palette["main"], disabled="#52617B"))
+        for action, (name, _tab_index) in zip(getattr(self, "_menu_actions", []), getattr(self, "_nav_icon_map", [])):
+            action.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
+                                     checked=palette["main"], disabled="#52617B"))
         badge = getattr(self, "route_badge", None)
         if badge is not None:
             badge.setIcon(make_icon("chevron_up", normal=palette["second"], hover="#FFFFFF",
@@ -2220,9 +2236,9 @@ class MainWindow(QMainWindow):
         # Character selector: every profile shares the same brain, routes, tools and permissions.
         self.character_combo = QComboBox()
         self.character_portrait = QLabel()
+        self.character_portrait.setObjectName("characterPortrait")
         self.character_portrait.setFixedSize(144, 180)
         self.character_portrait.setScaledContents(True)
-        self.character_portrait.setStyleSheet("border: 1px solid #6954a8; border-radius: 10px; background: #171326;")
         self.character_description = QLabel()
         self.character_description.setWordWrap(True)
         profile_row = QHBoxLayout()
