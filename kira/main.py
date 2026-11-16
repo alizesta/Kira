@@ -771,8 +771,12 @@ class MainWindow(QMainWindow):
         # Voice engines belong on the Voice page; keep Chat models in Connections.
         voice_page = self.tabs.widget(self.tab_keys.index("tab_voice")) if hasattr(self, "tab_keys") else self.tabs.widget(2)
         voice_layout = voice_page.widget().layout()
+        # The Voice page uses a QGridLayout: append full-width model panels below
+        # the four compact microphone / TTS / STT panels.
+        voice_row = voice_layout.rowCount()
         if hasattr(self, "local_voice_box"):
-            voice_layout.insertWidget(max(0, voice_layout.count() - 1), self.local_voice_box)
+            voice_layout.addWidget(self.local_voice_box, voice_row, 0, 1, 2)
+            voice_row += 1
         if hasattr(self, "cloud_model_tabs"):
             self.voice_cloud_model_tabs = QTabWidget()
             for model_kind in ("stt", "tts"):
@@ -786,7 +790,7 @@ class MainWindow(QMainWindow):
             if self.voice_cloud_model_tabs.count():
                 cloud_voice_box, cloud_voice_form = self.group("مدل‌های صوتی Cloud")
                 cloud_voice_form.addRow(self.voice_cloud_model_tabs)
-                voice_layout.insertWidget(max(0, voice_layout.count() - 1), cloud_voice_box)
+                voice_layout.addWidget(cloud_voice_box, voice_row, 0, 1, 2)
         self.refresh_local_voice_status()
         self.save_btn = QPushButton()
         self.save_btn.setObjectName("save")
@@ -2396,11 +2400,8 @@ class MainWindow(QMainWindow):
             chain = " ← ".join(label for label, _ in voice_caps.chain(self.settings))
         except Exception:                                      # noqa: BLE001
             sup, chain = {c: ["?"] for c in voice_caps.CONTROLS}, ""
-        for widget, key in ((self.rate, "rate"), (self.pitch, "pitch"), (self.voice_style, "style"), (self.voice_style_deg, "style_degree")):
-            names = sup.get(key) or []
-            self._voice_form.setRowVisible(widget, bool(names))
-            if names:
-                widget.setToolTip(self.t("voice_supported_by") + " " + "، ".join(names))
+        # These legacy controls are intentionally not inserted into the compact
+        # Voice UI. Do not call QFormLayout.setRowVisible() on widgets outside it.
         self.voice_caps_note.setText(self.t("voice_caps_note", chain=chain or "-"))
 
     def collect_voice_settings(self):
