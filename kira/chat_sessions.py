@@ -41,6 +41,7 @@ SESSION_FIELDS = {
     "_search_base": lambda: None,
     "_route_info": lambda: None,
     "_badge_phase": lambda: "idle",
+    "application_request_id": lambda: None,
 }
 
 
@@ -53,9 +54,6 @@ class ChatSession:
         self.timer = None           # QTimer that paints the streamed text of this chat
         self.client = None          # HybridRouter of this chat (own cancel flag, so Stop stops only this character)
         self.relay = None           # SessionRelay: receives this chat's worker signals on the GUI thread
-        self.coordinator = None     # Per-session ChatCoordinator, composed by the application adapter
-        self.response_relay = None  # Current provider response adapter; released with this session
-        self.dispatch_scheduled = False  # A dequeued request is waiting for its GUI-thread dispatch callback
         self.badge = ("idle", None)  # last route-indicator state (shown when this chat is in front)
         self.theme = None
         self.draft = ""             # text typed but not sent yet
