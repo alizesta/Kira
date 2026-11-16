@@ -3,6 +3,8 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
+from PySide6.QtMultimedia import QSoundEffect
+
 from kira.voice import SAPI_SCRIPT, Speaker
 from kira.main import MainWindow
 
@@ -94,6 +96,70 @@ class SapiTtsTests(unittest.TestCase):
         MainWindow._on_local_tts_playback_error(fake, "device unavailable")
         self.assertIn("device unavailable", fake.local_voice_status.value)
         self.assertFalse(fake._local_tts_test_active)
+
+
+    def test_sound_error_is_reported_before_stop_can_emit_finished(self):
+        events = []
+        fake = SimpleNamespace(
+            _fx=SimpleNamespace(status=lambda: QSoundEffect.Error),
+            error=SimpleNamespace(emit=lambda _message: events.append("error")),
+            stop=lambda: events.append("stop"),
+        )
+        Speaker._on_sound_status(fake)
+        self.assertEqual(events, ["error", "stop"])
+
+    def test_device_change_is_reported_before_playback_is_cancelled(self):
+        events = []
+        fake = SimpleNamespace(
+            _fx=object(),
+            error=SimpleNamespace(emit=lambda _message: events.append("error")),
+            stop=lambda: events.append("stop"),
+        )
+        Speaker._on_devices_changed(fake)
+        self.assertEqual(events, ["error", "stop"])
+
+    def test_stop_emits_cancelled_for_an_active_session(self):
+        import threading
+
+        events = []
+        session = SimpleNamespace(
+            streaming=False,
+            input_done=True,
+            cond=threading.Condition(),
+            ready={},
+        )
+        fake = SimpleNamespace(
+            _gen=0,
+            _timer=SimpleNamespace(stop=lambda: None),
+            _session=session,
+            _fx=None,
+            _out=None,
+            _drop_player=lambda _fx, _out: None,
+            _end=lambda: None,
+            cancelled=SimpleNamespace(emit=lambda: events.append("cancelled")),
+        )
+        Speaker.stop(fake)
+        self.assertEqual(events, ["cancelled"])
+
+    def test_cancelled_local_tts_test_does_not_report_success(self):
+        class Status:
+            def __init__(self):
+                self.value = ""
+            def setText(self, value):
+                self.value = value
+
+        fake = SimpleNamespace(_local_tts_test_active=True, local_voice_status=Status())
+        MainWindow._on_local_tts_playback_cancelled(fake)
+        self.assertIn("متوقف شد", fake.local_voice_status.value)
+        self.assertFalse(fake._local_tts_test_active)
+
+    def test_cancel_callback_ignores_normal_speech(self):
+        class Status:
+            def setText(self, value):
+                raise AssertionError("normal speech must not alter the local TTS test log")
+
+        fake = SimpleNamespace(_local_tts_test_active=False, local_voice_status=Status())
+        MainWindow._on_local_tts_playback_cancelled(fake)
 
     def test_local_tts_playback_callbacks_ignore_normal_speech(self):
         class Status:
