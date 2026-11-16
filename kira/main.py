@@ -1611,6 +1611,16 @@ class MainWindow(QMainWindow):
         self.attach_btn.setFocusPolicy(Qt.NoFocus)
         self.attach_btn.clicked.connect(self.pick_attachments)
         bar.addWidget(self.attach_btn)
+        self.screen_capture_btn = QToolButton()
+        self.screen_capture_btn.setProperty("kiraIconName", "monitor")
+        self.screen_capture_btn.setIcon(make_icon("monitor"))
+        self.screen_capture_btn.setIconSize(QSize(18, 18))
+        self.screen_capture_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.screen_capture_btn.setToolTip("گرفتن تصویر از صفحه و پیوست برای تحلیل Vision")
+        self.screen_capture_btn.setCursor(Qt.PointingHandCursor)
+        self.screen_capture_btn.setFocusPolicy(Qt.NoFocus)
+        self.screen_capture_btn.clicked.connect(self.capture_screen_attachment)
+        bar.addWidget(self.screen_capture_btn)
         self.web_btn = QToolButton()
         self.web_btn.setProperty("kiraIconName", "globe")
         self.web_btn.setIcon(make_icon("globe"))
@@ -4974,6 +4984,20 @@ class MainWindow(QMainWindow):
             self.set_status("st_ok" if model_installed(detail, m) else "st_nomodel", m=m)
         else:
             self.set_status("st_off")
+    def capture_screen_attachment(self):
+        """Capture the primary desktop only after an explicit user click; attach it for a normal Vision request."""
+        try:
+            screen = QApplication.primaryScreen()
+            if screen is None:
+                raise RuntimeError("نمایشگری برای ثبت تصویر پیدا نشد.")
+            pixmap = screen.grabWindow(0)
+            if pixmap.isNull():
+                raise RuntimeError("ثبت تصویر صفحه ناموفق بود.")
+            self.add_pasted_image(pixmap.toImage())
+            self.add_chat("system", "🖥️ تصویر صفحه به پیوست‌ها اضافه شد؛ تا وقتی خودت پیام را نفرستی، برای مدل ارسال نمی‌شود.")
+        except Exception as exc:
+            self.add_chat("system", "ثبت تصویر صفحه ناموفق بود: " + str(exc)[:180])
+
     # ---- attachments (images and files) ----
     def pick_attachments(self):
         exts = " ".join("*" + e for e in sorted(att.IMAGE_TYPES))
