@@ -2335,6 +2335,11 @@ class MainWindow(QMainWindow):
             self.local_voice_status.setText(f"بارگذاری Qwen3-ASR ناموفق بود: {value}")
         self.refresh_local_voice_status()
 
+    def copy_local_voice_log(self):
+        text = self.local_voice_status.text().strip()
+        if text:
+            QApplication.clipboard().setText(text)
+
     def test_local_tts(self):
         from . import local_voice
         self._run_local_voice_task(
@@ -3344,15 +3349,22 @@ class MainWindow(QMainWindow):
 
         self.local_voice_status = QLabel()
         self.local_voice_status.setWordWrap(True)
+        self.local_voice_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.local_voice_status.setMaximumHeight(96)
         self.local_voice_status.setObjectName("hint")
+        self.local_voice_copy_btn = QPushButton("کپی لاگ")
+        self.local_voice_copy_btn.setMaximumWidth(90)
+        self.local_voice_copy_btn.clicked.connect(self.copy_local_voice_log)
         self.local_voice_progress = QProgressBar()
         self.local_voice_progress.setRange(0, 0)
         self.local_voice_progress.setTextVisible(False)
         self.local_voice_progress.setMaximumHeight(7)
         self.local_voice_progress.hide()
         local_form.addRow(self.local_model_tabs)
-        local_form.addRow(self.local_voice_status)
+        local_status_row = QHBoxLayout()
+        local_status_row.addWidget(self.local_voice_status, 1)
+        local_status_row.addWidget(self.local_voice_copy_btn)
+        local_form.addRow(local_status_row)
         local_form.addRow(self.local_voice_progress)
         self.local_voice_box = local_box
         local_test_row = QHBoxLayout()
