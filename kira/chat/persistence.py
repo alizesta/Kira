@@ -198,6 +198,52 @@ class SqliteChatRepository:
             con.close()
         return rows
 
+    def _read_conversations(self, path) -> list[dict[str, Any]]:
+        path = Path(path)
+        if not path.is_file():
+            return []
+        try:
+            con = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=5)
+        except sqlite3.Error:
+            return []
+        try:
+            if not self._has_table(con, "conversations"):
+                return []
+            cols = self._columns(con, "conversations")
+            if not {"id", "character_id"} <= cols:
+                return []
+            title = "title" if "title" in cols else "''"
+            metadata = "metadata" if "metadata" in cols else "'{}'"
+            status = "status" if "status" in cols else "'active'"
+            created = "created_at" if "created_at" in cols else "''"
+            updated = "updated_at" if "updated_at" in cols else created
+            rows = con.execute(
+                f"SELECT id, character_id, {title}, {metadata}, {status}, {created}, {updated} FROM conversations"
+            ).fetchall()
+            return [{
+                "id": str(row[0]), "character_id": _character_id(row[1]), "title": str(row[2] or ""),
+                "metadata": _json_object(row[3]), "status": str(row[4] or "active"),
+                "created_at": str(row[5] or _now()), "updated_at": str(row[6] or row[5] or _now()),
+            } for row in rows]
+        except sqlite3.Error:
+            return []
+        finally:
+            con.close()
+
+    def _restore_conversation_metadata(self, conversations):
+        if not conversations:
+            return
+        with self._db() as con:
+            self._migrate_schema(con)
+            for row in conversations:
+                con.execute(
+                    "INSERT OR IGNORE INTO conversations(id, character_id, title, metadata, status, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (row["id"], row["character_id"], row["title"],
+                     json.dumps(_json_object(row.get("metadata")), ensure_ascii=False),
+                     row["status"], row["created_at"], row["updated_at"]),
+                )
+
     def read_rows(self, path) -> list[tuple[str, str, str]]:
         return [(row[1], row[2], row[3]) for row in self._read_rows_full(path)]
 
@@ -219,7 +265,9 @@ class SqliteChatRepository:
                     conv_id = row[4] if len(row) > 4 and row[4] else _legacy_conversation_id(cid)
                     metadata = row[5] if len(row) > 5 else "{}"
                     status = row[6] if len(row) > 6 else "complete"
-                key = (role, body, stamp or "", cid, conv_id, metadata or "{}", status or "complete")
+                # Match the historical importer semantics: metadata/status changes do not
+                # turn an already imported message into a duplicate row.
+                key = (role, body, stamp or "", cid, conv_id)
                 if key in seen:
                     continue
                 seen.add(key)
@@ -335,6 +383,7 @@ class SqliteChatRepository:
     def _recover(self, reason: str) -> str:
         stamp = time.strftime("%Y%m%d-%H%M%S")
         salvaged = self._read_rows_full(self.db_path)
+        salvaged_conversations = self._read_conversations(self.db_path)
         quarantine = self.db_path.with_name(f"kira_memory.corrupt-{stamp}.sqlite3")
         suffix = 1
         while quarantine.exists():
@@ -349,8 +398,10 @@ class SqliteChatRepository:
         except OSError as exc:
             raise PersistenceError(f"فایل دیتابیس خراب جابه‌جا نشد: {exc}") from exc
         backup_rows, backup = self._latest_backup_rows()
+        backup_conversations = self._read_conversations(backup) if backup else []
         merged = self._merge(backup_rows, salvaged)
         self._write_all(merged)
+        self._restore_conversation_metadata([*backup_conversations, *salvaged_conversations])
         where = f" و از پشتیبان «{backup.parent.name}» کامل شد" if backup and backup_rows else ""
         return (f"دیتابیس گفتگو خراب بود ({reason}). فایل خراب پاک نشد و با نام «{quarantine.name}» کنار گذاشته شد؛ "
                 f"{len(salvaged)} پیام از آن نجات یافت{where}. در مجموع {len(merged)} پیام بازیابی شد.")
@@ -712,7 +763,8 @@ class SqliteChatRepository:
         if not source.is_file():
             raise PersistenceError("فایل انتخاب‌شده پیدا نشد.")
         incoming = self._read_rows_full(source)
-        if not incoming:
+        incoming_conversations = self._read_conversations(source)
+        if not incoming and not incoming_conversations:
             return 0
         with self._lock:
             try:
@@ -725,6 +777,14 @@ class SqliteChatRepository:
                     self._snapshot("before-import")
                 with self._db() as con:
                     self._migrate_schema(con)
+                    for conversation in incoming_conversations:
+                        con.execute(
+                            "INSERT OR IGNORE INTO conversations(id, character_id, title, metadata, status, created_at, updated_at) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (conversation["id"], conversation["character_id"], conversation["title"],
+                             json.dumps(conversation["metadata"], ensure_ascii=False), conversation["status"],
+                             conversation["created_at"], conversation["updated_at"]),
+                        )
                     self._ensure_conversation_rows(con, merged)
                     con.execute("DELETE FROM messages")
                     con.executemany(
