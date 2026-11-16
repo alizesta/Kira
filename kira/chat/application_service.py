@@ -283,6 +283,7 @@ class ChatApplicationService:
         context: Mapping[str, Any],
         *,
         provider_callbacks: Mapping[str, Callable[..., Any]] | None = None,
+        provider_event_dispatcher: Callable[[ProviderEvent], Any] | None = None,
         **provider_request: Any,
     ) -> Any:
         state = self._requests.get(str(request_id or ""))
@@ -301,14 +302,15 @@ class ChatApplicationService:
             )
             self._attempt_to_request[attempt_id] = state.request.request_id
             callbacks = dict(provider_callbacks or {})
+            dispatch_event = provider_event_dispatcher or self.handle_provider_event
             callbacks.update({
-                "chunk": lambda piece, aid=attempt_id, sid=owner: self.handle_provider_event(
+                "chunk": lambda piece, aid=attempt_id, sid=owner: dispatch_event(
                     ProviderEvent.chunk(aid, sid, piece)
                 ),
-                "complete": lambda response, aid=attempt_id, sid=owner: self.handle_provider_event(
+                "complete": lambda response, aid=attempt_id, sid=owner: dispatch_event(
                     ProviderEvent.completed(aid, sid, response)
                 ),
-                "error": lambda error, aid=attempt_id, sid=owner: self.handle_provider_event(
+                "error": lambda error, aid=attempt_id, sid=owner: dispatch_event(
                     ProviderEvent.failed(aid, sid, error)
                 ),
             })
