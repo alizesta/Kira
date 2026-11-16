@@ -3217,9 +3217,9 @@ class MainWindow(QMainWindow):
         self.local_model_list.itemChanged.connect(self.on_local_chat_item_changed)
         local_chat_layout.addWidget(QLabel("مدل‌های چت نصب‌شده‌ی Ollama"))
         local_chat_layout.addWidget(self.local_model_list)
-        scan_local = QPushButton("یافتن مدل‌های نصب‌شده")
-        scan_local.clicked.connect(self.scan_ollama)
-        local_chat_layout.addWidget(scan_local)
+        self.route_scan_btn = QPushButton("یافتن مدل‌های نصب‌شده")
+        self.route_scan_btn.clicked.connect(self.scan_ollama)
+        local_chat_layout.addWidget(self.route_scan_btn)
         self.local_model_tabs.addTab(local_chat, "Chat")
 
         # Local STT: Qwen ASR and faster-whisper can use a downloaded local directory.
