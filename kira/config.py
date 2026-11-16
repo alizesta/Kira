@@ -184,7 +184,10 @@ def load_settings():
             return deepcopy(DEFAULTS)
         merged = {**DEFAULTS, **saved}
         # Remove obsolete remote/edge voice selections; speech is now local Piper/Qwen/Whisper only.
-        for stale_voice_key in ("voice_fa", "voice_en", "voice_ja", "voice_pitch", "voice_style", "voice_style_degree"):
+        for stale_voice_key in (
+            "voice_fa", "voice_en", "voice_ja", "voice_pitch", "voice_style", "voice_style_degree",
+            "cloud_voice_provider", "cloud_voice_id", "cloud_voices",
+        ):
             merged.pop(stale_voice_key, None)
         profiles = merged.get("character_voice")
         if isinstance(profiles, dict):
