@@ -11,7 +11,6 @@ if exist "A:\\" (
 set "HF_HOME=%KIRA_DATA_DIR%\huggingface"
 set "HUGGINGFACE_HUB_CACHE=%KIRA_DATA_DIR%\huggingface\hub"
 set "HF_HUB_CACHE=%KIRA_DATA_DIR%\huggingface\hub"
-set "TRANSFORMERS_CACHE=%KIRA_DATA_DIR%\huggingface\hub"
 set "TORCH_HOME=%KIRA_DATA_DIR%\cache\torch"
 set "XDG_CACHE_HOME=%KIRA_DATA_DIR%\cache"
 set "PIP_CACHE_DIR=%KIRA_DATA_DIR%\cache\pip"
@@ -132,13 +131,13 @@ if not exist requirements-voice-local.txt (
   echo Download the complete Kira branch archive and try again.
   goto voice_done
 )
-python scripts\setup_local_voice.py --install
+python scripts\setup_local_voice.py --install --prepare-models
 if errorlevel 1 (
   echo Local voice engines could not be installed. Kira will continue without them.
   echo Check that this environment uses Python 3.11 or 3.12.
   echo To retry safely, run: install_local_voice.bat
 ) else (
-  echo Local voice packages installed. Model weights download on first use.
+  echo Local voice packages and model weights are prepared.
 )
 goto voice_done
 :voice_skip

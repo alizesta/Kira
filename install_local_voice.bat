@@ -11,7 +11,6 @@ if exist "A:\\" (
 set "HF_HOME=%KIRA_DATA_DIR%\huggingface"
 set "HUGGINGFACE_HUB_CACHE=%KIRA_DATA_DIR%\huggingface\hub"
 set "HF_HUB_CACHE=%KIRA_DATA_DIR%\huggingface\hub"
-set "TRANSFORMERS_CACHE=%KIRA_DATA_DIR%\huggingface\hub"
 set "TORCH_HOME=%KIRA_DATA_DIR%\cache\torch"
 set "XDG_CACHE_HOME=%KIRA_DATA_DIR%\cache"
 set "PIP_CACHE_DIR=%KIRA_DATA_DIR%\cache\pip"

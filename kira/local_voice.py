@@ -185,3 +185,58 @@ def status(model_path="") -> dict:
         "asr_error": str(_asr_error)[:240] if _asr_error else "",
         "tts_error": str(_tts_error)[:240] if _tts_error else "",
     }
+
+def discover_cached_models() -> dict:
+    """Find cached Qwen ASR snapshots and Piper ONNX voices without downloading anything."""
+    data_root = Path(_DATA_ROOT)
+    hub_root = Path(os.environ.get("HF_HUB_CACHE") or (data_root / "huggingface" / "hub"))
+    asr_models, tts_models = [], []
+    seen_asr, seen_tts = set(), set()
+    try:
+        for model_dir in hub_root.glob("models--*"):
+            repo_id = model_dir.name[len("models--"):].replace("--", "/")
+            snapshots = model_dir / "snapshots"
+            if not snapshots.is_dir():
+                continue
+            for snapshot in snapshots.iterdir():
+                if not snapshot.is_dir():
+                    continue
+                config = {}
+                config_path = snapshot / "config.json"
+                try:
+                    if config_path.is_file():
+                        import json
+                        config = json.loads(config_path.read_text(encoding="utf-8", errors="replace"))
+                except (OSError, ValueError, TypeError):
+                    pass
+                signature = " ".join((repo_id.lower(), str(config.get("model_type") or "").lower(),
+                    " ".join(str(x).lower() for x in (config.get("architectures") or []))))
+                has_weights = any(
+                    next(snapshot.glob(pattern), None) is not None
+                    for pattern in ("*.safetensors", "*.bin", "*.gguf", "*.onnx")
+                ) or (snapshot / "model.safetensors.index.json").is_file()
+                if not has_weights:
+                    continue
+                if any(token in signature for token in ("qwen3-asr", "qwen3asr", "qwen_asr")):
+                    if repo_id.casefold() not in seen_asr:
+                        asr_models.append({"id": repo_id, "path": str(snapshot)})
+                        seen_asr.add(repo_id.casefold())
+                for onnx in snapshot.glob("*.onnx"):
+                    key = str(onnx.resolve()).casefold()
+                    if key not in seen_tts:
+                        tts_models.append({"name": onnx.stem, "path": str(onnx)})
+                        seen_tts.add(key)
+    except OSError:
+        pass
+    # Imported Piper voices are kept in this dedicated Kira folder.
+    try:
+        for onnx in (data_root / "voice_models").glob("*.onnx"):
+            key = str(onnx.resolve()).casefold()
+            if key not in seen_tts:
+                tts_models.append({"name": onnx.stem, "path": str(onnx)})
+                seen_tts.add(key)
+    except OSError:
+        pass
+    asr_models.sort(key=lambda item: (item["id"].casefold() != "qwen/qwen3-asr-0.6b", item["id"].casefold()))
+    tts_models.sort(key=lambda item: item["name"].casefold())
+    return {"asr": asr_models, "tts": tts_models}

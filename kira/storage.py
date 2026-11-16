@@ -106,7 +106,6 @@ def configure_cache_environment(data_dir: Path) -> None:
         "HF_HOME": Path(data_dir) / "huggingface",
         "HUGGINGFACE_HUB_CACHE": Path(data_dir) / "huggingface" / "hub",
         "HF_HUB_CACHE": Path(data_dir) / "huggingface" / "hub",
-        "TRANSFORMERS_CACHE": Path(data_dir) / "huggingface" / "hub",
         "TORCH_HOME": cache_root / "torch",
         "XDG_CACHE_HOME": cache_root,
         "PIP_CACHE_DIR": cache_root / "pip",

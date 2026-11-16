@@ -785,16 +785,8 @@ class MainWindow(QMainWindow):
         # available as an alternate route, but sections are now one tap away.
         self._nav_icon_map = [("chat", 0), ("brain", 1), ("mic", 2), ("user", 3),
                               ("palette", 4), ("settings", 5), ("route", ai_index)]
+        # Primary sections are accessed from the hamburger menu only.
         self.nav_buttons = []
-        for icon_name, tab_index in self._nav_icon_map:
-            button = self.icon_button(icon_name, True)
-            button.setObjectName("navTabBtn")
-            button.setFixedSize(38, 38)
-            button.clicked.connect(lambda checked=False, idx=tab_index: self.go_tab(idx))
-            self.reg(button.setToolTip, self.tab_keys[tab_index])
-            self.nav_buttons.append(button)
-        self.nav_chat_btn = self.nav_buttons[0]
-        self.nav_route_btn = self.nav_buttons[-1]
         self.menu_btn = QToolButton()
         self.menu_btn.setObjectName("menuBtn")
         self.menu_btn.setProperty("kiraIconName", "menu")
@@ -820,8 +812,7 @@ class MainWindow(QMainWindow):
         toolbar = QHBoxLayout(toolbar_frame)
         toolbar.setContentsMargins(7, 5, 7, 5)
         toolbar.setSpacing(5)
-        for button in self.nav_buttons:
-            toolbar.addWidget(button)
+        self.menu_btn.setFixedSize(38, 38)
         toolbar.addWidget(self.menu_btn)
         toolbar.addStretch(1)
         toolbar.addWidget(self.save_btn)
@@ -2045,31 +2036,82 @@ class MainWindow(QMainWindow):
         self.refresh_unified_models()
         self.api_add_status.setText(f"✓ مدل «{model}» به Ollama اضافه شد.")
 
+    def select_local_asr_model(self, index):
+        combo = getattr(self, "local_asr_model_list", None)
+        if combo is None or index < 0:
+            return
+        value = str(combo.itemData(index) or "").strip()
+        if not value:
+            return
+        self.local_asr_path_edit.setText(value)
+        self.settings["local_voice_asr_model"] = value
+        self.save_now()
+        self.refresh_local_voice_status()
+
+    def select_local_tts_model(self, index):
+        combo = getattr(self, "local_tts_model_list", None)
+        if combo is None or index < 0:
+            return
+        value = str(combo.itemData(index) or "").strip()
+        self.local_tts_model_path.setText(value)
+        self.settings["local_voice_tts_model"] = value
+        self.save_now()
+        self.refresh_local_voice_status()
+
     def refresh_local_voice_status(self):
         try:
             from . import local_voice
             asr_model = str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B")
             tts_model = str(self.settings.get("local_voice_tts_model") or "")
+            discovered = local_voice.discover_cached_models()
+
+            asr_combo = getattr(self, "local_asr_model_list", None)
+            if asr_combo is not None:
+                asr_combo.blockSignals(True)
+                asr_combo.clear()
+                asr_entries = discovered.get("asr", [])
+                if not any(item.get("id") == asr_model for item in asr_entries):
+                    asr_combo.addItem(f"{asr_model} · هنوز در کش پیدا نشد", asr_model)
+                for item in asr_entries:
+                    asr_combo.addItem(f"{item['id']} · دانلودشده", item["id"])
+                selected = next((i for i in range(asr_combo.count())
+                                 if str(asr_combo.itemData(i)) == asr_model), 0)
+                asr_combo.setCurrentIndex(selected)
+                asr_combo.blockSignals(False)
+
+            tts_combo = getattr(self, "local_tts_model_list", None)
+            if tts_combo is not None:
+                tts_combo.blockSignals(True)
+                tts_combo.clear()
+                tts_combo.addItem("Mana Persian Piper · صدای پیش‌فرض", "")
+                for item in discovered.get("tts", []):
+                    tts_combo.addItem(f"{item['name']} · دانلودشده", item["path"])
+                selected = next((i for i in range(tts_combo.count())
+                                 if str(tts_combo.itemData(i) or "") == tts_model), 0)
+                tts_combo.setCurrentIndex(selected)
+                tts_combo.blockSignals(False)
+
             state = local_voice.status(tts_model)
-            asr_loaded_for_selection = bool(state["asr_loaded"] and state.get("asr_model") == asr_model)
-            selected_tts_loaded = bool(
-                state["tts_loaded"] and (
-                    (tts_model and state.get("tts_model") and Path(state["tts_model"]).resolve() == Path(tts_model).expanduser().resolve())
-                    or (not tts_model and state.get("tts_model") == "bundled")
-                )
-            )
-            asr = ("پکیج Python نصب است" if state["asr_installed"] else "پکیج Python نصب نیست")
-            asr += " · همین مدل در حافظه است" if asr_loaded_for_selection else " · مدل انتخابی هنوز بارگذاری نشده"
+            asr_loaded = bool(state["asr_loaded"] and state.get("asr_model") == asr_model)
+            tts_loaded = bool(state["tts_loaded"] and (
+                (tts_model and state.get("tts_model") and Path(state["tts_model"]).resolve() == Path(tts_model).expanduser().resolve())
+                or (not tts_model and state.get("tts_model") == "bundled")
+            ))
+            asr_cached = any(item.get("id") == asr_model for item in discovered.get("asr", []))
+            asr = "پکیج Python نصب است" if state["asr_installed"] else "پکیج Python نصب نیست"
+            asr += " · فایل‌های مدل در کش موجود است" if asr_cached else " · فایل‌های مدل هنوز دانلود نشده"
+            asr += " · همین مدل در حافظه است" if asr_loaded else " · مدل هنوز بارگذاری نشده"
             if state.get("asr_error"):
                 asr += " · " + state["asr_error"]
-            tts = ("Piper در دسترس است" if state["tts_installed"] else "Piper نصب نیست")
-            tts += " · همین صدا بارگذاری شده" if selected_tts_loaded else " · صدای انتخابی هنوز بارگذاری نشده"
+            tts = "Piper در دسترس است" if state["tts_installed"] else "Piper نصب نیست"
+            tts += " · همین صدا بارگذاری شده" if tts_loaded else " · صدای انتخابی هنوز بارگذاری نشده"
             if state.get("tts_error"):
                 tts += " · " + state["tts_error"]
-            selected_tts = tts_model or "صدای فارسی پیش‌فرض"
+            selected_tts = tts_model or "Mana Persian Piper · صدای فارسی پیش‌فرض"
             self.local_voice_status.setText(
                 f"STT · Qwen3-ASR: {asr}\nمدل STT: {asr_model}\n"
                 f"TTS · Piper: {tts}\nمدل TTS: {selected_tts}\n"
+                f"مدل‌های Piper مستقل: {len(discovered.get('tts', []))}\n"
                 f"کش مدل‌ها: {local_voice.cache_directory()}"
             )
         except Exception as exc:
@@ -2712,7 +2754,7 @@ class MainWindow(QMainWindow):
 
         self._appearance_timer = QTimer(self)
         self._appearance_timer.setSingleShot(True)
-        self._appearance_timer.setInterval(450)
+        self._appearance_timer.setInterval(160)
         self._appearance_timer.timeout.connect(lambda: self.apply_appearance(save=True))
         self.window_effect.currentIndexChanged.connect(self.schedule_appearance)
         for slider in (self.appearance_brightness, self.appearance_glow, self.appearance_transparency):
@@ -2745,7 +2787,8 @@ class MainWindow(QMainWindow):
         self.schedule_appearance()
 
     def schedule_appearance(self, *_):
-        self.apply_appearance(save=False)
+        # Coalesce slider movement; rebuilding the global stylesheet on every tick
+        # makes the GUI stall while Qt re-composites the neon effects.
         self._appearance_timer.start()
 
     def apply_appearance(self, save=False):
@@ -2806,12 +2849,17 @@ class MainWindow(QMainWindow):
 
         # Panel borders are handled by the stylesheet; avoid effects on containers because
         # Qt may composite their child text and inputs into the shadow source.
+        # Shadow effects on every settings button force Qt to re-render dozens of
+        # controls. Keep the expensive bloom on the persistent primary actions only.
         targets = []
-        for widget in self.findChildren(QToolButton):
-            if widget.property("kiraIconName") or widget.objectName() in ("sendBtn", "genStop", "menuBtn"):
-                targets.append((widget, palette["second"], 10 + intensity * 0.18, 18 + intensity * 0.68))
-        for widget in self.findChildren(QPushButton):
-            targets.append((widget, palette["main"], 11 + intensity * 0.16, 14 + intensity * 0.58))
+        for name in ("menu_btn", "mic_btn", "wake_btn", "voice_btn", "stop_btn",
+                     "send_btn", "gen_stop_btn"):
+            widget = getattr(self, name, None)
+            if widget is not None:
+                targets.append((widget, palette["second"], 10 + intensity * 0.12, 14 + intensity * 0.38))
+        save_button = getattr(self, "save_btn", None)
+        if save_button is not None:
+            targets.append((save_button, palette["main"], 10 + intensity * 0.12, 14 + intensity * 0.34))
 
         for widget, colour, blur, alpha in targets:
             effect = self._neon_widget_effects.get(widget)
@@ -3000,6 +3048,11 @@ class MainWindow(QMainWindow):
         self.local_asr_chk.setChecked(bool(self.settings.get("local_voice_asr", True)))
         self.local_asr_chk.toggled.connect(lambda on: self.set_local_voice_option("local_voice_asr", on))
         local_stt_layout.addWidget(self.local_asr_chk)
+        self.local_asr_model_list = QComboBox()
+        self.local_asr_model_list.setToolTip("مدل‌های STT موجود در کش Hugging Face")
+        self.local_asr_model_list.currentIndexChanged.connect(self.select_local_asr_model)
+        local_stt_layout.addWidget(QLabel("مدل‌های دانلودشده‌ی STT"))
+        local_stt_layout.addWidget(self.local_asr_model_list)
         self.local_asr_path_edit = QLineEdit(str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B"))
         self.local_asr_path_edit.setPlaceholderText("شناسه Hugging Face یا مسیر پوشه‌ی مدل")
         self.local_asr_path_edit.setLayoutDirection(Qt.LeftToRight)
@@ -3031,6 +3084,11 @@ class MainWindow(QMainWindow):
         self.local_tts_chk.setChecked(bool(self.settings.get("local_voice_tts", True)))
         self.local_tts_chk.toggled.connect(lambda on: self.set_local_voice_option("local_voice_tts", on))
         local_tts_layout.addWidget(self.local_tts_chk)
+        self.local_tts_model_list = QComboBox()
+        self.local_tts_model_list.setToolTip("صداهای Piper دانلودشده و صدای فارسی پیش‌فرض")
+        self.local_tts_model_list.currentIndexChanged.connect(self.select_local_tts_model)
+        local_tts_layout.addWidget(QLabel("مدل‌های دانلودشده‌ی TTS"))
+        local_tts_layout.addWidget(self.local_tts_model_list)
         self.local_tts_model_path = QLineEdit(str(self.settings.get("local_voice_tts_model") or ""))
         self.local_tts_model_path.setPlaceholderText("مسیر Piper ONNX؛ خالی = صدای فارسی پیش‌فرض")
         self.local_tts_model_path.setLayoutDirection(Qt.LeftToRight)
