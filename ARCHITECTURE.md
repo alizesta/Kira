@@ -80,3 +80,17 @@ Kira is migrating incrementally toward independent UI, application logic, servic
 - Its UI controls, worker/tile factories, attachment API and busy-state callback are injected. It does not import or reference `MainWindow`.
 - `MainWindow` currently provides thin compatibility delegates while send/upload orchestration is migrated in later steps. The controller is composed after the chat composer is created.
 - The upload-progress presentation remains in the chat coordinator for now; it is a separate responsibility and should be extracted behind its own contract rather than coupled into the file-reading controller.
+
+
+## Independent model-delegation contract
+
+A feature is ready to be assigned to a separate implementation model only when its boundary is explicit:
+
+1. **Single ownership:** one package owns the feature's state, behavior and tests. Other modules do not reach into its private fields.
+2. **Public surface:** expose a small API from the package `__init__.py`; keep implementation details private to the feature package.
+3. **Explicit dependencies:** constructor/function inputs or Protocol interfaces define every external dependency. Feature code must not import `MainWindow`, read its attributes, or create unrelated services globally.
+4. **Direction of control:** the application shell/bootstrap wires modules together. Feature modules communicate through their public contracts; use EventBus for notifications, not as a universal method-call router.
+5. **Replaceability:** tests can exercise the feature with fakes or adapters without constructing the whole application. Optional features have defined startup/shutdown behavior and fail without taking down unrelated features.
+6. **Change isolation:** a delegated task names the owned package, public contract, permitted dependencies and test target. A model must not modify neighboring feature packages unless the task explicitly requires a contract change.
+
+The long-term shell is intentionally boring: bootstrap creates and wires feature modules; `MainWindow` hosts the UI and forwards user intent. Neither should own feature algorithms or persistence rules.
