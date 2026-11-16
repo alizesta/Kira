@@ -64,7 +64,7 @@ from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
 from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
 from .chat_code_ui import CodeChat
-from .ui.components import ModelCombo, RouteEditor
+from .ui.components import McpRegistryPanel, ModelCombo, RouteEditor
 from .ui.dialogs import MemoryDialog, ModelPickerDialog
 from .ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
 from .ui.workers import (
@@ -2353,33 +2353,18 @@ class MainWindow(QMainWindow):
         return self.help_page
 
     def build_mcp_registry_group(self, parent_layout):
-        box, form = self.group("افزونه‌ها و ابزارهای MCP")
-        row = QHBoxLayout()
-        self.mcp_registry_query = QLineEdit()
-        self.mcp_registry_query.setPlaceholderText("جستجوی سرور MCP (filesystem، github، browser)")
-        self.mcp_registry_search_btn = QPushButton("دریافت فهرست")
-        self.mcp_registry_search_btn.clicked.connect(self.search_mcp_registry)
-        self.mcp_registry_query.returnPressed.connect(self.search_mcp_registry)
-        row.addWidget(self.mcp_registry_query, 1)
-        row.addWidget(self.mcp_registry_search_btn)
-        form.addRow(row)
-        self.mcp_registry_list = QListWidget()
-        self.mcp_registry_list.setMaximumHeight(105)
-        self.mcp_registry_list.setSelectionMode(QAbstractItemView.SingleSelection)
-        form.addRow(self.mcp_registry_list)
-        actions = QHBoxLayout()
-        self.mcp_registry_add_btn = QPushButton("افزودن سرور انتخاب‌شده")
-        self.mcp_registry_add_btn.clicked.connect(self.add_mcp_registry_server)
-        self.mcp_registry_refresh_btn = QPushButton("تازه‌سازی مدل‌ها")
-        self.mcp_registry_refresh_btn.clicked.connect(self.refresh_model_catalogs)
-        actions.addWidget(self.mcp_registry_add_btn)
-        actions.addWidget(self.mcp_registry_refresh_btn)
-        form.addRow(actions)
-        self.mcp_registry_status = QLabel("در حال دریافت خودکار فهرست رسمی سرورهای MCP…")
-        self.mcp_registry_status.setObjectName("hint")
-        self.mcp_registry_status.setWordWrap(True)
-        form.addRow(self.mcp_registry_status)
-        parent_layout.addWidget(box)
+        """Mount the independent MCP registry panel and connect application actions."""
+        self.mcp_registry_panel = McpRegistryPanel(parent=self)
+        self.mcp_registry_query = self.mcp_registry_panel.query_edit
+        self.mcp_registry_search_btn = self.mcp_registry_panel.search_btn
+        self.mcp_registry_list = self.mcp_registry_panel.results
+        self.mcp_registry_add_btn = self.mcp_registry_panel.add_btn
+        self.mcp_registry_refresh_btn = self.mcp_registry_panel.refresh_btn
+        self.mcp_registry_status = self.mcp_registry_panel.status
+        self.mcp_registry_panel.search_requested.connect(self.search_mcp_registry)
+        self.mcp_registry_panel.add_requested.connect(self.add_mcp_registry_server)
+        self.mcp_registry_panel.refresh_models_requested.connect(self.refresh_model_catalogs)
+        parent_layout.addWidget(self.mcp_registry_panel)
         QTimer.singleShot(1200, self.search_mcp_registry)
 
     def search_mcp_registry(self):
@@ -2387,42 +2372,29 @@ class MainWindow(QMainWindow):
         worker = getattr(self, "_mcp_registry_worker", None)
         if worker is not None and worker.isRunning():
             return
-        self.mcp_registry_search_btn.setEnabled(False)
-        self.mcp_registry_status.setText("در حال دریافت فهرست رسمی MCP…")
-        self._mcp_registry_worker = RegistrySearchWorker(self.mcp_registry_query.text().strip(), self)
+        self.mcp_registry_panel.set_searching(True)
+        self._mcp_registry_worker = RegistrySearchWorker(self.mcp_registry_panel.query(), self)
         self._mcp_registry_worker.completed.connect(self._on_mcp_registry_results)
         self._mcp_registry_worker.start()
 
     def _on_mcp_registry_results(self, records, error):
-        self.mcp_registry_search_btn.setEnabled(True)
-        self.mcp_registry_list.clear()
-        if error:
-            self.mcp_registry_status.setText("دریافت فهرست ناموفق بود: " + str(error)[:240])
-            return
-        for record in records:
-            server = record.get("server", record)
-            name = str(server.get("name") or "Unnamed MCP")
-            desc = str(server.get("description") or "").replace("\\n", " ")
-            item = QListWidgetItem(name + (" · " + desc[:90] if desc else ""))
-            item.setData(Qt.UserRole, record)
-            self.mcp_registry_list.addItem(item)
-        self.mcp_registry_status.setText(f"{len(records)} سرور از رجیستری رسمی دریافت شد.")
+        self.mcp_registry_panel.show_results(records, error)
 
     def add_mcp_registry_server(self):
-        item = self.mcp_registry_list.currentItem()
-        if item is None:
-            self.mcp_registry_status.setText("اول یک سرور از فهرست انتخاب کن.")
+        record = self.mcp_registry_panel.selected_record()
+        if record is None:
+            self.mcp_registry_panel.set_status("اول یک سرور از فهرست انتخاب کن.")
             return
         from .mcp.registry import server_config
         try:
-            name, cfg = server_config(item.data(Qt.UserRole))
+            name, cfg = server_config(record)
             path = DATA_DIR / "kira_mcp.json"
             raw = json.loads(path.read_text(encoding="utf-8-sig")) if path.is_file() else {}
             if not isinstance(raw, dict):
                 raise ValueError("ساختار kira_mcp.json معتبر نیست")
             servers = raw.setdefault("servers", {})
             if name in servers:
-                self.mcp_registry_status.setText(f"سرور «{name}» از قبل ثبت شده است.")
+                self.mcp_registry_panel.set_status(f"سرور «{name}» از قبل ثبت شده است.")
                 return
             servers[name] = cfg
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -2460,7 +2432,7 @@ class MainWindow(QMainWindow):
             self.mcp_registry_status.setText("تازه‌سازی کامل نشد: " + str(exc)[:200])
 
     def _on_model_catalog_refresh(self, result):
-        self.mcp_registry_refresh_btn.setEnabled(True)
+        self.mcp_registry_panel.set_refreshing(False)
         ok, value = result
         if not ok:
             self.mcp_registry_status.setText("دریافت مدل‌های API ناموفق بود: " + str(value)[:200])
