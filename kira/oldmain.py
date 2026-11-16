@@ -232,7 +232,6 @@ class MainWindow(QMainWindow):
         self.sessions = {}
         self.cur = self.front = ChatSession(self.character_service.active_id(self.settings))
         self.sessions[self.cur.cid] = self.cur
-        self._chat_coordinators = {}
         self._db_notes = self.chat_history_service.init_db()
         self._save_warned = False
         self._emotion_applied = False
@@ -4032,14 +4031,11 @@ class MainWindow(QMainWindow):
 
     def _chat_coordinator(self, session=None):
         session = session or self.cur
-        key = id(session)
-        coordinator = self._chat_coordinators.get(key)
-        if coordinator is None:
-            coordinator = ChatCoordinator(
+        if session.coordinator is None:
+            session.coordinator = ChatCoordinator(
                 lambda request, target=session: self._dispatch_coordinated_request(target, request)
             )
-            self._chat_coordinators[key] = coordinator
-        return coordinator
+        return session.coordinator
 
     def _dispatch_coordinated_request(self, session, request):
         if self._closing or session.cid not in self.sessions:
