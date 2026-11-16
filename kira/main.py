@@ -2816,7 +2816,7 @@ class MainWindow(QMainWindow):
         self.ollama_edit_btn = self.ollama_panel.edit_btn
         self.ollama_save_btn = self.ollama_panel.save_btn
         self.ollama_cancel_btn = self.ollama_panel.cancel_btn
-        self.ollama_panel.enabled_changed.connect(self.provider_changed)
+        self.ollama_panel.enabled_changed.connect(lambda *_: self.provider_changed())
         self.ollama_panel.cancel_requested.connect(lambda: self.ollama_edit_mode(False))
         self.ollama_panel.save_requested.connect(self.save_ollama_edit)
         return self.ollama_panel
