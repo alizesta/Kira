@@ -31,7 +31,10 @@ class Listener(QThread):
 
     def __init__(self, model_name="small", language="fa", parent=None, sensitivity=100, barge_in=True, settings=None):
         super().__init__(parent)
-        self.model_name = model_name
+        # Qwen is selected through the same STT selector, but Whisper remains
+        # the local fallback if Qwen cannot load or returns no transcript.
+        selected_model = str(model_name or "small").strip()
+        self.model_name = "small" if selected_model.casefold().startswith("qwen/") else selected_model
         self.language = None if language in ("", "auto") else language
         self.sensitivity = sensitivity
         self.settings = settings if settings is not None else {}
