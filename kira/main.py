@@ -197,8 +197,18 @@ class MainWindow(QMainWindow):
     input = front_only_property("input")
     voice_btn = front_only_property("voice_btn")
 
-    def __init__(self):
+    def __init__(self, memory_service=None, mood_service=None):
         super().__init__()
+        # Direct MainWindow construction remains supported for existing callers;
+        # normal application startup injects these services from app.bootstrap.
+        if memory_service is None:
+            from .services.memory_service import PersonaMemoryService
+            memory_service = PersonaMemoryService()
+        if mood_service is None:
+            from .services.mood_service import MoodStateService
+            mood_service = MoodStateService()
+        self.memory_service = memory_service
+        self.mood_service = mood_service
         self.settings = load_settings()
         self.sessions = {}
         self.cur = self.front = ChatSession(characters.active_id(self.settings))
@@ -5870,7 +5880,16 @@ class MainWindow(QMainWindow):
             pass
 
     def open_memory_dialog(self):
-        MemoryDialog(self, characters.active_id(self.settings)).exec()
+        character_id = characters.active_id(self.settings)
+        profile = characters.all_profiles(self.settings).get(character_id, {})
+        character_name = profile.get("name") or character_id.title()
+        MemoryDialog(
+            self,
+            character_id,
+            character_name=character_name,
+            memory_service=self.memory_service,
+            mood_service=self.mood_service,
+        ).exec()
 
     def restore_cleared_chat(self):
         try:
