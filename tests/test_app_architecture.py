@@ -365,6 +365,14 @@ class ExtractedUiComponentTests(unittest.TestCase):
 
         self.assertEqual(ModelCombo.__module__, "kira.ui.components.model_combo")
 
+    def test_appearance_page_is_owned_by_ui_pages_package(self):
+        from PySide6.QtWidgets import QScrollArea
+
+        from kira.ui.pages import AppearancePage
+
+        self.assertEqual(AppearancePage.__module__, "kira.ui.pages.appearance_page")
+        self.assertTrue(issubclass(AppearancePage, QScrollArea))
+
     def test_voice_page_is_owned_by_ui_pages_package(self):
         from PySide6.QtWidgets import QScrollArea
 
