@@ -119,7 +119,7 @@ if errorlevel 1 goto netfail
 echo.
 echo [2/4] Installing microphone and speech support...
 if exist voice_failed.txt del voice_failed.txt
-set "PKGS=Pillow sounddevice PyAudioWPatch edge-tts SpeechRecognition miniaudio faster-whisper"
+set "PKGS=Pillow sounddevice PyAudioWPatch miniaudio"
 for %%P in (%PKGS%) do (
   echo --- %%P
   python -m pip install --upgrade --retries 10 --timeout 60 %%P
