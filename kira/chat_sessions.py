@@ -47,6 +47,7 @@ SESSION_FIELDS = {
 class ChatSession:
     def __init__(self, character_id: str):
         self.cid = str(character_id)
+        self.conversation_id: str | None = None  # Stable persisted conversation owned by this character session
         for name, factory in SESSION_FIELDS.items():
             setattr(self, name, factory())
         self.view = None            # QTextBrowser of this chat
