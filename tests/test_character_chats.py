@@ -240,6 +240,8 @@ class GuiSessionTests(IsolatedDb):
         ren.response_relay.complete({"text": "Ren response"})
         w.switch_session("mika")
         mika.response_relay.complete({"text": "Mika response"})
+        self.assertIsNone(ren.response_relay)
+        self.assertIsNone(mika.response_relay)
         w.switch_session("kira")  # switch tabs before the queued callbacks execute
 
         self.assertEqual(len(scheduled), 2)
