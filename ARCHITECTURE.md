@@ -82,6 +82,13 @@ Kira is migrating incrementally toward independent UI, application logic, servic
 - The upload-progress presentation remains in the chat coordinator for now; it is a separate responsibility and should be extracted behind its own contract rather than coupled into the file-reading controller.
 
 
+## Chat request coordinator extraction (TASK 002)
+
+- `kira.chat.ChatCoordinator` is a Qt-free, per-chat request-admission boundary. It owns the bounded FIFO queue (three pending requests), preserves attachment and voice metadata, and dispatches idle requests through an injected callback.
+- `MainWindow` creates one coordinator per `ChatSession`; it adapts queued requests to the existing chat request pipeline. Vision cancellation, coding-agent interception, message preparation, persistence, web/image search, provider worker construction and response rendering remain in the legacy adapter during this first extraction step.
+- The coordinator imports no MainWindow, Qt, storage, Session Manager, Memory, Voice, Tools, Web Research or provider implementation. Those capabilities are not reimplemented or duplicated inside it.
+- Unit tests cover immediate dispatch, FIFO ordering, queue bounds, forced deferral, callback failure isolation, per-coordinator queue isolation and the legacy-window delegation boundary.
+- This is an incremental extraction, not completion of the full Chat feature migration: provider request/stream response handling and the message pipeline still need to move behind explicit application ports in subsequent TASK 002 commits. Do not describe Chat as fully independent yet.
 ## Independent model-delegation contract
 
 A feature is ready to be assigned to a separate implementation model only when its boundary is explicit:
