@@ -66,7 +66,7 @@ from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_perm
 from .chat_code_ui import CodeChat
 from .ui.components import ModelCombo
 from .ui.dialogs import MemoryDialog, ModelPickerDialog
-from .ui.pages import AppearancePage, HelpPage, VoicePage
+from .ui.pages import AppearancePage, CharactersPage, HelpPage, VoicePage
 from .ui.workers import (
     AttachWorker,
     BenchWorker,
@@ -433,6 +433,8 @@ class MainWindow(QMainWindow):
             self.voice_page.retranslate()
         if hasattr(self, "appearance_page"):
             self.appearance_page.retranslate()
+        if hasattr(self, "character_page"):
+            self.character_page.retranslate()
         if hasattr(self, "_menu_actions"):
             for action, key in zip(self._menu_actions, self.tab_keys):
                 action.setText(self.t(key))
@@ -1948,193 +1950,55 @@ class MainWindow(QMainWindow):
             self.add_chat("system", "🎙️ " + message)
 
     def build_characters_tab(self):
-        s = self.settings
-        box, f = self.group("g_char")
-        # Character selector: every profile shares the same brain, routes, tools and permissions.
-        self.character_combo = QComboBox()
-        self.character_portrait = QLabel()
-        self.character_portrait.setObjectName("characterPortrait")
-        self.character_portrait.setFixedSize(144, 180)
-        self.character_portrait.setScaledContents(True)
-        self.character_description = QLabel()
-        self.character_description.setWordWrap(True)
-        profile_row = QHBoxLayout()
-        profile_row.addWidget(self.character_portrait)
-        profile_info = QVBoxLayout()
-        profile_info.addWidget(QLabel("شخصیت فعال"))
-        profile_info.addWidget(self.character_combo)
-        profile_info.addWidget(self.character_description)
-        manager_row = QHBoxLayout()
-        self.character_add_btn = QPushButton("＋")
-        self.character_add_btn.setFixedWidth(38)
-        self.character_add_btn.setToolTip("ساخت شخصیت جدید")
-        self.character_edit_btn = QPushButton("ویرایش")
-        self.character_delete_btn = QPushButton("حذف")
-        self.character_add_btn.clicked.connect(self.add_character)
-        self.character_edit_btn.clicked.connect(self.edit_character)
-        self.character_delete_btn.clicked.connect(self.delete_character)
-        manager_row.addWidget(self.character_add_btn)
-        manager_row.addWidget(self.character_edit_btn)
-        manager_row.addWidget(self.character_delete_btn)
-        profile_info.addLayout(manager_row)
-        theme_row = QHBoxLayout()
-        self.character_theme_color_btn = QPushButton("انتخاب رنگ تم")
-        self.character_theme_color_btn.clicked.connect(self.choose_character_theme_color)
-        self.character_theme_color_preview = QLabel("#9C7BFF")
-        self.character_theme_color_preview.setMinimumWidth(82)
-        self.character_theme_color_preview.setAlignment(Qt.AlignCenter)
-        theme_row.addWidget(self.character_theme_color_btn)
-        theme_row.addWidget(self.character_theme_color_preview)
-        self.character_theme_reset_btn = QPushButton("بازنشانی رنگ")
-        self.character_theme_reset_btn.clicked.connect(self.reset_character_theme_color)
-        theme_row.addWidget(self.character_theme_reset_btn)
-        profile_info.addLayout(theme_row)
-        profile_row.addLayout(profile_info, 1)
-        f.addRow(profile_row)
-
-        voice_box, voice_form = self.group("تن صدا و سرعت شخصیت")
-        self.char_voice_rate = QSpinBox()
-        self.char_voice_rate.setRange(-30, 30)
-        self.char_voice_rate.setSuffix(" %")
-        voice_form.addRow("سرعت گفتار محلی", self.char_voice_rate)
-        self.char_voice_volume = QSlider(Qt.Horizontal)
-        self.char_voice_volume.setRange(0, 100)
-        voice_form.addRow("بلندی صدا", self.char_voice_volume)
-        voice_note = QLabel("همه‌ی شخصیت‌ها از موتور Piper محلی استفاده می‌کنند؛ فقط سرعت و بلندی صدای هر شخصیت جداست.")
-        voice_note.setObjectName("hint")
-        voice_note.setWordWrap(True)
-        voice_form.addRow(voice_note)
-        f.addRow(voice_box)
-
-        resource_box, resource_form = self.group("منابع اختصاصی شخصیت")
-        self.char_skills_edit = QLineEdit()
-        self.char_skills_edit.setPlaceholderText("نام Skillها، با کاما جدا کن")
-        resource_form.addRow("Skills", self.char_skills_edit)
-        self.char_mcp_edit = QLineEdit()
-        self.char_mcp_edit.setPlaceholderText("نام MCPها یا سرورها")
-        resource_form.addRow("MCP", self.char_mcp_edit)
-        self.char_connectors_edit = QLineEdit()
-        self.char_connectors_edit.setPlaceholderText("نام Connectorها")
-        resource_form.addRow("Connectors", self.char_connectors_edit)
-        f.addRow(resource_box)
-
-        self._character_save_timer = QTimer(self)
-        self._character_save_timer.setSingleShot(True)
-        self._character_save_timer.setInterval(550)
-        self._character_save_timer.timeout.connect(lambda: self.save_character_settings(silent=True))
-        self.char_voice_rate.valueChanged.connect(lambda *_: self._character_save_timer.start())
-        self.char_voice_volume.valueChanged.connect(lambda *_: self._character_save_timer.start())
-        for widget in (self.char_skills_edit, self.char_mcp_edit, self.char_connectors_edit):
-            widget.textChanged.connect(lambda *_: self._character_save_timer.start())
-
+        """Compose the independent Characters page and delegate actions to the host."""
+        self.character_page = CharactersPage(
+            self.settings,
+            self.t,
+            base_traits=BASE_TRAITS,
+            moods=MOODS,
+            parent=self,
+        )
+        page = self.character_page
+        page.character_selected.connect(self.select_character)
+        page.add_character_requested.connect(self.add_character)
+        page.edit_character_requested.connect(self.edit_character)
+        page.delete_character_requested.connect(self.delete_character)
+        page.choose_theme_color_requested.connect(self.choose_character_theme_color)
+        page.reset_theme_color_requested.connect(self.reset_character_theme_color)
+        page.preview_requested.connect(
+            lambda mood: self.animator.set_expression(mood, hold=8)
+        )
+        page.open_sounds_requested.connect(self.open_sounds)
+        page.save_requested.connect(lambda: self.save_character_settings(silent=True))
+        page.save_personality_requested.connect(self.save_personality_profile)
+        self.tabs.addTab(page, "")
         self.refresh_character_choices()
-        self.character_combo.currentIndexChanged.connect(self.select_character)
         self.refresh_character_card()
-        self.size_sl = self.row(f, "char_size", QSlider(Qt.Horizontal))
-        self.size_sl.setRange(300, 1000); self.size_sl.setValue(int(s["companion_height"]))
-        self.follow_sl = self.row(f, "follow", QSlider(Qt.Horizontal))
-        self.follow_sl.setRange(0, 150); self.follow_sl.setValue(int(float(s["follow_strength"]) * 100))
-        self.motion_sl = self.row(f, "motion", QSlider(Qt.Horizontal))
-        self.motion_sl.setRange(0, 200); self.motion_sl.setValue(int(float(s["motion_strength"]) * 100))
-        self.react_chk = QCheckBox(); self.react_chk.setChecked(bool(s["click_reactions"]))
-        self.reg(self.react_chk.setText, "reactions")
-        self.top_chk = QCheckBox(); self.top_chk.setChecked(bool(s["always_on_top"]))
-        self.reg(self.top_chk.setText, "on_top")
-        self.idle_chk = QCheckBox(); self.idle_chk.setChecked(bool(s.get("idle_talk", True)))
-        self.reg(self.idle_chk.setText, "idle_talk")
-        f.addRow(self.react_chk)
-        f.addRow(self.idle_chk)
-        f.addRow(self.top_chk)
-        self.tray_min_chk = QCheckBox("با دکمه‌ی Minimize به System Tray برود")
-        self.tray_min_chk.setChecked(bool(s.get("minimize_to_tray", True)))
-        self.tray_close_chk = QCheckBox("با دکمه‌ی بستن (X) به System Tray برود و بسته نشود")
-        self.tray_close_chk.setChecked(bool(s.get("close_to_tray", False)))
-        f.addRow(self.tray_min_chk)
-        f.addRow(self.tray_close_chk)
-        self.mood_combo = QComboBox()
-        for mood in MOODS:
-            self.mood_combo.addItem(mood, mood)
-        pv = QPushButton()
-        self.reg(pv.setText, "preview")
-        pv.clicked.connect(lambda: self.animator.set_expression(self.mood_combo.currentData(), hold=8))
-        hb = QHBoxLayout()
-        hb.addWidget(self.mood_combo, 1)
-        hb.addWidget(pv)
-        lab = QLabel()
-        self.reg(lab.setText, "mood_preview")
-        f.addRow(lab, hb)
-        btn = QPushButton()
-        self.reg(btn.setText, "open_sounds")
-        btn.clicked.connect(self.open_sounds)
-        f.addRow(btn)
-        note = QLabel()
-        note.setObjectName("hint")
-        note.setWordWrap(True)
-        self.reg(note.setText, "char_note")
-        f.addRow(note)
-        subtabs = QTabWidget()
-        subtabs.addTab(self.page(box), "")
-        subtabs.addTab(self.build_personality_tab(), "")
-        self.character_subtabs = subtabs
-        self.reg(lambda text: subtabs.setTabText(0, text), "tab_characters")
-        self.reg(lambda text: subtabs.setTabText(1, text), "tab_personality")
-        self.tabs.addTab(self.page(subtabs), "")
-
-    def build_personality_tab(self):
-        """Baseline behavioral traits of the active character (learning may move them only inside a narrow band)."""
-        box, form = self.group("g_personality_traits")
-        labels = {
-            "playfulness": "trait_playfulness", "warmth": "trait_warmth",
-            "curiosity": "trait_curiosity", "confidence": "trait_confidence",
-            "assertiveness": "trait_assertiveness", "teasing": "trait_teasing",
-            "empathy": "trait_empathy", "independence": "trait_independence",
-            "patience": "trait_patience", "carefulness": "trait_carefulness",
-        }
-        self.personality_sliders = {}
-        self.character_notes_edit = QTextEdit()
-        self.character_notes_edit.setMaximumHeight(96)
-        self.character_notes_edit.setPlaceholderText("لحن، رفتار، علاقه‌ها و مرزهای شخصیت را اینجا بنویس…")
-        self.character_notes_edit.textChanged.connect(lambda: self._character_save_timer.start())
-        form.addRow("پرسونالیتی و یادداشت‌های شخصیت", self.character_notes_edit)
-        for key, translation_key in labels.items():
-            slider = QSlider(Qt.Horizontal)
-            slider.setRange(0, 100)
-            slider.setValue(int(round(float(BASE_TRAITS.get(key, 0.5)) * 100)))
-            self.row(form, translation_key, slider)
-            self.personality_sliders[key] = slider
-        note = QLabel()
-        note.setObjectName("hint")
-        note.setWordWrap(True)
-        self.reg(note.setText, "personality_hint")
-        form.addRow(note)
-        save = QPushButton()
-        self.reg(save.setText, "character_save_traits")
-        save.clicked.connect(self.save_personality_profile)
-        form.addRow(save)
         self.refresh_personality_controls()
-        return self.page(box)
-
+    def build_personality_tab(self):
+        """Compatibility entry point; personality controls are owned by CharactersPage."""
+        return self.character_page.character_subtabs.widget(1)
     def refresh_character_controls(self):
         cid = self.character_service.active_id(self.settings)
         voice = (self.settings.get("character_voice") or {}).get(cid) or {}
-        self.char_voice_rate.blockSignals(True)
-        self.char_voice_rate.setValue(int(voice.get("voice_rate", self.settings.get("voice_rate", 0))))
-        self.char_voice_rate.blockSignals(False)
-        self.char_voice_volume.blockSignals(True)
-        self.char_voice_volume.setValue(round(float(voice.get("voice_volume", self.settings.get("voice_volume", 0.9))) * 100))
-        self.char_voice_volume.blockSignals(False)
+        self.character_page.char_voice_rate.blockSignals(True)
+        self.character_page.char_voice_rate.setValue(int(voice.get("voice_rate", self.settings.get("voice_rate", 0))))
+        self.character_page.char_voice_rate.blockSignals(False)
+        self.character_page.char_voice_volume.blockSignals(True)
+        self.character_page.char_voice_volume.setValue(round(float(voice.get("voice_volume", self.settings.get("voice_volume", 0.9))) * 100))
+        self.character_page.char_voice_volume.blockSignals(False)
         resources = (self.settings.get("character_resources") or {}).get(cid) or {}
-        for widget, key in ((self.char_skills_edit, "skills"), (self.char_mcp_edit, "mcp"),
-                            (self.char_connectors_edit, "connectors")):
+        for widget, key in ((self.character_page.char_skills_edit, "skills"), (self.character_page.char_mcp_edit, "mcp"),
+                            (self.character_page.char_connectors_edit, "connectors")):
             widget.blockSignals(True)
             value = resources.get(key) or []
             widget.setText(", ".join(value) if isinstance(value, (list, tuple)) else str(value))
             widget.blockSignals(False)
         notes = (self.settings.get("character_notes") or {}).get(cid) or ""
-        if hasattr(self, "character_notes_edit"):
-            self.character_notes_edit.blockSignals(True)
-            self.character_notes_edit.setPlainText(str(notes))
-            self.character_notes_edit.blockSignals(False)
+        if hasattr(self.character_page, "character_notes_edit"):
+            self.character_page.character_notes_edit.blockSignals(True)
+            self.character_page.character_notes_edit.setPlainText(str(notes))
+            self.character_page.character_notes_edit.blockSignals(False)
         self.apply_character_voice_settings()
 
     def _flush_character_autosave(self):
@@ -2146,18 +2010,18 @@ class MainWindow(QMainWindow):
     def save_character_settings(self, silent=False):
         cid = self.character_service.active_id(self.settings)
         self.settings.setdefault("character_voice", {})[cid] = {
-            "voice_rate": self.char_voice_rate.value(),
-            "voice_volume": self.char_voice_volume.value() / 100.0,
+            "voice_rate": self.character_page.char_voice_rate.value(),
+            "voice_volume": self.character_page.char_voice_volume.value() / 100.0,
         }
         def split(value):
             return [part.strip() for part in re.split(r"[,;\\n]+", value or "") if part.strip()]
         self.settings.setdefault("character_resources", {})[cid] = {
-            "skills": split(self.char_skills_edit.text()),
-            "mcp": split(self.char_mcp_edit.text()),
-            "connectors": split(self.char_connectors_edit.text()),
+            "skills": split(self.character_page.char_skills_edit.text()),
+            "mcp": split(self.character_page.char_mcp_edit.text()),
+            "connectors": split(self.character_page.char_connectors_edit.text()),
         }
         if hasattr(self, "character_notes_edit"):
-            self.settings.setdefault("character_notes", {})[cid] = self.character_notes_edit.toPlainText().strip()
+            self.settings.setdefault("character_notes", {})[cid] = self.character_page.character_notes_edit.toPlainText().strip()
         self.apply_character_voice_settings()
         self.save_now()
 
@@ -2171,11 +2035,11 @@ class MainWindow(QMainWindow):
             self.speaker.settings = effective
 
     def refresh_personality_controls(self):
-        if not getattr(self, "personality_sliders", None):
+        if not getattr(getattr(self, "character_page", None), "personality_sliders", None):
             return
         self.refresh_character_controls()
         traits = self.character_traits(self.active_character().get("id", "kira")) or BASE_TRAITS
-        for key, slider in self.personality_sliders.items():
+        for key, slider in self.character_page.personality_sliders.items():
             slider.blockSignals(True)
             slider.setValue(int(round(float(traits.get(key, BASE_TRAITS.get(key, 0.5))) * 100)))
             slider.blockSignals(False)
@@ -2183,12 +2047,12 @@ class MainWindow(QMainWindow):
     def save_personality_profile(self, silent=False):
         profile = self.active_character()
         cid = profile.get("id", "kira")
-        traits = {key: slider.value() / 100.0 for key, slider in self.personality_sliders.items()}
+        traits = {key: slider.value() / 100.0 for key, slider in self.character_page.personality_sliders.items()}
         try:
             self.settings.setdefault("character_traits", {})[cid] = traits
             mood.set_active_character(cid, traits)
             if hasattr(self, "character_notes_edit"):
-                self.settings.setdefault("character_notes", {})[cid] = self.character_notes_edit.toPlainText().strip()
+                self.settings.setdefault("character_notes", {})[cid] = self.character_page.character_notes_edit.toPlainText().strip()
             self.save_character_settings(silent=True)
             self.refresh_personality_controls()
             if not silent:
@@ -2202,20 +2066,20 @@ class MainWindow(QMainWindow):
 
     def refresh_character_choices(self):
         current = self.character_service.active_id(self.settings)
-        self.character_combo.blockSignals(True)
-        self.character_combo.clear()
+        self.character_page.character_combo.blockSignals(True)
+        self.character_page.character_combo.clear()
         profiles = self.character_service.all_profiles(self.settings)
         for cid in ("kira", "ren", "mika"):
             if cid in profiles:
                 p = profiles[cid]
-                self.character_combo.addItem(p.get("name_fa", p["name"]) + " · " + p["name"], cid)
+                self.character_page.character_combo.addItem(p.get("name_fa", p["name"]) + " · " + p["name"], cid)
         for cid, p in profiles.items():
             if cid not in ("kira", "ren", "mika"):
-                self.character_combo.addItem(p.get("name_fa", p["name"]) + " · " + p["name"], cid)
-        self.character_combo.setCurrentIndex(max(0, self.character_combo.findData(current)))
-        self.character_combo.blockSignals(False)
-        self.character_edit_btn.setEnabled(current != "kira")
-        self.character_delete_btn.setEnabled(current != "kira")
+                self.character_page.character_combo.addItem(p.get("name_fa", p["name"]) + " · " + p["name"], cid)
+        self.character_page.character_combo.setCurrentIndex(max(0, self.character_page.character_combo.findData(current)))
+        self.character_page.character_combo.blockSignals(False)
+        self.character_page.character_edit_btn.setEnabled(current != "kira")
+        self.character_page.character_delete_btn.setEnabled(current != "kira")
         self._refresh_character_theme_preview()
 
     def _refresh_character_theme_preview(self):
@@ -2223,8 +2087,8 @@ class MainWindow(QMainWindow):
             return
         cid = self.character_service.active_id(self.settings)
         colour = self.theme_for_character(cid)["main"]
-        self.character_theme_color_preview.setText(colour)
-        self.character_theme_color_preview.setStyleSheet(
+        self.character_page.character_theme_color_preview.setText(colour)
+        self.character_page.character_theme_color_preview.setStyleSheet(
             f"QLabel {{ background: {colour}; color: white; border: 1px solid rgba(255,255,255,0.5); "
             "border-radius: 7px; padding: 5px; }"
         )
@@ -2270,15 +2134,15 @@ class MainWindow(QMainWindow):
             except (OSError, ValueError):
                 pixmap = QPixmap()
         pixmap = self._fit_portrait(pixmap)
-        self.character_portrait.setPixmap(pixmap)
-        self.character_description.setText(profile.get("description", ""))
+        self.character_page.character_portrait.setPixmap(pixmap)
+        self.character_page.character_description.setText(profile.get("description", ""))
 
     def _fit_portrait(self, pixmap):
         """Fill the portrait frame without stretching: pictures whose proportions differ from the frame are
         cropped (centred, biased toward the face). A picture that already fits (Kira's SVG) is left untouched."""
         if pixmap.isNull():
             return pixmap
-        size = self.character_portrait.size()
+        size = self.character_page.character_portrait.size()
         if abs(pixmap.width() / pixmap.height() - size.width() / size.height()) < 0.03:
             return pixmap
         x, y, w, h = avatar_art.cover_crop(pixmap.width(), pixmap.height(), size.width(), size.height())
@@ -2294,7 +2158,7 @@ class MainWindow(QMainWindow):
         self.animator.touch()
 
     def select_character(self, index):
-        character_id = self.character_combo.itemData(index)
+        character_id = self.character_page.character_combo.itemData(index)
         if not character_id:
             return
         if character_id != self.front.cid:
@@ -3857,11 +3721,11 @@ class MainWindow(QMainWindow):
             "stt_language": self.voice_page.stt_lang.currentText(), "whisper_model": self.voice_page.whisper.currentText().strip() or "small",
             "wake_timeout": self.voice_page.wake_timeout.value(),
             "mic_sensitivity": self.voice_page.mic_sens.value(), "barge_in": self.voice_page.barge_chk.isChecked(),
-            "companion_height": self.size_sl.value(),
-            "follow_strength": self.follow_sl.value() / 100.0,
-            "motion_strength": self.motion_sl.value() / 100.0,
-            "click_reactions": self.react_chk.isChecked(), "idle_talk": self.idle_chk.isChecked(), "always_on_top": self.top_chk.isChecked(),
-            "minimize_to_tray": self.tray_min_chk.isChecked(), "close_to_tray": self.tray_close_chk.isChecked(),
+            "companion_height": self.character_page.size_sl.value(),
+            "follow_strength": self.character_page.follow_sl.value() / 100.0,
+            "motion_strength": self.character_page.motion_sl.value() / 100.0,
+            "click_reactions": self.character_page.react_chk.isChecked(), "idle_talk": self.character_page.idle_chk.isChecked(), "always_on_top": self.character_page.top_chk.isChecked(),
+            "minimize_to_tray": self.character_page.tray_min_chk.isChecked(), "close_to_tray": self.character_page.tray_close_chk.isChecked(),
             "ui_lang": self.ui_lang.currentData(),
             "window_effect": self.appearance_page.window_effect.currentData(),
             "tavily_api_key": self.tavily_key.text().strip(),
