@@ -1,4 +1,4 @@
-"""Chat request coordination boundaries."""
+"""Public contracts for the independent chat feature."""
 
 from .persistence import ChatPersistence, ChatRepository, PersistenceError, SqliteChatRepository, create_default_chat_persistence
 from .coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
@@ -31,4 +31,21 @@ __all__ = [
     "ResponseHandler",
     "ResponseStatus",
     "ResponseStreamEvent",
+    "ApplicationEventKind",
+    "ChatApplicationEvent",
+    "ChatApplicationRequest",
+    "ChatApplicationService",
+    "PersistenceOutcome",
+    "RequestStatus",
+    "Submission",
 ]
+
+from .application_service import (
+    ApplicationEventKind,
+    ChatApplicationEvent,
+    ChatApplicationRequest,
+    ChatApplicationService,
+    PersistenceOutcome,
+    RequestStatus,
+    Submission,
+)
