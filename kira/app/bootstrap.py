@@ -15,6 +15,8 @@ def run_application() -> None:
     # the compatibility module until UI extraction is completed.
     from ..config import load_settings
     from .dependency_container import DependencyContainer
+    from .event_bus import EventBus
+    from .module_manager import ModuleManager
     from ..main import MainWindow
     from ..services import PersonaMemoryService, MoodStateService
     from ..theme import build_style
@@ -23,6 +25,8 @@ def run_application() -> None:
     container = DependencyContainer()
     container.register_factory("memory_service", PersonaMemoryService)
     container.register_factory("mood_service", MoodStateService)
+    event_bus = EventBus()
+    module_manager = ModuleManager(container, event_bus)
 
     app = QApplication(sys.argv)
     app.setStyleSheet(build_style(winfx.active_effect(load_settings().get("window_effect"))))
@@ -32,5 +36,8 @@ def run_application() -> None:
     )
     # Retain the composition root for the lifetime of the application.
     window._dependency_container = container
+    window._event_bus = event_bus
+    window._module_manager = module_manager
+    app.aboutToQuit.connect(module_manager.shutdown)
     window.show()
     sys.exit(app.exec())
