@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 import re
 import sys
-from PySide6.QtCore import Qt, Slot, QObject, QTimer, QRectF, QUrl, QSize
+from PySide6.QtCore import Qt, Slot, Signal, QObject, QTimer, QRectF, QUrl, QSize
 from PySide6.QtGui import QAction, QIcon, QDesktopServices, QTextCursor, QColor, QBrush, QImage, QTextDocument, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QTextBrowser, QLineEdit,
@@ -111,12 +111,18 @@ def front_only(fn):
 
 
 class SessionRelay(QObject):
-    """Receives the signals of one chat's workers on the GUI thread and runs the normal handler *as that chat*
-    (MainWindow._as), so a reply that arrives while another tab is in front is written into its own conversation."""
+    """Marshals this session's worker/provider callbacks onto the GUI thread."""
+
+    provider_event = Signal(object)
 
     def __init__(self, window, session):
         super().__init__(window)
         self.w, self.s = window, session
+        self.provider_event.connect(self._handle_provider_event)
+
+    @Slot(object)
+    def _handle_provider_event(self, event):
+        self.w.chat_application_service.handle_provider_event(event)
 
     def _run(self, name, *args):
         with self.w._as(self.s):
@@ -4522,6 +4528,7 @@ class MainWindow(QMainWindow):
         self.worker = self.chat_application_service.start_provider_request(
             request_id, context,
             provider_callbacks={"tool_event": relay.tool, "event": relay.stream_event},
+            provider_event_dispatcher=relay.provider_event.emit,
             router=self.client, temperature=temperature,
             retry_index=1 if plain else 0, agent=self.tool_agent, plan=self._tool_plan,
             role=self._brain.stage, route_id=self._brain.route_id,
