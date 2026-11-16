@@ -156,3 +156,15 @@ The migration reference is temporary. Its purpose is to preserve working behavio
 - The code and tests have been committed directly to `new-main`; the local working copy was not available in this environment, so no local Python import/compile or unittest command has been executed.
 - GitHub Actions still cannot provide test results: the recent workflow attempt failed both `portable-regression` and `windows-full-suite` before any step ran (`steps=[]`, `logs_url=null`). No test PASS is claimed.
 - Remaining acceptance gate: obtain a real run of the focused and full regression suites, including the offscreen Qt tests and a Windows application smoke test. Until those tests execute successfully, TASK 005 remains implemented but not fully verified.
+
+
+## Chat Application Service (TASK 006)
+
+- `kira/chat/application_service.py` is the Qt-free application orchestration boundary. It owns logical request/session identity, per-session lifecycle, cancellation, terminal cleanup and application event publication.
+- The service composes the existing `ChatCoordinator`, `ContextBuilder`, `ResponseHandler` and `ChatPersistence` contracts; it does not copy their queue, prompt, stream-normalization or storage logic.
+- MainWindow submits user intent and receives request-scoped events. It no longer imports Coordinator, ContextBuilder, ResponseHandler or calls the persistence adapter directly. History reads/writes and queue draining also go through ChatApplicationService.
+- Provider attempts use internal attempt IDs while retaining the stable logical `request_id` and `session_id`. This permits the existing empty-response plain-prompt retry without reopening a terminal ResponseHandler request.
+- A successful provider attempt is presented to the application adapter before the logical request is completed, so the existing retry/presentation policy is preserved. `complete_request` persists the final assistant response before publishing the completed event. Failed, interrupted and cancelled partial output is persisted with an explicit status.
+- One coordinator and active logical request are owned per session. Tab changes cannot retarget callbacks; one session's failure/cancellation does not finalize another session.
+- MainWindow remains responsible for UI rendering, Voice/Avatar effects, attachment composition, Character/Memory/Mood/Brain enrichment, Tool Agent interception, Vision and web/image search policy. Those application capabilities have not been moved into the Chat service.
+- The focused API, contracts, lifecycle and test instructions are documented in `docs/CHAT_APPLICATION_SERVICE.md`.
