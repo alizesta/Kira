@@ -100,6 +100,20 @@ class SessionHelperTests(unittest.TestCase):
         self.assertIsNone(b.coordinator)
         self.assertEqual(a.coordinator.pending_count, 1)
 
+    def test_each_chat_session_retains_its_own_persisted_conversation_id(self):
+        kira = chat_sessions.ChatSession("kira")
+        ren = chat_sessions.ChatSession("ren")
+        mika = chat_sessions.ChatSession("mika")
+        kira.conversation_id = "conversation-kira"
+        ren.conversation_id = "conversation-ren"
+        mika.conversation_id = "conversation-mika"
+
+        self.assertEqual(
+            {kira.conversation_id, ren.conversation_id, mika.conversation_id},
+            {"conversation-kira", "conversation-ren", "conversation-mika"},
+        )
+        self.assertIsNone(chat_sessions.ChatSession("ren").conversation_id)
+
     def test_front_only_objects_are_silent_for_background_chats(self):
         class Voice:
             def stop(self):
