@@ -1840,7 +1840,7 @@ class MainWindow(QMainWindow):
         whisper_model_actions = QHBoxLayout()
         self.whisper_browse_btn = QPushButton("انتخاب پوشه مدل")
         self.whisper_browse_btn.clicked.connect(self.choose_local_whisper_folder)
-        self.whisper_download_btn = QPushButton("نصب خودکار Whisper")
+        self.whisper_download_btn = QPushButton("نصب خودکار مدل STT")
         self.whisper_download_btn.clicked.connect(self.download_local_whisper_model)
         whisper_model_actions.addWidget(self.whisper_browse_btn)
         whisper_model_actions.addWidget(self.whisper_download_btn)
