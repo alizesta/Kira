@@ -129,6 +129,13 @@ class Speaker(QObject):
         self._devices = None            # created lazily on first playback (needs a working audio backend)
         self._prefer_default_output = False  # do not reuse a stale endpoint after Windows invalidates it
         self._stream_dead = False       # a live reply was stopped (barge-in / stop / device change): its rest is NOT spoken
+        if bool(self.settings.get("local_voice_tts", True)):
+            try:
+                from . import local_voice
+                threading.Thread(target=lambda: local_voice.preload_tts(self.settings.get("local_voice_tts_model", "")),
+                                 daemon=True, name="kira-tts-warmup").start()
+            except Exception:
+                pass
 
     def _watch_devices(self):
         if self._devices is None:
