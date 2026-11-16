@@ -85,7 +85,7 @@ class ChatCoordinator:
                force_queue: bool = False) -> SubmissionResult:
         if not isinstance(request, ChatRequest):
             raise TypeError("request must be a ChatRequest")
-        if busy or force_queue:
+        if busy or force_queue or self._pending:
             if len(self._pending) >= self._max_pending:
                 return SubmissionResult.FULL
             self._pending.append(request)
