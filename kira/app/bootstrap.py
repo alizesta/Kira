@@ -11,13 +11,12 @@ import sys
 def run_application() -> None:
     from PySide6.QtWidgets import QApplication
 
-    # Imports are intentionally delayed: main.py defines MainWindow and remains
-    # the compatibility module until UI extraction is completed.
+    # The old window is retained temporarily while its features move into modules.
     from ..config import load_settings
     from .dependency_container import DependencyContainer
     from .event_bus import EventBus
     from .module_manager import ModuleManager, ModuleState
-    from ..main import MainWindow
+    from ..oldmain import MainWindow
     from ..services import CharacterProfileService, PersonaMemoryService, MoodStateService, SqliteChatHistoryService
     from ..modules import ServiceModule
     from ..theme import build_style
