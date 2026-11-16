@@ -66,7 +66,7 @@ from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_perm
 from .chat_code_ui import CodeChat
 from .ui.components import ModelCombo
 from .ui.dialogs import MemoryDialog, ModelPickerDialog
-from .ui.pages import HelpPage, VoicePage
+from .ui.pages import AppearancePage, HelpPage, VoicePage
 from .ui.workers import (
     AttachWorker,
     BenchWorker,
@@ -431,6 +431,8 @@ class MainWindow(QMainWindow):
             self.help_page.retranslate()
         if hasattr(self, "voice_page"):
             self.voice_page.retranslate()
+        if hasattr(self, "appearance_page"):
+            self.appearance_page.retranslate()
         if hasattr(self, "_menu_actions"):
             for action, key in zip(self._menu_actions, self.tab_keys):
                 action.setText(self.t(key))
@@ -2364,120 +2366,68 @@ class MainWindow(QMainWindow):
         self.save_now()
 
     def build_appearance_tab(self):
-        """Compact live controls for the window's colour, brightness, glow and transparency."""
-        defaults = {"background_color": "#0A0A1C", "brightness": 100, "glow": 58, "transparency": 28}
-        appearance = {**defaults, **(self.settings.get("appearance") or {})}
-        box, form = self.group("ظاهر برنامه")
-        self.window_effect = QComboBox()
-        for label, value in (("شیشه‌ای (Acrylic)", "acrylic"), ("شیشه‌ای ملایم (Mica)", "mica"), ("ساده", "off")):
-            self.window_effect.addItem(label, value)
-        self.window_effect.setCurrentIndex(max(0, self.window_effect.findData(self.settings.get("window_effect", "acrylic"))))
-        if not winfx.supported():
-            self.window_effect.setEnabled(False)
-            self.window_effect.setToolTip("حالت شیشه‌ای فقط روی Windows 11 (نسخه‌ی 22H2 به بالا) کار می‌کند.")
-        form.addRow("حالت پنجره", self.window_effect)
-
-        colour_row = QHBoxLayout()
-        self.appearance_color_btn = QPushButton("انتخاب رنگ پس‌زمینه")
-        self.appearance_color_preview = QLabel(str(appearance["background_color"]))
-        self.appearance_color_preview.setMinimumWidth(92)
-        self.appearance_color_preview.setAlignment(Qt.AlignCenter)
-        self._set_appearance_color_preview(str(appearance["background_color"]))
-        self.appearance_color_btn.clicked.connect(self.choose_appearance_color)
-        colour_row.addWidget(self.appearance_color_btn)
-        colour_row.addWidget(self.appearance_color_preview)
-        form.addRow("رنگ پس‌زمینه", colour_row)
-
-        self.appearance_brightness = self.row(form, "روشنایی", QSlider(Qt.Horizontal))
-        self.appearance_brightness.setRange(40, 150)
-        self.appearance_brightness.setValue(int(appearance["brightness"]))
-        self.appearance_brightness.setToolTip("روشنایی رنگ‌های پس‌زمینه را تنظیم می‌کند؛ مقدار بیشتر یعنی روشن‌تر.")
-        self.appearance_glow = self.row(form, "درخشش نور", QSlider(Qt.Horizontal))
-        self.appearance_glow.setRange(0, 100)
-        self.appearance_glow.setValue(int(appearance["glow"]))
-        self.appearance_glow.setToolTip("درخشش آیکون‌ها، حاشیه‌ها و سایه‌ی کارت گفتگو را کنترل می‌کند.")
-        self.appearance_transparency = self.row(form, "شفافیت", QSlider(Qt.Horizontal))
-        self.appearance_transparency.setRange(0, 80)
-        self.appearance_transparency.setValue(int(appearance["transparency"]))
-        self.appearance_transparency.setToolTip("مقدار بیشتر، سطح پنجره را شفاف‌تر می‌کند.")
-        reset = QPushButton("بازنشانی ظاهر")
-        reset.clicked.connect(self.reset_appearance)
-        form.addRow(reset)
-
-        hint = QLabel("تغییرات فوراً پیش‌نمایش می‌شوند و خودکار ذخیره می‌شوند. برای Acrylic و Mica به Windows 11 نیاز است.")
-        hint.setWordWrap(True)
-        hint.setObjectName("hint")
-        form.addRow(hint)
-
-        self._appearance_timer = QTimer(self)
-        self._appearance_timer.setSingleShot(True)
-        self._appearance_timer.setInterval(160)
-        self._appearance_timer.timeout.connect(lambda: self.apply_appearance(save=True))
-        self.window_effect.currentIndexChanged.connect(self.schedule_appearance)
-        for slider in (self.appearance_brightness, self.appearance_glow, self.appearance_transparency):
-            slider.valueChanged.connect(self.schedule_appearance)
-        self.tabs.addTab(self.page(box), "")
-
-    def _set_appearance_color_preview(self, value):
-        colour = str(value or "#0A0A1C")
-        self.appearance_color_preview.setText(colour)
-        self.appearance_color_preview.setStyleSheet(
-            f"QLabel {{ background: {colour}; border: 1px solid rgba(255,255,255,0.35); "
-            "border-radius: 7px; padding: 5px; color: white; }"
+        """Compose the independent appearance page and connect controller actions."""
+        self.appearance_page = AppearancePage(
+            self.settings,
+            self.t,
+            glass_supported=winfx.supported(),
+            parent=self,
         )
-
+        self.appearance_page.appearance_apply_requested.connect(self.apply_appearance)
+        self.appearance_page.choose_color_requested.connect(self.choose_appearance_color)
+        self.appearance_page.reset_requested.connect(self.reset_appearance)
+        self.tabs.addTab(self.appearance_page, "")
+    def _set_appearance_color_preview(self, value):
+        """Compatibility helper; AppearancePage owns its colour preview."""
+        self.appearance_page.set_background_color(value)
     def choose_appearance_color(self):
-        current = QColor(str((self.settings.get("appearance") or {}).get("background_color") or "#0A0A1C"))
+        current = QColor(self.appearance_page.background_color)
         selected = QColorDialog.getColor(current, self, "رنگ پس‌زمینه")
         if selected.isValid():
-            self._appearance_color = selected.name()
-            self._set_appearance_color_preview(self._appearance_color)
+            self.appearance_page.set_background_color(selected.name())
             self.schedule_appearance()
-
     def reset_appearance(self):
-        self._appearance_color = "#0A0A1C"
-        self.window_effect.setCurrentIndex(max(0, self.window_effect.findData("acrylic")))
-        self.appearance_brightness.setValue(100)
-        self.appearance_glow.setValue(58)
-        self.appearance_transparency.setValue(28)
-        self._set_appearance_color_preview(self._appearance_color)
-        self.schedule_appearance()
-
+        page = self.appearance_page
+        page.set_background_color("#0A0A1C")
+        page.window_effect.setCurrentIndex(max(0, page.window_effect.findData("acrylic")))
+        page.appearance_brightness.setValue(100)
+        page.appearance_glow.setValue(58)
+        page.appearance_transparency.setValue(28)
+        page.schedule_appearance()
     def schedule_appearance(self, *_):
-        # Coalesce slider movement; rebuilding the global stylesheet on every tick
-        # makes the GUI stall while Qt re-composites the neon effects.
-        self._appearance_timer.start()
-
+        page = getattr(self, "appearance_page", None)
+        if page is not None:
+            page.schedule_appearance()
     def apply_appearance(self, save=False):
         """Apply the current Appearance controls immediately; persist only after the short debounce."""
-        if not hasattr(self, "window_effect"):
+        if not hasattr(self, "appearance_page"):
             return
         previous = getattr(self, "_effect", "off")
         color = getattr(self, "_appearance_color", None) or (self.settings.get("appearance") or {}).get("background_color", "#0A0A1C")
         appearance = {
             "background_color": color,
-            "brightness": self.appearance_brightness.value(),
-            "glow": self.appearance_glow.value(),
-            "transparency": self.appearance_transparency.value(),
+            "brightness": self.appearance_page.appearance_brightness.value(),
+            "glow": self.appearance_page.appearance_glow.value(),
+            "transparency": self.appearance_page.appearance_transparency.value(),
         }
         # Reduce the old high default once; subsequent values are entirely user-controlled.
         if not self.settings.get("appearance_glow_adjusted"):
             appearance["glow"] = min(int(appearance["glow"]), 18)
-            self.appearance_glow.blockSignals(True)
-            self.appearance_glow.setValue(appearance["glow"])
-            self.appearance_glow.blockSignals(False)
+            self.appearance_page.appearance_glow.blockSignals(True)
+            self.appearance_page.appearance_glow.setValue(appearance["glow"])
+            self.appearance_page.appearance_glow.blockSignals(False)
             self.settings["appearance_glow_adjusted"] = True
         # One-time migration from the restrained glow to the Neon Shooter bloom level.
         # Preserve stronger user-selected values; only lift the old low default.
         if not self.settings.get("appearance_neon_shooter_v1"):
             if int(appearance["glow"]) < 42:
                 appearance["glow"] = 58
-            self.appearance_glow.blockSignals(True)
-            self.appearance_glow.setValue(int(appearance["glow"]))
-            self.appearance_glow.blockSignals(False)
+            self.appearance_page.appearance_glow.blockSignals(True)
+            self.appearance_page.appearance_glow.setValue(int(appearance["glow"]))
+            self.appearance_page.appearance_glow.blockSignals(False)
             self.settings["appearance_neon_shooter_v1"] = True
         self.settings["appearance"] = appearance
-        wanted = self.window_effect.currentData() or "acrylic"
+        wanted = self.appearance_page.window_effect.currentData() or "acrylic"
         current = winfx.active_effect(wanted)
         self._effect = current
         set_glow_intensity(appearance["glow"] / 100.0)
@@ -3913,7 +3863,7 @@ class MainWindow(QMainWindow):
             "click_reactions": self.react_chk.isChecked(), "idle_talk": self.idle_chk.isChecked(), "always_on_top": self.top_chk.isChecked(),
             "minimize_to_tray": self.tray_min_chk.isChecked(), "close_to_tray": self.tray_close_chk.isChecked(),
             "ui_lang": self.ui_lang.currentData(),
-            "window_effect": self.window_effect.currentData(),
+            "window_effect": self.appearance_page.window_effect.currentData(),
             "tavily_api_key": self.tavily_key.text().strip(),
             "web_depth": self.web_depth.currentData(),
             "web_fallback": self.web_fallback_chk.isChecked(),
