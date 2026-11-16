@@ -32,12 +32,13 @@ class ChatCoordinator:
     outside this class. The dispatch callback is the application adapter.
     """
 
-    def __init__(self, dispatch: Callable[[ChatRequest], None], *, max_pending: int = 3):
+    def __init__(self, dispatch: Callable[[ChatRequest], None], *, max_pending: int = 3,\n                 provider_dispatcher: ChatProviderDispatcher | None = None):
         if not callable(dispatch):
             raise TypeError("dispatch must be callable")
         if max_pending < 0:
             raise ValueError("max_pending cannot be negative")
         self._dispatch = dispatch
+        self._provider_dispatcher = provider_dispatcher
         self._max_pending = int(max_pending)
         self._pending: deque[ChatRequest] = deque()
 
@@ -65,3 +66,40 @@ class ChatCoordinator:
 
     def clear(self) -> None:
         self._pending.clear()
+
+    def start_provider_request(self, *, callbacks: Mapping[str, Callable[..., Any]], **request: Any) -> Any:
+        """Start a provider request and route stream events to injected ports."""
+        if self._provider_dispatcher is None:
+            raise RuntimeError("No provider dispatcher has been configured")
+        return self._provider_dispatcher.start(callbacks=callbacks, **request)
+class ChatProviderDispatcher:
+    """Adapt a provider worker factory to explicit response callback ports.
+
+    The worker may be Qt-backed, but neither this adapter nor the coordinator
+    imports Qt. Worker construction and all stream signals are injected.
+    """
+
+    _SIGNALS = {
+        "tool_event": "tool_event",
+        "event": "event",
+        "chunk": "chunk",
+        "complete": "finished_ok",
+        "error": "failed",
+    }
+
+    def __init__(self, worker_factory: Callable[..., Any]):
+        if not callable(worker_factory):
+            raise TypeError("worker_factory must be callable")
+        self._worker_factory = worker_factory
+
+    def start(self, *, callbacks: Mapping[str, Callable[..., Any]], **request: Any) -> Any:
+        unknown = set(callbacks) - set(self._SIGNALS)
+        if unknown:
+            raise ValueError(f"Unsupported provider callbacks: {', '.join(sorted(unknown))}")
+        worker = self._worker_factory(**request)
+        for callback_name, signal_name in self._SIGNALS.items():
+            callback = callbacks.get(callback_name)
+            if callback is not None:
+                getattr(worker, signal_name).connect(callback)
+        worker.start()
+        return worker
