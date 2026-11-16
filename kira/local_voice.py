@@ -212,9 +212,15 @@ def _install_voice_package(package: str) -> None:
     import subprocess
     import sys
 
+    # Apply the Pillow cap during dependency resolution, not only after pip
+    # finishes. Otherwise a voice package can upgrade Pillow to 13 and emit a
+    # Gradio conflict before the post-install repair runs.
+    constraints = Path(__file__).resolve().parents[1] / "constraints-voice.txt"
+    if not constraints.is_file():
+        raise RuntimeError(f"فایل محدودیت وابستگی‌های صوتی پیدا نشد: {constraints}")
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "5",
-         "--timeout", "60", package],
+         "--timeout", "60", "--constraint", str(constraints), package],
         capture_output=True, text=True, timeout=3600, check=False,
     )
     if result.returncode:
