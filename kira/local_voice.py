@@ -168,6 +168,18 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
     return bytes(payload)
 
 
+
+def download_hf_model(repo_id: str) -> str:
+    """Download a public speech model into Kira's configured Hugging Face cache."""
+    selected = str(repo_id or "").strip()
+    if not selected or "/" not in selected:
+        raise ValueError("شناسه مدل باید به شکل owner/repository باشد.")
+    from huggingface_hub import snapshot_download
+    path = snapshot_download(repo_id=selected)
+    return str(Path(path).resolve())
+
+
+
 def cache_directory() -> str:
     """Return the effective Hugging Face model cache location."""
     return str(Path(os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface"))
