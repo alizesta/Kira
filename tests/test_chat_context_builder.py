@@ -115,6 +115,40 @@ class ContextBuilderTests(unittest.TestCase):
         self.assertEqual(first.character_id, "kira")
         self.assertEqual(second.character_id, "ren")
 
+    def test_prompt_dependencies_are_injected_without_builder_ownership(self):
+        result = self.builder.build(ContextRequest(
+            settings={"temperature": 0.2},
+            character_profile={"name": "Mika"},
+            memory="relevant memory",
+            mood="calm mood",
+            voice_input=True,
+            mode="task",
+            format_hint="format hint",
+        ))
+        settings, kwargs = self.calls[-1]
+        self.assertEqual(settings, {"temperature": 0.2})
+        self.assertEqual(kwargs["memory_block"], "relevant memory")
+        self.assertEqual(kwargs["mood_block"], "calm mood")
+        self.assertTrue(kwargs["voice_input"])
+        self.assertEqual(kwargs["mode"], "task")
+        self.assertEqual(kwargs["format_hint"], "format hint")
+        self.assertEqual(kwargs["character_profile"], {"name": "Mika"})
+        self.assertEqual(result.character_id, "")
+
+    def test_system_messages_are_retained_ahead_of_recent_history(self):
+        result = self.builder.build(ContextRequest(
+            messages=[
+                {"role": "system", "content": "system rule"},
+                {"role": "user", "content": "old" * 20},
+                {"role": "assistant", "content": "old answer" * 10},
+                {"role": "user", "content": "latest"},
+            ],
+            max_context_chars=20,
+        ))
+        self.assertEqual([item["role"] for item in result.messages], ["system", "user"])
+        self.assertEqual(result.messages[0]["content"], "system rule")
+        self.assertEqual(result.messages[-1]["content"], "latest")
+
     def test_missing_prompt_builder_is_rejected(self):
         with self.assertRaises(TypeError):
             ContextBuilder(None)
