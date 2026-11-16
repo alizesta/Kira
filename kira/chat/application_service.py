@@ -333,9 +333,13 @@ class ChatApplicationService:
                 )
             return None
 
-    def handle_provider_event(self, event: ProviderEvent) -> ChatApplicationEvent | None:
+    def handle_provider_event(
+        self, event: ProviderEvent, *, partial_status_override: str | None = None
+    ) -> ChatApplicationEvent | None:
         if not isinstance(event, ProviderEvent):
             raise TypeError("event must be a ProviderEvent")
+        if partial_status_override not in (None, "cancelled", "interrupted"):
+            raise ValueError("partial_status_override must be cancelled or interrupted")
         try:
             normalized = self._response_handler.handle(event)
         except Exception as exc:
@@ -394,7 +398,12 @@ class ChatApplicationService:
             else "interrupted" if result.metadata.get("interrupted")
             else "failed"
         )
-        outcome = self._persist_response(state, result.content, persistence_status, result.metadata)
+        terminal_metadata = dict(result.metadata)
+        if partial_status_override is not None and terminal_status is RequestStatus.CANCELLED:
+            persistence_status = partial_status_override
+            if partial_status_override == "interrupted":
+                terminal_metadata.update({"interrupted": True, "application_shutdown": True})
+        outcome = self._persist_response(state, result.content, persistence_status, terminal_metadata)
         self._finalize(
             state,
             terminal_status,
@@ -406,7 +415,7 @@ class ChatApplicationService:
                 else ApplicationEventKind.REQUEST_FAILED
             ),
             persistence_ok=outcome.ok,
-            metadata=result.metadata,
+            metadata=terminal_metadata,
         )
         return ChatApplicationEvent(
             request_id, event.session_id,
@@ -492,7 +501,9 @@ class ChatApplicationService:
             ))
             return PersistenceOutcome(False, error)
 
-    def cancel_request(self, request_id: str) -> bool:
+    def cancel_request(self, request_id: str, *, partial_status: str = "cancelled") -> bool:
+        if partial_status not in ("cancelled", "interrupted"):
+            raise ValueError("partial_status must be cancelled or interrupted")
         state = self._requests.get(str(request_id or ""))
         if state is None or state.status in (RequestStatus.COMPLETED, RequestStatus.FAILED, RequestStatus.CANCELLED):
             return False
@@ -512,10 +523,14 @@ class ChatApplicationService:
                 self._cancel_provider(state.request, state.worker)
             attempt_id = f"{state.request.request_id}:{state.attempt}"
             if state.attempt and attempt_id in self._attempt_to_request:
-                self.handle_provider_event(ProviderEvent.cancelled(attempt_id, state.request.session_id))
+                self.handle_provider_event(
+                    ProviderEvent.cancelled(attempt_id, state.request.session_id),
+                    partial_status_override=partial_status,
+                )
             else:
                 outcome = self._persist_response(
-                    state, state.last_content, "cancelled", {"cancelled": True}
+                    state, state.last_content, partial_status,
+                    {"cancelled": True, "interrupted": partial_status == "interrupted"},
                 )
                 self._finalize(
                     state, RequestStatus.CANCELLED, content=state.last_content,
@@ -540,13 +555,16 @@ class ChatApplicationService:
                 )
             return False
 
-    def close_session(self, session_id: str) -> None:
+    def close_session(self, session_id: str, *, interrupted: bool = False) -> None:
         owner = str(session_id or "").strip()
         if not owner:
             return
         for request_id, state in tuple(self._requests.items()):
             if state.request.session_id == owner and state.status in (RequestStatus.PENDING, RequestStatus.RUNNING):
-                self.cancel_request(request_id)
+                self.cancel_request(
+                    request_id,
+                    partial_status="interrupted" if interrupted else "cancelled",
+                )
         coordinator = self._coordinators.pop(owner, None)
         if coordinator is not None:
             coordinator.clear()
@@ -560,7 +578,7 @@ class ChatApplicationService:
         if self._disposed:
             return
         for owner in tuple(self._coordinators):
-            self.close_session(owner)
+            self.close_session(owner, interrupted=True)
         self._disposed = True
 
     def pending_count(self, session_id: str) -> int:
