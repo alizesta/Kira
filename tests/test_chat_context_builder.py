@@ -67,6 +67,22 @@ class ContextBuilderTests(unittest.TestCase):
         result = self.builder.build(ContextRequest(messages=messages, max_context_chars=100))
         self.assertEqual([m["content"] for m in result.messages], ["one", "two", "three"])
 
+    def test_context_budget_drops_complete_oldest_turns(self):
+        messages = [
+            {"role": "user", "content": "old"},
+            {"role": "assistant", "content": "old answer"},
+            {"role": "user", "content": "middle"},
+            {"role": "assistant", "content": "middle answer"},
+            {"role": "user", "content": "latest"},
+        ]
+        # Removing only the first user message would fit, but would orphan its answer.
+        result = self.builder.build(ContextRequest(messages=messages, max_context_chars=35))
+        self.assertEqual(
+            [item["content"] for item in result.messages],
+            ["middle", "middle answer", "latest"],
+        )
+        self.assertEqual(result.dropped_messages, 2)
+
     def test_attachment_replaces_current_user_message_without_mutating_source(self):
         original = [{"role": "user", "content": "see file"}]
         result = self.builder.build(ContextRequest(
