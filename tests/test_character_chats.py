@@ -72,7 +72,7 @@ class PerCharacterHistoryTests(IsolatedDb):
         self.assertEqual([m["content"] for m in memory.recent_messages(5, "mika")], ["m1"])
 
     def test_messages_kept_in_memory_while_database_is_down_keep_their_owner(self):
-        with mock.patch.object(memory, "_db", side_effect=sqlite3.OperationalError("disk I/O error")):
+        with mock.patch.object(memory.repository, "_db", side_effect=sqlite3.OperationalError("disk I/O error")):
             self.assertFalse(memory.add_message("user", "pending ren", "ren"))
             self.assertFalse(memory.add_message("user", "pending mika", "mika"))
             self.assertEqual([m["content"] for m in memory.recent_messages(5, "ren")], ["pending ren"])
