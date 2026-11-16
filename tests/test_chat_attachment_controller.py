@@ -171,7 +171,7 @@ class ChatAttachmentControllerTests(unittest.TestCase):
         self.controller.cancel()
         self.assertEqual(self.workers[0].cancelled, [0, 1])
         self.assertEqual(self.controller.tiles, [])
-        self.assertEqual(self.strip.row.count(), 0)
+        self.assertEqual(self.strip.row.count(), 1)  # the stretch spacer remains
         self.assertFalse(self.error_widget.visible)
 
 
