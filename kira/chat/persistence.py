@@ -885,14 +885,15 @@ class ChatPersistence:
             raise TypeError("repository is required")
         self._repository = repository
 
-    @staticmethod
-    def _invoke(operation, *args, **kwargs):
+    def _invoke(self, operation, *args, **kwargs):
         try:
             return operation(*args, **kwargs)
-        except PersistenceError:
+        except PersistenceError as exc:
+            self._repository.last_error = str(exc)
             raise
         except Exception as exc:
-            raise PersistenceError(f"{type(exc).__name__}: {exc}") from exc
+            self._repository.last_error = f"{type(exc).__name__}: {exc}"
+            raise PersistenceError(self._repository.last_error) from exc
 
     @property
     def last_error(self) -> str | None:
