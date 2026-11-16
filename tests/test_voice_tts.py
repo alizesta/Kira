@@ -1,26 +1,15 @@
-"""Regression tests for TTS playback and the Windows SAPI fallback."""
+"""Regression tests for local Piper playback and Qt audio handling."""
 import unittest
 from types import SimpleNamespace
 from unittest import mock
 
 from PySide6.QtMultimedia import QSoundEffect
 
-from kira.voice import SAPI_SCRIPT, Speaker
+from kira.voice import Speaker
 from kira.main import MainWindow
 
 
-class SapiTtsTests(unittest.TestCase):
-    def test_culture_is_captured_before_synthesizer_is_disposed(self):
-        capture = "$culture = $s.Voice.Culture.Name"
-        dispose = "$s.Dispose()"
-        report = "Write-Output $culture"
-        self.assertIn(capture, SAPI_SCRIPT)
-        self.assertIn(dispose, SAPI_SCRIPT)
-        self.assertIn(report, SAPI_SCRIPT)
-        self.assertLess(SAPI_SCRIPT.index(capture), SAPI_SCRIPT.index(dispose))
-        self.assertLess(SAPI_SCRIPT.index(dispose), SAPI_SCRIPT.index(report))
-
-
+class LocalTtsPlaybackTests(unittest.TestCase):
     def test_qsound_playing_callback_uses_signal_boolean(self):
         started = mock.Mock()
         finished = mock.Mock()
