@@ -225,6 +225,23 @@ class ChatApplicationServiceTests(unittest.TestCase):
         submission = self.service.submit_message("kira", "fails")
         self.assertEqual(self.service.get_request_status(submission.request.request_id), RequestStatus.FAILED)
 
+    def test_provider_events_can_be_dispatched_through_a_thread_marshalling_port(self):
+        dispatched = []
+        submission = self.service.submit_message("kira", "hello")
+        worker = self.service.start_provider_request(
+            submission.request.request_id,
+            self._context(),
+            provider_event_dispatcher=dispatched.append,
+            router=object(),
+        )
+        worker.chunk.emit("thread-safe")
+        self.assertEqual(len(dispatched), 1)
+        self.assertIsInstance(dispatched[0], ProviderEvent)
+        self.assertEqual(dispatched[0].session_id, "kira")
+        normalized = self.service.handle_provider_event(dispatched.pop())
+        self.assertEqual(normalized.kind, ApplicationEventKind.PROVIDER_CHUNK)
+        self.assertEqual(normalized.chunk, "thread-safe")
+
     def test_context_builder_failure_finalizes_request(self):
         service = ChatApplicationService(
             persistence=self.persistence,
