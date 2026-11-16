@@ -95,6 +95,19 @@ class GuiTests(unittest.TestCase):
         self.assertTrue(window.chat_header.isAncestorOf(window.mood_emotion_icon))
         self.assertTrue(window.chat_header.isAncestorOf(window.mood_indicator))
         self.assertTrue(window.chat_header.isAncestorOf(window.companion_btn))
+        from kira.ui.components import ChatComposer
+        self.assertIsInstance(window.chat_composer, ChatComposer)
+        self.assertIs(window.chat_composer.parent(), window.findChild(type(window.chat_composer.parent()), "chatCard"))
+        for widget in (
+            window.input,
+            window.send_btn,
+            window.attach_btn,
+            window.screen_capture_btn,
+            window.web_btn,
+            window.img_search_btn,
+            window.gen_stop_btn,
+        ):
+            self.assertTrue(window.chat_composer.isAncestorOf(widget))
         self.assertIsInstance(window.mcp_registry_panel, McpRegistryPanel)
         self.assertTrue(window.mcp_registry_panel.isAncestorOf(window.mcp_registry_list))
         self.assertTrue(window.mcp_registry_panel.isAncestorOf(window.mcp_registry_query))
