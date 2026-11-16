@@ -152,6 +152,7 @@ class ChatComposer(QFrame):
         self.web_btn.setCursor(Qt.PointingHandCursor)
         self.web_btn.setFocusPolicy(Qt.NoFocus)
         self.web_btn.toggled.connect(owner.toggle_web_search)
+        owner.web_btn = self.web_btn
         owner.update_web_tip()
         bar.addWidget(self.web_btn)
 
@@ -165,6 +166,7 @@ class ChatComposer(QFrame):
         self.img_search_btn.setCursor(Qt.PointingHandCursor)
         self.img_search_btn.setFocusPolicy(Qt.NoFocus)
         self.img_search_btn.toggled.connect(owner.toggle_image_search)
+        owner.img_search_btn = self.img_search_btn
         owner.update_image_search_tip()
         bar.addWidget(self.img_search_btn)
 
