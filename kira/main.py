@@ -1915,7 +1915,10 @@ class MainWindow(QMainWindow):
         self.local_asr_path_edit.setText(model_id)
         self.save_now()
         self.refresh_local_voice_status()
-        self.local_voice_status.setText(f"موتور Qwen نصب شد و مدل دانلود شد: {value}")
+        from . import local_voice
+        self.local_voice_status.setText(
+            f"Qwen نصب و فعال شد.\nمسیر مدل: {value}\nمحل ذخیره مدل‌ها: {local_voice.cache_directory()}"
+        )
 
     def choose_local_whisper_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "پوشه مدل Whisper را انتخاب کن", str(Path.home()))
@@ -1944,7 +1947,8 @@ class MainWindow(QMainWindow):
             self.local_voice_status.setText("برای دانلود، یک شناسه Hugging Face معتبر انتخاب کن.")
             return
         from . import local_voice
-        self._run_local_voice_task(lambda: local_voice.download_hf_model(repo_id),
+        self.local_voice_status.setText("در حال نصب موتور faster-whisper و دانلود مدل…")
+        self._run_local_voice_task(lambda: local_voice.install_and_download_whisper(repo_id),
                                    self.whisper_download_btn, self._on_whisper_downloaded)
 
     def _on_whisper_downloaded(self, result):
@@ -1955,7 +1959,10 @@ class MainWindow(QMainWindow):
         self.settings["whisper_model"] = str(value)
         self.whisper.setCurrentText(str(value))
         self.save_now()
-        self.local_voice_status.setText(f"مدل STT دانلود شد و انتخاب شد: {value}")
+        from . import local_voice
+        self.local_voice_status.setText(
+            f"Whisper نصب و فعال شد.\nمسیر مدل: {value}\nمحل ذخیره مدل‌ها: {local_voice.cache_directory()}"
+        )
 
     def download_local_tts_model(self):
         repo_id = str(self.local_tts_model_path.text() or "").strip()
@@ -1963,7 +1970,8 @@ class MainWindow(QMainWindow):
             self.local_voice_status.setText("شناسه مخزن Piper در Hugging Face را در کادر مدل TTS وارد کن.")
             return
         from . import local_voice
-        self._run_local_voice_task(lambda: local_voice.download_hf_model(repo_id),
+        self.local_voice_status.setText("در حال نصب Piper و دانلود صدای انتخاب‌شده…")
+        self._run_local_voice_task(lambda: local_voice.install_and_download_piper_voice(repo_id),
                                    self.local_tts_download_btn, self._on_local_tts_downloaded)
 
     def _on_local_tts_downloaded(self, result):
@@ -1976,7 +1984,11 @@ class MainWindow(QMainWindow):
             if not candidates:
                 raise RuntimeError("در مخزن دانلودشده فایل Piper ONNX پیدا نشد.")
             self._install_piper_voice(candidates[0])
-            self.local_voice_status.setText(f"مدل TTS دانلود و نصب شد: {candidates[0].name}")
+            from . import local_voice
+            self.local_voice_status.setText(
+                f"Piper نصب شد و صدا فعال شد: {candidates[0].name}\n"
+                f"مسیر فایل: {candidates[0]}\nمحل ذخیره مدل‌ها: {local_voice.cache_directory()}"
+            )
         except Exception as exc:
             self.local_voice_status.setText(f"نصب مدل TTS ناموفق بود: {type(exc).__name__}: {exc}")
 
@@ -3139,6 +3151,7 @@ class MainWindow(QMainWindow):
 
         local_box, local_form = self.group("مدل‌های Local")
         self.local_model_tabs = QTabWidget()
+        self.local_model_tabs.setMaximumHeight(255)
 
         # Local Chat: Ollama remains the provider, but every installed model is listed here.
         local_chat = QWidget()
@@ -3160,13 +3173,15 @@ class MainWindow(QMainWindow):
         # Local STT: Qwen ASR and faster-whisper can use a downloaded local directory.
         local_stt = QWidget()
         local_stt_layout = QVBoxLayout(local_stt)
-        local_stt_layout.setContentsMargins(3, 3, 3, 3)
+        local_stt_layout.setContentsMargins(2, 2, 2, 2)
+        local_stt_layout.setSpacing(4)
         self.local_asr_chk = QCheckBox("استفاده از Qwen3-ASR محلی")
         self.local_asr_chk.setChecked(bool(self.settings.get("local_voice_asr", True)))
         self.local_asr_chk.toggled.connect(lambda on: self.set_local_voice_option("local_voice_asr", on))
         local_stt_layout.addWidget(self.local_asr_chk)
         self.local_asr_model_list = QComboBox()
         self.local_asr_model_list.setToolTip("مدل‌های STT موجود در کش Hugging Face")
+        self.local_asr_model_list.setMaximumHeight(30)
         self.local_asr_model_list.currentIndexChanged.connect(self.select_local_asr_model)
         local_stt_layout.addWidget(QLabel("مدل‌های دانلودشده‌ی STT"))
         local_stt_layout.addWidget(self.local_asr_model_list)
@@ -3201,13 +3216,15 @@ class MainWindow(QMainWindow):
         # Local TTS: bundled Persian Piper or a user-selected ONNX voice.
         local_tts = QWidget()
         local_tts_layout = QVBoxLayout(local_tts)
-        local_tts_layout.setContentsMargins(3, 3, 3, 3)
+        local_tts_layout.setContentsMargins(2, 2, 2, 2)
+        local_tts_layout.setSpacing(4)
         self.local_tts_chk = QCheckBox("استفاده از Piper محلی")
         self.local_tts_chk.setChecked(bool(self.settings.get("local_voice_tts", True)))
         self.local_tts_chk.toggled.connect(lambda on: self.set_local_voice_option("local_voice_tts", on))
         local_tts_layout.addWidget(self.local_tts_chk)
         self.local_tts_model_list = QComboBox()
         self.local_tts_model_list.setToolTip("صداهای Piper دانلودشده و صدای فارسی پیش‌فرض")
+        self.local_tts_model_list.setMaximumHeight(30)
         self.local_tts_model_list.currentIndexChanged.connect(self.select_local_tts_model)
         local_tts_layout.addWidget(QLabel("مدل‌های دانلودشده‌ی TTS"))
         local_tts_layout.addWidget(self.local_tts_model_list)
@@ -3230,6 +3247,7 @@ class MainWindow(QMainWindow):
 
         self.local_voice_status = QLabel()
         self.local_voice_status.setWordWrap(True)
+        self.local_voice_status.setMaximumHeight(76)
         self.local_voice_status.setObjectName("hint")
         local_form.addRow(self.local_model_tabs)
         local_form.addRow(self.local_voice_status)
