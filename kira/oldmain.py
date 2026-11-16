@@ -168,6 +168,11 @@ class ProviderResponseRelay(QObject):
         super().__init__(window)
         self.w, self.s, self.request_id = window, session, str(request_id)
 
+    def _release(self):
+        if getattr(self.s, "response_relay", None) is self:
+            self.s.response_relay = None
+        self.deleteLater()
+
     def _deliver(self, event):
         # The session and request IDs are captured when the worker is created;
         # a late signal can never be attributed to a newer request on this tab.
@@ -184,19 +189,22 @@ class ProviderResponseRelay(QObject):
                 return
             self.w._stream_text = result.content
             if result.status is ResponseStatus.FAILED:
-                if result.metadata.get("interrupted"):
-                    response = dict(result.metadata)
-                    response.update({
-                        "text": result.content,
-                        "interrupted": result.error.message if result.error else "Provider stream interrupted",
-                        "response_status": result.status.value,
-                        "request_id": result.request_id,
-                        "session_id": result.session_id,
-                    })
-                    self.w.on_stream_done(response)
-                else:
-                    message = result.error.message if result.error else "Provider request failed"
-                    self.w.on_error(message)
+                try:
+                    if result.metadata.get("interrupted"):
+                        response = dict(result.metadata)
+                        response.update({
+                            "text": result.content,
+                            "interrupted": result.error.message if result.error else "Provider stream interrupted",
+                            "response_status": result.status.value,
+                            "request_id": result.request_id,
+                            "session_id": result.session_id,
+                        })
+                        self.w.on_stream_done(response)
+                    else:
+                        message = result.error.message if result.error else "Provider request failed"
+                        self.w.on_error(message)
+                finally:
+                    self._release()
                 return
 
             response = dict(result.metadata)
@@ -208,7 +216,10 @@ class ProviderResponseRelay(QObject):
             })
             if result.status is ResponseStatus.CANCELLED:
                 response.setdefault("stopped", True)
-            self.w.on_stream_done(response)
+            try:
+                self.w.on_stream_done(response)
+            finally:
+                self._release()
 
     @Slot(str)
     def chunk(self, piece):
@@ -4888,6 +4899,13 @@ class MainWindow(QMainWindow):
         if session.dispatch_scheduled:
             return
         if self._vision_session is session and not self._worker_is_running(self._vision_worker):
+            worker = self._vision_worker
+            if worker is not None:
+                try:
+                    worker.deleteLater()
+                except RuntimeError:
+                    pass
+                self._vision_worker = None
             self._vision_session = None
         coordinator = self._chat_coordinator(session)
         request = coordinator.take_next(busy=session.busy)
