@@ -377,7 +377,13 @@ class SqliteChatRepository:
             conv_id = _legacy_conversation_id(cid)
             self._ensure_conversation_row(con, conv_id, cid)
             con.execute(
-                "UPDATE messages SET conversation_id=? WHERE conversation_id IS NULL AND COALESCE(NULLIF(LOWER(character_id), ''), 'kira')=?",
+                "UPDATE messages SET character_id=? WHERE COALESCE(NULLIF(LOWER(character_id), ''), 'kira')=? "
+                "AND (character_id IS NULL OR TRIM(character_id)='' OR LOWER(character_id)<>?)",
+                (cid, cid, cid),
+            )
+            con.execute(
+                "UPDATE messages SET conversation_id=? WHERE conversation_id IS NULL "
+                "AND COALESCE(NULLIF(LOWER(character_id), ''), 'kira')=?",
                 (conv_id, cid),
             )
         con.execute(
@@ -391,21 +397,41 @@ class SqliteChatRepository:
 
     def _migrate_schema(self, con):
         has_messages = self._has_table(con, "messages")
+        has_conversations = self._has_table(con, "conversations")
+        has_versions = self._has_table(con, "persistence_schema")
         current_version = int(con.execute("PRAGMA user_version").fetchone()[0])
         if current_version > SCHEMA_VERSION:
             raise PersistenceError(
                 f"نسخه دیتابیس ({current_version}) از این نسخه برنامه جدیدتر است؛ برای جلوگیری از Downgrade، تغییر داده نشد."
             )
-        needs_migration = current_version < SCHEMA_VERSION
-        needs_migration = needs_migration or (has_messages and not self._has_table(con, "conversations"))
+        if has_versions:
+            recorded = [
+                int(row[0]) for row in con.execute("SELECT version FROM persistence_schema")
+            ]
+            if recorded and max(recorded) > SCHEMA_VERSION:
+                raise PersistenceError(
+                    "نسخه ثبت‌شده Schema از این نسخه برنامه جدیدتر است؛ دیتابیس بدون تغییر باقی ماند."
+                )
+
+        needs_migration = (
+            current_version < SCHEMA_VERSION
+            or not has_messages
+            or not has_conversations
+            or not has_versions
+        )
         if has_messages:
             cols = self._columns(con, "messages")
             needs_migration = needs_migration or any(
-                name not in cols for name in ("character_id", "conversation_id", "metadata", "status")
+                name not in cols
+                for name in ("character_id", "conversation_id", "metadata", "status", "created_at")
             )
-        # Snapshot before DDL, then acquire the SQLite write lock so schema
-        # creation and legacy row backfill are one atomic transaction.
-        if needs_migration:
+        # A completely fresh database has nothing to back up. Existing user
+        # data gets an online backup before additive DDL/backfill. Once version
+        # 1 is in place, ordinary message writes do not acquire a schema lock.
+        has_existing_data = has_messages or has_conversations or has_versions
+        if not needs_migration:
+            return
+        if has_existing_data:
             self._snapshot("pre-migration")
         if not con.in_transaction:
             con.execute("BEGIN IMMEDIATE")
