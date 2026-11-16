@@ -82,6 +82,17 @@ class Listener(QThread):
         # QThread reference until finished and the window's close handler defers shutdown.
         self._run = False
 
+    def _close_stream(self, stream):
+        """Stop and release the microphone independently so one cleanup error cannot leak the device."""
+        try:
+            stream.stop()
+        except Exception as exc:
+            self.note.emit(f"بستن ورودی میکروفن: {type(exc).__name__}")
+        try:
+            stream.close()
+        except Exception as exc:
+            self.note.emit(f"آزادسازی ورودی میکروفن: {type(exc).__name__}")
+
     # ---- thread ----
     def run(self):
         try:
@@ -136,22 +147,12 @@ class Listener(QThread):
             stream.start()
         except Exception as exc:
             if stream is not None:
-                try:
-                    stream.close()
-                except Exception:
-                    pass
+                self._close_stream(stream)
             self.error.emit(f"میکروفون باز نشد: {exc}")
             return
 
         if not self._run:
-            try:
-                stream.stop()
-            except Exception:
-                pass
-            try:
-                stream.close()
-            except Exception:
-                pass
+            self._close_stream(stream)
             return
 
         seg = self._seg = Segmenter(self.sensitivity)
@@ -178,14 +179,7 @@ class Listener(QThread):
                 for ev in seg.feed(blk, self.kira_speaking, self.kira_level):
                     self._on_event(ev, model)
         finally:
-            try:
-                stream.stop()
-            except Exception as exc:
-                self.note.emit(f"بستن ورودی میکروفن: {type(exc).__name__}")
-            try:
-                stream.close()
-            except Exception as exc:
-                self.note.emit(f"آزادسازی ورودی میکروفن: {type(exc).__name__}")
+            self._close_stream(stream)
             self._seg = None
 
     def _load_local(self):
