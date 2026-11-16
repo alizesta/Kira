@@ -271,6 +271,7 @@ class MainWindow(QMainWindow):
         self._latest_game_frame = None
         self._vision_gate = FrameGate(policy_for(self.settings.get('vision_mode', 'economic')))
         self._vision_worker = None
+        self._vision_session = None
         self._vision_last_note = ''
         self.game_audio_listener = None
         self._game_audio_alerts = {}
@@ -488,7 +489,7 @@ class MainWindow(QMainWindow):
         try:
             yield session
         finally:
-            self.cur = prev
+            self.cur = prev if self.sessions.get(prev.cid) is prev else self.front
             self.settings["active_character_id"] = prev_cid
 
     def theme_for_character(self, character_id, profile=None):
@@ -603,19 +604,11 @@ class MainWindow(QMainWindow):
                 with self._as(sess):
                     self.restore_history()
         order += [c for c in self.sessions if c not in order]          # a deleted character that is still answering keeps its tab for now
-        for cid in [c for c in self.sessions if c not in profiles]:      # a deleted character: close its tab (unless it is answering)
+        for cid in [c for c in self.sessions if c not in profiles]:      # a deleted character stays until its queued/active work is drained
             sess = self.sessions[cid]
-            if sess.busy:
+            if self._session_has_pending_chat_work(sess):
                 continue
-            self.char_tabs_row.removeWidget(self.char_tab_buttons[cid])
-            self.char_tab_group.removeButton(self.char_tab_buttons[cid])
-            self.char_tab_buttons.pop(cid).deleteLater()
-            self.chat_stack.removeWidget(sess.view)
-            sess.view.deleteLater()
-            sess.timer.stop()
-            del self.sessions[cid]
-            if self.front is sess or self.cur is sess:
-                self.front = self.cur = self.sessions["kira"]
+            self._dispose_chat_session(sess)
         while self.char_tabs_row.count():                                # rebuild the row in character order
             self.char_tabs_row.takeAt(0)
         for cid in order:
@@ -623,6 +616,72 @@ class MainWindow(QMainWindow):
                 self.char_tabs_row.addWidget(self.char_tab_buttons[cid])
         self.char_tabs_row.addStretch(1)
         self.refresh_tab_buttons()
+
+    @staticmethod
+    def _worker_is_running(worker):
+        if worker is None:
+            return False
+        try:
+            return bool(worker.isRunning())
+        except RuntimeError:
+            return False
+
+    def _session_has_pending_chat_work(self, session):
+        coordinator = getattr(session, "coordinator", None)
+        if (session.busy or getattr(session, "dispatch_scheduled", False)
+                or (coordinator is not None and coordinator.pending_count > 0)):
+            return True
+        if self._worker_is_running(getattr(session, "worker", None)) or self._worker_is_running(
+            getattr(session, "_search_worker", None)
+        ):
+            return True
+        return (getattr(self, "_vision_session", None) is session
+                and self._worker_is_running(getattr(self, "_vision_worker", None)))
+
+    def _dispose_chat_session(self, session):
+        """Release an idle, removed character session and all of its owned chat resources."""
+        if self._session_has_pending_chat_work(session):
+            return False
+        coordinator = getattr(session, "coordinator", None)
+        if coordinator is not None:
+            coordinator.clear()
+        session.dispatch_scheduled = False
+        if session.client is not None:
+            session.client.cancel()
+            session.client = None
+        for worker_name in ("worker", "_search_worker"):
+            worker = getattr(session, worker_name, None)
+            if worker is not None:
+                try:
+                    worker.deleteLater()
+                except RuntimeError:
+                    pass
+                setattr(session, worker_name, None)
+        if session.timer is not None:
+            session.timer.stop()
+            session.timer.deleteLater()
+            session.timer = None
+        if session.relay is not None:
+            session.relay.deleteLater()
+            session.relay = None
+        if session.view is not None:
+            self.chat_stack.removeWidget(session.view)
+            session.view.deleteLater()
+            session.view = None
+        button = self.char_tab_buttons.pop(session.cid, None)
+        if button is not None:
+            self.char_tabs_row.removeWidget(button)
+            self.char_tab_group.removeButton(button)
+            button.deleteLater()
+        if self.sessions.get(session.cid) is session:
+            del self.sessions[session.cid]
+        if getattr(self, "_vision_session", None) is session:
+            self._vision_session = None
+        if self.front is session or self.cur is session:
+            fallback = self.sessions.get("kira") or next(iter(self.sessions.values()), None)
+            if fallback is not None:
+                self.front = self.cur = fallback
+        return True
 
     def refresh_tab_buttons(self):
         profiles = self.character_service.all_profiles(self.settings)
@@ -3952,6 +4011,7 @@ class MainWindow(QMainWindow):
                 return
             image = att.image_attachment(jpeg, "game-screen.jpg", "image/jpeg")
             session = self.cur
+            self._vision_session = session
             self._vision_worker = VisionAnalysisWorker(self.client, image)
             self._vision_worker.done.connect(session.relay.game_vision_done)
             self._vision_worker.finished.connect(session.relay.game_vision_finished)
@@ -3962,8 +4022,7 @@ class MainWindow(QMainWindow):
     def _send_pending_for_session(self, session):
         if self._closing or session is None or session.cid not in self.sessions:
             return
-        with self._as(session):
-            self._send_next_pending()
+        self._send_next_pending(session)
 
     def _on_game_vision_result(self, ok, result, latency_ms):
         self._vision_gate.mark_latency(latency_ms)
@@ -4721,18 +4780,38 @@ class MainWindow(QMainWindow):
         self.check_status()
         self._send_next_pending()
 
-    def _send_next_pending(self):
-        if self._closing:
+    def _schedule_chat_callback(self, callback):
+        QTimer.singleShot(0, callback)
+
+    def _send_next_pending(self, session=None):
+        """Drain only the queue owned by the session whose request just completed."""
+        session = session or self.cur
+        if self._closing or self.sessions.get(session.cid) is not session:
             return
-        request = self._chat_coordinator().take_next(busy=self.busy)
+        if session.dispatch_scheduled:
+            return
+        if self._vision_session is session and not self._worker_is_running(self._vision_worker):
+            self._vision_session = None
+        coordinator = self._chat_coordinator(session)
+        request = coordinator.take_next(busy=session.busy)
         if request is not None:
+            session.dispatch_scheduled = True
             args = (request.text, list(request.attachments), request.voice)
-            QTimer.singleShot(0, lambda item=args, sess=self.cur: self._submit_for(sess, item))
+            self._schedule_chat_callback(
+                lambda item=args, target=session: self._submit_for(target, item)
+            )
+            return
+        profiles = self.character_service.all_profiles(self.settings)
+        if session.cid not in profiles and not self._session_has_pending_chat_work(session):
+            self._schedule_chat_callback(self.sync_sessions)
 
     def _submit_for(self, session, args):
-        if not self._closing and session.cid in self.sessions:
-            with self._as(session):
-                self.submit(*args)
+        """Dispatch a dequeued item directly; re-entering submit() would reorder the remaining FIFO backlog."""
+        session.dispatch_scheduled = False
+        if self._closing or self.sessions.get(session.cid) is not session:
+            return
+        request = ChatRequest.create(args[0], args[1], args[2])
+        self._dispatch_coordinated_request(session, request)
 
     def finish_request(self, res=None):
         self.clear_upload_tiles()
@@ -5086,6 +5165,14 @@ class MainWindow(QMainWindow):
         if getattr(self, "_closing", False):
             QTimer.singleShot(0, self.close)
 
+    def _clear_chat_coordinator_queues(self):
+        """Drop scheduled/pending messages during application shutdown; workers are cancelled separately."""
+        for session in getattr(self, "sessions", {}).values():
+            coordinator = getattr(session, "coordinator", None)
+            if coordinator is not None:
+                coordinator.clear()
+            session.dispatch_scheduled = False
+
     def closeEvent(self, event):
         if (getattr(self, "tray", None) is not None and self.settings.get("close_to_tray")
                 and not getattr(self, "_quitting", False)):
@@ -5112,6 +5199,7 @@ class MainWindow(QMainWindow):
                     self._partial_saved = True
                     self.save_message("assistant", self._stream_text)      # the half answer that was already on screen is not lost
         self._closing = True
+        self._clear_chat_coordinator_queues()
         if getattr(self, "code_chat", None) is not None:
             self.code_chat.shutdown()
         if getattr(self, "tray", None) is not None:
