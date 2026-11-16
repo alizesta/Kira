@@ -4408,8 +4408,11 @@ class MainWindow(QMainWindow):
         self._search_base = (base_text, images)
         self.status.setText(f"🌐 در حال جست‌وجوی وب: «{query[:60]}»…")
         conversation_id = self._ensure_session_conversation(self.cur)
-        history = self.chat_history_service.conversation_context(
-            8, character_id=self.cur.cid, conversation_id=conversation_id
+        history = (
+            self.chat_history_service.conversation_context(
+                8, character_id=self.cur.cid, conversation_id=conversation_id
+            ) if conversation_id else
+            self.chat_history_service.conversation_context(8, character_id=self.cur.cid)
         )
         # The user's own words are sent unchanged. Only a short follow-up that points back at the chat is rewritten by the model.
         rewrite = (lambda c=self.client: self.make_search_query(history, query, c)) if websearch.is_followup(query) else None
@@ -4507,13 +4510,19 @@ class MainWindow(QMainWindow):
     def start_worker(self, plain):
         window = int(self.settings.get("memory_context_limit", 12))
         conversation_id = self._ensure_session_conversation(self.cur)
-        history = self.chat_history_service.conversation_context(
-            window, character_id=self.cur.cid, conversation_id=conversation_id
+        history = (
+            self.chat_history_service.conversation_context(
+                window, character_id=self.cur.cid, conversation_id=conversation_id
+            ) if conversation_id else
+            self.chat_history_service.conversation_context(window, character_id=self.cur.cid)
         )
         mode = self.detect_mode(history)                          # Active Mode of THIS message (None = switched off in settings)
         try:
-            older = self.chat_history_service.recent_messages(
-                window + 40, self.cur.cid, conversation_id=conversation_id
+            older = (
+                self.chat_history_service.recent_messages(
+                    window + 40, self.cur.cid, conversation_id=conversation_id
+                ) if conversation_id else
+                self.chat_history_service.recent_messages(window + 40, self.cur.cid)
             )[:-window] if window else []
             # Every character has its own saved conversation; only Kira owns the legacy evidence index.
             character_id = self.cur.cid
@@ -4524,12 +4533,18 @@ class MainWindow(QMainWindow):
                 query=evidence_memory.query_from_context(history) if character_id == "kira" else None,
                 budget=evidence_memory.budget_for(self.settings, self.client),
             )
-            total = self.chat_history_service.message_count(character_id, conversation_id)
+            total = (
+                self.chat_history_service.message_count(character_id, conversation_id)
+                if conversation_id else self.chat_history_service.message_count(character_id)
+            )
             if self.memory_service.needs_summary(character_id, total, window):
                 self.memory_service.maintain(
                     character_id,
-                    self.chat_history_service.recent_messages(
-                        min(total, 3000), character_id, conversation_id=conversation_id
+                    (
+                        self.chat_history_service.recent_messages(
+                            min(total, 3000), character_id, conversation_id=conversation_id
+                        ) if conversation_id else
+                        self.chat_history_service.recent_messages(min(total, 3000), character_id)
                     ),
                     window,
                 )
@@ -4620,9 +4635,13 @@ class MainWindow(QMainWindow):
             earlier = users[:-1]
             try:                                                   # a "no jokes" request must outlive the short context window
                 conversation_id = self._ensure_session_conversation(self.cur)
-                longer = [m["content"] for m in self.chat_history_service.recent_messages(
-                    80, self.cur.cid, conversation_id=conversation_id
-                ) if m.get("role") == "user"]
+                longer_history = (
+                    self.chat_history_service.recent_messages(
+                        80, self.cur.cid, conversation_id=conversation_id
+                    ) if conversation_id else
+                    self.chat_history_service.recent_messages(80, self.cur.cid)
+                )
+                longer = [m["content"] for m in longer_history if m.get("role") == "user"]
                 if len(longer) > len(users):
                     earlier = longer[:-1]
             except Exception:                                      # noqa: BLE001
