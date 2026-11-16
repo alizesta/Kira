@@ -94,3 +94,17 @@ A feature is ready to be assigned to a separate implementation model only when i
 6. **Change isolation:** a delegated task names the owned package, public contract, permitted dependencies and test target. A model must not modify neighboring feature packages unless the task explicitly requires a contract change.
 
 The long-term shell is intentionally boring: bootstrap creates and wires feature modules; `MainWindow` hosts the UI and forwards user intent. Neither should own feature algorithms or persistence rules.
+
+
+## Legacy entry-point migration
+
+The monolithic application window is being retired through a controlled, reversible migration:
+
+1. `kira/main.py` is the stable executable entry point. `python -m kira.main` remains the supported launch command.
+2. `kira/app/bootstrap.py` is the single composition root: it creates shared infrastructure and wires application modules. Startup wiring must not be duplicated in the entry-point file.
+3. The former monolith is temporarily preserved as `kira/oldmain.py`. During this transition, bootstrap may construct its legacy `MainWindow`; this is an explicit migration dependency, not a target architecture.
+4. `kira.main.MainWindow` is only a lazy compatibility export for existing imports. New production code must not import it. New feature code must not import `kira.oldmain` or depend on legacy window state.
+5. Migrate one feature boundary at a time: move its state and behavior into an owned package, define its public contract and injected dependencies, then adapt the legacy window to call that contract. Add isolated tests before removing the corresponding legacy implementation.
+6. Keep the launch command, settings, user data, and user-visible behavior stable throughout the migration. Do not delete `oldmain.py` until all required features have moved and the full regression suite plus Windows launch acceptance have passed.
+
+The migration reference is temporary. Its purpose is to preserve working behavior while the new application structure takes ownership; it must not become a permanent service layer or an import target for new modules.
