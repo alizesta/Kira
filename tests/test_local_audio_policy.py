@@ -109,6 +109,7 @@ class LocalAudioPolicyTests(unittest.TestCase):
             "voice_en": "en-US-AriaNeural",
             "voice_pitch": 4,
             "cloud_voice_provider": "elevenlabs",
+            "cloud_voice_id": "old-root-voice-id",
             "character_voice": {
                 "kira": {
                     "voice_fa": "fa-IR-DilaraNeural",
@@ -126,7 +127,7 @@ class LocalAudioPolicyTests(unittest.TestCase):
                  mock.patch.object(config, "prepare_user_data", return_value=[]):
                 migrated = config.load_settings()
 
-        for key in ("voice_fa", "voice_en", "voice_ja", "voice_pitch", "voice_style"):
+        for key in ("voice_fa", "voice_en", "voice_ja", "voice_pitch", "voice_style", "cloud_voice_provider", "cloud_voice_id", "cloud_voices"):
             self.assertNotIn(key, migrated)
         profile = migrated["character_voice"]["kira"]
         for key in ("voice_fa", "cloud_voice_provider", "cloud_voice_id", "voice_pitch"):
