@@ -122,20 +122,42 @@ class Listener(QThread):
                 block = np.clip(block * gain, -1.0, 1.0)
             q.put(block)
 
+        stream = None
         try:
             device = self._input_device(sd)
-            stream = sd.InputStream(samplerate=RATE, channels=1, dtype="float32", blocksize=BLOCK, callback=callback, device=device)
+            stream = sd.InputStream(
+                samplerate=RATE, channels=1, dtype="float32",
+                blocksize=BLOCK, callback=callback, device=device,
+            )
             stream.start()
-        except Exception as e:
-            self.error.emit(f"میکروفون باز نشد: {e}")
+        except Exception as exc:
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+            self.error.emit(f"میکروفون باز نشد: {exc}")
+            return
+
+        if not self._run:
+            try:
+                stream.stop()
+            except Exception:
+                pass
+            try:
+                stream.close()
+            except Exception:
+                pass
             return
 
         seg = self._seg = Segmenter(self.sensitivity)
         try:
-            while self._run:                                             # ~0.8 s: measure the room noise first
+            while self._run:                                             # ~0.38 s: measure room noise first
                 first = self._next_block(q)
                 if first is None or not seg.calibrate(first):
                     break
+            if not self._run:
+                return
             self.state.emit("listening")
             while self._run:
                 try:
@@ -152,8 +174,15 @@ class Listener(QThread):
                 for ev in seg.feed(blk, self.kira_speaking, self.kira_level):
                     self._on_event(ev, model)
         finally:
-            stream.stop()
-            stream.close()
+            try:
+                stream.stop()
+            except Exception as exc:
+                self.note.emit(f"بستن ورودی میکروفن: {type(exc).__name__}")
+            try:
+                stream.close()
+            except Exception as exc:
+                self.note.emit(f"آزادسازی ورودی میکروفن: {type(exc).__name__}")
+            self._seg = None
 
     def _load_local(self):
         """Load faster-whisper as the local fallback when Qwen3-ASR is unavailable."""
