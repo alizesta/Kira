@@ -147,6 +147,22 @@ class ModuleManagerTests(unittest.TestCase):
         self.assertIn(("dispose", "feature-1"), events)
         self.assertIn(("start", "feature-2"), events)
 
+    def test_shutdown_disposes_a_module_that_was_stopped_earlier(self):
+        from kira.app.module_manager import ModuleManager, ModuleState
+
+        events = []
+        manager = ModuleManager()
+        manager.register("feature", lambda: self.FakeModule("feature", events))
+        manager.start("feature")
+        manager.stop("feature")
+
+        errors = manager.shutdown()
+
+        self.assertEqual(errors, {})
+        self.assertEqual(events.count(("stop", "feature")), 1)
+        self.assertEqual(events.count(("dispose", "feature")), 1)
+        self.assertEqual(manager.state("feature"), ModuleState.DISPOSED)
+
     def test_optional_failure_does_not_block_independent_modules(self):
         from kira.app.module_manager import ModuleManager, ModuleState
 
