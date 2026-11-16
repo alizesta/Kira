@@ -75,7 +75,8 @@ def read_rows(path):
 
 
 def read_rows_full(path):
-    return repository.read_rows_full(path)
+    # Historical API: (role, content, timestamp, character_id).
+    return [(row[1], row[2], row[3], row[4]) for row in repository.read_rows_full(path)]
 
 
 def _merge(*sources):
@@ -91,7 +92,9 @@ def _backup_dirs():
 
 
 def _latest_backup_rows():
-    return repository._latest_backup_rows()
+    rows, path = repository._latest_backup_rows()
+    legacy_rows = [(row[1], row[2], row[3], row[4]) for row in rows]
+    return legacy_rows, path
 
 
 def _recover(reason: str):
