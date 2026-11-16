@@ -745,6 +745,7 @@ class MainWindow(QMainWindow):
         self._local_tts_test_active = False
         self.speaker.started.connect(self._on_local_tts_playback_started)
         self.speaker.finished.connect(self._on_local_tts_playback_finished)
+        self.speaker.cancelled.connect(self._on_local_tts_playback_cancelled)
         self.speaker.error.connect(self._on_local_tts_playback_error)
         self.speaker.cloud_note.connect(self.on_cloud_note)
         self.wake_timer = QTimer(self)
@@ -2452,6 +2453,11 @@ class MainWindow(QMainWindow):
         if self._local_tts_test_active:
             self._local_tts_test_active = False
             self.local_voice_status.setText(f"تولید صدا موفق بود، اما پخش شکست خورد: {message}")
+
+    def _on_local_tts_playback_cancelled(self):
+        if self._local_tts_test_active:
+            self._local_tts_test_active = False
+            self.local_voice_status.setText("تست TTS متوقف شد؛ پخش کامل نشد.")
 
     # ---- voice: devices, supported controls, autosave ----
     def fill_output_devices(self, current):
