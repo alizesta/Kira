@@ -133,6 +133,20 @@ class ChatCoordinatorTests(unittest.TestCase):
         self.assertIsNone(second.coordinator)
         first.coordinator = ChatCoordinator(lambda _request: None)
         self.assertIsNot(first.coordinator, second.coordinator)
+    def test_provider_worker_construction_is_owned_by_coordinator_adapter(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "kira" / "oldmain.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        window = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "MainWindow")
+        methods = {node.name: node for node in window.body if isinstance(node, ast.FunctionDef)}
+        start_source = ast.get_source_segment(source, methods["start_worker"])
+        self.assertIn("start_provider_request", start_source)
+        self.assertNotIn("StreamWorker(", start_source)
+
+    def test_legacy_pending_list_is_not_a_second_queue_owner(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "kira" / "oldmain.py").read_text(encoding="utf-8")
+        self.assertNotIn("self._pending", source)
     def test_coordinator_has_no_ui_or_storage_imports(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / "kira" / "chat" / "coordinator.py").read_text(encoding="utf-8")
