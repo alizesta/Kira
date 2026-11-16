@@ -21,6 +21,26 @@ Kira is migrating incrementally toward independent UI, application logic, servic
 - `kira/core/interfaces/voice_service.py` defines the consumer-facing voice contract. The legacy voice implementation is not yet wired through it.
 - `kira/ui/` and `kira/services/` are destinations for staged extraction.
 
+## Verified migration status (2026-11-16)
+
+- The current migration branch is `feat/voice-performance-mcp-discovery`; work remains in PR #28 and is not merged to `main`.
+- The application foundation exists in `kira/app`: bootstrap, EventBus and dependency container. A full module manager and module lifecycle are **not implemented yet**.
+- Consumer contracts currently include the voice service Protocol only. Chat, memory, character, avatar and provider contracts still need to be defined and wired.
+- Reusable UI pieces extracted from the legacy window are now in `kira/ui/components/model_combo.py` and `kira/ui/dialogs/{memory,model_picker}.py`. `kira/main.py` imports these public UI types; the old inline definitions have been removed.
+- After this extraction, `kira/main.py` is 6,140 lines. `MainWindow` still owns roughly 300 methods spanning Chat, Voice, Characters, Settings, Providers, Memory, Avatar, Vision, Web Research and tray/application behavior. It is **not yet a UI shell**.
+- `kira/ui` currently contains reusable components and dialogs only. `kira/services` has no concrete services yet. A separate `kira/modules` package does not exist; existing packages such as `characters`, `webintel`, `mcp` and `emotion` are capability code, not yet lifecycle-managed modules.
+- The extracted UI imports have targeted unit coverage. Full Windows CI and a real Windows app launch are still required; this GitHub-only session cannot certify microphone, audio-device, VRM rendering or desktop behavior on the user's machine.
+
+## Evidence-based migration map
+
+1. **Stabilize UI boundaries:** continue extracting independent dialogs, widgets and page views from `MainWindow`; each extraction keeps a compatibility import only where existing call sites need it.
+2. **Split the shell by page:** make the window responsible for navigation, shared theme and page hosting; move Chat, Settings, Voice and Characters page construction into independent view modules. Page actions must be delegated to controllers/services rather than calling other page internals.
+3. **Extract application services:** introduce explicit Chat, Memory, Voice, Character, Provider, Web Research and Coding Agent contracts; wire concrete implementations once in bootstrap and inject them into controllers.
+4. **Move persistence and adapters:** centralize database, settings storage, provider clients, model discovery, audio devices and logging behind infrastructure adapters. Preserve existing user-data formats and migration behavior.
+5. **Establish module manifests and lifecycle:** only after service contracts are stable, add module descriptors, dependency validation, register/start/stop/dispose lifecycle and safe enable/disable handling. Optional module failure must not prevent core chat from starting.
+6. **Enforce boundaries:** add import-boundary and lifecycle tests to prevent UI imports from services, direct cross-module implementation imports, circular dependencies and unload leaks.
+7. **Validate behavior:** run the full CI suite and targeted GUI/offscreen tests at each stage; do not mark a subsystem independent until its behavior is tested through its contract. Hardware-specific audio, avatar and desktop checks remain explicit manual acceptance items.
+
 ## Dependency rules
 1. UI may call application services through interfaces; services must not import UI widgets.
 2. Chat must not reach into Voice implementation objects or MainWindow fields. Use a service contract for direct commands and EventBus for notifications.
