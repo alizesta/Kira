@@ -109,6 +109,7 @@ class Listener(QThread):
                 local_voice.load_asr(selected_asr)
             except Exception as exc:
                 local_ready = False
+                self._local_asr_failed = True
                 self.note.emit(f"بارگذاری اولیه STT محلی ناموفق بود؛ موتور جایگزین استفاده می‌شود. ({type(exc).__name__})")
         if not local_ready and not self._cloud_ready() and not self._load_local():
             return
