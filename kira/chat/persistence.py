@@ -1058,15 +1058,18 @@ class ChatPersistence:
         return self._invoke(self._repository.close_conversation, conversation_id)
 
     def delete_conversation(self, conversation_id):
-        try:
-            return self._repository.delete_conversation(conversation_id)
-        except PersistenceError:
-            raise
-        except Exception as exc:
-            raise PersistenceError(str(exc)) from exc
+        return self._invoke(self._repository.delete_conversation, conversation_id)
 
     def add_message(self, role, content, character_id=None, **options):
-        return self._repository.add_message(role, content, character_id, **options)
+        try:
+            return self._repository.add_message(role, content, character_id, **options)
+        except (PersistenceError, ValueError, TypeError) as exc:
+            if isinstance(exc, PersistenceError):
+                self._repository.last_error = str(exc)
+            raise
+        except Exception as exc:
+            self._repository.last_error = f"{type(exc).__name__}: {exc}"
+            raise PersistenceError(self._repository.last_error) from exc
 
     def update_stream_message(self, message_id, content, **options):
         return self._invoke(self._repository.update_stream_message, message_id, content, **options)
