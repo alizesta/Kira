@@ -234,12 +234,8 @@ class Speaker(QObject):
     def _drop_player(self, fx, out):
         """Detach and release a player. Tolerates a C++ object that is already gone or a half-initialised player."""
         if fx is not None:
-            for sig, slot in (("playbackStateChanged", self._on_pstate), ("playingChanged", self._on_playing),
-                              ("statusChanged", self._on_sound_status)):
-                try:
-                    getattr(fx, sig).disconnect(slot)
-                except Exception:
-                    pass
+            # QObject destruction disconnects its signals. Avoid manually disconnecting
+            # PySide bound slots after Qt may already have invalidated the wrapper.
             for call in ("stop", "deleteLater"):
                 try:
                     getattr(fx, call)()
@@ -614,11 +610,11 @@ class Speaker(QObject):
         elif state == QMediaPlayer.StoppedState and self._item_began:
             self._item_finished()
 
-    def _on_playing(self):
-        fx = self._fx
-        if fx is None:
+    def _on_playing(self, playing: bool):
+        # QSoundEffect.playingChanged(bool) supplies the state directly.
+        if self._fx is None:
             return
-        if fx.isPlaying():
+        if playing:
             if not self._item_began:
                 self._item_started()
         elif self._item_began:
