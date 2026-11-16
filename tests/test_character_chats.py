@@ -245,6 +245,31 @@ class GuiSessionTests(IsolatedDb):
         )
         self.assertEqual(w.cur.cid, "kira")
 
+    def test_submit_queues_behind_a_request_already_reserved_for_dispatch(self):
+        from kira.chat.coordinator import SubmissionResult
+        w = self.win
+        ren = w.sessions["ren"]
+        ren.dispatch_scheduled = True
+        observed = {}
+
+        class Coordinator:
+            pending_count = 1
+            def submit(self, request, *, busy, force_queue):
+                observed.update(request=request, busy=busy, force_queue=force_queue)
+                return SubmissionResult.QUEUED
+
+        original = w._chat_coordinator
+        w._chat_coordinator = lambda _session=None: Coordinator()
+        try:
+            with w._as(ren):
+                w.submit("message after reserved queue item")
+        finally:
+            w._chat_coordinator = original
+            ren.dispatch_scheduled = False
+
+        self.assertEqual(observed["request"].text, "message after reserved queue item")
+        self.assertFalse(observed["busy"])
+        self.assertTrue(observed["force_queue"])
     def test_dequeued_messages_keep_fifo_order_without_reentering_submit(self):
         from kira.chat.coordinator import ChatRequest
         w = self.win
