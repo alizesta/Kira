@@ -1284,8 +1284,7 @@ class MainWindow(QMainWindow):
         self._chat_action_seq += 1
         key = str(self._chat_action_seq)
         self._chat_action_texts[key] = str(text)
-        if len(self._chat_action_texts) > 300:
-            self._chat_action_texts.pop(next(iter(self._chat_action_texts)))
+        # Keep action targets for all messages currently present in the chat view.
         actions = [
             ("copy", "⧉", "#8CF5FF", "#103A52", "#39DFFF", "کپی"),
             ("edit", "✎", "#E0C8FF", "#30214F", "#B18AFF", "ویرایش"),
@@ -1324,7 +1323,7 @@ class MainWindow(QMainWindow):
                 self.input.setFocus()
                 self.input.moveCursor(QTextCursor.End)
             elif action == "speak":
-                self.safe_stop_speaker()
+                # Speaker.speak() owns cancellation/replacement of the previous session.
                 self.speaker.speak(text)
             return
         if url.scheme() in ("http", "https", "mailto"):
@@ -1446,7 +1445,7 @@ class MainWindow(QMainWindow):
         """Keep shared navigation glyphs in sync when the active character changes."""
         cid = characters.active_id(self.settings)
         profile = characters.all_profiles(self.settings).get(cid, {})
-        palette = theme_mod.character_theme(cid, profile)
+        palette = self.theme_for_character(cid, profile)
         for button, (name, _tab_index) in zip(getattr(self, "nav_buttons", []), getattr(self, "_nav_icon_map", [])):
             button.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
                                      checked=palette["main"], disabled="#52617B"))
@@ -3172,7 +3171,7 @@ class MainWindow(QMainWindow):
 
     def _refresh_icon_glow(self):
         cid = characters.active_id(self.settings)
-        palette = theme_mod.character_theme(cid, characters.all_profiles(self.settings).get(cid, {}))
+        palette = self.theme_for_character(cid, characters.all_profiles(self.settings).get(cid, {}))
         for button in self.findChildren(QToolButton):
             name = button.property("kiraIconName")
             if not name:
