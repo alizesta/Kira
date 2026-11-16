@@ -97,7 +97,7 @@ class GuiTests(unittest.TestCase):
         self.assertTrue(window.chat_header.isAncestorOf(window.companion_btn))
         from kira.ui.components import ChatComposer
         self.assertIsInstance(window.chat_composer, ChatComposer)
-        self.assertIs(window.chat_composer.parent(), window.findChild(type(window.chat_composer.parent()), "chatCard"))
+        self.assertEqual(window.chat_composer.parent().objectName(), "chatCard")
         for widget in (
             window.input,
             window.send_btn,
