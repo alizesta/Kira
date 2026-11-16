@@ -59,6 +59,38 @@ class LocalASRFallbackTests(unittest.TestCase):
         self.assertFalse(listener._local_asr_failed)
 
 
+class WhisperVADTests(unittest.TestCase):
+    def test_whisper_does_not_run_a_second_vad_after_segmenter(self):
+        from kira.listener import Listener
+
+        class Fixes:
+            def refresh(self):
+                pass
+
+            def hotwords_text(self):
+                return ""
+
+        class Segment:
+            text = "سلام"
+            no_speech_prob = 0.0
+            avg_logprob = -0.1
+
+        class Model:
+            def __init__(self):
+                self.kwargs = None
+
+            def transcribe(self, audio, **kwargs):
+                self.kwargs = kwargs
+                return [Segment()], None
+
+        listener = Listener(settings={})
+        listener.fixes = Fixes()
+        listener._model = Model()
+        self.assertEqual(listener._transcribe_whisper(np.zeros(RATE, dtype=np.float32)), "سلام")
+        self.assertIs(listener._model.kwargs["vad_filter"], False)
+        self.assertNotIn("vad_parameters", listener._model.kwargs)
+
+
 class SegmenterTests(unittest.TestCase):
     def test_hum_and_a_click_are_not_speech(self):
         click = np.zeros(4000, dtype=np.float32)
