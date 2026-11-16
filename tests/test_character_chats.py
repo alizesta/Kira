@@ -210,6 +210,110 @@ class GuiSessionTests(IsolatedDb):
         self.assertNotIn("جواب رن", [m["content"] for m in memory.recent_messages(20, "kira")])
         ren.busy = False
 
+    def test_concurrent_session_completions_drain_their_own_queues_after_tab_switch(self):
+        from kira.chat.coordinator import ChatRequest
+        w = self.win
+        scheduled = []
+        dispatched = []
+        w._schedule_chat_callback = scheduled.append
+        w._process_chat_request = lambda text, _attachments, _voice: dispatched.append((w.cur.cid, text, w.front.cid))
+        ren, mika = w.sessions["ren"], w.sessions["mika"]
+        ren.busy = mika.busy = True
+        w._chat_coordinator(ren).submit(ChatRequest.create("Ren queued"), busy=True)
+        w._chat_coordinator(mika).submit(ChatRequest.create("Mika queued"), busy=True)
+
+        def completed(_result):
+            session = w.cur  # SessionRelay._run() must establish the originating session
+            session.busy = False
+            w._send_next_pending(session)
+
+        w.on_stream_done = completed
+        w.switch_session("kira")
+        ren.relay.done({"text": "ren response"})
+        w.switch_session("mika")
+        mika.relay.done({"text": "mika response"})
+        w.switch_session("kira")  # user changes tabs before the queued callbacks run
+        self.assertEqual(len(scheduled), 2)
+        for callback in list(scheduled):
+            callback()
+        self.assertEqual(dispatched, [("ren", "Ren queued", "kira"), ("mika", "Mika queued", "kira")])
+        self.assertEqual(w.cur.cid, "kira")
+
+    def test_dequeued_fifo_items_are_dispatched_without_reentering_submit_queue(self):
+        from kira.chat.coordinator import ChatRequest
+        w = self.win
+        scheduled = []
+        dispatched = []
+        w._schedule_chat_callback = scheduled.append
+        def process(text, _attachments, _voice):
+            dispatched.append(text)
+            w.busy = True
+        w._process_chat_request = process
+        ren = w.sessions["ren"]
+        coordinator = w._chat_coordinator(ren)
+        coordinator.submit(ChatRequest.create("first"), force_queue=True)
+        coordinator.submit(ChatRequest.create("second"), busy=True)
+
+        w._send_next_pending(ren)
+        scheduled.pop(0)()
+        self.assertEqual(dispatched, ["first"])
+        self.assertEqual(coordinator.pending_count, 1)
+        ren.busy = False  # first response completed
+        w._send_next_pending(ren)
+        scheduled.pop(0)()
+        self.assertEqual(dispatched, ["first", "second"])
+        self.assertEqual(coordinator.pending_count, 0)
+
+    def test_removed_session_is_disposed_only_after_queued_and_worker_work_finishes(self):
+        from kira.chat.coordinator import ChatRequest
+        w = self.win
+        scheduled = []
+        w._schedule_chat_callback = scheduled.append
+        w._process_chat_request = lambda *_args: None
+        ren = w.sessions["ren"]
+        coordinator = w._chat_coordinator(ren)
+        coordinator.submit(ChatRequest.create("finish this queued turn"), force_queue=True)
+
+        class FakeWorker:
+            running = True
+            deleted = False
+            def isRunning(self):
+                return self.running
+            def deleteLater(self):
+                self.deleted = True
+
+        worker = FakeWorker()
+        ren.worker = worker
+        profiles = dict(w.character_service.all_profiles(w.settings))
+        profiles.pop("ren", None)
+        with mock.patch.object(w.character_service, "all_profiles", return_value=profiles):
+            w.sync_sessions()
+            self.assertIs(w.sessions["ren"], ren)  # pending request and running worker keep ownership alive
+            w._send_next_pending(ren)
+            scheduled.pop(0)()
+            w._send_next_pending(ren)
+            self.assertEqual(len(scheduled), 1)  # cleanup is deferred to the event loop
+            scheduled.pop(0)()
+            self.assertIs(w.sessions.get("ren"), ren)  # active worker still prevents disposal
+            worker.running = False
+            w.sync_sessions()
+
+        self.assertNotIn("ren", w.sessions)
+        self.assertEqual(coordinator.pending_count, 0)
+        self.assertTrue(worker.deleted)
+        self.assertIsNone(ren.worker)
+        self.assertIsNone(ren.coordinator)
+
+    def test_application_shutdown_clears_all_session_coordinator_queues(self):
+        from kira.chat.coordinator import ChatRequest
+        w = self.win
+        for session in w.sessions.values():
+            w._chat_coordinator(session).submit(ChatRequest.create(session.cid), force_queue=True)
+            session.dispatch_scheduled = True
+        w._clear_chat_coordinator_queues()
+        for session in w.sessions.values():
+            self.assertEqual(session.coordinator.pending_count, 0)
+            self.assertFalse(session.dispatch_scheduled)
     def test_every_chat_has_its_own_router(self):
         routers = {id(s.client) for s in self.win.sessions.values()}
         self.assertEqual(len(routers), len(self.win.sessions))
