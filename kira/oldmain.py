@@ -645,6 +645,7 @@ class MainWindow(QMainWindow):
         coordinator = getattr(session, "coordinator", None)
         if coordinator is not None:
             coordinator.clear()
+        session.coordinator = None  # release the MainWindow-bound dispatch closure with the removed session
         session.dispatch_scheduled = False
         if session.client is not None:
             session.client.cancel()
