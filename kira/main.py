@@ -2776,12 +2776,9 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "_neon_widget_effects"):
             self._neon_widget_effects = {}
 
+        # Panel borders are handled by the stylesheet; avoid effects on containers because
+        # Qt may composite their child text and inputs into the shadow source.
         targets = []
-        for widget in self.findChildren(QGroupBox):
-            targets.append((widget, palette["main"], 12 + intensity * 0.16, 12 + intensity * 0.38))
-        for widget in self.findChildren(QFrame):
-            if widget.objectName() in ("avatarCard", "chatCard", "attTile"):
-                targets.append((widget, palette["second"], 20 + intensity * 0.18, 18 + intensity * 0.62))
         for widget in self.findChildren(QToolButton):
             if widget.property("kiraIconName") or widget.objectName() in ("sendBtn", "genStop", "menuBtn"):
                 targets.append((widget, palette["second"], 10 + intensity * 0.18, 18 + intensity * 0.68))
