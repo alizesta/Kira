@@ -54,6 +54,7 @@ class ChatSession:
         self.client = None          # HybridRouter of this chat (own cancel flag, so Stop stops only this character)
         self.relay = None           # SessionRelay: receives this chat's worker signals on the GUI thread
         self.coordinator = None     # Per-session ChatCoordinator, composed by the application adapter
+        self.dispatch_scheduled = False  # A dequeued request is waiting for its GUI-thread dispatch callback
         self.badge = ("idle", None)  # last route-indicator state (shown when this chat is in front)
         self.theme = None
         self.draft = ""             # text typed but not sent yet
