@@ -5219,8 +5219,6 @@ class MainWindow(QMainWindow):
     def _clear_chat_coordinator_queues(self):
         """Drop scheduled/pending messages during application shutdown; workers are cancelled separately."""
         self.chat_application_service.dispose()
-        for session in getattr(self, "sessions", {}).values():
-            session.dispatch_scheduled = False
 
     def closeEvent(self, event):
         if (getattr(self, "tray", None) is not None and self.settings.get("close_to_tray")
