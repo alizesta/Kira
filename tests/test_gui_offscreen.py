@@ -89,6 +89,12 @@ class GuiTests(unittest.TestCase):
         self.assertIsInstance(window.api_add_panel, ApiAddPanel)
         self.assertTrue(window.api_add_panel.isAncestorOf(window.api_key_edit))
         self.assertTrue(window.api_add_panel.isAncestorOf(window.model_filter))
+        from kira.ui.components import ChatHeader
+        self.assertIsInstance(window.chat_header, ChatHeader)
+        self.assertTrue(window.chat_header.isAncestorOf(window.title))
+        self.assertTrue(window.chat_header.isAncestorOf(window.mood_emotion_icon))
+        self.assertTrue(window.chat_header.isAncestorOf(window.mood_indicator))
+        self.assertTrue(window.chat_header.isAncestorOf(window.companion_btn))
         self.assertIsInstance(window.mcp_registry_panel, McpRegistryPanel)
         self.assertTrue(window.mcp_registry_panel.isAncestorOf(window.mcp_registry_list))
         self.assertTrue(window.mcp_registry_panel.isAncestorOf(window.mcp_registry_query))
