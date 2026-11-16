@@ -21,6 +21,7 @@ from . import routes as route_model
 from .leak_guard import LeakGuard, clean_final
 from .ollama_client import OllamaClient, OllamaError
 from .core.interfaces.chat_provider import ChatProvider
+from .infrastructure.providers import ProviderRegistry
 
 COOLDOWN_RATE_LIMIT = 300      # seconds after HTTP 429 (or Retry-After, capped)
 COOLDOWN_TRANSIENT = 45        # network / timeout / 5xx (default; each route can override it)
@@ -524,12 +525,14 @@ PROVIDER_CLASSES = {
     "mistral": MistralProvider,
     "openrouter": OpenRouterProvider,
 }
+PROVIDER_REGISTRY = ProviderRegistry(PROVIDER_CLASSES)
 
 
 def provider_class(name, cfg=None):
-    """Adapter class for a provider id (built-in or user-added). None when unknown / local Ollama."""
-    if name in PROVIDER_CLASSES:
-        return PROVIDER_CLASSES[name]
+    """Resolve a registered adapter, then support configured OpenAI-compatible endpoints."""
+    registered = PROVIDER_REGISTRY.resolve(name)
+    if registered is not None:
+        return registered
     if name == "ollama":
         return None
     if cfg is not None and route_model.provider_type(name, cfg) == "openai_compat":
