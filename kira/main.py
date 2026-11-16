@@ -66,7 +66,7 @@ from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_perm
 from .chat_code_ui import CodeChat
 from .ui.components import ModelCombo
 from .ui.dialogs import MemoryDialog, ModelPickerDialog
-from .ui.pages import AppearancePage, CharactersPage, HelpPage, VoicePage
+from .ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, VoicePage
 from .ui.workers import (
     AttachWorker,
     BenchWorker,
@@ -429,6 +429,8 @@ class MainWindow(QMainWindow):
         self.refresh_tab_buttons()
         if hasattr(self, "help_page"):
             self.help_page.retranslate()
+        if hasattr(self, "assistant_page"):
+            self.assistant_page.retranslate()
         if hasattr(self, "voice_page"):
             self.voice_page.retranslate()
         if hasattr(self, "appearance_page"):
@@ -1270,77 +1272,31 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(page, "")
 
     def build_assistant_section(self):
-        s = self.settings
-        box1, f1 = self.group("g_assistant")
-        self.name = self.row(f1, "name", QLineEdit(s["assistant_name"]))
-        self.persona = QTextEdit()
-        self.persona.setPlainText(s["persona"])
-        self.persona.setMinimumHeight(110)
-        self.row(f1, "persona", self.persona)
-        self.modes_chk = QCheckBox()
-        self.modes_chk.setChecked(bool(s.get("active_modes", True)))
-        self.reg(self.modes_chk.setText, "active_modes")
-        self.reg(self.modes_chk.setToolTip, "active_modes_tip")
-        f1.addRow(self.modes_chk)
-        self.temp = self.row(f1, "temp", QComboBox())
-        self.temp.addItems(["0.2", "0.4", "0.7", "0.9", "1.0"])
-        self.temp.setCurrentText(str(s.get("temperature", 0.7)))
-        box2, f2 = self.group("g_model")
-        ocfg = s.get("providers", {}).get("ollama", {})
-        local_route_note = QLabel("فعال‌سازی و اولویت Ollama از بخش Route مدیریت می‌شود.")
-        local_route_note.setObjectName("hint")
-        local_route_note.setWordWrap(True)
-        f2.addRow(local_route_note)
-        self.model = self.row(f2, "model", ModelCombo(s["model"]))
-        self.url = self.row(f2, "url", QLineEdit(s["ollama_url"]))
-        self.use_qwen_btn = QPushButton()
-        self.reg(self.use_qwen_btn.setText, "o_use_qwen")
-        self.use_qwen_btn.clicked.connect(lambda: self.model.setText("qwen3.5:4b"))
-        f2.addRow(self.use_qwen_btn)
-        self.num_ctx = self.row(f2, "o_ctx", QSpinBox())
-        self.num_ctx.setRange(1024, 32768)
-        self.num_ctx.setSingleStep(1024)
-        self.num_ctx.setValue(clamp_num_ctx(ocfg.get("num_ctx", DEFAULT_NUM_CTX)))
-        self.num_predict = self.row(f2, "o_predict", QSpinBox())
-        self.num_predict.setRange(32, 4096)
-        self.num_predict.setSingleStep(64)
-        self.num_predict.setValue(clamp_num_predict(ocfg.get("num_predict", DEFAULT_NUM_PREDICT)))
-        self.keep_alive = self.row(f2, "o_keep", QComboBox())
-        self.keep_alive.setEditable(True)
-        self.keep_alive.addItems(["0", "30s", "2m", "5m", "15m"])
-        self.keep_alive.setCurrentText(str(ocfg.get("keep_alive", DEFAULT_KEEP_ALIVE)))
-        keep_hint = QLabel()
-        keep_hint.setObjectName("hint")
-        keep_hint.setWordWrap(True)
-        self.reg(keep_hint.setText, "o_keep_hint")
-        f2.addRow(keep_hint)
-        self.conn_btn = QPushButton()
-        self.reg(self.conn_btn.setText, "check_conn")
-        self.conn_btn.clicked.connect(self.test_connection)
-        self.load_btn = QPushButton()
-        self.reg(self.load_btn.setText, "o_load")
-        self.load_btn.clicked.connect(self.load_local_model)
-        self.unload_btn = QPushButton()
-        self.reg(self.unload_btn.setText, "o_unload")
-        self.unload_btn.clicked.connect(self.unload_local_model)
-        h = QHBoxLayout()
-        h.addWidget(self.conn_btn)
-        h.addWidget(self.load_btn)
-        h.addWidget(self.unload_btn)
-        f2.addRow(h)
-        self.speed_btn = QPushButton()
-        self.reg(self.speed_btn.setText, "o_speed")
-        self.speed_btn.clicked.connect(self.speed_test)
-        f2.addRow(self.speed_btn)
-        self.conn_lbl = QLabel()
-        self.conn_lbl.setWordWrap(True)
-        f2.addRow(self.conn_lbl)
-        game_note = QLabel()
-        game_note.setObjectName("hint")
-        game_note.setWordWrap(True)
-        self.reg(game_note.setText, "o_game_note")
-        f2.addRow(game_note)
-        self.tabs.addTab(self.page(box1, box2), "")
+        """Host the independent assistant settings page and bind application actions."""
+        ollama = self.settings.get("providers", {}).get("ollama", {})
+        self.assistant_page = AssistantPage(
+            self.settings,
+            self.t,
+            model_combo_factory=ModelCombo,
+            num_ctx=clamp_num_ctx(ollama.get("num_ctx", DEFAULT_NUM_CTX)),
+            num_predict=clamp_num_predict(ollama.get("num_predict", DEFAULT_NUM_PREDICT)),
+            keep_alive=str(ollama.get("keep_alive", DEFAULT_KEEP_ALIVE)),
+            parent=self,
+        )
+        # Compatibility aliases keep existing persistence/controller code stable while
+        # the remaining settings orchestration is extracted in later steps.
+        for name in (
+            "name", "persona", "modes_chk", "temp", "model", "url", "use_qwen_btn",
+            "num_ctx", "num_predict", "keep_alive", "conn_btn", "load_btn",
+            "unload_btn", "speed_btn", "conn_lbl",
+        ):
+            setattr(self, name, getattr(self.assistant_page, name))
+
+        self.assistant_page.test_connection_requested.connect(self.test_connection)
+        self.assistant_page.load_model_requested.connect(self.load_local_model)
+        self.assistant_page.unload_model_requested.connect(self.unload_local_model)
+        self.assistant_page.speed_test_requested.connect(self.speed_test)
+        self.tabs.addTab(self.assistant_page, "")
 
     def build_voice_tab(self):
         """Compose the independent Voice page and connect its intent signals."""
