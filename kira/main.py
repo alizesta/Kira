@@ -6368,11 +6368,9 @@ class MainWindow(QMainWindow):
 
 
 def main():
-    app = QApplication(sys.argv)
-    app.setStyleSheet(build_style(winfx.active_effect(load_settings().get("window_effect"))))
-    win = MainWindow()
-    win.show()
-    sys.exit(app.exec())
+    # Keep this legacy entry point stable while application startup moves into app/.
+    from .app.bootstrap import run_application
+    run_application()
 
 
 if __name__ == "__main__":
