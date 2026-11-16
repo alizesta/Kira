@@ -60,5 +60,18 @@ class DependencyContainerTests(unittest.TestCase):
             DependencyContainer().resolve("missing")
 
 
+class ExtractedUiComponentTests(unittest.TestCase):
+    def test_model_combo_is_exported_from_ui_components(self):
+        from kira.ui.components import ModelCombo
+
+        self.assertEqual(ModelCombo.__module__, "kira.ui.components.model_combo")
+
+    def test_dialogs_are_exported_without_importing_main_window(self):
+        from kira.ui.dialogs import MemoryDialog, ModelPickerDialog
+
+        self.assertEqual(MemoryDialog.__module__, "kira.ui.dialogs.memory")
+        self.assertEqual(ModelPickerDialog.__module__, "kira.ui.dialogs.model_picker")
+
+
 if __name__ == "__main__":
     unittest.main()
