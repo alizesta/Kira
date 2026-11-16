@@ -4968,9 +4968,12 @@ class MainWindow(QMainWindow):
     def save_message(self, role, content, *, status="complete", metadata=None):
         """Persist one message through the history contract; interrupted streams remain explicitly incomplete."""
         try:
-            ok = self.chat_history_service.add_message(
-                role, content, self.cur.cid, status=status, metadata=metadata
-            )
+            if status == "complete" and metadata is None:
+                ok = self.chat_history_service.add_message(role, content, self.cur.cid)
+            else:
+                ok = self.chat_history_service.add_message(
+                    role, content, self.cur.cid, status=status, metadata=metadata
+                )
         except Exception as exc:                                  # noqa: BLE001
             ok = False
             self.chat_history_service.set_last_error(f"{type(exc).__name__}: {exc}")
