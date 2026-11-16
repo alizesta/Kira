@@ -66,7 +66,7 @@ from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_perm
 from .chat_code_ui import CodeChat
 from .ui.components import ModelCombo
 from .ui.dialogs import MemoryDialog, ModelPickerDialog
-from .ui.pages import HelpPage
+from .ui.pages import HelpPage, VoicePage
 from .ui.workers import (
     AttachWorker,
     BenchWorker,
@@ -429,6 +429,8 @@ class MainWindow(QMainWindow):
         self.refresh_tab_buttons()
         if hasattr(self, "help_page"):
             self.help_page.retranslate()
+        if hasattr(self, "voice_page"):
+            self.voice_page.retranslate()
         if hasattr(self, "_menu_actions"):
             for action, key in zip(self._menu_actions, self.tab_keys):
                 action.setText(self.t(key))
@@ -900,7 +902,7 @@ class MainWindow(QMainWindow):
         for index, button in enumerate(getattr(self, "nav_buttons", [])):
             button.setChecked(i == self._nav_icon_map[index][1])
         self.save_btn.setVisible(i != 0)            # the chat page needs no Save button
-        if hasattr(self, "_voice_form") and i == self.tab_keys.index("tab_voice"):
+        if hasattr(self, "voice_page") and i == self.tab_keys.index("tab_voice"):
             self.refresh_voice_caps()               # Refresh local-only speech status
 
     def resizeEvent(self, event):
@@ -1337,117 +1339,17 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.page(box1, box2), "")
 
     def build_voice_tab(self):
-        s = self.settings
-        mic_box = QGroupBox("میکروفن")
-        mic_form = QFormLayout(mic_box)
-        mic_form.setContentsMargins(8, 6, 8, 6)
-        mic_form.setHorizontalSpacing(8)
-        mic_form.setVerticalSpacing(4)
-        self.mic_device = self.row(mic_form, "mic_device", QComboBox())
-        self.fill_mic_devices(str(s.get("mic_device") or ""))
-        self.engine_lbl = self.row(mic_form, "engine", QLabel())
-        self.mic_gain = self.row(mic_form, "mic_gain", QSlider(Qt.Horizontal))
-        self.mic_gain.setRange(50, 300)
-        self.mic_gain.setValue(int(s.get("mic_gain", 100)))
-        self.mic_sens = self.row(mic_form, "mic_sens", QSlider(Qt.Horizontal))
-        self.mic_sens.setRange(50, 200)
-        self.mic_sens.setValue(int(s.get("mic_sensitivity", 100)))
-        self.barge_chk = QCheckBox()
-        self.barge_chk.setChecked(bool(s.get("barge_in", True)))
-        self.reg(self.barge_chk.setText, "barge_in")
-        mic_form.addRow(self.barge_chk)
-        self.wake_timeout = self.row(mic_form, "wake_timeout", QSpinBox())
-        self.wake_timeout.setRange(5, 120)
-        self.wake_timeout.setValue(int(s["wake_timeout"]))
-
-        output_box = QGroupBox("خروجی صدا")
-        output_form = QFormLayout(output_box)
-        output_form.setContentsMargins(8, 6, 8, 6)
-        output_form.setHorizontalSpacing(8)
-        output_form.setVerticalSpacing(4)
-        self.volume = self.row(output_form, "volume", QSlider(Qt.Horizontal))
-        self.volume.setRange(0, 100)
-        self.volume.setValue(int(float(s["voice_volume"]) * 100))
-        self.out_device = self.row(output_form, "output_device", QComboBox())
-        self.fill_output_devices(str(s.get("output_device") or ""))
-
-        stt_box = QGroupBox("تشخیص گفتار (STT)")
-        f2 = QFormLayout(stt_box)
-        f2.setContentsMargins(8, 6, 8, 6)
-        f2.setHorizontalSpacing(8)
-        f2.setVerticalSpacing(4)
-        self.stt_lang = self.row(f2, "stt_lang", QComboBox())
-        self.stt_lang.addItems(["fa", "en", "auto"])
-        self.stt_lang.setCurrentText(s["stt_language"])
-        self.whisper = self.row(f2, "whisper", QComboBox())
-        self.whisper.setEditable(True)
-        self.whisper.addItems(["base", "small", "medium", "large-v3-turbo", "large-v3", "parseh/whisper-fa-accuracy-ct2"])
-        self.whisper.setCurrentText(s["whisper_model"])
-        self.reg(self.whisper.setToolTip, "whisper_tip")
-        self.whisper_browse_btn = QPushButton("انتخاب پوشه مدل")
-        self.whisper_browse_btn.clicked.connect(self.choose_local_whisper_folder)
-        self.whisper_download_btn = QPushButton("نصب مدل انتخاب‌شده")
-        self.whisper_download_btn.clicked.connect(self.download_local_whisper_model)
-        stt_actions = QHBoxLayout()
-        stt_actions.addWidget(self.whisper_download_btn)
-        stt_actions.addWidget(self.whisper_browse_btn)
-        f2.addRow(stt_actions)
-
-        tts_box = QGroupBox("تولید گفتار (TTS)")
-        f1 = QFormLayout(tts_box)
-        f1.setContentsMargins(8, 6, 8, 6)
-        f1.setHorizontalSpacing(8)
-        f1.setVerticalSpacing(4)
-        self.speak_chk = QCheckBox()
-        self.speak_chk.setChecked(bool(s.get("speak_replies", True)))
-        self.speak_chk.toggled.connect(self.set_voice_enabled)
-        self.reg(self.speak_chk.setText, "speak_on")
-        f1.addRow(self.speak_chk)
-        self.stream_chk = QCheckBox("خواندن پیوسته‌ی پاسخ")
-        self.stream_chk.setChecked(bool(s.get("stream_speech", True)))
-        f1.addRow(self.stream_chk)
-        self.rate = QSpinBox()
-        self.rate.setRange(-30, 30)
-        self.rate.setSuffix(" %")
-        self.rate.setValue(int(s.get("voice_rate", 0)))
-        f1.addRow("سرعت گفتار محلی", self.rate)
-        self.voice_caps_note = QLabel("ورودی و خروجی گفتار فقط با موتورهای محلی اجرا می‌شوند.")
-        self.voice_caps_note.setWordWrap(True)
-        f1.addRow(self.voice_caps_note)
-        self._voice_form = f1
-
-        host = QWidget()
-        grid = QGridLayout(host)
-        grid.setContentsMargins(6, 6, 6, 6)
-        grid.setHorizontalSpacing(8)
-        grid.setVerticalSpacing(8)
-        for box in (mic_box, output_box, stt_box, tts_box):
-            box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            box.setMinimumWidth(0)
-        grid.addWidget(mic_box, 0, 0)
-        grid.addWidget(output_box, 0, 1)
-        grid.addWidget(stt_box, 1, 0)
-        grid.addWidget(tts_box, 1, 1)
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
-        grid.setRowStretch(0, 1)
-        grid.setRowStretch(1, 1)
-        sc = QScrollArea()
-        sc.setWidgetResizable(True)
-        sc.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        sc.setWidget(host)
-
-        self._voice_save_timer = QTimer(self)
-        self._voice_save_timer.setSingleShot(True)
-        self._voice_save_timer.setInterval(400)
-        self._voice_save_timer.timeout.connect(self.autosave_voice)
-        for w in (self.volume, self.mic_gain, self.mic_sens, self.rate):
-            w.valueChanged.connect(lambda *_: self._voice_save_timer.start())
-        for w in (self.out_device, self.mic_device):
-            w.currentIndexChanged.connect(lambda *_: self._voice_save_timer.start())
+        """Compose the independent Voice page and connect its intent signals."""
+        self.voice_page = VoicePage(self.settings, self.t, parent=self)
+        self.voice_page.voice_enabled_requested.connect(self.set_voice_enabled)
+        self.voice_page.choose_whisper_folder_requested.connect(self.choose_local_whisper_folder)
+        self.voice_page.download_whisper_requested.connect(self.download_local_whisper_model)
+        self.voice_page.autosave_requested.connect(self.autosave_voice)
+        self.tabs.addTab(self.voice_page, "")
+        self.fill_mic_devices(str(self.settings.get("mic_device") or ""))
+        self.fill_output_devices(str(self.settings.get("output_device") or ""))
         self.refresh_voice_caps()
-        self.tabs.addTab(sc, "")
-    # ---- local Persian voice engines ----
+
     def set_local_voice_option(self, key, enabled):
         self.settings[key] = bool(enabled)
         self.save_now()
@@ -1494,20 +1396,20 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "پوشه مدل Whisper را انتخاب کن", str(Path.home()))
         if not folder:
             return
-        self.whisper.setCurrentText(folder)
+        self.voice_page.whisper.setCurrentText(folder)
         self.settings["whisper_model"] = folder
         self.save_now()
         self.local_voice_status.setText(f"مدل Whisper از سیستم انتخاب شد: {folder}")
 
     def download_local_whisper_model(self):
-        value = str(self.whisper.currentText() or "").strip()
+        value = str(self.voice_page.whisper.currentText() or "").strip()
         if value.casefold() == "qwen/qwen3-asr-0.6b":
             self.local_asr_path_edit.setText(value)
             self.local_voice_status.setText("در حال نصب موتور Qwen ASR و دانلود مدل محلی…")
             from . import local_voice
             self._run_local_voice_task(
                 lambda: local_voice.install_and_download_qwen_asr(value),
-                self.whisper_download_btn, self._on_local_qwen_downloaded
+                self.voice_page.whisper_download_btn, self._on_local_qwen_downloaded
             )
             return
         if Path(value).expanduser().is_dir():
@@ -1528,7 +1430,7 @@ class MainWindow(QMainWindow):
         from . import local_voice
         self.local_voice_status.setText("در حال نصب موتور faster-whisper و دانلود مدل…")
         self._run_local_voice_task(lambda: local_voice.install_and_download_whisper(repo_id),
-                                   self.whisper_download_btn, self._on_whisper_downloaded)
+                                   self.voice_page.whisper_download_btn, self._on_whisper_downloaded)
 
     def _on_whisper_downloaded(self, result):
         ok, value = result
@@ -1536,7 +1438,7 @@ class MainWindow(QMainWindow):
             self.local_voice_status.setText(f"دانلود مدل STT ناموفق بود: {value}")
             return
         self.settings["whisper_model"] = str(value)
-        self.whisper.setCurrentText(str(value))
+        self.voice_page.whisper.setCurrentText(str(value))
         self.save_now()
         from . import local_voice
         self.local_voice_status.setText(
@@ -1575,9 +1477,9 @@ class MainWindow(QMainWindow):
         value = self.local_whisper_path.text().strip() or "small"
         self.settings["whisper_model"] = value
         if hasattr(self, "whisper"):
-            if self.whisper.findText(value) < 0:
-                self.whisper.addItem(value)
-            self.whisper.setCurrentText(value)
+            if self.voice_page.whisper.findText(value) < 0:
+                self.voice_page.whisper.addItem(value)
+            self.voice_page.whisper.setCurrentText(value)
         self.save_now()
         self.add_chat("system", "مدل STT محلی به‌روزرسانی شد.")
 
@@ -1977,8 +1879,8 @@ class MainWindow(QMainWindow):
 
     # ---- voice: devices, supported controls, autosave ----
     def fill_output_devices(self, current):
-        self.out_device.clear()
-        self.out_device.addItem(self.t("dev_default"), "")
+        self.voice_page.out_device.clear()
+        self.voice_page.out_device.addItem(self.t("dev_default"), "")
         try:
             from PySide6.QtMultimedia import QMediaDevices
             seen = set()
@@ -1986,15 +1888,15 @@ class MainWindow(QMainWindow):
                 name = dev.description()
                 if name and name not in seen:
                     seen.add(name)
-                    self.out_device.addItem(name, name)
+                    self.voice_page.out_device.addItem(name, name)
         except Exception:                                      # noqa: BLE001 - no audio backend: only the default entry
             pass
-        i = self.out_device.findData(current)
-        self.out_device.setCurrentIndex(i if i >= 0 else 0)
+        i = self.voice_page.out_device.findData(current)
+        self.voice_page.out_device.setCurrentIndex(i if i >= 0 else 0)
 
     def fill_mic_devices(self, current):
-        self.mic_device.clear()
-        self.mic_device.addItem(self.t("dev_default"), "")
+        self.voice_page.mic_device.clear()
+        self.voice_page.mic_device.addItem(self.t("dev_default"), "")
         try:
             import sounddevice as sd
             seen = set()
@@ -2002,21 +1904,21 @@ class MainWindow(QMainWindow):
                 name = str(dev.get("name") or "")
                 if dev.get("max_input_channels", 0) > 0 and name and name not in seen:
                     seen.add(name)
-                    self.mic_device.addItem(name, name)
+                    self.voice_page.mic_device.addItem(name, name)
         except Exception:                                      # noqa: BLE001 - sounddevice missing: only the default entry
             pass
-        i = self.mic_device.findData(current)
-        self.mic_device.setCurrentIndex(i if i >= 0 else 0)
+        i = self.voice_page.mic_device.findData(current)
+        self.voice_page.mic_device.setCurrentIndex(i if i >= 0 else 0)
 
     def refresh_voice_caps(self):
         """State the local-only speech policy in the Voice page."""
-        self.voice_caps_note.setText("میکروفن و بلندگو با STT/TTS محلی کار می‌کنند؛ هیچ صدای ابری یا آنلاین استفاده نمی‌شود.")
+        self.voice_page.voice_caps_note.setText("میکروفن و بلندگو با STT/TTS محلی کار می‌کنند؛ هیچ صدای ابری یا آنلاین استفاده نمی‌شود.")
 
     def collect_voice_settings(self):
         s = self.settings
-        s.update({"voice_rate": self.rate.value(), "voice_volume": self.volume.value() / 100.0,
-                  "output_device": self.out_device.currentData() or "", "mic_device": self.mic_device.currentData() or "",
-                  "mic_gain": self.mic_gain.value(), "mic_sensitivity": self.mic_sens.value()})
+        s.update({"voice_rate": self.voice_page.rate.value(), "voice_volume": self.voice_page.volume.value() / 100.0,
+                  "output_device": self.voice_page.out_device.currentData() or "", "mic_device": self.voice_page.mic_device.currentData() or "",
+                  "mic_gain": self.voice_page.mic_gain.value(), "mic_sensitivity": self.voice_page.mic_sens.value()})
 
     def autosave_voice(self):
         """Voice sliders / devices are saved as soon as they are changed (the Save button is not needed for them)."""
@@ -3997,14 +3899,14 @@ class MainWindow(QMainWindow):
             "ollama_url": self.url.text().strip() or "http://localhost:11434",
             "persona": self.persona.toPlainText().strip(), "active_modes": self.modes_chk.isChecked(),
             "temperature": float(self.temp.currentText()),
-            "speak_replies": self.speak_chk.isChecked(), "stream_speech": self.stream_chk.isChecked(),
-            "voice_rate": self.rate.value(),
-            "voice_volume": self.volume.value() / 100.0,
-            "output_device": self.out_device.currentData() or "", "mic_device": self.mic_device.currentData() or "",
-            "mic_gain": self.mic_gain.value(),
-            "stt_language": self.stt_lang.currentText(), "whisper_model": self.whisper.currentText().strip() or "small",
-            "wake_timeout": self.wake_timeout.value(),
-            "mic_sensitivity": self.mic_sens.value(), "barge_in": self.barge_chk.isChecked(),
+            "speak_replies": self.voice_page.speak_chk.isChecked(), "stream_speech": self.voice_page.stream_chk.isChecked(),
+            "voice_rate": self.voice_page.rate.value(),
+            "voice_volume": self.voice_page.volume.value() / 100.0,
+            "output_device": self.voice_page.out_device.currentData() or "", "mic_device": self.voice_page.mic_device.currentData() or "",
+            "mic_gain": self.voice_page.mic_gain.value(),
+            "stt_language": self.voice_page.stt_lang.currentText(), "whisper_model": self.voice_page.whisper.currentText().strip() or "small",
+            "wake_timeout": self.voice_page.wake_timeout.value(),
+            "mic_sensitivity": self.voice_page.mic_sens.value(), "barge_in": self.voice_page.barge_chk.isChecked(),
             "companion_height": self.size_sl.value(),
             "follow_strength": self.follow_sl.value() / 100.0,
             "motion_strength": self.motion_sl.value() / 100.0,
@@ -5522,7 +5424,7 @@ class MainWindow(QMainWindow):
     # ---------- voice, microphone, wake mode ----------
     def set_voice_enabled(self, on):
         self.settings["speak_replies"] = bool(on)
-        for w in (self.voice_btn, self.speak_chk):
+        for w in (self.voice_btn, self.voice_page.speak_chk):
             w.blockSignals(True)
             w.setChecked(bool(on))
             w.blockSignals(False)
@@ -5650,7 +5552,7 @@ class MainWindow(QMainWindow):
             label = "STT محلی"
         else:
             label = "—"
-        self.engine_lbl.setText(label)
+        self.voice_page.engine_lbl.setText(label)
 
     def toggle_wake(self):
         if self.wake_btn.isChecked():
