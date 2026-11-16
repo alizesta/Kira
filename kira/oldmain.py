@@ -4841,13 +4841,13 @@ class MainWindow(QMainWindow):
         self.finish_request(res)
         if res.get("stopped"):
             if text.strip():
-                self.save_message("assistant", raw)
+                self.save_message("assistant", raw, status="cancelled", metadata={"stream": "stopped"})
             self.add_chat("system", "تولید پاسخ متوقف شد." + (" متن دریافت‌شده نگه داشته شد." if text.strip() else ""))
             if self._speech_live:
                 self.safe_stop_speaker()                           # the Stop button also silences the rest of the spoken reply
             self.animator.set_expression("neutral", hold=2)
         elif res.get("interrupted"):
-            self.save_message("assistant", raw)
+            self.save_message("assistant", raw, status="interrupted", metadata={"stream": "provider_interrupted"})
             self.add_chat("error", f"ارتباط وسط پاسخ قطع شد؛ بخش دریافت‌شده نگه داشته شد و تکرار نمی‌شود.\n{res['interrupted']}")
             if self._speech_live:
                 self.speaker.stream_end()                          # what arrived is still spoken to its end
@@ -4965,10 +4965,12 @@ class MainWindow(QMainWindow):
         self.animator.set_expression(expression, hold=4)
         self.say(text)
 
-    def save_message(self, role, content):
-        """Save to the chat database. A failure never blocks the chat: the text stays in memory and the person is told once."""
+    def save_message(self, role, content, *, status="complete", metadata=None):
+        """Persist one message through the history contract; interrupted streams remain explicitly incomplete."""
         try:
-            ok = self.chat_history_service.add_message(role, content, self.cur.cid)
+            ok = self.chat_history_service.add_message(
+                role, content, self.cur.cid, status=status, metadata=metadata
+            )
         except Exception as exc:                                  # noqa: BLE001
             ok = False
             self.chat_history_service.set_last_error(f"{type(exc).__name__}: {exc}")
@@ -5312,7 +5314,7 @@ class MainWindow(QMainWindow):
             with self._as(sess):
                 if self.busy and not self._bench_busy and self._stream_text.strip() and not self._partial_saved:
                     self._partial_saved = True
-                    self.save_message("assistant", self._stream_text)      # the half answer that was already on screen is not lost
+                    self.save_message("assistant", self._stream_text, status="interrupted", metadata={"stream": "window_closed"})  # retain the visible partial answer
         self._closing = True
         self._clear_chat_coordinator_queues()
         if getattr(self, "code_chat", None) is not None:
