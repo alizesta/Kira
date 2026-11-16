@@ -122,7 +122,9 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
     selected = str(model_path or "").strip()
     with _tts_lock:
         if selected:
-            path = Path(selected).expanduser().resolve()
+            # Preserve the Hugging Face snapshot path. Resolving its Windows cache
+            # symlink can point at a blob target that Piper cannot open.
+            path = Path(selected).expanduser().absolute()
             if not path.is_file() or path.suffix.lower() != ".onnx":
                 raise RuntimeError(f"Custom Piper model does not exist: {path}")
             try:
@@ -343,9 +345,10 @@ def discover_cached_models() -> dict:
                         asr_models.append({"id": repo_id, "path": str(snapshot)})
                         seen_asr.add(repo_id.casefold())
                 for onnx in snapshot.glob("*.onnx"):
-                    key = str(onnx.resolve()).casefold()
+                    key = str(onnx.absolute()).casefold()
                     if key not in seen_tts:
-                        tts_models.append({"name": onnx.stem, "path": str(onnx)})
+                        display_name = "Mana Persian Piper" if "mana" in onnx.stem.casefold() or "mana-persian-piper" in repo_id.casefold() else onnx.stem
+                        tts_models.append({"name": display_name, "path": str(onnx.absolute()), "repo_id": repo_id})
                         seen_tts.add(key)
     except OSError:
         pass
@@ -375,7 +378,8 @@ def discover_cached_models() -> dict:
             for onnx in resolved_root.rglob("*.onnx"):
                 key = str(onnx.resolve()).casefold()
                 if key not in seen_tts:
-                    tts_models.append({"name": onnx.stem, "path": str(onnx)})
+                    display_name = "Mana Persian Piper" if "mana" in onnx.stem.casefold() else onnx.stem
+                    tts_models.append({"name": display_name, "path": str(onnx.absolute()), "repo_id": ""})
                     seen_tts.add(key)
         except OSError:
             continue
