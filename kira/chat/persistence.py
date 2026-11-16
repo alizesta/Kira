@@ -796,10 +796,26 @@ class SqliteChatRepository:
         return int(row[0]) if row else None
 
     def rows_with_ids(self, limit=3000, after_id=0, character_id=None):
+        """Evidence-memory cursor API: rows must advance monotonically by message ID."""
         try:
-            rows = self.get_messages(limit=limit, after_id=after_id, character_id=character_id)
-            return [(row["id"], row["role"], row["content"], row["created_at"]) for row in rows]
-        except (sqlite3.Error, OSError):
+            with self._lock:
+                self._flush_pending_locked()
+                with self._db() as con:
+                    if character_id is None:
+                        rows = con.execute(
+                            "SELECT id, role, content, created_at FROM messages "
+                            "WHERE id > ? ORDER BY id ASC LIMIT ?",
+                            (int(after_id), max(0, int(limit))),
+                        ).fetchall()
+                    else:
+                        rows = con.execute(
+                            "SELECT id, role, content, created_at FROM messages "
+                            "WHERE id > ? AND character_id=? ORDER BY id ASC LIMIT ?",
+                            (int(after_id), _character_id(character_id), max(0, int(limit))),
+                        ).fetchall()
+            return [(int(row[0]), str(row[1]), str(row[2]), str(row[3] or "")) for row in rows]
+        except (sqlite3.Error, OSError) as exc:
+            self._note_error(exc)
             return []
 
     def max_message_id(self):
