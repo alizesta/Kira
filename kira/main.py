@@ -66,7 +66,7 @@ from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_perm
 from .chat_code_ui import CodeChat
 from .ui.components import ModelCombo
 from .ui.dialogs import MemoryDialog, ModelPickerDialog
-from .ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, VoicePage
+from .ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
 from .ui.workers import (
     AttachWorker,
     BenchWorker,
@@ -431,6 +431,8 @@ class MainWindow(QMainWindow):
             self.help_page.retranslate()
         if hasattr(self, "assistant_page"):
             self.assistant_page.retranslate()
+        if hasattr(self, "preferences_page"):
+            self.preferences_page.retranslate()
         if hasattr(self, "voice_page"):
             self.voice_page.retranslate()
         if hasattr(self, "appearance_page"):
@@ -2311,52 +2313,28 @@ class MainWindow(QMainWindow):
                                      checked=palette["main"], disabled="#52617B"))
 
     def build_general_tab(self):
-        box1, f1 = self.group("g_lang")
-        self.ui_lang = self.row(f1, "ui_lang", QComboBox())
-        self.ui_lang.addItem("فارسی", "fa")
-        self.ui_lang.addItem("English", "en")
-        self.ui_lang.setCurrentIndex(0 if self.settings.get("ui_lang", "fa") == "fa" else 1)
-        self.tavily_key = QLineEdit(self.settings.get("tavily_api_key", ""))
-        self.tavily_key.setEchoMode(QLineEdit.Password)
-        self.tavily_key.setPlaceholderText("tvly-…  (رایگان از tavily.com)")
-        self.tavily_key.setLayoutDirection(Qt.LeftToRight)
-        f1.addRow("کلید جست‌وجوی وب (Tavily)", self.tavily_key)
-        self.web_depth = QComboBox()
-        for value, label in websearch.DEPTHS.items():
-            self.web_depth.addItem(label, value)
-        self.web_depth.setCurrentIndex(max(0, self.web_depth.findData(self.settings.get("web_depth", "basic"))))
-        self.web_depth.setToolTip("«دقیق» دو برابر اعتبار مصرف می‌کند ولی برای چیزهای سخت مثل نام آهنگ و خواننده بهتر است.")
-        f1.addRow("عمق جست‌وجو", self.web_depth)
-        self.web_fallback_chk = QCheckBox("اگر Tavily کار نکرد، با Google (Gemini) و بعد DuckDuckGo جست‌وجو کن")
-        self.web_fallback_chk.setChecked(bool(self.settings.get("web_fallback", True)))
-        f1.addRow(self.web_fallback_chk)
-        self.web_test_btn = QPushButton("آزمایش جست‌وجوی وب")
-        self.web_test_btn.clicked.connect(self.test_web_search)
-        f1.addRow("", self.web_test_btn)
-        box2, f2 = self.group("g_memory")
-        btn = QPushButton()
-        self.reg(btn.setText, "clear_mem")
-        btn.clicked.connect(self.clear_chat)
-        f2.addRow(btn)
-        self.restore_chat_btn = QPushButton("بازگرداندن آخرین پاک‌سازی")
-        self.restore_chat_btn.clicked.connect(self.restore_cleared_chat)
-        f2.addRow(self.restore_chat_btn)
-        self.memory_btn = QPushButton("حافظه‌ی Kira درباره‌ی تو: مشاهده، ویرایش و حذف…")
-        self.memory_btn.clicked.connect(self.open_memory_dialog)
-        f2.addRow(self.memory_btn)
-        self.import_chat_btn = QPushButton("ورود گفتگو از نسخه‌ی قدیمی…")
-        self.import_chat_btn.clicked.connect(lambda: self.import_old_chat())
-        f2.addRow(self.import_chat_btn)
-        # About (mandatory version metadata: Version, Gregorian build date, 24h build time, detected developer)
-        box3, f3 = self.group("g_about")
-        self.about_labels = {}
-        for key, value in about.about_rows(VERSION):
-            label = QLabel(value)
-            label.setObjectName(key)
-            label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            self.about_labels[key] = self.row(f3, key, label)
+        """Compose preferences and help pages; the preferences widget owns its controls."""
+        self.preferences_page = PreferencesPage(
+            self.settings,
+            self.t,
+            web_depths=tuple(websearch.DEPTHS.items()),
+            about_rows=about.about_rows(VERSION),
+            parent=self,
+        )
+        for name in (
+            "ui_lang", "tavily_key", "web_depth", "web_fallback_chk", "web_test_btn",
+            "restore_chat_btn", "memory_btn", "import_chat_btn", "about_labels",
+        ):
+            setattr(self, name, getattr(self.preferences_page, name))
+
+        self.preferences_page.web_search_test_requested.connect(self.test_web_search)
+        self.preferences_page.clear_history_requested.connect(self.clear_chat)
+        self.preferences_page.restore_history_requested.connect(self.restore_cleared_chat)
+        self.preferences_page.open_memory_requested.connect(self.open_memory_dialog)
+        self.preferences_page.import_history_requested.connect(self.import_old_chat)
+
         subtabs = QTabWidget()
-        subtabs.addTab(self.page(box1, box2, box3), "")
+        subtabs.addTab(self.preferences_page, "")
         subtabs.addTab(self.build_help_tab(), "")
         self.general_subtabs = subtabs
         self.reg(lambda text: subtabs.setTabText(0, text), "tab_preferences")
