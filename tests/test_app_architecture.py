@@ -4,6 +4,20 @@ from kira.app.dependency_container import DependencyContainer
 from kira.app.event_bus import EventBus
 
 
+class ChatApplicationServiceArchitectureTests(unittest.TestCase):
+    def test_main_window_uses_application_service_not_chat_internals(self):
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "kira" / "oldmain.py").read_text(encoding="utf-8")
+        self.assertNotIn("from .chat.coordinator import", source)
+        self.assertNotIn("from .chat.context_builder import", source)
+        self.assertNotIn("from .chat.response_handler import", source)
+        self.assertNotIn("self.chat_history_service.", source)
+        self.assertIn("self.chat_application_service.submit_message", source)
+        self.assertIn("self.chat_application_service.start_provider_request", source)
+        self.assertIn("self.chat_application_service.persist_message", source)
+
+
 class EventBusTests(unittest.TestCase):
     def test_publish_notifies_subscribers(self):
         bus = EventBus()
