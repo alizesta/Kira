@@ -240,6 +240,11 @@ class ExtractedUiComponentTests(unittest.TestCase):
 
         self.assertEqual(ModelCombo.__module__, "kira.ui.components.model_combo")
 
+    def test_help_page_is_owned_by_ui_pages_package(self):
+        from kira.ui.pages import HelpPage
+
+        self.assertEqual(HelpPage.__module__, "kira.ui.pages.help_page")
+
     def test_dialogs_are_exported_without_importing_main_window(self):
         from kira.ui.dialogs import MemoryDialog, ModelPickerDialog
 
