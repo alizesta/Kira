@@ -142,6 +142,19 @@ class SqliteChatRepositoryTests(unittest.TestCase):
         self.assertEqual(self.persistence.message_count("ren"), 0)
         self.assertEqual(self.persistence.recent_messages(10, "mika"), [{"role": "user", "content": "mika"}])
 
+    def test_database_outage_keeps_pending_write_on_the_existing_active_conversation(self):
+        from unittest import mock
+
+        conversation = self.persistence.get_or_create_conversation("ren")
+        with mock.patch.object(self.repository, "_db", side_effect=sqlite3.OperationalError("database is locked")):
+            self.assertFalse(self.persistence.add_message("user", "pending", "ren"))
+        self.assertEqual(self.repository.pending_count(), 1)
+        self.assertEqual(self.repository._pending[0][3], conversation["id"])
+
+        self.assertTrue(self.persistence.add_message("assistant", "after recovery", "ren"))
+        rows = self.persistence.get_messages(character_id="ren", conversation_id=conversation["id"])
+        self.assertEqual([row["content"] for row in rows], ["pending", "after recovery"])
+
     def test_concurrent_saves_across_characters_are_not_lost(self):
         failures = []
         def worker(character):
