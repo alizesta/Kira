@@ -82,10 +82,13 @@ class GuiTests(unittest.TestCase):
         self.assertTrue(self.win.isVisible())
 
     def test_extracted_settings_pages_own_their_widgets(self):
-        from kira.ui.components import McpRegistryPanel, OllamaProviderPanel, RouteEditor
+        from kira.ui.components import ApiAddPanel, McpRegistryPanel, OllamaProviderPanel, RouteEditor
         from kira.ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
 
         window = self.win
+        self.assertIsInstance(window.api_add_panel, ApiAddPanel)
+        self.assertTrue(window.api_add_panel.isAncestorOf(window.api_key_edit))
+        self.assertTrue(window.api_add_panel.isAncestorOf(window.model_filter))
         self.assertIsInstance(window.mcp_registry_panel, McpRegistryPanel)
         self.assertTrue(window.mcp_registry_panel.isAncestorOf(window.mcp_registry_list))
         self.assertTrue(window.mcp_registry_panel.isAncestorOf(window.mcp_registry_query))
