@@ -40,15 +40,12 @@ from .face import AvatarView
 from .vrm_avatar import KiraAvatar
 from .emotion.backend_png import EmotionFaceAnimator
 from .emotion.director import EmotionDirector
-from .voice import Speaker, PIPER_FA
+from .voice import Speaker
 from .listener import Listener
 from .game_audio import GameAudioListener, is_important_game_audio
-from . import cloud_voice
-from . import voice_caps
 from . import modes
-from .cloud_voice_ui import CloudVoicePage
 from .speech_fixes import SpeechFixes
-from .strings import STR, TEST_LINES
+from .strings import STR
 from .personality import build_system_prompt
 from . import persona_memory
 from . import evidence_memory
@@ -76,10 +73,6 @@ WAKE_RE = re.compile(r"(?:(?:هی|سلام|hey|hi)[\s\u200c]*)?(?:کی[\s\u200c]
 STOP_RE = re.compile(r"^\W*(?:بس\s*کن|بسه|ساکت(?:\s*شو)?|صبر\s*کن|وایسا|وایستا|stop|be\s*quiet)\W*$", re.I)       # "just be quiet" is not a chat message
 SLEEP_RE = re.compile(r"بخواب|خداحافظ|شب بخیر|good\s*night", re.I)
 SOUNDS_DIR = ROOT / "assets" / "sounds"
-EDGE_FA = ["fa-IR-DilaraNeural", "fa-IR-FaridNeural"]
-EDGE_EN = ["en-US-AriaNeural", "en-US-JennyNeural", "en-US-GuyNeural", "en-GB-SoniaNeural", "en-GB-RyanNeural"]
-EDGE_JA = ["ja-JP-NanamiNeural", "ja-JP-KeitaNeural"]
-
 
 def load_reactions():
     try:
@@ -747,7 +740,6 @@ class MainWindow(QMainWindow):
         self.speaker.finished.connect(self._on_local_tts_playback_finished)
         self.speaker.cancelled.connect(self._on_local_tts_playback_cancelled)
         self.speaker.error.connect(self._on_local_tts_playback_error)
-        self.speaker.cloud_note.connect(self.on_cloud_note)
         self.wake_timer = QTimer(self)
         self.wake_timer.setSingleShot(True)
         self.wake_timer.timeout.connect(self.go_sleep)
@@ -773,29 +765,14 @@ class MainWindow(QMainWindow):
         self.build_appearance_tab()
         self.build_general_tab()
         self.build_ai_tab()
-        # Voice engines belong on the Voice page; keep Chat models in Connections.
+        # Keep local STT/TTS model management on the Voice page.
         voice_page = self.tabs.widget(self.tab_keys.index("tab_voice")) if hasattr(self, "tab_keys") else self.tabs.widget(2)
         voice_layout = voice_page.widget().layout()
-        # The Voice page uses a QGridLayout: append full-width model panels below
-        # the four compact microphone / TTS / STT panels.
+        # The Voice page uses a QGridLayout; append local model management below the device controls.
         voice_row = voice_layout.rowCount()
         if hasattr(self, "local_voice_box"):
             voice_layout.addWidget(self.local_voice_box, voice_row, 0, 1, 2)
             voice_row += 1
-        if hasattr(self, "cloud_model_tabs"):
-            self.voice_cloud_model_tabs = QTabWidget()
-            for model_kind in ("stt", "tts"):
-                model_index = next((i for i in range(self.cloud_model_tabs.count())
-                                    if self.cloud_model_tabs.tabText(i).lower() == model_kind), -1)
-                if model_index >= 0:
-                    model_page = self.cloud_model_tabs.widget(model_index)
-                    model_title = self.cloud_model_tabs.tabText(model_index)
-                    self.cloud_model_tabs.removeTab(model_index)
-                    self.voice_cloud_model_tabs.addTab(model_page, model_title)
-            if self.voice_cloud_model_tabs.count():
-                cloud_voice_box, cloud_voice_form = self.group("مدل‌های صوتی Cloud")
-                cloud_voice_form.addRow(self.voice_cloud_model_tabs)
-                voice_layout.addWidget(cloud_voice_box, voice_row, 0, 1, 2)
         self.refresh_local_voice_status()
         self.save_btn = QPushButton()
         self.save_btn.setObjectName("save")
@@ -900,10 +877,9 @@ class MainWindow(QMainWindow):
             for action, key in zip(self._menu_actions, self.tab_keys):
                 action.setText(self.t(key))
         if getattr(self, "cloud_page", None) is not None:
-            self.cloud_page.retranslate(self.t)
 
     def on_voice_error(self, message):
-        """Voice failures (e.g. no internet for edge-tts) are shown once per 10 minutes, not after every reply."""
+        """Local voice failures are rate-limited so a broken model does not flood the chat."""
         now = time.monotonic()
         if now - getattr(self, "_voice_err_at", -1e9) < 600:
             return
@@ -1806,22 +1782,6 @@ class MainWindow(QMainWindow):
         f2.addRow(game_note)
         self.tabs.addTab(self.page(box1, box2), "")
 
-    def voice_row(self, form, key, items, current, lang_key):
-        combo = QComboBox()
-        combo.setEditable(True)
-        combo.addItems(items)
-        combo.setCurrentText(current)
-        btn = QPushButton()
-        self.reg(btn.setText, "test")
-        btn.clicked.connect(lambda: self.test_voice(combo.currentText().strip(), lang_key))
-        h = QHBoxLayout()
-        h.addWidget(combo, 1)
-        h.addWidget(btn)
-        lab = QLabel()
-        self.reg(lab.setText, key)
-        form.addRow(lab, h)
-        return combo
-
     def build_voice_tab(self):
         s = self.settings
         mic_box = QGroupBox("میکروفن")
@@ -1889,27 +1849,16 @@ class MainWindow(QMainWindow):
         self.speak_chk.toggled.connect(self.set_voice_enabled)
         self.reg(self.speak_chk.setText, "speak_on")
         f1.addRow(self.speak_chk)
-        self.voice_fa = self.voice_row(f1, "voice_fa", EDGE_FA + [PIPER_FA], s["voice_fa"], "fa")
-        self.voice_en = self.voice_row(f1, "voice_en", EDGE_EN, s["voice_en"], "en")
-        self.stream_chk = QCheckBox()
+        self.stream_chk = QCheckBox("خواندن پیوسته‌ی پاسخ")
         self.stream_chk.setChecked(bool(s.get("stream_speech", True)))
-        self.voice_ja = QComboBox()
-        self.voice_ja.addItems(EDGE_JA)
-        self.voice_ja.setCurrentText(str(s.get("voice_ja") or EDGE_JA[0]))
+        f1.addRow(self.stream_chk)
         self.rate = QSpinBox()
-        self.rate.setRange(-50, 50)
-        self.rate.setValue(int(s["voice_rate"]))
-        self.pitch = QSpinBox()
-        self.pitch.setRange(-50, 50)
-        self.pitch.setValue(int(s["voice_pitch"]))
-        self.voice_style = QComboBox()
-        for key, label in cloud_voice.STYLE_LABELS.items():
-            self.voice_style.addItem(label, key)
-        self.voice_style.setCurrentIndex(max(0, self.voice_style.findData(str(s.get("voice_style") or ""))))
-        self.voice_style_deg = QSlider(Qt.Horizontal)
-        self.voice_style_deg.setRange(0, 100)
-        self.voice_style_deg.setValue(int(s.get("voice_style_degree", 50)))
-        self.voice_caps_note = QLabel()
+        self.rate.setRange(-30, 30)
+        self.rate.setSuffix(" %")
+        self.rate.setValue(int(s.get("voice_rate", 0)))
+        f1.addRow("سرعت گفتار محلی", self.rate)
+        self.voice_caps_note = QLabel("ورودی و خروجی گفتار فقط با موتورهای محلی اجرا می‌شوند.")
+        self.voice_caps_note.setWordWrap(True)
         self._voice_form = f1
 
         host = QWidget()
@@ -2505,20 +2454,12 @@ class MainWindow(QMainWindow):
         self.mic_device.setCurrentIndex(i if i >= 0 else 0)
 
     def refresh_voice_caps(self):
-        """Show a voice control only when an engine that is really in use supports it (and say which one)."""
-        try:
-            sup = voice_caps.supported(self.settings)
-            chain = " ← ".join(label for label, _ in voice_caps.chain(self.settings))
-        except Exception:                                      # noqa: BLE001
-            sup, chain = {c: ["?"] for c in voice_caps.CONTROLS}, ""
-        # These legacy controls are intentionally not inserted into the compact
-        # Voice UI. Do not call QFormLayout.setRowVisible() on widgets outside it.
-        self.voice_caps_note.setText(self.t("voice_caps_note", chain=chain or "-"))
+        """State the local-only speech policy in the Voice page."""
+        self.voice_caps_note.setText("میکروفن و بلندگو با STT/TTS محلی کار می‌کنند؛ هیچ صدای ابری یا آنلاین استفاده نمی‌شود.")
 
     def collect_voice_settings(self):
         s = self.settings
-        s.update({"voice_rate": self.rate.value(), "voice_pitch": self.pitch.value(), "voice_volume": self.volume.value() / 100.0,
-                  "voice_style": self.voice_style.currentData() or "", "voice_style_degree": self.voice_style_deg.value(),
+        s.update({"voice_rate": self.rate.value(), "voice_volume": self.volume.value() / 100.0,
                   "output_device": self.out_device.currentData() or "", "mic_device": self.mic_device.currentData() or "",
                   "mic_gain": self.mic_gain.value(), "mic_sensitivity": self.mic_sens.value()})
 
@@ -2528,39 +2469,24 @@ class MainWindow(QMainWindow):
         self.apply_character_voice_settings()
         self.save_now()
 
-    def build_cloud_voice_tab(self):
-        """Cloud Voice providers (keys, models, STT / TTS order, failover). Shown inside the Route section, next to the chat providers."""
-        service = cloud_voice.service()
-        LOAD_WARNINGS.extend(service.store.warnings)
-        self.cloud_page = CloudVoicePage(service, self.t, test_tts=self.test_cloud_voice, data_path=str(DATA_DIR / cloud_voice.FILE_NAME))
-        return self.cloud_page
-
     def show_voice_routes(self):
-        """Open the unified Connections page on its STT/TTS model section."""
+        """Open the local STT model controls in Connections."""
         self.go_tab(self.tab_keys.index("tab_ai"))
-        if hasattr(self, "cloud_model_tabs"):
-            self.cloud_model_tabs.setCurrentIndex(1)
+        if hasattr(self, "local_model_tabs"):
+            self.local_model_tabs.setCurrentIndex(1)
 
     def set_route_view(self, index):
-        # Backward-compatible helper for older UI actions; there is now one unified page.
-        if hasattr(self, "cloud_model_tabs") and int(index) == 1:
-            self.cloud_model_tabs.setCurrentIndex(1)
+        if hasattr(self, "local_model_tabs") and int(index) in (1, 2):
+            self.local_model_tabs.setCurrentIndex(int(index))
 
-    def test_cloud_voice(self):
-        if not cloud_voice.service().tts_ready():
-            self.add_chat("system", "صدای ابری آماده نیست: «از صدای ابری استفاده شود» را روشن کن و حداقل یک Provider معتبر و فعال داشته باش.")
-            return
-        self.animator.set_expression("happy", hold=3)
-        self.speaker.speak(TEST_LINES["fa" if self.settings.get("ui_lang", "fa") == "fa" else "en"])
-
-    def on_cloud_note(self, message):
-        """Cloud Voice switched key / provider or fell back to the local engine (the same note is not repeated within a minute)."""
+    def on_voice_note(self, message):
+        """Show local ASR fallback and warmup notes without flooding the conversation."""
         now = time.monotonic()
-        last = getattr(self, "_cloud_note_at", {})
+        last = getattr(self, "_voice_note_at", {})
         if now - last.get(message, -999) > 60:
             last[message] = now
-            self._cloud_note_at = last
-            self.add_chat("system", "🔁 " + message)
+            self._voice_note_at = last
+            self.add_chat("system", "🎙️ " + message)
 
     def build_characters_tab(self):
         s = self.settings
@@ -2608,42 +2534,17 @@ class MainWindow(QMainWindow):
         f.addRow(profile_row)
 
         voice_box, voice_form = self.group("تن صدا و سرعت شخصیت")
-        self.char_voice_fa = QComboBox()
-        self.char_voice_fa.setEditable(True)
-        self.char_voice_fa.addItems(EDGE_FA)
-        voice_form.addRow("صدای فارسی", self.char_voice_fa)
-        self.char_voice_en = QComboBox()
-        self.char_voice_en.setEditable(True)
-        self.char_voice_en.addItems(EDGE_EN)
-        voice_form.addRow("صدای انگلیسی", self.char_voice_en)
         self.char_voice_rate = QSpinBox()
-        self.char_voice_rate.setRange(-50, 50)
+        self.char_voice_rate.setRange(-30, 30)
         self.char_voice_rate.setSuffix(" %")
-        voice_form.addRow("سرعت گفتار", self.char_voice_rate)
-        self.char_voice_pitch = QSpinBox()
-        self.char_voice_pitch.setRange(-50, 50)
-        self.char_voice_pitch.setSuffix(" Hz")
-        voice_form.addRow("زیر و بمی صدا", self.char_voice_pitch)
+        voice_form.addRow("سرعت گفتار محلی", self.char_voice_rate)
         self.char_voice_volume = QSlider(Qt.Horizontal)
         self.char_voice_volume.setRange(0, 100)
         voice_form.addRow("بلندی صدا", self.char_voice_volume)
-        self.char_voice_style = QComboBox()
-        self.char_voice_style.addItem("پیش‌فرض", "")
-        for value, label in cloud_voice.STYLE_LABELS.items():
-            if value:
-                self.char_voice_style.addItem(label, value)
-        voice_form.addRow("حالت بیان", self.char_voice_style)
-        cloud_voice_row = QHBoxLayout()
-        self.char_cloud_provider = QComboBox()
-        self.char_cloud_provider.addItem("پیش‌فرض Provider", "")
-        for provider in cloud_voice.PROVIDERS:
-            self.char_cloud_provider.addItem(cloud_voice.LABELS[provider], provider)
-        self.char_cloud_voice_id = QLineEdit()
-        self.char_cloud_voice_id.setPlaceholderText("Voice ID ابری (اختیاری)")
-        self.char_cloud_voice_id.setLayoutDirection(Qt.LeftToRight)
-        cloud_voice_row.addWidget(self.char_cloud_provider)
-        cloud_voice_row.addWidget(self.char_cloud_voice_id, 1)
-        voice_form.addRow("صدای Cloud TTS", cloud_voice_row)
+        voice_note = QLabel("همه‌ی شخصیت‌ها از موتور Piper محلی استفاده می‌کنند؛ فقط سرعت و بلندی صدای هر شخصیت جداست.")
+        voice_note.setObjectName("hint")
+        voice_note.setWordWrap(True)
+        voice_form.addRow(voice_note)
         f.addRow(voice_box)
 
         resource_box, resource_form = self.group("منابع اختصاصی شخصیت")
@@ -2662,13 +2563,9 @@ class MainWindow(QMainWindow):
         self._character_save_timer.setSingleShot(True)
         self._character_save_timer.setInterval(550)
         self._character_save_timer.timeout.connect(lambda: self.save_character_settings(silent=True))
-        for widget in (self.char_voice_fa, self.char_voice_en, self.char_voice_style, self.char_cloud_provider):
-            widget.currentIndexChanged.connect(lambda *_: self._character_save_timer.start())
-            widget.editTextChanged.connect(lambda *_: self._character_save_timer.start()) if widget.isEditable() else None
-        for widget in (self.char_voice_rate, self.char_voice_pitch, self.char_voice_volume):
-            signal = widget.valueChanged
-            signal.connect(lambda *_: self._character_save_timer.start())
-        for widget in (self.char_cloud_voice_id, self.char_skills_edit, self.char_mcp_edit, self.char_connectors_edit):
+        self.char_voice_rate.valueChanged.connect(lambda *_: self._character_save_timer.start())
+        self.char_voice_volume.valueChanged.connect(lambda *_: self._character_save_timer.start())
+        for widget in (self.char_skills_edit, self.char_mcp_edit, self.char_connectors_edit):
             widget.textChanged.connect(lambda *_: self._character_save_timer.start())
 
         self.refresh_character_choices()
@@ -2761,39 +2658,12 @@ class MainWindow(QMainWindow):
     def refresh_character_controls(self):
         cid = characters.active_id(self.settings)
         voice = (self.settings.get("character_voice") or {}).get(cid) or {}
-        defaults = self.settings
-        pairs = (
-            (self.char_voice_fa, "voice_fa", EDGE_FA[0]),
-            (self.char_voice_en, "voice_en", EDGE_EN[0]),
-        )
-        for combo, key, fallback in pairs:
-            combo.blockSignals(True)
-            value = str(voice.get(key, defaults.get(key, fallback)) or fallback)
-            if combo.findText(value) < 0:
-                combo.addItem(value)
-            combo.setCurrentText(value)
-            combo.blockSignals(False)
-        for widget, key, fallback in (
-            (self.char_voice_rate, "voice_rate", 0),
-            (self.char_voice_pitch, "voice_pitch", 0),
-            (self.char_voice_volume, "voice_volume", 0.9),
-        ):
-            widget.blockSignals(True)
-            raw = voice.get(key, fallback if key != "voice_volume" else defaults.get(key, fallback))
-            widget.setValue(round(float(raw) * 100) if key == "voice_volume" else int(raw))
-            widget.blockSignals(False)
-        self.char_voice_style.blockSignals(True)
-        style = str(voice.get("voice_style", defaults.get("voice_style", "")) or "")
-        index = self.char_voice_style.findData(style)
-        self.char_voice_style.setCurrentIndex(max(0, index))
-        self.char_voice_style.blockSignals(False)
-        self.char_cloud_provider.blockSignals(True)
-        provider = str(voice.get("cloud_voice_provider") or "")
-        self.char_cloud_provider.setCurrentIndex(max(0, self.char_cloud_provider.findData(provider)))
-        self.char_cloud_provider.blockSignals(False)
-        self.char_cloud_voice_id.blockSignals(True)
-        self.char_cloud_voice_id.setText(str(voice.get("cloud_voice_id") or ""))
-        self.char_cloud_voice_id.blockSignals(False)
+        self.char_voice_rate.blockSignals(True)
+        self.char_voice_rate.setValue(int(voice.get("voice_rate", self.settings.get("voice_rate", 0))))
+        self.char_voice_rate.blockSignals(False)
+        self.char_voice_volume.blockSignals(True)
+        self.char_voice_volume.setValue(round(float(voice.get("voice_volume", self.settings.get("voice_volume", 0.9))) * 100))
+        self.char_voice_volume.blockSignals(False)
         resources = (self.settings.get("character_resources") or {}).get(cid) or {}
         for widget, key in ((self.char_skills_edit, "skills"), (self.char_mcp_edit, "mcp"),
                             (self.char_connectors_edit, "connectors")):
@@ -2817,14 +2687,8 @@ class MainWindow(QMainWindow):
     def save_character_settings(self, silent=False):
         cid = characters.active_id(self.settings)
         self.settings.setdefault("character_voice", {})[cid] = {
-            "voice_fa": self.char_voice_fa.currentText().strip() or EDGE_FA[0],
-            "voice_en": self.char_voice_en.currentText().strip() or EDGE_EN[0],
             "voice_rate": self.char_voice_rate.value(),
-            "voice_pitch": self.char_voice_pitch.value(),
             "voice_volume": self.char_voice_volume.value() / 100.0,
-            "voice_style": self.char_voice_style.currentData() or "",
-            "cloud_voice_provider": self.char_cloud_provider.currentData() or "",
-            "cloud_voice_id": self.char_cloud_voice_id.text().strip(),
         }
         def split(value):
             return [part.strip() for part in re.split(r"[,;\\n]+", value or "") if part.strip()]
@@ -2843,11 +2707,7 @@ class MainWindow(QMainWindow):
         cid = characters.active_id(self.settings)
         override = (self.settings.get("character_voice") or {}).get(cid) or {}
         effective = dict(self.settings)
-        effective.update({k: v for k, v in override.items()
-                          if k in ("voice_fa", "voice_en", "voice_rate", "voice_pitch", "voice_volume", "voice_style")})
-        provider = str(override.get("cloud_voice_provider") or "")
-        voice_id = str(override.get("cloud_voice_id") or "").strip()
-        effective["cloud_voices"] = {provider: voice_id} if provider and voice_id else {}
+        effective.update({k: v for k, v in override.items() if k in ("voice_rate", "voice_volume")})
         if getattr(self, "speaker", None) is not None:
             self.speaker.settings = effective
 
@@ -3454,7 +3314,7 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(7)
 
-        # One API field: the key is checked against Chat, STT and TTS capabilities.
+        # API keys in this section are checked for Chat capability only.
         add_box, list_box, det_box = self.build_api_boxes()
         layout.addWidget(add_box)
 
@@ -3467,26 +3327,14 @@ class MainWindow(QMainWindow):
         layout.addLayout(import_row)
 
         self.build_mcp_registry_group(layout)
-        cloud_box, cloud_form = self.group("مدل‌های Cloud")
-        cloud_note = QLabel("هر مدل فقط در دسته‌ی قابلیتی نمایش داده می‌شود که API واقعاً گزارش کرده است. در فیلتر رایگان، مدل‌های صوتی که Provider قیمتشان را اعلام نمی‌کند پنهان می‌مانند.")
-        cloud_note.setObjectName("hint")
-        cloud_note.setWordWrap(True)
-        cloud_form.addRow(cloud_note)
-        self.cloud_model_tabs = QTabWidget()
-        self.cloud_model_lists = {}
-        for kind, title in (("chat", "Chat"), ("stt", "STT"), ("tts", "TTS")):
-            pane = QWidget()
-            pane_layout = QVBoxLayout(pane)
-            pane_layout.setContentsMargins(2, 2, 2, 2)
-            model_list = QListWidget()
-            model_list.setAlternatingRowColors(True)
-            model_list.setMinimumHeight(105)
-            model_list.setMaximumHeight(170)
-            model_list.itemChanged.connect(lambda item, category=kind: self.on_cloud_model_item_changed(category, item))
-            pane_layout.addWidget(model_list)
-            self.cloud_model_lists[kind] = model_list
-            self.cloud_model_tabs.addTab(pane, title)
-        cloud_form.addRow(self.cloud_model_tabs)
+        cloud_box, cloud_form = self.group("مدل‌های Chat Cloud")
+        model_list = QListWidget()
+        model_list.setAlternatingRowColors(True)
+        model_list.setMinimumHeight(105)
+        model_list.setMaximumHeight(170)
+        model_list.itemChanged.connect(lambda item: self.on_cloud_model_item_changed("chat", item))
+        self.cloud_model_lists = {"chat": model_list}
+        cloud_form.addRow(model_list)
         layout.addWidget(cloud_box)
 
         local_box, local_form = self.group("مدل‌های Local")
@@ -3617,8 +3465,6 @@ class MainWindow(QMainWindow):
         advanced_layout.setContentsMargins(0, 0, 0, 0)
         advanced_layout.addWidget(list_box)
         advanced_layout.addWidget(det_box)
-        self.cloud_page = self.build_cloud_voice_tab()
-        advanced_layout.addWidget(self.cloud_page)
 
         # Existing ordered route/failover editor is preserved for fine control.
         rbox, rform = self.group("Routeها و اولویت Failover")
@@ -6299,7 +6145,7 @@ class MainWindow(QMainWindow):
         listener.interrupted.connect(self.on_user_barge_in)
         listener.state.connect(self.on_listener_state)
         listener.error.connect(self.on_listener_error)
-        listener.note.connect(self.on_cloud_note)
+        listener.note.connect(self.on_voice_note)
         listener.finished.connect(lambda current=listener: self._listener_finished(current))
         listener.start()
 
