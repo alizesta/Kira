@@ -2403,7 +2403,7 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "appearance_page"):
             return
         previous = getattr(self, "_effect", "off")
-        color = getattr(self, "_appearance_color", None) or (self.settings.get("appearance") or {}).get("background_color", "#0A0A1C")
+        color = self.appearance_page.background_color or (self.settings.get("appearance") or {}).get("background_color", "#0A0A1C")
         appearance = {
             "background_color": color,
             "brightness": self.appearance_page.appearance_brightness.value(),
@@ -2439,7 +2439,7 @@ class MainWindow(QMainWindow):
         self._refresh_icon_glow()
         self._apply_neon_glow_effects(appearance)
         winfx.apply_effect(self.winId(), current)
-        self._set_appearance_color_preview(color)
+        self.appearance_page.set_background_color(color)
         if (previous == "off") != (current == "off") and previous != current and getattr(self, "isVisible", lambda: False)():
             self.add_chat("system", "برای اعمال کامل حالت شیشه‌ای، برنامه را یک بار ببند و دوباره باز کن.")
         if save:
