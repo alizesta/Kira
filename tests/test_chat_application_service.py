@@ -205,9 +205,12 @@ class ChatApplicationServiceTests(unittest.TestCase):
 
     def test_close_session_cancels_and_releases_only_that_session(self):
         kira = self.service.submit_message("kira", "active")
+        queued = self.service.submit_message("kira", "queued", busy=True)
         ren = self.service.submit_message("ren", "keep")
         self.service.close_session("kira")
         self.assertEqual(self.service.get_request_status(kira.request.request_id), RequestStatus.CANCELLED)
+        self.assertEqual(self.service.get_request_status(queued.request.request_id), RequestStatus.CANCELLED)
+        self.assertEqual(self.service.pending_count("kira"), 0)
         self.assertEqual(self.service.get_request_status(ren.request.request_id), RequestStatus.RUNNING)
         self.assertIsNone(self.service.active_request_id("kira"))
         self.assertEqual(self.service.active_request_id("ren"), ren.request.request_id)
@@ -257,6 +260,29 @@ class ChatApplicationServiceTests(unittest.TestCase):
         self.assertTrue(first.ok)
         self.assertFalse(second.ok)
         self.assertEqual(len(self.persistence.messages), 1)
+
+    def test_provider_worker_factory_failure_finalizes_request(self):
+        service = ChatApplicationService(
+            persistence=self.persistence,
+            system_prompt_builder=lambda *_args, **_kwargs: "prompt",
+            worker_factory=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("worker factory failed")),
+            on_dispatch=lambda _request: None,
+            on_event=self.events.append,
+        )
+        submission = service.submit_message("kira", "hello")
+        worker = service.start_provider_request(submission.request.request_id, self._context())
+        self.assertIsNone(worker)
+        self.assertEqual(service.get_request_status(submission.request.request_id), RequestStatus.FAILED)
+        self.assertIn("worker factory failed", self.events[-1].error)
+
+    def test_dispose_releases_sessions_and_rejects_new_requests(self):
+        self.service.submit_message("kira", "active")
+        self.service.submit_message("ren", "queued", force_queue=True)
+        self.service.dispose()
+        self.assertFalse(self.service.has_active_request("kira"))
+        self.assertEqual(self.service.pending_count("ren"), 0)
+        with self.assertRaisesRegex(RuntimeError, "disposed"):
+            self.service.submit_message("mika", "after shutdown")
 
     def test_service_is_qt_free(self):
         import ast
