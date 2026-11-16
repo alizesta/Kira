@@ -170,27 +170,53 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
 
 
 
-def install_and_download_qwen_asr(repo_id: str = "Qwen/Qwen3-ASR-0.6B") -> str:
-    """Install the Qwen ASR runtime into Kira's active Python and download its model."""
+def _ensure_pillow_compatible() -> None:
+    """Repair Pillow 13+ even when the requested voice runtime was already installed."""
+    from importlib.metadata import PackageNotFoundError, version
     import subprocess
     import sys
 
     try:
-        import qwen_asr  # noqa: F401
-    except ImportError:
-        result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "5",
-             "--timeout", "60", "qwen-asr"],
-            capture_output=True, text=True, timeout=3600, check=False,
-        )
-        if result.returncode:
-            detail = (result.stderr or result.stdout or "pip install qwen-asr failed")[-3500:]
-            raise RuntimeError(f"نصب موتور Qwen ناموفق بود: {detail}")
+        installed = version("Pillow")
+    except PackageNotFoundError:
+        return
+    try:
+        incompatible = int(installed.split(".", 1)[0]) >= 13
+    except (TypeError, ValueError):
+        incompatible = False
+    if not incompatible:
+        return
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "5",
+         "--timeout", "60", "Pillow>=8,<13"],
+        capture_output=True, text=True, timeout=1800, check=False,
+    )
+    if result.returncode:
+        detail = (result.stderr or result.stdout or "Pillow compatibility fix failed")[-2500:]
+        raise RuntimeError(f"اصلاح ناسازگاری Pillow ناموفق بود: {detail}")
+
+
+def _install_voice_package(package: str) -> None:
+    """Install a voice runtime into Kira's active Python without breaking Gradio's Pillow pin."""
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "5",
+         "--timeout", "60", package, "Pillow>=8,<13"],
+        capture_output=True, text=True, timeout=3600, check=False,
+    )
+    if result.returncode:
+        detail = (result.stderr or result.stdout or f"pip install {package} failed")[-3500:]
+        raise RuntimeError(f"نصب موتور {package} ناموفق بود: {detail}")
+
+
+def _download_voice_repo(repo_id: str) -> str:
     from huggingface_hub import snapshot_download
 
-    selected = str(repo_id or "Qwen/Qwen3-ASR-0.6B").strip()
-    if "/" not in selected:
-        raise ValueError("شناسه مدل Qwen معتبر نیست.")
+    selected = str(repo_id or "").strip()
+    if "/" not in selected or "\\" in selected:
+        raise ValueError("شناسه مدل باید به شکل owner/repository باشد.")
     cache_dir = os.environ.get("HF_HUB_CACHE") or str(Path(_DATA_ROOT) / "huggingface" / "hub")
     Path(cache_dir).mkdir(parents=True, exist_ok=True)
     return str(Path(snapshot_download(
@@ -198,21 +224,45 @@ def install_and_download_qwen_asr(repo_id: str = "Qwen/Qwen3-ASR-0.6B") -> str:
     )).resolve())
 
 
+def install_and_download_qwen_asr(repo_id: str = "Qwen/Qwen3-ASR-0.6B") -> str:
+    """Install Qwen runtime and download the selected model into Kira's data folder."""
+    _ensure_pillow_compatible()
+    try:
+        import qwen_asr  # noqa: F401
+    except ImportError:
+        _install_voice_package("qwen-asr")
+    return _download_voice_repo(repo_id or "Qwen/Qwen3-ASR-0.6B")
+
+
+def install_and_download_whisper(repo_id: str) -> str:
+    """Install faster-whisper and download a CTranslate2 Whisper model."""
+    _ensure_pillow_compatible()
+    try:
+        import faster_whisper  # noqa: F401
+    except ImportError:
+        _install_voice_package("faster-whisper")
+    return _download_voice_repo(repo_id)
+
+
+def install_and_download_piper_voice(repo_id: str) -> str:
+    """Install Piper runtime and download a Piper ONNX voice."""
+    _ensure_pillow_compatible()
+    try:
+        import piper  # noqa: F401
+    except ImportError:
+        _install_voice_package("piper-tts>=1.3.0,<2")
+    return _download_voice_repo(repo_id)
+
+
 
 def download_hf_model(repo_id: str) -> str:
     """Download a public speech model into Kira's configured Hugging Face cache."""
-    selected = str(repo_id or "").strip()
-    if not selected or "/" not in selected:
-        raise ValueError("شناسه مدل باید به شکل owner/repository باشد.")
-    from huggingface_hub import snapshot_download
-    path = snapshot_download(repo_id=selected)
-    return str(Path(path).resolve())
-
+    return _download_voice_repo(repo_id)
 
 
 def cache_directory() -> str:
-    """Return the effective Hugging Face model cache location."""
-    return str(Path(os.environ.get("HF_HOME") or Path.home() / ".cache" / "huggingface"))
+    """Return the exact directory where Hugging Face model snapshots are stored."""
+    return str(Path(os.environ.get("HF_HUB_CACHE") or (Path(_DATA_ROOT) / "huggingface" / "hub")).resolve())
 
 
 def status(model_path="") -> dict:
