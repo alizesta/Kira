@@ -1912,6 +1912,9 @@ class MainWindow(QMainWindow):
 
     def download_local_whisper_model(self):
         value = str(self.whisper.currentText() or "").strip()
+        if Path(value).expanduser().is_dir():
+            self.local_voice_status.setText("این مدل Whisper از قبل روی سیستم وجود دارد.")
+            return
         aliases = {
             "tiny": "Systran/faster-whisper-tiny",
             "base": "Systran/faster-whisper-base",
