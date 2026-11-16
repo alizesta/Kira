@@ -51,7 +51,6 @@ from . import evidence_memory
 from . import brain
 from . import usage
 from . import mood
-from . import characters
 from .characters.kira import PROFILE as KIRA_PROFILE
 from .character.traits import BASE_TRAITS
 from . import avatar_art
@@ -198,7 +197,7 @@ class MainWindow(QMainWindow):
     input = front_only_property("input")
     voice_btn = front_only_property("voice_btn")
 
-    def __init__(self, memory_service=None, mood_service=None):
+    def __init__(self, memory_service=None, mood_service=None, character_service=None):
         super().__init__()
         # Direct MainWindow construction remains supported for existing callers;
         # normal application startup injects these services from app.bootstrap.
@@ -210,9 +209,13 @@ class MainWindow(QMainWindow):
             mood_service = MoodStateService()
         self.memory_service = memory_service
         self.mood_service = mood_service
+        if character_service is None:
+            from .services.character_service import CharacterProfileService
+            character_service = CharacterProfileService()
+        self.character_service = character_service
         self.settings = load_settings()
         self.sessions = {}
-        self.cur = self.front = ChatSession(characters.active_id(self.settings))
+        self.cur = self.front = ChatSession(self.character_service.active_id(self.settings))
         self.sessions[self.cur.cid] = self.cur
         self._db_notes = init_db()
         self._save_warned = False
@@ -391,7 +394,7 @@ class MainWindow(QMainWindow):
         self.retranslate()
         self.set_badge("idle", self.client.preview_route())
         self.sync_sessions()
-        self.switch_session(characters.active_id(self.settings), save=False)
+        self.switch_session(self.character_service.active_id(self.settings), save=False)
         for note in self._db_notes:
             self.add_chat("error", note)
         for warning in LOAD_WARNINGS + self.director.library.warnings:
@@ -452,7 +455,7 @@ class MainWindow(QMainWindow):
     def theme_for_character(self, character_id, profile=None):
         """Resolve a character palette with the saved user-selected accent colour."""
         cid = str(character_id or "kira")
-        selected = dict(profile or characters.all_profiles(self.settings).get(cid, {}))
+        selected = dict(profile or self.character_service.all_profiles(self.settings).get(cid, {}))
         custom = (self.settings.get("character_theme_colors") or {}).get(cid)
         if custom:
             selected["theme_color"] = custom
@@ -496,11 +499,11 @@ class MainWindow(QMainWindow):
 
     def active_character(self):
         """Full profile of the character in front. Kira keeps her canonical identity (the profiles list only carries UI data)."""
-        cid = getattr(getattr(self, "cur", None), "cid", "") or characters.active_id(self.settings)
+        cid = getattr(getattr(self, "cur", None), "cid", "") or self.character_service.active_id(self.settings)
         if cid == "kira":
             profile = dict(KIRA_PROFILE)
         else:
-            profile = dict(characters.all_profiles(self.settings).get(cid) or characters.active(self.settings))
+            profile = dict(self.character_service.all_profiles(self.settings).get(cid) or self.character_service.active(self.settings))
         traits = (self.settings.get("character_traits") or {}).get(cid)
         if isinstance(traits, dict):
             profile["traits"] = {**profile.get("traits", {}), **traits}
@@ -508,7 +511,7 @@ class MainWindow(QMainWindow):
 
     def character_traits(self, cid, profile=None):
         """Baseline traits of one character (settings overrides win over the built-in defaults)."""
-        profile = profile if isinstance(profile, dict) else (characters.all_profiles(self.settings).get(cid) or {})
+        profile = profile if isinstance(profile, dict) else (self.character_service.all_profiles(self.settings).get(cid) or {})
         traits = dict(profile.get("traits") or {})
         override = (self.settings.get("character_traits") or {}).get(cid)
         if isinstance(override, dict):
@@ -517,8 +520,8 @@ class MainWindow(QMainWindow):
 
     def _sync_mood_character(self):
         """Point the persisted mood at the character in front so its neon chips and prompt follow that profile."""
-        cid = getattr(getattr(self, "cur", None), "cid", "") or characters.active_id(self.settings)
-        profile = characters.all_profiles(self.settings).get(cid) or {}
+        cid = getattr(getattr(self, "cur", None), "cid", "") or self.character_service.active_id(self.settings)
+        profile = self.character_service.all_profiles(self.settings).get(cid) or {}
         try:
             mood.set_active_character(cid, self.character_traits(cid, profile))
         except Exception:                                   # noqa: BLE001 - mood is a bonus, never block the UI
@@ -552,7 +555,7 @@ class MainWindow(QMainWindow):
 
     def sync_sessions(self):
         """Make the tabs match the characters that exist now (built-in ones + custom ones, minus deleted ones)."""
-        profiles = characters.all_profiles(self.settings)
+        profiles = self.character_service.all_profiles(self.settings)
         order = [c for c in ("kira", "ren", "mika") if c in profiles] + [c for c in profiles if c not in ("kira", "ren", "mika")]
         for cid in order:
             sess = self._ensure_session(cid, profiles[cid])
@@ -583,7 +586,7 @@ class MainWindow(QMainWindow):
         self.refresh_tab_buttons()
 
     def refresh_tab_buttons(self):
-        profiles = characters.all_profiles(self.settings)
+        profiles = self.character_service.all_profiles(self.settings)
         for cid, button in self.char_tab_buttons.items():
             sess = self.sessions.get(cid)
             profile = profiles.get(cid) or {}
@@ -619,7 +622,7 @@ class MainWindow(QMainWindow):
         self.settings["active_character_id"] = cid
         self.refresh_navigation_icons()
         try:
-            mood.set_active_character(cid, self.character_traits(cid, characters.all_profiles(self.settings).get(cid)))
+            mood.set_active_character(cid, self.character_traits(cid, self.character_service.all_profiles(self.settings).get(cid)))
         except Exception:                               # noqa: BLE001 - never block switching tabs
             pass
         self.chat_stack.setCurrentWidget(sess.view)
@@ -662,7 +665,7 @@ class MainWindow(QMainWindow):
         self._apply_neon_glow_effects(self.settings.get("appearance", {}))
 
     def greeting_text(self):
-        profile = characters.active(self.settings)
+        profile = self.character_service.active(self.settings)
         if profile["id"] == "kira":
             return self.t("greeting")
         name = profile.get("name_fa") if self.settings.get("ui_lang", "fa") == "fa" else profile.get("name")
@@ -959,8 +962,8 @@ class MainWindow(QMainWindow):
     def icon_button(self, name, checkable=False):
         """Small neon icon button using the active character's own accent colours."""
         b = QToolButton()
-        cid = characters.active_id(self.settings)
-        profile = characters.all_profiles(self.settings).get(cid, {})
+        cid = self.character_service.active_id(self.settings)
+        profile = self.character_service.all_profiles(self.settings).get(cid, {})
         palette = self.theme_for_character(cid, profile)
         b.setProperty("kiraIconName", name)
         b.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
@@ -973,8 +976,8 @@ class MainWindow(QMainWindow):
 
     def refresh_navigation_icons(self):
         """Keep shared navigation glyphs in sync when the active character changes."""
-        cid = characters.active_id(self.settings)
-        profile = characters.all_profiles(self.settings).get(cid, {})
+        cid = self.character_service.active_id(self.settings)
+        profile = self.character_service.all_profiles(self.settings).get(cid, {})
         palette = self.theme_for_character(cid, profile)
         for button, (name, _tab_index) in zip(getattr(self, "nav_buttons", []), getattr(self, "_nav_icon_map", [])):
             button.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
@@ -2206,7 +2209,7 @@ class MainWindow(QMainWindow):
         return self.page(box)
 
     def refresh_character_controls(self):
-        cid = characters.active_id(self.settings)
+        cid = self.character_service.active_id(self.settings)
         voice = (self.settings.get("character_voice") or {}).get(cid) or {}
         self.char_voice_rate.blockSignals(True)
         self.char_voice_rate.setValue(int(voice.get("voice_rate", self.settings.get("voice_rate", 0))))
@@ -2235,7 +2238,7 @@ class MainWindow(QMainWindow):
             self.save_character_settings(silent=True)
 
     def save_character_settings(self, silent=False):
-        cid = characters.active_id(self.settings)
+        cid = self.character_service.active_id(self.settings)
         self.settings.setdefault("character_voice", {})[cid] = {
             "voice_rate": self.char_voice_rate.value(),
             "voice_volume": self.char_voice_volume.value() / 100.0,
@@ -2254,7 +2257,7 @@ class MainWindow(QMainWindow):
 
     def apply_character_voice_settings(self):
         """Give the speaker an isolated settings snapshot for the active character."""
-        cid = characters.active_id(self.settings)
+        cid = self.character_service.active_id(self.settings)
         override = (self.settings.get("character_voice") or {}).get(cid) or {}
         effective = dict(self.settings)
         effective.update({k: v for k, v in override.items() if k in ("voice_rate", "voice_volume")})
@@ -2292,10 +2295,10 @@ class MainWindow(QMainWindow):
             return False
 
     def refresh_character_choices(self):
-        current = characters.active_id(self.settings)
+        current = self.character_service.active_id(self.settings)
         self.character_combo.blockSignals(True)
         self.character_combo.clear()
-        profiles = characters.all_profiles(self.settings)
+        profiles = self.character_service.all_profiles(self.settings)
         for cid in ("kira", "ren", "mika"):
             if cid in profiles:
                 p = profiles[cid]
@@ -2312,7 +2315,7 @@ class MainWindow(QMainWindow):
     def _refresh_character_theme_preview(self):
         if not hasattr(self, "character_theme_color_preview"):
             return
-        cid = characters.active_id(self.settings)
+        cid = self.character_service.active_id(self.settings)
         colour = self.theme_for_character(cid)["main"]
         self.character_theme_color_preview.setText(colour)
         self.character_theme_color_preview.setStyleSheet(
@@ -2321,7 +2324,7 @@ class MainWindow(QMainWindow):
         )
 
     def choose_character_theme_color(self):
-        cid = characters.active_id(self.settings)
+        cid = self.character_service.active_id(self.settings)
         current = QColor(self.theme_for_character(cid)["main"])
         selected = QColorDialog.getColor(current, self, "رنگ تم شخصیت")
         if not selected.isValid():
@@ -2336,7 +2339,7 @@ class MainWindow(QMainWindow):
         self.save_now()
 
     def reset_character_theme_color(self):
-        cid = characters.active_id(self.settings)
+        cid = self.character_service.active_id(self.settings)
         self.settings.setdefault("character_theme_colors", {}).pop(cid, None)
         for session in self.sessions.values():
             session.theme = self.theme_for_character(session.cid)
@@ -2347,7 +2350,7 @@ class MainWindow(QMainWindow):
         self.save_now()
 
     def refresh_character_card(self, character_id=None):
-        profile = characters.all_profiles(self.settings).get(character_id or characters.active_id(self.settings), characters.CHARACTERS["kira"])
+        profile = self.character_service.all_profiles(self.settings).get(character_id or self.character_service.active_id(self.settings), self.character_service.all_profiles(self.settings).get("kira", {}))
         image_name = str(profile.get("image") or "").strip()
         pixmap = QPixmap()
         if image_name:
@@ -2379,8 +2382,8 @@ class MainWindow(QMainWindow):
     def apply_character_art(self):
         """Chat page + floating companion show the active character: Kira's own animated PNG, or the character's
         full-body picture (a profile without one falls back to Kira's art). Called at start-up and on every change."""
-        profile = characters.active(self.settings)
-        self.animator.set_character_art(characters.avatar_file(profile, ROOT))
+        profile = self.character_service.active(self.settings)
+        self.animator.set_character_art(self.character_service.avatar_file(profile, ROOT))
         self.animator.rig.intensity = float(self.settings.get("motion_strength", self.animator.rig.intensity)) * self.animator.motion_gain
         self.animator.touch()
 
@@ -2414,10 +2417,10 @@ class MainWindow(QMainWindow):
         self.save_now()
 
     def edit_character(self):
-        cid = characters.active_id(self.settings)
+        cid = self.character_service.active_id(self.settings)
         if cid == "kira":
             return
-        profile = dict(characters.all_profiles(self.settings)[cid])
+        profile = dict(self.character_service.all_profiles(self.settings)[cid])
         name, ok = QInputDialog.getText(self, "ویرایش شخصیت", "نام:", QLineEdit.Normal, profile.get("name", ""))
         if not ok or not name.strip():
             return
@@ -2438,12 +2441,12 @@ class MainWindow(QMainWindow):
         self.save_now()
 
     def delete_character(self):
-        cid = characters.active_id(self.settings)
+        cid = self.character_service.active_id(self.settings)
         if cid == "kira":
             return
         if QMessageBox.question(self, "حذف شخصیت", "این شخصیت حذف شود؟") != QMessageBox.Yes:
             return
-        if cid in characters.CHARACTERS:
+        if self.character_service.is_builtin(cid):
             hidden = self.settings.setdefault("deleted_character_ids", [])
             if cid not in hidden:
                 hidden.append(cid)
@@ -2592,8 +2595,8 @@ class MainWindow(QMainWindow):
         """Bloom the glass panels and action controls without touching animated avatar widgets."""
         appearance = appearance if isinstance(appearance, dict) else (self.settings.get("appearance") or {})
         intensity = max(0, min(100, int(appearance.get("glow", 58))))
-        cid = characters.active_id(self.settings)
-        palette = self.theme_for_character(cid, characters.all_profiles(self.settings).get(cid, {}))
+        cid = self.character_service.active_id(self.settings)
+        palette = self.theme_for_character(cid, self.character_service.all_profiles(self.settings).get(cid, {}))
         if not hasattr(self, "_neon_widget_effects"):
             self._neon_widget_effects = {}
 
@@ -2624,8 +2627,8 @@ class MainWindow(QMainWindow):
             effect.setColor(tint)
 
     def _refresh_icon_glow(self):
-        cid = characters.active_id(self.settings)
-        palette = self.theme_for_character(cid, characters.all_profiles(self.settings).get(cid, {}))
+        cid = self.character_service.active_id(self.settings)
+        palette = self.theme_for_character(cid, self.character_service.all_profiles(self.settings).get(cid, {}))
         for button in self.findChildren(QToolButton):
             name = button.property("kiraIconName")
             if not name:
@@ -5031,7 +5034,7 @@ class MainWindow(QMainWindow):
                                      voice_input=self._turn_voice, mode=mode, mood_block=mood_block,
                                      character_profile=self.active_character())
         # The selected character changes identity and conversational style only; all shared tools and policies stay intact.
-        character_layer = characters.prompt_for(self.settings)
+        character_layer = self.character_service.prompt_for(self.settings)
         if character_layer:
             prompt += "\n\n" + character_layer
         if self.body_active():                                    # she can move her 3D body: tell the model how (tags) and what the app already did
@@ -5167,7 +5170,7 @@ class MainWindow(QMainWindow):
         if not text.strip():
             return
         self._speak_stream(text)
-        name = characters.display_name(self.settings)
+        name = self.character_service.display_name(self.settings)
         ui_dir = "rtl" if self.settings.get("ui_lang", "fa") == "fa" else "ltr"
         html = message_html("assistant", name, text, ui_dir, accent=self.accent())
         doc = self.chat.document()
@@ -5823,7 +5826,7 @@ class MainWindow(QMainWindow):
                 self.restore_history(200)
 
     def clear_chat(self):
-        who = characters.display_name(self.settings)
+        who = self.character_service.display_name(self.settings)
         question = (f"تاریخچه‌ی گفتگوی «{who}» پاک شود؟ (گفتگوی بقیه‌ی کاراکترها دست‌نخورده می‌ماند)"
                     if self.settings.get("ui_lang", "fa") == "fa" else f"Delete the saved history of {who}? (the other characters' chats stay)")
         if QMessageBox.question(self, self.t("clear_t"), question) == QMessageBox.Yes:
@@ -5851,8 +5854,8 @@ class MainWindow(QMainWindow):
             pass
 
     def open_memory_dialog(self):
-        character_id = characters.active_id(self.settings)
-        profile = characters.all_profiles(self.settings).get(character_id, {})
+        character_id = self.character_service.active_id(self.settings)
+        profile = self.character_service.all_profiles(self.settings).get(character_id, {})
         character_name = profile.get("name") or character_id.title()
         MemoryDialog(
             self,
