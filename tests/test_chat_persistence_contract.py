@@ -5,7 +5,7 @@ import threading
 import unittest
 from pathlib import Path
 
-from kira.chat.persistence import ChatPersistence, PersistenceError, SqliteChatRepository, create_default_chat_persistence
+from kira.chat.persistence import ChatPersistence, ChatRepository, PersistenceError, SqliteChatRepository, create_default_chat_persistence
 
 
 class FakeRepository:
@@ -100,6 +100,7 @@ class SqliteChatRepositoryTests(unittest.TestCase):
     def test_factory_creates_real_replaceable_sqlite_repository(self):
         persistence = create_default_chat_persistence(Path(self.temp.name) / "factory.sqlite3")
         self.assertIsInstance(persistence._repository, SqliteChatRepository)
+        self.assertIsInstance(persistence._repository, ChatRepository)
         self.assertEqual(persistence.init_db(), [])
 
     def test_conversation_id_is_stable_for_character_across_reopen(self):
