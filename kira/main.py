@@ -64,7 +64,7 @@ from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
 from .game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
 from .chat_code_ui import CodeChat
-from .ui.components import ModelCombo
+from .ui.components import ModelCombo, RouteEditor
 from .ui.dialogs import MemoryDialog, ModelPickerDialog
 from .ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
 from .ui.workers import (
@@ -2639,94 +2639,37 @@ class MainWindow(QMainWindow):
         advanced_layout.addWidget(list_box)
         advanced_layout.addWidget(det_box)
 
-        # Existing ordered route/failover editor is preserved for fine control.
-        rbox, rform = self.group("Routeها و اولویت Failover")
-        self.route_list = QListWidget()
-        self.route_list.setMinimumHeight(125)
-        self.route_list.setMaximumHeight(190)
-        self.route_list.setDragDropMode(QAbstractItemView.InternalMove)
-        self.route_list.setDefaultDropAction(Qt.MoveAction)
-        self.route_list.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.route_list.currentItemChanged.connect(lambda *_: self.on_route_selected())
-        self.route_list.model().rowsMoved.connect(lambda *_: self.on_routes_reordered())
-        rform.addRow(self.route_list)
-        self.route_manual_lbl = QLabel()
-        self.route_manual_lbl.setObjectName("hint")
-        rform.addRow(self.route_manual_lbl)
-        self.failover_chk = QCheckBox("در صورت خطا به مدل بعدی برو")
-        self.failover_chk.setChecked(bool(self.settings.get("failover_enabled", True)))
-        self.failover_chk.toggled.connect(self.on_failover_toggled)
-        rform.addRow(self.failover_chk)
-        b1 = QHBoxLayout()
-        self.route_up_btn = QPushButton("▲")
-        self.route_down_btn = QPushButton("▼")
-        self.route_add_btn = QPushButton("افزودن Route")
-        self.route_del_btn = QPushButton("حذف")
-        self.route_default_btn = QPushButton("پیش‌فرض")
-        self.route_use_btn = QPushButton("انتخاب دستی")
-        self.route_auto_btn = QPushButton("خودکار")
-        self.route_up_btn.clicked.connect(lambda: self.move_selected(-1))
-        self.route_down_btn.clicked.connect(lambda: self.move_selected(1))
-        self.route_add_btn.clicked.connect(self.add_route_dialog)
-        self.route_del_btn.clicked.connect(self.delete_selected_route)
-        self.route_default_btn.clicked.connect(self.default_selected_route)
-        self.route_use_btn.clicked.connect(lambda: self.select_route(self._selected_route_id() or ""))
-        self.route_auto_btn.clicked.connect(lambda: self.select_route(""))
-        for w in (self.route_up_btn, self.route_down_btn, self.route_add_btn, self.route_del_btn,
-                  self.route_default_btn, self.route_use_btn, self.route_auto_btn):
-            b1.addWidget(w)
-        rform.addRow(b1)
-        ebox, eform = self.group("جزئیات Route انتخاب‌شده")
-        self.route_provider_lbl = QLabel("-")
-        eform.addRow("Provider", self.route_provider_lbl)
-        self.route_model_edit = ModelCombo("")
-        eform.addRow("Model ID", self.route_model_edit)
-        self.route_enabled_chk = QCheckBox("فعال")
-        eform.addRow(self.route_enabled_chk)
-        self.route_timeout = QSpinBox()
-        self.route_timeout.setRange(5, 600)
-        self.route_timeout.setSuffix(" s")
-        eform.addRow("Timeout", self.route_timeout)
-        self.route_cooldown = QSpinBox()
-        self.route_cooldown.setRange(0, 3600)
-        self.route_cooldown.setSuffix(" s")
-        eform.addRow("Cooldown", self.route_cooldown)
-        self.route_ctx = QSpinBox()
-        self.route_ctx.setRange(0, 32768)
-        self.route_ctx.setSingleStep(1024)
-        self.route_ctx.setSpecialValueText("پیش‌فرض Provider")
-        self.route_predict = QSpinBox()
-        self.route_predict.setRange(0, 4096)
-        self.route_predict.setSingleStep(64)
-        self.route_predict.setSpecialValueText("پیش‌فرض Provider")
-        eform.addRow("Context (Ollama)", self.route_ctx)
-        eform.addRow("Num Predict (Ollama)", self.route_predict)
-        self.route_status = QLabel("Route‌ای انتخاب نشده.")
-        self.route_status.setWordWrap(True)
-        eform.addRow(self.route_status)
-        actions = QHBoxLayout()
-        self.route_test_btn = QPushButton("تست اتصال")
-        self.route_bench_btn = QPushButton("Benchmark این Route")
-        self.route_bench_all_btn = QPushButton("Benchmark همه‌ی مدل‌ها")
-        self.route_test_btn.clicked.connect(self.test_selected_route)
-        self.route_bench_btn.clicked.connect(lambda: self.run_benchmark(False))
-        self.route_bench_all_btn.clicked.connect(lambda: self.run_benchmark(True))
-        for w in (self.route_test_btn, self.route_bench_btn, self.route_bench_all_btn):
-            actions.addWidget(w)
-        eform.addRow(actions)
-        self.bench_out = QTextEdit()
-        self.bench_out.setReadOnly(True)
-        self.bench_out.setMinimumHeight(80)
-        self.bench_out.setMaximumHeight(150)
-        self.bench_out.setLayoutDirection(Qt.LeftToRight)
-        eform.addRow(self.bench_out)
-        self.route_enabled_chk.toggled.connect(lambda *_: self.route_edit_changed())
-        for w in (self.route_timeout, self.route_cooldown, self.route_ctx, self.route_predict):
-            w.valueChanged.connect(lambda *_: self.route_edit_changed())
-        self.route_model_edit.lineEdit().editingFinished.connect(self.route_edit_changed)
-        self.route_model_edit.activated.connect(lambda *_: self.route_edit_changed())
-        advanced_layout.addWidget(rbox)
-        advanced_layout.addWidget(ebox)
+        # RouteEditor owns route/failover controls; MainWindow only handles intents.
+        self.route_editor = RouteEditor(
+            self.settings,
+            model_combo_factory=ModelCombo,
+            parent=self,
+        )
+        for name in (
+            "route_list", "route_manual_lbl", "failover_chk", "route_up_btn",
+            "route_down_btn", "route_add_btn", "route_del_btn", "route_default_btn",
+            "route_use_btn", "route_auto_btn", "route_provider_lbl", "route_model_edit",
+            "route_enabled_chk", "route_timeout", "route_cooldown", "route_ctx",
+            "route_predict", "route_status", "route_test_btn", "route_bench_btn",
+            "route_bench_all_btn", "bench_out",
+        ):
+            setattr(self, name, getattr(self.route_editor, name))
+
+        self.route_editor.selection_changed.connect(self.on_route_selected)
+        self.route_editor.order_changed.connect(self.on_routes_reordered)
+        self.route_editor.failover_changed.connect(self.on_failover_toggled)
+        self.route_editor.move_requested.connect(self.move_selected)
+        self.route_editor.add_requested.connect(self.add_route_dialog)
+        self.route_editor.delete_requested.connect(self.delete_selected_route)
+        self.route_editor.default_requested.connect(self.default_selected_route)
+        self.route_editor.select_manual_requested.connect(
+            lambda: self.select_route(self._selected_route_id() or "")
+        )
+        self.route_editor.select_auto_requested.connect(lambda: self.select_route(""))
+        self.route_editor.test_requested.connect(self.test_selected_route)
+        self.route_editor.benchmark_requested.connect(self.run_benchmark)
+        self.route_editor.details_changed.connect(self.route_edit_changed)
+        advanced_layout.addWidget(self.route_editor)
 
         self.connections_advanced_body.setVisible(False)
         self.connections_advanced_btn.toggled.connect(self.connections_advanced_body.setVisible)
