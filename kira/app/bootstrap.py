@@ -18,13 +18,14 @@ def run_application() -> None:
     from .event_bus import EventBus
     from .module_manager import ModuleManager
     from ..main import MainWindow
-    from ..services import PersonaMemoryService, MoodStateService
+    from ..services import CharacterProfileService, PersonaMemoryService, MoodStateService
     from ..theme import build_style
     from .. import winfx
 
     container = DependencyContainer()
     container.register_factory("memory_service", PersonaMemoryService)
     container.register_factory("mood_service", MoodStateService)
+    container.register_factory("character_service", CharacterProfileService)
     event_bus = EventBus()
     module_manager = ModuleManager(container, event_bus)
 
@@ -33,6 +34,7 @@ def run_application() -> None:
     window = MainWindow(
         memory_service=container.resolve("memory_service"),
         mood_service=container.resolve("mood_service"),
+        character_service=container.resolve("character_service"),
     )
     # Retain the composition root for the lifetime of the application.
     window._dependency_container = container
