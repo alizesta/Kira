@@ -17,7 +17,7 @@ class FakeSignal:
 
 class FakeRow:
     def __init__(self):
-        self.widgets = []
+        self.widgets = [object()]  # trailing stretch spacer, matching the real tile strip
 
     def insertWidget(self, index, widget):
         self.widgets.insert(index, widget)
