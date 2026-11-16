@@ -768,6 +768,27 @@ class MainWindow(QMainWindow):
         self.build_appearance_tab()
         self.build_general_tab()
         self.build_ai_tab()
+        # Voice engines belong on the Voice page; keep Chat models in Connections.
+        voice_page = self.tabs.widget(self.tab_keys.index("tab_voice")) if hasattr(self, "tab_keys") else self.tabs.widget(2)
+        voice_layout = voice_page.layout()
+        if hasattr(self, "local_voice_box"):
+            self.local_voice_box.setParent(None)
+            voice_layout.addWidget(self.local_voice_box)
+        if hasattr(self, "cloud_model_tabs"):
+            self.voice_cloud_model_tabs = QTabWidget()
+            for model_kind in ("stt", "tts"):
+                model_index = next((i for i in range(self.cloud_model_tabs.count())
+                                    if self.cloud_model_tabs.tabText(i).lower() == model_kind), -1)
+                if model_index >= 0:
+                    model_page = self.cloud_model_tabs.widget(model_index)
+                    model_title = self.cloud_model_tabs.tabText(model_index)
+                    self.cloud_model_tabs.removeTab(model_index)
+                    self.voice_cloud_model_tabs.addTab(model_page, model_title)
+            if self.voice_cloud_model_tabs.count():
+                cloud_voice_box, cloud_voice_form = self.group("مدل‌های صوتی Cloud")
+                cloud_voice_form.addRow(self.voice_cloud_model_tabs)
+                voice_layout.addWidget(cloud_voice_box)
+        self.refresh_local_voice_status()
         self.save_btn = QPushButton()
         self.save_btn.setObjectName("save")
         self.save_btn.setIcon(make_icon("check", normal="#ffffff", hover="#ffffff"))
@@ -3108,6 +3129,7 @@ class MainWindow(QMainWindow):
         self.local_voice_status.setObjectName("hint")
         local_form.addRow(self.local_model_tabs)
         local_form.addRow(self.local_voice_status)
+        self.local_voice_box = local_box
         local_status_row = QHBoxLayout()
         local_refresh = QPushButton("بررسی وضعیت موتورهای صوتی")
         local_refresh.clicked.connect(self.refresh_local_voice_status)
