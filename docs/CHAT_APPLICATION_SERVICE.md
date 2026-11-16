@@ -23,11 +23,11 @@ The service receives persistence, system-prompt composition, provider worker con
 - `handle_provider_event(event)` routes request/session-scoped provider events through ResponseHandler. A successful provider attempt emits `PROVIDER_FINAL`; the application may retry an empty answer before completing the logical request.
 - `complete_request(request_id, content, ...)` persists the final assistant message before emitting the completed lifecycle event.
 - `complete_local_request(request_id)` closes a local/agent handoff that does not use the provider stream.
-- `cancel_request(request_id)` forwards cancellation to the provider adapter and closes the request exactly once.
+- `cancel_request(request_id)` forwards user cancellation to the provider adapter and closes the request exactly once, persisting partial output as `cancelled`.
 - `get_request_status(request_id)` returns `pending`, `running`, `completed`, `failed` or `cancelled`.
 - `dispatch_next(session_id, busy=False)` schedules the next FIFO item for only that session.
 - `close_session(session_id)` cancels that session's pending/active requests and releases its coordinator.
-- `dispose()` closes every session and rejects future submissions.
+- `dispose()` closes every session and rejects future submissions; active partial output is persisted once as `interrupted` during application shutdown.
 - `persist_message`, `recent_messages`, `conversation_context` and `message_count` accept the session's `conversation_id`; `clear_history`, `restore_history` and `import_history` remain application-facing history operations. The UI does not call the persistence adapter directly.
 
 All public request/event contracts retain both `request_id` and `session_id`; requests additionally retain the durable `conversation_id`. Provider attempts use internal attempt IDs so a permitted plain-prompt retry can reuse the logical application request without violating ResponseHandler's duplicate-terminal protection.
@@ -51,7 +51,7 @@ flowchart TD
     DB --> T[Terminal request status]
 ```
 
-Provider chunk and terminal callbacks are pinned to the immutable attempt/session identity captured at worker creation. MainWindow supplies a Qt signal dispatcher from the session relay, so worker-thread callbacks are marshalled to the GUI thread before ResponseHandler or UI observers run. The application service itself remains Qt-free. The service rejects mismatched, late and duplicate terminal events. The completed response is persisted before the completed event is published. Failed/interrupted/cancelled partial content is persisted with its corresponding status; a persistence failure is exposed in the application event and the service outcome rather than being silently treated as a durable write. Application shutdown uses the same cancellation/persistence path; MainWindow does not write the same partial stream a second time.
+Provider chunk and terminal callbacks are pinned to the immutable attempt/session identity captured at worker creation. MainWindow supplies a Qt signal dispatcher from the session relay, so worker-thread callbacks are marshalled to the GUI thread before ResponseHandler or UI observers run. The application service itself remains Qt-free. The service rejects mismatched, late and duplicate terminal events. The completed response is persisted before the completed event is published. Failed/interrupted/cancelled partial content is persisted with its corresponding status; a persistence failure is exposed in the application event and the service outcome rather than being silently treated as a durable write. Application shutdown uses the service-owned cancellation/persistence path and records partial output as `interrupted`; explicit user cancellation remains `cancelled`. MainWindow does not write the same partial stream a second time.
 
 ## Session isolation and concurrency
 
