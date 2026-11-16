@@ -332,6 +332,8 @@ class Speaker(QObject):
         """Synthesize one sentence using the configured local Piper voice only."""
         from . import local_voice
         model_path = str(self.settings.get("local_voice_tts_model") or "").strip()
+        if not bool(self.settings.get("local_voice_tts", True)):
+            raise RuntimeError("استفاده از TTS محلی غیرفعال است؛ از بخش مدل‌های Local آن را فعال کن.")
         if not local_voice.tts_ready(model_path):
             raise RuntimeError("موتور TTS محلی Piper آماده نیست؛ مدل محلی را از بخش Local نصب یا انتخاب کن.")
         rate = max(-50, min(50, int(self.settings.get("voice_rate", 0)) + s.rate))
