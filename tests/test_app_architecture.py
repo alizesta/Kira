@@ -13,6 +13,8 @@ class ChatApplicationServiceArchitectureTests(unittest.TestCase):
         self.assertNotIn("from .chat.context_builder import", source)
         self.assertNotIn("from .chat.response_handler import", source)
         self.assertNotIn("self.chat_history_service.", source)
+        self.assertIn("persistence=chat_history_service", source)
+        self.assertNotIn("persistence=self.chat_history_service", source)
         self.assertIn("self.chat_application_service.submit_message", source)
         self.assertIn("self.chat_application_service.start_provider_request", source)
         self.assertIn("self.chat_application_service.persist_message", source)
