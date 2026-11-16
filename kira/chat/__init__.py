@@ -1,6 +1,6 @@
 """Chat request coordination boundaries."""
 
-from .coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
+from .persistence import ChatPersistence, ChatRepository, LegacyMemoryRepository, PersistenceError, create_default_chat_persistence\nfrom .coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
 from .response_handler import (
     ChatResponseResult,
     ProviderEvent,
@@ -13,7 +13,7 @@ from .response_handler import (
 )
 
 __all__ = [
-    "ChatCoordinator",
+    "ChatPersistence",\n    "ChatRepository",\n    "LegacyMemoryRepository",\n    "PersistenceError",\n    "create_default_chat_persistence",\n    "ChatCoordinator",
     "ChatProviderDispatcher",
     "ChatRequest",
     "SubmissionResult",
