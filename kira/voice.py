@@ -25,8 +25,10 @@ def _envelope(pcm, rate):
     import numpy as np
     a = pcm.astype(np.float32) / 32768.0
     hop = max(1, rate * HOP_MS // 1000)
-    n = max(1, len(a) // hop)
-    env = np.sqrt((a[:n * hop].reshape(n, hop) ** 2).mean(axis=1))
+    n = max(1, (len(a) + hop - 1) // hop)
+    # Pad the final hop so even a very short valid utterance cannot fail reshape().
+    padded = np.pad(a, (0, n * hop - len(a)))
+    env = np.sqrt((padded.reshape(n, hop) ** 2).mean(axis=1))
     ref = float(np.percentile(env, 95)) or 1.0
     return (np.clip(env / ref, 0, 1) ** 0.8).tolist()
 
