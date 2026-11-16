@@ -288,6 +288,11 @@ class SqliteChatRepository:
 
     def _create_schema(self, con):
         """Run an additive, transactional, versioned migration. Never rebuilds or drops legacy tables."""
+        current_version = int(con.execute("PRAGMA user_version").fetchone()[0])
+        if current_version > SCHEMA_VERSION:
+            raise PersistenceError(
+                f"نسخه دیتابیس ({current_version}) از این نسخه برنامه جدیدتر است؛ برای جلوگیری از Downgrade، تغییر داده نشد."
+            )
         con.execute(
             "CREATE TABLE IF NOT EXISTS conversations ("
             "id TEXT PRIMARY KEY, character_id TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', "
@@ -337,15 +342,24 @@ class SqliteChatRepository:
 
     def _migrate_schema(self, con):
         has_messages = self._has_table(con, "messages")
-        needs_migration = has_messages and not self._has_table(con, "conversations")
+        current_version = int(con.execute("PRAGMA user_version").fetchone()[0])
+        if current_version > SCHEMA_VERSION:
+            raise PersistenceError(
+                f"نسخه دیتابیس ({current_version}) از این نسخه برنامه جدیدتر است؛ برای جلوگیری از Downgrade، تغییر داده نشد."
+            )
+        needs_migration = current_version < SCHEMA_VERSION
+        needs_migration = needs_migration or (has_messages and not self._has_table(con, "conversations"))
         if has_messages:
             cols = self._columns(con, "messages")
             needs_migration = needs_migration or any(
                 name not in cols for name in ("character_id", "conversation_id", "metadata", "status")
             )
-        # The online backup is written before DDL. The DDL/data update itself is one SQLite transaction.
+        # Snapshot before DDL, then acquire the SQLite write lock so schema
+        # creation and legacy row backfill are one atomic transaction.
         if needs_migration:
             self._snapshot("pre-migration")
+        if not con.in_transaction:
+            con.execute("BEGIN IMMEDIATE")
         self._create_schema(con)
 
     def _write_all(self, rows):
@@ -525,16 +539,21 @@ class SqliteChatRepository:
         """Snapshot before deleting one conversation and its messages."""
         conv_id = str(conversation_id)
         with self._lock:
-            count = self.message_count(conversation_id=conv_id)
             try:
+                with self._db() as con:
+                    self._migrate_schema(con)
+                    count = int(con.execute(
+                        "SELECT COUNT(*) FROM messages WHERE conversation_id=?", (conv_id,)
+                    ).fetchone()[0])
                 if count:
                     self._snapshot("before-delete-conversation")
                 with self._db() as con:
+                    self._migrate_schema(con)
                     con.execute("DELETE FROM messages WHERE conversation_id=?", (conv_id,))
                     con.execute("DELETE FROM conversations WHERE id=?", (conv_id,))
                 self._pending[:] = [row for row in self._pending if row[3] != conv_id]
                 return count
-            except (sqlite3.Error, OSError) as exc:
+            except (sqlite3.Error, OSError, PersistenceError) as exc:
                 raise PersistenceError(f"حذف گفتگو ناموفق بود؛ داده‌ها حفظ شدند. ({exc})") from exc
 
     def add_message(self, role, content, character_id=None, *, conversation_id=None, metadata=None,
@@ -744,19 +763,19 @@ class SqliteChatRepository:
         """Snapshot first, then delete only the requested character's messages."""
         with self._lock:
             try:
-                if self.message_count():
+                with self._db() as con:
+                    self._migrate_schema(con)
+                    count = int(con.execute("SELECT COUNT(*) FROM messages").fetchone()[0])
+                if count:
                     self._snapshot("cleared")
-            except (sqlite3.Error, OSError) as exc:
-                raise PersistenceError(f"نسخه‌ی پشتیبان قبل از پاک‌سازی ساخته نشد؛ چیزی پاک نشد. ({exc})") from exc
-            try:
                 with self._db() as con:
                     self._migrate_schema(con)
                     if character_id is None:
                         con.execute("DELETE FROM messages")
                     else:
                         con.execute("DELETE FROM messages WHERE character_id=?", (_character_id(character_id),))
-            except (sqlite3.Error, OSError) as exc:
-                raise PersistenceError(f"پاک‌سازی ناموفق بود: {exc}") from exc
+            except (sqlite3.Error, OSError, PersistenceError) as exc:
+                raise PersistenceError(f"پاک‌سازی ناموفق بود؛ داده‌ها حذف نشدند یا Snapshot قبلی حفظ شد. ({exc})") from exc
             if character_id is None:
                 self._pending.clear()
             else:
