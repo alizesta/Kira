@@ -180,7 +180,7 @@ class DatabaseErrorTests(IsolatedDb):
         self.assertTrue(memory.startup_notes)
 
     def test_unwritable_folder_never_raises_into_the_app(self):
-        with mock.patch.object(memory, "_db", side_effect=OSError("disk full")):
+        with mock.patch.object(memory.repository, "_db", side_effect=OSError("disk full")):
             self.assertEqual(memory.init_db()[0].startswith("دیتابیس گفتگو باز نشد"), True)
             self.assertFalse(memory.add_message("user", "x"))
             self.assertEqual(memory.recent_messages(3), [{"role": "user", "content": "x"}])
@@ -343,7 +343,7 @@ class WindowPersistenceTests(IsolatedDb):
 
     def test_disk_failure_does_not_block_chat_warns_once_and_catches_up(self):
         w = self.win
-        with mock.patch.object(memory, "_db", side_effect=sqlite3.OperationalError("database is locked")):
+        with mock.patch.object(memory.repository, "_db", side_effect=sqlite3.OperationalError("database is locked")):
             self.send(w, "یک", "الف")
             self.send(w, "دو", "ب")
             text = w.chat.toPlainText()
@@ -386,7 +386,7 @@ class WindowPersistenceTests(IsolatedDb):
             w.clear_chat()
         self.assertEqual(memory.message_count(), 2)
         with mock.patch("kira.main.QMessageBox.question", return_value=QMessageBox.Yes), \
-                mock.patch.object(memory, "_snapshot", side_effect=OSError("no space")), \
+                mock.patch.object(memory.repository, "_snapshot", side_effect=OSError("no space")), \
                 mock.patch("kira.main.QMessageBox.warning") as warn:
             w.clear_chat()
         warn.assert_called_once()
