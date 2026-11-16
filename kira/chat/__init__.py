@@ -1,5 +1,5 @@
 """Chat request coordination boundaries."""
 
-from .coordinator import ChatCoordinator, ChatRequest, SubmissionResult
+from .coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
 
-__all__ = ["ChatCoordinator", "ChatRequest", "SubmissionResult"]
+__all__ = ["ChatCoordinator", "ChatProviderDispatcher", "ChatRequest", "SubmissionResult"]
