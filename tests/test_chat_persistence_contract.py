@@ -160,6 +160,59 @@ class SqliteChatRepositoryTests(unittest.TestCase):
         self.assertEqual(self.persistence.message_count(), 90)
         self.assertEqual(self.persistence.message_count("ren"), 30)
 
+    def test_migration_rollback_keeps_legacy_schema_and_backup_for_retry(self):
+        self.db.unlink()
+        con = sqlite3.connect(self.db)
+        con.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT NOT NULL, content TEXT NOT NULL, created_at TEXT)")
+        con.execute("INSERT INTO messages(role, content, created_at) VALUES ('user', 'keep me', '2025-01-01 10:00:00')")
+        con.commit()
+        con.close()
+
+        original_create = self.repository._create_schema
+
+        def fail_after_schema_writes(connection):
+            original_create(connection)
+            raise sqlite3.OperationalError("simulated migration interruption")
+
+        from unittest import mock
+        with mock.patch.object(self.repository, "_create_schema", side_effect=fail_after_schema_writes):
+            notes = self.persistence.init_db()
+        self.assertTrue(notes)
+        self.assertTrue(self.repository.list_snapshots("pre-migration"))
+
+        con = sqlite3.connect(self.db)
+        columns = {row[1] for row in con.execute("PRAGMA table_info(messages)")}
+        tables = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        original = con.execute("SELECT role, content FROM messages").fetchall()
+        con.close()
+        self.assertNotIn("conversation_id", columns)
+        self.assertNotIn("conversations", tables)
+        self.assertEqual(original, [("user", "keep me")])
+
+        self.assertEqual(self.persistence.init_db(), [])
+        self.assertEqual([row["content"] for row in self.persistence.get_messages(100, "kira")], ["keep me"])
+
+    def test_newer_schema_version_is_refused_without_downgrade(self):
+        self.db.unlink()
+        con = sqlite3.connect(self.db)
+        con.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY, role TEXT, content TEXT, created_at TEXT)")
+        con.execute("INSERT INTO messages VALUES (1, 'user', 'newer data', '2026-01-01 00:00:00')")
+        con.execute("PRAGMA user_version = 2")
+        con.commit()
+        con.close()
+
+        notes = self.persistence.init_db()
+        self.assertTrue(notes)
+        self.assertIn("جدیدتر", notes[0])
+        con = sqlite3.connect(self.db)
+        version = con.execute("PRAGMA user_version").fetchone()[0]
+        columns = {row[1] for row in con.execute("PRAGMA table_info(messages)")}
+        rows = con.execute("SELECT content FROM messages").fetchall()
+        con.close()
+        self.assertEqual(version, 2)
+        self.assertNotIn("conversation_id", columns)
+        self.assertEqual(rows, [("newer data",)])
+
     def test_legacy_schema_migrates_additively_and_preserves_messages(self):
         self.db.unlink()
         con = sqlite3.connect(self.db)
