@@ -76,7 +76,7 @@ class ChatAttachmentController:
             for index in range(len(self.loading_tiles)):
                 self.worker.cancel(index)
             for tile in list(self.tiles):
-                self.remove_tile(tile)
+                self.remove_tile(tile, cancel_worker=False)
         self.show_error([])
 
     def add_paths(self, paths):
@@ -164,9 +164,9 @@ class ChatAttachmentController:
         self._strip_add(self.attach_strip, tile)
         self.show_error([])
 
-    def remove_tile(self, tile):
+    def remove_tile(self, tile, *, cancel_worker=True):
         tile.deleted = True
-        if self.is_loading():
+        if cancel_worker and self.is_loading():
             try:
                 self.worker.cancel(self.loading_tiles.index(tile))
             except (ValueError, AttributeError):
