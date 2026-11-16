@@ -129,6 +129,7 @@ class DatabaseErrorTests(IsolatedDb):
 
     def test_recovery_rebuilds_from_the_newest_valid_backup(self):
         self.fill(30)
+        original_ids = [row["id"] for row in memory.get_messages(limit=100)]
         self.assertIsNotNone(storage.backup_user_data(self.dir, min_age_hours=0))
         memory.add_message("user", "newer than the backup")
         self.db.write_bytes(b"\x00" * 4096)
@@ -136,6 +137,7 @@ class DatabaseErrorTests(IsolatedDb):
         self.assertTrue(notes)
         self.assertEqual(memory.message_count(), 30)                           # everything the backup had
         self.assertEqual(self.texts(3), ["m27", "m28", "m29"])
+        self.assertEqual([row["id"] for row in memory.get_messages(limit=100)], original_ids)
         self.assertIn("پشتیبان", notes[0])
 
     def test_partially_damaged_file_salvages_readable_rows_and_merges_with_backup(self):
@@ -211,8 +213,10 @@ class ClearRestoreImportTests(IsolatedDb):
         with memory._db() as c:
             c.executemany("INSERT INTO messages(role, content, created_at) VALUES (?,?,?)",
                           [("user", "shared", "2025-06-01 09:00:00"), ("assistant", "new-1", "2025-06-01 09:00:03")])
+        original_message_id = memory.message_id_for("assistant", "new-1", "kira")
         self.assertEqual(memory.import_messages(old), 2)
         self.assertEqual(self.texts(), ["old-1", "old-2", "shared", "new-1"])
+        self.assertEqual(memory.message_id_for("assistant", "new-1", "kira"), original_message_id)
         self.assertEqual(memory.import_messages(old), 0)                         # running it twice changes nothing
         self.assertEqual(len(memory.list_snapshots("before-import")), 1)          # safety snapshot of the current chat
         with self.assertRaises(memory.ChatStoreError):
