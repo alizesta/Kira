@@ -82,9 +82,13 @@ class GuiTests(unittest.TestCase):
         self.assertTrue(self.win.isVisible())
 
     def test_extracted_settings_pages_own_their_widgets(self):
+        from kira.ui.components import RouteEditor
         from kira.ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
 
         window = self.win
+        self.assertIsInstance(window.route_editor, RouteEditor)
+        self.assertTrue(window.route_editor.isAncestorOf(window.route_list))
+        self.assertTrue(window.route_editor.isAncestorOf(window.route_model_edit))
         self.assertIsInstance(window.preferences_page, PreferencesPage)
         self.assertTrue(window.preferences_page.isAncestorOf(window.ui_lang))
         self.assertTrue(window.preferences_page.isAncestorOf(window.tavily_key))
