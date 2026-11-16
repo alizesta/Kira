@@ -72,3 +72,11 @@ Kira is migrating incrementally toward independent UI, application logic, servic
 - EventBus subscription/unsubscription and dependency resolution have isolated tests.
 - Extracted services can be tested without constructing MainWindow or QApplication.
 - Disabling an optional module does not prevent the application shell or text chat from starting.
+
+
+## Chat attachment controller extraction
+
+- `kira.ui.controllers.ChatAttachmentController` owns pre-send attachment selection, asynchronous file loading, cancellation, pasted-image encoding, tile lifecycle and the attachment-count limit.
+- Its UI controls, worker/tile factories, attachment API and busy-state callback are injected. It does not import or reference `MainWindow`.
+- `MainWindow` currently provides thin compatibility delegates while send/upload orchestration is migrated in later steps. The controller is composed after the chat composer is created.
+- The upload-progress presentation remains in the chat coordinator for now; it is a separate responsibility and should be extracted behind its own contract rather than coupled into the file-reading controller.
