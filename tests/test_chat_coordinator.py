@@ -132,18 +132,20 @@ class ChatCoordinatorTests(unittest.TestCase):
         methods = {node.name: node for node in window.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
         submit_source = ast.get_source_segment(source, methods["submit"])
         drain_source = ast.get_source_segment(source, methods["_send_next_pending"])
-        self.assertIn("_chat_coordinator", submit_source)
-        self.assertNotIn("self._pending.append", submit_source)
-        self.assertIn("take_next", drain_source)
+        self.assertIn("chat_application_service.submit_message", submit_source)
+        self.assertNotIn("ChatCoordinator", source)
+        self.assertIn("chat_application_service.dispatch_next", drain_source)
 
-    def test_chat_session_exposes_a_per_session_coordinator_slot(self):
+    def test_chat_session_exposes_request_identity_without_owning_coordinator(self):
         from kira.chat_sessions import ChatSession
         first = ChatSession("kira")
         second = ChatSession("ren")
-        self.assertIsNone(first.coordinator)
-        self.assertIsNone(second.coordinator)
-        first.coordinator = ChatCoordinator(lambda _request: None)
-        self.assertIsNot(first.coordinator, second.coordinator)
+        self.assertIsNone(first.application_request_id)
+        self.assertIsNone(second.application_request_id)
+        first.application_request_id = "request-kira"
+        self.assertEqual(first.application_request_id, "request-kira")
+        self.assertIsNone(second.application_request_id)
+        self.assertFalse(hasattr(first, "coordinator"))
 
     def test_provider_worker_construction_is_owned_by_coordinator_adapter(self):
         root = Path(__file__).resolve().parents[1]
