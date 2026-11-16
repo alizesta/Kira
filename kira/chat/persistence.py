@@ -335,6 +335,9 @@ class SqliteChatRepository:
         con.execute(
             "CREATE TABLE IF NOT EXISTS persistence_schema (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL, description TEXT NOT NULL)"
         )
+        schema_versions = [row[0] for row in con.execute("SELECT version FROM persistence_schema")]
+        if schema_versions and max(int(version) for version in schema_versions) > SCHEMA_VERSION:
+            raise PersistenceError("نسخه ثبت‌شده Schema از این نسخه برنامه جدیدتر است؛ دیتابیس بدون تغییر باقی ماند.")
         con.execute(
             "INSERT OR IGNORE INTO persistence_schema(version, applied_at, description) VALUES (?, ?, ?)",
             (SCHEMA_VERSION, _now(), "conversation ids, message metadata and stream status"),
@@ -882,6 +885,15 @@ class ChatPersistence:
             raise TypeError("repository is required")
         self._repository = repository
 
+    @staticmethod
+    def _invoke(operation, *args, **kwargs):
+        try:
+            return operation(*args, **kwargs)
+        except PersistenceError:
+            raise
+        except Exception as exc:
+            raise PersistenceError(f"{type(exc).__name__}: {exc}") from exc
+
     @property
     def last_error(self) -> str | None:
         return self._repository.last_error
@@ -897,22 +909,22 @@ class ChatPersistence:
         return self._repository.init_db()
 
     def create_conversation(self, character_id=None, title="", metadata=None, conversation_id=None):
-        return self._repository.create_conversation(character_id, title, metadata, conversation_id)
+        return self._invoke(self._repository.create_conversation, character_id, title, metadata, conversation_id)
 
     def get_or_create_conversation(self, character_id=None):
-        return self._repository.get_or_create_conversation(character_id)
+        return self._invoke(self._repository.get_or_create_conversation, character_id)
 
     def get_conversation(self, conversation_id):
-        return self._repository.get_conversation(conversation_id)
+        return self._invoke(self._repository.get_conversation, conversation_id)
 
     def list_conversations(self, character_id=None):
-        return self._repository.list_conversations(character_id)
+        return self._invoke(self._repository.list_conversations, character_id)
 
     def update_conversation(self, conversation_id, **changes):
-        return self._repository.update_conversation(conversation_id, **changes)
+        return self._invoke(self._repository.update_conversation, conversation_id, **changes)
 
     def close_conversation(self, conversation_id):
-        return self._repository.close_conversation(conversation_id)
+        return self._invoke(self._repository.close_conversation, conversation_id)
 
     def delete_conversation(self, conversation_id):
         try:
@@ -926,7 +938,7 @@ class ChatPersistence:
         return self._repository.add_message(role, content, character_id, **options)
 
     def update_stream_message(self, message_id, content, **options):
-        return self._repository.update_stream_message(message_id, content, **options)
+        return self._invoke(self._repository.update_stream_message, message_id, content, **options)
 
     def conversation_context(self, limit=12, max_chars=12000, character_id=None, conversation_id=None):
         return self._repository.conversation_context(limit, max_chars, character_id, conversation_id)
@@ -935,29 +947,29 @@ class ChatPersistence:
         return self._repository.recent_messages(limit, character_id, conversation_id)
 
     def get_messages(self, limit=1000, character_id=None, conversation_id=None, after_id=0):
-        return self._repository.get_messages(limit, character_id, conversation_id, after_id)
+        return self._invoke(self._repository.get_messages, limit, character_id, conversation_id, after_id)
 
     def message_id_for(self, role, content, character_id=None):
-        return self._repository.message_id_for(role, content, character_id)
+        return self._invoke(self._repository.message_id_for, role, content, character_id)
 
     def rows_with_ids(self, limit=3000, after_id=0, character_id=None):
-        return self._repository.rows_with_ids(limit, after_id, character_id)
+        return self._invoke(self._repository.rows_with_ids, limit, after_id, character_id)
 
     def max_message_id(self):
-        return self._repository.max_message_id()
+        return self._invoke(self._repository.max_message_id)
 
     def message_count(self, character_id=None, conversation_id=None):
-        return self._repository.message_count(character_id, conversation_id)
+        return self._invoke(self._repository.message_count, character_id, conversation_id)
 
     def pending_count(self):
-        return self._repository.pending_count()
+        return self._invoke(self._repository.pending_count)
 
     def list_snapshots(self, kind="cleared"):
-        return self._repository.list_snapshots(kind)
+        return self._invoke(self._repository.list_snapshots, kind)
 
     def clear_memory(self, character_id=None):
         try:
-            return self._repository.clear_memory(character_id)
+            return self._invoke(self._repository.clear_memory, character_id)
         except PersistenceError:
             raise
         except Exception as exc:
@@ -965,7 +977,7 @@ class ChatPersistence:
 
     def restore_last_cleared(self):
         try:
-            return self._repository.restore_last_cleared()
+            return self._invoke(self._repository.restore_last_cleared)
         except PersistenceError:
             raise
         except Exception as exc:
@@ -973,7 +985,7 @@ class ChatPersistence:
 
     def import_messages(self, source):
         try:
-            return self._repository.import_messages(source)
+            return self._invoke(self._repository.import_messages, source)
         except PersistenceError:
             raise
         except Exception as exc:
