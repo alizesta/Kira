@@ -80,7 +80,7 @@ class AppearancePage(QScrollArea):
         self.appearance_color_preview = QLabel(self._background_color)
         self.appearance_color_preview.setMinimumWidth(92)
         self.appearance_color_preview.setAlignment(Qt.AlignCenter)
-        self.appearance_color_btn.clicked.connect(self.choose_color_requested.emit)
+        self.appearance_color_btn.clicked.connect(lambda checked=False: self.choose_color_requested.emit())
         colour_row.addWidget(self.appearance_color_btn)
         colour_row.addWidget(self.appearance_color_preview)
         form.addRow("رنگ پس‌زمینه", colour_row)
@@ -100,7 +100,7 @@ class AppearancePage(QScrollArea):
         )
 
         reset = QPushButton("بازنشانی ظاهر")
-        reset.clicked.connect(self.reset_requested.emit)
+        reset.clicked.connect(lambda checked=False: self.reset_requested.emit())
         form.addRow(reset)
         hint = QLabel(
             "تغییرات فوراً پیش‌نمایش می‌شوند و خودکار ذخیره می‌شوند. برای Acrylic و Mica به Windows 11 نیاز است."
