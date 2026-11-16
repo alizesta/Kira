@@ -87,6 +87,24 @@ class SaveAndRestoreTests(IsolatedDb):
             memory.message_count()
         self.assertTrue(opened and len(opened) == len(closed))
 
+    def test_rows_with_ids_uses_monotonic_id_cursor_even_when_imported_timestamps_are_older(self):
+        memory.add_message("user", "newer", "kira")
+        memory.add_message("user", "newer second", "kira")
+        old = self.dir / "older.sqlite3"
+        con = sqlite3.connect(old)
+        con.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY, role TEXT, content TEXT, created_at TEXT)")
+        con.execute("INSERT INTO messages(id, role, content, created_at) VALUES (1, 'user', 'older import', '2020-01-01 00:00:00')")
+        con.commit()
+        con.close()
+        memory.import_messages(old)
+
+        rows = memory.rows_with_ids(limit=10, after_id=0, character_id="kira")
+        ids = [row[0] for row in rows]
+        self.assertEqual(ids, sorted(ids))
+        self.assertEqual(len(set(ids)), len(ids))
+        next_rows = memory.rows_with_ids(limit=10, after_id=max(ids[:-1]), character_id="kira")
+        self.assertEqual(next_rows[-1][0], max(ids))
+
     def test_concurrent_saves_lose_nothing(self):
         errors = []
 
