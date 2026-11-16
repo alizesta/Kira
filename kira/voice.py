@@ -18,6 +18,7 @@ from PySide6.QtCore import QObject, Signal, QUrl, QTimer, QElapsedTimer
 from PySide6.QtMultimedia import QSoundEffect, QMediaPlayer, QAudioOutput, QMediaDevices
 
 SR = 24000
+PIPER_FA = "Mana Persian Piper"
 CACHE_DIR = DATA_DIR / "voice_cache"
 CACHE_DIR.mkdir(exist_ok=True)
 HOP_MS = 40
@@ -362,7 +363,8 @@ class Speaker(QObject):
                 return cw, json.load(f)
         errors = []
         # 0) Offline Persian TTS. It only converts text to audio; chat remains on the selected chat route.
-        if bool(self.settings.get("local_voice_tts", True)) and re.search(r"[\u0600-\u06FF]", text):
+        use_local_piper = bool(self.settings.get("local_voice_tts", True)) or voice == PIPER_FA
+        if use_local_piper and re.search(r"[\u0600-\u06FF]", text):
             try:
                 from . import local_voice
                 if local_voice.tts_ready(self.settings.get("local_voice_tts_model", "")):
@@ -373,15 +375,17 @@ class Speaker(QObject):
                 if "local-tts-down" not in s.notes:
                     s.notes.add("local-tts-down")
                     self.cloud_note.emit(f"TTS محلی فارسی ناموفق بود؛ موتور بعدی امتحان می‌شود. ({type(e).__name__}: {str(e)[:220]})")
+        # If the custom Piper voice fails, use the configured Edge voice as fallback.
+        fallback_voice = (self.settings.get("voice_fa") or "fa-IR-DilaraNeural") if voice == PIPER_FA else voice
         # Offline Windows voices are tried before any network-backed TTS service.
         if sys.platform == "win32":
             try:
-                return self._synth_sapi(tag, text, voice, r, s.cache, cw, cj)
+                return self._synth_sapi(tag, text, fallback_voice, r, s.cache, cw, cj)
             except Exception as e:
                 errors.append(f"Windows: {e}")
         # Edge neural voices are network-backed but remain a legacy fallback before Cloud Voice.
         try:
-            return self._synth_edge(tag, text, voice, r, p, s.cache, base, key, cw, cj)
+            return self._synth_edge(tag, text, fallback_voice, r, p, s.cache, base, key, cw, cj)
         except Exception as e:
             errors.append(f"edge-tts: {type(e).__name__}: {e}")
         # Cloud Voice is the final TTS provider fallback, after the available local engines.
