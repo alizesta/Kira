@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QPushButton, QMessageBox, QComboBox, QFormLayout, QSpinBox, QTabWidget, QGroupBox, QCheckBox,
     QSlider, QScrollArea, QToolButton, QMenu, QListWidget, QListWidgetItem, QAbstractItemView, QDialog,
     QDialogButtonBox, QFrame, QFileDialog, QSizePolicy, QSystemTrayIcon, QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog,
-    QStackedWidget, QDoubleSpinBox, QButtonGroup, QGraphicsDropShadowEffect, QColorDialog
+    QStackedWidget, QDoubleSpinBox, QButtonGroup, QGraphicsDropShadowEffect, QColorDialog, QProgressBar
 )
 from .config import (load_settings, save_settings, ROOT, VERSION, LOAD_WARNINGS, DATA_DIR,
                      APP_NAME, PROJECT_URL, RELEASES_URL)
@@ -2251,10 +2251,14 @@ class MainWindow(QMainWindow):
         if worker is not None and worker.isRunning():
             return
         button.setEnabled(False)
+        if hasattr(self, "local_voice_progress"):
+            self.local_voice_progress.show()
         worker = TaskWorker(fn)
         self._local_voice_worker = worker
         def completed(result):
             button.setEnabled(True)
+            if hasattr(self, "local_voice_progress"):
+                self.local_voice_progress.hide()
             callback(result)
 
         def worker_finished():
@@ -3242,8 +3246,14 @@ class MainWindow(QMainWindow):
         self.local_voice_status.setWordWrap(True)
         self.local_voice_status.setMaximumHeight(96)
         self.local_voice_status.setObjectName("hint")
+        self.local_voice_progress = QProgressBar()
+        self.local_voice_progress.setRange(0, 0)
+        self.local_voice_progress.setTextVisible(False)
+        self.local_voice_progress.setMaximumHeight(7)
+        self.local_voice_progress.hide()
         local_form.addRow(self.local_model_tabs)
         local_form.addRow(self.local_voice_status)
+        local_form.addRow(self.local_voice_progress)
         self.local_voice_box = local_box
         local_status_row = QHBoxLayout()
         local_refresh = QPushButton("بررسی وضعیت موتورهای صوتی")
