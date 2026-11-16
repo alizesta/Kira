@@ -421,6 +421,9 @@ class WindowPersistenceTests(IsolatedDb):
             w.worker.wait(3000)
             QCoreApplication.processEvents()
         self.assertEqual(self.texts(), ["سوال", "نیمه‌ی پاسخ " + "الف" * 45])                  # saved once, no late duplicate
+        saved = memory.get_messages(limit=20, character_id="kira")
+        self.assertEqual(saved[-1]["status"], "interrupted")
+        self.assertEqual(saved[-1]["content"], "نیمه‌ی پاسخ " + "الف" * 45)
 
     def test_error_while_starting_a_request_never_leaves_the_window_busy(self):
         w = self.win
