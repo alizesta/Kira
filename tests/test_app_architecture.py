@@ -272,6 +272,57 @@ class ModuleManagerTests(unittest.TestCase):
 
 
 class ApplicationServiceBoundaryTests(unittest.TestCase):
+    def test_persona_memory_service_routes_observation_by_character(self):
+        from contextlib import nullcontext
+        from unittest.mock import patch
+
+        from kira.services.memory_service import PersonaMemoryService
+
+        service = PersonaMemoryService()
+        with patch(
+            "kira.services.memory_service.persona_memory.character_scope",
+            return_value=nullcontext(),
+        ) as scope, patch(
+            "kira.services.memory_service.persona_memory.observe",
+        ) as observe:
+            service.observe("mika", "user", "hello")
+
+        scope.assert_called_once_with("mika")
+        observe.assert_called_once_with("user", "hello")
+
+    def test_persona_memory_service_builds_prompt_inside_character_scope(self):
+        from contextlib import nullcontext
+        from unittest.mock import patch
+
+        from kira.services.memory_service import PersonaMemoryService
+
+        older = [{"role": "user", "content": "hello"}]
+        service = PersonaMemoryService()
+        with patch(
+            "kira.services.memory_service.persona_memory.character_scope",
+            return_value=nullcontext(),
+        ) as scope, patch(
+            "kira.services.memory_service.persona_memory.build_block",
+            return_value="isolated memory",
+        ) as build:
+            result = service.build_block(
+                "ren",
+                older,
+                voice_samples=False,
+                query="current question",
+                budget=900,
+            )
+
+        self.assertEqual(result, "isolated memory")
+        scope.assert_called_once_with("ren")
+        build.assert_called_once_with(
+            older,
+            voice_samples=False,
+            query="current question",
+            budget=900,
+        )
+
+
     def test_persona_memory_service_scopes_operations_by_character(self):
         from contextlib import nullcontext
         from unittest.mock import patch
