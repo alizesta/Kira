@@ -42,11 +42,6 @@ QLabel#characterPortrait {
     border-radius: 12px;
     padding: 2px;
 }
-QGroupBox {
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(36,27,75,0.34), stop:1 rgba(10,24,43,0.30));
-    border: 1px solid rgba(145,112,255,0.56);
-}
 QGroupBox:hover { border: 1px solid rgba(111,226,255,0.76); }
 QLineEdit:hover, QTextEdit:hover, QPlainTextEdit:hover,
 QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover {
@@ -237,7 +232,12 @@ def build_style(effect="off", appearance=None):
     glow = max(0, min(100, int(appearance.get("glow", 18))))
     glow_alpha = 0.18 + glow * 0.0048
     override = f"""
-QGroupBox {{ border-color: rgba(140,99,255,{glow_alpha:.2f}); }}
+QGroupBox {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(36,27,75,0.34), stop:1 rgba(10,24,43,0.30));
+    border-color: rgba(140,99,255,{glow_alpha:.2f});
+}}
+QGroupBox:hover {{ border-color: rgba(111,226,255,{min(0.94, glow_alpha + 0.16):.2f}); }}
 QToolButton:hover {{ background: rgba(53,217,242,{0.08 + glow * 0.0022:.2f}); border-color: rgba(53,217,242,{0.24 + glow * 0.0048:.2f}); }}
 QPushButton {{ border-color: rgba(140,99,255,{0.30 + glow * 0.0042:.2f}); }}
 """
