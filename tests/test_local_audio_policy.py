@@ -2,10 +2,10 @@
 
 import io
 import json
-import os
 import tempfile
 import unittest
 from pathlib import Path
+import wave
 from types import MethodType, SimpleNamespace
 from unittest import mock
 
@@ -52,7 +52,7 @@ class LocalAudioPolicyTests(unittest.TestCase):
     def test_piper_wav_is_the_only_tts_synthesis_result(self):
         wav_buffer = io.BytesIO()
         samples = np.full(2400, 1200, dtype=np.int16)
-        with __import__("wave").open(wav_buffer, "wb") as output:
+        with wave.open(wav_buffer, "wb") as output:
             output.setnchannels(1)
             output.setsampwidth(2)
             output.setframerate(24000)
@@ -71,7 +71,7 @@ class LocalAudioPolicyTests(unittest.TestCase):
                 )
             self.assertTrue(Path(path).is_file())
             self.assertTrue(envelope)
-            synth.assert_called_once_with("", "سلام", 0)
+            synth.assert_called_once_with("سلام", "", 0)
 
     def test_very_short_audio_envelope_does_not_crash(self):
         envelope = _envelope(np.array([100, -100], dtype=np.int16), 24000)
