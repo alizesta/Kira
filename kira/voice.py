@@ -97,6 +97,7 @@ class Speaker(QObject):
     started / finished / level are emitted once for the whole reply (the microphone logic depends on that)."""
     started = Signal()
     finished = Signal()
+    cancelled = Signal()
     level = Signal(float)
     error = Signal(str)
     cloud_note = Signal(str)            # Cloud Voice switched key / provider, or fell back to the local voice
@@ -150,14 +151,16 @@ class Speaker(QObject):
             return None
 
     def _on_devices_changed(self):
+        if self._fx is not None:
+            self.error.emit("دستگاه خروجی صدا تغییر کرد؛ پخش فعلی متوقف شد. پیام بعدی با دستگاه فعلی دوباره امتحان می‌شود.")
         self.stop()
 
     def _on_sound_status(self):
         fx = self._fx
         if fx is not None and hasattr(fx, "status") and fx.status() == QSoundEffect.Error:
-            self.stop()
             self.error.emit("خروجی صدا در دسترس نیست (دستگاه صدا عوض شده یا توسط برنامه‌ی دیگری گرفته شده). "
                             "پیام بعدی با دستگاه فعلی دوباره امتحان می‌شود؛ اگر ادامه داشت Kira را دوباره اجرا کن.")
+            self.stop()
 
     # ---- public ----
     def speak(self, text, rate=None, pitch=None, cache=False):
@@ -260,6 +263,8 @@ class Speaker(QObject):
         except Exception:
             pass
         sess, self._session = self._session, None
+        if sess is not None:
+            self.cancelled.emit()
         if sess is not None and sess.streaming and not sess.input_done:
             self._stream_dead = True                            # do not restart the same reply from the middle
         if sess is not None:
