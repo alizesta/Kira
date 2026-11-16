@@ -91,11 +91,14 @@ class PerCharacterHistoryTests(IsolatedDb):
 
 class SessionHelperTests(unittest.TestCase):
     def test_sessions_do_not_share_state(self):
+        from kira.chat.coordinator import ChatCoordinator, ChatRequest
         a, b = chat_sessions.ChatSession("ren"), chat_sessions.ChatSession("mika")
         a.busy = True
-        a._pending.append(("x", None))
+        a.coordinator = ChatCoordinator(lambda _request: None)
+        a.coordinator.submit(ChatRequest.create("x"), busy=True)
         self.assertFalse(b.busy)
-        self.assertEqual(b._pending, [])
+        self.assertIsNone(b.coordinator)
+        self.assertEqual(a.coordinator.pending_count, 1)
 
     def test_front_only_objects_are_silent_for_background_chats(self):
         class Voice:
