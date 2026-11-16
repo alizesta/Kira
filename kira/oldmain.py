@@ -66,6 +66,7 @@ from .theme import build_style, STYLE
 from . import theme as theme_mod
 from .chat_sessions import ChatSession, NOOP, SESSION_FIELDS, session_property, front_only_property
 from .chat.coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
+from .chat.context_builder import ContextBuilder, ContextRequest
 from . import winfx
 from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
@@ -4325,8 +4326,8 @@ class MainWindow(QMainWindow):
 
     def start_worker(self, plain):
         window = int(self.settings.get("memory_context_limit", 12))
-        context = self.chat_history_service.conversation_context(window, character_id=self.cur.cid)
-        mode = self.detect_mode(context)                          # Active Mode of THIS message (None = switched off in settings)
+        history = self.chat_history_service.conversation_context(window, character_id=self.cur.cid)
+        mode = self.detect_mode(history)                          # Active Mode of THIS message (None = switched off in settings)
         try:
             older = self.chat_history_service.recent_messages(window + 40, self.cur.cid)[:-window] if window else []
             # Every character has its own saved conversation; only Kira owns the legacy evidence index.
@@ -4335,7 +4336,7 @@ class MainWindow(QMainWindow):
                 character_id,
                 older,
                 voice_samples=(mode is None or mode.name == modes.CHAT),
-                query=evidence_memory.query_from_context(context) if character_id == "kira" else None,
+                query=evidence_memory.query_from_context(history) if character_id == "kira" else None,
                 budget=evidence_memory.budget_for(self.settings, self.client),
             )
             total = self.chat_history_service.message_count(character_id)
@@ -4351,29 +4352,47 @@ class MainWindow(QMainWindow):
             mood_block = mood.build_block(mode.name if mode else modes.CHAT)
         except Exception:                                         # noqa: BLE001
             mood_block = ""
-        prompt = build_system_prompt(self.settings, "" if plain else self.director.format_hint(), memory_block,
-                                     voice_input=self._turn_voice, mode=mode, mood_block=mood_block,
-                                     character_profile=self.active_character())
-        # The selected character changes identity and conversational style only; all shared tools and policies stay intact.
-        character_layer = self.character_service.prompt_for(self.settings)
-        if character_layer:
-            prompt += "\n\n" + character_layer
-        if self.body_active():                                    # she can move her 3D body: tell the model how (tags) and what the app already did
-            prompt += ("" if plain else body_ctl.format_hint()) + body_ctl.done_note(self._body_done)
-        try:                                                      # brain stage: deterministic, no model call; any problem = the normal path
+
+        # Brain planning remains application policy; only its prompt contribution
+        # is injected into the independent ContextBuilder.
+        try:
             extra0 = self._turn_extra
             has_att = bool(self._turn_attach_kinds or (extra0 and (extra0.get("images") or "--- فایل ضمیمه" in str(extra0.get("model", "")))))
-            last_user = next((m.get("content", "") for m in reversed(context) if m.get("role") == "user"), "")
+            last_user = next((m.get("content", "") for m in reversed(history) if m.get("role") == "user"), "")
             self._brain_user_text = str(last_user)
             self._brain_mode_name = mode.name if mode else None
             self._brain = brain.decide(last_user, mode, self._tool_plan, has_att, self.tool_agent.tasks.active() is not None, self.settings)
-            prompt = brain.extend_prompt(prompt, self._brain, self.settings, self.client)
         except Exception:                                         # noqa: BLE001
             self._brain = brain.Decision()
+
+        character_layer = self.character_service.prompt_for(self.settings)
+        body_context = ""
+        if self.body_active():                                    # preserve existing 3D body instruction and completed-action note
+            body_context = ("" if plain else body_ctl.format_hint()) + body_ctl.done_note(self._body_done)
+
+        context_result = ContextBuilder(
+            build_system_prompt,
+            prompt_enricher=lambda value: brain.extend_prompt(value, self._brain, self.settings, self.client),
+        ).build(ContextRequest(
+            messages=history,
+            character_id=self.cur.cid,
+            character_profile=self.active_character(),
+            settings=self.settings,
+            memory=memory_block,
+            mood=mood_block,
+            character_context=character_layer,
+            format_hint="" if plain else self.director.format_hint(),
+            voice_input=self._turn_voice,
+            mode=mode,
+            body_context=body_context,
+            turn_extra=self._turn_extra,
+            max_context_chars=self.settings.get("chat_context_char_limit", 0),
+        ))
+        context = [dict(message) for message in context_result.messages]
+        prompt = context_result.system_prompt
+
         self._stream_begin()
         extra = self._turn_extra
-        if extra and context and context[-1]["role"] == "user":          # this turn gets the full file text and the real images
-            context[-1] = {"role": "user", "content": extra["model"], "images": extra["images"]}
         temperature = modes.temperature_for(mode, self.settings["temperature"]) if mode else self.settings["temperature"]
         relay = self.cur.relay
         self.worker = self._chat_coordinator().start_provider_request(
