@@ -27,6 +27,7 @@ class TransferError(ValueError):
 class TransferRepository(Protocol):
     def list_conversations(self, character_id: str | None = None) -> list[dict[str, Any]]: ...
     def get_transfer_messages(self, conversation_id: str, character_id: str, after_created_at: str = "", after_id: int = 0, limit: int = 1000) -> list[dict[str, Any]]: ...
+    def messages_after(self, after_id: int = 0, limit: int = 500) -> list[dict[str, Any]]: ...
     def import_transfer_records(self, conversations: list[dict[str, Any]], messages: list[dict[str, Any]]) -> dict[str, Any]: ...
 
 @dataclass(frozen=True)
@@ -252,6 +253,24 @@ class ChatTransfer:
             existing = {str(row.get("id")): str(row.get("character_id") or "kira")
                         for row in self._repository.list_conversations()}
             warnings = []
+            # Message IDs are global primary keys, not scoped to a conversation.
+            # Page the complete ID space so preview catches collisions even when
+            # the conflicting row belongs to an unrelated conversation/character.
+            incoming_message_ids = {int(message["id"]) for message in messages}
+            colliding_message_ids = set()
+            cursor_id = 0
+            while True:
+                batch = self._repository.messages_after(cursor_id, limit=5000)
+                if not batch:
+                    break
+                for row in batch:
+                    message_id = int(row["id"])
+                    if message_id in incoming_message_ids:
+                        colliding_message_ids.add(message_id)
+                cursor_id = int(batch[-1]["id"])
+                if len(batch) < 5000:
+                    break
+
             existing_ids = {}
             existing_signatures = {}
             for conv in convs:
@@ -288,6 +307,8 @@ class ChatTransfer:
             for message in messages:
                 conv_id = message["conversation_id"]
                 if conv_id not in existing_ids:
+                    if message["id"] in colliding_message_ids:
+                        collision_conversations.add(conv_id)
                     continue
                 signature = (
                     message["role"], message["content"], message["created_at"],
@@ -296,7 +317,7 @@ class ChatTransfer:
                 )
                 if signature in existing_signatures[conv_id]:
                     duplicate_count += 1
-                elif message["id"] in existing_ids[conv_id]:
+                elif message["id"] in colliding_message_ids:
                     collision_conversations.add(conv_id)
             if duplicate_count:
                 warnings.append(f"{duplicate_count} identical message(s) will be skipped.")
