@@ -5,24 +5,36 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OLDMAIN = ROOT / "kira" / "oldmain.py"
+UI_ROOT = ROOT / "kira" / "ui"
+WINDOW_FILES = tuple(sorted(UI_ROOT.glob("main_window*.py")))
 
 
 class ChatApplicationWiringTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.source = OLDMAIN.read_text(encoding="utf-8")
-        cls.tree = ast.parse(cls.source)
-        cls.main_window = next(
-            node for node in cls.tree.body
-            if isinstance(node, ast.ClassDef) and node.name == "MainWindow"
-        )
+        cls.sources = {
+            path: path.read_text(encoding="utf-8")
+            for path in WINDOW_FILES
+        }
+        cls.source = "\n".join(cls.sources.values())
+        cls.trees = {
+            path: ast.parse(source, filename=str(path))
+            for path, source in cls.sources.items()
+        }
+        cls.methods = {}
+        for tree in cls.trees.values():
+            for node in tree.body:
+                if not isinstance(node, ast.ClassDef):
+                    continue
+                for member in node.body:
+                    if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        cls.methods.setdefault(member.name, member)
 
     def method(self, name):
-        return next(
-            node for node in self.main_window.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name
-        )
+        try:
+            return self.methods[name]
+        except KeyError as exc:
+            self.fail(f"MainWindow feature mixins do not define {name!r}")
 
     def test_main_window_passes_the_injected_history_service(self):
         init = self.method("__init__")
@@ -41,7 +53,6 @@ class ChatApplicationWiringTests(unittest.TestCase):
     def test_bootstrap_injects_chat_service_factory_into_main_window(self):
         bootstrap = (ROOT / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8")
         composition = (ROOT / "kira" / "app" / "chat_composition.py").read_text(encoding="utf-8")
-        init = self.method("__init__")
         self.assertIn("chat_application_service_factory", bootstrap)
         self.assertIn("create_chat_application_service_factory", bootstrap)
         self.assertIn("chat_application_service_factory(self)", self.source)
