@@ -294,6 +294,38 @@ class AttachmentManager:
             and (message_id is None or record.message_id == str(message_id))
         )
 
+    def _managed_path(self, record: Attachment) -> Path:
+        stored = Path(record.path)
+        if stored.is_symlink():
+            raise _legacy.AttachmentError("مسیر ضمیمه معتبر نیست.")
+        path = stored.resolve()
+        owner_dir = (
+            self._root
+            / hashlib.sha256(record.session_id.encode("utf-8")).hexdigest()[:24]
+        ).resolve()
+        if not path.is_relative_to(owner_dir) or not path.is_relative_to(self._root):
+            raise _legacy.AttachmentError("مسیر ضمیمه خارج از محدوده مجاز است.")
+        if not path.is_file():
+            raise _legacy.AttachmentError("فایل ضمیمه دیگر در دسترس نیست.")
+        return path
+
+    @staticmethod
+    def _validate_docx_package(path: Path) -> None:
+        try:
+            with zipfile.ZipFile(path, "r") as archive:
+                infos = [item for item in archive.infolist() if not item.is_dir()]
+                if len(infos) > _legacy.MAX_ARCHIVE_ENTRIES:
+                    raise _legacy.AttachmentError("ساختار فایل Word بیش از حد پیچیده است.")
+                if sum(max(0, item.file_size) for item in infos) > _legacy.MAX_ARCHIVE_UNPACKED_BYTES:
+                    raise _legacy.AttachmentError("حجم بازشده فایل Word بیش از حد مجاز است.")
+                document = next((item for item in infos if item.filename == "word/document.xml"), None)
+                if document is None or document.file_size > _legacy.MAX_ARCHIVE_MEMBER_BYTES:
+                    raise _legacy.AttachmentError("ساختار اصلی فایل Word معتبر نیست.")
+        except _legacy.AttachmentError:
+            raise
+        except (OSError, zipfile.BadZipFile) as exc:
+            raise _legacy.AttachmentError("ساختار فایل Word معتبر نیست.") from exc
+
     def prepare_content(
         self, attachment_ids: list[str] | tuple[str, ...], *, session_id: str,
         text: str = "", search: bool = False,
@@ -307,8 +339,11 @@ class AttachmentManager:
                 errors.append("ضمیمه وجود ندارد یا متعلق به این نشست نیست.")
                 continue
             try:
+                managed_path = self._managed_path(record)
+                if record.metadata.get("extension") == ".docx":
+                    self._validate_docx_package(managed_path)
                 if record.mime_type.startswith("image/"):
-                    raw = Path(record.path).read_bytes()
+                    raw = managed_path.read_bytes()
                     prepared.append({
                         "name": record.filename, "kind": "image",
                         "mime": record.mime_type,
@@ -316,7 +351,7 @@ class AttachmentManager:
                         "size": record.size,
                     })
                 else:
-                    prepared.append(_legacy.load_attachment(record.path))
+                    prepared.append(_legacy.load_attachment(str(managed_path)))
             except Exception:
                 errors.append(f"پردازش فایل «{record.filename}» ناموفق بود.")
         result = _legacy.compose(text, prepared, search=search)
@@ -329,12 +364,9 @@ class AttachmentManager:
         record = self._records.get(str(attachment_id or ""))
         if record is None or record.session_id != str(session_id or ""):
             return False
-        stored_path = Path(record.path)
-        if stored_path.is_symlink():
-            return False
-        path = stored_path.resolve()
-        owner_dir = (self._root / hashlib.sha256(record.session_id.encode("utf-8")).hexdigest()[:24]).resolve()
-        if not path.is_relative_to(owner_dir) or not path.is_relative_to(self._root):
+        try:
+            path = self._managed_path(record)
+        except _legacy.AttachmentError:
             return False
         try:
             path.unlink(missing_ok=True)
