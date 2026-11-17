@@ -10,7 +10,7 @@ import logging
 from collections import defaultdict, deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from threading import Condition, Event as ThreadEvent, RLock, get_ident
+from threading import Condition, RLock
 from typing import Any
 
 
@@ -45,7 +45,6 @@ class _PendingPublication:
     payload: dict[str, Any]
     sequence: int
     chat_event: Any | None = None
-    completed: ThreadEvent = field(default_factory=ThreadEvent)
     report: EventPublishReport | None = None
 
 
@@ -56,7 +55,9 @@ class EventBus:
     lock. Publications are serialized through a FIFO queue. A callback may
     publish another event: that event is queued until every subscriber has
     received the current event, avoiding re-entrant delivery and deadlocks.
-    Concurrent publishers wait for their own delivery report.
+    Concurrent and nested publishers enqueue without blocking and receive a
+    queued=True report; the active dispatcher drains those publications in
+    sequence after the current subscriber snapshot.
     """
 
     def __init__(self) -> None:
@@ -65,7 +66,6 @@ class EventBus:
         self._pending: deque[_PendingPublication] = deque()
         self._sequence = 0
         self._dispatching = False
-        self._dispatcher_thread: int | None = None
         self._closed = False
 
     @staticmethod
@@ -160,7 +160,6 @@ class EventBus:
         name = self._event_name(event_name)
         publication = None
         should_drain = False
-        current_thread = get_ident()
 
         with self._condition:
             if self._closed:
@@ -170,16 +169,14 @@ class EventBus:
             self._pending.append(publication)
             if not self._dispatching:
                 self._dispatching = True
-                self._dispatcher_thread = current_thread
                 should_drain = True
-            elif self._dispatcher_thread == current_thread:
-                # Nested publication is delivered after the current fan-out.
+            else:
+                # Nested and concurrent publications are delivered after the
+                # current fan-out; callers never block on another thread's callback.
                 return EventPublishReport(name, publication.sequence, 0, queued=True)
 
         if should_drain:
             self._drain()
-        else:
-            publication.completed.wait()
 
         return publication.report or EventPublishReport(
             name, publication.sequence, 0, queued=True
@@ -190,7 +187,6 @@ class EventBus:
             with self._condition:
                 if not self._pending:
                     self._dispatching = False
-                    self._dispatcher_thread = None
                     self._condition.notify_all()
                     return
                 publication = self._pending.popleft()
@@ -225,7 +221,6 @@ class EventBus:
             )
             with self._condition:
                 publication.report = report
-                publication.completed.set()
 
     def subscriber_count(self, event_name: str | None = None) -> int:
         with self._condition:
