@@ -56,12 +56,29 @@ class _Speaker:
         self._began = False
         self.spoken = []
         self.stopped = 0
+        self.streamed = []
+        self.played = []
+        self.reset_count = 0
+        self.end_count = 0
+        self.settings = {"voice_volume": 70}
 
-    def speak(self, text):
-        self.spoken.append(text)
+    def speak(self, text, rate=None, pitch=None, cache=False):
+        self.spoken.append((text, rate, pitch, cache))
 
     def stop(self):
         self.stopped += 1
+
+    def stream_reset(self):
+        self.reset_count += 1
+
+    def stream_text(self, text, final=False):
+        self.streamed.append((text, final))
+
+    def stream_end(self):
+        self.end_count += 1
+
+    def play_file(self, path):
+        self.played.append(path)
 
 
 class VoiceApplicationServiceTests(unittest.TestCase):
@@ -94,8 +111,28 @@ class VoiceApplicationServiceTests(unittest.TestCase):
         self.service.speak("hello")
         self.service.stop_speaking()
 
-        self.assertEqual(self.speaker.spoken, ["hello"])
+        self.assertEqual(self.speaker.spoken, [("hello", None, None, False)])
         self.assertEqual(self.speaker.stopped, 1)
+
+    def test_streaming_settings_and_file_playback_are_delegated(self):
+        self.service.speak("local", -5, -3, cache=True)
+        self.service.stream_reset()
+        self.service.stream_text("partial")
+        self.service.stream_text("final", final=True)
+        self.service.stream_end()
+        self.service.play_file("test.wav")
+
+        self.assertEqual(self.speaker.spoken[-1], ("local", -5, -3, True))
+        self.assertEqual(self.speaker.reset_count, 1)
+        self.assertEqual(self.speaker.streamed, [("partial", False), ("final", True)])
+        self.assertEqual(self.speaker.end_count, 1)
+        self.assertEqual(self.speaker.played, ["test.wav"])
+        self.assertIs(self.service.settings, self.speaker.settings)
+
+    def test_is_speaking_exposes_only_the_playback_state(self):
+        self.assertFalse(self.service.is_speaking())
+        self.speaker._began = True
+        self.assertTrue(self.service.is_speaking())
 
     def test_listener_signals_are_forwarded_to_application_callbacks(self):
         self.service.start_recording()
