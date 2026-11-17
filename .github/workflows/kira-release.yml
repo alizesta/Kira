@@ -128,6 +128,8 @@ jobs:
           tests.test_chat_coordinator
           tests.test_chat_context_builder
           tests.test_chat_application_service
+          tests.test_chat_attachments
+          tests.test_chat_commands
           tests.test_chat_events
           tests.test_chat_application_wiring
           tests.test_chat_session_manager
@@ -183,6 +185,8 @@ jobs:
           tests.test_game_detection
           tests.test_streaming
           tests.test_chat_persistence
+          tests.test_chat_attachments
+          tests.test_chat_commands
           tests.test_chat_render
           tests.test_body
           tests.test_build_metadata

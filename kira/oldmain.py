@@ -36,7 +36,7 @@ from . import discovery
 from . import api_manager
 from . import websearch
 from .chat import attachments as att
-from .actions import run_safe_action
+from .actions import match_safe_action, run_safe_action
 from .tools import ToolAgent
 from .leak_guard import scrub_lines
 from .companion import CompanionWindow, CompanionBubble
@@ -68,6 +68,9 @@ from . import theme as theme_mod
 from .chat_sessions import ChatSession, NOOP, SESSION_FIELDS, session_property, front_only_property
 from .chat.application_service import ChatApplicationService, ApplicationEventKind, RequestStatus
 from .chat.session_manager import SessionManager
+from .chat.commands import PermissionDecision
+from .chat.command_adapters import create_default_command_registry
+from .tools.tasks import parse_control as parse_tool_task_control
 from . import winfx
 from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
@@ -315,6 +318,7 @@ class MainWindow(QMainWindow):
         self.animator = EmotionFaceAnimator(self, director=self.director)
         self.companion = CompanionWindow(self.animator)
         self.apply_character_art()
+        self._install_chat_commands()
         self.bubble = CompanionBubble()
         self.bubble.submitted.connect(self.submit)
         self.bubble.imageSearchToggled.connect(self.toggle_image_search)
@@ -4277,7 +4281,7 @@ class MainWindow(QMainWindow):
         )
         if self.busy and not attachments:
             try:
-                control = self.tool_agent.control_running(text)
+                control = self.tool_agent.control_running(text, session_id=self.cur.cid)
             except Exception:  # noqa: BLE001 - never block typing
                 control = None
             if control:
@@ -4326,15 +4330,23 @@ class MainWindow(QMainWindow):
         self.safe_stop_speaker()
         self.animator.touch()
         self._body_done = []
-        try:
-            self.run_body(body_ctl.parse_user_command(text))            # "raise your hand" / "پشتتو کن": moves at once, before the model answers
-        except Exception:                                      # noqa: BLE001
-            pass
-        force_img = False
-        if attachments and any(a.get("kind") == "image" for a in attachments):
-            text, force_img = websearch.image_command(text)              # '/img ...' or '/عکس ...' = search this picture even if the switch is off
-        img_search = bool(attachments and any(a.get("kind") == "image" for a in attachments)
-                          and (force_img or self.settings.get("image_search", False)))
+        original_text = str(text or "")
+        self.tool_agent.begin_turn(self.cur.cid)
+        has_image = any(item.get("kind") == "image" for item in (attachments or []))
+        command_dispatch = self.chat_application_service.dispatch_commands(
+            self.cur.application_request_id,
+            original_text,
+            metadata={
+                "has_attachments": bool(attachments),
+                "has_image": has_image,
+            },
+        )
+        text = command_dispatch.rewritten_text or original_text
+        force_img = bool(command_dispatch.metadata.get("force_image_search"))
+        force_web = bool(command_dispatch.metadata.get("force_web_search"))
+        img_search = bool(
+            has_image and (force_img or self.settings.get("image_search", False))
+        )
         packed = None
         if self.cur.application_request_id:
             try:
@@ -4356,27 +4368,26 @@ class MainWindow(QMainWindow):
                     "No attachment content could be prepared.",
                 )
                 return
+        if packed is not None and force_web:
+            # Preserve the user's literal /web command in the visible and durable chat history.
+            presentation = att.compose(original_text, attachments, search=img_search)
+            packed["display"] = presentation["display"]
+            packed["stored"] = presentation["stored"]
         self._turn_extra = packed
-        self._turn_attach_kinds = [str(a.get("kind")) for a in (attachments or [])]       # structured kinds: Active Mode must not guess from display text
-        self.add_chat("user", packed["display"] if packed else text, images=attachments if packed else None)
-        self.tool_agent.begin_turn()
-        action_result = None
-        if not packed:
-            action_result = usage.handle_command(text)                                 # "/usage [days]": numbers from the local ledger, no model call
-            if action_result is not None:
-                pass
-            elif self.tool_agent.enabled():
-                action_result = self.tool_agent.handle_confirmation_reply(text)       # "تأیید" / "لغو" for a pending sensitive action: decided in code, not by the model
-                if action_result is None:
-                    action_result = self.tool_agent.handle_task_command(text)         # status / pause / cancel / add a step of an unfinished task: decided in code too
-            else:
-                action_result = run_safe_action(
-                    text, allow_desktop=self._game_mode_profile != COMPETITIVE_SAFE_MODE
-                )                                                                       # fixed shortcuts remain gated in Competitive Safe
-        self._tool_plan = None if action_result else self.tool_agent.plan(text)
-        self.save_message("user", packed["stored"] if packed else text)
-        if action_result:
-            self.reply_local(action_result)
+        self._turn_attach_kinds = [str(item.get("kind")) for item in (attachments or [])]
+        self.add_chat(
+            "user",
+            packed["display"] if packed else original_text,
+            images=attachments if packed else None,
+        )
+        self._tool_plan = (
+            None
+            if command_dispatch.handled and not command_dispatch.continue_chat
+            else self.tool_agent.plan(text)
+        )
+        self.save_message("user", packed["stored"] if packed else original_text)
+        if command_dispatch.handled and not command_dispatch.continue_chat:
+            self.reply_local(command_dispatch.reply_text or "فرمان اجرا شد.")
             return
         self.busy = True
         self.gen_stop_btn.show()
@@ -4392,7 +4403,13 @@ class MainWindow(QMainWindow):
             self._image_search_turn = True
             self.begin_image_search(text, packed, packed["images"])
             return
-        query, forced = websearch.plan(text) if self.settings.get("web_search", True) or text.lstrip().startswith("/") else (None, False)
+        query, forced = (
+            websearch.plan(text)
+            if self.settings.get("web_search", True) or text.lstrip().startswith("/") or force_web
+            else (None, False)
+        )
+        if force_web:
+            query, forced = str(text or "").strip()[:300], True
         if query and not forced and self._tool_plan is not None and self._tool_plan.strong:
             query = None                                          # a request about this PC (files, apps, RAM...) is not a web question
         if query and not forced and self._tool_plan is not None and getattr(self._tool_plan, "web", False):
@@ -4744,6 +4761,34 @@ class MainWindow(QMainWindow):
         self.gen_stop_btn.setEnabled(False)
 
     # ---- body control (the 3D body moves on chat commands: kira/body.py) ----
+    def _install_chat_commands(self):
+        """Wire the existing feature owners into the shared chat command registry."""
+        registry = create_default_command_registry(
+            permission_checker=self._check_chat_command_permission,
+            usage_parser=usage.parse_command,
+            usage_report=usage.report,
+            body_parser=body_ctl.parse_user_command,
+            body_is_active=self.body_active,
+            body_handler=self.run_body,
+            web_parser=websearch.plan,
+            image_parser=websearch.image_command,
+            task_control_parser=parse_tool_task_control,
+            tool_agent=self.tool_agent,
+            desktop_action_matcher=match_safe_action,
+            desktop_action_handler=lambda text: run_safe_action(text, allow_desktop=True),
+        )
+        self.chat_application_service.set_command_registry(registry)
+        self.command_registry = registry
+
+    def _check_chat_command_permission(self, command, _request):
+        if "desktop.launch" in command.required_permissions:
+            if self._game_mode_profile == COMPETITIVE_SAFE_MODE:
+                return PermissionDecision(
+                    False,
+                    "در حالت Competitive Safe اجرای میانبرهای دسکتاپ غیرفعال است.",
+                )
+        return True
+
     def body_active(self):
         """True while Kira's VRM body is on screen in the front chat and the setting 'body_control' is on."""
         return bool(self.settings.get("body_control", True) and getattr(self.animator, "body_enabled", False)
@@ -5511,7 +5556,7 @@ class MainWindow(QMainWindow):
                 self.chat_application_service.clear_history(self.cur.cid)      # only THIS character's conversation; saves a snapshot first, nothing is deleted if that fails
                 # Facts, moments and habits remain in the character's own memory file.
                 self.memory_service.forget_conversation(self.cur.cid)
-                self.tool_agent.clear_tasks()   # the unfinished task (its goal is the user's own words) goes with the chat
+                self.tool_agent.clear_tasks(self.cur.cid)   # the unfinished task (its goal is the user's own words) goes with the chat
                 brain.reset_state()
             except ChatHistoryError as exc:
                 QMessageBox.warning(self, self.t("clear_t"), str(exc))

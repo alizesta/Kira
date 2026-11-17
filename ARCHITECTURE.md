@@ -211,3 +211,11 @@ The migration reference is temporary. Its purpose is to preserve working behavio
 - The current supported format set is retained: PNG, JPEG, WEBP, GIF, BMP, PDF, DOCX, ZIP, and the existing text/data/configuration/source allowlist. Audio/video decoding is not added by this task.
 - The compatibility functions remain available through `kira.chat.attachments` during migration so existing paste, desktop capture, game-vision and file-upload call sites continue to use the established payload shape.
 - Contract coverage is added in `tests/test_chat_attachments.py` and `tests/test_chat_application_service.py`. Per maintainer instruction, tests are intentionally deferred until TASK 010 is complete; neither Windows nor GUI tests are requested.
+
+## Chat Commands & Actions (TASK 010)
+
+- `kira/chat/commands.py` provides the framework-independent command registry, immutable request/result contracts, parameter validation, permission checks, duplicate-result protection and cooperative cancellation.
+- `kira/chat/command_adapters.py` registers the existing usage, body-control, web/image-search, ToolAgent confirmation/task-control and fixed desktop-shortcut behaviors through injected handlers. It does not duplicate feature execution or bypass existing confirmation and safety gates.
+- `ChatApplicationService` dispatches commands against the active logical request and runtime Session identity. MainWindow supplies the existing feature owners and preserves normal provider chat when no command handles the input.
+- Desktop shortcut commands require the `desktop.launch` permission and are denied under Competitive Safe mode. ToolAgent retains ownership of sensitive-operation confirmation and task controls.
+- The command registry is scoped to the application adapter and is released with the MainWindow lifecycle. Tests cover parsing, schema validation, permission denial, session/request correlation, duplicate dispatch, cancellation and adapter compatibility.
