@@ -39,11 +39,11 @@ class AutonomyMixin:
     # ------------------------------------------------------------------ setup / settings
     def _init_autonomy(self, data_dir):
         self.tasks = TaskStore(data_dir)
-        self._running_plan = False
-        self._turn_plan_id = None
-        self._resume_flag = False
-        self._pause_req = False
-        self._cancel_plan_req = False
+        self._running_plan_sessions: set[str] = set()
+        self._turn_plan_ids: dict[str, str] = {}
+        self._resume_sessions: set[str] = set()
+        self._pause_requests: set[str] = set()
+        self._cancel_plan_requests: set[str] = set()
 
     def planning_enabled(self) -> bool:
         return str(self.settings.get("agent_planning", "auto")).lower() != "off"
@@ -57,12 +57,23 @@ class AutonomyMixin:
     def clear_tasks(self, session_id: str | None = None):
         """Clear task history globally or only for one character session."""
         self.tasks.clear(session_id)
-        if session_id is None or str(session_id) == getattr(self, "_turn_session_id", ""):
-            self._resume_flag = self._pause_req = self._cancel_plan_req = False
+        if session_id is None:
+            self._resume_sessions.clear()
+            self._pause_requests.clear()
+            self._cancel_plan_requests.clear()
+            self._turn_plan_ids.clear()
+        else:
+            owner = str(session_id)
+            self._resume_sessions.discard(owner)
+            self._pause_requests.discard(owner)
+            self._cancel_plan_requests.discard(owner)
+            self._turn_plan_ids.pop(owner, None)
 
     def _turn_reset(self):
-        self._turn_plan_id = None
-        self._pause_req = self._cancel_plan_req = False
+        owner = getattr(self, "_turn_session_id", "")
+        self._turn_plan_ids.pop(owner, None)
+        self._pause_requests.discard(owner)
+        self._cancel_plan_requests.discard(owner)
 
     # ------------------------------------------------------------------ decisions made BEFORE any model call
     def decide(self, text: str, base):
@@ -77,10 +88,10 @@ class AutonomyMixin:
             active.status = P_RUNNING
             self.tasks.save()
             return ToolPlan(self._cats_for(active, text), True, complex=True, resume=True, reasons=("جواب به سؤال وظیفه",))
-        if self._resume_flag and active is not None:
-            self._resume_flag = False
+        if self._turn_session_id in self._resume_sessions and active is not None:
+            self._resume_sessions.discard(self._turn_session_id)
             return ToolPlan(self._cats_for(active, text), True, complex=True, resume=True, reasons=("ادامه‌ی وظیفه",))
-        self._resume_flag = False
+        self._resume_sessions.discard(self._turn_session_id)
         self._remember_task_preference(text)
         if base is not None:
             cx, reasons = planner.assess(text, base.categories)
@@ -109,7 +120,8 @@ class AutonomyMixin:
 
     # ------------------------------------------------------------------ the user's commands about the task
     def handle_task_command(self, text: str, *, session_id: str | None = None):
-        """Handle explicit controls for the active task owned by one chat session."""
+        """Before the model is asked: status / pause / cancel / resume / add a step / change the goal. Returns a ready reply text, or None
+        (then the message goes on: 'resume' and 'change' set a flag so the NEXT step is run by the model with the task state)."""
         owner = self._turn_session_id if session_id is None else str(session_id)
         if not self.planning_enabled():
             return None
@@ -151,9 +163,10 @@ class AutonomyMixin:
         return None
 
     def control_running(self, text: str, *, session_id: str | None = None):
-        """Handle in-flight task controls only for the owning chat session."""
+        """While a task is being executed (the GUI is busy): a few short commands act at once, between two steps. Returns a text for the user or None
+        (then the message waits in the queue as usual)."""
         owner = self._turn_session_id if session_id is None else str(session_id)
-        if not self._running_plan:
+        if owner not in self._running_plan_sessions:
             return None
         plan = self.tasks.active(owner)
         if plan is None:
@@ -162,11 +175,10 @@ class AutonomyMixin:
         if kind == "status":
             return plan.report()
         if kind == "pause":
-            self._pause_req = True
+            self._pause_requests.add(owner)
             return "باشه، بعد از مرحله‌ی جاری وظیفه را متوقف می‌کنم."
         if kind == "cancel":
-            self._cancel_plan_req = True
-            self.request_cancel()
+            self._cancel_plan_requests.add(owner)
             return "وظیفه لغو می‌شود؛ مرحله‌ای که همین الان در حال اجراست تمام می‌شود و بقیه اجرا نمی‌شوند."
         if kind == "add_step" and payload:
             plan.steps.append(Step(plan.next_id(), _safe(payload, 140)))
@@ -187,6 +199,7 @@ class AutonomyMixin:
         pending = self._pending_by_session.get(self._turn_session_id)
         if pending is not None and getattr(pending, "plan_id", "") == plan.id:
             self._pending_by_session.pop(self._turn_session_id, None)
+            self._pending_new_sessions.discard(self._turn_session_id)
         plan.updated = time.time()
         self.tasks.save()
 
@@ -205,7 +218,10 @@ class AutonomyMixin:
 
     # ------------------------------------------------------------------ confirmation of a sensitive step that belongs to a task
     def _after_confirm(self, pending, res: ToolResult, confirmed: bool) -> str:
-        plan = self.tasks.get(getattr(pending, "plan_id", ""), session_id=getattr(pending, "session_id", self._turn_session_id)) if getattr(pending, "plan_id", "") else None
+        plan = self.tasks.get(
+            getattr(pending, "plan_id", ""),
+            session_id=getattr(pending, "session_id", self._turn_session_id),
+        ) if getattr(pending, "plan_id", "") else None
         if plan is None:
             return ""
         st = plan.step(pending.step_id)
@@ -245,9 +261,10 @@ class AutonomyMixin:
         return res, gate
 
     def _poll(self, tp: TaskPlan):
-        if self._cancel_plan_req:
+        owner = tp.session_id
+        if owner in self._cancel_plan_requests:
             return "cancel"
-        if self._pause_req:
+        if owner in self._pause_requests:
             return "pause"
         return None
 
@@ -257,13 +274,14 @@ class AutonomyMixin:
         temp = self.temperature(temperature)
         max_steps, max_replans = self.max_steps(), self.max_replans()
         executed: list[ToolResult] = []
-        self._running_plan = True
+        owner = self._turn_session_id
+        self._running_plan_sessions.add(owner)
         try:
             tp = None
             if plan.resume:
-                tp = self.tasks.active(self._turn_session_id)
-            elif retry_index and self._turn_plan_id:
-                tp = self.tasks.get(self._turn_plan_id, session_id=self._turn_session_id)
+                tp = self.tasks.active(owner)
+            elif retry_index and self._turn_plan_ids.get(owner):
+                tp = self.tasks.get(self._turn_plan_ids[owner], session_id=owner)
             initial = None
             cur = list(messages)
             if tp is None:
@@ -279,7 +297,7 @@ class AutonomyMixin:
                     on_tool({"phase": "plan_ready", "n": len(tp.steps), "estimate": tp.estimate_text(), "resumed": True})
             return self._execute_loop(router, cur, system_prompt, temp, plan, tp, initial, retry_index, on_event, emit, on_tool, executed, max_steps, max_replans)
         finally:
-            self._running_plan = False
+            self._running_plan_sessions.discard(owner)
             self.tasks.save()
 
     # ---- phase 1: planning (only for a NEW task)
@@ -350,7 +368,8 @@ class AutonomyMixin:
             ctl = self._poll(tp)
             if ctl:
                 tp.status = P_CANCELLED if ctl == "cancel" else P_PAUSED
-                self._pause_req = False
+                self._pause_requests.discard(tp.session_id)
+                self._cancel_plan_requests.discard(tp.session_id)
                 self.tasks.save()
                 text = ("وظیفه لغو شد." if ctl == "cancel" else "وظیفه متوقف شد؛ وضعیتش نگه داشته شد. «ادامه بده» می‌نویسی ادامه می‌دهم.")
                 emit(text)
@@ -379,6 +398,8 @@ class AutonomyMixin:
             rnd += 1
             if res.get("stopped") or self._cancel.is_set():
                 tp.status = P_CANCELLED if tp.session_id in self._cancel_plan_requests else P_PAUSED
+                self._cancel_plan_requests.discard(tp.session_id)
+                self._pause_requests.discard(tp.session_id)
                 self.tasks.save()
                 return self._final(res, gate.visible, executed, stopped=True, task=tp)
             # ---------------- a tool request
@@ -399,6 +420,8 @@ class AutonomyMixin:
                 self.tasks.save()
                 if self._cancel.is_set():
                     tp.status = P_CANCELLED if tp.session_id in self._cancel_plan_requests else P_PAUSED
+                    self._cancel_plan_requests.discard(tp.session_id)
+                    self._pause_requests.discard(tp.session_id)
                     self.tasks.save()
                     return self._final(res, "", executed, stopped=True, task=tp)
                 if any(r.status == NEEDS_CONFIRM for r in results):
@@ -440,7 +463,7 @@ class AutonomyMixin:
             text = gate.visible
             self._settle_plan(tp)
             footer = tp.footer()
-            if self.has_new_pending_confirmation(self._turn_session_id) and not re.search(r"تأیید|تایید|confirm", text + footer):
+            if self.has_new_pending_confirmation(tp.session_id) and not re.search(r"تأیید|تایید|confirm", text + footer):
                 footer += "\n\n(برای انجام همین کار «تأیید» بنویس؛ برای انصراف «لغو».)"
             if footer:
                 emit(footer)
@@ -456,7 +479,7 @@ class AutonomyMixin:
             for s in tp.steps:
                 if not s.tool and s.status in (PENDING, RUNNING):
                     s.status, s.result = DONE, "گزارش/جمع‌بندی ارائه شد"
-        pending = self._pending_by_session.get(self._turn_session_id)
+        pending = self._pending_by_session.get(tp.session_id)
         if any(s.status == AWAITING for s in tp.steps) or (
             pending is not None and getattr(pending, "plan_id", "") == tp.id
         ):
@@ -527,9 +550,9 @@ class AutonomyMixin:
         if res.status == NEEDS_CONFIRM:
             st.status, st.result = AWAITING, "منتظر تأیید کاربر"
             self._pending_by_session[self._turn_session_id] = Pending(
-                    res.tool, dict(res.args), res.summary,
-                    step_id=st.id, plan_id=tp.id, session_id=self._turn_session_id,
-                )
+                res.tool, dict(res.args), res.summary,
+                step_id=st.id, plan_id=tp.id, session_id=self._turn_session_id,
+            )
             self._pending_new_sessions.add(self._turn_session_id)
             tp.status = P_WAIT_CONFIRM
             return f"step {st.id}: waiting for the USER's confirmation; nothing was changed; tell the user exactly what will happen and ask for «تأیید» / «لغو». Do not continue the plan."
