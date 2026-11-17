@@ -5165,6 +5165,7 @@ class MainWindow(QMainWindow):
                     "request_cancelled", session=session, request_id=record["request_id"],
                     payload={"reason": "session_unavailable"},
                 )
+                self._chat_event_submitted.discard((session.cid, record["request_id"]))
             return
         self._dispatch_coordinated_request(session, request)
 
