@@ -25,14 +25,14 @@ class ChatSearchServiceTests(unittest.TestCase):
     def setUp(self):
         self.rows = [
             {"id": 1, "role": "user", "content": "Hello there", "created_at": "2026-01-01 10:00:00",
-             "character_id": "kira", "conversation_id": "c1", "metadata": {}, "status": "complete"},
+             "character_id": "kira", "conversation_id": "c1", "metadata": {"session_id": "s1"}, "status": "complete"},
             {"id": 2, "role": "assistant", "content": "Hello, this is a longer answer about retrieval.",
              "created_at": "2026-01-02 10:00:00", "character_id": "kira", "conversation_id": "c1",
-             "metadata": {"source": "test"}, "status": "complete"},
+             "metadata": {"source": "test", "session_id": "s1"}, "status": "complete"},
             {"id": 3, "role": "system", "content": "Search index ready", "created_at": "2026-01-03 10:00:00",
-             "character_id": "ren", "conversation_id": "c2", "metadata": {}, "status": "complete"},
+             "character_id": "ren", "conversation_id": "c2", "metadata": {"session_id": "s2"}, "status": "complete"},
             {"id": 4, "role": "user", "content": "retrieval is available", "created_at": "2026-01-04 10:00:00",
-             "character_id": "kira", "conversation_id": "c1", "metadata": {}, "status": "complete"},
+             "character_id": "kira", "conversation_id": "c1", "metadata": {"session_id": "s1"}, "status": "complete"},
         ]
         self.service = ChatSearchService(MemoryRepository(self.rows), batch_size=2)
 
@@ -53,6 +53,10 @@ class ChatSearchServiceTests(unittest.TestCase):
             start_at="2026-01-04", end_at="2026-01-04", sort_by="oldest",
         ))
         self.assertEqual([hit.message_id for hit in result.results], [4])
+
+    def test_runtime_session_filter_is_independent_of_conversation_filter(self):
+        result = self.service.search(ChatSearchRequest("Hello", session_id="s1"))
+        self.assertEqual([hit.message_id for hit in result.results], [2, 1])
 
     def test_all_terms_mode_and_pagination(self):
         result = self.service.search(ChatSearchRequest(
