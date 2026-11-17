@@ -23,6 +23,11 @@ class SessionStatus(str, Enum):
     FAILED = "failed"
 
 
+# Backward-compatible public name used by kira.chat and older integrations.
+# SessionStatus is the canonical name for this enum.
+SessionState = SessionStatus
+
+
 class SessionLifecycleError(RuntimeError):
     """Raised when a lifecycle operation cannot be completed safely."""
 
