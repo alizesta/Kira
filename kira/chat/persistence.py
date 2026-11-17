@@ -665,26 +665,29 @@ class SqliteChatRepository:
                 raise ValueError("invalid lifecycle target status")
             seen.add(conv_id)
             normalized.append((conv_id, status, json.dumps(metadata, ensure_ascii=False), previous))
-        with self._lock, self._db() as con:
-            self._migrate_schema(con)
-            if not con.in_transaction:
-                con.execute("BEGIN IMMEDIATE")
+        with self._lock:
             rows = {}
-            for conv_id, _, _, previous in normalized:
-                row = con.execute(
-                    "SELECT character_id, status FROM conversations WHERE id=?", (conv_id,)
-                ).fetchone()
-                if row is None:
-                    raise PersistenceError(f"conversation not found: {conv_id}")
-                if str(row["status"] or "active") != previous:
-                    raise PersistenceError(f"conversation state changed concurrently: {conv_id}")
-                rows[conv_id] = str(row["character_id"] or "")
-            stamp = _now()
-            for conv_id, status, metadata_json, _ in normalized:
-                con.execute(
-                    "UPDATE conversations SET status=?, metadata=?, updated_at=? WHERE id=?",
-                    (status, metadata_json, stamp, conv_id),
-                )
+            with self._db() as con:
+                self._migrate_schema(con)
+                if not con.in_transaction:
+                    con.execute("BEGIN IMMEDIATE")
+                for conv_id, _, _, previous in normalized:
+                    row = con.execute(
+                        "SELECT character_id, status FROM conversations WHERE id=?", (conv_id,)
+                    ).fetchone()
+                    if row is None:
+                        raise PersistenceError(f"conversation not found: {conv_id}")
+                    if str(row["status"] or "active") != previous:
+                        raise PersistenceError(f"conversation state changed concurrently: {conv_id}")
+                    rows[conv_id] = str(row["character_id"] or "")
+                stamp = _now()
+                for conv_id, status, metadata_json, _ in normalized:
+                    con.execute(
+                        "UPDATE conversations SET status=?, metadata=?, updated_at=? WHERE id=?",
+                        (status, metadata_json, stamp, conv_id),
+                    )
+            # Update the in-memory active pointer only after SQLite committed.
+            for conv_id, status, _, _ in normalized:
                 character = _character_id(rows[conv_id])
                 if status == "active":
                     self._active_conversations[character] = conv_id
