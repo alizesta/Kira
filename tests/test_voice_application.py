@@ -85,8 +85,9 @@ class VoiceApplicationServiceTests(unittest.TestCase):
         )
 
     def test_voice_service_implements_speech_and_recording_ports(self):
-        listener = self.service.start_recording()
-        self.assertTrue(listener)
+        self.service.start_recording()
+        listener = self.service.listener
+        self.assertIsNotNone(listener)
         self.assertEqual(len(self.created), 1)
         self.assertTrue(self.created[0].running)
 
@@ -126,7 +127,8 @@ class VoiceApplicationServiceTests(unittest.TestCase):
         self.assertIs(self.service.stopping_listener, old)
         self.assertTrue(old.stop_called)
 
-        self.assertFalse(self.service.start_recording())
+        self.service.start_recording()
+        self.assertIsNone(self.service.listener)
         self.assertEqual(len(self.created), 1)
         self.assertEqual(self.waiting, ["waiting"])
 
