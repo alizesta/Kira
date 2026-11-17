@@ -81,9 +81,14 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("session_manager or SessionManager(ChatSession)", self.source)
         session_service = (ROOT / "kira" / "app" / "session_application.py").read_text(encoding="utf-8")
         self.assertIn("self.session_manager.create_session(", session_service)
-        self.assertIn("self.session_manager.activate_session(self.cur.session_id)", self.source)
+        self.assertIn("self.session_manager.activate_session(session.session_id)", session_service)
+        self.assertIn("self.session_application_service.create_active_session(", self.source)
+        self.assertIn("self.session_application_service.activate_session(sess.session_id)", self.source)
+        self.assertNotIn("self.session_manager.create_session(", self.source)
+        self.assertNotIn("self.session_manager.activate_session(", self.source)
         self.assertIn("self.session_manager.get_session(event.session_id)", self.source)
         self.assertIn("self.session_application_service.sync_sessions(", self.source)
+        self.assertIn("self.session_manager.subscribe(self.publish_state_change)", session_service)
         self.assertIn("self.chat_application_service.submit_message(\n            self.cur.session_id", self.source)
 
     def test_shutdown_delegates_partial_response_cleanup_to_application_service(self):
