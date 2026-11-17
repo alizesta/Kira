@@ -22,6 +22,16 @@ class AttachmentManagerTests(unittest.TestCase):
         self.manager.close()
         self.temp.cleanup()
 
+    def test_chat_attachment_boundary_owns_parser_without_legacy_or_qt_imports(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "kira" / "chat" / "attachments.py").read_text(encoding="utf-8")
+        parser = (root / "kira" / "chat" / "attachment_content.py").read_text(encoding="utf-8")
+        self.assertNotIn("from kira import attachments", source)
+        self.assertNotIn("PySide6", parser)
+        self.assertIn("def _zip_text", parser)
+        self.assertIn("def _docx_text", parser)
+        self.assertIn("def _pdf_text", parser)
+
     def test_add_and_get_attachment_is_session_scoped(self):
         item = self.manager.add_attachment(b"hello", filename="note.txt", session_id="kira")
         self.assertEqual(item.status, AttachmentStatus.READY)

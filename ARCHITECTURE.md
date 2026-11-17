@@ -15,7 +15,7 @@ Kira is migrating incrementally toward independent UI, application logic, servic
 
 ## Current migration foundation
 - `kira/main.py` remains the compatibility module for existing callers and currently contains the legacy MainWindow implementation.
-- `kira/app/bootstrap.py` is the composition root. It creates QApplication, applies application style and constructs MainWindow.
+- `kira/app/bootstrap.py` is the composition root. It creates QApplication, applies application style, resolves application services and constructs MainWindow. `kira/app/chat_composition.py` supplies the bootstrap-owned ChatApplicationService factory; MainWindow receives that factory as a UI adapter and retains a direct-construction compatibility fallback.
 - `kira/app/event_bus.py` provides named in-process notifications. Subscribers can unsubscribe; publishing uses a snapshot so callbacks can safely change subscriptions.
 - `kira/app/dependency_container.py` provides explicit instance/factory registration and lazy singleton resolution.
 - `kira/core/interfaces/` now defines ApplicationModule lifecycle, Character, ChatHistory, Voice, Memory and Mood consumer contracts; `core.exceptions.ChatHistoryError` keeps SQLite-specific failures out of UI code. The existing voice implementation is not yet wired through its contract.
@@ -41,7 +41,7 @@ Kira is migrating incrementally toward independent UI, application logic, servic
 - `ContextBuilder` receives the existing character-aware system-prompt composer and optional prompt enrichers through dependency injection. The production composition injects `kira.personality.build_system_prompt` and the existing deterministic brain prompt extension; neither implementation is duplicated in the builder.
 - The builder snapshots messages, applies the current-turn attachment payload, preserves message order, and can drop the oldest complete non-system conversational turns to meet an optional character-count budget. A zero budget preserves the previous unbounded behavior. The current user message is never dropped or truncated.
 - The Chat application layer remains responsible for obtaining history and calling Memory, Mood, Character, Brain and Tool services. The builder does not read or write history, manage memory, choose a provider/model, execute workers, stream responses, or retain session state.
-- TASK 003 changes only the legacy chat request-preparation call site in `kira/oldmain.py`; it does not alter `ChatCoordinator` or its queue/worker callback contracts from TASK 002. The coordinator remains the owner of request admission, pending FIFO work and provider-worker dispatch.
+- TASK 003 changes only the legacy chat request-preparation call site in `kira/oldmain.py`; it does not alter `ChatCoordinator` queue ownership. `ChatRequest` now carries optional immutable `request_id` and `session_id` fields together; the application service supplies both and correlates queued work by those stable IDs rather than Python object identity. The coordinator remains the owner of request admission, pending FIFO work and provider-worker dispatch.
 - Ownership: `kira/chat/context_builder.py` and `tests/test_chat_context_builder.py` belong to TASK 003. `kira/chat/coordinator.py` and its TASK 002 tests remain owned by TASK 002. The integration call site in `kira/oldmain.py` is shared migration infrastructure and must not absorb new coordinator responsibilities.
 
 ## Chat response lifecycle (TASK 004)
@@ -203,13 +203,13 @@ The migration reference is temporary. Its purpose is to preserve working behavio
 
 ## Chat Attachments & Content Processing (TASK 009)
 
-- `kira/chat/attachments.py` provides the Qt-free `AttachmentManager`, immutable `Attachment` record, source/status enums and session-scoped file lifecycle.
+- `kira/chat/attachments.py` provides the Qt-free `AttachmentManager`, immutable `Attachment` record, source/status enums and session-scoped file lifecycle. `kira/chat/attachment_content.py` owns the Qt-free, bounded format parsers; `kira.attachments` is a compatibility re-export rather than a parallel parser.
 - The manager validates the existing allowlist using both filename extension and content signatures, enforces the existing 5-file, 15 MiB image and 50 MiB file defaults, and derives MIME metadata from validated bytes.
 - Files are copied to generated paths under a manager-owned temporary root and a hashed session directory. User filenames are metadata only; reads and deletes re-check the resolved managed path and session ownership. ZIP and DOCX content processing is bounded and never extracts archive members to arbitrary paths.
 - `ChatApplicationService` registers legacy UI-produced attachment payloads against a request-scoped message key, exposes preparation/removal/cleanup operations and releases temporary files on request completion, cancellation, session close or service shutdown.
 - MainWindow and the existing attachment controller keep selection, progress and presentation responsibilities. They submit attachment payloads through ChatApplicationService; AttachmentManager returns structured text/file/image data, and ContextBuilder alone composes the provider-facing user message.
 - The current supported format set is retained: PNG, JPEG, WEBP, GIF, BMP, PDF, DOCX, ZIP, and the existing text/data/configuration/source allowlist. Audio/video decoding is not added by this task.
-- The compatibility functions remain available through `kira.chat.attachments` during migration so existing paste, desktop capture, game-vision and file-upload call sites continue to use the established payload shape.
+- The compatibility functions remain available through both `kira.chat.attachments` and `kira.attachments` so existing paste, desktop capture, game-vision and file-upload call sites continue to use the established payload shape. The manager no longer imports the legacy parser module.
 - Contract coverage is added in `tests/test_chat_attachments.py` and `tests/test_chat_application_service.py`. Per maintainer instruction, tests are intentionally deferred until TASK 010 is complete; neither Windows nor GUI tests are requested.
 
 ## Chat Commands & Actions (TASK 010)

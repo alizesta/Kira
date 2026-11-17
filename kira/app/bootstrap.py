@@ -14,6 +14,7 @@ def run_application() -> None:
     # The old window is retained temporarily while its features move into modules.
     from ..config import load_settings
     from .dependency_container import DependencyContainer
+    from .chat_composition import create_chat_application_service_factory
     from .event_bus import EventBus
     from ..chat.events import ChatEventPublisher
     from ..chat.session_manager import SessionManager
@@ -55,12 +56,18 @@ def run_application() -> None:
     app = QApplication(sys.argv)
     app.setStyleSheet(build_style(winfx.active_effect(load_settings().get("window_effect"))))
     session_manager = SessionManager(ChatSession)
+    chat_history_service = container.resolve("chat_history_service")
+    chat_service_factory = create_chat_application_service_factory(
+        persistence=chat_history_service,
+        event_publisher=chat_event_publisher,
+    )
     try:
         window = MainWindow(
             memory_service=container.resolve("memory_service"),
             mood_service=container.resolve("mood_service"),
             character_service=container.resolve("character_service"),
-            chat_history_service=container.resolve("chat_history_service"),
+            chat_history_service=chat_history_service,
+            chat_application_service_factory=chat_service_factory,
             session_manager=session_manager,
             chat_event_publisher=chat_event_publisher,
         )
