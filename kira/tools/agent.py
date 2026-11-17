@@ -282,8 +282,8 @@ class ToolAgent(AutonomyMixin):
             self._pending_by_session.pop(owner, None)
             return None
         normalized = re.sub(
-            r"\\s+", " ", str(text or "").lower().translate(_NORM)
-        ).strip(" .!؟?,")
+            r"\s+", " ", str(text or "").lower().translate(_NORM)
+        ).strip(" .!؟?،,")
         words = len(normalized.split())
         if normalized and words <= 8 and CANCEL_RX.search(normalized):
             self._pending_by_session.pop(owner, None)
