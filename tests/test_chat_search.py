@@ -43,6 +43,10 @@ class ChatSearchServiceTests(unittest.TestCase):
         self.assertEqual(result.results[0].reference.as_dict(),
                          {"conversation_id": "c1", "message_id": 2})
 
+    def test_exact_mode_matches_the_complete_message_only(self):
+        result = self.service.search(ChatSearchRequest("Hello there", match_mode="exact"))
+        self.assertEqual([hit.message_id for hit in result.results], [1])
+
     def test_filters_character_conversation_role_and_time(self):
         result = self.service.search(ChatSearchRequest(
             "retrieval", conversation_id="c1", character_id="kira", roles=("user",),
