@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 import re
 import sys
-from PySide6.QtCore import Qt, Slot, Signal, QObject, QTimer, QRectF, QUrl, QSize
+from PySide6.QtCore import Qt, QTimer, QRectF, QUrl, QSize
 from PySide6.QtGui import QAction, QIcon, QDesktopServices, QTextCursor, QColor, QBrush, QImage, QTextDocument, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QTextBrowser, QLineEdit,
