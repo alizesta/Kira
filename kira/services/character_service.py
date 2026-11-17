@@ -108,7 +108,7 @@ class CharacterProfileService:
     @staticmethod
     def _resource_values(value) -> list[str]:
         if isinstance(value, str):
-            value = re.split(r"[,;\\n]+", value)
+            value = re.split(r"[,;\n]+", value)
         if not isinstance(value, (list, tuple)):
             return []
         result = []
