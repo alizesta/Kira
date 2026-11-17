@@ -81,6 +81,36 @@ class ChatSearchServiceTests(unittest.TestCase):
         self.assertEqual(result.total, 0)
         self.assertEqual(result.total_pages, 0)
 
+    def test_conversation_status_filter_uses_persisted_conversation_state(self):
+        class StatusRepository(MemoryRepository):
+            def list_conversations(self, character_id=None):
+                rows = [
+                    {"id": "c1", "character_id": "kira", "status": "active"},
+                    {"id": "c2", "character_id": "ren", "status": "archived"},
+                ]
+                return [row for row in rows if character_id is None or row["character_id"] == character_id]
+
+        service = ChatSearchService(StatusRepository(self.rows), batch_size=2)
+        archived = service.search(ChatSearchRequest(
+            "Search", conversation_statuses=("archived",)
+        ))
+        self.assertEqual([hit.message_id for hit in archived.results], [3])
+
+        active = service.search(ChatSearchRequest(
+            "retrieval", conversation_statuses=("active",), character_id="kira"
+        ))
+        self.assertEqual([hit.message_id for hit in active.results], [4, 2])
+
+    def test_status_filter_requires_repository_conversation_listing(self):
+        class MessageOnlyRepository:
+            def messages_after(self, after_id=0, limit=500):
+                return []
+
+        with self.assertRaises(ChatSearchRepositoryError):
+            ChatSearchService(MessageOnlyRepository()).search(
+                ChatSearchRequest("query", conversation_statuses=("archived",))
+            )
+
     def test_repository_failure_is_normalized(self):
         class BrokenRepository:
             def messages_after(self, after_id=0, limit=500):

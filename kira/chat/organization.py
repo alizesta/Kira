@@ -1,6 +1,7 @@
 """Qt-free conversation metadata and organization service."""
 from __future__ import annotations
 import copy
+import math
 import re
 import threading
 import unicodedata
@@ -66,6 +67,8 @@ class Folder:
 def _label(value: Any, field_name: str, maximum: int = MAX_LABEL_LENGTH) -> str:
     if not isinstance(value, str):
         raise OrganizationError(f"{field_name} must be text")
+    if _CONTROL.search(value):
+        raise OrganizationError(f"{field_name} must contain 1 to {maximum} printable characters")
     normalized = unicodedata.normalize("NFKC", _SPACE.sub(" ", value)).strip()
     if not normalized or len(normalized) > maximum or _CONTROL.search(normalized):
         raise OrganizationError(f"{field_name} must contain 1 to {maximum} printable characters")
@@ -79,6 +82,8 @@ def _key(value: Any, field_name: str) -> str:
 def _safe_value(value: Any, depth: int = 0) -> Any:
     if depth > MAX_METADATA_DEPTH:
         raise OrganizationError("metadata nesting exceeds the supported depth")
+    if isinstance(value, float) and not math.isfinite(value):
+        raise OrganizationError("metadata numbers must be finite")
     if value is None or isinstance(value, (str, bool, int, float)):
         return value
     if isinstance(value, Mapping):
@@ -275,7 +280,10 @@ class ChatOrganizationService:
                     raise OrganizationError("color must be a short color token")
                 org["color"] = color
             if "description" in org:
-                org["description"] = _label(org["description"], "description", MAX_DESCRIPTION_LENGTH)
+                if org["description"] is None or org["description"] == "":
+                    org.pop("description", None)
+                else:
+                    org["description"] = _label(org["description"], "description", MAX_DESCRIPTION_LENGTH)
             if "order" in org:
                 try:
                     org["order"] = int(org["order"])
