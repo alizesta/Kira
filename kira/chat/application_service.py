@@ -223,7 +223,10 @@ class ChatApplicationService:
                 )
                 ids.append(record.attachment_id)
         except Exception:
-            self._attachment_manager.cleanup(session_id=session_id, message_id=request_id)
+            for attachment_id in ids:
+                self._attachment_manager.remove_attachment(
+                    attachment_id, session_id=session_id,
+                )
             raise
         return tuple(ids)
 
