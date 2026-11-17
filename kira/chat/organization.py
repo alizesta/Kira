@@ -280,7 +280,10 @@ class ChatOrganizationService:
                     raise OrganizationError("color must be a short color token")
                 org["color"] = color
             if "description" in org:
-                org["description"] = _label(org["description"], "description", MAX_DESCRIPTION_LENGTH)
+                if org["description"] is None or org["description"] == "":
+                    org.pop("description", None)
+                else:
+                    org["description"] = _label(org["description"], "description", MAX_DESCRIPTION_LENGTH)
             if "order" in org:
                 try:
                     org["order"] = int(org["order"])
