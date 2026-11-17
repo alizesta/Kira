@@ -9,7 +9,6 @@ from PySide6.QtWidgets import QApplication, QMessageBox, QFileDialog
 from ..config import save_settings, ROOT
 from .. import storage
 from ..core.exceptions import ChatHistoryError
-from .. import routes as route_model
 from ..leak_guard import scrub_lines
 from ..chat_render import message_html
 from ..listener import Listener
