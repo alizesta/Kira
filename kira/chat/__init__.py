@@ -13,6 +13,8 @@ from .response_handler import (
     ResponseStreamEvent,
 )
 
+from .attachments import Attachment, AttachmentError, AttachmentManager, AttachmentSource, AttachmentStatus
+
 from .application_service import (
     ApplicationEventKind,
     ChatApplicationEvent,
@@ -24,6 +26,11 @@ from .application_service import (
 )
 
 __all__ = [
+    "Attachment",
+    "AttachmentError",
+    "AttachmentManager",
+    "AttachmentSource",
+    "AttachmentStatus",
     "ChatPersistence",
     "ChatRepository",
     "SqliteChatRepository",
