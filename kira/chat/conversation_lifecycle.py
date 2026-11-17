@@ -29,13 +29,19 @@ class ConversationOperation(str, Enum):
 class ConversationLifecycleError(RuntimeError):
     """A lifecycle operation could not be completed safely."""
 
+    error_code = "conversation_lifecycle_error"
+
 
 class ConversationNotFound(ConversationLifecycleError):
     """The requested durable conversation does not exist."""
 
+    error_code = "conversation_not_found"
+
 
 class InvalidConversationTransition(ConversationLifecycleError):
     """The requested transition is not legal from the current state."""
+
+    error_code = "invalid_conversation_transition"
 
 
 class PermanentDeleteAuthorization(Protocol):
@@ -287,6 +293,8 @@ class ConversationLifecycleService:
 
 class PermanentDeleteAuthorizationError(ConversationLifecycleError):
     """Permanent deletion was not explicitly authorized."""
+
+    error_code = "permanent_delete_not_authorized"
 
 
 __all__ = [
