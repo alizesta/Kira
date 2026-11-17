@@ -745,7 +745,16 @@ class MainWindow(QMainWindow):
         profiles = self.character_service.all_profiles(self.settings)
         order = [c for c in ("kira", "ren", "mika") if c in profiles] + [c for c in profiles if c not in ("kira", "ren", "mika")]
         for cid in order:
-            sess = self._ensure_session(cid, profiles[cid])
+            try:
+                sess = self._ensure_session(cid, profiles[cid])
+            except Exception as exc:
+                failed_session = self.sessions.get(cid)
+                if failed_session is not None:
+                    self._publish_chat_event(
+                        "session_failed", session=failed_session,
+                        payload={"character_id": cid, "error": f"{type(exc).__name__}: {exc}"},
+                    )
+                raise
             if not sess.loaded:
                 sess.loaded = True
                 with self._as(sess):
@@ -4785,6 +4794,9 @@ class MainWindow(QMainWindow):
     def stop_generation(self):
         """Stop button: ends the answer now; text received so far is kept."""
         if getattr(self, "code_chat", None) is not None and self.code_chat.stop(self.cur):
+            self._finish_chat_event_request(
+                self.cur, "request_cancelled", payload={"reason": "coding_agent_cancelled"}
+            )
             return                                                # a running Ai1 Code command was killed; its handler ends the turn
         if self._search_worker is not None and self._search_worker.isRunning():
             self._search_token += 1                                   # the late search result is ignored
@@ -5597,9 +5609,6 @@ class MainWindow(QMainWindow):
                     self._finish_chat_event_request(
                         sess, "request_cancelled", payload={"reason": "application_shutdown"}
                     )
-                if sess is self.front:
-                    self._publish_chat_event("session_deactivated", session=sess, metadata={"reason": "application_shutdown"})
-                self._publish_chat_event("session_closed", session=sess, metadata={"reason": "application_shutdown"})
         for _request_key, record in tuple(self._chat_event_pending_ids.items()):
             owner = self.sessions.get(record["session_id"])
             if owner is not None:
@@ -5609,6 +5618,11 @@ class MainWindow(QMainWindow):
                 )
                 self._chat_event_submitted.discard((owner.cid, record["request_id"]))
             self._chat_event_pending_ids.pop(_request_key, None)
+        for sess in list(self.sessions.values()):
+            with self._as(sess):
+                if sess is self.front:
+                    self._publish_chat_event("session_deactivated", session=sess, metadata={"reason": "application_shutdown"})
+                self._publish_chat_event("session_closed", session=sess, metadata={"reason": "application_shutdown"})
         self._closing = True
         self._clear_chat_coordinator_queues()
         if getattr(self, "code_chat", None) is not None:
