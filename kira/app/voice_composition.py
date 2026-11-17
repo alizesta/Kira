@@ -17,10 +17,9 @@ def create_voice_application_service_factory() -> Callable[[Any, Any], VoiceAppl
             on_state=window.on_listener_state,
             on_error=window.on_listener_error,
             on_note=window.on_voice_note,
-            on_finished=window._on_voice_listener_finished,
+            on_finished=window.voice_listener_finished.emit,
             is_mic_enabled=lambda: window.mic_btn.isChecked(),
             is_closing=lambda: window._closing,
-            schedule=window._schedule_chat_callback,
             on_waiting=lambda: window.set_status("st_loading"),
         )
 
