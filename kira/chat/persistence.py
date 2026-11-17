@@ -710,7 +710,10 @@ class SqliteChatRepository:
                     count = int(con.execute(
                         "SELECT COUNT(*) FROM messages WHERE conversation_id=?", (conv_id,)
                     ).fetchone()[0])
-                    if count:
+                    exists = con.execute(
+                        "SELECT 1 FROM conversations WHERE id=?", (conv_id,)
+                    ).fetchone() is not None
+                    if count or exists:
                         # Keep the write transaction open across backup and delete,
                         # preventing another process from inserting rows between those steps.
                         self._snapshot("before-delete-conversation")
