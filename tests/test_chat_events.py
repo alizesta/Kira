@@ -40,7 +40,9 @@ class ChatEventContractTests(unittest.TestCase):
             "request_cancelled", "stream_started", "stream_chunk_received", "stream_completed",
             "stream_interrupted", "session_created", "session_activated", "session_deactivated",
             "session_closed", "session_failed", "message_saved", "history_loaded",
-            "persistence_failed",
+            "persistence_failed", "conversation_archived", "conversation_restored",
+            "conversation_trashed", "conversation_restored_from_trash",
+            "conversation_permanently_deleted", "conversation_metadata_updated",
         })
 
 
@@ -57,6 +59,34 @@ class SharedEventBusTests(unittest.TestCase):
         self.assertEqual(outcome.delivered, 2)
         self.assertEqual([name for name, _ in received], ["a", "b"])
         self.assertIs(received[0][1], received[1][1])
+
+    def test_lifecycle_and_organization_events_use_the_shared_event_bus(self):
+        received = []
+        event_names = (
+            "conversation_archived",
+            "conversation_restored",
+            "conversation_trashed",
+            "conversation_restored_from_trash",
+            "conversation_permanently_deleted",
+            "conversation_metadata_updated",
+        )
+        for event_name in event_names:
+            self.publisher.subscribe(event_name, lambda event: received.append(
+                (event.event_type.value, event.payload["conversation_id"])
+            ))
+
+        for event_name in event_names:
+            self.publisher.publish(
+                event_name,
+                payload={"conversation_id": "conversation-1", "new_status": "archived"},
+            )
+
+        self.assertEqual(
+            received,
+            [(event_name, "conversation-1") for event_name in event_names],
+        )
+        self.assertEqual(self.bus.subscriber_count("conversation_archived"), 1)
+        self.assertEqual(self.bus.subscriber_count("conversation_metadata_updated"), 1)
 
     def test_legacy_keyword_event_api_stays_compatible(self):
         received = []
