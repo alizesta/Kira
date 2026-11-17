@@ -73,6 +73,22 @@ from .search import (
     ChatSearchValidationError,
 )
 from .transfer import ChatTransfer, ImportPreview, ImportResult, TransferError, TransferRepository
+from .conversation_lifecycle import (
+    ConversationLifecycleError,
+    ConversationLifecycleResult,
+    ConversationLifecycleService,
+    ConversationNotFound,
+    ConversationOperation,
+    ConversationStatus,
+    InvalidConversationTransition,
+    PermanentDeleteAuthorization,
+    PermanentDeleteAuthorizationError,
+)
+
+from .organization import (
+    ChatOrganizationService, Folder, OrganizationError, OrganizationFilter,
+    OrganizationRepository, OrganizationRepositoryError, OrganizationResult, Tag,
+)
 
 __all__ = [
     "CHAT_EVENT_TYPES",
@@ -135,4 +151,9 @@ __all__ = [
     "ChatSearchValidationError",
 
     "ChatTransfer", "ImportPreview", "ImportResult", "TransferError", "TransferRepository",
+    "ConversationLifecycleError", "ConversationLifecycleResult", "ConversationLifecycleService",
+    "ConversationNotFound", "ConversationOperation", "ConversationStatus",
+    "InvalidConversationTransition", "PermanentDeleteAuthorization", "PermanentDeleteAuthorizationError",
+    "ChatOrganizationService", "Folder", "OrganizationError", "OrganizationFilter",
+    "OrganizationRepository", "OrganizationRepositoryError", "OrganizationResult", "Tag",
 ]

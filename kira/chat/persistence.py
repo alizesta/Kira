@@ -47,7 +47,8 @@ class ChatRepository(Protocol):
     def list_conversations(self, character_id=None) -> list[dict[str, Any]]: ...
     def update_conversation(self, conversation_id: str, *, title=None, metadata=None, status=None) -> bool: ...
     def close_conversation(self, conversation_id: str) -> bool: ...
-    def delete_conversation(self, conversation_id: str) -> int: ...
+    def delete_conversation(self, conversation_id: str, *, expected_status: str | None = None) -> int: ...
+    def update_conversation_lifecycle(self, changes: list[dict[str, Any]]) -> bool: ...
     def add_message(self, role: str, content: str, character_id: str | None = None, **options) -> bool: ...
     def update_stream_message(self, message_id: int, content: str, **options) -> bool: ...
     def conversation_context(self, limit: int = 12, max_chars: int = 12000,
@@ -631,7 +632,7 @@ class SqliteChatRepository:
             changes.append("metadata=?"); values.append(json.dumps(_json_object(metadata), ensure_ascii=False))
         if status is not None:
             if status not in ("active", "closed", "archived"):
-                raise ValueError("status must be active, closed or archived")
+                raise ValueError("status must be active, closed or archived; trashed is lifecycle-owned")
             changes.append("status=?"); values.append(status)
         if not changes:
             return False
@@ -647,10 +648,57 @@ class SqliteChatRepository:
                     self._active_conversations.pop(cid, None)
             return cur.rowcount > 0
 
+    def update_conversation_lifecycle(self, changes: list[dict[str, Any]]) -> bool:
+        """Apply a validated lifecycle batch atomically without touching message rows."""
+        if not changes:
+            return False
+        normalized = []
+        seen = set()
+        for item in changes:
+            conv_id = str(item.get("id") or "").strip()
+            status = str(item.get("status") or "")
+            metadata = _json_object(item.get("metadata"))
+            previous = str(item.get("previous_status") or "")
+            if not conv_id or conv_id in seen:
+                raise ValueError("lifecycle batch requires unique non-empty conversation IDs")
+            if status not in ("active", "archived", "trashed"):
+                raise ValueError("invalid lifecycle target status")
+            seen.add(conv_id)
+            normalized.append((conv_id, status, json.dumps(metadata, ensure_ascii=False), previous))
+        with self._lock:
+            rows = {}
+            with self._db() as con:
+                self._migrate_schema(con)
+                if not con.in_transaction:
+                    con.execute("BEGIN IMMEDIATE")
+                for conv_id, _, _, previous in normalized:
+                    row = con.execute(
+                        "SELECT character_id, status FROM conversations WHERE id=?", (conv_id,)
+                    ).fetchone()
+                    if row is None:
+                        raise PersistenceError(f"conversation not found: {conv_id}")
+                    if str(row["status"] or "active") != previous:
+                        raise PersistenceError(f"conversation state changed concurrently: {conv_id}")
+                    rows[conv_id] = str(row["character_id"] or "")
+                stamp = _now()
+                for conv_id, status, metadata_json, _ in normalized:
+                    con.execute(
+                        "UPDATE conversations SET status=?, metadata=?, updated_at=? WHERE id=?",
+                        (status, metadata_json, stamp, conv_id),
+                    )
+            # Update the in-memory active pointer only after SQLite committed.
+            for conv_id, status, _, _ in normalized:
+                character = _character_id(rows[conv_id])
+                if status == "active":
+                    self._active_conversations[character] = conv_id
+                elif self._active_conversations.get(character) == conv_id:
+                    self._active_conversations.pop(character, None)
+        return True
+
     def close_conversation(self, conversation_id: str) -> bool:
         return self.update_conversation(conversation_id, status="closed")
 
-    def delete_conversation(self, conversation_id: str) -> int:
+    def delete_conversation(self, conversation_id: str, *, expected_status: str | None = None) -> int:
         """Snapshot before deleting one conversation and its messages."""
         conv_id = str(conversation_id)
         with self._lock:
@@ -662,7 +710,51 @@ class SqliteChatRepository:
                     count = int(con.execute(
                         "SELECT COUNT(*) FROM messages WHERE conversation_id=?", (conv_id,)
                     ).fetchone()[0])
-                    if count:
+                    conversation = con.execute(
+                        "SELECT status FROM conversations WHERE id=?", (conv_id,)
+                    ).fetchone()
+                    exists = conversation is not None
+                    if expected_status is not None:
+                        if conversation is None or str(conversation["status"] or "active") != expected_status:
+                            raise PersistenceError("conversation state changed before permanent deletion")
+
+                    # Refuse deletion when another durable table declares a
+                    # foreign-key dependency on this conversation or its messages.
+                    dependencies = []
+                    tables = con.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                    ).fetchall()
+                    for table_row in tables:
+                        table = str(table_row["name"])
+                        if table in ("conversations", "messages"):
+                            continue
+                        quoted_table = '"' + table.replace('"', '""') + '"'
+                        for fk in con.execute(f"PRAGMA foreign_key_list({quoted_table})").fetchall():
+                            target_table = str(fk[2])
+                            if target_table not in ("conversations", "messages"):
+                                continue
+                            child_column = '"' + str(fk[3]).replace('"', '""') + '"'
+                            target_column = str(fk[4] or "id")
+                            quoted_target_column = '"' + target_column.replace('"', '""') + '"'
+                            if target_table == "conversations":
+                                dependency_query = (
+                                    f"SELECT 1 FROM {quoted_table} WHERE {child_column} IN "
+                                    f"(SELECT {quoted_target_column} FROM conversations WHERE id=?) LIMIT 1"
+                                )
+                            else:
+                                dependency_query = (
+                                    f"SELECT 1 FROM {quoted_table} WHERE {child_column} IN "
+                                    f"(SELECT {quoted_target_column} FROM messages WHERE conversation_id=?) LIMIT 1"
+                                )
+                            if con.execute(dependency_query, (conv_id,)).fetchone() is not None:
+                                dependencies.append(table)
+                                break
+                    if dependencies:
+                        names = ", ".join(sorted(set(dependencies)))
+                        raise PersistenceError(
+                            f"conversation has dependent records in: {names}"
+                        )
+                    if count or exists:
                         # Keep the write transaction open across backup and delete,
                         # preventing another process from inserting rows between those steps.
                         self._snapshot("before-delete-conversation")
@@ -1220,8 +1312,11 @@ class ChatPersistence:
     def close_conversation(self, conversation_id):
         return self._invoke(self._repository.close_conversation, conversation_id)
 
-    def delete_conversation(self, conversation_id):
-        return self._invoke(self._repository.delete_conversation, conversation_id)
+    def delete_conversation(self, conversation_id, **options):
+        return self._invoke(self._repository.delete_conversation, conversation_id, **options)
+
+    def update_conversation_lifecycle(self, changes):
+        return self._invoke(self._repository.update_conversation_lifecycle, changes)
 
     def add_message(self, role, content, character_id=None, **options):
         try:

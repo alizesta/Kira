@@ -216,7 +216,7 @@ class ChatTransfer:
             if not isinstance(char_id, str) or not char_id.strip() or len(char_id) > 128:
                 raise TransferError(f"conversations[{ci}].character_id is invalid")
             status = conv.get("status", "active")
-            if not isinstance(status, str) or status not in {"active", "closed", "archived"}: raise TransferError(f"conversations[{ci}].status is invalid")
+            if not isinstance(status, str) or status not in {"active", "closed", "archived", "trashed"}: raise TransferError(f"conversations[{ci}].status is invalid")
             raw_msgs = conv.get("messages")
             if not isinstance(raw_msgs, list): raise TransferError(f"conversations[{ci}].messages must be an array")
             conversations.append({
