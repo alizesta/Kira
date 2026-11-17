@@ -837,6 +837,9 @@ class ChatApplicationService:
             return
         for owner in tuple(self._coordinators):
             self.close_session(owner, interrupted=True)
+        if self._command_registry is not None:
+            self._command_registry.close()
+            self._command_registry = None
         if self._owns_attachment_manager:
             self._attachment_manager.close()
         self._disposed = True
