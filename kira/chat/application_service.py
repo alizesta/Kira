@@ -232,7 +232,8 @@ class ChatApplicationService:
                     message_id=request_id,
                     metadata={"kind": kind},
                 )
-                ids.append(record.attachment_id)
+                if record.attachment_id not in ids:
+                    ids.append(record.attachment_id)
         except Exception:
             for attachment_id in ids:
                 self._attachment_manager.remove_attachment(
@@ -252,8 +253,8 @@ class ChatApplicationService:
             state.request.request_id, state.request.session_id, (attachment,),
         )
         current = self._request_attachment_ids.get(state.request.request_id, ())
-        updated = current + created
-        self._request_attachment_ids[state.request.request_id] = updated
+        if created[0] not in current:
+            self._request_attachment_ids[state.request.request_id] = current + created
         return created[0]
 
     def prepare_request_attachments(
