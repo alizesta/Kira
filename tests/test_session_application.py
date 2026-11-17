@@ -125,6 +125,10 @@ class SessionApplicationServiceTests(unittest.TestCase):
         session = self.manager.create_session("kira")
         self.assertFalse(self.service.has_pending_work(session))
 
+        self.chat.active.add(session.session_id)
+        self.assertTrue(self.service.has_pending_work(session))
+        self.chat.active.clear()
+
         self.chat.pending.add(session.session_id)
         self.assertTrue(self.service.has_pending_work(session))
         self.chat.pending.clear()
