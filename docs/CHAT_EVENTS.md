@@ -43,7 +43,7 @@ Nested mappings are read-only, sequences become tuples and sets become frozenset
 | session_activated | Session became the visible/active session | previous_session_id |
 | session_deactivated | Session stopped being the visible/active session | next_session_id |
 | session_closed | Session was removed or application shutdown closed it | reason |
-| session_failed | Session lifecycle owner reported initialization/runtime failure | Reserved for the extracted Session Lifecycle owner; not emitted by the current legacy adapter |
+| session_failed | Session setup failed while the legacy adapter was creating a character session | character_id, error; a future Session Lifecycle service may extend this to runtime failures |
 | message_saved | Message write succeeded | role, content, status, conversation_id |
 | history_loaded | History read completed | message_count, conversation_id, limit |
 | persistence_failed | History/message persistence operation failed | operation, role, status, error |
@@ -78,7 +78,7 @@ Existing modules using EventBus.subscribe(name, callback) and publish(name, **pa
 6. Terminal notifications are de-duplicated by ChatEventPublisher: request terminal types share one request family, stream terminal types share one stream family, and session close/failure share one session family. The bounded terminal ledger retains the most recent 8,192 lifecycle keys. A new session_created clears any stale terminal key for that session ID.
 7. EventBus.close() releases all subscriptions and rejects later subscriptions/publications. Bootstrap closes it after ModuleManager shutdown so modules can unsubscribe during disposal.
 
-The bus is thread-safe and callbacks run outside the subscription lock. Delivery is synchronous for the thread that drains the queue. Recursive and concurrent publications never wait for the active callback; they return queued=True and are delivered after the current fan-out, avoiding callback-induced cross-thread deadlocks. Their eventual subscriber failures are logged by the dispatcher.
+The bus is thread-safe and callbacks run outside the subscription lock. Callbacks execute on the dispatcher thread (the thread that began draining); the bus does not marshal callbacks to Qt or any other event loop. A consumer that needs a specific thread must provide its own adapter. Delivery is synchronous for the thread that drains the queue. Recursive and concurrent publications never wait for the active callback; they return queued=True and are delivered after the current fan-out, avoiding callback-induced cross-thread deadlocks. Their eventual subscriber failures are logged by the dispatcher.
 
 ## Privacy and API boundary
 
