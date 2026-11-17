@@ -87,6 +87,30 @@ class ChatCommandAdapterTests(unittest.TestCase):
         self.assertEqual(web.rewritten_text, "latest release")
         self.assertTrue(web.metadata["force_web_search"])
 
+    def test_image_search_requires_an_attached_image_and_preserves_query(self):
+        without_image = self.registry.dispatch_text(
+            "/img identify this", session_id="runtime-kira", request_id="image-1",
+            metadata={"has_attachments": True, "has_image": False},
+        )
+        self.assertFalse(without_image.handled)
+
+        with_image = self.registry.dispatch_text(
+            "/img identify this", session_id="runtime-kira", request_id="image-2",
+            metadata={"has_attachments": True, "has_image": True},
+        )
+        self.assertTrue(with_image.handled)
+        self.assertTrue(with_image.continue_chat)
+        self.assertEqual(with_image.rewritten_text, "identify this")
+        self.assertTrue(with_image.metadata["force_image_search"])
+
+    def test_allowed_desktop_shortcut_delegates_to_existing_safe_action(self):
+        self.registry._permission_checker = lambda _command, _request: True
+        result = self.registry.dispatch_text(
+            "open notepad", session_id="runtime-kira", request_id="desktop-allowed",
+        )
+        self.assertEqual(result.reply_text, "opened")
+        self.assertEqual(self.desktop_calls, [("desktop", "open notepad")])
+
     def test_body_command_is_delegated_to_existing_body_owner(self):
         result = self.registry.dispatch_text(
             "please wave", session_id="runtime-kira", request_id="body-1",
