@@ -170,5 +170,17 @@ The migration reference is temporary. Its purpose is to preserve working behavio
 - Each `ChatSession` is bound to a stable persisted `conversation_id`; submit, history reads, ContextBuilder input and all message writes preserve that identity across tab switches and restarts.
 - Application shutdown delegates active-request cancellation and partial-result persistence to ChatApplicationService exactly once; shutdown partials retain the `interrupted` status while explicit user cancellation remains `cancelled`.
 - Provider callbacks are marshalled through the session's Qt relay signal before ResponseHandler and UI observers run; the application service remains Qt-free.
-- MainWindow remains responsible for UI rendering, Voice/Avatar effects, attachment composition, Character/Memory/Mood/Brain enrichment, Tool Agent interception, Vision and web/image search policy. Those application capabilities have not been moved into the Chat service.
+- MainWindow remains responsible for UI rendering, Voice/Avatar effects, Character/Memory/Mood/Brain enrichment, Tool Agent interception, Vision and web/image search policy. Attachment file ownership and content preparation are delegated to the Chat Attachments boundary; the UI retains file selection, progress and display.
 - The focused API, contracts, lifecycle and test instructions are documented in `docs/CHAT_APPLICATION_SERVICE.md`.
+
+
+## Chat Attachments & Content Processing (TASK 009)
+
+- `kira/chat/attachments.py` provides the Qt-free `AttachmentManager`, immutable `Attachment` record, source/status enums and session-scoped file lifecycle.
+- The manager validates the existing allowlist using both filename extension and content signatures, enforces the existing 5-file, 15 MiB image and 50 MiB file defaults, and derives MIME metadata from validated bytes.
+- Files are copied to generated paths under a manager-owned temporary root and a hashed session directory. User filenames are metadata only; reads and deletes re-check the resolved managed path and session ownership. ZIP and DOCX content processing is bounded and never extracts archive members to arbitrary paths.
+- `ChatApplicationService` registers legacy UI-produced attachment payloads against a request-scoped message key, exposes preparation/removal/cleanup operations and releases temporary files on request completion, cancellation, session close or service shutdown.
+- MainWindow and the existing attachment controller keep selection, progress and presentation responsibilities. They submit attachment payloads through ChatApplicationService; request content is prepared from managed files before ContextBuilder/Provider dispatch.
+- The current supported format set is retained: PNG, JPEG, WEBP, GIF, BMP, PDF, DOCX, ZIP, and the existing text/data/configuration/source allowlist. Audio/video decoding is not added by this task.
+- The compatibility functions remain available through `kira.chat.attachments` during migration so existing paste, desktop capture, game-vision and file-upload call sites continue to use the established payload shape.
+- Contract coverage is added in `tests/test_chat_attachments.py` and `tests/test_chat_application_service.py`. Per maintainer instruction, tests are intentionally deferred until TASK 010 is complete; neither Windows nor GUI tests are requested.
