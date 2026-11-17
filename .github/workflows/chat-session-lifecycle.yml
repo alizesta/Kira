@@ -15,6 +15,11 @@ on:
       - "kira/app/provider_application.py"
       - "kira/app/coding_agent_application.py"
       - "kira/app/runtime_settings_application.py"
+      - "kira/services/character_service.py"
+      - "kira/services/mood_service.py"
+      - "kira/app/voice_application.py"
+      - "tests/test_character_profile_service.py"
+      - "tests/test_voice_application.py"
       - "tests/test_runtime_settings_application.py"
       - "tests/test_vision_application.py"
       - "tests/test_provider_application.py"
@@ -84,6 +89,8 @@ jobs:
           tests.test_provider_application
           tests.test_coding_agent_application
           tests.test_runtime_settings_application
+          tests.test_character_profile_service
+          tests.test_voice_application
           tests.test_policy_architecture
           tests.test_game_audio_policy
           tests.test_chat_session_manager
@@ -139,6 +146,11 @@ jobs:
           kira/app/coding_agent_application.py
           kira/app/runtime_settings_application.py
           tests/test_runtime_settings_application.py
+          kira/services/character_service.py
+          kira/services/mood_service.py
+          kira/app/voice_application.py
+          tests/test_character_profile_service.py
+          tests/test_voice_application.py
           tests/test_vision_application.py
           tests/test_provider_application.py
           tests/test_coding_agent_application.py
