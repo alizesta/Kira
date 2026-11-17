@@ -170,7 +170,7 @@ class RuntimeMixin:
     def select_route(self, route_id):
         """Manual choice ('' = automatic). Wins over priority; failover (if on) may still move on when it fails."""
         try:
-            route_model.set_manual(self.settings, route_id)
+            self.provider_application_service.set_manual_route(self.settings, route_id)
         except KeyError:
             return
         if route_id:
