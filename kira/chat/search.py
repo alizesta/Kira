@@ -156,8 +156,8 @@ class ChatSearchService:
             raise ChatSearchValidationError("query must not be empty")
         mode = str(request.match_mode or "phrase").strip().lower()
         sort_by = str(request.sort_by or "relevance").strip().lower()
-        if mode not in {"phrase", "all_terms", "any_term"}:
-            raise ChatSearchValidationError("match_mode must be phrase, all_terms or any_term")
+        if mode not in {"exact", "phrase", "all_terms", "any_term"}:
+            raise ChatSearchValidationError("match_mode must be exact, phrase, all_terms or any_term")
         if sort_by not in {"relevance", "newest", "oldest"}:
             raise ChatSearchValidationError("sort_by must be relevance, newest or oldest")
         try:
@@ -233,7 +233,7 @@ class ChatSearchService:
                         message_id=message_id, conversation_id=conv_id, character_id=char_id,
                         role=role, content=content, snippet=_snippet(content, query), created_at=stamp,
                         status=str(row.get("status") or "complete"),
-                        metadata=dict(row.get("metadata") or {}), relevance=score,
+                        metadata=dict(row.get("metadata")) if isinstance(row.get("metadata"), dict) else {}, relevance=score,
                         reference=ChatMessageReference(conv_id, message_id) if conv_id else None,
                     ))
                 if len(batch) < self._batch_size:
