@@ -12,8 +12,8 @@ class RuntimeSettingsApplicationService:
     @staticmethod
     def configure(settings: dict[str, Any]) -> None:
         """Initialize global settings consumers during application composition."""
-        evidence_memory.configure(settings)
         usage.install(settings)
+        evidence_memory.configure(settings)
 
     @staticmethod
     def apply(settings: dict[str, Any], tool_agent=None) -> None:
