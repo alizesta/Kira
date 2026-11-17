@@ -1,8 +1,11 @@
 """Regression coverage for global message-ID collision detection in transfer preview."""
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
+from kira.chat.persistence import ChatPersistence, SqliteChatRepository
 from kira.chat.transfer import ChatTransfer
 
 
@@ -25,6 +28,58 @@ class _Repository:
 
 
 class ChatTransferPreviewTests(unittest.TestCase):
+    def test_round_trip_preserves_trashed_status_lifecycle_and_organization_metadata(self):
+        with tempfile.TemporaryDirectory(prefix="kira-transfer-lifecycle-") as directory:
+            root = Path(directory)
+            source = ChatPersistence(SqliteChatRepository(root / "source.sqlite3"))
+            target = ChatPersistence(SqliteChatRepository(root / "target.sqlite3"))
+            self.assertEqual(source.init_db(), [])
+            self.assertEqual(target.init_db(), [])
+
+            conversation = source.create_conversation(
+                "kira", title="Portable", metadata={
+                    "organization": {"favorite": True, "tags": ["research"]},
+                    "external": {"preserve": "yes"},
+                },
+            )
+            source.add_message(
+                "user", "message before trash", "kira",
+                conversation_id=conversation["id"],
+                metadata={"source": "test"},
+            )
+            source.update_conversation_lifecycle([{
+                "id": conversation["id"],
+                "status": "trashed",
+                "previous_status": "active",
+                "metadata": {
+                    "organization": {"favorite": True, "tags": ["research"]},
+                    "external": {"preserve": "yes"},
+                    "_conversation_lifecycle": {
+                        "deleted_at": "2026-11-17T00:00:00+00:00",
+                    },
+                },
+            }])
+
+            document = ChatTransfer(source).export_data()
+            imported = ChatTransfer(target).import_data(document)
+
+            restored = target.get_conversation(conversation["id"])
+            self.assertEqual(imported.imported_conversations, 1)
+            self.assertEqual(restored["status"], "trashed")
+            self.assertEqual(restored["metadata"]["organization"], {
+                "favorite": True, "tags": ["research"]
+            })
+            self.assertEqual(restored["metadata"]["external"], {"preserve": "yes"})
+            self.assertEqual(
+                restored["metadata"]["_conversation_lifecycle"]["deleted_at"],
+                "2026-11-17T00:00:00+00:00",
+            )
+            messages = target.get_messages(
+                character_id="kira", conversation_id=conversation["id"]
+            )
+            self.assertEqual([item["content"] for item in messages], ["message before trash"])
+            self.assertEqual(messages[0]["metadata"], {"source": "test"})
+
     def test_preview_reports_message_id_collision_from_another_conversation(self):
         transfer = ChatTransfer(_Repository())
         document = {
