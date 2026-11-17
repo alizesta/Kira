@@ -7,12 +7,15 @@ queueing, prompt composition, provider event normalization or storage.
 from __future__ import annotations
 
 from collections import OrderedDict
+import base64
+import binascii
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Mapping, Sequence
 from uuid import uuid4
 
 from ..core.interfaces.chat_history_service import ChatHistoryService
+from .attachments import Attachment, AttachmentManager
 from .context_builder import ContextBuilder, ContextRequest
 from .coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
 from .response_handler import (
@@ -115,6 +118,7 @@ class ChatApplicationService:
         cancel_provider: Callable[[ChatApplicationRequest, Any], Any] | None = None,
         max_pending: int = 3,
         request_history_limit: int = 512,
+        attachment_manager: AttachmentManager | None = None,
     ) -> None:
         if persistence is None:
             raise TypeError("persistence is required")
@@ -125,6 +129,8 @@ class ChatApplicationService:
         if request_history_limit < 1:
             raise ValueError("request_history_limit must be at least 1")
         self._persistence = persistence
+        self._attachment_manager = attachment_manager or AttachmentManager()
+        self._owns_attachment_manager = attachment_manager is None
         self._context_builder = ContextBuilder(
             system_prompt_builder, prompt_enricher=prompt_enricher
         )
@@ -139,11 +145,44 @@ class ChatApplicationService:
         self._response_handler = ResponseHandler(completed_history_limit=request_history_limit)
         self._coordinators: dict[str, ChatCoordinator] = {}
         self._requests: OrderedDict[str, _RequestState] = OrderedDict()
+        self._request_attachment_ids: dict[str, tuple[str, ...]] = {}
         self._chat_request_ids: dict[tuple[str, int], str] = {}
         self._attempt_to_request: dict[str, str] = {}
         self._active_by_session: dict[str, str] = {}
         self._dispatch_scheduled: set[str] = set()
         self._disposed = False
+
+    def add_attachment(
+        self, source: Any, *, session_id: str, filename: str | None = None,
+        message_id: str | None = None, metadata: Mapping[str, Any] | None = None,
+    ) -> Attachment:
+        """Register a file/byte payload under the requested character session."""
+        return self._attachment_manager.add_attachment(
+            source, filename=filename, session_id=session_id,
+            message_id=message_id, metadata=metadata,
+        )
+
+    def prepare_attachments(
+        self, attachment_ids: Sequence[str], *, session_id: str,
+        text: str = "", search: bool = False,
+    ) -> dict[str, Any]:
+        """Prepare scoped attachment content; prompt/provider work stays elsewhere."""
+        return self._attachment_manager.prepare_content(
+            tuple(attachment_ids), session_id=session_id, text=text, search=search,
+        )
+
+    def remove_attachment(self, attachment_id: str, *, session_id: str) -> bool:
+        return self._attachment_manager.remove_attachment(
+            attachment_id, session_id=session_id,
+        )
+
+    def cleanup_attachments(self, *, session_id: str | None = None) -> int:
+        removed = self._attachment_manager.cleanup(session_id=session_id)
+        if session_id is not None:
+            for request_id, state in tuple(self._requests.items()):
+                if state.request.session_id == str(session_id):
+                    self._request_attachment_ids.pop(request_id, None)
+        return removed
 
     def _emit(self, event: ChatApplicationEvent) -> None:
         callback = self._on_event
@@ -196,6 +235,85 @@ class ChatApplicationService:
             self._coordinators[session_id] = coordinator
         return coordinator
 
+    def _register_request_attachments(
+        self, request_id: str, session_id: str,
+        attachments: Sequence[Mapping[str, Any]] | None,
+    ) -> tuple[str, ...]:
+        """Move legacy UI payloads into managed storage before request dispatch."""
+        ids: list[str] = []
+        try:
+            for index, item in enumerate(attachments or ()):
+                if not isinstance(item, Mapping):
+                    raise ValueError("attachment payload must be a mapping")
+                kind = str(item.get("kind") or "")
+                filename = str(item.get("name") or f"attachment-{index + 1}")
+                if kind == "image":
+                    encoded = str(item.get("b64") or "")
+                    max_encoded = 4 * ((self._attachment_manager.max_image_bytes + 2) // 3)
+                    if len(encoded) > max_encoded:
+                        raise ValueError("image attachment exceeds size limit")
+                    raw = base64.b64decode(encoded, validate=True)
+                elif kind == "text":
+                    text_content = str(item.get("text") or "")
+                    if len(text_content) > self._attachment_manager.max_file_bytes:
+                        raise ValueError("text attachment exceeds size limit")
+                    raw = text_content.encode("utf-8")
+                else:
+                    raise ValueError("unsupported attachment payload kind")
+                record = self._attachment_manager.add_attachment(
+                    raw, filename=filename, session_id=session_id,
+                    message_id=request_id,
+                    metadata={"kind": kind},
+                )
+                if record.attachment_id not in ids:
+                    ids.append(record.attachment_id)
+        except Exception:
+            for attachment_id in ids:
+                self._attachment_manager.remove_attachment(
+                    attachment_id, session_id=session_id,
+                )
+            raise
+        return tuple(ids)
+
+    def add_request_attachment(
+        self, request_id: str, attachment: Mapping[str, Any],
+    ) -> str:
+        """Attach one late-bound payload (for example a captured game frame) to its request."""
+        state = self._requests.get(str(request_id or ""))
+        if state is None or state.status is not RequestStatus.RUNNING:
+            raise ValueError("chat request is not active")
+        created = self._register_request_attachments(
+            state.request.request_id, state.request.session_id, (attachment,),
+        )
+        current = self._request_attachment_ids.get(state.request.request_id, ())
+        if created[0] not in current:
+            self._request_attachment_ids[state.request.request_id] = current + created
+        return created[0]
+
+    def prepare_request_attachments(
+        self, request_id: str, *, text: str = "", search: bool = False,
+    ) -> dict[str, Any] | None:
+        """Prepare the managed files for one active request, isolated by its session."""
+        state = self._requests.get(str(request_id or ""))
+        if state is None:
+            raise ValueError("unknown chat request")
+        ids = self._request_attachment_ids.get(state.request.request_id, ())
+        if not ids:
+            return None
+        return self._attachment_manager.prepare_content(
+            ids, session_id=state.request.session_id, text=text, search=search,
+        )
+
+    def cleanup_request_attachments(self, request_id: str) -> int:
+        state = self._requests.get(str(request_id or ""))
+        ids = self._request_attachment_ids.pop(str(request_id or ""), ())
+        if state is None:
+            return 0
+        return self._attachment_manager.cleanup(
+            session_id=state.request.session_id,
+            message_id=state.request.request_id,
+        )
+
     def submit_message(
         self,
         session_id: str,
@@ -228,6 +346,18 @@ class ChatApplicationService:
         state = _RequestState(request=request)
         self._requests[request_id] = state
         self._requests.move_to_end(request_id)
+        try:
+            self._request_attachment_ids[request_id] = self._register_request_attachments(
+                request_id, owner, request.attachments,
+            )
+        except (ValueError, TypeError, binascii.Error) as exc:
+            state.status = RequestStatus.FAILED
+            self._emit(ChatApplicationEvent(
+                request_id, owner, ApplicationEventKind.REQUEST_FAILED,
+                RequestStatus.FAILED, error=f"Invalid attachment: {type(exc).__name__}",
+            ))
+            self._prune_history()
+            return Submission(request, state.status, queued=False, accepted=False)
         chat_request = ChatRequest.create(request.text, request.attachments, request.voice)
         self._chat_request_ids[(owner, id(chat_request))] = request_id
         coordinator = self._coordinator(owner)
@@ -243,6 +373,7 @@ class ChatApplicationService:
                 payload={"error": "The pending chat queue is full."},
             )
             self._chat_request_ids.pop((owner, id(chat_request)), None)
+            self.cleanup_request_attachments(request_id)
             self._emit(ChatApplicationEvent(
                 request_id, owner, ApplicationEventKind.REQUEST_FAILED,
                 RequestStatus.FAILED, error="The pending chat queue is full.",
@@ -595,6 +726,7 @@ class ChatApplicationService:
             return False
         if state.status is RequestStatus.PENDING:
             state.status = RequestStatus.CANCELLED
+            self.cleanup_request_attachments(state.request.request_id)
             owner = state.request.session_id
             self._emit(ChatApplicationEvent(
                 state.request.request_id, owner,
@@ -659,12 +791,15 @@ class ChatApplicationService:
                 self._chat_request_ids.pop(key, None)
         self._dispatch_scheduled.discard(owner)
         self._active_by_session.pop(owner, None)
+        self.cleanup_attachments(session_id=owner)
 
     def dispose(self) -> None:
         if self._disposed:
             return
         for owner in tuple(self._coordinators):
             self.close_session(owner, interrupted=True)
+        if self._owns_attachment_manager:
+            self._attachment_manager.close()
         self._disposed = True
 
     def pending_count(self, session_id: str) -> int:
@@ -790,6 +925,7 @@ class ChatApplicationService:
             error=error, persistence_ok=persistence_ok,
             metadata=dict(metadata or {}),
         ))
+        self.cleanup_request_attachments(state.request.request_id)
         self._prune_history()
 
     def _prune_history(self) -> None:
