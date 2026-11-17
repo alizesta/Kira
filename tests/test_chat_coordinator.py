@@ -6,6 +6,15 @@ from kira.chat.coordinator import ChatCoordinator, ChatProviderDispatcher, ChatR
 
 
 class ChatCoordinatorTests(unittest.TestCase):
+    def test_request_identity_is_immutable_and_requires_both_ids(self):
+        request = ChatRequest.create(
+            "queued", request_id="request-123", session_id="runtime-session-456"
+        )
+        self.assertEqual(request.request_id, "request-123")
+        self.assertEqual(request.session_id, "runtime-session-456")
+        with self.assertRaisesRegex(ValueError, "provided together"):
+            ChatRequest.create("invalid", request_id="request-only")
+
     def test_dispatches_immediately_when_idle(self):
         sent = []
         coordinator = ChatCoordinator(sent.append)
