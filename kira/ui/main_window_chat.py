@@ -262,9 +262,6 @@ class ChatMixin:
         self.web_btn.setToolTip("جست‌وجوی وب: " + ("روشن — کیرا وقتی سؤال به اطلاعات روز نیاز دارد (قیمت، خبر، امروز…) یا بگویی «سرچ کن» در وب می‌گردد. "
                                                   "برای اجبار: /web عبارت" if self.web_btn.isChecked() else "خاموش — فقط با نوشتن /web عبارت جست‌وجو می‌کند"))
 
-    def gemini_credentials(self):
-        return self.web_search_service.gemini_credentials(self.settings)
-
     # ---- image search (a picture is looked up on the web) ----
     def toggle_image_search(self, on):
         on = bool(on)
@@ -287,16 +284,6 @@ class ChatMixin:
                                                   "ترتیب: Gemini (با خودِ عکس) ← توصیف عکس و جست‌وجو با Tavily ← DuckDuckGo. "
                                                   "برای یک پیام: /img" if btn.isChecked() else
                                                   "خاموش — عکس فقط به مدل داده می‌شود. برای جست‌وجوی یک عکس، پیام را با /img شروع کن."))
-
-    def make_image_query(self, images, hint, client=None):
-        return self.web_search_service.make_image_query(
-            images, hint, client or self.client
-        )
-
-    def _merge_search_content(self, base_content, images, addition, *, image_search=False):
-        return self.web_search_service.merge_search_content(
-            base_content, images, addition, image_search=image_search
-        )
 
     def begin_image_search(self, hint, base_text, images):
         options = self.web_search_service.image_search_options(
@@ -357,9 +344,6 @@ class ChatMixin:
         self._web_test_worker.done.connect(self.on_web_test_done)
         self._web_test_worker.start()
 
-    def _assessment_text(self, assessment):
-        return self.web_search_service.assessment_text(assessment)
-
     def on_web_test_done(self, res):
         self.web_test_btn.setEnabled(True)
         self.web_test_btn.setText("آزمایش جست‌وجوی وب")
@@ -371,7 +355,7 @@ class ChatMixin:
         for name, label in (("tavily", "Tavily (اول)"), ("google", "Google / Gemini (دوم)"), ("ddg", "DuckDuckGo (سوم)")):
             e = rep["engines"][name]
             lines.append(f"{label}: " + (f"✓ کار می‌کند — {e['sources']} منبع · «{e['first'][:50]}»" if e["ok"] else f"✕ {e['error']}"))
-        extra = self._assessment_text(rep.get("assessment"))
+        extra = self.web_search_service.assessment_text(rep.get("assessment"))
         QMessageBox.information(self, "آزمایش جست‌وجوی وب",
                                 "\n".join(lines) + f"\n\nعبارت آزمایش: «{rep['probe']}»" + (f"\n{extra}" if extra else "")
                                 + "\nکیرا به همین ترتیب امتحان می‌کند و از اولین موتور سالم استفاده می‌شود.")
@@ -397,7 +381,7 @@ class ChatMixin:
             self._web_found = result
             if result.get("note"):
                 self.add_chat("system", "🌐 " + result["note"])
-            self._turn_extra = self._merge_search_content(
+            self._turn_extra = self.web_search_service.merge_search_content(
                 base, images, websearch.format_block(result),
                 image_search=bool(getattr(self, "_image_search_turn", False)),
             )
