@@ -1,9 +1,9 @@
 # KIRA ARCHITECTURE MASTER ROADMAP
 
-**Snapshot date:** 2026-11-17  
+**Snapshot date:** 2026-11-18  
 **Repository:** `alizesta/Kira`  
 **Base branch:** `new-main`  
-**Base SHA:** `b54d092a330b6383ca4244320ffaeec9267db561`  
+**Base SHA:** `101361f60bb19a45484cbcdb7b52584eb3da0111`  
 **Evidence:** TASK 015 static audit (`docs/TASK_015_FINAL_ARCHITECTURE_AUDIT.md`, Draft PR #47), current `new-main` source and documentation, and merged TASK 013+014 integration PR #48 (merge commit `b54d092a330b6383ca4244320ffaeec9267db561`).  
 **Verification boundary:** static inspection only. No tests, compile/import checks, application execution, Windows checks or GUI checks were run for TASK 016.
 
@@ -169,7 +169,7 @@ This is static architecture evidence, not proof of isolation across concurrent K
 
 ## 7. MainWindow and legacy migration
 
-The actual production window is imported by bootstrap from `kira.ui.main_window.MainWindow`. The 5,634-line legacy module has been removed after its 322 MainWindow methods were moved into eight feature-oriented mixins (session/navigation, voice settings, character settings, provider settings, window lifecycle, attachments/vision, Chat/Web Research, and runtime/voice). Shared imports and Qt relay support live in `main_window_support.py`. `kira.main` retains only a lazy compatibility export to the new UI package. This removes the `oldmain.py` runtime dependency and separates the window implementation into owned UI modules; it does not yet remove all application policy from the window mixins.
+The actual production window is imported by bootstrap from `kira.ui.main_window.MainWindow` (PR #55, merge commit `101361f60bb19a45484cbcdb7b52584eb3da0111`). The 5,634-line legacy module has been removed after its 322 MainWindow methods were moved into eight feature-oriented mixins (session/navigation, voice settings, character settings, provider settings, window lifecycle, attachments/vision, Chat/Web Research, and runtime/voice). Shared imports and Qt relay support live in `main_window_support.py`. `kira.main` retains only a lazy compatibility export to the new UI package. This removes the `oldmain.py` runtime dependency and separates the window implementation into owned UI modules; it does not yet remove all application policy from the window mixins.
 
 Target boundary:
 1. `kira/main.py` remains a small entry point.
