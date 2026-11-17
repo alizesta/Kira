@@ -19,7 +19,7 @@ Kira is migrating incrementally toward independent UI, application logic, servic
 - **Shared Infrastructure:** storage, providers, tools, logging and device adapters.
 
 ## Current migration foundation
-- `kira/main.py` remains the compatibility module for existing callers and currently contains the legacy MainWindow implementation.
+- `kira/main.py` remains a thin entry point and lazy compatibility export; the production MainWindow is implemented in `kira/ui/main_window.py`.
 - `kira/app/bootstrap.py` is the composition root. It creates QApplication, applies application style, resolves application services and constructs MainWindow. `kira/app/chat_composition.py` supplies the bootstrap-owned ChatApplicationService factory; MainWindow receives that factory as a UI adapter and retains a direct-construction compatibility fallback.
 - `kira/app/event_bus.py` provides named in-process notifications. Subscribers can unsubscribe; publishing uses a snapshot so callbacks can safely change subscriptions.
 - `kira/app/dependency_container.py` provides explicit instance/factory registration and lazy singleton resolution.
@@ -135,10 +135,10 @@ The monolithic application window is being retired through a controlled, reversi
 
 1. `kira/main.py` is the stable executable entry point. `python -m kira.main` remains the supported launch command.
 2. `kira/app/bootstrap.py` is the single composition root: it creates shared infrastructure and wires application modules. Startup wiring must not be duplicated in the entry-point file.
-3. The former monolith is temporarily preserved as `kira/oldmain.py`. During this transition, bootstrap may construct its legacy `MainWindow`; this is an explicit migration dependency, not a target architecture.
-4. `kira.main.MainWindow` is only a lazy compatibility export for existing imports. New production code must not import it. New feature code must not import `kira.oldmain` or depend on legacy window state.
-5. Migrate one feature boundary at a time: move its state and behavior into an owned package, define its public contract and injected dependencies, then adapt the legacy window to call that contract. Add isolated tests before removing the corresponding legacy implementation.
-6. Keep the launch command, settings, user data, and user-visible behavior stable throughout the migration. Do not delete `oldmain.py` until all required features have moved and the full regression suite plus Windows launch acceptance have passed.
+3. The former monolith has been split into feature-oriented UI mixins under `kira/ui/main_window_*.py`; bootstrap constructs `kira.ui.main_window.MainWindow` directly.
+4. `kira.main.MainWindow` is only a lazy compatibility export for existing imports. New production code must not import it. New feature code must not depend on MainWindow internals; `kira.oldmain` has been deleted.
+5. Continue migrating feature policy from the UI mixins into their existing application/capability owners, with public contracts and injected dependencies. Add isolated tests for each migrated boundary.
+6. Keep the launch command, settings, user data, and user-visible behavior stable while policy migration continues. `oldmain.py` has been removed; runtime and Windows launch acceptance remain outstanding.
 
 The migration reference is temporary. Its purpose is to preserve working behavior while the new application structure takes ownership; it must not become a permanent service layer or an import target for new modules.
 
