@@ -137,15 +137,14 @@ class AttachmentsVisionMixin:
 
     def set_vision_mode(self, mode):
         """Change analysis cadence without changing the manual Game Mode safety gate."""
-        policy = policy_for(mode)
-        self._vision_gate.set_policy(policy)
+        policy = self.vision_application_service.set_mode(mode)
         self.settings["vision_mode"] = policy.name
         save_settings(self.settings)
         if hasattr(self, "vision_rate_actions"):
             for key, action in self.vision_rate_actions.items():
                 action.setChecked(key == policy.name)
         self._game_capture_timer.setInterval(max(250, int(policy.interval_seconds * 1000)))
-        if self._game_mode_enabled and self.game_mode_application_service.can_capture_vision(self._game_mode_profile):
+        if self.vision_application_service.capture_allowed(self._game_mode_enabled, self._game_mode_profile):
             self._capture_game_frame()
             if not self._game_capture_timer.isActive():
                 self._game_capture_timer.start()
@@ -161,10 +160,7 @@ class AttachmentsVisionMixin:
         else:
             self._game_capture_timer.stop()
             self._latest_game_frame = None
-            gate = getattr(self, "_vision_gate", None)
-            if gate is not None:
-                gate.reset()
-            self._vision_last_note = ""
+            self.vision_application_service.reset()
             self._cancel_vision_worker()
 
     def _cancel_vision_worker(self):
@@ -177,7 +173,7 @@ class AttachmentsVisionMixin:
         session = getattr(code_chat, "session", None) if code_chat is not None else None
         if session is not None:
             with self._as(session):
-                code_chat.stop(session)
+                self.coding_agent_application_service.stop_session(code_chat, session)
 
     def set_game_mode_profile(self, profile):
         """Apply a manually selected gameplay profile; never infer or enable it automatically."""
@@ -271,21 +267,26 @@ class AttachmentsVisionMixin:
 
     def _capture_game_frame(self):
         """Capture a bounded frame and analyze only changed frames at the selected low-cost rate."""
-        if not self._game_mode_enabled or not self.game_mode_application_service.can_capture_vision(self._game_mode_profile):
+        if not self.vision_application_service.capture_allowed(self._game_mode_enabled, self._game_mode_profile):
             self._latest_game_frame = None
-            self._vision_gate.reset()
+            self.vision_application_service.reset()
             return
         # Re-check the foreground immediately before every capture; the slower
         # suggestion timer alone could leave a background game capturable for seconds.
         self.game_mode.poll()
         pixmap = self.game_mode.capture_last_game(
-            self._vision_gate.policy.max_width, self._vision_gate.policy.max_height
+            self.vision_application_service.policy.max_width, self.vision_application_service.policy.max_height
         )
         self._latest_game_frame = pixmap.toImage() if pixmap is not None else None
-        if self._latest_game_frame is None or self._vision_worker is not None and self._vision_worker.isRunning():
-            return
-        # Never compete with a user chat request for the same provider route.
-        if self.busy or self.client.busy or self.voice_application_service.is_speaking():
+        if not self.vision_application_service.should_analyze(
+            enabled=self._game_mode_enabled,
+            profile=self._game_mode_profile,
+            frame_available=self._latest_game_frame is not None,
+            worker_running=bool(self._vision_worker is not None and self._vision_worker.isRunning()),
+            chat_busy=self.busy,
+            provider_busy=self.client.busy,
+            speech_active=self.voice_application_service.is_speaking(),
+        ):
             return
         try:
             from PySide6.QtCore import QBuffer, QByteArray, QIODevice
@@ -293,13 +294,13 @@ class AttachmentsVisionMixin:
             buffer = QBuffer(data)
             if not buffer.open(QIODevice.WriteOnly):
                 return
-            if not self._latest_game_frame.save(buffer, "JPEG", self._vision_gate.policy.jpeg_quality):
+            if not self._latest_game_frame.save(buffer, "JPEG", self.vision_application_service.policy.jpeg_quality):
                 return
             jpeg = bytes(data)
             # Compare a tiny grayscale thumbnail, not compressed JPEG bytes, to detect real scene changes.
             thumb = self._latest_game_frame.scaled(32, 18, Qt.IgnoreAspectRatio, Qt.FastTransformation).convertToFormat(QImage.Format_Grayscale8)
             visual_sample = bytes(thumb.pixelColor(x, y).red() for y in range(thumb.height()) for x in range(thumb.width()))
-            if not self._vision_gate.accept(jpeg, visual_sample=visual_sample):
+            if not self.vision_application_service.accept_frame(jpeg, visual_sample=visual_sample):
                 return
             image = att.image_attachment(jpeg, "game-screen.jpg", "image/jpeg")
             session = self.cur
@@ -317,27 +318,25 @@ class AttachmentsVisionMixin:
         self._send_next_pending(session)
 
     def _on_game_vision_result(self, ok, result, latency_ms):
-        self._vision_gate.mark_latency(latency_ms)
-        stats = self._vision_gate.snapshot()
+        self.vision_application_service.mark_latency(latency_ms)
+        stats = self.vision_application_service.snapshot()
         self.game_mode_btn.setToolTip(
             f"Vision {stats['mode']} · تحلیل: {stats['analysis_count']} · "
             f"فریم تکراری ردشده: {stats['unchanged_skips']} · تأخیر آخرین تحلیل: {latency_ms}ms"
         )
-        if (not self._game_mode_enabled
-                or not self.game_mode_application_service.can_capture_vision(self._game_mode_profile)):
+        message = self.vision_application_service.consume_result(
+            enabled=self._game_mode_enabled,
+            profile=self._game_mode_profile,
+            ok=ok,
+            result=result,
+        )
+        if message is None:
             return
         if not ok:
             # Unsupported image models are reported once, not every sampling interval.
-            message = str(result or "تحلیل تصویر ناموفق بود.")
-            if message != self._vision_last_note:
-                self._vision_last_note = message
-                self.add_chat("system", "Vision: " + message[:300])
+            self.add_chat("system", "Vision: " + message[:300])
             return
-        text = str(result or "").strip()
-        if not text or text == self._vision_last_note:
-            return
-        self._vision_last_note = text
-        self.add_chat("system", "👁️ " + text[:900])
+        self.add_chat("system", "👁️ " + message[:900])
 
     def on_game_detected(self, info):
         """Suggest Game Mode once per detected process, unless the user already enabled it."""
@@ -353,8 +352,7 @@ class AttachmentsVisionMixin:
 
     def _game_vision_attachment(self):
         """Attach only the newest 480p JPEG frame captured while Game Mode is manually enabled."""
-        if (not self._game_mode_enabled
-                or not self.game_mode_application_service.can_capture_vision(self._game_mode_profile)
+        if (not self.vision_application_service.capture_allowed(self._game_mode_enabled, self._game_mode_profile)
                 or self._latest_game_frame is None):
             return None
         try:
