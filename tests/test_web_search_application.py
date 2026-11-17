@@ -77,6 +77,11 @@ class WebSearchApplicationServiceTests(unittest.TestCase):
         self.assertEqual(options.user_text, "نه بهتر سرچ کن")
         self.assertEqual(options.rewrite(), "resolved query")
 
+    def test_can_search_reflects_tavily_key_and_fallback_policy(self):
+        self.assertTrue(self.service.can_search({"tavily_api_key": "key", "web_fallback": False}))
+        self.assertTrue(self.service.can_search({"web_fallback": True}))
+        self.assertFalse(self.service.can_search({"web_fallback": False}))
+
     def test_web_search_is_unavailable_without_key_or_fallback(self):
         options = self.service.web_search_options(
             {"web_fallback": False}, "query", [], _ChatClient()
