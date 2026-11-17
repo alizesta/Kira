@@ -384,15 +384,15 @@ class AttachmentManager:
             elif has_images or has_files:
                 lead_text = "این ضمیمه‌ها را ببین و نظرت را بگو."
 
-        display = (stored_text + "\\n" if stored_text else "") + "\\n".join(display_names)
+        display = (stored_text + "\n" if stored_text else "") + "\n".join(display_names)
         stored = lead_text
         for item in prepared_files:
             excerpt = item["text"][:_legacy.HISTORY_EXCERPT]
-            stored += f"\\n\\n[فایل ضمیمه: {item['name']}]\\n{excerpt}"
+            stored += f"\n\n[فایل ضمیمه: {item['name']}]\n{excerpt}"
             if len(item["text"]) > _legacy.HISTORY_EXCERPT:
-                stored += "\\n[...]"
+                stored += "\n[...]"
         if prepared_images:
-            stored += "\\n\\n" + "\\n".join(
+            stored += "\n\n" + "\n".join(
                 f"[تصویر ضمیمه: {item['name']}]" for item in prepared_images
             )
         return {
