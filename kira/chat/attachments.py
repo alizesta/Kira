@@ -336,8 +336,12 @@ class AttachmentManager:
         text: str = "", search: bool = False,
     ) -> dict[str, Any]:
         self._ensure_open()
-        prepared = []
+        prepared_files = []
+        prepared_images = []
         errors = []
+        display_names = []
+        stored_text = str(text or "").strip()
+        lead_text = stored_text
         for attachment_id in attachment_ids:
             record = self.get_attachment(attachment_id, session_id=session_id)
             if record is None:
@@ -349,20 +353,58 @@ class AttachmentManager:
                     self._validate_docx_package(managed_path)
                 if record.mime_type.startswith("image/"):
                     raw = managed_path.read_bytes()
-                    prepared.append({
-                        "name": record.filename, "kind": "image",
+                    prepared_images.append({
                         "mime": record.mime_type,
                         "b64": base64.b64encode(raw).decode("ascii"),
-                        "size": record.size,
+                        "name": record.filename,
                     })
+                    display_names.append(f"🖼 {record.filename}")
                 else:
-                    prepared.append(_legacy.load_attachment(str(managed_path)))
+                    parsed = _legacy.load_attachment(str(managed_path))
+                    body = str(parsed.get("text") or "")
+                    prepared_files.append({
+                        "name": record.filename,
+                        "text": body,
+                        "truncated": len(body) > _legacy.MAX_TEXT_CHARS,
+                    })
+                    display_names.append(f"📎 {record.filename}")
             except Exception:
                 errors.append(f"پردازش فایل «{record.filename}» ناموفق بود.")
-        result = _legacy.compose(text, prepared, search=search)
-        result["errors"] = errors
-        result["prepared_count"] = len(prepared)
-        return result
+
+        has_images = bool(prepared_images)
+        has_files = bool(prepared_files)
+        if not lead_text:
+            if has_images and not has_files:
+                lead_text = (
+                    "این تصویر چیست؟ با کمک نتایج جست‌وجوی وب بگو."
+                    if search else "این تصویر را ببین و نظرت را بگو."
+                )
+            elif has_files and not has_images:
+                lead_text = "این فایل را بخوان و درباره‌اش نظر بده."
+            elif has_images or has_files:
+                lead_text = "این ضمیمه‌ها را ببین و نظرت را بگو."
+
+        display = (stored_text + "\\n" if stored_text else "") + "\\n".join(display_names)
+        stored = lead_text
+        for item in prepared_files:
+            excerpt = item["text"][:_legacy.HISTORY_EXCERPT]
+            stored += f"\\n\\n[فایل ضمیمه: {item['name']}]\\n{excerpt}"
+            if len(item["text"]) > _legacy.HISTORY_EXCERPT:
+                stored += "\\n[...]"
+        if prepared_images:
+            stored += "\\n\\n" + "\\n".join(
+                f"[تصویر ضمیمه: {item['name']}]" for item in prepared_images
+            )
+        return {
+            "text": stored_text,
+            "files": prepared_files,
+            "images": prepared_images,
+            "display": display or lead_text,
+            "stored": stored,
+            "search": bool(search),
+            "errors": errors,
+            "prepared_count": len(prepared_files) + len(prepared_images),
+        }
 
     def remove_attachment(self, attachment_id: str, *, session_id: str) -> bool:
         self._ensure_open()
