@@ -1,3 +1,8 @@
+> **Current architecture notice — 2026-11-17**  
+> The canonical, current architecture documentation is now [docs/ARCHITECTURE_MASTER.md](docs/ARCHITECTURE_MASTER.md), [docs/MODULE_OWNERSHIP.md](docs/MODULE_OWNERSHIP.md) and [docs/ARCHITECTURE_ROADMAP.md](docs/ARCHITECTURE_ROADMAP.md), based on `new-main` at `b54d092a330b6383ca4244320ffaeec9267db561`. This file contains earlier incremental migration notes and dated snapshots; statements below that refer to a previous branch/base (including the old description of `kira/main.py` as the legacy window or the old migration branch) are historical, not current-state claims. Current entry point: `kira/main.py`; Composition Root: `kira/app/bootstrap.py`; production legacy window: `kira/oldmain.py`. TASK 013 and TASK 014 were subsequently integrated together by merged PR #48. The legacy MainWindow remains substantial and is not yet a presentation-only shell.  
+>
+> ---
+
 # Kira modular architecture
 
 ## Goal
