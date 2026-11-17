@@ -1,0 +1,178 @@
+"""Qt-free tests for Voice application lifecycle orchestration."""
+import unittest
+
+from kira.app.voice_application import VoiceApplicationService
+
+
+class _Signal:
+    def __init__(self):
+        self.callbacks = []
+
+    def connect(self, callback):
+        self.callbacks.append(callback)
+
+    def emit(self, *args):
+        for callback in tuple(self.callbacks):
+            callback(*args)
+
+
+class _Listener:
+    def __init__(self):
+        self.heard = _Signal()
+        self.interrupted = _Signal()
+        self.state = _Signal()
+        self.error = _Signal()
+        self.note = _Signal()
+        self.finished = _Signal()
+        self.running = False
+        self.stop_called = False
+        self.speaking_started = False
+        self.speaking_ended = False
+        self.muted = True
+        self.kira_level = 0.0
+
+    def start(self):
+        self.running = True
+
+    def stop(self):
+        self.stop_called = True
+
+    def isRunning(self):
+        return self.running
+
+    def begin_kira_speech(self):
+        self.speaking_started = True
+
+    def end_kira_speech(self):
+        self.speaking_ended = True
+
+    def finish(self):
+        self.running = False
+        self.finished.emit()
+
+
+class _Speaker:
+    def __init__(self):
+        self._began = False
+        self.spoken = []
+        self.stopped = 0
+
+    def speak(self, text):
+        self.spoken.append(text)
+
+    def stop(self):
+        self.stopped += 1
+
+
+class VoiceApplicationServiceTests(unittest.TestCase):
+    def setUp(self):
+        self.speaker = _Speaker()
+        self.created = []
+        self.events = []
+        self.waiting = []
+        self.service = VoiceApplicationService(
+            speaker=self.speaker,
+            listener_factory=lambda: self.created.append(_Listener()) or self.created[-1],
+            on_heard=lambda text: self.events.append(("heard", text)),
+            on_interrupted=lambda: self.events.append(("interrupted",)),
+            on_state=lambda state: self.events.append(("state", state)),
+            on_error=lambda message: self.events.append(("error", message)),
+            on_note=lambda message: self.events.append(("note", message)),
+            on_finished=lambda listener, was_current, restart: self.events.append(
+                ("finished", listener, was_current, restart)
+            ),
+            on_waiting=lambda: self.waiting.append("waiting"),
+        )
+
+    def test_voice_service_implements_speech_and_recording_ports(self):
+        listener = self.service.start_recording()
+        self.assertTrue(listener)
+        self.assertEqual(len(self.created), 1)
+        self.assertTrue(self.created[0].running)
+
+        self.service.speak("hello")
+        self.service.stop_speaking()
+
+        self.assertEqual(self.speaker.spoken, ["hello"])
+        self.assertEqual(self.speaker.stopped, 1)
+
+    def test_listener_signals_are_forwarded_to_application_callbacks(self):
+        self.service.start_recording()
+        listener = self.created[0]
+
+        listener.heard.emit("سلام")
+        listener.interrupted.emit()
+        listener.state.emit("listening")
+        listener.error.emit("device error")
+        listener.note.emit("fallback")
+
+        self.assertEqual(
+            self.events,
+            [
+                ("heard", "سلام"),
+                ("interrupted",),
+                ("state", "listening"),
+                ("error", "device error"),
+                ("note", "fallback"),
+            ],
+        )
+
+    def test_start_waits_for_stopping_listener_before_creating_replacement(self):
+        self.service.start_recording()
+        old = self.created[0]
+
+        self.service.stop_recording()
+        self.assertIsNone(self.service.listener)
+        self.assertIs(self.service.stopping_listener, old)
+        self.assertTrue(old.stop_called)
+
+        self.assertFalse(self.service.start_recording())
+        self.assertEqual(len(self.created), 1)
+        self.assertEqual(self.waiting, ["waiting"])
+
+        old.finish()
+        self.assertIsNone(self.service.stopping_listener)
+        self.assertEqual(self.events[-1], ("finished", old, False, True))
+
+    def test_finish_reports_current_listener_and_does_not_request_restart_when_not_pending(self):
+        self.service.start_recording()
+        listener = self.created[0]
+
+        listener.finish()
+
+        self.assertIsNone(self.service.listener)
+        self.assertEqual(self.events[-1], ("finished", listener, True, False))
+
+    def test_speech_state_is_forwarded_to_active_listener(self):
+        self.service.start_recording()
+        listener = self.created[0]
+
+        self.service.begin_speaking()
+        self.service.end_speaking()
+        self.service.unmute_if_idle()
+
+        self.assertTrue(listener.speaking_started)
+        self.assertTrue(listener.speaking_ended)
+        self.assertFalse(listener.muted)
+
+    def test_unmute_does_not_override_active_speaker_playback(self):
+        self.service.start_recording()
+        listener = self.created[0]
+        self.speaker._began = True
+
+        self.service.unmute_if_idle()
+
+        self.assertTrue(listener.muted)
+
+    def test_stop_all_stops_both_microphone_and_speaker(self):
+        self.service.start_recording()
+        listener = self.created[0]
+
+        self.service.stop_all()
+
+        self.assertTrue(listener.stop_called)
+        self.assertEqual(self.speaker.stopped, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()
