@@ -242,6 +242,8 @@ class ConversationLifecycleService:
         now = self._now()
         # Persistence owns the safety snapshot and deletes only rows with this conversation_id.
         self._repository.delete_conversation(conv_id)
+        if self._repository.get_conversation(conv_id) is not None:
+            raise ConversationLifecycleError("repository did not remove the requested conversation")
         published = self._publish(
             ConversationOperation.PERMANENT_DELETE, conv_id, previous.value, "deleted", now
         )
