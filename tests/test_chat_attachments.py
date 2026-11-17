@@ -103,7 +103,7 @@ class AttachmentManagerTests(unittest.TestCase):
     def test_one_broken_file_does_not_block_other_attachments(self):
         good = self.manager.add_attachment(b"readable", filename="good.txt", session_id="kira", message_id="m1")
         broken = self.manager.add_attachment(b"initial", filename="broken.txt", session_id="kira", message_id="m1")
-        Path(broken.path).write_bytes(b"\\x00\\x01\\x02")
+        Path(broken.path).write_bytes(b"\x00\x01\x02")
         prepared = self.manager.prepare_content(
             [broken.attachment_id, good.attachment_id], session_id="kira"
         )
