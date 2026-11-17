@@ -12,6 +12,7 @@ from kira.chat.response_handler import ProviderEvent
 from kira.app.event_bus import EventBus
 from kira.chat.events import ChatEventPublisher, ChatEventType
 from kira.chat.attachments import AttachmentManager, AttachmentStatus
+from kira.chat.commands import CommandDefinition, CommandRegistry, CommandStatus
 
 
 class Signal:
@@ -476,6 +477,89 @@ class ChatApplicationServiceTests(unittest.TestCase):
         self.assertEqual(received[0].session_id, "ren")
         self.assertEqual(received[0].request_id, "failed-save")
         self.assertEqual(received[0].payload["operation"], "message_write")
+
+    def test_command_dispatch_is_correlated_and_published_through_chat_events(self):
+        bus = EventBus()
+        publisher = ChatEventPublisher(bus)
+        self.service.set_event_publisher(publisher)
+        registry = CommandRegistry()
+        registry.register(CommandDefinition(
+            command_id="test.ping",
+            name="ping",
+            description="Return pong.",
+            parameters={"type": "object", "properties": {}, "additionalProperties": False},
+            required_permissions=(),
+            parser=lambda _raw, _context: {},
+            handler=lambda _context, _arguments: "pong",
+        ))
+        self.service.set_command_registry(registry)
+        received = []
+        publisher.subscribe(
+            ChatEventType.COMMAND_DISPATCH_STARTED,
+            lambda event: received.append(event),
+        )
+        publisher.subscribe(
+            ChatEventType.COMMAND_DISPATCH_COMPLETED,
+            lambda event: received.append(event),
+        )
+        submission = self.service.submit_message("runtime-kira", "/ping")
+
+        dispatch = self.service.dispatch_commands(
+            submission.request.request_id,
+            "/ping",
+            metadata={"character_id": "kira"},
+        )
+
+        self.assertTrue(dispatch.handled)
+        self.assertEqual(dispatch.reply_text, "pong")
+        self.assertEqual(dispatch.results[0].status, CommandStatus.COMPLETED)
+        self.assertEqual([item.event_type for item in received], [
+            ChatEventType.COMMAND_DISPATCH_STARTED,
+            ChatEventType.COMMAND_DISPATCH_COMPLETED,
+        ])
+        self.assertTrue(all(item.session_id == "runtime-kira" for item in received))
+        self.assertTrue(all(
+            item.request_id == submission.request.request_id for item in received
+        ))
+        registry.close()
+
+    def test_out_of_band_control_uses_unique_request_and_parent_correlation(self):
+        bus = EventBus()
+        publisher = ChatEventPublisher(bus)
+        self.service.set_event_publisher(publisher)
+        registry = CommandRegistry()
+        registry.register(CommandDefinition(
+            command_id="test.pause",
+            name="pause",
+            description="Pause the active task.",
+            parameters={"type": "object", "properties": {}, "additionalProperties": False},
+            required_permissions=(),
+            parser=lambda _raw, _context: {},
+            handler=lambda _context, _arguments: "paused",
+        ))
+        self.service.set_command_registry(registry)
+        received = []
+        publisher.subscribe(
+            ChatEventType.COMMAND_DISPATCH_COMPLETED,
+            lambda event: received.append(event),
+        )
+        active = self.service.submit_message("runtime-ren", "run a task")
+
+        dispatch = self.service.dispatch_control_commands(
+            "runtime-ren", "/pause", metadata={"character_id": "ren"},
+        )
+
+        self.assertTrue(dispatch.handled)
+        result = dispatch.results[0]
+        self.assertEqual(result.session_id, "runtime-ren")
+        self.assertNotEqual(result.request_id, active.request.request_id)
+        self.assertEqual(len(received), 1)
+        self.assertEqual(received[0].request_id, result.request_id)
+        self.assertEqual(
+            received[0].metadata["parent_request_id"], active.request.request_id
+        )
+        self.assertEqual(received[0].payload["source"], "control")
+        registry.close()
 
     def test_service_is_qt_free(self):
         import ast

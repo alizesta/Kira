@@ -36,6 +36,10 @@ class ChatEventType(str, Enum):
     HISTORY_LOADED = "history_loaded"
     PERSISTENCE_FAILED = "persistence_failed"
 
+    COMMAND_DISPATCH_STARTED = "command_dispatch_started"
+    COMMAND_DISPATCH_COMPLETED = "command_dispatch_completed"
+    COMMAND_DISPATCH_FAILED = "command_dispatch_failed"
+
 
 CHAT_EVENT_TYPES = frozenset(item.value for item in ChatEventType)
 
@@ -164,6 +168,8 @@ class ChatEventPublisher:
         ChatEventType.STREAM_INTERRUPTED: "stream",
         ChatEventType.SESSION_CLOSED: "session",
         ChatEventType.SESSION_FAILED: "session",
+        ChatEventType.COMMAND_DISPATCH_COMPLETED: "command",
+        ChatEventType.COMMAND_DISPATCH_FAILED: "command",
     }
 
     def __init__(self, event_bus: "EventBus", *, terminal_history_limit: int = 8192):

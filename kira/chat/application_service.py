@@ -192,25 +192,110 @@ class ChatApplicationService:
         if registry is not None and not isinstance(registry, CommandRegistry):
             raise TypeError("registry must be a CommandRegistry or None")
         self._command_registry = registry
+
+    def _dispatch_command_text(
+        self,
+        text: str,
+        *,
+        session_id: str,
+        request_id: str,
+        metadata: Mapping[str, Any] | None = None,
+        source: str = "chat",
+    ) -> CommandDispatch:
+        registry = self._command_registry
+        if registry is None:
+            return CommandDispatch()
+        owner = str(session_id or "").strip()
+        request = str(request_id or "").strip()
+        if not owner or not request:
+            raise ValueError("session_id and request_id are required")
+        details = dict(metadata or {})
+        self._publish_event(
+            "command_dispatch_started",
+            session_id=owner,
+            request_id=request,
+            payload={"source": source},
+            metadata={"source": source, "parent_request_id": details.get("parent_request_id")},
+        )
+        try:
+            dispatch = registry.dispatch_text(
+                text,
+                session_id=owner,
+                request_id=request,
+                metadata=details,
+                source=source,
+            )
+        except Exception as exc:
+            self._publish_event(
+                "command_dispatch_failed",
+                session_id=owner,
+                request_id=request,
+                payload={"source": source, "error_type": type(exc).__name__},
+                metadata={"source": source, "parent_request_id": details.get("parent_request_id")},
+            )
+            raise
+        self._publish_event(
+            "command_dispatch_completed",
+            session_id=owner,
+            request_id=request,
+            payload={
+                "source": source,
+                "handled": dispatch.handled,
+                "continue_chat": dispatch.continue_chat,
+                "results": [
+                    {"command_id": item.command_id, "status": item.status.value}
+                    for item in dispatch.results
+                ],
+            },
+            metadata={"source": source, "parent_request_id": details.get("parent_request_id")},
+        )
+        return dispatch
+
     def dispatch_commands(
         self,
         request_id: str,
         text: str,
         *,
         metadata: Mapping[str, Any] | None = None,
+        source: str = "chat",
     ) -> CommandDispatch:
         """Dispatch deterministic commands for the active chat request and session."""
         state = self._requests.get(str(request_id or ""))
         if state is None or state.status is not RequestStatus.RUNNING:
             raise ValueError("chat request is not active")
-        if self._command_registry is None:
-            return CommandDispatch()
-        return self._command_registry.dispatch_text(
+        return self._dispatch_command_text(
             text,
             session_id=state.request.session_id,
             request_id=state.request.request_id,
-            metadata=metadata or {},
-            source="chat",
+            metadata=metadata,
+            source=source,
+        )
+
+    def dispatch_control_commands(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> CommandDispatch:
+        """Dispatch an out-of-band control message without queueing it as a new chat turn."""
+        owner = str(session_id or "").strip()
+        if not owner:
+            raise ValueError("session_id is required")
+        parent_request_id = self._active_by_session.get(owner)
+        if not parent_request_id:
+            return CommandDispatch()
+        control_request_id = uuid4().hex
+        details = dict(metadata or {})
+        details["parent_request_id"] = parent_request_id
+        return self._dispatch_command_text(
+            text,
+            session_id=owner,
+            request_id=control_request_id,
+            metadata=details,
+            source="control",
+        )
+
     def _emit(self, event: ChatApplicationEvent) -> None:
         callback = self._on_event
         if callback is None:
@@ -756,7 +841,8 @@ class ChatApplicationService:
         if state is None or state.status in (RequestStatus.COMPLETED, RequestStatus.FAILED, RequestStatus.CANCELLED):
             return False
         if self._command_registry is not None:
-            self._command_registry.cancel(state.request.session_id, state.request.request_id)
+            # Includes out-of-band control invocations correlated to this active session.
+            self._command_registry.cancel_session(state.request.session_id)
         if state.status is RequestStatus.PENDING:
             state.status = RequestStatus.CANCELLED
             self.cleanup_request_attachments(state.request.request_id)
