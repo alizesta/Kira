@@ -352,6 +352,10 @@ class ChatApplicationService:
             )
         except (ValueError, TypeError, binascii.Error) as exc:
             state.status = RequestStatus.FAILED
+            self._publish_event(
+                "request_failed", session_id=owner, request_id=request_id,
+                payload={"error": f"Invalid attachment: {type(exc).__name__}"},
+            )
             self._emit(ChatApplicationEvent(
                 request_id, owner, ApplicationEventKind.REQUEST_FAILED,
                 RequestStatus.FAILED, error=f"Invalid attachment: {type(exc).__name__}",
@@ -728,6 +732,10 @@ class ChatApplicationService:
             state.status = RequestStatus.CANCELLED
             self.cleanup_request_attachments(state.request.request_id)
             owner = state.request.session_id
+            self._publish_event(
+                "request_cancelled", session_id=owner, request_id=state.request.request_id,
+                payload={"queued": True},
+            )
             self._emit(ChatApplicationEvent(
                 state.request.request_id, owner,
                 ApplicationEventKind.REQUEST_CANCELLED, RequestStatus.CANCELLED,
