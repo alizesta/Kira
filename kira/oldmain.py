@@ -35,7 +35,7 @@ from . import routes as route_model
 from . import discovery
 from . import api_manager
 from . import websearch
-from . import attachments as att
+from .chat import attachments as att
 from .actions import run_safe_action
 from .tools import ToolAgent
 from .leak_guard import scrub_lines
