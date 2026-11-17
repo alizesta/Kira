@@ -717,6 +717,43 @@ class SqliteChatRepository:
                     if expected_status is not None:
                         if conversation is None or str(conversation["status"] or "active") != expected_status:
                             raise PersistenceError("conversation state changed before permanent deletion")
+
+                    # Refuse deletion when another durable table declares a
+                    # foreign-key dependency on this conversation or its messages.
+                    dependencies = []
+                    tables = con.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+                    ).fetchall()
+                    for table_row in tables:
+                        table = str(table_row["name"])
+                        if table in ("conversations", "messages"):
+                            continue
+                        quoted_table = '"' + table.replace('"', '""') + '"'
+                        for fk in con.execute(f"PRAGMA foreign_key_list({quoted_table})").fetchall():
+                            target_table = str(fk[2])
+                            if target_table not in ("conversations", "messages"):
+                                continue
+                            child_column = '"' + str(fk[3]).replace('"', '""') + '"'
+                            target_column = str(fk[4] or "id")
+                            quoted_target_column = '"' + target_column.replace('"', '""') + '"'
+                            if target_table == "conversations":
+                                dependency_query = (
+                                    f"SELECT 1 FROM {quoted_table} WHERE {child_column} IN "
+                                    f"(SELECT {quoted_target_column} FROM conversations WHERE id=?) LIMIT 1"
+                                )
+                            else:
+                                dependency_query = (
+                                    f"SELECT 1 FROM {quoted_table} WHERE {child_column} IN "
+                                    f"(SELECT {quoted_target_column} FROM messages WHERE conversation_id=?) LIMIT 1"
+                                )
+                            if con.execute(dependency_query, (conv_id,)).fetchone() is not None:
+                                dependencies.append(table)
+                                break
+                    if dependencies:
+                        names = ", ".join(sorted(set(dependencies)))
+                        raise PersistenceError(
+                            f"conversation has dependent records in: {names}"
+                        )
                     if count or exists:
                         # Keep the write transaction open across backup and delete,
                         # preventing another process from inserting rows between those steps.
