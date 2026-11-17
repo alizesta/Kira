@@ -112,6 +112,7 @@ class ChatOrganizationService:
         self._character_id = str(character_id).strip().lower() if character_id else None
         self._events = event_publisher
         self._lock = threading.RLock()
+        self._known_folders = {DEFAULT_FOLDER_ID: "Inbox"}
 
     def _conversation(self, conversation_id: Any) -> dict[str, Any]:
         identifier = str(conversation_id or "").strip()
@@ -210,6 +211,8 @@ class ChatOrganizationService:
     def create_folder(self, name: str) -> Folder:
         normalized = _label(name, "folder name")
         folder_id = normalized.casefold()
+        with self._lock:
+            self._known_folders[folder_id] = normalized
         return Folder(folder_id, normalized)
 
     def delete_folder(self, folder_id: str) -> int:
@@ -219,11 +222,29 @@ class ChatOrganizationService:
         def reset(org):
             if _key(org.get("folder_id") or DEFAULT_FOLDER_ID, "folder") == key:
                 org["folder_id"] = DEFAULT_FOLDER_ID
-        return self._update_all(reset)
+        changed = self._update_all(reset)
+        with self._lock:
+            self._known_folders.pop(key, None)
+        return changed
+
+    def _folder_exists(self, folder_id: str) -> bool:
+        if folder_id in self._known_folders:
+            return True
+        try:
+            records = self._repository.list_conversations(self._character_id)
+        except Exception as exc:
+            raise OrganizationRepositoryError(str(exc)) from exc
+        for record in records:
+            org = _organization(record.get("metadata")) if isinstance(record, dict) else {}
+            if _key(org.get("folder_id") or DEFAULT_FOLDER_ID, "folder") == folder_id:
+                return True
+        return False
 
     def move_conversation(self, conversation_id: str, folder_id: str) -> OrganizationResult:
         folder = _key(folder_id, "folder id")
         with self._lock:
+            if not self._folder_exists(folder):
+                raise OrganizationError("folder does not exist; create it before moving a conversation")
             record = self._conversation(conversation_id)
             org = _organization(record.get("metadata"))
             org["folder_id"] = folder or DEFAULT_FOLDER_ID
