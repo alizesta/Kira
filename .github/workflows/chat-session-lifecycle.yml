@@ -2,15 +2,22 @@ name: Chat Session Lifecycle Tests
 
 on:
   push:
-    branches: [new-main, refactor/application-policy-017]
+    branches: [new-main, refactor/application-policy-017, refactor/application-policy-019-020-v2]
   pull_request:
-    branches: [new-main]
+    branches: [new-main, refactor/application-policy-017]
     paths:
       - "kira/core/interfaces/voice_service.py"
       - "kira/game_audio_policy.py"
       - "kira/game_audio.py"
       - "tests/test_game_audio_policy.py"
       - "kira/app/game_mode_application.py"
+      - "kira/app/vision_application.py"
+      - "kira/app/provider_application.py"
+      - "kira/app/coding_agent_application.py"
+      - "tests/test_vision_application.py"
+      - "tests/test_provider_application.py"
+      - "tests/test_coding_agent_application.py"
+      - "tests/test_policy_architecture.py"
       - "tests/test_game_mode_application.py"
       - "kira/app/voice_application.py"
       - "kira/app/voice_composition.py"
@@ -68,6 +75,10 @@ jobs:
           tests.test_web_search_application
           tests.test_voice_application
           tests.test_game_mode_application
+          tests.test_vision_application
+          tests.test_provider_application
+          tests.test_coding_agent_application
+          tests.test_policy_architecture
           tests.test_game_audio_policy
           tests.test_chat_session_manager
           tests.test_chat_events
@@ -117,6 +128,13 @@ jobs:
           kira/game_audio.py
           tests/test_game_audio_policy.py
           kira/app/game_mode_application.py
+          kira/app/vision_application.py
+          kira/app/provider_application.py
+          kira/app/coding_agent_application.py
+          tests/test_vision_application.py
+          tests/test_provider_application.py
+          tests/test_coding_agent_application.py
+          tests/test_policy_architecture.py
           tests/test_game_mode_application.py
           kira/core/interfaces/voice_service.py
           kira/app/voice_application.py
