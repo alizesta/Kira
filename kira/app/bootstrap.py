@@ -14,6 +14,7 @@ def run_application() -> None:
     from ..config import load_settings
     from .dependency_container import DependencyContainer
     from .chat_composition import create_chat_application_service_factory
+    from .session_composition import create_session_application_service_factory
     from .event_bus import EventBus
     from ..chat.events import ChatEventPublisher
     from ..chat.session_manager import SessionManager
@@ -60,6 +61,9 @@ def run_application() -> None:
         persistence=chat_history_service,
         event_publisher=chat_event_publisher,
     )
+    session_service_factory = create_session_application_service_factory(
+        event_publisher=chat_event_publisher,
+    )
     try:
         window = MainWindow(
             memory_service=container.resolve("memory_service"),
@@ -67,6 +71,7 @@ def run_application() -> None:
             character_service=container.resolve("character_service"),
             chat_history_service=chat_history_service,
             chat_application_service_factory=chat_service_factory,
+            session_application_service_factory=session_service_factory,
             session_manager=session_manager,
             chat_event_publisher=chat_event_publisher,
         )
