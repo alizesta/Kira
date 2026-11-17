@@ -57,7 +57,8 @@ for hit in page.results:
 
 ## Matching and filtering
 
-- `exact`: the complete message text must equal the query (case-insensitive).\n- `phrase`: case-insensitive contiguous phrase matching (default).
+- `exact`: the complete message text must equal the query (case-insensitive).
+- `phrase`: case-insensitive contiguous phrase matching (default).
 - `all_terms`: every token must occur in the message.
 - `any_term`: at least one token must occur.
 - Roles are limited to `user`, `assistant` and `system`.
