@@ -42,6 +42,13 @@ class CharacterProfileServiceTests(unittest.TestCase):
                 self.settings, "kira", name="Changed", description="", prompt=""
             )
 
+    def test_non_default_builtin_profiles_can_be_overridden(self):
+        updated = self.service.update_profile(
+            self.settings, "ren", name="Ren Prime", description="customized", prompt="custom prompt"
+        )
+        self.assertEqual(updated["name"], "Ren Prime")
+        self.assertEqual(self.service.all_profiles(self.settings)["ren"]["name"], "Ren Prime")
+
     def test_delete_custom_profile_cleans_scoped_settings_and_resets_active(self):
         profile = self.service.create_profile(self.settings, "Custom")
         cid = profile["id"]
