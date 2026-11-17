@@ -14,7 +14,6 @@ from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
-from uuid import uuid4
 
 
 class CommandStatus(str, Enum):
@@ -606,6 +605,7 @@ class CommandRegistry:
                 signal.set()
             self._commands.clear()
             self._lookup.clear()
+            self._cache.clear()
 
     def _rejected(
         self, definition: CommandDefinition, session_id: str,
