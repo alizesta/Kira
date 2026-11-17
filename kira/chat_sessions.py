@@ -11,6 +11,9 @@ face or overwrites the status of the character you are looking at.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from uuid import uuid4
+
 # name -> default factory. Everything a single request / conversation needs lives here.
 SESSION_FIELDS = {
     "busy": lambda: False,
@@ -45,9 +48,16 @@ SESSION_FIELDS = {
 
 
 class ChatSession:
-    def __init__(self, character_id: str):
+    def __init__(self, character_id: str, *, session_id: str | None = None):
         self.cid = str(character_id)
-        self.conversation_id: str | None = None  # Stable persisted conversation owned by this character session
+        self.character_id = self.cid
+        self._session_id = str(session_id or uuid4())
+        self.status = "created"
+        self.created_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        self.updated_at = self.created_at
+        self.metadata = {}
+        self.last_error = None
+        self.conversation_id: str | None = None  # Durable identity owned by ChatPersistence
         for name, factory in SESSION_FIELDS.items():
             setattr(self, name, factory())
         self.view = None            # QTextBrowser of this chat
@@ -59,6 +69,11 @@ class ChatSession:
         self.draft = ""             # text typed but not sent yet
         self.unread = False         # a reply arrived while another tab was in front
         self.loaded = False         # history shown in the view
+
+    @property
+    def session_id(self) -> str:
+        """Immutable identifier for this in-memory Session lifetime."""
+        return self._session_id
 
     def __repr__(self):
         return f"<ChatSession {self.cid} busy={self.busy}>"

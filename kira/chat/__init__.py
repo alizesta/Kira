@@ -24,6 +24,8 @@ from .application_service import (
     Submission,
 )
 
+from .session_manager import SessionManager, SessionState, SessionStateChanged
+
 __all__ = [
     "CHAT_EVENT_TYPES",
     "ChatEvent",
@@ -54,4 +56,7 @@ __all__ = [
     "PersistenceOutcome",
     "RequestStatus",
     "Submission",
+    "SessionManager",
+    "SessionState",
+    "SessionStateChanged",
 ]

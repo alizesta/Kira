@@ -51,6 +51,7 @@ class ChatApplicationRequest:
     attachments: tuple[Mapping[str, Any], ...] = ()
     voice: bool = False
     conversation_id: str | None = None
+    character_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -108,6 +109,7 @@ class ChatApplicationService:
         worker_factory: Callable[..., Any],
         on_dispatch: Callable[[ChatApplicationRequest], Any],
         on_event: Callable[[ChatApplicationEvent], Any] | None = None,
+        event_publisher: Any | None = None,
         prompt_enricher: Callable[[str], str] | None = None,
         schedule: Callable[[Callable[[], Any]], Any] | None = None,
         cancel_provider: Callable[[ChatApplicationRequest, Any], Any] | None = None,
@@ -129,6 +131,7 @@ class ChatApplicationService:
         self._worker_factory = worker_factory
         self._on_dispatch = on_dispatch
         self._on_event = on_event
+        self._event_publisher = event_publisher
         self._schedule = schedule or (lambda callback: callback())
         self._cancel_provider = cancel_provider
         self._max_pending = int(max_pending)
@@ -152,6 +155,36 @@ class ChatApplicationService:
             # A UI observer must not corrupt the request lifecycle.
             return
 
+    def set_event_publisher(self, publisher: Any | None) -> None:
+        """Attach the shared typed notification publisher without transferring lifecycle ownership."""
+        if publisher is not None and not callable(getattr(publisher, "publish", None)):
+            raise TypeError("event publisher must expose publish()")
+        self._event_publisher = publisher
+
+    def _publish_event(
+        self,
+        event_type: str,
+        *,
+        session_id: str | None = None,
+        request_id: str | None = None,
+        payload: Mapping[str, Any] | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> None:
+        publisher = self._event_publisher
+        if publisher is None:
+            return
+        try:
+            publisher.publish(
+                event_type,
+                session_id=session_id,
+                request_id=request_id,
+                payload=payload,
+                metadata=metadata,
+            )
+        except Exception:
+            # Notifications are best-effort and cannot break request execution.
+            return
+
     def _coordinator(self, session_id: str) -> ChatCoordinator:
         coordinator = self._coordinators.get(session_id)
         if coordinator is None:
@@ -173,6 +206,7 @@ class ChatApplicationService:
         busy: bool = False,
         force_queue: bool = False,
         conversation_id: str | None = None,
+        character_id: str | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> Submission:
         if self._disposed:
@@ -188,6 +222,7 @@ class ChatApplicationService:
             attachments=tuple(dict(item) for item in (attachments or ())),
             voice=bool(voice),
             conversation_id=str(conversation_id) if conversation_id else None,
+            character_id=str(character_id or owner),
             metadata=dict(metadata or {}),
         )
         state = _RequestState(request=request)
@@ -203,6 +238,10 @@ class ChatApplicationService:
         )
         if result is SubmissionResult.FULL:
             state.status = RequestStatus.FAILED
+            self._publish_event(
+                "request_failed", session_id=owner, request_id=request_id,
+                payload={"error": "The pending chat queue is full."},
+            )
             self._chat_request_ids.pop((owner, id(chat_request)), None)
             self._emit(ChatApplicationEvent(
                 request_id, owner, ApplicationEventKind.REQUEST_FAILED,
@@ -211,6 +250,10 @@ class ChatApplicationService:
             self._prune_history()
             return Submission(request, state.status, queued=False, accepted=False)
         self._prune_history()
+        self._publish_event(
+            "request_submitted", session_id=owner, request_id=request_id,
+            payload={"queued": result is SubmissionResult.QUEUED},
+        )
         return Submission(
             request=request,
             status=state.status,
@@ -234,6 +277,9 @@ class ChatApplicationService:
             state.request.request_id, session_id,
             ApplicationEventKind.REQUEST_STARTED, RequestStatus.RUNNING,
         ))
+        self._publish_event(
+            "request_started", session_id=session_id, request_id=state.request.request_id,
+        )
         try:
             self._on_dispatch(state.request)
         except Exception as exc:
@@ -301,6 +347,11 @@ class ChatApplicationService:
                 metadata={"application_request_id": state.request.request_id, "attempt": state.attempt},
             )
             self._attempt_to_request[attempt_id] = state.request.request_id
+            self._publish_event(
+                "stream_started", session_id=owner, request_id=state.request.request_id,
+                payload={"provider_request_id": attempt_id},
+                metadata={"attempt": state.attempt},
+            )
             callbacks = dict(provider_callbacks or {})
             dispatch_event = provider_event_dispatcher or self.handle_provider_event
             callbacks.update({
@@ -372,6 +423,11 @@ class ChatApplicationService:
                 state.status, content=normalized.content, chunk=normalized.chunk,
             )
             self._emit(application_event)
+            self._publish_event(
+                "stream_chunk_received", session_id=event.session_id, request_id=request_id,
+                payload={"chunk": normalized.chunk, "content": normalized.content},
+                metadata={"provider_request_id": event.request_id},
+            )
             return application_event
 
         # Keep the logical-to-attempt mapping for every chunk. Remove it only
@@ -382,6 +438,10 @@ class ChatApplicationService:
             return None
         state.last_content = result.content
         if result.status is ResponseStatus.COMPLETED:
+            self._publish_event(
+                "stream_completed", session_id=event.session_id, request_id=request_id,
+                payload={"content": result.content, "provider_request_id": event.request_id},
+            )
             application_event = ChatApplicationEvent(
                 request_id, event.session_id, ApplicationEventKind.PROVIDER_FINAL,
                 state.status, content=result.content, result=result,
@@ -389,6 +449,11 @@ class ChatApplicationService:
             self._emit(application_event)
             return application_event
 
+        self._publish_event(
+            "stream_interrupted", session_id=event.session_id, request_id=request_id,
+            payload={"content": result.content, "provider_request_id": event.request_id},
+            metadata=result.metadata,
+        )
         terminal_status = (
             RequestStatus.CANCELLED if result.status is ResponseStatus.CANCELLED
             else RequestStatus.FAILED
@@ -465,27 +530,44 @@ class ChatApplicationService:
         request_id: str | None = None,
         conversation_id: str | None = None,
         status: str = "complete",
+        character_id: str | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> PersistenceOutcome:
         owner = str(session_id or "").strip()
         if not owner:
             return PersistenceOutcome(False, "session_id must not be empty")
         request_state = self._requests.get(str(request_id or "")) if request_id else None
-        if conversation_id is None and request_state is not None:
-            conversation_id = request_state.request.conversation_id
+        if request_state is not None:
+            if conversation_id is None:
+                conversation_id = request_state.request.conversation_id
+            if character_id is None:
+                character_id = request_state.request.character_id
+        character_owner = str(character_id or owner).strip()
+        if not character_owner:
+            return PersistenceOutcome(False, "character_id must not be empty")
         try:
             ok = self._persistence.add_message(
-                role, content, owner,
+                role, content, character_owner,
                 conversation_id=conversation_id,
                 status=status,
                 metadata={
                     **dict(metadata or {}),
-                    **({"request_id": request_id, "session_id": owner} if request_id else {}),
+                    "session_id": owner,
+                    "character_id": character_owner,
+                    **({"request_id": request_id} if request_id else {}),
                 },
             )
             if ok:
+                self._publish_event(
+                    "message_saved", session_id=owner, request_id=request_id,
+                    payload={"role": role, "content": content, "conversation_id": conversation_id},
+                )
                 return PersistenceOutcome(True)
             error = getattr(self._persistence, "last_error", None) or "Persistence queued the message in memory."
+            self._publish_event(
+                "persistence_failed", session_id=owner, request_id=request_id,
+                payload={"operation": "message_write", "error": str(error)},
+            )
             self._emit(ChatApplicationEvent(
                 str(request_id or ""), owner, ApplicationEventKind.PERSISTENCE_WARNING,
                 self.get_request_status(request_id) if request_id else RequestStatus.RUNNING,
@@ -494,6 +576,10 @@ class ChatApplicationService:
             return PersistenceOutcome(False, str(error))
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
+            self._publish_event(
+                "persistence_failed", session_id=owner, request_id=request_id,
+                payload={"operation": "message_write", "error": error},
+            )
             self._emit(ChatApplicationEvent(
                 str(request_id or ""), owner, ApplicationEventKind.PERSISTENCE_WARNING,
                 self.get_request_status(request_id) if request_id else RequestStatus.RUNNING,
@@ -605,32 +691,32 @@ class ChatApplicationService:
         initializer = getattr(self._persistence, "init_db", None)
         return list(initializer() or []) if callable(initializer) else []
 
-    def get_or_create_conversation(self, session_id: str) -> dict[str, Any]:
-        """Resolve the durable conversation owned by one character session."""
-        owner = str(session_id or "").strip()
+    def get_or_create_conversation(self, character_id: str) -> dict[str, Any]:
+        """Resolve the durable conversation owned by one character."""
+        owner = str(character_id or "").strip()
         if not owner:
-            raise ValueError("session_id must not be empty")
+            raise ValueError("character_id must not be empty")
         return self._persistence.get_or_create_conversation(owner)
 
     def recent_messages(
-        self, limit: int = 12, session_id: str | None = None,
+        self, limit: int = 12, character_id: str | None = None,
         conversation_id: str | None = None,
     ):
-        return self._persistence.recent_messages(limit, session_id, conversation_id)
+        return self._persistence.recent_messages(limit, character_id, conversation_id)
 
     def conversation_context(
         self, limit: int = 12, max_chars: int = 12000,
-        session_id: str | None = None, conversation_id: str | None = None,
+        character_id: str | None = None, conversation_id: str | None = None,
     ):
-        return self._persistence.conversation_context(limit, max_chars, session_id, conversation_id)
+        return self._persistence.conversation_context(limit, max_chars, character_id, conversation_id)
 
     def message_count(
-        self, session_id: str | None = None, conversation_id: str | None = None
+        self, character_id: str | None = None, conversation_id: str | None = None
     ) -> int:
-        return self._persistence.message_count(session_id, conversation_id)
+        return self._persistence.message_count(character_id, conversation_id)
 
-    def clear_history(self, session_id: str | None = None) -> Any:
-        return self._persistence.clear_memory(session_id)
+    def clear_history(self, character_id: str | None = None) -> Any:
+        return self._persistence.clear_memory(character_id)
 
     def restore_history(self) -> int:
         return self._persistence.restore_last_cleared()
@@ -665,6 +751,7 @@ class ChatApplicationService:
             request_id=state.request.request_id,
             conversation_id=state.request.conversation_id,
             status=status,
+            character_id=state.request.character_id,
             metadata=metadata,
         )
 
@@ -686,6 +773,17 @@ class ChatApplicationService:
         if self._active_by_session.get(owner) == state.request.request_id:
             self._active_by_session.pop(owner, None)
         state.worker = None
+        terminal_type = {
+            RequestStatus.COMPLETED: "request_completed",
+            RequestStatus.FAILED: "request_failed",
+            RequestStatus.CANCELLED: "request_cancelled",
+        }.get(status)
+        if terminal_type is not None:
+            self._publish_event(
+                terminal_type, session_id=owner, request_id=state.request.request_id,
+                payload={"content": content or state.last_content, "error": error},
+                metadata=metadata,
+            )
         self._emit(ChatApplicationEvent(
             state.request.request_id, owner, kind, status,
             content=content or state.last_content,

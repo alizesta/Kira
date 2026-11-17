@@ -1,0 +1,44 @@
+name: Chat Session Lifecycle Tests
+
+on:
+  pull_request:
+    branches: [new-main]
+    paths:
+      - "kira/chat/session_manager.py"
+      - "kira/chat/application_service.py"
+      - "kira/oldmain.py"
+      - "kira/chat_sessions.py"
+      - "tests/test_chat_session_manager.py"
+      - "tests/test_chat_application_service.py"
+      - "tests/test_chat_application_wiring.py"
+      - ".github/workflows/chat-session-lifecycle.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  session-manager-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run Qt-free chat application and session lifecycle tests
+        run: >-
+          python -m unittest
+          tests.test_chat_application_service
+          tests.test_chat_application_wiring
+          tests.test_chat_session_manager
+          -v
+      - name: Check changed Python modules
+        run: >-
+          python -m py_compile
+          kira/chat/session_manager.py
+          kira/chat_sessions.py
+          kira/oldmain.py
+          kira/app/bootstrap.py
+          tests/test_chat_session_manager.py

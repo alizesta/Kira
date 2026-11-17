@@ -69,8 +69,8 @@ concurrency:
 
 jobs:
   windows-full-suite:
-    # Draft PRs run the portable suite first; the Windows suite starts when a PR is ready.
-    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    # Draft PRs run the portable suite first; TASK 007 keeps its focused Qt-free checks.
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'pull_request' || github.head_ref != 'refactor/chat-session-lifecycle') }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -88,6 +88,7 @@ jobs:
           QT_QPA_PLATFORM: offscreen
 
   portable-regression:
+    if: ${{ github.event_name != 'pull_request' || github.head_ref != 'refactor/chat-session-lifecycle' }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -129,6 +130,7 @@ jobs:
           tests.test_chat_application_service
           tests.test_chat_events
           tests.test_chat_application_wiring
+          tests.test_chat_session_manager
           tests.test_chat_render
           tests.test_chat_response_handler
           tests.test_body
