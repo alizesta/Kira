@@ -33,6 +33,58 @@ class GameModeApplicationServiceTests(unittest.TestCase):
         self.assertTrue(self.service.tool_categories_allowed(profile, {"web"}))
         self.assertFalse(self.service.tool_categories_allowed(profile, {"web", "desktop"}))
 
+    def test_game_audio_alert_policy_classifies_and_throttles_important_events(self):
+        urgent = self.service.classify_game_audio(
+            "Low health warning",
+            now=100.0,
+            enabled=True,
+            profile="story",
+            busy=False,
+            speaking=False,
+        )
+        self.assertEqual(urgent.category, "urgent")
+        self.assertEqual(urgent.emotion, "surprised")
+        self.assertIsNone(
+            self.service.classify_game_audio(
+                "Low health warning",
+                now=130.0,
+                enabled=True,
+                profile="story",
+                busy=False,
+                speaking=False,
+            )
+        )
+        complete = self.service.classify_game_audio(
+            "Mission complete",
+            now=131.0,
+            enabled=True,
+            profile="story",
+            busy=False,
+            speaking=False,
+        )
+        self.assertEqual(complete.category, "complete")
+
+    def test_game_audio_alert_policy_suppresses_irrelevant_busy_or_disallowed_events(self):
+        kwargs = {
+            "now": 100.0,
+            "enabled": True,
+            "profile": "story",
+            "busy": False,
+            "speaking": False,
+        }
+        self.assertIsNone(self.service.classify_game_audio("hello friend", **kwargs))
+        self.assertIsNone(
+            self.service.classify_game_audio("Low health", **{**kwargs, "busy": True})
+        )
+        self.assertIsNone(
+            self.service.classify_game_audio("Low health", **{**kwargs, "speaking": True})
+        )
+        self.assertIsNone(
+            self.service.classify_game_audio(
+                "Low health", **{**kwargs, "profile": self.service.COMPETITIVE_SAFE_MODE}
+            )
+        )
+
     def test_command_policy_denies_desktop_launch_only_when_profile_disallows_it(self):
         self.assertIsNone(
             self.service.command_denial_reason("story", {"desktop.launch"})
