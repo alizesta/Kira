@@ -24,6 +24,68 @@ class ChatApplicationServiceArchitectureTests(unittest.TestCase):
         self.assertIn("self.chat_application_service.persist_message", source)
 
 
+class WindowDependencyBoundaryTests(unittest.TestCase):
+    def test_each_feature_mixin_uses_its_scoped_dependency_module(self):
+        from pathlib import Path
+
+        ui_root = Path(__file__).resolve().parents[1] / "kira" / "ui"
+        features = {
+            "main_window.py": "root",
+            "main_window_attachments_vision.py": "attachments_vision",
+            "main_window_character_settings.py": "character_settings",
+            "main_window_chat.py": "chat",
+            "main_window_lifecycle.py": "lifecycle",
+            "main_window_provider_settings.py": "provider_settings",
+            "main_window_runtime.py": "runtime",
+            "main_window_session.py": "session",
+            "main_window_voice_settings.py": "voice_settings",
+        }
+        for filename, feature in features.items():
+            source = (ui_root / filename).read_text(encoding="utf-8")
+            self.assertIn(
+                f"from .main_window_{feature}_support import *",
+                source,
+                filename,
+            )
+            self.assertNotIn("from .main_window_support import *", source, filename)
+
+    def test_shared_support_contains_only_cross_feature_adapters(self):
+        from pathlib import Path
+
+        support = (
+            Path(__file__).resolve().parents[1]
+            / "kira" / "ui" / "main_window_support.py"
+        ).read_text(encoding="utf-8")
+        for forbidden in (
+            "from ..hybrid_ai import",
+            "from ..voice import",
+            "from ..listener import",
+            "from ..vision_pipeline import",
+            "from .. import routes",
+            "from .. import websearch",
+            "from ..tools import",
+            "from ..chat.application_service import",
+        ):
+            self.assertNotIn(forbidden, support)
+        self.assertIn("class SessionRelay", support)
+        self.assertIn("def front_only", support)
+        self.assertIn("def load_reactions", support)
+
+    def test_feature_support_modules_do_not_import_other_feature_mixins(self):
+        from pathlib import Path
+
+        ui_root = Path(__file__).resolve().parents[1] / "kira" / "ui"
+        for path in ui_root.glob("main_window_*_support.py"):
+            source = path.read_text(encoding="utf-8")
+            for line in source.splitlines():
+                if line.startswith("from .main_window_"):
+                    self.assertEqual(
+                        line,
+                        "from .main_window_support import " + line.split(" import ", 1)[1],
+                        str(path),
+                    )
+
+
 class EventBusTests(unittest.TestCase):
     def test_publish_notifies_subscribers(self):
         bus = EventBus()
