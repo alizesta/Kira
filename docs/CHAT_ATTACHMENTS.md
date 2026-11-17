@@ -11,7 +11,7 @@ The existing `kira.attachments` module remains the low-level compatibility parse
 - `Attachment`: immutable record containing `attachment_id`, optional `message_id`, `session_id`, `filename`, `mime_type`, `size`, `source`, managed `path`, `metadata`, and `status`.
 - `AttachmentManager.add_attachment(source, filename, session_id, message_id=None, metadata=None)`: copies a file or bytes into a unique session-owned path.
 - `validate_attachment(filename, data)`: checks extension allowlist, size, and file signatures / content.
-- `get_attachment(id, session_id=None)` and `list_attachments(session_id, message_id=None)`: scoped lookup.
+- `get_attachment(id, session_id)` and `list_attachments(session_id, message_id=None)`: scoped lookup. The session identifier is required for every direct lookup.
 - `prepare_content(ids, session_id, text="", search=False)`: extracts supported content and returns structured `text`, `files`, and `images` data plus UI/history `display` and `stored` fields, bounded `errors`, and `prepared_count`. It does not build provider prompt text.
 - `remove_attachment(id, session_id)` and `cleanup(session_id=None)`: remove only files under the manager's resolved storage root and owning session directory.
 - `close()`: idempotent cleanup; an internally-created temporary root is removed.
