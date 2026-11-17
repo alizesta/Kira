@@ -54,7 +54,7 @@ class ConversationLifecycleRepository(Protocol):
     def get_conversation(self, conversation_id: str) -> dict[str, Any] | None: ...
     def list_conversations(self, character_id: str | None = None) -> list[dict[str, Any]]: ...
     def update_conversation_lifecycle(self, changes: Sequence[Mapping[str, Any]]) -> bool: ...
-    def delete_conversation(self, conversation_id: str) -> int: ...
+    def delete_conversation(self, conversation_id: str, *, expected_status: str | None = None) -> int: ...
 
 
 class ConversationEventPublisher(Protocol):
@@ -247,7 +247,7 @@ class ConversationLifecycleService:
 
         now = self._now()
         # Persistence owns the safety snapshot and deletes only rows with this conversation_id.
-        self._repository.delete_conversation(conv_id)
+        self._repository.delete_conversation(conv_id, expected_status=ConversationStatus.TRASHED.value)
         if self._repository.get_conversation(conv_id) is not None:
             raise ConversationLifecycleError("repository did not remove the requested conversation")
         published = self._publish(
