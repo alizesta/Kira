@@ -620,7 +620,7 @@ class VoiceSettingsMixin:
             test_path.parent.mkdir(parents=True, exist_ok=True)
             test_path.write_bytes(value)
             self._local_tts_test_active = False
-            self.speaker.play_file(str(test_path))
+            self.voice_application_service.play_file(str(test_path))
             self._local_tts_test_active = True
             model = str(self.settings.get("local_voice_tts_model") or "Mana Persian Piper · صدای پیش‌فرض")
             self.local_voice_status.setText(
