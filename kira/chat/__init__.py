@@ -61,6 +61,7 @@ from .application_service import (
     Submission,
 )
 from .session_manager import SessionManager, SessionState, SessionStateChanged
+from .transfer import ChatTransfer, ImportPreview, ImportResult, TransferError, TransferRepository
 
 __all__ = [
     "CHAT_EVENT_TYPES",
@@ -112,4 +113,5 @@ __all__ = [
     "SessionManager",
     "SessionState",
     "SessionStateChanged",
+    "ChatTransfer", "ImportPreview", "ImportResult", "TransferError", "TransferRepository",
 ]

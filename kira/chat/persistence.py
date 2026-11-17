@@ -66,6 +66,7 @@ class ChatRepository(Protocol):
     def clear_memory(self, character_id: str | None = None) -> None: ...
     def restore_last_cleared(self) -> int: ...
     def import_messages(self, source: str | Path) -> int: ...
+    def import_transfer_records(self, conversations: list[dict[str, Any]], messages: list[dict[str, Any]]) -> dict[str, Any]: ...
 
 
 def _character_id(value: str | None) -> str:
@@ -996,6 +997,81 @@ class SqliteChatRepository:
             except (sqlite3.Error, OSError, PersistenceError) as exc:
                 raise PersistenceError(f"ورود چت ناموفق بود (چیزی تغییر نکرد): {exc}") from exc
 
+    def import_transfer_records(self, conversations, messages):
+        """Atomically append validated transfer records without overwriting existing data."""
+        with self._lock:
+            self._flush_pending_locked()
+            try:
+                with self._db() as con:
+                    self._migrate_schema(con)
+                    conversation_map = {}
+                    imported_conversations = remapped_conversations = 0
+                    for item in conversations:
+                        source_id = str(item["id"])
+                        character_id = _character_id(item["character_id"])
+                        existing = con.execute("SELECT character_id FROM conversations WHERE id=?", (source_id,)).fetchone()
+                        target_id = source_id
+                        if existing is not None and _character_id(existing["character_id"]) != character_id:
+                            target_id = str(uuid.uuid4())
+                            remapped_conversations += 1
+                        conversation_map[source_id] = target_id
+                        if existing is None or target_id != source_id:
+                            con.execute(
+                                "INSERT INTO conversations(id, character_id, title, metadata, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                (target_id, character_id, str(item.get("title", "")),
+                                 json.dumps(_json_object(item.get("metadata")), ensure_ascii=False),
+                                 str(item.get("status", "active")), str(item.get("created_at", "")),
+                                 str(item.get("updated_at", item.get("created_at", "")))),
+                            )
+                            imported_conversations += 1
+                    signatures = set()
+                    for row in con.execute("SELECT role, content, created_at, character_id, conversation_id, metadata, status FROM messages"):
+                        signatures.add((str(row[0]), str(row[1]), str(row[2] or ""), _character_id(row[3]),
+                                        str(row[4] or ""), json.dumps(_json_object(row[5]), ensure_ascii=False, sort_keys=True),
+                                        str(row[6] or "complete")))
+                    used_ids = {int(row[0]) for row in con.execute("SELECT id FROM messages")}
+                    imported_messages = skipped_duplicates = remapped_messages = 0
+                    for item in messages:
+                        cid = _character_id(item["character_id"])
+                        conv_id = conversation_map[str(item["conversation_id"])]
+                        role, body = str(item["role"]), str(item["content"])
+                        stamp = str(item.get("created_at", ""))
+                        metadata = _json_object(item.get("metadata"))
+                        status = str(item.get("status", "complete"))
+                        meta_json = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
+                        signature = (role, body, stamp, cid, conv_id,
+                                     json.dumps(metadata, ensure_ascii=False, sort_keys=True), status)
+                        if signature in signatures:
+                            skipped_duplicates += 1
+                            continue
+                        source_id = item.get("id")
+                        if source_id is not None and int(source_id) not in used_ids:
+                            con.execute(
+                                "INSERT INTO messages(id, role, content, created_at, character_id, conversation_id, metadata, status) VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?)",
+                                (int(source_id), role, body, stamp, cid, conv_id, meta_json, status),
+                            )
+                            used_ids.add(int(source_id))
+                        else:
+                            if source_id is not None:
+                                remapped_messages += 1
+                            con.execute(
+                                "INSERT INTO messages(role, content, created_at, character_id, conversation_id, metadata, status) VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?)",
+                                (role, body, stamp, cid, conv_id, meta_json, status),
+                            )
+                            used_ids.add(int(con.execute("SELECT last_insert_rowid()").fetchone()[0]))
+                        signatures.add(signature)
+                        imported_messages += 1
+                    return {
+                        "imported_conversations": imported_conversations,
+                        "imported_messages": imported_messages,
+                        "skipped_duplicates": skipped_duplicates,
+                        "remapped_conversations": remapped_conversations,
+                        "remapped_messages": remapped_messages,
+                        "conversation_id_map": conversation_map,
+                    }
+            except (sqlite3.Error, OSError, PersistenceError, ValueError, TypeError) as exc:
+                raise PersistenceError(f"ورود مکالمات ناموفق بود؛ تراکنش بازگردانی شد: {exc}") from exc
+
     def _ensure_conversation_rows(self, con, rows):
         for raw_row in rows:
             _, role, body, stamp, cid, conv_id, metadata, status = self._message_fields(raw_row)
@@ -1142,6 +1218,9 @@ class ChatPersistence:
             raise
         except Exception as exc:
             raise PersistenceError(str(exc)) from exc
+
+    def import_transfer_records(self, conversations, messages):
+        return self._invoke(self._repository.import_transfer_records, conversations, messages)
 
 
 def create_default_chat_persistence(db_path=None) -> ChatPersistence:
