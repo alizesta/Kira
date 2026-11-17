@@ -579,31 +579,33 @@ class RuntimeMixin:
 
     def on_heard(self, text):
         self.animator.touch()
-        # Keep processing voice input while a reply is generating: submit() owns
-        # the same bounded queue as typed messages and handles running-task controls.
-        if self.wake_btn.isChecked():
-            if not self.awake:
-                mt = WAKE_RE.search(text)
-                if not mt:
-                    return
-                self.wake_up()
-                rest = text[mt.end():].strip(" ،,.!؟?؛")
-                if len(rest) < 2:
-                    self.reply_local(self.t("yes"))
-                    return
-                text = rest
-            else:
-                if SLEEP_RE.search(text):
-                    self.add_chat("user", text)
-                    self.go_sleep()
-                    self.say(self.t("night"))
-                    return
-                self.wake_timer.start(int(self.settings["wake_timeout"]) * 1000)
-        if STOP_RE.match(text.strip()):
-            self.safe_stop_speaker()                  # "بس کن / ساکت" only silences Kira; it is not sent to the model
+        decision = self.voice_application_service.interpret_transcript(
+            text,
+            wake_enabled=self.wake_btn.isChecked(),
+            awake=self.awake,
+        )
+        if decision.action == "ignore":
             return
+        if decision.action == "wake_only":
+            self.wake_up()
+            self.reply_local(self.t("yes"))
+            return
+        if decision.action == "wake_submit":
+            self.wake_up()
+            text = decision.text
+        elif decision.action == "sleep":
+            self.add_chat("user", text)
+            self.go_sleep()
+            self.say(self.t("night"))
+            return
+        elif decision.action == "stop":
+            self.safe_stop_speaker()
+            return
+        elif self.wake_btn.isChecked() and self.awake:
+            self.wake_timer.start(int(self.settings["wake_timeout"]) * 1000)
         self._voice_next = True
         self.submit(text)
+
 
     # ---------- companion window ----------
 
