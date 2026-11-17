@@ -258,7 +258,7 @@ class SessionMixin:
             self._vision_session = None
         if not getattr(self, "_closing", False) and (self.front is session or self.cur is session):
             fallback = next(
-                (item for item in self.session_manager.list_sessions()
+                (item for item in self.session_application_service.list_sessions()
                  if item is not session and item.status not in ("closing", "closed", "failed")),
                 None,
             )
