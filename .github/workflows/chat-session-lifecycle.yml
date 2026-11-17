@@ -2,7 +2,7 @@ name: Chat Session Lifecycle Tests
 
 on:
   push:
-    branches: [new-main]
+    branches: [new-main, refactor/application-policy-017]
   pull_request:
     branches: [new-main]
     paths:
