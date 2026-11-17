@@ -182,6 +182,41 @@ class SharedEventBusTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.publisher.publish("session_activated", session_id="ren")
 
+    def test_concurrent_publisher_does_not_block_behind_a_slow_subscriber(self):
+        entered = threading.Event()
+        release = threading.Event()
+        delivered = []
+        queued_reports = []
+
+        def slow_subscriber(event):
+            delivered.append(event.payload["index"])
+            if event.payload["index"] == 1:
+                entered.set()
+                self.assertTrue(release.wait(timeout=3), "test did not release slow subscriber")
+
+        self.publisher.subscribe("stream_chunk_received", slow_subscriber)
+
+        first = threading.Thread(target=lambda: self.publisher.publish(
+            "stream_chunk_received", session_id="kira", request_id="r1",
+            payload={"index": 1},
+        ))
+        first.start()
+        self.assertTrue(entered.wait(timeout=2), "first subscriber did not start")
+
+        second = threading.Thread(target=lambda: queued_reports.append(self.publisher.publish(
+            "stream_chunk_received", session_id="ren", request_id="r2",
+            payload={"index": 2},
+        ).report))
+        second.start()
+        second.join(timeout=1)
+        self.assertFalse(second.is_alive(), "concurrent publisher blocked behind active callback")
+        self.assertTrue(queued_reports[0].queued)
+
+        release.set()
+        first.join(timeout=3)
+        self.assertFalse(first.is_alive(), "dispatcher failed to drain queued publication")
+        self.assertEqual(delivered, [1, 2])
+
     def test_concurrent_publications_are_delivered_once_in_fifo_sequence_order(self):
         received = []
         sequences = {}
