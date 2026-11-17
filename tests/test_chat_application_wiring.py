@@ -123,6 +123,10 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertNotIn("game_mode_policy", support)
         self.assertNotIn("game_mode_permissions(", vision)
         self.assertNotIn("COMPETITIVE_SAFE_MODE", runtime)
+        self.assertIn("self.game_mode_application_service.classify_game_audio(", vision)
+        self.assertNotIn("is_important_game_audio(", vision)
+        self.assertNotIn("self._game_audio_alerts", vision)
+        self.assertIn("def classify_game_audio(", service)
 
     def test_main_window_does_not_import_chat_internal_components(self):
         self.assertNotIn("from .chat.coordinator import", self.source)
