@@ -218,7 +218,7 @@ class MainWindow(QMainWindow):
 
 
     def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None,
-                 session_manager=None, chat_event_publisher=None):
+                 session_manager=None, chat_event_publisher=None, chat_application_service_factory=None):
         super().__init__()
         # Direct MainWindow construction remains supported for existing callers;
         # normal application startup injects these services from app.bootstrap.
@@ -237,17 +237,23 @@ class MainWindow(QMainWindow):
         if chat_history_service is None:
             from .services.chat_history_service import SqliteChatHistoryService
             chat_history_service = SqliteChatHistoryService()
-        self.chat_application_service = ChatApplicationService(
-            persistence=chat_history_service,
-            system_prompt_builder=build_system_prompt,
-            prompt_enricher=lambda value: brain.extend_prompt(value, self._brain, self.settings, self.client),
-            worker_factory=StreamWorker,
-            on_dispatch=self._dispatch_application_request,
-            on_event=self._on_chat_application_event,
-            event_publisher=chat_event_publisher,
-            schedule=lambda callback: QTimer.singleShot(0, callback),
-            cancel_provider=self._cancel_application_provider,
-        )
+        if chat_application_service_factory is not None:
+            if not callable(chat_application_service_factory):
+                raise TypeError("chat_application_service_factory must be callable")
+            self.chat_application_service = chat_application_service_factory(self)
+        else:
+            # Compatibility path for callers that instantiate MainWindow directly.
+            self.chat_application_service = ChatApplicationService(
+                persistence=chat_history_service,
+                system_prompt_builder=build_system_prompt,
+                prompt_enricher=lambda value: brain.extend_prompt(value, self._brain, self.settings, self.client),
+                worker_factory=StreamWorker,
+                on_dispatch=self._dispatch_application_request,
+                on_event=self._on_chat_application_event,
+                event_publisher=chat_event_publisher,
+                schedule=lambda callback: QTimer.singleShot(0, callback),
+                cancel_provider=self._cancel_application_provider,
+            )
         self.settings = load_settings()
         self._db_notes = self.chat_application_service.init_history()
         self.session_manager = session_manager or SessionManager(ChatSession)
@@ -599,6 +605,10 @@ class MainWindow(QMainWindow):
             mood.set_active_character(cid, self.character_traits(cid, profile))
         except Exception:                                   # noqa: BLE001 - mood is a bonus, never block the UI
             pass
+
+    @staticmethod
+    def _schedule_chat_callback(callback):
+        QTimer.singleShot(0, callback)
 
     def _ensure_session_conversation(self, session):
         """Bind one character session to its durable conversation without blocking chat on storage errors."""
