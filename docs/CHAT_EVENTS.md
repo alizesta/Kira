@@ -72,13 +72,13 @@ Existing modules using EventBus.subscribe(name, callback) and publish(name, **pa
 
 1. Subscriptions are recorded in registration order. Re-registering the same callback in the same delivery mode is a no-op; the returned unsubscriber is idempotent.
 2. A publication takes a subscriber snapshot. Removing or adding subscriptions during a callback affects later publications, not the current snapshot.
-3. All publications receive a monotonically increasing bus sequence and are processed FIFO. Concurrent publishers are serialized; a non-dispatching publisher waits for its delivery report.
+3. All publications receive a monotonically increasing bus sequence and are processed FIFO. A publisher that becomes the dispatcher drains the queue synchronously. Concurrent and nested publishers enqueue without blocking and receive a queued=True report; the active dispatcher completes their fan-out in sequence.
 4. A callback may publish recursively. Nested publications are queued until the current event has been delivered to its complete subscriber snapshot; this avoids recursive interleaving and deadlocks.
 5. A failing subscriber is logged and included in EventPublishReport.failures. Other subscribers still run. The report records sequence, successful delivery count and subscriber errors.
 6. Terminal notifications are de-duplicated by ChatEventPublisher: request terminal types share one request family, stream terminal types share one stream family, and session close/failure share one session family. The bounded terminal ledger retains the most recent 8,192 lifecycle keys. A new session_created clears any stale terminal key for that session ID.
 7. EventBus.close() releases all subscriptions and rejects later subscriptions/publications. Bootstrap closes it after ModuleManager shutdown so modules can unsubscribe during disposal.
 
-The bus is thread-safe and callbacks run outside the subscription lock. Delivery is synchronous for the thread that drains the queue. A recursive publication from the dispatcher is queued and returns a queued=True report to avoid self-deadlock; it is delivered after the current fan-out.
+The bus is thread-safe and callbacks run outside the subscription lock. Delivery is synchronous for the thread that drains the queue. Recursive and concurrent publications never wait for the active callback; they return queued=True and are delivered after the current fan-out, avoiding callback-induced cross-thread deadlocks. Their eventual subscriber failures are logged by the dispatcher.
 
 ## Privacy and API boundary
 
