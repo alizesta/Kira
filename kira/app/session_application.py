@@ -34,6 +34,35 @@ class SessionApplicationService:
         self.session_manager = session_manager
         self.chat_application_service = chat_application_service
         self.event_publisher = event_publisher
+        self._unsubscribe = (
+            self.session_manager.subscribe(self.publish_state_change)
+            if self.event_publisher is not None else None
+        )
+
+    def create_active_session(self, character_id: str) -> Any:
+        """Create the initial runtime Session and make it the active conversation."""
+        session = self.session_manager.create_session(character_id)
+        if not self.session_manager.activate_session(session.session_id):
+            self.session_manager.close_session(session.session_id)
+            raise RuntimeError(f"Could not activate initial Session for {character_id!r}")
+        return session
+
+    def activate_session(self, session_id: str) -> bool:
+        """Apply the canonical SessionManager activation transition."""
+        return self.session_manager.activate_session(session_id)
+
+    def list_sessions(self) -> tuple[Any, ...]:
+        """Return the manager's stable Session snapshot for shutdown coordination."""
+        return self.session_manager.list_sessions()
+
+    def dispose(self) -> bool:
+        """Dispose runtime Sessions and release this service's event subscription."""
+        if not self.session_manager.dispose():
+            return False
+        unsubscribe, self._unsubscribe = self._unsubscribe, None
+        if callable(unsubscribe):
+            unsubscribe()
+        return True
 
     def bind_conversation(self, session: Any) -> str | None:
         """Bind a runtime Session to durable history without blocking on storage failure."""
