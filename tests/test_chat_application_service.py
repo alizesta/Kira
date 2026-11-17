@@ -1,5 +1,7 @@
 import base64
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -521,6 +523,89 @@ class ChatApplicationServiceTests(unittest.TestCase):
         self.assertTrue(all(
             item.request_id == submission.request.request_id for item in received
         ))
+        registry.close()
+
+    def test_cancelling_pending_request_does_not_cancel_active_request_commands(self):
+        registry = CommandRegistry()
+        started = threading.Event()
+        cancelled = threading.Event()
+
+        def wait_for_cancel(context, _arguments):
+            started.set()
+            while not context.cancelled:
+                time.sleep(0.005)
+            cancelled.set()
+            context.raise_if_cancelled()
+
+        registry.register(CommandDefinition(
+            command_id="test.wait",
+            name="wait",
+            description="Wait for cancellation.",
+            parameters={"type": "object", "properties": {}, "additionalProperties": False},
+            required_permissions=(),
+            parser=lambda _raw, _context: {},
+            handler=wait_for_cancel,
+        ))
+        self.service.set_command_registry(registry)
+        active = self.service.submit_message("kira", "active")
+        dispatch_results = []
+        worker = threading.Thread(target=lambda: dispatch_results.append(
+            self.service.dispatch_commands(active.request.request_id, "/wait")
+        ))
+        worker.start()
+        self.assertTrue(started.wait(2))
+
+        pending = self.service.submit_message("kira", "queued", busy=True)
+        self.assertTrue(pending.queued)
+        self.assertTrue(self.service.cancel_request(pending.request.request_id))
+
+        time.sleep(0.05)
+        self.assertFalse(cancelled.is_set())
+        self.assertTrue(worker.is_alive())
+
+        self.assertTrue(self.service.cancel_request(active.request.request_id))
+        self.assertTrue(cancelled.wait(2))
+        worker.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(
+            dispatch_results[0].results[0].status, CommandStatus.CANCELLED
+        )
+
+    def test_failed_command_dispatch_publishes_failed_lifecycle_event(self):
+        bus = EventBus()
+        publisher = ChatEventPublisher(bus)
+        self.service.set_event_publisher(publisher)
+        registry = CommandRegistry()
+        registry.register(CommandDefinition(
+            command_id="test.failure",
+            name="failure",
+            description="Fail predictably.",
+            parameters={"type": "object", "properties": {}, "additionalProperties": False},
+            required_permissions=(),
+            parser=lambda _raw, _context: {},
+            handler=lambda _context, _arguments: (_ for _ in ()).throw(RuntimeError("failure")),
+        ))
+        self.service.set_command_registry(registry)
+        received = []
+        publisher.subscribe(
+            ChatEventType.COMMAND_DISPATCH_STARTED,
+            lambda event: received.append(event),
+        )
+        publisher.subscribe(
+            ChatEventType.COMMAND_DISPATCH_FAILED,
+            lambda event: received.append(event),
+        )
+        submission = self.service.submit_message("runtime-kira", "/failure")
+
+        dispatch = self.service.dispatch_commands(
+            submission.request.request_id, "/failure",
+        )
+
+        self.assertTrue(dispatch.failed)
+        self.assertEqual([item.event_type for item in received], [
+            ChatEventType.COMMAND_DISPATCH_STARTED,
+            ChatEventType.COMMAND_DISPATCH_FAILED,
+        ])
         registry.close()
 
     def test_out_of_band_control_uses_unique_request_and_parent_correlation(self):
