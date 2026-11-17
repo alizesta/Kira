@@ -264,7 +264,7 @@ class ChatEventWiringTests(unittest.TestCase):
             for node in ast.walk(tree)
             if isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "_publish_chat_event"
+            and node.func.attr in ("_publish_chat_event", "_finish_chat_event_request")
             and node.args
             and isinstance(node.args[0], ast.Constant)
             and isinstance(node.args[0].value, str)
