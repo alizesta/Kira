@@ -108,12 +108,12 @@ class AutonomyMixin:
             pass
 
     # ------------------------------------------------------------------ the user's commands about the task
-    def handle_task_command(self, text: str):
-        """Before the model is asked: status / pause / cancel / resume / add a step / change the goal. Returns a ready reply text, or None
-        (then the message goes on: 'resume' and 'change' set a flag so the NEXT step is run by the model with the task state)."""
+    def handle_task_command(self, text: str, *, session_id: str | None = None):
+        """Handle explicit controls for the active task owned by one chat session."""
+        owner = self._turn_session_id if session_id is None else str(session_id)
         if not self.planning_enabled():
             return None
-        plan = self.tasks.active(self._turn_session_id)
+        plan = self.tasks.active(owner)
         if plan is None:
             return None
         kind, payload = parse_control(text)
@@ -138,7 +138,7 @@ class AutonomyMixin:
             self.tasks.save()
             return f"مرحله‌ی {st.id} اضافه شد: «{st.title}». برای اجرا «ادامه بده» بنویس."
         if kind == "resume":
-            if plan.status == P_WAIT_CONFIRM and self.has_pending():
+            if plan.status == P_WAIT_CONFIRM and self.has_pending(owner):
                 return "اول باید به درخواست تأییدِ قبلی جواب بدهی: «تأیید» یا «لغو»."
             self._prepare_resume(plan)
             self._resume_flag = True
