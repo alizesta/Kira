@@ -19,6 +19,21 @@ class MainEntrypointTests(unittest.TestCase):
         self.assertIs(entrypoint.MainWindow, ModularMainWindow)
         self.assertNotIn("MainWindow", vars(entrypoint))
 
+    def test_window_is_composed_from_feature_owned_mixins(self):
+        from kira.ui.main_window import MainWindow
+        from kira.ui.main_window_chat import ChatMixin
+        from kira.ui.main_window_runtime import RuntimeMixin
+        from kira.ui.main_window_session import SessionMixin
+
+        self.assertTrue(issubclass(MainWindow, ChatMixin))
+        self.assertTrue(issubclass(MainWindow, RuntimeMixin))
+        self.assertTrue(issubclass(MainWindow, SessionMixin))
+        self.assertEqual(MainWindow.send_message.__qualname__, "ChatMixin.send_message")
+        self.assertEqual(
+            MainWindow._schedule_chat_callback.__qualname__,
+            "RuntimeMixin._schedule_chat_callback",
+        )
+
     def test_bootstrap_constructs_the_modular_window_directly(self):
         import inspect
         from kira.app import bootstrap
