@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: [new-main]
     paths:
+      - "kira/app/web_search.py"
+      - "tests/test_web_search_application.py"
       - "kira/app/session_application.py"
       - "kira/app/session_composition.py"
       - "kira/chat/session_manager.py"
@@ -54,6 +56,7 @@ jobs:
           tests.test_chat_application_service
           tests.test_chat_application_wiring
           tests.test_session_application
+          tests.test_web_search_application
           tests.test_chat_session_manager
           tests.test_chat_events
           tests.test_chat_attachments
@@ -89,6 +92,8 @@ jobs:
           tests/test_main_entrypoint.py
           tests/test_app_architecture.py
           kira/app/bootstrap.py
+          kira/app/web_search.py
+          tests/test_web_search_application.py
           kira/app/session_application.py
           kira/app/session_composition.py
           tests/test_session_application.py
