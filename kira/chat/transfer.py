@@ -249,7 +249,63 @@ class ChatTransfer:
     def preview_import(self, source) -> ImportPreview:
         try:
             convs, messages = self._parse(source)
-            return ImportPreview(True, len(convs), len(messages), ())
+            existing = {str(row.get("id")): str(row.get("character_id") or "kira")
+                        for row in self._repository.list_conversations()}
+            warnings = []
+            existing_ids = {}
+            existing_signatures = {}
+            for conv in convs:
+                current_character = existing.get(conv["id"])
+                if current_character is None:
+                    continue
+                if current_character.lower() != conv["character_id"].lower():
+                    warnings.append(f"Conversation {conv['id']} will receive a new ID because it belongs to another character.")
+                    continue
+                ids, signatures = set(), set()
+                stamp, message_id = "", 0
+                while True:
+                    batch = self._repository.get_transfer_messages(
+                        conv["id"], conv["character_id"], stamp, message_id, limit=1000
+                    )
+                    if not batch:
+                        break
+                    for row in batch:
+                        ids.add(int(row["id"]))
+                        signatures.add((
+                            str(row["role"]), str(row["content"]), str(row.get("created_at") or ""),
+                            str(row.get("character_id") or conv["character_id"]).lower(), conv["id"],
+                            json.dumps(_sanitize_json(row.get("metadata") or {}), ensure_ascii=False, sort_keys=True),
+                            str(row.get("status") or "complete"),
+                        ))
+                    stamp = str(batch[-1].get("created_at") or "")
+                    message_id = int(batch[-1]["id"])
+                    if len(batch) < 1000:
+                        break
+                existing_ids[conv["id"]] = ids
+                existing_signatures[conv["id"]] = signatures
+            duplicate_count = 0
+            collision_conversations = set()
+            for message in messages:
+                conv_id = message["conversation_id"]
+                if conv_id not in existing_ids:
+                    continue
+                signature = (
+                    message["role"], message["content"], message["created_at"],
+                    message["character_id"], conv_id,
+                    json.dumps(message["metadata"], ensure_ascii=False, sort_keys=True), message["status"],
+                )
+                if signature in existing_signatures[conv_id]:
+                    duplicate_count += 1
+                elif message["id"] in existing_ids[conv_id]:
+                    collision_conversations.add(conv_id)
+            if duplicate_count:
+                warnings.append(f"{duplicate_count} identical message(s) will be skipped.")
+            if collision_conversations:
+                warnings.append(
+                    f"{len(collision_conversations)} conversation(s) contain message ID collisions; "
+                    "their imported message IDs will be reassigned together to preserve ordering."
+                )
+            return ImportPreview(True, len(convs), len(messages), (), tuple(warnings))
         except (TransferError, OSError, TypeError, ValueError, RecursionError) as exc:
             return ImportPreview(False, 0, 0, (str(exc),))
 
