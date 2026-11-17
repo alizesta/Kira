@@ -7,8 +7,10 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from ..core.interfaces.voice_service import VoiceService
 
-class VoiceApplicationService:
+
+class VoiceApplicationService(VoiceService):
     """Coordinate speech output and non-blocking microphone worker lifecycle."""
 
     def __init__(
@@ -39,7 +41,7 @@ class VoiceApplicationService:
         self.stopping_listener = None
         self.restart_after_stop = False
 
-    def start_recording(self) -> bool:
+    def start_recording(self) -> None:
         """Start one listener; defer replacement until the prior QThread has fully exited."""
         if self.listener is not None:
             self.stop_recording()
@@ -47,7 +49,7 @@ class VoiceApplicationService:
         if previous is not None and previous.isRunning():
             self.restart_after_stop = True
             self.on_waiting()
-            return False
+            return
         self.restart_after_stop = False
         listener = self.listener_factory()
         listener.heard.connect(self.on_heard)
@@ -58,7 +60,6 @@ class VoiceApplicationService:
         listener.finished.connect(lambda current=listener: self._listener_finished(current))
         self.listener = listener
         listener.start()
-        return True
 
     def stop_recording(self) -> None:
         """Request non-blocking listener shutdown and retain ownership until its finished signal."""
