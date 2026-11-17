@@ -400,13 +400,19 @@ class AttachmentManager:
             and (message_id is None or record.message_id == str(message_id))
         ]
         removed = sum(self.remove_attachment(record.attachment_id, session_id=record.session_id) for record in records)
-        if session_id is not None and message_id is None:
-            owner_dir = (self._root / hashlib.sha256(str(session_id).encode("utf-8")).hexdigest()[:24]).resolve()
-            if owner_dir.is_relative_to(self._root):
-                try:
-                    owner_dir.rmdir()
-                except OSError:
-                    pass
+        if message_id is None:
+            owners = {record.session_id for record in records}
+            if session_id is not None:
+                owners.add(str(session_id))
+            for owner in owners:
+                owner_dir = (
+                    self._root / hashlib.sha256(owner.encode("utf-8")).hexdigest()[:24]
+                ).resolve()
+                if owner_dir.is_relative_to(self._root):
+                    try:
+                        owner_dir.rmdir()
+                    except OSError:
+                        pass
         return removed
 
     def close(self) -> None:
