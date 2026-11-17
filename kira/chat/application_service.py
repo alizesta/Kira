@@ -121,6 +121,7 @@ class ChatApplicationService:
         request_history_limit: int = 512,
         attachment_manager: AttachmentManager | None = None,
         command_registry: CommandRegistry | None = None,
+        conversation_lifecycle: Any | None = None,
     ) -> None:
         if persistence is None:
             raise TypeError("persistence is required")
@@ -141,6 +142,7 @@ class ChatApplicationService:
         self._on_event = on_event
         self._event_publisher = event_publisher
         self._command_registry = command_registry
+        self._conversation_lifecycle = conversation_lifecycle
         self._schedule = schedule or (lambda callback: callback())
         self._cancel_provider = cancel_provider
         self._max_pending = int(max_pending)
@@ -967,6 +969,40 @@ class ChatApplicationService:
         if not owner:
             raise ValueError("character_id must not be empty")
         return self._persistence.get_or_create_conversation(owner)
+
+    def list_conversations(self, character_id: str | None = None, *, statuses=None):
+        if self._conversation_lifecycle is None:
+            raise RuntimeError("Conversation Lifecycle service is not configured")
+        options = {} if statuses is None else {"statuses": statuses}
+        return self._conversation_lifecycle.list_conversations(character_id=character_id, **options)
+
+    def archive_conversation(self, conversation_id: str):
+        return self._require_conversation_lifecycle().archive(conversation_id)
+
+    def archive_conversations(self, conversation_ids):
+        return self._require_conversation_lifecycle().archive_many(conversation_ids)
+
+    def restore_conversation(self, conversation_id: str):
+        return self._require_conversation_lifecycle().restore(conversation_id)
+
+    def trash_conversation(self, conversation_id: str):
+        return self._require_conversation_lifecycle().trash(conversation_id)
+
+    def trash_conversations(self, conversation_ids):
+        return self._require_conversation_lifecycle().trash_many(conversation_ids)
+
+    def restore_trashed_conversation(self, conversation_id: str):
+        return self._require_conversation_lifecycle().restore_trashed(conversation_id)
+
+    def permanently_delete_conversation(self, conversation_id: str, *, authorization):
+        return self._require_conversation_lifecycle().permanent_delete(
+            conversation_id, authorization=authorization
+        )
+
+    def _require_conversation_lifecycle(self):
+        if self._conversation_lifecycle is None:
+            raise RuntimeError("Conversation Lifecycle service is not configured")
+        return self._conversation_lifecycle
 
     def recent_messages(
         self, limit: int = 12, character_id: str | None = None,
