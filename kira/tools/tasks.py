@@ -110,6 +110,7 @@ class TaskPlan:
     note: str = ""
     done_sigs: dict = field(default_factory=dict)        # signature -> summary of a call that already SUCCEEDED (never executed again)
     fail_sigs: dict = field(default_factory=dict)        # signature -> how many times it failed
+    session_id: str = ""                                  # owner character session; old records default to the legacy session
 
     # ---------------------------------------------------------------- steps
     def step(self, sid) -> Step | None:
@@ -274,7 +275,7 @@ class TaskPlan:
 
     # ---------------------------------------------------------------- persistence
     def to_dict(self) -> dict:
-        return {"id": self.id, "goal": _safe(self.goal, 240), "status": self.status, "created": self.created, "updated": self.updated,
+        return {"id": self.id, "goal": _safe(self.goal, 240), "session_id": self.session_id, "status": self.status, "created": self.created, "updated": self.updated,
                 "steps": [s.to_dict() for s in self.steps], "assumptions": [_safe(a, 160) for a in self.assumptions][:6],
                 "missing": [_safe(m, 160) for m in self.missing][:5], "question": _safe(self.question, 300),
                 "answers": [_safe(a, 160) for a in self.answers][-4:], "user_updates": [_safe(a, 160) for a in self.user_updates][-4:],
@@ -284,6 +285,7 @@ class TaskPlan:
     @classmethod
     def from_dict(cls, d: dict) -> "TaskPlan":
         p = cls(str(d.get("id", "")), str(d.get("goal", ""))[:240])
+        p.session_id = str(d.get("session_id", ""))
         p.steps = [Step.from_dict(x) for x in d.get("steps", []) if isinstance(x, dict)]
         p.status = str(d.get("status", P_PAUSED))
         p.created, p.updated = float(d.get("created", time.time())), float(d.get("updated", time.time()))
@@ -336,37 +338,54 @@ class TaskStore:
             except OSError:
                 pass                                         # saving the task state is a bonus: it never blocks the work
 
-    def active(self) -> TaskPlan | None:
-        """The unfinished task the user can still talk about: running / waiting / paused, or an incomplete one from the last 24 hours (resumable)."""
+    def active(self, session_id: str | None = None) -> TaskPlan | None:
+        """Return only the unfinished task owned by the requested chat session."""
+        owner = None if session_id is None else str(session_id)
         with self.lock:
             for p in reversed(self.plans):
+                if owner is not None and p.session_id != owner:
+                    continue
                 if p.status in ACTIVE or (p.status == P_FAILED and time.time() - p.updated <= STALE_AFTER):
                     return p
         return None
 
-    def get(self, plan_id: str) -> TaskPlan | None:
+    def get(self, plan_id: str, *, session_id: str | None = None) -> TaskPlan | None:
+        owner = None if session_id is None else str(session_id)
         with self.lock:
-            return next((p for p in self.plans if p.id == plan_id), None)
+            return next((
+                p for p in self.plans
+                if p.id == plan_id and (owner is None or p.session_id == owner)
+            ), None)
 
-    def latest(self) -> TaskPlan | None:
-        with self.lock:
-            return self.plans[-1] if self.plans else None
+    def latest(self, session_id: str | None = None) -> TaskPlan | None:
+        return self.active(session_id) or next(
+            (p for p in reversed(self.plans) if session_id is None or p.session_id == str(session_id)),
+            None,
+        )
 
-    def new(self, goal: str) -> TaskPlan:
+    def new(self, goal: str, *, session_id: str = "") -> TaskPlan:
         with self.lock:
             plan = TaskPlan(f"t{int(time.time() * 1000) % 10**9}", _safe(goal, 240))
+            plan.session_id = str(session_id or "")
             self.plans.append(plan)
             self.plans = self.plans[-(HISTORY_KEEP + 1):]
             return plan
 
-    def clear(self):
+    def clear(self, session_id: str | None = None):
         with self.lock:
-            self.plans = []
-        if self.path is not None:
-            try:
-                self.path.unlink()
-            except OSError:
-                pass
+            if session_id is None:
+                self.plans = []
+            else:
+                owner = str(session_id)
+                self.plans = [plan for plan in self.plans if plan.session_id != owner]
+            if self.path is not None:
+                if self.plans:
+                    self.save()
+                else:
+                    try:
+                        self.path.unlink()
+                    except OSError:
+                        pass
 
 
 # ---------------------------------------------------------------------------------------------------- verification of results
