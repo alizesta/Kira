@@ -173,6 +173,20 @@ The migration reference is temporary. Its purpose is to preserve working behavio
 - MainWindow remains responsible for UI rendering, Voice/Avatar effects, attachment composition, Character/Memory/Mood/Brain enrichment, Tool Agent interception, Vision and web/image search policy. Those application capabilities have not been moved into the Chat service.
 - The focused API, contracts, lifecycle and test instructions are documented in `docs/CHAT_APPLICATION_SERVICE.md`.
 
+## Chat Events & Notification System (TASK 008)
+
+- `kira/app/event_bus.py` remains the only EventBus. `ChatEventPublisher` is a typed producer façade over the shared instance; it does not create or own another subscriber registry.
+- `kira/chat/events.py` defines the frozen `ChatEvent` data contract, validated `ChatEventType` catalogue, deeply immutable payload/metadata, UTC timestamp and bounded terminal-event de-duplication.
+- Bootstrap injects the same EventBus into ModuleManager and ChatEventPublisher, then injects the publisher into the current Chat application adapter. EventBus is closed after ModuleManager shutdown so consumers can unsubscribe during disposal.
+- ChatApplicationService publishes request-submitted/started/completed/failed/cancelled, stream-started/chunk/completed/interrupted and message-saved/persistence-failed facts because it owns those request/provider/persistence transitions. The current MainWindow publishes session-created/activated/deactivated/closed/failed and history-loaded facts; the extracted Session Lifecycle owner may later take over session transitions and extend runtime failure states.
+- Queued request correlation is retained by preserving the original immutable ChatRequest through FIFO scheduling. Event payload request_id remains the logical request identity; provider-attempt IDs are metadata/payload values rather than replacements for the logical ID.
+- EventBus serializes concurrent publications through one FIFO dispatcher. Concurrent and nested publishers enqueue without blocking and receive a queued=True report; the active dispatcher completes fan-out in sequence. Subscribers run outside the registry lock on the dispatcher thread (no Qt/thread marshalling); individual exceptions are logged and returned in EventPublishReport without stopping fan-out.
+- Typed and legacy subscribers coexist on the same named topic. Duplicate callback registration is prevented per delivery mode. Unsubscribe is idempotent; a subscription snapshot already selected for the current event is allowed to finish.
+- Request, stream and session terminal notification families are de-duplicated in a bounded publisher ledger. Stream terminal identity includes provider_request_id so plain-prompt retries remain distinct attempts; a new session-created notification clears stale terminal state for a reused session ID. This is notification de-duplication only; request/session state remains owned by its application component.
+- message_saved includes the saved text for in-process consumers. It is private application data: subscribers must not forward it externally unless their own feature contract explicitly authorizes that use.
+- Direct service calls remain mandatory when a caller needs a result or operation guarantee. EventBus is only for broadcasting completed facts, not routing all Chat method calls.
+- `tests/test_chat_events.py` is Qt-free and covers event schema/immutability, legacy compatibility, fan-out, duplicate subscriber prevention, unsubscription, failure isolation, stable snapshots, nested and concurrent FIFO delivery, session/request isolation, terminal de-duplication, shutdown and bootstrap/MainWindow integration. The portable workflow runs this suite; Draft PRs skip the Windows full suite.
+
 ## Chat Session lifecycle and state ownership (TASK 007)
 
 - `kira/chat/session_manager.py` is the Qt-free owner of runtime Session identity, registration, activation, deactivation, legal state transitions, notifications, graceful close and final disposal. It manages the existing `kira.chat_sessions.ChatSession` model; it does not introduce a parallel Session model.
