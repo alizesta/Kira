@@ -1,8 +1,8 @@
 # KIRA MODULE OWNERSHIP
 
-**Snapshot:** 2026-11-17  
-**Base:** `new-main` at `b54d092a330b6383ca4244320ffaeec9267db561`  
-**Scope:** TASK 001–014 and adjacent application capabilities. This register describes observed ownership, not desired ownership where implementation is absent.
+**Snapshot:** 2026-11-18  
+**Base:** `new-main` at `516765f0ceca9b674f32bec2d6491bf82b2e434f`  
+**Scope:** TASK 001–020 and adjacent application capabilities. This register describes observed ownership, not desired ownership where implementation is absent.
 
 ## 1. Ownership rules
 
@@ -42,6 +42,18 @@
 | 014 | PARTIAL at audit time | Integrated by merged PR #48; source and docs are present on current `new-main` |
 
 The historical audit counts remain 12 DONE / 2 PARTIAL. The post-audit merge is recorded separately; no runtime status is inferred.
+
+### 2.2 TASK 017–020 application service register
+
+| Task | Module / canonical source | Public contract / ownership | Allowed dependencies | Must not own / forbidden coupling |
+|---|---|---|---|---|
+| 017 | Session application — `kira/app/session_application.py`, `session_composition.py` | `SessionApplicationService`: ensure/reopen/close Session, bind durable Conversation identity, synchronize character profiles, restore history and publish Session state | SessionManager, ChatApplicationService, CharacterProfileService, injected event publisher and UI resource callbacks | Qt widgets, SQLite/schema, durable Conversation lifecycle policy |
+| 018 | Web Search application — `kira/app/web_search.py` | `WebSearchApplicationService`: provider credentials, follow-up query rewrite, web/image request options, evidence normalization and search-content merge | Settings snapshots, active Chat client, `kira.websearch` engine contracts | Qt, widgets, worker-thread ownership, result presentation |
+| 019 | Voice application — `kira/app/voice_application.py`, `voice_composition.py` | `VoiceApplicationService` implements `VoiceService`; owns microphone lifecycle, speech/stream/file-playback delegation and wake/sleep/stop transcript decisions | Injected Speaker, Listener factory, callback ports and GUI signal relay | Qt imports, widgets, direct device construction, background-session playback |
+| 019 | Game Mode application — `kira/app/game_mode_application.py`, `kira/game_audio_policy.py` | `GameModeApplicationService`: capability permissions, command restrictions, game-audio importance/category/cooldown decisions | Pure `game_mode_policy` and `game_audio_policy` functions | Qt, capture/device APIs, UI presentation |
+| 020 | MainWindow feature dependencies — `kira/ui/main_window_*_support.py` | One scoped dependency module per feature mixin; `main_window_support.py` contains only shared Qt relay/helper code | Feature-owned modules and shared support adapters | Imports from other MainWindow mixins; shared all-feature wildcard barrel |
+
+The four task slices are implemented on PR #56, based on the current `new-main` snapshot. Runtime acceptance remains pending: the Actions jobs failed before runner allocation, so no test or compile PASS is claimed.
 
 ## 3. Cross-module API and dependency policy
 
@@ -90,15 +102,15 @@ The Chat core modules should depend on Python data contracts and narrow Protocol
 
 | Capability | Current source candidates / owners | Current integration boundary |
 |---|---|---|
-| Bootstrap & DI | `kira/app/bootstrap.py`, `dependency_container.py`, `module_manager.py` | Composition is centralized; only four required service modules are registered. |
-| Character profiles | `kira/services`, `kira/character`, `kira/characters`, CharactersPage | Profile service and UI page exist; MainWindow still handles session/UI policy. |
+| Bootstrap & DI | `kira/app/bootstrap.py`, `dependency_container.py`, `module_manager.py` | Composition is centralized; four required service modules plus injected Session/Web Search/Voice/Game Mode application services are constructed. Only the four required service modules are ModuleManager-registered. |
+| Character profiles | `kira/services`, `kira/character`, `kira/characters`, CharactersPage, `kira/app/session_application.py` | Profile service exists; SessionApplicationService owns session/profile synchronization. Character settings UI remains a presentation/workflow adapter. |
 | Memory | `kira/services`, `persona_memory.py`, `evidence_memory.py`, `memory.py` | Memory service is registered/injected; legacy sources/adapters remain. |
-| Voice | `voice.py`, `listener.py`, `local_voice.py`, VAD/speech modules, VoicePage | Implementation exists; Voice interface is not yet wired through the implementation. |
+| Voice | `kira/core/interfaces/voice_service.py`, `kira/app/voice_application.py`, `voice.py`, `listener.py`, `local_voice.py` | VoiceApplicationService implements VoiceService; Speaker/Listener are injected adapters. Wake/sleep/stop transcript policy and listener lifecycle are application-owned. |
 | Avatar/emotion | `face.py`, `vrm_avatar.py`, `companion.py`, `emotion/*`, `body.py`, `rig.py` | Capability code exists; no independent lifecycle-managed feature module confirmed. |
 | Tools/coding agent | `tools/*`, `actions.py`, `auto_agent.py`, `code_agent.py`, `chat_code.py` | Existing tools/agent integration remains application/legacy-bound; Chat command contracts are separate. |
-| Web Research | `webintel/*`, `websearch.py`, discovery adapters | Search capability exists; worker/policy integration remains in legacy application layer. |
-| Vision | `vision_pipeline.py`, `vision_ocr.py`, game detection/mode/audio | Capability code exists; dedicated application-service ownership not established by this audit. |
-| UI | `ui/main_window.py`, `ui/main_window_*.py`, `ui/pages`, `ui/components`, `ui/dialogs`, `ui/workers.py` | MainWindow is composed from eight feature-oriented mixins; cross-feature policy still remains in the window adapter. |
+| Web Research | `kira/app/web_search.py`, `webintel/*`, `websearch.py`, discovery adapters | WebSearchApplicationService owns provider/query/request/evidence policy; SearchWorker and UI presentation remain adapters. |
+| Vision / Game Mode | `kira/app/game_mode_application.py`, `kira/game_mode_policy.py`, `kira/game_audio_policy.py`, `vision_pipeline.py`, game detection/mode/audio | GameModeApplicationService owns capability permissions, command restrictions and game-audio alert/cooldown policy; Qt capture/device work remains UI-side. |
+| UI | `ui/main_window.py`, `ui/main_window_*.py`, `ui/main_window_*_support.py`, `ui/pages`, `ui/components`, `ui/dialogs`, `ui/workers.py` | MainWindow is composed from eight feature-oriented mixins with nine scoped dependency modules. Shared support contains only common Qt relay/helpers; remaining provider/character workflows and Qt/device adapters stay in UI. |
 
 ## 6. Character scope
 
@@ -111,6 +123,8 @@ Static code supports this design. Runtime isolation across concurrent sessions, 
 - `kira.main.MainWindow` is a lazy compatibility export to `kira.ui.main_window.MainWindow`.
 - `kira.ui.main_window.MainWindow` is the production UI adapter; its feature behavior is split across `kira/ui/main_window_*.py` mixins.
 - `kira/oldmain.py` has been removed; new production code must not reintroduce imports from that path.
+- Session, Web Search, Voice and Game Mode application policy is injected from Bootstrap through the TASK 017–020 services described above.
+- Each MainWindow feature mixin imports its scoped dependency module; `main_window_support.py` is not a shared import barrel.
 - `kira/services/chat_history_service.py` is an adapter over the persistence facade; it is not a second database owner.
 - `kira/attachments.py` is a compatibility facade; canonical Chat attachment/content processing is under `kira/chat/`.
 - `kira/memory.py` and `kira/persona_memory.py` remain legacy/compatibility memory paths while service boundaries are adopted.
