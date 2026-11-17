@@ -38,14 +38,15 @@ class ProviderApplicationService:
             return ()
         old_states = getattr(previous_router, "states", None)
         shared_cooldowns = {}
-        routers = []
-        for session in sessions:
-            router = self.create_router(settings)
+        # Build every replacement before mutating any Session; a failed factory
+        # must not leave the character set with a mixture of old and new routers.
+        routers = [self.create_router(settings) for _session in sessions]
+        for router in routers:
             if old_states is not None:
                 router.states = old_states
             router.cooldowns = shared_cooldowns
+        for session, router in zip(sessions, routers):
             session.client = router
-            routers.append(router)
         return tuple(routers)
 
     BUILTIN = route_model.BUILTIN
