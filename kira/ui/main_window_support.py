@@ -74,7 +74,6 @@ from ..tools.tasks import parse_control as parse_tool_task_control
 from .. import winfx
 from ..game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from ..vision_pipeline import FrameGate, policy_for
-from ..game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
 from ..chat_code_ui import CodeChat
 from .components import ApiAddPanel, ChatHeader, McpRegistryPanel, ModelCombo, OllamaProviderPanel, RouteEditor, ChatComposer
 from .controllers import ChatAttachmentController
