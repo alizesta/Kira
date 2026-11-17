@@ -215,6 +215,7 @@ class ChatApplicationService:
             session_id=owner,
             request_id=request,
             payload={"source": source},
+            metadata={"source": source, "parent_request_id": details.get("parent_request_id")},
         )
         try:
             dispatch = registry.dispatch_text(
@@ -230,6 +231,7 @@ class ChatApplicationService:
                 session_id=owner,
                 request_id=request,
                 payload={"source": source, "error_type": type(exc).__name__},
+                metadata={"source": source, "parent_request_id": details.get("parent_request_id")},
             )
             raise
         self._publish_event(
@@ -245,6 +247,7 @@ class ChatApplicationService:
                     for item in dispatch.results
                 ],
             },
+            metadata={"source": source, "parent_request_id": details.get("parent_request_id")},
         )
         return dispatch
 
