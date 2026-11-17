@@ -530,7 +530,7 @@ class AutonomyMixin:
                     res.tool, dict(res.args), res.summary,
                     step_id=st.id, plan_id=tp.id, session_id=self._turn_session_id,
                 )
-            self._pending_new = True
+            self._pending_new_sessions.add(self._turn_session_id)
             tp.status = P_WAIT_CONFIRM
             return f"step {st.id}: waiting for the USER's confirmation; nothing was changed; tell the user exactly what will happen and ask for «تأیید» / «لغو». Do not continue the plan."
         if res.status == OK:
