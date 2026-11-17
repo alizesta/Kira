@@ -4622,6 +4622,195 @@ class MainWindow(QMainWindow):
         self.gen_stop_btn.setEnabled(False)
 
     # ---- body control (the 3D body moves on chat commands: kira/body.py) ----
+    def _install_chat_commands(self):
+        """Register chat adapters around the existing feature owners."""
+        registry = CommandRegistry(permission_checker=self._check_chat_command_permission)
+        empty_object = {"type": "object", "properties": {}, "additionalProperties": False}
+
+        def parse_usage(text, _context):
+            days = usage.parse_command(text)
+            return {"days": days} if days is not None else None
+
+        def parse_web(text, _context):
+            query, forced = websearch.plan(text)
+            return {"query": query} if forced and query else None
+
+        def parse_image(text, context):
+            if not context.metadata.get("has_image"):
+                return None
+            query, forced = websearch.image_command(text)
+            return {"query": query} if forced else None
+
+        def match_body(text, _context):
+            if not self.body_active():
+                return None
+            names = body_ctl.parse_user_command(text)
+            return {"names": names} if names else None
+
+        def match_tool_confirmation(_text, context):
+            if context.metadata.get("has_attachments") or not self.tool_agent.enabled():
+                return None
+            return {} if self.tool_agent.has_pending() else None
+
+        def match_tool_task(text, context):
+            if context.metadata.get("has_attachments") or not self.tool_agent.enabled():
+                return None
+            if not self.tool_agent.planning_enabled() or self.tool_agent.tasks.active() is None:
+                return None
+            kind, payload = parse_tool_task_control(text)
+            return {"kind": kind, "payload": payload} if kind else None
+
+        def match_desktop_action(text, context):
+            if context.metadata.get("has_attachments") or self.tool_agent.enabled():
+                return None
+            action = match_safe_action(text)
+            return {"action": action} if action else None
+
+        registry.register(CommandDefinition(
+            command_id="chat.body_control",
+            name="body_control",
+            description="Apply an existing avatar pose or gesture requested in the user's message.",
+            parameters={
+                "type": "object",
+                "properties": {"names": {"type": "array"}},
+                "required": ["names"],
+                "additionalProperties": False,
+            },
+            required_permissions=(),
+            matcher=match_body,
+            handler=lambda context, args: self._execute_body_command(args["names"]),
+        ))
+        registry.register(CommandDefinition(
+            command_id="chat.usage_report",
+            name="usage",
+            description="Show the local usage ledger for the requested number of days.",
+            aliases=("مصرف",),
+            parameters={
+                "type": "object",
+                "properties": {"days": {"type": "integer", "minimum": 1, "maximum": 365}},
+                "required": ["days"],
+                "additionalProperties": False,
+            },
+            required_permissions=(),
+            parser=parse_usage,
+            handler=lambda context, args: usage.report(args["days"]),
+        ))
+        registry.register(CommandDefinition(
+            command_id="chat.web_search",
+            name="web",
+            description="Force the existing web-search flow for the supplied query.",
+            aliases=("search", "سرچ"),
+            parameters={
+                "type": "object",
+                "properties": {"query": {"type": "string", "minLength": 1, "maxLength": 300}},
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+            required_permissions=(),
+            parser=parse_web,
+            handler=lambda context, args: CommandOutcome(
+                metadata={
+                    "continue_chat": True,
+                    "rewrite_text": args["query"],
+                    "force_web_search": True,
+                }
+            ),
+        ))
+        registry.register(CommandDefinition(
+            command_id="chat.image_search",
+            name="img",
+            description="Force the existing image-search flow for an attached image.",
+            aliases=("عکس",),
+            parameters={
+                "type": "object",
+                "properties": {"query": {"type": "string", "maxLength": 300}},
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+            required_permissions=(),
+            parser=parse_image,
+            handler=lambda context, args: CommandOutcome(
+                metadata={
+                    "continue_chat": True,
+                    "rewrite_text": args["query"],
+                    "force_image_search": True,
+                }
+            ),
+        ))
+        registry.register(CommandDefinition(
+            command_id="chat.tool_confirmation",
+            name="tool_confirmation",
+            description="Delegate confirmation/cancellation of a pending sensitive operation to ToolAgent.",
+            parameters=empty_object,
+            required_permissions=(),
+            matcher=match_tool_confirmation,
+            handler=self._execute_tool_confirmation_command,
+        ))
+        registry.register(CommandDefinition(
+            command_id="chat.tool_task_control",
+            name="tool_task_control",
+            description="Delegate existing task status, pause, cancel, resume and editing controls to ToolAgent.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": ["status", "pause", "cancel", "resume", "add_step", "change"]},
+                    "payload": {"type": "string"},
+                },
+                "required": ["kind", "payload"],
+                "additionalProperties": False,
+            },
+            required_permissions=(),
+            matcher=match_tool_task,
+            handler=self._execute_tool_task_command,
+        ))
+        registry.register(CommandDefinition(
+            command_id="chat.desktop_shortcut",
+            name="desktop_shortcut",
+            description="Open one of the existing fixed desktop shortcuts through the safe-action adapter.",
+            parameters={
+                "type": "object",
+                "properties": {"action": {"type": "string", "minLength": 1}},
+                "required": ["action"],
+                "additionalProperties": False,
+            },
+            required_permissions=("desktop.launch",),
+            matcher=match_desktop_action,
+            handler=lambda context, args: run_safe_action(
+                context.request.raw_input, allow_desktop=True
+            ),
+        ))
+        self.chat_application_service.set_command_registry(registry)
+        self.command_registry = registry
+
+    def _check_chat_command_permission(self, command, _request):
+        if "desktop.launch" in command.required_permissions:
+            if self._game_mode_profile == COMPETITIVE_SAFE_MODE:
+                return PermissionDecision(
+                    False,
+                    "در حالت Competitive Safe اجرای میانبرهای دسکتاپ غیرفعال است.",
+                )
+        return True
+
+    def _execute_body_command(self, names):
+        self.run_body(list(names or []))
+        return CommandOutcome(
+            metadata={"continue_chat": True, "continue_dispatch": True}
+        )
+
+    def _execute_tool_confirmation_command(self, context, _arguments):
+        result = self.tool_agent.handle_confirmation_reply(context.request.raw_input)
+        return result if result is not None else NO_MATCH
+
+    def _execute_tool_task_command(self, context, arguments):
+        result = self.tool_agent.handle_task_command(context.request.raw_input)
+        if result is not None:
+            return result
+        if arguments.get("kind") in ("resume", "change"):
+            return CommandOutcome(
+                metadata={"continue_chat": True, "continue_dispatch": True}
+            )
+        return NO_MATCH
+
     def body_active(self):
         """True while Kira's VRM body is on screen in the front chat and the setting 'body_control' is on."""
         return bool(self.settings.get("body_control", True) and getattr(self.animator, "body_enabled", False)
