@@ -5,9 +5,28 @@ Listener and GUI scheduling as injected adapters. It imports no Qt modules.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+import re
 from typing import Any, Callable
 
 from ..core.interfaces.voice_service import VoiceService
+
+
+WAKE_RE = re.compile(
+    r"(?:(?:هی|سلام|hey|hi)[\s\u200c]*)?(?:کی[\s\u200c]?را|کایرا|کیرآ|کیارا|kira|keira|kyra|kiera)",
+    re.I,
+)
+STOP_RE = re.compile(
+    r"^\W*(?:بس\s*کن|بسه|ساکت(?:\s*شو)?|صبر\s*کن|وایسا|وایستا|stop|be\s*quiet)\W*$",
+    re.I,
+)
+SLEEP_RE = re.compile(r"بخواب|خداحافظ|شب بخیر|good\s*night", re.I)
+
+
+@dataclass(frozen=True)
+class VoiceTranscriptDecision:
+    action: str
+    text: str = ""
 
 
 class VoiceApplicationService(VoiceService):
@@ -40,6 +59,28 @@ class VoiceApplicationService(VoiceService):
         self.listener = None
         self.stopping_listener = None
         self.restart_after_stop = False
+
+    @staticmethod
+    def interpret_transcript(
+        text: str, *, wake_enabled: bool, awake: bool
+    ) -> VoiceTranscriptDecision:
+        """Resolve wake/sleep/stop phrases before forwarding speech to Chat."""
+        value = str(text or "")
+        if wake_enabled:
+            if not awake:
+                match = WAKE_RE.search(value)
+                if not match:
+                    return VoiceTranscriptDecision("ignore")
+                remainder = value[match.end():].strip(" ،,.!؟?؛")
+                if len(remainder) < 2:
+                    return VoiceTranscriptDecision("wake_only")
+                value = remainder
+                return VoiceTranscriptDecision("wake_submit", value)
+            if SLEEP_RE.search(value):
+                return VoiceTranscriptDecision("sleep", value)
+        if STOP_RE.match(value.strip()):
+            return VoiceTranscriptDecision("stop")
+        return VoiceTranscriptDecision("submit", value)
 
     def start_recording(self) -> None:
         """Start one listener; defer replacement until the prior QThread has fully exited."""
