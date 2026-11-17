@@ -260,13 +260,18 @@ def report(days: int = 1) -> str:
     return "\n".join(lines)
 
 
-def handle_command(text: str):
-    """'/usage' or '/usage 7' -> report text; anything else -> None (not a usage command)."""
+def parse_command(text: str) -> int | None:
+    """Return the requested usage period for an existing /usage command, or None when unmatched."""
     parts = str(text or "").strip().split()
     if not parts or parts[0].lower() not in ("/usage", "/مصرف"):
         return None
-    days = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
-    return report(days)
+    return int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
+
+
+def handle_command(text: str):
+    """Compatibility entry point for '/usage' and '/مصرف'."""
+    days = parse_command(text)
+    return report(days) if days is not None else None
 
 
 def install(settings) -> None:
