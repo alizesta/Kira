@@ -22,6 +22,7 @@ class SafeActionTests(unittest.TestCase):
     def test_shortcut_matcher_rejects_negated_requests(self):
         self.assertIsNone(match_safe_action("please don't open notepad"))
         self.assertIsNone(match_safe_action("نوت پد رو باز نکن"))
+        self.assertIsNone(match_safe_action("نمی‌خوام نوت پد رو باز کنی"))
         self.assertEqual(match_safe_action("لطفا نوت پد رو باز کن"), "notepad")
         self.assertEqual(match_safe_action("notepad"), "notepad")
 
