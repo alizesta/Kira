@@ -47,6 +47,7 @@ def run_application() -> None:
     }
     if failed:
         module_manager.shutdown()
+        event_bus.close()
         raise RuntimeError(f"Required application modules failed to start: {failed}")
 
     app = QApplication(sys.argv)
@@ -61,6 +62,7 @@ def run_application() -> None:
         )
     except Exception:
         module_manager.shutdown()
+        event_bus.close()
         raise
     # Retain the composition root for the lifetime of the application.
     window._dependency_container = container
