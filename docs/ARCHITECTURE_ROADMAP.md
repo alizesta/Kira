@@ -21,7 +21,16 @@ TASK 015 recorded **12 DONE / 2 PARTIAL / 0 NOT DONE / 0 BLOCKED / 0 UNVERIFIED*
 
 PR #48 subsequently merged both modules into `new-main` at `b54d092a330b6383ca4244320ffaeec9267db561`. Static inspection confirms `conversation_lifecycle.py`, `organization.py`, their public exports and shared event contract are present in the current tree. Therefore, the integration blocker identified in the audit has been resolved at source-control level. This does not revise the historical audit counts and does not establish runtime correctness.
 
-The remaining explicit architecture debt is application policy and cross-feature orchestration still held by the MainWindow feature mixins; the legacy `oldmain.py` runtime module has been removed. Runtime acceptance also remains unverified because TASK 015 and TASK 016 intentionally ran no tests or application checks.
+The legacy `oldmain.py` runtime module has been removed. PR #56 extracts Session, Web Search, Voice and Game Mode policy; the TASK 020 completion supplement in PR #57 moves Provider routing/configuration, Vision capture policy and Coding Agent handoff/stop behind injected application services. Remaining MainWindow debt is concentrated in character/settings workflows and general tool integration, alongside legitimate Qt/device presentation adapters. Runtime acceptance remains unverified because Actions jobs have failed before runner allocation.
+
+## 2.1 Post-snapshot implementation delta — TASK 017–020
+
+The TASK 015/016 historical snapshot above is retained. Subsequent source-control changes are recorded separately:
+
+- PR #56 adds Session, Web Search, Voice and Game Mode application services plus feature-scoped UI dependency modules.
+- PR #57 (stacked on PR #56) adds ProviderApplicationService, VisionApplicationService and CodingAgentApplicationService. Provider route/config mutations and router lifecycle, Vision capture/frame-gate policy, and Coding Agent dispatch/stop decisions now cross injected service boundaries.
+- Bootstrap composes these services and supplies the shared settings object and ToolAgent. The UI retains Qt capture, workers, dialogs, widget presentation and character settings.
+- Architecture guards and focused unit tests were added. No passing test, compile or GUI result is claimed: GitHub Actions attempts have failed before runner allocation.
 
 ## 3. Technical debt register
 
@@ -29,11 +38,11 @@ Severity reflects architectural impact and evidence, not an assertion that a run
 
 | ID | Severity | Problem / evidence | Location | Owner | Impact | Dependency / proposed resolution |
 |---|---|---|---|---|---|---|
-| AD-01 | **High** | The former 5,634-line `oldmain.py` and its 322 MainWindow methods have been removed from the runtime path and split into eight feature-oriented UI mixins. MainWindow still coordinates substantial application policy across capabilities. | `kira/ui/main_window.py`, `kira/ui/main_window_*.py` | Application/UI architecture | The file-level monolith is removed, but feature policy is not yet fully owned by independent application services/controllers. | Continue moving policy from the mixins into existing domain/application services and inject narrow contracts through bootstrap. Keep MainWindow as UI composition and intent translation only. |
+| AD-01 | **High** | The former 5,634-line `oldmain.py` and its 322 MainWindow methods are split into eight feature-oriented UI mixins. PR #56 extracts Session/Web Search/Voice/Game Mode; PR #57 extracts Provider, Vision and Coding Agent policy. Character/settings workflows and general tool integration remain in the mixins. | `kira/ui/main_window.py`, `kira/ui/main_window_*.py` | Application/UI architecture | File-level monolith is removed and several policy owners are explicit, but MainWindow is not yet a thin intent/presentation adapter. | Continue only with bounded extraction of remaining character/settings and general tool orchestration; preserve Qt/device capture and presentation at the UI boundary. |
 | AD-02 | **Medium** | ModuleManager lifecycle engine exists, but bootstrap currently registers only Memory, Mood, Character Profile and Chat History service modules. Chat/Voice/Avatar/Web Research/Coding Agent/Provider are not independently registered. | `kira/app/bootstrap.py`, `module_manager.py`, `service_module.py` | Bootstrap / capability owners | The lifecycle manager does not yet govern the wider capability set; enable/disable and shutdown ownership are uneven. | Register a feature only when it has a stable lifecycle contract and real need for optional lifecycle control. Do not add empty wrapper modules merely to populate the manager. |
 | AD-03 | **Medium** | Organization uses whole-document metadata updates. Independent writers can race and overwrite another writer's changes. | `kira/chat/organization.py`, `kira/chat/persistence.py` | Organization + Persistence | Concurrent metadata mutations can lose updates. No occurrence is claimed; this is a documented design limitation. | Add an atomic metadata patch/update contract at the Persistence boundary, then make Organization use it. Preserve unknown metadata keys and existing data format. |
 | AD-04 | **Medium** | Deleting tags/folders updates conversations individually; it is not one cross-conversation transaction. | `kira/chat/organization.py`, `kira/chat/persistence.py` | Persistence (transaction) + Organization (policy) | Partial completion is possible if a multi-conversation operation fails midway. | Add a narrowly scoped bulk metadata operation in Persistence and delegate the multi-record transaction to it. Combine with AD-03 where practical. |
-| AD-05 | **Medium** | Voice implementation is present but the documented Voice interface is not wired through the implementation; MainWindow's voice mixins remain involved in voice controllers. | `kira/voice.py`, `kira/listener.py`, `kira/local_voice.py`, `kira/ui/main_window_runtime.py`, core interfaces | Voice capability owner | Voice implementation is harder to replace or use independently; UI and device policy remain coupled. | Define/complete the narrow Voice service adapter and inject it at bootstrap. Keep device/Qt adapters at the outer boundary. |
+| AD-05 | **Resolved at source level** | PR #56 adds VoiceApplicationService implementing VoiceService and moves microphone lifecycle, playback/stream delegation and wake/sleep/stop transcript policy behind the service. Speaker/Listener remain injected device/Qt adapters. | `kira/app/voice_application.py`, `kira/app/voice_composition.py`, core interfaces | Voice capability owner | Source-level ownership is improved; runtime/device acceptance remains unverified. | Keep Qt/device adapters at the outer boundary and verify Windows microphone/playback behavior in the authorized runtime phase. |
 | AD-06 | **Low** | Compatibility imports/defaults remain, including the `kira.main.MainWindow` compatibility export, `kira/attachments.py`, and legacy memory entry points. | `kira/main.py`, `kira/attachments.py`, `kira/memory.py`, `kira/persona_memory.py` | Migration owners | Obsolete paths may persist and confuse future ownership if not clearly marked. | Remove only after repository-wide call-site migration and compatibility requirements are resolved. No deletion in this roadmap task. |
 
 ### 3.1 Runtime-only verification items (not confirmed defects)
@@ -90,7 +99,7 @@ These belong in the later explicitly authorized testing phase, not in TASK 016.
 
 **Goal:** extend Voice, Memory, Avatar/Emotion, Vision, Web Research and Coding Agent behind explicit application contracts.
 
-1. Complete the Voice contract wiring (AD-05).
+1. Voice contract wiring is implemented by PR #56; complete runtime/device acceptance (AD-05).
 2. Keep Memory and Character services injected through bootstrap; retire legacy adapters only after call-site migration.
 3. Define independent Avatar/Emotion and Vision application boundaries only when there is a concrete consumer and lifecycle need.
 4. Keep Web Research and Coding Agent policy outside MainWindow as they are extracted; do not create speculative service wrappers.
@@ -102,7 +111,7 @@ These belong in the later explicitly authorized testing phase, not in TASK 016.
 
 1. **MainWindow policy extraction** (AD-01), selected from a feature with a clear existing contract.
 2. **One Persistence improvement covering AD-03 and AD-04**, retaining metadata compatibility.
-3. **Voice contract wiring** (AD-05), using the existing interface rather than inventing a parallel one.
+3. **Voice runtime acceptance** (AD-05), using the existing VoiceService contract rather than inventing a parallel one.
 4. **ModuleManager adoption selectively** (AD-02), only after the chosen capability has a real lifecycle.
 5. **Runtime acceptance** for the Chat and multi-character cases, only after the user authorizes the testing phase.
 6. **Shared capability/Skills integration** only after confirming the actual implementation and target branch.
