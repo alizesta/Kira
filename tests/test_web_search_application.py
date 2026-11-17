@@ -1,0 +1,132 @@
+"""Qt-free tests for Web Search application policy."""
+import unittest
+
+from kira.app.web_search import WebSearchApplicationService
+
+
+class _ChatClient:
+    def __init__(self, response="Query: \"better search\""):
+        self.response = response
+        self.calls = []
+
+    def chat(self, messages, prompt, temperature):
+        self.calls.append((messages, prompt, temperature))
+        return self.response
+
+
+class WebSearchApplicationServiceTests(unittest.TestCase):
+    def setUp(self):
+        self.service = WebSearchApplicationService()
+
+    def test_gemini_credentials_resolve_configured_provider_and_model(self):
+        settings = {
+            "providers": {
+                "google": {
+                    "base_url": "https://generativelanguage.googleapis.com/v1beta",
+                    "api_key": "  secret  ",
+                }
+            },
+            "routes": [{"provider": "google", "model": "models/gemini-2.5-flash"}],
+        }
+
+        self.assertEqual(
+            self.service.gemini_credentials(settings),
+            ("secret", "gemini-2.5-flash"),
+        )
+
+    def test_gemini_credentials_ignore_unconfigured_or_non_google_providers(self):
+        self.assertIsNone(
+            self.service.gemini_credentials(
+                {"providers": {"local": {"base_url": "http://localhost", "api_key": "x"}}}
+            )
+        )
+
+    def test_search_query_rewriting_uses_recent_context_and_sanitizes_model_output(self):
+        client = _ChatClient('Query: "better search"')
+        history = [{"role": "user", "content": str(index)} for index in range(9)]
+
+        result = self.service.make_search_query(history, "literal query", client)
+
+        self.assertEqual(result, "better search")
+        self.assertEqual(client.calls[0][0], history[-6:])
+        self.assertEqual(client.calls[0][2], 0.1)
+
+    def test_invalid_search_query_rewrite_preserves_literal_query(self):
+        client = _ChatClient("x")
+
+        self.assertEqual(
+            self.service.make_search_query([], "literal Persian query", client),
+            "literal Persian query",
+        )
+
+    def test_web_search_options_preserve_literal_query_and_create_followup_rewrite(self):
+        client = _ChatClient("resolved query")
+        history = [{"role": "user", "content": "earlier context"}]
+        settings = {
+            "tavily_api_key": " tavily-secret ",
+            "web_fallback": True,
+            "web_depth": "advanced",
+            "providers": {},
+        }
+
+        options = self.service.web_search_options(settings, "نه بهتر سرچ کن", history, client)
+
+        self.assertTrue(options.available)
+        self.assertEqual(options.api_key, "tavily-secret")
+        self.assertEqual(options.depth, "advanced")
+        self.assertEqual(options.user_text, "نه بهتر سرچ کن")
+        self.assertEqual(options.rewrite(), "resolved query")
+
+    def test_web_search_is_unavailable_without_key_or_fallback(self):
+        options = self.service.web_search_options(
+            {"web_fallback": False}, "query", [], _ChatClient()
+        )
+        self.assertFalse(options.available)
+
+    def test_image_search_options_preserve_images_and_description_callback(self):
+        client = _ChatClient("a red bicycle")
+        images = [{"kind": "image", "b64": "abc"}]
+        options = self.service.image_search_options(
+            {"tavily_api_key": "key", "web_fallback": True, "web_depth": "basic"},
+            "what is this?",
+            images,
+            client,
+        )
+
+        self.assertEqual(options.query, "what is this?")
+        self.assertEqual(options.images, tuple(images))
+        self.assertEqual(options.describe(), "a red bicycle")
+        self.assertEqual(client.calls[0][0][0]["images"], images)
+
+    def test_merge_search_content_preserves_prepared_files_and_image_payload(self):
+        base = {"text": "", "files": [{"name": "notes.txt"}], "other": "preserved"}
+
+        result = self.service.merge_search_content(
+            base, [{"kind": "image"}], "search evidence", image_search=True
+        )
+
+        self.assertEqual(result["other"], "preserved")
+        self.assertEqual(result["files"], base["files"])
+        self.assertEqual(result["images"], [{"kind": "image"}])
+        self.assertTrue(result["search"])
+        self.assertIn("این تصویر چیست؟", result["text"])
+        self.assertIn("search evidence", result["text"])
+
+    def test_merge_search_content_keeps_legacy_plain_text_shape(self):
+        result = self.service.merge_search_content("hello", [], "evidence")
+        self.assertEqual(result, {"model": "hello\n\nevidence", "images": []})
+
+    def test_assessment_text_reports_verified_and_unverified_sources(self):
+        self.assertIn(
+            "منبع 1، 3",
+            self.service.assessment_text({"phrase": "exact words", "matched": [1, 3]}),
+        )
+        self.assertIn(
+            "هیچ‌کدام",
+            self.service.assessment_text({"phrase": "exact words", "matched": [], "checked": 4}),
+        )
+        self.assertEqual(self.service.assessment_text(None), "")
+
+
+if __name__ == "__main__":
+    unittest.main()
