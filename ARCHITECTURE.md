@@ -219,3 +219,6 @@ The migration reference is temporary. Its purpose is to preserve working behavio
 - `ChatApplicationService` dispatches commands against the active logical request and runtime Session identity. MainWindow supplies the existing feature owners and preserves normal provider chat when no command handles the input.
 - Desktop shortcut commands require the `desktop.launch` permission and are denied under Competitive Safe mode. ToolAgent retains ownership of sensitive-operation confirmation and task controls.
 - The command registry is scoped to the application adapter and is released with the MainWindow lifecycle. Tests cover parsing, schema validation, permission denial, session/request correlation, duplicate dispatch, cancellation and adapter compatibility.
+- Out-of-band task controls use a unique command request ID and retain the active chat request as `parent_request_id`; runtime Session identity and character-scoped ToolAgent identity are passed separately.
+- Command dispatch start/completion/failure notifications use the shared typed Chat Events publisher; the registry is cancelled by session and closed during application shutdown.
+- The complete command/handler contract, built-in command inventory, permission boundary and registration guide are documented in `docs/CHAT_COMMANDS.md`.
