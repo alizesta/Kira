@@ -151,9 +151,6 @@ class SessionMixin:
     def _ensure_session_conversation(self, session):
         return self.session_application_service.bind_conversation(session)
 
-    def _publish_session_state_event(self, event):
-        self.session_application_service.publish_state_change(event)
-
     def _ensure_session_ui_resources(self, session, profile):
         """Attach Qt resources after the application service resolves the Session."""
         if session.view is None:
@@ -286,7 +283,7 @@ class SessionMixin:
     def switch_session(self, cid, save=True):
         """Bring one character's chat to the front: its conversation, its colours, its picture. Other chats keep working."""
         sess = self.sessions.get(cid)
-        if sess is None or not self.session_manager.activate_session(sess.session_id):
+        if sess is None or not self.session_application_service.activate_session(sess.session_id):
             return
         if cid != self.front.cid:
             self._flush_character_autosave()
