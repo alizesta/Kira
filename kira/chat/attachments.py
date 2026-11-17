@@ -158,13 +158,12 @@ class AttachmentManager:
         extension = Path(name).suffix.lower()
         if not isinstance(data, (bytes, bytearray, memoryview)):
             raise TypeError("attachment content must be bytes-like")
-        raw = bytes(data)
-        size = len(raw)
+        size = len(data)
         if extension in self.IMAGE_MIMES:
             if size > self.max_image_bytes:
                 raise _legacy.AttachmentError("حجم تصویر از محدودیت مجاز بیشتر است.")
             expected = self.IMAGE_MIMES[extension]
-        elif extension == ".pdf" or extension == ".docx" or extension == ".zip":
+        elif extension in self.DOCUMENT_MIMES:
             if size > self.max_file_bytes:
                 raise _legacy.AttachmentError("حجم فایل از محدودیت مجاز بیشتر است.")
             expected = self.DOCUMENT_MIMES[extension]
@@ -175,7 +174,7 @@ class AttachmentManager:
         else:
             raise _legacy.AttachmentError("این نوع فایل در نسخه فعلی پشتیبانی نمی‌شود.")
 
-        actual = self._sniff(raw, extension)
+        raw = bytes(data)\n        actual = self._sniff(raw, extension)
         if expected.startswith("image/") and actual != expected:
             raise _legacy.AttachmentError("نوع واقعی تصویر با پسوند فایل مطابقت ندارد.")
         if expected == "application/pdf" and actual != expected:
@@ -213,9 +212,14 @@ class AttachmentManager:
                 if source_path.is_symlink() or not source_path.is_file():
                     raise _legacy.AttachmentError("مسیر فایل معتبر نیست.")
                 name = self._safe_name(filename or source_path.name)
-                if source_path.stat().st_size > max(self.max_file_bytes, self.max_image_bytes):
+                extension = Path(name).suffix.lower()
+                limit = self.max_image_bytes if extension in self.IMAGE_MIMES else self.max_file_bytes
+                if source_path.stat().st_size > limit:
                     raise _legacy.AttachmentError("حجم فایل از محدودیت مجاز بیشتر است.")
-                raw = source_path.read_bytes()
+                with source_path.open("rb") as stream:
+                    raw = stream.read(limit + 1)
+                if len(raw) > limit:
+                    raise _legacy.AttachmentError("حجم فایل از محدودیت مجاز بیشتر است.")
             except OSError as exc:
                 raise _legacy.AttachmentError("فایل قابل خواندن نیست.") from exc
             origin = AttachmentSource.FILE
@@ -323,9 +327,12 @@ class AttachmentManager:
         record = self._records.get(str(attachment_id or ""))
         if record is None or record.session_id != str(session_id or ""):
             return False
-        path = Path(record.path).resolve()
+        stored_path = Path(record.path)
+        if stored_path.is_symlink():
+            return False
+        path = stored_path.resolve()
         owner_dir = (self._root / hashlib.sha256(record.session_id.encode("utf-8")).hexdigest()[:24]).resolve()
-        if path.is_symlink() or not path.is_relative_to(owner_dir) or not path.is_relative_to(self._root):
+        if not path.is_relative_to(owner_dir) or not path.is_relative_to(self._root):
             return False
         try:
             path.unlink(missing_ok=True)
