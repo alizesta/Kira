@@ -152,6 +152,28 @@ class SharedEventBusTests(unittest.TestCase):
             ChatEventType.REQUEST_COMPLETED, ChatEventType.REQUEST_FAILED, ChatEventType.REQUEST_FAILED
         ])
 
+    def test_stream_retries_use_distinct_provider_attempt_terminal_keys(self):
+        received = []
+        self.publisher.subscribe("stream_completed", lambda event: received.append(
+            event.payload["provider_request_id"]
+        ))
+        first = self.publisher.publish(
+            "stream_completed", session_id="kira", request_id="logical",
+            payload={"provider_request_id": "logical:1"},
+        )
+        retry = self.publisher.publish(
+            "stream_completed", session_id="kira", request_id="logical",
+            payload={"provider_request_id": "logical:2"},
+        )
+        duplicate = self.publisher.publish(
+            "stream_completed", session_id="kira", request_id="logical",
+            payload={"provider_request_id": "logical:2"},
+        )
+        self.assertFalse(first.duplicate)
+        self.assertFalse(retry.duplicate)
+        self.assertTrue(duplicate.duplicate)
+        self.assertEqual(received, ["logical:1", "logical:2"])
+
     def test_stream_and_session_terminal_events_are_deduplicated_and_session_reuse_resets(self):
         received = []
         for event_type in ("stream_completed", "stream_interrupted", "session_closed", "session_failed", "session_created"):
