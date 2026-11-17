@@ -6,6 +6,8 @@ on:
   pull_request:
     branches: [new-main]
     paths:
+      - "kira/app/game_mode_application.py"
+      - "tests/test_game_mode_application.py"
       - "kira/app/voice_application.py"
       - "kira/app/voice_composition.py"
       - "tests/test_voice_application.py"
@@ -61,6 +63,7 @@ jobs:
           tests.test_session_application
           tests.test_web_search_application
           tests.test_voice_application
+          tests.test_game_mode_application
           tests.test_chat_session_manager
           tests.test_chat_events
           tests.test_chat_attachments
@@ -96,6 +99,8 @@ jobs:
           tests/test_main_entrypoint.py
           tests/test_app_architecture.py
           kira/app/bootstrap.py
+          kira/app/game_mode_application.py
+          tests/test_game_mode_application.py
           kira/app/voice_application.py
           kira/app/voice_composition.py
           tests/test_voice_application.py
