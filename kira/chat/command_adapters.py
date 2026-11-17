@@ -35,7 +35,9 @@ def create_default_command_registry(
     registry = CommandRegistry(permission_checker=permission_checker)
     empty_object = {"type": "object", "properties": {}, "additionalProperties": False}
 
-    def parse_usage(text, _context):
+    def parse_usage(text, context):
+        if context.metadata.get("has_attachments"):
+            return None
         days = usage_parser(text)
         return {"days": days} if days is not None else None
 
@@ -58,7 +60,7 @@ def create_default_command_registry(
     def match_tool_confirmation(_text, context):
         if context.metadata.get("has_attachments") or not tool_agent.enabled():
             return None
-        return {} if tool_agent.has_pending() else None
+        return {} if tool_agent.has_pending(context.session_id) else None
 
     def match_tool_task(text, context):
         if context.metadata.get("has_attachments") or not tool_agent.enabled():
