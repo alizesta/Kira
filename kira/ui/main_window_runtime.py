@@ -42,7 +42,7 @@ class RuntimeMixin:
         self._t_req = time.monotonic()
         self._t_first = None
         self._speech_live = False                                   # speech of THIS reply has started while it is still being written
-        self.speaker.stream_reset()
+        self.voice_application_service.stream_reset()
         self._stream_timer.start()
 
     def _speak_stream(self, text):
@@ -50,7 +50,7 @@ class RuntimeMixin:
         if not (self.voice_btn.isChecked() and self.settings.get("stream_speech", True)):
             return
         try:
-            self.speaker.stream_text(text)
+            self.voice_application_service.stream_text(text)
             self._speech_live = True
         except Exception as exc:                                    # noqa: BLE001
             self.on_voice_error(f"صدا ناموفق بود: {type(exc).__name__}: {exc}")
@@ -252,7 +252,7 @@ class RuntimeMixin:
             self.save_message("assistant", raw, status="interrupted", metadata={"stream": "provider_interrupted"}, persist=False)
             self.add_chat("error", f"ارتباط وسط پاسخ قطع شد؛ بخش دریافت‌شده نگه داشته شد و تکرار نمی‌شود.\n{res['interrupted']}")
             if self._speech_live:
-                self.speaker.stream_end()                          # what arrived is still spoken to its end
+                self.voice_application_service.stream_end()                          # what arrived is still spoken to its end
             self.director.event("response_failed")
         elif not text.strip():
             self.add_chat("error", self.t("empty"))
@@ -267,7 +267,7 @@ class RuntimeMixin:
             if not self._emotion_applied:                          # no tag from the model: tag-less fallback (keywords / neutral)
                 self.director.on_reply(meta)
             if self._speech_live:
-                self.speaker.stream_end()                          # the sentences were spoken while it was written: say the tail
+                self.voice_application_service.stream_end()                          # the sentences were spoken while it was written: say the tail
             else:
                 self.say(text)
         if self._web_found and text.strip():
@@ -282,7 +282,7 @@ class RuntimeMixin:
         self._stream_flush(final=True)
         self._stream_pos = None
         if getattr(self, "_speech_live", False):
-            self.speaker.stream_end()
+            self.voice_application_service.stream_end()
         self.add_chat("error", self.t("reply_err", e=error))
         self.director.event("response_failed")
         self.finish_request(None)
@@ -402,7 +402,7 @@ class RuntimeMixin:
             self._last_idle = time.time()
             lines = self.reactions.get("_idle", {}).get(self.settings.get("ui_lang", "fa"), [])
             if lines and self.voice_btn.isChecked():
-                self.speaker.speak(random.choice(lines), -5, -3, cache=True)
+                self.voice_application_service.speak(random.choice(lines), -5, -3, cache=True)
 
     # ---------- click reactions ----------
 
@@ -434,12 +434,12 @@ class RuntimeMixin:
         files = [f for f in (SOUNDS_DIR / region).glob("*") if f.suffix.lower() in (".wav", ".mp3", ".ogg")] \
             if (SOUNDS_DIR / region).exists() else []
         if files:
-            self.speaker.play_file(random.choice(files))
+            self.voice_application_service.play_file(random.choice(files))
             return
         lang = self.settings.get("ui_lang", "fa")
         lines = cfg.get(lang) or cfg.get("fa") or []
         if lines and self.voice_btn.isChecked():
-            self.speaker.speak(random.choice(lines), cfg.get("rate"), cfg.get("pitch"), cache=True)
+            self.voice_application_service.speak(random.choice(lines), cfg.get("rate"), cfg.get("pitch"), cache=True)
 
     # ---------- voice, microphone, wake mode ----------
 
@@ -454,7 +454,7 @@ class RuntimeMixin:
             self.safe_stop_speaker()
 
     def on_stop_clicked(self):
-        if self.speaker._began:
+        if self.voice_application_service.is_speaking():
             self.director.event("user_interrupt")
         self.safe_stop_speaker()
 
@@ -478,7 +478,7 @@ class RuntimeMixin:
 
     def on_user_barge_in(self):
         """The person started talking over Kira: she stops at once, and what they say is still heard as the next message."""
-        if self.speaker._began:
+        if self.voice_application_service.is_speaking():
             self.director.event("user_interrupt")
         self.safe_stop_speaker()
 
