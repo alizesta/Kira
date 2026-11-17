@@ -255,11 +255,16 @@ class AttachmentManager:
 
         attachment_id = uuid.uuid4().hex
         session_dir = self._root / hashlib.sha256(owner.encode("utf-8")).hexdigest()[:24]
-        session_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-        target = (session_dir / f"{attachment_id}{Path(name).suffix.lower()}").resolve()
-        if not target.is_relative_to(session_dir.resolve()):
-            raise _legacy.AttachmentError("مسیر ذخیره‌سازی ضمیمه نامعتبر است.")
         try:
+            session_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if session_dir.is_symlink():
+                raise _legacy.AttachmentError("مسیر ذخیره‌سازی ضمیمه نامعتبر است.")
+            managed_session_dir = session_dir.resolve()
+            if not managed_session_dir.is_relative_to(self._root):
+                raise _legacy.AttachmentError("مسیر ذخیره‌سازی ضمیمه خارج از محدوده مجاز است.")
+            target = managed_session_dir / f"{attachment_id}{Path(name).suffix.lower()}"
+            if not target.is_relative_to(managed_session_dir) or not target.is_relative_to(self._root):
+                raise _legacy.AttachmentError("مسیر ذخیره‌سازی ضمیمه نامعتبر است.")
             with target.open("xb") as stream:
                 stream.write(raw)
         except OSError as exc:
