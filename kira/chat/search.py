@@ -167,9 +167,8 @@ class ChatSearchService:
         if page < 1 or not 1 <= page_size <= 100:
             raise ChatSearchValidationError("page must be >= 1 and page_size must be between 1 and 100")
 
-        if request.conversation_id and request.session_id and str(request.conversation_id) != str(request.session_id):
-            raise ChatSearchValidationError("conversation_id and session_id refer to different conversations")
-        conversation_id = str(request.conversation_id or request.session_id or "").strip() or None
+        conversation_id = str(request.conversation_id or "").strip() or None
+        session_id = str(request.session_id or "").strip() or None
         character_id = str(request.character_id or "").strip().lower() or None
         try:
             roles = {str(role).strip().lower() for role in (request.roles or ())}
@@ -207,6 +206,9 @@ class ChatSearchService:
                         continue
                     if conversation_id and conv_id != conversation_id:
                         continue
+                    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+                    if session_id and str(metadata.get("session_id") or "") != session_id:
+                        continue
                     if character_id and char_id != character_id:
                         continue
                     if roles and role not in roles:
@@ -237,7 +239,7 @@ class ChatSearchService:
                         message_id=message_id, conversation_id=conv_id, character_id=char_id,
                         role=role, content=content, snippet=_snippet(content, query), created_at=stamp,
                         status=str(row.get("status") or "complete"),
-                        metadata=dict(row.get("metadata")) if isinstance(row.get("metadata"), dict) else {}, relevance=score,
+                        metadata=dict(metadata), relevance=score,
                         reference=ChatMessageReference(conv_id, message_id) if conv_id else None,
                     ))
                 if len(batch) < self._batch_size:
