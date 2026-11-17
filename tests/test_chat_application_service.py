@@ -384,7 +384,7 @@ class ChatApplicationServiceTests(unittest.TestCase):
             ChatEventType.REQUEST_COMPLETED,
         )
         for event_type in event_types:
-            publisher.subscribe(event_type, lambda event: received.append(event.event_type))
+            publisher.subscribe(event_type, lambda event: received.append(event))
 
         submission = self.service.submit_message("kira", "hello")
         worker = self._start_provider(submission)
@@ -393,10 +393,9 @@ class ChatApplicationServiceTests(unittest.TestCase):
         outcome = self.service.complete_request(submission.request.request_id, "answer")
 
         self.assertTrue(outcome.ok)
-        self.assertEqual(received, list(event_types))
-        self.assertTrue(all(event.session_id == "kira" for event in (
-            event for event in []
-        )))
+        self.assertEqual([event.event_type for event in received], list(event_types))
+        self.assertTrue(all(event.session_id == "kira" for event in received))
+        self.assertTrue(all(event.request_id == submission.request.request_id for event in received))
 
     def test_event_publisher_reports_persistence_failure(self):
         bus = EventBus()
