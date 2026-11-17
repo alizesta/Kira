@@ -21,7 +21,7 @@ TASK 015 recorded **12 DONE / 2 PARTIAL / 0 NOT DONE / 0 BLOCKED / 0 UNVERIFIED*
 
 PR #48 subsequently merged both modules into `new-main` at `b54d092a330b6383ca4244320ffaeec9267db561`. Static inspection confirms `conversation_lifecycle.py`, `organization.py`, their public exports and shared event contract are present in the current tree. Therefore, the integration blocker identified in the audit has been resolved at source-control level. This does not revise the historical audit counts and does not establish runtime correctness.
 
-The legacy `oldmain.py` runtime module has been removed. PR #56 extracts Session, Web Search, Voice and Game Mode policy; the TASK 020 completion supplement in PR #57 moves Provider routing/configuration, Vision capture policy and Coding Agent handoff/stop behind injected application services. Remaining MainWindow debt is concentrated in character/settings workflows and general tool integration, alongside legitimate Qt/device presentation adapters. Runtime acceptance remains unverified because Actions jobs have failed before runner allocation.
+The legacy `oldmain.py` runtime module has been removed. PR #56 extracts Session, Web Search, Voice and Game Mode policy; the TASK 020 completion supplement in PR #57 moves Provider routing/configuration, Vision capture policy, Coding Agent handoff/stop and Runtime Settings reconfiguration behind injected application services. Remaining MainWindow debt is concentrated in character/settings workflows and general tool integration, alongside legitimate Qt/device presentation adapters. Runtime acceptance remains unverified because Actions jobs have failed before runner allocation.
 
 ## 2.1 Post-snapshot implementation delta — TASK 017–020
 
