@@ -149,7 +149,6 @@ class ChatApplicationService:
         self._coordinators: dict[str, ChatCoordinator] = {}
         self._requests: OrderedDict[str, _RequestState] = OrderedDict()
         self._request_attachment_ids: dict[str, tuple[str, ...]] = {}
-        self._chat_request_ids: dict[tuple[str, int], str] = {}
         self._attempt_to_request: dict[str, str] = {}
         self._active_by_session: dict[str, str] = {}
         self._dispatch_scheduled: set[str] = set()
@@ -474,8 +473,10 @@ class ChatApplicationService:
             ))
             self._prune_history()
             return Submission(request, state.status, queued=False, accepted=False)
-        chat_request = ChatRequest.create(request.text, request.attachments, request.voice)
-        self._chat_request_ids[(owner, id(chat_request))] = request_id
+        chat_request = ChatRequest.create(
+            request.text, request.attachments, request.voice,
+            request_id=request_id, session_id=owner,
+        )
         coordinator = self._coordinator(owner)
         result = coordinator.submit(
             chat_request,
@@ -488,7 +489,6 @@ class ChatApplicationService:
                 "request_failed", session_id=owner, request_id=request_id,
                 payload={"error": "The pending chat queue is full."},
             )
-            self._chat_request_ids.pop((owner, id(chat_request)), None)
             self.cleanup_request_attachments(request_id)
             self._emit(ChatApplicationEvent(
                 request_id, owner, ApplicationEventKind.REQUEST_FAILED,
@@ -509,14 +509,19 @@ class ChatApplicationService:
         )
 
     def _dispatch(self, session_id: str, chat_request: ChatRequest) -> None:
-        request_id = self._chat_request_ids.pop((session_id, id(chat_request)), None)
+        request_id = chat_request.request_id
+        if chat_request.session_id != session_id:
+            self.dispatch_next(session_id)
+            return
         state = self._requests.get(request_id or "")
         if state is None or state.status is not RequestStatus.PENDING:
             self.dispatch_next(session_id)
             return
         if session_id in self._active_by_session:
-            # Defensive: never allow a coordinator callback to overlap a session.
-            self._chat_request_ids[(session_id, id(chat_request))] = state.request.request_id
+            # Preserve the immutable request identity if a defensive requeue is needed.
+            coordinator = self._coordinators.get(session_id)
+            if coordinator is not None:
+                coordinator.submit(chat_request, busy=True, force_queue=True)
             return
         state.status = RequestStatus.RUNNING
         self._active_by_session[session_id] = state.request.request_id
@@ -911,9 +916,6 @@ class ChatApplicationService:
         coordinator = self._coordinators.pop(owner, None)
         if coordinator is not None:
             coordinator.clear()
-        for key in tuple(self._chat_request_ids):
-            if key[0] == owner:
-                self._chat_request_ids.pop(key, None)
         self._dispatch_scheduled.discard(owner)
         self._active_by_session.pop(owner, None)
         self.cleanup_attachments(session_id=owner)
