@@ -4,7 +4,7 @@
 
 `kira.chat.attachments` is the framework-independent attachment boundary. It owns managed temporary copies, validation, session scoping, metadata, content extraction and cleanup. It has no PySide6, Widget, MainWindow, Provider, Prompt, or Persistence dependency.
 
-The existing `kira.attachments` module remains the low-level compatibility parser for the formats already supported by the desktop client. The new chat module delegates format extraction to those pure helpers and exposes the compatibility functions used by the current asynchronous UI worker. The desktop entry point now imports the attachment API through `kira.chat.attachments`.
+`kira/chat/attachment_content.py` owns the pure, bounded parsers for the supported formats (text, PDF, DOCX and ZIP) and image payload conversion. It has no Qt or legacy-module dependency. `kira.attachments` is now a compatibility facade that re-exports this parser API; it is not a second parser implementation. `kira.chat.attachments` composes that parser with session-scoped managed storage and also exposes the compatibility functions used by the existing asynchronous UI worker.
 
 ## Public contract
 
@@ -23,7 +23,7 @@ This task preserves the existing parser's supported formats; it does not introdu
 - Images: PNG, JPEG, WEBP, GIF and BMP. Default input limit: 15 MiB.
 - Documents/archives: PDF, DOCX and ZIP. Default input limit: 50 MiB.
 - Text/source files: the existing allowlist of plain-text, configuration, data and source-code extensions. Default input limit: 50 MiB.
-- ZIP extraction remains bounded by the existing parser's archive-entry and expanded-size limits. Archives are inspected in place and are not extracted to arbitrary paths.
+- ZIP extraction remains bounded by explicit archive-entry, per-member and expanded-size limits. Archives are inspected in place and are not extracted to arbitrary paths.
 - Audio/video are not newly enabled: the current chat attachment parser does not decode or forward them.
 
 The manager checks both the extension allowlist and file signatures. MIME metadata is derived from the validated content rather than trusted from the caller. Text is rejected when its content is binary or inconsistent with the text contract.
@@ -42,7 +42,7 @@ A manager created without an explicit root owns a private temporary directory an
 - Provider: receive already-prepared image/text content; it does not manage local files.
 - Persistence: continue owning durable message/history records. The temporary manager is not a second history database.
 
-The legacy parser API is intentionally retained during migration so current image paste, screen capture, game-vision and upload flows are not broken. The desktop entry point imports the compatibility surface through `kira.chat.attachments`; selected payloads are then copied into managed storage by ChatApplicationService. The old `kira.attachments` import remains available to existing callers.
+The parser compatibility API is retained so current image paste, screen capture, game-vision and upload flows are not broken. Both `kira.chat.attachments` and the legacy `kira.attachments` import resolve to the single parser implementation in `kira.chat.attachment_content`; selected payloads are copied into managed storage by ChatApplicationService. The manager does not import or delegate to the legacy module.
 
 
 ## Current request pipeline
