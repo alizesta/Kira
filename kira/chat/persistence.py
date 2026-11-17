@@ -47,7 +47,7 @@ class ChatRepository(Protocol):
     def list_conversations(self, character_id=None) -> list[dict[str, Any]]: ...
     def update_conversation(self, conversation_id: str, *, title=None, metadata=None, status=None) -> bool: ...
     def close_conversation(self, conversation_id: str) -> bool: ...
-    def delete_conversation(self, conversation_id: str) -> int: ...
+    def delete_conversation(self, conversation_id: str, *, expected_status: str | None = None) -> int: ...
     def update_conversation_lifecycle(self, changes: list[dict[str, Any]]) -> bool: ...
     def add_message(self, role: str, content: str, character_id: str | None = None, **options) -> bool: ...
     def update_stream_message(self, message_id: int, content: str, **options) -> bool: ...
@@ -698,7 +698,7 @@ class SqliteChatRepository:
     def close_conversation(self, conversation_id: str) -> bool:
         return self.update_conversation(conversation_id, status="closed")
 
-    def delete_conversation(self, conversation_id: str) -> int:
+    def delete_conversation(self, conversation_id: str, *, expected_status: str | None = None) -> int:
         """Snapshot before deleting one conversation and its messages."""
         conv_id = str(conversation_id)
         with self._lock:
@@ -710,9 +710,13 @@ class SqliteChatRepository:
                     count = int(con.execute(
                         "SELECT COUNT(*) FROM messages WHERE conversation_id=?", (conv_id,)
                     ).fetchone()[0])
-                    exists = con.execute(
-                        "SELECT 1 FROM conversations WHERE id=?", (conv_id,)
-                    ).fetchone() is not None
+                    conversation = con.execute(
+                        "SELECT status FROM conversations WHERE id=?", (conv_id,)
+                    ).fetchone()
+                    exists = conversation is not None
+                    if expected_status is not None:
+                        if conversation is None or str(conversation["status"] or "active") != expected_status:
+                            raise PersistenceError("conversation state changed before permanent deletion")
                     if count or exists:
                         # Keep the write transaction open across backup and delete,
                         # preventing another process from inserting rows between those steps.
@@ -1271,8 +1275,8 @@ class ChatPersistence:
     def close_conversation(self, conversation_id):
         return self._invoke(self._repository.close_conversation, conversation_id)
 
-    def delete_conversation(self, conversation_id):
-        return self._invoke(self._repository.delete_conversation, conversation_id)
+    def delete_conversation(self, conversation_id, **options):
+        return self._invoke(self._repository.delete_conversation, conversation_id, **options)
 
     def update_conversation_lifecycle(self, changes):
         return self._invoke(self._repository.update_conversation_lifecycle, changes)
