@@ -63,6 +63,7 @@ for hit in page.results:
 - `any_term`: at least one token must occur.
 - Roles are limited to `user`, `assistant` and `system`.
 - `conversation_id` filters the durable conversation identity.
+- `conversation_statuses` optionally filters durable conversation states (`active`, `archived`, `trashed`, `closed`) using the same persistence repository. An empty tuple preserves the historical all-status behavior.
 - `session_id` independently filters the runtime session ID stored in message metadata by ChatApplicationService. Older imported messages without that metadata remain searchable by conversation/character, but cannot be attributed to a runtime session.
 - Date-only boundaries include the full selected day; timestamps accept ISO-8601
   values and are compared in UTC. Naive timestamps are treated as UTC, matching
