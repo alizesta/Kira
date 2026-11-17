@@ -61,6 +61,17 @@ from .application_service import (
     Submission,
 )
 from .session_manager import SessionManager, SessionState, SessionStateChanged
+from .search import (
+    ChatMessageReference,
+    ChatSearchError,
+    ChatSearchHit,
+    ChatSearchPage,
+    ChatSearchRepository,
+    ChatSearchRepositoryError,
+    ChatSearchRequest,
+    ChatSearchService,
+    ChatSearchValidationError,
+)
 from .transfer import ChatTransfer, ImportPreview, ImportResult, TransferError, TransferRepository
 
 __all__ = [
@@ -113,5 +124,15 @@ __all__ = [
     "SessionManager",
     "SessionState",
     "SessionStateChanged",
+    "ChatMessageReference",
+    "ChatSearchError",
+    "ChatSearchHit",
+    "ChatSearchPage",
+    "ChatSearchRepository",
+    "ChatSearchRepositoryError",
+    "ChatSearchRequest",
+    "ChatSearchService",
+    "ChatSearchValidationError",
+
     "ChatTransfer", "ImportPreview", "ImportResult", "TransferError", "TransferRepository",
 ]
