@@ -1,8 +1,8 @@
 # KIRA ARCHITECTURE ROADMAP
 
-**Snapshot:** 2026-11-17  
+**Snapshot:** 2026-11-18  
 **Base branch:** `new-main`  
-**Base SHA:** `b54d092a330b6383ca4244320ffaeec9267db561`  
+**Base SHA:** `101361f60bb19a45484cbcdb7b52584eb3da0111`  
 **Input:** TASK 015 audit plus post-audit merged TASK 013+014 integration PR #48.  
 **Execution policy:** Documentation only. No tests, compile/import checks or application execution were run.
 
@@ -21,7 +21,7 @@ TASK 015 recorded **12 DONE / 2 PARTIAL / 0 NOT DONE / 0 BLOCKED / 0 UNVERIFIED*
 
 PR #48 subsequently merged both modules into `new-main` at `b54d092a330b6383ca4244320ffaeec9267db561`. Static inspection confirms `conversation_lifecycle.py`, `organization.py`, their public exports and shared event contract are present in the current tree. Therefore, the integration blocker identified in the audit has been resolved at source-control level. This does not revise the historical audit counts and does not establish runtime correctness.
 
-The remaining explicit architecture debt is application policy and cross-feature orchestration still held by the MainWindow feature mixins; the legacy `oldmain.py` runtime module has been removed. Runtime acceptance also remains unverified because TASK 015 and TASK 016 intentionally ran no tests or application checks.
+PR #55 removed the legacy `oldmain.py` runtime module and moved its 322 MainWindow methods into eight feature-oriented mixins. The remaining explicit architecture debt is application policy and cross-feature orchestration still held by those mixins. Runtime acceptance remains unverified: GitHub Actions jobs for the merge failed before runner assignment (runner ID 0, no steps), so they did not execute tests.
 
 ## 3. Technical debt register
 
