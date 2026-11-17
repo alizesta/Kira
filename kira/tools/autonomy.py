@@ -440,7 +440,7 @@ class AutonomyMixin:
             text = gate.visible
             self._settle_plan(tp)
             footer = tp.footer()
-            if self._pending_new and not re.search(r"تأیید|تایید|confirm", text + footer):
+            if self.has_new_pending_confirmation(self._turn_session_id) and not re.search(r"تأیید|تایید|confirm", text + footer):
                 footer += "\n\n(برای انجام همین کار «تأیید» بنویس؛ برای انصراف «لغو».)"
             if footer:
                 emit(footer)
