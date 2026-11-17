@@ -39,6 +39,7 @@ class PolicyArchitectureTests(unittest.TestCase):
         bootstrap = (ROOT / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8")
         self.assertIn("provider_application_service=provider_application_service", bootstrap)
         self.assertIn("runtime_settings_application_service=runtime_settings_application_service", bootstrap)
+        self.assertIn("self.runtime_settings_application_service.apply(", sources)
 
     def test_vision_policy_and_frame_gate_are_outside_ui(self):
         sources = "\n".join(
