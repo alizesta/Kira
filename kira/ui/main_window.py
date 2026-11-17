@@ -56,6 +56,7 @@ class MainWindow(
     _stream_timer = property(lambda self: self.cur.timer)
     # One-per-computer things belong to the chat in front; a background chat gets silent stand-ins.
     speaker = front_only_property("speaker")
+    voice_application_service = front_only_property("voice_application_service")
     director = front_only_property("director", ("parse_reply", "format_hint", "library"))
     animator = front_only_property("animator")
     bubble = front_only_property("bubble")
