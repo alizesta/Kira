@@ -193,7 +193,7 @@ The migration reference is temporary. Its purpose is to preserve working behavio
 - The service receives the shared `ChatPersistence` and `ChatEventPublisher` through constructor injection. It owns no database, EventBus, Session, Qt object or UI state.
 - Persistence remains the sole storage owner. Lifecycle status uses the existing `conversations.status` field and timestamps use the existing JSON metadata field; no parallel store or schema version bump is introduced.
 - Group archive and soft-delete operations prevalidate every target and commit through one atomic repository batch operation. Permanent deletion is single-conversation only, requires a specific authorization provider, requires the conversation to be trashed, and delegates to the repository's existing snapshot-and-delete operation.
-- Runtime Session lifecycle remains exclusively in `SessionManager`; durable Conversation lifecycle is independent. The application service may coordinate lifecycle calls but does not implement transition rules.
+- Runtime Session lifecycle remains exclusively in `SessionManager`; durable Conversation lifecycle is independent. The composition root injects the lifecycle service into `ChatApplicationService`, which exposes thin delegation methods without implementing transition rules.
 - Typed conversation lifecycle notifications are published after persistence commits through the existing shared EventBus. Search can filter by conversation status; transfer preserves archived/trashed status and lifecycle metadata.
 - The full API, transition table, event payloads, authorization contract and deferred validation are documented in `docs/CHAT_CONVERSATION_LIFECYCLE.md`.
 
