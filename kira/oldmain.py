@@ -215,7 +215,7 @@ class MainWindow(QMainWindow):
 
 
     def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None,
-                 session_manager=None):
+                 session_manager=None, chat_event_publisher=None):
         super().__init__()
         # Direct MainWindow construction remains supported for existing callers;
         # normal application startup injects these services from app.bootstrap.
@@ -241,6 +241,7 @@ class MainWindow(QMainWindow):
             worker_factory=StreamWorker,
             on_dispatch=self._dispatch_application_request,
             on_event=self._on_chat_application_event,
+            event_publisher=chat_event_publisher,
             schedule=lambda callback: QTimer.singleShot(0, callback),
             cancel_provider=self._cancel_application_provider,
         )
@@ -250,6 +251,10 @@ class MainWindow(QMainWindow):
         self.session_manager.set_runtime_callbacks(
             has_pending_work=self._session_has_pending_chat_work,
             dispose_callback=self._release_chat_session_resources,
+        )
+        self.chat_event_publisher = chat_event_publisher
+        self._session_event_unsubscribe = self.session_manager.subscribe(
+            self._publish_session_state_event
         )
         self.sessions = self.session_manager.sessions_by_character
         self.cur = self.session_manager.create_session(
@@ -606,6 +611,33 @@ class MainWindow(QMainWindow):
             session.conversation_id = None
         return session.conversation_id
 
+    def _publish_session_state_event(self, event):
+        publisher = getattr(self, "chat_event_publisher", None)
+        if publisher is None:
+            return
+        event_type = {
+            "created": "session_created",
+            "active": "session_activated",
+            "idle": "session_deactivated",
+            "closed": "session_closed",
+            "failed": "session_failed",
+        }.get(str(event.status))
+        if event_type is None:
+            return
+        try:
+            publisher.publish(
+                event_type,
+                session_id=event.session_id,
+                payload={
+                    "character_id": event.character_id,
+                    "previous_status": event.previous_status,
+                    "status": event.status,
+                },
+            )
+        except Exception:
+            # Notifications are best-effort and must not interrupt Session lifecycle.
+            return
+
     def _ensure_session(self, cid, profile):
         sess = self.session_manager.get_session_for_character(cid)
         if sess is not None and sess.status == "closing":
@@ -651,6 +683,19 @@ class MainWindow(QMainWindow):
                 sess.loaded = True
                 with self._as(sess):
                     self.restore_history()
+                publisher = getattr(self, "chat_event_publisher", None)
+                if publisher is not None:
+                    try:
+                        publisher.publish(
+                            "history_loaded",
+                            session_id=sess.session_id,
+                            payload={
+                                "character_id": sess.cid,
+                                "conversation_id": sess.conversation_id,
+                            },
+                        )
+                    except Exception:
+                        pass
         order += [c for c in self.sessions if c not in order]          # a deleted character that is still answering keeps its tab for now
         for cid in [c for c in self.sessions if c not in profiles]:      # a deleted character stays until its queued/active work is drained
             sess = self.sessions[cid]
@@ -5378,6 +5423,10 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 QTimer.singleShot(100, self.close)
                 return
+            unsubscribe = getattr(self, "_session_event_unsubscribe", None)
+            if callable(unsubscribe):
+                unsubscribe()
+                self._session_event_unsubscribe = None
             event.accept()
             QTimer.singleShot(0, QApplication.quit)
             return
