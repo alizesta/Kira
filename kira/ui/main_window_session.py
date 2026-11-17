@@ -84,7 +84,7 @@ class SessionMixin:
 
     def _new_router(self):
         """Router of one chat. Cooldowns / health are shared with the other chats (a failing key is failing for everyone)."""
-        router = HybridRouter(self.settings)
+        router = self.provider_application_service.create_router(self.settings)
         base = next((sess.client for sess in self.sessions.values() if sess.client is not None), None)
         if base is not None:
             router.cooldowns, router.states = base.cooldowns, base.states
