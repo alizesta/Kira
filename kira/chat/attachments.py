@@ -134,7 +134,7 @@ class AttachmentManager:
             return "image/webp"
         if data.startswith(b"%PDF-"):
             return "application/pdf"
-        if data.startswith(b"PK\x03\x04"):
+        if data.startswith((b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08")):
             if extension == ".docx":
                 try:
                     import io
