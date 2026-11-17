@@ -284,7 +284,7 @@ class CommandRegistry:
         *,
         permission_checker: PermissionChecker | None = None,
         result_cache_size: int = 2048,
-        duplicate_wait_seconds: float = 30.0,
+        duplicate_wait_seconds: float = 0.0,
     ) -> None:
         if result_cache_size < 1:
             raise ValueError("result_cache_size must be at least 1")
@@ -317,8 +317,12 @@ class CommandRegistry:
 
     def unregister(self, command_id_or_name: str) -> bool:
         key = str(command_id_or_name or "").strip()
+        try:
+            normalized = _normalize_name(key)
+        except ValueError:
+            return False
         with self._lock:
-            command_id = key if key in self._commands else self._lookup.get(_normalize_name(key))
+            command_id = key if key in self._commands else self._lookup.get(normalized)
             if command_id is None:
                 return False
             command = self._commands.pop(command_id)
@@ -328,8 +332,12 @@ class CommandRegistry:
 
     def set_enabled(self, command_id_or_name: str, enabled: bool) -> bool:
         key = str(command_id_or_name or "").strip()
+        try:
+            normalized = _normalize_name(key)
+        except ValueError:
+            return False
         with self._lock:
-            command_id = key if key in self._commands else self._lookup.get(_normalize_name(key))
+            command_id = key if key in self._commands else self._lookup.get(normalized)
             if command_id is None:
                 return False
             current = self._commands[command_id]
@@ -350,8 +358,12 @@ class CommandRegistry:
 
     def get(self, command_id_or_name: str) -> CommandDefinition | None:
         key = str(command_id_or_name or "").strip()
+        try:
+            normalized = _normalize_name(key)
+        except ValueError:
+            return None
         with self._lock:
-            command_id = key if key in self._commands else self._lookup.get(_normalize_name(key))
+            command_id = key if key in self._commands else self._lookup.get(normalized)
             return self._commands.get(command_id) if command_id else None
 
     def list_commands(self, *, include_disabled: bool = False) -> tuple[CommandDefinition, ...]:
@@ -423,6 +435,11 @@ class CommandRegistry:
             return CommandResult(
                 request.command_id, request.request_id, request.session_id,
                 CommandStatus.REJECTED, error="Unknown command.",
+            )
+        if not definition.enabled:
+            return CommandResult(
+                definition.command_id, request.request_id, request.session_id,
+                CommandStatus.REJECTED, error="Command is disabled.",
             )
         return self._dispatch_one(
             definition, request.raw_input, request.arguments,
@@ -613,7 +630,13 @@ def _parse_slash(text: str) -> tuple[str, tuple[str, ...]] | None:
     except ValueError:
         # The owning parser can return a user-facing parameter rejection.
         head = stripped.split(maxsplit=1)[0]
-        return _normalize_name(head), ()
+        try:
+            return _normalize_name(head), ()
+        except ValueError:
+            return None
     if not tokens:
         return None
-    return _normalize_name(tokens[0]), tuple(tokens[1:])
+    try:
+        return _normalize_name(tokens[0]), tuple(tokens[1:])
+    except ValueError:
+        return None
