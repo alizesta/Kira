@@ -81,7 +81,8 @@ class MainWindow(
                  session_application_service_factory=None, web_search_service=None,
                  voice_application_service_factory=None, game_mode_application_service=None,
                  settings=None, tool_agent=None, vision_application_service=None,
-                 provider_application_service=None, coding_agent_application_service=None):
+                 provider_application_service=None, coding_agent_application_service=None,
+                 runtime_settings_application_service=None):
         super().__init__()
         # Direct MainWindow construction remains supported for existing callers;
         # normal application startup injects these services from app.bootstrap.
@@ -118,6 +119,11 @@ class MainWindow(
                 cancel_provider=self._cancel_application_provider,
             )
         self.settings = settings if settings is not None else load_settings()
+        if runtime_settings_application_service is None:
+            from ..app.runtime_settings_application import RuntimeSettingsApplicationService
+            runtime_settings_application_service = RuntimeSettingsApplicationService()
+            runtime_settings_application_service.configure(self.settings)
+        self.runtime_settings_application_service = runtime_settings_application_service
         self._db_notes = self.chat_application_service.init_history()
         self.session_manager = session_manager or SessionManager(ChatSession)
         self.chat_event_publisher = chat_event_publisher
@@ -212,8 +218,6 @@ class MainWindow(
             from ..tools import ToolAgent
             tool_agent = ToolAgent(self.settings, DATA_DIR, ROOT)
         self.tool_agent = tool_agent
-        usage.install(self.settings)                                    # usage ledger + limits (kira/usage.py); never blocks start-up
-        evidence_memory.configure(self.settings)                        # facts with provenance (kira/evidence_memory.py); never blocks start-up
         self._tool_plan = None             # tool plan of the message being answered (None = ordinary chat, nothing added to the prompt)
         self.ollama_client = self.provider_application_service.create_ollama_client(self.settings)
         self.director = EmotionDirector.from_default()        # emotion library + engine (kira/emotion, emotion_library/)
