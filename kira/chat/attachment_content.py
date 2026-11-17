@@ -7,6 +7,7 @@ extraction outside the managed input path supplied by AttachmentManager.
 from __future__ import annotations
 
 import base64
+import io
 import os
 import zipfile
 from xml.etree import ElementTree
@@ -168,8 +169,43 @@ def _pdf_text(path: str, progress=None, cancelled=None) -> str:
 
 
 def _prepare_image(data: bytes, mime: str):
-    """Keep original validated image bytes without importing Qt or UI libraries."""
-    return data, mime
+    """Downscale oversized images with optional Pillow; never require Qt or Pillow."""
+    try:
+        from PIL import Image
+    except ImportError:
+        return data, mime
+
+    try:
+        with Image.open(io.BytesIO(data)) as source:
+            # Preserve animated GIFs and already-small images byte-for-byte.
+            if getattr(source, "is_animated", False):
+                return data, mime
+            if (
+                max(source.size) <= MAX_IMAGE_SIDE
+                and len(data) < 4 * 1024 * 1024
+                and mime != "image/bmp"
+            ):
+                return data, mime
+            image = source.copy()
+            if max(image.size) > MAX_IMAGE_SIDE:
+                resampling = getattr(Image, "Resampling", Image)
+                image.thumbnail(
+                    (MAX_IMAGE_SIDE, MAX_IMAGE_SIDE),
+                    getattr(resampling, "LANCZOS", Image.LANCZOS),
+                )
+            has_alpha = "A" in image.getbands() or "transparency" in image.info
+            output = io.BytesIO()
+            if has_alpha:
+                image.convert("RGBA").save(output, format="PNG", optimize=True)
+                return output.getvalue(), "image/png"
+            image.convert("RGB").save(
+                output, format="JPEG", quality=90, optimize=True
+            )
+            return output.getvalue(), "image/jpeg"
+    except Exception:
+        # Invalid/unsupported images retain their validated original payload;
+        # provider-side handling remains responsible for final decode errors.
+        return data, mime
 
 
 def image_attachment(data: bytes, name: str, mime: str = "image/png") -> dict:
