@@ -140,7 +140,7 @@ class ChatTransfer:
         return value
 
     def write_export(self, directory: str | Path, *, filename="kira-chat-export.json", conversation_ids=None, character_id=None) -> Path:
-        if not _SAFE_FILENAME.fullmatch(filename) or filename in {".", ".."}:
+        if not _SAFE_FILENAME.fullmatch(filename) or filename in {".", ".."} or not filename.lower().endswith(".json"):
             raise TransferError("Filename must be a simple basename without path components")
         root = Path(directory).resolve()
         if not root.is_dir(): raise TransferError("Export directory must already exist")
@@ -166,7 +166,7 @@ class ChatTransfer:
                 document = json.loads(_json_bytes(source).decode("utf-8-sig"),
                     object_pairs_hook=_reject_duplicate_keys,
                     parse_constant=lambda value: (_ for _ in ()).throw(TransferError(f"Invalid JSON number: {value}")))
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
                 raise TransferError(f"Invalid UTF-8 JSON document: {exc}") from exc
         if not isinstance(document, dict): raise TransferError("Export root must be an object")
         if type(document.get("schema_version")) is not int or document["schema_version"] != SCHEMA_VERSION:
@@ -177,7 +177,7 @@ class ChatTransfer:
         raw_convs = document.get("conversations")
         if not isinstance(raw_convs, list) or len(raw_convs) > MAX_CONVERSATIONS:
             raise TransferError("conversations must be an array within the 1,000 item limit")
-        conversations, messages, seen = [], [], set()
+        conversations, messages, seen, seen_message_ids = [], [], set(), set()
         for ci, conv in enumerate(raw_convs):
             if not isinstance(conv, dict): raise TransferError(f"conversations[{ci}] must be an object")
             conv_id, char_id = conv.get("id"), conv.get("character_id")
@@ -188,7 +188,7 @@ class ChatTransfer:
             if not isinstance(char_id, str) or not char_id.strip() or len(char_id) > 128:
                 raise TransferError(f"conversations[{ci}].character_id is invalid")
             status = conv.get("status", "active")
-            if status not in {"active", "closed", "archived"}: raise TransferError(f"conversations[{ci}].status is invalid")
+            if not isinstance(status, str) or status not in {"active", "closed", "archived"}: raise TransferError(f"conversations[{ci}].status is invalid")
             raw_msgs = conv.get("messages")
             if not isinstance(raw_msgs, list): raise TransferError(f"conversations[{ci}].messages must be an array")
             conversations.append({
@@ -202,10 +202,12 @@ class ChatTransfer:
                 if not isinstance(msg, dict): raise TransferError(f"conversations[{ci}].messages[{mi}] must be an object")
                 mid, role, content = msg.get("id"), msg.get("role"), msg.get("content")
                 if type(mid) is not int or mid < 1: raise TransferError(f"conversations[{ci}].messages[{mi}].id must be positive integer")
-                if role not in _ALLOWED_ROLES or not isinstance(content, str) or len(content) > MAX_CONTENT_CHARS:
+                if mid in seen_message_ids: raise TransferError(f"Duplicate message ID in export: {mid}")
+                seen_message_ids.add(mid)
+                if not isinstance(role, str) or role not in _ALLOWED_ROLES or not isinstance(content, str) or len(content) > MAX_CONTENT_CHARS:
                     raise TransferError(f"conversations[{ci}].messages[{mi}] has invalid role/content")
                 msg_status = msg.get("status", "complete")
-                if msg_status not in _ALLOWED_STATUSES: raise TransferError(f"conversations[{ci}].messages[{mi}].status is invalid")
+                if not isinstance(msg_status, str) or msg_status not in _ALLOWED_STATUSES: raise TransferError(f"conversations[{ci}].messages[{mi}].status is invalid")
                 if msg.get("conversation_id", conv_id) != conv_id: raise TransferError("Message conversation reference mismatch")
                 if msg.get("character_id", char_id) != char_id: raise TransferError("Message character reference mismatch")
                 messages.append({

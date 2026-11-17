@@ -16,7 +16,7 @@ UTF-8 JSON uses `schema_version: 1`, `export_version: "1.0"`, UTC `exported_at`,
 - JSON only: no pickle, object hooks, executable payloads or embedded file paths.
 - Duplicate object keys, malformed records, unsupported roles/statuses, mismatched references and duplicate conversation IDs reject the document.
 - Same-ID/same-character conversations are reused without overwriting existing metadata. A conversation ID owned by another character is remapped to a new UUID.
-- Free message IDs are preserved; conflicting IDs are auto-remapped. Identical message fingerprints are skipped.
+- Free message IDs are preserved when possible. If one non-duplicate ID collision occurs in a conversation, that conversation’s imported message IDs are allocated together to preserve equal-timestamp ordering; identical message fingerprints are skipped. Identical message fingerprints are skipped.
 - All durable inserts run in one repository transaction and roll back on failure.
 - `preview_import` validates/counts without writing; `import_data` validates again before commit.
 

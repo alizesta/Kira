@@ -1030,6 +1030,28 @@ class SqliteChatRepository:
                                         str(row[4] or ""), json.dumps(_json_object(row[5]), ensure_ascii=False, sort_keys=True),
                                         str(row[6] or "complete")))
                     used_ids = {int(row[0]) for row in con.execute("SELECT id FROM messages")}
+                    # If any non-duplicate ID collision occurs in a conversation, allocate
+                    # fresh IDs for that conversation's imported messages as a group. This
+                    # keeps equal-timestamp message order stable under the repository's
+                    # (created_at, id) ordering contract.
+                    order_remap_conversations = set()
+                    seen_source_ids = set()
+                    for item in messages:
+                        source_id = item.get("id")
+                        conv_id = conversation_map[str(item["conversation_id"])]
+                        cid = _character_id(item["character_id"])
+                        metadata = _json_object(item.get("metadata"))
+                        signature = (
+                            str(item["role"]), str(item["content"]), str(item.get("created_at", "")),
+                            cid, conv_id, json.dumps(metadata, ensure_ascii=False, sort_keys=True),
+                            str(item.get("status", "complete")),
+                        )
+                        if signature not in signatures and source_id is not None and (
+                            int(source_id) in used_ids or int(source_id) in seen_source_ids
+                        ):
+                            order_remap_conversations.add(conv_id)
+                        if source_id is not None:
+                            seen_source_ids.add(int(source_id))
                     imported_messages = skipped_duplicates = remapped_messages = 0
                     for item in messages:
                         cid = _character_id(item["character_id"])
@@ -1045,7 +1067,7 @@ class SqliteChatRepository:
                             skipped_duplicates += 1
                             continue
                         source_id = item.get("id")
-                        if source_id is not None and int(source_id) not in used_ids:
+                        if source_id is not None and int(source_id) not in used_ids and conv_id not in order_remap_conversations:
                             con.execute(
                                 "INSERT INTO messages(id, role, content, created_at, character_id, conversation_id, metadata, status) VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?)",
                                 (int(source_id), role, body, stamp, cid, conv_id, meta_json, status),
