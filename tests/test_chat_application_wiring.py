@@ -17,6 +17,7 @@ class ChatApplicationWiringTests(unittest.TestCase):
             for path in WINDOW_FILES
         }
         cls.source = "\n".join(cls.sources.values())
+        cls.chat_source = (UI_ROOT / "main_window_chat.py").read_text(encoding="utf-8")
         cls.trees = {
             path: ast.parse(source, filename=str(path))
             for path, source in cls.sources.items()
@@ -57,6 +58,7 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("create_session_application_service_factory", bootstrap)
         self.assertIn("session_application_service_factory", self.source)
         self.assertIn("chat_application_service_factory", bootstrap)
+        self.assertIn("web_search_service=web_search_service", bootstrap)
         self.assertIn("create_chat_application_service_factory", bootstrap)
         self.assertIn("chat_application_service_factory(self)", self.source)
         self.assertIn("ChatApplicationService", composition)
@@ -68,6 +70,19 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("self.session_application_service.bind_conversation(session)", self.source)
         self.assertIn("conversation_id=self.cur.conversation_id", self.source)
         self.assertIn("self.cur.conversation_id", self.source)
+
+    def test_web_search_policy_is_owned_by_injected_application_service(self):
+        bootstrap = (ROOT / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8")
+        service = (ROOT / "kira" / "app" / "web_search.py").read_text(encoding="utf-8")
+        self.assertIn("WebSearchApplicationService()", bootstrap)
+        self.assertIn("self.web_search_service.web_search_options", self.chat_source)
+        self.assertIn("self.web_search_service.image_search_options", self.chat_source)
+        self.assertIn("def web_search_options(", service)
+        self.assertIn("def merge_search_content(", service)
+        self.assertNotIn("generativelanguage", self.chat_source)
+        self.assertNotIn("websearch.is_followup", self.chat_source)
+        self.assertNotIn("def make_search_query(", self.chat_source)
+        self.assertNotIn("def make_image_query(", self.chat_source)
 
     def test_main_window_does_not_import_chat_internal_components(self):
         self.assertNotIn("from .chat.coordinator import", self.source)
