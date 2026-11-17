@@ -31,7 +31,6 @@ class ChatSearchRequest:
     conversation_id: str | None = None
     session_id: str | None = None
     character_id: str | None = None
-    conversation_statuses: tuple[str, ...] = ()
     roles: tuple[str, ...] = ()
     start_at: str | datetime | date | None = None
     end_at: str | datetime | date | None = None
@@ -39,6 +38,7 @@ class ChatSearchRequest:
     match_mode: str = "phrase"
     page: int = 1
     page_size: int = 20
+    conversation_statuses: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
