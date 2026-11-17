@@ -599,6 +599,8 @@ class RuntimeMixin:
             self.say(self.t("night"))
             return
         elif decision.action == "stop":
+            if self.wake_btn.isChecked() and self.awake:
+                self.wake_timer.start(int(self.settings["wake_timeout"]) * 1000)
             self.safe_stop_speaker()
             return
         elif self.wake_btn.isChecked() and self.awake:
