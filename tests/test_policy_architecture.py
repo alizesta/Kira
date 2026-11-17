@@ -54,6 +54,7 @@ class PolicyArchitectureTests(unittest.TestCase):
         self.assertIn("self.coding_agent_application_service.dispatch(", sources)
         self.assertIn("self.coding_agent_application_service.stop_session(", sources)
         self.assertNotIn("self.code_chat.handle(", sources)
+        self.assertNotIn("self.code_chat.stop(", sources)
         self.assertNotIn("code_chat.stop(session)", sources)
 
     def test_application_policy_services_are_qt_free_and_bootstrap_injected(self):
