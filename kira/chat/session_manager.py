@@ -58,9 +58,9 @@ class _CharacterSessionView(Mapping[str, Any]):
 class SessionManager:
     """Thread-safe owner of in-memory chat Session lifecycle.
 
-    conversation_resolver may return a Persistence-owned conversation record.
-    Only its identifier and metadata are copied onto the runtime Session; this
-    manager never stores messages or performs persistence operations itself.
+    Durable conversation identity and message history belong to Persistence.
+    This manager deliberately has no Persistence dependency; the application
+    layer binds a conversation_id to the runtime Session after creation.
 
     Closing uses graceful drain. New activation is rejected while already
     admitted work completes. The injected disposer releases external resources
@@ -92,14 +92,12 @@ class SessionManager:
         self,
         session_factory: Callable[..., Any],
         *,
-        conversation_resolver: Callable[[str], Any] | None = None,
         has_pending_work: Callable[[Any], bool] | None = None,
         dispose_callback: Callable[[Any], None] | None = None,
     ) -> None:
         if not callable(session_factory):
             raise TypeError("session_factory must be callable")
         self._session_factory = session_factory
-        self._conversation_resolver = conversation_resolver
         self._has_pending_work = has_pending_work or (lambda _session: False)
         self._dispose_callback = dispose_callback
         self._lock = RLock()
@@ -232,23 +230,14 @@ class SessionManager:
             if not sid.strip() or sid in self._sessions or sid in self._closed_ids:
                 raise ValueError("session_id must be a new, non-empty identifier")
 
-            conversation = (
-                self._conversation_resolver(cid)
-                if self._conversation_resolver is not None else None
-            )
-            if isinstance(conversation, Mapping):
-                conversation_id = conversation.get("id") or conversation.get("conversation_id")
-                conversation_metadata = conversation.get("metadata")
-            else:
-                conversation_id = getattr(conversation, "id", None)
-                conversation_metadata = getattr(conversation, "metadata", None)
-
             session = self._session_factory(cid, session_id=sid)
+            if str(getattr(session, "session_id", "")) != sid:
+                raise SessionLifecycleError(
+                    "session_factory must preserve the requested immutable session_id"
+                )
             created_at = _now()
             session.cid = cid
             session.character_id = cid
-            session.session_id = sid
-            session.conversation_id = str(conversation_id) if conversation_id else None
             session.status = SessionStatus.CREATED.value
             session.created_at = created_at
             session.updated_at = created_at

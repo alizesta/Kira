@@ -308,12 +308,7 @@ class MainWindow(QMainWindow):
         self.settings = load_settings()
         self.response_handler = ResponseHandler()
         self._db_notes = self.chat_history_service.init_db()
-        if session_manager is None:
-            session_manager = SessionManager(
-                ChatSession,
-                conversation_resolver=self.chat_history_service.get_or_create_conversation,
-            )
-        self.session_manager = session_manager
+        self.session_manager = session_manager or SessionManager(ChatSession)
         self.session_manager.set_runtime_callbacks(
             has_pending_work=self._session_has_pending_chat_work,
             dispose_callback=self._release_chat_session_resources,
@@ -324,6 +319,7 @@ class MainWindow(QMainWindow):
         )
         self.session_manager.activate_session(self.cur.session_id)
         self.front = self.cur
+        self._ensure_session_conversation(self.cur)
         self._save_warned = False
         self._emotion_applied = False
         self._closing = False
@@ -658,12 +654,32 @@ class MainWindow(QMainWindow):
         except Exception:                                   # noqa: BLE001 - mood is a bonus, never block the UI
             pass
 
+    def _ensure_session_conversation(self, session):
+        """Resolve and retain the durable conversation identity for one character session."""
+        if getattr(session, "conversation_id", None):
+            return session.conversation_id
+        getter = getattr(self.chat_history_service, "get_or_create_conversation", None)
+        if not callable(getter):
+            return None
+        try:
+            conversation = getter(session.cid)
+            session.conversation_id = str(conversation["id"])
+        except Exception:                                      # noqa: BLE001 - the chat can continue during a DB outage
+            session.conversation_id = None
+        return session.conversation_id
+
     def _ensure_session(self, cid, profile):
         sess = self.session_manager.get_session_for_character(cid)
+        if sess is not None and sess.status == "closing":
+            if not self.session_manager.reopen_session(sess.session_id):
+                return None
+        elif sess is not None and sess.status == "failed":
+            if not self.session_manager.close_session(sess.session_id):
+                return None
+            sess = None
         if sess is None:
             sess = self.session_manager.create_session(cid)
-        elif sess.status == "closing":
-            self.session_manager.reopen_session(sess.session_id)
+        self._ensure_session_conversation(sess)
         if sess.view is None:
             sess.view = self.make_session_view()
             self.chat_stack.addWidget(sess.view)
@@ -698,6 +714,8 @@ class MainWindow(QMainWindow):
         order += [c for c in self.sessions if c not in order]          # a deleted character that is still answering keeps its tab for now
         for cid in [c for c in self.sessions if c not in profiles]:      # a deleted character stays until its queued/active work is drained
             sess = self.sessions[cid]
+            if self._session_has_pending_chat_work(sess):
+                continue
             self._dispose_chat_session(sess)
         while self.char_tabs_row.count():                                # rebuild the row in character order
             self.char_tabs_row.takeAt(0)
@@ -729,23 +747,11 @@ class MainWindow(QMainWindow):
                 and self._worker_is_running(getattr(self, "_vision_worker", None)))
 
     def _dispose_chat_session(self, session):
-        """Request graceful lifecycle closure through SessionManager."""
-        was_front = self.front is session
-        closed = self.session_manager.close_session(session.session_id)
-        if was_front:
-            fallback = self.session_manager.get_session_for_character("kira")
-            if fallback is session or fallback is None or fallback.status in ("closing", "closed", "failed"):
-                fallback = next(
-                    (item for item in self.session_manager.list_sessions()
-                     if item is not session and item.status not in ("closing", "closed", "failed")),
-                    None,
-                )
-            if fallback is not None and fallback is not session:
-                self.switch_session(fallback.cid)
-        return closed
+        """Request lifecycle closure; SessionManager owns the state transition."""
+        return self.session_manager.close_session(session.session_id)
 
     def _release_chat_session_resources(self, session):
-        """Qt/resource adapter called by SessionManager after owned work has drained."""
+        """Release UI/provider resources after SessionManager confirms the work has drained."""
         coordinator = getattr(session, "coordinator", None)
         if coordinator is not None:
             coordinator.clear()
@@ -794,6 +800,15 @@ class MainWindow(QMainWindow):
                     pass
                 self._vision_worker = None
             self._vision_session = None
+        if not getattr(self, "_closing", False) and (self.front is session or self.cur is session):
+            fallback = next(
+                (item for item in self.session_manager.list_sessions()
+                 if item is not session and item.status not in ("closing", "closed", "failed")),
+                None,
+            )
+            if fallback is not None:
+                self.switch_session(fallback.cid)
+        return True
 
     def refresh_tab_buttons(self):
         profiles = self.character_service.all_profiles(self.settings)
@@ -885,10 +900,14 @@ class MainWindow(QMainWindow):
 
     def restore_history(self, limit=40):
         """Show the saved conversation of the CURRENT chat again after a restart (it is already used as model context)."""
+        conversation_id = self._ensure_session_conversation(self.cur)
         try:
-            history = self.chat_history_service.recent_messages(
-                limit, self.cur.cid, self.cur.conversation_id
-            )
+            if conversation_id:
+                history = self.chat_history_service.recent_messages(
+                    limit, self.cur.cid, conversation_id=conversation_id
+                )
+            else:
+                history = self.chat_history_service.recent_messages(limit, self.cur.cid)
         except Exception:
             history = []
         shown = 0
@@ -4406,8 +4425,12 @@ class MainWindow(QMainWindow):
         self._search_token += 1
         self._search_base = (base_text, images)
         self.status.setText(f"🌐 در حال جست‌وجوی وب: «{query[:60]}»…")
-        history = self.chat_history_service.conversation_context(
-            8, character_id=self.cur.cid, conversation_id=self.cur.conversation_id
+        conversation_id = self._ensure_session_conversation(self.cur)
+        history = (
+            self.chat_history_service.conversation_context(
+                8, character_id=self.cur.cid, conversation_id=conversation_id
+            ) if conversation_id else
+            self.chat_history_service.conversation_context(8, character_id=self.cur.cid)
         )
         # The user's own words are sent unchanged. Only a short follow-up that points back at the chat is rewritten by the model.
         rewrite = (lambda c=self.client: self.make_search_query(history, query, c)) if websearch.is_followup(query) else None
@@ -4504,13 +4527,20 @@ class MainWindow(QMainWindow):
 
     def start_worker(self, plain):
         window = int(self.settings.get("memory_context_limit", 12))
-        history = self.chat_history_service.conversation_context(
-            window, character_id=self.cur.cid, conversation_id=self.cur.conversation_id
+        conversation_id = self._ensure_session_conversation(self.cur)
+        history = (
+            self.chat_history_service.conversation_context(
+                window, character_id=self.cur.cid, conversation_id=conversation_id
+            ) if conversation_id else
+            self.chat_history_service.conversation_context(window, character_id=self.cur.cid)
         )
         mode = self.detect_mode(history)                          # Active Mode of THIS message (None = switched off in settings)
         try:
-            older = self.chat_history_service.recent_messages(
-                window + 40, self.cur.cid, self.cur.conversation_id
+            older = (
+                self.chat_history_service.recent_messages(
+                    window + 40, self.cur.cid, conversation_id=conversation_id
+                ) if conversation_id else
+                self.chat_history_service.recent_messages(window + 40, self.cur.cid)
             )[:-window] if window else []
             # Every character has its own saved conversation; only Kira owns the legacy evidence index.
             character_id = self.cur.cid
@@ -4521,14 +4551,18 @@ class MainWindow(QMainWindow):
                 query=evidence_memory.query_from_context(history) if character_id == "kira" else None,
                 budget=evidence_memory.budget_for(self.settings, self.client),
             )
-            total = self.chat_history_service.message_count(
-                character_id, self.cur.conversation_id
+            total = (
+                self.chat_history_service.message_count(character_id, conversation_id)
+                if conversation_id else self.chat_history_service.message_count(character_id)
             )
             if self.memory_service.needs_summary(character_id, total, window):
                 self.memory_service.maintain(
                     character_id,
-                    self.chat_history_service.recent_messages(
-                        min(total, 3000), character_id, self.cur.conversation_id
+                    (
+                        self.chat_history_service.recent_messages(
+                            min(total, 3000), character_id, conversation_id=conversation_id
+                        ) if conversation_id else
+                        self.chat_history_service.recent_messages(min(total, 3000), character_id)
                     ),
                     window,
                 )
@@ -4618,11 +4652,14 @@ class MainWindow(QMainWindow):
             has_attachment = bool(self._turn_attach_kinds or (extra and (extra.get("images") or "--- فایل ضمیمه" in str(extra.get("model", "")))))
             earlier = users[:-1]
             try:                                                   # a "no jokes" request must outlive the short context window
-                longer = [
-                    m["content"] for m in self.chat_history_service.recent_messages(
-                        80, self.cur.cid, self.cur.conversation_id
-                    ) if m.get("role") == "user"
-                ]
+                conversation_id = self._ensure_session_conversation(self.cur)
+                longer_history = (
+                    self.chat_history_service.recent_messages(
+                        80, self.cur.cid, conversation_id=conversation_id
+                    ) if conversation_id else
+                    self.chat_history_service.recent_messages(80, self.cur.cid)
+                )
+                longer = [m["content"] for m in longer_history if m.get("role") == "user"]
                 if len(longer) > len(users):
                     earlier = longer[:-1]
             except Exception:                                      # noqa: BLE001
@@ -5003,14 +5040,15 @@ class MainWindow(QMainWindow):
     def save_message(self, role, content, *, status="complete", metadata=None):
         """Persist one message through the history contract; interrupted streams remain explicitly incomplete."""
         try:
-            if status == "complete" and metadata is None:
-                ok = self.chat_history_service.add_message(
-                    role, content, self.cur.cid, conversation_id=self.cur.conversation_id
-                )
+            conversation_id = self._ensure_session_conversation(self.cur)
+            options = {"conversation_id": conversation_id} if conversation_id else {}
+            if status == "complete" and metadata is None and not options:
+                ok = self.chat_history_service.add_message(role, content, self.cur.cid)
+            elif status == "complete" and metadata is None:
+                ok = self.chat_history_service.add_message(role, content, self.cur.cid, **options)
             else:
                 ok = self.chat_history_service.add_message(
-                    role, content, self.cur.cid, conversation_id=self.cur.conversation_id,
-                    status=status, metadata=metadata
+                    role, content, self.cur.cid, status=status, metadata=metadata, **options
                 )
         except Exception as exc:                                  # noqa: BLE001
             ok = False
@@ -5341,7 +5379,12 @@ class MainWindow(QMainWindow):
             if self._running_background_workers():
                 event.ignore()
                 return
-            self.session_manager.dispose()
+            for session in self.session_manager.list_sessions():
+                session.busy = False
+            if not self.session_manager.dispose():
+                event.ignore()
+                QTimer.singleShot(100, self.close)
+                return
             event.accept()
             QTimer.singleShot(0, QApplication.quit)
             return
@@ -5405,7 +5448,12 @@ class MainWindow(QMainWindow):
             if not self._running_background_workers():
                 QTimer.singleShot(0, self.close)
             return
-        self.session_manager.dispose()
+        for session in self.session_manager.list_sessions():
+            session.busy = False
+        if not self.session_manager.dispose():
+            event.ignore()
+            QTimer.singleShot(100, self.close)
+            return
         event.accept()
         QTimer.singleShot(0, QApplication.quit)                     # the tray keeps 'last window closed' from quitting by itself
     def reload_chat_view(self):

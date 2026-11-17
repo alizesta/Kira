@@ -59,7 +59,7 @@ Kira is migrating incrementally toward independent UI, application logic, servic
 1. **Stabilize UI boundaries:** Help, Voice, Appearance, Characters, Assistant and Preferences page layouts are extracted. Continue with the Chat page and remaining registered-API/detail tables and model catalog settings subpages; each extraction keeps a compatibility import only where existing call sites need it.
 2. **Split the shell by page:** make the window responsible for navigation, shared theme and page hosting; the Voice and Characters page widgets are now independent, but their controllers still partly live in MainWindow. Continue extracting Chat and Settings controllers and remove the remaining feature orchestration from the shell. Page actions must be delegated to controllers/services rather than calling other page internals.
 3. **Extract application services:** Character, Memory, Mood and SQLite chat history have Protocols, concrete adapters and production bootstrap injection. Continue with chat orchestration, Voice, Provider, Web Research and Coding Agent contracts; wire each implementation once in bootstrap and inject it into controllers.
-4. **Move persistence and adapters:** centralize database, settings storage, provider clients, model discovery, audio devices and logging behind infrastructure adapters. Preserve existing user-data formats and migration behavior.
+4. **Move remaining persistence and adapters:** chat history now has a dedicated SQLite repository with an additive schema migration. Continue centralizing settings storage, provider clients, model discovery, audio devices and logging behind infrastructure adapters; preserve all existing user-data formats and migration behavior.
 5. **Adopt the lifecycle manager:** the generic register/start/stop/dispose engine and dependency validation are implemented and unit-tested. Next, define manifests for actual feature modules, register them from bootstrap, persist enabled state and add user-facing enable/disable controls. Optional module failure must not prevent core chat from starting.
 6. **Enforce boundaries:** add import-boundary and lifecycle tests to prevent UI imports from services, direct cross-module implementation imports, circular dependencies and unload leaks.
 7. **Validate behavior:** run the full CI suite and targeted GUI/offscreen tests at each stage; do not mark a subsystem independent until its behavior is tested through its contract. Hardware-specific audio, avatar and desktop checks remain explicit manual acceptance items.
@@ -77,7 +77,7 @@ Kira is migrating incrementally toward independent UI, application logic, servic
 1. **Foundation:** application package, bootstrap, EventBus, dependency container and stable service contracts.
 2. **UI shell:** extract MainWindow shell/navigation and page registration while retaining compatibility imports.
 3. **Page extraction:** Help, Appearance, Voice, Characters, Assistant and Preferences views and the RouteEditor/McpRegistryPanel components are extracted; next move Chat and remaining registered-API/detail tables and model catalog settings views and move all page controllers out of MainWindow.
-4. **Service extraction:** move chat, memory and local voice orchestration behind contracts; inject implementations from bootstrap.
+4. **Service extraction:** character, memory, mood and chat-history persistence already have injected service contracts. Continue moving chat request orchestration and local voice orchestration behind their own contracts; inject implementations from bootstrap.
 5. **Module lifecycle:** add manifest-based registration, dependency checks, enable/disable and safe unload only after service boundaries are stable.
 6. **Independent modules:** extract Avatar, Web Research/Agent Reach and Coding Agent without coupling them to MainWindow internals.
 
@@ -142,52 +142,33 @@ The migration reference is temporary. Its purpose is to preserve working behavio
 
 - `kira/chat/persistence.py` is the Qt-free owner of durable conversation and message storage. It defines `ChatRepository`, `SqliteChatRepository` and the application-facing `ChatPersistence` façade. SQLite connections, transactions, migrations, ordering, backups, corruption recovery, imports, snapshots and pending writes are contained in this module.
 - The production `SqliteChatHistoryService` is injected at startup and delegates through the shared `ChatPersistence` instance. MainWindow calls the service contract only; it does not open SQLite connections, issue SQL or depend on the database schema.
-- `kira/memory.py` is now a compatibility facade for historical imports and integrations. It forwards the legacy function signatures to the repository. The evidence-memory index resolves chat message IDs through the history API rather than importing the chat database connection.
+- `kira/memory.py` is a compatibility façade for historical imports and integrations. It forwards the legacy function signatures to the repository. The evidence-memory index resolves message IDs through the history API; its `rows_with_ids` cursor remains ordered by monotonically increasing message ID, independently of timestamp-based history presentation.
 - `ChatPersistence` supports creating, retrieving, listing, updating, closing and deleting conversations, and appending/querying/deleting messages. A stable active conversation is resolved per character by default; explicit conversation IDs allow multiple independent conversations for one character. Character IDs are data attributes, not dependencies on character implementations.
+- Each UI `ChatSession` now retains its persisted `conversation_id`. MainWindow resolves it when the session is initialized and supplies the same ID to message writes, history restoration, prompt-context reads, web-search context, long-history memory and mode detection. The session adapter no longer joins separate conversations belonging to the same character.
 - Message records retain the legacy integer ID and timestamp and add `conversation_id`, JSON `metadata` and a `status` (`streaming`, `complete`, `interrupted`, `failed` or `cancelled`). Repeated stream snapshots can update one message by its stable message ID instead of adding duplicates. The legacy API continues to return the original role/content shape.
 - Conversation rows store a UUID identifier, character ID, title, JSON metadata, lifecycle status and creation/update timestamps. Kira, Ren, Mika and custom characters use the same repository and database; reads and deletes are scoped by character or conversation.
-- The adapter preserves the existing `kira_memory.sqlite3` file, row IDs, roles, content, timestamps, character ownership, duplicate/import behavior, in-memory pending writes, corruption quarantine, recovery from backups, clear snapshots, restore and import.
-- Schema version 1 is additive. Before changing an existing legacy schema, an SQLite online backup is stored under `snapshots/pre-migration-*`; all DDL and backfill updates run in one SQLite transaction. Legacy rows are assigned a deterministic UUIDv5 conversation per character, with empty metadata and `complete` status. The original message rows and IDs are not rewritten or deleted. The schema version is recorded in `persistence_schema` and `PRAGMA user_version`. No migration is destructive.
+- The adapter preserves the existing `kira_memory.sqlite3` file, row IDs, roles, content, timestamps, character ownership, in-memory pending writes, corruption quarantine, recovery from backups, clear snapshots, restore and import. Import is append-only: it never rewrites existing target rows; it retains source message IDs when they are unused and assigns new IDs above the existing/source maximum only for collisions. Existing deduplication and chronological presentation are preserved.
+- Schema version 1 is additive. Before changing an existing legacy schema, an SQLite online backup is stored under `snapshots/pre-migration-*`; all DDL and backfill updates run in one SQLite transaction. Legacy rows are assigned a deterministic UUIDv5 conversation per character, with empty metadata and `complete` status. Original message rows and IDs are not rewritten or deleted. The version is recorded in `persistence_schema` and `PRAGMA user_version`; newer database versions are rejected without downgrade. A fresh database does not create a misleading pre-migration snapshot.
+- Clear and per-conversation deletion take an explicit SQLite `BEGIN IMMEDIATE` lock through the safety snapshot and delete, preventing another writer from slipping messages between the backup and deletion. Normal operations on an already-migrated database do not take a schema write lock.
 - Interrupted provider responses and visible partial text saved during window shutdown are marked explicitly as `interrupted`; user-stopped output is marked `cancelled`. Existing completed-message calls retain their previous service signature.
-- `tests/test_chat_persistence_contract.py` now covers dependency injection without Qt, per-character isolation, stable and multiple conversations, metadata/timestamp/status round-trip, idempotent stream updates, scoped conversation deletion, concurrent saves and additive legacy-schema migration. `tests/test_chat_persistence.py` and `tests/test_character_chats.py` retain regression coverage for restart, locking, corruption recovery, backup/restore, import and character isolation.
+- `tests/test_chat_persistence_contract.py` covers dependency injection without Qt, Kira/Ren/Mika isolation, stable and multiple conversations, metadata/timestamp/status round-trip, idempotent stream updates, ownership checks, database-outage queue routing, concurrent writes, import ID preservation/collision handling and additive/rollback-safe migration. `tests/test_chat_persistence.py` and `tests/test_character_chats.py` cover restart, locking, corruption recovery, backup/restore, import, monotonic evidence cursors, partial-stream status and UI session isolation.
 
 ### Validation status
 
-- The code and tests have been committed directly to `new-main`; the local working copy was not available in this environment, so no local Python import/compile or unittest command has been executed.
-- GitHub Actions still cannot provide test results: the recent workflow attempt failed both `portable-regression` and `windows-full-suite` before any step ran (`steps=[]`, `logs_url=null`). No test PASS is claimed.
-- Remaining acceptance gate: obtain a real run of the focused and full regression suites, including the offscreen Qt tests and a Windows application smoke test. Until those tests execute successfully, TASK 005 remains implemented but not fully verified.
+- Implementation and test changes are committed directly to `new-main`. The local checkout is unavailable in this execution environment, so no local Python compile/import or unittest command has been executed.
+- GitHub Actions jobs have repeatedly failed before executing steps (`steps=[]`, `logs_url=null`); this is not a passing test result and does not establish a code failure. The focused and full suites still require a runner that can actually start the jobs.
+- TASK 005 code extraction is implemented; automated/Windows acceptance remains unverified until focused tests, regression tests, Qt offscreen tests and a real Windows app smoke test execute successfully.
 
 
 ## Chat Session lifecycle and state ownership (TASK 007)
 
-- kira/chat/session_manager.py is the Qt-free owner of runtime Session registration, identity, activation, deactivation, lifecycle transitions, state notifications and graceful disposal. It manages the existing kira.chat_sessions.ChatSession model; no parallel Session record model is introduced.
-- Runtime session_id is a generated, immutable identifier for one in-memory Session lifetime. conversation_id remains the durable identifier owned by ChatPersistence and is resolved through the injected history adapter. The manager copies the reference but never creates, updates, deletes or stores conversation/message data itself.
-- Session states are created, active, idle, closing, closed and failed. A lock serializes transitions and guarantees at most one active Session. Closed identities cannot be reactivated; a closing Session may return to idle only before final resource disposal starts.
-- State changes are published as immutable SessionStateChanged notifications. Observer exceptions are isolated from lifecycle operations. Repeated deactivation and close requests are idempotent.
-- Closing uses graceful drain rather than silently changing the destination of in-flight work: the manager marks the Session closing, rejects activation and new admission, waits for the injected pending-work predicate to clear, invokes the injected disposer, then marks it closed. Existing queued requests continue through their original Session adapter. Closing one Session does not cancel or mutate another Session.
-- Qt resources remain in the legacy composition adapter. MainWindow supplies the pending-work predicate and resource-disposal callback; the SessionManager imports neither Qt nor MainWindow. kira/app/bootstrap.py creates the manager and injects it into MainWindow, while the existing character-keyed registry remains a read-only live compatibility view.
-- Chat persistence reads and writes are pinned to the Session's Persistence-owned conversation_id. The manager owns only runtime status and identity; Persistence remains the sole owner of durable conversations and message history.
-- Pure tests are in tests/test_chat_session_manager.py. They cover identity, state transitions, Kira/Ren/Mika isolation, graceful close with active work, idempotency, disposal retry, event delivery and concurrent activation. Windows and GUI tests are intentionally outside TASK 007's validation scope.
-- The base branch does not yet contain the TASK 006 Chat Application Service implementation. This task therefore wires the manager through the existing bootstrap/application composition boundary; MainWindow remains a compatibility adapter until TASK 006 provides its owning application-service contract. No parallel temporary Chat Application Service is introduced.
-
-### Session lifecycle state diagram
-
-\`\`\`mermaid
-stateDiagram-v2
-    [*] --> created
-    created --> active
-    created --> idle
-    active --> idle
-    idle --> active
-    created --> closing
-    active --> closing
-    idle --> closing
-    closing --> idle: character restored before disposal
-    closing --> closed: work drained and resources released
-    created --> failed
-    active --> failed
-    idle --> failed
-    closing --> failed: disposal error
-    failed --> closing: retry close
-    closed --> [*]
-\`\`\`
+- \`kira/chat/session_manager.py\` is the Qt-free owner of runtime Session identity, registration, activation, deactivation, legal state transitions, notifications, graceful close and final disposal. It manages the existing \`kira.chat_sessions.ChatSession\` model; it does not introduce a parallel Session model.
+- \`session_id\` is a generated, immutable identifier for one runtime Session lifetime. \`conversation_id\` remains independently owned by ChatPersistence and is bound by the application/persistence adapter after runtime Session creation. SessionManager has no Persistence dependency and never reads/writes conversations or messages.
+- Runtime states are \`created\`, \`active\`, \`idle\`, \`closing\`, \`closed\` and \`failed\`. A reentrant lock serializes transitions and ensures only one Session is active at a time. Closed Session identities cannot be reactivated; failed Sessions can only enter the closing path for cleanup.
+- State changes are published as immutable \`SessionStateChanged\` events. Listener failures are isolated. Repeated deactivation and close requests are idempotent.
+- Closing is graceful: the manager marks a Session closing, rejects activation, checks the injected pending-work predicate, waits for admitted work to drain, calls the injected disposer, then marks it closed. A failed disposal is surfaced as \`failed\` and can be retried. Closing one Session does not mutate another.
+- The existing MainWindow is retained only as a compatibility/resource adapter. Bootstrap creates and injects SessionManager; MainWindow delegates registry, creation, activation, closing and shutdown lifecycle to it. Qt resources are released by an injected callback after the pending-work check; SessionManager imports no Qt/UI modules.
+- The character-keyed \`sessions\` mapping is now a live read-only compatibility view. New lifecycle code must use SessionManager APIs rather than mutating the registry directly.
+- \`tests/test_chat_session_manager.py\` exercises runtime identity, status transitions, Kira/Ren/Mika isolation, active-session switching, graceful close with pending work, disposal retry, event subscription, idempotency and concurrent activation. Tests are pure Python and do not construct Qt or MainWindow.
+- **Application Service integration dependency:** TASK 006 exists on branch \`refactor/chat-application-service\` (Draft PR #35) but is not part of the mandated \`new-main\` base yet. This change deliberately does not copy or duplicate that service. The manager exposes immutable \`session_id\` for the Application Service to use as its request owner when TASK 006 is merged. The current Base integration remains through the legacy MainWindow adapter until that merge.
+- Windows and GUI tests are intentionally outside TASK 007's test scope.

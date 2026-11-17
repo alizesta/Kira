@@ -48,18 +48,21 @@ SESSION_FIELDS = {
 
 
 class ChatSession:
-    """Existing per-character runtime model, extended with explicit lifecycle identity."""
-
     def __init__(self, character_id: str, *, session_id: str | None = None):
         self.cid = str(character_id)
         self.character_id = self.cid
-        self.session_id = str(session_id or uuid4())
-        self.conversation_id = None  # Stable durable ID supplied by ChatPersistence
+        self._session_id = str(session_id or uuid4())
         self.status = "created"
         self.created_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
         self.updated_at = self.created_at
         self.metadata = {}
         self.last_error = None
+        self.conversation_id: str | None = None  # Durable identity owned by ChatPersistence
+
+    @property
+    def session_id(self) -> str:
+        """Immutable identifier for this in-memory Session lifetime."""
+        return self._session_id
         for name, factory in SESSION_FIELDS.items():
             setattr(self, name, factory())
         self.view = None            # QTextBrowser of this chat

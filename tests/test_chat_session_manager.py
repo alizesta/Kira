@@ -11,36 +11,28 @@ from kira.chat_sessions import ChatSession
 
 class SessionManagerTests(unittest.TestCase):
     def make_manager(self, **overrides):
-        resolved = []
-
-        def resolve_conversation(character_id):
-            resolved.append(character_id)
-            return {"id": f"conversation-{character_id}", "metadata": {"persisted": True}}
-
-        options = {"session_factory": ChatSession, "conversation_resolver": resolve_conversation}
+        options = {"session_factory": ChatSession}
         options.update(overrides)
         return SessionManager(**options), resolved
 
-    def test_create_session_has_identity_timestamps_metadata_and_persistence_reference(self):
-        manager, resolved = self.make_manager()
+    def test_create_session_has_runtime_identity_timestamps_and_metadata(self):
+        manager, _ = self.make_manager()
         session = manager.create_session("Kira", metadata={"source": "test"})
         self.assertEqual(session.cid, "kira")
         self.assertEqual(session.character_id, "kira")
         self.assertTrue(session.session_id)
         self.assertEqual(session.status, SessionStatus.CREATED.value)
-        self.assertEqual(session.conversation_id, "conversation-kira")
+        self.assertIsNone(session.conversation_id)
         self.assertTrue(session.created_at)
         self.assertEqual(session.created_at, session.updated_at)
-        self.assertEqual(session.metadata, {"persisted": True, "source": "test"})
-        self.assertEqual(resolved, ["kira"])
+        self.assertEqual(session.metadata, {"source": "test"})
         self.assertIs(manager.get_session(session.session_id), session)
         self.assertIs(manager.get_session_for_character("kira"), session)
 
     def test_create_is_idempotent_per_character_and_recreation_gets_a_new_id(self):
-        manager, resolved = self.make_manager()
+        manager, _ = self.make_manager()
         first = manager.create_session("ren")
         self.assertIs(manager.create_session("REN"), first)
-        self.assertEqual(resolved, ["ren"])
         self.assertTrue(manager.close_session(first.session_id))
         second = manager.create_session("ren")
         self.assertNotEqual(first.session_id, second.session_id)
@@ -150,6 +142,16 @@ class SessionManagerTests(unittest.TestCase):
         manager.close_session(session.session_id)
         self.assertEqual(len(events), 3)
 
+    def test_failed_session_can_only_reenter_closing_for_cleanup(self):
+        manager, _ = self.make_manager()
+        session = manager.create_session("mika")
+        self.assertTrue(manager.fail_session(session.session_id, "provider crashed"))
+        self.assertEqual(session.status, SessionStatus.FAILED.value)
+        self.assertEqual(session.last_error, "provider crashed")
+        self.assertFalse(manager.activate_session(session.session_id))
+        self.assertTrue(manager.close_session(session.session_id))
+        self.assertEqual(session.status, SessionStatus.CLOSED.value)
+
     def test_disposal_failure_is_visible_and_can_be_retried(self):
         failures = {"count": 1}
         def dispose(_session):
@@ -177,6 +179,13 @@ class SessionManagerTests(unittest.TestCase):
         active = [s for s in manager.list_sessions() if s.status == SessionStatus.ACTIVE.value]
         self.assertEqual(len(active), 1)
         self.assertIs(manager.get_active_session(), active[0])
+
+    def test_manager_has_no_persistence_dependency(self):
+        manager, _ = self.make_manager()
+        session = manager.create_session("kira")
+        self.assertIsNone(session.conversation_id)
+        self.assertEqual(session.metadata, {})
+        self.assertFalse(hasattr(manager, "_conversation_resolver"))
 
     def test_dispose_drains_every_session_and_is_idempotent(self):
         disposed = []

@@ -22,10 +22,12 @@ class SqliteChatHistoryService:
 
     @property
     def last_error(self) -> str | None:
+        chat_store.last_error = self._persistence.last_error
         return self._persistence.last_error
 
     def set_last_error(self, message: str | None) -> None:
         self._persistence.set_last_error(message)
+        chat_store.last_error = self._persistence.last_error
 
     def init_db(self) -> list[str]:
         return self._persistence.init_db()
@@ -53,8 +55,14 @@ class SqliteChatHistoryService:
     def get_or_create_conversation(self, character_id=None):
         return self._persistence.get_or_create_conversation(character_id)
 
+    def get_conversation(self, conversation_id):
+        return self._persistence.get_conversation(conversation_id)
+
     def list_conversations(self, character_id=None):
         return self._persistence.list_conversations(character_id)
+
+    def update_conversation(self, conversation_id, **changes):
+        return self._persistence.update_conversation(conversation_id, **changes)
 
     def close_conversation(self, conversation_id):
         return self._persistence.close_conversation(conversation_id)

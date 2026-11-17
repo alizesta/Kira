@@ -82,7 +82,7 @@ def read_rows_full(path):
 
 def _merge(*sources):
     # Preserve the historical private helper's four-field row shape.
-    return [(row[0], row[1], row[2], row[3]) for row in repository._merge(*sources)]
+    return [(row[1], row[2], row[3], row[4]) for row in repository._merge(*sources)]
 
 
 def _write_all(rows):
@@ -133,19 +133,31 @@ def recent_messages(limit=12, character_id=None, conversation_id=None):
 
 def get_messages(limit=1000, character_id=None, conversation_id=None, after_id=0):
     _sync_in()
-    return repository.get_messages(limit, character_id, conversation_id, after_id)
+    try:
+        return repository.get_messages(limit, character_id, conversation_id, after_id)
+    finally:
+        _sync_out()
 
 
 def rows_with_ids(limit=3000, after_id=0, character_id=None):
-    return repository.rows_with_ids(limit, after_id, character_id)
+    try:
+        return repository.rows_with_ids(limit, after_id, character_id)
+    finally:
+        _sync_out()
 
 
 def max_message_id():
-    return repository.max_message_id()
+    try:
+        return repository.max_message_id()
+    finally:
+        _sync_out()
 
 
 def message_id_for(role, content, character_id=None):
-    return repository.message_id_for(role, content, character_id)
+    try:
+        return repository.message_id_for(role, content, character_id)
+    finally:
+        _sync_out()
 
 
 def message_count(character_id=None, conversation_id=None):
@@ -153,10 +165,15 @@ def message_count(character_id=None, conversation_id=None):
         return repository.message_count(character_id, conversation_id)
     except (sqlite3.Error, OSError):
         return 0
+    finally:
+        _sync_out()
 
 
 def pending_count():
-    return repository.pending_count()
+    try:
+        return repository.pending_count()
+    finally:
+        _sync_out()
 
 
 def _snapshot(kind: str):
@@ -177,16 +194,25 @@ def clear_memory(character_id=None):
 
 def import_messages(source):
     _sync_in()
-    return repository.import_messages(source)
+    try:
+        return repository.import_messages(source)
+    finally:
+        _sync_out()
 
 
 def restore_last_cleared():
-    return repository.restore_last_cleared()
+    try:
+        return repository.restore_last_cleared()
+    finally:
+        _sync_out()
 
 
 def conversation_context(limit=12, max_chars=12000, character_id=None, conversation_id=None):
     _sync_in()
-    return repository.conversation_context(limit, max_chars, character_id, conversation_id)
+    try:
+        return repository.conversation_context(limit, max_chars, character_id, conversation_id)
+    finally:
+        _sync_out()
 
 
 def create_conversation(character_id=None, title="", metadata=None, conversation_id=None):
