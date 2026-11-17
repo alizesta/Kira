@@ -88,7 +88,7 @@ class AttachmentManager:
         self.max_image_bytes = int(max_image_bytes)
         self.max_file_bytes = int(max_file_bytes)
         self._records: dict[str, Attachment] = {}
-        self._content_index: dict[tuple[str, str], str] = {}
+        self._content_index: dict[tuple[str, str, str], str] = {}
         self._closed = False
 
     @property
@@ -204,7 +204,7 @@ class AttachmentManager:
 
         mime_type, size = self.validate_attachment(name, raw)
         digest = hashlib.sha256(raw).hexdigest()
-        index_key = (owner, digest)
+        index_key = (owner, str(message_id or ""), digest)
         existing_id = self._content_index.get(index_key)
         if existing_id:
             existing = self._records.get(existing_id)
@@ -295,7 +295,7 @@ class AttachmentManager:
             path=record.path, metadata=record.metadata, status=AttachmentStatus.REMOVED,
         )
         self._records[record.attachment_id] = removed
-        self._content_index.pop((record.session_id, str(record.metadata.get("sha256", ""))), None)
+        self._content_index.pop((record.session_id, str(record.message_id or ""), str(record.metadata.get("sha256", ""))), None)
         return True
 
     def cleanup(self, *, session_id: str | None = None) -> int:
@@ -332,3 +332,4 @@ class AttachmentManager:
 
 
 AttachmentError = _legacy.AttachmentError
+\n\n# Compatibility surface for the existing Qt worker/controller during migration.\nAttachmentError = _legacy.AttachmentError\nIMAGE_TYPES = _legacy.IMAGE_TYPES\nMAX_FILES = _legacy.MAX_FILES\nMAX_IMAGE_BYTES = _legacy.MAX_IMAGE_BYTES\nMAX_FILE_BYTES = _legacy.MAX_FILE_BYTES\nload_attachment = _legacy.load_attachment\nimage_attachment = _legacy.image_attachment\ncompose = _legacy.compose\nsummary = _legacy.summary\n
