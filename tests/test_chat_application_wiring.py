@@ -84,6 +84,20 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertNotIn("def make_search_query(", self.chat_source)
         self.assertNotIn("def make_image_query(", self.chat_source)
 
+    def test_voice_lifecycle_is_owned_by_injected_application_service(self):
+        bootstrap = (ROOT / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8")
+        service = (ROOT / "kira" / "app" / "voice_application.py").read_text(encoding="utf-8")
+        runtime = (UI_ROOT / "main_window_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("create_voice_application_service_factory", bootstrap)
+        self.assertIn("voice_application_service_factory=voice_service_factory", bootstrap)
+        self.assertIn("self.voice_application_service = voice_application_service_factory", self.source)
+        for method in ("start_recording", "stop_recording", "speak", "stop_speaking"):
+            self.assertIn(f"def {method}(", service)
+        self.assertIn("self.voice_application_service.start_recording()", runtime)
+        self.assertIn("self.voice_application_service.stop_recording()", runtime)
+        self.assertNotIn("self.listener = Listener(", runtime)
+        self.assertNotIn("PySide6", service)
+
     def test_main_window_does_not_import_chat_internal_components(self):
         self.assertNotIn("from .chat.coordinator import", self.source)
         self.assertNotIn("from .chat.context_builder import", self.source)
