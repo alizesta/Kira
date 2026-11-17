@@ -307,5 +307,93 @@ class CommandRegistryTests(unittest.TestCase):
         self.assertEqual(first[0].results[0], second[0].results[0])
 
 
+    def test_cancel_session_cancels_only_commands_owned_by_that_session(self):
+        started = {"kira": threading.Event(), "ren": threading.Event()}
+        cancelled = []
+
+        def handler(context, _arguments):
+            started[context.request.session_id].set()
+            while not context.cancelled:
+                time.sleep(0.005)
+            context.raise_if_cancelled()
+
+        self.registry.register(CommandDefinition(
+            command_id="test.session_cancel",
+            name="session_cancel",
+            description="Session-scoped cancellation.",
+            parameters={"type": "object", "properties": {}, "additionalProperties": False},
+            required_permissions=(),
+            parser=lambda _raw, _ctx: {},
+            handler=handler,
+        ))
+
+        def dispatch(owner, request_id):
+            result = self.registry.dispatch_text(
+                "/session_cancel", session_id=owner, request_id=request_id,
+            )
+            cancelled.append((owner, result.results[0].status))
+
+        workers = [
+            threading.Thread(target=dispatch, args=("kira", "kira-1")),
+            threading.Thread(target=dispatch, args=("kira", "kira-2")),
+            threading.Thread(target=dispatch, args=("ren", "ren-1")),
+        ]
+        for worker in workers:
+            worker.start()
+        self.assertTrue(started["kira"].wait(2))
+        self.assertTrue(started["ren"].wait(2))
+        self.assertEqual(self.registry.cancel_session("kira"), 2)
+        workers[0].join(2)
+        workers[1].join(2)
+        self.assertFalse(workers[0].is_alive())
+        self.assertFalse(workers[1].is_alive())
+        self.assertTrue(workers[2].is_alive())
+        self.assertEqual(self.registry.cancel("ren", "ren-1"), 1)
+        workers[2].join(2)
+        self.assertFalse(workers[2].is_alive())
+        self.assertEqual(sorted(cancelled), [
+            ("kira", CommandStatus.CANCELLED),
+            ("kira", CommandStatus.CANCELLED),
+            ("ren", CommandStatus.CANCELLED),
+        ])
+
+    def test_close_cancels_inflight_handler_and_rejects_future_dispatch(self):
+        started = threading.Event()
+        release = threading.Event()
+        result_holder = []
+
+        def handler(_context, _arguments):
+            started.set()
+            release.wait(2)
+            return "late result"
+
+        self.registry.register(CommandDefinition(
+            command_id="test.close",
+            name="close",
+            description="Close during execution.",
+            parameters={"type": "object", "properties": {}, "additionalProperties": False},
+            required_permissions=(),
+            parser=lambda _raw, _ctx: {},
+            handler=handler,
+        ))
+        worker = threading.Thread(target=lambda: result_holder.append(
+            self.registry.dispatch_text("/close", session_id="kira", request_id="close-1")
+        ))
+        worker.start()
+        self.assertTrue(started.wait(2))
+        self.registry.close()
+        release.set()
+        worker.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(
+            result_holder[0].results[0].status, CommandStatus.CANCELLED
+        )
+        self.assertEqual(self.registry._cache, {})
+        with self.assertRaises(RuntimeError):
+            self.registry.dispatch_text(
+                "/close", session_id="kira", request_id="close-2"
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
