@@ -263,16 +263,9 @@ class ChatMixin:
                                                   "برای اجبار: /web عبارت" if self.web_btn.isChecked() else "خاموش — فقط با نوشتن /web عبارت جست‌وجو می‌کند"))
 
     def gemini_credentials(self):
-        """(api_key, model) of the Gemini provider the person already configured, or None. Used for Google-grounded search."""
-        for pid, cfg in (self.settings.get("providers") or {}).items():
-            if "generativelanguage" in str(cfg.get("base_url") or "") and str(cfg.get("api_key") or "").strip():
-                model = next((r["model"] for r in self.settings.get("routes", []) if r.get("provider") == pid and r.get("model")), "")
-                return str(cfg["api_key"]).strip(), str(model).removeprefix("models/") or "gemini-flash-latest"
-        return None
+        return self.web_search_service.gemini_credentials(self.settings)
 
     # ---- image search (a picture is looked up on the web) ----
-    IMAGE_QUERY_ASK = "این تصویر چیست؟ فقط عبارت جست‌وجو را بنویس."
-
     def toggle_image_search(self, on):
         on = bool(on)
         self.settings["image_search"] = on
@@ -296,95 +289,76 @@ class ChatMixin:
                                                   "خاموش — عکس فقط به مدل داده می‌شود. برای جست‌وجوی یک عکس، پیام را با /img شروع کن."))
 
     def make_image_query(self, images, hint, client=None):
-        """Runs in the search thread: the active vision model looks at the picture and writes a short web query."""
-        msg = {"role": "user", "content": (hint or self.IMAGE_QUERY_ASK), "images": images}
-        return (client or self.client).chat([msg], websearch.IMAGE_QUERY_PROMPT, 0.1)
+        return self.web_search_service.make_image_query(
+            images, hint, client or self.client
+        )
 
-    @staticmethod
-    def _merge_search_content(base_content, images, addition, *, image_search=False):
-        if isinstance(base_content, dict) and "files" in base_content and "text" in base_content:
-            updated = dict(base_content)
-            current_text = str(updated.get("text") or "").strip()
-            if not current_text:
-                if images and image_search:
-                    current_text = "این تصویر چیست؟ با کمک نتایج جست‌وجوی وب بگو."
-                elif images:
-                    current_text = "این تصویر را ببین و نظرت را بگو."
-                elif updated.get("files"):
-                    current_text = "این فایل را بخوان و درباره‌اش نظر بده."
-            updated["text"] = (current_text + "\n\n" if current_text else "") + str(addition or "")
-            updated["images"] = list(images or [])
-            updated["search"] = bool(image_search)
-            return updated
-        return {
-            "model": str(base_content or "") + "\n\n" + str(addition or ""),
-            "images": list(images or []),
-        }
+    def _merge_search_content(self, base_content, images, addition, *, image_search=False):
+        return self.web_search_service.merge_search_content(
+            base_content, images, addition, image_search=image_search
+        )
 
     def begin_image_search(self, hint, base_text, images):
-        key = str(self.settings.get("tavily_api_key", "")).strip()
-        fallback = bool(self.settings.get("web_fallback", True))
-        gem = self.gemini_credentials()
+        options = self.web_search_service.image_search_options(
+            self.settings, hint, images, self.client
+        )
         self._search_token += 1
         self._search_base = (base_text, images)
         self.status.setText("🔎 در حال جست‌وجوی تصویر در وب…")
-        self._search_worker = SearchWorker(self._search_token, hint or "تصویر", key, self.settings.get("web_depth", "basic"),
-                                           user_text=hint, gemini=gem, fallback=fallback, images=images,
-                                           describe=lambda c=self.client: self.make_image_query(images, hint, c))
+        self._search_worker = SearchWorker(
+            self._search_token,
+            options.query,
+            options.api_key,
+            options.depth,
+            user_text=options.user_text,
+            gemini=options.gemini,
+            fallback=options.fallback,
+            images=list(options.images),
+            describe=options.describe,
+        )
         self._search_worker.done.connect(self.cur.relay.search_done)
         self._search_worker.start()
 
     def begin_web_search(self, query, base_text, images):
-        key = str(self.settings.get("tavily_api_key", "")).strip()
-        fallback = bool(self.settings.get("web_fallback", True))
-        if not key and not fallback:
-            self.add_chat("system", "🌐 برای جست‌وجوی وب کلید Tavily لازم است (تب عمومی ← «کلید جست‌وجوی وب»؛ رایگان از tavily.com). بدون وب ادامه می‌دهم.")
+        conversation_id = self._ensure_session_conversation(self.cur)
+        history = self.chat_application_service.conversation_context(
+            8, session_id=self.cur.cid, conversation_id=conversation_id
+        )
+        options = self.web_search_service.web_search_options(
+            self.settings, query, history, self.client
+        )
+        if not options.available:
+            self.add_chat("system", self.web_search_service.MISSING_KEY_MESSAGE)
             self.begin_reply()
             return
         self._search_token += 1
         self._search_base = (base_text, images)
         self.status.setText(f"🌐 در حال جست‌وجوی وب: «{query[:60]}»…")
-        conversation_id = self._ensure_session_conversation(self.cur)
-        history = self.chat_application_service.conversation_context(
-            8, session_id=self.cur.cid, conversation_id=conversation_id
+        self._search_worker = SearchWorker(
+            self._search_token,
+            options.query,
+            options.api_key,
+            options.depth,
+            rewrite=options.rewrite,
+            user_text=options.user_text,
+            gemini=options.gemini,
+            fallback=options.fallback,
         )
-        # The user's own words are sent unchanged. Only a short follow-up that points back at the chat is rewritten by the model.
-        rewrite = (lambda c=self.client: self.make_search_query(history, query, c)) if websearch.is_followup(query) else None
-        self._search_worker = SearchWorker(self._search_token, query, key, self.settings.get("web_depth", "basic"),
-                                           rewrite=rewrite, user_text=query, gemini=self.gemini_credentials(), fallback=fallback)
         self._search_worker.done.connect(self.cur.relay.search_done)
         self._search_worker.start()
-
-    SEARCH_QUERY_PROMPT = ("You write ONE web search query for a search engine. Use the conversation to resolve references such as "
-                           "'this song', 'him', 'search better'. Keep titles and names exactly as the user wrote them (Persian stays "
-                           "Persian). No quotes, no explanation, at most 12 words. Output only the query.")
-
-    def make_search_query(self, history, fallback, client=None):
-        """Runs in the search thread: ask the active model for a precise query; any failure -> the plain query."""
-        out = (client or self.client).chat(history[-6:], self.SEARCH_QUERY_PROMPT, 0.1)
-        line = next((ln.strip() for ln in str(out or "").splitlines() if ln.strip()), "")
-        line = line.strip("\"'«»`").removeprefix("Query:").removeprefix("query:").strip()
-        return line if 2 <= len(line) <= 160 else fallback
-
-    WEB_TEST_QUERY = "آهنگ تو که معنای عشقی"
 
     def test_web_search(self):
         """Settings button: one real Tavily search with the key typed in the box (no need to save first)."""
         key, depth = self.tavily_key.text().strip(), self.web_depth.currentData()
-        gem = self.gemini_credentials()
+        gem = self.web_search_service.gemini_credentials(self.settings)
         self.web_test_btn.setEnabled(False)
         self.web_test_btn.setText("در حال آزمایش (چند ثانیه)…")
-        self._web_test_worker = TaskWorker(lambda: websearch.diagnose(key, depth, self.WEB_TEST_QUERY, gem))
+        self._web_test_worker = TaskWorker(lambda: websearch.diagnose(key, depth, self.web_search_service.WEB_TEST_QUERY, gem))
         self._web_test_worker.done.connect(self.on_web_test_done)
         self._web_test_worker.start()
 
-    @staticmethod
-    def _assessment_text(a):
-        if not a or not a.get("phrase"):
-            return ""
-        if a.get("matched"):
-            return f"عبارت جست‌وجو در منبع {'، '.join(str(n) for n in a['matched'])} عیناً دیده شد."
-        return f"⚠ عبارت جست‌وجو در هیچ‌کدام از {a.get('checked', 0)} منبع خوانده‌شده عیناً پیدا نشد."
+    def _assessment_text(self, assessment):
+        return self.web_search_service.assessment_text(assessment)
 
     def on_web_test_done(self, res):
         self.web_test_btn.setEnabled(True)
