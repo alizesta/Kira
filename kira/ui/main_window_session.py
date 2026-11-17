@@ -207,7 +207,7 @@ class SessionMixin:
 
     @staticmethod
     def _worker_is_running(worker):
-        return SessionApplicationService.worker_is_running(worker)
+        return self.session_application_service.worker_is_running(worker)
 
     def _session_has_pending_chat_work(self, session):
         return self.session_application_service.has_pending_work(
