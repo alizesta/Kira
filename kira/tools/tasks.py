@@ -285,7 +285,7 @@ class TaskPlan:
     @classmethod
     def from_dict(cls, d: dict) -> "TaskPlan":
         p = cls(str(d.get("id", "")), str(d.get("goal", ""))[:240])
-        p.session_id = str(d.get("session_id", ""))
+        p.session_id = str(d.get("session_id") or "kira")
         p.steps = [Step.from_dict(x) for x in d.get("steps", []) if isinstance(x, dict)]
         p.status = str(d.get("status", P_PAUSED))
         p.created, p.updated = float(d.get("created", time.time())), float(d.get("updated", time.time()))
