@@ -64,7 +64,8 @@ class MainWindow(
     voice_btn = front_only_property("voice_btn")
 
     def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None,
-                 session_manager=None, chat_event_publisher=None, chat_application_service_factory=None):
+                 session_manager=None, chat_event_publisher=None, chat_application_service_factory=None,
+                 session_application_service_factory=None):
         super().__init__()
         # Direct MainWindow construction remains supported for existing callers;
         # normal application startup injects these services from app.bootstrap.
@@ -103,11 +104,21 @@ class MainWindow(
         self.settings = load_settings()
         self._db_notes = self.chat_application_service.init_history()
         self.session_manager = session_manager or SessionManager(ChatSession)
+        self.chat_event_publisher = chat_event_publisher
+        if session_application_service_factory is None:
+            from ..app.session_composition import create_session_application_service_factory
+            session_application_service_factory = create_session_application_service_factory(
+                event_publisher=chat_event_publisher
+            )
+        if not callable(session_application_service_factory):
+            raise TypeError("session_application_service_factory must be callable")
+        self.session_application_service = session_application_service_factory(
+            self.session_manager, self.chat_application_service
+        )
         self.session_manager.set_runtime_callbacks(
             has_pending_work=self._session_has_pending_chat_work,
             dispose_callback=self._release_chat_session_resources,
         )
-        self.chat_event_publisher = chat_event_publisher
         self._session_event_unsubscribe = self.session_manager.subscribe(
             self._publish_session_state_event
         )
