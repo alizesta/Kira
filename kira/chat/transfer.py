@@ -26,7 +26,7 @@ class TransferError(ValueError):
 
 class TransferRepository(Protocol):
     def list_conversations(self, character_id: str | None = None) -> list[dict[str, Any]]: ...
-    def get_messages(self, limit: int = 1000, character_id: str | None = None, conversation_id: str | None = None, after_id: int = 0) -> list[dict[str, Any]]: ...
+    def get_transfer_messages(self, conversation_id: str, character_id: str, after_created_at: str = "", after_id: int = 0, limit: int = 1000) -> list[dict[str, Any]]: ...
     def import_transfer_records(self, conversations: list[dict[str, Any]], messages: list[dict[str, Any]]) -> dict[str, Any]: ...
 
 @dataclass(frozen=True)
@@ -113,23 +113,41 @@ class ChatTransfer:
         for conv in source:
             conv_id = str(conv.get("id") or "")
             if not conv_id: raise TransferError("Persistence returned a conversation without an ID")
-            messages = self._repository.get_messages(MAX_MESSAGES + 1, str(conv.get("character_id") or "kira"), conv_id)
-            total += len(messages)
-            if total > MAX_MESSAGES: raise TransferError("Message count exceeds 100,000")
-            messages.sort(key=lambda row: (str(row.get("created_at") or ""), int(row.get("id") or 0)))
-            output.append({
-                "id": conv_id, "character_id": str(conv.get("character_id") or "kira"),
+            character = str(conv.get("character_id") or "kira")
+            exported_messages = []
+            cursor_stamp, cursor_id = "", 0
+            while True:
+                batch = self._repository.get_transfer_messages(
+                    conv_id, character, cursor_stamp, cursor_id, limit=1000
+                )
+                if not batch:
+                    break
+                for msg in batch:
+                    total += 1
+                    if total > MAX_MESSAGES: raise TransferError("Message count exceeds 100,000")
+                    content = str(msg["content"])
+                    if len(content) > MAX_CONTENT_CHARS: raise TransferError("A message exceeds the 2,000,000 character limit")
+                    record = {
+                        "id": int(msg["id"]), "role": str(msg["role"]), "content": content,
+                        "created_at": str(msg.get("created_at") or ""), "character_id": str(msg.get("character_id") or character),
+                        "conversation_id": conv_id, "metadata": _sanitize_json(msg.get("metadata") or {}),
+                        "status": str(msg.get("status") or "complete"),
+                    }
+                    exported_messages.append(record)
+                    cursor_stamp, cursor_id = record["created_at"], record["id"]
+                    if len(json.dumps(record, ensure_ascii=False, separators=(",", ":" )).encode("utf-8")) + 4096 > MAX_FILE_BYTES:
+                        raise TransferError("Generated export exceeds 20 MiB")
+                if len(batch) < 1000:
+                    break
+            conversation_record = {
+                "id": conv_id, "character_id": character,
                 "title": str(conv.get("title") or ""), "metadata": _sanitize_json(conv.get("metadata") or {}),
                 "status": str(conv.get("status") or "active"), "created_at": str(conv.get("created_at") or ""),
-                "updated_at": str(conv.get("updated_at") or ""),
-                "messages": [{
-                    "id": int(msg["id"]), "role": str(msg["role"]), "content": str(msg["content"]),
-                    "created_at": str(msg.get("created_at") or ""),
-                    "character_id": str(msg.get("character_id") or conv.get("character_id") or "kira"),
-                    "conversation_id": conv_id, "metadata": _sanitize_json(msg.get("metadata") or {}),
-                    "status": str(msg.get("status") or "complete"),
-                } for msg in messages],
-            })
+                "updated_at": str(conv.get("updated_at") or ""), "messages": exported_messages,
+            }
+            output.append(conversation_record)
+            estimated = len(json.dumps(output, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+            if estimated > MAX_FILE_BYTES: raise TransferError("Generated export exceeds 20 MiB")
         return {"schema_version": SCHEMA_VERSION, "export_version": EXPORT_VERSION,
                 "exported_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                 "conversations": output}

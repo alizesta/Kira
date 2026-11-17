@@ -56,6 +56,7 @@ class ChatRepository(Protocol):
                         conversation_id: str | None = None) -> list[dict[str, str]]: ...
     def get_messages(self, limit: int = 1000, character_id: str | None = None,
                      conversation_id: str | None = None, after_id: int = 0) -> list[dict[str, Any]]: ...
+    def get_transfer_messages(self, conversation_id: str, character_id: str, after_created_at: str = "", after_id: int = 0, limit: int = 1000) -> list[dict[str, Any]]: ...
     def message_id_for(self, role: str, content: str, character_id: str | None = None) -> int | None: ...
     def rows_with_ids(self, limit: int = 3000, after_id: int = 0,
                       character_id: str | None = None) -> list[tuple[int, str, str, str]]: ...
@@ -832,6 +833,26 @@ class SqliteChatRepository:
                 "status": row["status"],
             } for row in rows]
 
+    def get_transfer_messages(self, conversation_id, character_id, after_created_at="", after_id=0, limit=1000):
+        """Read an ordered bounded page for portable export using a stable keyset cursor."""
+        with self._lock:
+            self._flush_pending_locked()
+            with self._db() as con:
+                rows = con.execute(
+                    "SELECT id, role, content, created_at, character_id, conversation_id, metadata, status "
+                    "FROM messages WHERE conversation_id=? AND character_id=? AND "
+                    "(COALESCE(created_at, '') > ? OR (COALESCE(created_at, '') = ? AND id > ?)) "
+                    "ORDER BY COALESCE(created_at, '') ASC, id ASC LIMIT ?",
+                    (str(conversation_id), _character_id(character_id), str(after_created_at),
+                     str(after_created_at), int(after_id), max(1, min(int(limit), 5000))),
+                ).fetchall()
+            return [{
+                "id": int(row["id"]), "role": row["role"], "content": row["content"],
+                "created_at": str(row["created_at"] or ""), "character_id": row["character_id"],
+                "conversation_id": row["conversation_id"], "metadata": _json_object(row["metadata"]),
+                "status": row["status"],
+            } for row in rows]
+
     def message_id_for(self, role, content, character_id=None):
         with self._db() as con:
             if character_id is None:
@@ -1198,6 +1219,9 @@ class ChatPersistence:
 
     def get_messages(self, limit=1000, character_id=None, conversation_id=None, after_id=0):
         return self._invoke(self._repository.get_messages, limit, character_id, conversation_id, after_id)
+
+    def get_transfer_messages(self, conversation_id, character_id, after_created_at="", after_id=0, limit=1000):
+        return self._invoke(self._repository.get_transfer_messages, conversation_id, character_id, after_created_at, after_id, limit)
 
     def message_id_for(self, role, content, character_id=None):
         return self._invoke(self._repository.message_id_for, role, content, character_id)
