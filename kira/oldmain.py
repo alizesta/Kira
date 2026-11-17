@@ -36,7 +36,7 @@ from . import discovery
 from . import api_manager
 from . import websearch
 from . import attachments as att
-from .actions import run_safe_action
+from .actions import match_safe_action, run_safe_action
 from .tools import ToolAgent
 from .leak_guard import scrub_lines
 from .companion import CompanionWindow, CompanionBubble
@@ -67,6 +67,10 @@ from .theme import build_style, STYLE
 from . import theme as theme_mod
 from .chat_sessions import ChatSession, NOOP, SESSION_FIELDS, session_property, front_only_property
 from .chat.application_service import ChatApplicationService, ApplicationEventKind, RequestStatus
+from .chat.commands import (
+    CommandDefinition, CommandOutcome, CommandRegistry, NO_MATCH, PermissionDecision,
+)
+from .tools.tasks import parse_control as parse_tool_task_control
 from . import winfx
 from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
@@ -300,6 +304,7 @@ class MainWindow(QMainWindow):
         self.animator = EmotionFaceAnimator(self, director=self.director)
         self.companion = CompanionWindow(self.animator)
         self.apply_character_art()
+        self._install_chat_commands()
         self.bubble = CompanionBubble()
         self.bubble.submitted.connect(self.submit)
         self.bubble.imageSearchToggled.connect(self.toggle_image_search)
