@@ -13,8 +13,8 @@
 
 | Status | Count |
 |---|---:|
-| DONE | 11 |
-| PARTIAL | 3 |
+| DONE | 12 |
+| PARTIAL | 2 |
 | NOT DONE | 0 |
 | BLOCKED | 0 |
 | UNVERIFIED | 0 |
@@ -22,10 +22,8 @@
 **Final decision: NOT READY FOR TESTING.**
 
 Reasons:
-1. TASK 013 and TASK 014 are still separate open PRs (#45 and #46); neither implementation is present in the audited `new-main` tree.
-2. TASK 013 and TASK 014 both modify the shared Chat Events contract from the same base SHA. Their event additions need a reconciled combined contract before integration.
-3. TASK 010's registry/adapters exist, but the production factory in `kira/app/chat_composition.py` does not inject a `command_registry`; `ChatApplicationService` defaults it to `None`. Production command execution through this service is therefore not established by the inspected composition path.
-4. The legacy UI/application boundary remains substantial: `kira/oldmain.py` still owns a large set of application policies and controllers. `ARCHITECTURE.md` and `docs/CHAT_APPLICATION_SERVICE.md` explicitly describe MainWindow as not yet a UI shell.
+1. TASK 013 and TASK 014 are not yet merged into the audited `new-main` SHA. Their reconciled integration is available in Draft PR #48.
+2. `MainWindow`/`oldmain.py` still owns significant application policy and orchestration; the UI is not yet a thin shell. This is documented architectural debt, not a runtime test result.
 
 ## B. Detailed Audit — TASK 001–014
 
@@ -40,7 +38,7 @@ Reasons:
 | 007 — Session Lifecycle & State Management | **DONE** | `kira/chat/session_manager.py` is Qt-free and explicitly separates runtime Session identity/state from durable Conversation identity and persistence. Bootstrap constructs and injects it. |
 | 008 — Chat Events & Notification System | **DONE** | `kira/app/event_bus.py` is the single shared bus, supporting typed Chat events and legacy notifications. `kira/chat/events.py` defines immutable typed events and `ChatEventPublisher`; bootstrap shares one instance. TASK 013/014 additions still need to be reconciled before those PRs merge. |
 | 009 — Chat Attachments & Content Processing | **DONE** | `kira/chat/attachments.py` owns session-scoped attachment records/storage; `kira/chat/attachment_content.py` owns bounded Qt-free parsing. The legacy `kira/attachments.py` is documented as a compatibility facade, not a second parser. |
-| 010 — Chat Commands & Actions | **PARTIAL** | `kira/chat/commands.py` and `kira/chat/command_adapters.py` provide generic registry, permission/parameter contracts and adapters. However, `ChatApplicationService` accepts `command_registry=None`, and the inspected production factory in `kira/app/chat_composition.py` constructs it without passing a registry. Thus production wiring of the extracted command system is not established. |
+| 010 — Chat Commands & Actions | **DONE** | `kira/chat/commands.py` and `kira/chat/command_adapters.py` provide the generic registry, validation, permission and adapter contracts. `MainWindow.__init__` calls `_install_chat_commands()`; that method builds the registry from the existing feature owners and injects it through `ChatApplicationService.set_command_registry()`. It is installed before chat submission and closed by the service during disposal. Production wiring is present; bootstrap does not need to construct UI-bound command handlers. |
 | 011 — Chat Search & Retrieval | **DONE** | `kira/chat/search.py` implements Qt-free matching, filters, ordering, pagination and stable message references over injected `messages_after`. `kira/chat/persistence.py` supplies the persistence read boundary. `docs/CHAT_SEARCH_RETRIEVAL.md` explicitly defines UI callers as consumers and keeps matching logic outside UI. |
 | 012 — Chat Export & Import | **DONE** | `kira/chat/transfer.py` implements versioned JSON transfer, bounded validation, preview and repository-backed import/export. `docs/CHAT_TRANSFER.md` defines persistence as the sole transaction owner. The service is present on `new-main`. |
 | 013 — Conversation Lifecycle & Archive Management | **PARTIAL** | Implementation exists on `refactor/chat-conversation-lifecycle` and PR #45, but is absent from `new-main`. Branch comparison: 29 commits ahead, 0 behind; PR #45 is open and described as Draft. Its lifecycle contract and persistence/event changes are not yet part of the audited base. |
@@ -113,12 +111,12 @@ Reasons:
 ## E. Remaining Issues
 
 ### Confirmed
-1. TASK 010 production command-registry injection is absent from the inspected bootstrap factory.
-2. TASK 013 is not integrated into `new-main`.
-3. TASK 014 is not integrated into `new-main`.
-4. TASK 013/014 share-file event contract additions require a deliberate union/reconciliation.
-5. MainWindow/oldmain still owns significant application policy and orchestration; UI is not yet a thin shell.
-6. TASK 014's metadata read-modify-write can lose concurrent independent updates; multi-conversation tag/folder deletes are not atomic (documented limitation).
+1. TASK 013 and TASK 014 are not yet part of the audited `new-main` commit; their combined implementation is pending Draft PR #48.
+2. MainWindow/oldmain still owns significant application policy and orchestration; UI is not yet a thin shell.
+3. TASK 014's metadata read-modify-write can lose concurrent independent updates; multi-conversation tag/folder deletes are not atomic (documented limitation).
+
+### Corrected finding
+- TASK 010 command registry production wiring is present: `oldmain.py` calls `_install_chat_commands()` during `MainWindow` construction, and that method injects the registry through `ChatApplicationService.set_command_registry()`. The earlier finding based solely on the bootstrap factory was incorrect.
 
 ### Risks / not runtime-proven
 - Multi-character isolation and restart behavior require runtime validation.
@@ -145,7 +143,7 @@ No PASS, compile success, import success or runtime result is claimed.
 
 **NOT READY FOR TESTING**
 
-The audit found substantial implemented functionality across TASK 001–012, but TASK 010 production wiring is incomplete and TASK 013/014 are not yet integrated into the audited base. Their shared Event contract also needs reconciliation. Resolve those items and update this audit before authorizing the test phase.
+The audit found substantial implemented functionality across TASK 001–012. TASK 010 is wired in the production MainWindow adapter. TASK 013 and TASK 014 have now been reconciled together in Draft PR #48, but are not yet merged into the audited `new-main` base. Keep the final decision NOT READY FOR TESTING until the integration PR is reviewed and merged; runtime acceptance remains for the later authorized test phase.
 
 ## Acceptance Checklist
 - [x] TASK 001–014 reviewed individually from static code and Git evidence.
@@ -153,8 +151,8 @@ The audit found substantial implemented functionality across TASK 001–012, but
 - [x] Confirmed issues separated from risks/runtime-only verification.
 - [x] No tests, builds, imports, app execution or GUI checks performed.
 - [ ] Local working tree state verified (not exposed by connected GitHub interface).
-- [ ] TASK 013 and TASK 014 integrated and their shared event contract reconciled.
-- [ ] TASK 010 production registry wiring corrected.
+- [x] TASK 013 and TASK 014 reconciled together in Draft PR #48; merge into `new-main` remains pending.
+- [x] TASK 010 production registry wiring verified through the MainWindow adapter.
 - [x] Audit PR #47 created as Draft targeting `new-main`.
 
 
@@ -163,3 +161,11 @@ The audit found substantial implemented functionality across TASK 001–012, but
 - Base SHA: `b5d386fac1423b1b0cd07199426aef4f214e4d97`
 - Initial report commit: `7c1f06afc1d779ced3bbcbd6af23bb2e72065116`
 - The report checklist update is included in the current PR head; see the PR metadata for the final head SHA.
+
+
+## Post-audit correction — 2026-11-17
+
+- TASK 010 is corrected to **DONE**. Static inspection found `MainWindow.__init__` calls `_install_chat_commands()`; it builds the registry using the existing command adapters and calls `ChatApplicationService.set_command_registry(registry)`. The absence of registry construction in `kira/app/chat_composition.py` is intentional because these handlers are UI/application adapters bound to the window.
+- Updated counts: **12 DONE / 2 PARTIAL / 0 NOT DONE / 0 BLOCKED / 0 UNVERIFIED**. TASK 013 and TASK 014 remain PARTIAL against the audited `new-main` SHA until the combined integration PR is merged.
+- Combined TASK 013 + TASK 014 integration candidate: Draft PR #48, branch `integrate/task-013-014`, commit `b51e40e44df763b8df401551b19bafdd81d9c1f3`, based on `new-main` at `b5d386fac1423b1b0cd07199426aef4f214e4d97`. GitHub reports it open, draft and mergeable/clean. It is not merged.
+- No tests or executable verification were run for this correction or integration step.
