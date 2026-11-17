@@ -11,6 +11,7 @@
 | `ContextBuilder` | Prompt composition and immutable message/context snapshots |
 | `ResponseHandler` | Provider event normalization, ordered chunk aggregation, exactly-once attempt terminal state |
 | `ChatPersistence` / `ChatHistoryService` | Durable message/history writes, conversation identity and recovery |
+| `ChatSearchService` | Message matching, filters, ranking, pagination and source references over the injected persistence reader |
 | MainWindow adapter | UI rendering, voice/avatar effects, character/tool/search policy and construction of context input |
 
 The service receives persistence, system-prompt composition, provider worker construction, dispatch/event callbacks, scheduling and cancellation through constructor injection. It owns one coordinator per session and one response lifecycle per provider attempt.
@@ -76,6 +77,10 @@ This is an incremental extraction, not the removal of the legacy window. MainWin
 - UI stream painting, speech, avatar/body reactions, status badges and local command presentation.
 
 MainWindow no longer imports or invokes ChatCoordinator, ContextBuilder, ResponseHandler or the persistence service directly. It calls ChatApplicationService for submission, provider start, message persistence, history access, cancellation and queue draining. Tool Agent execution and web-search workers remain separate application capabilities; they are not hidden inside ChatApplicationService.
+
+## Search boundary
+
+Chat-history search is implemented by `ChatSearchService` in `kira/chat/search.py`, not by this orchestration service or MainWindow. Consumers inject the `ChatPersistence` facade as its repository reader; the search service owns matching and result shaping while persistence retains durable reads. See [CHAT_SEARCH_RETRIEVAL.md](CHAT_SEARCH_RETRIEVAL.md) for the request/result contract and usage.
 
 ## EventBus policy
 
