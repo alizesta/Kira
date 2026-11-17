@@ -1,4 +1,4 @@
-"""Tests for the staged transition from the legacy monolith to the app entry point."""
+"""Tests for the modular desktop window and app entry point."""
 import unittest
 from unittest import mock
 
@@ -12,20 +12,20 @@ class MainEntrypointTests(unittest.TestCase):
 
         run_application.assert_called_once_with()
 
-    def test_legacy_mainwindow_is_available_only_through_lazy_compatibility_export(self):
+    def test_mainwindow_compatibility_export_points_to_modular_ui(self):
         import kira.main as entrypoint
-        from kira.oldmain import MainWindow as LegacyMainWindow
+        from kira.ui.main_window import MainWindow as ModularMainWindow
 
-        self.assertIs(entrypoint.MainWindow, LegacyMainWindow)
+        self.assertIs(entrypoint.MainWindow, ModularMainWindow)
         self.assertNotIn("MainWindow", vars(entrypoint))
 
-    def test_bootstrap_constructs_the_preserved_legacy_window_directly(self):
+    def test_bootstrap_constructs_the_modular_window_directly(self):
         import inspect
         from kira.app import bootstrap
 
         source = inspect.getsource(bootstrap.run_application)
-        self.assertIn("from ..oldmain import MainWindow", source)
-        self.assertNotIn("from ..main import MainWindow", source)
+        self.assertIn("from ..ui.main_window import MainWindow", source)
+        self.assertNotIn("oldmain", source)
 
 
 if __name__ == "__main__":
