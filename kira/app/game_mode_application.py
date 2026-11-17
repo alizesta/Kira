@@ -12,7 +12,7 @@ from ..game_mode_policy import (
     normalize_game_mode_profile,
     tool_categories_allowed,
 )
-from ..game_audio import is_important_game_audio
+from ..game_audio_policy import is_important_game_audio
 
 
 @dataclass(frozen=True)
