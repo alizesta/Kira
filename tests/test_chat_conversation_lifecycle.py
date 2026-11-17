@@ -1,6 +1,5 @@
 from datetime import datetime, timezone
-
-import pytest
+import unittest
 
 from kira.chat.conversation_lifecycle import (
     ConversationLifecycleService,
@@ -84,75 +83,78 @@ def _service(repository=None, events=None):
     )
 
 
-def test_archive_and_restore_preserve_identity_and_unrelated_metadata():
-    repository, events = _Repository(), _Events()
-    service = _service(repository, events)
+class ChatConversationLifecycleTests(unittest.TestCase):
+    def test_archive_and_restore_preserve_identity_and_unrelated_metadata(self):
+        repository, events = _Repository(), _Events()
+        service = _service(repository, events)
 
-    archived = service.archive("conv-a")
-    assert archived.previous_status == "active"
-    assert archived.new_status == "archived"
-    assert archived.event_published is True
-    assert repository.rows["conv-a"]["id"] == "conv-a"
-    assert repository.rows["conv-a"]["metadata"]["custom"] == "preserved"
-    assert repository.rows["conv-a"]["metadata"]["_conversation_lifecycle"]["archived_at"].startswith("2026-11-17")
+        archived = service.archive("conv-a")
+        self.assertEqual(archived.previous_status, "active")
+        self.assertEqual(archived.new_status, "archived")
+        self.assertTrue(archived.event_published)
+        self.assertEqual(repository.rows["conv-a"]["id"], "conv-a")
+        self.assertEqual(repository.rows["conv-a"]["metadata"]["custom"], "preserved")
+        self.assertTrue(
+            repository.rows["conv-a"]["metadata"]["_conversation_lifecycle"]["archived_at"].startswith("2026-11-17")
+        )
 
-    restored = service.restore("conv-a")
-    assert restored.new_status == "active"
-    assert repository.rows["conv-a"]["id"] == "conv-a"
-    assert len(events.published) == 2
+        restored = service.restore("conv-a")
+        self.assertEqual(restored.new_status, "active")
+        self.assertEqual(repository.rows["conv-a"]["id"], "conv-a")
+        self.assertEqual(len(events.published), 2)
+
+    def test_group_archive_is_one_atomic_batch_and_hides_archived_from_default_list(self):
+        repository = _Repository()
+        service = _service(repository)
+
+        results = service.archive_many(["conv-a", "conv-b"])
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(len(repository.batch_calls), 1)
+        self.assertEqual(service.list_conversations(), [])
+        self.assertEqual(
+            {row["id"] for row in service.list_conversations(statuses=(ConversationStatus.ARCHIVED,))},
+            {"conv-a", "conv-b"},
+        )
+
+    def test_group_archive_rejects_missing_target_before_writing_anything(self):
+        repository = _Repository()
+        service = _service(repository)
+
+        with self.assertRaises(ConversationNotFound):
+            service.archive_many(["conv-a", "missing"])
+
+        self.assertEqual(repository.batch_calls, [])
+        self.assertEqual(repository.rows["conv-a"]["status"], "active")
+
+    def test_soft_delete_restore_and_permanent_delete_authorization(self):
+        repository = _Repository()
+        service = _service(repository)
+
+        trashed = service.trash("conv-a")
+        self.assertEqual(trashed.new_status, "trashed")
+        self.assertTrue(repository.rows["conv-a"]["metadata"]["_conversation_lifecycle"]["deleted_at"])
+
+        restored = service.restore_trashed("conv-a")
+        self.assertEqual(restored.new_status, "active")
+        service.trash("conv-a")
+
+        with self.assertRaises(PermanentDeleteAuthorizationError):
+            service.permanent_delete("conv-a", authorization=_Authorization(False))
+        self.assertIn("conv-a", repository.rows)
+
+        authorization = _Authorization(True)
+        deleted = service.permanent_delete("conv-a", authorization=authorization)
+        self.assertEqual(deleted.new_status, "deleted")
+        self.assertEqual(authorization.checked_ids, ["conv-a"])
+        self.assertEqual(repository.deleted, [("conv-a", "trashed")])
+        self.assertNotIn("conv-a", repository.rows)
+
+    def test_permanent_delete_requires_trashed_state(self):
+        service = _service()
+        with self.assertRaises(InvalidConversationTransition):
+            service.permanent_delete("conv-a", authorization=_Authorization(True))
 
 
-def test_group_archive_is_one_atomic_batch_and_hides_archived_from_default_list():
-    repository = _Repository()
-    service = _service(repository)
-
-    results = service.archive_many(["conv-a", "conv-b"])
-
-    assert len(results) == 2
-    assert len(repository.batch_calls) == 1
-    assert service.list_conversations() == []
-    assert {row["id"] for row in service.list_conversations(statuses=(ConversationStatus.ARCHIVED,))} == {
-        "conv-a", "conv-b"
-    }
-
-
-def test_group_archive_rejects_missing_target_before_writing_anything():
-    repository = _Repository()
-    service = _service(repository)
-
-    with pytest.raises(ConversationNotFound):
-        service.archive_many(["conv-a", "missing"])
-
-    assert repository.batch_calls == []
-    assert repository.rows["conv-a"]["status"] == "active"
-
-
-def test_soft_delete_restore_and_permanent_delete_authorization():
-    repository = _Repository()
-    service = _service(repository)
-
-    trashed = service.trash("conv-a")
-    assert trashed.new_status == "trashed"
-    assert repository.rows["conv-a"]["metadata"]["_conversation_lifecycle"]["deleted_at"]
-
-    restored = service.restore_trashed("conv-a")
-    assert restored.new_status == "active"
-    service.trash("conv-a")
-
-    with pytest.raises(PermanentDeleteAuthorizationError):
-        service.permanent_delete("conv-a", authorization=_Authorization(False))
-    assert "conv-a" in repository.rows
-
-    authorization = _Authorization(True)
-    deleted = service.permanent_delete("conv-a", authorization=authorization)
-    assert deleted.new_status == "deleted"
-    assert authorization.checked_ids == ["conv-a"]
-    assert repository.deleted == [("conv-a", "trashed")]
-    assert "conv-a" not in repository.rows
-
-
-def test_permanent_delete_requires_trashed_state():
-    service = _service()
-
-    with pytest.raises(InvalidConversationTransition):
-        service.permanent_delete("conv-a", authorization=_Authorization(True))
+if __name__ == "__main__":
+    unittest.main()
