@@ -6,7 +6,6 @@ this module contains only cross-feature Qt signal adapters and tiny shared helpe
 from __future__ import annotations
 
 import json
-import re
 from functools import wraps
 
 from PySide6.QtCore import QObject, Signal, Slot
@@ -14,15 +13,6 @@ from PySide6.QtCore import QObject, Signal, Slot
 from ..config import ROOT
 
 
-WAKE_RE = re.compile(
-    r"(?:(?:هی|سلام|hey|hi)[\s\u200c]*)?(?:کی[\s\u200c]?را|کایرا|کیرآ|کیارا|kira|keira|kyra|kiera)",
-    re.I,
-)
-STOP_RE = re.compile(
-    r"^\W*(?:بس\s*کن|بسه|ساکت(?:\s*شو)?|صبر\s*کن|وایسا|وایستا|stop|be\s*quiet)\W*$",
-    re.I,
-)
-SLEEP_RE = re.compile(r"بخواب|خداحافظ|شب بخیر|good\s*night", re.I)
 SOUNDS_DIR = ROOT / "assets" / "sounds"
 
 
