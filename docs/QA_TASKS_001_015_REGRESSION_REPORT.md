@@ -30,7 +30,15 @@ The Lifecycle tests were converted from pytest to unittest because the Windows f
 
 ## Validation status
 
-Pending GitHub Actions execution for this campaign PR. No local checkout is available in the execution environment; no local test result is claimed. Results, job IDs, exact commit SHA and any remaining debt will be recorded here after CI finishes.
+**Automated tests have not executed. No PASS result is claimed.**
+
+GitHub Actions was triggered on the campaign PR, but both the Linux portable and Windows full-suite jobs repeatedly failed before runner allocation:
+- Run `44026332580` (commit `4cb28c4884b3165cda9954e00d00288a9c6726a7`): `windows-full-suite` and `portable-regression` each had `runner_id=0`, empty runner name, `steps=[]`, and completed in approximately 1–2 seconds. Job logs returned `BlobNotFound`.
+- Run `44026619704` (commit `6f1a8eb9f00e75b5350d878208669cd5f006b182`): both jobs repeated the same pre-step runner failure after retry.
+- Run `44027280850` (commit `e222c390ef3ca4dd6a0537fd6ee4629cabfbfa18`): both jobs again failed before runner allocation.
+- Run `44027851341` (current campaign commit `73d6037b2b25e18bfebff7919eab4030c1e10602`): both jobs failed on the first attempt and again after one retry. Latest job IDs: Windows `133852579329`, Linux `133852579192`; both reported `runner_id=0` and `steps=[]`.
+
+This is a GitHub Actions runner-provisioning failure, not a failed test assertion. The tests added below are pending execution on a functioning runner. The local runtime does not contain an accessible repository checkout, so no local test/compile/import result is claimed.
 
 ## Known architecture debt retained
 
