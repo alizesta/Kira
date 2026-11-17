@@ -23,12 +23,12 @@ ALIASES = {
 
 def match_safe_action(text):
     """Return a fixed shortcut only for an explicit, non-negated launch request."""
-    normalized = re.sub(r"\s+", " ", str(text or "").strip().lower())
+    normalized = re.sub(r"\s+", " ", str(text or "").replace("\u200c", " ").strip().lower())
     if not normalized:
         return None
     if re.search(
         r"\b(?:don't|do not|never|not)\b|\bno\b|"
-        r"نمی(?:خوام|خواهم)|نخواه|باز\s+نکن|اجرا\s+نکن|"
+        r"نمی\s*(?:خوام|خواهم)|نخواه|باز\s+نکن|اجرا\s+نکن|"
         r"لغو|بی\s*خیال|بیخیال",
         normalized,
     ):
