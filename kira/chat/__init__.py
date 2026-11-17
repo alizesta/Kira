@@ -72,6 +72,7 @@ from .search import (
     ChatSearchService,
     ChatSearchValidationError,
 )
+from .transfer import ChatTransfer, ImportPreview, ImportResult, TransferError, TransferRepository
 
 __all__ = [
     "CHAT_EVENT_TYPES",
@@ -132,4 +133,6 @@ __all__ = [
     "ChatSearchRequest",
     "ChatSearchService",
     "ChatSearchValidationError",
+
+    "ChatTransfer", "ImportPreview", "ImportResult", "TransferError", "TransferRepository",
 ]
