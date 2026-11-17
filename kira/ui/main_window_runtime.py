@@ -4,13 +4,10 @@ from .main_window_support import *  # noqa: F401,F403
 
 class RuntimeMixin:
     def _check_chat_command_permission(self, command, _request):
-        if "desktop.launch" in command.required_permissions:
-            if self._game_mode_profile == COMPETITIVE_SAFE_MODE:
-                return PermissionDecision(
-                    False,
-                    "در حالت Competitive Safe اجرای میانبرهای دسکتاپ غیرفعال است.",
-                )
-        return True
+        reason = self.game_mode_application_service.command_denial_reason(
+            self._game_mode_profile, command.required_permissions
+        )
+        return PermissionDecision(False, reason) if reason else True
 
     def body_active(self):
         """True while Kira's VRM body is on screen in the front chat and the setting 'body_control' is on."""
