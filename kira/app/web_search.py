@@ -45,6 +45,10 @@ class WebSearchApplicationService:
     )
 
     @staticmethod
+    def can_search(settings: Mapping[str, Any]) -> bool:
+        return bool(str(settings.get("tavily_api_key", "")).strip() or settings.get("web_fallback", True))
+
+    @staticmethod
     def gemini_credentials(settings: Mapping[str, Any]) -> tuple[str, str] | None:
         """Resolve an already-configured Gemini provider for grounded search."""
         for provider_id, config in (settings.get("providers") or {}).items():
