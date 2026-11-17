@@ -4210,7 +4210,7 @@ class MainWindow(QMainWindow):
         )
         if self.busy and not attachments:
             try:
-                control = self.tool_agent.control_running(text)
+                control = self.tool_agent.control_running(text, session_id=self.cur.cid)
             except Exception:  # noqa: BLE001 - never block typing
                 control = None
             if control:
