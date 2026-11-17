@@ -4275,6 +4275,12 @@ class MainWindow(QMainWindow):
             packed = att.compose(text, attachments, search=img_search)
         if packed and packed.get("errors"):
             self.show_attach_error(packed["errors"])
+            if not packed.get("prepared_count") and not text.strip():
+                self.chat_application_service.fail_request(
+                    self.cur.application_request_id,
+                    "No attachment content could be prepared.",
+                )
+                return
         self._turn_extra = packed
         self._turn_attach_kinds = [str(a.get("kind")) for a in (attachments or [])]       # structured kinds: Active Mode must not guess from display text
         self.add_chat("user", packed["display"] if packed else text, images=attachments if packed else None)
