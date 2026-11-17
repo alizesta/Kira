@@ -51,6 +51,31 @@ class PolicyArchitectureTests(unittest.TestCase):
         self.assertIn("self.vision_application_service.should_analyze(", sources)
         self.assertIn("self.vision_application_service.consume_result(", sources)
 
+    def test_character_profile_mutations_are_owned_by_services(self):
+        sources = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in UI_ROOT.glob("main_window*.py")
+        )
+        for forbidden in (
+            'self.settings.setdefault("characters"',
+            'self.settings["characters"]',
+            'self.settings["active_character_id"]',
+            'self.settings.setdefault("character_voice"',
+            'self.settings.setdefault("character_notes"',
+            'self.settings.setdefault("character_resources"',
+            'self.settings.setdefault("character_traits"',
+            "mood.set_active_character(",
+            "self.voice_application_service.settings =",
+        ):
+            self.assertNotIn(forbidden, sources)
+        self.assertIn("self.character_service.create_profile(", sources)
+        self.assertIn("self.character_service.update_profile(", sources)
+        self.assertIn("self.character_service.delete_profile(", sources)
+        self.assertIn("self.character_service.save_preferences(", sources)
+        self.assertIn("self.character_service.save_personality(", sources)
+        self.assertIn("self.voice_application_service.apply_character_settings(", sources)
+        self.assertIn("self.mood_service.set_active_character(", sources)
+
     def test_coding_agent_handoff_and_shutdown_are_outside_ui(self):
         sources = "\n".join(
             path.read_text(encoding="utf-8")
