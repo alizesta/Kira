@@ -4539,7 +4539,6 @@ class MainWindow(QMainWindow):
         history = self.chat_application_service.conversation_context(
             8, session_id=self.cur.cid, conversation_id=conversation_id
         )
-        )
         # The user's own words are sent unchanged. Only a short follow-up that points back at the chat is rewritten by the model.
         rewrite = (lambda c=self.client: self.make_search_query(history, query, c)) if websearch.is_followup(query) else None
         self._search_worker = SearchWorker(self._search_token, query, key, self.settings.get("web_depth", "basic"),
