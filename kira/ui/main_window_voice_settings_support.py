@@ -11,7 +11,6 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QMessageBox, QFrame, QFileDialog, QSizePolicy, QInputDialog, QStackedWidget, QButtonGroup, QGraphicsDropShadowEffect
 from ..config import DATA_DIR
 from ..ollama_client import clamp_num_ctx, clamp_num_predict, DEFAULT_NUM_PREDICT, DEFAULT_NUM_CTX, DEFAULT_KEEP_ALIVE
-from .. import routes as route_model
 from ..vrm_avatar import KiraAvatar
 from ..listener import Listener
 from ..ui_icons import make_icon
