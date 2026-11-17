@@ -1,4 +1,7 @@
+import base64
+import tempfile
 import unittest
+from pathlib import Path
 
 from kira.chat.application_service import (
     ApplicationEventKind,
@@ -6,6 +9,7 @@ from kira.chat.application_service import (
     RequestStatus,
 )
 from kira.chat.response_handler import ProviderEvent
+from kira.chat.attachments import AttachmentManager, AttachmentStatus
 
 
 class Signal:
@@ -107,6 +111,43 @@ class ChatApplicationServiceTests(unittest.TestCase):
             temperature=0.5,
             provider_callbacks={"event": lambda _event: None, "tool_event": lambda _event: None},
         )
+
+
+    def test_request_attachments_use_managed_storage_and_are_cleaned_at_terminal(self):
+        image = base64.b64encode(
+            base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==")
+        ).decode("ascii")
+        with tempfile.TemporaryDirectory() as temp:
+            manager = AttachmentManager(Path(temp) / "managed")
+            service = ChatApplicationService(
+                persistence=self.persistence,
+                system_prompt_builder=lambda *_args, **_kwargs: "",
+                worker_factory=self._worker_factory,
+                on_dispatch=self.dispatched.append,
+                attachment_manager=manager,
+            )
+            submission = service.submit_message(
+                "kira", "describe these",
+                [
+                    {"name": "pixel.png", "kind": "image", "mime": "image/png", "b64": image},
+                    {"name": "note.txt", "kind": "text", "text": "attachment text"},
+                ],
+            )
+            ids = service._request_attachment_ids[submission.request.request_id]
+            paths = [manager.get_attachment(item, session_id="kira").path for item in ids]
+            prepared = service.prepare_request_attachments(
+                submission.request.request_id, text="describe these"
+            )
+            self.assertEqual(prepared["prepared_count"], 2)
+            self.assertEqual(len(prepared["images"]), 1)
+            self.assertIn("attachment text", prepared["model"])
+            self.assertTrue(all(Path(path).exists() for path in paths))
+            service.complete_local_request(submission.request.request_id)
+            self.assertTrue(all(not Path(path).exists() for path in paths))
+            self.assertTrue(all(
+                manager.get_attachment(item, session_id="kira") is None for item in ids
+            ))
+            service.dispose()
 
     def test_submit_dispatches_and_preserves_request_and_session_identity(self):
         submission = self.service.submit_message("kira", "hello")
