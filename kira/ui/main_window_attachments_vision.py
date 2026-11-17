@@ -196,7 +196,7 @@ class AttachmentsVisionMixin:
 
         # Capture is gated by the selected profile, not only by the master toggle.
         self._set_game_vision_capture(enabled and vision_allowed)
-        safe_profile = enabled and self._game_mode_profile == COMPETITIVE_SAFE_MODE
+        safe_profile = enabled and self.game_mode_application_service.is_competitive_safe(self._game_mode_profile)
         self.tool_agent.set_competitive_safe_mode(safe_profile)
         # Safe mode does not keep polling foreground process metadata while an online game is running.
         if safe_profile:
@@ -228,7 +228,7 @@ class AttachmentsVisionMixin:
         if not enabled:
             self.game_mode_btn.setToolTip("Game Mode خاموش است؛ برای فعال‌کردن دستی کلیک کن")
             self.add_chat("system", "🎮 Game Mode خاموش شد؛ تمام Captureها و شنود صدای بازی متوقف شدند.")
-        elif self._game_mode_profile == STORY_MODE:
+        elif self.game_mode_application_service.is_story(self._game_mode_profile):
             self.game_mode_btn.setToolTip("Story Mode فعال است؛ Vision و تحلیل محلی صدای بازی فعال‌اند")
             self.add_chat("system", "🎮 Story Mode فعال شد. Vision و تحلیل محلی صدای بازی فعال‌اند. دست‌کاری پردازش، حافظه یا ورودی بازی همچنان ممنوع است.")
         else:
@@ -279,7 +279,7 @@ class AttachmentsVisionMixin:
 
     def _capture_game_frame(self):
         """Capture a bounded frame and analyze only changed frames at the selected low-cost rate."""
-        if not self._game_mode_enabled or not game_mode_permissions(self._game_mode_profile)["vision_capture"]:
+        if not self._game_mode_enabled or not self.game_mode_application_service.can_capture_vision(self._game_mode_profile):
             self._latest_game_frame = None
             self._vision_gate.reset()
             return
@@ -332,7 +332,7 @@ class AttachmentsVisionMixin:
             f"فریم تکراری ردشده: {stats['unchanged_skips']} · تأخیر آخرین تحلیل: {latency_ms}ms"
         )
         if (not self._game_mode_enabled
-                or not game_mode_permissions(self._game_mode_profile)["vision_capture"]):
+                or not self.game_mode_application_service.can_capture_vision(self._game_mode_profile)):
             return
         if not ok:
             # Unsupported image models are reported once, not every sampling interval.
@@ -362,7 +362,7 @@ class AttachmentsVisionMixin:
     def _game_vision_attachment(self):
         """Attach only the newest 480p JPEG frame captured while Game Mode is manually enabled."""
         if (not self._game_mode_enabled
-                or not game_mode_permissions(self._game_mode_profile)["vision_capture"]
+                or not self.game_mode_application_service.can_capture_vision(self._game_mode_profile)
                 or self._latest_game_frame is None):
             return None
         try:
