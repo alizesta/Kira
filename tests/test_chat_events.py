@@ -253,37 +253,42 @@ class ChatEventWiringTests(unittest.TestCase):
         self.assertIn("chat_event_publisher=chat_event_publisher", source)
         self.assertIn("app.aboutToQuit.connect(event_bus.close)", source)
 
-    def test_legacy_application_adapter_publishes_chat_lifecycle_facts(self):
+    def test_application_service_owns_request_stream_and_persistence_notifications(self):
         import ast
         from pathlib import Path
 
-        source = (Path(__file__).resolve().parents[1] / "kira" / "oldmain.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        event_names = set()
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
-                continue
-            if node.func.attr == "_publish_chat_event":
-                argument_index = 0
-            elif node.func.attr == "_finish_chat_event_request":
-                argument_index = 1
-            else:
-                continue
-            if len(node.args) > argument_index:
-                event_name = node.args[argument_index]
-                if isinstance(event_name, ast.Constant) and isinstance(event_name.value, str):
-                    event_names.add(event_name.value)
+        root = Path(__file__).resolve().parents[1]
+        service_source = (root / "kira" / "chat" / "application_service.py").read_text(encoding="utf-8")
+        service_tree = ast.parse(service_source)
+        service_strings = {
+            node.value for node in ast.walk(service_tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
         self.assertTrue({
-            "session_created", "session_activated", "session_deactivated", "session_closed",
-            "request_submitted", "request_started", "request_completed", "request_failed",
-            "request_cancelled", "stream_started", "stream_chunk_received",
-            "stream_completed", "stream_interrupted", "message_saved", "history_loaded",
-            "persistence_failed",
-        }.issubset(event_names))
+            "request_submitted", "request_started", "request_completed",
+            "request_failed", "request_cancelled", "stream_started",
+            "stream_chunk_received", "stream_completed", "stream_interrupted",
+            "message_saved", "persistence_failed",
+        }.issubset(service_strings))
 
-    def test_queued_request_keeps_original_identity_until_dispatch(self):
-        import ast
+        main_source = (root / "kira" / "oldmain.py").read_text(encoding="utf-8")
+        main_tree = ast.parse(main_source)
+        main_strings = {
+            node.value for node in ast.walk(main_tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
+        self.assertTrue({
+            "session_created", "session_activated", "session_deactivated",
+            "session_closed", "session_failed", "history_loaded", "persistence_failed",
+        }.issubset(main_strings))
+
+    def test_queued_request_keeps_logical_identity_across_provider_attempts(self):
         from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "kira" / "chat" / "application_service.py").read_text(encoding="utf-8")
+        self.assertIn("self._attempt_to_request[attempt_id] = request_id", source)
+        self.assertIn("provider_request_id", source)
+        self.assertIn("self._publish_request_submitted", source)
 
         source = (Path(__file__).resolve().parents[1] / "kira" / "oldmain.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
