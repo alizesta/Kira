@@ -22,6 +22,20 @@ from typing import Any, Mapping
 from kira import attachments as _legacy
 
 
+def _freeze_value(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType({str(key): _freeze_value(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_value(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        return frozenset(_freeze_value(item) for item in value)
+    return value
+
+
+def _freeze_mapping(value: Mapping[str, Any] | None) -> Mapping[str, Any]:
+    return _freeze_value(dict(value or {}))
+
+
 class AttachmentStatus(str, Enum):
     READY = "ready"
     FAILED = "failed"
@@ -47,7 +61,7 @@ class Attachment:
     status: AttachmentStatus = AttachmentStatus.READY
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "metadata", MappingProxyType(dict(self.metadata)))
+        object.__setattr__(self, "metadata", _freeze_mapping(self.metadata))
 
 
 class AttachmentManager:
@@ -234,7 +248,7 @@ class AttachmentManager:
 
         attachment_id = uuid.uuid4().hex
         session_dir = self._root / hashlib.sha256(owner.encode("utf-8")).hexdigest()[:24]
-        session_dir.mkdir(parents=True, exist_ok=True)
+        session_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
         target = (session_dir / f"{attachment_id}{Path(name).suffix.lower()}").resolve()
         if not target.is_relative_to(session_dir.resolve()):
             raise _legacy.AttachmentError("مسیر ذخیره‌سازی ضمیمه نامعتبر است.")
@@ -281,10 +295,12 @@ class AttachmentManager:
     ) -> dict[str, Any]:
         self._ensure_open()
         prepared = []
+        errors = []
         for attachment_id in attachment_ids:
             record = self.get_attachment(attachment_id, session_id=session_id)
             if record is None:
-                raise _legacy.AttachmentError("ضمیمه وجود ندارد یا متعلق به این نشست نیست.")
+                errors.append("ضمیمه وجود ندارد یا متعلق به این نشست نیست.")
+                continue
             try:
                 if record.mime_type.startswith("image/"):
                     raw = Path(record.path).read_bytes()
@@ -296,9 +312,11 @@ class AttachmentManager:
                     })
                 else:
                     prepared.append(_legacy.load_attachment(record.path))
-            except (OSError, _legacy.AttachmentError) as exc:
-                raise _legacy.AttachmentError(f"پردازش فایل «{record.filename}» ناموفق بود.") from exc
-        return _legacy.compose(text, prepared, search=search)
+            except Exception:
+                errors.append(f"پردازش فایل «{record.filename}» ناموفق بود.")
+        result = _legacy.compose(text, prepared, search=search)
+        result["errors"] = errors
+        return result
 
     def remove_attachment(self, attachment_id: str, *, session_id: str) -> bool:
         self._ensure_open()
@@ -307,7 +325,7 @@ class AttachmentManager:
             return False
         path = Path(record.path).resolve()
         owner_dir = (self._root / hashlib.sha256(record.session_id.encode("utf-8")).hexdigest()[:24]).resolve()
-        if not path.is_relative_to(owner_dir) or not path.is_relative_to(self._root):
+        if path.is_symlink() or not path.is_relative_to(owner_dir) or not path.is_relative_to(self._root):
             return False
         try:
             path.unlink(missing_ok=True)
