@@ -358,9 +358,12 @@ class AttachmentManager:
                     self._validate_docx_package(managed_path)
                 if record.mime_type.startswith("image/"):
                     raw = managed_path.read_bytes()
+                    image_payload = _content.image_attachment(
+                        raw, record.filename, record.mime_type,
+                    )
                     prepared_images.append({
-                        "mime": record.mime_type,
-                        "b64": base64.b64encode(raw).decode("ascii"),
+                        "mime": image_payload["mime"],
+                        "b64": image_payload["b64"],
                         "name": record.filename,
                     })
                     display_names.append(f"🖼 {record.filename}")
