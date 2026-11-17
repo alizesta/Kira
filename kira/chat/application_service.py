@@ -13,6 +13,7 @@ from typing import Any, Callable, Mapping, Sequence
 from uuid import uuid4
 
 from ..core.interfaces.chat_history_service import ChatHistoryService
+from .attachments import Attachment, AttachmentManager
 from .context_builder import ContextBuilder, ContextRequest
 from .coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
 from .response_handler import (
@@ -113,6 +114,7 @@ class ChatApplicationService:
         cancel_provider: Callable[[ChatApplicationRequest, Any], Any] | None = None,
         max_pending: int = 3,
         request_history_limit: int = 512,
+        attachment_manager: AttachmentManager | None = None,
     ) -> None:
         if persistence is None:
             raise TypeError("persistence is required")
@@ -123,6 +125,8 @@ class ChatApplicationService:
         if request_history_limit < 1:
             raise ValueError("request_history_limit must be at least 1")
         self._persistence = persistence
+        self._attachment_manager = attachment_manager or AttachmentManager()
+        self._owns_attachment_manager = attachment_manager is None
         self._context_builder = ContextBuilder(
             system_prompt_builder, prompt_enricher=prompt_enricher
         )
@@ -141,6 +145,33 @@ class ChatApplicationService:
         self._active_by_session: dict[str, str] = {}
         self._dispatch_scheduled: set[str] = set()
         self._disposed = False
+
+    def add_attachment(
+        self, source: Any, *, session_id: str, filename: str | None = None,
+        message_id: str | None = None, metadata: Mapping[str, Any] | None = None,
+    ) -> Attachment:
+        """Register a file/byte payload under the requested character session."""
+        return self._attachment_manager.add_attachment(
+            source, filename=filename, session_id=session_id,
+            message_id=message_id, metadata=metadata,
+        )
+
+    def prepare_attachments(
+        self, attachment_ids: Sequence[str], *, session_id: str,
+        text: str = "", search: bool = False,
+    ) -> dict[str, Any]:
+        """Prepare scoped attachment content; prompt/provider work stays elsewhere."""
+        return self._attachment_manager.prepare_content(
+            tuple(attachment_ids), session_id=session_id, text=text, search=search,
+        )
+
+    def remove_attachment(self, attachment_id: str, *, session_id: str) -> bool:
+        return self._attachment_manager.remove_attachment(
+            attachment_id, session_id=session_id,
+        )
+
+    def cleanup_attachments(self, *, session_id: str | None = None) -> int:
+        return self._attachment_manager.cleanup(session_id=session_id)
 
     def _emit(self, event: ChatApplicationEvent) -> None:
         callback = self._on_event
@@ -573,12 +604,15 @@ class ChatApplicationService:
                 self._chat_request_ids.pop(key, None)
         self._dispatch_scheduled.discard(owner)
         self._active_by_session.pop(owner, None)
+        self.cleanup_attachments(session_id=owner)
 
     def dispose(self) -> None:
         if self._disposed:
             return
         for owner in tuple(self._coordinators):
             self.close_session(owner, interrupted=True)
+        if self._owns_attachment_manager:
+            self._attachment_manager.close()
         self._disposed = True
 
     def pending_count(self, session_id: str) -> int:
