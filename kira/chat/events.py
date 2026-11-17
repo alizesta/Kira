@@ -222,6 +222,13 @@ class ChatEventPublisher:
         if family == "session":
             return (family, event.session_id) if event.session_id else None
         if event.session_id and event.request_id:
+            if family == "stream":
+                provider_request_id = (
+                    event.payload.get("provider_request_id")
+                    or event.metadata.get("provider_request_id")
+                )
+                if provider_request_id:
+                    return (family, event.session_id, event.request_id, str(provider_request_id))
             return (family, event.session_id, event.request_id)
         return None
 
