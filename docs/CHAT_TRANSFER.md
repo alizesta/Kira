@@ -8,7 +8,7 @@
 
 ## JSON contract
 
-UTF-8 JSON uses `schema_version: 1`, `export_version: "1.0"`, UTC `exported_at`, and `conversations[]`. Each conversation carries its durable ID, character, title, status, timestamps, metadata and ordered `messages[]`. Messages retain integer IDs, role, content, timestamp, character/conversation IDs, metadata and lifecycle status. Ordering is `(created_at, id)`. Schema evolution requires an explicit parser/migration path; unknown versions are rejected.
+UTF-8 JSON uses `schema_version: 1`, `export_version: "1.0"`, UTC `exported_at`, and `conversations[]`. Each conversation carries its durable ID, character, title, status, timestamps, metadata and ordered `messages[]`. Conversation status accepts `active`, `closed`, `archived` and `trashed`; lifecycle timestamps travel inside the existing metadata object., character, title, status, timestamps, metadata and ordered `messages[]`. Messages retain integer IDs, role, content, timestamp, character/conversation IDs, metadata and lifecycle status. Ordering is `(created_at, id)`. Schema evolution requires an explicit parser/migration path; unknown versions are rejected.
 
 ## Import policy
 
