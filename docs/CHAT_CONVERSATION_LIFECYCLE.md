@@ -40,7 +40,7 @@ Import the public contract from `kira.chat`:
 
 The repository is the shared `ChatPersistence` object. The publisher is the shared `ChatEventPublisher` created by bootstrap. No lifecycle service creates or owns an EventBus.
 
-Every successful operation returns an immutable `ConversationLifecycleResult` with conversation ID, prior/new status, UTC change time, operation, success and whether its event was published. Missing IDs, invalid transitions, repository failures and missing authorization are explicit exceptions.
+Every successful operation returns an immutable `ConversationLifecycleResult` with conversation ID, prior/new status, UTC change time, operation, success and whether its event was published. Missing IDs, invalid transitions, repository failures and missing authorization are explicit exceptions; lifecycle exceptions expose stable `error_code` values.
 
 ### Transition policy
 
@@ -77,4 +77,4 @@ TASK 012 export already serializes conversation status and metadata; its import 
 - Static source and contract review only. No tests, compile/import checks, GUI/Windows checks or application execution are permitted during TASK 013 implementation.
 - Permanent deletion relies on the existing repository snapshot-and-delete operation. Cross-table foreign-key/dependency inventory beyond the current repository contract is not exposed; new external references must add a repository-level dependency guard before permanent deletion is enabled for those records.
 - Retention scheduling and automatic cleanup are intentionally not implemented.
-- The API is independent and publicly exported. UI/command wiring is left to the owning integration layer; no lifecycle rules are duplicated in MainWindow or ChatApplicationService.
+- The API is independent and publicly exported. The composition root injects the lifecycle owner into `ChatApplicationService`, which exposes thin delegation methods for listing, archive, restore, soft delete and authorized permanent delete. It contains no transition rules; MainWindow and commands can call the application contract without duplicating lifecycle policy.
