@@ -1,7 +1,7 @@
 """One independent chat session per character (Qt-free helpers so they can be tested without a GUI).
 
 Every character (Kira / Ren / Mika / custom) has its own ChatSession: its own saved history, chat view, model router,
-generation worker, pending-message queue and stream state. Several sessions can therefore generate at the same time.
+generation worker and stream state. ChatApplicationService owns the per-session pending queues and request lifecycle.
 
 MainWindow keeps its familiar attribute names (busy, worker, _stream_text, ...): they are properties that read/write the
 session that is *current* while an event is handled (see MainWindow._as). Things that exist once per computer - the
@@ -22,7 +22,6 @@ SESSION_FIELDS = {
     "_stream_pos": lambda: None,
     "_stream_dirty": lambda: False,
     "_stream_mood": lambda: None,
-    "_partial_saved": lambda: False,
     "_emotion_applied": lambda: False,
     "_body_done": lambda: [],             # body command names already performed for the message being answered (no repeats)
     "_t_req": lambda: None,
@@ -44,6 +43,7 @@ SESSION_FIELDS = {
     "_search_base": lambda: None,
     "_route_info": lambda: None,
     "_badge_phase": lambda: "idle",
+    "application_request_id": lambda: None,
 }
 
 
@@ -64,9 +64,6 @@ class ChatSession:
         self.timer = None           # QTimer that paints the streamed text of this chat
         self.client = None          # HybridRouter of this chat (own cancel flag, so Stop stops only this character)
         self.relay = None           # SessionRelay: receives this chat's worker signals on the GUI thread
-        self.coordinator = None     # Per-session ChatCoordinator, composed by the application adapter
-        self.response_relay = None  # Current provider response adapter; released with this session
-        self.dispatch_scheduled = False  # A dequeued request is waiting for its GUI-thread dispatch callback
         self.badge = ("idle", None)  # last route-indicator state (shown when this chat is in front)
         self.theme = None
         self.draft = ""             # text typed but not sent yet
