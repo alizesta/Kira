@@ -138,6 +138,12 @@ class ChatOrganizationServiceTests(unittest.TestCase):
         with self.assertRaises(OrganizationError):
             self.service.update_metadata("kira-1", {"score": float("nan")})
 
+    def test_optional_description_can_be_cleared(self):
+        self.service.update_metadata("kira-1", {"description": "temporary"})
+        self.service.update_metadata("kira-1", {"description": ""})
+        organization = self.service.get_organization("kira-1").metadata
+        self.assertNotIn("description", organization)
+
     def test_repository_failures_are_normalized(self):
         self.repository.fail_update = True
         with self.assertRaises(OrganizationRepositoryError):
