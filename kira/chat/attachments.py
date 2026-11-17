@@ -7,7 +7,6 @@ legacy pure parser until callers migrate to this API.
 from __future__ import annotations
 
 import hashlib
-import mimetypes
 import os
 import shutil
 import tempfile
