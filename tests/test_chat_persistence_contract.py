@@ -234,6 +234,90 @@ class SqliteChatRepositoryTests(unittest.TestCase):
         self.assertEqual(self.persistence.message_count(), 90)
         self.assertEqual(self.persistence.message_count("ren"), 30)
 
+    def test_lifecycle_batch_updates_multiple_conversations_without_touching_messages(self):
+        first = self.persistence.create_conversation("kira", title="first")
+        second = self.persistence.create_conversation("ren", title="second")
+        self.persistence.add_message("user", "first message", "kira", conversation_id=first["id"])
+        self.persistence.add_message("user", "second message", "ren", conversation_id=second["id"])
+
+        self.assertTrue(self.persistence.update_conversation_lifecycle([
+            {
+                "id": first["id"], "status": "archived", "previous_status": "active",
+                "metadata": {"organization": {"favorite": True}, "audit": "kept"},
+            },
+            {
+                "id": second["id"], "status": "trashed", "previous_status": "active",
+                "metadata": {"_conversation_lifecycle": {"deleted_at": "2026-11-17T00:00:00+00:00"}},
+            },
+        ]))
+
+        self.assertEqual(self.persistence.get_conversation(first["id"])["status"], "archived")
+        self.assertEqual(self.persistence.get_conversation(first["id"])["metadata"]["audit"], "kept")
+        self.assertEqual(self.persistence.get_conversation(second["id"])["status"], "trashed")
+        self.assertEqual(self.persistence.message_count("kira", first["id"]), 1)
+        self.assertEqual(self.persistence.message_count("ren", second["id"]), 1)
+
+    def test_lifecycle_batch_rolls_back_every_target_on_stale_expected_state(self):
+        first = self.persistence.create_conversation("kira", title="first")
+        second = self.persistence.create_conversation("ren", title="second")
+
+        with self.assertRaisesRegex(PersistenceError, "state changed concurrently"):
+            self.persistence.update_conversation_lifecycle([
+                {
+                    "id": first["id"], "status": "archived", "previous_status": "active",
+                    "metadata": {"marker": "must roll back"},
+                },
+                {
+                    "id": second["id"], "status": "trashed", "previous_status": "archived",
+                    "metadata": {},
+                },
+            ])
+
+        self.assertEqual(self.persistence.get_conversation(first["id"])["status"], "active")
+        self.assertEqual(self.persistence.get_conversation(first["id"])["metadata"], {})
+        self.assertEqual(self.persistence.get_conversation(second["id"])["status"], "active")
+
+    def test_permanent_delete_refuses_declared_foreign_key_dependents(self):
+        conversation = self.persistence.create_conversation("kira", title="protected")
+        with self.repository._db() as con:
+            con.execute(
+                "CREATE TABLE conversation_references ("
+                "id INTEGER PRIMARY KEY, conversation_id TEXT NOT NULL "
+                "REFERENCES conversations(id))"
+            )
+            con.execute(
+                "INSERT INTO conversation_references(conversation_id) VALUES (?)",
+                (conversation["id"],),
+            )
+        self.persistence.update_conversation_lifecycle([{
+            "id": conversation["id"], "status": "trashed", "previous_status": "active",
+            "metadata": {"_conversation_lifecycle": {"deleted_at": "2026-11-17T00:00:00+00:00"}},
+        }])
+
+        with self.assertRaisesRegex(PersistenceError, "dependent records"):
+            self.persistence.delete_conversation(conversation["id"], expected_status="trashed")
+
+        self.assertIsNotNone(self.persistence.get_conversation(conversation["id"]))
+
+    def test_permanent_delete_rechecks_expected_state_and_removes_only_target(self):
+        first = self.persistence.create_conversation("kira", title="first")
+        second = self.persistence.create_conversation("ren", title="second")
+        self.persistence.add_message("user", "first message", "kira", conversation_id=first["id"])
+        self.persistence.add_message("user", "second message", "ren", conversation_id=second["id"])
+        self.persistence.update_conversation_lifecycle([{
+            "id": first["id"], "status": "trashed", "previous_status": "active",
+            "metadata": {"_conversation_lifecycle": {"deleted_at": "2026-11-17T00:00:00+00:00"}},
+        }])
+
+        with self.assertRaisesRegex(PersistenceError, "state changed"):
+            self.persistence.delete_conversation(first["id"], expected_status="active")
+
+        self.assertEqual(self.persistence.delete_conversation(first["id"], expected_status="trashed"), 1)
+        self.assertIsNone(self.persistence.get_conversation(first["id"]))
+        self.assertEqual(self.persistence.recent_messages(10, "ren", second["id"]), [
+            {"role": "user", "content": "second message"}
+        ])
+
     def test_migration_rollback_keeps_legacy_schema_and_backup_for_retry(self):
         self.db.unlink()
         con = sqlite3.connect(self.db)
