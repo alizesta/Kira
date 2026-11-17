@@ -155,7 +155,7 @@ class AutonomyMixin:
         (then the message waits in the queue as usual)."""
         if not self._running_plan:
             return None
-        plan = self.tasks.active()
+        plan = self.tasks.active(self._turn_session_id)
         if plan is None:
             return None
         kind, payload = parse_control(text)
@@ -263,7 +263,7 @@ class AutonomyMixin:
             if plan.resume:
                 tp = self.tasks.active(self._turn_session_id)
             elif retry_index and self._turn_plan_id:
-                tp = self.tasks.get(self._turn_plan_id)
+                tp = self.tasks.get(self._turn_plan_id, session_id=self._turn_session_id)
             initial = None
             cur = list(messages)
             if tp is None:
@@ -326,7 +326,7 @@ class AutonomyMixin:
                     on_tool({"phase": "plan_ready", "n": len(tp.steps), "estimate": tp.estimate_text()})
                 return "go", tp, None
             if gate.is_tool:                                # the model went straight to a tool: still tracked as a task (ad-hoc steps)
-                tp = self.tasks.new(self._goal_of(cur))
+                tp = self.tasks.new(self._goal_of(cur), session_id=self._turn_session_id)
                 if prev is not None and prev is not tp:
                     prev.status = P_SUPERSEDED
                 tp.status = P_RUNNING
@@ -456,7 +456,10 @@ class AutonomyMixin:
             for s in tp.steps:
                 if not s.tool and s.status in (PENDING, RUNNING):
                     s.status, s.result = DONE, "گزارش/جمع‌بندی ارائه شد"
-        if any(s.status == AWAITING for s in tp.steps) or (self._pending is not None and getattr(self._pending, "plan_id", "") == tp.id):
+        pending = self._pending_by_session.get(self._turn_session_id)
+        if any(s.status == AWAITING for s in tp.steps) or (
+            pending is not None and getattr(pending, "plan_id", "") == tp.id
+        ):
             tp.status = P_WAIT_CONFIRM
         elif any(s.status in (FAILED, UNMET) for s in tp.steps):
             tp.status = P_FAILED
