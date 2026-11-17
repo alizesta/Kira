@@ -259,7 +259,7 @@ class AttachmentsVisionMixin:
     def on_game_audio_transcript(self, text):
         if (not self._game_mode_enabled
                 or not self.game_mode_application_service.can_emit_automatic_game_audio_alerts(self._game_mode_profile)
-                or self.busy or self.speaker._began or not is_important_game_audio(text)):
+                or self.busy or self.voice_application_service.is_speaking() or not is_important_game_audio(text)):
             return
         now = time.monotonic()
         lower = text.casefold()
@@ -293,7 +293,7 @@ class AttachmentsVisionMixin:
         if self._latest_game_frame is None or self._vision_worker is not None and self._vision_worker.isRunning():
             return
         # Never compete with a user chat request for the same provider route.
-        if self.busy or self.client.busy or self.speaker._began:
+        if self.busy or self.client.busy or self.voice_application_service.is_speaking():
             return
         try:
             from PySide6.QtCore import QBuffer, QByteArray, QIODevice
