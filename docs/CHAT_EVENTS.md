@@ -44,6 +44,12 @@ Nested mappings are read-only, sequences become tuples and sets become frozenset
 | session_deactivated | Session stopped being the visible/active session | next_session_id |
 | session_closed | Session was removed or application shutdown closed it | reason |
 | session_failed | Session setup failed while the legacy adapter was creating a character session | character_id, error; a future Session Lifecycle service may extend this to runtime failures |
+| conversation_archived | Durable Conversation moved out of the active list | conversation_id, previous_status, new_status, changed_at, operation |
+| conversation_restored | Archived Conversation returned to active | conversation_id, previous_status, new_status, changed_at, operation |
+| conversation_trashed | Conversation soft-deleted and made recoverable | conversation_id, previous_status, new_status, changed_at, operation |
+| conversation_restored_from_trash | Trashed Conversation returned to active | conversation_id, previous_status, new_status, changed_at, operation |
+| conversation_permanently_deleted | Explicitly authorized trashed Conversation permanently removed | conversation_id, previous_status, new_status, changed_at, operation |
+| conversation_metadata_updated | Conversation title/organization metadata changed | conversation_id, character_id, organization |
 | message_saved | Message write succeeded | role, content, status, conversation_id |
 | history_loaded | History read completed | message_count, conversation_id, limit |
 | persistence_failed | History/message persistence operation failed | operation, role, status, error |
