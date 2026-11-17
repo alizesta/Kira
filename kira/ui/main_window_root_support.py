@@ -3,7 +3,6 @@
 from PySide6.QtCore import Qt, Signal, QTimer, QSize
 from PySide6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTabWidget, QToolButton, QMenu, QFrame, QGridLayout
 from ..config import load_settings, ROOT, LOAD_WARNINGS, DATA_DIR
-from ..ollama_client import OllamaClient
 from ..chat import attachments as att
 from ..companion import CompanionWindow, CompanionBubble
 from ..emotion.backend_png import EmotionFaceAnimator
