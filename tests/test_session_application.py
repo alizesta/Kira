@@ -140,6 +140,40 @@ class SessionApplicationServiceTests(unittest.TestCase):
             )
         )
 
+    def test_active_application_request_prevents_session_drain(self):
+        session = self.manager.create_session("kira")
+        self.chat.active.add(session.session_id)
+        self.assertTrue(self.service.has_pending_work(session))
+        self.chat.active.clear()
+        self.assertFalse(self.service.has_pending_work(session))
+
+    def test_closing_session_is_reopened_for_a_restored_character(self):
+        session = self.manager.create_session("ren")
+        self.manager.set_runtime_callbacks(has_pending_work=lambda _session: True)
+        self.assertFalse(self.manager.close_session(session.session_id))
+        self.assertEqual(session.status, "closing")
+
+        ensured = self.service.ensure_session(
+            "ren", {"name": "Ren"}, ensure_resources=lambda _session, _profile: None
+        )
+
+        self.assertIs(ensured, session)
+        self.assertEqual(session.status, "idle")
+        self.assertIs(self.manager.get_session_for_character("ren"), session)
+
+    def test_failed_session_is_closed_and_replaced(self):
+        failed = self.manager.create_session("mika")
+        self.assertTrue(self.manager.fail_session(failed.session_id, "worker crashed"))
+
+        replacement = self.service.ensure_session(
+            "mika", {"name": "Mika"}, ensure_resources=lambda _session, _profile: None
+        )
+
+        self.assertIsNot(replacement, failed)
+        self.assertEqual(replacement.cid, "mika")
+        self.assertEqual(replacement.status, "created")
+        self.assertIsNone(self.manager.get_session(failed.session_id))
+
     def test_worker_probe_handles_deleted_qt_objects(self):
         class DeletedWorker:
             def isRunning(self):
