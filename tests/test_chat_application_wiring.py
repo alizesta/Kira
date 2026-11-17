@@ -91,10 +91,18 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("create_voice_application_service_factory", bootstrap)
         self.assertIn("voice_application_service_factory=voice_service_factory", bootstrap)
         self.assertIn("self.voice_application_service = voice_application_service_factory", self.source)
-        for method in ("start_recording", "stop_recording", "speak", "stop_speaking"):
+        for method in (
+            "start_recording", "stop_recording", "speak", "stop_speaking",
+            "stream_reset", "stream_text", "stream_end", "play_file", "is_speaking",
+        ):
             self.assertIn(f"def {method}(", service)
         self.assertIn("self.voice_application_service.start_recording()", runtime)
         self.assertIn("self.voice_application_service.stop_recording()", runtime)
+        self.assertIn("self.voice_application_service.speak(", self.source)
+        self.assertIn("self.voice_application_service.stream_text(", self.source)
+        self.assertIn('voice_application_service = front_only_property("voice_application_service")', self.source)
+        self.assertNotIn("self.speaker.speak(", self.source)
+        self.assertNotIn("self.speaker.stream_text(", self.source)
         self.assertNotIn("self.listener = Listener(", runtime)
         self.assertNotIn("PySide6", service)
 
