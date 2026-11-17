@@ -28,8 +28,10 @@ def _freeze_value(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return tuple(_freeze_value(item) for item in value)
     if isinstance(value, (set, frozenset)):
-        return frozenset(_freeze_value(item) for item in value)
-    return value
+        return tuple(_freeze_value(item) for item in value)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise TypeError("attachment metadata must contain immutable scalar or container values")
 
 
 def _freeze_mapping(value: Mapping[str, Any] | None) -> Mapping[str, Any]:
@@ -274,12 +276,15 @@ class AttachmentManager:
         self._content_index[index_key] = attachment_id
         return record
 
-    def get_attachment(self, attachment_id: str, *, session_id: str | None = None) -> Attachment | None:
+    def get_attachment(self, attachment_id: str, *, session_id: str) -> Attachment | None:
         self._ensure_open()
+        owner = str(session_id or "")
+        if not owner:
+            return None
         record = self._records.get(str(attachment_id or ""))
         if record is None or record.status is not AttachmentStatus.READY:
             return None
-        if session_id is not None and record.session_id != str(session_id):
+        if record.session_id != owner:
             return None
         return record
 
@@ -386,6 +391,8 @@ class AttachmentManager:
         self, *, session_id: str | None = None, message_id: str | None = None
     ) -> int:
         self._ensure_open()
+        if message_id is not None and session_id is None:
+            raise ValueError("session_id is required for message-scoped cleanup")
         records = [
             record for record in self._records.values()
             if record.status is AttachmentStatus.READY
