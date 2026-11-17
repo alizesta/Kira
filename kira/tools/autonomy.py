@@ -54,10 +54,11 @@ class AutonomyMixin:
     def max_replans(self) -> int:
         return _clamp(self.settings.get("agent_max_replans", 3), 0, 5, 3)
 
-    def clear_tasks(self):
-        """The chat is cleared: the tasks (their goals are the user's own words) go with it."""
-        self.tasks.clear()
-        self._resume_flag = self._pause_req = self._cancel_plan_req = False
+    def clear_tasks(self, session_id: str | None = None):
+        """Clear task history globally or only for one character session."""
+        self.tasks.clear(session_id)
+        if session_id is None or str(session_id) == getattr(self, "_turn_session_id", ""):
+            self._resume_flag = self._pause_req = self._cancel_plan_req = False
 
     def _turn_reset(self):
         self._turn_plan_id = None
@@ -69,7 +70,7 @@ class AutonomyMixin:
         from .agent import ToolPlan
         if not self.planning_enabled():
             return base
-        active = self.tasks.active()
+        active = self.tasks.active(self._turn_session_id)
         if active is not None and active.status == P_WAIT_USER:                    # the user answers the question the task is waiting for
             active.answers.append(_safe(text, 160))
             active.question = ""
@@ -112,7 +113,7 @@ class AutonomyMixin:
         (then the message goes on: 'resume' and 'change' set a flag so the NEXT step is run by the model with the task state)."""
         if not self.planning_enabled():
             return None
-        plan = self.tasks.active()
+        plan = self.tasks.active(self._turn_session_id)
         if plan is None:
             return None
         kind, payload = parse_control(text)
@@ -183,8 +184,9 @@ class AutonomyMixin:
         for s in plan.steps:
             if s.status in (AWAITING, RUNNING):
                 s.status = PENDING
-        if self._pending is not None and getattr(self._pending, "plan_id", "") == plan.id:
-            self._pending = None
+        pending = self._pending_by_session.get(self._turn_session_id)
+        if pending is not None and getattr(pending, "plan_id", "") == plan.id:
+            self._pending_by_session.pop(self._turn_session_id, None)
         plan.updated = time.time()
         self.tasks.save()
 
@@ -203,7 +205,7 @@ class AutonomyMixin:
 
     # ------------------------------------------------------------------ confirmation of a sensitive step that belongs to a task
     def _after_confirm(self, pending, res: ToolResult, confirmed: bool) -> str:
-        plan = self.tasks.get(getattr(pending, "plan_id", "")) if getattr(pending, "plan_id", "") else None
+        plan = self.tasks.get(getattr(pending, "plan_id", ""), session_id=getattr(pending, "session_id", self._turn_session_id)) if getattr(pending, "plan_id", "") else None
         if plan is None:
             return ""
         st = plan.step(pending.step_id)
@@ -259,7 +261,7 @@ class AutonomyMixin:
         try:
             tp = None
             if plan.resume:
-                tp = self.tasks.active()
+                tp = self.tasks.active(self._turn_session_id)
             elif retry_index and self._turn_plan_id:
                 tp = self.tasks.get(self._turn_plan_id)
             initial = None
@@ -282,7 +284,7 @@ class AutonomyMixin:
 
     # ---- phase 1: planning (only for a NEW task)
     def _planning_stage(self, router, cur, system_prompt, temp, plan, retry_index, on_event, emit, on_tool, max_steps):
-        prev = self.tasks.active()
+        prev = self.tasks.active(self._turn_session_id)
         previous = prev.render_state(900) if prev is not None else ""
         attempts = 0
         while True:
@@ -304,7 +306,7 @@ class AutonomyMixin:
                     cur = cur + [{"role": "assistant", "content": "(برنامه)"},
                                  {"role": "user", "content": f"[System note, not from the user: your plan was rejected: {exc}. Send ONE corrected <kira_plan> block, or answer without a plan.]"}]
                     continue
-                tp = self.tasks.new(self._goal_of(cur))
+                tp = self.tasks.new(self._goal_of(cur), session_id=self._turn_session_id)
                 tp.apply_draft(draft)
                 if not tp.goal or tp.goal == "…":
                     tp.goal = _safe(self._goal_of(cur), 240)
@@ -521,7 +523,10 @@ class AutonomyMixin:
         """Update the step from the REAL result and return the verification sentence for the model."""
         if res.status == NEEDS_CONFIRM:
             st.status, st.result = AWAITING, "منتظر تأیید کاربر"
-            self._pending = Pending(res.tool, dict(res.args), res.summary, step_id=st.id, plan_id=tp.id)
+            self._pending_by_session[self._turn_session_id] = Pending(
+                    res.tool, dict(res.args), res.summary,
+                    step_id=st.id, plan_id=tp.id, session_id=self._turn_session_id,
+                )
             self._pending_new = True
             tp.status = P_WAIT_CONFIRM
             return f"step {st.id}: waiting for the USER's confirmation; nothing was changed; tell the user exactly what will happen and ask for «تأیید» / «لغو». Do not continue the plan."
