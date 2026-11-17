@@ -531,7 +531,7 @@ class ChatMixin:
 
     def stop_generation(self):
         """Stop button: ends the answer now; text received so far is kept."""
-        if getattr(self, "code_chat", None) is not None and self.code_chat.stop(self.cur):
+        if self.coding_agent_application_service.stop_session(getattr(self, "code_chat", None), self.cur):
             self.chat_application_service.complete_local_request(self.cur.application_request_id)
             return                                                # the Coding Agent owns its separate task lifecycle
         if self._search_worker is not None and self._search_worker.isRunning():
