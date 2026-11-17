@@ -105,6 +105,10 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertNotIn("self.speaker.stream_text(", self.source)
         self.assertNotIn("self.listener = Listener(", runtime)
         self.assertNotIn("PySide6", service)
+        self.assertIn("self.voice_application_service.interpret_transcript(", runtime)
+        self.assertNotIn("WAKE_RE", runtime)
+        self.assertNotIn("STOP_RE", runtime)
+        self.assertNotIn("SLEEP_RE", runtime)
 
     def test_game_mode_permissions_are_owned_by_application_service(self):
         bootstrap = (ROOT / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8")
