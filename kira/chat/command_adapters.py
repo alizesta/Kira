@@ -57,16 +57,18 @@ def create_default_command_registry(
         names = body_parser(text)
         return {"names": names} if names else None
 
+    def _tool_session(context):
+        return str(context.metadata.get("character_id") or context.session_id)
+
     def match_tool_confirmation(_text, context):
         if context.metadata.get("has_attachments") or not tool_agent.enabled():
             return None
-        return {} if tool_agent.has_pending(context.session_id) else None
+        return {} if tool_agent.has_pending(_tool_session(context)) else None
 
     def match_tool_running_control(text, context):
         if context.metadata.get("has_attachments"):
             return None
-        running = getattr(tool_agent, "_running_plan_sessions", set())
-        if context.session_id not in running:
+        if _tool_session(context) not in getattr(tool_agent, "_running_plan_sessions", set()):
             return None
         kind, payload = task_control_parser(text)
         if kind not in ("status", "pause", "cancel", "add_step", "change"):
@@ -75,14 +77,14 @@ def create_default_command_registry(
 
     def execute_tool_running_control(context, _arguments):
         result = tool_agent.control_running(
-            context.request.raw_input, session_id=context.request.session_id,
+            context.request.raw_input, session_id=_tool_session(context),
         )
         return result if result is not None else NO_MATCH
 
     def match_tool_task(text, context):
         if context.metadata.get("has_attachments") or not tool_agent.enabled():
             return None
-        if not tool_agent.planning_enabled() or tool_agent.tasks.active(context.session_id) is None:
+        if not tool_agent.planning_enabled() or tool_agent.tasks.active(_tool_session(context)) is None:
             return None
         kind, payload = task_control_parser(text)
         return {"kind": kind, "payload": payload} if kind else None
@@ -107,7 +109,7 @@ def create_default_command_registry(
 
     def execute_tool_task(context, arguments):
         result = tool_agent.handle_task_command(
-            context.request.raw_input, session_id=context.request.session_id,
+            context.request.raw_input, session_id=_tool_session(context),
         )
         if result is not None:
             return result
