@@ -23,7 +23,6 @@ class ChatSearchRepository(Protocol):
     def messages_after(self, after_id: int = 0, limit: int = 500) -> list[dict[str, Any]]:
         """Return a page ordered by monotonically increasing message ID."""
         ...
-    def list_conversations(self, character_id: str | None = None) -> list[dict[str, Any]]: ...
 
 
 @dataclass(frozen=True)
