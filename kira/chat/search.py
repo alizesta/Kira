@@ -23,6 +23,7 @@ class ChatSearchRepository(Protocol):
     def messages_after(self, after_id: int = 0, limit: int = 500) -> list[dict[str, Any]]:
         """Return a page ordered by monotonically increasing message ID."""
         ...
+    def list_conversations(self, character_id: str | None = None) -> list[dict[str, Any]]: ...
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class ChatSearchRequest:
     conversation_id: str | None = None
     session_id: str | None = None
     character_id: str | None = None
+    conversation_statuses: tuple[str, ...] = ()
     roles: tuple[str, ...] = ()
     start_at: str | datetime | date | None = None
     end_at: str | datetime | date | None = None
@@ -171,6 +173,24 @@ class ChatSearchService:
         session_id = str(request.session_id or "").strip() or None
         character_id = str(request.character_id or "").strip().lower() or None
         try:
+            conversation_statuses = {str(status).strip().lower() for status in (request.conversation_statuses or ())}
+        except TypeError as exc:
+            raise ChatSearchValidationError("conversation_statuses must be an iterable of status names") from exc
+        if conversation_statuses - {"active", "archived", "trashed", "closed"}:
+            raise ChatSearchValidationError("conversation_statuses may contain active, archived, trashed or closed")
+        allowed_conversation_ids = None
+        if conversation_statuses:
+            list_conversations = getattr(self._repository, "list_conversations", None)
+            if not callable(list_conversations):
+                raise ChatSearchRepositoryError("repository does not support conversation status filtering")
+            try:
+                allowed_conversation_ids = {
+                    str(row.get("id") or "") for row in list_conversations(character_id)
+                    if str(row.get("status") or "active").lower() in conversation_statuses
+                }
+            except Exception as exc:
+                raise ChatSearchRepositoryError(f"conversation status retrieval failed: {type(exc).__name__}: {exc}") from exc
+        try:
             roles = {str(role).strip().lower() for role in (request.roles or ())}
         except TypeError as exc:
             raise ChatSearchValidationError("roles must be an iterable of role names") from exc
@@ -205,6 +225,8 @@ class ChatSearchService:
                     if role not in {"user", "assistant", "system"} or not content:
                         continue
                     if conversation_id and conv_id != conversation_id:
+                        continue
+                    if allowed_conversation_ids is not None and conv_id not in allowed_conversation_ids:
                         continue
                     metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
                     if session_id and str(metadata.get("session_id") or "") != session_id:
