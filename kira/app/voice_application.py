@@ -22,8 +22,6 @@ class VoiceApplicationService:
         on_error: Callable[[str], None],
         on_note: Callable[[str], None],
         on_finished: Callable[[Any, bool, bool], None],
-        is_mic_enabled: Callable[[], bool],
-        is_closing: Callable[[], bool],
         on_waiting: Callable[[], None],
     ) -> None:
         if speaker is None or not callable(listener_factory):
@@ -36,8 +34,6 @@ class VoiceApplicationService:
         self.on_error = on_error
         self.on_note = on_note
         self.on_finished = on_finished
-        self.is_mic_enabled = is_mic_enabled
-        self.is_closing = is_closing
         self.on_waiting = on_waiting
         self.listener = None
         self.stopping_listener = None
@@ -79,14 +75,9 @@ class VoiceApplicationService:
             self.listener = None
         if self.stopping_listener is listener:
             self.stopping_listener = None
-        restart = bool(
-            self.restart_after_stop
-            and self.is_mic_enabled()
-            and not self.is_closing()
-        )
-        if restart:
-            self.restart_after_stop = False
-        self.on_finished(listener, was_current, restart)
+        restart_requested = self.restart_after_stop
+        self.restart_after_stop = False
+        self.on_finished(listener, was_current, restart_requested)
 
     def speak(self, text: str) -> None:
         self.speaker.speak(text)
