@@ -4241,6 +4241,13 @@ class MainWindow(QMainWindow):
             frame = self._game_vision_attachment()
             if frame is not None:
                 attachments = list(attachments or []) + [frame]
+                try:
+                    self.chat_application_service.add_request_attachment(
+                        self.cur.application_request_id, frame
+                    )
+                except (AttributeError, ValueError):
+                    # A non-application request can still use the legacy payload.
+                    pass
         self._turn_voice = voice
         if self.speaker._began:
             self.director.event("user_interrupt")
@@ -4256,7 +4263,18 @@ class MainWindow(QMainWindow):
             text, force_img = websearch.image_command(text)              # '/img ...' or '/عکس ...' = search this picture even if the switch is off
         img_search = bool(attachments and any(a.get("kind") == "image" for a in attachments)
                           and (force_img or self.settings.get("image_search", False)))
-        packed = att.compose(text, attachments, search=img_search) if attachments else None
+        packed = None
+        if self.cur.application_request_id:
+            try:
+                packed = self.chat_application_service.prepare_request_attachments(
+                    self.cur.application_request_id, text=text, search=img_search
+                )
+            except (AttributeError, ValueError):
+                packed = None
+        if packed is None and attachments:
+            packed = att.compose(text, attachments, search=img_search)
+        if packed and packed.get("errors"):
+            self.show_attach_error(packed["errors"])
         self._turn_extra = packed
         self._turn_attach_kinds = [str(a.get("kind")) for a in (attachments or [])]       # structured kinds: Active Mode must not guess from display text
         self.add_chat("user", packed["display"] if packed else text, images=attachments if packed else None)
