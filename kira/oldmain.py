@@ -4382,9 +4382,10 @@ class MainWindow(QMainWindow):
         self._search_token += 1
         self._search_base = (base_text, images)
         self.status.setText(f"🌐 در حال جست‌وجوی وب: «{query[:60]}»…")
-        self._ensure_session_conversation(self.cur)
+        conversation_id = self._ensure_session_conversation(self.cur)
         history = self.chat_application_service.conversation_context(
-            8, session_id=self.cur.cid, conversation_id=self.cur.conversation_id
+            8, session_id=self.cur.cid, conversation_id=conversation_id
+        )
         )
         # The user's own words are sent unchanged. Only a short follow-up that points back at the chat is rewritten by the model.
         rewrite = (lambda c=self.client: self.make_search_query(history, query, c)) if websearch.is_followup(query) else None
@@ -4481,14 +4482,16 @@ class MainWindow(QMainWindow):
 
     def start_worker(self, plain):
         window = int(self.settings.get("memory_context_limit", 12))
-        self._ensure_session_conversation(self.cur)
+        conversation_id = self._ensure_session_conversation(self.cur)
         history = self.chat_application_service.conversation_context(
-            window, session_id=self.cur.cid, conversation_id=self.cur.conversation_id
+            window, session_id=self.cur.cid, conversation_id=conversation_id
+        )
         )
         mode = self.detect_mode(history)                          # Active Mode of THIS message (None = switched off in settings)
         try:
             older = self.chat_application_service.recent_messages(
-                window + 40, self.cur.cid, self.cur.conversation_id
+                window + 40, self.cur.cid, conversation_id
+            )[:-window] if window else []
             )[:-window] if window else []
             # Every character has its own saved conversation; only Kira owns the legacy evidence index.
             character_id = self.cur.cid
@@ -4500,13 +4503,14 @@ class MainWindow(QMainWindow):
                 budget=evidence_memory.budget_for(self.settings, self.client),
             )
             total = self.chat_application_service.message_count(
-                character_id, self.cur.conversation_id
+                character_id, conversation_id
             )
             if self.memory_service.needs_summary(character_id, total, window):
                 self.memory_service.maintain(
                     character_id,
                     self.chat_application_service.recent_messages(
-                        min(total, 3000), character_id, self.cur.conversation_id
+                        min(total, 3000), character_id, conversation_id
+                    ),
                     ),
                     window,
                 )
@@ -4581,9 +4585,10 @@ class MainWindow(QMainWindow):
             has_attachment = bool(self._turn_attach_kinds or (extra and (extra.get("images") or "--- فایل ضمیمه" in str(extra.get("model", "")))))
             earlier = users[:-1]
             try:                                                   # a "no jokes" request must outlive the short context window
+                conversation_id = self.cur.conversation_id
                 longer = [
                     m["content"] for m in self.chat_application_service.recent_messages(
-                        80, self.cur.cid, self.cur.conversation_id
+                        80, self.cur.cid, conversation_id
                     ) if m.get("role") == "user"
                 ]
                 if len(longer) > len(users):
