@@ -80,11 +80,34 @@ class VoiceApplicationService(VoiceService):
         self.restart_after_stop = False
         self.on_finished(listener, was_current, restart_requested)
 
-    def speak(self, text: str) -> None:
-        self.speaker.speak(text)
+    @property
+    def settings(self):
+        return self.speaker.settings
+
+    @settings.setter
+    def settings(self, value):
+        self.speaker.settings = value
+
+    def speak(self, text: str, rate=None, pitch=None, cache=False) -> None:
+        self.speaker.speak(text, rate, pitch, cache=cache)
 
     def stop_speaking(self) -> None:
         self.speaker.stop()
+
+    def stream_reset(self) -> None:
+        self.speaker.stream_reset()
+
+    def stream_text(self, text: str, final: bool = False) -> None:
+        self.speaker.stream_text(text, final=final)
+
+    def stream_end(self) -> None:
+        self.speaker.stream_end()
+
+    def play_file(self, path: str) -> None:
+        self.speaker.play_file(path)
+
+    def is_speaking(self) -> bool:
+        return bool(getattr(self.speaker, "_began", False))
 
     def begin_speaking(self) -> None:
         listener = self.listener
