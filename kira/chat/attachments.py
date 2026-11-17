@@ -174,7 +174,8 @@ class AttachmentManager:
         else:
             raise _legacy.AttachmentError("این نوع فایل در نسخه فعلی پشتیبانی نمی‌شود.")
 
-        raw = bytes(data)\n        actual = self._sniff(raw, extension)
+        raw = bytes(data)
+        actual = self._sniff(raw, extension)
         if expected.startswith("image/") and actual != expected:
             raise _legacy.AttachmentError("نوع واقعی تصویر با پسوند فایل مطابقت ندارد.")
         if expected == "application/pdf" and actual != expected:
@@ -348,15 +349,18 @@ class AttachmentManager:
         self._content_index.pop((record.session_id, str(record.message_id or ""), str(record.metadata.get("sha256", ""))), None)
         return True
 
-    def cleanup(\n        self, *, session_id: str | None = None, message_id: str | None = None\n    ) -> int:
+    def cleanup(
+        self, *, session_id: str | None = None, message_id: str | None = None
+    ) -> int:
         self._ensure_open()
         records = [
             record for record in self._records.values()
             if record.status is AttachmentStatus.READY
             and (session_id is None or record.session_id == str(session_id))
+            and (message_id is None or record.message_id == str(message_id))
         ]
         removed = sum(self.remove_attachment(record.attachment_id, session_id=record.session_id) for record in records)
-        if session_id is not None:
+        if session_id is not None and message_id is None:
             owner_dir = (self._root / hashlib.sha256(str(session_id).encode("utf-8")).hexdigest()[:24]).resolve()
             if owner_dir.is_relative_to(self._root):
                 try:
@@ -381,5 +385,13 @@ class AttachmentManager:
         self.close()
 
 
+# Compatibility surface for the existing Qt worker/controller during migration.
 AttachmentError = _legacy.AttachmentError
-\n\n# Compatibility surface for the existing Qt worker/controller during migration.\nAttachmentError = _legacy.AttachmentError\nIMAGE_TYPES = _legacy.IMAGE_TYPES\nMAX_FILES = _legacy.MAX_FILES\nMAX_IMAGE_BYTES = _legacy.MAX_IMAGE_BYTES\nMAX_FILE_BYTES = _legacy.MAX_FILE_BYTES\nload_attachment = _legacy.load_attachment\nimage_attachment = _legacy.image_attachment\ncompose = _legacy.compose\nsummary = _legacy.summary\n
+IMAGE_TYPES = _legacy.IMAGE_TYPES
+MAX_FILES = _legacy.MAX_FILES
+MAX_IMAGE_BYTES = _legacy.MAX_IMAGE_BYTES
+MAX_FILE_BYTES = _legacy.MAX_FILE_BYTES
+load_attachment = _legacy.load_attachment
+image_attachment = _legacy.image_attachment
+compose = _legacy.compose
+summary = _legacy.summary
