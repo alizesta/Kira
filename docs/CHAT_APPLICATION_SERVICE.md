@@ -13,7 +13,7 @@
 | `ChatPersistence` / `ChatHistoryService` | Durable message/history writes, conversation identity and recovery |
 | MainWindow adapter | UI rendering, voice/avatar effects, character/tool/search policy and construction of context input |
 
-The service receives persistence, system-prompt composition, provider worker construction, dispatch/event callbacks, scheduling and cancellation through constructor injection. It owns one coordinator per session and one response lifecycle per provider attempt.
+The service receives persistence, system-prompt composition, provider worker construction, dispatch/event callbacks, scheduling and cancellation through constructor injection. Bootstrap creates the production factory in `kira/app/chat_composition.py` and injects it into MainWindow; the window binds its UI adapter callbacks only after construction. Direct MainWindow construction retains a compatibility fallback. It owns one coordinator per session and one response lifecycle per provider attempt.
 
 ## Public API
 
@@ -30,7 +30,7 @@ The service receives persistence, system-prompt composition, provider worker con
 - `dispose()` closes every session and rejects future submissions; active partial output is persisted once as `interrupted` during application shutdown.
 - `persist_message`, `recent_messages`, `conversation_context` and `message_count` accept the session's `conversation_id`; `clear_history`, `restore_history` and `import_history` remain application-facing history operations. The UI does not call the persistence adapter directly.
 
-All public request/event contracts retain both `request_id` and `session_id`; requests additionally retain the durable `conversation_id`. Provider attempts use internal attempt IDs so a permitted plain-prompt retry can reuse the logical application request without violating ResponseHandler's duplicate-terminal protection.
+All public request/event contracts retain both `request_id` and `session_id`; the immutable `ChatRequest` passed through Coordinator carries both identifiers as well, so FIFO dispatch does not depend on `id(object)` or a side mapping. Requests additionally retain the durable `conversation_id`. Provider attempts use internal attempt IDs so a permitted plain-prompt retry can reuse the logical application request without violating ResponseHandler's duplicate-terminal protection.
 
 ## Request flow
 
