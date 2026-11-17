@@ -62,8 +62,8 @@ for hit in page.results:
 - `all_terms`: every token must occur in the message.
 - `any_term`: at least one token must occur.
 - Roles are limited to `user`, `assistant` and `system`.
-- `conversation_id` and its `session_id` alias scope the same durable
-  conversation. Supplying conflicting values is rejected.
+- `conversation_id` filters the durable conversation identity.
+- `session_id` independently filters the runtime session ID stored in message metadata by ChatApplicationService. Older imported messages without that metadata remain searchable by conversation/character, but cannot be attributed to a runtime session.
 - Date-only boundaries include the full selected day; timestamps accept ISO-8601
   values and are compared in UTC. Naive timestamps are treated as UTC, matching
   the persistence layer's current timestamp convention.
