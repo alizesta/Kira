@@ -113,7 +113,7 @@ class ToolAgent(AutonomyMixin):
         self._memos: deque = deque(maxlen=6)
         self._pending_by_session: dict[str, Pending] = {}
         self._turn_session_id = ""
-        self._pending_new = False
+        self._pending_new_sessions: set[str] = set()
         self._last_cats: set = set()
         self._last_used_turn = -99
         self.last_results: list[ToolResult] = []
@@ -168,7 +168,7 @@ class ToolAgent(AutonomyMixin):
         self._turn_session_id = str(session_id or "")
         self._turn_id += 1
         self._turn_cache = {}
-        self._pending_new = False
+        self._pending_new_sessions.discard(self._turn_session_id)
         self.last_results = []
         self._cancel.clear()
         WEB_CANCEL.clear()
@@ -272,6 +272,10 @@ class ToolAgent(AutonomyMixin):
         pending = self._pending_by_session.get(owner)
         return pending is not None and time.time() - pending.created <= CONFIRM_TTL
 
+    def has_new_pending_confirmation(self, session_id: str | None = None) -> bool:
+        owner = self._turn_session_id if session_id is None else str(session_id)
+        return owner in self._pending_new_sessions
+
     def handle_confirmation_reply(self, text: str, *, session_id: str | None = None):
         """Resolve only a pending confirmation owned by the current chat session."""
         owner = self._turn_session_id if session_id is None else str(session_id)
@@ -280,6 +284,7 @@ class ToolAgent(AutonomyMixin):
             return None
         if time.time() - pending.created > CONFIRM_TTL:
             self._pending_by_session.pop(owner, None)
+            self._pending_new_sessions.discard(owner)
             return None
         normalized = re.sub(
             r"\s+", " ", str(text or "").lower().translate(_NORM)
@@ -287,14 +292,17 @@ class ToolAgent(AutonomyMixin):
         words = len(normalized.split())
         if normalized and words <= 8 and CANCEL_RX.search(normalized):
             self._pending_by_session.pop(owner, None)
+            self._pending_new_sessions.discard(owner)
             return "باشه، لغو شد. هیچ تغییری ندادم." + self._after_confirm(pending, None, False)
         if normalized and words <= 8 and is_bare_confirmation(normalized):
             self._pending_by_session.pop(owner, None)
+            self._pending_new_sessions.discard(owner)
             self.registry.access.grant(pending.tool, pending.args)
             result = self.registry.execute(pending.tool, pending.args, confirmed=True)
             self._memoize(result)
             return (("✅ " + result.text) if result.ok else f"❌ انجام نشد: {result.text}") + self._after_confirm(pending, result, True)
         self._pending_by_session.pop(owner, None)
+        self._pending_new_sessions.discard(owner)
         return None
 
     # ------------------------------------------------------------ cancel (Stop button)
@@ -325,7 +333,7 @@ class ToolAgent(AutonomyMixin):
                     res.tool, dict(res.args), res.summary,
                     session_id=self._turn_session_id,
                 )
-                self._pending_new = True
+                self._pending_new_sessions.add(self._turn_session_id)
             else:
                 self._memoize(res)
             if on_tool:
