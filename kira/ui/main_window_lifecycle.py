@@ -69,9 +69,7 @@ class LifecycleMixin:
         self.provider_application_service.rebuild_session_routers(
             s, self.sessions.values(), previous_router=self.client
         )
-        self.tool_agent.set_settings(s)
-        evidence_memory.configure(s)
-        usage.install(s)
+        self.runtime_settings_application_service.apply(s, tool_agent=self.tool_agent)
         self.ollama_client = self.provider_application_service.create_ollama_client(s)
         self.refresh_route_list()
         self.set_badge("idle", self.client.preview_route())
