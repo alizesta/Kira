@@ -78,7 +78,7 @@ class MainWindow(
     def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None,
                  session_manager=None, chat_event_publisher=None, chat_application_service_factory=None,
                  session_application_service_factory=None, web_search_service=None,
-                 voice_application_service_factory=None):
+                 voice_application_service_factory=None, game_mode_application_service=None):
         super().__init__()
         # Direct MainWindow construction remains supported for existing callers;
         # normal application startup injects these services from app.bootstrap.
@@ -132,6 +132,10 @@ class MainWindow(
             from ..app.web_search import WebSearchApplicationService
             web_search_service = WebSearchApplicationService()
         self.web_search_service = web_search_service
+        if game_mode_application_service is None:
+            from ..app.game_mode_application import GameModeApplicationService
+            game_mode_application_service = GameModeApplicationService()
+        self.game_mode_application_service = game_mode_application_service
         self.session_manager.set_runtime_callbacks(
             has_pending_work=self._session_has_pending_chat_work,
             dispose_callback=self._release_chat_session_resources,
@@ -179,7 +183,7 @@ class MainWindow(
         self.client = HybridRouter(self.settings)
         self.game_mode = GameModeMonitor(self)
         self._game_mode_enabled = False
-        self._game_mode_profile = COMPETITIVE_SAFE_MODE
+        self._game_mode_profile = self.game_mode_application_service.COMPETITIVE_SAFE_MODE
         self._latest_game_frame = None
         self._vision_gate = FrameGate(policy_for(self.settings.get('vision_mode', 'economic')))
         self._vision_worker = None
