@@ -19,4 +19,4 @@ from .. import body as body_ctl
 from ..chat.application_service import ChatApplicationService
 from ..chat.commands import PermissionDecision
 from .dialogs import MemoryDialog
-from .main_window_support import WAKE_RE, STOP_RE, SLEEP_RE, SOUNDS_DIR
+from .main_window_support import SOUNDS_DIR
