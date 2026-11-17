@@ -206,6 +206,14 @@ class AttachmentManager:
             origin = AttachmentSource.FILE
 
         mime_type, size = self.validate_attachment(name, raw)
+        existing_count = sum(
+            1 for item in self._records.values()
+            if item.session_id == owner
+            and item.message_id == (str(message_id) if message_id is not None else None)
+            and item.status is AttachmentStatus.READY
+        )
+        if existing_count >= self.max_files:
+            raise _legacy.AttachmentError(f"حداکثر {self.max_files} ضمیمه برای هر پیام.")
         digest = hashlib.sha256(raw).hexdigest()
         index_key = (owner, str(message_id or ""), digest)
         existing_id = self._content_index.get(index_key)
