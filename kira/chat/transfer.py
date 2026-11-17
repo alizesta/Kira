@@ -159,21 +159,30 @@ class ChatTransfer:
         return destination
 
     def _parse(self, source):
-        if isinstance(source, Mapping):
-            document = dict(source)
-        else:
-            try:
-                document = json.loads(_json_bytes(source).decode("utf-8-sig"),
-                    object_pairs_hook=_reject_duplicate_keys,
-                    parse_constant=lambda value: (_ for _ in ()).throw(TransferError(f"Invalid JSON number: {value}")))
-            except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
-                raise TransferError(f"Invalid UTF-8 JSON document: {exc}") from exc
+        try:
+            if isinstance(source, Mapping):
+                raw = json.dumps(source, ensure_ascii=False, allow_nan=False).encode("utf-8")
+                if len(raw) > MAX_FILE_BYTES:
+                    raise TransferError("Import document exceeds 20 MiB")
+            else:
+                raw = _json_bytes(source)
+            document = json.loads(raw.decode("utf-8-sig"),
+                object_pairs_hook=_reject_duplicate_keys,
+                parse_constant=lambda value: (_ for _ in ()).throw(TransferError(f"Invalid JSON number: {value}")))
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, TypeError, ValueError) as exc:
+            if isinstance(exc, TransferError):
+                raise
+            raise TransferError(f"Invalid UTF-8 JSON document: {exc}") from exc
         if not isinstance(document, dict): raise TransferError("Export root must be an object")
         if type(document.get("schema_version")) is not int or document["schema_version"] != SCHEMA_VERSION:
             raise TransferError(f"Unsupported schema_version: {document.get('schema_version')!r}")
         if document.get("export_version") != EXPORT_VERSION: raise TransferError("Unsupported export_version")
         if not isinstance(document.get("exported_at"), str) or len(document["exported_at"]) > 64:
             raise TransferError("exported_at must be a bounded timestamp string")
+        try:
+            datetime.fromisoformat(document["exported_at"].replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise TransferError("exported_at must be an ISO-8601 timestamp") from exc
         raw_convs = document.get("conversations")
         if not isinstance(raw_convs, list) or len(raw_convs) > MAX_CONVERSATIONS:
             raise TransferError("conversations must be an array within the 1,000 item limit")
@@ -209,7 +218,9 @@ class ChatTransfer:
                 msg_status = msg.get("status", "complete")
                 if not isinstance(msg_status, str) or msg_status not in _ALLOWED_STATUSES: raise TransferError(f"conversations[{ci}].messages[{mi}].status is invalid")
                 if msg.get("conversation_id", conv_id) != conv_id: raise TransferError("Message conversation reference mismatch")
-                if msg.get("character_id", char_id) != char_id: raise TransferError("Message character reference mismatch")
+                supplied_character = msg.get("character_id", char_id)
+                if not isinstance(supplied_character, str) or supplied_character.strip().lower() != char_id.strip().lower():
+                    raise TransferError("Message character reference mismatch")
                 messages.append({
                     "id": mid, "role": role, "content": content, "created_at": str(msg.get("created_at") or "")[:64],
                     "character_id": char_id.strip().lower(), "conversation_id": conv_id,
@@ -221,7 +232,7 @@ class ChatTransfer:
         try:
             convs, messages = self._parse(source)
             return ImportPreview(True, len(convs), len(messages), ())
-        except (TransferError, OSError, TypeError, ValueError) as exc:
+        except (TransferError, OSError, TypeError, ValueError, RecursionError) as exc:
             return ImportPreview(False, 0, 0, (str(exc),))
 
     def import_data(self, source) -> ImportResult:
