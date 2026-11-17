@@ -50,7 +50,7 @@ Every successful operation returns an immutable `ConversationLifecycleResult` wi
 - Restore from trash: `trashed -> active`.
 - Permanent delete: only one `trashed` conversation per call. The caller must supply an authorization provider whose `authorize_permanent_delete(conversation_id)` returns the literal boolean `True`. No bulk permanent-delete API exists.
 
-Group operations prevalidate all IDs and transitions, then persist through one atomic repository transaction. Permanent deletion delegates to the existing repository deletion operation, which takes its safety snapshot and deletes only messages with the selected `conversation_id` plus that conversation row. It does not delete Session state or messages belonging to other conversations.
+Group operations prevalidate all IDs and transitions, then persist through one atomic repository transaction. Permanent deletion delegates to the repository operation, which rechecks the trashed state inside its write transaction, refuses declared foreign-key dependents in other durable tables, takes a safety snapshot and deletes only messages with the selected `conversation_id` plus that conversation row. It does not delete Session state or messages belonging to other conversations.
 
 No automatic retention or purge runs. Retention policy is intentionally not inferred; any future purge must be an explicit separately authorized operation.
 
@@ -75,6 +75,6 @@ TASK 012 export already serializes conversation status and metadata; its import 
 ## Validation status and limitations
 
 - Static source and contract review only. No tests, compile/import checks, GUI/Windows checks or application execution are permitted during TASK 013 implementation.
-- Permanent deletion relies on the existing repository snapshot-and-delete operation. Cross-table foreign-key/dependency inventory beyond the current repository contract is not exposed; new external references must add a repository-level dependency guard before permanent deletion is enabled for those records.
+- Permanent deletion relies on the existing repository snapshot-and-delete operation. The repository checks SQLite-declared foreign-key dependencies. External references that are not represented by database foreign keys are not discoverable through the current persistence contract; any such integration must register a repository-level dependency guard before its records are made purgeable.
 - Retention scheduling and automatic cleanup are intentionally not implemented.
 - The API is independent and publicly exported. The composition root injects the lifecycle owner into `ChatApplicationService`, which exposes thin delegation methods for listing, archive, restore, soft delete and authorized permanent delete. It contains no transition rules; MainWindow and commands can call the application contract without duplicating lifecycle policy.
