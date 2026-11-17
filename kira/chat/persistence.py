@@ -833,6 +833,32 @@ class SqliteChatRepository:
                 "status": row["status"],
             } for row in rows]
 
+    def messages_after(self, after_id=0, limit=500):
+        """Return a stable ID-ordered page for consumers that apply their own filters.
+
+        This cursor is monotonic by message ID, so imported messages with older
+        timestamps cannot be skipped while paging.
+        """
+        try:
+            cursor = max(0, int(after_id))
+            page_size = max(1, min(int(limit), 5000))
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("after_id and limit must be integers") from exc
+        with self._lock:
+            self._flush_pending_locked()
+            with self._db() as con:
+                rows = con.execute(
+                    "SELECT id, role, content, created_at, character_id, conversation_id, metadata, status "
+                    "FROM messages WHERE id > ? ORDER BY id ASC LIMIT ?",
+                    (cursor, page_size),
+                ).fetchall()
+        return [{
+            "id": int(row["id"]), "role": str(row["role"]), "content": str(row["content"] or ""),
+            "created_at": str(row["created_at"] or ""), "character_id": str(row["character_id"] or ""),
+            "conversation_id": str(row["conversation_id"] or ""),
+            "metadata": _json_object(row["metadata"]), "status": str(row["status"] or "complete"),
+        } for row in rows]
+
     def get_transfer_messages(self, conversation_id, character_id, after_created_at="", after_id=0, limit=1000):
         """Read an ordered bounded page for portable export using a stable keyset cursor."""
         with self._lock:
@@ -1219,6 +1245,9 @@ class ChatPersistence:
 
     def get_messages(self, limit=1000, character_id=None, conversation_id=None, after_id=0):
         return self._invoke(self._repository.get_messages, limit, character_id, conversation_id, after_id)
+
+    def messages_after(self, after_id=0, limit=500):
+        return self._invoke(self._repository.messages_after, after_id, limit)
 
     def get_transfer_messages(self, conversation_id, character_id, after_created_at="", after_id=0, limit=1000):
         return self._invoke(self._repository.get_transfer_messages, conversation_id, character_id, after_created_at, after_id, limit)
