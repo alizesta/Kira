@@ -257,25 +257,17 @@ class AttachmentsVisionMixin:
             self.add_chat("system", "🎧 " + message)
 
     def on_game_audio_transcript(self, text):
-        if (not self._game_mode_enabled
-                or not self.game_mode_application_service.can_emit_automatic_game_audio_alerts(self._game_mode_profile)
-                or self.busy or self.voice_application_service.is_speaking() or not is_important_game_audio(text)):
-            return
-        now = time.monotonic()
-        lower = text.casefold()
-        category = ("urgent" if re.search(r"low health|low hp|critical|danger|warning|خطر|هشدار|خونت کم|جونت کم", lower, re.I)
-                    else "complete" if re.search(r"mission complete|quest complete|victory|achievement|مرحله تمام|ماموریت تمام|دستاورد", lower, re.I)
-                    else "combat")
-        previous = self._game_audio_alerts.get(category, (0.0, ""))
-        if now - previous[0] < 25 or lower == previous[1]:
-            return
-        self._game_audio_alerts[category] = (now, lower)
-        alerts = {
-            "urgent": "حواست باشه، از صدای بازی هشدار خطر یا کمبود سلامتی شنیدم.",
-            "complete": "به نظر می‌رسه یک مرحله، مأموریت یا دستاورد مهم تکمیل شده.",
-            "combat": "به نظر می‌رسه اتفاق مهمی در مبارزه یا نزدیک‌شدن دشمن رخ داده.",
-        }
-        self.reply_local(alerts[category], "surprised" if category == "urgent" else "thinking")
+        alert = self.game_mode_application_service.classify_game_audio(
+            text,
+            now=time.monotonic(),
+            enabled=self._game_mode_enabled,
+            profile=self._game_mode_profile,
+            busy=self.busy,
+            speaking=self.voice_application_service.is_speaking(),
+        )
+        if alert is not None:
+            self.reply_local(alert.message, alert.emotion)
+
 
     def _capture_game_frame(self):
         """Capture a bounded frame and analyze only changed frames at the selected low-cost rate."""
