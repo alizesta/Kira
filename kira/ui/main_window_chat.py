@@ -364,7 +364,7 @@ class ChatMixin:
         html = sources_html(found.get("results"), f"منابع ({websearch.ENGINE_NAMES.get(found.get('engine'), 'وب')}) · جست‌وجو برای «{found.get('query', '')}»")
         a = found.get("assessment") or {}
         if html and a.get("phrase"):
-            text = self._assessment_text(a)
+            text = self.web_search_service.assessment_text(a)
             colour = "#7fd99a" if a.get("matched") else "#ffb86b"
             html += f'<p dir="rtl" align="right" style="margin:3px 0 0 0;color:{colour};">{text if text.startswith("⚠") else "✓ " + text}</p>'
         if html:
@@ -390,7 +390,7 @@ class ChatMixin:
             # the picture itself is still in the request: she answers from what she sees and says what is unconfirmed
             self.add_chat("system", f"🔎 جست‌وجوی تصویری انجام نشد: {result}")
             base, images = self._search_base
-            self._turn_extra = self._merge_search_content(
+            self._turn_extra = self.web_search_service.merge_search_content(
                 base, images,
                 "[جست‌وجوی وب برای این تصویر انجام نشد. فقط از روی چیزی که در تصویر می‌بینی جواب بده، "
                 "حدس نزن و هر چیزی که مطمئن نیستی را صریح «تأییدنشده» بگو.]",
