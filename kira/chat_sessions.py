@@ -58,11 +58,6 @@ class ChatSession:
         self.metadata = {}
         self.last_error = None
         self.conversation_id: str | None = None  # Durable identity owned by ChatPersistence
-
-    @property
-    def session_id(self) -> str:
-        """Immutable identifier for this in-memory Session lifetime."""
-        return self._session_id
         for name, factory in SESSION_FIELDS.items():
             setattr(self, name, factory())
         self.view = None            # QTextBrowser of this chat
@@ -77,6 +72,11 @@ class ChatSession:
         self.draft = ""             # text typed but not sent yet
         self.unread = False         # a reply arrived while another tab was in front
         self.loaded = False         # history shown in the view
+
+    @property
+    def session_id(self) -> str:
+        """Immutable identifier for this in-memory Session lifetime."""
+        return self._session_id
 
     def __repr__(self):
         return f"<ChatSession {self.cid} busy={self.busy}>"
