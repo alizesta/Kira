@@ -631,8 +631,8 @@ class SqliteChatRepository:
         if metadata is not None:
             changes.append("metadata=?"); values.append(json.dumps(_json_object(metadata), ensure_ascii=False))
         if status is not None:
-            if status not in ("active", "closed", "archived", "trashed"):
-                raise ValueError("status must be active, closed, archived or trashed")
+            if status not in ("active", "closed", "archived"):
+                raise ValueError("status must be active, closed or archived; trashed is lifecycle-owned")
             changes.append("status=?"); values.append(status)
         if not changes:
             return False
