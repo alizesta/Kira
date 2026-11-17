@@ -21,7 +21,7 @@ TASK 015 recorded **12 DONE / 2 PARTIAL / 0 NOT DONE / 0 BLOCKED / 0 UNVERIFIED*
 
 PR #48 subsequently merged both modules into `new-main` at `b54d092a330b6383ca4244320ffaeec9267db561`. Static inspection confirms `conversation_lifecycle.py`, `organization.py`, their public exports and shared event contract are present in the current tree. Therefore, the integration blocker identified in the audit has been resolved at source-control level. This does not revise the historical audit counts and does not establish runtime correctness.
 
-The remaining explicit architecture debt is the large legacy MainWindow/application adapter. Runtime acceptance also remains unverified because TASK 015 and TASK 016 intentionally ran no tests or application checks.
+The remaining explicit architecture debt is application policy and cross-feature orchestration still held by the MainWindow feature mixins; the legacy `oldmain.py` runtime module has been removed. Runtime acceptance also remains unverified because TASK 015 and TASK 016 intentionally ran no tests or application checks.
 
 ## 3. Technical debt register
 
@@ -29,12 +29,12 @@ Severity reflects architectural impact and evidence, not an assertion that a run
 
 | ID | Severity | Problem / evidence | Location | Owner | Impact | Dependency / proposed resolution |
 |---|---|---|---|---|---|---|
-| AD-01 | **High** | MainWindow remains a large UI/application adapter with cross-feature policy and orchestration. The existing architecture record describes roughly 5,444 lines and ~319 methods at its 2026-11-16 snapshot; current source still imports the legacy feature stack. | `kira/oldmain.py`, compatibility export in `kira/main.py` | Application/UI architecture | UI, feature policy and orchestration remain coupled; feature changes can require edits to legacy window. | Continue page/controller extraction in bounded feature slices. Keep bootstrap as Composition Root; move policy behind injected application services. Do not rewrite the window wholesale. |
+| AD-01 | **High** | The former 5,634-line `oldmain.py` and its 322 MainWindow methods have been removed from the runtime path and split into eight feature-oriented UI mixins. MainWindow still coordinates substantial application policy across capabilities. | `kira/ui/main_window.py`, `kira/ui/main_window_*.py` | Application/UI architecture | The file-level monolith is removed, but feature policy is not yet fully owned by independent application services/controllers. | Continue moving policy from the mixins into existing domain/application services and inject narrow contracts through bootstrap. Keep MainWindow as UI composition and intent translation only. |
 | AD-02 | **Medium** | ModuleManager lifecycle engine exists, but bootstrap currently registers only Memory, Mood, Character Profile and Chat History service modules. Chat/Voice/Avatar/Web Research/Coding Agent/Provider are not independently registered. | `kira/app/bootstrap.py`, `module_manager.py`, `service_module.py` | Bootstrap / capability owners | The lifecycle manager does not yet govern the wider capability set; enable/disable and shutdown ownership are uneven. | Register a feature only when it has a stable lifecycle contract and real need for optional lifecycle control. Do not add empty wrapper modules merely to populate the manager. |
 | AD-03 | **Medium** | Organization uses whole-document metadata updates. Independent writers can race and overwrite another writer's changes. | `kira/chat/organization.py`, `kira/chat/persistence.py` | Organization + Persistence | Concurrent metadata mutations can lose updates. No occurrence is claimed; this is a documented design limitation. | Add an atomic metadata patch/update contract at the Persistence boundary, then make Organization use it. Preserve unknown metadata keys and existing data format. |
 | AD-04 | **Medium** | Deleting tags/folders updates conversations individually; it is not one cross-conversation transaction. | `kira/chat/organization.py`, `kira/chat/persistence.py` | Persistence (transaction) + Organization (policy) | Partial completion is possible if a multi-conversation operation fails midway. | Add a narrowly scoped bulk metadata operation in Persistence and delegate the multi-record transaction to it. Combine with AD-03 where practical. |
-| AD-05 | **Medium** | Voice implementation is present but the documented Voice interface is not wired through the implementation; legacy window remains involved in voice controllers. | `kira/voice.py`, `kira/listener.py`, `kira/local_voice.py`, `kira/oldmain.py`, core interfaces | Voice capability owner | Voice implementation is harder to replace or use independently; UI and device policy remain coupled. | Define/complete the narrow Voice service adapter and inject it at bootstrap. Keep device/Qt adapters at the outer boundary. |
-| AD-06 | **Low** | Compatibility imports/defaults remain, including `kira.main.MainWindow`, `kira/attachments.py`, and legacy memory entry points. | `kira/main.py`, `kira/attachments.py`, `kira/memory.py`, `kira/persona_memory.py` | Migration owners | Obsolete paths may persist and confuse future ownership if not clearly marked. | Remove only after repository-wide call-site migration and compatibility requirements are resolved. No deletion in this roadmap task. |
+| AD-05 | **Medium** | Voice implementation is present but the documented Voice interface is not wired through the implementation; MainWindow's voice mixins remain involved in voice controllers. | `kira/voice.py`, `kira/listener.py`, `kira/local_voice.py`, `kira/ui/main_window_runtime.py`, core interfaces | Voice capability owner | Voice implementation is harder to replace or use independently; UI and device policy remain coupled. | Define/complete the narrow Voice service adapter and inject it at bootstrap. Keep device/Qt adapters at the outer boundary. |
+| AD-06 | **Low** | Compatibility imports/defaults remain, including the `kira.main.MainWindow` compatibility export, `kira/attachments.py`, and legacy memory entry points. | `kira/main.py`, `kira/attachments.py`, `kira/memory.py`, `kira/persona_memory.py` | Migration owners | Obsolete paths may persist and confuse future ownership if not clearly marked. | Remove only after repository-wide call-site migration and compatibility requirements are resolved. No deletion in this roadmap task. |
 
 ### 3.1 Runtime-only verification items (not confirmed defects)
 
@@ -44,7 +44,7 @@ These are not classified as implementation failures because the audit was static
 - Export/import round trips preserving status and the complete metadata namespace.
 - Typed event delivery, ordering and terminal de-duplication under concurrency.
 - Provider stream handling, cancellation and partial-response persistence.
-- MainWindow/oldmain GUI behavior and Windows device integrations.
+- MainWindow GUI behavior and Windows device integrations.
 - Search performance for large histories; current search scans repository pages and ranks in process.
 
 These belong in the later explicitly authorized testing phase, not in TASK 016.
@@ -57,7 +57,7 @@ These belong in the later explicitly authorized testing phase, not in TASK 016.
 
 1. Keep `kira/main.py` as the thin entry point and `kira/app/bootstrap.py` as the single production Composition Root.
 2. Continue replacing direct construction/compatibility fallback paths with injected services where a real call site needs it.
-3. Extract MainWindow policy/controller responsibilities in bounded slices; do not perform a broad rewrite.
+3. Continue moving MainWindow policy/controller responsibilities into existing application and capability owners; keep the window as an adapter.
 4. Register additional ModuleManager-managed features only when their lifecycle and shutdown contracts are concrete.
 5. Address Organization metadata lost-update and non-atomic bulk-operation limitations at the Persistence boundary (AD-03/AD-04).
 
@@ -100,7 +100,7 @@ These belong in the later explicitly authorized testing phase, not in TASK 016.
 
 ## 5. Recommended execution order
 
-1. **One bounded MainWindow extraction slice** (AD-01), selected from a feature with a clear existing contract.
+1. **MainWindow policy extraction** (AD-01), selected from a feature with a clear existing contract.
 2. **One Persistence improvement covering AD-03 and AD-04**, retaining metadata compatibility.
 3. **Voice contract wiring** (AD-05), using the existing interface rather than inventing a parallel one.
 4. **ModuleManager adoption selectively** (AD-02), only after the chosen capability has a real lifecycle.
@@ -111,7 +111,7 @@ This is a prioritized sequence, not a mandate to create six separate tasks. Rela
 
 ## 6. Legacy migration strategy
 
-- Keep `kira/oldmain.py` as the compatibility implementation while extracting behavior incrementally.
+- Keep `kira/ui/main_window.py` as the UI composition point; its feature mixins are transitional adapters, not new domain owners.
 - Move one coherent controller/service boundary at a time.
 - Bootstrap creates concrete services and injects them; page widgets emit intents and render results.
 - Preserve public imports until callers have moved.
