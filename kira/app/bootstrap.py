@@ -78,7 +78,7 @@ def run_application() -> None:
     game_mode_application_service = GameModeApplicationService()
     vision_application_service = VisionApplicationService(
         game_mode_application_service,
-        load_settings().get("vision_mode", "economic"),
+        settings.get("vision_mode", "economic"),
     )
     provider_application_service = ProviderApplicationService()
     coding_agent_application_service = CodingAgentApplicationService()
