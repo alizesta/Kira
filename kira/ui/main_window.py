@@ -62,7 +62,6 @@ class MainWindow(
     send_btn = front_only_property("send_btn")
     input = front_only_property("input")
     voice_btn = front_only_property("voice_btn")
-    @property
 
     def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None,
                  session_manager=None, chat_event_publisher=None, chat_application_service_factory=None):
