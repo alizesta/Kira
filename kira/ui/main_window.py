@@ -70,19 +70,19 @@ class MainWindow(
         # Direct MainWindow construction remains supported for existing callers;
         # normal application startup injects these services from app.bootstrap.
         if memory_service is None:
-            from .services.memory_service import PersonaMemoryService
+            from ..services.memory_service import PersonaMemoryService
             memory_service = PersonaMemoryService()
         if mood_service is None:
-            from .services.mood_service import MoodStateService
+            from ..services.mood_service import MoodStateService
             mood_service = MoodStateService()
         self.memory_service = memory_service
         self.mood_service = mood_service
         if character_service is None:
-            from .services.character_service import CharacterProfileService
+            from ..services.character_service import CharacterProfileService
             character_service = CharacterProfileService()
         self.character_service = character_service
         if chat_history_service is None:
-            from .services.chat_history_service import SqliteChatHistoryService
+            from ..services.chat_history_service import SqliteChatHistoryService
             chat_history_service = SqliteChatHistoryService()
         if chat_application_service_factory is not None:
             if not callable(chat_application_service_factory):
