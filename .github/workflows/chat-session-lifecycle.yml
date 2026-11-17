@@ -6,6 +6,7 @@ on:
   pull_request:
     branches: [new-main]
     paths:
+      - "kira/core/interfaces/voice_service.py"
       - "kira/app/game_mode_application.py"
       - "tests/test_game_mode_application.py"
       - "kira/app/voice_application.py"
@@ -110,6 +111,7 @@ jobs:
           kira/app/bootstrap.py
           kira/app/game_mode_application.py
           tests/test_game_mode_application.py
+          kira/core/interfaces/voice_service.py
           kira/app/voice_application.py
           kira/app/voice_composition.py
           tests/test_voice_application.py
