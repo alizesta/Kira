@@ -141,12 +141,12 @@ class AutonomyMixin:
             if plan.status == P_WAIT_CONFIRM and self.has_pending(owner):
                 return "اول باید به درخواست تأییدِ قبلی جواب بدهی: «تأیید» یا «لغو»."
             self._prepare_resume(plan)
-            self._resume_flag = True
+            self._resume_sessions.add(owner)
             return None
         if kind == "change":
             plan.user_updates.append(_safe(payload, 200))
             self._prepare_resume(plan)
-            self._resume_flag = True
+            self._resume_sessions.add(owner)
             return None
         return None
 
@@ -272,7 +272,7 @@ class AutonomyMixin:
                     return stage[1]
                 _, tp, initial = stage
             else:
-                self._turn_plan_id = tp.id
+                self._turn_plan_ids[self._turn_session_id] = tp.id
                 tp.status = P_RUNNING
                 self.tasks.save()
                 if on_tool:
@@ -312,7 +312,7 @@ class AutonomyMixin:
                     tp.goal = _safe(self._goal_of(cur), 240)
                 if prev is not None and prev is not tp:
                     prev.status = P_SUPERSEDED
-                self._turn_plan_id = tp.id
+                self._turn_plan_ids[self._turn_session_id] = tp.id
                 if draft["ask"] or (draft["missing"] and not draft["steps"]):
                     tp.status = P_WAIT_USER
                     text = tp.question or ("برای ادامه لازمه این را بدانم: " + "؛ ".join(tp.missing))
@@ -330,7 +330,7 @@ class AutonomyMixin:
                 if prev is not None and prev is not tp:
                     prev.status = P_SUPERSEDED
                 tp.status = P_RUNNING
-                self._turn_plan_id = tp.id
+                self._turn_plan_ids[self._turn_session_id] = tp.id
                 return "go", tp, (res, gate)
             return "done", self._final(res, gate.visible, [])          # a direct answer: nothing to plan
 
@@ -378,7 +378,7 @@ class AutonomyMixin:
             last_res = res
             rnd += 1
             if res.get("stopped") or self._cancel.is_set():
-                tp.status = P_CANCELLED if self._cancel_plan_req else P_PAUSED
+                tp.status = P_CANCELLED if tp.session_id in self._cancel_plan_requests else P_PAUSED
                 self.tasks.save()
                 return self._final(res, gate.visible, executed, stopped=True, task=tp)
             # ---------------- a tool request
@@ -398,7 +398,7 @@ class AutonomyMixin:
                 executed.extend(results)
                 self.tasks.save()
                 if self._cancel.is_set():
-                    tp.status = P_CANCELLED if self._cancel_plan_req else P_PAUSED
+                    tp.status = P_CANCELLED if tp.session_id in self._cancel_plan_requests else P_PAUSED
                     self.tasks.save()
                     return self._final(res, "", executed, stopped=True, task=tp)
                 if any(r.status == NEEDS_CONFIRM for r in results):
