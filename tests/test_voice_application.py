@@ -166,6 +166,17 @@ class VoiceApplicationServiceTests(unittest.TestCase):
         self.assertEqual(self.speaker.played, ["test.wav"])
         self.assertIs(self.service.settings, self.speaker.settings)
 
+    def test_character_voice_overrides_are_isolated_from_shared_settings(self):
+        shared = {"voice_rate": 120, "voice_volume": 0.8, "provider": "shared"}
+        effective = self.service.apply_character_settings(
+            shared, {"voice_rate": 145, "voice_volume": 0.5, "provider": "ignored"}
+        )
+        self.assertEqual(effective["voice_rate"], 145)
+        self.assertEqual(effective["voice_volume"], 0.5)
+        self.assertEqual(effective["provider"], "shared")
+        self.assertEqual(shared, {"voice_rate": 120, "voice_volume": 0.8, "provider": "shared"})
+        self.assertIs(self.service.settings, effective)
+
     def test_is_speaking_exposes_only_the_playback_state(self):
         self.assertFalse(self.service.is_speaking())
         self.speaker._began = True
