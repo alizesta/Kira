@@ -137,6 +137,6 @@ A successful static review is not a substitute for these runtime checks.
 
 | Date | Decision | Evidence |
 |---|---|---|
-| 2026-11-17 | TASK 015 audit is retained as 12 DONE / 2 PARTIAL and NOT READY FOR TESTING at its audited base. | Draft PR #47 and `docs/TASK_015_FINAL_ARCHITECTURE_AUDIT.md`. |
+| 2026-11-17 | TASK 015 audit is retained as 12 DONE / 2 PARTIAL and NOT READY FOR TESTING at its audited base. | Draft PR #47: https://github.com/alizesta/Kira/pull/47. |
 | 2026-11-17 | TASK 013 and TASK 014 subsequently integrated into `new-main`. | Merged PR #48; merge commit `b54d092a330b6383ca4244320ffaeec9267db561`. |
 | 2026-11-17 | No runtime/test status is changed by TASK 016. | TASK 016 policy: static documentation only. |
