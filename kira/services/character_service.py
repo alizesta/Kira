@@ -61,20 +61,31 @@ class CharacterProfileService:
         if character_id == "kira":
             raise ValueError("The default Kira profile cannot be edited.")
         profiles = settings.setdefault("characters", [])
-        for index, item in enumerate(profiles):
-            if isinstance(item, dict) and str(item.get("id") or "") == character_id:
-                updated = dict(item)
-                updated.update({
-                    "name": str(name or "").strip(),
-                    "name_fa": str(name or "").strip(),
-                    "description": str(description or "").strip(),
-                    "prompt": str(prompt or "").strip(),
-                })
-                if not updated["name"]:
-                    raise ValueError("Character name cannot be empty.")
-                profiles[index] = updated
-                return dict(updated)
-        raise KeyError(character_id)
+        target_index = next(
+            (index for index, item in enumerate(profiles)
+             if isinstance(item, dict) and str(item.get("id") or "") == character_id),
+            None,
+        )
+        if target_index is None:
+            base = self.all_profiles(settings).get(character_id)
+            if base is None:
+                raise KeyError(character_id)
+            updated = dict(base)
+        else:
+            updated = dict(profiles[target_index])
+        updated.update({
+            "name": str(name or "").strip(),
+            "name_fa": str(name or "").strip(),
+            "description": str(description or "").strip(),
+            "prompt": str(prompt or "").strip(),
+        })
+        if not updated["name"]:
+            raise ValueError("Character name cannot be empty.")
+        if target_index is None:
+            profiles.append(updated)
+        else:
+            profiles[target_index] = updated
+        return dict(updated)
 
     def delete_profile(self, settings: dict, character_id: str) -> bool:
         character_id = str(character_id or "")
@@ -86,6 +97,10 @@ class CharacterProfileService:
             hidden = settings.setdefault("deleted_character_ids", [])
             if character_id not in hidden:
                 hidden.append(character_id)
+            settings["characters"] = [
+                item for item in settings.get("characters", [])
+                if not isinstance(item, dict) or str(item.get("id") or "") != character_id
+            ]
         else:
             settings["characters"] = [
                 item for item in settings.get("characters", [])
