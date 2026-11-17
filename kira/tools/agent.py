@@ -132,6 +132,7 @@ class ToolAgent(AutonomyMixin):
                 tool = self.registry.get(pending.tool)
                 if tool is None or not tool_categories_allowed("competitive_safe", tool.categories):
                     self._pending_by_session.pop(session_id, None)
+                    self._pending_new_sessions.discard(session_id)
 
     def _game_mode_execution_guard(self, tool):
         """The ONE app-level gate for tool execution (ToolRegistry.execution_guard). It must hold on every path,
@@ -259,8 +260,11 @@ class ToolAgent(AutonomyMixin):
         self._memos.clear()
         if session_id is None:
             self._pending_by_session.clear()
+            self._pending_new_sessions.clear()
         else:
-            self._pending_by_session.pop(str(session_id), None)
+            owner = str(session_id)
+            self._pending_by_session.pop(owner, None)
+            self._pending_new_sessions.discard(owner)
         self._turn_cache = {}
         ctx = getattr(self.registry, "web_context", None)
         if ctx is not None:
@@ -405,7 +409,7 @@ class ToolAgent(AutonomyMixin):
                         continue
                     text = str(native.get("text") or "").strip()
                     if text:
-                        if self._pending_new and not re.search(r"تأیید|تایید|confirm", text):
+                        if self.has_new_pending_confirmation(self._turn_session_id) and not re.search(r"تأیید|تایید|confirm", text):
                             text += "\n\n(برای انجام همین کار «تأیید» بنویس؛ برای انصراف «لغو».)"
                         emit(text)
                         return self._final(native, text, executed)
@@ -450,7 +454,7 @@ class ToolAgent(AutonomyMixin):
                 emit(text)
                 return self._final(res, text, executed)
             text = gate.visible
-            if self._pending_new and not re.search(r"تأیید|تایید|confirm", text):
+            if self.has_new_pending_confirmation(self._turn_session_id) and not re.search(r"تأیید|تایید|confirm", text):
                 footer = "\n\n(برای انجام همین کار «تأیید» بنویس؛ برای انصراف «لغو».)"
                 emit(footer)
                 text += footer
