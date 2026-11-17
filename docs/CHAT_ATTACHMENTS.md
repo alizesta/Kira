@@ -12,7 +12,7 @@ The existing `kira.attachments` module remains the low-level compatibility parse
 - `AttachmentManager.add_attachment(source, filename, session_id, message_id=None, metadata=None)`: copies a file or bytes into a unique session-owned path.
 - `validate_attachment(filename, data)`: checks extension allowlist, size, and file signatures / content.
 - `get_attachment(id, session_id=None)` and `list_attachments(session_id, message_id=None)`: scoped lookup.
-- `prepare_content(ids, session_id, text="", search=False)`: extracts supported content and returns the legacy display / stored / model / images payload. Prompt construction and provider dispatch remain outside this module.
+- `prepare_content(ids, session_id, text="", search=False)`: extracts supported content and returns structured `text`, `files`, and `images` data plus UI/history `display` and `stored` fields, bounded `errors`, and `prepared_count`. It does not build provider prompt text.
 - `remove_attachment(id, session_id)` and `cleanup(session_id=None)`: remove only files under the manager's resolved storage root and owning session directory.
 - `close()`: idempotent cleanup; an internally-created temporary root is removed.
 
@@ -37,9 +37,18 @@ A manager created without an explicit root owns a private temporary directory an
 ## Integration responsibilities
 
 - UI: choose local files, display progress and status, and pass selected content through the chat attachment boundary.
-- Chat Application Service: owns/injects the manager and exposes `add_attachment`, `prepare_attachments`, `remove_attachment`, and `cleanup_attachments` so attachment IDs are coordinated with the active session and message/request lifecycle.
-- Context Builder: combine the prepared attachment content with the request context.
+- Chat Application Service: owns/injects the manager, stores the existing UI payloads under the active request ID (used as the request-scoped message key), exposes add/prepare/remove/cleanup methods, and removes temporary copies when the request completes, is cancelled, or its session closes.
+- Context Builder: receives structured `text` / `files` / `images` data and composes the provider-facing user message. This is the only layer that combines extracted file text and image markers with the message prompt.
 - Provider: receive already-prepared image/text content; it does not manage local files.
 - Persistence: continue owning durable message/history records. The temporary manager is not a second history database.
 
-The legacy parser API is intentionally retained during migration so current image paste, screen capture, game-vision and upload flows are not broken. The desktop entry point now imports the compatibility surface through `kira.chat.attachments`; the old `kira.attachments` import remains available to existing callers.
+The legacy parser API is intentionally retained during migration so current image paste, screen capture, game-vision and upload flows are not broken. The desktop entry point imports the compatibility surface through `kira.chat.attachments`; selected payloads are then copied into managed storage by ChatApplicationService. The old `kira.attachments` import remains available to existing callers.
+
+
+## Current request pipeline
+
+1. The UI attachment controller keeps selection, progress and preview responsibilities and supplies the existing image/text payload format.
+2. ChatApplicationService validates that payload and registers each file under the current session and request-scoped message key.
+3. AttachmentManager extracts file content into structured records. A single failed file is reported without discarding successfully prepared siblings.
+4. ContextBuilder combines the original user text, extracted file text and image references into the provider-facing user message. AttachmentManager never creates a Provider prompt.
+5. ChatApplicationService removes the managed temporary copies when the corresponding request reaches a terminal state. A session close also cleans any remaining files for that session.
