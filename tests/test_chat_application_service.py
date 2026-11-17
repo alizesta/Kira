@@ -140,7 +140,7 @@ class ChatApplicationServiceTests(unittest.TestCase):
             )
             self.assertEqual(prepared["prepared_count"], 2)
             self.assertEqual(len(prepared["images"]), 1)
-            self.assertIn("attachment text", prepared["model"])
+            self.assertIn("attachment text", prepared["files"][0]["text"])
             self.assertTrue(all(Path(path).exists() for path in paths))
             service.complete_local_request(submission.request.request_id)
             self.assertTrue(all(not Path(path).exists() for path in paths))
