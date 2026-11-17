@@ -18,6 +18,9 @@ on:
       - "tests/test_streaming.py"
       - "tests/test_chat_persistence.py"
       - "tests/test_chat_events.py"
+      - "tests/test_chat_commands.py"
+      - "tests/test_chat_command_adapters.py"
+      - "tests/test_chat_application_service.py"
       - "tests/test_gui_routes.py"
       - "tests/test_gui_offscreen.py"
       - "tests/test_release.py"
@@ -70,7 +73,7 @@ concurrency:
 jobs:
   windows-full-suite:
     # Draft PRs run the portable suite first; TASK 007 keeps its focused Qt-free checks.
-    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'pull_request' || github.head_ref != 'refactor/chat-session-lifecycle') }}
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'pull_request' || github.head_ref != 'refactor/chat-session-lifecycle' && github.head_ref != 'refactor/chat-commands-actions') }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -88,7 +91,7 @@ jobs:
           QT_QPA_PLATFORM: offscreen
 
   portable-regression:
-    if: ${{ github.event_name != 'pull_request' || github.head_ref != 'refactor/chat-session-lifecycle' }}
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'pull_request' || github.head_ref != 'refactor/chat-session-lifecycle') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out source

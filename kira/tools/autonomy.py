@@ -162,6 +162,11 @@ class AutonomyMixin:
             return None
         return None
 
+    def is_task_running(self, session_id: str | None = None) -> bool:
+        """Return whether a task is currently executing for the requested character session."""
+        owner = self._turn_session_id if session_id is None else str(session_id)
+        return owner in self._running_plan_sessions
+
     def control_running(self, text: str, *, session_id: str | None = None):
         """While a task is being executed (the GUI is busy): a few short commands act at once, between two steps. Returns a text for the user or None
         (then the message waits in the queue as usual)."""

@@ -11,6 +11,8 @@ on:
       - "kira/chat/attachments.py"
       - "kira/chat/commands.py"
       - "kira/chat/command_adapters.py"
+      - "kira/chat/events.py"
+      - "kira/chat/__init__.py"
       - "kira/oldmain.py"
       - "kira/chat_sessions.py"
       - "tests/test_chat_session_manager.py"
@@ -26,6 +28,7 @@ permissions:
 
 jobs:
   session-manager-tests:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -50,6 +53,9 @@ jobs:
         run: >-
           python -m py_compile
           kira/chat/session_manager.py
+          kira/chat/application_service.py
+          kira/chat/events.py
+          kira/chat/__init__.py
           kira/chat/attachments.py
           kira/chat/commands.py
           kira/chat/command_adapters.py

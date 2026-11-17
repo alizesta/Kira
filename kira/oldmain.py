@@ -4779,6 +4779,7 @@ class MainWindow(QMainWindow):
             web_parser=websearch.plan,
             image_parser=websearch.image_command,
             task_control_parser=parse_tool_task_control,
+            task_running_checker=self.tool_agent.is_task_running,
             tool_agent=self.tool_agent,
             desktop_action_matcher=match_safe_action,
             desktop_action_handler=lambda text: run_safe_action(text, allow_desktop=True),

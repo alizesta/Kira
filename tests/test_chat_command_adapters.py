@@ -23,6 +23,9 @@ class FakeToolAgent:
     def planning_enabled(self):
         return True
 
+    def is_task_running(self, session_id):
+        return session_id in self._running_plan_sessions
+
     def has_pending(self, session_id):
         return session_id == "character-kira"
 
@@ -63,6 +66,7 @@ class ChatCommandAdapterTests(unittest.TestCase):
                 ("status", "") if "status" in text else
                 (None, "")
             ),
+            task_running_checker=self.agent.is_task_running,
             tool_agent=self.agent,
             desktop_action_matcher=lambda text: "notepad" if "notepad" in text else None,
             desktop_action_handler=lambda text: self.desktop_calls.append(("desktop", text)) or "opened",
@@ -99,6 +103,16 @@ class ChatCommandAdapterTests(unittest.TestCase):
         self.assertEqual(result.reply_text, "running-status")
         self.assertEqual(self.agent.calls, [
             ("running", "character-kira", "pause"),
+        ])
+
+    def test_pending_confirmation_uses_character_identity(self):
+        result = self.registry.dispatch_text(
+            "تأیید", session_id="runtime-kira", request_id="confirm-1",
+            metadata={"character_id": "character-kira"},
+        )
+        self.assertEqual(result.reply_text, "confirmed")
+        self.assertEqual(self.agent.calls, [
+            ("confirm", "character-kira", "تأیید"),
         ])
 
     def test_task_control_uses_character_identity_when_not_running(self):
