@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict, deque
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from threading import Condition, RLock
 from typing import Any
 
