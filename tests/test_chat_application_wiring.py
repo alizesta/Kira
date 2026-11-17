@@ -5,24 +5,36 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OLDMAIN = ROOT / "kira" / "oldmain.py"
+UI_ROOT = ROOT / "kira" / "ui"
+WINDOW_FILES = tuple(sorted(UI_ROOT.glob("main_window*.py")))
 
 
 class ChatApplicationWiringTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.source = OLDMAIN.read_text(encoding="utf-8")
-        cls.tree = ast.parse(cls.source)
-        cls.main_window = next(
-            node for node in cls.tree.body
-            if isinstance(node, ast.ClassDef) and node.name == "MainWindow"
-        )
+        cls.sources = {
+            path: path.read_text(encoding="utf-8")
+            for path in WINDOW_FILES
+        }
+        cls.source = "\n".join(cls.sources.values())
+        cls.trees = {
+            path: ast.parse(source, filename=str(path))
+            for path, source in cls.sources.items()
+        }
+        cls.methods = {}
+        for tree in cls.trees.values():
+            for node in tree.body:
+                if not isinstance(node, ast.ClassDef):
+                    continue
+                for member in node.body:
+                    if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        cls.methods.setdefault(member.name, member)
 
     def method(self, name):
-        return next(
-            node for node in self.main_window.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name
-        )
+        try:
+            return self.methods[name]
+        except KeyError as exc:
+            self.fail(f"MainWindow feature mixins do not define {name!r}")
 
     def test_main_window_passes_the_injected_history_service(self):
         init = self.method("__init__")
@@ -41,7 +53,9 @@ class ChatApplicationWiringTests(unittest.TestCase):
     def test_bootstrap_injects_chat_service_factory_into_main_window(self):
         bootstrap = (ROOT / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8")
         composition = (ROOT / "kira" / "app" / "chat_composition.py").read_text(encoding="utf-8")
-        init = self.method("__init__")
+        self.assertIn("session_application_service_factory", bootstrap)
+        self.assertIn("create_session_application_service_factory", bootstrap)
+        self.assertIn("session_application_service_factory", self.source)
         self.assertIn("chat_application_service_factory", bootstrap)
         self.assertIn("create_chat_application_service_factory", bootstrap)
         self.assertIn("chat_application_service_factory(self)", self.source)
@@ -49,7 +63,9 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("window._dispatch_application_request", composition)
 
     def test_session_conversation_identity_flows_through_application_service(self):
-        self.assertIn("self.chat_application_service.get_or_create_conversation(session.cid)", self.source)
+        service = (ROOT / "kira" / "app" / "session_application.py").read_text(encoding="utf-8")
+        self.assertIn("self.chat_application_service.get_or_create_conversation(session.cid)", service)
+        self.assertIn("self.session_application_service.bind_conversation(session)", self.source)
         self.assertIn("conversation_id=self.cur.conversation_id", self.source)
         self.assertIn("self.cur.conversation_id", self.source)
 
@@ -63,9 +79,11 @@ class ChatApplicationWiringTests(unittest.TestCase):
 
     def test_session_manager_owns_runtime_lifecycle_and_request_identity(self):
         self.assertIn("session_manager or SessionManager(ChatSession)", self.source)
-        self.assertIn("self.session_manager.create_session(", self.source)
+        session_service = (ROOT / "kira" / "app" / "session_application.py").read_text(encoding="utf-8")
+        self.assertIn("self.session_manager.create_session(", session_service)
         self.assertIn("self.session_manager.activate_session(self.cur.session_id)", self.source)
         self.assertIn("self.session_manager.get_session(event.session_id)", self.source)
+        self.assertIn("self.session_application_service.sync_sessions(", self.source)
         self.assertIn("self.chat_application_service.submit_message(\n            self.cur.session_id", self.source)
 
     def test_shutdown_delegates_partial_response_cleanup_to_application_service(self):
