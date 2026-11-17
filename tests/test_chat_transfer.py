@@ -60,6 +60,10 @@ class ChatTransferPreviewTests(unittest.TestCase):
             preview.warnings,
         )
 
+        document["conversations"][0]["status"] = "trashed"
+        trashed_preview = transfer.preview_import(document)
+        self.assertTrue(trashed_preview.valid, trashed_preview.errors)
+
 
 if __name__ == "__main__":
     unittest.main()
