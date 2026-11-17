@@ -961,9 +961,13 @@ class MainWindow(QMainWindow):
                 )
             else:
                 history = self.chat_history_service.recent_messages(limit, self.cur.cid)
-        except Exception:
+        except Exception as exc:
             history = []
             history_ok = False
+            self._publish_chat_event(
+                "persistence_failed", session=self.cur,
+                payload={"operation": "history_read", "error": f"{type(exc).__name__}: {exc}"},
+            )
         shown = 0
         for item in history:
             role = item.get("role")
@@ -5034,10 +5038,12 @@ class MainWindow(QMainWindow):
                 "stream_interrupted", session=session, request_id=logical_request_id,
                 payload={"partial_length": len(raw), "reason": "user_cancelled"},
             )
+            persistence_ok = True
             if text.strip():
-                self.save_message("assistant", raw, status="cancelled", metadata={"stream": "stopped"})
+                persistence_ok = self.save_message("assistant", raw, status="cancelled", metadata={"stream": "stopped"})
             self._finish_chat_event_request(
-                session, "request_cancelled", payload={"reason": "user_cancelled"}
+                session, "request_cancelled",
+                payload={"reason": "user_cancelled", "persistence_ok": persistence_ok},
             )
             self.add_chat("system", "تولید پاسخ متوقف شد." + (" متن دریافت‌شده نگه داشته شد." if text.strip() else ""))
             if self._speech_live:
@@ -5048,9 +5054,10 @@ class MainWindow(QMainWindow):
                 "stream_interrupted", session=session, request_id=logical_request_id,
                 payload={"partial_length": len(raw), "reason": "provider_interrupted"},
             )
-            self.save_message("assistant", raw, status="interrupted", metadata={"stream": "provider_interrupted"})
+            persistence_ok = self.save_message("assistant", raw, status="interrupted", metadata={"stream": "provider_interrupted"})
             self._finish_chat_event_request(
-                session, "request_failed", payload={"reason": "provider_interrupted"}
+                session, "request_failed",
+                payload={"reason": "provider_interrupted", "persistence_ok": persistence_ok},
             )
             self.add_chat("error", f"ارتباط وسط پاسخ قطع شد؛ بخش دریافت‌شده نگه داشته شد و تکرار نمی‌شود.\n{res['interrupted']}")
             if self._speech_live:
@@ -5071,10 +5078,11 @@ class MainWindow(QMainWindow):
                 "stream_completed", session=session, request_id=logical_request_id,
                 payload={"content_length": len(raw)},
             )
-            self.save_message("assistant", raw)
+            persistence_ok = self.save_message("assistant", raw)
             self._finish_chat_event_request(
                 session, "request_completed",
-                payload={"content_length": len(raw), "response_status": "completed"},
+                payload={"content_length": len(raw), "response_status": "completed",
+                         "persistence_ok": persistence_ok},
             )
             try:                                                   # quiet second look (rules; optional background model call)
                 brain.after_turn(self.client, self.settings, getattr(self, "_brain", brain.Decision()), getattr(self, "_brain_user_text", ""),
@@ -5193,10 +5201,11 @@ class MainWindow(QMainWindow):
 
     def reply_local(self, text, expression="happy"):
         self.add_chat("assistant", text)
-        self.save_message("assistant", text)
+        persistence_ok = self.save_message("assistant", text)
         self._finish_chat_event_request(
             self.cur, "request_completed",
-            payload={"content_length": len(str(text)), "local": True},
+            payload={"content_length": len(str(text)), "local": True,
+                     "persistence_ok": persistence_ok},
         )
         self.animator.set_expression(expression, hold=4)
         self.say(text)
@@ -5577,6 +5586,28 @@ class MainWindow(QMainWindow):
                 if self.busy and not self._bench_busy and self._stream_text.strip() and not self._partial_saved:
                     self._partial_saved = True
                     self.save_message("assistant", self._stream_text, status="interrupted", metadata={"stream": "window_closed"})  # retain the visible partial answer
+                active_id = self._chat_event_active_ids.get(sess.cid)
+                if active_id:
+                    if self.busy and self._stream_text.strip():
+                        self._publish_chat_event(
+                            "stream_interrupted", session=sess, request_id=active_id,
+                            payload={"reason": "application_shutdown", "partial_length": len(self._stream_text)},
+                        )
+                    self._finish_chat_event_request(
+                        sess, "request_cancelled", payload={"reason": "application_shutdown"}
+                    )
+                if sess is self.front:
+                    self._publish_chat_event("session_deactivated", session=sess, metadata={"reason": "application_shutdown"})
+                self._publish_chat_event("session_closed", session=sess, metadata={"reason": "application_shutdown"})
+        for _request_key, record in tuple(self._chat_event_pending_ids.items()):
+            owner = self.sessions.get(record["session_id"])
+            if owner is not None:
+                self._publish_chat_event(
+                    "request_cancelled", session=owner, request_id=record["request_id"],
+                    payload={"reason": "application_shutdown"},
+                )
+                self._chat_event_submitted.discard((owner.cid, record["request_id"]))
+            self._chat_event_pending_ids.pop(_request_key, None)
         self._closing = True
         self._clear_chat_coordinator_queues()
         if getattr(self, "code_chat", None) is not None:
