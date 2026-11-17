@@ -1,8 +1,9 @@
 """Qt-free content extraction for chat attachments.
 
 This module owns decoding and bounded parsing for supported image, text, PDF,
-DOCX and ZIP formats. It performs no UI, provider, persistence or filesystem
-extraction outside the managed input path supplied by AttachmentManager.
+DOCX and ZIP formats. It has no UI, provider or persistence dependency. It
+reads only caller-supplied file paths; AttachmentManager supplies managed paths,
+and archive members are parsed in memory rather than extracted to disk.
 """
 from __future__ import annotations
 
