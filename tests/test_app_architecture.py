@@ -8,7 +8,11 @@ class ChatApplicationServiceArchitectureTests(unittest.TestCase):
     def test_main_window_uses_application_service_not_chat_internals(self):
         from pathlib import Path
 
-        source = (Path(__file__).resolve().parents[1] / "kira" / "oldmain.py").read_text(encoding="utf-8")
+        ui_root = Path(__file__).resolve().parents[1] / "kira" / "ui"
+        source = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted(ui_root.glob("main_window*.py"))
+        )
         self.assertNotIn("from .chat.coordinator import", source)
         self.assertNotIn("from .chat.context_builder import", source)
         self.assertNotIn("from .chat.response_handler import", source)
