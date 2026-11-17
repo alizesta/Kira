@@ -61,6 +61,17 @@ from .application_service import (
     Submission,
 )
 from .session_manager import SessionManager, SessionState, SessionStateChanged
+from .search import (
+    ChatMessageReference,
+    ChatSearchError,
+    ChatSearchHit,
+    ChatSearchPage,
+    ChatSearchRepository,
+    ChatSearchRepositoryError,
+    ChatSearchRequest,
+    ChatSearchService,
+    ChatSearchValidationError,
+)
 
 __all__ = [
     "CHAT_EVENT_TYPES",
@@ -112,4 +123,13 @@ __all__ = [
     "SessionManager",
     "SessionState",
     "SessionStateChanged",
+    "ChatMessageReference",
+    "ChatSearchError",
+    "ChatSearchHit",
+    "ChatSearchPage",
+    "ChatSearchRepository",
+    "ChatSearchRepositoryError",
+    "ChatSearchRequest",
+    "ChatSearchService",
+    "ChatSearchValidationError",
 ]
