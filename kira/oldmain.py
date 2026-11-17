@@ -4645,12 +4645,10 @@ class MainWindow(QMainWindow):
         history = self.chat_application_service.conversation_context(
             window, character_id=self.cur.cid, conversation_id=conversation_id
         )
-        )
         mode = self.detect_mode(history)                          # Active Mode of THIS message (None = switched off in settings)
         try:
             older = self.chat_application_service.recent_messages(
                 window + 40, character_id=self.cur.cid, conversation_id=conversation_id
-            )[:-window] if window else []
             )[:-window] if window else []
             # Every character has its own saved conversation; only Kira owns the legacy evidence index.
             character_id = self.cur.cid
@@ -4669,7 +4667,6 @@ class MainWindow(QMainWindow):
                     character_id,
                     self.chat_application_service.recent_messages(
                         min(total, 3000), character_id=character_id, conversation_id=conversation_id
-                    ),
                     ),
                     window,
                 )
