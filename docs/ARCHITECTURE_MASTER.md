@@ -188,7 +188,7 @@ See [ARCHITECTURE_ROADMAP.md](ARCHITECTURE_ROADMAP.md) for the prioritized debt 
 
 - [Module ownership and public contracts](MODULE_OWNERSHIP.md)
 - [Architecture roadmap and debt register](ARCHITECTURE_ROADMAP.md)
-- [TASK 015 audit report](TASK_015_FINAL_ARCHITECTURE_AUDIT.md) (audit branch / PR #47)
+- [TASK 015 audit report](https://github.com/alizesta/Kira/pull/47) (Draft PR; report remains on its audit branch)
 - [Chat Application Service](CHAT_APPLICATION_SERVICE.md)
 - [Chat Conversation Lifecycle](CHAT_CONVERSATION_LIFECYCLE.md)
 - [Chat Organization](CHAT_ORGANIZATION.md)
