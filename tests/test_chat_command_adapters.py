@@ -105,6 +105,16 @@ class ChatCommandAdapterTests(unittest.TestCase):
             ("running", "character-kira", "pause"),
         ])
 
+    def test_pending_confirmation_uses_character_identity(self):
+        result = self.registry.dispatch_text(
+            "تأیید", session_id="runtime-kira", request_id="confirm-1",
+            metadata={"character_id": "character-kira"},
+        )
+        self.assertEqual(result.reply_text, "confirmed")
+        self.assertEqual(self.agent.calls, [
+            ("confirm", "character-kira", "تأیید"),
+        ])
+
     def test_task_control_uses_character_identity_when_not_running(self):
         self.agent._running_plan_sessions.clear()
         result = self.registry.dispatch_text(
