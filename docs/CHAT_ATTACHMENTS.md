@@ -37,9 +37,9 @@ A manager created without an explicit root owns a private temporary directory an
 ## Integration responsibilities
 
 - UI: choose local files, display progress and status, and pass selected content through the chat attachment boundary.
-- Chat Application Service: coordinate attachment IDs with the active session and message/request lifecycle.
+- Chat Application Service: owns/injects the manager and exposes `add_attachment`, `prepare_attachments`, `remove_attachment`, and `cleanup_attachments` so attachment IDs are coordinated with the active session and message/request lifecycle.
 - Context Builder: combine the prepared attachment content with the request context.
 - Provider: receive already-prepared image/text content; it does not manage local files.
 - Persistence: continue owning durable message/history records. The temporary manager is not a second history database.
 
-The legacy parser API is intentionally retained during migration so current image paste, screen capture, game-vision and upload flows are not broken while the service-level integration is completed.
+The legacy parser API is intentionally retained during migration so current image paste, screen capture, game-vision and upload flows are not broken. The desktop entry point now imports the compatibility surface through `kira.chat.attachments`; the old `kira.attachments` import remains available to existing callers.
