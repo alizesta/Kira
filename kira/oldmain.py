@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox, QFrame, QFileDialog, QSizePolicy, QSystemTrayIcon, QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog,
     QStackedWidget, QDoubleSpinBox, QGridLayout, QButtonGroup, QGraphicsDropShadowEffect, QColorDialog, QProgressBar
 )
-from .app.session_relay import SessionRelay
+from .app.session_relay import SessionRelay, front_only
 from .config import (load_settings, save_settings, ROOT, VERSION, LOAD_WARNINGS, DATA_DIR,
                      APP_NAME, PROJECT_URL, RELEASES_URL)
 from . import about
@@ -102,17 +102,6 @@ def load_reactions():
         return json.loads((ROOT / "reactions.json").read_text(encoding="utf-8"))
     except Exception:
         return {}
-
-
-def front_only(fn):
-    """Method that only touches the shared screen (status line, route chip, upload cards): skipped while a background chat runs it."""
-    def wrapper(self, *args, **kwargs):
-        if self.cur is not self.front:
-            return None
-        return fn(self, *args, **kwargs)
-    wrapper.__name__ = fn.__name__
-    wrapper.__doc__ = fn.__doc__
-    return wrapper
 
 
 class MainWindow(QMainWindow):
