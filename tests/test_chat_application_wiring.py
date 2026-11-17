@@ -51,6 +51,13 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("self.chat_application_service.submit_message", self.source)
         self.assertIn("self.chat_application_service.start_provider_request", self.source)
 
+    def test_session_manager_owns_runtime_lifecycle_and_request_identity(self):
+        self.assertIn("session_manager or SessionManager(ChatSession)", self.source)
+        self.assertIn("self.session_manager.create_session(", self.source)
+        self.assertIn("self.session_manager.activate_session(self.cur.session_id)", self.source)
+        self.assertIn("self.session_manager.get_session(event.session_id)", self.source)
+        self.assertIn("self.chat_application_service.submit_message(\n            self.cur.session_id", self.source)
+
     def test_shutdown_delegates_partial_response_cleanup_to_application_service(self):
         close_event = self.method("closeEvent")
         close_calls = [node for node in ast.walk(close_event) if isinstance(node, ast.Call)]

@@ -121,6 +121,23 @@ class ChatApplicationServiceTests(unittest.TestCase):
             RequestStatus.RUNNING,
         )
 
+    def test_runtime_session_identity_is_separate_from_persisted_character_identity(self):
+        submission = self.service.submit_message(
+            "runtime-session-123", "hello", character_id="kira",
+            conversation_id="kira-conversation",
+        )
+        self.assertEqual(submission.request.session_id, "runtime-session-123")
+        self.assertEqual(submission.request.character_id, "kira")
+        self.assertEqual(self.dispatched[0].session_id, "runtime-session-123")
+
+        outcome = self.service.complete_request(submission.request.request_id, "answer")
+        self.assertTrue(outcome.ok)
+        role, content, character_id, options = self.persistence.messages[0]
+        self.assertEqual((role, content, character_id), ("assistant", "answer", "kira"))
+        self.assertEqual(options["conversation_id"], "kira-conversation")
+        self.assertEqual(options["metadata"]["session_id"], "runtime-session-123")
+        self.assertEqual(options["metadata"]["character_id"], "kira")
+
     def test_context_provider_response_and_persistence_are_composed(self):
         submission = self.service.submit_message("kira", "hello")
         worker = self._start_provider(submission)

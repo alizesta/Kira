@@ -172,3 +172,16 @@ The migration reference is temporary. Its purpose is to preserve working behavio
 - Provider callbacks are marshalled through the session's Qt relay signal before ResponseHandler and UI observers run; the application service remains Qt-free.
 - MainWindow remains responsible for UI rendering, Voice/Avatar effects, attachment composition, Character/Memory/Mood/Brain enrichment, Tool Agent interception, Vision and web/image search policy. Those application capabilities have not been moved into the Chat service.
 - The focused API, contracts, lifecycle and test instructions are documented in `docs/CHAT_APPLICATION_SERVICE.md`.
+
+## Chat Session lifecycle and state ownership (TASK 007)
+
+- `kira/chat/session_manager.py` is the Qt-free owner of runtime Session identity, registration, activation, deactivation, legal state transitions, notifications, graceful close and final disposal. It manages the existing `kira.chat_sessions.ChatSession` model; it does not introduce a parallel Session model.
+- `session_id` is a generated, immutable identifier for one runtime Session lifetime. `conversation_id` remains independently owned by ChatPersistence and is bound by the application/persistence adapter after runtime Session creation. SessionManager has no Persistence dependency and never reads/writes conversations or messages.
+- Runtime states are `created`, `active`, `idle`, `closing`, `closed` and `failed`. A reentrant lock serializes transitions and ensures only one Session is active at a time. Closed Session identities cannot be reactivated; failed Sessions can only enter the closing path for cleanup.
+- State changes are published as immutable `SessionStateChanged` events. Listener failures are isolated. Repeated deactivation and close requests are idempotent.
+- Closing is graceful: the manager marks a Session closing, rejects activation, checks the injected pending-work predicate, waits for admitted work to drain, calls the injected disposer, then marks it closed. A failed disposal is surfaced as `failed` and can be retried. Closing one Session does not mutate another.
+- The existing MainWindow is retained only as a compatibility/resource adapter. Bootstrap creates and injects SessionManager; MainWindow delegates registry, creation, activation, closing and shutdown lifecycle to it. Qt resources are released by an injected callback after the pending-work check; SessionManager imports no Qt/UI modules.
+- The character-keyed `sessions` mapping is now a live read-only compatibility view. New lifecycle code must use SessionManager APIs rather than mutating the registry directly.
+- `tests/test_chat_session_manager.py` exercises runtime identity, status transitions, Kira/Ren/Mika isolation, active-session switching, graceful close with pending work, disposal retry, event subscription, idempotency and concurrent activation. Tests are pure Python and do not construct Qt or MainWindow.
+- **Application Service integration:** ChatApplicationService is the logical request owner and uses the immutable runtime `session_id`; the associated `character_id` and durable `conversation_id` remain separate fields for history persistence. MainWindow injects SessionManager from bootstrap and delegates create, activate, graceful close and resource disposal to it.
+- Windows and GUI tests are intentionally outside TASK 007's test scope.

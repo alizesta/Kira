@@ -51,6 +51,7 @@ class ChatApplicationRequest:
     attachments: tuple[Mapping[str, Any], ...] = ()
     voice: bool = False
     conversation_id: str | None = None
+    character_id: str | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
 
@@ -173,6 +174,7 @@ class ChatApplicationService:
         busy: bool = False,
         force_queue: bool = False,
         conversation_id: str | None = None,
+        character_id: str | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> Submission:
         if self._disposed:
@@ -188,6 +190,7 @@ class ChatApplicationService:
             attachments=tuple(dict(item) for item in (attachments or ())),
             voice=bool(voice),
             conversation_id=str(conversation_id) if conversation_id else None,
+            character_id=str(character_id or owner),
             metadata=dict(metadata or {}),
         )
         state = _RequestState(request=request)
@@ -465,22 +468,31 @@ class ChatApplicationService:
         request_id: str | None = None,
         conversation_id: str | None = None,
         status: str = "complete",
+        character_id: str | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> PersistenceOutcome:
         owner = str(session_id or "").strip()
         if not owner:
             return PersistenceOutcome(False, "session_id must not be empty")
         request_state = self._requests.get(str(request_id or "")) if request_id else None
-        if conversation_id is None and request_state is not None:
-            conversation_id = request_state.request.conversation_id
+        if request_state is not None:
+            if conversation_id is None:
+                conversation_id = request_state.request.conversation_id
+            if character_id is None:
+                character_id = request_state.request.character_id
+        character_owner = str(character_id or owner).strip()
+        if not character_owner:
+            return PersistenceOutcome(False, "character_id must not be empty")
         try:
             ok = self._persistence.add_message(
-                role, content, owner,
+                role, content, character_owner,
                 conversation_id=conversation_id,
                 status=status,
                 metadata={
                     **dict(metadata or {}),
-                    **({"request_id": request_id, "session_id": owner} if request_id else {}),
+                    "session_id": owner,
+                    "character_id": character_owner,
+                    **({"request_id": request_id} if request_id else {}),
                 },
             )
             if ok:
@@ -605,32 +617,32 @@ class ChatApplicationService:
         initializer = getattr(self._persistence, "init_db", None)
         return list(initializer() or []) if callable(initializer) else []
 
-    def get_or_create_conversation(self, session_id: str) -> dict[str, Any]:
-        """Resolve the durable conversation owned by one character session."""
-        owner = str(session_id or "").strip()
+    def get_or_create_conversation(self, character_id: str) -> dict[str, Any]:
+        """Resolve the durable conversation owned by one character."""
+        owner = str(character_id or "").strip()
         if not owner:
-            raise ValueError("session_id must not be empty")
+            raise ValueError("character_id must not be empty")
         return self._persistence.get_or_create_conversation(owner)
 
     def recent_messages(
-        self, limit: int = 12, session_id: str | None = None,
+        self, limit: int = 12, character_id: str | None = None,
         conversation_id: str | None = None,
     ):
-        return self._persistence.recent_messages(limit, session_id, conversation_id)
+        return self._persistence.recent_messages(limit, character_id, conversation_id)
 
     def conversation_context(
         self, limit: int = 12, max_chars: int = 12000,
-        session_id: str | None = None, conversation_id: str | None = None,
+        character_id: str | None = None, conversation_id: str | None = None,
     ):
-        return self._persistence.conversation_context(limit, max_chars, session_id, conversation_id)
+        return self._persistence.conversation_context(limit, max_chars, character_id, conversation_id)
 
     def message_count(
-        self, session_id: str | None = None, conversation_id: str | None = None
+        self, character_id: str | None = None, conversation_id: str | None = None
     ) -> int:
-        return self._persistence.message_count(session_id, conversation_id)
+        return self._persistence.message_count(character_id, conversation_id)
 
-    def clear_history(self, session_id: str | None = None) -> Any:
-        return self._persistence.clear_memory(session_id)
+    def clear_history(self, character_id: str | None = None) -> Any:
+        return self._persistence.clear_memory(character_id)
 
     def restore_history(self) -> int:
         return self._persistence.restore_last_cleared()
@@ -665,6 +677,7 @@ class ChatApplicationService:
             request_id=state.request.request_id,
             conversation_id=state.request.conversation_id,
             status=status,
+            character_id=state.request.character_id,
             metadata=metadata,
         )
 
