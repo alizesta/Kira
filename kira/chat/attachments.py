@@ -262,7 +262,7 @@ class AttachmentManager:
             and (message_id is None or record.message_id == str(message_id))
         )
 
-    def prepare_content(self, attachment_ids: list[str] | tuple[str, ...], *, session_id: str) -> dict[str, Any]:
+    def prepare_content(\n        self, attachment_ids: list[str] | tuple[str, ...], *, session_id: str,\n        text: str = "", search: bool = False,\n    ) -> dict[str, Any]:
         self._ensure_open()
         prepared = []
         for attachment_id in attachment_ids:
@@ -273,7 +273,7 @@ class AttachmentManager:
                 prepared.append(_legacy.load_attachment(record.path))
             except (OSError, _legacy.AttachmentError) as exc:
                 raise _legacy.AttachmentError(f"پردازش فایل «{record.filename}» ناموفق بود.") from exc
-        return _legacy.compose("", prepared)
+        return _legacy.compose(text, prepared, search=search)
 
     def remove_attachment(self, attachment_id: str, *, session_id: str) -> bool:
         self._ensure_open()
