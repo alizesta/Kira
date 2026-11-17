@@ -1,6 +1,8 @@
 """Application policy adapter for game-mode capability permissions."""
 from __future__ import annotations
 
+from dataclasses import dataclass
+import re
 from typing import Iterable
 
 from ..game_mode_policy import (
@@ -10,6 +12,14 @@ from ..game_mode_policy import (
     normalize_game_mode_profile,
     tool_categories_allowed,
 )
+from ..game_audio import is_important_game_audio
+
+
+@dataclass(frozen=True)
+class GameAudioAlert:
+    category: str
+    message: str
+    emotion: str
 
 
 class GameModeApplicationService:
@@ -17,6 +27,9 @@ class GameModeApplicationService:
 
     STORY_MODE = STORY_MODE
     COMPETITIVE_SAFE_MODE = COMPETITIVE_SAFE_MODE
+
+    def __init__(self) -> None:
+        self._game_audio_alerts: dict[str, tuple[float, str]] = {}
 
     @staticmethod
     def normalize_profile(profile: str | None) -> str:
@@ -46,6 +59,56 @@ class GameModeApplicationService:
 
     def tool_categories_allowed(self, profile: str | None, categories: Iterable[str]) -> bool:
         return tool_categories_allowed(profile, categories)
+
+    def classify_game_audio(
+        self,
+        text: str,
+        *,
+        now: float,
+        enabled: bool,
+        profile: str | None,
+        busy: bool,
+        speaking: bool,
+    ) -> GameAudioAlert | None:
+        """Apply game-mode permission, importance, category and cooldown policy."""
+        if (
+            not enabled
+            or not self.can_emit_automatic_game_audio_alerts(profile)
+            or busy
+            or speaking
+            or not is_important_game_audio(text)
+        ):
+            return None
+        lower = str(text).casefold()
+        category = (
+            "urgent"
+            if re.search(
+                r"low health|low hp|critical|danger|warning|خطر|هشدار|خونت کم|جونت کم",
+                lower,
+                re.I,
+            )
+            else "complete"
+            if re.search(
+                r"mission complete|quest complete|victory|achievement|مرحله تمام|ماموریت تمام|دستاورد",
+                lower,
+                re.I,
+            )
+            else "combat"
+        )
+        previous = self._game_audio_alerts.get(category, (0.0, ""))
+        if now - previous[0] < 25 or lower == previous[1]:
+            return None
+        self._game_audio_alerts[category] = (now, lower)
+        messages = {
+            "urgent": "حواست باشه، از صدای بازی هشدار خطر یا کمبود سلامتی شنیدم.",
+            "complete": "به نظر می‌رسه یک مرحله، مأموریت یا دستاورد مهم تکمیل شده.",
+            "combat": "به نظر می‌رسه اتفاق مهمی در مبارزه یا نزدیک‌شدن دشمن رخ داده.",
+        }
+        return GameAudioAlert(
+            category=category,
+            message=messages[category],
+            emotion="surprised" if category == "urgent" else "thinking",
+        )
 
     def command_denial_reason(self, profile: str | None, required_permissions: Iterable[str]) -> str | None:
         required = set(required_permissions or ())
