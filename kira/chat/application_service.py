@@ -13,6 +13,7 @@ from typing import Any, Callable, Mapping, Sequence
 from uuid import uuid4
 
 from ..core.interfaces.chat_history_service import ChatHistoryService
+from .commands import CommandDispatch, CommandRegistry
 from .context_builder import ContextBuilder, ContextRequest
 from .coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
 from .response_handler import (
@@ -113,6 +114,7 @@ class ChatApplicationService:
         cancel_provider: Callable[[ChatApplicationRequest, Any], Any] | None = None,
         max_pending: int = 3,
         request_history_limit: int = 512,
+        command_registry: CommandRegistry | None = None,
     ) -> None:
         if persistence is None:
             raise TypeError("persistence is required")
@@ -129,6 +131,7 @@ class ChatApplicationService:
         self._worker_factory = worker_factory
         self._on_dispatch = on_dispatch
         self._on_event = on_event
+        self._command_registry = command_registry
         self._schedule = schedule or (lambda callback: callback())
         self._cancel_provider = cancel_provider
         self._max_pending = int(max_pending)
@@ -141,6 +144,33 @@ class ChatApplicationService:
         self._active_by_session: dict[str, str] = {}
         self._dispatch_scheduled: set[str] = set()
         self._disposed = False
+
+    def set_command_registry(self, registry: CommandRegistry | None) -> None:
+        """Inject the shared command dispatcher; execution remains in registered handlers."""
+        if registry is not None and not isinstance(registry, CommandRegistry):
+            raise TypeError("registry must be a CommandRegistry or None")
+        self._command_registry = registry
+
+    def dispatch_commands(
+        self,
+        request_id: str,
+        text: str,
+        *,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> CommandDispatch:
+        """Dispatch deterministic commands for the active chat request and session."""
+        state = self._requests.get(str(request_id or ""))
+        if state is None or state.status is not RequestStatus.RUNNING:
+            raise ValueError("chat request is not active")
+        if self._command_registry is None:
+            return CommandDispatch()
+        return self._command_registry.dispatch_text(
+            text,
+            session_id=state.request.session_id,
+            request_id=state.request.request_id,
+            metadata=metadata or {},
+            source="chat",
+        )
 
     def _emit(self, event: ChatApplicationEvent) -> None:
         callback = self._on_event
@@ -507,6 +537,8 @@ class ChatApplicationService:
         state = self._requests.get(str(request_id or ""))
         if state is None or state.status in (RequestStatus.COMPLETED, RequestStatus.FAILED, RequestStatus.CANCELLED):
             return False
+        if self._command_registry is not None:
+            self._command_registry.cancel(state.request.session_id, state.request.request_id)
         if state.status is RequestStatus.PENDING:
             state.status = RequestStatus.CANCELLED
             owner = state.request.session_id
@@ -559,6 +591,8 @@ class ChatApplicationService:
         owner = str(session_id or "").strip()
         if not owner:
             return
+        if self._command_registry is not None:
+            self._command_registry.cancel_session(owner)
         for request_id, state in tuple(self._requests.items()):
             if state.request.session_id == owner and state.status in (RequestStatus.PENDING, RequestStatus.RUNNING):
                 self.cancel_request(
