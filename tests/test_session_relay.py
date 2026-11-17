@@ -3,7 +3,7 @@ from contextlib import contextmanager
 
 from PySide6.QtCore import QObject
 
-from kira.app.session_relay import SessionRelay
+from kira.app.session_relay import SessionRelay, front_only
 
 
 class _ApplicationService:
@@ -53,6 +53,28 @@ class SessionRelayTests(unittest.TestCase):
             window.calls,
             [("enter", session), ("chunk", "hello"), ("exit", session)],
         )
+
+    def test_front_only_skips_callbacks_for_background_sessions(self):
+        class Window:
+            cur = object()
+            front = object()
+
+            @front_only
+            def update_shared_ui(self, value):
+                return value
+
+        self.assertIsNone(Window().update_shared_ui("hidden"))
+
+    def test_front_only_allows_callbacks_for_front_session(self):
+        class Window:
+            cur = None
+            front = None
+
+            @front_only
+            def update_shared_ui(self, value):
+                return value
+
+        self.assertEqual(Window().update_shared_ui("visible"), "visible")
 
 
 if __name__ == "__main__":
