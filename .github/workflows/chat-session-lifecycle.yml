@@ -71,6 +71,7 @@ jobs:
           python -m unittest
           tests.test_chat_application_service
           tests.test_chat_application_wiring
+          tests.test_app_architecture
           tests.test_session_application
           tests.test_web_search_application
           tests.test_voice_application
