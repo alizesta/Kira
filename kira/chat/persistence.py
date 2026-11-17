@@ -56,6 +56,7 @@ class ChatRepository(Protocol):
                         conversation_id: str | None = None) -> list[dict[str, str]]: ...
     def get_messages(self, limit: int = 1000, character_id: str | None = None,
                      conversation_id: str | None = None, after_id: int = 0) -> list[dict[str, Any]]: ...
+    def get_transfer_messages(self, conversation_id: str, character_id: str, after_created_at: str = "", after_id: int = 0, limit: int = 1000) -> list[dict[str, Any]]: ...
     def message_id_for(self, role: str, content: str, character_id: str | None = None) -> int | None: ...
     def rows_with_ids(self, limit: int = 3000, after_id: int = 0,
                       character_id: str | None = None) -> list[tuple[int, str, str, str]]: ...
@@ -66,6 +67,7 @@ class ChatRepository(Protocol):
     def clear_memory(self, character_id: str | None = None) -> None: ...
     def restore_last_cleared(self) -> int: ...
     def import_messages(self, source: str | Path) -> int: ...
+    def import_transfer_records(self, conversations: list[dict[str, Any]], messages: list[dict[str, Any]]) -> dict[str, Any]: ...
 
 
 def _character_id(value: str | None) -> str:
@@ -834,8 +836,8 @@ class SqliteChatRepository:
     def messages_after(self, after_id=0, limit=500):
         """Return a stable ID-ordered page for consumers that apply their own filters.
 
-        Unlike get_messages(), this cursor is monotonic by message ID, so imported
-        messages with older timestamps cannot be skipped while paging.
+        This cursor is monotonic by message ID, so imported messages with older
+        timestamps cannot be skipped while paging.
         """
         try:
             cursor = max(0, int(after_id))
@@ -856,6 +858,26 @@ class SqliteChatRepository:
             "conversation_id": str(row["conversation_id"] or ""),
             "metadata": _json_object(row["metadata"]), "status": str(row["status"] or "complete"),
         } for row in rows]
+
+    def get_transfer_messages(self, conversation_id, character_id, after_created_at="", after_id=0, limit=1000):
+        """Read an ordered bounded page for portable export using a stable keyset cursor."""
+        with self._lock:
+            self._flush_pending_locked()
+            with self._db() as con:
+                rows = con.execute(
+                    "SELECT id, role, content, created_at, character_id, conversation_id, metadata, status "
+                    "FROM messages WHERE conversation_id=? AND character_id=? AND "
+                    "(COALESCE(created_at, '') > ? OR (COALESCE(created_at, '') = ? AND id > ?)) "
+                    "ORDER BY COALESCE(created_at, '') ASC, id ASC LIMIT ?",
+                    (str(conversation_id), _character_id(character_id), str(after_created_at),
+                     str(after_created_at), int(after_id), max(1, min(int(limit), 5000))),
+                ).fetchall()
+            return [{
+                "id": int(row["id"]), "role": row["role"], "content": row["content"],
+                "created_at": str(row["created_at"] or ""), "character_id": row["character_id"],
+                "conversation_id": row["conversation_id"], "metadata": _json_object(row["metadata"]),
+                "status": row["status"],
+            } for row in rows]
 
     def message_id_for(self, role, content, character_id=None):
         with self._db() as con:
@@ -1022,6 +1044,103 @@ class SqliteChatRepository:
             except (sqlite3.Error, OSError, PersistenceError) as exc:
                 raise PersistenceError(f"ورود چت ناموفق بود (چیزی تغییر نکرد): {exc}") from exc
 
+    def import_transfer_records(self, conversations, messages):
+        """Atomically append validated transfer records without overwriting existing data."""
+        with self._lock:
+            self._flush_pending_locked()
+            try:
+                with self._db() as con:
+                    self._migrate_schema(con)
+                    conversation_map = {}
+                    imported_conversations = remapped_conversations = 0
+                    for item in conversations:
+                        source_id = str(item["id"])
+                        character_id = _character_id(item["character_id"])
+                        existing = con.execute("SELECT character_id FROM conversations WHERE id=?", (source_id,)).fetchone()
+                        target_id = source_id
+                        if existing is not None and _character_id(existing["character_id"]) != character_id:
+                            target_id = str(uuid.uuid4())
+                            remapped_conversations += 1
+                        conversation_map[source_id] = target_id
+                        if existing is None or target_id != source_id:
+                            con.execute(
+                                "INSERT INTO conversations(id, character_id, title, metadata, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                (target_id, character_id, str(item.get("title", "")),
+                                 json.dumps(_json_object(item.get("metadata")), ensure_ascii=False),
+                                 str(item.get("status", "active")), str(item.get("created_at", "")),
+                                 str(item.get("updated_at", item.get("created_at", "")))),
+                            )
+                            imported_conversations += 1
+                    signatures = set()
+                    for row in con.execute("SELECT role, content, created_at, character_id, conversation_id, metadata, status FROM messages"):
+                        signatures.add((str(row[0]), str(row[1]), str(row[2] or ""), _character_id(row[3]),
+                                        str(row[4] or ""), json.dumps(_json_object(row[5]), ensure_ascii=False, sort_keys=True),
+                                        str(row[6] or "complete")))
+                    used_ids = {int(row[0]) for row in con.execute("SELECT id FROM messages")}
+                    # If any non-duplicate ID collision occurs in a conversation, allocate
+                    # fresh IDs for that conversation's imported messages as a group. This
+                    # keeps equal-timestamp message order stable under the repository's
+                    # (created_at, id) ordering contract.
+                    order_remap_conversations = set()
+                    seen_source_ids = set()
+                    for item in messages:
+                        source_id = item.get("id")
+                        conv_id = conversation_map[str(item["conversation_id"])]
+                        cid = _character_id(item["character_id"])
+                        metadata = _json_object(item.get("metadata"))
+                        signature = (
+                            str(item["role"]), str(item["content"]), str(item.get("created_at", "")),
+                            cid, conv_id, json.dumps(metadata, ensure_ascii=False, sort_keys=True),
+                            str(item.get("status", "complete")),
+                        )
+                        if signature not in signatures and source_id is not None and (
+                            int(source_id) in used_ids or int(source_id) in seen_source_ids
+                        ):
+                            order_remap_conversations.add(conv_id)
+                        if source_id is not None:
+                            seen_source_ids.add(int(source_id))
+                    imported_messages = skipped_duplicates = remapped_messages = 0
+                    for item in messages:
+                        cid = _character_id(item["character_id"])
+                        conv_id = conversation_map[str(item["conversation_id"])]
+                        role, body = str(item["role"]), str(item["content"])
+                        stamp = str(item.get("created_at", ""))
+                        metadata = _json_object(item.get("metadata"))
+                        status = str(item.get("status", "complete"))
+                        meta_json = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
+                        signature = (role, body, stamp, cid, conv_id,
+                                     json.dumps(metadata, ensure_ascii=False, sort_keys=True), status)
+                        if signature in signatures:
+                            skipped_duplicates += 1
+                            continue
+                        source_id = item.get("id")
+                        if source_id is not None and int(source_id) not in used_ids and conv_id not in order_remap_conversations:
+                            con.execute(
+                                "INSERT INTO messages(id, role, content, created_at, character_id, conversation_id, metadata, status) VALUES (?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?)",
+                                (int(source_id), role, body, stamp, cid, conv_id, meta_json, status),
+                            )
+                            used_ids.add(int(source_id))
+                        else:
+                            if source_id is not None:
+                                remapped_messages += 1
+                            con.execute(
+                                "INSERT INTO messages(role, content, created_at, character_id, conversation_id, metadata, status) VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?)",
+                                (role, body, stamp, cid, conv_id, meta_json, status),
+                            )
+                            used_ids.add(int(con.execute("SELECT last_insert_rowid()").fetchone()[0]))
+                        signatures.add(signature)
+                        imported_messages += 1
+                    return {
+                        "imported_conversations": imported_conversations,
+                        "imported_messages": imported_messages,
+                        "skipped_duplicates": skipped_duplicates,
+                        "remapped_conversations": remapped_conversations,
+                        "remapped_messages": remapped_messages,
+                        "conversation_id_map": conversation_map,
+                    }
+            except (sqlite3.Error, OSError, PersistenceError, ValueError, TypeError) as exc:
+                raise PersistenceError(f"ورود مکالمات ناموفق بود؛ تراکنش بازگردانی شد: {exc}") from exc
+
     def _ensure_conversation_rows(self, con, rows):
         for raw_row in rows:
             _, role, body, stamp, cid, conv_id, metadata, status = self._message_fields(raw_row)
@@ -1130,6 +1249,9 @@ class ChatPersistence:
     def messages_after(self, after_id=0, limit=500):
         return self._invoke(self._repository.messages_after, after_id, limit)
 
+    def get_transfer_messages(self, conversation_id, character_id, after_created_at="", after_id=0, limit=1000):
+        return self._invoke(self._repository.get_transfer_messages, conversation_id, character_id, after_created_at, after_id, limit)
+
     def message_id_for(self, role, content, character_id=None):
         return self._invoke(self._repository.message_id_for, role, content, character_id)
 
@@ -1171,6 +1293,9 @@ class ChatPersistence:
             raise
         except Exception as exc:
             raise PersistenceError(str(exc)) from exc
+
+    def import_transfer_records(self, conversations, messages):
+        return self._invoke(self._repository.import_transfer_records, conversations, messages)
 
 
 def create_default_chat_persistence(db_path=None) -> ChatPersistence:
