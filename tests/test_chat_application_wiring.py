@@ -98,6 +98,20 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertNotIn("self.listener = Listener(", runtime)
         self.assertNotIn("PySide6", service)
 
+    def test_game_mode_permissions_are_owned_by_application_service(self):
+        bootstrap = (ROOT / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8")
+        service = (ROOT / "kira" / "app" / "game_mode_application.py").read_text(encoding="utf-8")
+        vision = (UI_ROOT / "main_window_attachments_vision.py").read_text(encoding="utf-8")
+        runtime = (UI_ROOT / "main_window_runtime.py").read_text(encoding="utf-8")
+        support = (UI_ROOT / "main_window_support.py").read_text(encoding="utf-8")
+        self.assertIn("GameModeApplicationService()", bootstrap)
+        self.assertIn("game_mode_application_service=game_mode_application_service", bootstrap)
+        self.assertIn("self.game_mode_application_service.permissions(", vision)
+        self.assertIn("self.game_mode_application_service.command_denial_reason(", runtime)
+        self.assertNotIn("game_mode_policy", support)
+        self.assertNotIn("game_mode_permissions(", vision)
+        self.assertNotIn("COMPETITIVE_SAFE_MODE", runtime)
+
     def test_main_window_does_not_import_chat_internal_components(self):
         self.assertNotIn("from .chat.coordinator import", self.source)
         self.assertNotIn("from .chat.context_builder import", self.source)
