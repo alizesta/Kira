@@ -4667,9 +4667,6 @@ class MainWindow(SessionWindowMixin, QMainWindow):
         self.check_status()
         self._send_next_pending()
 
-    def _schedule_chat_callback(self, callback):
-        QTimer.singleShot(0, callback)
-
     def _send_next_pending(self, session=None):
         """Ask the Chat application service to drain only the completed session's FIFO queue."""
         session = session or self.cur
