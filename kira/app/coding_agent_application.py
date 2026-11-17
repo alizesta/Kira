@@ -31,5 +31,4 @@ class CodingAgentApplicationService:
         """Stop the Coding Agent session if one is active."""
         if code_chat is None or session is None:
             return False
-        code_chat.stop(session)
-        return True
+        return bool(code_chat.stop(session))
