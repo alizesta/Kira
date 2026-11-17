@@ -234,8 +234,12 @@ class ChatApplicationService:
                 metadata={"source": source, "parent_request_id": details.get("parent_request_id")},
             )
             raise
+        event_type = (
+            "command_dispatch_failed" if dispatch.failed
+            else "command_dispatch_completed"
+        )
         self._publish_event(
-            "command_dispatch_completed",
+            event_type,
             session_id=owner,
             request_id=request,
             payload={
@@ -840,9 +844,6 @@ class ChatApplicationService:
         state = self._requests.get(str(request_id or ""))
         if state is None or state.status in (RequestStatus.COMPLETED, RequestStatus.FAILED, RequestStatus.CANCELLED):
             return False
-        if self._command_registry is not None:
-            # Includes out-of-band control invocations correlated to this active session.
-            self._command_registry.cancel_session(state.request.session_id)
         if state.status is RequestStatus.PENDING:
             state.status = RequestStatus.CANCELLED
             self.cleanup_request_attachments(state.request.request_id)
@@ -859,6 +860,10 @@ class ChatApplicationService:
             if owner not in self._active_by_session:
                 self.dispatch_next(owner)
             return True
+        # A running request owns the active command/control work for this session.
+        # Pending requests must not cancel commands belonging to the active request.
+        if self._command_registry is not None:
+            self._command_registry.cancel_session(state.request.session_id)
         try:
             if self._cancel_provider is not None:
                 self._cancel_provider(state.request, state.worker)
