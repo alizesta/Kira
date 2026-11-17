@@ -108,9 +108,14 @@ class CharacterSettingsMixin:
         cid = profile.get("id", "kira")
         traits = {key: slider.value() / 100.0 for key, slider in self.character_page.personality_sliders.items()}
         try:
-            self.settings.setdefault("character_traits", {})[cid] = traits
-            if hasattr(self.character_page, "character_notes_edit"):
-                self.settings.setdefault("character_notes", {})[cid] = self.character_page.character_notes_edit.toPlainText().strip()
+            notes = (
+                self.character_page.character_notes_edit.toPlainText().strip()
+                if hasattr(self.character_page, "character_notes_edit") else None
+            )
+            self.character_service.save_personality(
+                self.settings, cid, traits=traits, notes=notes
+            )
+            self.mood_service.set_active_character(cid, traits)
             self.save_character_settings(silent=True)
             self.refresh_personality_controls()
             if not silent:
