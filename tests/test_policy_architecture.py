@@ -31,10 +31,14 @@ class PolicyArchitectureTests(unittest.TestCase):
             "api_manager.set_model_enabled(",
             "api_manager.set_api_enabled(",
             "api_manager.delete_api(",
+            "usage.install(",
+            "evidence_memory.configure(",
+            "self.tool_agent.set_settings(",
         ):
             self.assertNotIn(forbidden, sources)
         bootstrap = (ROOT / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8")
         self.assertIn("provider_application_service=provider_application_service", bootstrap)
+        self.assertIn("runtime_settings_application_service=runtime_settings_application_service", bootstrap)
 
     def test_vision_policy_and_frame_gate_are_outside_ui(self):
         sources = "\n".join(
@@ -63,6 +67,7 @@ class PolicyArchitectureTests(unittest.TestCase):
             "provider_application.py",
             "vision_application.py",
             "coding_agent_application.py",
+            "runtime_settings_application.py",
             "session_application.py",
             "web_search.py",
             "voice_application.py",
