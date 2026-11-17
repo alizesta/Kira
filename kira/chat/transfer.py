@@ -304,6 +304,8 @@ class ChatTransfer:
             for message in messages:
                 conv_id = message["conversation_id"]
                 if conv_id not in existing_ids:
+                    if message["id"] in global_message_ids:
+                        collision_conversations.add(conv_id)
                     continue
                 signature = (
                     message["role"], message["content"], message["created_at"],
