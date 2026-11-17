@@ -17,7 +17,7 @@ class PolicyArchitectureTests(unittest.TestCase):
             self.assertNotIn("import kira.oldmain", source, str(path))
 
     def test_provider_route_policy_and_router_construction_are_outside_ui(self):
-        sources = "\\n".join(
+        sources = "\n".join(
             path.read_text(encoding="utf-8")
             for path in UI_ROOT.glob("main_window*.py")
         )
@@ -37,7 +37,7 @@ class PolicyArchitectureTests(unittest.TestCase):
         self.assertIn("provider_application_service=provider_application_service", bootstrap)
 
     def test_vision_policy_and_frame_gate_are_outside_ui(self):
-        sources = "\\n".join(
+        sources = "\n".join(
             path.read_text(encoding="utf-8")
             for path in UI_ROOT.glob("main_window*.py")
         )
@@ -47,7 +47,7 @@ class PolicyArchitectureTests(unittest.TestCase):
         self.assertIn("self.vision_application_service.consume_result(", sources)
 
     def test_coding_agent_handoff_and_shutdown_are_outside_ui(self):
-        sources = "\\n".join(
+        sources = "\n".join(
             path.read_text(encoding="utf-8")
             for path in UI_ROOT.glob("main_window*.py")
         )
