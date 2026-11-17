@@ -4252,37 +4252,44 @@ class MainWindow(QMainWindow):
         self.safe_stop_speaker()
         self.animator.touch()
         self._body_done = []
-        try:
-            self.run_body(body_ctl.parse_user_command(text))            # "raise your hand" / "پشتتو کن": moves at once, before the model answers
-        except Exception:                                      # noqa: BLE001
-            pass
-        force_img = False
-        if attachments and any(a.get("kind") == "image" for a in attachments):
-            text, force_img = websearch.image_command(text)              # '/img ...' or '/عکس ...' = search this picture even if the switch is off
-        img_search = bool(attachments and any(a.get("kind") == "image" for a in attachments)
-                          and (force_img or self.settings.get("image_search", False)))
-        packed = att.compose(text, attachments, search=img_search) if attachments else None
-        self._turn_extra = packed
-        self._turn_attach_kinds = [str(a.get("kind")) for a in (attachments or [])]       # structured kinds: Active Mode must not guess from display text
-        self.add_chat("user", packed["display"] if packed else text, images=attachments if packed else None)
+        original_text = str(text or "")
         self.tool_agent.begin_turn()
-        action_result = None
-        if not packed:
-            action_result = usage.handle_command(text)                                 # "/usage [days]": numbers from the local ledger, no model call
-            if action_result is not None:
-                pass
-            elif self.tool_agent.enabled():
-                action_result = self.tool_agent.handle_confirmation_reply(text)       # "تأیید" / "لغو" for a pending sensitive action: decided in code, not by the model
-                if action_result is None:
-                    action_result = self.tool_agent.handle_task_command(text)         # status / pause / cancel / add a step of an unfinished task: decided in code too
-            else:
-                action_result = run_safe_action(
-                    text, allow_desktop=self._game_mode_profile != COMPETITIVE_SAFE_MODE
-                )                                                                       # fixed shortcuts remain gated in Competitive Safe
-        self._tool_plan = None if action_result else self.tool_agent.plan(text)
-        self.save_message("user", packed["stored"] if packed else text)
-        if action_result:
-            self.reply_local(action_result)
+        has_image = any(item.get("kind") == "image" for item in (attachments or []))
+        command_dispatch = self.chat_application_service.dispatch_commands(
+            self.cur.application_request_id,
+            original_text,
+            metadata={
+                "has_attachments": bool(attachments),
+                "has_image": has_image,
+            },
+        )
+        text = command_dispatch.rewritten_text or original_text
+        force_img = bool(command_dispatch.metadata.get("force_image_search"))
+        force_web = bool(command_dispatch.metadata.get("force_web_search"))
+        img_search = bool(
+            has_image and (force_img or self.settings.get("image_search", False))
+        )
+        packed = att.compose(text, attachments, search=img_search) if attachments else None
+        if packed is not None and force_web:
+            # Preserve the user's literal /web command in the visible and durable chat history.
+            presentation = att.compose(original_text, attachments, search=img_search)
+            packed["display"] = presentation["display"]
+            packed["stored"] = presentation["stored"]
+        self._turn_extra = packed
+        self._turn_attach_kinds = [str(item.get("kind")) for item in (attachments or [])]
+        self.add_chat(
+            "user",
+            packed["display"] if packed else original_text,
+            images=attachments if packed else None,
+        )
+        self._tool_plan = (
+            None
+            if command_dispatch.handled and not command_dispatch.continue_chat
+            else self.tool_agent.plan(text)
+        )
+        self.save_message("user", packed["stored"] if packed else original_text)
+        if command_dispatch.handled and not command_dispatch.continue_chat:
+            self.reply_local(command_dispatch.reply_text or "فرمان اجرا شد.")
             return
         self.busy = True
         self.gen_stop_btn.show()
