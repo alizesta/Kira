@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import time
 import math
+import re
 
 from .. import characters
 
@@ -57,8 +58,8 @@ class CharacterProfileService:
         self, settings: dict, character_id: str, *, name: str, description: str, prompt: str
     ) -> dict:
         character_id = str(character_id or "")
-        if self.is_builtin(character_id):
-            raise ValueError("Built-in character profiles cannot be edited.")
+        if character_id == "kira":
+            raise ValueError("The default Kira profile cannot be edited.")
         profiles = settings.setdefault("characters", [])
         for index, item in enumerate(profiles):
             if isinstance(item, dict) and str(item.get("id") or "") == character_id:
@@ -92,7 +93,9 @@ class CharacterProfileService:
             ]
         settings["active_character_id"] = "kira"
         for key in ("character_voice", "character_notes", "character_resources", "character_traits"):
-            settings.get(key, {}).pop(character_id, None)
+            bucket = settings.get(key)
+            if isinstance(bucket, dict):
+                bucket.pop(character_id, None)
         return True
 
     def set_active(self, settings: dict, character_id: str) -> str:
@@ -105,7 +108,7 @@ class CharacterProfileService:
     @staticmethod
     def _resource_values(value) -> list[str]:
         if isinstance(value, str):
-            value = value.replace(";", ",").split(",")
+            value = re.split(r"[,;\\n]+", value)
         if not isinstance(value, (list, tuple)):
             return []
         result = []
