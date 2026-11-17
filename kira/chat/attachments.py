@@ -321,6 +321,7 @@ class AttachmentManager:
                 errors.append(f"پردازش فایل «{record.filename}» ناموفق بود.")
         result = _legacy.compose(text, prepared, search=search)
         result["errors"] = errors
+        result["prepared_count"] = len(prepared)
         return result
 
     def remove_attachment(self, attachment_id: str, *, session_id: str) -> bool:
