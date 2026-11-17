@@ -707,6 +707,8 @@ class MainWindow(QMainWindow):
         order = [c for c in ("kira", "ren", "mika") if c in profiles] + [c for c in profiles if c not in ("kira", "ren", "mika")]
         for cid in order:
             sess = self._ensure_session(cid, profiles[cid])
+            if sess is None:
+                continue
             if not sess.loaded:
                 sess.loaded = True
                 with self._as(sess):
