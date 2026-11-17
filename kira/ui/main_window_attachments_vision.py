@@ -145,7 +145,7 @@ class AttachmentsVisionMixin:
             for key, action in self.vision_rate_actions.items():
                 action.setChecked(key == policy.name)
         self._game_capture_timer.setInterval(max(250, int(policy.interval_seconds * 1000)))
-        if self._game_mode_enabled and game_mode_permissions(self._game_mode_profile)["vision_capture"]:
+        if self._game_mode_enabled and self.game_mode_application_service.can_capture_vision(self._game_mode_profile):
             self._capture_game_frame()
             if not self._game_capture_timer.isActive():
                 self._game_capture_timer.start()
@@ -181,16 +181,16 @@ class AttachmentsVisionMixin:
 
     def set_game_mode_profile(self, profile):
         """Apply a manually selected gameplay profile; never infer or enable it automatically."""
-        self._game_mode_profile = normalize_game_mode_profile(profile)
-        self.game_mode_story_action.setChecked(self._game_mode_profile == STORY_MODE)
-        self.game_mode_safe_action.setChecked(self._game_mode_profile == COMPETITIVE_SAFE_MODE)
+        self._game_mode_profile = self.game_mode_application_service.normalize_profile(profile)
+        self.game_mode_story_action.setChecked(self.game_mode_application_service.is_story(self._game_mode_profile))
+        self.game_mode_safe_action.setChecked(self.game_mode_application_service.is_competitive_safe(self._game_mode_profile))
         self.set_game_mode(True)
 
     def set_game_mode(self, enabled):
         enabled = bool(enabled)
         was_enabled = self._game_mode_enabled
         self._game_mode_enabled = enabled
-        permissions = game_mode_permissions(self._game_mode_profile)
+        permissions = self.game_mode_application_service.permissions(self._game_mode_profile)
         vision_allowed = bool(permissions["vision_capture"])
         audio_allowed = bool(permissions["game_audio_loopback"])
 
@@ -253,12 +253,12 @@ class AttachmentsVisionMixin:
 
     def on_game_audio_error(self, message):
         if (self._game_mode_enabled
-                and game_mode_permissions(self._game_mode_profile)["game_audio_loopback"]):
+                and self.game_mode_application_service.can_use_game_audio_loopback(self._game_mode_profile)):
             self.add_chat("system", "🎧 " + message)
 
     def on_game_audio_transcript(self, text):
         if (not self._game_mode_enabled
-                or not game_mode_permissions(self._game_mode_profile)["automatic_game_audio_alerts"]
+                or not self.game_mode_application_service.can_emit_automatic_game_audio_alerts(self._game_mode_profile)
                 or self.busy or self.speaker._began or not is_important_game_audio(text)):
             return
         now = time.monotonic()
