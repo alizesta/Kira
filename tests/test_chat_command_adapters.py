@@ -23,6 +23,9 @@ class FakeToolAgent:
     def planning_enabled(self):
         return True
 
+    def is_task_running(self, session_id):
+        return session_id in self._running_plan_sessions
+
     def has_pending(self, session_id):
         return session_id == "character-kira"
 
@@ -63,6 +66,7 @@ class ChatCommandAdapterTests(unittest.TestCase):
                 ("status", "") if "status" in text else
                 (None, "")
             ),
+            task_running_checker=self.agent.is_task_running,
             tool_agent=self.agent,
             desktop_action_matcher=lambda text: "notepad" if "notepad" in text else None,
             desktop_action_handler=lambda text: self.desktop_calls.append(("desktop", text)) or "opened",
