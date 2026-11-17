@@ -62,6 +62,23 @@ def create_default_command_registry(
             return None
         return {} if tool_agent.has_pending(context.session_id) else None
 
+    def match_tool_running_control(text, context):
+        if context.metadata.get("has_attachments"):
+            return None
+        running = getattr(tool_agent, "_running_plan_sessions", set())
+        if context.session_id not in running:
+            return None
+        kind, payload = task_control_parser(text)
+        if kind not in ("status", "pause", "cancel", "add_step", "change"):
+            return None
+        return {"kind": kind, "payload": payload}
+
+    def execute_tool_running_control(context, _arguments):
+        result = tool_agent.control_running(
+            context.request.raw_input, session_id=context.request.session_id,
+        )
+        return result if result is not None else NO_MATCH
+
     def match_tool_task(text, context):
         if context.metadata.get("has_attachments") or not tool_agent.enabled():
             return None
@@ -179,6 +196,26 @@ def create_default_command_registry(
         required_permissions=(),
         matcher=match_tool_confirmation,
         handler=execute_tool_confirmation,
+    ))
+    registry.register(CommandDefinition(
+        command_id="chat.tool_running_control",
+        name="tool_running_control",
+        description="Control a running task between steps without queueing another chat turn.",
+        parameters={
+            "type": "object",
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "enum": ["status", "pause", "cancel", "add_step", "change"],
+                },
+                "payload": {"type": "string"},
+            },
+            "required": ["kind", "payload"],
+            "additionalProperties": False,
+        },
+        required_permissions=(),
+        matcher=match_tool_running_control,
+        handler=execute_tool_running_control,
     ))
     registry.register(CommandDefinition(
         command_id="chat.tool_task_control",
