@@ -48,7 +48,7 @@ class AttachmentManagerTests(unittest.TestCase):
         )
         self.assertEqual(item.message_id, "message-1")
         prepared = self.manager.prepare_content([item.attachment_id], session_id="mika")
-        self.assertIn("سلام", prepared["model"])
+        self.assertIn("سلام", prepared["files"][0]["text"])
         self.assertEqual(self.manager.list_attachments(session_id="mika", message_id="message-1"), (item,))
 
     def test_rejects_cross_session_preparation_and_removal(self):
@@ -107,7 +107,7 @@ class AttachmentManagerTests(unittest.TestCase):
         prepared = self.manager.prepare_content(
             [broken.attachment_id, good.attachment_id], session_id="kira"
         )
-        self.assertIn("readable", prepared["model"])
+        self.assertIn("readable", prepared["files"][0]["text"])
         self.assertEqual(len(prepared["errors"]), 1)
         self.assertIn("broken.txt", prepared["errors"][0])
 
