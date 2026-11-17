@@ -154,6 +154,18 @@ class ChatApplicationServiceTests(unittest.TestCase):
             ))
             service.dispose()
 
+    def test_queued_coordinator_requests_keep_stable_request_and_session_ids(self):
+        first = self.service.submit_message("runtime-kira", "first", busy=True)
+        second = self.service.submit_message("runtime-kira", "second", busy=True)
+        coordinator = self.service._coordinators["runtime-kira"]
+        queued_first = coordinator.take_next()
+        queued_second = coordinator.take_next()
+        self.assertEqual(queued_first.request_id, first.request.request_id)
+        self.assertEqual(queued_first.session_id, "runtime-kira")
+        self.assertEqual(queued_second.request_id, second.request.request_id)
+        self.assertEqual(queued_second.session_id, "runtime-kira")
+        self.assertNotIn("_chat_request_ids", vars(self.service))
+
     def test_submit_dispatches_and_preserves_request_and_session_identity(self):
         submission = self.service.submit_message("kira", "hello")
         self.assertTrue(submission.accepted)

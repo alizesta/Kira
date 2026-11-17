@@ -12,11 +12,31 @@ class ChatRequest:
     text: str
     attachments: tuple[Mapping[str, Any], ...] = ()
     voice: bool = False
+    request_id: str | None = None
+    session_id: str | None = None
+
+    def __post_init__(self) -> None:
+        request_id = str(self.request_id).strip() if self.request_id is not None else None
+        session_id = str(self.session_id).strip() if self.session_id is not None else None
+        if request_id == "":
+            raise ValueError("request_id must not be empty")
+        if session_id == "":
+            raise ValueError("session_id must not be empty")
+        if (request_id is None) != (session_id is None):
+            raise ValueError("request_id and session_id must be provided together")
+        object.__setattr__(self, "request_id", request_id)
+        object.__setattr__(self, "session_id", session_id)
 
     @classmethod
-    def create(cls, text: str, attachments: Sequence[Mapping[str, Any]] | None = None,
-               voice: bool = False) -> "ChatRequest":
-        return cls(str(text), tuple(attachments or ()), bool(voice))
+    def create(
+        cls, text: str, attachments: Sequence[Mapping[str, Any]] | None = None,
+        voice: bool = False, *, request_id: str | None = None,
+        session_id: str | None = None,
+    ) -> "ChatRequest":
+        return cls(
+            str(text), tuple(attachments or ()), bool(voice),
+            request_id=request_id, session_id=session_id,
+        )
 
 
 class SubmissionResult(str, Enum):

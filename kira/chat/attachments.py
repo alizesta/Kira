@@ -1,8 +1,8 @@
 """Session-scoped attachment storage and content preparation.
 
-This module is UI-, Qt-, Provider-, and Persistence-independent.  It owns
-managed copies of attachment bytes and delegates format extraction to the
-legacy pure parser until callers migrate to this API.
+This module is UI-, Qt-, Provider-, and Persistence-independent. It owns
+managed attachment bytes and delegates bounded format extraction to the
+sibling chat content parser.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping
 
-from kira import attachments as _legacy
+from . import attachment_content as _content
 
 
 def _freeze_value(value: Any) -> Any:
@@ -91,9 +91,9 @@ class AttachmentManager:
         self,
         storage_root: str | os.PathLike[str] | None = None,
         *,
-        max_files: int = _legacy.MAX_FILES,
-        max_image_bytes: int = _legacy.MAX_IMAGE_BYTES,
-        max_file_bytes: int = _legacy.MAX_FILE_BYTES,
+        max_files: int = _content.MAX_FILES,
+        max_image_bytes: int = _content.MAX_IMAGE_BYTES,
+        max_file_bytes: int = _content.MAX_FILE_BYTES,
     ) -> None:
         if max_files < 1 or max_image_bytes < 1 or max_file_bytes < 1:
             raise ValueError("attachment limits must be positive")
@@ -113,13 +113,13 @@ class AttachmentManager:
 
     def _ensure_open(self) -> None:
         if self._closed:
-            raise _legacy.AttachmentError("مدیر ضمیمه‌ها بسته شده است.")
+            raise _content.AttachmentError("مدیر ضمیمه‌ها بسته شده است.")
 
     @staticmethod
     def _safe_name(filename: str) -> str:
         name = Path(str(filename or "")).name.replace("\\", "_").strip()
         if not name or name in {".", ".."} or "\x00" in name:
-            raise _legacy.AttachmentError("نام فایل معتبر نیست.")
+            raise _content.AttachmentError("نام فایل معتبر نیست.")
         return name[:240]
 
     @staticmethod
@@ -163,31 +163,31 @@ class AttachmentManager:
         size = len(data)
         if extension in self.IMAGE_MIMES:
             if size > self.max_image_bytes:
-                raise _legacy.AttachmentError("حجم تصویر از محدودیت مجاز بیشتر است.")
+                raise _content.AttachmentError("حجم تصویر از محدودیت مجاز بیشتر است.")
             expected = self.IMAGE_MIMES[extension]
         elif extension in self.DOCUMENT_MIMES:
             if size > self.max_file_bytes:
-                raise _legacy.AttachmentError("حجم فایل از محدودیت مجاز بیشتر است.")
+                raise _content.AttachmentError("حجم فایل از محدودیت مجاز بیشتر است.")
             expected = self.DOCUMENT_MIMES[extension]
         elif extension in self.TEXT_EXTENSIONS:
             if size > self.max_file_bytes:
-                raise _legacy.AttachmentError("حجم فایل از محدودیت مجاز بیشتر است.")
+                raise _content.AttachmentError("حجم فایل از محدودیت مجاز بیشتر است.")
             expected = "text/plain"
         else:
-            raise _legacy.AttachmentError("این نوع فایل در نسخه فعلی پشتیبانی نمی‌شود.")
+            raise _content.AttachmentError("این نوع فایل در نسخه فعلی پشتیبانی نمی‌شود.")
 
         raw = bytes(data)
         actual = self._sniff(raw, extension)
         if expected.startswith("image/") and actual != expected:
-            raise _legacy.AttachmentError("نوع واقعی تصویر با پسوند فایل مطابقت ندارد.")
+            raise _content.AttachmentError("نوع واقعی تصویر با پسوند فایل مطابقت ندارد.")
         if expected == "application/pdf" and actual != expected:
-            raise _legacy.AttachmentError("محتوای فایل PDF معتبر نیست.")
+            raise _content.AttachmentError("محتوای فایل PDF معتبر نیست.")
         if expected.endswith("wordprocessingml.document") and actual != expected:
-            raise _legacy.AttachmentError("محتوای فایل Word معتبر نیست.")
+            raise _content.AttachmentError("محتوای فایل Word معتبر نیست.")
         if expected == "application/zip" and actual != expected:
-            raise _legacy.AttachmentError("محتوای فایل ZIP معتبر نیست.")
+            raise _content.AttachmentError("محتوای فایل ZIP معتبر نیست.")
         if expected == "text/plain" and actual != expected:
-            raise _legacy.AttachmentError("محتوای فایل متنی معتبر نیست.")
+            raise _content.AttachmentError("محتوای فایل متنی معتبر نیست.")
         return expected, size
 
     def add_attachment(
@@ -213,18 +213,18 @@ class AttachmentManager:
             source_path = Path(source).expanduser()
             try:
                 if source_path.is_symlink() or not source_path.is_file():
-                    raise _legacy.AttachmentError("مسیر فایل معتبر نیست.")
+                    raise _content.AttachmentError("مسیر فایل معتبر نیست.")
                 name = self._safe_name(filename or source_path.name)
                 extension = Path(name).suffix.lower()
                 limit = self.max_image_bytes if extension in self.IMAGE_MIMES else self.max_file_bytes
                 if source_path.stat().st_size > limit:
-                    raise _legacy.AttachmentError("حجم فایل از محدودیت مجاز بیشتر است.")
+                    raise _content.AttachmentError("حجم فایل از محدودیت مجاز بیشتر است.")
                 with source_path.open("rb") as stream:
                     raw = stream.read(limit + 1)
                 if len(raw) > limit:
-                    raise _legacy.AttachmentError("حجم فایل از محدودیت مجاز بیشتر است.")
+                    raise _content.AttachmentError("حجم فایل از محدودیت مجاز بیشتر است.")
             except OSError as exc:
-                raise _legacy.AttachmentError("فایل قابل خواندن نیست.") from exc
+                raise _content.AttachmentError("فایل قابل خواندن نیست.") from exc
             origin = AttachmentSource.FILE
 
         mime_type, size = self.validate_attachment(name, raw)
@@ -251,24 +251,24 @@ class AttachmentManager:
             and item.status is AttachmentStatus.READY
         )
         if existing_count >= self.max_files:
-            raise _legacy.AttachmentError(f"حداکثر {self.max_files} ضمیمه برای هر پیام.")
+            raise _content.AttachmentError(f"حداکثر {self.max_files} ضمیمه برای هر پیام.")
 
         attachment_id = uuid.uuid4().hex
         session_dir = self._root / hashlib.sha256(owner.encode("utf-8")).hexdigest()[:24]
         try:
             session_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
             if session_dir.is_symlink():
-                raise _legacy.AttachmentError("مسیر ذخیره‌سازی ضمیمه نامعتبر است.")
+                raise _content.AttachmentError("مسیر ذخیره‌سازی ضمیمه نامعتبر است.")
             managed_session_dir = session_dir.resolve()
             if not managed_session_dir.is_relative_to(self._root):
-                raise _legacy.AttachmentError("مسیر ذخیره‌سازی ضمیمه خارج از محدوده مجاز است.")
+                raise _content.AttachmentError("مسیر ذخیره‌سازی ضمیمه خارج از محدوده مجاز است.")
             target = managed_session_dir / f"{attachment_id}{Path(name).suffix.lower()}"
             if not target.is_relative_to(managed_session_dir) or not target.is_relative_to(self._root):
-                raise _legacy.AttachmentError("مسیر ذخیره‌سازی ضمیمه نامعتبر است.")
+                raise _content.AttachmentError("مسیر ذخیره‌سازی ضمیمه نامعتبر است.")
             with target.open("xb") as stream:
                 stream.write(raw)
         except OSError as exc:
-            raise _legacy.AttachmentError("ذخیره‌سازی موقت فایل ناموفق بود.") from exc
+            raise _content.AttachmentError("ذخیره‌سازی موقت فایل ناموفق بود.") from exc
 
         record = Attachment(
             attachment_id=attachment_id, message_id=str(message_id) if message_id else None,
@@ -307,16 +307,16 @@ class AttachmentManager:
     def _managed_path(self, record: Attachment) -> Path:
         stored = Path(record.path)
         if stored.is_symlink():
-            raise _legacy.AttachmentError("مسیر ضمیمه معتبر نیست.")
+            raise _content.AttachmentError("مسیر ضمیمه معتبر نیست.")
         path = stored.resolve()
         owner_dir = (
             self._root
             / hashlib.sha256(record.session_id.encode("utf-8")).hexdigest()[:24]
         ).resolve()
         if not path.is_relative_to(owner_dir) or not path.is_relative_to(self._root):
-            raise _legacy.AttachmentError("مسیر ضمیمه خارج از محدوده مجاز است.")
+            raise _content.AttachmentError("مسیر ضمیمه خارج از محدوده مجاز است.")
         if not path.is_file():
-            raise _legacy.AttachmentError("فایل ضمیمه دیگر در دسترس نیست.")
+            raise _content.AttachmentError("فایل ضمیمه دیگر در دسترس نیست.")
         return path
 
     @staticmethod
@@ -324,17 +324,17 @@ class AttachmentManager:
         try:
             with zipfile.ZipFile(path, "r") as archive:
                 infos = [item for item in archive.infolist() if not item.is_dir()]
-                if len(infos) > _legacy.MAX_ARCHIVE_ENTRIES:
-                    raise _legacy.AttachmentError("ساختار فایل Word بیش از حد پیچیده است.")
-                if sum(max(0, item.file_size) for item in infos) > _legacy.MAX_ARCHIVE_UNPACKED_BYTES:
-                    raise _legacy.AttachmentError("حجم بازشده فایل Word بیش از حد مجاز است.")
+                if len(infos) > _content.MAX_ARCHIVE_ENTRIES:
+                    raise _content.AttachmentError("ساختار فایل Word بیش از حد پیچیده است.")
+                if sum(max(0, item.file_size) for item in infos) > _content.MAX_ARCHIVE_UNPACKED_BYTES:
+                    raise _content.AttachmentError("حجم بازشده فایل Word بیش از حد مجاز است.")
                 document = next((item for item in infos if item.filename == "word/document.xml"), None)
-                if document is None or document.file_size > _legacy.MAX_ARCHIVE_MEMBER_BYTES:
-                    raise _legacy.AttachmentError("ساختار اصلی فایل Word معتبر نیست.")
-        except _legacy.AttachmentError:
+                if document is None or document.file_size > _content.MAX_ARCHIVE_MEMBER_BYTES:
+                    raise _content.AttachmentError("ساختار اصلی فایل Word معتبر نیست.")
+        except _content.AttachmentError:
             raise
         except (OSError, zipfile.BadZipFile) as exc:
-            raise _legacy.AttachmentError("ساختار فایل Word معتبر نیست.") from exc
+            raise _content.AttachmentError("ساختار فایل Word معتبر نیست.") from exc
 
     def prepare_content(
         self, attachment_ids: list[str] | tuple[str, ...], *, session_id: str,
@@ -358,19 +358,22 @@ class AttachmentManager:
                     self._validate_docx_package(managed_path)
                 if record.mime_type.startswith("image/"):
                     raw = managed_path.read_bytes()
+                    image_payload = _content.image_attachment(
+                        raw, record.filename, record.mime_type,
+                    )
                     prepared_images.append({
-                        "mime": record.mime_type,
-                        "b64": base64.b64encode(raw).decode("ascii"),
+                        "mime": image_payload["mime"],
+                        "b64": image_payload["b64"],
                         "name": record.filename,
                     })
                     display_names.append(f"🖼 {record.filename}")
                 else:
-                    parsed = _legacy.load_attachment(str(managed_path))
+                    parsed = _content.load_attachment(str(managed_path))
                     body = str(parsed.get("text") or "")
                     prepared_files.append({
                         "name": record.filename,
                         "text": body,
-                        "truncated": len(body) > _legacy.MAX_TEXT_CHARS,
+                        "truncated": len(body) > _content.MAX_TEXT_CHARS,
                     })
                     display_names.append(f"📎 {record.filename}")
             except Exception:
@@ -392,9 +395,9 @@ class AttachmentManager:
         display = (stored_text + "\n" if stored_text else "") + "\n".join(display_names)
         stored = lead_text
         for item in prepared_files:
-            excerpt = item["text"][:_legacy.HISTORY_EXCERPT]
+            excerpt = item["text"][:_content.HISTORY_EXCERPT]
             stored += f"\n\n[فایل ضمیمه: {item['name']}]\n{excerpt}"
-            if len(item["text"]) > _legacy.HISTORY_EXCERPT:
+            if len(item["text"]) > _content.HISTORY_EXCERPT:
                 stored += "\n[...]"
         if prepared_images:
             stored += "\n\n" + "\n".join(
@@ -418,7 +421,7 @@ class AttachmentManager:
             return False
         try:
             path = self._managed_path(record)
-        except _legacy.AttachmentError:
+        except _content.AttachmentError:
             return False
         try:
             path.unlink(missing_ok=True)
@@ -479,12 +482,12 @@ class AttachmentManager:
 
 
 # Compatibility surface for the existing Qt worker/controller during migration.
-AttachmentError = _legacy.AttachmentError
-IMAGE_TYPES = _legacy.IMAGE_TYPES
-MAX_FILES = _legacy.MAX_FILES
-MAX_IMAGE_BYTES = _legacy.MAX_IMAGE_BYTES
-MAX_FILE_BYTES = _legacy.MAX_FILE_BYTES
-load_attachment = _legacy.load_attachment
-image_attachment = _legacy.image_attachment
-compose = _legacy.compose
-summary = _legacy.summary
+AttachmentError = _content.AttachmentError
+IMAGE_TYPES = _content.IMAGE_TYPES
+MAX_FILES = _content.MAX_FILES
+MAX_IMAGE_BYTES = _content.MAX_IMAGE_BYTES
+MAX_FILE_BYTES = _content.MAX_FILE_BYTES
+load_attachment = _content.load_attachment
+image_attachment = _content.image_attachment
+compose = _content.compose
+summary = _content.summary

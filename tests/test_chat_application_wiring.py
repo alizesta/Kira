@@ -38,6 +38,16 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIsInstance(persistence[0], ast.Name)
         self.assertEqual(persistence[0].id, "chat_history_service")
 
+    def test_bootstrap_injects_chat_service_factory_into_main_window(self):
+        bootstrap = (ROOT / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8")
+        composition = (ROOT / "kira" / "app" / "chat_composition.py").read_text(encoding="utf-8")
+        init = self.method("__init__")
+        self.assertIn("chat_application_service_factory", bootstrap)
+        self.assertIn("create_chat_application_service_factory", bootstrap)
+        self.assertIn("chat_application_service_factory(self)", self.source)
+        self.assertIn("ChatApplicationService", composition)
+        self.assertIn("window._dispatch_application_request", composition)
+
     def test_session_conversation_identity_flows_through_application_service(self):
         self.assertIn("self.chat_application_service.get_or_create_conversation(session.cid)", self.source)
         self.assertIn("conversation_id=self.cur.conversation_id", self.source)
