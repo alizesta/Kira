@@ -1268,6 +1268,9 @@ class ChatPersistence:
     def delete_conversation(self, conversation_id):
         return self._invoke(self._repository.delete_conversation, conversation_id)
 
+    def update_conversation_lifecycle(self, changes):
+        return self._invoke(self._repository.update_conversation_lifecycle, changes)
+
     def add_message(self, role, content, character_id=None, **options):
         try:
             return self._repository.add_message(role, content, character_id, **options)
