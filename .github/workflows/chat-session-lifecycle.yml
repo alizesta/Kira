@@ -11,6 +11,8 @@ on:
       - "kira/chat/attachments.py"
       - "kira/chat/commands.py"
       - "kira/chat/command_adapters.py"
+      - "kira/actions.py"
+      - "kira/tools/autonomy.py"
       - "kira/chat/events.py"
       - "kira/chat/__init__.py"
       - "kira/oldmain.py"
@@ -20,6 +22,7 @@ on:
       - "tests/test_chat_attachments.py"
       - "tests/test_chat_commands.py"
       - "tests/test_chat_command_adapters.py"
+      - "tests/test_actions.py"
       - "tests/test_chat_application_wiring.py"
       - ".github/workflows/chat-session-lifecycle.yml"
 
@@ -48,6 +51,7 @@ jobs:
           tests.test_chat_attachments
           tests.test_chat_commands
           tests.test_chat_command_adapters
+          tests.test_actions
           -v
       - name: Check changed Python modules
         run: >-
@@ -59,6 +63,8 @@ jobs:
           kira/chat/attachments.py
           kira/chat/commands.py
           kira/chat/command_adapters.py
+          kira/actions.py
+          kira/tools/autonomy.py
           kira/chat_sessions.py
           kira/oldmain.py
           kira/app/bootstrap.py
