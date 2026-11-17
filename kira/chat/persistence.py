@@ -48,6 +48,7 @@ class ChatRepository(Protocol):
     def update_conversation(self, conversation_id: str, *, title=None, metadata=None, status=None) -> bool: ...
     def close_conversation(self, conversation_id: str) -> bool: ...
     def delete_conversation(self, conversation_id: str) -> int: ...
+    def update_conversation_lifecycle(self, changes: list[dict[str, Any]]) -> bool: ...
     def add_message(self, role: str, content: str, character_id: str | None = None, **options) -> bool: ...
     def update_stream_message(self, message_id: int, content: str, **options) -> bool: ...
     def conversation_context(self, limit: int = 12, max_chars: int = 12000,
@@ -630,8 +631,8 @@ class SqliteChatRepository:
         if metadata is not None:
             changes.append("metadata=?"); values.append(json.dumps(_json_object(metadata), ensure_ascii=False))
         if status is not None:
-            if status not in ("active", "closed", "archived"):
-                raise ValueError("status must be active, closed or archived")
+            if status not in ("active", "closed", "archived", "trashed"):
+                raise ValueError("status must be active, closed, archived or trashed")
             changes.append("status=?"); values.append(status)
         if not changes:
             return False
@@ -646,6 +647,50 @@ class SqliteChatRepository:
                 elif self._active_conversations.get(cid) == str(conversation_id):
                     self._active_conversations.pop(cid, None)
             return cur.rowcount > 0
+
+    def update_conversation_lifecycle(self, changes: list[dict[str, Any]]) -> bool:
+        """Apply a validated lifecycle batch atomically without touching message rows."""
+        if not changes:
+            return False
+        normalized = []
+        seen = set()
+        for item in changes:
+            conv_id = str(item.get("id") or "").strip()
+            status = str(item.get("status") or "")
+            metadata = _json_object(item.get("metadata"))
+            previous = str(item.get("previous_status") or "")
+            if not conv_id or conv_id in seen:
+                raise ValueError("lifecycle batch requires unique non-empty conversation IDs")
+            if status not in ("active", "archived", "trashed"):
+                raise ValueError("invalid lifecycle target status")
+            seen.add(conv_id)
+            normalized.append((conv_id, status, json.dumps(metadata, ensure_ascii=False), previous))
+        with self._lock, self._db() as con:
+            self._migrate_schema(con)
+            if not con.in_transaction:
+                con.execute("BEGIN IMMEDIATE")
+            rows = {}
+            for conv_id, _, _, previous in normalized:
+                row = con.execute(
+                    "SELECT character_id, status FROM conversations WHERE id=?", (conv_id,)
+                ).fetchone()
+                if row is None:
+                    raise PersistenceError(f"conversation not found: {conv_id}")
+                if str(row["status"] or "active") != previous:
+                    raise PersistenceError(f"conversation state changed concurrently: {conv_id}")
+                rows[conv_id] = str(row["character_id"] or "")
+            stamp = _now()
+            for conv_id, status, metadata_json, _ in normalized:
+                con.execute(
+                    "UPDATE conversations SET status=?, metadata=?, updated_at=? WHERE id=?",
+                    (status, metadata_json, stamp, conv_id),
+                )
+                character = _character_id(rows[conv_id])
+                if status == "active":
+                    self._active_conversations[character] = conv_id
+                elif self._active_conversations.get(character) == conv_id:
+                    self._active_conversations.pop(character, None)
+        return True
 
     def close_conversation(self, conversation_id: str) -> bool:
         return self.update_conversation(conversation_id, status="closed")
