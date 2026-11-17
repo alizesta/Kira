@@ -7,6 +7,7 @@ modules and remove this file when no application behavior depends on it.
 import contextlib
 import base64
 import json
+import logging
 import random
 import time
 import uuid
@@ -283,7 +284,7 @@ class MainWindow(QMainWindow):
         return controller.worker if controller is not None else None
 
 
-    def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None):
+    def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None, chat_event_publisher=None):
         super().__init__()
         # Direct MainWindow construction remains supported for existing callers;
         # normal application startup injects these services from app.bootstrap.
@@ -303,6 +304,10 @@ class MainWindow(QMainWindow):
             from .services.chat_history_service import SqliteChatHistoryService
             chat_history_service = SqliteChatHistoryService()
         self.chat_history_service = chat_history_service
+        self.chat_event_publisher = chat_event_publisher
+        self._chat_event_pending_ids = {}
+        self._chat_event_submitted = set()
+        self._chat_event_active_ids = {}
         self.settings = load_settings()
         self.sessions = {}
         self.response_handler = ResponseHandler()
@@ -310,6 +315,14 @@ class MainWindow(QMainWindow):
         self.sessions[self.cur.cid] = self.cur
         self._db_notes = self.chat_history_service.init_db()
         self._ensure_session_conversation(self.cur)
+        self._publish_chat_event(
+            "session_created", session=self.cur,
+            payload={"character_id": self.cur.cid, "initial": True},
+        )
+        self._publish_chat_event(
+            "session_activated", session=self.cur,
+            payload={"character_id": self.cur.cid, "initial": True},
+        )
         self._save_warned = False
         self._emotion_applied = False
         self._closing = False
@@ -556,6 +569,43 @@ class MainWindow(QMainWindow):
         self.add_chat("error", message + "\n" + self.t("voice_err_hint"))
 
     # ---------- chat sessions (one independent conversation per character) ----------
+    def _publish_chat_event(
+        self, event_type, *, session=None, request_id=None, payload=None, metadata=None
+    ):
+        """Publish a typed notification without making Chat behavior depend on subscribers."""
+        publisher = getattr(self, "chat_event_publisher", None)
+        if publisher is None:
+            return None
+        owner = session or getattr(self, "cur", None)
+        session_id = getattr(owner, "cid", None)
+        if request_id is None and session_id is not None:
+            request_id = self._chat_event_active_ids.get(session_id)
+        try:
+            return publisher.publish(
+                event_type,
+                session_id=session_id,
+                request_id=request_id,
+                payload=payload or {},
+                metadata=metadata or {},
+            )
+        except Exception:
+            logging.getLogger(__name__).exception(
+                "Chat event publication failed: %s", event_type
+            )
+            return None
+
+    def _finish_chat_event_request(self, session, event_type, *, payload=None, metadata=None):
+        """Publish one request terminal notification and release its correlation entry."""
+        request_id = self._chat_event_active_ids.pop(session.cid, None)
+        if request_id is None:
+            return None
+        result = self._publish_chat_event(
+            event_type, session=session, request_id=request_id,
+            payload=payload, metadata=metadata,
+        )
+        self._chat_event_submitted.discard((session.cid, request_id))
+        return result
+
     @contextlib.contextmanager
     def _as(self, session):
         """Run code as `session` (its history, router, stream state and character). Used by every worker / timer callback,
@@ -660,10 +710,15 @@ class MainWindow(QMainWindow):
 
     def _ensure_session(self, cid, profile):
         sess = self.sessions.get(cid)
+        created = sess is None
         if sess is None:
             sess = ChatSession(cid)
             self.sessions[cid] = sess
         self._ensure_session_conversation(sess)
+        if created:
+            self._publish_chat_event(
+                "session_created", session=sess, payload={"character_id": cid}
+            )
         if sess.view is None:
             sess.view = self.make_session_view()
             self.chat_stack.addWidget(sess.view)
@@ -734,6 +789,10 @@ class MainWindow(QMainWindow):
         """Release an idle, removed character session and all of its owned chat resources."""
         if self._session_has_pending_chat_work(session):
             return False
+        self._publish_chat_event(
+            "session_closed", session=session,
+            payload={"character_id": session.cid, "reason": "character_removed"},
+        )
         coordinator = getattr(session, "coordinator", None)
         if coordinator is not None:
             coordinator.clear()
@@ -817,6 +876,10 @@ class MainWindow(QMainWindow):
             self._flush_character_autosave()
         old = self.front
         if old is not sess:
+            self._publish_chat_event(
+                "session_deactivated", session=old,
+                payload={"next_session_id": sess.cid},
+            )
             old.draft = self.input.text()
             if old._speech_live:                       # the voice belongs to the chat in front
                 old._speech_live = False
@@ -853,6 +916,11 @@ class MainWindow(QMainWindow):
             self.refresh_character_card(cid)
         self.refresh_personality_controls()
         self.update_mood_indicator()
+        if old is not sess:
+            self._publish_chat_event(
+                "session_activated", session=sess,
+                payload={"previous_session_id": old.cid},
+            )
         bar = sess.view.verticalScrollBar()
         bar.setValue(bar.maximum())
         if save:
@@ -885,6 +953,7 @@ class MainWindow(QMainWindow):
     def restore_history(self, limit=40):
         """Show the saved conversation of the CURRENT chat again after a restart (it is already used as model context)."""
         conversation_id = self._ensure_session_conversation(self.cur)
+        history_ok = True
         try:
             if conversation_id:
                 history = self.chat_history_service.recent_messages(
@@ -894,6 +963,7 @@ class MainWindow(QMainWindow):
                 history = self.chat_history_service.recent_messages(limit, self.cur.cid)
         except Exception:
             history = []
+            history_ok = False
         shown = 0
         for item in history:
             role = item.get("role")
@@ -910,6 +980,15 @@ class MainWindow(QMainWindow):
             self.add_chat("system", self.t("history_restored"))
         else:
             self.add_chat("assistant", self.greeting_text())
+        if history_ok:
+            self._publish_chat_event(
+                "history_loaded", session=self.cur,
+                payload={
+                    "message_count": shown,
+                    "conversation_id": conversation_id,
+                    "limit": int(limit),
+                },
+            )
 
     def add_chat(self, kind, text, name=None, images=None):
         """Append one message bubble; direction is decided per line so Persian reads right-to-left.
@@ -4214,10 +4293,36 @@ class MainWindow(QMainWindow):
         return session.coordinator
 
     def _dispatch_coordinated_request(self, session, request):
+        record = self._chat_event_pending_ids.pop(id(request), None)
+        request_id = record["request_id"] if record else uuid.uuid4().hex
+        key = (session.cid, request_id)
         if self._closing or session.cid not in self.sessions:
+            self._publish_chat_event(
+                "request_cancelled", session=session, request_id=request_id,
+                payload={"reason": "session_unavailable"},
+            )
+            self._chat_event_submitted.discard(key)
             return
+        if key not in self._chat_event_submitted:
+            self._publish_chat_event(
+                "request_submitted", session=session, request_id=request_id,
+                payload=(record or {}).get("payload", {}),
+            )
+            self._chat_event_submitted.add(key)
+        self._chat_event_active_ids[session.cid] = request_id
+        self._publish_chat_event(
+            "request_started", session=session, request_id=request_id,
+            payload={"character_id": session.cid},
+        )
         with self._as(session):
-            self._process_chat_request(request.text, list(request.attachments), request.voice)
+            try:
+                self._process_chat_request(request.text, list(request.attachments), request.voice)
+            except Exception as exc:
+                self._finish_chat_event_request(
+                    session, "request_failed",
+                    payload={"error": f"{type(exc).__name__}: {exc}"},
+                )
+                raise
 
     def submit(self, text, attachments=None, _voice=None):
         if _voice is None:
@@ -4238,11 +4343,28 @@ class MainWindow(QMainWindow):
                 self.add_chat("system", control)
                 return
         request = ChatRequest.create(text, attachments, voice)
+        request_id = uuid.uuid4().hex
+        event_record = {
+            "session_id": self.cur.cid,
+            "request_id": request_id,
+            "payload": {
+                "attachment_count": len(request.attachments),
+                "voice": bool(request.voice),
+            },
+        }
+        self._chat_event_pending_ids[id(request)] = event_record
         result = self._chat_coordinator().submit(
             request, busy=self.busy,
             force_queue=wait_for_vision or self.cur.dispatch_scheduled,
         )
         if result == SubmissionResult.QUEUED:
+            key = (self.cur.cid, request_id)
+            if key not in self._chat_event_submitted:
+                self._publish_chat_event(
+                    "request_submitted", session=self.cur, request_id=request_id,
+                    payload={**event_record["payload"], "queued": True},
+                )
+                self._chat_event_submitted.add(key)
             count = self._chat_coordinator().pending_count
             if wait_for_vision:
                 self.status.setText(
@@ -4255,6 +4377,7 @@ class MainWindow(QMainWindow):
                 self.status.setText(f"پیام در صف است ({count}) — بعد از پایان پاسخ فعلی ارسال می‌شود.")
             return
         if result == SubmissionResult.FULL:
+            self._chat_event_pending_ids.pop(id(request), None)
             return
 
     def _process_chat_request(self, text, attachments=None, _voice=False):
@@ -4600,6 +4723,10 @@ class MainWindow(QMainWindow):
         session = self.cur
         request_id = uuid.uuid4().hex
         self.response_handler.begin_request(request_id, session.cid)
+        self._publish_chat_event(
+            "stream_started", session=session,
+            payload={"provider_request_id": request_id, "plain_retry": bool(plain)},
+        )
         response_relay = ProviderResponseRelay(self, session, request_id)
         session.response_relay = response_relay
         try:
@@ -4658,6 +4785,9 @@ class MainWindow(QMainWindow):
         if self._search_worker is not None and self._search_worker.isRunning():
             self._search_token += 1                                   # the late search result is ignored
             self.add_chat("system", "جست‌وجو متوقف شد.")
+            self._finish_chat_event_request(
+                self.cur, "request_cancelled", payload={"reason": "search_cancelled"}
+            )
             self.finish_request(None)
             self._send_next_pending()
             return
@@ -4720,6 +4850,10 @@ class MainWindow(QMainWindow):
         self._stream_text = (str(accumulated_content) if accumulated_content is not None
                              else self._stream_text + str(piece))
         self._stream_dirty = True
+        self._publish_chat_event(
+            "stream_chunk_received",
+            payload={"chunk": str(piece), "accumulated_length": len(self._stream_text)},
+        )
 
     def _stream_flush(self, final=False):
         if not self._stream_dirty and not final:
@@ -4880,6 +5014,8 @@ class MainWindow(QMainWindow):
     def on_stream_done(self, res):
         if self._closing:
             return
+        session = self.cur
+        logical_request_id = self._chat_event_active_ids.get(session.cid)
         self._stream_timer.stop()
         raw = res.get("text", "")
         meta = self.director.parse_reply(raw)
@@ -4894,6 +5030,13 @@ class MainWindow(QMainWindow):
         self.bubble.commit_live()
         self.finish_request(res)
         if res.get("stopped"):
+            self._publish_chat_event(
+                "stream_interrupted", session=session, request_id=logical_request_id,
+                payload={"partial_length": len(raw), "reason": "user_cancelled"},
+            )
+            self._finish_chat_event_request(
+                session, "request_cancelled", payload={"reason": "user_cancelled"}
+            )
             if text.strip():
                 self.save_message("assistant", raw, status="cancelled", metadata={"stream": "stopped"})
             self.add_chat("system", "تولید پاسخ متوقف شد." + (" متن دریافت‌شده نگه داشته شد." if text.strip() else ""))
@@ -4901,15 +5044,37 @@ class MainWindow(QMainWindow):
                 self.safe_stop_speaker()                           # the Stop button also silences the rest of the spoken reply
             self.animator.set_expression("neutral", hold=2)
         elif res.get("interrupted"):
+            self._publish_chat_event(
+                "stream_interrupted", session=session, request_id=logical_request_id,
+                payload={"partial_length": len(raw), "reason": "provider_interrupted"},
+            )
+            self._finish_chat_event_request(
+                session, "request_failed", payload={"reason": "provider_interrupted"}
+            )
             self.save_message("assistant", raw, status="interrupted", metadata={"stream": "provider_interrupted"})
             self.add_chat("error", f"ارتباط وسط پاسخ قطع شد؛ بخش دریافت‌شده نگه داشته شد و تکرار نمی‌شود.\n{res['interrupted']}")
             if self._speech_live:
                 self.speaker.stream_end()                          # what arrived is still spoken to its end
             self.director.event("response_failed")
         elif not text.strip():
+            self._publish_chat_event(
+                "stream_interrupted", session=session, request_id=logical_request_id,
+                payload={"partial_length": len(raw), "reason": "empty_response"},
+            )
+            self._finish_chat_event_request(
+                session, "request_failed", payload={"reason": "empty_response"}
+            )
             self.add_chat("error", self.t("empty"))
             self.director.event("response_failed")
         else:
+            self._publish_chat_event(
+                "stream_completed", session=session, request_id=logical_request_id,
+                payload={"content_length": len(raw)},
+            )
+            self._finish_chat_event_request(
+                session, "request_completed",
+                payload={"content_length": len(raw), "response_status": "completed"},
+            )
             self.save_message("assistant", raw)
             try:                                                   # quiet second look (rules; optional background model call)
                 brain.after_turn(self.client, self.settings, getattr(self, "_brain", brain.Decision()), getattr(self, "_brain_user_text", ""),
@@ -4930,6 +5095,15 @@ class MainWindow(QMainWindow):
     def on_error(self, error):
         if self._closing:
             return
+        session = self.cur
+        logical_request_id = self._chat_event_active_ids.get(session.cid)
+        self._publish_chat_event(
+            "stream_interrupted", session=session, request_id=logical_request_id,
+            payload={"reason": "provider_error", "error": str(error), "partial_length": len(self._stream_text)},
+        )
+        self._finish_chat_event_request(
+            session, "request_failed", payload={"error": str(error)},
+        )
         self._stream_timer.stop()
         self._stream_flush(final=True)
         self._stream_pos = None
@@ -4965,21 +5139,25 @@ class MainWindow(QMainWindow):
         request = coordinator.take_next(busy=session.busy)
         if request is not None:
             session.dispatch_scheduled = True
-            args = (request.text, list(request.attachments), request.voice)
             self._schedule_chat_callback(
-                lambda item=args, target=session: self._submit_for(target, item)
+                lambda item=request, target=session: self._submit_for(target, item)
             )
             return
         profiles = self.character_service.all_profiles(self.settings)
         if session.cid not in profiles and not self._session_has_pending_chat_work(session):
             self._schedule_chat_callback(self.sync_sessions)
 
-    def _submit_for(self, session, args):
-        """Dispatch a dequeued item directly; re-entering submit() would reorder the remaining FIFO backlog."""
+    def _submit_for(self, session, request):
+        """Dispatch the original dequeued request so its event identity survives FIFO scheduling."""
         session.dispatch_scheduled = False
         if self._closing or self.sessions.get(session.cid) is not session:
+            record = self._chat_event_pending_ids.pop(id(request), None)
+            if record:
+                self._publish_chat_event(
+                    "request_cancelled", session=session, request_id=record["request_id"],
+                    payload={"reason": "session_unavailable"},
+                )
             return
-        request = ChatRequest.create(args[0], args[1], args[2])
         self._dispatch_coordinated_request(session, request)
 
     def finish_request(self, res=None):
@@ -5016,6 +5194,10 @@ class MainWindow(QMainWindow):
     def reply_local(self, text, expression="happy"):
         self.add_chat("assistant", text)
         self.save_message("assistant", text)
+        self._finish_chat_event_request(
+            self.cur, "request_completed",
+            payload={"content_length": len(str(text)), "local": True},
+        )
         self.animator.set_expression(expression, hold=4)
         self.say(text)
 
@@ -5048,8 +5230,27 @@ class MainWindow(QMainWindow):
         except Exception:                                         # noqa: BLE001 - mood is a bonus, never block the chat
             pass
         if ok:
+            self._publish_chat_event(
+                "message_saved",
+                payload={
+                    "role": role,
+                    "content": str(content),
+                    "status": status,
+                    "conversation_id": conversation_id,
+                },
+                metadata=metadata or {},
+            )
             self._save_warned = False
-        elif not self._save_warned:
+        else:
+            self._publish_chat_event(
+                "persistence_failed",
+                payload={
+                    "role": role,
+                    "status": status,
+                    "error": str(self.chat_history_service.last_error or "unknown persistence error"),
+                },
+            )
+        if not ok and not self._save_warned:
             self._save_warned = True
             self.add_chat("error", "ذخیره‌ی گفتگو روی دیسک ناموفق بود. گفتگو تا بسته‌شدن برنامه در حافظه می‌ماند و با اولین ذخیره‌ی موفق نوشته می‌شود."
                                    f"\nعلت: {self.chat_history_service.last_error}")
