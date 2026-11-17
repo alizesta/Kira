@@ -11,7 +11,7 @@ on:
       - "tests/test_session_window_controller.py"
       - ".github/workflows/legacy-window-migration.yml"
   push:
-    branches: [new-main]
+    branches: [new-main, refactor/legacy-window-migration-017]
     paths:
       - "kira/oldmain.py"
       - "kira/app/session_relay.py"
