@@ -386,16 +386,16 @@ class RuntimeMixin:
         return ok
 
     def safe_stop_speaker(self):
-        """Stopping the voice must never be able to stop the app from doing its real work (sending a chat message)."""
+        """Stop audio through the Voice application boundary without interrupting Chat."""
         try:
-            self.speaker.stop()
+            self.voice_application_service.stop_speaking()
         except Exception as exc:                                  # noqa: BLE001
             self.on_voice_error(f"توقف صدا ناموفق بود: {type(exc).__name__}: {exc}")
 
     def say(self, text):
         if self.voice_btn.isChecked():
             try:
-                self.speaker.speak(text)
+                self.voice_application_service.speak(text)
             except Exception as exc:                              # noqa: BLE001
                 self.on_voice_error(f"صدا ناموفق بود: {type(exc).__name__}: {exc}")
 
@@ -462,15 +462,13 @@ class RuntimeMixin:
         self.safe_stop_speaker()
 
     def on_speech_started(self):
-        self.director.event("tts_started")           # real audio playback has begun
-        if self.listener:
-            self.listener.begin_kira_speech()        # keeps listening for an interruption (or mutes when barge-in is off)
+        self.director.event("tts_started")
+        self.voice_application_service.begin_speaking()
         self.set_status("st_speaking")
 
     def on_speech_finished(self):
-        self.director.event("tts_stopped")           # playback ended or was stopped
-        if self.listener:
-            self.listener.end_kira_speech()
+        self.director.event("tts_stopped")
+        self.voice_application_service.end_speaking()
         QTimer.singleShot(500, self.unmute)
         if self.listener:
             self.on_listener_state("listening")
@@ -488,8 +486,7 @@ class RuntimeMixin:
         self.safe_stop_speaker()
 
     def unmute(self):
-        if self.listener and not self.speaker._began:
-            self.listener.muted = False
+        self.voice_application_service.unmute_if_idle()
 
     def toggle_mic(self):
         if self.mic_btn.isChecked():
@@ -500,53 +497,30 @@ class RuntimeMixin:
                 self.toggle_wake()
             self.stop_listener()
 
+    def _create_voice_listener(self):
+        return Listener(
+            self.settings["whisper_model"],
+            self.settings["stt_language"],
+            self,
+            sensitivity=self.settings.get("mic_sensitivity", 100),
+            barge_in=self.settings.get("barge_in", True),
+            settings=self.settings,
+        )
+
     def start_listener(self):
-        # A stopped QThread cannot be restarted. Wait for its finished signal before
-        # creating the replacement, otherwise rapid mic toggles can open two streams.
-        if self.listener is not None:
-            self.stop_listener()
-        previous = getattr(self, "_stopping_listener", None)
-        if previous is not None and previous.isRunning():
-            self._restart_listener_after_stop = True
-            self.set_status("st_loading")
-            return
-        self._restart_listener_after_stop = False
-        self.listener = Listener(self.settings["whisper_model"], self.settings["stt_language"], self,
-                                 sensitivity=self.settings.get("mic_sensitivity", 100), barge_in=self.settings.get("barge_in", True),
-                                 settings=self.settings)
-        listener = self.listener
-        listener.heard.connect(self.on_heard)
-        listener.interrupted.connect(self.on_user_barge_in)
-        listener.state.connect(self.on_listener_state)
-        listener.error.connect(self.on_listener_error)
-        listener.note.connect(self.on_voice_note)
-        listener.finished.connect(lambda current=listener: self._listener_finished(current))
-        listener.start()
+        self.voice_application_service.start_recording()
 
     def stop_listener(self):
-        self._restart_listener_after_stop = False
-        if self.listener:
-            listener, self.listener = self.listener, None
-            listener.stop()
-            if listener.isRunning():
-                self._stopping_listener = listener
+        self.voice_application_service.stop_recording()
         self.set_status("st_ready")
         self.update_engine_label()
 
-    def _listener_finished(self, listener):
-        was_current = self.listener is listener
+    def _on_voice_listener_finished(self, listener, was_current, restarting):
         if was_current:
-            self.listener = None
             self.mic_btn.setChecked(False)
-        if getattr(self, "_stopping_listener", None) is listener:
-            self._stopping_listener = None
         self.update_engine_label()
-        if not self._closing:
-            if getattr(self, "_restart_listener_after_stop", False) and self.mic_btn.isChecked():
-                self._restart_listener_after_stop = False
-                QTimer.singleShot(0, self.start_listener)
-            elif was_current:
-                self.set_status("st_ready")
+        if not self._closing and was_current and not restarting:
+            self.set_status("st_ready")
 
     def on_listener_error(self, msg):
         self.add_chat("error", msg)
