@@ -317,7 +317,7 @@ class ChatTransfer:
                 )
                 if signature in existing_signatures[conv_id]:
                     duplicate_count += 1
-                elif message["id"] in global_message_ids:
+                elif message["id"] in colliding_message_ids:
                     collision_conversations.add(conv_id)
             if duplicate_count:
                 warnings.append(f"{duplicate_count} identical message(s) will be skipped.")
