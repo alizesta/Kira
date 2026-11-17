@@ -4315,7 +4315,7 @@ class MainWindow(QMainWindow):
         self._image_search_turn = False
         if img_search and packed:
             self._image_search_turn = True
-            self.begin_image_search(text, packed["model"], packed["images"])
+            self.begin_image_search(text, packed, packed["images"])
             return
         query, forced = websearch.plan(text) if self.settings.get("web_search", True) or text.lstrip().startswith("/") else (None, False)
         if query and not forced and self._tool_plan is not None and self._tool_plan.strong:
@@ -4323,7 +4323,7 @@ class MainWindow(QMainWindow):
         if query and not forced and self._tool_plan is not None and getattr(self._tool_plan, "web", False):
             query = None                                          # research / "read this page" requests go through the web tools (kira/webintel), not the one-shot search
         if query:
-            self.begin_web_search(query, packed["model"] if packed else text, packed["images"] if packed else [])
+            self.begin_web_search(query, packed if packed else text, packed["images"] if packed else [])
             return
         self.begin_reply()
 
@@ -4382,6 +4382,20 @@ class MainWindow(QMainWindow):
         """Runs in the search thread: the active vision model looks at the picture and writes a short web query."""
         msg = {"role": "user", "content": (hint or self.IMAGE_QUERY_ASK), "images": images}
         return (client or self.client).chat([msg], websearch.IMAGE_QUERY_PROMPT, 0.1)
+
+    @staticmethod
+    def _merge_search_content(base_content, images, addition, *, image_search=False):
+        if isinstance(base_content, dict) and "files" in base_content and "text" in base_content:
+            updated = dict(base_content)
+            current_text = str(updated.get("text") or "").strip()
+            updated["text"] = (current_text + "\n\n" if current_text else "") + str(addition or "")
+            updated["images"] = list(images or [])
+            updated["search"] = bool(image_search)
+            return updated
+        return {
+            "model": str(base_content or "") + "\n\n" + str(addition or ""),
+            "images": list(images or []),
+        }
 
     def begin_image_search(self, hint, base_text, images):
         key = str(self.settings.get("tavily_api_key", "")).strip()
@@ -4486,14 +4500,21 @@ class MainWindow(QMainWindow):
             self._web_found = result
             if result.get("note"):
                 self.add_chat("system", "🌐 " + result["note"])
-            self._turn_extra = {"model": base + "\n\n" + websearch.format_block(result), "images": images}
+            self._turn_extra = self._merge_search_content(
+                base, images, websearch.format_block(result),
+                image_search=bool(getattr(self, "_image_search_turn", False)),
+            )
             self.status.setText(f"{'🔎 Google' if result.get('engine') == 'google' else ('🦆 DuckDuckGo' if result.get('engine') == 'ddg' else '🌐 Tavily')}: {len(result['results'])} منبع پیدا شد؛ در حال پاسخ دادن…")
         elif getattr(self, "_image_search_turn", False):
             # the picture itself is still in the request: she answers from what she sees and says what is unconfirmed
             self.add_chat("system", f"🔎 جست‌وجوی تصویری انجام نشد: {result}")
             base, images = self._search_base
-            self._turn_extra = {"model": base + "\n\n[جست‌وجوی وب برای این تصویر انجام نشد. فقط از روی چیزی که در تصویر می‌بینی جواب بده، "
-                                                 "حدس نزن و هر چیزی که مطمئن نیستی را صریح «تأییدنشده» بگو.]", "images": images}
+            self._turn_extra = self._merge_search_content(
+                base, images,
+                "[جست‌وجوی وب برای این تصویر انجام نشد. فقط از روی چیزی که در تصویر می‌بینی جواب بده، "
+                "حدس نزن و هر چیزی که مطمئن نیستی را صریح «تأییدنشده» بگو.]",
+                image_search=False,
+            )
         else:
             # no usable web result: do not let the model improvise from memory; Kira says she does not know
             self.add_chat("system", f"🌐 جست‌وجوی وب انجام نشد: {result}")
