@@ -104,7 +104,7 @@ def create_default_command_registry(
 
     def execute_tool_confirmation(context, _arguments):
         result = tool_agent.handle_confirmation_reply(
-            context.request.raw_input, session_id=context.request.session_id,
+            context.request.raw_input, session_id=_tool_session(context),
         )
         return result if result is not None else NO_MATCH
 
