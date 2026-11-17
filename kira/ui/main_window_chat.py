@@ -320,6 +320,13 @@ class ChatMixin:
         self._search_worker.start()
 
     def begin_web_search(self, query, base_text, images):
+        if not self.web_search_service.can_search(self.settings):
+            self.add_chat("system", self.web_search_service.MISSING_KEY_MESSAGE)
+            self.begin_reply()
+            return
+        self._search_token += 1
+        self._search_base = (base_text, images)
+        self.status.setText(f"🌐 در حال جست‌وجوی وب: «{query[:60]}»…")
         conversation_id = self._ensure_session_conversation(self.cur)
         history = self.chat_application_service.conversation_context(
             8, session_id=self.cur.cid, conversation_id=conversation_id
@@ -327,13 +334,6 @@ class ChatMixin:
         options = self.web_search_service.web_search_options(
             self.settings, query, history, self.client
         )
-        if not options.available:
-            self.add_chat("system", self.web_search_service.MISSING_KEY_MESSAGE)
-            self.begin_reply()
-            return
-        self._search_token += 1
-        self._search_base = (base_text, images)
-        self.status.setText(f"🌐 در حال جست‌وجوی وب: «{query[:60]}»…")
         self._search_worker = SearchWorker(
             self._search_token,
             options.query,
