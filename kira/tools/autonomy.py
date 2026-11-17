@@ -150,12 +150,12 @@ class AutonomyMixin:
             return None
         return None
 
-    def control_running(self, text: str):
-        """While a task is being executed (the GUI is busy): a few short commands act at once, between two steps. Returns a text for the user or None
-        (then the message waits in the queue as usual)."""
+    def control_running(self, text: str, *, session_id: str | None = None):
+        """Handle in-flight task controls only for the owning chat session."""
+        owner = self._turn_session_id if session_id is None else str(session_id)
         if not self._running_plan:
             return None
-        plan = self.tasks.active(self._turn_session_id)
+        plan = self.tasks.active(owner)
         if plan is None:
             return None
         kind, payload = parse_control(text)
