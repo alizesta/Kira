@@ -4273,6 +4273,9 @@ class MainWindow(QMainWindow):
                 packed = None
         if packed is None and attachments:
             packed = att.compose(text, attachments, search=img_search)
+        if packed is not None:
+            # Search must only run with a successfully prepared image payload.
+            img_search = bool(packed.get("images")) and (force_img or self.settings.get("image_search", False))
         if packed and packed.get("errors"):
             self.show_attach_error(packed["errors"])
             if not packed.get("prepared_count") and not text.strip():
