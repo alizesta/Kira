@@ -5,11 +5,15 @@ import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 
+from kira.chat import SessionState
 from kira.chat.session_manager import SessionManager, SessionStatus
 from kira.chat_sessions import ChatSession
 
 
 class SessionManagerTests(unittest.TestCase):
+    def test_legacy_session_state_export_aliases_canonical_status(self):
+        self.assertIs(SessionState, SessionStatus)
+
     def make_manager(self, **overrides):
         options = {"session_factory": ChatSession}
         options.update(overrides)
