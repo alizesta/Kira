@@ -428,9 +428,6 @@ class ProviderSettingsMixin:
 
     def save_ollama_edit(self):
         url = self.ollama_url_edit.text().strip().rstrip("/")
-        if not re.match(r"^https?://\S+$", url, re.I):
-            self.route_status.setText("✕ آدرس Ollama باید با http:// یا https:// شروع شود.")
-            return
         try:
             url = self.provider_application_service.update_ollama_url(self.settings, url)
         except ValueError as exc:
