@@ -187,6 +187,16 @@ The migration reference is temporary. Its purpose is to preserve working behavio
 - Direct service calls remain mandatory when a caller needs a result or operation guarantee. EventBus is only for broadcasting completed facts, not routing all Chat method calls.
 - `tests/test_chat_events.py` is Qt-free and covers event schema/immutability, legacy compatibility, fan-out, duplicate subscriber prevention, unsubscription, failure isolation, stable snapshots, nested and concurrent FIFO delivery, session/request isolation, terminal de-duplication, shutdown and bootstrap/MainWindow integration. The portable workflow runs this suite; Draft PRs skip the Windows full suite.
 
+## Chat Conversation Lifecycle (TASK 013)
+
+- `kira/chat/conversation_lifecycle.py` owns durable Conversation transitions (active, archived, trashed and legacy closed), lifecycle timestamps, explicit permanent-delete authorization and immutable operation results.
+- The service receives the shared `ChatPersistence` and `ChatEventPublisher` through constructor injection. It owns no database, EventBus, Session, Qt object or UI state.
+- Persistence remains the sole storage owner. Lifecycle status uses the existing `conversations.status` field and timestamps use the existing JSON metadata field; no parallel store or schema version bump is introduced.
+- Group archive and soft-delete operations prevalidate every target and commit through one atomic repository batch operation. Permanent deletion is single-conversation only, requires a specific authorization provider, requires the conversation to be trashed, and delegates to the repository's existing snapshot-and-delete operation.
+- Runtime Session lifecycle remains exclusively in `SessionManager`; durable Conversation lifecycle is independent. The application service may coordinate lifecycle calls but does not implement transition rules.
+- Typed conversation lifecycle notifications are published after persistence commits through the existing shared EventBus. Search can filter by conversation status; transfer preserves archived/trashed status and lifecycle metadata.
+- The full API, transition table, event payloads, authorization contract and deferred validation are documented in `docs/CHAT_CONVERSATION_LIFECYCLE.md`.
+
 ## Chat Session lifecycle and state ownership (TASK 007)
 
 - `kira/chat/session_manager.py` is the Qt-free owner of runtime Session identity, registration, activation, deactivation, legal state transitions, notifications, graceful close and final disposal. It manages the existing `kira.chat_sessions.ChatSession` model; it does not introduce a parallel Session model.
