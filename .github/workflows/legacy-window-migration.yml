@@ -15,7 +15,9 @@ on:
     paths:
       - "kira/oldmain.py"
       - "kira/app/session_relay.py"
+      - "kira/app/session_controller.py"
       - "tests/test_session_relay.py"
+      - "tests/test_session_window_controller.py"
       - ".github/workflows/legacy-window-migration.yml"
 
 permissions:
