@@ -249,12 +249,13 @@ class ChatSearchService:
         except Exception as exc:
             raise ChatSearchRepositoryError(f"message retrieval failed: {type(exc).__name__}: {exc}") from exc
 
+        oldest = datetime.min.replace(tzinfo=timezone.utc)
         if sort_by == "relevance":
-            hits.sort(key=lambda hit: (hit.relevance, hit.created_at, hit.message_id), reverse=True)
+            hits.sort(key=lambda hit: (hit.relevance, _message_datetime(hit.created_at) or oldest, hit.message_id), reverse=True)
         elif sort_by == "newest":
-            hits.sort(key=lambda hit: (hit.created_at, hit.message_id), reverse=True)
+            hits.sort(key=lambda hit: (_message_datetime(hit.created_at) or oldest, hit.message_id), reverse=True)
         else:
-            hits.sort(key=lambda hit: (hit.created_at, hit.message_id))
+            hits.sort(key=lambda hit: (_message_datetime(hit.created_at) or oldest, hit.message_id))
         total = len(hits)
         total_pages = (total + page_size - 1) // page_size
         offset = (page - 1) * page_size
