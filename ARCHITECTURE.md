@@ -16,7 +16,7 @@ Kira is migrating incrementally toward independent UI, application logic, servic
 ## Current migration foundation
 - `kira/main.py` remains the compatibility module for existing callers and currently contains the legacy MainWindow implementation.
 - `kira/app/bootstrap.py` is the composition root. It creates QApplication, applies application style and constructs MainWindow.
-- `kira/app/event_bus.py` provides named in-process notifications. Subscribers can unsubscribe; publishing uses a snapshot so callbacks can safely change subscriptions.
+- `kira/app/event_bus.py` is the single shared, thread-safe in-process notification bus. It preserves the legacy keyword API and adds typed ChatEvent delivery, ordered FIFO dispatch, subscriber-failure isolation, idempotent unsubscription and explicit shutdown.
 - `kira/app/dependency_container.py` provides explicit instance/factory registration and lazy singleton resolution.
 - `kira/core/interfaces/` now defines ApplicationModule lifecycle, Character, ChatHistory, Voice, Memory and Mood consumer contracts; `core.exceptions.ChatHistoryError` keeps SQLite-specific failures out of UI code. The existing voice implementation is not yet wired through its contract.
 - `kira/services/` now contains character profile, character-scoped persona-memory, shared mood and SQLite chat-history adapters; these adapters do not import UI code.
@@ -158,3 +158,18 @@ The migration reference is temporary. Its purpose is to preserve working behavio
 - Implementation and test changes are committed directly to `new-main`. The local checkout is unavailable in this execution environment, so no local Python compile/import or unittest command has been executed.
 - GitHub Actions jobs have repeatedly failed before executing steps (`steps=[]`, `logs_url=null`); this is not a passing test result and does not establish a code failure. The focused and full suites still require a runner that can actually start the jobs.
 - TASK 005 code extraction is implemented; automated/Windows acceptance remains unverified until focused tests, regression tests, Qt offscreen tests and a real Windows app smoke test execute successfully.
+
+
+## Chat Events & Notification System (TASK 008)
+
+- `kira/app/event_bus.py` remains the only EventBus. `ChatEventPublisher` is a typed producer façade over the shared instance; it does not create or own another subscriber registry.
+- `kira/chat/events.py` defines the frozen `ChatEvent` data contract, validated `ChatEventType` catalogue, deeply immutable payload/metadata, UTC timestamp and bounded terminal-event de-duplication.
+- Bootstrap injects the same EventBus into ModuleManager and ChatEventPublisher, then injects the publisher into the current Chat application adapter. EventBus is closed after ModuleManager shutdown so consumers can unsubscribe during disposal.
+- The current adapter publishes request-submitted/started/completed/failed/cancelled, stream-started/chunk/completed/interrupted, session-created/activated/deactivated/closed and message-saved/history-loaded/persistence-failed facts. Session-failed remains reserved for the Session Lifecycle owner because the current legacy session contract has no typed failure outcome.
+- Queued request correlation is retained by preserving the original immutable ChatRequest through FIFO scheduling. Event payload request_id remains the logical request identity; provider-attempt IDs are metadata/payload values rather than replacements for the logical ID.
+- EventBus serializes concurrent publications through one FIFO dispatcher. Nested publications are queued after the current subscriber snapshot. Subscribers run outside the registry lock; individual exceptions are logged and returned in EventPublishReport without stopping fan-out.
+- Typed and legacy subscribers coexist on the same named topic. Duplicate callback registration is prevented per delivery mode. Unsubscribe is idempotent; a subscription snapshot already selected for the current event is allowed to finish.
+- Request, stream and session terminal notification families are de-duplicated in a bounded publisher ledger. A new session-created notification clears stale terminal state for a reused session ID. This is notification de-duplication only; request/session state remains owned by its application component.
+- message_saved includes the saved text for in-process consumers. It is private application data: subscribers must not forward it externally unless their own feature contract explicitly authorizes that use.
+- Direct service calls remain mandatory when a caller needs a result or operation guarantee. EventBus is only for broadcasting completed facts, not routing all Chat method calls.
+- `tests/test_chat_events.py` is Qt-free and covers event schema/immutability, legacy compatibility, fan-out, duplicate subscriber prevention, unsubscription, failure isolation, stable snapshots, nested and concurrent FIFO delivery, session/request isolation, terminal de-duplication, shutdown and bootstrap/MainWindow integration. The portable workflow runs this suite; Draft PRs skip the Windows full suite.
