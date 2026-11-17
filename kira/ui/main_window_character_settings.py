@@ -65,19 +65,24 @@ class CharacterSettingsMixin:
 
     def save_character_settings(self, silent=False):
         cid = self.character_service.active_id(self.settings)
-        self.settings.setdefault("character_voice", {})[cid] = {
-            "voice_rate": self.character_page.char_voice_rate.value(),
-            "voice_volume": self.character_page.char_voice_volume.value() / 100.0,
-        }
-        def split(value):
-            return [part.strip() for part in re.split(r"[,;\\n]+", value or "") if part.strip()]
-        self.settings.setdefault("character_resources", {})[cid] = {
-            "skills": split(self.character_page.char_skills_edit.text()),
-            "mcp": split(self.character_page.char_mcp_edit.text()),
-            "connectors": split(self.character_page.char_connectors_edit.text()),
-        }
-        if hasattr(self.character_page, "character_notes_edit"):
-            self.settings.setdefault("character_notes", {})[cid] = self.character_page.character_notes_edit.toPlainText().strip()
+        notes = (
+            self.character_page.character_notes_edit.toPlainText().strip()
+            if hasattr(self.character_page, "character_notes_edit") else None
+        )
+        self.character_service.save_preferences(
+            self.settings,
+            cid,
+            voice={
+                "voice_rate": self.character_page.char_voice_rate.value(),
+                "voice_volume": self.character_page.char_voice_volume.value() / 100.0,
+            },
+            resources={
+                "skills": self.character_page.char_skills_edit.text(),
+                "mcp": self.character_page.char_mcp_edit.text(),
+                "connectors": self.character_page.char_connectors_edit.text(),
+            },
+            notes=notes,
+        )
         self.apply_character_voice_settings()
         self.save_now()
 
@@ -85,10 +90,8 @@ class CharacterSettingsMixin:
         """Give the speaker an isolated settings snapshot for the active character."""
         cid = self.character_service.active_id(self.settings)
         override = (self.settings.get("character_voice") or {}).get(cid) or {}
-        effective = dict(self.settings)
-        effective.update({k: v for k, v in override.items() if k in ("voice_rate", "voice_volume")})
         if getattr(self, "speaker", None) is not None:
-            self.voice_application_service.settings = effective
+            self.voice_application_service.apply_character_settings(self.settings, override)
 
     def refresh_personality_controls(self):
         if not getattr(getattr(self, "character_page", None), "personality_sliders", None):
@@ -106,7 +109,6 @@ class CharacterSettingsMixin:
         traits = {key: slider.value() / 100.0 for key, slider in self.character_page.personality_sliders.items()}
         try:
             self.settings.setdefault("character_traits", {})[cid] = traits
-            mood.set_active_character(cid, traits)
             if hasattr(self.character_page, "character_notes_edit"):
                 self.settings.setdefault("character_notes", {})[cid] = self.character_page.character_notes_edit.toPlainText().strip()
             self.save_character_settings(silent=True)
@@ -231,13 +233,10 @@ class CharacterSettingsMixin:
         prompt, ok = QInputDialog.getMultiLineText(self, "شخصیت جدید", "دستور شخصیت و لحن:")
         if not ok:
             return
-        cid = "custom_" + str(time.time_ns())
-        profile = {"id": cid, "name": name.strip(), "name_fa": name.strip(), "gender": "unspecified",
-                   "description": description.strip(), "image": "assets/characters/ren.svg", "prompt": prompt.strip()}
-        self.settings.setdefault("characters", []).append(profile)
-        self.settings.setdefault("character_voice", {}).setdefault(cid, {})
-        self.settings.setdefault("character_notes", {}).setdefault(cid, "")
-        self.settings.setdefault("character_resources", {}).setdefault(cid, {})
+        profile = self.character_service.create_profile(
+            self.settings, name, description, prompt
+        )
+        cid = profile["id"]
         self.sync_sessions()                           # a new tab with its own conversation
         self.switch_session(cid)
         self.save_now()
@@ -256,10 +255,9 @@ class CharacterSettingsMixin:
         prompt, ok = QInputDialog.getMultiLineText(self, "ویرایش شخصیت", "دستور شخصیت و لحن:", profile.get("prompt", ""))
         if not ok:
             return
-        profile.update({"name": name.strip(), "name_fa": name.strip(), "description": description.strip(), "prompt": prompt.strip()})
-        custom = self.settings.setdefault("characters", [])
-        custom[:] = [x for x in custom if x.get("id") != cid]
-        custom.append(profile)
+        self.character_service.update_profile(
+            self.settings, cid, name=name, description=description, prompt=prompt
+        )
         self.sync_sessions()
         self.apply_chat_theme()
         self.refresh_character_choices()
@@ -272,15 +270,7 @@ class CharacterSettingsMixin:
             return
         if QMessageBox.question(self, "حذف شخصیت", "این شخصیت حذف شود؟") != QMessageBox.Yes:
             return
-        if self.character_service.is_builtin(cid):
-            hidden = self.settings.setdefault("deleted_character_ids", [])
-            if cid not in hidden:
-                hidden.append(cid)
-        else:
-            self.settings["characters"] = [x for x in self.settings.get("characters", []) if x.get("id") != cid]
-        self.settings["active_character_id"] = "kira"
-        for key in ("character_voice", "character_notes", "character_resources", "character_traits"):
-            self.settings.get(key, {}).pop(cid, None)
+        self.character_service.delete_profile(self.settings, cid)
         self.sync_sessions()                           # its tab (and conversation view) goes away
         self.switch_session("kira")
         self.save_now()
