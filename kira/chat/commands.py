@@ -386,6 +386,8 @@ class CommandRegistry:
         request = str(request_id or "").strip()
         if not owner or not request:
             raise ValueError("session_id and request_id are required")
+        with self._lock:
+            self._ensure_open()
         match_context = CommandMatchContext(owner, request, _freeze_mapping(metadata))
         slash = _parse_slash(raw)
         if slash is not None:
@@ -429,6 +431,7 @@ class CommandRegistry:
         if not isinstance(request, CommandRequest):
             raise TypeError("request must be a CommandRequest")
         with self._lock:
+            self._ensure_open()
             definition = self._commands.get(request.command_id)
         if definition is None:
             return CommandResult(
@@ -569,7 +572,8 @@ class CommandRegistry:
             return result
         finally:
             with self._lock:
-                if result is not None and result.status is not CommandStatus.PENDING:
+                if (not self._closed and result is not None
+                        and result.status is not CommandStatus.PENDING):
                     self._cache[key] = result
                     self._cache.move_to_end(key)
                     while len(self._cache) > self._cache_size:
