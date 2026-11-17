@@ -207,5 +207,61 @@ class SharedEventBusTests(unittest.TestCase):
         self.assertEqual(len(set(ordered)), count)
 
 
+class ChatEventWiringTests(unittest.TestCase):
+    def test_bootstrap_injects_the_same_shared_bus_into_module_and_chat_notifications(self):
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8")
+        self.assertIn("event_bus = EventBus()", source)
+        self.assertIn("module_manager = ModuleManager(container, event_bus)", source)
+        self.assertIn("chat_event_publisher = ChatEventPublisher(event_bus)", source)
+        self.assertIn("chat_event_publisher=chat_event_publisher", source)
+        self.assertIn("app.aboutToQuit.connect(event_bus.close)", source)
+
+    def test_legacy_application_adapter_publishes_chat_lifecycle_facts(self):
+        import ast
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "kira" / "oldmain.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        event_names = {
+            node.args[0].value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "_publish_chat_event"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        }
+        self.assertTrue({
+            "session_created", "session_activated", "session_deactivated", "session_closed",
+            "request_submitted", "request_started", "request_completed", "request_failed",
+            "request_cancelled", "stream_started", "stream_chunk_received",
+            "stream_completed", "stream_interrupted", "message_saved", "history_loaded",
+            "persistence_failed",
+        }.issubset(event_names))
+
+    def test_queued_request_keeps_original_identity_until_dispatch(self):
+        import ast
+        from pathlib import Path
+
+        source = (Path(__file__).resolve().parents[1] / "kira" / "oldmain.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        main_window = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "MainWindow"
+        )
+        methods = {
+            node.name: node for node in main_window.body
+            if isinstance(node, ast.FunctionDef)
+        }
+        send_next = ast.get_source_segment(source, methods["_send_next_pending"])
+        submit_for = ast.get_source_segment(source, methods["_submit_for"])
+        self.assertIn("item=request", send_next)
+        self.assertIn("self._dispatch_coordinated_request(session, request)", submit_for)
+        self.assertNotIn("ChatRequest.create", submit_for)
+
+
 if __name__ == "__main__":
     unittest.main()
