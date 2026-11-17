@@ -4281,11 +4281,16 @@ class MainWindow(QMainWindow):
         )
         if self.busy and not attachments:
             try:
-                control = self.tool_agent.control_running(text, session_id=self.cur.cid)
-            except Exception:  # noqa: BLE001 - never block typing
-                control = None
-            if control:
-                self.add_chat("system", control)
+                control_dispatch = self.chat_application_service.dispatch_control_commands(
+                    self.cur.session_id,
+                    text,
+                    metadata={"character_id": self.cur.cid},
+                )
+            except Exception:  # noqa: BLE001 - a control message must never block normal chat
+                control_dispatch = None
+            if control_dispatch is not None and control_dispatch.handled:
+                if control_dispatch.reply_text:
+                    self.add_chat("system", control_dispatch.reply_text)
                 return
         self._ensure_session_conversation(self.cur)
         result = self.chat_application_service.submit_message(
@@ -4339,6 +4344,7 @@ class MainWindow(QMainWindow):
             metadata={
                 "has_attachments": bool(attachments),
                 "has_image": has_image,
+                "character_id": self.cur.cid,
             },
         )
         text = command_dispatch.rewritten_text or original_text
@@ -5449,8 +5455,11 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, self.close)
 
     def _clear_chat_coordinator_queues(self):
-        """Drop scheduled/pending messages during application shutdown; workers are cancelled separately."""
+        """Drop scheduled/pending messages and release the injected command registry."""
         self.chat_application_service.dispose()
+        registry = getattr(self, "command_registry", None)
+        if registry is not None:
+            registry.close()
 
     def closeEvent(self, event):
         if (getattr(self, "tray", None) is not None and self.settings.get("close_to_tray")
