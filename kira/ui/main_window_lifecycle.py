@@ -48,10 +48,10 @@ class LifecycleMixin:
         # Qwen3-ASR enablement is controlled independently in Local Models;
         # this picker only selects the offline faster-whisper fallback.
         self.collect_provider_settings()
-        route_model.ensure_routes(s)
-        primary = route_model.find_route(s, "ollama")
+        self.provider_application_service.ensure_routes(s)
+        primary = self.provider_application_service.find_route(s, "ollama")
         if primary and primary["model"] != s["model"]:
-            route_model.update_route(s, "ollama", model=s["model"])          # the Assistant-tab model is the primary local route
+            self.provider_application_service.update_route(s, "ollama", model=s["model"])          # the Assistant-tab model is the primary local route
         ocfg = s.setdefault("providers", {}).setdefault("ollama", {})
         keep_value, keep_ok = parse_keep_alive(self.keep_alive.currentText())
         if not keep_ok:
@@ -65,16 +65,14 @@ class LifecycleMixin:
         except Exception as exc:
             QMessageBox.critical(self, "خطا در ذخیره تنظیمات", f"تنظیمات ذخیره نشدند:\n{exc}")
             return
-        old_states = self.client.states
-        shared_cooldowns = {}                              # fresh cooldowns after saving (a fixed key/model gets another chance)
-        for sess in self.sessions.values():               # every character's chat gets a new router (a running answer keeps its old one)
-            router = HybridRouter(s)
-            router.states, router.cooldowns = old_states, shared_cooldowns
-            sess.client = router
+        # Each character receives a fresh router; health state is shared and cooldowns reset.
+        self.provider_application_service.rebuild_session_routers(
+            s, self.sessions.values(), previous_router=self.client
+        )
         self.tool_agent.set_settings(s)
         evidence_memory.configure(s)
         usage.install(s)
-        self.ollama_client = OllamaClient.from_settings(s)
+        self.ollama_client = self.provider_application_service.create_ollama_client(s)
         self.refresh_route_list()
         self.set_badge("idle", self.client.preview_route())
         self.apply_runtime()
@@ -286,7 +284,7 @@ class LifecycleMixin:
         st = self.client.status()
         configured = []
         for x in st:
-            label = route_model.provider_label(x["provider"], self.settings.get("providers", {}).get(x["provider"]))
+            label = self.provider_application_service.provider_label(x["provider"], self.settings.get("providers", {}).get(x["provider"]))
             if x["provider"] != "ollama" and x["enabled"] and label not in configured:
                 configured.append(label)
         local_on = any(x["provider"] == "ollama" and x["enabled"] for x in st) or \
