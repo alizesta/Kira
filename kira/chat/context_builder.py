@@ -163,12 +163,12 @@ class ContextBuilder:
             body = str(item.get("text") or "")
             truncated = bool(item.get("truncated")) or len(body) > file_limit
             body = body[:file_limit]
-            content += f"\\n\\n--- فایل ضمیمه: {name} ---\\n{body}"
+            content += f"\n\n--- فایل ضمیمه: {name} ---\n{body}"
             if truncated:
-                content += "\\n[... بقیه‌ی فایل بریده شد ...]"
-            content += "\\n--- پایان فایل ---"
+                content += "\n[... بقیه‌ی فایل بریده شد ...]"
+            content += "\n--- پایان فایل ---"
         if images:
-            content += "\\n\\n" + "\\n".join(
+            content += "\n\n" + "\n".join(
                 f"[تصویر ضمیمه: {str(item.get('name') or 'image')}]" for item in images
             )
             messages[-1]["images"] = deepcopy(images)
