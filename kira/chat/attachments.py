@@ -6,6 +6,7 @@ legacy pure parser until callers migrate to this API.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import os
 import shutil
@@ -284,7 +285,16 @@ class AttachmentManager:
             if record is None:
                 raise _legacy.AttachmentError("ضمیمه وجود ندارد یا متعلق به این نشست نیست.")
             try:
-                prepared.append(_legacy.load_attachment(record.path))
+                if record.mime_type.startswith("image/"):
+                    raw = Path(record.path).read_bytes()
+                    prepared.append({
+                        "name": record.filename, "kind": "image",
+                        "mime": record.mime_type,
+                        "b64": base64.b64encode(raw).decode("ascii"),
+                        "size": record.size,
+                    })
+                else:
+                    prepared.append(_legacy.load_attachment(record.path))
             except (OSError, _legacy.AttachmentError) as exc:
                 raise _legacy.AttachmentError(f"پردازش فایل «{record.filename}» ناموفق بود.") from exc
         return _legacy.compose(text, prepared, search=search)
@@ -312,7 +322,7 @@ class AttachmentManager:
         self._content_index.pop((record.session_id, str(record.message_id or ""), str(record.metadata.get("sha256", ""))), None)
         return True
 
-    def cleanup(self, *, session_id: str | None = None) -> int:
+    def cleanup(\n        self, *, session_id: str | None = None, message_id: str | None = None\n    ) -> int:
         self._ensure_open()
         records = [
             record for record in self._records.values()
