@@ -11,13 +11,17 @@ import sys
 def run_application() -> None:
     from PySide6.QtWidgets import QApplication
 
-    from ..config import load_settings
+    from ..config import load_settings, DATA_DIR, ROOT
     from .dependency_container import DependencyContainer
     from .chat_composition import create_chat_application_service_factory
     from .session_composition import create_session_application_service_factory
     from .web_search import WebSearchApplicationService
     from .voice_composition import create_voice_application_service_factory
     from .game_mode_application import GameModeApplicationService
+    from .vision_application import VisionApplicationService
+    from .provider_application import ProviderApplicationService
+    from .coding_agent_application import CodingAgentApplicationService
+    from ..tools import ToolAgent
     from .event_bus import EventBus
     from ..chat.events import ChatEventPublisher
     from ..chat.session_manager import SessionManager
@@ -56,8 +60,10 @@ def run_application() -> None:
         event_bus.close()
         raise RuntimeError(f"Required application modules failed to start: {failed}")
 
+    settings = load_settings()
     app = QApplication(sys.argv)
-    app.setStyleSheet(build_style(winfx.active_effect(load_settings().get("window_effect"))))
+    app.setStyleSheet(build_style(winfx.active_effect(settings.get("window_effect"))))
+    tool_agent = ToolAgent(settings, DATA_DIR, ROOT)
     session_manager = SessionManager(ChatSession)
     chat_history_service = container.resolve("chat_history_service")
     chat_service_factory = create_chat_application_service_factory(
@@ -70,17 +76,28 @@ def run_application() -> None:
     web_search_service = WebSearchApplicationService()
     voice_service_factory = create_voice_application_service_factory()
     game_mode_application_service = GameModeApplicationService()
+    vision_application_service = VisionApplicationService(
+        game_mode_application_service,
+        load_settings().get("vision_mode", "economic"),
+    )
+    provider_application_service = ProviderApplicationService()
+    coding_agent_application_service = CodingAgentApplicationService()
     try:
         window = MainWindow(
             memory_service=container.resolve("memory_service"),
             mood_service=container.resolve("mood_service"),
             character_service=container.resolve("character_service"),
             chat_history_service=chat_history_service,
+            settings=settings,
+            tool_agent=tool_agent,
             chat_application_service_factory=chat_service_factory,
             session_application_service_factory=session_service_factory,
             web_search_service=web_search_service,
             voice_application_service_factory=voice_service_factory,
             game_mode_application_service=game_mode_application_service,
+            vision_application_service=vision_application_service,
+            provider_application_service=provider_application_service,
+            coding_agent_application_service=coding_agent_application_service,
             session_manager=session_manager,
             chat_event_publisher=chat_event_publisher,
         )
