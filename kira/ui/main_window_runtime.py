@@ -515,11 +515,15 @@ class RuntimeMixin:
         self.set_status("st_ready")
         self.update_engine_label()
 
-    def _on_voice_listener_finished(self, listener, was_current, restarting):
+    def _on_voice_listener_finished(self, listener, was_current, restart_requested):
         if was_current:
             self.mic_btn.setChecked(False)
         self.update_engine_label()
-        if not self._closing and was_current and not restarting:
+        if self._closing:
+            return
+        if restart_requested and self.mic_btn.isChecked():
+            QTimer.singleShot(0, self.start_listener)
+        elif was_current:
             self.set_status("st_ready")
 
     def on_listener_error(self, msg):
