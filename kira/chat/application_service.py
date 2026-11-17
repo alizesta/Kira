@@ -174,7 +174,12 @@ class ChatApplicationService:
         )
 
     def cleanup_attachments(self, *, session_id: str | None = None) -> int:
-        return self._attachment_manager.cleanup(session_id=session_id)
+        removed = self._attachment_manager.cleanup(session_id=session_id)
+        if session_id is not None:
+            for request_id, state in tuple(self._requests.items()):
+                if state.request.session_id == str(session_id):
+                    self._request_attachment_ids.pop(request_id, None)
+        return removed
 
     def _emit(self, event: ChatApplicationEvent) -> None:
         callback = self._on_event
@@ -211,9 +216,15 @@ class ChatApplicationService:
                 filename = str(item.get("name") or f"attachment-{index + 1}")
                 if kind == "image":
                     encoded = str(item.get("b64") or "")
+                    max_encoded = 4 * ((self._attachment_manager.max_image_bytes + 2) // 3)
+                    if len(encoded) > max_encoded:
+                        raise ValueError("image attachment exceeds size limit")
                     raw = base64.b64decode(encoded, validate=True)
                 elif kind == "text":
-                    raw = str(item.get("text") or "").encode("utf-8")
+                    text_content = str(item.get("text") or "")
+                    if len(text_content) > self._attachment_manager.max_file_bytes:
+                        raise ValueError("text attachment exceeds size limit")
+                    raw = text_content.encode("utf-8")
                 else:
                     raise ValueError("unsupported attachment payload kind")
                 record = self._attachment_manager.add_attachment(
