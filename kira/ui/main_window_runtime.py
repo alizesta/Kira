@@ -156,7 +156,7 @@ class RuntimeMixin:
             QMessageBox.information(self, "Route", "هیچ Route فعالی آماده نیست.")
             return
         st = next((x for x in self.client.status() if x["name"] == info["route_id"]), {})
-        route = route_model.find_route(self.settings, info["route_id"]) or {}
+        route = self.provider_application_service.find_route(self.settings, info["route_id"]) or {}
         manual = self.settings.get("manual_route_id", "")
         lines = [f"Provider: {info['label']}", f"Model: {info['model']}", f"نوع اتصال: {'Cloud' if info['kind'] == 'cloud' else 'Local'}",
                  f"Route: {info['route_id']}  ({'انتخاب دستی' if manual == info['route_id'] else 'انتخاب خودکار'})",
