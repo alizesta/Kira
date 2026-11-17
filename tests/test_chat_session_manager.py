@@ -13,7 +13,7 @@ class SessionManagerTests(unittest.TestCase):
     def make_manager(self, **overrides):
         options = {"session_factory": ChatSession}
         options.update(overrides)
-        return SessionManager(**options), resolved
+        return SessionManager(**options), None
 
     def test_create_session_has_runtime_identity_timestamps_and_metadata(self):
         manager, _ = self.make_manager()

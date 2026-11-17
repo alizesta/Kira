@@ -241,9 +241,7 @@ class SessionManager:
             session.status = SessionStatus.CREATED.value
             session.created_at = created_at
             session.updated_at = created_at
-            combined_metadata = dict(conversation_metadata or {})
-            combined_metadata.update(dict(metadata or {}))
-            session.metadata = combined_metadata
+            session.metadata = dict(metadata or {})
             session.last_error = None
             self._sessions[sid] = session
             self._by_character[cid] = sid
