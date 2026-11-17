@@ -98,7 +98,7 @@ The Chat core modules should depend on Python data contracts and narrow Protocol
 | Tools/coding agent | `tools/*`, `actions.py`, `auto_agent.py`, `code_agent.py`, `chat_code.py` | Existing tools/agent integration remains application/legacy-bound; Chat command contracts are separate. |
 | Web Research | `webintel/*`, `websearch.py`, discovery adapters | Search capability exists; worker/policy integration remains in legacy application layer. |
 | Vision | `vision_pipeline.py`, `vision_ocr.py`, game detection/mode/audio | Capability code exists; dedicated application-service ownership not established by this audit. |
-| UI | `oldmain.py`, `ui/pages`, `ui/components`, `ui/dialogs`, `ui/workers.py` | UI parts extracted; MainWindow still owns cross-feature orchestration. |
+| UI | `ui/main_window.py`, `ui/main_window_*.py`, `ui/pages`, `ui/components`, `ui/dialogs`, `ui/workers.py` | MainWindow is composed from eight feature-oriented mixins; cross-feature policy still remains in the window adapter. |
 
 ## 6. Character scope
 
@@ -108,8 +108,9 @@ Static code supports this design. Runtime isolation across concurrent sessions, 
 
 ## 7. Legacy and compatibility owners
 
-- `kira.main.MainWindow` is a lazy compatibility export to `kira.oldmain.MainWindow`.
-- `kira.oldmain.MainWindow` is still the production UI/application adapter.
+- `kira.main.MainWindow` is a lazy compatibility export to `kira.ui.main_window.MainWindow`.
+- `kira.ui.main_window.MainWindow` is the production UI adapter; its feature behavior is split across `kira/ui/main_window_*.py` mixins.
+- `kira/oldmain.py` has been removed; new production code must not reintroduce imports from that path.
 - `kira/services/chat_history_service.py` is an adapter over the persistence facade; it is not a second database owner.
 - `kira/attachments.py` is a compatibility facade; canonical Chat attachment/content processing is under `kira/chat/`.
 - `kira/memory.py` and `kira/persona_memory.py` remain legacy/compatibility memory paths while service boundaries are adopted.
