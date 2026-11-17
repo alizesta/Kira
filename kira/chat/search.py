@@ -181,7 +181,7 @@ class ChatSearchService:
         if start_at and end_at and start_at > end_at:
             raise ChatSearchValidationError("start_at must not be later than end_at")
         terms = re.findall(r"\w+", query.casefold(), flags=re.UNICODE)
-        if mode != "phrase" and not terms:
+        if mode in {"all_terms", "any_term"} and not terms:
             raise ChatSearchValidationError("query must contain searchable terms")
 
         hits: list[ChatSearchHit] = []
@@ -219,7 +219,11 @@ class ChatSearchService:
                     ):
                         continue
                     folded = content.casefold()
-                    if mode == "phrase":
+                    if mode == "exact":
+                        if folded != query.casefold():
+                            continue
+                        score = 1000
+                    elif mode == "phrase":
                         score = folded.count(query.casefold())
                         if not score:
                             continue
