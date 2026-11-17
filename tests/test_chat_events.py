@@ -259,16 +259,20 @@ class ChatEventWiringTests(unittest.TestCase):
 
         source = (Path(__file__).resolve().parents[1] / "kira" / "oldmain.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
-        event_names = {
-            node.args[0].value
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr in ("_publish_chat_event", "_finish_chat_event_request")
-            and node.args
-            and isinstance(node.args[0], ast.Constant)
-            and isinstance(node.args[0].value, str)
-        }
+        event_names = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                continue
+            if node.func.attr == "_publish_chat_event":
+                argument_index = 0
+            elif node.func.attr == "_finish_chat_event_request":
+                argument_index = 1
+            else:
+                continue
+            if len(node.args) > argument_index:
+                event_name = node.args[argument_index]
+                if isinstance(event_name, ast.Constant) and isinstance(event_name.value, str):
+                    event_names.add(event_name.value)
         self.assertTrue({
             "session_created", "session_activated", "session_deactivated", "session_closed",
             "request_submitted", "request_started", "request_completed", "request_failed",
