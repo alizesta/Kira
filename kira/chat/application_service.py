@@ -227,6 +227,21 @@ class ChatApplicationService:
             raise
         return tuple(ids)
 
+    def add_request_attachment(
+        self, request_id: str, attachment: Mapping[str, Any],
+    ) -> str:
+        """Attach one late-bound payload (for example a captured game frame) to its request."""
+        state = self._requests.get(str(request_id or ""))
+        if state is None or state.status is not RequestStatus.RUNNING:
+            raise ValueError("chat request is not active")
+        created = self._register_request_attachments(
+            state.request.request_id, state.request.session_id, (attachment,),
+        )
+        current = self._request_attachment_ids.get(state.request.request_id, ())
+        updated = current + created
+        self._request_attachment_ids[state.request.request_id] = updated
+        return created[0]
+
     def prepare_request_attachments(
         self, request_id: str, *, text: str = "", search: bool = False,
     ) -> dict[str, Any] | None:
