@@ -81,7 +81,7 @@ class WebSearchApplicationService:
         """Resolve a short follow-up against recent context; retain literal user text on weak output."""
         output = client.chat(list(history or [])[-6:], cls.SEARCH_QUERY_PROMPT, 0.1)
         line = next((item.strip() for item in str(output or "").splitlines() if item.strip()), "")
-        line = line.strip("\\"'«»`").removeprefix("Query:").removeprefix("query:").strip()
+        line = line.strip(chr(34) + chr(39) + "«»`").removeprefix("Query:").removeprefix("query:").strip()
         return line if 2 <= len(line) <= 160 else fallback
 
     def web_search_options(
