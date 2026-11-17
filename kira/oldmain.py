@@ -67,6 +67,7 @@ from .theme import build_style, STYLE
 from . import theme as theme_mod
 from .chat_sessions import ChatSession, NOOP, SESSION_FIELDS, session_property, front_only_property
 from .chat.application_service import ChatApplicationService, ApplicationEventKind, RequestStatus
+from .chat.session_manager import SessionManager
 from . import winfx
 from .game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
 from .vision_pipeline import FrameGate, policy_for
@@ -213,7 +214,8 @@ class MainWindow(QMainWindow):
         return controller.worker if controller is not None else None
 
 
-    def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None):
+    def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None,
+                 session_manager=None):
         super().__init__()
         # Direct MainWindow construction remains supported for existing callers;
         # normal application startup injects these services from app.bootstrap.
@@ -243,10 +245,18 @@ class MainWindow(QMainWindow):
             cancel_provider=self._cancel_application_provider,
         )
         self.settings = load_settings()
-        self.sessions = {}
-        self.cur = self.front = ChatSession(self.character_service.active_id(self.settings))
-        self.sessions[self.cur.cid] = self.cur
         self._db_notes = self.chat_application_service.init_history()
+        self.session_manager = session_manager or SessionManager(ChatSession)
+        self.session_manager.set_runtime_callbacks(
+            has_pending_work=self._session_has_pending_chat_work,
+            dispose_callback=self._release_chat_session_resources,
+        )
+        self.sessions = self.session_manager.sessions_by_character
+        self.cur = self.session_manager.create_session(
+            self.character_service.active_id(self.settings)
+        )
+        self.session_manager.activate_session(self.cur.session_id)
+        self.front = self.cur
         self._ensure_session_conversation(self.cur)
         self._save_warned = False
         self._emotion_applied = False
@@ -597,10 +607,16 @@ class MainWindow(QMainWindow):
         return session.conversation_id
 
     def _ensure_session(self, cid, profile):
-        sess = self.sessions.get(cid)
+        sess = self.session_manager.get_session_for_character(cid)
+        if sess is not None and sess.status == "closing":
+            if not self.session_manager.reopen_session(sess.session_id):
+                return None
+        elif sess is not None and sess.status == "failed":
+            if not self.session_manager.close_session(sess.session_id):
+                return None
+            sess = None
         if sess is None:
-            sess = ChatSession(cid)
-            self.sessions[cid] = sess
+            sess = self.session_manager.create_session(cid)
         self._ensure_session_conversation(sess)
         if sess.view is None:
             sess.view = self.make_session_view()
@@ -629,6 +645,8 @@ class MainWindow(QMainWindow):
         order = [c for c in ("kira", "ren", "mika") if c in profiles] + [c for c in profiles if c not in ("kira", "ren", "mika")]
         for cid in order:
             sess = self._ensure_session(cid, profiles[cid])
+            if sess is None:
+                continue
             if not sess.loaded:
                 sess.loaded = True
                 with self._as(sess):
@@ -658,8 +676,8 @@ class MainWindow(QMainWindow):
 
     def _session_has_pending_chat_work(self, session):
         if (session.busy
-                or self.chat_application_service.has_active_request(session.cid)
-                or self.chat_application_service.has_pending_work(session.cid)):
+                or self.chat_application_service.has_active_request(session.session_id)
+                or self.chat_application_service.has_pending_work(session.session_id)):
             return True
         if self._worker_is_running(getattr(session, "worker", None)) or self._worker_is_running(
             getattr(session, "_search_worker", None)
@@ -669,10 +687,14 @@ class MainWindow(QMainWindow):
                 and self._worker_is_running(getattr(self, "_vision_worker", None)))
 
     def _dispose_chat_session(self, session):
-        """Release an idle, removed character session and all of its owned chat resources."""
-        if self._session_has_pending_chat_work(session):
-            return False
-        self.chat_application_service.close_session(session.cid)
+        """Request lifecycle closure; SessionManager owns the state transition."""
+        return self.session_manager.close_session(session.session_id)
+
+    def _release_chat_session_resources(self, session):
+        """Release UI/provider resources after SessionManager confirms the work has drained."""
+        self.chat_application_service.close_session(session.session_id)
+        session.dispatch_scheduled = False
+        response_relay = getattr(session, "response_relay", None)
         if session.client is not None:
             session.client.cancel()
             session.client = None
@@ -700,8 +722,6 @@ class MainWindow(QMainWindow):
             self.char_tabs_row.removeWidget(button)
             self.char_tab_group.removeButton(button)
             button.deleteLater()
-        if self.sessions.get(session.cid) is session:
-            del self.sessions[session.cid]
         if getattr(self, "_vision_session", None) is session:
             vision_worker = getattr(self, "_vision_worker", None)
             if vision_worker is not None:
@@ -711,10 +731,14 @@ class MainWindow(QMainWindow):
                     pass
                 self._vision_worker = None
             self._vision_session = None
-        if self.front is session or self.cur is session:
-            fallback = self.sessions.get("kira") or next(iter(self.sessions.values()), None)
+        if not getattr(self, "_closing", False) and (self.front is session or self.cur is session):
+            fallback = next(
+                (item for item in self.session_manager.list_sessions()
+                 if item is not session and item.status not in ("closing", "closed", "failed")),
+                None,
+            )
             if fallback is not None:
-                self.front = self.cur = fallback
+                self.switch_session(fallback.cid)
         return True
 
     def refresh_tab_buttons(self):
@@ -734,7 +758,7 @@ class MainWindow(QMainWindow):
     def switch_session(self, cid, save=True):
         """Bring one character's chat to the front: its conversation, its colours, its picture. Other chats keep working."""
         sess = self.sessions.get(cid)
-        if sess is None:
+        if sess is None or not self.session_manager.activate_session(sess.session_id):
             return
         if cid != self.front.cid:
             self._flush_character_autosave()
@@ -810,7 +834,7 @@ class MainWindow(QMainWindow):
         try:
             self._ensure_session_conversation(self.cur)
             history = self.chat_application_service.recent_messages(
-                limit, self.cur.cid, self.cur.conversation_id
+                limit, character_id=self.cur.cid, conversation_id=self.cur.conversation_id
             )
         except Exception:
             history = []
@@ -4125,13 +4149,13 @@ class MainWindow(QMainWindow):
             self.submit(text, files)
 
     def _cancel_application_provider(self, request, _worker):
-        session = self.sessions.get(request.session_id)
+        session = self.session_manager.get_session(request.session_id)
         if session is not None and session.client is not None:
             with self._as(session):
                 session.client.cancel()
 
     def _dispatch_application_request(self, request):
-        session = self.sessions.get(request.session_id)
+        session = self.session_manager.get_session(request.session_id)
         if self._closing or session is None:
             self.chat_application_service.complete_local_request(request.request_id)
             return
@@ -4140,7 +4164,7 @@ class MainWindow(QMainWindow):
             self._process_chat_request(request.text, list(request.attachments), request.voice)
 
     def _on_chat_application_event(self, event):
-        session = self.sessions.get(event.session_id)
+        session = self.session_manager.get_session(event.session_id)
         if session is None or self._closing:
             return
         if event.kind is ApplicationEventKind.REQUEST_STARTED:
@@ -4195,6 +4219,8 @@ class MainWindow(QMainWindow):
                     self.on_error(event.error or "Chat request failed")
 
     def submit(self, text, attachments=None, _voice=None):
+        if self.cur.status in ("closing", "closed", "failed"):
+            return
         if _voice is None:
             voice, self._voice_next = self._voice_next, False
         else:
@@ -4214,14 +4240,15 @@ class MainWindow(QMainWindow):
                 return
         self._ensure_session_conversation(self.cur)
         result = self.chat_application_service.submit_message(
-            self.cur.cid, text, attachments, voice,
+            self.cur.session_id, text, attachments, voice,
             busy=self.busy, force_queue=wait_for_vision,
             conversation_id=self.cur.conversation_id,
+            character_id=self.cur.cid,
         )
         if not result.accepted:
             return
         if result.queued:
-            count = self.chat_application_service.pending_count(self.cur.cid)
+            count = self.chat_application_service.pending_count(self.cur.session_id)
             if wait_for_vision:
                 self.status.setText(
                     f"پیام در صف است ({count}) — تحلیل Vision متوقف می‌شود و پیام بعد از آن ارسال خواهد شد."
@@ -4539,13 +4566,13 @@ class MainWindow(QMainWindow):
         window = int(self.settings.get("memory_context_limit", 12))
         conversation_id = self._ensure_session_conversation(self.cur)
         history = self.chat_application_service.conversation_context(
-            window, session_id=self.cur.cid, conversation_id=conversation_id
+            window, character_id=self.cur.cid, conversation_id=conversation_id
         )
         )
         mode = self.detect_mode(history)                          # Active Mode of THIS message (None = switched off in settings)
         try:
             older = self.chat_application_service.recent_messages(
-                window + 40, self.cur.cid, conversation_id
+                window + 40, character_id=self.cur.cid, conversation_id=conversation_id
             )[:-window] if window else []
             )[:-window] if window else []
             # Every character has its own saved conversation; only Kira owns the legacy evidence index.
@@ -4564,7 +4591,7 @@ class MainWindow(QMainWindow):
                 self.memory_service.maintain(
                     character_id,
                     self.chat_application_service.recent_messages(
-                        min(total, 3000), character_id, conversation_id
+                        min(total, 3000), character_id=character_id, conversation_id=conversation_id
                     ),
                     ),
                     window,
@@ -4643,7 +4670,7 @@ class MainWindow(QMainWindow):
                 conversation_id = self.cur.conversation_id
                 longer = [
                     m["content"] for m in self.chat_application_service.recent_messages(
-                        80, self.cur.cid, conversation_id
+                        80, character_id=self.cur.cid, conversation_id=conversation_id
                     ) if m.get("role") == "user"
                 ]
                 if len(longer) > len(users):
@@ -4968,7 +4995,7 @@ class MainWindow(QMainWindow):
                     pass
                 self._vision_worker = None
             self._vision_session = None
-        self.chat_application_service.dispatch_next(session.cid, busy=session.busy)
+        self.chat_application_service.dispatch_next(session.session_id, busy=session.busy)
         profiles = self.character_service.all_profiles(self.settings)
         if session.cid not in profiles and not self._session_has_pending_chat_work(session):
             self._schedule_chat_callback(self.sync_sessions)
@@ -5015,10 +5042,10 @@ class MainWindow(QMainWindow):
         """Persist through ChatApplicationService; keep character memory/mood observation in the UI adapter."""
         if persist:
             outcome = self.chat_application_service.persist_message(
-                self.cur.cid, role, content,
+                self.cur.session_id, role, content,
                 request_id=getattr(self.cur, "application_request_id", None),
                 conversation_id=getattr(self.cur, "conversation_id", None),
-                status=status, metadata=metadata,
+                status=status, character_id=self.cur.cid, metadata=metadata,
             )
             ok = outcome.ok
         else:
@@ -5345,6 +5372,12 @@ class MainWindow(QMainWindow):
             if self._running_background_workers():
                 event.ignore()
                 return
+            for session in self.session_manager.list_sessions():
+                session.busy = False
+            if not self.session_manager.dispose():
+                event.ignore()
+                QTimer.singleShot(100, self.close)
+                return
             event.accept()
             QTimer.singleShot(0, QApplication.quit)
             return
@@ -5403,6 +5436,12 @@ class MainWindow(QMainWindow):
             # Cover the race where a worker finishes while its finished slot is connected.
             if not self._running_background_workers():
                 QTimer.singleShot(0, self.close)
+            return
+        for session in self.session_manager.list_sessions():
+            session.busy = False
+        if not self.session_manager.dispose():
+            event.ignore()
+            QTimer.singleShot(100, self.close)
             return
         event.accept()
         QTimer.singleShot(0, QApplication.quit)                     # the tray keeps 'last window closed' from quitting by itself

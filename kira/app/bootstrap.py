@@ -15,6 +15,9 @@ def run_application() -> None:
     from ..config import load_settings
     from .dependency_container import DependencyContainer
     from .event_bus import EventBus
+    from ..chat.events import ChatEventPublisher
+    from ..chat.session_manager import SessionManager
+    from ..chat_sessions import ChatSession
     from .module_manager import ModuleManager, ModuleState
     from ..oldmain import MainWindow
     from ..services import CharacterProfileService, PersonaMemoryService, MoodStateService, SqliteChatHistoryService
@@ -24,6 +27,7 @@ def run_application() -> None:
 
     container = DependencyContainer()
     event_bus = EventBus()
+    chat_event_publisher = ChatEventPublisher(event_bus)
     module_manager = ModuleManager(container, event_bus)
     service_modules = (
         ("memory", "memory_service", PersonaMemoryService),
@@ -45,24 +49,32 @@ def run_application() -> None:
     }
     if failed:
         module_manager.shutdown()
+        event_bus.close()
         raise RuntimeError(f"Required application modules failed to start: {failed}")
 
     app = QApplication(sys.argv)
     app.setStyleSheet(build_style(winfx.active_effect(load_settings().get("window_effect"))))
+    session_manager = SessionManager(ChatSession)
     try:
         window = MainWindow(
             memory_service=container.resolve("memory_service"),
             mood_service=container.resolve("mood_service"),
             character_service=container.resolve("character_service"),
             chat_history_service=container.resolve("chat_history_service"),
+            session_manager=session_manager,
+            chat_event_publisher=chat_event_publisher,
         )
     except Exception:
         module_manager.shutdown()
+        event_bus.close()
         raise
     # Retain the composition root for the lifetime of the application.
     window._dependency_container = container
     window._event_bus = event_bus
+    window._chat_event_publisher = chat_event_publisher
+    window._session_manager = session_manager
     window._module_manager = module_manager
     app.aboutToQuit.connect(module_manager.shutdown)
+    app.aboutToQuit.connect(event_bus.close)
     window.show()
     sys.exit(app.exec())
