@@ -17,6 +17,7 @@ on:
       - "tests/test_game_mode_policy.py"
       - "tests/test_streaming.py"
       - "tests/test_chat_persistence.py"
+      - "tests/test_chat_events.py"
       - "tests/test_gui_routes.py"
       - "tests/test_gui_offscreen.py"
       - "tests/test_release.py"
@@ -68,6 +69,8 @@ concurrency:
 
 jobs:
   windows-full-suite:
+    # This task is a portable, non-GUI change; defer Windows validation for draft PRs.
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -120,6 +123,7 @@ jobs:
           tests.test_game_detection
           tests.test_streaming
           tests.test_chat_persistence
+          tests.test_chat_events
           tests.test_chat_render
           tests.test_chat_response_handler
           tests.test_body
