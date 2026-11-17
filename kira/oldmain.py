@@ -5456,11 +5456,8 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, self.close)
 
     def _clear_chat_coordinator_queues(self):
-        """Drop scheduled/pending messages and release the injected command registry."""
+        """Drop scheduled/pending messages; the service releases its injected registry."""
         self.chat_application_service.dispose()
-        registry = getattr(self, "command_registry", None)
-        if registry is not None:
-            registry.close()
 
     def closeEvent(self, event):
         if (getattr(self, "tray", None) is not None and self.settings.get("close_to_tray")
