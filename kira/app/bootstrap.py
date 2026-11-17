@@ -1,6 +1,6 @@
 """Application startup composition root.
 
-The UI remains in its legacy module during the incremental migration. Keeping
+The UI window is imported from its feature-oriented package. Keeping
 construction here prevents the entry point from owning UI setup details.
 """
 from __future__ import annotations
@@ -11,7 +11,6 @@ import sys
 def run_application() -> None:
     from PySide6.QtWidgets import QApplication
 
-    # The old window is retained temporarily while its features move into modules.
     from ..config import load_settings
     from .dependency_container import DependencyContainer
     from .chat_composition import create_chat_application_service_factory
@@ -20,7 +19,7 @@ def run_application() -> None:
     from ..chat.session_manager import SessionManager
     from ..chat_sessions import ChatSession
     from .module_manager import ModuleManager, ModuleState
-    from ..oldmain import MainWindow
+    from ..ui.main_window import MainWindow
     from ..services import CharacterProfileService, PersonaMemoryService, MoodStateService, SqliteChatHistoryService
     from ..modules import ServiceModule
     from ..theme import build_style

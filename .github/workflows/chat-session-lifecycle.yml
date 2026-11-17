@@ -15,7 +15,11 @@ on:
       - "kira/tools/autonomy.py"
       - "kira/chat/events.py"
       - "kira/chat/__init__.py"
-      - "kira/oldmain.py"
+      - "kira/ui/main_window.py"
+      - "kira/ui/main_window_*.py"
+      - "tests/test_main_window_syntax.py"
+      - "tests/test_main_entrypoint.py"
+      - "tests/test_app_architecture.py"
       - "kira/chat_sessions.py"
       - "tests/test_chat_session_manager.py"
       - "tests/test_chat_application_service.py"
@@ -52,6 +56,7 @@ jobs:
           tests.test_chat_commands
           tests.test_chat_command_adapters
           tests.test_actions
+          tests.test_main_window_syntax
           -v
       - name: Check changed Python modules
         run: >-
@@ -66,6 +71,18 @@ jobs:
           kira/actions.py
           kira/tools/autonomy.py
           kira/chat_sessions.py
-          kira/oldmain.py
+          kira/ui/main_window.py
+          kira/ui/main_window_support.py
+          kira/ui/main_window_session.py
+          kira/ui/main_window_voice_settings.py
+          kira/ui/main_window_character_settings.py
+          kira/ui/main_window_provider_settings.py
+          kira/ui/main_window_lifecycle.py
+          kira/ui/main_window_attachments_vision.py
+          kira/ui/main_window_chat.py
+          kira/ui/main_window_runtime.py
+          tests/test_main_window_syntax.py
+          tests/test_main_entrypoint.py
+          tests/test_app_architecture.py
           kira/app/bootstrap.py
           tests/test_chat_session_manager.py
