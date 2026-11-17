@@ -29,6 +29,15 @@ class SessionManagerTests(unittest.TestCase):
         self.assertIs(manager.get_session(session.session_id), session)
         self.assertIs(manager.get_session_for_character("kira"), session)
 
+    def test_session_id_is_immutable_for_the_session_lifetime(self):
+        manager, _ = self.make_manager()
+        session = manager.create_session("kira")
+        original_id = session.session_id
+        with self.assertRaises(AttributeError):
+            session.session_id = "replacement"
+        self.assertEqual(session.session_id, original_id)
+        self.assertIs(manager.get_session(original_id), session)
+
     def test_create_is_idempotent_per_character_and_recreation_gets_a_new_id(self):
         manager, _ = self.make_manager()
         first = manager.create_session("ren")
