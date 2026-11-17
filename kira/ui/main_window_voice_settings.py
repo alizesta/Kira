@@ -145,7 +145,7 @@ class VoiceSettingsMixin:
             self.local_voice_status.setText("شناسه مخزن Hugging Face را به شکل owner/repository وارد کن.")
             return
         self.local_voice_status.setText("در حال آماده‌سازی موتور Qwen و دانلود مدل از Hugging Face؛ ممکن است چند گیگابایت باشد…")
-        from . import local_voice
+        from .. import local_voice
         self._run_local_voice_task(lambda: local_voice.install_and_download_qwen_asr(model_id),
                                    self.local_asr_download_btn, self._on_local_qwen_downloaded)
 
@@ -159,7 +159,7 @@ class VoiceSettingsMixin:
         self.local_asr_path_edit.setText(model_id)
         self.save_now()
         self.refresh_local_voice_status()
-        from . import local_voice
+        from .. import local_voice
         self.local_voice_status.setText(
             f"Qwen نصب و فعال شد.\nمسیر مدل: {value}\nمحل ذخیره مدل‌ها: {local_voice.cache_directory()}"
         )
@@ -178,7 +178,7 @@ class VoiceSettingsMixin:
         if value.casefold() == "qwen/qwen3-asr-0.6b":
             self.local_asr_path_edit.setText(value)
             self.local_voice_status.setText("در حال نصب موتور Qwen ASR و دانلود مدل محلی…")
-            from . import local_voice
+            from .. import local_voice
             self._run_local_voice_task(
                 lambda: local_voice.install_and_download_qwen_asr(value),
                 self.voice_page.whisper_download_btn, self._on_local_qwen_downloaded
@@ -199,7 +199,7 @@ class VoiceSettingsMixin:
         if "/" not in repo_id:
             self.local_voice_status.setText("برای دانلود، یک شناسه Hugging Face معتبر انتخاب کن.")
             return
-        from . import local_voice
+        from .. import local_voice
         self.local_voice_status.setText("در حال نصب موتور faster-whisper و دانلود مدل…")
         self._run_local_voice_task(lambda: local_voice.install_and_download_whisper(repo_id),
                                    self.voice_page.whisper_download_btn, self._on_whisper_downloaded)
@@ -212,7 +212,7 @@ class VoiceSettingsMixin:
         self.settings["whisper_model"] = str(value)
         self.voice_page.whisper.setCurrentText(str(value))
         self.save_now()
-        from . import local_voice
+        from .. import local_voice
         self.local_voice_status.setText(
             f"Whisper نصب و فعال شد.\nمسیر مدل: {value}\nمحل ذخیره مدل‌ها: {local_voice.cache_directory()}"
         )
@@ -222,7 +222,7 @@ class VoiceSettingsMixin:
         if "/" not in repo_id or "\\" in repo_id:
             self.local_voice_status.setText("شناسه مخزن Piper در Hugging Face را در کادر مدل TTS وارد کن.")
             return
-        from . import local_voice
+        from .. import local_voice
         self.local_voice_status.setText("در حال نصب Piper و دانلود صدای انتخاب‌شده…")
         self._run_local_voice_task(lambda: local_voice.install_and_download_piper_voice(repo_id),
                                    self.local_tts_download_btn, self._on_local_tts_downloaded)
@@ -237,7 +237,7 @@ class VoiceSettingsMixin:
             if not candidates:
                 raise RuntimeError("در مخزن دانلودشده فایل Piper ONNX پیدا نشد.")
             self._install_piper_voice(candidates[0])
-            from . import local_voice
+            from .. import local_voice
             self.local_voice_status.setText(
                 f"Piper نصب شد و صدا فعال شد: {candidates[0].name}\n"
                 f"مسیر فایل: {candidates[0]}\nمحل ذخیره مدل‌ها: {local_voice.cache_directory()}"
@@ -442,7 +442,7 @@ class VoiceSettingsMixin:
 
     def refresh_local_voice_status(self):
         try:
-            from . import local_voice
+            from .. import local_voice
             asr_model = str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B")
             tts_model = str(self.settings.get("local_voice_tts_model") or "")
             discovered = local_voice.discover_cached_models()
@@ -526,7 +526,7 @@ class VoiceSettingsMixin:
         worker.start()
 
     def load_local_asr(self):
-        from . import local_voice
+        from .. import local_voice
         model_name = str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B")
         self._run_local_voice_task(lambda: local_voice.load_asr(model_name), self.local_asr_load_btn, self._on_local_asr_loaded)
 
@@ -544,7 +544,7 @@ class VoiceSettingsMixin:
             QApplication.clipboard().setText(text)
 
     def test_local_tts(self):
-        from . import local_voice
+        from .. import local_voice
         self._run_local_voice_task(
             lambda: local_voice.synthesize_persian(
                 "سلام، من کیرا هستم. این صدای فارسی محلی من است.",
@@ -561,7 +561,7 @@ class VoiceSettingsMixin:
             self.local_voice_status.setText("آزمایش STT متوقف شد.")
             return
 
-        from .listener import Listener
+        from ..listener import Listener
         model_name = str(self.settings.get("whisper_model") or "small")
         language = str(self.settings.get("stt_language") or "fa")
         listener = Listener(
