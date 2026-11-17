@@ -5034,11 +5034,11 @@ class MainWindow(QMainWindow):
                 "stream_interrupted", session=session, request_id=logical_request_id,
                 payload={"partial_length": len(raw), "reason": "user_cancelled"},
             )
+            if text.strip():
+                self.save_message("assistant", raw, status="cancelled", metadata={"stream": "stopped"})
             self._finish_chat_event_request(
                 session, "request_cancelled", payload={"reason": "user_cancelled"}
             )
-            if text.strip():
-                self.save_message("assistant", raw, status="cancelled", metadata={"stream": "stopped"})
             self.add_chat("system", "تولید پاسخ متوقف شد." + (" متن دریافت‌شده نگه داشته شد." if text.strip() else ""))
             if self._speech_live:
                 self.safe_stop_speaker()                           # the Stop button also silences the rest of the spoken reply
@@ -5048,10 +5048,10 @@ class MainWindow(QMainWindow):
                 "stream_interrupted", session=session, request_id=logical_request_id,
                 payload={"partial_length": len(raw), "reason": "provider_interrupted"},
             )
+            self.save_message("assistant", raw, status="interrupted", metadata={"stream": "provider_interrupted"})
             self._finish_chat_event_request(
                 session, "request_failed", payload={"reason": "provider_interrupted"}
             )
-            self.save_message("assistant", raw, status="interrupted", metadata={"stream": "provider_interrupted"})
             self.add_chat("error", f"ارتباط وسط پاسخ قطع شد؛ بخش دریافت‌شده نگه داشته شد و تکرار نمی‌شود.\n{res['interrupted']}")
             if self._speech_live:
                 self.speaker.stream_end()                          # what arrived is still spoken to its end
@@ -5071,11 +5071,11 @@ class MainWindow(QMainWindow):
                 "stream_completed", session=session, request_id=logical_request_id,
                 payload={"content_length": len(raw)},
             )
+            self.save_message("assistant", raw)
             self._finish_chat_event_request(
                 session, "request_completed",
                 payload={"content_length": len(raw), "response_status": "completed"},
             )
-            self.save_message("assistant", raw)
             try:                                                   # quiet second look (rules; optional background model call)
                 brain.after_turn(self.client, self.settings, getattr(self, "_brain", brain.Decision()), getattr(self, "_brain_user_text", ""),
                                  text, res.get("tools"), getattr(self, "_brain_mode_name", None), bool(self._tool_plan))
