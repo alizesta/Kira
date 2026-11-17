@@ -70,6 +70,11 @@ class MainWindow(
         service = getattr(self, "voice_application_service", None)
         return service.listener if service is not None else None
 
+    @property
+    def _stopping_listener(self):
+        service = getattr(self, "voice_application_service", None)
+        return service.stopping_listener if service is not None else None
+
     def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None,
                  session_manager=None, chat_event_publisher=None, chat_application_service_factory=None,
                  session_application_service_factory=None, web_search_service=None,
