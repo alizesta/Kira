@@ -65,7 +65,7 @@ class MainWindow(
 
     def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None,
                  session_manager=None, chat_event_publisher=None, chat_application_service_factory=None,
-                 session_application_service_factory=None):
+                 session_application_service_factory=None, web_search_service=None):
         super().__init__()
         # Direct MainWindow construction remains supported for existing callers;
         # normal application startup injects these services from app.bootstrap.
@@ -115,6 +115,10 @@ class MainWindow(
         self.session_application_service = session_application_service_factory(
             self.session_manager, self.chat_application_service
         )
+        if web_search_service is None:
+            from ..app.web_search import WebSearchApplicationService
+            web_search_service = WebSearchApplicationService()
+        self.web_search_service = web_search_service
         self.session_manager.set_runtime_callbacks(
             has_pending_work=self._session_has_pending_chat_work,
             dispose_callback=self._release_chat_session_resources,
