@@ -1,6 +1,20 @@
 """Qt adapter for routing per-session worker callbacks to the active window."""
 
+from functools import wraps
+
 from PySide6.QtCore import QObject, Signal, Slot
+
+
+def front_only(fn):
+    """Skip shared-screen callbacks when their owning chat is in the background."""
+
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        if self.cur is not self.front:
+            return None
+        return fn(self, *args, **kwargs)
+
+    return wrapper
 
 
 class SessionRelay(QObject):
