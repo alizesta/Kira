@@ -21,6 +21,7 @@ def run_application() -> None:
     from .vision_application import VisionApplicationService
     from .provider_application import ProviderApplicationService
     from .coding_agent_application import CodingAgentApplicationService
+    from .runtime_settings_application import RuntimeSettingsApplicationService
     from ..tools import ToolAgent
     from .event_bus import EventBus
     from ..chat.events import ChatEventPublisher
@@ -64,6 +65,8 @@ def run_application() -> None:
     app = QApplication(sys.argv)
     app.setStyleSheet(build_style(winfx.active_effect(settings.get("window_effect"))))
     tool_agent = ToolAgent(settings, DATA_DIR, ROOT)
+    runtime_settings_application_service = RuntimeSettingsApplicationService()
+    runtime_settings_application_service.configure(settings)
     session_manager = SessionManager(ChatSession)
     chat_history_service = container.resolve("chat_history_service")
     chat_service_factory = create_chat_application_service_factory(
@@ -98,6 +101,7 @@ def run_application() -> None:
             vision_application_service=vision_application_service,
             provider_application_service=provider_application_service,
             coding_agent_application_service=coding_agent_application_service,
+            runtime_settings_application_service=runtime_settings_application_service,
             session_manager=session_manager,
             chat_event_publisher=chat_event_publisher,
         )
