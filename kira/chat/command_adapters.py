@@ -27,6 +27,7 @@ def create_default_command_registry(
     web_parser: Callable[[str], tuple[str | None, bool]],
     image_parser: Callable[[str], tuple[str, bool]],
     task_control_parser: Callable[[str], tuple[str | None, str]],
+    task_running_checker: Callable[[str], bool],
     tool_agent: Any,
     desktop_action_matcher: Callable[[str], str | None],
     desktop_action_handler: Callable[[str], Any],
@@ -68,7 +69,7 @@ def create_default_command_registry(
     def match_tool_running_control(text, context):
         if context.metadata.get("has_attachments"):
             return None
-        if _tool_session(context) not in getattr(tool_agent, "_running_plan_sessions", set()):
+        if not task_running_checker(_tool_session(context)):
             return None
         kind, payload = task_control_parser(text)
         if kind not in ("status", "pause", "cancel", "add_step", "change"):
