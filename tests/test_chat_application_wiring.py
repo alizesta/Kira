@@ -86,6 +86,14 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("self.session_application_service.activate_session(sess.session_id)", self.source)
         self.assertNotIn("self.session_manager.create_session(", self.source)
         self.assertNotIn("self.session_manager.activate_session(", self.source)
+        for lifecycle_call in (
+            "self.session_manager.close_session(",
+            "self.session_manager.reopen_session(",
+            "self.session_manager.list_sessions(",
+            "self.session_manager.dispose(",
+            "self.session_manager.subscribe(",
+        ):
+            self.assertNotIn(lifecycle_call, self.source)
         self.assertIn("self.session_manager.get_session(event.session_id)", self.source)
         self.assertIn("self.session_application_service.sync_sessions(", self.source)
         self.assertIn("self.session_manager.subscribe(self.publish_state_change)", session_service)
