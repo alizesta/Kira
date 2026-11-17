@@ -128,11 +128,51 @@ class ContextBuilder:
     ) -> list[dict[str, Any]]:
         if not extra or not messages or messages[-1].get("role") != "user":
             return messages
-        if "model" not in extra:
+
+        # Legacy shape remains supported while callers migrate to structured
+        # attachment content. ContextBuilder owns provider-facing composition.
+        if "model" in extra:
+            messages[-1]["content"] = extra["model"]
+            if "images" in extra:
+                messages[-1]["images"] = deepcopy(extra["images"])
             return messages
-        messages[-1]["content"] = extra["model"]
-        if "images" in extra:
-            messages[-1]["images"] = deepcopy(extra["images"])
+
+        if "files" not in extra and "text" not in extra:
+            return messages
+        user_text = str(extra.get("text") or "").strip()
+        files = [item for item in (extra.get("files") or ()) if isinstance(item, Mapping)]
+        images = [item for item in (extra.get("images") or ()) if isinstance(item, Mapping)]
+        content = user_text
+        if not content:
+            if images and not files:
+                content = (
+                    "این تصویر چیست؟ با کمک نتایج جست‌وجوی وب بگو."
+                    if extra.get("search") else "این تصویر را ببین و نظرت را بگو."
+                )
+            elif files and not images:
+                content = "این فایل را بخوان و درباره‌اش نظر بده."
+            elif files or images:
+                content = "این ضمیمه‌ها را ببین و نظرت را بگو."
+
+        try:
+            file_limit = max(1, int(extra.get("max_file_chars", 30000)))
+        except (TypeError, ValueError):
+            file_limit = 30000
+        for item in files:
+            name = str(item.get("name") or "attachment")
+            body = str(item.get("text") or "")
+            truncated = bool(item.get("truncated")) or len(body) > file_limit
+            body = body[:file_limit]
+            content += f"\\n\\n--- فایل ضمیمه: {name} ---\\n{body}"
+            if truncated:
+                content += "\\n[... بقیه‌ی فایل بریده شد ...]"
+            content += "\\n--- پایان فایل ---"
+        if images:
+            content += "\\n\\n" + "\\n".join(
+                f"[تصویر ضمیمه: {str(item.get('name') or 'image')}]" for item in images
+            )
+            messages[-1]["images"] = deepcopy(images)
+        messages[-1]["content"] = content
         return messages
 
     @staticmethod
