@@ -6,7 +6,9 @@ on:
     paths:
       - "kira/oldmain.py"
       - "kira/app/session_relay.py"
+      - "kira/app/session_controller.py"
       - "tests/test_session_relay.py"
+      - "tests/test_session_window_controller.py"
       - ".github/workflows/legacy-window-migration.yml"
   push:
     branches: [new-main]
@@ -33,6 +35,6 @@ jobs:
       - name: Install Qt runtime for adapter tests
         run: python -m pip install --upgrade pip PySide6
       - name: Run session adapter tests
-        run: python -m unittest tests.test_session_relay -v
+        run: python -m unittest tests.test_session_relay tests.test_session_window_controller -v
       - name: Compile migrated modules
-        run: python -m py_compile kira/oldmain.py kira/app/session_relay.py tests/test_session_relay.py
+        run: python -m py_compile kira/oldmain.py kira/app/session_relay.py kira/app/session_controller.py tests/test_session_relay.py tests/test_session_window_controller.py
