@@ -1,5 +1,6 @@
 """Qt-free tests for provider application policy."""
 import unittest
+from copy import deepcopy
 from unittest.mock import patch
 
 from kira.app.provider_application import ProviderApplicationService
@@ -20,8 +21,7 @@ class ProviderApplicationServiceTests(unittest.TestCase):
         self.assertEqual(route["model"], "test-model")
 
     def test_add_provider_rolls_back_when_initial_route_is_invalid(self):
-        before = {key: value.copy() if isinstance(value, dict) else list(value) if isinstance(value, list) else value
-                  for key, value in self.settings.items()}
+        before = deepcopy(self.settings)
         with patch("kira.app.provider_application.route_model.add_route", side_effect=ValueError("route rejected")):
             with self.assertRaisesRegex(ValueError, "route rejected"):
                 self.service.add_provider(
