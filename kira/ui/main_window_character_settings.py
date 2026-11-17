@@ -471,7 +471,7 @@ class CharacterSettingsMixin:
         QTimer.singleShot(1200, self.search_mcp_registry)
 
     def search_mcp_registry(self):
-        from .mcp.registry import RegistrySearchWorker
+        from ..mcp.registry import RegistrySearchWorker
         worker = getattr(self, "_mcp_registry_worker", None)
         if worker is not None and worker.isRunning():
             return
@@ -488,7 +488,7 @@ class CharacterSettingsMixin:
         if record is None:
             self.mcp_registry_panel.set_status("اول یک سرور از فهرست انتخاب کن.")
             return
-        from .mcp.registry import server_config
+        from ..mcp.registry import server_config
         try:
             name, cfg = server_config(record)
             path = DATA_DIR / "kira_mcp.json"
