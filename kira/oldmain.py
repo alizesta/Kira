@@ -5413,7 +5413,7 @@ class MainWindow(QMainWindow):
                 self.chat_application_service.clear_history(self.cur.cid)      # only THIS character's conversation; saves a snapshot first, nothing is deleted if that fails
                 # Facts, moments and habits remain in the character's own memory file.
                 self.memory_service.forget_conversation(self.cur.cid)
-                self.tool_agent.clear_tasks()   # the unfinished task (its goal is the user's own words) goes with the chat
+                self.tool_agent.clear_tasks(self.cur.cid)   # the unfinished task (its goal is the user's own words) goes with the chat
                 brain.reset_state()
             except ChatHistoryError as exc:
                 QMessageBox.warning(self, self.t("clear_t"), str(exc))
