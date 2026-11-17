@@ -4305,7 +4305,13 @@ class MainWindow(QMainWindow):
             self._image_search_turn = True
             self.begin_image_search(text, packed["model"], packed["images"])
             return
-        query, forced = websearch.plan(text) if self.settings.get("web_search", True) or text.lstrip().startswith("/") else (None, False)
+        query, forced = (
+            websearch.plan(text)
+            if self.settings.get("web_search", True) or text.lstrip().startswith("/") or force_web
+            else (None, False)
+        )
+        if force_web:
+            query, forced = str(text or "").strip()[:300], True
         if query and not forced and self._tool_plan is not None and self._tool_plan.strong:
             query = None                                          # a request about this PC (files, apps, RAM...) is not a web question
         if query and not forced and self._tool_plan is not None and getattr(self._tool_plan, "web", False):
