@@ -93,6 +93,34 @@ class ContextBuilderTests(unittest.TestCase):
         self.assertEqual(result.messages[0]["images"], ["image-data"])
         self.assertEqual(original, [{"role": "user", "content": "see file"}])
 
+    def test_structured_attachment_content_is_composed_in_context_builder(self):
+        result = self.builder.build(ContextRequest(
+            messages=[{"role": "user", "content": "stored excerpt"}],
+            turn_extra={
+                "text": "summarize these",
+                "files": [{"name": "notes.txt", "text": "file body", "truncated": False}],
+                "images": [{"name": "screen.png", "mime": "image/png", "b64": "encoded"}],
+            },
+        ))
+        message = result.messages[0]
+        self.assertIn("summarize these", message["content"])
+        self.assertIn("--- فایل ضمیمه: notes.txt ---", message["content"])
+        self.assertIn("file body", message["content"])
+        self.assertIn("[تصویر ضمیمه: screen.png]", message["content"])
+        self.assertEqual(message["images"][0]["name"], "screen.png")
+
+    def test_structured_image_only_uses_context_builder_search_instruction(self):
+        result = self.builder.build(ContextRequest(
+            messages=[{"role": "user", "content": ""}],
+            turn_extra={
+                "text": "",
+                "files": [],
+                "images": [{"name": "picture.png", "mime": "image/png", "b64": "encoded"}],
+                "search": True,
+            },
+        ))
+        self.assertIn("این تصویر چیست؟", result.messages[0]["content"])
+
     def test_attachment_without_current_user_message_is_ignored(self):
         result = self.builder.build(ContextRequest(
             messages=[{"role": "assistant", "content": "hello"}],
