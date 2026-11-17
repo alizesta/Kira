@@ -278,15 +278,10 @@ class SessionManager:
                 if sid in self._sessions
             )
 
-    def list_sessions(self, *, include_closed: bool = False) -> tuple[Any, ...]:
+    def list_sessions(self) -> tuple[Any, ...]:
+        """Return a stable snapshot of all currently registered Sessions."""
         with self._lock:
-            sessions = tuple(self._sessions.values())
-        if include_closed:
-            return sessions
-        return tuple(
-            session for session in sessions
-            if session.status != SessionStatus.CLOSED.value
-        )
+            return tuple(self._sessions.values())
 
     def activate_session(self, session_id: str) -> bool:
         """Activate a Session and atomically idle the previously active one."""
@@ -428,6 +423,7 @@ class SessionManager:
             if session.status != SessionStatus.CLOSING.value:
                 return False
             event = self._transition_locked(session, SessionStatus.CLOSED)
+            self._sessions.pop(sid, None)
             self._by_character.pop(session.cid, None)
             self._closed_ids.add(sid)
         self._publish([event] if event else [])

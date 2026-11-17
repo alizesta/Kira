@@ -45,7 +45,7 @@ class SessionManagerTests(unittest.TestCase):
         self.assertTrue(manager.close_session(first.session_id))
         second = manager.create_session("ren")
         self.assertNotEqual(first.session_id, second.session_id)
-        self.assertIs(manager.get_session(first.session_id), first)
+        self.assertIsNone(manager.get_session(first.session_id))
         self.assertIs(manager.get_session_for_character("ren"), second)
 
     def test_activation_deactivation_and_active_lookup(self):
