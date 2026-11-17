@@ -147,6 +147,18 @@ class VoiceApplicationService(VoiceService):
     def play_file(self, path: str) -> None:
         self.speaker.play_file(path)
 
+    def apply_character_settings(self, settings: dict, overrides: dict | None = None) -> dict:
+        """Apply the active character's voice overrides without mutating shared settings."""
+        effective = dict(settings or {})
+        allowed = {"voice_rate", "voice_volume"}
+        effective.update({
+            key: value
+            for key, value in (overrides or {}).items()
+            if key in allowed
+        })
+        self.settings = effective
+        return effective
+
     def is_speaking(self) -> bool:
         return bool(getattr(self.speaker, "_began", False))
 
