@@ -101,6 +101,43 @@ class VoiceApplicationServiceTests(unittest.TestCase):
             on_waiting=lambda: self.waiting.append("waiting"),
         )
 
+    def test_transcript_policy_ignores_speech_without_wake_word_when_asleep(self):
+        decision = self.service.interpret_transcript(
+            "هوا چطوره؟", wake_enabled=True, awake=False
+        )
+        self.assertEqual(decision.action, "ignore")
+
+    def test_transcript_policy_wakes_without_forwarding_short_wake_phrase(self):
+        decision = self.service.interpret_transcript(
+            "سلام کیرا", wake_enabled=True, awake=False
+        )
+        self.assertEqual(decision.action, "wake_only")
+
+    def test_transcript_policy_extracts_command_after_wake_word(self):
+        decision = self.service.interpret_transcript(
+            "کیرا هوا چطوره؟", wake_enabled=True, awake=False
+        )
+        self.assertEqual(decision.action, "wake_submit")
+        self.assertEqual(decision.text, "هوا چطوره؟")
+
+    def test_transcript_policy_handles_sleep_stop_and_normal_submission(self):
+        self.assertEqual(
+            self.service.interpret_transcript(
+                "بخواب", wake_enabled=True, awake=True
+            ).action,
+            "sleep",
+        )
+        self.assertEqual(
+            self.service.interpret_transcript(
+                "بس کن", wake_enabled=False, awake=True
+            ).action,
+            "stop",
+        )
+        normal = self.service.interpret_transcript(
+            "سلام", wake_enabled=False, awake=False
+        )
+        self.assertEqual((normal.action, normal.text), ("submit", "سلام"))
+
     def test_voice_service_implements_speech_and_recording_ports(self):
         self.service.start_recording()
         listener = self.service.listener
