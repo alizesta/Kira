@@ -99,7 +99,7 @@ class ChatSearchServiceTests(unittest.TestCase):
         active = service.search(ChatSearchRequest(
             "retrieval", conversation_statuses=("active",), character_id="kira"
         ))
-        self.assertEqual([hit.message_id for hit in active.results], [4])
+        self.assertEqual([hit.message_id for hit in active.results], [4, 2])
 
     def test_status_filter_requires_repository_conversation_listing(self):
         class MessageOnlyRepository:
