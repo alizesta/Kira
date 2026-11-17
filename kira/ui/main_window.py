@@ -119,14 +119,10 @@ class MainWindow(
             has_pending_work=self._session_has_pending_chat_work,
             dispose_callback=self._release_chat_session_resources,
         )
-        self._session_event_unsubscribe = self.session_manager.subscribe(
-            self._publish_session_state_event
-        )
         self.sessions = self.session_manager.sessions_by_character
-        self.cur = self.session_manager.create_session(
+        self.cur = self.session_application_service.create_active_session(
             self.character_service.active_id(self.settings)
         )
-        self.session_manager.activate_session(self.cur.session_id)
         self.front = self.cur
         self._ensure_session_conversation(self.cur)
         self._save_warned = False
