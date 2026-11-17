@@ -838,7 +838,8 @@ class ChatApplicationService:
         if state is None or state.status in (RequestStatus.COMPLETED, RequestStatus.FAILED, RequestStatus.CANCELLED):
             return False
         if self._command_registry is not None:
-            self._command_registry.cancel(state.request.session_id, state.request.request_id)
+            # Includes out-of-band control invocations correlated to this active session.
+            self._command_registry.cancel_session(state.request.session_id)
         if state.status is RequestStatus.PENDING:
             state.status = RequestStatus.CANCELLED
             self.cleanup_request_attachments(state.request.request_id)
