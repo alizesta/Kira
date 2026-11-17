@@ -4252,7 +4252,7 @@ class MainWindow(QMainWindow):
         self.animator.touch()
         self._body_done = []
         original_text = str(text or "")
-        self.tool_agent.begin_turn()
+        self.tool_agent.begin_turn(self.cur.cid)
         has_image = any(item.get("kind") == "image" for item in (attachments or []))
         command_dispatch = self.chat_application_service.dispatch_commands(
             self.cur.application_request_id,
