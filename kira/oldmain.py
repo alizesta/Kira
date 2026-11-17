@@ -4388,6 +4388,13 @@ class MainWindow(QMainWindow):
         if isinstance(base_content, dict) and "files" in base_content and "text" in base_content:
             updated = dict(base_content)
             current_text = str(updated.get("text") or "").strip()
+            if not current_text:
+                if images and image_search:
+                    current_text = "این تصویر چیست؟ با کمک نتایج جست‌وجوی وب بگو."
+                elif images:
+                    current_text = "این تصویر را ببین و نظرت را بگو."
+                elif updated.get("files"):
+                    current_text = "این فایل را بخوان و درباره‌اش نظر بده."
             updated["text"] = (current_text + "\n\n" if current_text else "") + str(addition or "")
             updated["images"] = list(images or [])
             updated["search"] = bool(image_search)
