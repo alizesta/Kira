@@ -84,6 +84,34 @@ class ProviderApplicationServiceTests(unittest.TestCase):
         self.assertIs(first.client.cooldowns, second.client.cooldowns)
         self.assertEqual(first.client.cooldowns, {})
 
+    def test_router_factory_failure_does_not_partially_replace_sessions(self):
+        class Router:
+            def __init__(self, name):
+                self.name = name
+                self.states = {}
+                self.cooldowns = {}
+
+        class Session:
+            def __init__(self, client):
+                self.client = client
+
+        old_a, old_b = Router("old-a"), Router("old-b")
+        first, second = Session(old_a), Session(old_b)
+        calls = []
+
+        def factory(settings):
+            calls.append(settings)
+            if len(calls) == 2:
+                raise RuntimeError("router creation failed")
+            return Router("new")
+
+        service = ProviderApplicationService(router_factory=factory)
+        with self.assertRaisesRegex(RuntimeError, "router creation failed"):
+            service.rebuild_session_routers(self.settings, (first, second), previous_router=old_a)
+
+        self.assertIs(first.client, old_a)
+        self.assertIs(second.client, old_b)
+
     def test_router_factory_receives_current_settings(self):
         seen = []
         marker = object()
