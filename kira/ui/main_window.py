@@ -21,6 +21,8 @@ class MainWindow(
     SessionMixin,
     QMainWindow,
 ):
+    voice_listener_finished = Signal(object, bool, bool)
+
     # Per-chat state: one ChatSession per character; these names read/write the session that is current (see chat_sessions.py).
     busy = session_property("busy")
     worker = session_property("worker")
@@ -199,6 +201,7 @@ class MainWindow(
         self.companion.geometry_changed.connect(self.update_bubble)
         self.companion.visibility.connect(lambda _=None: self.update_bubble())
         self.speaker = Speaker(self.settings, self)
+        self.voice_listener_finished.connect(self._on_voice_listener_finished)
         if voice_application_service_factory is None:
             from ..app.voice_composition import create_voice_application_service_factory
             voice_application_service_factory = create_voice_application_service_factory()
