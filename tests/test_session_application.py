@@ -39,6 +39,24 @@ class SessionApplicationServiceTests(unittest.TestCase):
         self.publisher = _Publisher()
         self.service = SessionApplicationService(self.manager, self.chat, self.publisher)
 
+    def test_create_active_session_and_switch_activation_are_application_owned(self):
+        first = self.service.create_active_session("kira")
+        self.assertIs(self.manager.get_active_session(), first)
+
+        second = self.service.ensure_session(
+            "ren", {"name": "Ren"}, ensure_resources=lambda _session, _profile: None
+        )
+        self.assertTrue(self.service.activate_session(second.session_id))
+        self.assertIs(self.manager.get_active_session(), second)
+        self.assertEqual(first.status, "idle")
+        self.assertEqual(second.status, "active")
+
+    def test_dispose_releases_session_event_subscription(self):
+        self.assertIsNotNone(self.service._unsubscribe)
+        self.assertTrue(self.service.dispose())
+        self.assertIsNone(self.service._unsubscribe)
+        self.assertTrue(self.manager.is_disposed)
+
     def test_ensure_session_creates_runtime_session_and_binds_durable_conversation(self):
         resources = []
         session = self.service.ensure_session(
@@ -64,7 +82,6 @@ class SessionApplicationServiceTests(unittest.TestCase):
         self.assertIsNone(self.service.bind_conversation(missing))
 
     def test_state_transitions_are_published_as_application_events(self):
-        self.manager.subscribe(self.service.publish_state_change)
         session = self.manager.create_session("kira")
         self.manager.activate_session(session.session_id)
 
