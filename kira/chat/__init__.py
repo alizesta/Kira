@@ -73,6 +73,10 @@ from .search import (
     ChatSearchValidationError,
 )
 from .transfer import ChatTransfer, ImportPreview, ImportResult, TransferError, TransferRepository
+from .organization import (
+    ChatOrganizationService, Folder, OrganizationError, OrganizationFilter,
+    OrganizationRepository, OrganizationRepositoryError, OrganizationResult, Tag,
+)
 
 __all__ = [
     "CHAT_EVENT_TYPES",
@@ -135,4 +139,6 @@ __all__ = [
     "ChatSearchValidationError",
 
     "ChatTransfer", "ImportPreview", "ImportResult", "TransferError", "TransferRepository",
+    "ChatOrganizationService", "Folder", "OrganizationError", "OrganizationFilter",
+    "OrganizationRepository", "OrganizationRepositoryError", "OrganizationResult", "Tag",
 ]

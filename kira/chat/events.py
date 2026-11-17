@@ -40,6 +40,8 @@ class ChatEventType(str, Enum):
     COMMAND_DISPATCH_COMPLETED = "command_dispatch_completed"
     COMMAND_DISPATCH_FAILED = "command_dispatch_failed"
 
+    CONVERSATION_METADATA_UPDATED = "conversation_metadata_updated"
+
 
 CHAT_EVENT_TYPES = frozenset(item.value for item in ChatEventType)
 

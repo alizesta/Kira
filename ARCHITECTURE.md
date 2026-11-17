@@ -222,3 +222,13 @@ The migration reference is temporary. Its purpose is to preserve working behavio
 - Out-of-band task controls use a unique command request ID and retain the active chat request as `parent_request_id`; runtime Session identity and character-scoped ToolAgent identity are passed separately.
 - Command dispatch start/completion/failure notifications use the shared typed Chat Events publisher; the registry is cancelled by session and closed during application shutdown.
 - The complete command/handler contract, built-in command inventory, permission boundary and registration guide are documented in `docs/CHAT_COMMANDS.md`.
+
+
+## Chat Conversation Metadata & Organization (TASK 014)
+
+- `kira/chat/organization.py` owns conversation titles, tags, virtual folder assignments, favorites, categories, color/description, manual ordering and organization filters. It is Qt/UI independent and receives the existing ChatPersistence facade through a narrow repository protocol.
+- Organization data is namespaced under each conversation's existing metadata document. Existing metadata keys and message rows are preserved; no second database or SQL ownership is introduced. TASK 012's existing conversation-metadata transfer path carries the namespace unchanged.
+- Tags and folders are value-based. Empty taxonomy definitions are descriptors only until assigned; deleting a folder returns its conversations to the default `inbox`. This is an explicit limitation of the current per-conversation persistence contract.
+- Metadata notifications use the shared ChatEventPublisher event `conversation_metadata_updated`; observer failures do not undo a persisted update.
+- TASK 007 retains Session ownership, TASK 011 retains message search, and TASK 013 retains archive/restore/delete status. Organization never mutates message content or lifecycle status.
+- The persistence facade currently offers whole-document metadata updates, so concurrent external metadata writers and cross-conversation bulk deletion are not atomic. A future persistence-level patch/bulk contract is needed to close this gap.
