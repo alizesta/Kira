@@ -11,7 +11,7 @@
 
 ## 1. Executive architecture summary
 
-Kira is an incremental modularization of a PySide6 desktop application. The Python entry point is now thin and delegates startup to `kira.app.bootstrap`. Bootstrap is the composition root and constructs the dependency container, shared EventBus, typed Chat event publisher, ModuleManager, required service modules, SessionManager and Chat application-service factory. The actual desktop window and a large amount of application policy remain in `kira.oldmain.MainWindow`; the UI is therefore **not yet a thin presentation shell**.
+Kira is an incremental modularization of a PySide6 desktop application. The Python entry point is now thin and delegates startup to `kira.app.bootstrap`. Bootstrap is the composition root and constructs the dependency container, shared EventBus, typed Chat event publisher, ModuleManager, required service modules, SessionManager and Chat application-service factory. The production window now lives in `kira.ui.main_window.MainWindow` and its feature-oriented mixins under `kira/ui/main_window_*.py`. The legacy `kira/oldmain.py` file has been removed. The window is decomposed by UI capability, but substantial application policy and cross-feature orchestration still remain in those mixins; it is **not yet a thin presentation shell**.
 
 The Chat domain is the most clearly separated feature area. All fourteen Chat task modules are present on `new-main` after PR #48 merged TASK 013 and TASK 014 together. The Chat core services are designed to be Qt-free and communicate through injected contracts. Persistence remains the durable storage boundary. Runtime Session state is separate from durable Conversation state. The EventBus broadcasts notifications; it is not a general-purpose service-call router.
 
@@ -23,7 +23,7 @@ TASK 015 audited TASK 001–014 against `new-main` at `b5d386fac1423b1b0cd071994
 
 At the audit snapshot, TASK 013 and TASK 014 were PARTIAL because their branches had not yet reached `new-main`. They were subsequently integrated together by merged PR #48. The current `new-main` HEAD is the merge commit above, and the two modules and their shared event/public exports are present in the current tree. This is a post-audit integration delta; it does **not** rewrite the historical TASK 015 counts or constitute runtime acceptance.
 
-The original NOT READY FOR TESTING decision is retained as the audit result. The PR merge resolves its stated integration blocker, but MainWindow/oldmain migration debt and all runtime-only acceptance items remain. No testing is authorized by TASK 016.
+The original NOT READY FOR TESTING decision is retained as the audit result. The PR merge resolves its stated integration blocker, but MainWindow application-policy coupling debt and all runtime-only acceptance items remain. No testing is authorized by TASK 016.
 
 Status labels in this document:
 - **Implemented / statically present:** source and contracts exist in the inspected branch.
@@ -44,7 +44,7 @@ flowchart TD
     Boot --> Sessions["SessionManager"]
     Boot --> Factory["Chat service factory"]
     Factory --> ChatApp["ChatApplicationService"]
-    Boot --> Window["MainWindow in kira/oldmain.py"]
+    Boot --> Window["MainWindow in kira/ui/main_window.py + feature mixins"]
     Window --> ChatApp
     Window --> UI["kira/ui pages, components, dialogs, workers"]
     ChatApp --> ChatCore["Coordinator / Context / Response / Attachments / Commands"]
@@ -62,12 +62,12 @@ The diagram is a bounded view of the production startup and Chat composition. It
 
 | Element | Current responsibility | Status / boundary |
 |---|---|---|
-| `kira/main.py` | Exposes `main()`, imports and calls `run_application()`; retains lazy compatibility export of `MainWindow`. | Implemented thin entry point; compatibility export remains. |
+| `kira/main.py` | Exposes `main()`, imports and calls `run_application()`; retains a lazy compatibility export of `MainWindow` from `kira.ui.main_window`. | Implemented thin entry point; compatibility export remains. |
 | `kira/app/bootstrap.py` | Creates QApplication, dependency container, EventBus, ChatEventPublisher, ModuleManager, required services, SessionManager, Chat factory and MainWindow; connects shutdown. | Actual Composition Root. |
 | `kira/app/dependency_container.py` | Instance/factory registration, lazy resolution and unregister. | Implemented; explicit DI container, not proof that every dependency uses it. |
 | `kira/app/module_manager.py` | Module registration, dependency ordering, start/stop/enable/disable/unregister/dispose and failure isolation. | Implemented engine; feature registration is partial. |
 | `kira/app/event_bus.py` | In-process publish/subscribe notifications and typed event delivery support. | One shared application bus. |
-| `kira/oldmain.py` | Legacy MainWindow, UI event handling and substantial application policy/orchestration. | Active production window; migration debt. |
+| `kira/ui/main_window.py` + `main_window_*.py` | MainWindow composition plus feature-oriented UI behavior mixins. | Active production window; remaining policy/orchestration debt is explicit in the mixins. |
 
 Bootstrap currently registers required service modules for Memory, Mood, Characters and Chat History. It starts them before constructing the window, injects their resolved services and retains the container, bus, publisher, SessionManager and ModuleManager on the window for application lifetime. The Chat factory is created with the resolved Chat History persistence adapter and shared ChatEventPublisher.
 
@@ -85,7 +85,7 @@ Bootstrap currently registers required service modules for Memory, Mood, Charact
 | Coding Agent | `kira/auto_agent.py`, `kira/code_agent.py`, `kira/chat_code.py`, `kira/chat_code_ui.py` | Source capability exists; not a separately registered ModuleManager feature module. |
 | Web Research | `kira/webintel/*`, `kira/websearch.py`, discovery/search adapters | Source capability exists; policy and worker lifecycle remain coupled to the legacy application layer. |
 | Vision | `kira/vision_pipeline.py`, `kira/vision_ocr.py`, game detection/mode/audio modules | Source capability exists; not established as a separately injected Vision application service. |
-| UI | `kira/ui/pages`, `components`, `dialogs`, `workers.py`, `kira/oldmain.py` | Several pages/components/workers extracted; MainWindow remains a large UI/application adapter. |
+| UI | `kira/ui/pages`, `components`, `dialogs`, `workers.py`, `main_window.py` and feature mixins | Several pages/components/workers extracted; MainWindow remains a large UI/application adapter. |
 | Shared Skills | No first-party shared Skills module/contract was established by TASK 015's TASK 001–014 audit or the inspected `kira/` package tree on this base. | Do not claim shared installable Skills are delivered by these Chat tasks. Treat a separately merged Skills implementation as separate evidence. |
 
 ## 4. Chat architecture
@@ -169,7 +169,7 @@ This is static architecture evidence, not proof of isolation across concurrent K
 
 ## 7. MainWindow and legacy migration
 
-The actual production window is imported by bootstrap from `kira.oldmain.MainWindow`. `kira.main` is a thin entry point and exposes a lazy compatibility `MainWindow` export. Bootstrap is the Composition Root, but `oldmain.py` still imports and coordinates providers, tools, memory, mood, character profiles, voice, avatar/emotion, web search, vision/game behavior and UI workers/pages. Extracted page widgets and Chat core modules reduce coupling but do not make MainWindow presentation-only.
+The actual production window is imported by bootstrap from `kira.ui.main_window.MainWindow`. The 5,634-line legacy module has been removed after its 322 MainWindow methods were moved into eight feature-oriented mixins (session/navigation, voice settings, character settings, provider settings, window lifecycle, attachments/vision, Chat/Web Research, and runtime/voice). Shared imports and Qt relay support live in `main_window_support.py`. `kira.main` retains only a lazy compatibility export to the new UI package. This removes the `oldmain.py` runtime dependency and separates the window implementation into owned UI modules; it does not yet remove all application policy from the window mixins.
 
 Target boundary:
 1. `kira/main.py` remains a small entry point.
@@ -182,7 +182,7 @@ No code migration is part of TASK 016.
 
 ## 8. Technical debt and next steps
 
-See [ARCHITECTURE_ROADMAP.md](ARCHITECTURE_ROADMAP.md) for the prioritized debt register and evidence-based phases. The most important confirmed debt is the remaining MainWindow/oldmain policy coupling. The Organization persistence limitations are confirmed by its own contract documentation. Runtime isolation, concurrency, event delivery and lifecycle behavior are unverified, not confirmed defects.
+See [ARCHITECTURE_ROADMAP.md](ARCHITECTURE_ROADMAP.md) for the prioritized debt register and evidence-based phases. The most important confirmed debt is the remaining application-policy coupling inside MainWindow's feature mixins. The Organization persistence limitations are confirmed by its own contract documentation. Runtime isolation, concurrency, event delivery and lifecycle behavior are unverified, not confirmed defects.
 
 ## 9. Related documents
 
