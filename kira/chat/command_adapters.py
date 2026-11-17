@@ -63,7 +63,7 @@ def create_default_command_registry(
     def match_tool_task(text, context):
         if context.metadata.get("has_attachments") or not tool_agent.enabled():
             return None
-        if not tool_agent.planning_enabled() or tool_agent.tasks.active() is None:
+        if not tool_agent.planning_enabled() or tool_agent.tasks.active(context.session_id) is None:
             return None
         kind, payload = task_control_parser(text)
         return {"kind": kind, "payload": payload} if kind else None
@@ -87,7 +87,9 @@ def create_default_command_registry(
         return result if result is not None else NO_MATCH
 
     def execute_tool_task(context, arguments):
-        result = tool_agent.handle_task_command(context.request.raw_input)
+        result = tool_agent.handle_task_command(
+            context.request.raw_input, session_id=context.request.session_id,
+        )
         if result is not None:
             return result
         if arguments.get("kind") in ("resume", "change"):
