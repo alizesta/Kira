@@ -155,4 +155,11 @@ The audit found substantial implemented functionality across TASK 001–012, but
 - [ ] Local working tree state verified (not exposed by connected GitHub interface).
 - [ ] TASK 013 and TASK 014 integrated and their shared event contract reconciled.
 - [ ] TASK 010 production registry wiring corrected.
-- [ ] Audit PR created as Draft targeting `new-main`.
+- [x] Audit PR #47 created as Draft targeting `new-main`.
+
+
+## Audit PR
+- Draft PR: https://github.com/alizesta/Kira/pull/47
+- Base SHA: `b5d386fac1423b1b0cd07199426aef4f214e4d97`
+- Initial report commit: `7c1f06afc1d779ced3bbcbd6af23bb2e72065116`
+- The report checklist update is included in the current PR head; see the PR metadata for the final head SHA.
