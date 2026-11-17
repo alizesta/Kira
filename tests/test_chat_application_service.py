@@ -6,6 +6,8 @@ from kira.chat.application_service import (
     RequestStatus,
 )
 from kira.chat.response_handler import ProviderEvent
+from kira.app.event_bus import EventBus
+from kira.chat.events import ChatEventPublisher, ChatEventType
 
 
 class Signal:
@@ -366,6 +368,57 @@ class ChatApplicationServiceTests(unittest.TestCase):
         self.assertEqual(assistant_messages[0][3]["status"], "interrupted")
         self.assertTrue(assistant_messages[0][3]["metadata"]["interrupted"])
         self.assertTrue(assistant_messages[0][3]["metadata"]["application_shutdown"])
+
+    def test_event_publisher_observes_request_stream_persistence_and_completion(self):
+        bus = EventBus()
+        publisher = ChatEventPublisher(bus)
+        self.service.set_event_publisher(publisher)
+        received = []
+        event_types = (
+            ChatEventType.REQUEST_SUBMITTED,
+            ChatEventType.REQUEST_STARTED,
+            ChatEventType.STREAM_STARTED,
+            ChatEventType.STREAM_CHUNK_RECEIVED,
+            ChatEventType.STREAM_COMPLETED,
+            ChatEventType.MESSAGE_SAVED,
+            ChatEventType.REQUEST_COMPLETED,
+        )
+        for event_type in event_types:
+            publisher.subscribe(event_type, lambda event: received.append(event.event_type))
+
+        submission = self.service.submit_message("kira", "hello")
+        worker = self._start_provider(submission)
+        worker.chunk.emit("answer")
+        worker.finished_ok.emit({"text": "answer", "provider": "fake"})
+        outcome = self.service.complete_request(submission.request.request_id, "answer")
+
+        self.assertTrue(outcome.ok)
+        self.assertEqual(received, list(event_types))
+        self.assertTrue(all(event.session_id == "kira" for event in (
+            event for event in []
+        )))
+
+    def test_event_publisher_reports_persistence_failure(self):
+        bus = EventBus()
+        publisher = ChatEventPublisher(bus)
+        self.service.set_event_publisher(publisher)
+        received = []
+        publisher.subscribe(
+            ChatEventType.PERSISTENCE_FAILED,
+            lambda event: received.append(event),
+        )
+        self.persistence.result = False
+
+        outcome = self.service.persist_message(
+            "ren", "user", "not saved", request_id="failed-save",
+            status="complete", metadata={"source": "test"},
+        )
+
+        self.assertFalse(outcome.ok)
+        self.assertEqual(len(received), 1)
+        self.assertEqual(received[0].session_id, "ren")
+        self.assertEqual(received[0].request_id, "failed-save")
+        self.assertEqual(received[0].payload["operation"], "message_write")
 
     def test_service_is_qt_free(self):
         import ast
