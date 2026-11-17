@@ -191,7 +191,6 @@ class MainWindow(
         self._vision_session = None
         self._vision_last_note = ''
         self.game_audio_listener = None
-        self._game_audio_alerts = {}
         self._game_prev_mic = False
         self._game_prev_wake = False
         self.tool_agent = ToolAgent(self.settings, DATA_DIR, ROOT)      # Computer Awareness + Unified Tool System (kira/tools)
