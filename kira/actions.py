@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import webbrowser
 
@@ -21,9 +22,25 @@ ALIASES = {
 
 
 def match_safe_action(text):
-    """Return the existing desktop shortcut key without executing it."""
-    normalized = str(text or "").strip().lower()
-    return next((key for phrase, key in ALIASES.items() if phrase in normalized), None)
+    """Return a fixed shortcut only for an explicit, non-negated launch request."""
+    normalized = re.sub(r"\s+", " ", str(text or "").strip().lower())
+    if not normalized:
+        return None
+    if re.search(
+        r"\b(?:don't|do not|never|not)\b|\bno\b|"
+        r"نمی(?:خوام|خواهم)|نخواه|باز\s+نکن|اجرا\s+نکن|"
+        r"لغو|بی\s*خیال|بیخیال",
+        normalized,
+    ):
+        return None
+    key = next((value for phrase, value in ALIASES.items() if phrase in normalized), None)
+    if key is None:
+        return None
+    explicit_intent = bool(re.search(
+        r"\b(?:open|launch|run|start|bring\s+up)\b|باز\s*کن|اجرا\s*کن|روشن\s*کن",
+        normalized,
+    ))
+    return key if explicit_intent or normalized in ALIASES else None
 
 
 def run_safe_action(text, allow_desktop=True):
