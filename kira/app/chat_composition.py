@@ -18,6 +18,7 @@ def create_chat_application_service_factory(
     def create(window: Any) -> Any:
         from .. import brain
         from ..chat.application_service import ChatApplicationService
+        from ..chat.conversation_lifecycle import ConversationLifecycleService
         from ..personality import build_system_prompt
         from ..ui.workers import StreamWorker
 
@@ -31,6 +32,10 @@ def create_chat_application_service_factory(
             on_dispatch=window._dispatch_application_request,
             on_event=window._on_chat_application_event,
             event_publisher=event_publisher,
+            conversation_lifecycle=(
+                ConversationLifecycleService(persistence, event_publisher)
+                if event_publisher is not None else None
+            ),
             schedule=window._schedule_chat_callback,
             cancel_provider=window._cancel_application_provider,
         )
