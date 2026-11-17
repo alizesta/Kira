@@ -107,9 +107,9 @@ class AttachmentManager:
 
     @staticmethod
     def _sniff(data: bytes, extension: str) -> str:
-        if data.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        if data.startswith(b"\x89PNG\r\n\x1a\n"):
             return "image/png"
-        if data.startswith(b"\\xff\\xd8\\xff"):
+        if data.startswith(b"\xff\xd8\xff"):
             return "image/jpeg"
         if data.startswith((b"GIF87a", b"GIF89a")):
             return "image/gif"
@@ -119,7 +119,7 @@ class AttachmentManager:
             return "image/webp"
         if data.startswith(b"%PDF-"):
             return "application/pdf"
-        if data.startswith(b"PK\\x03\\x04"):
+        if data.startswith(b"PK\x03\x04"):
             if extension == ".docx":
                 try:
                     import io
@@ -129,7 +129,11 @@ class AttachmentManager:
                 except (OSError, zipfile.BadZipFile):
                     pass
             return "application/zip"
-        if b"\\x00" not in data[:4096]:
+        sample = data[:4096]
+        if sample.startswith((b"\xff\xfe", b"\xfe\xff")):
+            return "text/plain"
+        controls = sum(byte < 32 and byte not in (9, 10, 12, 13) for byte in sample)
+        if b"\x00" not in sample and (not sample or controls / len(sample) <= 0.01):
             return "text/plain"
         return "application/octet-stream"
 
@@ -261,7 +265,10 @@ class AttachmentManager:
             and (message_id is None or record.message_id == str(message_id))
         )
 
-    def prepare_content(\n        self, attachment_ids: list[str] | tuple[str, ...], *, session_id: str,\n        text: str = "", search: bool = False,\n    ) -> dict[str, Any]:
+    def prepare_content(
+        self, attachment_ids: list[str] | tuple[str, ...], *, session_id: str,
+        text: str = "", search: bool = False,
+    ) -> dict[str, Any]:
         self._ensure_open()
         prepared = []
         for attachment_id in attachment_ids:
