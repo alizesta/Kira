@@ -2,13 +2,12 @@
 
 import json
 import time
-import re
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QImage
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QFrame, QFileDialog, QSystemTrayIcon
 from ..config import save_settings
 from ..chat import attachments as att
-from ..game_audio import GameAudioListener, is_important_game_audio
+from ..game_audio import GameAudioListener
 from ..ui_widgets import AttachmentTile
 from ..game_mode import CAPTURE_JPEG_QUALITY
 from ..vision_pipeline import policy_for
