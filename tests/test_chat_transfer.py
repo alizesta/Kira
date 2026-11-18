@@ -31,8 +31,11 @@ class _MemoryFilePort:
     def __init__(self):
         self.files = {}
 
-    def read_bytes(self, source):
-        return self.files[Path(source)]
+    def read_bytes(self, source, *, max_bytes):
+        value = self.files[Path(source)]
+        if len(value) > max_bytes:
+            raise ValueError("file too large")
+        return value
 
     def write_bytes_atomically(self, directory, filename, content):
         path = Path(directory) / filename
