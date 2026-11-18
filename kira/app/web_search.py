@@ -192,6 +192,41 @@ class WebSearchApplicationService:
         }
 
     @staticmethod
+    def diagnose(
+        api_key: str,
+        depth: str,
+        probe: str,
+        gemini: tuple[str, str] | None = None,
+    ) -> Any:
+        """Run the configured-engine connectivity diagnostic outside the UI layer."""
+        return websearch.diagnose(api_key, depth, probe, gemini)
+
+    @staticmethod
+    def engine_label(engine: str | None) -> str:
+        """Return the presentation label for the engine that supplied search results."""
+        return websearch.ENGINE_NAMES.get(str(engine or ""), "وب")
+
+    @staticmethod
+    def format_evidence(result: Mapping[str, Any]) -> str:
+        """Format bounded source evidence for the Chat context."""
+        return websearch.format_block(dict(result))
+
+    @staticmethod
+    def failure_reply(reason: str) -> str:
+        """Create the explicit no-result response without asking the model to improvise."""
+        return websearch.failure_reply(reason)
+
+    @staticmethod
+    def parse_web_command(text: str) -> Any:
+        """Parse an explicit or automatic one-shot web command."""
+        return websearch.plan(str(text or ""))
+
+    @staticmethod
+    def parse_image_command(text: str) -> Any:
+        """Parse an explicit image-search command."""
+        return websearch.image_command(str(text or ""))
+
+    @staticmethod
     def assessment_text(assessment: Mapping[str, Any] | None) -> str:
         if not assessment or not assessment.get("phrase"):
             return ""
