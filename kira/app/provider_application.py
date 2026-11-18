@@ -31,6 +31,19 @@ class ProviderApplicationService:
         from ..ollama_client import OllamaClient
         return OllamaClient.from_settings(settings)
 
+    def create_ollama_client_from_values(
+        self, base_url, model, *, num_ctx, keep_alive, num_predict
+    ):
+        """Create the settings-dialog probe client without exposing the SDK to UI code."""
+        from ..ollama_client import OllamaClient
+        return OllamaClient(
+            base_url,
+            model,
+            num_ctx=num_ctx,
+            keep_alive=keep_alive,
+            num_predict=num_predict,
+        )
+
     def rebuild_session_routers(self, settings, sessions, previous_router=None):
         """Recreate per-character routers while preserving shared health and cooldown state."""
         sessions = tuple(sessions)
