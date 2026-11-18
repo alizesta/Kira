@@ -160,6 +160,7 @@ class ChatOrganizationService:
         identifier = str(conversation_id or "").strip()
         if not identifier or len(identifier) > 256:
             raise OrganizationError("conversation_id is invalid")
+        outcome = {"changed": False}
 
         def apply(record: dict[str, Any]) -> dict[str, Any]:
             owner = str(record.get("character_id") or "").strip().lower()
@@ -172,10 +173,16 @@ class ChatOrganizationService:
                 if isinstance(record.get("metadata"), dict)
                 else {}
             )
+            original_metadata = copy.deepcopy(metadata)
+            original_title = str(record.get("title") or "")
             organization = _organization(metadata)
             mutation(record, organization)
             metadata[ORGANIZATION_KEY] = _safe_value(organization)
             record["metadata"] = metadata
+            outcome["changed"] = (
+                metadata != original_metadata
+                or str(record.get("title") or "") != original_title
+            )
             return record
 
         try:
@@ -188,9 +195,12 @@ class ChatOrganizationService:
         except (OrganizationError, OrganizationRepositoryError):
             raise
         except Exception as exc:
+            if isinstance(exc.__cause__, OrganizationError):
+                raise exc.__cause__
             raise OrganizationRepositoryError(str(exc)) from exc
 
-        self._publish(record, _organization(record.get("metadata")))
+        if outcome["changed"]:
+            self._publish(record, _organization(record.get("metadata")))
         return record
 
     def rename_conversation(
@@ -395,6 +405,8 @@ class ChatOrganizationService:
         except (OrganizationError, OrganizationRepositoryError):
             raise
         except Exception as exc:
+            if isinstance(exc.__cause__, OrganizationError):
+                raise exc.__cause__
             raise OrganizationRepositoryError(str(exc)) from exc
 
         for conversation_id in changed_ids:
