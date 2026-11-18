@@ -2,7 +2,7 @@
 
 **Snapshot:** 2026-11-18  
 **Base:** `new-main` at `e027a87eded5837984609f0dbfe9d8f5f0ac5349`  
-**Scope:** TASK 001–019 and adjacent application capabilities. This register describes observed ownership, not desired ownership where implementation is absent.
+**Scope:** TASK 001–020 and adjacent application capabilities. This register describes observed ownership, not desired ownership where implementation is absent.
 
 ## 1. Ownership rules
 
@@ -60,6 +60,15 @@ The service is injected by Bootstrap into MainWindow. SearchWorker creation, sig
 
 Bootstrap injects the Voice factory into MainWindow. Speaker and Listener remain device/Qt adapters; MainWindow relays Qt signals and renders state. Local STT settings-page test listeners remain a separate, explicitly scoped UI test workflow.
 
+
+### 2.4 TASK 020 — MainWindow feature dependency boundaries
+
+| Task | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
+|---|---|---|---|---|
+| 020 | MainWindow feature dependencies — `kira/ui/main_window_*_support.py` | One scoped dependency module for each of the nine feature mixins (root, attachments/vision, character settings, chat, lifecycle, provider settings, runtime, session and voice settings) | Feature-owned application/domain modules, Qt adapters, workers and the shared support helpers | Imports from another feature mixin; a global wildcard dependency barrel |
+
+`main_window_support.py` is limited to SessionRelay, the front-only decorator, reaction loading and shared Qt signal/helper code. Feature support modules may import only this shared helper module, never another feature mixin or feature support module.
+
 ## 3. Cross-module API and dependency policy
 
 ### 3.1 Allowed high-level calls
@@ -115,7 +124,7 @@ The Chat core modules should depend on Python data contracts and narrow Protocol
 | Tools/coding agent | `tools/*`, `actions.py`, `auto_agent.py`, `code_agent.py`, `chat_code.py` | Existing tools/agent integration remains application/legacy-bound; Chat command contracts are separate. |
 | Web Research | `kira/app/web_search.py`, `webintel/*`, `websearch.py`, discovery adapters | WebSearchApplicationService owns credential/query/request/evidence policy; SearchWorker and result presentation remain UI adapters. |
 | Vision | `vision_pipeline.py`, `vision_ocr.py`, game detection/mode/audio | Capability code exists; dedicated application-service ownership not established by this audit. |
-| UI | `ui/main_window.py`, `ui/main_window_*.py`, `ui/pages`, `ui/components`, `ui/dialogs`, `ui/workers.py` | MainWindow is composed from eight feature-oriented mixins; cross-feature policy still remains in the window adapter. |
+| UI | `ui/main_window.py`, `ui/main_window_*.py`, `ui/main_window_*_support.py`, `ui/pages`, `ui/components`, `ui/dialogs`, `ui/workers.py` | MainWindow is composed from nine feature-oriented mixins, each with scoped dependencies. Shared support contains only common Qt relays/helpers; cross-feature policy remains in the feature adapters. |
 
 ## 6. Character scope
 
