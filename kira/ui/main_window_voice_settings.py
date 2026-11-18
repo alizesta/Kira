@@ -146,7 +146,7 @@ class VoiceSettingsController(WindowFeatureController):
             "num_ctx", "num_predict", "keep_alive", "conn_btn", "load_btn",
             "unload_btn", "speed_btn", "conn_lbl",
         ):
-            setattr(self, name, getattr(self.context.views.assistant_page, name))
+            setattr(self.context.views, name, getattr(self.context.views.assistant_page, name))
 
         self.context.views.assistant_page.test_connection_requested.connect(self.feature_controller("lifecycle").test_connection)
         self.context.views.assistant_page.load_model_requested.connect(self.feature_controller("lifecycle").load_local_model)
@@ -439,7 +439,7 @@ class VoiceSettingsController(WindowFeatureController):
 
         self._model_import_worker = TaskWorker(work)
         self._model_import_worker.done.connect(self.on_local_model_imported)
-        self._model_import_worker.finished.connect(lambda: setattr(self, "_model_import_worker", None))
+        self._model_import_worker.finished.connect(lambda: setattr(self.context.state, "_model_import_worker", None))
         self._model_import_worker.start()
 
     def on_local_model_imported(self, result):
@@ -463,7 +463,7 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.api_add_status.setText(f"✓ مدل «{model}» به Ollama اضافه شد.")
 
     def select_local_asr_model(self, index):
-        combo = getattr(self, "local_asr_model_list", None)
+        combo = getattr(self.context.views, "local_asr_model_list", None)
         if combo is None or index < 0:
             return
         value = str(combo.itemData(index) or "").strip()
@@ -475,7 +475,7 @@ class VoiceSettingsController(WindowFeatureController):
         self.refresh_local_voice_status()
 
     def select_local_tts_model(self, index):
-        combo = getattr(self, "local_tts_model_list", None)
+        combo = getattr(self.context.views, "local_tts_model_list", None)
         if combo is None or index < 0:
             return
         value = str(combo.itemData(index) or "").strip()
@@ -491,7 +491,7 @@ class VoiceSettingsController(WindowFeatureController):
             tts_model = str(self.context.services.settings.get("local_voice_tts_model") or "")
             discovered = local_voice.discover_cached_models()
 
-            asr_combo = getattr(self, "local_asr_model_list", None)
+            asr_combo = getattr(self.context.views, "local_asr_model_list", None)
             if asr_combo is not None:
                 asr_combo.blockSignals(True)
                 asr_combo.clear()
@@ -505,7 +505,7 @@ class VoiceSettingsController(WindowFeatureController):
                 asr_combo.setCurrentIndex(selected)
                 asr_combo.blockSignals(False)
 
-            tts_combo = getattr(self, "local_tts_model_list", None)
+            tts_combo = getattr(self.context.views, "local_tts_model_list", None)
             if tts_combo is not None:
                 tts_combo.blockSignals(True)
                 tts_combo.clear()
@@ -746,11 +746,11 @@ class VoiceSettingsController(WindowFeatureController):
     def show_voice_routes(self):
         """Open the local STT model controls in Connections."""
         self.feature_controller("session").go_tab(self.context.views.tab_keys.index("tab_ai"))
-        if hasattr(self, "local_model_tabs"):
+        if hasattr(self.context.views, "local_model_tabs"):
             self.context.views.local_model_tabs.setCurrentIndex(1)
 
     def set_route_view(self, index):
-        if hasattr(self, "local_model_tabs") and int(index) in (1, 2):
+        if hasattr(self.context.views, "local_model_tabs") and int(index) in (1, 2):
             self.context.views.local_model_tabs.setCurrentIndex(int(index))
 
     def on_voice_note(self, message):
