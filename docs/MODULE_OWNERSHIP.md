@@ -222,9 +222,10 @@ the registered services/factories, and injects them into MainWindow.
 `kira/ui/main_window_composition.py` is an outer Qt adapter assembler, not a
 fallback service locator. It rejects missing Bootstrap dependencies before
 building the window, does not import or instantiate application/service-layer
-implementations, and creates only presentation/device objects plus typed
-Chat/Voice callback ports. Chat, Session and Voice factories are supplied by
-Bootstrap because their concrete instances require window-scoped Qt callbacks.
+implementations, and creates presentation/device objects plus typed Chat/Voice callback ports.
+It invokes only the Chat/Session/Voice factories supplied by Bootstrap to create
+window-scoped application services that require those live Qt callback ports;
+it does not import or directly construct their implementations.
 
 The architecture regression suite `tests/test_composition_root_contract.py`
 guards the injection contract and prevents direct application-service construction
