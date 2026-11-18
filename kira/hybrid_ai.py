@@ -1115,7 +1115,6 @@ class HybridRouter:
         self._cancel.clear()
         self.last_attempts = []
         started = time.monotonic()
-        supported = False
         failures = []
         emit = on_event or (lambda event: None)
         try:
@@ -1137,7 +1136,6 @@ class HybridRouter:
                     if result is None:                         # this model/provider explicitly lacks native tool support
                         self._active = None
                         continue
-                    supported = True
                     elapsed = int((time.monotonic() - started) * 1000)
                     self._mark_success(route, elapsed)
                     active_model = getattr(provider, "active_model", None)
