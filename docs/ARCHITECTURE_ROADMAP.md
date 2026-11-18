@@ -263,14 +263,18 @@ Acceptance criteria:
 
 Initial candidates for evidence-based decisions (not automatic split instructions):
 
-| Module | Approx. lines | Initial review focus |
-|---|---:|---|
-| `kira/chat/persistence.py` | 1,604 | Repository boundary, SQLite recovery/migrations, pending writes and application-facing facade |
-| `kira/auto_agent.py` | 1,351 | Safe workspace operations, action execution, checkpoints and delivery workflow |
-| `kira/hybrid_ai.py` | 1,277 | Provider adapters versus route selection/failover; preserve provider contracts |
-| `kira/tools/audio.py` | 1,161 | Native OS audio adapter versus tool intent/reporting |
-| `kira/chat/application_service.py` | 1,090 | Request lifecycle versus attachment/command/history coordination |
-| `kira/evidence_memory.py` | 929 | Fact lifecycle, retrieval and optional embedding/index lifecycle |
-| `kira/ui/main_window_runtime.py` | 907 | Runtime UI controller responsibilities and resource ownership |
+| Module | Current lines (approx.) | Decision | Responsibility-based rationale |
+|---|---:|---|---|
+| `kira/chat/persistence.py` | 1,611 | **KEEP** | SQLite repository, recovery, migration, pending-write queue and its application-facing facade share transaction and durability invariants. Keep this capability together; the public facade is already a distinct class. |
+| `kira/auto_agent.py` | 1,435 | **KEEP** | Safe workspace access, action execution, bounded observations, checkpoints and delivery make one autonomous execution lifecycle. Splitting safety invariants across files would increase risk. |
+| `kira/hybrid_ai.py` | 1,310 | **DEFER** | Provider adapters and route/failover orchestration are distinct concepts, but provider contracts, shared error classification, token accounting and telemetry are intertwined. Map the stable adapter contract and test each provider before extraction. |
+| `kira/ui/main_window_provider_settings.py` | 1,148 | **KEEP** | Catalog refresh, provider credentials, model selection, route editing and benchmarks are one Provider Settings page/controller workflow. |
+| `kira/tools/audio.py` | 1,161 | **KEEP** | Device discovery, volume/session control and default-device changes use one fixed native Windows Audio bridge and common verification/safety policy. Do not split by individual command. |
+| `kira/chat/application_service.py` | 1,090 | **KEEP** | Request/session lifecycle, command dispatch, attachment ownership and history delegation form the public Chat application façade. Its helpers and collaborators already express the major boundaries. |
+| `kira/evidence_memory.py` | 945 | **KEEP** | Fact provenance, backfill, retrieval and optional vector indexing belong to one evidence-memory store lifecycle. |
+| `kira/ui/main_window_runtime.py` | 907 | **DEFER** | Chat response lifecycle, voice runtime and shutdown/resource drainage overlap through active-session state and Qt workers. Revisit only after runtime lifecycle tests identify an independently owned controller. |
+| `kira/webintel/engine.py` | 719 | **KEEP** | Search, safe page reading, research rounds, evidence analysis and report generation are one provider-neutral research pipeline. |
+| `kira/ui/main_window_composition.py` | 345 | **KEEP** | One production UI composition boundary; extracting smaller builders without independent lifecycle would add indirection. |
+| `kira/main.py` | 27 | **KEEP** | Correctly minimal entry point; no further reduction is useful. |
 
-This task is architectural quality work, not a file-splitting quota. `kira/main.py` (27 lines) is already appropriately small; `main_window_composition.py` and other composition/controller modules should remain cohesive when their current ownership is clear.
+**Current outcome:** no large file is split merely to satisfy a LOC threshold. The immediate decisions are KEEP for cohesive owners and DEFER for the two areas where extraction would cross shared contracts/lifecycle. A future SPLIT requires a concrete ownership boundary and focused regression coverage first.
