@@ -28,6 +28,12 @@ from ..domain.organization import (
     sanitize_metadata,
 )
 
+# Private normalization aliases retained for older integrations.
+_label = normalize_label
+_key = normalize_key
+_safe_value = sanitize_metadata
+_organization = organization_metadata
+
 __all__ = [
     "ChatOrganizationService",
     "DEFAULT_FOLDER_ID",
