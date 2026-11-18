@@ -52,6 +52,11 @@ class FeatureControllerRegistryTests(unittest.TestCase):
             ("closed", marker),
         )
 
+    def test_qt_event_owner_is_enforced(self):
+        registry = FeatureControllerRegistry({"session": self.second})
+        with self.assertRaises(ValueError):
+            registry.dispatch_event(object(), "session", "closeEvent", object())
+
     def test_missing_feature_attribute_raises_attribute_error(self):
         with self.assertRaises(AttributeError):
             self.registry.resolve("not_a_feature_method")
