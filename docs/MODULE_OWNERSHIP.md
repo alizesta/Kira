@@ -14,7 +14,7 @@
 6. Search owns message matching/ranking/pagination; Organization owns conversation metadata/filtering; Transfer owns serialization/import/export.
 7. UI may adapt inputs, signals and rendering, but must not become a second owner of domain rules.
 8. `kira/core` and `kira/domain` are inner layers: they must not import concrete application, UI, service, infrastructure or Qt modules.
-9. Application services and lifecycle adapters must depend on structural contracts from Core. `kira/ui/bootstrap.py` is the only application-layer composition point permitted to connect services to UI/Qt.
+9. Application services and lifecycle adapters must depend on structural contracts from Core. `kira/ui/bootstrap.py` is the only outer-layer composition point permitted to connect services to UI/Qt; `kira/app` remains toolkit-independent.
 10. `ApplicationModule` receives the `DependencyRegistry` and `ModuleEventBus` ports; concrete `DependencyContainer` and `EventBus` implementations remain in the outer application layer.
 
 ## 2. TASK 001–014 module register
