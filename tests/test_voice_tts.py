@@ -6,7 +6,7 @@ from unittest import mock
 from PySide6.QtMultimedia import QSoundEffect
 
 from kira.voice import Speaker
-from kira.main import MainWindow
+from kira.ui.main_window import MainWindow
 
 
 class LocalTtsPlaybackTests(unittest.TestCase):

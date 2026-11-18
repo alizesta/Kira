@@ -107,7 +107,8 @@ class BubbleSourceTests(unittest.TestCase):
     def test_bubble_and_tray_wiring_present(self):
         from pathlib import Path
         root = Path(__file__).resolve().parents[1] / "kira"
-        main = (root / "main.py").read_text(encoding="utf-8")
+        from tests.ui_helpers import main_window_source
+        main = main_window_source()
         comp = (root / "companion.py").read_text(encoding="utf-8")
         for needle in ("refresh_tray_menu", "tray_toggle_mic", "update_bubble", "bubble.commit_live", "تعویض مدل"):
             self.assertIn(needle, main)

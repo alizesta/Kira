@@ -57,7 +57,8 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.proj = Path(self.tmp.name)
         (self.proj / "app.py").write_text("def save():\n    return 1\n", encoding="utf-8")
-        from kira.main import MainWindow, STYLE
+        from kira.ui.main_window import MainWindow
+from kira.theme import STYLE
         APP.setStyleSheet(STYLE)
         self.win = MainWindow()
         self.win.show()
@@ -546,7 +547,7 @@ class ChatCodeGuiTests(unittest.TestCase):
 
     # ---- links
     def test_web_links_still_open_in_the_browser(self):
-        with mock.patch("kira.main.QDesktopServices.openUrl") as opened:
+        with mock.patch("PySide6.QtGui.QDesktopServices.openUrl") as opened:
             self.win.on_chat_link(QUrl("https://example.com/x"))
             opened.assert_called_once()
             self.win.on_chat_link(QUrl("file:///C:/Windows/system32/calc.exe"))

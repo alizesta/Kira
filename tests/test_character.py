@@ -1,3 +1,4 @@
+from tests.ui_helpers import main_window_files, package_source
 import tempfile
 import unittest
 from pathlib import Path
@@ -129,15 +130,16 @@ class RelationshipMemoryTests(unittest.TestCase):
 
 class MainWiringTests(unittest.TestCase):
     """main.py needs Qt (not importable in some environments), so the wiring is checked statically."""
-    SRC = (Path(__file__).resolve().parents[1] / "kira" / "main.py").read_text(encoding="utf-8")
+    SRC = package_source()
 
     def test_hooks_present(self):
-        for needle in ("mood.on_user_message(", "mood.on_reply(", "mood_block=mood_block", "persona_memory.maintain(",
+        for needle in ("mood.on_user_message(", "mood.on_reply(", "\"mood\": mood_block", "persona_memory.maintain(",
                        "class MemoryDialog", "mood.reset()", "persona_memory.forget_all()", "apply_mood_to_avatar"):
             self.assertIn(needle, self.SRC, needle)
 
     def test_syntax(self):
-        compile(self.SRC, "main.py", "exec")
+        for path in main_window_files():
+            compile(path.read_text(encoding="utf-8"), str(path), "exec")
 
 
 if __name__ == "__main__":

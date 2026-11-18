@@ -7,7 +7,9 @@ from types import SimpleNamespace
 
 from tests import helpers
 from kira.hybrid_ai import HybridRouter, ProgressBody
-from kira.main import MainWindow, SessionRelay, StreamWorker, VisionAnalysisWorker
+from kira.ui.main_window import MainWindow
+from kira.ui.main_window_support import SessionRelay
+from kira.ui.workers import StreamWorker, VisionAnalysisWorker
 
 
 class FakeRouter:

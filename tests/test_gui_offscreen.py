@@ -1,5 +1,6 @@
 """GUI tests run with Qt's *offscreen* platform: they prove the widgets, wiring and logic work, but they are
 NOT a substitute for opening the real program on Windows 11 (see README_FA, section 'تست روی ویندوز')."""
+from tests.ui_helpers import main_window_source, patch_ui
 import os
 import time
 import unittest
@@ -52,7 +53,8 @@ class GuiTests(unittest.TestCase):
             p.start()
         memory.init_db()
         memory.clear_memory()
-        from kira.main import MainWindow, STYLE
+        from kira.ui.main_window import MainWindow
+from kira.theme import STYLE
         APP.setStyleSheet(STYLE)
         self.win = MainWindow()
         self.win.show()
@@ -206,7 +208,7 @@ class GuiTests(unittest.TestCase):
         w.route_list.model().moveRow(QModelIndex(), ids().index("groq"), QModelIndex(), 1)            # then groq to second place
         APP.processEvents()
         w.apply_settings()
-        from kira.main import MainWindow
+        from kira.ui.main_window import MainWindow
         w2 = MainWindow()
         self.assertEqual(w2.settings["providers"]["cloudflare"]["account_id"], "acc999")
         self.assertEqual(w2.settings["provider_order"][:2], ["cloudflare", "groq"])
@@ -215,8 +217,8 @@ class GuiTests(unittest.TestCase):
         w2.close()
 
     def test_16d_save_failure_is_shown_not_silent(self):
-        with mock.patch("kira.main.save_settings", side_effect=OSError("disk full")), \
-                mock.patch("kira.main.QMessageBox.critical") as box:
+        with patch_ui("save_settings", side_effect=OSError("disk full")), \
+                mock.patch("PySide6.QtWidgets.QMessageBox.critical") as box:
             self.win.apply_settings()
         box.assert_called_once()
         self.assertIn("disk full", box.call_args[0][2])
@@ -340,7 +342,7 @@ class GuiTests(unittest.TestCase):
         w = self.win
         memory.add_message("user", "اسم من علی است")
         memory.add_message("assistant", "[happy]\nسلام علی، خوشحالم!")
-        from kira.main import MainWindow
+        from kira.ui.main_window import MainWindow
         w2 = MainWindow()
         text = w2.chat.toPlainText()
         self.assertIn("اسم من علی است", text)

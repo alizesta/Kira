@@ -1,4 +1,5 @@
 """API Manager: provider detection, validation, registration, migration, refresh, delete, priority. Pure logic, HTTP is mocked, test data only."""
+from tests.ui_helpers import package_source
 import json
 import unittest
 from copy import deepcopy
@@ -467,7 +468,7 @@ class UiSourceTests(unittest.TestCase):
     """The Qt page cannot run here; its source is checked for the required pieces and for the removed per-provider boxes."""
     def test_route_page_uses_the_api_manager(self):
         from pathlib import Path
-        src = (Path(__file__).resolve().parent.parent / "kira" / "main.py").read_text(encoding="utf-8")
+        src = package_source()
         for needle in ("Add API", "Registered APIs", "View Details", "Refresh / Rediscover Models", "Enable / Disable", "api_manager.detect",
                        "build_ollama_group", "def api_move", "def api_delete", "def api_edit"):
             self.assertIn(needle, src, needle)

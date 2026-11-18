@@ -288,7 +288,8 @@ class WindowPersistenceTests(IsolatedDb):
         self.win = self.open_window()
 
     def open_window(self):
-        from kira.main import MainWindow, STYLE
+        from kira.ui.main_window import MainWindow
+from kira.theme import STYLE
         APP.setStyleSheet(STYLE)
         w = MainWindow()
         w.show()
@@ -371,7 +372,7 @@ class WindowPersistenceTests(IsolatedDb):
     def test_clear_and_restore_buttons(self):
         w = self.win
         self.send(w, "پیام مهم", "پاسخ مهم")
-        with mock.patch("kira.main.QMessageBox.question", return_value=QMessageBox.Yes):
+        with mock.patch("PySide6.QtWidgets.QMessageBox.question", return_value=QMessageBox.Yes):
             w.clear_chat()
         self.assertEqual(memory.message_count(), 0)
         self.assertNotIn("پیام مهم", w.chat.toPlainText().replace("بازگرداندن", ""))
@@ -382,12 +383,12 @@ class WindowPersistenceTests(IsolatedDb):
     def test_clear_answer_no_deletes_nothing_and_failed_snapshot_blocks_clear(self):
         w = self.win
         self.send(w, "نگه دار", "باشه")
-        with mock.patch("kira.main.QMessageBox.question", return_value=QMessageBox.No):
+        with mock.patch("PySide6.QtWidgets.QMessageBox.question", return_value=QMessageBox.No):
             w.clear_chat()
         self.assertEqual(memory.message_count(), 2)
-        with mock.patch("kira.main.QMessageBox.question", return_value=QMessageBox.Yes), \
+        with mock.patch("PySide6.QtWidgets.QMessageBox.question", return_value=QMessageBox.Yes), \
                 mock.patch.object(memory.repository, "_snapshot", side_effect=OSError("no space")), \
-                mock.patch("kira.main.QMessageBox.warning") as warn:
+                mock.patch("PySide6.QtWidgets.QMessageBox.warning") as warn:
             w.clear_chat()
         warn.assert_called_once()
         self.assertEqual(memory.message_count(), 2)
@@ -427,7 +428,7 @@ class WindowPersistenceTests(IsolatedDb):
 
     def test_error_while_starting_a_request_never_leaves_the_window_busy(self):
         w = self.win
-        with mock.patch("kira.main.conversation_context", side_effect=RuntimeError("history exploded")):
+        with mock.patch.object(w.chat_application_service, "conversation_context", side_effect=RuntimeError("history exploded")):
             w.input.setText("hi")
             w.send_message()
         self.assertFalse(w.busy)

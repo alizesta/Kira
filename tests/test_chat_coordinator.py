@@ -1,5 +1,6 @@
 import ast
 import unittest
+from tests.ui_helpers import main_window_source, window_method_source
 from pathlib import Path
 
 from kira.chat.coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
@@ -134,13 +135,9 @@ class ChatCoordinatorTests(unittest.TestCase):
         self.assertEqual(sent, [request])
 
     def test_legacy_window_submission_delegates_queue_ownership(self):
-        root = Path(__file__).resolve().parents[1]
-        source = (root / "kira" / "oldmain.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        window = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "MainWindow")
-        methods = {node.name: node for node in window.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
-        submit_source = ast.get_source_segment(source, methods["submit"])
-        drain_source = ast.get_source_segment(source, methods["_send_next_pending"])
+        source = main_window_source()
+        submit_source = window_method_source("submit")
+        drain_source = window_method_source("_send_next_pending")
         self.assertIn("chat_application_service.submit_message", submit_source)
         self.assertNotIn("ChatCoordinator", source)
         self.assertIn("chat_application_service.dispatch_next", drain_source)
@@ -157,18 +154,12 @@ class ChatCoordinatorTests(unittest.TestCase):
         self.assertFalse(hasattr(first, "coordinator"))
 
     def test_provider_worker_construction_is_owned_by_coordinator_adapter(self):
-        root = Path(__file__).resolve().parents[1]
-        source = (root / "kira" / "oldmain.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        window = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "MainWindow")
-        methods = {node.name: node for node in window.body if isinstance(node, ast.FunctionDef)}
-        start_source = ast.get_source_segment(source, methods["start_worker"])
+        start_source = window_method_source("start_worker")
         self.assertIn("start_provider_request", start_source)
         self.assertNotIn("StreamWorker(", start_source)
 
     def test_legacy_pending_list_is_not_a_second_queue_owner(self):
-        root = Path(__file__).resolve().parents[1]
-        source = (root / "kira" / "oldmain.py").read_text(encoding="utf-8")
+        source = main_window_source()
         self.assertNotIn("self._pending", source)
 
     def test_coordinator_has_no_ui_or_storage_imports(self):

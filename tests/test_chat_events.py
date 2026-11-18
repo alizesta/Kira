@@ -43,6 +43,7 @@ class ChatEventContractTests(unittest.TestCase):
             "persistence_failed", "conversation_archived", "conversation_restored",
             "conversation_trashed", "conversation_restored_from_trash",
             "conversation_permanently_deleted", "conversation_metadata_updated",
+        "command_dispatch_started", "command_dispatch_completed", "command_dispatch_failed",
         })
 
 
@@ -323,7 +324,8 @@ class ChatEventWiringTests(unittest.TestCase):
             "message_saved", "persistence_failed",
         }.issubset(service_strings))
 
-        main_source = (root / "kira" / "oldmain.py").read_text(encoding="utf-8")
+        from tests.ui_helpers import package_source
+        main_source = package_source()
         main_tree = ast.parse(main_source)
         main_strings = {
             node.value for node in ast.walk(main_tree)
@@ -338,22 +340,13 @@ class ChatEventWiringTests(unittest.TestCase):
         from pathlib import Path
 
         source = (Path(__file__).resolve().parents[1] / "kira" / "chat" / "application_service.py").read_text(encoding="utf-8")
-        self.assertIn("self._attempt_to_request[attempt_id] = request_id", source)
+        self.assertIn("self._attempt_to_request[attempt_id] = state.request.request_id", source)
         self.assertIn("provider_request_id", source)
         self.assertIn("self._publish_request_submitted", source)
 
-        source = (Path(__file__).resolve().parents[1] / "kira" / "oldmain.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        main_window = next(
-            node for node in tree.body
-            if isinstance(node, ast.ClassDef) and node.name == "MainWindow"
-        )
-        methods = {
-            node.name: node for node in main_window.body
-            if isinstance(node, ast.FunctionDef)
-        }
-        send_next = ast.get_source_segment(source, methods["_send_next_pending"])
-        submit_for = ast.get_source_segment(source, methods["_submit_for"])
+        from tests.ui_helpers import window_method_source
+        send_next = window_method_source("_send_next_pending")
+        submit_for = window_method_source("_submit_for")
         self.assertIn("item=request", send_next)
         self.assertIn("self._dispatch_coordinated_request(session, request)", submit_for)
         self.assertNotIn("ChatRequest.create", submit_for)

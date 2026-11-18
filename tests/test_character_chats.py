@@ -174,7 +174,7 @@ class GuiSessionTests(IsolatedDb):
         for p in self.patches:
             p.start()
         memory.add_message("user", "پیام قدیمی رن", "ren")
-        from kira.main import MainWindow
+        from kira.ui.main_window import MainWindow
         self.win = MainWindow()
         self.win.show()
         APP.processEvents()

@@ -71,7 +71,8 @@ class RouteGuiTests(unittest.TestCase):
             p.start()
         memory.init_db()
         memory.clear_memory()
-        from kira.main import MainWindow, STYLE
+        from kira.ui.main_window import MainWindow
+from kira.theme import STYLE
         APP.setStyleSheet(STYLE)
         self.win = MainWindow()
         self.win.show()
@@ -181,7 +182,7 @@ class RouteGuiTests(unittest.TestCase):
     def test_badge_details_dialog(self):
         w = self.win
         self.cloud("groq")
-        with mock.patch("kira.main.QMessageBox.information") as box:
+        with mock.patch("PySide6.QtWidgets.QMessageBox.information") as box:
             w.show_route_details()
         text = box.call_args[0][2]
         for part in ("Groq", "openai/gpt-oss-120b", "Cloud", "Timeout"):
@@ -329,7 +330,7 @@ class RouteGuiTests(unittest.TestCase):
         r = route_model.find_route(saved, r2["id"])
         self.assertEqual((r["timeout"], r["enabled"]), (120, False))
         self.assertEqual(saved["providers"][pid]["base_url"], "http://localhost:1234/v1")
-        with mock.patch("kira.main.QMessageBox.question", return_value=__import__("PySide6.QtWidgets", fromlist=["QMessageBox"]).QMessageBox.Yes):
+        with mock.patch("PySide6.QtWidgets.QMessageBox.question", return_value=__import__("PySide6.QtWidgets", fromlist=["QMessageBox"]).QMessageBox.Yes):
             w.delete_selected_route()
             self.assertFalse(route_model.find_route(config.load_settings(), r2["id"]))
             w.remove_provider_ui(pid)
@@ -354,7 +355,7 @@ class RouteGuiTests(unittest.TestCase):
         APP.processEvents()
         self.assertEqual([r["id"] for r in route_model.get_routes(w.settings)][0], "mistral")
         self.assertEqual(config.load_settings()["provider_order"][0], "mistral")
-        from kira.main import MainWindow
+        from kira.ui.main_window import MainWindow
         w2 = MainWindow()
         self.assertEqual(w2.route_list.item(0).data(Qt.UserRole), "mistral")
         self.assertTrue(w2.route_list.item(0).text().startswith("1."))
@@ -409,7 +410,7 @@ class RouteGuiTests(unittest.TestCase):
         self.cloud("groq", ollama=True)
         QMB = __import__("PySide6.QtWidgets", fromlist=["QMessageBox"]).QMessageBox
         f = table({"groq": lambda: StreamResp(sse("x" * 30)), "11434": lambda: StreamResp(ndjson("hello"))})
-        with mock.patch("kira.main.QMessageBox.question", return_value=QMB.Yes) as q, mock.patch("requests.post", f):
+        with mock.patch("PySide6.QtWidgets.QMessageBox.question", return_value=QMB.Yes) as q, mock.patch("requests.post", f):
             w.run_benchmark(True)
             self.assertTrue(w.busy)
             self.assertTrue(pump(lambda: not w.busy))
@@ -420,7 +421,7 @@ class RouteGuiTests(unittest.TestCase):
         self.assertIn("tok/s", out)
         self.assertIn("سریع‌ترین اولین Token", out)
         self.assertEqual(len(f.calls), 2)
-        with mock.patch("kira.main.QMessageBox.question", return_value=QMB.No), mock.patch("requests.post", side_effect=AssertionError("declined")):
+        with mock.patch("PySide6.QtWidgets.QMessageBox.question", return_value=QMB.No), mock.patch("requests.post", side_effect=AssertionError("declined")):
             w.run_benchmark(True)
         self.assertFalse(w.busy)
 

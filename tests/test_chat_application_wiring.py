@@ -3,34 +3,27 @@ import ast
 import unittest
 from pathlib import Path
 
+from tests.ui_helpers import main_window_source, window_method_node
+
 
 ROOT = Path(__file__).resolve().parents[1]
-OLDMAIN = ROOT / "kira" / "oldmain.py"
 
 
 class ChatApplicationWiringTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.source = OLDMAIN.read_text(encoding="utf-8")
-        cls.tree = ast.parse(cls.source)
-        cls.main_window = next(
-            node for node in cls.tree.body
-            if isinstance(node, ast.ClassDef) and node.name == "MainWindow"
-        )
+        cls.source = main_window_source()
 
     def method(self, name):
-        return next(
-            node for node in self.main_window.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name
-        )
+        return window_method_node(name)
 
-    def test_main_window_passes_the_injected_history_service(self):
-        init = self.method("__init__")
+    def test_bootstrap_passes_the_injected_history_service(self):
+        bootstrap = ast.parse((ROOT / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8"))
         calls = [
-            node for node in ast.walk(init)
+            node for node in ast.walk(bootstrap)
             if isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
-            and node.func.id == "ChatApplicationService"
+            and node.func.id == "create_chat_application_service_factory"
         ]
         self.assertEqual(len(calls), 1)
         persistence = [kw.value for kw in calls[0].keywords if kw.arg == "persistence"]
@@ -41,12 +34,11 @@ class ChatApplicationWiringTests(unittest.TestCase):
     def test_bootstrap_injects_chat_service_factory_into_main_window(self):
         bootstrap = (ROOT / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8")
         composition = (ROOT / "kira" / "app" / "chat_composition.py").read_text(encoding="utf-8")
-        init = self.method("__init__")
         self.assertIn("chat_application_service_factory", bootstrap)
         self.assertIn("create_chat_application_service_factory", bootstrap)
-        self.assertIn("chat_application_service_factory(self)", self.source)
+        self.assertIn("chat_application_service_factory(create_chat_application_ports(self))", self.source)
         self.assertIn("ChatApplicationService", composition)
-        self.assertIn("window._dispatch_application_request", composition)
+        self.assertIn("_dispatch_application_request", composition + (ROOT / "kira" / "ui" / "application_adapters.py").read_text(encoding="utf-8"))
 
     def test_session_conversation_identity_flows_through_application_service(self):
         self.assertIn("self.chat_application_service.get_or_create_conversation(session.cid)", self.source)

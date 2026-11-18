@@ -1,4 +1,5 @@
 """Regression tests for the Active Mode + long-term memory fixes. Pure logic: no Qt, no network, test data only."""
+from tests.ui_helpers import main_window_source, patch_ui
 import tempfile
 import unittest
 from pathlib import Path
@@ -57,7 +58,7 @@ class PersianTaskTests(unittest.TestCase):
 class MainAttachmentDetectionTests(unittest.TestCase):
     """main.detect_mode needs Qt; its source is checked instead so the test runs everywhere."""
     def test_main_uses_structured_attachment_kinds(self):
-        src = (Path(__file__).resolve().parent.parent / "kira" / "main.py").read_text(encoding="utf-8")
+        src = main_window_source()
         self.assertIn("_turn_attach_kinds", src)
         body = src[src.index("def detect_mode"):src.index("def stop_generation")]
         self.assertIn("self._turn_attach_kinds", body)
