@@ -63,5 +63,22 @@ class EvidenceMemoryRecallTests(unittest.TestCase):
         self.assertTrue(any("Could not clear evidence memory" in line for line in captured.output))
 
 
+    def test_persona_item_deletion_propagates_evidence_store_failure(self):
+        with mock.patch.object(em, "_db", side_effect=RuntimeError("synthetic delete failure")):
+            with self.assertLogs("kira.evidence_memory", level="ERROR") as captured:
+                with self.assertRaisesRegex(RuntimeError, "synthetic delete failure"):
+                    em.delete_by_persona_id("persona-1")
+
+        self.assertTrue(any("Could not delete evidence" in line for line in captured.output))
+
+    def test_persona_item_update_does_not_replace_failed_lookup_with_note(self):
+        with mock.patch.object(em, "_db", side_effect=RuntimeError("synthetic lookup failure")):
+            with self.assertLogs("kira.evidence_memory", level="ERROR") as captured:
+                with self.assertRaisesRegex(RuntimeError, "synthetic lookup failure"):
+                    em.update_by_persona_id("old-id", "new-id", "updated memory")
+
+        self.assertTrue(any("Could not inspect evidence" in line for line in captured.output))
+
+
 if __name__ == "__main__":
     unittest.main()
