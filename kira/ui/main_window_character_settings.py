@@ -126,7 +126,7 @@ class CharacterSettingsController(WindowFeatureController):
             notes=notes,
         )
         self.apply_character_voice_settings()
-        self.save_now()
+        self.feature_controller("runtime").save_now()
 
     def apply_character_voice_settings(self):
         """Give the speaker an isolated settings snapshot for the active character."""
@@ -139,14 +139,14 @@ class CharacterSettingsController(WindowFeatureController):
         if not getattr(getattr(self, "character_page", None), "personality_sliders", None):
             return
         self.refresh_character_controls()
-        traits = self.character_traits(self.active_character().get("id", "kira")) or BASE_TRAITS
+        traits = self.feature_controller("session").character_traits(self.feature_controller("session").active_character().get("id", "kira")) or BASE_TRAITS
         for key, slider in self.character_page.personality_sliders.items():
             slider.blockSignals(True)
             slider.setValue(int(round(float(traits.get(key, BASE_TRAITS.get(key, 0.5))) * 100)))
             slider.blockSignals(False)
 
     def save_personality_profile(self, silent=False):
-        profile = self.active_character()
+        profile = self.feature_controller("session").active_character()
         cid = profile.get("id", "kira")
         traits = {key: slider.value() / 100.0 for key, slider in self.character_page.personality_sliders.items()}
         try:
@@ -161,12 +161,12 @@ class CharacterSettingsController(WindowFeatureController):
             self.save_character_settings(silent=True)
             self.refresh_personality_controls()
             if not silent:
-                self.save_now()
-                self.add_chat("system", self.t("character_traits_saved", name=profile.get("name", cid)))
+                self.feature_controller("runtime").save_now()
+                self.feature_controller("session").add_chat("system", self.feature_controller("session").t("character_traits_saved", name=profile.get("name", cid)))
             return True
         except Exception as exc:                            # noqa: BLE001
             if not silent:
-                QMessageBox.warning(self.window, self.t("character_error_title"), str(exc))
+                QMessageBox.warning(self.window, self.feature_controller("session").t("character_error_title"), str(exc))
             return False
 
     def refresh_character_choices(self):
@@ -191,7 +191,7 @@ class CharacterSettingsController(WindowFeatureController):
         if not hasattr(self.character_page, "character_theme_color_preview"):
             return
         cid = self.character_service.active_id(self.settings)
-        colour = self.theme_for_character(cid)["main"]
+        colour = self.feature_controller("session").theme_for_character(cid)["main"]
         self.character_page.character_theme_color_preview.setText(colour)
         self.character_page.character_theme_color_preview.setStyleSheet(
             f"QLabel {{ background: {colour}; color: white; border: 1px solid rgba(255,255,255,0.5); "
@@ -200,29 +200,29 @@ class CharacterSettingsController(WindowFeatureController):
 
     def choose_character_theme_color(self):
         cid = self.character_service.active_id(self.settings)
-        current = QColor(self.theme_for_character(cid)["main"])
+        current = QColor(self.feature_controller("session").theme_for_character(cid)["main"])
         selected = QColorDialog.getColor(current, self, "رنگ تم شخصیت")
         if not selected.isValid():
             return
         self.settings.setdefault("character_theme_colors", {})[cid] = selected.name()
         for session in self.sessions.values():
-            session.theme = self.theme_for_character(session.cid)
+            session.theme = self.feature_controller("session").theme_for_character(session.cid)
         self._refresh_character_theme_preview()
-        self.apply_chat_theme()
-        self.refresh_navigation_icons()
+        self.feature_controller("session").apply_chat_theme()
+        self.feature_controller("session").refresh_navigation_icons()
         self._refresh_icon_glow()
-        self.save_now()
+        self.feature_controller("runtime").save_now()
 
     def reset_character_theme_color(self):
         cid = self.character_service.active_id(self.settings)
         self.settings.setdefault("character_theme_colors", {}).pop(cid, None)
         for session in self.sessions.values():
-            session.theme = self.theme_for_character(session.cid)
+            session.theme = self.feature_controller("session").theme_for_character(session.cid)
         self._refresh_character_theme_preview()
-        self.apply_chat_theme()
-        self.refresh_navigation_icons()
+        self.feature_controller("session").apply_chat_theme()
+        self.feature_controller("session").refresh_navigation_icons()
         self._refresh_icon_glow()
-        self.save_now()
+        self.feature_controller("runtime").save_now()
 
     def refresh_character_card(self, character_id=None):
         profile = self.character_service.all_profiles(self.settings).get(character_id or self.character_service.active_id(self.settings), self.character_service.all_profiles(self.settings).get("kira", {}))
@@ -267,8 +267,8 @@ class CharacterSettingsController(WindowFeatureController):
         if not character_id:
             return
         if character_id != self.front.cid:
-            self.switch_session(character_id)         # the character list in Settings and the tabs on the chat page are the same switch
-            self.save_now()
+            self.feature_controller("session").switch_session(character_id)         # the character list in Settings and the tabs on the chat page are the same switch
+            self.feature_controller("runtime").save_now()
 
     def add_character(self):
         name, ok = QInputDialog.getText(self.window, "شخصیت جدید", "نام:")
@@ -284,9 +284,9 @@ class CharacterSettingsController(WindowFeatureController):
             self.settings, name, description, prompt
         )
         cid = profile["id"]
-        self.sync_sessions()                           # a new tab with its own conversation
-        self.switch_session(cid)
-        self.save_now()
+        self.feature_controller("session").sync_sessions()                           # a new tab with its own conversation
+        self.feature_controller("session").switch_session(cid)
+        self.feature_controller("runtime").save_now()
 
     def edit_character(self):
         cid = self.character_service.active_id(self.settings)
@@ -305,11 +305,11 @@ class CharacterSettingsController(WindowFeatureController):
         self.character_service.update_profile(
             self.settings, cid, name=name, description=description, prompt=prompt
         )
-        self.sync_sessions()
-        self.apply_chat_theme()
+        self.feature_controller("session").sync_sessions()
+        self.feature_controller("session").apply_chat_theme()
         self.refresh_character_choices()
         self.refresh_character_card(cid)
-        self.save_now()
+        self.feature_controller("runtime").save_now()
 
     def delete_character(self):
         cid = self.character_service.active_id(self.settings)
@@ -318,9 +318,9 @@ class CharacterSettingsController(WindowFeatureController):
         if QMessageBox.question(self.window, "حذف شخصیت", "این شخصیت حذف شود؟") != QMessageBox.Yes:
             return
         self.character_service.delete_profile(self.settings, cid)
-        self.sync_sessions()                           # its tab (and conversation view) goes away
-        self.switch_session("kira")
-        self.save_now()
+        self.feature_controller("session").sync_sessions()                           # its tab (and conversation view) goes away
+        self.feature_controller("session").switch_session("kira")
+        self.feature_controller("runtime").save_now()
 
     def build_appearance_tab(self):
         """Compose the independent appearance page and connect controller actions."""
@@ -397,13 +397,13 @@ class CharacterSettingsController(WindowFeatureController):
         if app is not None:
             app.setStyleSheet(build_style(current, appearance))
         if hasattr(self, "glow_effects"):
-            self.apply_chat_theme()
+            self.feature_controller("session").apply_chat_theme()
         self._refresh_icon_glow()
         self._apply_neon_glow_effects(appearance)
         winfx.apply_effect(self.winId(), current)
         self.appearance_page.set_background_color(color)
         if (previous == "off") != (current == "off") and previous != current and getattr(self, "isVisible", lambda: False)():
-            self.add_chat("system", "برای اعمال کامل حالت شیشه‌ای، برنامه را یک بار ببند و دوباره باز کن.")
+            self.feature_controller("session").add_chat("system", "برای اعمال کامل حالت شیشه‌ای، برنامه را یک بار ببند و دوباره باز کن.")
         if save:
             save_settings(self.settings)
 
@@ -412,7 +412,7 @@ class CharacterSettingsController(WindowFeatureController):
         appearance = appearance if isinstance(appearance, dict) else (self.settings.get("appearance") or {})
         intensity = max(0, min(100, int(appearance.get("glow", 58))))
         cid = self.character_service.active_id(self.settings)
-        palette = self.theme_for_character(cid, self.character_service.all_profiles(self.settings).get(cid, {}))
+        palette = self.feature_controller("session").theme_for_character(cid, self.character_service.all_profiles(self.settings).get(cid, {}))
         if not hasattr(self, "_neon_widget_effects"):
             self._neon_widget_effects = {}
 
@@ -444,7 +444,7 @@ class CharacterSettingsController(WindowFeatureController):
 
     def _refresh_icon_glow(self):
         cid = self.character_service.active_id(self.settings)
-        palette = self.theme_for_character(cid, self.character_service.all_profiles(self.settings).get(cid, {}))
+        palette = self.feature_controller("session").theme_for_character(cid, self.character_service.all_profiles(self.settings).get(cid, {}))
         for button in self.findChildren(QToolButton):
             name = button.property("kiraIconName")
             if not name:
@@ -478,9 +478,9 @@ class CharacterSettingsController(WindowFeatureController):
         subtabs.addTab(self.build_skills_tab(), "Skills")
         subtabs.addTab(self.build_help_tab(), "")
         self.general_subtabs = subtabs
-        self.reg(lambda text: subtabs.setTabText(0, text), "tab_preferences")
-        self.reg(lambda text: subtabs.setTabText(2, text), "tab_help")
-        self.tabs.addTab(self.page(subtabs), "")
+        self.feature_controller("session").reg(lambda text: subtabs.setTabText(0, text), "tab_preferences")
+        self.feature_controller("session").reg(lambda text: subtabs.setTabText(2, text), "tab_help")
+        self.tabs.addTab(self.feature_controller("session").page(subtabs), "")
 
     def build_skills_tab(self):
         """Compose the Skills page and adapt its intents to the application service."""
