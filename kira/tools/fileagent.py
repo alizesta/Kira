@@ -86,9 +86,9 @@ class Journal:
             except (OSError, ValueError):
                 _LOGGER.warning("Could not load file-operation journal: %s", self.path, exc_info=True)
 
-    def _save(self):
+    def _save(self) -> bool:
         if self.path is None:
-            return
+            return False
         with self._lock:
             tmp = None
             try:
@@ -104,11 +104,13 @@ class Journal:
                     os.fsync(stream.fileno())
                 os.replace(tmp, self.path)
                 tmp = None
+                return True
             except OSError:
                 # The filesystem operation has already happened when Journal.add()
                 # is called. Keep in-memory history and log the persistence failure
                 # rather than falsely reporting the file operation itself as failed.
                 _LOGGER.warning("Could not persist file-operation journal: %s", self.path, exc_info=True)
+                return False
             finally:
                 if tmp is not None:
                     try:
@@ -118,11 +120,11 @@ class Journal:
                     except OSError:
                         _LOGGER.debug("Could not remove temporary journal file: %s", tmp, exc_info=True)
 
-    def add(self, op: str, **fields):
+    def add(self, op: str, **fields) -> bool:
         with self._lock:
             self.items.append({"journal_id": uuid.uuid4().hex, "op": op, "ts": time.time(), **fields})
             self.items = self.items[-JOURNAL_KEEP:]
-            self._save()
+            return self._save()
 
     def last(self):
         with self._lock:
@@ -150,8 +152,7 @@ class Journal:
             if target is None or target.get("undone"):
                 return False
             target["undone"] = True
-            self._save()
-            return True
+            return self._save()
 
 
 def _count_tree(root: str):
@@ -184,8 +185,14 @@ def _count_tree(root: str):
 
 
 class FileAgent:
+    JOURNAL_WARNING = " هشدار: سابقه‌ی این عملیات روی دیسک ذخیره نشد؛ Undo پس از بسته‌شدن برنامه تضمین‌شده نیست."
+
     def __init__(self, policy: PathPolicy, journal: Journal):
         self.policy, self.journal = policy, journal
+
+    @classmethod
+    def _journal_note(cls, persisted: bool) -> str:
+        return "" if persisted else cls.JOURNAL_WARNING
 
     # ---------------------------------------------------------------- helpers
     def _new_target(self, folder: str, name: str, *, allow_exec=False) -> str:
@@ -212,8 +219,8 @@ class FileAgent:
         os.mkdir(target)
         if not os.path.isdir(target):
             raise ToolError("پوشه ساخته نشد.")
-        self.journal.add("mkdir", path=target)
-        return f"پوشه ساخته شد: {target}"
+        persisted = self.journal.add("mkdir", path=target)
+        return f"پوشه ساخته شد: {target}" + self._journal_note(persisted)
 
     def create_file(self, a: dict) -> str:
         parent, name = self._parent_and_name(a["path"])
@@ -226,8 +233,8 @@ class FileAgent:
             fh.write(data)
         if not os.path.isfile(target) or os.path.getsize(target) != len(data):
             raise ToolError("فایل ساخته نشد یا اندازه‌اش درست نیست.")
-        self.journal.add("create", path=target)
-        return f"فایل ساخته شد: {target} ({_fmt_size(len(data))})"
+        persisted = self.journal.add("create", path=target)
+        return f"فایل ساخته شد: {target} ({_fmt_size(len(data))})" + self._journal_note(persisted)
 
     def append_text(self, a: dict) -> str:
         path = self.policy.check(a["path"])
@@ -248,13 +255,13 @@ class FileAgent:
             fh.write(data)
         if os.path.getsize(path) != before + len(data):
             raise ToolError("اندازه‌ی فایل بعد از نوشتن درست نیست.")
-        self.journal.add("append", path=path, size_before=before)
-        return f"{_fmt_size(len(data))} به انتهای فایل اضافه شد: {path}"
+        persisted = self.journal.add("append", path=path, size_before=before)
+        return f"{_fmt_size(len(data))} به انتهای فایل اضافه شد: {path}" + self._journal_note(persisted)
 
     def copy_item(self, a: dict) -> str:
         src, target, note = self._copy(a)
-        self.journal.add("copy", source=src, path=target)
-        return f"کپی شد: {src} ← {target}{note}"
+        persisted = self.journal.add("copy", source=src, path=target)
+        return f"کپی شد: {src} ← {target}{note}" + self._journal_note(persisted)
 
     def _copy(self, a: dict):
         src = self.policy.check(a["source"])
@@ -295,8 +302,8 @@ class FileAgent:
         os.rename(src, target)
         if os.path.exists(src) or not os.path.exists(target):
             raise ToolError("تغییر نام انجام نشد.")
-        self.journal.add("rename", source=src, path=target)
-        return f"نام تغییر کرد: {os.path.basename(src)} ← {os.path.basename(target)} (در {os.path.dirname(target)})"
+        persisted = self.journal.add("rename", source=src, path=target)
+        return f"نام تغییر کرد: {os.path.basename(src)} ← {os.path.basename(target)} (در {os.path.dirname(target)})" + self._journal_note(persisted)
 
     # ---------------------------------------------------------------- level 3: replace / delete folder
     def precheck_write(self, a: dict) -> dict:
@@ -352,8 +359,8 @@ class FileAgent:
                 pass
         if not os.path.isfile(path) or os.path.getsize(path) != len(data):
             raise ToolError("اندازه‌ی فایل بعد از نوشتن درست نیست.")
-        self.journal.add("write", path=path, backup=backup)
-        return f"فایل نوشته شد: {path}" + (f" (پشتیبان: {backup})" if backup else "")
+        persisted = self.journal.add("write", path=path, backup=backup)
+        return f"فایل نوشته شد: {path}" + (f" (پشتیبان: {backup})" if backup else "") + self._journal_note(persisted)
 
     def precheck_delete_folder(self, a: dict) -> dict:
         path = self.policy.check(a["path"])
@@ -449,11 +456,12 @@ class FileAgent:
                 done.append(os.path.basename(p))
             except (ToolError, OSError, shutil.Error) as exc:
                 failed.append(f"{os.path.basename(p)}: {exc}")
+        journal_ok = True
         if moves:
-            self.journal.add("move_many", moves=moves)
+            journal_ok = self.journal.add("move_many", moves=moves) and journal_ok
         if copies:
-            self.journal.add("copy_many", paths=copies)
-        text = f"{len(done)} مورد انجام شد، {len(failed)} مورد ناموفق."
+            journal_ok = self.journal.add("copy_many", paths=copies) and journal_ok
+        text = f"{len(done)} مورد انجام شد، {len(failed)} مورد ناموفق." + self._journal_note(journal_ok)
         if failed:
             text += "\nناموفق‌ها:\n- " + "\n- ".join(failed[:10])
         if not done:
@@ -511,11 +519,10 @@ class FileAgent:
                     moves.append([src, dst])
                 else:
                     skipped += 1
-        if moves:
-            self.journal.add("organise", moves=moves, path=a["folder"])
+        journal_ok = self.journal.add("organise", moves=moves, path=a["folder"]) if moves else True
         if not moved:
             raise ToolError("هیچ فایلی جابه‌جا نشد.")
-        return f"{moved} فایل مرتب شد" + (f"؛ {skipped} مورد رد شد (هم‌نام موجود بود)" if skipped else "") + f". پوشه: {a['folder']}"
+        return f"{moved} فایل مرتب شد" + (f"؛ {skipped} مورد رد شد (هم‌نام موجود بود)" if skipped else "") + f". پوشه: {a['folder']}" + self._journal_note(journal_ok)
 
     # ---------------------------------------------------------------- undo
     def _undo_target(self):
@@ -554,8 +561,8 @@ class FileAgent:
                     continue
             if not back_ok:
                 raise ToolError("هیچ موردی برنگشت (جای قبلی‌ها پر است یا فایل‌ها جابه‌جا شده‌اند).")
-            self.journal.mark_undone(item)
-            return f"{back_ok} از {len(item['moves'])} مورد به جای قبلی برگشت."
+            persisted = self.journal.mark_undone(item)
+            return f"{back_ok} از {len(item['moves'])} مورد به جای قبلی برگشت." + self._journal_note(persisted)
         elif op == "copy_many":
             if sys.platform != "win32":
                 raise ToolError("انتقال به سطل بازیافت فقط روی ویندوز ممکن است.")
@@ -569,8 +576,8 @@ class FileAgent:
                     continue
             if not gone:
                 raise ToolError("هیچ نسخه‌ای برداشته نشد.")
-            self.journal.mark_undone(item)
-            return f"{gone} نسخه‌ی کپی‌شده به سطل بازیافت رفت."
+            persisted = self.journal.mark_undone(item)
+            return f"{gone} نسخه‌ی کپی‌شده به سطل بازیافت رفت." + self._journal_note(persisted)
         elif op == "mkdir":
             real = self.policy.check(path)
             os.rmdir(real)                                               # only an empty folder can go
@@ -599,8 +606,8 @@ class FileAgent:
             shutil.copy2(backup, real)
         else:
             raise ToolError("این نوع عملیات قابل برگرداندن نیست.")
-        self.journal.mark_undone(item)
-        return f"برگردانده شد ({op}): {path}"
+        persisted = self.journal.mark_undone(item)
+        return f"برگردانده شد ({op}): {path}" + self._journal_note(persisted)
 
 
 def register_file_agent(reg, policy: PathPolicy, data_dir=None) -> FileAgent:
