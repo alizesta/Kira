@@ -173,6 +173,10 @@ class InitiativeEngine:
         interaction = _finite_number(last_interaction)
         if interaction is None or interaction < 0 or interaction > current + FUTURE_CLOCK_SKEW_SECONDS:
             return {"eligible": False, "reason": "invalid_activity_time", "idle_seconds": 0.0}
+        # Zero means there is no recorded interaction timestamp, not that the user has
+        # been away since the Unix epoch. Unknown activity must never trigger a check-in.
+        if interaction == 0:
+            interaction = current
         idle = max(0.0, current - interaction)
 
         if not enabled or not app_active or quiet_hours or busy:
@@ -208,7 +212,7 @@ class InitiativeEngine:
         return sent_at
 
 
-def build_checkin_message(candidate, language="fa", max_topic_chars=130):
+def build_checkin_message(candidate, language="auto", max_topic_chars=130):
     """Create a brief, no-pressure check-in from the exact remembered quote; never invent details."""
     if not isinstance(candidate, dict) or candidate.get("kind") not in InitiativeEngine.CANDIDATE_KINDS:
         return ""
