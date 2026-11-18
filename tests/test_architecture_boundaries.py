@@ -93,7 +93,11 @@ class ArchitectureBoundaryTests(unittest.TestCase):
         violations = []
         for path in ui_paths:
             for imported in _imported_modules(path):
-                if _matches_prefix(imported, ("kira.websearch",)):
+                if (
+                    _matches_prefix(imported, ("kira.websearch",))
+                    or imported == "websearch"
+                    or imported.endswith(".websearch")
+                ):
                     violations.append(
                         f"{path.relative_to(ROOT)} imports {imported}"
                     )
