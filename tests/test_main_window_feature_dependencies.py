@@ -20,17 +20,12 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
         "main_window_voice_settings.py": "voice_settings",
     }
 
-    MAIN_WINDOW_BASES = [
-        "RuntimeMixin",
-        "ChatMixin",
-        "AttachmentsVisionMixin",
-        "LifecycleMixin",
-        "ProviderSettingsMixin",
-        "CharacterSettingsMixin",
-        "VoiceSettingsMixin",
-        "SessionMixin",
-        "QMainWindow",
-    ]
+    MAIN_WINDOW_BASES = ["QMainWindow"]
+    FEATURE_CONTROLLERS = (
+        "RuntimeController", "ChatController", "AttachmentsVisionController",
+        "LifecycleController", "ProviderSettingsController",
+        "CharacterSettingsController", "VoiceSettingsController", "SessionController",
+    )
 
     def test_each_feature_mixin_uses_its_scoped_dependency_module(self):
         for filename, feature in self.FEATURES.items():
@@ -49,7 +44,7 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
         self.assertIn("from .main_window_root_support import (", composition)
         self.assertNotIn("main_window_root_support", host)
 
-    def test_main_window_host_composes_all_eight_feature_mixins(self):
+    def test_main_window_shell_composes_all_eight_feature_controllers(self):
         source = (UI / "main_window.py").read_text(encoding="utf-8")
         tree = ast.parse(source, filename="main_window.py")
         main_window = next(
@@ -61,6 +56,9 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
             for node in main_window.bases
         ]
         self.assertEqual(bases, self.MAIN_WINDOW_BASES)
+        source_text = (UI / "main_window.py").read_text(encoding="utf-8")
+        for controller in self.FEATURE_CONTROLLERS:
+            self.assertIn(controller, source_text)
 
     def test_main_window_host_contains_no_feature_behavior(self):
         source = (UI / "main_window.py").read_text(encoding="utf-8")
@@ -73,7 +71,12 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
             node.name for node in main_window.body
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
-        self.assertEqual(methods, {"__init__", "listener", "_stopping_listener"})
+        self.assertEqual(methods, {
+            "__init__", "__getattr__", "_dispatch_qt_event",
+            "showEvent", "hideEvent", "changeEvent", "resizeEvent",
+            "closeEvent", "dragEnterEvent", "dropEvent",
+            "listener", "_stopping_listener",
+        })
 
     def test_shared_support_contains_only_cross_feature_helpers_and_relays(self):
         source = (UI / "main_window_support.py").read_text(encoding="utf-8")
