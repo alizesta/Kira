@@ -240,6 +240,27 @@ class VoiceApplicationServiceTests(unittest.TestCase):
 
         self.assertTrue(listener.muted)
 
+    def test_start_replaces_stale_deleted_listener_without_crashing(self):
+        class DeletedListener:
+            def isRunning(self):
+                raise RuntimeError("deleted")
+
+        self.service.stopping_listener = DeletedListener()
+        self.service.start_recording()
+        self.assertIsNotNone(self.service.listener)
+        self.assertIsNone(self.service.stopping_listener)
+        self.assertEqual(len(self.created), 1)
+
+    def test_listener_start_failure_does_not_leave_a_false_active_listener(self):
+        class BrokenListener(_Listener):
+            def start(self):
+                raise RuntimeError("device unavailable")
+
+        self.service.listener_factory = BrokenListener
+        with self.assertRaisesRegex(RuntimeError, "device unavailable"):
+            self.service.start_recording()
+        self.assertIsNone(self.service.listener)
+
     def test_stop_all_stops_both_microphone_and_speaker(self):
         self.service.start_recording()
         listener = self.created[0]
