@@ -80,7 +80,7 @@ class CharacterSettingsController(WindowFeatureController):
         cid = self.context.services.character_service.active_id(self.context.services.settings)
         initiative_settings = self.context.services.settings.get("character_initiative")
         initiative_enabled = (
-            bool(initiative_settings.get(cid, False))
+            initiative_settings.get(cid, False) is True
             if isinstance(initiative_settings, dict) else False
         )
         initiative_checkbox = self.context.views.character_page.initiative_chk
@@ -109,9 +109,16 @@ class CharacterSettingsController(WindowFeatureController):
         self.apply_character_voice_settings()
 
     def _flush_character_autosave(self):
-        timer = getattr(self, "_character_save_timer", None)
-        if timer is not None and timer.isActive():
-            timer.stop()
+        pending = False
+        page = getattr(self.context.views, "character_page", None)
+        for timer in (
+            getattr(page, "save_timer", None),
+            getattr(self, "_character_save_timer", None),
+        ):
+            if timer is not None and timer.isActive():
+                timer.stop()
+                pending = True
+        if pending:
             self.save_character_settings(silent=True)
 
     def save_character_settings(self, silent=False):
