@@ -505,7 +505,7 @@ class SessionController(WindowFeatureController):
             profile = self.context.services.character_service.all_profiles(settings).get(character_id) or {}
             traits = self.character_traits(character_id, profile)
             with mood.character_scope(character_id, traits):
-                emotional = mood.current()
+                emotional = mood.current(now=now)
             age = float(emotional.get("age", 0.0))
             if not math.isfinite(age) or age < 0:
                 return False
@@ -591,7 +591,7 @@ class SessionController(WindowFeatureController):
         if label is None or face_label is None:
             return
         self._sync_mood_character()
-        # The existing UI poll is the scheduler; RuntimeController throttles it to 30 seconds.
+        # The existing UI poll is the scheduler; this controller throttles it to 30 seconds.
         try:
             self.maybe_proactive_checkin()
         except Exception:                              # noqa: BLE001 - background initiative is optional
