@@ -722,7 +722,7 @@ def _vector_pass() -> None:
             for r, v in zip(rows, vectors):
                 con.execute("INSERT OR REPLACE INTO vectors(fact_id, model, dim, blob) VALUES (?,?,?,?)", (r["id"], cfg["tag"], len(v), _pack(v)))
     except Exception:                                                  # noqa: BLE001
-        pass
+        _log.debug("Optional evidence-memory vector backfill failed; lexical retrieval remains available", exc_info=True)
     finally:
         with _lock:
             _vector_job_running = False
