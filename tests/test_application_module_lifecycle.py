@@ -46,6 +46,10 @@ class ApplicationFeatureLifecycleTests(unittest.TestCase):
                 "mood_service",
                 "character_service",
                 "chat_history_service",
+                "conversation_lifecycle_service",
+                "conversation_organization_application_service",
+                "chat_search_application_service",
+                "chat_transfer_application_service",
                 "web_search_service",
                 "game_mode_application_service",
                 "provider_application_service",
@@ -71,7 +75,14 @@ class ApplicationFeatureLifecycleTests(unittest.TestCase):
 
     def test_feature_graph_declares_real_runtime_dependencies(self):
         self.assertEqual(APPLICATION_FEATURE_DEPENDENCIES["vision"], ("game_mode",))
-        self.assertEqual(APPLICATION_FEATURE_DEPENDENCIES["chat_application"], ("chat_history",))
+        self.assertEqual(APPLICATION_FEATURE_DEPENDENCIES["conversation_lifecycle"], ("chat_history",))
+        self.assertEqual(APPLICATION_FEATURE_DEPENDENCIES["conversation_organization"], ("chat_history",))
+        self.assertEqual(APPLICATION_FEATURE_DEPENDENCIES["chat_search"], ("chat_history",))
+        self.assertEqual(APPLICATION_FEATURE_DEPENDENCIES["chat_transfer"], ("chat_history",))
+        self.assertEqual(
+            APPLICATION_FEATURE_DEPENDENCIES["chat_application"],
+            ("chat_history", "conversation_lifecycle"),
+        )
         self.assertEqual(APPLICATION_FEATURE_DEPENDENCIES["session_application"], ("chat_application",))
 
 
