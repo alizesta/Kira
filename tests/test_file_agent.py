@@ -194,6 +194,25 @@ class FileAgentTests(unittest.TestCase):
         self.assertEqual(result.status, ERROR)
         self.assertFalse(target.exists())
 
+    def test_copy_rejects_executable_files_and_skips_them_in_folders(self):
+        executable = self.root / "payload.exe"
+        executable.write_bytes(b"MZ")
+        destination = self.root / "copies"
+        destination.mkdir()
+        denied = self.run_tool("copy_item", {"source": str(executable), "destination_folder": str(destination)})
+        self.assertEqual(denied.status, DENIED)
+        self.assertFalse((destination / "payload.exe").exists())
+
+        source = self.root / "mixed"
+        source.mkdir()
+        (source / "safe.txt").write_text("safe", encoding="utf-8")
+        (source / "payload.bat").write_text("dangerous", encoding="utf-8")
+        copied = self.run_tool("copy_item", {"source": str(source), "destination_folder": str(destination)})
+        self.assertEqual(copied.status, OK, copied.text)
+        self.assertTrue((destination / "mixed" / "safe.txt").exists())
+        self.assertFalse((destination / "mixed" / "payload.bat").exists())
+        self.assertIn("اجرایی رد شد", copied.text)
+
     def test_append_only_plain_text_and_write_replaces_with_backup(self):
         f = self.root / "n.txt"
         f.write_text("one")
