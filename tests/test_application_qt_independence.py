@@ -15,7 +15,7 @@ INNER_ROOTS = (
 QT_MODULE_PREFIXES = ("PySide", "PyQt")
 QT_RUNTIME_NAMES = {
     "QApplication", "QCoreApplication", "QWidget", "QMainWindow",
-    "QObject", "QThread", "QTimer", "Signal", "Slot",
+    "QObject", "QThread", "QTimer",
 }
 
 
