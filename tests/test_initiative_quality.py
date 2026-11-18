@@ -1,6 +1,9 @@
+import ast
 import math
 import unittest
 from datetime import datetime, time as datetime_time, timedelta
+from pathlib import Path
+from types import SimpleNamespace
 
 from kira.character.initiative import (
     DAY,
@@ -8,6 +11,7 @@ from kira.character.initiative import (
     InitiativeEngine,
     build_checkin_message,
     initiative_history_state,
+    sessions_are_idle,
     _event_not_before,
 )
 
@@ -128,12 +132,31 @@ class InitiativeCandidateTests(unittest.TestCase):
         self.assertEqual(_event_not_before("he said \"جلسه سه روز دیگر است\"", created), three_days_end)
         self.assertEqual(_event_not_before("he said \"جلسه ۳ روز آینده است\"", created), three_days_end)
 
-    def test_relative_weekday_and_weekend_dates_do_not_fire_at_week_start(self):
-        created = datetime(2026, 11, 19, 10, 30).timestamp()
+    def test_weekday_and_weekend_dates_are_deferred_to_their_actual_calendar_day(self):
+        created = datetime(2026, 11, 19, 10, 30).timestamp()  # Thursday
         date = datetime.fromtimestamp(created).date()
-        expected = datetime.combine(date + timedelta(days=8), datetime_time.min).timestamp()
-        self.assertEqual(_event_not_before("he said \"The interview is next week\"", created), expected)
-        self.assertEqual(_event_not_before("he said \"آخر هفته امتحان دارم\"", created), expected)
+        next_week_end = datetime.combine(date + timedelta(days=8), datetime_time.min).timestamp()
+        friday_end = datetime.combine(date + timedelta(days=2), datetime_time.min).timestamp()
+        sunday_end = datetime.combine(date + timedelta(days=4), datetime_time.min).timestamp()
+        next_friday_end = datetime.combine(date + timedelta(days=9), datetime_time.min).timestamp()
+        self.assertEqual(_event_not_before("The interview is next week", created), next_week_end)
+        self.assertEqual(_event_not_before("The interview is this Friday", created), friday_end)
+        self.assertEqual(_event_not_before("The interview is next Friday", created), next_friday_end)
+        self.assertEqual(_event_not_before("پنجشنبه هفته بعد امتحان دارم", created), next_friday_end - DAY)
+        self.assertEqual(_event_not_before("آخر هفته امتحان دارم", created), friday_end)
+        self.assertEqual(_event_not_before("The event is this weekend", created), sunday_end)
+
+    def test_subday_durations_wait_until_after_the_expected_event(self):
+        created = datetime(2026, 11, 19, 10, 30).timestamp()
+        self.assertEqual(_event_not_before('he said "I have an exam in two hours"', created), created + 3 * 3600)
+        self.assertEqual(_event_not_before('he said "دو ساعت دیگه جلسه دارم"', created), created + 3 * 3600)
+        self.assertEqual(_event_not_before('he said "I have a call in 30 minutes"', created), created + 90 * 60)
+
+    def test_clock_time_without_a_date_fails_closed(self):
+        created = datetime(2026, 11, 19, 10, 30).timestamp()
+        self.assertTrue(math.isinf(_event_not_before('he said "My appointment is at 5pm"', created)))
+        self.assertTrue(math.isinf(_event_not_before('he said "قرار ساعت پنج عصر دارم"', created)))
+        self.assertNotEqual(_event_not_before('he said "My appointment is tomorrow at 5pm"', created), float("inf"))
 
     def test_next_month_boundary_handles_november_and_december_rollover(self):
         november = datetime(2026, 11, 19, 10, 30).timestamp()
@@ -314,6 +337,48 @@ class InitiativeHistoryTests(unittest.TestCase):
         )
         self.assertEqual(state["sent_today"], 0)
         self.assertIn("yesterday", state["excluded_ids"])
+
+    def test_same_memory_sent_at_two_different_times_counts_as_two_checkins(self):
+        now = 20 * DAY
+        first = now - 100
+        second = now - 50
+        state = initiative_history_state(
+            [
+                {"at": first, "memory_id": "same-memory"},
+                {"at": second, "memory_id": "same-memory"},
+            ],
+            [
+                {"name": "proactive_check_in", "at": first, "detail": "same-memory"},
+                {"name": "proactive_check_in", "at": second, "detail": "same-memory"},
+            ],
+            last_memory_id="same-memory",
+            last_sent_at=second,
+            now=now,
+        )
+        self.assertEqual(state["sent_today"], 2)
+        self.assertEqual(state["excluded_ids"], {"same-memory"})
+
+
+class InitiativeSessionGuardTests(unittest.TestCase):
+    def test_every_character_session_must_be_idle_and_have_no_draft(self):
+        self.assertTrue(sessions_are_idle([SimpleNamespace(busy=False, draft="")]))
+        self.assertFalse(sessions_are_idle([
+            SimpleNamespace(busy=False, draft=""),
+            SimpleNamespace(busy=True, draft=""),
+        ]))
+        self.assertFalse(sessions_are_idle([
+            SimpleNamespace(busy=False, draft=""),
+            SimpleNamespace(busy=False, draft="  unsent draft  "),
+        ]))
+        self.assertFalse(sessions_are_idle(None))
+
+    def test_session_controller_imports_math_used_by_idle_guard(self):
+        source = Path(__file__).resolve().parents[1] / "kira" / "ui" / "main_window_session.py"
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        self.assertTrue(any(
+            isinstance(node, ast.Import) and any(alias.name == "math" for alias in node.names)
+            for node in tree.body
+        ))
 
 
 class InitiativeMessageTests(unittest.TestCase):
