@@ -59,11 +59,12 @@ class ChatTransferFileAdapterTests(unittest.TestCase):
         self.assertEqual([p.name for p in self.root.iterdir() if p.name.startswith(".kira-transfer-")], [])
 
     def test_write_bytes_rejects_unsafe_filenames(self):
-        unsafe_filenames = ("", "../outside.json", "nested/file.json", r"nested\file.json", ".hidden.json", "..")
+        outside_name = f"{self.root.name}-outside.json"
+        unsafe_filenames = ("", f"../{outside_name}", "nested/file.json", r"nested\file.json", ".hidden.json", "..")
         for filename in unsafe_filenames:
             with self.subTest(filename=filename), self.assertRaises(ValueError):
                 self.adapter.write_bytes_atomically(self.root, filename, b"{}")
-        self.assertFalse((self.root.parent / "outside.json").exists())
+        self.assertFalse((self.root.parent / outside_name).exists())
 
     def test_write_bytes_requires_existing_directory_and_bytes(self):
         with self.assertRaises(FileNotFoundError):
