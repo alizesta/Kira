@@ -260,7 +260,7 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
         from .persian_ezafe import add_persian_ezafe
         clean = add_persian_ezafe(clean)
     except Exception:
-        pass
+        logger.exception("Persian ezafe preprocessing failed; synthesizing the original text")
 
     selected = str(model_path or "").strip()
     speed = max(0.5, min(1.5, 1.0 + float(rate or 0) / 100.0))

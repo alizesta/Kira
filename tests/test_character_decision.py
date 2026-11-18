@@ -2,13 +2,10 @@ import unittest
 from unittest import mock
 
 from kira import mood
-from unittest import mock
-
 from kira.character.decision import BASE_TRAITS, BEHAVIOUR_GUIDES, DecisionEngine, decide as decide_character
 from kira.character.initiative import InitiativeEngine
 from kira.character.learning import detect_feedback
 from kira.personas import CHARACTERS
-from kira import mood
 
 
 class CharacterDecisionTests(unittest.TestCase):
