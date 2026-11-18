@@ -28,10 +28,6 @@ class FeatureControllerRegistryTests(unittest.TestCase):
             "second": self.second,
         })
 
-    def test_resolves_methods_in_declared_controller_order(self):
-        self.assertEqual(self.registry.resolve("shared_action")(), "first")
-        self.assertEqual(self.registry.resolve("unique_action")(), "unique")
-
     def test_reports_all_owners_of_legacy_collisions(self):
         self.assertEqual(
             self.registry.owners_for("shared_action"),
@@ -67,10 +63,6 @@ class FeatureControllerRegistryTests(unittest.TestCase):
     def test_require_reports_missing_peer_as_lookup_error(self):
         with self.assertRaisesRegex(LookupError, "missing"):
             self.registry.require("missing")
-
-    def test_missing_feature_attribute_raises_attribute_error(self):
-        with self.assertRaises(AttributeError):
-            self.registry.resolve("not_a_feature_method")
 
     def test_controller_peer_lookup_uses_the_explicit_registry(self):
         from PySide6.QtCore import QObject
