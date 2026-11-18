@@ -49,7 +49,7 @@ from .window_feature_controller import WindowFeatureController
 class SessionController(WindowFeatureController):
     @property
     def _attach_worker(self):
-        controller = getattr(self, "attachment_controller", None)
+        controller = getattr(self.context.adapters, "chat_attachment_controller", None)
         return controller.worker if controller is not None else None
 
     def t(self, key, **kw):
@@ -80,7 +80,7 @@ class SessionController(WindowFeatureController):
             self.context.views.assistant_page.retranslate()
         if hasattr(self, "preferences_page"):
             self.context.views.preferences_page.retranslate()
-        if hasattr(self, "voice_page"):
+        if hasattr(self.context.views, "voice_page"):
             self.context.views.voice_page.retranslate()
         if hasattr(self, "appearance_page"):
             self.context.views.appearance_page.retranslate()
@@ -160,7 +160,7 @@ class SessionController(WindowFeatureController):
 
     def active_character(self):
         """Full profile of the character in front. Kira keeps her canonical identity (the profiles list only carries UI data)."""
-        cid = getattr(getattr(self, "cur", None), "cid", "") or self.context.services.character_service.active_id(self.context.services.settings)
+        cid = getattr(getattr(self.context.state, "cur", None), "cid", "") or self.context.services.character_service.active_id(self.context.services.settings)
         if cid == "kira":
             profile = dict(KIRA_PROFILE)
         else:
@@ -181,7 +181,7 @@ class SessionController(WindowFeatureController):
 
     def _sync_mood_character(self):
         """Refresh one character's baseline traits without changing the visible/default Mood context."""
-        cid = getattr(getattr(self, "cur", None), "cid", "") or self.context.services.character_service.active_id(self.context.services.settings)
+        cid = getattr(getattr(self.context.state, "cur", None), "cid", "") or self.context.services.character_service.active_id(self.context.services.settings)
         profile = self.context.services.character_service.all_profiles(self.context.services.settings).get(cid) or {}
         try:
             self.context.services.mood_service.set_character_traits(cid, self.character_traits(cid, profile))
@@ -239,8 +239,8 @@ class SessionController(WindowFeatureController):
             profiles,
             ensure_resources=self._ensure_session_ui_resources,
             restore_history=self._restore_session_history,
-            vision_session=getattr(self, "_vision_session", None),
-            vision_worker=getattr(self, "_vision_worker", None),
+            vision_session=getattr(self.context.session, "_vision_session", None),
+            vision_worker=getattr(self.context.session, "_vision_worker", None),
         )
         while self.context.views.char_tabs_row.count():
             self.context.views.char_tabs_row.takeAt(0)
@@ -258,8 +258,8 @@ class SessionController(WindowFeatureController):
     def _session_has_pending_chat_work(self, session):
         return self.context.services.session_application_service.has_pending_work(
             session,
-            vision_session=getattr(self, "_vision_session", None),
-            vision_worker=getattr(self, "_vision_worker", None),
+            vision_session=getattr(self.context.session, "_vision_session", None),
+            vision_worker=getattr(self.context.session, "_vision_worker", None),
         )
 
     def _dispose_chat_session(self, session):
@@ -298,8 +298,8 @@ class SessionController(WindowFeatureController):
             self.context.views.char_tabs_row.removeWidget(button)
             self.context.views.char_tab_group.removeButton(button)
             button.deleteLater()
-        if getattr(self, "_vision_session", None) is session:
-            vision_worker = getattr(self, "_vision_worker", None)
+        if getattr(self.context.session, "_vision_session", None) is session:
+            vision_worker = getattr(self.context.session, "_vision_worker", None)
             if vision_worker is not None:
                 try:
                     vision_worker.deleteLater()
@@ -307,7 +307,7 @@ class SessionController(WindowFeatureController):
                     pass
                 self.context.session._vision_worker = None
             self.context.session._vision_session = None
-        if not getattr(self, "_closing", False) and (self.context.state.front is session or self.context.state.cur is session):
+        if not getattr(self.context.state, "_closing", False) and (self.context.state.front is session or self.context.state.cur is session):
             fallback = next(
                 (item for item in self.context.services.session_manager.list_sessions()
                  if item is not session and item.status not in ("closing", "closed", "failed")),
@@ -387,7 +387,7 @@ class SessionController(WindowFeatureController):
     def apply_chat_theme(self):
         """Glass + neon colours of the chat in front (same glass, the character's own colours)."""
         theme = self.context.state.front.theme or self.theme_for_character(self.context.state.front.cid)
-        self.context.views.chat_page.setStyleSheet(theme_mod.character_style(theme, getattr(self, "_effect", "off"), self.context.services.settings.get("appearance", {})))
+        self.context.views.chat_page.setStyleSheet(theme_mod.character_style(theme, getattr(self.context.state, "_effect", "off"), self.context.services.settings.get("appearance", {})))
         r, g, b = (int(theme["main"].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
         for glow in self.context.views.glow_effects:
             appearance = self.context.services.settings.get("appearance", {})
@@ -444,15 +444,15 @@ class SessionController(WindowFeatureController):
         footer = self.chat_actions_html(kind, text)
         with bubble_accent(self.accent()):
             self.context.session.view.append(message_html(kind, name, text, ui_dir, extra, footer))
-        if getattr(self, "bubble", None) is not None:
+        if getattr(self.context.adapters, "bubble", None) is not None:
             self.context.adapters.bubble.push(kind, name, text, ui_dir)
         bar = self.context.session.view.verticalScrollBar()
         bar.setValue(bar.maximum())
 
     def update_mood_indicator(self):
         """Render the active character's current emotion as a custom neon face; chat-message emoji are untouched."""
-        label = getattr(self, "mood_indicator", None)
-        face_label = getattr(self, "mood_emotion_icon", None)
+        label = getattr(self.context.views, "mood_indicator", None)
+        face_label = getattr(self.context.views, "mood_emotion_icon", None)
         if label is None or face_label is None:
             return
         self._sync_mood_character()
@@ -503,7 +503,7 @@ class SessionController(WindowFeatureController):
                 "QLabel#moodEmotionIcon { background: rgba(12, 20, 43, 0.96); "
                 f"border: 1px solid {neon}; border-radius: 11px; padding: 2px; }}"
             )
-            glow = getattr(self, "_mood_emotion_glow", None)
+            glow = getattr(self.context.state, "_mood_emotion_glow", None)
             if glow is not None:
                 glow_colour = QColor(neon)
                 glow_colour.setAlpha(215)
@@ -636,12 +636,12 @@ class SessionController(WindowFeatureController):
         for index, button in enumerate(getattr(self, "nav_buttons", [])):
             button.setChecked(i == self.context.state._nav_icon_map[index][1])
         self.context.views.save_btn.setVisible(i != 0)            # the chat page needs no Save button
-        if hasattr(self, "voice_page") and i == self.context.views.tab_keys.index("tab_voice"):
+        if hasattr(self.context.views, "voice_page") and i == self.context.views.tab_keys.index("tab_voice"):
             self.feature_controller("voice_settings").refresh_voice_caps()               # Refresh local-only speech status
 
     def resizeEvent(self, event):
         self.qt_super_event("resizeEvent", event)
-        card = getattr(self, "avatar_card", None)
+        card = getattr(self.context.views, "avatar_card", None)
         if card is not None:                         # narrow window: give the whole width to the conversation
             card.setVisible(self.window.width() >= 640)
             card.setFixedWidth(max(200, min(300, int(self.window.width() * 0.30))))
@@ -721,19 +721,18 @@ class SessionController(WindowFeatureController):
         for button, (name, _tab_index) in zip(getattr(self, "nav_buttons", []), getattr(self, "_nav_icon_map", [])):
             button.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
                                      checked=palette["main"], disabled="#52617B"))
-        menu_button = getattr(self, "menu_btn", None)
+        menu_button = getattr(self.context.views, "menu_btn", None)
         if menu_button is not None:
             menu_button.setIcon(make_icon("menu", normal=palette["second"], hover="#FFFFFF",
                                           checked=palette["main"], disabled="#52617B"))
         for action, (name, _tab_index) in zip(getattr(self, "_menu_actions", []), getattr(self, "_nav_icon_map", [])):
             action.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
                                      checked=palette["main"], disabled="#52617B"))
-        badge = getattr(self, "route_badge", None)
+        badge = getattr(self.context.views, "route_badge", None)
         if badge is not None:
             badge.setIcon(make_icon("chevron_up", normal=palette["second"], hover="#FFFFFF",
                                     checked=palette["main"], disabled="#52617B"))
-        if hasattr(self, "_refresh_icon_glow"):
-            self.feature_controller("character_settings")._refresh_icon_glow()
+        self.feature_controller("character_settings")._refresh_icon_glow()
 
 
 # Backward-compatible import name for callers migrating from mixin composition.
