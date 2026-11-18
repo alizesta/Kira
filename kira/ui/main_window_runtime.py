@@ -24,7 +24,10 @@ from .main_window_runtime_support import (
 )
 
 
-class RuntimeMixin:
+from .window_feature_controller import WindowFeatureController
+
+
+class RuntimeMixin(WindowFeatureController):
     def _check_chat_command_permission(self, command, _request):
         reason = self.game_mode_application_service.command_denial_reason(
             self._game_mode_profile, command.required_permissions
