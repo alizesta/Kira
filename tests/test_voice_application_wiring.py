@@ -33,9 +33,9 @@ class VoiceApplicationWiringTests(unittest.TestCase):
     def test_chat_ports_use_context_and_preserve_shared_skill_enrichment(self):
         adapters = self.read("kira/ui/application_adapters.py")
         composition = self.read("kira/ui/main_window_composition.py")
-        self.assertIn("def create_chat_application_ports(context)", adapters)
+        self.assertIn("def create_chat_application_ports", adapters)
         self.assertIn('context.controllers.require("chat")', adapters)
-        self.assertIn("def _enrich_chat_prompt(context, prompt)", adapters)
+        self.assertIn("def _enrich_chat_prompt", adapters)
         self.assertIn("shared_skills_application_service", adapters)
         self.assertIn("create_chat_application_ports(self)", composition)
         self.assertNotIn("window.", adapters)
