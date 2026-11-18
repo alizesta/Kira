@@ -79,7 +79,7 @@ class FileTools:
             roots = [r for r in self.policy.root_labels() if os.path.isdir(r)]
         if not roots:
             raise ToolError("هیچ پوشه‌ی مجازی برای جست‌وجو پیدا نشد.")
-        started, scanned, hidden, stopped_early = time.monotonic(), 0, 0, None
+        started, scanned, hidden, scan_errors, stopped_early = time.monotonic(), 0, 0, 0, None
         now, hits, seen_dirs = time.time(), [], set()
 
         def match(entry_name: str, st) -> bool:
@@ -104,9 +104,11 @@ class FileTools:
             try:
                 it = os.scandir(folder)
             except OSError:
+                scan_errors += 1
                 continue
-            with it:
-                for entry in it:
+            try:
+                with it:
+                    for entry in it:
                     scanned += 1
                     if scanned > SEARCH_SCAN_LIMIT:
                         stopped_early = "تعداد موارد بررسی‌شده به سقف رسید"
@@ -126,9 +128,13 @@ class FileTools:
                             continue
                         st = entry.stat(follow_symlinks=False)
                     except OSError:
+                        scan_errors += 1
                         continue
                     if match(entry.name, st):
                         hits.append((st.st_mtime, entry.path, st.st_size))
+            except OSError:
+                # scandir can fail while advancing the iterator, not only at open.
+                scan_errors += 1
         hits.sort(reverse=True)
         lines = [f"{len(hits)} فایل پیدا شد" + (f" (بیشتر از {limit} مورد؛ {limit} تای جدیدتر نشان داده می‌شود)" if len(hits) > limit else "")
                  + f" · {scanned} مورد بررسی شد."]
@@ -138,6 +144,10 @@ class FileTools:
             lines[0] = f"فایلی با این مشخصات پیدا نشد ({scanned} مورد در پوشه‌های مجاز بررسی شد)."
         if stopped_early:
             lines.append(f"توجه: جست‌وجو ناقص ماند ({stopped_early}). ممکن است فایل‌های بیشتری وجود داشته باشند؛ با folder مشخص‌تر دوباره بگرد.")
+        if scan_errors:
+            lines.append(
+                f"توجه: دسترسی یا خواندن {scan_errors} پوشه/مورد ناموفق بود؛ نتایج ممکن است ناقص باشند."
+            )
         if hidden:
             lines.append(f"{hidden} مورد با نام شبیه اطلاعات محرمانه عمداً نشان داده نشد.")
         lines.append("پوشه‌های جست‌وجوشده: " + "؛ ".join(roots))
