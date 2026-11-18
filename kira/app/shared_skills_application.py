@@ -53,6 +53,12 @@ class SharedSkillsApplicationService:
         self._ensure_available()
         return skill_id in self._skills.enabled_for(self._settings, character_id)
 
+    def is_globally_enabled(self, skill_id: str) -> bool:
+        self._ensure_available()
+        bucket = self._settings.get(SharedSkillService.SETTINGS_KEY, {})
+        enabled = bucket.get("enabled", []) if isinstance(bucket, Mapping) else []
+        return skill_id in enabled if isinstance(enabled, (list, tuple, set)) else False
+
     def install(self, source: str | Path) -> SkillManifest:
         self._ensure_available()
         return self._skills.install(source)
