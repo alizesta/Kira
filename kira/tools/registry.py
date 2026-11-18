@@ -122,8 +122,11 @@ def _coerce(param: Param, value: Any) -> Any:
     if param.type == "integer":
         if isinstance(value, bool):
             raise ValueError("باید عدد صحیح باشد")
+        raw = str(value).strip()
+        if len(raw) > 64:
+            raise ValueError("ورودی عددی بیش از حد طولانی است")
         try:
-            number = Decimal(str(value).strip())
+            number = Decimal(raw)
         except (InvalidOperation, ValueError):
             raise ValueError("باید عدد صحیح باشد")
         if not number.is_finite() or number != number.to_integral_value():
@@ -132,8 +135,11 @@ def _coerce(param: Param, value: Any) -> Any:
             raise ValueError("عدد صحیح بیرون از محدوده‌ی ۶۴ بیتی است")
         return int(number)
     if param.type == "number":
+        raw = str(value).strip()
+        if len(raw) > 128:
+            raise ValueError("ورودی عددی بیش از حد طولانی است")
         try:
-            number = float(str(value).strip())
+            number = float(raw)
         except (ValueError, TypeError) as exc:
             raise ValueError("باید عدد باشد") from exc
         if not math.isfinite(number):
