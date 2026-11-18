@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import shutil
 import subprocess
 import sys
@@ -235,31 +236,100 @@ class HttpClient(_Base):
         return h
 
     def _post(self, payload: dict, timeout: float, want_id=None):
-        req = urllib.request.Request(self.cfg["url"], data=json.dumps(payload).encode("utf-8"), headers=self._headers(), method="POST")
+        req = urllib.request.Request(
+            self.cfg["url"],
+            data=json.dumps(payload).encode("utf-8"),
+            headers=self._headers(),
+            method="POST",
+        )
+        timeout = max(0.01, float(timeout))
+        started = time.monotonic()
+        stop = threading.Event()
+        result_queue: queue.Queue = queue.Queue(maxsize=1)
+        response_lock = threading.Lock()
+        active = {"response": None}
+
+        def perform_request():
+            outcome = None
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    with response_lock:
+                        active["response"] = resp
+                    if stop.is_set():
+                        return
+                    sid = resp.headers.get("Mcp-Session-Id")
+                    if sid:
+                        self.session_id = sid
+                    if want_id is None:
+                        outcome = (True, None)
+                    else:
+                        ctype = (resp.headers.get("Content-Type") or "").lower()
+                        if "text/event-stream" in ctype:
+                            consumed = 0
+                            for raw in iter(lambda: resp.readline(MAX_LINE + 1), b""):
+                                if stop.is_set():
+                                    raise McpError("request exceeded its total deadline")
+                                consumed += len(raw)
+                                if consumed > MAX_LINE:
+                                    raise McpError("event stream exceeded the response size limit")
+                                line = raw.decode("utf-8", "replace").strip()
+                                if not line.startswith("data:"):
+                                    continue
+                                try:
+                                    msg = json.loads(line[5:].strip())
+                                except ValueError:
+                                    continue
+                                if isinstance(msg, dict) and msg.get("id") == want_id and "method" not in msg:
+                                    outcome = (True, msg)
+                                    break
+                            if outcome is None:
+                                outcome = (False, McpError("the server ended the stream without an answer"))
+                        else:
+                            raw = resp.read(MAX_LINE + 1)
+                            if len(raw) > MAX_LINE:
+                                raise McpError("response exceeded the size limit")
+                            outcome = (True, json.loads(raw.decode("utf-8", "replace")))
+            except urllib.error.HTTPError as exc:
+                outcome = (False, McpError(f"HTTP {exc.code}"))
+            except urllib.error.URLError as exc:
+                outcome = (False, McpError(f"connection failed: {exc}"))
+            except McpError as exc:
+                outcome = (False, exc)
+            except (OSError, ValueError, TypeError) as exc:
+                outcome = (False, McpError(f"connection or response failed: {type(exc).__name__}"))
+            except Exception as exc:                              # noqa: BLE001 - malformed transports must not strand the caller
+                outcome = (False, McpError(f"unexpected transport failure: {type(exc).__name__}"))
+            finally:
+                with response_lock:
+                    active["response"] = None
+                if outcome is not None:
+                    try:
+                        result_queue.put_nowait(outcome)
+                    except queue.Full:
+                        pass
+
+        worker = threading.Thread(
+            target=perform_request,
+            daemon=True,
+            name="kira-mcp-http-request",
+        )
+        worker.start()
+        remaining = max(0.0, timeout - (time.monotonic() - started))
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                sid = resp.headers.get("Mcp-Session-Id")
-                if sid:
-                    self.session_id = sid
-                if want_id is None:
-                    return None
-                ctype = (resp.headers.get("Content-Type") or "").lower()
-                if "text/event-stream" in ctype:
-                    for raw in resp:
-                        line = raw.decode("utf-8", "replace").strip()
-                        if line.startswith("data:"):
-                            try:
-                                msg = json.loads(line[5:].strip())
-                            except ValueError:
-                                continue
-                            if isinstance(msg, dict) and msg.get("id") == want_id and "method" not in msg:
-                                return msg
-                    raise McpError("the server ended the stream without an answer")
-                return json.loads(resp.read(MAX_LINE).decode("utf-8", "replace"))
-        except urllib.error.HTTPError as exc:
-            raise McpError(f"HTTP {exc.code}") from exc
-        except (urllib.error.URLError, OSError, ValueError) as exc:
-            raise McpError(f"connection failed: {exc}") from exc
+            ok, value = result_queue.get(timeout=remaining)
+        except queue.Empty as exc:
+            stop.set()
+            with response_lock:
+                resp = active["response"]
+            if resp is not None:
+                try:
+                    resp.close()
+                except Exception:
+                    pass
+            raise McpError(f"request exceeded its total deadline of {timeout:g} s") from exc
+        if not ok:
+            raise value
+        return value
 
     def request(self, method, params, timeout):
         rid = self._next_id()
