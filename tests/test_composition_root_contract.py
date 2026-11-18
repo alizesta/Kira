@@ -38,6 +38,7 @@ class CompositionRootContractTests(unittest.TestCase):
             "game_mode_application_service", "settings", "tool_agent",
             "provider_application_service", "coding_agent_application_service",
             "vision_application_service", "runtime_settings_application_service",
+            "shared_skills_application_service",
         }.issubset(keys))
 
     def test_ui_composition_does_not_construct_application_services(self):
@@ -84,6 +85,24 @@ class CompositionRootContractTests(unittest.TestCase):
         keywords = {item.arg for item in initialize_calls[0].keywords}
         self.assertIn("tool_agent", keywords)
         self.assertIn("session_manager", keywords)
+
+    def test_shared_skills_is_registered_and_injected_from_bootstrap(self):
+        modules = parse("kira/app/feature_modules.py")
+        bootstrap = parse("kira/ui/bootstrap.py")
+        composition = parse("kira/ui/main_window_composition.py")
+        strings = {
+            node.value for node in ast.walk(modules)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
+        self.assertIn("shared_skills_application_service", strings)
+        self.assertIn(
+            "shared_skills_application_service",
+            {node.arg for node in ast.walk(bootstrap) if isinstance(node, ast.keyword)},
+        )
+        self.assertIn(
+            "shared_skills_application_service",
+            {node.arg for node in ast.walk(composition) if isinstance(node, ast.arg)},
+        )
 
 
 if __name__ == "__main__":
