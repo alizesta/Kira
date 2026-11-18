@@ -68,6 +68,17 @@ def _after_local_day(created_at, days_after_today):
         return float(created_at) + (max(0, int(days_after_today)) + 1) * DAY
 
 
+def _after_current_month(created_at):
+    """First local midnight after the current calendar month has fully elapsed."""
+    try:
+        local_created = datetime.fromtimestamp(float(created_at))
+        year = local_created.year + (1 if local_created.month == 12 else 0)
+        month = 1 if local_created.month == 12 else local_created.month + 1
+        return datetime(year, month, 1).timestamp()
+    except (OverflowError, OSError, TypeError, ValueError):
+        return float("inf")
+
+
 def _after_next_month(created_at):
     """First local midnight after the next calendar month has fully elapsed."""
     try:
@@ -79,7 +90,7 @@ def _after_next_month(created_at):
             following_month = ((following_month - 1) % 12) + 1
         return datetime(following_year, following_month, 1).timestamp()
     except (OverflowError, OSError, TypeError, ValueError):
-        return float(created_at) + 32 * DAY
+        return float("inf")
 
 
 _NUMBER_WORDS = {
@@ -126,14 +137,23 @@ def _weekday_offsets(value, created_at):
         "friday": 4, "saturday": 5, "sunday": 6,
     }
     english_pattern = re.compile(
-        r"\b(?:(next|this|on)\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+        r"\b(?:(next|this|on|last|previous)\s+)?"
+        r"(monday|tuesday|wednesday|thursday|friday|saturday|sunday)"
+        r"(?:\s+(next\s+week|this\s+week))?\b",
         re.I,
     )
     for match in english_pattern.finditer(value):
         qualifier = str(match.group(1) or "").lower()
+        suffix = str(match.group(3) or "").lower()
         target = english_days[match.group(2).lower()]
         offset = (target - current_date.weekday()) % 7
-        if qualifier == "next":
+        if qualifier in ("last", "previous"):
+            offset = 0
+        elif qualifier == "next":
+            offset += 7
+        elif qualifier == "this" and target < current_date.weekday():
+            offset = 0
+        if suffix == "next week":
             offset += 7
         offsets.append(offset)
 
@@ -142,18 +162,23 @@ def _weekday_offsets(value, created_at):
         "سه شنبه": 1, "چهارشنبه": 2, "پنجشنبه": 3, "جمعه": 4,
     }
     persian_pattern = re.compile(
-        r"(?<![آ-ی])(?P<day>یک\s*شنبه|دو\s*شنبه|سه\s*شنبه|چهارشنبه|پنجشنبه|جمعه|شنبه)"
-        r"(?P<qual>\s*(?:هفته\s*بعد|بعد|آینده))?"
+        r"(?<![آ-ی])(?:(?:این|همین)\s*)?"
+        r"(?P<day>یک\s*شنبه|دو\s*شنبه|سه\s*شنبه|چهارشنبه|پنجشنبه|جمعه|شنبه)"
+        r"(?P<qual>\s*(?:هفته\s*بعد|بعد|آینده|گذشته|قبل))?"
     )
     for match in persian_pattern.finditer(value):
         day = re.sub(r"\s+", " ", match.group("day"))
         target = persian_days[day]
         qualifier = str(match.group("qual") or "").strip()
         offset = (target - current_date.weekday()) % 7
-        if "هفته" in qualifier or qualifier == "بعد":
+        if qualifier in ("گذشته", "قبل"):
+            offset = 0
+        elif "هفته" in qualifier or qualifier == "بعد":
             offset += 7
         elif qualifier == "آینده" and offset == 0:
             offset = 7
+        elif match.group(0).startswith(("این", "همین")) and target < current_date.weekday():
+            offset = 0
         offsets.append(offset)
     return offsets
 
@@ -311,13 +336,19 @@ def _event_not_before(text, created_at):
     if re.search(r"امروز|امشب|امروز\s*(?:عصر|بعدازظهر)|\btoday\b|\btonight\b|\bthis\s+(?:afternoon|evening)\b", value):
         day_offsets.append(0)
 
-    if re.search(r"هفته(?:\s+ی)?\s*(?:بعد|آینده)|\bnext\s+week\b", value):
-        day_offsets.append(7)
-
     try:
         local_weekday = datetime.fromtimestamp(float(created_at)).weekday()
     except (OverflowError, OSError, TypeError, ValueError):
         return float("inf")
+    # A whole-week reference is only due after that calendar week has ended.
+    if re.search(r"هفته(?:\s+ی)?\s*(?:بعد|آینده)", value):
+        day_offsets.append((4 - local_weekday) % 7 + 7)  # next Persian week ends Friday
+    if re.search(r"\bnext\s+week\b", value):
+        day_offsets.append((6 - local_weekday) % 7 + 7)  # next English week ends Sunday
+    if re.search(r"این\s*هفته", value):
+        day_offsets.append((4 - local_weekday) % 7)
+    if re.search(r"\bthis\s+week\b", value):
+        day_offsets.append((6 - local_weekday) % 7)
     # The Persian weekend is Friday; English weekend check-ins wait until Sunday ends.
     if re.search(r"آخر\s*هفته", value):
         day_offsets.append((4 - local_weekday) % 7)
@@ -350,13 +381,17 @@ def _event_not_before(text, created_at):
         for match in re.finditer(pattern, value, re.I):
             seconds = _duration_seconds(match.group(1), match.group(2))
             if seconds is not None:
-                # A one-hour grace period avoids asking at the exact expected start time.
-                due_times.append(float(created_at) + seconds + 3600)
+                # Wait until the full local date of the expected event has ended.
+                due_times.append(_after_local_day(float(created_at) + seconds, 0))
 
     next_month_due = None
+    if re.search(r"این\s*ماه|\bthis\s+month\b", value):
+        due_times.append(_after_current_month(created_at))
     if re.search(r"ماه(?:\s+ی)?\s*(?:بعد|آینده)|\bnext\s+month\b", value):
         next_month_due = _after_next_month(created_at)
         due_times.append(next_month_due)
+    if re.search(r"سال(?:\s+ی)?\s*(?:بعد|آینده)|\bnext\s+year\b", value):
+        return float("inf")
 
     absolute_due = _absolute_date_due(text)
     if absolute_due is not None:
