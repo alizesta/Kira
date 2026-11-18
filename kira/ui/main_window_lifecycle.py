@@ -148,7 +148,7 @@ class LifecycleController(WindowFeatureController):
         auto.setChecked(not manual)
         auto.triggered.connect(lambda checked=False: self.feature_controller("runtime").select_route(""))
         routes = self.context.session.client.available_routes()
-        shown = routes[: self.MENU_ROUTES]
+        shown = routes[: self.feature_controller("runtime").MENU_ROUTES]
         chosen = next((r for r in routes if r["route_id"] == manual), None)
         if chosen is not None and chosen not in shown:
             shown = shown[:-1] + [chosen]
