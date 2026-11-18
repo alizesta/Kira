@@ -56,7 +56,7 @@ class RuntimeController(WindowFeatureController):
         try:
             self.context.adapters.animator.body.emit(body_ctl.payload(fresh))
         except Exception:                                      # noqa: BLE001 - a body move must never break the chat
-            _log.debug("Optional body animation command failed", exc_info=True)
+            pass
 
     # ---- live text ----
 
@@ -298,7 +298,7 @@ class RuntimeController(WindowFeatureController):
                                  text, res.get("tools"), getattr(self.context.session, "_brain_mode_name", None), bool(self.context.session._tool_plan),
                                  character_id=self.context.state.cur.cid)
             except Exception:                                      # noqa: BLE001
-                _log.exception("Brain post-turn integration failed")
+                pass
             if not self.context.session._emotion_applied:                          # no tag from the model: tag-less fallback (keywords / neutral)
                 self.context.adapters.director.on_reply(meta)
             if self.context.session._speech_live:
@@ -866,7 +866,7 @@ class RuntimeController(WindowFeatureController):
             if eid:
                 self.context.adapters.director.engine.request([eid], hint[1], 3.0, "event", self.context.adapters.director.clock(), tag="mood")
         except Exception:                                         # noqa: BLE001
-            _log.debug("Optional avatar mood reaction failed", exc_info=True)
+            pass
 
     def open_memory_dialog(self):
         character_id = self.context.services.character_service.active_id(self.context.services.settings)
