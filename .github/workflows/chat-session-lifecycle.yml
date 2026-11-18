@@ -17,6 +17,7 @@ on:
       - "tests/test_domain_conversation_rules.py"
       - "tests/test_domain_organization.py"
       - "tests/test_domain_search.py"
+      - "tests/test_domain_transfer.py"
       - "tests/test_application_service_ports.py"
       - "kira/core/interfaces/**"
       - "kira/ui/application_adapters.py"
@@ -123,6 +124,8 @@ jobs:
           tests.test_domain_conversation_rules
           tests.test_domain_organization
           tests.test_domain_search
+          tests.test_domain_transfer
+          tests.test_chat_transfer
           tests.test_chat_search
           tests.test_application_service_ports
           tests.test_tool_agent_session_isolation
@@ -220,6 +223,10 @@ jobs:
           kira/domain/conversations.py
           kira/domain/organization.py
           kira/domain/search.py
+          kira/domain/transfer.py
+          kira/app/chat_transfer_application.py
+          kira/core/interfaces/transfer.py
+          tests/test_domain_transfer.py
           kira/app/organization_application.py
           kira/app/chat_search_application.py
           kira/core/interfaces/organization.py
