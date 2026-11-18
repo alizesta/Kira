@@ -1,5 +1,6 @@
 """Dependencies local to the runtime MainWindow feature adapter."""
 
+import math
 import random
 import time
 from pathlib import Path
