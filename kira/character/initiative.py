@@ -381,13 +381,20 @@ def build_checkin_message(candidate, language="auto", max_topic_chars=130):
         return ""
 
     raw = _clean_memory_text(candidate.get("text"))
-    quoted = re.search(r'\bhe said\s+["“](.+?)["”](?:\s*\(a promise\))?$', raw, re.I)
+    quoted = re.search(r'\\bhe said\\s+["“](.+)["”](?:\\s*\\(a promise\\))?$', raw, re.I)
     topic = _clean_memory_text(quoted.group(1)) if quoted else ""
     try:
         limit = max(24, min(180, int(max_topic_chars)))
     except (TypeError, ValueError, OverflowError):
         limit = 130
-    topic = topic[:limit].rstrip(" ،,.;:") if topic else ""
+    if len(topic) > limit:
+        clipped = topic[:limit]
+        # Prefer a complete final word over a mid-word cut. Keep the bounded
+        # hard slice when a single token itself is longer than the limit.
+        if " " in clipped:
+            clipped = clipped.rsplit(" ", 1)[0]
+        topic = clipped
+    topic = topic.rstrip(" ،,.;:\\u200c") if topic else ""
 
     lang = str(language or "").lower()
     if lang not in ("fa", "en"):
