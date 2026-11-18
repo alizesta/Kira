@@ -15,6 +15,7 @@ def run_application() -> None:
     from ..theme import build_style
     from ..tools import ToolAgent
     from .main_window import MainWindow
+    from .main_window_composition import initialize_main_window
     from ..app.dependency_container import DependencyContainer
     from ..app.event_bus import EventBus
     from ..app.feature_modules import register_application_modules
@@ -48,7 +49,9 @@ def run_application() -> None:
         app.setStyleSheet(build_style(winfx.active_effect(settings.get("window_effect"))))
         session_manager = SessionManager(ChatSession)
         tool_agent = ToolAgent(settings, DATA_DIR, ROOT)
-        window = MainWindow(
+        window = MainWindow()
+        initialize_main_window(
+            window,
             memory_service=container.resolve("memory_service"),
             mood_service=container.resolve("mood_service"),
             character_service=container.resolve("character_service"),
