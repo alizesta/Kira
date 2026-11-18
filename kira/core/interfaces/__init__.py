@@ -29,6 +29,10 @@ from .organization import (
 from .memory_service import MemoryService
 from .mood_service import MoodService
 from .provider_worker import ProviderWorkerPort
+from .search import (
+    ChatSearchRepositoryPort,
+    ConversationStatusReaderPort,
+)
 from .voice_service import VoiceService
 from .voice_ports import SpeakerPort, VoiceListenerPort
 
@@ -48,6 +52,8 @@ __all__ = [
     "PermanentDeleteAuthorizationPort",
     "ConversationMetadataEventPublisherPort",
     "ConversationOrganizationRepositoryPort",
+    "ChatSearchRepositoryPort",
+    "ConversationStatusReaderPort",
     "ChatProvider",
     "CharacterService",
     "ChatHistoryService",
