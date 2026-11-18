@@ -1,6 +1,6 @@
 """Kira application entry point.
 
-Application composition is owned by :mod:`kira.app.bootstrap`. The desktop
+Desktop composition is owned by :mod:`kira.ui.bootstrap`. The desktop
 window is assembled from feature-oriented UI mixins in :mod:`kira.ui.main_window`.
 """
 from __future__ import annotations
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 def main() -> None:
     """Start Kira through the application composition root."""
-    from .app.bootstrap import run_application
+    from .ui.bootstrap import run_application
 
     run_application()
 
