@@ -1,0 +1,36 @@
+name: Brain Quality Tests
+
+on:
+  push:
+    branches: [new-main]
+    paths:
+      - "kira/brain.py"
+      - "tests/test_brain_quality.py"
+      - "docs/BRAIN_FA.md"
+      - ".github/workflows/brain-quality.yml"
+  pull_request:
+    branches: [new-main]
+    paths:
+      - "kira/brain.py"
+      - "tests/test_brain_quality.py"
+      - "docs/BRAIN_FA.md"
+      - ".github/workflows/brain-quality.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  brain-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run focused brain regression tests
+        run: python -m unittest tests.test_brain_quality -v
+      - name: Compile changed Python modules
+        run: python -m py_compile kira/brain.py tests/test_brain_quality.py
