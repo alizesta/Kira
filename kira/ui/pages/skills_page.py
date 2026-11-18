@@ -83,7 +83,8 @@ class SkillsPage(QScrollArea):
         self.table.setRowCount(len(manifests))
 
         bucket = settings.get(service.SETTINGS_KEY, {})
-        global_enabled = set(bucket.get("enabled", [])) if isinstance(bucket, dict) else set()
+        raw_global_enabled = bucket.get("enabled", []) if isinstance(bucket, dict) else []
+        global_enabled = set(raw_global_enabled) if isinstance(raw_global_enabled, (list, tuple, set)) else set()
         for row, manifest in enumerate(manifests):
             name = QTableWidgetItem(f"{manifest.name}  ·  v{manifest.version}")
             name.setToolTip(manifest.skill_id)
