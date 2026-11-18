@@ -159,7 +159,7 @@ The Chat core modules should depend on Python data contracts and narrow Protocol
 | Tools/coding agent | `kira/app/coding_agent_application.py`, `tools/*`, `auto_agent.py`, `code_agent.py`, `chat_code.py` | CodingAgentApplicationService owns eligible handoff, attachment bypass and stop delegation; the current execution engine and UI worker adapters remain separate. |
 | Web Research | `kira/app/web_search.py`, `webintel/*`, `websearch.py`, discovery adapters | WebSearchApplicationService owns credential/query/request/evidence policy; SearchWorker and result presentation remain UI adapters. |
 | Vision | `kira/app/vision_application.py`, `vision_pipeline.py`, `vision_ocr.py` | VisionApplicationService owns capture eligibility, cadence/frame gating and duplicate-result suppression; Qt capture/timers/workers remain UI adapters. |
-| UI | `ui/main_window.py`, `ui/main_window_composition.py`, feature controllers/support modules, pages/components/dialogs/workers | MainWindow is a compact Qt host; Session, Provider, Vision, Coding Agent, Runtime Settings and Character profile policies are delegated to services. Qt widget state, worker/timer lifetime, dialog flows and result rendering remain UI adapter responsibilities. |
+| UI | `ui/main_window.py`, `ui/main_window_composition.py`, feature controllers/support modules, pages/components/dialogs/workers | MainWindow is a compact Qt shell with no feature-mixin inheritance. Eight window-scoped feature controllers own UI workflows; Session, Provider, Vision, Coding Agent, Runtime Settings and Character profile policies are delegated to application services. Qt widget state, worker/timer lifetime, dialog flows and result rendering remain UI adapter responsibilities. |
 
 Implementation and reviewer checklist for the current source delta: [ARCHITECTURE_IMPLEMENTATION_HANDOFF_2026-11-18.md](ARCHITECTURE_IMPLEMENTATION_HANDOFF_2026-11-18.md).
 
@@ -172,7 +172,7 @@ Static code supports this design. Runtime isolation across concurrent sessions, 
 ## 7. Legacy and compatibility owners
 
 - `kira.main.MainWindow` is a lazy compatibility export to `kira.ui.main_window.MainWindow`.
-- `kira.ui.main_window.MainWindow` is the production UI adapter; its feature behavior is composed from window-scoped controllers in `kira/ui/main_window_*.py`.
+- `kira.ui.main_window.MainWindow` is the production Qt shell; its feature behavior is composed from window-scoped controllers in `kira/ui/main_window_*.py` and initialized by the outer UI Composition Root.
 - `kira/oldmain.py` has been removed; new production code must not reintroduce imports from that path.
 - `kira/services/chat_history_service.py` is an adapter over the persistence facade; it is not a second database owner.
 - `kira/attachments.py` is a compatibility facade; canonical Chat attachment/content processing is under `kira/chat/`.
@@ -233,3 +233,23 @@ it does not import or directly construct their implementations.
 The architecture regression suite `tests/test_composition_root_contract.py`
 guards the injection contract and prevents direct application-service construction
 from returning to the UI composition module.
+
+
+### MainWindow UI Shell delta — 2026-11-18
+
+`MainWindow` now inherits only `QMainWindow`; it no longer inherits the
+eight feature mixins or accepts application-service dependencies in its
+constructor. The outer UI Composition Root creates the shell and then invokes
+`initialize_main_window` to assemble widgets and injected adapters.
+
+The former mixins are now window-scoped feature controllers. They are composed
+in an explicit registry and receive the owning window as their host. The shell
+forwards feature lookup through that registry and forwards Qt virtual events
+(`showEvent`, `hideEvent`, `changeEvent`, `resizeEvent`, `closeEvent`,
+`dragEnterEvent`, `dropEvent`) to the owning controller. Qt base-event
+handling remains explicit. Compatibility aliases preserve older imports while
+call sites migrate.
+
+Static regression coverage now asserts the shell inheritance boundary, service-
+free constructor, controller registry, and event forwarding. Runtime GUI
+acceptance remains pending.
