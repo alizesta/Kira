@@ -103,6 +103,30 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
         self.assertIs(controller.window, window)
         self.assertIs(controller.parent(), window)
 
+    def test_presentation_context_has_strict_namespaces_and_front_only_views(self):
+        from PySide6.QtCore import QObject
+
+        from kira.chat_sessions import NOOP
+        from kira.ui.feature_controller_registry import FeatureControllerRegistry
+        from kira.ui.window_presentation_context import WindowPresentationContext
+
+        window = QObject()
+        context = WindowPresentationContext(window, FeatureControllerRegistry({}))
+        front = object()
+        context.state.cur = front
+        context.state.front = front
+        status = object()
+        context.views.status = status
+        self.assertIs(context.views.status, status)
+
+        context.state.cur = object()
+        self.assertIs(context.views.status, NOOP)
+
+        with self.assertRaises(AttributeError):
+            context.views.not_a_declared_widget = object()
+        with self.assertRaises(AttributeError):
+            _ = context.services.not_a_service
+
     def test_shell_forwards_qt_virtual_events_to_their_feature_owners(self):
         source = (UI / "main_window.py").read_text(encoding="utf-8")
         expected_routes = (
