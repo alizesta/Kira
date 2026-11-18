@@ -178,7 +178,7 @@ class RuntimeController(WindowFeatureController):
     def show_route_details(self):
         info = self._route_info or self.client.preview_route()
         if not info:
-            QMessageBox.information(self, "Route", "هیچ Route فعالی آماده نیست.")
+            QMessageBox.information(self.window, "Route", "هیچ Route فعالی آماده نیست.")
             return
         st = next((x for x in self.client.status() if x["name"] == info["route_id"]), {})
         route = self.provider_application_service.find_route(self.settings, info["route_id"]) or {}
@@ -190,7 +190,7 @@ class RuntimeController(WindowFeatureController):
             lines.append(f"آخرین پاسخ موفق: {st['last_ms']} ms")
         if st.get("last_error"):
             lines.append(f"آخرین خطا: {st['last_error']}")
-        QMessageBox.information(self, "جزئیات Route فعال", "\n".join(lines))
+        QMessageBox.information(self.window, "جزئیات Route فعال", "\n".join(lines))
 
     def select_route(self, route_id):
         """Manual choice ('' = automatic). Wins over priority; failover (if on) may still move on when it fails."""
@@ -825,7 +825,7 @@ class RuntimeController(WindowFeatureController):
         who = self.character_service.display_name(self.settings)
         question = (f"تاریخچه‌ی گفتگوی «{who}» پاک شود؟ (گفتگوی بقیه‌ی کاراکترها دست‌نخورده می‌ماند)"
                     if self.settings.get("ui_lang", "fa") == "fa" else f"Delete the saved history of {who}? (the other characters' chats stay)")
-        if QMessageBox.question(self, self.t("clear_t"), question) == QMessageBox.Yes:
+        if QMessageBox.question(self.window, self.t("clear_t"), question) == QMessageBox.Yes:
             try:
                 self.chat_application_service.clear_history(self.cur.cid)      # only THIS character's conversation; saves a snapshot first, nothing is deleted if that fails
                 # Facts, moments and habits remain in the character's own memory file.
@@ -833,7 +833,7 @@ class RuntimeController(WindowFeatureController):
                 self.tool_agent.clear_session(self.cur.cid) # clear only this character's tasks, tool context, grants and temporary research
                 brain.reset_state(self.cur.cid)
             except ChatHistoryError as exc:
-                QMessageBox.warning(self, self.t("clear_t"), str(exc))
+                QMessageBox.warning(self.window, self.t("clear_t"), str(exc))
                 return
             self.chat.clear()
             self.add_chat("system", self.t("mem_cleared") + " (اگر اشتباه بود: تنظیمات ← عمومی ← «بازگرداندن آخرین پاک‌سازی».)")
@@ -866,7 +866,7 @@ class RuntimeController(WindowFeatureController):
         try:
             n = self.chat_application_service.restore_history()
         except ChatHistoryError as exc:
-            QMessageBox.information(self, "بازگرداندن گفتگو", str(exc))
+            QMessageBox.information(self.window, "بازگرداندن گفتگو", str(exc))
             return
         self.reload_chat_view()
         self.add_chat("system", f"{n} پیام بازگردانده شد." if n else "همه‌ی پیام‌های آن پاک‌سازی از قبل در گفتگو بودند.")
@@ -878,14 +878,14 @@ class RuntimeController(WindowFeatureController):
             for folder in storage.legacy_candidates(ROOT):
                 start = str(Path(folder))
                 break
-            path, _ = QFileDialog.getOpenFileName(self, "انتخاب فایل گفتگوی قدیمی (kira_memory.sqlite3)", start or str(ROOT),
+            path, _ = QFileDialog.getOpenFileName(self.window, "انتخاب فایل گفتگوی قدیمی (kira_memory.sqlite3)", start or str(ROOT),
                                                   "SQLite (*.sqlite3 *.db);;All files (*)")
             if not path:
                 return
         try:
             n = self.chat_application_service.import_history(path)
         except ChatHistoryError as exc:
-            QMessageBox.warning(self, "ورود گفتگو", str(exc))
+            QMessageBox.warning(self.window, "ورود گفتگو", str(exc))
             return
         self.reload_chat_view()
         self.add_chat("system", f"{n} پیام از فایل قدیمی وارد شد." if n else "پیام جدیدی در آن فایل نبود (همه از قبل وجود داشتند).")
