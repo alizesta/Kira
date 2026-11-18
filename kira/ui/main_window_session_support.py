@@ -13,7 +13,7 @@ from ..chat_render import message_html, detect_direction, bubble_accent
 from ..strings import STR
 from .. import mood
 from .. import persona_memory
-from ..character.initiative import InitiativeEngine, build_checkin_message, initiative_history_state
+from ..character.initiative import InitiativeEngine, build_checkin_message, initiative_history_state, sessions_are_idle
 from ..characters.kira import PROFILE as KIRA_PROFILE
 from ..ui_icons import make_icon
 from .. import theme as theme_mod
