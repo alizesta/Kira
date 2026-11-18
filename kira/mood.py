@@ -396,7 +396,7 @@ def on_user_message(text, now=None) -> list[str]:
     return found
 
 
-def on_reply(emotions, intensity=None, now=None):
+def on_reply(emotions, intensity=None, now=None, text=""):
     _ensure_runtime_migration()
     """Carry the active character's reply emotions forward and update their behavioral disposition."""
     now = time.time() if now is None else now
@@ -419,7 +419,7 @@ def on_reply(emotions, intensity=None, now=None):
         })
         _save(state)
     try:
-        _runtime_for().on_reply(emotions, intensity, now=now)
+        _runtime_for().on_reply(emotions, intensity, now=now, text=text)
     except Exception:
         pass
 
