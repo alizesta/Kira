@@ -2,6 +2,8 @@
 from .main_window_runtime_support import (
     ChatHistoryError,
     Listener,
+    InitiativeEngine,
+    build_checkin_message,
     MemoryDialog,
     Path,
     PermissionDecision,
@@ -422,6 +424,200 @@ class RuntimeController(WindowFeatureController):
                 self.context.services.voice_application_service.speak(text)
             except Exception as exc:                              # noqa: BLE001
                 self.feature_controller("session").on_voice_error(f"صدا ناموفق بود: {type(exc).__name__}: {exc}")
+
+    def maybe_proactive_checkin(self):
+        """Send a silent, persisted check-in only after explicit per-character opt-in and strict idle checks.
+
+        This is a local memory-based action: it never calls a provider, speaks, or creates a
+        synthetic user message. The 30-second throttle keeps the existing mood timer inexpensive.
+        """
+        monotonic_now = time.monotonic()
+        if monotonic_now - getattr(self, "_initiative_checked_at", -1e9) < 30:
+            return False
+        self._initiative_checked_at = monotonic_now
+
+        try:
+            state = self.context.state
+            session = getattr(state, "front", None)
+            if session is None or state._closing or state.cur is not session:
+                return False
+
+            settings = self.context.services.settings
+            character_id = str(getattr(session, "cid", "") or "")
+            opt_ins = settings.get("character_initiative")
+            # Only a literal JSON true is consent. Corrupt strings/numbers fail closed.
+            if not character_id or not isinstance(opt_ins, dict) or opt_ins.get(character_id) is not True:
+                return False
+
+            if not self.window.isVisible() or not self.window.isActiveWindow():
+                return False
+            if QApplication.activeModalWidget() is not None:
+                return False
+            if bool(getattr(session, "busy", False)) or str(getattr(session, "draft", "") or "").strip():
+                return False
+
+            session_controller = self.feature_controller("session")
+            if session_controller._session_has_pending_chat_work(session):
+                return False
+            if session_controller._worker_is_running(getattr(session, "_vision_worker", None)):
+                return False
+
+            input_widget = getattr(self.context.views, "input", None)
+            if input_widget is not None:
+                has_focus = getattr(input_widget, "hasFocus", None)
+                if callable(has_focus) and has_focus():
+                    return False
+                text_value = ""
+                for accessor_name in ("text", "toPlainText"):
+                    accessor = getattr(input_widget, accessor_name, None)
+                    if callable(accessor):
+                        text_value = str(accessor() or "")
+                        break
+                if text_value.strip():
+                    return False
+
+            # Voice interaction always wins: do not interrupt listening, recording,
+            # speech playback, a queued spoken reply, or the wake-mode listener.
+            if bool(getattr(state, "awake", False)):
+                return False
+            if bool(getattr(session, "_speech_live", False)) or bool(getattr(session, "_voice_next", False)):
+                return False
+            mic_button = getattr(self.context.views, "mic_btn", None)
+            if mic_button is not None and callable(getattr(mic_button, "isChecked", None)) and mic_button.isChecked():
+                return False
+            voice = self.context.services.voice_application_service
+            if voice.is_speaking() or getattr(voice, "stopping_listener", None) is not None:
+                return False
+            listener = getattr(voice, "listener", None)
+            if listener is not None:
+                running = getattr(listener, "is_running", None)
+                # A listener with unknown state is treated as active.
+                if not callable(running) or running():
+                    return False
+
+            now = time.time()
+            controller = self
+            profile = self.context.services.character_service.all_profiles(settings).get(character_id) or {}
+            traits = session_controller.character_traits(character_id, profile)
+            with mood.character_scope(character_id, traits):
+                emotional = mood.current()
+
+            age = float(emotional.get("age", 0.0))
+            if not math.isfinite(age) or age < 0:
+                return False
+            last_interaction = now - age
+            quiet_hours = InitiativeEngine.is_quiet_hour(now=now)
+
+            with persona_memory.character_scope(character_id):
+                memories = persona_memory.list_items(now=now)
+
+            # A dedicated settings history provides a durable daily cap and recent-ID
+            # exclusion; the EmotionalRuntime event list is used as a secondary source
+            # if settings could not be saved during a previous shutdown.
+            raw_history_by_character = settings.get("character_initiative_history")
+            history_by_character = raw_history_by_character if isinstance(raw_history_by_character, dict) else {}
+            raw_history = history_by_character.get(character_id, [])
+            valid_history = []
+            excluded_ids = set()
+            history_today = set()
+            today = time.localtime(now)
+            today_key = (today.tm_year, today.tm_yday)
+            retention = 10 * 86400
+
+            def valid_timestamp(value):
+                try:
+                    stamp = float(value)
+                except (TypeError, ValueError, OverflowError):
+                    return None
+                if not math.isfinite(stamp) or stamp <= 0 or stamp > now + 60 or now - stamp > retention:
+                    return None
+                return stamp
+
+            if isinstance(raw_history, list):
+                for entry in raw_history:
+                    if not isinstance(entry, dict):
+                        continue
+                    stamp = valid_timestamp(entry.get("at"))
+                    if stamp is None:
+                        continue
+                    memory_id = str(entry.get("memory_id") or "").strip()[:64]
+                    valid_history.append({"at": stamp, "memory_id": memory_id})
+                    if memory_id:
+                        excluded_ids.add(memory_id)
+                    local_stamp = time.localtime(stamp)
+                    if (local_stamp.tm_year, local_stamp.tm_yday) == today_key:
+                        history_today.add(memory_id or f"at:{int(stamp)}")
+
+            runtime_today = set()
+            for event in emotional.get("recent_events", []) or []:
+                if not isinstance(event, dict) or event.get("name") != "proactive_check_in":
+                    continue
+                stamp = valid_timestamp(event.get("at"))
+                if stamp is None:
+                    continue
+                memory_id = str(event.get("detail") or "").strip()[:64]
+                if memory_id:
+                    excluded_ids.add(memory_id)
+                local_stamp = time.localtime(stamp)
+                if (local_stamp.tm_year, local_stamp.tm_yday) == today_key:
+                    runtime_today.add(memory_id or f"at:{int(stamp)}")
+
+            last_memory_id = str(emotional.get("last_initiative_memory_id") or "").strip()[:64]
+            if last_memory_id:
+                excluded_ids.add(last_memory_id)
+
+            engine = InitiativeEngine()
+            engine.last_initiative = emotional.get("last_initiative", 0.0)
+            candidate = engine.select_candidate(
+                memories,
+                now=now,
+                exclude_ids=excluded_ids,
+            )
+            sent_today = max(len(history_today), len(runtime_today))
+            decision = engine.evaluate(
+                now=now,
+                last_interaction=last_interaction,
+                enabled=True,
+                app_active=True,
+                quiet_hours=quiet_hours,
+                busy=False,
+                has_relevant_memory=bool(candidate),
+                sent_today=sent_today,
+            )
+            if not decision.get("eligible") or candidate is None:
+                return False
+
+            message = build_checkin_message(candidate, language="auto")
+            if not message:
+                return False
+
+            # Persist first. A failed write means no UI message and no cooldown mark,
+            # so the app never claims a check-in happened when it was not stored.
+            persisted = self.save_message(
+                "assistant",
+                message,
+                metadata={
+                    "proactive": "initiative",
+                    "memory_id": str(candidate.get("id") or "")[:64],
+                },
+            )
+            if not persisted:
+                return False
+
+            with mood.character_scope(character_id, traits):
+                mood.mark_initiative_sent(memory_id=candidate["id"], now=now)
+
+            updated_history = valid_history + [{"at": now, "memory_id": str(candidate["id"])[:64]}]
+            updated_history_by_character = dict(history_by_character)
+            updated_history_by_character[character_id] = updated_history[-64:]
+            settings["character_initiative_history"] = updated_history_by_character
+            self.save_now()
+
+            # This path is deliberately silent: no say(), reply_local(), worker, or provider call.
+            session_controller.add_chat("assistant", message)
+            return True
+        except Exception:  # noqa: BLE001 - an optional check-in must never interrupt the chat UI
+            return False
 
     def on_mood_changed(self, mood):
         if mood == "bored" and self.context.services.settings.get("idle_talk", True) and not self.context.session.busy \
