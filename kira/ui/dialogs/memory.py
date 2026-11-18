@@ -98,7 +98,10 @@ class MemoryDialog(QDialog):
             "عملیات حافظه کامل نشد",
             "عملیات حافظه کامل نشد؛ ممکن است بخشی از اطلاعات ذخیره یا حذف شده باشد. جزئیات خطا در گزارش برنامه ثبت شده است.",
         )
-        self.refresh()
+        try:
+            self.refresh()
+        except Exception:
+            _log.exception("Could not refresh the memory dialog after a failed operation")
 
     def add_note(self):
         text, ok = QInputDialog.getText(self, "یادداشت جدید", f"چه چیزی را {self.character_name} یادش بماند؟")
@@ -115,10 +118,15 @@ class MemoryDialog(QDialog):
         item_id = self._selected()
         if not item_id:
             return
-        current = next(
-            (item["text"] for item in self.memory_service.list_items(self.character_id) if item["id"] == item_id),
-            "",
-        )
+        try:
+            current = next(
+                (item["text"] for item in self.memory_service.list_items(self.character_id) if item["id"] == item_id),
+                "",
+            )
+        except Exception:
+            _log.exception("Could not load the selected memory item for editing")
+            QMessageBox.warning(self, "بارگذاری حافظه ناموفق بود", "متن حافظه بارگذاری نشد؛ تغییری اعمال نشده است.")
+            return
         text, ok = QInputDialog.getText(self, "ویرایش", "متن:", QLineEdit.Normal, current)
         if ok:
             try:
