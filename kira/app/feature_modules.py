@@ -20,6 +20,7 @@ APPLICATION_FEATURE_DEPENDENCIES = {
     "mood": (),
     "characters": (),
     "chat_history": (),
+    "conversation_lifecycle": ("chat_history",),
     "conversation_organization": ("chat_history",),
     "chat_search": ("chat_history",),
     "chat_transfer": ("chat_history",),
@@ -30,7 +31,7 @@ APPLICATION_FEATURE_DEPENDENCIES = {
     "coding_agent": (),
     "runtime_settings": (),
     "vision": ("game_mode",),
-    "chat_application": ("chat_history",),
+    "chat_application": ("chat_history", "conversation_lifecycle"),
     "session_application": ("chat_application",),
     "voice_application": (),
 }
@@ -78,10 +79,19 @@ def register_application_modules(
         game_mode = container.resolve("game_mode_application_service")
         return VisionApplicationService(game_mode, settings.get("vision_mode", "economic"))
 
+    def create_conversation_lifecycle_service() -> Any:
+        from ..chat.conversation_lifecycle import ConversationLifecycleService
+
+        return ConversationLifecycleService(
+            container.resolve("chat_history_service"),
+            event_publisher,
+        )
+
     def create_chat_factory() -> Any:
         return create_chat_application_service_factory(
             persistence=container.resolve("chat_history_service"),
             event_publisher=event_publisher,
+            conversation_lifecycle=container.resolve("conversation_lifecycle_service"),
         )
 
     def create_session_factory() -> Any:
@@ -117,6 +127,10 @@ def register_application_modules(
         "mood_service": selected("mood_service", MoodStateService),
         "character_service": selected("character_service", CharacterProfileService),
         "chat_history_service": selected("chat_history_service", SqliteChatHistoryService),
+        "conversation_lifecycle_service": selected(
+            "conversation_lifecycle_service",
+            create_conversation_lifecycle_service,
+        ),
         "conversation_organization_application_service": selected(
             "conversation_organization_application_service",
             create_organization_service,
@@ -150,6 +164,7 @@ def register_application_modules(
         ("mood", "mood_service"),
         ("characters", "character_service"),
         ("chat_history", "chat_history_service"),
+        ("conversation_lifecycle", "conversation_lifecycle_service"),
         ("conversation_organization", "conversation_organization_application_service"),
         ("chat_search", "chat_search_application_service"),
         ("chat_transfer", "chat_transfer_application_service"),
