@@ -765,6 +765,9 @@ class RuntimeController(WindowFeatureController):
                 sess.client.cancel()
             if sess.timer is not None:
                 sess.timer.stop()
+            vision_worker = getattr(sess, "_vision_worker", None)
+            if vision_worker is not None and vision_worker.isRunning():
+                vision_worker.cancel_request()
         for timer_name in ("wake_timer", "_game_poll_timer", "_game_capture_timer", "_mood_ui_timer"):
             timer = self.context.resource(timer_name)
             if timer is not None:
@@ -773,7 +776,7 @@ class RuntimeController(WindowFeatureController):
         self.feature_controller("attachments_vision")._stop_game_audio_listener()
         self.context.adapters.game_mode.set_enabled(False)
         for sess in self.context.state.sessions.values():
-            for w in (sess.worker, sess._search_worker):
+            for w in (sess.worker, sess._search_worker, sess._vision_worker):
                 if w is not None and w.isRunning():
                     w.wait(3000)
         for name in ("_api_worker", "_route_worker", "_bench_worker", "_scan_worker", "_provider_test_worker",
