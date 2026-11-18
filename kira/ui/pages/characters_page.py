@@ -162,8 +162,18 @@ class CharactersPage(QScrollArea):
         self.idle_chk = QCheckBox()
         self.idle_chk.setChecked(bool(settings.get("idle_talk", True)))
         self._register(self.idle_chk.setText, "idle_talk")
+        self.initiative_chk = QCheckBox()
+        active_character_id = str(settings.get("active_character_id") or "kira")
+        initiative_settings = settings.get("character_initiative")
+        self.initiative_chk.setChecked(
+            bool(initiative_settings.get(active_character_id, False))
+            if isinstance(initiative_settings, dict) else False
+        )
+        self._register(self.initiative_chk.setText, "proactive_checkins")
+        self.initiative_chk.toggled.connect(lambda *_: self.save_timer.start())
         form.addRow(self.react_chk)
         form.addRow(self.idle_chk)
+        form.addRow(self.initiative_chk)
         form.addRow(self.top_chk)
 
         self.tray_min_chk = QCheckBox("با دکمه‌ی Minimize به System Tray برود")
