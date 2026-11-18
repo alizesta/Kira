@@ -1053,6 +1053,43 @@ def list_extra_items(known_persona_ids=()) -> list[dict]:
         return []
 
 
+def update_extra(item_id, text, now=None) -> bool:
+    """Atomically replace an evidence-only memory item with the user's edited wording."""
+    fid = str(item_id)[3:]
+    text = " ".join(str(text or "").split())[:200]
+    if len(text) < 3 or not _enabled:
+        return False
+    now = time.time() if now is None else now
+    try:
+        with _lock, _db() as con:
+            row = con.execute(
+                "SELECT subject, predicate FROM facts WHERE id=?",
+                (fid,),
+            ).fetchone()
+            if row is None:
+                return False
+            _delete_rows(con, [fid])
+            new_id = _ingest(
+                con,
+                subject=row["subject"],
+                predicate=row["predicate"],
+                value=text,
+                text=text,
+                category="permanent",
+                quote=text,
+                speaker="user",
+                message_id=None,
+                source_kind="manual",
+                now=now,
+            )
+            if new_id is None:
+                raise RuntimeError("Edited evidence-memory item could not be reinserted")
+        return True
+    except Exception:                                                  # noqa: BLE001
+        _log.exception("Could not update an evidence-only memory item")
+        raise
+
+
 def delete_extra(item_id) -> bool:
     fid = str(item_id)[3:]
     try:
@@ -1062,7 +1099,8 @@ def delete_extra(item_id) -> bool:
             _delete_rows(con, [fid])
         return True
     except Exception:                                                  # noqa: BLE001
-        return False
+        _log.exception("Could not delete an extra evidence-memory item")
+        raise
 
 
 def stats() -> dict:
