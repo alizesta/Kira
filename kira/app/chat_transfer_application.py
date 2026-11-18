@@ -9,7 +9,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
-from ..core.interfaces.transfer import ChatTransferRepositoryPort
+from ..core.interfaces.transfer import (
+    ChatTransferFilePort,
+    ChatTransferRepositoryPort,
+)
 from ..domain.transfer import (
     ALLOWED_ROLES,
     ALLOWED_STATUSES,
@@ -27,21 +30,27 @@ from ..domain.transfer import (
 
 _SAFE_FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
 
-def _json_bytes(source: Any) -> bytes:
+def _json_bytes(source: Any, file_port: ChatTransferFilePort | None = None) -> bytes:
     if isinstance(source, (bytes, bytearray)):
         raw = bytes(source)
     elif isinstance(source, Path):
-        if not source.is_file(): raise TransferError("Import source is not a regular file")
-        if source.stat().st_size > MAX_FILE_BYTES: raise TransferError("Import file exceeds 20 MiB")
-        raw = source.read_bytes()
+        if file_port is not None:
+            raw = file_port.read_bytes(source)
+        else:
+            if not source.is_file(): raise TransferError("Import source is not a regular file")
+            if source.stat().st_size > MAX_FILE_BYTES: raise TransferError("Import file exceeds 20 MiB")
+            raw = source.read_bytes()
     elif isinstance(source, str):
         if source.lstrip().startswith("{"):
             raw = source.encode("utf-8")
         else:
             path = Path(source)
-            if not path.is_file(): raise TransferError("Import source must be JSON text or an existing file")
-            if path.stat().st_size > MAX_FILE_BYTES: raise TransferError("Import file exceeds 20 MiB")
-            raw = path.read_bytes()
+            if file_port is not None:
+                raw = file_port.read_bytes(path)
+            else:
+                if not path.is_file(): raise TransferError("Import source must be JSON text or an existing file")
+                if path.stat().st_size > MAX_FILE_BYTES: raise TransferError("Import file exceeds 20 MiB")
+                raw = path.read_bytes()
     else:
         raise TransferError("Import source must be a path, bytes, JSON text or object")
     if len(raw) > MAX_FILE_BYTES: raise TransferError("Import file exceeds 20 MiB")
@@ -56,9 +65,20 @@ def _reject_duplicate_keys(pairs):
 
 class ChatTransfer:
     """Transfer service composed with the injected ChatPersistence repository port."""
-    def __init__(self, repository: ChatTransferRepositoryPort):
+    def __init__(
+        self,
+        repository: ChatTransferRepositoryPort,
+        *,
+        file_port: ChatTransferFilePort | None = None,
+    ):
         if repository is None: raise TypeError("repository is required")
+        if file_port is not None and not (
+            callable(getattr(file_port, "read_bytes", None))
+            and callable(getattr(file_port, "write_bytes_atomically", None))
+        ):
+            raise TypeError("file_port must implement read_bytes() and write_bytes_atomically()")
         self._repository = repository
+        self._file_port = file_port
 
     @staticmethod
     def _selected_ids(conversation_ids):
@@ -127,13 +147,24 @@ class ChatTransfer:
     def write_export(self, directory: str | Path, *, filename="kira-chat-export.json", conversation_ids=None, character_id=None) -> Path:
         if not _SAFE_FILENAME.fullmatch(filename) or filename in {".", ".."} or not filename.lower().endswith(".json"):
             raise TransferError("Filename must be a simple basename without path components")
+        content = self.export_json(
+            conversation_ids, character_id=character_id
+        ).encode("utf-8")
+        if len(content) > MAX_FILE_BYTES:
+            raise TransferError("Generated export exceeds 20 MiB")
+        if self._file_port is not None:
+            return self._file_port.write_bytes_atomically(
+                Path(directory), filename, content
+            )
+
+        # Compatibility fallback until Flow 3 supplies the Infrastructure adapter.
         root = Path(directory).resolve()
         if not root.is_dir(): raise TransferError("Export directory must already exist")
         destination = root / filename
         fd, temporary = tempfile.mkstemp(prefix=".kira-export-", suffix=".tmp", dir=str(root))
         try:
             with os.fdopen(fd, "wb") as stream:
-                stream.write(self.export_json(conversation_ids, character_id=character_id).encode("utf-8"))
+                stream.write(content)
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(temporary, destination)
@@ -150,7 +181,7 @@ class ChatTransfer:
                 if len(raw) > MAX_FILE_BYTES:
                     raise TransferError("Import document exceeds 20 MiB")
             else:
-                raw = _json_bytes(source)
+                raw = _json_bytes(source, self._file_port)
             document = json.loads(raw.decode("utf-8-sig"),
                 object_pairs_hook=_reject_duplicate_keys,
                 parse_constant=lambda value: (_ for _ in ()).throw(TransferError(f"Invalid JSON number: {value}")))
