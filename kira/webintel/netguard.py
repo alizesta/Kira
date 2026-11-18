@@ -65,8 +65,10 @@ def clean_url(url: str) -> str:
 def _ip_blocked(ip: ipaddress._BaseAddress) -> bool:
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
         ip = ip.ipv4_mapped
-    return bool(ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified
-                or getattr(ip, "is_site_local", False))
+    # is_private alone is insufficient: shared address space (100.64.0.0/10)
+    # is neither private nor globally routable, but can still reach carrier networks.
+    return bool(not ip.is_global or ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved
+                or ip.is_unspecified or getattr(ip, "is_site_local", False))
 
 
 def _uses_proxy(url: str) -> bool:
