@@ -225,7 +225,16 @@ class ChatEventPublisher:
                 while len(self._terminal_events) > self._terminal_history_limit:
                     self._terminal_events.popitem(last=False)
 
-        report = self._event_bus.publish_event(event)
+        try:
+            report = self._event_bus.publish_event(event)
+        except Exception:
+            # Do not permanently reserve a terminal key when the shared bus
+            # rejects publication; a later delivery attempt must remain possible.
+            if key is not None:
+                with self._lock:
+                    if self._terminal_events.get(key) == event.event_id:
+                        self._terminal_events.pop(key, None)
+            raise
         return ChatEventDispatch(event=event, report=report)
 
     def _terminal_key(self, event: ChatEvent) -> tuple[str, ...] | None:

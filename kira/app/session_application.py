@@ -143,7 +143,7 @@ class SessionApplicationService:
         profiles: Mapping[str, Mapping[str, Any]],
         *,
         ensure_resources: Callable[[Any, Mapping[str, Any]], None],
-        restore_history: Callable[[Any], None],
+        restore_history: Callable[[Any], bool | None],
         vision_session: Any | None = None,
         vision_worker: Any | None = None,
     ) -> tuple[str, ...]:

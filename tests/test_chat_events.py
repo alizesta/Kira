@@ -210,6 +210,47 @@ class SharedEventBusTests(unittest.TestCase):
             ChatEventType.REQUEST_COMPLETED, ChatEventType.REQUEST_FAILED, ChatEventType.REQUEST_FAILED
         ])
 
+    def test_failed_terminal_publication_can_be_retried(self):
+        class FlakyBus:
+            def __init__(self):
+                self.attempts = 0
+                self.events = []
+
+            def publish_event(self, event):
+                self.attempts += 1
+                if self.attempts == 1:
+                    raise RuntimeError("temporary bus failure")
+                self.events.append(event)
+                return SimpleNamespace(
+                    event_name=event.event_type.value,
+                    sequence=self.attempts,
+                    delivered=1,
+                    failures=(),
+                    queued=False,
+                )
+
+        bus = FlakyBus()
+        publisher = ChatEventPublisher(bus)
+        with self.assertRaisesRegex(RuntimeError, "temporary bus failure"):
+            publisher.publish(
+                "request_completed", session_id="kira", request_id="retry-me"
+            )
+
+        retried = publisher.publish(
+            "request_failed", session_id="kira", request_id="retry-me"
+        )
+        duplicate = publisher.publish(
+            "request_cancelled", session_id="kira", request_id="retry-me"
+        )
+
+        self.assertFalse(retried.duplicate)
+        self.assertTrue(duplicate.duplicate)
+        self.assertEqual(bus.attempts, 2)
+        self.assertEqual(
+            [event.event_type for event in bus.events],
+            [ChatEventType.REQUEST_FAILED],
+        )
+
     def test_stream_retries_use_distinct_provider_attempt_terminal_keys(self):
         received = []
         self.publisher.subscribe("stream_completed", lambda event: received.append(
