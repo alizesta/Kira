@@ -210,13 +210,22 @@ def preload_tts(model_path="") -> bool:
 
 
 def warmup_tts(model_path="") -> bool:
-    """Warm the selected local Piper engine without leaking background-thread exceptions."""
+    """Warm Piper and the optional Persian ezafe detector without making either failure fatal."""
     global _tts_error
     try:
-        return bool(preload_tts(model_path))
+        ready = bool(preload_tts(model_path))
     except Exception as exc:
         _tts_error = exc
         return False
+
+    # ALBERT is optional and runs independently of Piper. A missing model or
+    # unavailable network must never disable the working TTS engine.
+    try:
+        from . import persian_ezafe
+        persian_ezafe.warmup()
+    except Exception:
+        pass
+    return ready
 
 
 def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
@@ -230,6 +239,16 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
     clean = str(text or "").strip()
     if not clean:
         return b""
+
+    # Insert context-predicted Persian ezafe marks before Piper phonemization.
+    # The detector has its own lazy ONNX cache and safely returns the source
+    # text unchanged whenever it is disabled or unavailable.
+    try:
+        from .persian_ezafe import add_persian_ezafe
+        clean = add_persian_ezafe(clean)
+    except Exception:
+        pass
+
     selected = str(model_path or "").strip()
     speed = max(0.5, min(1.5, 1.0 + float(rate or 0) / 100.0))
 
