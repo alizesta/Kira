@@ -1,4 +1,5 @@
 """Tests for scoped dependencies across MainWindow feature mixins."""
+import ast
 from pathlib import Path
 import unittest
 
@@ -9,7 +10,6 @@ UI = ROOT / "kira" / "ui"
 
 class MainWindowFeatureDependencyTests(unittest.TestCase):
     FEATURES = {
-        "main_window.py": "root",
         "main_window_attachments_vision.py": "attachments_vision",
         "main_window_character_settings.py": "character_settings",
         "main_window_chat.py": "chat",
@@ -20,7 +20,19 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
         "main_window_voice_settings.py": "voice_settings",
     }
 
-    def test_each_feature_uses_its_scoped_dependency_module(self):
+    MAIN_WINDOW_BASES = [
+        "RuntimeMixin",
+        "ChatMixin",
+        "AttachmentsVisionMixin",
+        "LifecycleMixin",
+        "ProviderSettingsMixin",
+        "CharacterSettingsMixin",
+        "VoiceSettingsMixin",
+        "SessionMixin",
+        "QMainWindow",
+    ]
+
+    def test_each_feature_mixin_uses_its_scoped_dependency_module(self):
         for filename, feature in self.FEATURES.items():
             source = (UI / filename).read_text(encoding="utf-8")
             self.assertIn(
@@ -29,6 +41,39 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
                 filename,
             )
             self.assertNotIn("from .main_window_support import *", source, filename)
+
+    def test_root_dependencies_are_owned_by_composition_not_the_host(self):
+        composition = (UI / "main_window_composition.py").read_text(encoding="utf-8")
+        host = (UI / "main_window.py").read_text(encoding="utf-8")
+
+        self.assertIn("from .main_window_root_support import (", composition)
+        self.assertNotIn("main_window_root_support", host)
+
+    def test_main_window_host_composes_all_eight_feature_mixins(self):
+        source = (UI / "main_window.py").read_text(encoding="utf-8")
+        tree = ast.parse(source, filename="main_window.py")
+        main_window = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "MainWindow"
+        )
+        bases = [
+            node.id if isinstance(node, ast.Name) else node.attr
+            for node in main_window.bases
+        ]
+        self.assertEqual(bases, self.MAIN_WINDOW_BASES)
+
+    def test_main_window_host_contains_no_feature_behavior(self):
+        source = (UI / "main_window.py").read_text(encoding="utf-8")
+        tree = ast.parse(source, filename="main_window.py")
+        main_window = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "MainWindow"
+        )
+        methods = {
+            node.name for node in main_window.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        self.assertEqual(methods, {"__init__", "listener", "_stopping_listener"})
 
     def test_shared_support_contains_only_cross_feature_helpers_and_relays(self):
         source = (UI / "main_window_support.py").read_text(encoding="utf-8")

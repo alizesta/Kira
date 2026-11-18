@@ -110,4 +110,3 @@ class MainWindow(
             runtime_settings_application_service=runtime_settings_application_service,
         )
 
-    # ---------- i18n helpers ----------
