@@ -111,6 +111,14 @@ def _coerce(param: Param, value: Any) -> Any:
         if isinstance(value, (dict, list)):
             raise ValueError("باید متن باشد")
         return str(value).strip()
+    if param.type == "array":
+        if not isinstance(value, list):
+            raise ValueError("باید فهرست باشد")
+        return value
+    if param.type == "object":
+        if not isinstance(value, dict):
+            raise ValueError("باید شیء باشد")
+        return value
     if param.type == "integer":
         if isinstance(value, bool):
             raise ValueError("باید عدد صحیح باشد")
