@@ -181,6 +181,15 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
         self.assertIs(context.resource("_vision_worker"), vision_worker)
         self.assertIsNone(context.resource("not_a_registered_resource"))
 
+    def test_shutdown_tracks_vision_workers_for_every_session(self):
+        runtime = (UI / "main_window_runtime.py").read_text(encoding="utf-8")
+        application = (ROOT / "kira" / "app" / "session_application.py").read_text(encoding="utf-8")
+
+        self.assertIn('getattr(session, "_vision_worker", None)', runtime)
+        self.assertIn('getattr(session, "_vision_session", None) is session', application)
+        self.assertNotIn("vision_session=vision_session", application)
+        self.assertNotIn("vision_worker=vision_worker", application)
+
     def test_session_relay_uses_explicit_context_and_controller_owners(self):
         source = (UI / "main_window_support.py").read_text(encoding="utf-8")
         self.assertIn("super().__init__(context.host)", source)
