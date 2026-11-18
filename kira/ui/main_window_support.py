@@ -1,100 +1,20 @@
-"""Shared Qt and capability imports used by the composed desktop window.
+"""Shared UI adapters that are intentionally common to all MainWindow features.
 
-This module is a migration reference. Move feature ownership into independent
-modules and remove this file when no application behavior depends on it.
+Feature dependencies live in the corresponding `main_window_*_support` modules;
+this module contains only cross-feature Qt signal adapters and tiny shared helpers.
 """
+from __future__ import annotations
 
-import contextlib
-import base64
 import json
-import random
-import time
-import uuid
-import shutil
-import subprocess
-from pathlib import Path
-import re
-import sys
-from PySide6.QtCore import Qt, Slot, Signal, QObject, QTimer, QRectF, QUrl, QSize
-from PySide6.QtGui import QAction, QIcon, QDesktopServices, QTextCursor, QColor, QBrush, QImage, QTextDocument, QPixmap
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTextEdit, QTextBrowser, QLineEdit,
-    QPushButton, QMessageBox, QComboBox, QFormLayout, QSpinBox, QTabWidget, QGroupBox, QCheckBox,
-    QSlider, QScrollArea, QToolButton, QMenu, QListWidget, QListWidgetItem, QAbstractItemView, QDialog,
-    QDialogButtonBox, QFrame, QFileDialog, QSizePolicy, QSystemTrayIcon, QTableWidget, QTableWidgetItem, QHeaderView, QInputDialog,
-    QStackedWidget, QDoubleSpinBox, QGridLayout, QButtonGroup, QGraphicsDropShadowEffect, QColorDialog, QProgressBar
-)
-from ..config import (load_settings, save_settings, ROOT, VERSION, LOAD_WARNINGS, DATA_DIR,
-                     APP_NAME, PROJECT_URL, RELEASES_URL)
-from .. import about
-from .. import storage
-from ..core.exceptions import ChatHistoryError
-from ..ollama_client import OllamaClient, model_installed, parse_keep_alive, clamp_num_ctx, clamp_num_predict, DEFAULT_NUM_PREDICT, DEFAULT_NUM_CTX, DEFAULT_KEEP_ALIVE
-from ..hybrid_ai import HybridRouter, probe_provider
-from .. import routes as route_model
-from .. import discovery
-from .. import api_manager
-from .. import websearch
-from ..chat import attachments as att
-from ..actions import match_safe_action, run_safe_action
-from ..tools import ToolAgent
-from ..leak_guard import scrub_lines
-from ..companion import CompanionWindow, CompanionBubble
-from ..chat_render import sources_html, message_html, detect_direction, bubble_accent
-from ..face import AvatarView
-from ..vrm_avatar import KiraAvatar
-from ..emotion.backend_png import EmotionFaceAnimator
-from ..emotion.director import EmotionDirector
-from ..voice import Speaker
-from ..listener import Listener
-from ..game_audio import GameAudioListener, is_important_game_audio
-from .. import modes
-from ..speech_fixes import SpeechFixes
-from ..strings import STR
-from ..personality import build_system_prompt
-from .. import evidence_memory
-from .. import brain
-from .. import usage
-from .. import mood
-from ..characters.kira import PROFILE as KIRA_PROFILE
-from ..character.traits import BASE_TRAITS
-from .. import avatar_art
-from .. import body as body_ctl
-from ..rig import MOODS
-from ..ui_icons import make_icon, set_glow_intensity
-from ..ui_widgets import ChatInput, RouteChip, AttachmentTile
-from ..theme import build_style, STYLE
-from .. import theme as theme_mod
-from ..chat_sessions import ChatSession, NOOP, SESSION_FIELDS, session_property, front_only_property
-from ..chat.application_service import ChatApplicationService, ApplicationEventKind, RequestStatus
-from ..chat.session_manager import SessionManager
-from ..chat.commands import PermissionDecision
-from ..chat.command_adapters import create_default_command_registry
-from ..tools.tasks import parse_control as parse_tool_task_control
-from .. import winfx
-from ..game_mode import GameModeMonitor, CAPTURE_JPEG_QUALITY
-from ..vision_pipeline import FrameGate, policy_for
-from ..game_mode_policy import (STORY_MODE, COMPETITIVE_SAFE_MODE, game_mode_permissions, normalize_game_mode_profile)
-from ..chat_code_ui import CodeChat
-from .components import ApiAddPanel, ChatHeader, McpRegistryPanel, ModelCombo, OllamaProviderPanel, RouteEditor, ChatComposer
-from .controllers import ChatAttachmentController
-from .dialogs import MemoryDialog, ModelPickerDialog
-from .pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
-from .workers import (
-    AttachWorker,
-    BenchWorker,
-    OllamaTaskWorker,
-    ProviderTestWorker,
-    SearchWorker,
-    StreamWorker,
-    TaskWorker,
-    VisionAnalysisWorker,
-)
+from functools import wraps
 
-WAKE_RE = re.compile(r"(?:(?:هی|سلام|hey|hi)[\s\u200c]*)?(?:کی[\s\u200c]?را|کایرا|کیرآ|کیارا|kira|keira|kyra|kiera)", re.I)
-STOP_RE = re.compile(r"^\W*(?:بس\s*کن|بسه|ساکت(?:\s*شو)?|صبر\s*کن|وایسا|وایستا|stop|be\s*quiet)\W*$", re.I)       # "just be quiet" is not a chat message
-SLEEP_RE = re.compile(r"بخواب|خداحافظ|شب بخیر|good\s*night", re.I)
+from PySide6.QtCore import QObject, Signal, Slot
+
+from ..config import ROOT
+
+
 SOUNDS_DIR = ROOT / "assets" / "sounds"
+
 
 def load_reactions():
     try:
@@ -104,18 +24,19 @@ def load_reactions():
 
 
 def front_only(fn):
-    """Method that only touches the shared screen (status line, route chip, upload cards): skipped while a background chat runs it."""
+    """Skip shared-screen updates while a background character session is active."""
+
+    @wraps(fn)
     def wrapper(self, *args, **kwargs):
         if self.cur is not self.front:
             return None
         return fn(self, *args, **kwargs)
-    wrapper.__name__ = fn.__name__
-    wrapper.__doc__ = fn.__doc__
+
     return wrapper
 
 
 class SessionRelay(QObject):
-    """Marshals this session's worker/provider callbacks onto the GUI thread."""
+    """Marshal this session's worker/provider callbacks onto the GUI thread."""
 
     provider_event = Signal(object)
 
@@ -137,16 +58,16 @@ class SessionRelay(QObject):
         self._run("on_stream_chunk", piece)
 
     @Slot(dict)
-    def stream_event(self, e):          # NOT named `event`: that would override QObject.event(QEvent)
-        self._run("on_stream_event", e)
+    def stream_event(self, event):
+        self._run("on_stream_event", event)
 
     @Slot(dict)
-    def tool(self, e):
-        self._run("on_tool_event", e)
+    def tool(self, event):
+        self._run("on_tool_event", event)
 
     @Slot(dict)
-    def done(self, res):
-        self._run("on_stream_done", res)
+    def done(self, result):
+        self._run("on_stream_done", result)
 
     @Slot(str)
     def failed(self, error):
@@ -167,5 +88,3 @@ class SessionRelay(QObject):
     @Slot()
     def game_vision_finished(self):
         self._run("_send_next_pending")
-
-
