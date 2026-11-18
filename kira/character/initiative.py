@@ -522,7 +522,12 @@ def build_checkin_message(candidate, language="auto", max_topic_chars=130):
             event_date = None
         if event_date is None:
             return float("inf")
-        due_times.append(datetime.combine(event_date + timedelta(days=1), datetime_time.min).timestamp())
+        # The 33-year Jalali conversion is intentionally buffered by one extra
+        # local day to avoid a premature check-in near calendar/leap-year boundaries.
+        day_buffer = 1 if 1200 <= year <= 1599 else 0
+        due_times.append(
+            datetime.combine(event_date + timedelta(days=1 + day_buffer), datetime_time.min).timestamp()
+        )
     return max(due_times) if due_times else None
 
 
