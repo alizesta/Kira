@@ -267,6 +267,7 @@ class RuntimeController(WindowFeatureController):
         self.context.adapters.bubble.commit_live()
         self.finish_request(res)
         if res.get("stopped"):
+            self.context.adapters.director.event("response_cancelled")
             if text.strip():
                 self.save_message("assistant", raw, status="cancelled", metadata={"stream": "stopped"}, persist=False)
             self.feature_controller("session").add_chat("system", "تولید پاسخ متوقف شد." + (" متن دریافت‌شده نگه داشته شد." if text.strip() else ""))
@@ -283,6 +284,7 @@ class RuntimeController(WindowFeatureController):
             self.feature_controller("session").add_chat("error", self.feature_controller("session").t("empty"))
             self.context.adapters.director.event("response_failed")
         else:
+            self.context.adapters.director.event("response_finished")
             self.save_message("assistant", raw, persist=False)
             try:                                                   # quiet second look (rules; optional background model call)
                 brain.after_turn(self.context.session.client, self.context.services.settings, getattr(self.context.session, "_brain", brain.Decision()), getattr(self.context.session, "_brain_user_text", ""),
