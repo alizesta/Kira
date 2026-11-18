@@ -25,6 +25,7 @@ APPLICATION_FEATURE_DEPENDENCIES = {
     "coding_agent": (),
     "runtime_settings": (),
     "vision": ("game_mode",),
+    "shared_skills": (),
     "chat_application": ("chat_history",),
     "session_application": ("chat_application",),
     "voice_application": (),
@@ -56,6 +57,8 @@ def register_application_modules(
     from .runtime_settings_application import RuntimeSettingsApplicationService
     from .vision_application import VisionApplicationService
     from .web_search import WebSearchApplicationService
+    from .shared_skills_application import SharedSkillsApplicationService
+    from ..config import DATA_DIR, save_settings
     from .chat_composition import create_chat_application_service_factory
     from .session_composition import create_session_application_service_factory
     from .voice_composition import create_voice_application_service_factory
@@ -85,6 +88,12 @@ def register_application_modules(
         "character_service": selected("character_service", CharacterProfileService),
         "chat_history_service": selected("chat_history_service", SqliteChatHistoryService),
         "web_search_service": selected("web_search_service", WebSearchApplicationService),
+        "shared_skills_application_service": selected(
+            "shared_skills_application_service",
+            lambda: SharedSkillsApplicationService(
+                DATA_DIR / "skills", settings, persist_settings=save_settings
+            ),
+        ),
         "game_mode_application_service": selected("game_mode_application_service", GameModeApplicationService),
         "provider_application_service": selected("provider_application_service", ProviderApplicationService),
         "coding_agent_application_service": selected("coding_agent_application_service", CodingAgentApplicationService),
@@ -100,6 +109,7 @@ def register_application_modules(
         ("characters", "character_service"),
         ("chat_history", "chat_history_service"),
         ("web_search", "web_search_service"),
+        ("shared_skills", "shared_skills_application_service"),
         ("game_mode", "game_mode_application_service"),
         ("provider", "provider_application_service"),
         ("coding_agent", "coding_agent_application_service"),
