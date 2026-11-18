@@ -30,6 +30,19 @@ def _finite_number(value):
     return number if math.isfinite(number) else None
 
 
+def sessions_are_idle(sessions):
+    """Fail closed unless every character session has no active request or unsent draft."""
+    if sessions is None:
+        return False
+    try:
+        for session in sessions:
+            if bool(getattr(session, "busy", False)) or str(getattr(session, "draft", "") or "").strip():
+                return False
+    except Exception:  # noqa: BLE001 - malformed session state must suppress unsolicited contact
+        return False
+    return True
+
+
 def _bounded_seconds(value, default, *, allow_zero=False):
     number = _finite_number(value)
     if number is None:
