@@ -55,8 +55,12 @@ class ChatApplicationWiringTests(unittest.TestCase):
 
     def test_session_manager_owns_runtime_lifecycle_and_request_identity(self):
         self.assertIn("session_manager or SessionManager(ChatSession)", self.source)
-        self.assertIn("self.session_manager.create_session(", self.source)
-        self.assertIn("self.session_manager.activate_session(self.cur.session_id)", self.source)
+        self.assertIn("create_session_application_service_factory", self.source)
+        self.assertIn("self.session_application_service.create_active_session(", self.source)
+        self.assertIn("self.session_application_service.activate_session(sess.session_id)", self.source)
+        self.assertIn("self.session_application_service.dispose()", self.source)
+        self.assertNotIn("self.session_manager.create_session(", self.source)
+        self.assertNotIn("self.session_manager.activate_session(", self.source)
         self.assertIn("self.session_manager.get_session(event.session_id)", self.source)
         self.assertIn("self.chat_application_service.submit_message(\n            self.cur.session_id", self.source)
 
