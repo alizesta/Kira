@@ -88,7 +88,7 @@ class CharacterSettingsMixin:
         effective = dict(self.settings)
         effective.update({k: v for k, v in override.items() if k in ("voice_rate", "voice_volume")})
         if getattr(self, "speaker", None) is not None:
-            self.speaker.settings = effective
+            self.voice_application_service.settings = effective
 
     def refresh_personality_controls(self):
         if not getattr(getattr(self, "character_page", None), "personality_sliders", None):
