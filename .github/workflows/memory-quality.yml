@@ -1,0 +1,42 @@
+name: Memory Quality Tests
+
+on:
+  push:
+    branches: [new-main]
+    paths:
+      - "kira/persona_memory.py"
+      - "kira/ui/main_window_chat.py"
+      - "tests/test_persona_memory.py"
+      - "docs/MEMORY_EVIDENCE_FA.md"
+      - ".github/workflows/memory-quality.yml"
+  pull_request:
+    branches: [new-main]
+    paths:
+      - "kira/persona_memory.py"
+      - "kira/ui/main_window_chat.py"
+      - "tests/test_persona_memory.py"
+      - "docs/MEMORY_EVIDENCE_FA.md"
+      - ".github/workflows/memory-quality.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  memory-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run memory relevance regression tests
+        run: python -m unittest tests.test_persona_memory -v
+      - name: Compile changed Python modules
+        run: >-
+          python -m py_compile
+          kira/persona_memory.py
+          kira/ui/main_window_chat.py
+          tests/test_persona_memory.py
