@@ -384,5 +384,12 @@ class InitiativeMessageTests(unittest.TestCase):
         self.assertTrue(math.isinf(_event_not_before('he said "امتحان 1405/13/01"', created)))
 
 
+    def test_unsupported_named_month_and_ambiguous_numeric_dates_fail_closed(self):
+        created = datetime(2026, 11, 19, 10, 30).timestamp()
+        self.assertTrue(math.isinf(_event_not_before('he said "جلسه ۲۵ آذر ۱۴۰۵"', created)))
+        self.assertTrue(math.isinf(_event_not_before('he said "meeting on November 25, 2026"', created)))
+        self.assertTrue(math.isinf(_event_not_before('he said "appointment 11/25"', created)))
+
+
 if __name__ == "__main__":
     unittest.main()
