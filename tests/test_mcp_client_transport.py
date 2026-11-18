@@ -45,6 +45,35 @@ class OversizedJsonResponse:
         self.closed = True
 
 
+class McpProtocolResultValidationTests(unittest.TestCase):
+    def setUp(self):
+        from kira.mcp.client import _Base
+        self.client = _Base({})
+
+    def test_initialize_rejects_non_object_result(self):
+        with mock.patch.object(self.client, "request", return_value=[]):
+            with self.assertRaisesRegex(McpError, "initialize"):
+                self.client.initialize(1)
+
+    def test_tools_list_rejects_missing_or_malformed_tools(self):
+        for result in ({}, {"tools": "not-a-list"}, {"tools": [None]}, {"tools": [{"name": ""}]}):
+            with self.subTest(result=result), mock.patch.object(self.client, "request", return_value=result):
+                with self.assertRaises(McpError):
+                    self.client.list_tools(1)
+
+    def test_tools_list_rejects_repeated_pagination_cursor(self):
+        page = {"tools": [], "nextCursor": "same"}
+        with mock.patch.object(self.client, "request", return_value=page):
+            with self.assertRaisesRegex(McpError, "repeated"):
+                self.client.list_tools(1)
+
+    def test_tool_call_rejects_non_object_and_malformed_content(self):
+        for result in (None, [], {"content": "not-a-list"}, {"content": [None]}):
+            with self.subTest(result=result), mock.patch.object(self.client, "request", return_value=result):
+                with self.assertRaises(McpError):
+                    self.client.call_tool("probe", {}, 1)
+
+
 class McpHttpTransportTests(unittest.TestCase):
     def setUp(self):
         self.client = HttpClient({"url": "https://mcp.example/rpc"})
