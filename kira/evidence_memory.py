@@ -416,7 +416,8 @@ def forget_all() -> None:
             _meta_set(con, "writer_upto", _chat_max_id())
         _tok_cache.clear()
     except Exception:                                                  # noqa: BLE001
-        pass
+        _log.exception("Could not clear evidence memory")
+        raise
 
 
 # ----------------------------------------------------------------------------------------------- model-written facts (validated)
