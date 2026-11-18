@@ -19,7 +19,10 @@ from .main_window_attachments_vision_support import (
 )
 
 
-class AttachmentsVisionMixin:
+from .window_feature_controller import WindowFeatureController
+
+
+class AttachmentsVisionMixin(WindowFeatureController):
     def capture_screen_attachment(self):
         """Capture the primary desktop only after an explicit user click; attach it for a normal Vision request."""
         try:
