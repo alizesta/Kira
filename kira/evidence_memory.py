@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import logging
 import math
 import re
 import sqlite3
@@ -33,6 +34,8 @@ from collections import Counter
 from pathlib import Path
 
 from .config import DATA_DIR
+
+_log = logging.getLogger(__name__)
 
 DB_NAME = "kira_evidence.sqlite3"
 DAY = 86400
@@ -855,6 +858,7 @@ def retrieve(query, limit=None, now=None) -> list[dict]:
                         "created_at": r["created_at"], "pinned": r["predicate"] in PINNED, "earlier": earlier})
         return out
     except Exception:                                                  # noqa: BLE001
+        _log.warning("Evidence-memory retrieval failed", exc_info=True)
         return []
 
 
@@ -901,6 +905,7 @@ def interest_line(max_chars=140, query=None) -> str:
                 "SELECT value FROM facts WHERE predicate='dislike' AND status='active' ORDER BY updated_at DESC"
             )]
     except Exception:
+        _log.warning("Evidence-memory interest recall failed", exc_info=True)
         return ""
     if query is not None:
         if not needs_recall(query):
