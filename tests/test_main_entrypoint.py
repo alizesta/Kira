@@ -36,10 +36,10 @@ class MainEntrypointTests(unittest.TestCase):
 
     def test_bootstrap_constructs_the_modular_window_directly(self):
         import inspect
-        from kira.app import bootstrap
+        from kira.ui import bootstrap
 
         source = inspect.getsource(bootstrap.run_application)
-        self.assertIn("from ..ui.main_window import MainWindow", source)
+        self.assertIn("from .main_window import MainWindow", source)
         self.assertNotIn("oldmain", source)
 
 
