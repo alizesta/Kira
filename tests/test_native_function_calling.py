@@ -127,6 +127,7 @@ class NativeFunctionCallingTests(unittest.TestCase):
             "tool_calls": [{"id": "call_1", "tool": "get_datetime", "args": {}}],
         }
         provider.last_stats = {"prompt_tokens": 12, "eval_tokens": 7, "eval_ms": 350}
+        provider.active_model = "actual-model"
         router._candidates = lambda: [route]
         router.eligibility = lambda _route: (True, "ok")
         router.route_info = lambda _route: {"kind": "cloud", "label": "Test"}
@@ -138,6 +139,7 @@ class NativeFunctionCallingTests(unittest.TestCase):
                 tools=[{"name": "get_datetime", "parameters": {"type": "object"}}],
             )
         self.assertEqual(result["tool_calls"][0]["tool"], "get_datetime")
+        self.assertEqual(result["model"], "actual-model")
         ledger.assert_called_once_with(router.last_metrics, "tool_call", provider, provider.last_stats)
         telemetry.assert_called_once()
         self.assertEqual(router.last_metrics["eval_tokens"], 7)
