@@ -77,6 +77,12 @@ class CharacterDecisionTests(unittest.TestCase):
             snapshot = mood._runtime_snapshot()
         self.assertEqual(snapshot["personality_traits"]["empathy"], 0.97)
 
+    def test_runtime_failure_falls_back_to_the_selected_builtin_profile(self):
+        with mock.patch.object(mood, "_runtime_for", side_effect=RuntimeError("runtime unavailable")), \
+             mock.patch.object(mood, "_current_character_id", return_value="ren"):
+            snapshot = mood._runtime_snapshot()
+        self.assertGreater(snapshot["personality_traits"]["curiosity"], 0.9)
+
     def test_decision_is_stable_under_repeated_and_small_input_perturbations(self):
         base = self.engine.decide("hello", {"emotion": "neutral", "energy": 70})
         repeated = [self.engine.decide("hello", {"emotion": "neutral", "energy": 70}) for _ in range(5)]

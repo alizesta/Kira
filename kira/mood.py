@@ -511,8 +511,14 @@ def _runtime_snapshot(now=None, query=None):
         try:
             traits = dict(getattr(_runtime_for(), "base_traits", {}) or {})
         except Exception:
-            logger.exception("Unable to read active character baseline after runtime snapshot failure")
+            logger.exception("Unable to read active character runtime baseline after snapshot failure")
             traits = {}
+        if not traits:
+            try:
+                from .personas import CHARACTERS
+                traits = dict(CHARACTERS.get(_current_character_id(), {}).get("traits") or {})
+            except Exception:
+                logger.exception("Unable to recover built-in character baseline after runtime snapshot failure")
         return {"personality_traits": traits, "relationship": {}, "emotional_memories": [],
                 "emotional_memory_count": 0, "emotional_components": [], "last_initiative": 0.0,
                 "last_initiative_memory_id": "", "recent_events": []}
