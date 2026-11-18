@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 import unittest
 
-from kira.tools.agent import ToolAgent, ToolPlan
+from kira.tools.agent import Pending, ToolAgent, ToolPlan
 from kira.tools.sysaccess import AccessManager
 
 
@@ -88,6 +88,32 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
             self.assertFalse(self.agent._cancel.is_set())
         with self.agent._use_session("ren"):
             self.assertTrue(self.agent._cancel.is_set())
+
+    def test_task_cancel_releases_only_the_matching_session_confirmation(self):
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as temp:
+            self.agent._init_autonomy(temp)
+            plan = self.agent.tasks.new("remove a file", session_id="kira")
+            self.agent._pending_by_session["kira"] = Pending(
+                "delete_file", {"path": "safe.txt"}, "delete file",
+                plan_id=plan.id, session_id="kira",
+            )
+            self.agent._pending_new_sessions.add("kira")
+            self.agent._pending_by_session["ren"] = Pending(
+                "delete_file", {"path": "other.txt"}, "delete another file",
+                plan_id="ren-plan", session_id="ren",
+            )
+            self.agent._pending_new_sessions.add("ren")
+
+            reply = self.agent.handle_task_command("لغو کار", session_id="kira")
+
+            self.assertIn("وظیفه لغو شد", reply)
+            self.assertEqual(plan.status, "cancelled")
+            self.assertNotIn("kira", self.agent._pending_by_session)
+            self.assertNotIn("kira", self.agent._pending_new_sessions)
+            self.assertIn("ren", self.agent._pending_by_session)
+            self.assertIn("ren", self.agent._pending_new_sessions)
 
     def test_plan_carries_its_character_identity(self):
         plan = ToolPlan({"files"}, session_id="mika")

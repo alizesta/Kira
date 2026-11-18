@@ -120,9 +120,13 @@ class AutonomyMixin:
 
     # ------------------------------------------------------------------ the user's commands about the task
     def handle_task_command(self, text: str, *, session_id: str | None = None):
-        """Before the model is asked: status / pause / cancel / resume / add a step / change the goal. Returns a ready reply text, or None
-        (then the message goes on: 'resume' and 'change' set a flag so the NEXT step is run by the model with the task state)."""
-        owner = self._turn_session_id if session_id is None else str(session_id)
+        """Apply task controls inside the owning Session's ToolAgent state."""
+        owner = self._turn_session_id if session_id is None else str(session_id or "")
+        with self._use_session(owner):
+            return self._handle_task_command(text, owner)
+
+    def _handle_task_command(self, text: str, owner: str):
+        """Resolve status / pause / cancel / resume / add-step / change commands."""
         if not self.planning_enabled():
             return None
         plan = self.tasks.active(owner)
