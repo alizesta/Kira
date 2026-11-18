@@ -4,6 +4,10 @@ import math
 
 from .main_window_session_support import (
     KIRA_PROFILE,
+    InitiativeEngine,
+    build_checkin_message,
+    initiative_history_state,
+    persona_memory,
     QApplication,
     sessions_are_idle,
     QColor,
@@ -635,10 +639,8 @@ class SessionController(WindowFeatureController):
             return
         self._sync_mood_character()
         # The existing UI poll is the scheduler; this controller throttles it to 30 seconds.
-        try:
-            self.maybe_proactive_checkin()
-        except Exception:                              # noqa: BLE001 - background initiative is optional
-            pass
+        # maybe_proactive_checkin owns its logged fail-closed boundary.
+        self.maybe_proactive_checkin()
 
         face_map = {
             "neutral": "neutral", "happy": "happy", "sad": "sad", "angry": "angry",
