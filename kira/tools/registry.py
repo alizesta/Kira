@@ -104,6 +104,35 @@ _TRUE = {"1", "true", "yes", "y", "on", "بله", "آره"}
 _FALSE = {"0", "false", "no", "n", "off", "نه", "خیر"}
 
 
+def _validate_json_value(value: Any) -> None:
+    """Reject values that cannot safely cross a JSON tool boundary."""
+    pending = [(value, 0)]
+    visited = 0
+    while pending:
+        current, depth = pending.pop()
+        visited += 1
+        if visited > 10000:
+            raise ValueError("ساختار آرگومان بیش از حد بزرگ است")
+        if depth > 32:
+            raise ValueError("عمق ساختار آرگومان بیش از حد مجاز است")
+        if current is None or isinstance(current, (str, bool, int)):
+            continue
+        if isinstance(current, float):
+            if not math.isfinite(current):
+                raise ValueError("مقادیر عددی باید متناهی باشند")
+            continue
+        if isinstance(current, list):
+            pending.extend((item, depth + 1) for item in current)
+            continue
+        if isinstance(current, dict):
+            for key, item in current.items():
+                if not isinstance(key, str):
+                    raise ValueError("کلیدهای شیء باید متن باشند")
+                pending.append((item, depth + 1))
+            continue
+        raise ValueError("ساختار آرگومان باید JSON معتبر باشد")
+
+
 def _coerce(param: Param, value: Any) -> Any:
     if value is None:
         raise ValueError("مقدار خالی است")
@@ -114,10 +143,12 @@ def _coerce(param: Param, value: Any) -> Any:
     if param.type == "array":
         if not isinstance(value, list):
             raise ValueError("باید فهرست باشد")
+        _validate_json_value(value)
         return value
     if param.type == "object":
         if not isinstance(value, dict):
             raise ValueError("باید شیء باشد")
+        _validate_json_value(value)
         return value
     if param.type == "integer":
         if isinstance(value, bool):
