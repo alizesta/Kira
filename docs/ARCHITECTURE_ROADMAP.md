@@ -62,12 +62,12 @@ These belong in the later explicitly authorized testing phase, not in TASK 016.
 **Goal:** reduce foundational coupling without destabilizing the application.
 
 1. Keep `kira/main.py` as the thin entry point and `kira/app/bootstrap.py` as the single production Composition Root.
-2. Continue replacing direct construction/compatibility fallback paths with injected services where a real call site needs it.
+2. Keep the production Composition Root authoritative: application/runtime dependencies are constructed in Bootstrap and injected; UI composition must reject missing dependencies rather than silently constructing service-layer fallbacks.
 3. Principal policy boundaries are extracted, including Chat command dispatch and attachment payload composition behind ChatApplicationService. Remaining UI code is the request-to-view sequence, Qt worker/widget lifecycle, dialogs and presentation; retain those responsibilities in feature mixins.
 4. The complete application service/factory graph is registered through ModuleManager; per-window Qt workers and runtime Chat/Session/Voice instances are drained by the window lifecycle before application-wide module shutdown.
 5. AD-03/AD-04 source-level fixes are now present: atomic latest-row mutations and transactional character-scoped bulk metadata updates. Runtime acceptance remains pending.
 
-**Exit condition:** ownership and composition boundaries are explicit; no new feature module duplicates an existing service or storage owner.
+**Exit condition:** ownership and composition boundaries are explicit; Bootstrap is the sole production composition point; UI adapters do not construct application services; no new feature module duplicates an existing service or storage owner.
 
 ### Phase B — Chat Integration
 
@@ -155,3 +155,19 @@ A successful static review is not a substitute for these runtime checks.
 | 2026-11-18 | Registered the application-wide service/factory graph in ModuleManager with explicit dependency ordering. | `kira/app/feature_modules.py`; 13 managed modules. |
 | 2026-11-18 | Kept concrete Chat/Session/Voice instances window-scoped because they retain Qt worker and callback ports; added graceful idempotent teardown instead of global singleton disposal. | `kira/ui/main_window_runtime.py`, `kira/app/voice_application.py`. |
 | 2026-11-18 | Added Chat History startup initialization and pending-write flush at stop. | `kira/services/chat_history_service.py`, `kira/chat/persistence.py`. |
+
+
+### Composition Root completion delta — 2026-11-18
+
+The remaining MainWindow composition fallback paths have been removed. The UI
+composition now validates its complete dependency set up front and rejects
+partial construction, rather than silently creating Memory, Mood, Character,
+Chat History, Web Search, Game Mode, Provider, Coding Agent, Runtime Settings,
+Vision, Chat, Session or Voice services. Bootstrap now also constructs and
+injects the runtime ToolAgent and owns SessionManager creation. UI composition
+retains only Qt/presentation/device adapters and builds typed callback ports for
+the window-scoped Chat and Voice factories.
+
+Added `tests/test_composition_root_contract.py` and included it in the
+chat/session lifecycle CI workflow. Source-level verification is covered by the
+new regression test; runtime execution remains dependent on the CI runner.
