@@ -635,7 +635,7 @@ class FileAgent:
             # The journal is local data and can be edited or corrupted. Never
             # let an undo record copy an arbitrary file into an allowed target.
             backup = self.policy.check(backup_path)
-            if not os.path.isfile(backup) or os.path.samefile(backup, real):
+            if not os.path.isfile(backup) or (os.path.exists(real) and os.path.samefile(backup, real)):
                 raise ToolError("پشتیبان معتبر و مستقل برای برگرداندن پیدا نشد.")
             shutil.copy2(backup, real)
         else:
