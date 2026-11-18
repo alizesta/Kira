@@ -33,9 +33,9 @@ class AttachmentsVisionController(WindowFeatureController):
             if pixmap.isNull():
                 raise RuntimeError("ثبت تصویر صفحه ناموفق بود.")
             self.add_pasted_image(pixmap.toImage())
-            self.add_chat("system", "🖥️ تصویر صفحه به پیوست‌ها اضافه شد؛ تا وقتی خودت پیام را نفرستی، برای مدل ارسال نمی‌شود.")
+            self.feature_controller("session").add_chat("system", "🖥️ تصویر صفحه به پیوست‌ها اضافه شد؛ تا وقتی خودت پیام را نفرستی، برای مدل ارسال نمی‌شود.")
         except Exception as exc:
-            self.add_chat("system", "ثبت تصویر صفحه ناموفق بود: " + str(exc)[:180])
+            self.feature_controller("session").add_chat("system", "ثبت تصویر صفحه ناموفق بود: " + str(exc)[:180])
 
     # ---- attachments (images and files) ----
 
@@ -192,7 +192,7 @@ class AttachmentsVisionController(WindowFeatureController):
         code_chat = getattr(self, "code_chat", None)
         session = getattr(code_chat, "session", None) if code_chat is not None else None
         if session is not None:
-            with self._as(session):
+            with self.feature_controller("session")._as(session):
                 self.coding_agent_application_service.stop_session(code_chat, session)
 
     def set_game_mode_profile(self, profile):
@@ -227,7 +227,7 @@ class AttachmentsVisionController(WindowFeatureController):
                 self._game_prev_wake = self.wake_btn.isChecked()
             if not self.wake_btn.isChecked():
                 self.wake_btn.setChecked(True)
-                self.toggle_wake()
+                self.feature_controller("runtime").toggle_wake()
             if audio_allowed:
                 self._start_game_audio_listener()
             else:
@@ -236,20 +236,20 @@ class AttachmentsVisionController(WindowFeatureController):
             self._stop_game_audio_listener()
             if not self._game_prev_wake and self.wake_btn.isChecked():
                 self.wake_btn.setChecked(False)
-                self.toggle_wake()
+                self.feature_controller("runtime").toggle_wake()
             if not self._game_prev_mic and self.mic_btn.isChecked():
                 self.mic_btn.setChecked(False)
-                self.stop_listener()
+                self.feature_controller("runtime").stop_listener()
 
         if not enabled:
             self.game_mode_btn.setToolTip("Game Mode خاموش است؛ برای فعال‌کردن دستی کلیک کن")
-            self.add_chat("system", "🎮 Game Mode خاموش شد؛ تمام Captureها و شنود صدای بازی متوقف شدند.")
+            self.feature_controller("session").add_chat("system", "🎮 Game Mode خاموش شد؛ تمام Captureها و شنود صدای بازی متوقف شدند.")
         elif self.game_mode_application_service.is_story(self._game_mode_profile):
             self.game_mode_btn.setToolTip("Story Mode فعال است؛ Vision و تحلیل محلی صدای بازی فعال‌اند")
-            self.add_chat("system", "🎮 Story Mode فعال شد. Vision و تحلیل محلی صدای بازی فعال‌اند. دست‌کاری پردازش، حافظه یا ورودی بازی همچنان ممنوع است.")
+            self.feature_controller("session").add_chat("system", "🎮 Story Mode فعال شد. Vision و تحلیل محلی صدای بازی فعال‌اند. دست‌کاری پردازش، حافظه یا ورودی بازی همچنان ممنوع است.")
         else:
             self.game_mode_btn.setToolTip("Competitive Safe فعال است؛ بدون Vision، Capture، شنود بازی یا کنترل دسکتاپ")
-            self.add_chat("system", "🛡️ Competitive Safe فعال شد. Vision، Capture، شنود صدای بازی و ابزارهای کنترل دسکتاپ/MCP مسدودند. فقط چت، جست‌وجوی وب و میکروفون/Wake Word مستقل فعال‌اند.")
+            self.feature_controller("session").add_chat("system", "🛡️ Competitive Safe فعال شد. Vision، Capture، شنود صدای بازی و ابزارهای کنترل دسکتاپ/MCP مسدودند. فقط چت، جست‌وجوی وب و میکروفون/Wake Word مستقل فعال‌اند.")
 
     def _start_game_audio_listener(self):
         self._stop_game_audio_listener()
@@ -270,7 +270,7 @@ class AttachmentsVisionController(WindowFeatureController):
     def on_game_audio_error(self, message):
         if (self._game_mode_enabled
                 and self.game_mode_application_service.permissions(self._game_mode_profile)["game_audio_loopback"]):
-            self.add_chat("system", "🎧 " + message)
+            self.feature_controller("session").add_chat("system", "🎧 " + message)
 
     def on_game_audio_transcript(self, text):
         alert = self.game_mode_application_service.classify_game_audio(
@@ -282,7 +282,7 @@ class AttachmentsVisionController(WindowFeatureController):
             speaking=self.voice_application_service.is_speaking(),
         )
         if alert is not None:
-            self.reply_local(alert.message, alert.emotion)
+            self.feature_controller("runtime").reply_local(alert.message, alert.emotion)
 
     def _capture_game_frame(self):
         """Capture a bounded frame and analyze only changed frames at the selected low-cost rate."""
@@ -329,12 +329,12 @@ class AttachmentsVisionController(WindowFeatureController):
             self._vision_worker.finished.connect(session.relay.game_vision_finished)
             self._vision_worker.start()
         except Exception as exc:  # noqa: BLE001 - vision must never interrupt the game/chat
-            self.add_chat("system", f"Vision: آماده‌سازی فریم ناموفق بود: {str(exc)[:180]}")
+            self.feature_controller("session").add_chat("system", f"Vision: آماده‌سازی فریم ناموفق بود: {str(exc)[:180]}")
 
     def _send_pending_for_session(self, session):
         if self._closing or session is None or session.cid not in self.sessions:
             return
-        self._send_next_pending(session)
+        self.feature_controller("runtime")._send_next_pending(session)
 
     def _on_game_vision_result(self, ok, result, latency_ms):
         self.vision_application_service.mark_latency(latency_ms)
@@ -352,9 +352,9 @@ class AttachmentsVisionController(WindowFeatureController):
         if message is None:
             return
         if not ok:
-            self.add_chat("system", "Vision: " + message[:300])
+            self.feature_controller("session").add_chat("system", "Vision: " + message[:300])
             return
-        self.add_chat("system", "👁️ " + message[:900])
+        self.feature_controller("session").add_chat("system", "👁️ " + message[:900])
 
     def on_game_detected(self, info):
         """Suggest Game Mode once per detected process, unless the user already enabled it."""
@@ -362,7 +362,7 @@ class AttachmentsVisionController(WindowFeatureController):
             return
         name = info.get("title") or info.get("exe") or "بازی"
         note = (f"🎮 بازی «{name[:90]}» شناسایی شد. اگر آفلاین/داستانی است Story Mode و اگر آنلاین/PvP یا نامشخص است Competitive Safe را انتخاب کن. انتخاب با خودت است.")
-        self.add_chat("system", note)
+        self.feature_controller("session").add_chat("system", note)
         tray = getattr(self, "tray", None)
         if tray is not None and tray.isVisible():
             tray.showMessage("Ai1 · Game Mode", "بازی شناسایی شد. برای کمک در حین بازی، Game Mode را خودت فعال کن.",
@@ -381,7 +381,7 @@ class AttachmentsVisionController(WindowFeatureController):
                 return None
             return att.image_attachment(bytes(data), "game-screen.jpg", "image/jpeg")
         except Exception as exc:  # noqa: BLE001 - a failed capture must not block ordinary chat
-            self.add_chat("system", f"تصویر بازی آماده نشد: {exc}")
+            self.feature_controller("session").add_chat("system", f"تصویر بازی آماده نشد: {exc}")
             return None
 
 
