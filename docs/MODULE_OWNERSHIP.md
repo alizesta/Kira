@@ -1,8 +1,8 @@
 # KIRA MODULE OWNERSHIP
 
 **Snapshot:** 2026-11-18  
-**Base:** `new-main` at `516765f0ceca9b674f32bec2d6491bf82b2e434f`  
-**Scope:** TASK 001–018 and adjacent application capabilities. This register describes observed ownership, not desired ownership where implementation is absent.
+**Base:** `new-main` at `e027a87eded5837984609f0dbfe9d8f5f0ac5349`  
+**Scope:** TASK 001–019 and adjacent application capabilities. This register describes observed ownership, not desired ownership where implementation is absent.
 
 ## 1. Ownership rules
 
@@ -51,12 +51,23 @@ The historical audit counts remain 12 DONE / 2 PARTIAL. The post-audit merge is 
 
 The service is injected by Bootstrap into MainWindow. SearchWorker creation, signals and rendering remain UI responsibilities. Focused Qt-free tests are included; execution/runtime acceptance is pending until CI can allocate a runner.
 
+
+### 2.3 TASK 019 — Voice application lifecycle
+
+| Task | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
+|---|---|---|---|---|
+| 019 | Voice application — `kira/app/voice_application.py`, `voice_composition.py`, `kira/core/interfaces/voice_service.py` | `VoiceApplicationService`: microphone lifecycle, speech/stream/file playback delegation, wake/sleep/stop transcript decisions and speaking/mute coordination | Injected Speaker, Listener factory, callback ports and GUI signal relay | Qt imports, widgets, direct device construction, direct provider/device SDK ownership |
+
+Bootstrap injects the Voice factory into MainWindow. Speaker and Listener remain device/Qt adapters; MainWindow relays Qt signals and renders state. Local STT settings-page test listeners remain a separate, explicitly scoped UI test workflow.
+
+| 019 | Game Mode application — `kira/app/game_mode_application.py`, `kira/game_audio_policy.py` | `GameModeApplicationService`: profile permission decisions, input automation restrictions, game-audio importance/category/cooldown policy | Pure `game_mode_policy` and `game_audio_policy` functions | Qt, capture/device APIs, UI presentation |
+
 ## 3. Cross-module API and dependency policy
 
 ### 3.1 Allowed high-level calls
 
 - Bootstrap constructs the graph and injects the shared services.
-- MainWindow calls ChatApplicationService for Chat submission, request lifecycle and history operations, and delegates Web Search policy to the injected WebSearchApplicationService.
+- MainWindow calls ChatApplicationService for Chat submission, request lifecycle and history operations, delegates Web Search policy to WebSearchApplicationService, and delegates Voice lifecycle/transcript policy to VoiceApplicationService and Game Mode permission/audio-alert policy to GameModeApplicationService.
 - ChatApplicationService calls its injected Coordinator, ContextBuilder, ResponseHandler, AttachmentManager, command port and persistence/history contract.
 - Search receives a read-only persistence reader and returns immutable result/page contracts.
 - Transfer validates and maps the transfer format, then delegates durable import to Persistence.
@@ -101,7 +112,7 @@ The Chat core modules should depend on Python data contracts and narrow Protocol
 | Bootstrap & DI | `kira/app/bootstrap.py`, `dependency_container.py`, `module_manager.py` | Composition is centralized; only four required service modules are registered. |
 | Character profiles | `kira/services`, `kira/character`, `kira/characters`, CharactersPage | Profile service and UI page exist; MainWindow still handles session/UI policy. |
 | Memory | `kira/services`, `persona_memory.py`, `evidence_memory.py`, `memory.py` | Memory service is registered/injected; legacy sources/adapters remain. |
-| Voice | `voice.py`, `listener.py`, `local_voice.py`, VAD/speech modules, VoicePage | Implementation exists; Voice interface is not yet wired through the implementation. |
+| Voice | `kira/core/interfaces/voice_service.py`, `kira/app/voice_application.py`, `voice_composition.py`, `voice.py`, `listener.py`, `local_voice.py` | VoiceApplicationService implements VoiceService and owns microphone lifecycle, speech/stream/file delegation and wake/sleep/stop transcript policy; Speaker/Listener remain injected adapters. |
 | Avatar/emotion | `face.py`, `vrm_avatar.py`, `companion.py`, `emotion/*`, `body.py`, `rig.py` | Capability code exists; no independent lifecycle-managed feature module confirmed. |
 | Tools/coding agent | `tools/*`, `actions.py`, `auto_agent.py`, `code_agent.py`, `chat_code.py` | Existing tools/agent integration remains application/legacy-bound; Chat command contracts are separate. |
 | Web Research | `kira/app/web_search.py`, `webintel/*`, `websearch.py`, discovery adapters | WebSearchApplicationService owns credential/query/request/evidence policy; SearchWorker and result presentation remain UI adapters. |

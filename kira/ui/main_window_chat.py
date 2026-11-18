@@ -148,7 +148,7 @@ class ChatMixin:
                     # A non-application request can still use the legacy payload.
                     pass
         self._turn_voice = voice
-        if self.speaker._began:
+        if self.voice_application_service.is_speaking():
             self.director.event("user_interrupt")
         self.safe_stop_speaker()
         self.animator.touch()

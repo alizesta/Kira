@@ -4,13 +4,10 @@ from .main_window_support import *  # noqa: F401,F403
 
 class RuntimeMixin:
     def _check_chat_command_permission(self, command, _request):
-        if "desktop.launch" in command.required_permissions:
-            if self._game_mode_profile == COMPETITIVE_SAFE_MODE:
-                return PermissionDecision(
-                    False,
-                    "در حالت Competitive Safe اجرای میانبرهای دسکتاپ غیرفعال است.",
-                )
-        return True
+        reason = self.game_mode_application_service.command_denial_reason(
+            self._game_mode_profile, command.required_permissions
+        )
+        return PermissionDecision(False, reason) if reason else True
 
     def body_active(self):
         """True while Kira's VRM body is on screen in the front chat and the setting 'body_control' is on."""
@@ -45,7 +42,7 @@ class RuntimeMixin:
         self._t_req = time.monotonic()
         self._t_first = None
         self._speech_live = False                                   # speech of THIS reply has started while it is still being written
-        self.speaker.stream_reset()
+        self.voice_application_service.stream_reset()
         self._stream_timer.start()
 
     def _speak_stream(self, text):
@@ -53,7 +50,7 @@ class RuntimeMixin:
         if not (self.voice_btn.isChecked() and self.settings.get("stream_speech", True)):
             return
         try:
-            self.speaker.stream_text(text)
+            self.voice_application_service.stream_text(text)
             self._speech_live = True
         except Exception as exc:                                    # noqa: BLE001
             self.on_voice_error(f"صدا ناموفق بود: {type(exc).__name__}: {exc}")
@@ -255,7 +252,7 @@ class RuntimeMixin:
             self.save_message("assistant", raw, status="interrupted", metadata={"stream": "provider_interrupted"}, persist=False)
             self.add_chat("error", f"ارتباط وسط پاسخ قطع شد؛ بخش دریافت‌شده نگه داشته شد و تکرار نمی‌شود.\n{res['interrupted']}")
             if self._speech_live:
-                self.speaker.stream_end()                          # what arrived is still spoken to its end
+                self.voice_application_service.stream_end()                          # what arrived is still spoken to its end
             self.director.event("response_failed")
         elif not text.strip():
             self.add_chat("error", self.t("empty"))
@@ -270,7 +267,7 @@ class RuntimeMixin:
             if not self._emotion_applied:                          # no tag from the model: tag-less fallback (keywords / neutral)
                 self.director.on_reply(meta)
             if self._speech_live:
-                self.speaker.stream_end()                          # the sentences were spoken while it was written: say the tail
+                self.voice_application_service.stream_end()                          # the sentences were spoken while it was written: say the tail
             else:
                 self.say(text)
         if self._web_found and text.strip():
@@ -285,7 +282,7 @@ class RuntimeMixin:
         self._stream_flush(final=True)
         self._stream_pos = None
         if getattr(self, "_speech_live", False):
-            self.speaker.stream_end()
+            self.voice_application_service.stream_end()
         self.add_chat("error", self.t("reply_err", e=error))
         self.director.event("response_failed")
         self.finish_request(None)
@@ -388,14 +385,14 @@ class RuntimeMixin:
     def safe_stop_speaker(self):
         """Stopping the voice must never be able to stop the app from doing its real work (sending a chat message)."""
         try:
-            self.speaker.stop()
+            self.voice_application_service.stop_speaking()
         except Exception as exc:                                  # noqa: BLE001
             self.on_voice_error(f"توقف صدا ناموفق بود: {type(exc).__name__}: {exc}")
 
     def say(self, text):
         if self.voice_btn.isChecked():
             try:
-                self.speaker.speak(text)
+                self.voice_application_service.speak(text)
             except Exception as exc:                              # noqa: BLE001
                 self.on_voice_error(f"صدا ناموفق بود: {type(exc).__name__}: {exc}")
 
@@ -405,7 +402,7 @@ class RuntimeMixin:
             self._last_idle = time.time()
             lines = self.reactions.get("_idle", {}).get(self.settings.get("ui_lang", "fa"), [])
             if lines and self.voice_btn.isChecked():
-                self.speaker.speak(random.choice(lines), -5, -3, cache=True)
+                self.voice_application_service.speak(random.choice(lines), -5, -3, cache=True)
 
     # ---------- click reactions ----------
 
@@ -437,12 +434,12 @@ class RuntimeMixin:
         files = [f for f in (SOUNDS_DIR / region).glob("*") if f.suffix.lower() in (".wav", ".mp3", ".ogg")] \
             if (SOUNDS_DIR / region).exists() else []
         if files:
-            self.speaker.play_file(random.choice(files))
+            self.voice_application_service.play_file(random.choice(files))
             return
         lang = self.settings.get("ui_lang", "fa")
         lines = cfg.get(lang) or cfg.get("fa") or []
         if lines and self.voice_btn.isChecked():
-            self.speaker.speak(random.choice(lines), cfg.get("rate"), cfg.get("pitch"), cache=True)
+            self.voice_application_service.speak(random.choice(lines), cfg.get("rate"), cfg.get("pitch"), cache=True)
 
     # ---------- voice, microphone, wake mode ----------
 
@@ -457,20 +454,18 @@ class RuntimeMixin:
             self.safe_stop_speaker()
 
     def on_stop_clicked(self):
-        if self.speaker._began:
+        if self.voice_application_service.is_speaking():
             self.director.event("user_interrupt")
         self.safe_stop_speaker()
 
     def on_speech_started(self):
         self.director.event("tts_started")           # real audio playback has begun
-        if self.listener:
-            self.listener.begin_kira_speech()        # keeps listening for an interruption (or mutes when barge-in is off)
+        self.voice_application_service.begin_speaking()
         self.set_status("st_speaking")
 
     def on_speech_finished(self):
         self.director.event("tts_stopped")           # playback ended or was stopped
-        if self.listener:
-            self.listener.end_kira_speech()
+        self.voice_application_service.end_speaking()
         QTimer.singleShot(500, self.unmute)
         if self.listener:
             self.on_listener_state("listening")
@@ -483,13 +478,12 @@ class RuntimeMixin:
 
     def on_user_barge_in(self):
         """The person started talking over Kira: she stops at once, and what they say is still heard as the next message."""
-        if self.speaker._began:
+        if self.voice_application_service.is_speaking():
             self.director.event("user_interrupt")
         self.safe_stop_speaker()
 
     def unmute(self):
-        if self.listener and not self.speaker._began:
-            self.listener.muted = False
+        self.voice_application_service.unmute_if_idle()
 
     def toggle_mic(self):
         if self.mic_btn.isChecked():
@@ -500,53 +494,34 @@ class RuntimeMixin:
                 self.toggle_wake()
             self.stop_listener()
 
+    def _create_voice_listener(self):
+        return Listener(
+            self.settings["whisper_model"],
+            self.settings["stt_language"],
+            self,
+            sensitivity=self.settings.get("mic_sensitivity", 100),
+            barge_in=self.settings.get("barge_in", True),
+            settings=self.settings,
+        )
+
     def start_listener(self):
-        # A stopped QThread cannot be restarted. Wait for its finished signal before
-        # creating the replacement, otherwise rapid mic toggles can open two streams.
-        if self.listener is not None:
-            self.stop_listener()
-        previous = getattr(self, "_stopping_listener", None)
-        if previous is not None and previous.isRunning():
-            self._restart_listener_after_stop = True
-            self.set_status("st_loading")
-            return
-        self._restart_listener_after_stop = False
-        self.listener = Listener(self.settings["whisper_model"], self.settings["stt_language"], self,
-                                 sensitivity=self.settings.get("mic_sensitivity", 100), barge_in=self.settings.get("barge_in", True),
-                                 settings=self.settings)
-        listener = self.listener
-        listener.heard.connect(self.on_heard)
-        listener.interrupted.connect(self.on_user_barge_in)
-        listener.state.connect(self.on_listener_state)
-        listener.error.connect(self.on_listener_error)
-        listener.note.connect(self.on_voice_note)
-        listener.finished.connect(lambda current=listener: self._listener_finished(current))
-        listener.start()
+        self.voice_application_service.start_recording()
 
     def stop_listener(self):
-        self._restart_listener_after_stop = False
-        if self.listener:
-            listener, self.listener = self.listener, None
-            listener.stop()
-            if listener.isRunning():
-                self._stopping_listener = listener
+        self.voice_application_service.stop_recording()
         self.set_status("st_ready")
         self.update_engine_label()
 
-    def _listener_finished(self, listener):
-        was_current = self.listener is listener
+    def _on_voice_listener_finished(self, listener, was_current, restart_requested):
         if was_current:
-            self.listener = None
             self.mic_btn.setChecked(False)
-        if getattr(self, "_stopping_listener", None) is listener:
-            self._stopping_listener = None
         self.update_engine_label()
-        if not self._closing:
-            if getattr(self, "_restart_listener_after_stop", False) and self.mic_btn.isChecked():
-                self._restart_listener_after_stop = False
-                QTimer.singleShot(0, self.start_listener)
-            elif was_current:
-                self.set_status("st_ready")
+        if self._closing:
+            return
+        if restart_requested and self.mic_btn.isChecked():
+            QTimer.singleShot(0, self.start_listener)
+        elif was_current:
+            self.set_status("st_ready")
 
     def on_listener_error(self, msg):
         self.add_chat("error", msg)
@@ -604,29 +579,32 @@ class RuntimeMixin:
 
     def on_heard(self, text):
         self.animator.touch()
-        # Keep processing voice input while a reply is generating: submit() owns
-        # the same bounded queue as typed messages and handles running-task controls.
-        if self.wake_btn.isChecked():
-            if not self.awake:
-                mt = WAKE_RE.search(text)
-                if not mt:
-                    return
-                self.wake_up()
-                rest = text[mt.end():].strip(" ،,.!؟?؛")
-                if len(rest) < 2:
-                    self.reply_local(self.t("yes"))
-                    return
-                text = rest
-            else:
-                if SLEEP_RE.search(text):
-                    self.add_chat("user", text)
-                    self.go_sleep()
-                    self.say(self.t("night"))
-                    return
-                self.wake_timer.start(int(self.settings["wake_timeout"]) * 1000)
-        if STOP_RE.match(text.strip()):
-            self.safe_stop_speaker()                  # "بس کن / ساکت" only silences Kira; it is not sent to the model
+        decision = self.voice_application_service.interpret_transcript(
+            text,
+            wake_enabled=self.wake_btn.isChecked(),
+            awake=self.awake,
+        )
+        if decision.action == "ignore":
             return
+        if decision.action == "wake_only":
+            self.wake_up()
+            self.reply_local(self.t("yes"))
+            return
+        if decision.action == "wake_submit":
+            self.wake_up()
+            text = decision.text
+        elif decision.action == "sleep":
+            self.add_chat("user", text)
+            self.go_sleep()
+            self.say(self.t("night"))
+            return
+        elif decision.action == "stop":
+            if self.wake_btn.isChecked() and self.awake:
+                self.wake_timer.start(int(self.settings["wake_timeout"]) * 1000)
+            self.safe_stop_speaker()
+            return
+        elif self.wake_btn.isChecked() and self.awake:
+            self.wake_timer.start(int(self.settings["wake_timeout"]) * 1000)
         self._voice_next = True
         self.submit(text)
 

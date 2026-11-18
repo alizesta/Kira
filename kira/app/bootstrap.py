@@ -15,6 +15,8 @@ def run_application() -> None:
     from .dependency_container import DependencyContainer
     from .chat_composition import create_chat_application_service_factory
     from .web_search import WebSearchApplicationService
+    from .voice_composition import create_voice_application_service_factory
+    from .game_mode_application import GameModeApplicationService
     from .event_bus import EventBus
     from ..chat.events import ChatEventPublisher
     from ..chat.session_manager import SessionManager
@@ -62,6 +64,8 @@ def run_application() -> None:
         event_publisher=chat_event_publisher,
     )
     web_search_service = WebSearchApplicationService()
+    voice_service_factory = create_voice_application_service_factory()
+    game_mode_application_service = GameModeApplicationService()
     try:
         window = MainWindow(
             memory_service=container.resolve("memory_service"),
@@ -70,6 +74,8 @@ def run_application() -> None:
             chat_history_service=chat_history_service,
             chat_application_service_factory=chat_service_factory,
             web_search_service=web_search_service,
+            voice_application_service_factory=voice_service_factory,
+            game_mode_application_service=game_mode_application_service,
             session_manager=session_manager,
             chat_event_publisher=chat_event_publisher,
         )
