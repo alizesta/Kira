@@ -78,6 +78,32 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
             "listener", "_stopping_listener",
         })
 
+    def test_feature_controller_state_is_owned_by_the_window(self):
+        from types import SimpleNamespace
+
+        from kira.ui.window_feature_controller import WindowFeatureController
+
+        window = SimpleNamespace(counter=1)
+        controller = WindowFeatureController(window)
+        self.assertEqual(controller.counter, 1)
+        controller.counter = 2
+        self.assertEqual(window.counter, 2)
+        self.assertIs(controller.window, window)
+
+    def test_shell_forwards_qt_virtual_events_to_their_feature_owners(self):
+        source = (UI / "main_window.py").read_text(encoding="utf-8")
+        expected_routes = (
+            '_dispatch_qt_event("lifecycle", "showEvent", event)',
+            '_dispatch_qt_event("lifecycle", "hideEvent", event)',
+            '_dispatch_qt_event("lifecycle", "changeEvent", event)',
+            '_dispatch_qt_event("session", "resizeEvent", event)',
+            '_dispatch_qt_event("runtime", "closeEvent", event)',
+            '_dispatch_qt_event("attachments_vision", "dragEnterEvent", event)',
+            '_dispatch_qt_event("attachments_vision", "dropEvent", event)',
+        )
+        for route in expected_routes:
+            self.assertIn(route, source)
+
     def test_shared_support_contains_only_cross_feature_helpers_and_relays(self):
         source = (UI / "main_window_support.py").read_text(encoding="utf-8")
         forbidden = (
