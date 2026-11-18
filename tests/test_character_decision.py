@@ -3,6 +3,7 @@ import unittest
 from kira.character.decision import BASE_TRAITS, BEHAVIOUR_GUIDES, DecisionEngine, decide as decide_character
 from kira.character.initiative import InitiativeEngine
 from kira.character.learning import detect_feedback
+from kira.personas import CHARACTERS
 
 
 class CharacterDecisionTests(unittest.TestCase):
@@ -51,6 +52,24 @@ class CharacterDecisionTests(unittest.TestCase):
         self.assertEqual(detect_feedback("این شوخی خوب بود"), "liked_teasing")
         self.assertEqual(detect_feedback("شوخی نکن"), "disliked_teasing")
         self.assertEqual(detect_feedback("فردا امتحان دارم"), None)
+
+    def test_builtin_characters_have_distinct_baseline_decisions(self):
+        expected = {"kira": "playful", "ren": "curious", "mika": "affectionate"}
+        for character_id, behaviour in expected.items():
+            with self.subTest(character=character_id):
+                decision = DecisionEngine(CHARACTERS[character_id]["traits"]).decide(
+                    "سلام", {"emotion": "neutral", "energy": 76}
+                )
+                self.assertEqual(decision.behaviour, behaviour)
+
+    def test_task_and_serious_context_override_personality_flavour(self):
+        for character_id in ("kira", "ren", "mika"):
+            engine = DecisionEngine(CHARACTERS[character_id]["traits"])
+            task = engine.decide("یک فایل بساز", {"emotion": "neutral"}, "task")
+            serious = engine.decide("من خیلی افسرده‌ام", {"emotion": "happy"})
+            self.assertEqual(task.behaviour, "focused")
+            self.assertTrue(serious.serious_context)
+            self.assertIn(serious.behaviour, ("gentle", "protective", "quiet"))
 
     def test_extended_behaviours_are_selectable_and_described(self):
         for behaviour in ("sarcastic", "clingy", "stubborn", "sulking", "cheerful", "reserved", "flirty", "energetic"):
