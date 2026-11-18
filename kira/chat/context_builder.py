@@ -22,6 +22,16 @@ SystemPromptBuilder = SystemPromptBuilderPort
 PromptEnricher = PromptEnricherPort
 
 
+def latest_user_text(messages: Sequence[Mapping[str, Any]]) -> str:
+    """Return the newest user message without mistaking assistant/system text for input."""
+    for message in reversed(messages or ()):
+        if not isinstance(message, Mapping) or message.get("role") != "user":
+            continue
+        content = message.get("content", "")
+        return content if isinstance(content, str) else str(content or "")
+    return ""
+
+
 class ContextBuilder:
     """Build one isolated turn context using explicitly injected collaborators."""
 
