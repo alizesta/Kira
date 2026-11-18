@@ -1,7 +1,7 @@
 """Contract consumed by UI/chat; implementation is supplied by Voice module."""
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class VoiceService(Protocol):
@@ -24,3 +24,17 @@ class VoiceService(Protocol):
     def play_file(self, path: str) -> None: ...
 
     def is_speaking(self) -> bool: ...
+
+    @property
+    def settings(self) -> Any: ...
+
+    @settings.setter
+    def settings(self, value: Any) -> None: ...
+
+    def begin_speaking(self) -> None: ...
+
+    def end_speaking(self) -> None: ...
+
+    def unmute_if_idle(self) -> None: ...
+
+    def stop_all(self) -> None: ...
