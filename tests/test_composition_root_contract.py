@@ -130,6 +130,28 @@ class CompositionRootContractTests(unittest.TestCase):
         self.assertIn("tool_agent", keywords)
         self.assertIn("session_manager", keywords)
 
+    def test_bootstrap_exposes_transfer_file_adapter_injection(self):
+        bootstrap = parse("kira/ui/bootstrap.py")
+        run_application = next(
+            node for node in bootstrap.body
+            if isinstance(node, ast.FunctionDef) and node.name == "run_application"
+        )
+        self.assertIn(
+            "transfer_file_port",
+            {argument.arg for argument in run_application.args.kwonlyargs},
+        )
+        registration_calls = [
+            node for node in ast.walk(run_application)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "register_application_modules"
+        ]
+        self.assertEqual(len(registration_calls), 1)
+        self.assertIn(
+            "transfer_file_port",
+            {item.arg for item in registration_calls[0].keywords},
+        )
+
     def test_shared_skills_is_registered_and_injected_from_bootstrap(self):
         modules = parse("kira/app/feature_modules.py")
         bootstrap = parse("kira/ui/bootstrap.py")
