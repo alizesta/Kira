@@ -437,10 +437,10 @@ class VoiceSettingsController(WindowFeatureController):
                 raise RuntimeError((result.stderr or result.stdout or "ollama create failed")[-3000:])
             return name
 
-        self._model_import_worker = TaskWorker(work)
-        self._model_import_worker.done.connect(self.on_local_model_imported)
-        self._model_import_worker.finished.connect(lambda: setattr(self.context.state, "_model_import_worker", None))
-        self._model_import_worker.start()
+        self.context.state._model_import_worker = TaskWorker(work)
+        self.context.state._model_import_worker.done.connect(self.on_local_model_imported)
+        self.context.state._model_import_worker.finished.connect(lambda: setattr(self.context.state, "_model_import_worker", None))
+        self.context.state._model_import_worker.start()
 
     def on_local_model_imported(self, result):
         self.context.views.import_model_btn.setEnabled(True)
@@ -551,7 +551,7 @@ class VoiceSettingsController(WindowFeatureController):
         if hasattr(self, "local_voice_progress"):
             self.context.views.local_voice_progress.show()
         worker = TaskWorker(fn)
-        self._local_voice_worker = worker
+        self.context.state._local_voice_worker = worker
         def completed(result):
             button.setEnabled(True)
             if hasattr(self, "local_voice_progress"):
@@ -559,8 +559,8 @@ class VoiceSettingsController(WindowFeatureController):
             callback(result)
 
         def worker_finished():
-            if self._local_voice_worker is worker:
-                self._local_voice_worker = None
+            if self.context.state._local_voice_worker is worker:
+                self.context.state._local_voice_worker = None
             if getattr(self, "_close_after_local_voice", False):
                 self.context.state._close_after_local_voice = False
                 QTimer.singleShot(0, self.window.close)
