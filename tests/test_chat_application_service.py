@@ -124,7 +124,7 @@ class ChatApplicationServiceTests(unittest.TestCase):
             "read this",
             [{"name": "note.txt", "kind": "text", "text": "attachment body"}],
         )
-        self.assertEqual(prepared["display"], "read this\\n📎 note.txt")
+        self.assertEqual(prepared["display"], "read this\n📎 note.txt")
         self.assertIn("attachment body", prepared["model"])
         self.assertIn("attachment body", prepared["stored"])
         self.assertEqual(prepared["images"], [])
