@@ -1,5 +1,41 @@
 """Provider settings behavior mixin for the desktop window."""
-from .main_window_provider_settings_support import *  # noqa: F401,F403
+import re
+from .main_window_provider_settings_support import (
+    ApiAddPanel,
+    BenchWorker,
+    ModelCombo,
+    OllamaProviderPanel,
+    QAbstractItemView,
+    QBrush,
+    QCheckBox,
+    QColor,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QScrollArea,
+    QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QTimer,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+    Qt,
+    RouteEditor,
+    TaskWorker,
+    front_only,
+)
 
 class ProviderSettingsMixin:
     def refresh_model_catalogs(self):
