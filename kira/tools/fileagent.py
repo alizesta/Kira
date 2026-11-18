@@ -588,9 +588,15 @@ class FileAgent:
                 fh.truncate(item["size_before"])
         elif op == "write":
             real = self.policy.check(path, must_exist=False)
-            if not item.get("backup") or not os.path.exists(item["backup"]):
+            backup_path = item.get("backup")
+            if not backup_path:
                 raise ToolError("پشتیبانی برای برگرداندن نیست.")
-            shutil.copy2(item["backup"], real)
+            # The journal is local data and can be edited or corrupted. Never
+            # let an undo record copy an arbitrary file into an allowed target.
+            backup = self.policy.check(backup_path)
+            if not os.path.isfile(backup) or os.path.samefile(backup, real):
+                raise ToolError("پشتیبان معتبر و مستقل برای برگرداندن پیدا نشد.")
+            shutil.copy2(backup, real)
         else:
             raise ToolError("این نوع عملیات قابل برگرداندن نیست.")
         self.journal.mark_undone(item)
