@@ -30,6 +30,19 @@ class _Listener:
         self.speaking_ended = False
         self.muted = True
         self.kira_level = 0.0
+        self._event_signals = {
+            "heard": self.heard,
+            "interrupted": self.interrupted,
+            "state": self.state,
+            "error": self.error,
+            "note": self.note,
+            "finished": self.finished,
+        }
+
+    def subscribe(self, event, callback):
+        signal = self._event_signals[event]
+        signal.connect(callback)
+        return lambda: None
 
     def start(self):
         self.running = True
@@ -37,14 +50,17 @@ class _Listener:
     def stop(self):
         self.stop_called = True
 
-    def isRunning(self):
+    def is_running(self):
         return self.running
 
-    def begin_kira_speech(self):
+    def begin_speaking(self):
         self.speaking_started = True
 
-    def end_kira_speech(self):
+    def end_speaking(self):
         self.speaking_ended = True
+
+    def set_muted(self, muted):
+        self.muted = bool(muted)
 
     def finish(self):
         self.running = False
@@ -254,7 +270,7 @@ class VoiceApplicationServiceTests(unittest.TestCase):
 
     def test_start_replaces_stale_deleted_listener_without_crashing(self):
         class DeletedListener:
-            def isRunning(self):
+            def is_running(self):
                 raise RuntimeError("deleted")
 
         self.service.stopping_listener = DeletedListener()
