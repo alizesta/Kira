@@ -36,10 +36,10 @@ class LifecycleController(WindowFeatureController):
         new = winfx.active_effect(wanted)
         old, self._effect = self._effect, new
         QApplication.instance().setStyleSheet(build_style(new, self.settings.get("appearance", {})))
-        self.apply_chat_theme()
+        self.feature_controller("session").apply_chat_theme()
         winfx.apply_effect(self.winId(), new)
         if (old == "off") != (new == "off"):
-            self.add_chat("system", "برای اعمال کامل حالت شیشه‌ای، برنامه را یک بار ببند و دوباره باز کن.")
+            self.feature_controller("session").add_chat("system", "برای اعمال کامل حالت شیشه‌ای، برنامه را یک بار ببند و دوباره باز کن.")
 
     def apply_settings(self):
         s = self.settings
@@ -70,7 +70,7 @@ class LifecycleController(WindowFeatureController):
         })
         # Qwen3-ASR enablement is controlled independently in Local Models;
         # this picker only selects the offline faster-whisper fallback.
-        self.collect_provider_settings()
+        self.feature_controller("provider_settings").collect_provider_settings()
         self.provider_application_service.ensure_routes(s)
         primary = self.provider_application_service.find_route(s, "ollama")
         if primary and primary["model"] != s["model"]:
@@ -78,7 +78,7 @@ class LifecycleController(WindowFeatureController):
         ocfg = s.setdefault("providers", {}).setdefault("ollama", {})
         keep_value, keep_ok = parse_keep_alive(self.keep_alive.currentText())
         if not keep_ok:
-            self.add_chat("system", self.t("o_keep_bad"))
+            self.feature_controller("session").add_chat("system", self.feature_controller("session").t("o_keep_bad"))
         ocfg.update({"enabled": self.route_ollama_enabled.isChecked(), "num_ctx": clamp_num_ctx(self.num_ctx.value()),
                      "num_predict": clamp_num_predict(self.num_predict.value()),
                      "keep_alive": str(keep_value), "model": s["model"], "base_url": s["ollama_url"]})
@@ -94,16 +94,16 @@ class LifecycleController(WindowFeatureController):
         )
         self.runtime_settings_application_service.apply(s, tool_agent=self.tool_agent)
         self.ollama_client = self.provider_application_service.create_ollama_client(s)
-        self.refresh_route_list()
-        self.set_badge("idle", self.client.preview_route())
+        self.feature_controller("provider_settings").refresh_route_list()
+        self.feature_controller("runtime").set_badge("idle", self.client.preview_route())
         self.apply_runtime()
-        self.apply_character_voice_settings()
-        self.apply_appearance(save=False)
-        self.retranslate()
+        self.feature_controller("character_settings").apply_character_voice_settings()
+        self.feature_controller("character_settings").apply_appearance(save=False)
+        self.feature_controller("session").retranslate()
         self.check_status()
         if self.mic_btn.isChecked():
-            self.start_listener()
-        self.add_chat("system", self.t("saved"))
+            self.feature_controller("runtime").start_listener()
+        self.feature_controller("session").add_chat("system", self.feature_controller("session").t("saved"))
 
     # ---- System Tray ----
 
@@ -146,7 +146,7 @@ class LifecycleController(WindowFeatureController):
         auto = models.addAction("خودکار (بر اساس اولویت)")
         auto.setCheckable(True)
         auto.setChecked(not manual)
-        auto.triggered.connect(lambda checked=False: self.select_route(""))
+        auto.triggered.connect(lambda checked=False: self.feature_controller("runtime").select_route(""))
         routes = self.client.available_routes()
         shown = routes[: self.MENU_ROUTES]
         chosen = next((r for r in routes if r["route_id"] == manual), None)
@@ -157,7 +157,7 @@ class LifecycleController(WindowFeatureController):
             act = models.addAction(f"{'☁' if info['kind'] == 'cloud' else '⌂'}  {info['label']} / {model}")
             act.setCheckable(True)
             act.setChecked(info["route_id"] == manual)
-            act.triggered.connect(lambda checked=False, rid=info["route_id"]: self.select_route(rid))
+            act.triggered.connect(lambda checked=False, rid=info["route_id"]: self.feature_controller("runtime").select_route(rid))
         if not routes:
             models.addAction("هیچ Route فعالی نیست").setEnabled(False)
         web = menu.addAction("جست‌وجوی وب")
@@ -173,7 +173,7 @@ class LifecycleController(WindowFeatureController):
 
     def tray_toggle_mic(self, checked=False):
         self.mic_btn.setChecked(not self.mic_btn.isChecked())
-        self.toggle_mic()
+        self.feature_controller("runtime").toggle_mic()
 
     def update_bubble(self):
         """The chat bubble is shown beside Kira only while the main window is out of the way (in the tray)."""
@@ -241,7 +241,7 @@ class LifecycleController(WindowFeatureController):
         try:
             path = SpeechFixes().ensure_file()
         except OSError as exc:
-            self.add_chat("error", f"فایل اصلاح واژه‌ها ساخته نشد: {exc}")
+            self.feature_controller("session").add_chat("error", f"فایل اصلاح واژه‌ها ساخته نشد: {exc}")
             return
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
@@ -284,25 +284,25 @@ class LifecycleController(WindowFeatureController):
             listed, models = client.status()
             self._found_models = models if listed else None
             return ok, text
-        self._run_ollama_task(task, self.t("o_busy"))
+        self._run_ollama_task(task, self.feature_controller("session").t("o_busy"))
 
     def speed_test(self):
         client = self._form_client()
-        self._run_ollama_task(client.benchmark, self.t("o_busy_long"))
+        self._run_ollama_task(client.benchmark, self.feature_controller("session").t("o_busy_long"))
 
     def load_local_model(self):
         client = self._form_client()
         def task():
             client.preload()
             return client.describe()
-        self._run_ollama_task(task, self.t("o_busy"))
+        self._run_ollama_task(task, self.feature_controller("session").t("o_busy"))
 
     def unload_local_model(self):
         client = self._form_client()
         def task():
             client.unload()
             return client.describe()
-        self._run_ollama_task(task, self.t("o_busy"))
+        self._run_ollama_task(task, self.feature_controller("session").t("o_busy"))
 
     # ---------- chat ----------
 
@@ -316,19 +316,19 @@ class LifecycleController(WindowFeatureController):
         local_on = any(x["provider"] == "ollama" and x["enabled"] for x in st) or \
             bool(self.settings.get("providers", {}).get("ollama", {}).get("enabled", True)) and not st
         if configured:
-            self.set_status("st_cloud_active" if local_on else "st_cloud_only", providers=", ".join(configured))
+            self.feature_controller("session").set_status("st_cloud_active" if local_on else "st_cloud_only", providers=", ".join(configured))
             return
         if not local_on:
-            self.set_status("st_local_disabled")
+            self.feature_controller("session").set_status("st_local_disabled")
             return
         ok, detail = self.ollama_client.status()
         m = self.settings["model"]
         if ok:
             self.model.set_models(detail)
             self._ollama_models = list(detail)
-            self.set_status("st_ok" if model_installed(detail, m) else "st_nomodel", m=m)
+            self.feature_controller("session").set_status("st_ok" if model_installed(detail, m) else "st_nomodel", m=m)
         else:
-            self.set_status("st_off")
+            self.feature_controller("session").set_status("st_off")
 
 
 # Backward-compatible import name for callers migrating from mixin composition.
