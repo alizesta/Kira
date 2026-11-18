@@ -6,13 +6,10 @@ on:
     paths:
       - "kira/character/initiative.py"
       - "kira/chat/persistence.py"
-      - "kira/services/chat_history_service.py"
-      - "kira/services/chat_history_service.py"
       - "kira/chat/application_service.py"
       - "kira/core/interfaces/chat_history_service.py"
-      - "kira/chat/persistence.py"
-      - "kira/chat/application_service.py"
-      - "kira/core/interfaces/chat_history_service.py"
+      - "kira/services/chat_history_service.py"
+      - "kira/services/character_service.py"
       - "kira/emotion/runtime.py"
       - "kira/mood.py"
       - "kira/persona_memory.py"
@@ -22,7 +19,6 @@ on:
       - "kira/ui/main_window_session.py"
       - "kira/ui/main_window_character_settings.py"
       - "kira/ui/pages/characters_page.py"
-      - "kira/services/character_service.py"
       - "tests/test_initiative_quality.py"
       - "tests/test_character_decision.py"
       - "tests/test_character_profile_service.py"
@@ -32,17 +28,23 @@ on:
     branches: [new-main]
     paths:
       - "kira/character/initiative.py"
+      - "kira/chat/persistence.py"
+      - "kira/chat/application_service.py"
+      - "kira/core/interfaces/chat_history_service.py"
+      - "kira/services/chat_history_service.py"
+      - "kira/services/character_service.py"
       - "kira/emotion/runtime.py"
       - "kira/mood.py"
       - "kira/persona_memory.py"
       - "kira/config.py"
       - "kira/strings.py"
-      - "kira/ui/main_window_session.py"
       - "kira/ui/main_window_session_support.py"
+      - "kira/ui/main_window_session.py"
       - "kira/ui/main_window_character_settings.py"
       - "kira/ui/pages/characters_page.py"
       - "tests/test_initiative_quality.py"
       - "tests/test_character_decision.py"
+      - "tests/test_character_profile_service.py"
       - "docs/INITIATIVE_ENGINE_FA.md"
       - ".github/workflows/initiative-quality.yml"
 
@@ -67,16 +69,16 @@ jobs:
           python -m py_compile
           kira/character/initiative.py
           kira/chat/persistence.py
-          kira/services/chat_history_service.py
           kira/chat/application_service.py
           kira/core/interfaces/chat_history_service.py
+          kira/services/chat_history_service.py
+          kira/services/character_service.py
           kira/config.py
           kira/strings.py
           kira/ui/main_window_session.py
           kira/ui/main_window_session_support.py
           kira/ui/main_window_character_settings.py
           kira/ui/pages/characters_page.py
-          kira/services/character_service.py
           tests/test_initiative_quality.py
           tests/test_character_decision.py
           tests/test_character_profile_service.py
