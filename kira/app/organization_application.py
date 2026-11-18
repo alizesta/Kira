@@ -47,7 +47,7 @@ class ChatOrganizationService:
     """Owns organization metadata only; lifecycle and message data remain external."""
 
     def __init__(self, repository: ConversationOrganizationRepositoryPort, *, character_id: str | None = None,
-                 event_publisher: Any | None = None) -> None:
+                 event_publisher: ConversationMetadataEventPublisherPort | None = None) -> None:
         if repository is None:
             raise TypeError("repository is required")
         self._repository = repository
