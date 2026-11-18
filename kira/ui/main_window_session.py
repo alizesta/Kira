@@ -1,4 +1,4 @@
-"""Session behavior mixin for the desktop window."""
+"""Session and presentation feature controller."""
 from .main_window_session_support import (
     KIRA_PROFILE,
     QApplication,
