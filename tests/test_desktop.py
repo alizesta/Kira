@@ -176,11 +176,10 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(follow_up.status, NEEDS_CONFIRM)
         self.assertIn("محتوای خارجی", follow_up.text)
 
-    def test_window_metadata_and_ui_control_names_are_marked_external(self):
-        self.assertTrue(self.reg.get("window_list").external)
-        self.assertTrue(self.reg.get("window_active").external)
-        self.assertTrue(self.reg.get("ui_list_controls").external)
-        self.assertTrue(self.reg.get("clipboard_get").external)
+    def test_desktop_results_are_marked_external_except_user_supplied_clipboard_write(self):
+        for capability in self.layer.capabilities():
+            expected_external = capability.name != "clipboard_set"
+            self.assertEqual(self.reg.get(capability.name).external, expected_external, capability.name)
 
     def test_dangerous_controls_only_through_the_confirmed_twin(self):
         self.be.uia_result = {"ok": True, "how": "invoke", "target": {"name": "Delete all"}}
