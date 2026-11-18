@@ -28,7 +28,7 @@ class CompositionRootContractTests(unittest.TestCase):
         keys = {key.value for key in required.keys if isinstance(key, ast.Constant)}
         self.assertTrue({
             "memory_service", "mood_service", "character_service",
-            "chat_history_service", "chat_application_service_factory",
+            "chat_history_service", "chat_event_publisher", "chat_application_service_factory",
             "session_manager", "session_application_service_factory",
             "web_search_service", "voice_application_service_factory",
             "game_mode_application_service", "settings", "tool_agent",
