@@ -28,6 +28,7 @@ on:
       - "kira/config.py"
       - "kira/strings.py"
       - "kira/ui/main_window_session.py"
+      - "kira/ui/main_window_session_support.py"
       - "kira/ui/main_window_character_settings.py"
       - "kira/ui/pages/characters_page.py"
       - "tests/test_initiative_quality.py"
