@@ -84,6 +84,28 @@ class FeatureControllerRegistryTests(unittest.TestCase):
         ):
             self.assertNotIn(legacy_call, chat_source)
 
+    def test_chat_uses_explicit_peer_controller_dependencies(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "kira/ui/main_window_chat.py").read_text(encoding="utf-8")
+        chat = next(
+            node for node in ast.parse(source).body
+            if isinstance(node, ast.ClassDef) and node.name == "ChatController"
+        )
+        chat_source = ast.get_source_segment(source, chat)
+        for method in (
+            "_as", "add_chat", "on_stream_chunk", "on_stream_done",
+            "on_error", "_ensure_session_conversation",
+            "_send_pending_for_session", "_game_vision_attachment",
+            "safe_stop_speaker", "save_message", "reply_local",
+            "set_status", "set_badge", "show_upload_tiles",
+            "finish_request", "_send_next_pending", "body_active",
+            "active_character", "_stream_begin", "refresh_tab_buttons",
+        ):
+            self.assertNotIn("self." + method + "(", chat_source, method)
+        self.assertIn('self.feature_controller("session")', chat_source)
+        self.assertIn('self.feature_controller("runtime")', chat_source)
+        self.assertIn('self.feature_controller("attachments_vision")', chat_source)
+
     def test_composition_injects_attachment_workflow_into_chat_controller(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / "kira/ui/main_window_composition.py").read_text(encoding="utf-8")
