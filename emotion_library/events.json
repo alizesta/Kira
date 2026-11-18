@@ -86,6 +86,7 @@
       "release_events": [
         "response_started"
       ],
+      "release_responses": true,
       "runtime_emotions": {
         "surprised": 8
       },
