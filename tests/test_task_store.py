@@ -33,6 +33,25 @@ class TaskStorePersistenceTests(unittest.TestCase):
             self.assertFalse(store.save())
             self.assertEqual(path.read_bytes(), original)
 
+    def test_one_malformed_task_record_prevents_overwriting_the_original_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            writer = TaskStore(root)
+            writer.new("valid task", session_id="kira")
+            self.assertTrue(writer.save())
+            path = root / "kira_tasks.json"
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["plans"].append("malformed-record")
+            path.write_text(json.dumps(data), encoding="utf-8")
+            original = path.read_bytes()
+
+            reader = TaskStore(root)
+
+            self.assertEqual(len(reader.plans), 1)
+            self.assertTrue(reader._load_failed)
+            self.assertFalse(reader.save())
+            self.assertEqual(path.read_bytes(), original)
+
     def test_task_store_saves_valid_json_through_atomic_temp_file(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
