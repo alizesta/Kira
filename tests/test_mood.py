@@ -88,7 +88,7 @@ class MoodStateTests(unittest.TestCase):
 
     def test_mood_prompt_recalls_memories_relevant_to_the_current_message(self):
         mood.on_user_message("فردا امتحان مهم دارم و نگرانم", now=1000)
-        mood.on_user_message("برای سفر کیش خیلی هیجان دارم", now=1001)
+        mood.on_user_message("هورا، بالاخره برای سفر کیش بلیت گرفتم", now=1001)
         block = mood.build_block("chat", now=1002, query="امتحان فردا")
         self.assertIn("فردا امتحان", block)
         self.assertNotIn("سفر کیش", block)
