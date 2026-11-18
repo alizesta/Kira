@@ -1,6 +1,8 @@
 """Character-scoped long-term memory management dialog."""
 from __future__ import annotations
 
+import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -18,6 +20,9 @@ from PySide6.QtWidgets import (
 
 from ...core.interfaces.memory_service import MemoryService
 from ...core.interfaces.mood_service import MoodService
+
+
+_log = logging.getLogger(__name__)
 
 
 class MemoryDialog(QDialog):
@@ -86,10 +91,23 @@ class MemoryDialog(QDialog):
         item = self.items.currentItem()
         return item.data(Qt.UserRole) if item else None
 
+    def _report_partial_memory_operation(self):
+        _log.exception("Memory operation failed; persona store and evidence index may be out of sync")
+        QMessageBox.warning(
+            self,
+            "عملیات حافظه کامل نشد",
+            "عملیات حافظه کامل نشد؛ ممکن است بخشی از اطلاعات ذخیره یا حذف شده باشد. جزئیات خطا در گزارش برنامه ثبت شده است.",
+        )
+        self.refresh()
+
     def add_note(self):
         text, ok = QInputDialog.getText(self, "یادداشت جدید", f"چه چیزی را {self.character_name} یادش بماند؟")
         if ok:
-            added = self.memory_service.add_note(self.character_id, text)
+            try:
+                added = self.memory_service.add_note(self.character_id, text)
+            except Exception:
+                self._report_partial_memory_operation()
+                return
             if added:
                 self.refresh()
 
@@ -103,14 +121,22 @@ class MemoryDialog(QDialog):
         )
         text, ok = QInputDialog.getText(self, "ویرایش", "متن:", QLineEdit.Normal, current)
         if ok:
-            updated = self.memory_service.update_item(self.character_id, item_id, text)
+            try:
+                updated = self.memory_service.update_item(self.character_id, item_id, text)
+            except Exception:
+                self._report_partial_memory_operation()
+                return
             if updated:
                 self.refresh()
 
     def delete_item(self):
         item_id = self._selected()
         if item_id:
-            deleted = self.memory_service.delete_item(self.character_id, item_id)
+            try:
+                deleted = self.memory_service.delete_item(self.character_id, item_id)
+            except Exception:
+                self._report_partial_memory_operation()
+                return
             if deleted:
                 self.refresh()
 
@@ -123,12 +149,7 @@ class MemoryDialog(QDialog):
             try:
                 self.memory_service.forget_all(self.character_id)
             except Exception:
-                QMessageBox.warning(
-                    self,
-                    "پاک‌سازی کامل نشد",
-                    "حذف همه‌ی داده‌های حافظه کامل نشد؛ ممکن است بخشی از اطلاعات باقی مانده باشد. جزئیات خطا در گزارش برنامه ثبت شده است.",
-                )
-                self.refresh()
+                self._report_partial_memory_operation()
                 return
             if self.character_id == "kira":
                 self.mood_service.reset()
