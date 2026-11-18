@@ -122,6 +122,38 @@ class ResponseStreamEvent:
     result: ChatResponseResult | None = None
 
 
+
+@dataclass(frozen=True)
+class ContextRequest:
+    """Immutable snapshot of all values needed to build one provider turn."""
+
+    messages: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
+    character_id: str = ""
+    character_profile: Mapping[str, Any] = field(default_factory=dict)
+    settings: Mapping[str, Any] = field(default_factory=dict)
+    memory: str = ""
+    mood: str = ""
+    character_context: str = ""
+    format_hint: str = ""
+    voice_input: bool = False
+    mode: Any = None
+    body_context: str = ""
+    tool_context: str = ""
+    active_capabilities: Sequence[str] = field(default_factory=tuple)
+    turn_extra: Mapping[str, Any] | None = None
+    max_context_chars: int = 0
+
+
+@dataclass(frozen=True)
+class ContextResult:
+    """Provider-neutral prompt and ordered message snapshot for one turn."""
+
+    system_prompt: str
+    messages: tuple[dict[str, Any], ...]
+    character_id: str
+    retained_context_chars: int
+    dropped_messages: int = 0
+
 @dataclass(frozen=True)
 class ChatRequest:
     """Coordinator admission request with an optional paired identity scope."""
@@ -213,6 +245,8 @@ __all__ = [
     "ApplicationEventKind",
     "ChatApplicationEvent",
     "ChatApplicationRequest",
+    "ContextRequest",
+    "ContextResult",
     "ChatRequest",
     "ChatResponseResult",
     "PersistenceOutcome",
