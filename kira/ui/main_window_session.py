@@ -239,8 +239,6 @@ class SessionController(WindowFeatureController):
             profiles,
             ensure_resources=self._ensure_session_ui_resources,
             restore_history=self._restore_session_history,
-            vision_session=getattr(self.context.session, "_vision_session", None),
-            vision_worker=getattr(self.context.session, "_vision_worker", None),
         )
         while self.context.views.char_tabs_row.count():
             self.context.views.char_tabs_row.takeAt(0)
@@ -256,11 +254,7 @@ class SessionController(WindowFeatureController):
         return SessionApplicationService.worker_is_running(worker)
 
     def _session_has_pending_chat_work(self, session):
-        return self.context.services.session_application_service.has_pending_work(
-            session,
-            vision_session=getattr(self.context.session, "_vision_session", None),
-            vision_worker=getattr(self.context.session, "_vision_worker", None),
-        )
+        return self.context.services.session_application_service.has_pending_work(session)
 
     def _dispose_chat_session(self, session):
         return self.context.services.session_application_service.close_session(session)
@@ -298,15 +292,15 @@ class SessionController(WindowFeatureController):
             self.context.views.char_tabs_row.removeWidget(button)
             self.context.views.char_tab_group.removeButton(button)
             button.deleteLater()
-        if getattr(self.context.session, "_vision_session", None) is session:
-            vision_worker = getattr(self.context.session, "_vision_worker", None)
+        if getattr(session, "_vision_session", None) is session:
+            vision_worker = getattr(session, "_vision_worker", None)
             if vision_worker is not None:
                 try:
                     vision_worker.deleteLater()
                 except RuntimeError:
                     pass
-                self.context.session._vision_worker = None
-            self.context.session._vision_session = None
+                session._vision_worker = None
+            session._vision_session = None
         if not getattr(self.context.state, "_closing", False) and (self.context.state.front is session or self.context.state.cur is session):
             fallback = next(
                 (item for item in self.context.services.session_manager.list_sessions()
