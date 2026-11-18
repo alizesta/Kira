@@ -79,16 +79,18 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
         })
 
     def test_feature_controller_state_is_owned_by_the_window(self):
-        from types import SimpleNamespace
+        from PySide6.QtCore import QObject
 
         from kira.ui.window_feature_controller import WindowFeatureController
 
-        window = SimpleNamespace(counter=1)
+        window = QObject()
+        window.counter = 1
         controller = WindowFeatureController(window)
         self.assertEqual(controller.counter, 1)
         controller.counter = 2
         self.assertEqual(window.counter, 2)
         self.assertIs(controller.window, window)
+        self.assertIs(controller.parent(), window)
 
     def test_shell_forwards_qt_virtual_events_to_their_feature_owners(self):
         source = (UI / "main_window.py").read_text(encoding="utf-8")
