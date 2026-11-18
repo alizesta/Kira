@@ -24,6 +24,10 @@ FUTURE_CLOCK_SKEW_SECONDS = 60
 
 
 def _finite_number(value):
+    # bool is an int subclass in Python; accepting True as timestamp 1.0 can
+    # turn corrupted persisted activity into an apparently very long idle.
+    if isinstance(value, bool):
+        return None
     try:
         number = float(value)
     except (TypeError, ValueError, OverflowError):
@@ -491,7 +495,10 @@ class InitiativeEngine:
             exclude_values = (exclude_ids,)
         else:
             exclude_values = exclude_ids or ()
-        excluded = {str(value) for value in exclude_values if str(value or "").strip()}
+        try:
+            excluded = {str(value) for value in exclude_values if str(value or "").strip()}
+        except (TypeError, ValueError):
+            return None
         if exclude_id:
             excluded.add(str(exclude_id))
         candidates_by_id = {}
@@ -650,7 +657,11 @@ def initiative_history_state(
             excluded.add(memory_id)
         add_daily_record(memory_id, stamp)
 
-    for event in recent_events or ():
+    try:
+        event_iter = iter(recent_events or ())
+    except TypeError:
+        event_iter = ()
+    for event in event_iter:
         if not isinstance(event, dict) or event.get("name") != "proactive_check_in":
             continue
         stamp = accepted_stamp(event.get("at"))
