@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict, deque
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from threading import Condition, RLock
 from typing import Any
+
+from ..core.interfaces.application_module import PublishedEvent
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,7 +46,7 @@ class _PendingPublication:
     event_name: str
     payload: dict[str, Any]
     sequence: int
-    chat_event: Any | None = None
+    typed_event: Any | None = None
     report: EventPublishReport | None = None
 
 
@@ -133,29 +135,38 @@ class EventBus:
 
     def publish(self, event_name: str, **payload: Any) -> EventPublishReport:
         """Publish a legacy event with keyword payload (backward compatible)."""
-        return self._enqueue(event_name, dict(payload), chat_event=None)
+        return self._enqueue(event_name, dict(payload), typed_event=None)
 
-    def publish_event(self, event: Any) -> EventPublishReport:
-        """Publish one immutable ChatEvent through the shared application bus."""
-        from ..chat.events import ChatEvent
+    def publish_event(self, event: PublishedEvent) -> EventPublishReport:
+        """Publish an immutable typed event without depending on its feature package."""
+        required = (
+            "event_type", "event_id", "timestamp", "session_id",
+            "request_id", "payload", "metadata",
+        )
+        if event is None or any(not hasattr(event, name) for name in required):
+            raise TypeError("event must implement the PublishedEvent contract")
 
-        if not isinstance(event, ChatEvent):
-            raise TypeError("event must be a ChatEvent")
         event_name = self._event_name(event.event_type)
+        event_id = str(event.event_id or "").strip()
+        if not event_id:
+            raise ValueError("event_id is required")
+        if not isinstance(event.payload, Mapping) or not isinstance(event.metadata, Mapping):
+            raise TypeError("event payload and metadata must be mappings")
+
         payload = {
             "event": event,
-            "event_id": event.event_id,
-            "event_type": event.event_type.value,
+            "event_id": event_id,
+            "event_type": event_name,
             "timestamp": event.timestamp,
             "session_id": event.session_id,
             "request_id": event.request_id,
             "payload": event.payload,
             "metadata": event.metadata,
         }
-        return self._enqueue(event_name, payload, chat_event=event)
+        return self._enqueue(event_name, payload, typed_event=event)
 
     def _enqueue(
-        self, event_name: Any, payload: dict[str, Any], *, chat_event: Any | None
+        self, event_name: Any, payload: dict[str, Any], *, typed_event: Any | None
     ) -> EventPublishReport:
         name = self._event_name(event_name)
         publication = None
@@ -165,7 +176,7 @@ class EventBus:
             if self._closed:
                 raise RuntimeError("EventBus is closed")
             self._sequence += 1
-            publication = _PendingPublication(name, payload, self._sequence, chat_event)
+            publication = _PendingPublication(name, payload, self._sequence, typed_event)
             self._pending.append(publication)
             if not self._dispatching:
                 self._dispatching = True
@@ -197,9 +208,9 @@ class EventBus:
             for subscriber in subscribers:
                 try:
                     if subscriber.receives_event:
-                        if publication.chat_event is None:
+                        if publication.typed_event is None:
                             continue
-                        subscriber.callback(publication.chat_event)
+                        subscriber.callback(publication.typed_event)
                     else:
                         subscriber.callback(**publication.payload)
                     delivered += 1
