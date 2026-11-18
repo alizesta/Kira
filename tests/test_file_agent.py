@@ -295,6 +295,24 @@ class FileAgentTests(unittest.TestCase):
         self.assertEqual(len(journal.items), 30)
         self.assertFalse(list(self.data.glob(".kira_file_ops.json.*.tmp")))
 
+    def test_file_operation_warns_when_journal_cannot_be_persisted(self):
+        target = self.root / "journal-warning.txt"
+        with mock.patch("kira.tools.fileagent.os.replace", side_effect=OSError("disk full")):
+            result = self.run_tool("create_file", {"path": str(target), "content": "created"})
+
+        self.assertEqual(result.status, OK, result.text)
+        self.assertTrue(target.is_file())
+        self.assertIn("Undo پس از بسته‌شدن برنامه تضمین‌شده نیست", result.text)
+
+    def test_journal_reports_failed_persistence_for_add_and_undo_marker(self):
+        journal = Journal(self.data)
+        with mock.patch("kira.tools.fileagent.os.replace", side_effect=OSError("disk full")):
+            self.assertFalse(journal.add("create", path=str(self.root / "x.txt")))
+            item = journal.last()
+            self.assertIsNotNone(item)
+            self.assertFalse(journal.mark_undone(item))
+        self.assertTrue(journal.last() is None)
+
     def test_catalog_gate_and_journal_persists(self):
         from kira.tools import protocol
         self.assertIn("files", protocol.detect_categories("این فایل را کپی کن"))
