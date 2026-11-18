@@ -19,6 +19,8 @@ on:
       - "tests/test_domain_search.py"
       - "tests/test_domain_transfer.py"
       - "tests/test_domain_chat_contracts.py"
+      - "kira/chat/context_builder.py"
+      - "kira/core/interfaces/context.py"
       - "tests/test_application_service_ports.py"
       - "kira/core/interfaces/**"
       - "kira/ui/application_adapters.py"
@@ -227,6 +229,8 @@ jobs:
           kira/domain/search.py
           kira/domain/transfer.py
           kira/domain/chat.py
+          kira/chat/context_builder.py
+          kira/core/interfaces/context.py
           tests/test_domain_chat_contracts.py
           kira/app/chat_transfer_application.py
           kira/core/interfaces/transfer.py
