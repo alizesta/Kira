@@ -8,6 +8,8 @@ from kira.domain.chat import (
     ChatApplicationRequest,
     ChatRequest,
     ChatResponseResult,
+    ContextRequest,
+    ContextResult,
     ProviderEvent,
     ProviderEventKind,
     RequestStatus,
@@ -64,6 +66,16 @@ class ChatDomainContractTests(unittest.TestCase):
         )
         self.assertEqual(app_event.result.error.code, "provider_error")
         self.assertTrue(app_event.result.error.recoverable)
+
+    def test_context_request_and_result_are_domain_snapshots(self):
+        request = ContextRequest(character_id="mika", messages=({"role": "user", "content": "hi"},))
+        result = ContextResult(
+            system_prompt="rules", messages=({"role": "user", "content": "hi"},),
+            character_id=request.character_id, retained_context_chars=2,
+        )
+        self.assertEqual(result.character_id, "mika")
+        with self.assertRaises(FrozenInstanceError):
+            request.character_id = "ren"
 
     def test_submission_result_contract_has_expected_admission_states(self):
         self.assertEqual(
