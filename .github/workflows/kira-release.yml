@@ -131,6 +131,7 @@ jobs:
           tests.test_architecture_boundaries
           tests.test_domain_organization
           tests.test_domain_search
+          tests.test_domain_transfer
           tests.test_domain_conversation_rules
           tests.test_application_service_ports
           tests.test_session_application
@@ -214,6 +215,7 @@ jobs:
           tests.test_architecture_boundaries
           tests.test_domain_organization
           tests.test_domain_search
+          tests.test_domain_transfer
           tests.test_session_application
           tests.test_provider_application
           tests.test_vision_application
