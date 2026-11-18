@@ -59,6 +59,11 @@ def run_application() -> None:
             session_application_service_factory=container.resolve("session_application_service_factory"),
             web_search_service=container.resolve("web_search_service"),
             shared_skills_application_service=container.resolve("shared_skills_application_service"),
+            conversation_organization_application_service=container.resolve(
+                "conversation_organization_application_service"
+            ),
+            chat_search_application_service=container.resolve("chat_search_application_service"),
+            chat_transfer_application_service=container.resolve("chat_transfer_application_service"),
             voice_application_service_factory=container.resolve("voice_application_service_factory"),
             game_mode_application_service=container.resolve("game_mode_application_service"),
             session_manager=session_manager,
