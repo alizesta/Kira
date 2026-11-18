@@ -80,7 +80,9 @@ class MainWindow(
         return service.stopping_listener if service is not None else None
 
     def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None,
-                 session_manager=None, chat_event_publisher=None, chat_application_service_factory=None, web_search_service=None, voice_application_service_factory=None, game_mode_application_service=None):
+                 session_manager=None, chat_event_publisher=None, chat_application_service_factory=None,
+                 session_application_service_factory=None, web_search_service=None,
+                 voice_application_service_factory=None, game_mode_application_service=None):
         super().__init__()
         from .main_window_composition import initialize_main_window
 
@@ -93,6 +95,7 @@ class MainWindow(
             session_manager=session_manager,
             chat_event_publisher=chat_event_publisher,
             chat_application_service_factory=chat_application_service_factory,
+            session_application_service_factory=session_application_service_factory,
             web_search_service=web_search_service,
             voice_application_service_factory=voice_application_service_factory,
             game_mode_application_service=game_mode_application_service,
