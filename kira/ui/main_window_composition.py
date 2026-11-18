@@ -9,7 +9,6 @@ from .main_window_root_support import (
     AttachWorker,
     AttachmentTile,
     ChatAttachmentController,
-    ChatSession,
     CompanionBubble,
     CompanionWindow,
     DATA_DIR,
@@ -29,12 +28,9 @@ from .main_window_root_support import (
     QWidget,
     Qt,
     ROOT,
-    SessionManager,
     Speaker,
-    ToolAgent,
     att,
     load_reactions,
-    load_settings,
     make_icon,
     winfx,
 )
@@ -84,6 +80,7 @@ def initialize_main_window(
         "coding_agent_application_service": coding_agent_application_service,
         "vision_application_service": vision_application_service,
         "runtime_settings_application_service": runtime_settings_application_service,
+        "tool_agent": tool_agent,
     }
     missing = tuple(name for name, value in required.items() if value is None)
     if missing:
@@ -91,12 +88,13 @@ def initialize_main_window(
     self.memory_service = memory_service
     self.mood_service = mood_service
     self.character_service = character_service
+    self.chat_history_service = chat_history_service
     if not callable(chat_application_service_factory):
         raise TypeError("chat_application_service_factory must be callable")
     self.chat_application_service = chat_application_service_factory(create_chat_application_ports(self))
     self.web_search_service = web_search_service
     self.game_mode_application_service = game_mode_application_service
-    self.settings = settings if settings is not None else load_settings()
+    self.settings = settings
     self.provider_application_service = provider_application_service
     self.runtime_settings_application_service = runtime_settings_application_service
     self.runtime_settings_application_service.configure(self.settings)
@@ -161,7 +159,7 @@ def initialize_main_window(
     self.game_audio_listener = None
     self._game_prev_mic = False
     self._game_prev_wake = False
-    self.tool_agent = tool_agent if tool_agent is not None else ToolAgent(self.settings, DATA_DIR, ROOT)
+    self.tool_agent = tool_agent
     self._tool_plan = None             # tool plan of the message being answered (None = ordinary chat, nothing added to the prompt)
     self.ollama_client = self.provider_application_service.create_ollama_client(self.settings)
     self.director = EmotionDirector.from_default()        # emotion library + engine (kira/emotion, emotion_library/)
