@@ -3,7 +3,7 @@
 **Snapshot date:** 2026-11-18  
 **Repository:** `alizesta/Kira`  
 **Base branch:** `new-main`  
-**Base SHA:** `590183cbde242a60e1dcb976ea6dd9ec37c18e80`  
+**Base SHA:** `e5b9e6a851aad3c764f5178228fd7b04707d94d7`  
 **Evidence:** TASK 015 static audit (`docs/TASK_015_FINAL_ARCHITECTURE_AUDIT.md`, Draft PR #47), current `new-main` source and documentation, and merged TASK 013+014 integration PR #48 (merge commit `b54d092a330b6383ca4244320ffaeec9267db561`).  
 **Verification boundary:** The historical TASK 016 audit was static-only. The subsequent implementation delta added targeted architecture and persistence tests, but no runtime test, compile/import check or application execution is claimed here.
 
