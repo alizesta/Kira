@@ -37,6 +37,12 @@ class SharedSkillService:
             bucket["enabled_by_character"] = {}
         if not isinstance(bucket.get("disabled_by_character"), dict):
             bucket["disabled_by_character"] = {}
+        for key in ("enabled_by_character", "disabled_by_character"):
+            bucket[key] = {
+                str(character_id): list(items)
+                for character_id, items in bucket[key].items()
+                if isinstance(items, (list, tuple, set))
+            }
         return bucket
 
     def list_installed(self) -> tuple[SkillManifest, ...]:
@@ -46,15 +52,15 @@ class SharedSkillService:
         return self.registry.install(source)
 
     def uninstall(self, skill_id: str, settings: dict[str, Any]) -> bool:
-        removed = self.registry.uninstall(skill_id)
+        key = str(skill_id or "").strip().lower()
+        removed = self.registry.uninstall(key)
         if removed:
             bucket = self._settings_bucket(settings)
-            bucket["enabled"] = [x for x in bucket["enabled"] if x != skill_id]
-            for key in ("enabled_by_character", "disabled_by_character"):
-                values = bucket[key]
-                if isinstance(values, dict):
-                    for character_id, items in tuple(values.items()):
-                        values[character_id] = [x for x in items if x != skill_id]
+            bucket["enabled"] = [x for x in bucket["enabled"] if x != key]
+            for map_key in ("enabled_by_character", "disabled_by_character"):
+                values = bucket[map_key]
+                for character_id, items in tuple(values.items()):
+                    values[character_id] = [x for x in items if x != key]
         return removed
 
     def set_enabled(
@@ -85,8 +91,14 @@ class SharedSkillService:
         disabled_map = bucket["disabled_by_character"]
         if not isinstance(enabled_map, dict) or not isinstance(disabled_map, dict):
             raise ValueError("Invalid per-character Skill settings.")
-        enabled_values = [x for x in enabled_map.get(character, []) if x != key]
-        disabled_values = [x for x in disabled_map.get(character, []) if x != key]
+        current_enabled = enabled_map.get(character, [])
+        current_disabled = disabled_map.get(character, [])
+        if not isinstance(current_enabled, (list, tuple, set)):
+            current_enabled = []
+        if not isinstance(current_disabled, (list, tuple, set)):
+            current_disabled = []
+        enabled_values = [x for x in current_enabled if x != key]
+        disabled_values = [x for x in current_disabled if x != key]
         if enabled:
             enabled_values.append(key)
         else:
