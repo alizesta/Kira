@@ -583,4 +583,15 @@ def build_block(mode_name="chat", now=None, query=None) -> str:
     if mode_name == "task" and lines:
         lines.insert(0, "Delivery note for this practical request (substance and accuracy unchanged):")
     legacy = "\n".join(lines)
-    return "\n".join(part for part in (layered, legacy) if part)
+    decision_block = ""
+    try:
+        # Apply the selected profile's stable traits to a deterministic delivery
+        # decision. This is shared by every provider and remains subordinate to
+        # the actual request, task mode and serious-context safeguards.
+        from .character.decision import DecisionEngine
+        decision_engine = DecisionEngine(cur.get("personality_traits"))
+        decision = decision_engine.decide(query or "", cur, mode_name)
+        decision_block = decision_engine.build_prompt(decision)
+    except Exception:
+        pass
+    return "\n".join(part for part in (layered, legacy, decision_block) if part)
