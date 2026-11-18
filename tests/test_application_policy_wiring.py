@@ -68,6 +68,15 @@ class ApplicationPolicyWiringTests(unittest.TestCase):
         self.assertNotIn("evidence_memory.configure(", ui)
         self.assertNotIn("usage.install(", ui)
 
+    def test_runtime_settings_are_configured_once_at_composition(self):
+        composition = source("kira/ui/main_window_composition.py")
+        self.assertEqual(
+            composition.count("self.runtime_settings_application_service.configure(self.settings)"),
+            1,
+        )
+        lifecycle = source("kira/ui/main_window_lifecycle.py")
+        self.assertIn("self.runtime_settings_application_service.apply(", lifecycle)
+
     def test_character_profile_and_voice_mutations_are_service_owned(self):
         ui = source("kira/ui/main_window_character_settings.py")
         self.assertIn("self.character_service.create_profile(", ui)
