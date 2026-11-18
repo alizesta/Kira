@@ -1,7 +1,7 @@
 # KIRA MODULE OWNERSHIP
 
 **Snapshot:** 2026-11-18  
-**Base:** `new-main` at `d7e1ce69331eac178c17bfd0cf549a578d240caf`  
+**Base:** `new-main` at `7caa6a3ee8cb2a68d80a3015a9134d42cf89d6e3`  
 **Scope:** TASK 001–020 and adjacent application capabilities. This register describes observed ownership, not desired ownership where implementation is absent.
 
 ## 1. Ownership rules
@@ -114,6 +114,8 @@ The Chat core modules should depend on Python data contracts and narrow Protocol
 - SessionManager owns no durable rows and must remain independent of SQLite.
 - Lifecycle policy is separate from repository transaction mechanics: Lifecycle validates transitions; Persistence atomically commits them.
 - Organization owns the `organization` metadata namespace but not the metadata document storage mechanism.
+- Organization writes use `ChatPersistence.mutate_conversations` and `mutate_all_conversations`: callbacks receive the latest row under a SQLite write transaction; bulk character-scoped updates commit or roll back as one unit.
+- These transaction APIs preserve the complete metadata document and only persist the returned title/metadata fields; lifecycle status remains owned by the lifecycle transaction API.
 - Search reads message pages and, when needed, conversation status through the injected repository.
 - Transfer owns serialization and import validation; Persistence owns durable import transactions.
 - AttachmentManager owns attachment processing/storage contracts and must not become a second Chat history store.
