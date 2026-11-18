@@ -87,7 +87,7 @@ Bootstrap currently registers required service modules for Memory, Mood, Charact
 | Web Research | `kira/app/web_search.py`, `kira/websearch.py`, `kira/webintel/*`, discovery/search adapters | `WebSearchApplicationService` owns provider credentials, follow-up rewriting, web/image options and evidence merging. SearchWorker lifecycle and result presentation remain in the UI adapter. |
 | Vision | `kira/app/vision_application.py`, `kira/vision_pipeline.py`, `kira/vision_ocr.py` | VisionApplicationService owns capture eligibility, cadence/frame gating, duplicate-result suppression and result policy; Qt screen capture, timers and workers remain UI adapters. It is injected directly, not ModuleManager-managed. |
 | UI | `kira/ui/pages`, `components`, `dialogs`, `workers.py`, `main_window.py`, `main_window_composition.py` and feature mixins | MainWindow is a compact Qt host. Session, Provider, Vision, Coding Agent, Runtime Settings and Character profile policy are delegated to application/service owners; Qt widget state, worker/timer lifecycle, dialog flows and response rendering remain in feature adapters. |
-| Shared Skills | No first-party shared Skills module/contract was established by TASK 015's TASK 001–014 audit or the inspected `kira/` package tree on this base. | Do not claim shared installable Skills are delivered by these Chat tasks. Treat a separately merged Skills implementation as separate evidence. |
+| Shared Skills | `kira/skills/registry.py`, `kira/skills/service.py`, `kira/ui/main_window_composition.py`, `kira/ui/main_window_chat.py` | `SharedSkillService`: one installable library, validated directory/ZIP packages, global and per-character enablement, and bounded prompt integration. The dedicated management UI and runtime acceptance remain outstanding. | Do not claim shared installable Skills are delivered by these Chat tasks. Treat a separately merged Skills implementation as separate evidence. |
 
 ## 4. Chat architecture
 
@@ -170,7 +170,7 @@ Static contracts support a character-neutral Chat core:
 - Persistence/history APIs carry character and conversation scope.
 - The audited Chat core does not hard-code Kira persona behavior; `DEFAULT_CHARACTER = "kira"` is a compatibility default.
 
-This is static architecture evidence, not proof of isolation across concurrent Kira/Ren/Mika sessions, restarts, search, transfer or memory. Those behaviors remain runtime acceptance items. A future shared Skills/Tools capability must be character-neutral; character-specific instructions and enablement preferences belong in character/profile configuration, not inside generic command handlers.
+This is static architecture evidence, not proof of isolation across concurrent Kira/Ren/Mika sessions, restarts, search, transfer or memory. Those behaviors remain runtime acceptance items. Shared Skills now use one character-neutral library/runtime; global and per-character enablement is resolved from settings at each chat turn. Character-specific enablement remains profile/settings policy, not generic command-handler behavior. The management UI and runtime acceptance remain outstanding.
 
 ## 7. MainWindow and legacy migration
 
@@ -202,3 +202,4 @@ The implementation and verification evidence is summarized in [ARCHITECTURE_IMPL
 - [Chat Search & Retrieval](CHAT_SEARCH_RETRIEVAL.md)
 - [Chat Transfer](CHAT_TRANSFER.md)
 - [Chat Events](CHAT_EVENTS.md)
+- [Shared Skills](SHARED_SKILLS.md)
