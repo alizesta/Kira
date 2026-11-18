@@ -289,6 +289,7 @@ class EmotionalRuntime:
             os.replace(tmp, self.path)
         except OSError:
             # Emotional continuity must never make chat unavailable.
+            _log.warning("Unable to persist emotional state", exc_info=True)
             try:
                 tmp.unlink(missing_ok=True)
             except OSError:

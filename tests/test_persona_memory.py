@@ -222,6 +222,15 @@ class PersonaMemoryTests(unittest.TestCase):
             hits += int(ranking[0] == expected)
         self.assertGreaterEqual(hits / len(cases), 0.66)
 
+    def test_evidence_render_skips_oversized_facts_without_truncating_or_starving_later_lines(self):
+        facts = [
+            {"text": "واقعیت بسیار طولانی " * 20, "created_at": 1000, "status": "active", "category": "permanent"},
+            {"text": "واقعیت کوتاه و مهم", "created_at": 1001, "status": "active", "category": "permanent"},
+        ]
+        rendered = pm._evidence.render(facts, budget=80)
+        self.assertIn("واقعیت کوتاه و مهم", rendered)
+        self.assertNotIn("واقعیت بسیار طولانی", rendered)
+
     def test_synonym_query_recalls_a_matching_persian_fact(self):
         corpus = ["کاربر فردا امتحان زبان دارد", "کاربر آخر هفته سفر می‌کند"]
         ranked = pm._evidence.rank_texts(corpus, "آزمون فردا")

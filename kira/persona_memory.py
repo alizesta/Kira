@@ -141,7 +141,7 @@ def _save(data: dict):
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
         os.replace(tmp, path)
     except OSError:
-        pass                                                      # memory is a bonus; never break the chat
+        _log.warning("Unable to persist persona memory for character %s", _current_character.get(), exc_info=True)
 
 
 def _id(kind: str, text: str) -> str:

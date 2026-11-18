@@ -446,6 +446,7 @@ def on_event(name, detail=None):
     try:
         return _runtime_for().trigger(name, detail)
     except Exception:
+        _log.warning("Unable to record emotional event %s", name, exc_info=True)
         return None
 
 
@@ -454,6 +455,7 @@ def mark_initiative_sent(memory_id=None, now=None):
     try:
         return _runtime_for().mark_initiative_sent(memory_id=memory_id, now=now)
     except Exception:
+        _log.warning("Unable to persist proactive emotional initiative", exc_info=True)
         return None
 
 
