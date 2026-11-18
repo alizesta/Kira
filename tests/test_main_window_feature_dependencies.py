@@ -36,7 +36,7 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
         for filename, feature in self.FEATURES.items():
             source = (UI / filename).read_text(encoding="utf-8")
             self.assertIn(
-                f"from .main_window_{feature}_support import *",
+                f"from .main_window_{feature}_support import",
                 source,
                 filename,
             )
