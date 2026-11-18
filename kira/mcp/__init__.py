@@ -1,9 +1,13 @@
 """External tool servers (MCP) and independent agents, plugged into the normal ToolRegistry. See docs/MCP_AGENTS_FA.md."""
 from __future__ import annotations
 
+import logging
+
 from ..tools.registry import Tool, READ
 from .agents import AgentHub, register_agent_tools
 from .hub import McpHub
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def install(registry, data_dir, settings_fn):
@@ -17,4 +21,10 @@ def install(registry, data_dir, settings_fn):
         hub.refresh_async()
         return hub
     except Exception:                                                 # noqa: BLE001 - the chat works without this feature
+        _LOGGER.exception("Could not initialize the optional MCP and agent integrations")
+        try:
+            if "hub" in locals():
+                hub.shutdown()
+        except Exception:
+            _LOGGER.exception("Could not clean up a partially initialized MCP hub")
         return None
