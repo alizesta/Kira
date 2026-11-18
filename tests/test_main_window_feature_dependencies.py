@@ -159,6 +159,28 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
         self.assertIn("def front_only", source)
         self.assertIn("def load_reactions", source)
 
+    def test_context_resource_lookup_is_allowlisted_and_owner_aware(self):
+        from types import SimpleNamespace
+
+        from PySide6.QtCore import QObject
+
+        from kira.ui.feature_controller_registry import FeatureControllerRegistry
+        from kira.ui.window_presentation_context import WindowPresentationContext
+
+        window = QObject()
+        context = WindowPresentationContext(window, FeatureControllerRegistry({}))
+        worker = object()
+        audio = object()
+        vision_worker = object()
+        context.state._api_worker = worker
+        context.adapters.game_audio_listener = audio
+        context.state.cur = SimpleNamespace(_vision_worker=vision_worker)
+
+        self.assertIs(context.resource("_api_worker"), worker)
+        self.assertIs(context.resource("game_audio_listener"), audio)
+        self.assertIs(context.resource("_vision_worker"), vision_worker)
+        self.assertIsNone(context.resource("not_a_registered_resource"))
+
     def test_session_relay_uses_explicit_context_and_controller_owners(self):
         source = (UI / "main_window_support.py").read_text(encoding="utf-8")
         self.assertIn("super().__init__(context.host)", source)
