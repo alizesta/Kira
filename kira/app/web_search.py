@@ -89,6 +89,39 @@ class WebSearchApplicationService:
         line = line.strip(chr(34) + chr(39) + "«»`").strip()
         return line if 2 <= len(line) <= 160 else fallback
 
+    def plan_request(
+        self,
+        text: str,
+        settings: Mapping[str, Any],
+        tool_plan: Any | None = None,
+        *,
+        force_web: bool = False,
+    ) -> tuple[str | None, bool]:
+        """Choose whether a Chat turn should use one-shot Web Search.
+
+        Keep command parsing and automatic-search suppression out of the UI
+        mixin. A strong local/tool plan or a dedicated web-tool plan takes
+        precedence over automatic search; an explicit /web request always
+        wins and preserves the user's literal query.
+        """
+        user_text = str(text or "")
+        enabled = bool(
+            settings.get("web_search", True)
+            or user_text.lstrip().startswith("/")
+            or force_web
+        )
+        if not enabled:
+            return None, False
+
+        query, forced = websearch.plan(user_text)
+        if force_web:
+            return user_text.strip()[:300], True
+
+        if query and not forced and tool_plan is not None:
+            if getattr(tool_plan, "strong", False) or getattr(tool_plan, "web", False):
+                return None, False
+        return query, forced
+
     def web_search_options(
         self,
         settings: Mapping[str, Any],
