@@ -397,19 +397,58 @@ def delete_by_persona_id(persona_id) -> int:
 
 
 def update_by_persona_id(old_persona_id, new_persona_id, text, now=None) -> bool:
-    """The person edited an item: replace the stored fact by their own wording (evidence = their edit)."""
+    """Atomically replace a persona-backed evidence fact with the user's edited wording."""
+    if not _enabled:
+        return False
+    text = " ".join(str(text or "").split())[:200]
+    if len(text) < 3:
+        return False
+    now = time.time() if now is None else now
     try:
         with _lock, _db() as con:
-            row = con.execute("SELECT predicate FROM facts WHERE persona_id=? LIMIT 1", (old_persona_id,)).fetchone()
-        predicate = row["predicate"] if row else "note"
+            row = con.execute(
+                "SELECT subject, predicate FROM facts WHERE persona_id=? LIMIT 1",
+                (old_persona_id,),
+            ).fetchone()
+            predicate = row["predicate"] if row else "note"
+            subject = row["subject"] if row else "user"
+            rows = con.execute(
+                "SELECT id, subject, predicate FROM facts WHERE persona_id=?",
+                (old_persona_id,),
+            ).fetchall()
+            ids = []
+            for item in rows:
+                if item["predicate"] in SINGLE_VALUED:
+                    ids.extend(
+                        found[0]
+                        for found in con.execute(
+                            "SELECT id FROM facts WHERE subject=? AND predicate=?",
+                            (item["subject"], item["predicate"]),
+                        )
+                    )
+                else:
+                    ids.append(item["id"])
+            _delete_rows(con, set(ids))
+            stored_id = _ingest(
+                con,
+                subject=subject,
+                predicate=predicate,
+                value=text,
+                text=text,
+                category="permanent",
+                quote=text,
+                speaker="user",
+                message_id=None,
+                source_kind="manual",
+                now=now,
+                persona_id=new_persona_id,
+            )
+            if stored_id is None:
+                raise RuntimeError("Updated persona-memory item could not be synchronized to evidence memory")
+        return True
     except Exception:                                                  # noqa: BLE001
-        _log.exception("Could not inspect evidence before updating a persona-memory item")
+        _log.exception("Could not atomically update persona-backed evidence memory")
         raise
-    delete_by_persona_id(old_persona_id)
-    stored = add_manual(text, now, persona_id=new_persona_id, predicate=predicate)
-    if _enabled and not stored:
-        raise RuntimeError("Updated persona-memory item could not be synchronized to evidence memory")
-    return stored
 
 
 def forget_all() -> None:
