@@ -324,16 +324,40 @@ class TaskStore:
                 for s in p.steps:
                     if s.status == AWAITING:
                         s.status = PENDING
-        self.plans = plans[-(HISTORY_KEEP + 1):]
+        self.plans = self._trim_history(plans)
+
+    @staticmethod
+    def _trim_history(plans: list[TaskPlan]) -> list[TaskPlan]:
+        """Keep five completed plans plus every active plan per character Session."""
+        now = time.time()
+        grouped: dict[str, list[TaskPlan]] = {}
+        for plan in plans:
+            grouped.setdefault(str(plan.session_id or ""), []).append(plan)
+
+        retained_ids: set[int] = set()
+        for records in grouped.values():
+            active = [
+                plan for plan in records
+                if plan.status in ACTIVE
+                or (plan.status == P_FAILED and now - plan.updated <= STALE_AFTER)
+            ]
+            active_ids = {id(plan) for plan in active}
+            completed = [plan for plan in records if id(plan) not in active_ids]
+            retained_ids.update(active_ids)
+            retained_ids.update(id(plan) for plan in completed[-HISTORY_KEEP:])
+
+        # Preserve original cross-character chronology when writing the shared file.
+        return [plan for plan in plans if id(plan) in retained_ids]
 
     def save(self):
         if self.path is None:
             return
         with self.lock:
+            self.plans = self._trim_history(self.plans)
             try:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
                 tmp = self.path.with_suffix(".json.tmp")
-                tmp.write_text(json.dumps({"version": 1, "plans": [p.to_dict() for p in self.plans[-(HISTORY_KEEP + 1):]]}, ensure_ascii=False, indent=1), encoding="utf-8")
+                tmp.write_text(json.dumps({"version": 1, "plans": [p.to_dict() for p in self.plans]}, ensure_ascii=False, indent=1), encoding="utf-8")
                 tmp.replace(self.path)
             except OSError:
                 pass                                         # saving the task state is a bonus: it never blocks the work
@@ -368,7 +392,7 @@ class TaskStore:
             plan = TaskPlan(f"t{int(time.time() * 1000) % 10**9}", _safe(goal, 240))
             plan.session_id = str(session_id or "")
             self.plans.append(plan)
-            self.plans = self.plans[-(HISTORY_KEEP + 1):]
+            self.plans = self._trim_history(self.plans)
             return plan
 
     def clear(self, session_id: str | None = None):

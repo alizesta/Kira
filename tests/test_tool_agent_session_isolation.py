@@ -8,7 +8,7 @@ import unittest
 from kira.tools.agent import Pending, ToolAgent, ToolPlan
 from kira.tools.sysaccess import AccessManager
 from kira.webintel.session import CANCEL, DEFAULT_BUDGET, SessionScopedResearchStore
-from kira.tools.tasks import TaskStore
+from kira.tools.tasks import HISTORY_KEEP, P_DONE, TaskStore
 
 
 class ToolAgentSessionIsolationTests(unittest.TestCase):
@@ -117,6 +117,41 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
             self.assertNotIn("kira", self.agent._pending_new_sessions)
             self.assertIn("ren", self.agent._pending_by_session)
             self.assertIn("ren", self.agent._pending_new_sessions)
+
+    def test_task_history_retention_is_independent_for_each_character(self):
+        with TemporaryDirectory() as temp:
+            store = TaskStore(Path(temp))
+            owners = ("kira", "ren", "mika")
+            for index in range(HISTORY_KEEP + 3):
+                for owner in owners:
+                    finished = store.new(
+                        f"{owner} completed {index}", session_id=owner
+                    )
+                    finished.status = P_DONE
+
+            active = {
+                owner: store.new(f"{owner} active task", session_id=owner)
+                for owner in owners
+            }
+            store.save()
+
+            restored = TaskStore(Path(temp))
+            for owner in owners:
+                own_history = [
+                    plan for plan in restored.plans if plan.session_id == owner
+                ]
+                self.assertEqual(len(own_history), HISTORY_KEEP + 1)
+                self.assertIs(restored.active(owner), next(
+                    plan for plan in own_history if plan.goal == f"{owner} active task"
+                ))
+                self.assertNotIn(
+                    f"{owner} completed 0",
+                    [plan.goal for plan in own_history],
+                )
+            self.assertEqual(
+                {owner: restored.active(owner).goal for owner in owners},
+                {owner: f"{owner} active task" for owner in owners},
+            )
 
     def test_task_store_active_history_and_clear_are_character_scoped(self):
         with TemporaryDirectory() as temp:
