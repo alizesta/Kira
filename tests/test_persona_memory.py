@@ -205,23 +205,42 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(len(selected), 2)
 
     def test_relevance_fixture_has_useful_top_one_recall(self):
+        # Small deterministic regression corpus spanning preferences, identity,
+        # events, health, work and technology, with unrelated distractors.
         corpus = [
             "کاربر موسیقی راک را دوست دارد",
             "کاربر به موسیقی سنتی علاقه دارد",
             "کاربر مهندس نرم‌افزار است",
             "کاربر هفته آینده به شیراز سفر می‌کند",
+            "کاربر فردا امتحان زبان دارد",
+            "کارت گرافیک کامپیوتر کاربر خراب شده است",
+            "کاربر برای آلرژی به پزشک مراجعه می‌کند",
+            "کاربر به آشپزی ایتالیایی علاقه دارد",
+            "کاربر برای مصاحبه شغلی آماده می‌شود",
+            "کاربر قصد خرید لپ‌تاپ دارد",
+            "کاربر مسابقات فوتبال را دنبال می‌کند",
+            "کاربر از فیلم ترسناک خوشش نمی‌آید",
         ]
         cases = [
             ("آلبوم موسیقی راک", 0),
             ("شغل مهندس نرم‌افزار", 2),
-            ("برنامه سفر شیراز", 3),
+            ("برنامه مسافرت شیراز", 3),
+            ("آزمون زبان فردا", 4),
+            ("مشکل GPU کامپیوتر", 5),
+            ("پزشک آلرژی", 6),
+            ("غذای ایتالیایی", 7),
+            ("مصاحبه شغلی", 8),
+            ("خرید لپ‌تاپ", 9),
+            ("مسابقات فوتبال", 10),
+            ("فیلم ترسناک", 11),
         ]
         hits = 0
         for query, expected in cases:
-            ranking = pm._evidence.rank_texts(corpus, query)
-            self.assertTrue(ranking, f"no result for {query}")
-            hits += int(ranking[0] == expected)
-        self.assertGreaterEqual(hits / len(cases), 0.66)
+            with self.subTest(query=query):
+                ranking = pm._evidence.rank_texts(corpus, query)
+                self.assertTrue(ranking, f"no result for {query}")
+                hits += int(ranking[0] == expected)
+        self.assertGreaterEqual(hits / len(cases), 0.90)
 
     def test_evidence_render_skips_oversized_facts_without_truncating_or_starving_later_lines(self):
         facts = [
