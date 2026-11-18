@@ -40,6 +40,7 @@ from .main_window_session_support import (
     front_only,
     make_icon,
     message_html,
+    persisted_checkin_events,
     mood,
     save_settings,
     theme_mod,
