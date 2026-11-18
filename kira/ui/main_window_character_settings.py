@@ -509,7 +509,7 @@ class CharacterSettingsController(WindowFeatureController):
         from PySide6.QtWidgets import QFileDialog
 
         path, _ = QFileDialog.getOpenFileName(
-            self, "Install Skill ZIP", "", "Skill packages (*.zip)"
+            self.window, "Install Skill ZIP", "", "Skill packages (*.zip)"
         )
         if path:
             self._install_shared_skill(path)
@@ -546,7 +546,7 @@ class CharacterSettingsController(WindowFeatureController):
                 name = item.name
                 break
         if QMessageBox.question(
-            self, "حذف Skill", f"«{name}» از کتابخانه مشترک حذف شود؟"
+            self.window, "حذف Skill", f"«{name}» از کتابخانه مشترک حذف شود؟"
         ) != QMessageBox.Yes:
             return
         try:
