@@ -2,6 +2,7 @@
 import threading
 import unittest
 from datetime import datetime
+from types import SimpleNamespace
 
 from kira.app.event_bus import EventBus
 from kira.chat.events import CHAT_EVENT_TYPES, ChatEvent, ChatEventPublisher, ChatEventType
@@ -88,6 +89,32 @@ class SharedEventBusTests(unittest.TestCase):
         )
         self.assertEqual(self.bus.subscriber_count("conversation_archived"), 1)
         self.assertEqual(self.bus.subscriber_count("conversation_metadata_updated"), 1)
+
+    def test_shared_event_bus_accepts_a_generic_core_event_contract(self):
+        event = SimpleNamespace(
+            event_type="feature.ready",
+            event_id="evt-1",
+            timestamp=datetime.now().astimezone(),
+            session_id="session-1",
+            request_id=None,
+            payload={"feature": "sample"},
+            metadata={"source": "test"},
+        )
+        typed_received = []
+        legacy_received = []
+        self.bus.subscribe_event("feature.ready", typed_received.append)
+        self.bus.subscribe("feature.ready", lambda **payload: legacy_received.append(payload))
+
+        report = self.bus.publish_event(event)
+
+        self.assertEqual(report.delivered, 2)
+        self.assertEqual(typed_received, [event])
+        self.assertEqual(legacy_received[0]["event"], event)
+        self.assertEqual(legacy_received[0]["event_type"], "feature.ready")
+
+    def test_shared_event_bus_rejects_values_outside_the_event_contract(self):
+        with self.assertRaises(TypeError):
+            self.bus.publish_event(object())
 
     def test_legacy_keyword_event_api_stays_compatible(self):
         received = []
