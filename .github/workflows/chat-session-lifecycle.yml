@@ -48,6 +48,8 @@ on:
       - "kira/chat/__init__.py"
       - "kira/ui/main_window.py"
       - "kira/ui/main_window_*.py"
+      - "kira/persona_memory.py"
+      - "tests/test_persona_memory.py"
       - "kira/ui/window_feature_controller.py"
       - "kira/app/session_application.py"
       - "kira/app/service_module.py"
@@ -127,6 +129,7 @@ jobs:
           tests.test_coding_agent_application
           tests.test_runtime_settings_application
           tests.test_character_profile_service
+          tests.test_persona_memory
           tests.test_application_policy_wiring
           tests.test_domain_conversation_rules
           tests.test_domain_organization
@@ -222,6 +225,8 @@ jobs:
           kira/ui/main_window_lifecycle.py
           kira/ui/main_window_attachments_vision.py
           kira/ui/main_window_chat.py
+          kira/persona_memory.py
+          tests/test_persona_memory.py
           kira/ui/main_window_runtime.py
           tests/test_main_window_syntax.py
           tests/test_main_entrypoint.py
