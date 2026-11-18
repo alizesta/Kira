@@ -32,6 +32,12 @@ class NetguardRedirectPrivacyTests(unittest.TestCase):
         with mock.patch.object(netguard, "_uses_proxy", return_value=True):
             self.assertFalse(netguard._peer_blocked(response))
 
+    def test_shared_non_global_address_space_is_rejected(self):
+        for address in ("100.64.0.1", "192.0.0.1", "198.18.0.1"):
+            with self.subTest(address=address):
+                self.assertTrue(netguard._ip_blocked(netguard.ipaddress.ip_address(address)))
+        self.assertFalse(netguard._ip_blocked(netguard.ipaddress.ip_address("8.8.8.8")))
+
     def test_peer_check_rejects_private_address_and_accepts_public_address(self):
         response = mock.Mock()
         response.url = "https://example.com/"
