@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import json
 import re
 
 from .character.traits import BASE_TRAITS
@@ -65,14 +64,11 @@ def active(settings):
     return all_profiles(settings)[active_id(settings)]
 
 def _untrusted_prompt_text(value, limit=12000):
-    """Serialize editable prompt text and escape section delimiters it could forge."""
-    raw = json.dumps(str(value or "").strip()[:limit], ensure_ascii=False)
-    for character, escaped in (
-        ("&", r"\u0026"), ("<", r"\u003c"), (">", r"\u003e"),
-        ("[", r"\u005b"), ("]", r"\u005d"),
-    ):
-        raw = raw.replace(character, escaped)
-    return raw
+    """Preserve editable prose while preventing it from forging prompt section markers."""
+    raw = str(value or "").strip()[:limit]
+    return raw.translate(str.maketrans({
+        "<": "‹", ">": "›", "[": "［", "]": "］",
+    }))
 
 
 _TRAIT_GUIDANCE = {
