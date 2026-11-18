@@ -453,8 +453,8 @@ class VoiceSettingsMixin:
             self.model.setCurrentText(model)
         self.settings["model"] = model
         self.settings.setdefault("providers", {}).setdefault("ollama", {})["model"] = model
-        route_model.ensure_routes(self.settings)
-        route_model.add_ollama_models(self.settings, [model])
+        self.provider_application_service.ensure_routes(self.settings)
+        self.provider_application_service.add_ollama_models(self.settings, [model])
         self.save_now()
         self.refresh_route_list()
         self.refresh_unified_models()
