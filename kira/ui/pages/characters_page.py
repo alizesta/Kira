@@ -166,7 +166,7 @@ class CharactersPage(QScrollArea):
         active_character_id = str(settings.get("active_character_id") or "kira")
         initiative_settings = settings.get("character_initiative")
         self.initiative_chk.setChecked(
-            bool(initiative_settings.get(active_character_id, False))
+            initiative_settings.get(active_character_id, False) is True
             if isinstance(initiative_settings, dict) else False
         )
         self._register(self.initiative_chk.setText, "proactive_checkins")
