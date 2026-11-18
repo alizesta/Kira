@@ -36,7 +36,7 @@ The desktop app creates one `SharedSkillService` at `DATA_DIR/skills`. Its publi
 - `prompt_for(settings, character_id)`: build the bounded prompt contribution.
 - `uninstall(skill_id, settings)`: remove the package and clean enablement references.
 
-The app resolves the active character's enabled Skills for every chat turn. Global Skills apply to all characters unless that character has an explicit disable override. Character-only Skills do not leak into other characters. Enablement methods mutate the in-memory settings mapping. The caller must save that mapping through the existing `save_settings(settings)` function; this change does not add a management screen or automatically persist arbitrary API calls.
+The app resolves the active character's enabled Skills for every chat turn. Global Skills apply to all characters unless that character has an explicit disable override. Character-only Skills do not leak into other characters. Enablement methods mutate the in-memory settings mapping. The desktop Skills page persists each change through the existing `save_settings(settings)` function.
 
 ## Safety boundaries
 
@@ -49,4 +49,4 @@ The app resolves the active character's enabled Skills for every chat turn. Glob
 
 ## Current delivery boundary
 
-The registry, installer, global/per-character enablement policy and chat prompt integration are implemented. The desktop runtime exposes `window.skill_service` for the management UI or trusted application workflows. A dedicated Skills management page/dialog is not part of this change; until that UI is added, installation and enablement are available through the service API and settings object. Call `save_settings(window.settings)` after changing enablement. Runtime tests and Windows desktop acceptance must still be executed before release.
+The registry, ZIP/folder installer, global/per-character enablement policy, chat prompt integration and desktop Skills management page are implemented. The page is available under Settings → General → Skills. It supports package installation, per-character/global toggles and uninstall. Runtime tests and Windows desktop acceptance must still be executed before release.

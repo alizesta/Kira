@@ -102,8 +102,7 @@ class SkillsPage(QScrollArea):
             )
             self.table.setCellWidget(row, 2, self._center(global_box))
 
-            effective = set(service.enabled_for(settings, ""))
-            for offset, (cid, _label) in enumerate(character_columns, start=3):
+                for offset, (cid, _label) in enumerate(character_columns, start=3):
                 check = QCheckBox()
                 check.setChecked(manifest.skill_id in service.enabled_for(settings, cid))
                 check.setToolTip(f"فعال‌سازی برای {cid}")
