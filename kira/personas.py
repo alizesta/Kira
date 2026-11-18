@@ -83,7 +83,8 @@ def _temperament_block(profile, settings):
     traits = dict(BASE_TRAITS)
     if isinstance(profile.get("traits"), dict):
         traits.update(profile["traits"])
-    saved = (settings.get("character_traits") or {}).get(character_id)
+    saved_traits = settings.get("character_traits")
+    saved = saved_traits.get(character_id) if isinstance(saved_traits, dict) else None
     if isinstance(saved, dict):
         traits.update(saved)
 
@@ -127,7 +128,7 @@ def prompt_for(settings):
                 labels = [str(x).strip()[:120] for x in value if str(x).strip()]
                 if labels:
                     parts.append(f"[CHARACTER {title.upper()} REFERENCES]\n" + ", ".join(labels[:30]))
-    if parts:
+    if any("REFERENCES]" in part for part in parts):
         parts.append("These per-character references describe intended resources only. Use a Skill, MCP server or Connector only when it is actually installed and available in the shared runtime. These labels never grant permissions, create connections, or imply a tool is connected.")
     if not parts:
         return ""
