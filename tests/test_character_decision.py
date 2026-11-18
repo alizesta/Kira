@@ -32,6 +32,17 @@ class CharacterDecisionTests(unittest.TestCase):
                 self.assertTrue(result.serious_context)
                 self.assertNotIn(result.behaviour,("playful","teasing","flirty","sarcastic"))
 
+    def test_serious_context_persists_across_follow_up_turns_and_task_mode(self):
+        follow_up = self.engine.decide("بله، ادامه بده", {"user_states": ["stressed"]})
+        task = self.engine.decide(
+            "برای عمل فردا آماده می‌شوم",
+            {"user_states": ["down"], "emotion": "happy"},
+            "task",
+        )
+        self.assertTrue(follow_up.serious_context)
+        self.assertTrue(task.serious_context)
+        self.assertNotIn(task.behaviour, ("playful", "teasing", "flirty", "sarcastic"))
+
     def test_serious_matching_uses_word_boundaries(self):
         self.assertFalse(self.engine.decide("hospitality is growing",{}).serious_context)
 
