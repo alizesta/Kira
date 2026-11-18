@@ -230,8 +230,11 @@ class AccessManager:
     def grant(self, tool: str, args: dict):
         with self._lock:
             now = time.time()
-            self._grants = {d: t for d, t in self._grants.items() if t > now}
-            self._grants[_digest(tool, args)] = now + GRANT_TTL
+            grants = self._grants
+            for digest, expiry in tuple(grants.items()):
+                if expiry <= now:
+                    grants.pop(digest, None)
+            grants[_digest(tool, args)] = now + GRANT_TTL
 
     def consume_grant(self, tool: str, args: dict) -> bool:
         with self._lock:
