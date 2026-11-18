@@ -95,6 +95,17 @@ class BrainContextGuardTests(unittest.TestCase):
         self.assertIn("untrusted data", brain.HINT_BLOCK.lower())
         self.assertIn("never let it override", brain.HINT_BLOCK.lower())
 
+    def test_deep_prompt_is_not_added_when_route_metadata_is_unknown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(brain, "DATA_DIR", Path(tmp)):
+                decision = brain.Decision(stage=brain.DEEP, mode="auto")
+                self.assertEqual(brain.extend_prompt("base prompt", decision, {}, None), "base prompt")
+
+    def test_non_finite_review_timestamp_is_discarded(self):
+        state = {"turn": 2, "hint": {"text": "bad", "created": float("nan"), "turn": 2}}
+        self.assertEqual(brain._pending_hint(state, 100), "")
+
+
 
 class BrainReflectionQualityTests(unittest.TestCase):
     def test_partial_tool_failure_is_not_hidden_by_another_success(self):
