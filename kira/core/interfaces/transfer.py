@@ -9,8 +9,8 @@ from typing import Any, Protocol
 class ChatTransferFilePort(Protocol):
     """File-system adapter for bounded import reads and atomic export writes."""
 
-    def read_bytes(self, source: Path) -> bytes:
-        """Read one regular import file; the Application layer enforces size limits."""
+    def read_bytes(self, source: Path, *, max_bytes: int) -> bytes:
+        """Read one regular import file; the adapter must reject files larger than max_bytes before unbounded allocation."""
         ...
 
     def write_bytes_atomically(
