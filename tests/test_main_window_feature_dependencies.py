@@ -220,5 +220,81 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
             )
 
 
+    def test_controller_context_references_match_declared_namespace_contracts(self):
+        import re
+
+        context_source = (UI / "window_presentation_context.py").read_text(encoding="utf-8")
+        namespaces = {
+            "state": "STATE_FIELDS",
+            "services": "SERVICE_FIELDS",
+            "adapters": "ADAPTER_FIELDS",
+            "views": "VIEW_FIELDS",
+        }
+        allowed = {}
+        for namespace, constant in namespaces.items():
+            match = re.search(
+                rf"{constant}\\s*=\\s*frozenset\\(\\{{([\\s\\S]*?)\\}}\\)",
+                context_source,
+            )
+            self.assertIsNotNone(match, constant)
+            allowed[namespace] = set(re.findall(r'"([^"]+)"', match.group(1)))
+
+        for filename in self.FEATURES:
+            source = (UI / filename).read_text(encoding="utf-8")
+            for namespace, fields in allowed.items():
+                referenced = set(re.findall(
+                    rf"self\\.context\\.{namespace}\\.([A-Za-z_]\\w*)",
+                    source,
+                ))
+                self.assertLessEqual(
+                    referenced,
+                    fields,
+                    f"{filename} references undeclared {namespace} fields: {sorted(referenced - fields)}",
+                )
+
+        composition = (UI / "main_window_composition.py").read_text(encoding="utf-8")
+        for namespace, fields in allowed.items():
+            referenced = set(re.findall(
+                rf"self\\.{namespace}\\.([A-Za-z_]\\w*)",
+                composition,
+            ))
+            self.assertLessEqual(
+                referenced,
+                fields,
+                f"composition references undeclared {namespace} fields: {sorted(referenced - fields)}",
+            )
+
+    def test_resource_owner_map_resolves_only_declared_context_resources(self):
+        from kira.chat_sessions import SESSION_FIELDS
+        from kira.ui.window_presentation_context import (
+            ADAPTER_FIELDS,
+            RESOURCE_OWNERS,
+            SERVICE_FIELDS,
+            STATE_FIELDS,
+            VIEW_FIELDS,
+        )
+
+        namespaces = {
+            "state": STATE_FIELDS,
+            "services": SERVICE_FIELDS,
+            "adapters": ADAPTER_FIELDS,
+            "views": VIEW_FIELDS,
+            "session": frozenset(SESSION_FIELDS),
+        }
+        context_resources = {"listener", "stopping_listener"}
+        controller_resources = {"_attach_worker"}
+
+        for resource, (namespace, field) in RESOURCE_OWNERS.items():
+            if namespace in namespaces:
+                self.assertIn(field, namespaces[namespace], resource)
+            elif namespace == "context":
+                self.assertIn(field, context_resources, resource)
+            elif namespace == "session_controller":
+                self.assertIn(field, controller_resources, resource)
+            else:
+                self.fail(f"{resource} has an unknown resource owner: {namespace}")
+
+
+
 if __name__ == "__main__":
     unittest.main()
