@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-QT_IMPORT_PREFIXES = ("PySide", "PyQt")
+QT_IMPORT_PREFIXES = ("PySide6", "PySide2", "PyQt5", "PyQt6")
 CORE_FORBIDDEN_PREFIXES = (
     "kira.app",
     "kira.ui",
