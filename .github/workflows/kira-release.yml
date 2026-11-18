@@ -52,6 +52,7 @@ on:
       - "tests/test_persona_memory.py"
       - "tests/test_app_resolution.py"
       - "tests/test_architecture_boundaries.py"
+      - "tests/test_web_search_application.py"
       - "tests/test_persian_quality.py"
       - "scripts/build_release.py"
       - ".github/workflows/kira-release.yml"
@@ -118,6 +119,7 @@ jobs:
           tests.test_avatar_art
           tests.test_app_resolution
           tests.test_architecture_boundaries
+          tests.test_web_search_application
           tests.test_persian_quality
           tests.test_release_package
           tests.test_game_mode_policy
@@ -186,6 +188,7 @@ jobs:
           tests.test_avatar_art
           tests.test_app_resolution
           tests.test_architecture_boundaries
+          tests.test_web_search_application
           tests.test_persian_quality
           tests.test_release_package
           tests.test_game_mode_policy
