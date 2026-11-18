@@ -8,107 +8,19 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from enum import Enum
 from threading import RLock
 from typing import Any, Mapping
 
 
-class ProviderEventKind(str, Enum):
-    CHUNK = "chunk"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
-
-class ResponseStatus(str, Enum):
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
-
-class ResponseEventKind(str, Enum):
-    CHUNK = "chunk"
-    FINAL = "final"
-
-
-@dataclass(frozen=True)
-class ResponseError:
-    """Provider failure normalized without depending on a provider SDK."""
-
-    code: str
-    message: str
-    recoverable: bool = False
-
-
-@dataclass(frozen=True)
-class ProviderEvent:
-    """One provider callback, explicitly scoped to a request and chat session."""
-
-    request_id: str
-    session_id: str
-    kind: ProviderEventKind
-    payload: Any = None
-    error: str | ResponseError | None = None
-    recoverable: bool = False
-
-    @classmethod
-    def chunk(cls, request_id: str, session_id: str, content: str) -> "ProviderEvent":
-        return cls(request_id, session_id, ProviderEventKind.CHUNK, payload=content)
-
-    @classmethod
-    def completed(
-        cls, request_id: str, session_id: str, response: Mapping[str, Any]
-    ) -> "ProviderEvent":
-        return cls(request_id, session_id, ProviderEventKind.COMPLETED, payload=response)
-
-    @classmethod
-    def failed(
-        cls,
-        request_id: str,
-        session_id: str,
-        error: str | ResponseError,
-        *,
-        recoverable: bool = False,
-    ) -> "ProviderEvent":
-        return cls(
-            request_id,
-            session_id,
-            ProviderEventKind.FAILED,
-            error=error,
-            recoverable=recoverable,
-        )
-
-    @classmethod
-    def cancelled(cls, request_id: str, session_id: str) -> "ProviderEvent":
-        return cls(request_id, session_id, ProviderEventKind.CANCELLED)
-
-
-@dataclass(frozen=True)
-class ChatResponseResult:
-    """Stable final response contract for the Chat application layer."""
-
-    request_id: str
-    session_id: str
-    status: ResponseStatus
-    content: str
-    error: ResponseError | None = None
-    metadata: Mapping[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ResponseStreamEvent:
-    """Normalized event contract consumed by the Chat application layer.
-
-    CHUNK events expose both the original chunk and the ordered accumulated
-    content. FINAL events contain exactly one ChatResponseResult.
-    """
-
-    request_id: str
-    session_id: str
-    kind: ResponseEventKind
-    chunk: str = ""
-    content: str = ""
-    result: ChatResponseResult | None = None
+from ..domain.chat import (
+    ChatResponseResult,
+    ProviderEvent,
+    ProviderEventKind,
+    ResponseError,
+    ResponseEventKind,
+    ResponseStatus,
+    ResponseStreamEvent,
+)
 
 
 @dataclass
