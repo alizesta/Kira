@@ -33,7 +33,7 @@
 | 010 | Commands & Actions — `kira/chat/commands.py`, `command_adapters.py` | `CommandRegistry`, `CommandDefinition`, `CommandRequest`, `CommandResult`, adapters | Injected handlers, permission checker, immutable request/session context | Hard-coded Kira persona policy, persistence, UI rendering, unrestricted direct system execution | None | Command results/events are relayed by application layer |
 | 011 | Search & Retrieval — `kira/domain/search.py`, `kira/app/chat_search_application.py`, `kira/core/interfaces/search.py` | Domain `ChatSearchRequest`, `ChatSearchHit`, `ChatSearchPage`; Application `ChatSearchService.search()` | Read-only `ChatSearchRepositoryPort`; optional `ConversationStatusReaderPort` | SQL ownership, persistence writes, conversation organization policy, UI widgets | Read-only through Persistence | None |
 | 012 | Export & Import — `kira/domain/transfer.py`, `kira/app/chat_transfer_application.py`, `kira/core/interfaces/transfer.py` | Domain transfer schema/value contracts; Application `ChatTransfer.export_data/preview_import/import_data` | `ChatTransferRepositoryPort`, bounded JSON data contracts | Direct SQL, search ranking, lifecycle transition policy, UI widgets | Persistence owns import transactions and durable writes; Domain owns transfer invariants | Outcomes returned to caller; notifications via application layer |
-| 013 | Conversation Lifecycle — `kira/chat/conversation_lifecycle.py` | `ConversationLifecycleService`: list/archive/archive_many/restore/trash/trash_many/restore_trashed/permanent_delete | Shared `ChatPersistence`, shared `ChatEventPublisher`, clock/authorization provider | Runtime Session state, message search, organization metadata, direct SQL, automatic purge | Persistence performs atomic status writes and guarded deletion; Lifecycle owns transition policy | Five lifecycle notifications published after durable commit |
+| 013 | Conversation Lifecycle — `kira/domain/conversations.py`, `kira/chat/conversation_lifecycle.py`, `kira/core/interfaces/conversation_lifecycle.py` | Domain lifecycle rules; Application `ConversationLifecycleService`: list/archive/archive_many/restore/trash/trash_many/restore_trashed/permanent_delete | Core repository, event publisher and authorization ports | Runtime Session state, message search, organization metadata, direct SQL, automatic purge | Persistence performs atomic status writes and guarded deletion; Lifecycle owns transition policy | Registered as the application-wide `conversation_lifecycle` ModuleManager service; shared with Chat Application; five lifecycle notifications published after durable commit |
 | 014 | Metadata & Organization — `kira/domain/organization.py`, `kira/app/organization_application.py`, `kira/core/interfaces/organization.py` | Domain organization values/validation; Application `ChatOrganizationService`: rename/tag/folder/favorite/metadata/filter APIs | `ConversationOrganizationRepositoryPort`, `ConversationMetadataEventPublisherPort` | Session lifecycle, Conversation archive/trash/delete, message search, SQL, UI widgets | Persistence stores namespaced `metadata.organization`; Domain owns metadata rules | `conversation_metadata_updated` through shared publisher |
 
 ### 2.1 Status on current `new-main`
@@ -185,13 +185,18 @@ The legacy imports `kira/chat/organization.py`, `kira/chat/search.py` and `kira/
 
 The desktop Composition Root registers the application service/factory graph
 through `kira/app/feature_modules.py` and `ServiceModule`. Managed registrations
-cover Memory, Mood, Character Profile, Chat History, Web Search, Game Mode,
-Provider, Coding Agent, Runtime Settings, Vision, and the Chat/Session/Voice
-composition factories.
+cover Memory, Mood, Character Profile, Chat History, Conversation Lifecycle,
+Conversation Organization, Chat Search, Chat Transfer, Web Search, Shared Skills,
+Game Mode, Provider,
+Coding Agent, Runtime Settings, Vision, and the Chat/Session/Voice composition
+factories.
 
 The graph declares the dependencies that affect startup and shutdown ordering:
-Chat Application depends on Chat History; Session Application depends on Chat
-Application; Vision depends on Game Mode. The manager starts dependencies first
+Conversation Lifecycle, Conversation Organization, Chat Search and Chat Transfer
+depend on Chat History; Chat Application depends on both Chat History and
+Conversation Lifecycle; Session Application depends on Chat Application;
+Vision depends on Game Mode. Chat Transfer additionally accepts the optional
+Core-owned `ChatTransferFilePort` supplied by the outer composition root. The manager starts dependencies first
 and disposes created modules in reverse creation order. A service that is stopped
 can be restarted using the same instance; disable/re-enable creates a fresh one.
 Partial start failures receive stop/dispose cleanup and do not leave a DI key
@@ -202,10 +207,17 @@ module stop. Vision and Game Mode clear transient policy state when stopped.
 The concrete ChatApplicationService, SessionApplicationService and
 VoiceApplicationService instances are constructed with window-scoped callback
 ports implemented by UI adapters and are therefore window-scoped, not
-application singletons. Organization, Search and Transfer are use-case services
-with injected Core ports; their final ModuleManager registration and bootstrap
-wiring is coordinated with Flow 4 rather than duplicated in Flow 2. Their contracts (`ProviderWorkerPort`, `SpeakerPort`,
-and `VoiceListenerPort`) live in Core and contain no Qt types.
+application singletons. ConversationLifecycleService is application-scoped and
+injected into the Chat factory so multiple windows share the same persistence
+and notification boundary. Organization, Search and Transfer are now application-wide, lifecycle-managed
+services registered by `feature_modules.py` and resolved by Bootstrap. Each
+shares the Chat History persistence adapter; Organization also receives the
+shared Chat event publisher, and Search receives the explicit Conversation
+status reader. Transfer receives the optional file adapter through the
+`transfer_file_port` registration argument. The original Chat modules remain
+compatibility facades. The concrete Chat/Session/Voice instances still use
+window-scoped callback ports. Their contracts (`ProviderWorkerPort`,
+`SpeakerPort`, and `VoiceListenerPort`) live in Core and contain no Qt types.
 The window owns their two-phase graceful shutdown. It first rejects new Chat work
 and cancels pending/running requests without closing the command registry or
 AttachmentManager. It then drains provider/search/attachment/vision/game-audio
