@@ -22,6 +22,7 @@ class _FakePiperVoice:
     loads = []
     instances = {}
     fail_paths = set()
+    memory_fail_once = set()
 
     def __init__(self, path):
         self.path = path
@@ -30,6 +31,9 @@ class _FakePiperVoice:
     @classmethod
     def load(cls, path):
         cls.loads.append(path)
+        if path in cls.memory_fail_once:
+            cls.memory_fail_once.remove(path)
+            raise MemoryError("not enough memory to load voice")
         if path in cls.fail_paths:
             raise RuntimeError("model load failed")
         if path not in cls.instances:
@@ -58,14 +62,17 @@ class LocalPiperSynthesisTests(unittest.TestCase):
             local_voice._tts_model_path,
             local_voice._tts_model_label,
             local_voice._tts_error,
+            local_voice._tts_model_signature,
         )
         local_voice._tts = None
         local_voice._tts_model_path = ""
         local_voice._tts_model_label = ""
+        local_voice._tts_model_signature = None
         local_voice._tts_error = None
         _FakePiperVoice.loads = []
         _FakePiperVoice.instances = {}
         _FakePiperVoice.fail_paths = set()
+        _FakePiperVoice.memory_fail_once = set()
         self.piper_patch = mock.patch.dict(sys.modules, {"piper": _fake_piper_module()})
         self.piper_patch.start()
         self.addCleanup(self.piper_patch.stop)
@@ -77,6 +84,7 @@ class LocalPiperSynthesisTests(unittest.TestCase):
             local_voice._tts_model_path,
             local_voice._tts_model_label,
             local_voice._tts_error,
+            local_voice._tts_model_signature,
         ) = self.previous
 
     def test_native_rate_control_preserves_wav_sample_rate_and_pitch_parameter(self):
@@ -141,6 +149,47 @@ class LocalPiperSynthesisTests(unittest.TestCase):
         self.assertIs(local_voice._tts, _FakePiperVoice.instances[str(first)])
         self.assertEqual(local_voice._tts_model_path, str(first))
         self.assertEqual(local_voice._tts_model_label, str(first))
+
+
+    def test_memory_pressure_releases_old_voice_and_retries_new_model(self):
+        first = Path(tempfile.gettempdir()) / "voice-memory-old.onnx"
+        second = Path(tempfile.gettempdir()) / "voice-memory-new.onnx"
+        _FakePiperVoice.memory_fail_once.add(str(second))
+        with mock.patch.object(
+            local_voice, "_resolve_tts_model_path",
+            side_effect=[(first, str(first)), (second, str(second))],
+        ):
+            local_voice.synthesize_persian("اول", model_path=str(first))
+            local_voice.synthesize_persian("دوم", model_path=str(second))
+
+        self.assertEqual(_FakePiperVoice.loads, [str(first), str(second), str(second)])
+        self.assertEqual(local_voice._tts_model_path, str(second))
+        self.assertEqual(local_voice._tts_model_label, str(second))
+
+    def test_replaced_model_at_same_path_is_reloaded(self):
+        with tempfile.TemporaryDirectory() as temp:
+            model = Path(temp) / "mutable.onnx"
+            model.write_bytes(b"first")
+            second_sidecar = Path(str(model) + ".json")
+            second_sidecar.write_text("{}", encoding="utf-8")
+            with mock.patch.object(
+                local_voice, "_resolve_tts_model_path", return_value=(model, str(model))
+            ):
+                local_voice.synthesize_persian("اول", model_path=str(model))
+                model.write_bytes(b"replacement with a different size")
+                os.utime(model, None)
+                local_voice.synthesize_persian("دوم", model_path=str(model))
+
+        self.assertEqual(_FakePiperVoice.loads, [str(model), str(model)])
+        self.assertEqual(local_voice._tts_model_path, str(model))
+
+    def test_custom_voice_readiness_requires_piper_sidecar(self):
+        with tempfile.TemporaryDirectory() as temp:
+            model = Path(temp) / "voice.onnx"
+            model.write_bytes(b"model")
+            self.assertFalse(local_voice.tts_ready(str(model)))
+            Path(str(model) + ".json").write_text("{}", encoding="utf-8")
+            self.assertTrue(local_voice.tts_ready(str(model)))
 
     def test_default_model_resolves_the_mana_snapshot_in_kira_cache(self):
         with tempfile.TemporaryDirectory() as temp:

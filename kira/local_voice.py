@@ -26,6 +26,7 @@ _asr_model_name = None
 _tts = None  # Keep only the currently selected voice in memory.
 _tts_model_path = ""
 _tts_model_label = ""
+_tts_model_signature = None
 _asr_error = None
 _tts_error = None
 
@@ -43,6 +44,8 @@ def tts_ready(model_path="") -> bool:
     if model_path:
         path = Path(str(model_path)).expanduser()
         if not path.is_file() or path.suffix.lower() != ".onnx":
+            return False
+        if not Path(str(path) + ".json").is_file():
             return False
     try:
         import piper  # noqa: F401
@@ -178,21 +181,79 @@ def _resolve_tts_model_path(model_path="") -> tuple[Path, str]:
     return path, "bundled"
 
 
+def _model_file_signature(path: Path):
+    """Invalidate the in-memory voice when its ONNX file is replaced in place."""
+    try:
+        stat = path.stat()
+        return (str(path), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+    except OSError:
+        # Tests and some virtual filesystems may not expose stat metadata.
+        return (str(path), None, None, None)
+
+
+def _is_memory_pressure(exc: BaseException) -> bool:
+    message = str(exc).casefold()
+    return isinstance(exc, MemoryError) or any(
+        token in message
+        for token in ("out of memory", "memory allocation", "not enough memory", "failed to allocate")
+    )
+
+
 def _load_tts_voice(model_path=""):
-    """Load and cache one active Piper voice, bounded to avoid retaining multiple ONNX models."""
-    global _tts, _tts_model_path, _tts_model_label
+    """Load one active Piper voice, retrying memory-starved switches without retaining two models."""
+    global _tts, _tts_model_path, _tts_model_label, _tts_model_signature, _tts_error
     path, label = _resolve_tts_model_path(model_path)
     key = str(path)
-    if _tts is not None and _tts_model_path == key:
+    signature = _model_file_signature(path)
+    if _tts is not None and _tts_model_path == key and _tts_model_signature == signature:
         return _tts
 
     from piper import PiperVoice
-    voice = PiperVoice.load(str(path))
-    # Swap only after a successful load, so a failed model change does not destroy
-    # the previously working voice.
+    previous = (_tts, _tts_model_path, _tts_model_label, _tts_model_signature)
+    previous_path, previous_label, previous_signature = previous[1], previous[2], previous[3]
+    try:
+        voice = PiperVoice.load(str(path))
+    except Exception as first_error:
+        if previous[0] is None or not _is_memory_pressure(first_error):
+            raise
+
+        # Keep the previous voice on ordinary load failures. Only a memory-pressure
+        # failure justifies releasing it and retrying the requested model.
+        _tts = None
+        _tts_model_path = ""
+        _tts_model_label = ""
+        _tts_model_signature = None
+        del previous
+        gc.collect()
+        try:
+            voice = PiperVoice.load(str(path))
+        except Exception as retry_error:
+            # Best-effort restoration preserves the old voice whenever its source
+            # file is still available. The original failure is retained as context.
+            try:
+                if not previous_path:
+                    raise RuntimeError("Previous voice path is unavailable")
+                restored = PiperVoice.load(str(previous_path))
+            except Exception as restore_error:
+                _tts_error = RuntimeError(
+                    f"Voice switch ran out of memory and previous voice could not be restored: {restore_error}"
+                )
+                raise RuntimeError(
+                    f"Voice switch failed after memory recovery attempt: {retry_error}"
+                ) from first_error
+            _tts = restored
+            _tts_model_path = previous_path
+            _tts_model_label = previous_label
+            _tts_model_signature = previous_signature
+            raise RuntimeError(
+                f"Voice switch failed after releasing previous model; previous voice restored: {retry_error}"
+            ) from first_error
+
     _tts = voice
     _tts_model_path = key
     _tts_model_label = label
+    _tts_model_signature = signature
+    _tts_error = None
     return voice
 
 
@@ -224,7 +285,8 @@ def warmup_tts(model_path="") -> bool:
         from . import persian_ezafe
         persian_ezafe.warmup()
     except Exception:
-        pass
+        import logging
+        logging.getLogger(__name__).exception("Optional Persian ezafe warmup failed")
     return ready
 
 
@@ -247,7 +309,8 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
         from .persian_ezafe import add_persian_ezafe
         clean = add_persian_ezafe(clean)
     except Exception:
-        pass
+        import logging
+        logging.getLogger(__name__).exception("Optional Persian ezafe preprocessing failed; using original text")
 
     selected = str(model_path or "").strip()
     speed = max(0.5, min(1.5, 1.0 + float(rate or 0) / 100.0))
@@ -402,7 +465,18 @@ def status(model_path="") -> dict:
         "tts_model": _tts_model_label if _tts is not None else "",
         "asr_error": str(_asr_error)[:240] if _asr_error else "",
         "tts_error": str(_tts_error)[:240] if _tts_error else "",
+        "tts_model_signature": _tts_model_signature,
+        "tts_ezafe": _ezafe_status(),
     }
+
+
+def _ezafe_status() -> dict:
+    """Expose optional ezafe availability and retry diagnostics to voice settings."""
+    try:
+        from . import persian_ezafe
+        return persian_ezafe.status()
+    except Exception as exc:
+        return {"enabled": True, "loaded": False, "error": f"{type(exc).__name__}: {exc}"[:240]}
 
 def discover_cached_models() -> dict:
     """Find cached Qwen ASR snapshots and Piper ONNX voices without downloading anything."""

@@ -1,5 +1,6 @@
 """Tests for optional ALBERT-based Persian ezafe preprocessing."""
 import os
+import tempfile
 import unittest
 from unittest import mock
 
@@ -87,6 +88,72 @@ class PersianEzafeTests(unittest.TestCase):
         ):
             self.assertEqual(persian_ezafe.add_persian_ezafe(text), text)
         self.assertIn("offline", persian_ezafe.status()["error"])
+
+
+    def test_partial_word_at_token_truncation_boundary_is_not_modified(self):
+        text = "کتابخانه"
+        tokenizer = _Tokenizer([(0, 3)])
+        session = _Session([1])
+        with mock.patch.object(
+            persian_ezafe, "_load_predictor",
+            return_value=(tokenizer, session, {"input_ids", "attention_mask"}, np),
+        ):
+            self.assertEqual(persian_ezafe.add_persian_ezafe(text), text)
+
+    def test_loader_retries_after_transient_initialization_failure(self):
+        old_state = (
+            persian_ezafe._predictor, persian_ezafe._load_failures,
+            persian_ezafe._retry_after, persian_ezafe._last_error,
+        )
+        self.addCleanup(lambda: self._restore_loader(old_state))
+        persian_ezafe._predictor = None
+        persian_ezafe._load_failures = 0
+        persian_ezafe._retry_after = 0.0
+        persian_ezafe._last_error = ""
+        predictor = (_Tokenizer([(0, 4)]), _Session([0]), {"input_ids", "attention_mask"}, np)
+        with mock.patch.object(persian_ezafe.time, "monotonic", side_effect=[100.0, 106.0]), \
+             mock.patch.object(
+                 persian_ezafe, "_initialize_predictor",
+                 side_effect=[OSError("temporary offline failure"), predictor],
+             ) as initialize:
+            with self.assertRaisesRegex(OSError, "temporary"):
+                persian_ezafe._load_predictor()
+            self.assertIs(persian_ezafe._load_predictor(), predictor)
+        self.assertEqual(initialize.call_count, 2)
+        self.assertEqual(persian_ezafe.status()["load_failures"], 0)
+
+    def test_failed_initialization_has_bounded_backoff_and_diagnostics(self):
+        old_state = (
+            persian_ezafe._predictor, persian_ezafe._load_failures,
+            persian_ezafe._retry_after, persian_ezafe._last_error,
+        )
+        self.addCleanup(lambda: self._restore_loader(old_state))
+        persian_ezafe._predictor = None
+        persian_ezafe._load_failures = 0
+        persian_ezafe._retry_after = 0.0
+        persian_ezafe._last_error = ""
+        with mock.patch.object(persian_ezafe.time, "monotonic", return_value=10.0), \
+             mock.patch.object(persian_ezafe, "_initialize_predictor", side_effect=OSError("network")):
+            with self.assertRaisesRegex(OSError, "network"):
+                persian_ezafe._load_predictor()
+            with self.assertRaisesRegex(RuntimeError, "cooling down"):
+                persian_ezafe._load_predictor()
+        state = persian_ezafe.status()
+        self.assertEqual(state["load_failures"], 1)
+        self.assertIn("network", state["error"])
+        self.assertGreater(state["retry_in_seconds"], 0)
+
+    def test_cache_directory_aligns_huggingface_environment(self):
+        with tempfile.TemporaryDirectory() as temp, mock.patch.dict(
+            os.environ, {"HF_HUB_CACHE": temp, "HUGGINGFACE_HUB_CACHE": "/wrong/cache"}
+        ):
+            self.assertEqual(persian_ezafe._cache_directory(), Path(temp))
+            self.assertEqual(os.environ["HUGGINGFACE_HUB_CACHE"], temp)
+
+    @staticmethod
+    def _restore_loader(state):
+        (persian_ezafe._predictor, persian_ezafe._load_failures,
+         persian_ezafe._retry_after, persian_ezafe._last_error) = state
 
     def test_empty_text_does_not_load_model(self):
         with mock.patch.object(persian_ezafe, "_load_predictor") as load:
