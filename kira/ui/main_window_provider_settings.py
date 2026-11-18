@@ -37,7 +37,10 @@ from .main_window_provider_settings_support import (
     front_only,
 )
 
-class ProviderSettingsMixin:
+from .window_feature_controller import WindowFeatureController
+
+
+class ProviderSettingsMixin(WindowFeatureController):
     def refresh_model_catalogs(self):
         if getattr(self, "_model_catalog_worker", None) is not None and self._model_catalog_worker.isRunning():
             return
