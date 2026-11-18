@@ -211,7 +211,7 @@ class RuntimeController(WindowFeatureController):
             save_settings(self.context.services.settings)
             return True
         except Exception as exc:                                  # noqa: BLE001
-            if hasattr(self, "route_status"):
+            if hasattr(self.context.views, "route_status"):
                 self.context.views.route_status.setText(f"✕ ذخیره‌ی خودکار ناموفق بود: {exc}")
             return False
 
@@ -226,7 +226,7 @@ class RuntimeController(WindowFeatureController):
         self.set_badge(phase, e)
         if phase == "streaming" and self.context.session._t_first is None:
             self.context.session._t_first = time.monotonic() - (self.context.session._t_req or time.monotonic())
-            mode = getattr(self, "_turn_mode", None)
+            mode = getattr(self.context.session, "_turn_mode", None)
             self.context.views.status.setText(f"اولین Token بعد از {int(self.context.session._t_first * 1000)} ms · {e['label']} / {e['model']}"
                                 + (f" · حالت: {self.feature_controller("chat").MODE_LABELS[mode.name]}" if mode else ""))
         elif phase == "failover":
@@ -252,7 +252,7 @@ class RuntimeController(WindowFeatureController):
         meta = self.context.adapters.director.parse_reply(raw)
         self.run_body(meta.body)
         text = meta.text
-        if not text.strip() and not res.get("stopped") and not res.get("interrupted") and not getattr(self, "_plain_retry", False):
+        if not text.strip() and not res.get("stopped") and not res.get("interrupted") and not getattr(self.context.session, "_plain_retry", False):
             self.context.session._plain_retry = True            # model answered with a tag only: ask again without tags (counted as a retry)
             self.feature_controller("chat").start_worker(plain=True)
             return
@@ -285,8 +285,8 @@ class RuntimeController(WindowFeatureController):
         else:
             self.save_message("assistant", raw, persist=False)
             try:                                                   # quiet second look (rules; optional background model call)
-                brain.after_turn(self.context.session.client, self.context.services.settings, getattr(self, "_brain", brain.Decision()), getattr(self, "_brain_user_text", ""),
-                                 text, res.get("tools"), getattr(self, "_brain_mode_name", None), bool(self.context.session._tool_plan),
+                brain.after_turn(self.context.session.client, self.context.services.settings, getattr(self.context.session, "_brain", brain.Decision()), getattr(self.context.session, "_brain_user_text", ""),
+                                 text, res.get("tools"), getattr(self.context.session, "_brain_mode_name", None), bool(self.context.session._tool_plan),
                                  character_id=self.context.state.cur.cid)
             except Exception:                                      # noqa: BLE001
                 pass
@@ -307,7 +307,7 @@ class RuntimeController(WindowFeatureController):
         self.context.session.timer.stop()
         self._stream_flush(final=True)
         self.context.session._stream_pos = None
-        if getattr(self, "_speech_live", False):
+        if getattr(self.context.session, "_speech_live", False):
             self.context.services.voice_application_service.stream_end()
         self.feature_controller("session").add_chat("error", self.feature_controller("session").t("reply_err", e=error))
         self.context.adapters.director.event("response_failed")
