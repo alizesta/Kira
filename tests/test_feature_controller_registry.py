@@ -77,16 +77,14 @@ class FeatureControllerRegistryTests(unittest.TestCase):
 
         from kira.ui.window_feature_controller import WindowFeatureController
 
-        class Registry:
-            def get(self, feature):
-                return self.second if feature == "second" else None
+        from kira.ui.window_presentation_context import WindowPresentationContext
 
-            second = object()
-
+        second = object()
+        registry = FeatureControllerRegistry({"second": second})
         window = QObject()
-        window._controller_registry = Registry()
+        window.presentation_context = WindowPresentationContext(window, registry)
         controller = WindowFeatureController(window)
-        self.assertIs(controller.feature_controller("second"), window._controller_registry.second)
+        self.assertIs(controller.feature_controller("second"), second)
         with self.assertRaises(LookupError):
             controller.feature_controller("missing")
 
@@ -189,7 +187,7 @@ class FeatureControllerRegistryTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         source = (root / "kira/ui/main_window_composition.py").read_text(encoding="utf-8")
         self.assertIn(
-            'self._controller_registry.get("chat").bind_attachment_controller(',
+            'self.controllers.require("chat").bind_attachment_controller(',
             source,
         )
 
