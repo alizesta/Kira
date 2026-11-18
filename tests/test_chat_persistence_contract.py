@@ -76,6 +76,9 @@ class ChatPersistenceContractTests(unittest.TestCase):
         with self.assertRaisesRegex(PersistenceError, "snapshot unavailable"):
             self.persistence.clear_memory("kira")
 
+    def test_flush_pending_is_optional_for_repositories_without_a_write_queue(self):
+        self.assertEqual(self.persistence.flush_pending(), 0)
+
     def test_error_state_is_owned_by_repository(self):
         self.persistence.set_last_error("disk unavailable")
         self.assertEqual(self.persistence.last_error, "disk unavailable")

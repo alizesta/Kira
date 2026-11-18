@@ -62,7 +62,15 @@ class ServiceModule:
             try:
                 self._call_optional(self._instance, "start")
             except Exception:
-                self._started = False
+                # A failed start may have allocated resources before raising.
+                # Attempt to stop them; retain ownership if cleanup also fails
+                # so ModuleManager can retry during its failure cleanup.
+                try:
+                    self._call_optional(self._instance, "stop")
+                except Exception:
+                    self._started = True
+                else:
+                    self._started = False
                 raise
             self._started = True
             return

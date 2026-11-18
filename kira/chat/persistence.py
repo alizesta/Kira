@@ -41,7 +41,6 @@ class ChatRepository(Protocol):
     @last_error.setter
     def last_error(self, value: str | None) -> None: ...
     def init_db(self) -> list[str]: ...
-    def flush_pending(self) -> int: ...
     def create_conversation(self, character_id=None, title="", metadata=None,
                             conversation_id=None) -> dict[str, Any]: ...
     def get_or_create_conversation(self, character_id=None) -> dict[str, Any]: ...
@@ -1484,7 +1483,10 @@ class ChatPersistence:
         return self._repository.init_db()
 
     def flush_pending(self) -> int:
-        return self._invoke(self._repository.flush_pending)
+        flusher = getattr(self._repository, "flush_pending", None)
+        if not callable(flusher):
+            return 0
+        return self._invoke(flusher)
 
     def create_conversation(self, character_id=None, title="", metadata=None, conversation_id=None):
         return self._invoke(self._repository.create_conversation, character_id, title, metadata, conversation_id)
