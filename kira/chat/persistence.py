@@ -14,7 +14,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Callable, Protocol, runtime_checkable
 
 from ..config import DB_PATH
 
@@ -49,6 +49,9 @@ class ChatRepository(Protocol):
     def close_conversation(self, conversation_id: str) -> bool: ...
     def delete_conversation(self, conversation_id: str, *, expected_status: str | None = None) -> int: ...
     def update_conversation_lifecycle(self, changes: list[dict[str, Any]]) -> bool: ...
+    def mutate_conversations(
+        self, mutations: list[tuple[str, Callable[[dict[str, Any]], dict[str, Any]]]]
+    ) -> dict[str, dict[str, Any]]: ...
     def add_message(self, role: str, content: str, character_id: str | None = None, **options) -> bool: ...
     def update_stream_message(self, message_id: int, content: str, **options) -> bool: ...
     def conversation_context(self, limit: int = 12, max_chars: int = 12000,
@@ -695,6 +698,81 @@ class SqliteChatRepository:
                     self._active_conversations.pop(character, None)
         return True
 
+    def mutate_conversations(
+        self,
+        mutations: list[tuple[str, Callable[[dict[str, Any]], dict[str, Any]]]],
+    ) -> dict[str, dict[str, Any]]:
+        """Apply metadata/title mutations against current rows in one SQLite transaction.
+
+        Each callback receives the latest conversation record while a write
+        transaction is held. This prevents stale read-modify-write updates and
+        makes multi-conversation organization operations all-or-nothing.
+        """
+        if not mutations:
+            return {}
+
+        normalized = []
+        seen = set()
+        for item in mutations:
+            try:
+                conversation_id, mutator = item
+            except (TypeError, ValueError) as exc:
+                raise TypeError("each mutation must be a (conversation_id, callback) pair") from exc
+            conv_id = str(conversation_id or "").strip()
+            if not conv_id or conv_id in seen:
+                raise ValueError("metadata batch requires unique non-empty conversation IDs")
+            if not callable(mutator):
+                raise TypeError("metadata mutation must be callable")
+            seen.add(conv_id)
+            normalized.append((conv_id, mutator))
+
+        updated_records: dict[str, dict[str, Any]] = {}
+        stamp = _now()
+        with self._lock:
+            with self._db() as con:
+                self._migrate_schema(con)
+                if not con.in_transaction:
+                    con.execute("BEGIN IMMEDIATE")
+
+                pending_updates = []
+                for conv_id, mutator in normalized:
+                    row = con.execute(
+                        "SELECT * FROM conversations WHERE id=?", (conv_id,)
+                    ).fetchone()
+                    if row is None:
+                        raise PersistenceError(f"conversation not found: {conv_id}")
+                    current = self._conversation_record(row)
+                    updated = mutator(dict(current))
+                    if not isinstance(updated, dict):
+                        raise TypeError("metadata mutation callback must return a conversation dictionary")
+                    if str(updated.get("id") or "") != conv_id:
+                        raise ValueError("metadata mutation cannot change conversation identity")
+
+                    metadata = _json_object(updated.get("metadata"))
+                    try:
+                        metadata_json = json.dumps(metadata, ensure_ascii=False)
+                    except (TypeError, ValueError) as exc:
+                        raise PersistenceError(
+                            f"conversation metadata is not JSON serializable: {conv_id}"
+                        ) from exc
+                    title = str(updated.get("title") or "")
+                    if title != str(current.get("title") or "") or metadata != current.get("metadata", {}):
+                        pending_updates.append((conv_id, title, metadata_json))
+
+                for conv_id, title, metadata_json in pending_updates:
+                    con.execute(
+                        "UPDATE conversations SET title=?, metadata=?, updated_at=? WHERE id=?",
+                        (title, metadata_json, stamp, conv_id),
+                    )
+
+                for conv_id, _ in normalized:
+                    row = con.execute(
+                        "SELECT * FROM conversations WHERE id=?", (conv_id,)
+                    ).fetchone()
+                    updated_records[conv_id] = self._conversation_record(row)
+
+        return updated_records
+
     def close_conversation(self, conversation_id: str) -> bool:
         return self.update_conversation(conversation_id, status="closed")
 
@@ -1317,6 +1395,9 @@ class ChatPersistence:
 
     def update_conversation_lifecycle(self, changes):
         return self._invoke(self._repository.update_conversation_lifecycle, changes)
+
+    def mutate_conversations(self, mutations):
+        return self._invoke(self._repository.mutate_conversations, mutations)
 
     def add_message(self, role, content, character_id=None, **options):
         try:
