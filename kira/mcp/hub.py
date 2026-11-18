@@ -115,7 +115,9 @@ class McpHub:
             self._cfg = cfgmod.load(self.data_dir)
             protocol.set_gate_words("mcp", [w for s in self._cfg["servers"].values() for w in [s["name"], *s["keywords"]]])
             protocol.set_gate_words("agents", [w for g in self._cfg["agents"].values() for w in [g["name"], *g["keywords"]]])
-            for name in list(self.state):
+            with self._state_lock:
+                existing_servers = tuple(self.state)
+            for name in existing_servers:
                 if name not in self._cfg["servers"]:
                     self._drop(name)
             for name, cfg in self._cfg["servers"].items():
@@ -156,29 +158,39 @@ class McpHub:
             except Exception:
                 _LOGGER.exception("Could not close previous MCP client for %s", name)
         self.registry.unregister_where(lambda t, n=name: getattr(t, "mcp_server", "") == n)
-        client = make_client(cfg)
+        client = None
         try:
+            client = make_client(cfg)
             client.start()
             client.initialize(cfg["timeout"])
             tools = client.list_tools(cfg["timeout"])
+            # Publish the client before the tools become callable. Calls take
+            # the same per-server lock and therefore wait until registration
+            # has either completed or rolled back.
+            with self._lock:
+                self._clients[name] = client
+            registered = self._register(name, cfg, tools)
         except Exception as exc:
             try:
-                tail = clean_text(getattr(client, "stderr_tail", lambda: "")(), 160)
+                tail = clean_text(getattr(client, "stderr_tail", lambda: "")(), 160) if client is not None else ""
             except Exception:
                 tail = ""
-            try:
-                client.close()
-            except Exception:
-                _LOGGER.exception("Could not close failed MCP client for %s", name)
+            self.registry.unregister_where(lambda t, n=name: getattr(t, "mcp_server", "") == n)
+            with self._lock:
+                if self._clients.get(name) is client:
+                    self._clients.pop(name, None)
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:
+                    _LOGGER.exception("Could not close failed MCP client for %s", name)
             if not isinstance(exc, (McpError, OSError)):
-                _LOGGER.exception("Unexpected MCP startup failure for %s", name)
+                _LOGGER.exception("Unexpected MCP startup/registration failure for %s", name)
             with self._state_lock:
                 st.update(status="error", error=clean_text(exc, 160) + (f" | {tail}" if tail else ""), tools=0, next_try=time.monotonic() + RESTART_BACKOFF)
             return False
-        with self._lock:
-            self._clients[name] = client
         with self._state_lock:
-            st.update(status="ready", error="", tools=self._register(name, cfg, tools), next_try=0.0)
+            st.update(status="ready", error="", tools=registered, next_try=0.0)
         return True
 
     def _register(self, server: str, cfg: dict, tools: list) -> int:
