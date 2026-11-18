@@ -21,6 +21,7 @@ from ..domain.chat import (
     ChatApplicationRequest,
     ChatRequest,
     ChatResponseResult,
+    ContextRequest,
     PersistenceOutcome,
     ProviderEvent,
     ProviderEventKind,
@@ -32,7 +33,7 @@ from ..domain.chat import (
 )
 from .attachments import Attachment, AttachmentManager, compose as compose_attachment_payload
 from .commands import CommandDispatch, CommandRegistry
-from .context_builder import ContextBuilder, ContextRequest
+from .context_builder import ContextBuilder
 from .coordinator import ChatCoordinator, ChatProviderDispatcher
 from .response_handler import ResponseHandler
 
