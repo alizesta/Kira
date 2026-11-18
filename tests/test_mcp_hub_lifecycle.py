@@ -6,6 +6,8 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
 
 from kira.mcp.hub import McpHub
+from kira.mcp import install
+from kira.tools.registry import Tool, ToolRegistry
 
 
 class McpHubLifecycleTests(unittest.TestCase):
@@ -54,6 +56,19 @@ class McpHubLifecycleTests(unittest.TestCase):
         self.assertNotIn("broken", self.hub._clients)
         self.assertEqual(self.hub.state["broken"]["status"], "error")
         self.assertIn("malformed tools payload", self.hub.state["broken"]["error"])
+
+    def test_partial_optional_registration_is_rolled_back_without_removing_existing_tools(self):
+        registry = ToolRegistry()
+        existing = Tool("agent_status", "existing tool", lambda _args: "keep", ())
+        registry.register(existing)
+
+        with mock.patch("kira.mcp.hub.McpHub.refresh_async"):
+            result = install(registry, None, lambda: {})
+
+        self.assertIsNone(result)
+        self.assertIs(registry.get("agent_status"), existing)
+        self.assertIsNone(registry.get("agent_ask"))
+        self.assertIsNone(registry.get("mcp_info"))
 
     def test_calls_to_one_server_are_serialized_across_threads(self):
         class ConcurrentClient:
