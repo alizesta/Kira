@@ -109,29 +109,29 @@ class FileTools:
             try:
                 with it:
                     for entry in it:
-                    scanned += 1
-                    if scanned > SEARCH_SCAN_LIMIT:
-                        stopped_early = "تعداد موارد بررسی‌شده به سقف رسید"
-                        break
-                    if time.monotonic() - started > SEARCH_TIME_LIMIT:
-                        stopped_early = "زمان جست‌وجو تمام شد"
-                        break
-                    try:
-                        is_dir = entry.is_dir(follow_symlinks=False)
-                        if not self.policy.is_allowed(entry.path):
-                            if self.policy.sensitive_name(entry.path):
-                                hidden += 1
+                        scanned += 1
+                        if scanned > SEARCH_SCAN_LIMIT:
+                            stopped_early = "تعداد موارد بررسی‌شده به سقف رسید"
+                            break
+                        if time.monotonic() - started > SEARCH_TIME_LIMIT:
+                            stopped_early = "زمان جست‌وجو تمام شد"
+                            break
+                        try:
+                            is_dir = entry.is_dir(follow_symlinks=False)
+                            if not self.policy.is_allowed(entry.path):
+                                if self.policy.sensitive_name(entry.path):
+                                    hidden += 1
+                                continue
+                            if is_dir:
+                                if depth < SEARCH_DEPTH:
+                                    stack.append((entry.path, depth + 1))
+                                continue
+                            st = entry.stat(follow_symlinks=False)
+                        except OSError:
+                            scan_errors += 1
                             continue
-                        if is_dir:
-                            if depth < SEARCH_DEPTH:
-                                stack.append((entry.path, depth + 1))
-                            continue
-                        st = entry.stat(follow_symlinks=False)
-                    except OSError:
-                        scan_errors += 1
-                        continue
-                    if match(entry.name, st):
-                        hits.append((st.st_mtime, entry.path, st.st_size))
+                        if match(entry.name, st):
+                            hits.append((st.st_mtime, entry.path, st.st_size))
             except OSError:
                 # scandir can fail while advancing the iterator, not only at open.
                 scan_errors += 1
