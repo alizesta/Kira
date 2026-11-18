@@ -120,6 +120,8 @@ def _coerce(param: Param, value: Any) -> Any:
             raise ValueError("باید عدد صحیح باشد")
         if not number.is_finite() or number != number.to_integral_value():
             raise ValueError("باید عدد صحیح و متناهی باشد")
+        if number < -(2**63) or number > (2**63 - 1):
+            raise ValueError("عدد صحیح بیرون از محدوده‌ی ۶۴ بیتی است")
         return int(number)
     if param.type == "number":
         try:
