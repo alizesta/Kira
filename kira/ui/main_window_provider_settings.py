@@ -260,7 +260,7 @@ class ProviderSettingsController(WindowFeatureController):
             "route_predict", "route_status", "route_test_btn", "route_bench_btn",
             "route_bench_all_btn", "bench_out",
         ):
-            setattr(self, name, getattr(self.route_editor, name))
+            setattr(self.context.views, name, getattr(self.route_editor, name))
 
         self.route_editor.selection_changed.connect(self.on_route_selected)
         self.route_editor.order_changed.connect(self.on_routes_reordered)
@@ -798,7 +798,7 @@ class ProviderSettingsController(WindowFeatureController):
 
     @front_only
     def refresh_route_list(self):
-        if not hasattr(self, "route_list"):
+        if not hasattr(self.context.views, "route_list"):
             return
         keep = self._selected_route_id()
         status = {x["name"]: x for x in self.context.session.client.status()}
@@ -1025,7 +1025,7 @@ class ProviderSettingsController(WindowFeatureController):
 
     def provider_changed(self):
         """Key / enable / URL edited in a provider box: autosave (an empty key field keeps the saved key)."""
-        if getattr(self, "_loading_route", False) or not hasattr(self, "route_ollama_enabled"):
+        if getattr(self.context.state, "_loading_route", False) or not hasattr(self.context.views, "route_ollama_enabled"):
             return
         self.collect_provider_settings()
         self.context.session.client.reset_cooldowns()
