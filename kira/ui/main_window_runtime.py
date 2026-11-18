@@ -270,7 +270,7 @@ class RuntimeMixin:
             if not self._emotion_applied:                          # no tag from the model: tag-less fallback (keywords / neutral)
                 self.director.on_reply(meta)
             if self._speech_live:
-                self.speaker.stream_end()                          # the sentences were spoken while it was written: say the tail
+                self.voice_application_service.stream_end()                          # the sentences were spoken while it was written: say the tail
             else:
                 self.say(text)
         if self._web_found and text.strip():
@@ -285,7 +285,7 @@ class RuntimeMixin:
         self._stream_flush(final=True)
         self._stream_pos = None
         if getattr(self, "_speech_live", False):
-            self.speaker.stream_end()
+            self.voice_application_service.stream_end()
         self.add_chat("error", self.t("reply_err", e=error))
         self.director.event("response_failed")
         self.finish_request(None)
