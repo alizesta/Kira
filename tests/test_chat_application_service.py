@@ -448,14 +448,20 @@ class ChatApplicationServiceTests(unittest.TestCase):
             ],
         )
 
-    def test_begin_shutdown_keeps_session_resources_open_until_session_close(self):
-        submission = self.service.submit_message("kira", "finish before shutdown")
+    def test_begin_shutdown_cancels_queues_but_keeps_session_resources_open(self):
+        active = self.service.submit_message("kira", "active request")
+        queued = self.service.submit_message("kira", "queued request", busy=True)
         manager = self.service._attachment_manager
 
+        self.assertEqual(len(self.dispatched), 1)
+        self.assertTrue(queued.queued)
         self.service.begin_shutdown()
 
         self.assertTrue(self.service._shutting_down)
         self.assertFalse(manager._closed)
+        self.assertEqual(self.service.get_request_status(active.request.request_id), RequestStatus.CANCELLED)
+        self.assertEqual(self.service.get_request_status(queued.request.request_id), RequestStatus.CANCELLED)
+        self.assertEqual(len(self.dispatched), 1, "shutdown must not dispatch the queued request")
         with self.assertRaisesRegex(RuntimeError, "shutting down"):
             self.service.submit_message("kira", "new work")
 

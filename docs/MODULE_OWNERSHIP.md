@@ -201,8 +201,12 @@ module stop. Vision and Game Mode clear transient policy state when stopped.
 The concrete ChatApplicationService, SessionApplicationService and
 VoiceApplicationService instances are constructed with window-specific Qt
 callback ports and are therefore window-scoped, not application singletons.
-The window owns their graceful shutdown: it drains provider/search/attachment/
-vision/game-audio workers, stops wake/game/mood/session timers, disposes the
-Voice instance only after the listener thread exits, disposes Session/Chat
-orchestration, and then allows QApplication shutdown to release the global
-module graph.
+The window owns their two-phase graceful shutdown. It first rejects new Chat work
+and cancels pending/running requests without closing the command registry or
+AttachmentManager. It then drains provider/search/attachment/vision/game-audio
+workers, stops wake/game/mood/session timers, and disposes the Voice instance
+only after the listener thread exits. SessionManager next closes each Session
+and runs its resource-release callback while the Chat attachment/command
+adapters are still alive. Only after every Session is closed does Chat
+ApplicationService dispose the command registry and AttachmentManager; the
+QApplication shutdown signal then releases the global module graph.
