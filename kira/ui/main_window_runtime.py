@@ -691,9 +691,9 @@ class RuntimeMixin:
             if self._running_background_workers():
                 event.ignore()
                 return
-            for session in self.session_manager.list_sessions():
+            for session in self.session_application_service.list_sessions():
                 session.busy = False
-            if not self.session_manager.dispose():
+            if not self.session_application_service.dispose():
                 event.ignore()
                 QTimer.singleShot(100, self.close)
                 return
@@ -760,9 +760,9 @@ class RuntimeMixin:
             if not self._running_background_workers():
                 QTimer.singleShot(0, self.close)
             return
-        for session in self.session_manager.list_sessions():
+        for session in self.session_application_service.list_sessions():
             session.busy = False
-        if not self.session_manager.dispose():
+        if not self.session_application_service.dispose():
             event.ignore()
             QTimer.singleShot(100, self.close)
             return
