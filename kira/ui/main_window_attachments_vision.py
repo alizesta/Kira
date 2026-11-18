@@ -1,5 +1,5 @@
 """Attachments vision behavior mixin for the desktop window."""
-from .main_window_support import *  # noqa: F401,F403
+from .main_window_attachments_vision_support import *  # noqa: F401,F403
 
 
 class AttachmentsVisionMixin:
