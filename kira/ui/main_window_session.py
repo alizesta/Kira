@@ -366,7 +366,7 @@ class SessionMixin:
                 old._speech_live = False
             self.safe_stop_speaker()
             try:
-                self.speaker.stream_reset()
+                self.voice_application_service.stream_reset()
             except Exception:                           # noqa: BLE001
                 pass
             self.clear_upload_tiles()
@@ -613,7 +613,7 @@ class SessionMixin:
                 self.input.moveCursor(QTextCursor.End)
             elif action == "speak":
                 # Speaker.speak() owns cancellation/replacement of the previous session.
-                self.speaker.speak(text)
+                self.voice_application_service.speak(text)
             return
         if url.scheme() in ("http", "https", "mailto"):
             QDesktopServices.openUrl(url)
