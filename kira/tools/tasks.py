@@ -16,12 +16,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import os
 import re
+import tempfile
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 
 from .registry import redact_secrets, clip, OK, ERROR, DENIED, NEEDS_CONFIRM, BAD_ARGS, UNKNOWN
+
+_LOGGER = logging.getLogger(__name__)
 
 FILE_NAME = "kira_tasks.json"
 HISTORY_KEEP = 5                       # finished / cancelled plans kept besides the active one
@@ -303,6 +309,7 @@ class TaskStore:
         self.path = (data_dir / FILE_NAME) if data_dir is not None else None
         self.plans: list[TaskPlan] = []
         self.lock = threading.RLock()
+        self._load_failed = False
         self.load()
 
     def load(self):
@@ -310,9 +317,22 @@ class TaskStore:
             return
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
-            plans = [TaskPlan.from_dict(x) for x in raw.get("plans", []) if isinstance(x, dict)]
-        except Exception:                                    # noqa: BLE001 - a damaged task file must never stop Kira: start without it
+            if not isinstance(raw, dict) or not isinstance(raw.get("plans", []), list):
+                raise ValueError("task file must contain an object with a plans list")
+        except Exception:                                    # noqa: BLE001 - a damaged task file must never stop Kira
+            self._load_failed = True
+            _LOGGER.exception("Could not load task state from %s; original file will be preserved", self.path)
             return
+
+        plans = []
+        for index, item in enumerate(raw.get("plans", [])):
+            if not isinstance(item, dict):
+                _LOGGER.warning("Ignoring malformed task record %s in %s", index, self.path)
+                continue
+            try:
+                plans.append(TaskPlan.from_dict(item))
+            except Exception:                                # noqa: BLE001 - retain other valid tasks
+                _LOGGER.exception("Ignoring malformed task record %s in %s", index, self.path)
         for p in plans:
             if p.status in (P_RUNNING, P_PLANNING):          # the program was closed while this task was running
                 p.status, p.interrupted = P_PAUSED, True
@@ -351,16 +371,43 @@ class TaskStore:
 
     def save(self):
         if self.path is None:
-            return
+            return True
         with self.lock:
+            if self._load_failed:
+                _LOGGER.error("Refusing to overwrite unreadable task state at %s; current task changes remain memory-only", self.path)
+                return False
             self.plans = self._trim_history(self.plans)
+            tmp = None
             try:
                 self.path.parent.mkdir(parents=True, exist_ok=True)
-                tmp = self.path.with_suffix(".json.tmp")
-                tmp.write_text(json.dumps({"version": 1, "plans": [p.to_dict() for p in self.plans]}, ensure_ascii=False, indent=1), encoding="utf-8")
-                tmp.replace(self.path)
-            except OSError:
-                pass                                         # saving the task state is a bonus: it never blocks the work
+                fd, tmp = tempfile.mkstemp(
+                    prefix=f".{self.path.name}.",
+                    suffix=".tmp",
+                    dir=self.path.parent,
+                )
+                with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                    json.dump(
+                        {"version": 1, "plans": [p.to_dict() for p in self.plans]},
+                        stream,
+                        ensure_ascii=False,
+                        indent=1,
+                    )
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(tmp, self.path)
+                tmp = None
+                return True
+            except Exception:                                # noqa: BLE001 - task persistence must not stop a task, but must be observable
+                _LOGGER.exception("Could not save task state to %s", self.path)
+                return False
+            finally:
+                if tmp is not None:
+                    try:
+                        os.unlink(tmp)
+                    except FileNotFoundError:
+                        pass
+                    except OSError:
+                        _LOGGER.debug("Could not remove temporary task file %s", tmp, exc_info=True)
 
     def active(self, session_id: str | None = None) -> TaskPlan | None:
         """Return only the unfinished task owned by the requested chat session."""
@@ -389,7 +436,7 @@ class TaskStore:
 
     def new(self, goal: str, *, session_id: str = "") -> TaskPlan:
         with self.lock:
-            plan = TaskPlan(f"t{int(time.time() * 1000) % 10**9}", _safe(goal, 240))
+            plan = TaskPlan(f"t{uuid.uuid4().hex[:16]}", _safe(goal, 240))
             plan.session_id = str(session_id or "")
             self.plans.append(plan)
             self.plans = self._trim_history(self.plans)
