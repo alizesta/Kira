@@ -54,6 +54,24 @@ FeatureModule registration and legacy-wide cleanup remain coordinated with Flow 
   paginated export reads and atomic validated imports.
 - `kira/chat/transfer.py` remains a compatibility facade.
 
+### Chat Request and Response contracts
+
+- `kira/domain/chat.py` owns immutable Chat request, response, provider-event,
+  stream-event, status and application-event values.
+- `ChatRequest` and `SubmissionResult` are shared by the Domain and the FIFO
+  Coordinator; the Coordinator's queue/admission behavior remains in
+  `kira/chat/coordinator.py`.
+- `ProviderEvent`, `ChatResponseResult`, `ResponseStreamEvent` and their
+  enums are consumed by `ResponseHandler`; stream aggregation, terminal
+  de-duplication and cleanup remain in `kira/chat/response_handler.py`.
+- `ChatApplicationRequest`, `ChatApplicationEvent`, `RequestStatus`,
+  `ApplicationEventKind`, `Submission` and `PersistenceOutcome` are consumed
+  by `ChatApplicationService`, which remains the request orchestration owner
+  in `kira/chat/application_service.py`.
+- The old modules import/re-export these Domain values for compatibility.
+  This extraction does not move or duplicate queueing, streaming state or
+  request lifecycle algorithms.
+
 ## Core application contracts
 
 The following structural ports now live under `kira/core/interfaces`:
@@ -106,6 +124,7 @@ and notification ports. No new service imports Qt or a concrete UI controller.
 - `tests/test_domain_search.py`: immutable Search DTOs, time bounds and
   snippet behavior.
 - `tests/test_domain_transfer.py`: secret filtering and bounded metadata.
+- `tests/test_domain_chat_contracts.py`: request/session identity pairing, immutable DTOs, provider events and application/response event contracts.
 - `tests/test_application_service_ports.py`: Session, Chat and Event
   structural-port conformance.
 - Existing `tests/test_chat_organization.py`, `tests/test_chat_search.py`
@@ -119,17 +138,10 @@ and notification ports. No new service imports Qt or a concrete UI controller.
 
 ## Remaining Flow 2 work
 
-The next bounded target is the Chat request/response contract. Its DTOs and
-response normalization need a dedicated review because the current event
-result types cross Coordinator, ResponseHandler and ChatApplicationService
-boundaries. That extraction must preserve request/session identity and current
-callback semantics; it must not introduce UI/Qt types into Domain or duplicate
-the existing FIFO/stream state machines.
-
-A second follow-up is to replace the remaining broad collaborator annotations
-in application services where a stable Core port already exists. Avoid
-inventing ports for transient implementation details merely to remove every
-`Any`.
+The next bounded target is reviewing remaining broad collaborator annotations
+in application services and defining ports only where a stable cross-layer
+capability exists. Avoid inventing contracts for transient implementation
+details merely to remove every `Any`.
 
 Central application-service registration, Bootstrap injection, FeatureModule
 lifecycle and UI-controller consumption are coordinated through Flows 1 and 4,
