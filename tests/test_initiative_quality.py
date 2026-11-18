@@ -349,5 +349,22 @@ class InitiativeMessageTests(unittest.TestCase):
         self.assertNotIn("\x00", text)
 
 
+    def test_quote_extraction_preserves_embedded_quotation_marks(self):
+        text = build_checkin_message(
+            moment("event", text='2026-11-01: he said "I said "hello" yesterday"', ts=100),
+            language="en",
+        )
+        self.assertIn('I said "hello" yesterday', text)
+
+    def test_topic_truncation_does_not_cut_the_final_word(self):
+        text = build_checkin_message(
+            moment("event", text='2026-11-01: he said "alpha beta gamma delta epsilon"', ts=100),
+            language="en",
+            max_topic_chars=25,
+        )
+        self.assertIn("alpha beta gamma delta", text)
+        self.assertNotIn("epsi", text)
+
+
 if __name__ == "__main__":
     unittest.main()
