@@ -91,6 +91,17 @@ class ChatCoordinatorTests(unittest.TestCase):
                 self.finished_ok = Signal()
                 self.failed = Signal()
                 self.started = False
+                self._event_signals = {
+                    "tool_event": self.tool_event,
+                    "event": self.event,
+                    "chunk": self.chunk,
+                    "complete": self.finished_ok,
+                    "error": self.failed,
+                }
+            def subscribe(self, event, callback):
+                signal = self._event_signals[event]
+                signal.connect(callback)
+                return lambda: None
             def start(self):
                 self.started = True
 
