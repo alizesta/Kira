@@ -2,7 +2,7 @@
 
 **Snapshot:** 2026-11-18  
 **Base branch:** `new-main`  
-**Source baseline SHA:** `e398ed518ef446600ef758288f1dca2803845d98`  
+**Source baseline SHA:** `999d514343da572651ae9d57a0133e5675e225d4`  
 **Input:** TASK 015 audit, merged TASK 013+014 integration PR #48, and the TASK 017–020 implementation delta on `new-main`.  
 **Execution / verification:** Source implementation and focused tests were committed on `new-main`. GitHub Actions jobs completed with `runner_id=0`, empty step lists and unavailable logs (`BlobNotFound`); tests and runtime acceptance are therefore unverified.
 
@@ -14,6 +14,8 @@
 - Preserve existing persistence formats and compatibility paths until migration evidence supports removal.
 - Do not treat a merged PR or static source presence as runtime acceptance.
 - Keep the TASK 015 historical audit intact; record subsequent changes as deltas.
+- Size modules by cohesive responsibility and ownership, not by an arbitrary line-count ceiling; lines of code are an inspection signal, not a success metric.
+- Do not split a coherent workflow into tiny files solely to make the tree look modular; extract only when ownership, lifecycle, dependency direction, or a meaningful test seam becomes clearer.
 
 ## 2. Current readiness snapshot
 
@@ -36,6 +38,7 @@ Severity reflects architectural impact and evidence, not an assertion that a run
 | AD-05 | **Implemented in source** | `VoiceApplicationService` implements the Core `VoiceService` contract, owns voice lifecycle/transcript policy, and applies allowlisted per-character voice overrides without mutating shared settings. | `kira/app/voice_application.py`, `voice_composition.py`, `core/interfaces/voice_service.py`, `ui/application_adapters.py`, `kira/ui/main_window_character_settings.py` | Voice capability owner | Device workers and UI callbacks remain injected adapters; the service itself imports no Qt. | Keep device/Qt adapters at the outer boundary; focused tests exist but execution/runtime acceptance remains pending. |
 | AD-06 | **Low** | Compatibility imports/defaults remain, including the `kira.main.MainWindow` compatibility export, `kira/attachments.py`, and legacy memory entry points. | `kira/main.py`, `kira/attachments.py`, `kira/memory.py`, `kira/persona_memory.py` | Migration owners | Obsolete paths may persist and confuse future ownership if not clearly marked. | Remove only after repository-wide call-site migration and compatibility requirements are resolved. No deletion in this roadmap task. |
 | AD-07 | **Addressed in source** | ToolAgent turn cache, short-term memos, last-result state, cancellation, external-content taint, one-shot grants, pending confirmations and task-control state are keyed by character Session. WebIntel has a session-scoped research store and cancellation event; Web-capable tool turns are serialized because its worker threads use a shared cancellation facade. Session close releases ephemeral ToolAgent/AccessManager/WebIntel cache state while preserving durable task/research records. TaskStore retains five completed plans plus all active plans per character. Brain reply hints, turn counters and Reflection rate limits are stored per character; the legacy Kira state file remains at its original path, and the optional Memory Writer cursor remains shared because it processes the shared history stream. | `kira/tools/agent.py`, `kira/tools/sysaccess.py`, `kira/tools/tasks.py`, `kira/webintel/session.py`, `kira/tools/webtools.py`, `kira/ui/main_window_chat.py`, `kira/ui/main_window_session.py` | Multi-character runtime state | The source has explicit per-character ownership and cleanup; concurrent runtime execution remains to be accepted. | Keep all state access inside the owning ToolAgent/AccessManager session scope. Preserve durable files on ordinary Session close; explicitly clear them only through user-visible deletion/clear actions. |
+| AD-08 | **Medium — active quality hardening** | Static review identified four robustness gaps: the bounded Chat write backlog silently evicted accepted messages; Ai1 Code retained unbounded subprocess output before clipping; Evidence Memory could race during first-time schema initialization; and Native Function Calling requests bypassed usage-ledger/telemetry accounting. Fixes and regression coverage are being added on the architecture-quality branch; runtime acceptance remains open. | `kira/chat/persistence.py`, `kira/auto_agent.py`, `kira/evidence_memory.py`, `kira/hybrid_ai.py` | Persistence / Coding Agent / Evidence Memory / Provider owners | Potential silent message loss, avoidable memory pressure, concurrent first-open contention and incomplete usage reporting. | Preserve the bounded pending queue but reject new writes explicitly when full; retain only bounded process output; serialize one-time DB initialization; record native tool-call request usage and telemetry. Verify in a test environment when available. |
 ### 3.1 Runtime-only verification items (not confirmed defects)
 
 These are not classified as implementation failures because the audit was static and tests were prohibited:
@@ -86,9 +89,9 @@ These belong in the later explicitly authorized testing phase, not in TASK 016.
 
 1. Keep generic Chat, command, tool and capability contracts character-neutral.
 2. Store character identity, persona, voice preferences and enablement policy in character/profile/session data, not in generic command handlers.
-3. Verify whether a shared installable Skills implementation exists on the target branch before planning further work. TASK 015's audited Chat scope and the inspected `kira/` tree did not establish one; do not mark it delivered based on a separate branch or PR.
-4. If shared Skills are brought into this architecture, one library/runtime should support global and per-character enablement without duplicating skill code per character.
-5. Verify isolation for Kira, Ren and Mika before treating cross-character reuse as accepted.
+3. The shared installable Skills registry/service is present in the current source tree (`kira/skills/*`, `kira/app/shared_skills_application.py`) and is integrated with its UI page; maintain one shared library/runtime rather than per-character code copies.
+4. Verify ZIP/folder installation, traversal/symlink/resource limits, global and per-character enablement, prompt-injection boundaries, and no automatic code execution or tool-grant escalation.
+5. Verify isolation for Kira, Ren and Mika before treating cross-character reuse as runtime-accepted.
 
 **Exit condition:** adding a character does not require rewriting Chat, persistence, command dispatch or generic capability modules.
 
@@ -244,3 +247,30 @@ This section supersedes the earlier residual-UI notes above for the current refa
 - Added static contract checks that compare every direct context-bucket reference in all eight controllers and the UI composition module against the declared field allowlists, and validate every shutdown-resource owner mapping against its owning state/session/controller contract.
 
 Flow 1's source-architecture exit criteria are complete. Focused regression coverage was updated for strict namespace contracts, front-session isolation, peer-controller lookup, and the absence of the legacy proxy. Python tests were not executed in this environment. Windows/GUI and GitHub Actions validation remain excluded from this workstream, so runtime acceptance is still pending.
+
+
+## 9. Responsibility-aligned module sizing
+
+**TASK ARCH-QUALITY-01 — right-size modules by responsibility, not line count**
+
+Acceptance criteria:
+
+1. Audit high-line-count production modules using their callers, dependency graph, data ownership, lifecycle and change patterns.
+2. Keep a larger module intact when it represents one cohesive capability or workflow and extraction would create pass-through files or scatter invariants.
+3. Extract a component only when it has a distinct reason to change, a separate lifecycle/owner, a meaningful independent contract, or a test seam that reduces coupling.
+4. Do not impose a universal maximum LOC and do not split files solely to improve line-count metrics.
+5. Record a keep/split/defer decision for each major candidate and revisit it after runtime/test evidence.
+
+Initial candidates for evidence-based decisions (not automatic split instructions):
+
+| Module | Approx. lines | Initial review focus |
+|---|---:|---|
+| `kira/chat/persistence.py` | 1,604 | Repository boundary, SQLite recovery/migrations, pending writes and application-facing facade |
+| `kira/auto_agent.py` | 1,351 | Safe workspace operations, action execution, checkpoints and delivery workflow |
+| `kira/hybrid_ai.py` | 1,277 | Provider adapters versus route selection/failover; preserve provider contracts |
+| `kira/tools/audio.py` | 1,161 | Native OS audio adapter versus tool intent/reporting |
+| `kira/chat/application_service.py` | 1,090 | Request lifecycle versus attachment/command/history coordination |
+| `kira/evidence_memory.py` | 929 | Fact lifecycle, retrieval and optional embedding/index lifecycle |
+| `kira/ui/main_window_runtime.py` | 907 | Runtime UI controller responsibilities and resource ownership |
+
+This task is architectural quality work, not a file-splitting quota. `kira/main.py` (27 lines) is already appropriately small; `main_window_composition.py` and other composition/controller modules should remain cohesive when their current ownership is clear.
