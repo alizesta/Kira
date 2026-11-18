@@ -369,14 +369,14 @@ class ChatController(WindowFeatureController):
         self.web_test_btn.setText("آزمایش جست‌وجوی وب")
         ok, rep = res
         if not ok:
-            QMessageBox.warning(self, "آزمایش جست‌وجوی وب", f"آزمایش انجام نشد:\n{rep}")
+            QMessageBox.warning(self.window, "آزمایش جست‌وجوی وب", f"آزمایش انجام نشد:\n{rep}")
             return
         lines = []
         for name, label in (("tavily", "Tavily (اول)"), ("google", "Google / Gemini (دوم)"), ("ddg", "DuckDuckGo (سوم)")):
             e = rep["engines"][name]
             lines.append(f"{label}: " + (f"✓ کار می‌کند — {e['sources']} منبع · «{e['first'][:50]}»" if e["ok"] else f"✕ {e['error']}"))
         extra = self.web_search_service.assessment_text(rep.get("assessment"))
-        QMessageBox.information(self, "آزمایش جست‌وجوی وب",
+        QMessageBox.information(self.window, "آزمایش جست‌وجوی وب",
                                 "\n".join(lines) + f"\n\nعبارت آزمایش: «{rep['probe']}»" + (f"\n{extra}" if extra else "")
                                 + "\nکیرا به همین ترتیب امتحان می‌کند و از اولین موتور سالم استفاده می‌شود.")
 
