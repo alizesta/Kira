@@ -46,7 +46,16 @@
 
 The historical audit counts remain 12 DONE / 2 PARTIAL. The post-audit merge is recorded separately; no runtime status is inferred.
 
-### 2.2 TASK 018 — Web Search application policy
+### 2.2 TASK 017 — Session application orchestration
+
+| Task | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
+|---|---|---|---|---|
+| 017 | Session application — `kira/app/session_application.py`, `kira/app/session_composition.py` | `SessionApplicationService`: create/activate/list/dispose runtime Sessions, bind durable Conversation IDs through ChatApplicationService, translate SessionManager state changes, synchronize Sessions with Character profiles, restore history, check pending work and close removed/failed Sessions | SessionManager, ChatApplicationService, optional ChatEventPublisher, callback ports supplied by UI | PySide6, widgets, timers, worker construction, direct SQLite/persistence access, duplicate ownership of SessionManager's state machine |
+
+Bootstrap injects a factory; MainWindow supplies a Qt-resource callback for views, timers and tab buttons. SessionManager remains the canonical runtime identity/state engine, while ChatApplicationService remains responsible for Chat request and persistence operations. Focused unit and wiring tests are included but runtime execution has not yet been verified.
+
+
+### 2.3 TASK 018 — Web Search application policy
 
 | Task | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
 |---|---|---|---|---|
@@ -55,7 +64,7 @@ The historical audit counts remain 12 DONE / 2 PARTIAL. The post-audit merge is 
 The service is injected by Bootstrap into MainWindow. `plan_request` owns the automatic/forced one-shot search decision and suppresses duplicate web search when a local/tool plan takes precedence. Chat UI uses only the application service for command parsing, diagnostics and evidence formatting; it does not import `kira.websearch`. SearchWorker creation, signals and rendering remain UI responsibilities. Focused Qt-free tests cover normal, disabled, slash-command, forced and tool-plan precedence cases; execution/runtime acceptance is pending.
 
 
-### 2.3 TASK 019 — Voice application lifecycle
+### 2.4 TASK 019 — Voice application lifecycle
 
 | Task | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
 |---|---|---|---|---|
@@ -67,27 +76,7 @@ Bootstrap injects the Voice factory into MainWindow. Speaker and Listener remain
 
 
 
-### 2.5 TASK 017 — Session application orchestration
-
-| Task | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
-|---|---|---|---|---|
-| 017 | Session application — `kira/app/session_application.py`, `kira/app/session_composition.py` | `SessionApplicationService`: create/activate/list/dispose runtime Sessions, bind durable Conversation IDs through ChatApplicationService, translate SessionManager state changes, synchronize Sessions with Character profiles, restore history, check pending work and close removed/failed Sessions | SessionManager, ChatApplicationService, optional ChatEventPublisher, callback ports supplied by UI | PySide6, widgets, timers, worker construction, direct SQLite/persistence access, duplicate ownership of SessionManager's state machine |
-
-Bootstrap injects a factory; MainWindow supplies a Qt-resource callback for views, timers and tab buttons. SessionManager remains the canonical runtime identity/state engine, while ChatApplicationService remains responsible for Chat request and persistence operations. Focused unit and wiring tests are included but runtime execution has not yet been verified.
-
-### 2.6 Extended application policy boundaries
-
-| Capability | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
-|---|---|---|---|---|
-| Provider / routes | `kira/app/provider_application.py` | `ProviderApplicationService`: provider and API registry operations, route mutation, Ollama settings validation/client creation, router creation and per-session router replacement | Existing route/API registry contracts, provider/router factories | Qt widgets, UI dialogs, direct MainWindow references |
-| Vision | `kira/app/vision_application.py` | `VisionApplicationService`: capture permission, policy/cadence, busy-state admission, frame deduplication, result deduplication and latency statistics | Vision pipeline and GameModeApplicationService | Qt screen capture, timers, worker threads, UI presentation |
-| Coding Agent | `kira/app/coding_agent_application.py` | `CodingAgentApplicationService`: attachment-free turn handoff, local request completion and session stop delegation | Existing CodeChat execution adapter and completion callback | Agent runtime implementation, widgets, persistence |
-| Runtime settings | `kira/app/runtime_settings_application.py` | `RuntimeSettingsApplicationService`: initial configuration and propagation of shared settings to evidence memory, usage and optional ToolAgent | Existing shared capability contracts | Settings widgets/dialogs, UI rendering |
-| Character profile | `kira/services/character_service.py` | `CharacterProfileService`: create/update/delete, profile validation, per-character preferences/resources, personality traits/notes and active profile resolution | `kira.characters` data contracts, settings mapping | Qt page construction, SessionManager runtime lifecycle, UI presentation |
-
-These services are directly injected by Bootstrap/Composition; they are not automatically registered as ModuleManager lifecycle modules. UI-owned widget, signal and worker lifecycle remains at the outer adapter boundary.
-
-### 2.4 TASK 020 — MainWindow feature dependency boundaries
+### 2.6 TASK 020 — MainWindow feature dependency boundaries
 
 | Task | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
 |---|---|---|---|---|
@@ -158,6 +147,8 @@ The Chat core modules should depend on Python data contracts and narrow Protocol
 | Web Research | `kira/app/web_search.py`, `webintel/*`, `websearch.py`, discovery adapters | WebSearchApplicationService owns credential/query/request/evidence policy; SearchWorker and result presentation remain UI adapters. |
 | Vision | `kira/app/vision_application.py`, `vision_pipeline.py`, `vision_ocr.py` | VisionApplicationService owns capture eligibility, cadence/frame gating and duplicate-result suppression; Qt capture/timers/workers remain UI adapters. |
 | UI | `ui/main_window.py`, `ui/main_window_composition.py`, feature mixins/support modules, pages/components/dialogs/workers | MainWindow is a compact Qt host; Session, Provider, Vision, Coding Agent, Runtime Settings and Character profile policies are delegated to services. Qt widget state, worker/timer lifetime, dialog flows and result rendering remain UI adapter responsibilities. |
+
+Implementation and reviewer checklist for the current source delta: [ARCHITECTURE_IMPLEMENTATION_HANDOFF_2026-11-18.md](ARCHITECTURE_IMPLEMENTATION_HANDOFF_2026-11-18.md).
 
 ## 6. Character scope
 
