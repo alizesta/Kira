@@ -4,7 +4,6 @@ from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QMessageBox
 from ..config import save_settings
 from .. import about
-from .. import websearch
 from ..chat import attachments as att
 from ..actions import match_safe_action, run_safe_action
 from ..chat_render import sources_html, message_html
