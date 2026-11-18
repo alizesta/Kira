@@ -908,10 +908,14 @@ def interest_line(max_chars=140, query=None) -> str:
         _log.warning("Evidence-memory interest recall failed", exc_info=True)
         return ""
     if query is not None:
-        if not needs_recall(query):
+        try:
+            if not needs_recall(query):
+                return ""
+            likes = [likes[index] for index in rank_texts(likes, query)[:4]]
+            dislikes = [dislikes[index] for index in rank_texts(dislikes, query)[:3]]
+        except Exception:  # noqa: BLE001 - interest recall must never break chat
+            _log.warning("Evidence-memory interest ranking failed", exc_info=True)
             return ""
-        likes = [likes[index] for index in rank_texts(likes, query)[:4]]
-        dislikes = [dislikes[index] for index in rank_texts(dislikes, query)[:3]]
 
     sections = []
     used = 0
