@@ -15,6 +15,7 @@ Show it: type /usage in the chat, or run `python -m kira.usage [days]`.
 from __future__ import annotations
 
 import contextlib
+import math
 import sqlite3
 import threading
 import time
@@ -40,6 +41,8 @@ COLUMNS = ("ts", "request_id", "role", "provider", "model", "route_id", "status"
 # ---------------------------------------------------------------------------------------------- parsing what a provider reported
 def _num(value):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
         return None
     return value if value >= 0 else None
 
