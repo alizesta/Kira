@@ -200,6 +200,7 @@ VIEW_FIELDS = frozenset({
     "ui_lang",
     "unload_btn",
     "url",
+    "use_qwen_btn",
     "vision_rate_actions",
     "voice_btn",
     "voice_page",
