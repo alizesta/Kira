@@ -92,11 +92,13 @@ class SkillsPage(QScrollArea):
             self.table.setItem(row, 1, description)
 
             global_box = QCheckBox()
-            global_box.setChecked(application_service.is_enabled(manifest.skill_id, "kira")
-                                  or application_service.is_enabled(manifest.skill_id, "ren")
-                                  or application_service.is_enabled(manifest.skill_id, "mika"))
-            global_box.setToolTip("فعال‌سازی سراسری")
-            global_box.setEnabled(False)
+            global_box.setChecked(application_service.is_globally_enabled(manifest.skill_id))
+            global_box.setToolTip("فعال‌سازی برای همه شخصیت‌ها")
+            global_box.stateChanged.connect(
+                lambda state, sid=manifest.skill_id: self.enable_changed.emit(
+                    sid, state == Qt.Checked, None
+                )
+            )
             self.table.setCellWidget(row, 2, self._center(global_box))
 
             for offset, (cid, _label) in enumerate(character_columns, start=3):
