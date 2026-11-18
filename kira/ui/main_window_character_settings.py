@@ -472,11 +472,90 @@ class CharacterSettingsMixin:
 
         subtabs = QTabWidget()
         subtabs.addTab(self.preferences_page, "")
+        subtabs.addTab(self.build_skills_tab(), "Skills")
         subtabs.addTab(self.build_help_tab(), "")
         self.general_subtabs = subtabs
         self.reg(lambda text: subtabs.setTabText(0, text), "tab_preferences")
-        self.reg(lambda text: subtabs.setTabText(1, text), "tab_help")
+        self.reg(lambda text: subtabs.setTabText(2, text), "tab_help")
         self.tabs.addTab(self.page(subtabs), "")
+
+    def build_skills_tab(self):
+        """Create the shared Skill manager and connect it to the persistent settings."""
+        from .pages.skills_page import SkillsPage
+        page = SkillsPage(parent=self)
+        page.install_zip_requested.connect(self.install_shared_skill_zip)
+        page.install_folder_requested.connect(self.install_shared_skill_folder)
+        page.enable_changed.connect(self.set_shared_skill_enabled)
+        page.uninstall_requested.connect(self.uninstall_shared_skill)
+        self.skills_page = page
+        self.refresh_shared_skills()
+        return page
+
+    def refresh_shared_skills(self):
+        page = getattr(self, "skills_page", None)
+        if page is None:
+            return
+        profiles = self.character_service.all_profiles(self.settings)
+        self.skills_page.set_skills(
+            self.skill_service.list_installed(),
+            self.settings,
+            profiles,
+            self.skill_service,
+        )
+
+    def install_shared_skill_zip(self):
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Install Skill ZIP", "", "Skill packages (*.zip)"
+        )
+        if not path:
+            return
+        self._install_shared_skill(path)
+
+    def install_shared_skill_folder(self):
+        from PySide6.QtWidgets import QFileDialog
+        path = QFileDialog.getExistingDirectory(self, "Install Skill folder")
+        if not path:
+            return
+        self._install_shared_skill(path)
+
+    def _install_shared_skill(self, source):
+        try:
+            manifest = self.skill_service.install(source)
+            save_settings(self.settings)
+            self.refresh_shared_skills()
+            self.skills_page.set_status(f"Skill «{manifest.name}» نصب شد.")
+        except Exception as exc:
+            self.skills_page.set_status(f"نصب ناموفق بود: {exc}", error=True)
+
+    def set_shared_skill_enabled(self, skill_id, enabled, character_id):
+        try:
+            self.skill_service.set_enabled(
+                self.settings, skill_id, enabled, character_id=character_id
+            )
+            save_settings(self.settings)
+            self.refresh_shared_skills()
+        except Exception as exc:
+            self.skills_page.set_status(f"ذخیره تنظیمات ناموفق بود: {exc}", error=True)
+            self.refresh_shared_skills()
+
+    def uninstall_shared_skill(self, skill_id):
+        name = skill_id
+        for item in self.skill_service.list_installed():
+            if item.skill_id == skill_id:
+                name = item.name
+                break
+        if QMessageBox.question(
+            self, "حذف Skill", f"«{name}» از کتابخانه مشترک حذف شود؟"
+        ) != QMessageBox.Yes:
+            return
+        try:
+            if self.skill_service.uninstall(skill_id, self.settings):
+                save_settings(self.settings)
+                self.refresh_shared_skills()
+                self.skills_page.set_status(f"Skill «{name}» حذف شد.")
+        except Exception as exc:
+            self.skills_page.set_status(f"حذف ناموفق بود: {exc}", error=True)
 
     def build_help_tab(self):
         """Build the standalone Help/About page; it owns its content and translations."""
