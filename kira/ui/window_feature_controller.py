@@ -1,7 +1,8 @@
-"""Base adapter for feature controllers hosted by the desktop window.
+"""Qt host adapter for a window-scoped feature controller.
 
-Feature controllers keep UI behavior out of MainWindow's inheritance tree while
-sharing the existing widget/state surface during the incremental migration.
+Controllers retain QObject lifetime/thread affinity, but no longer proxy
+arbitrary reads or writes to MainWindow. Shared presentation dependencies are
+available only through WindowPresentationContext.
 """
 from __future__ import annotations
 
@@ -10,7 +11,7 @@ from PySide6.QtWidgets import QMainWindow
 
 
 class WindowFeatureController(QObject):
-    """Bind a feature's behavior to a single owning MainWindow instance."""
+    """Bind feature behavior to a Qt host and its explicit presentation context."""
 
     def __init__(self, window):
         QObject.__init__(self, window)
@@ -20,26 +21,16 @@ class WindowFeatureController(QObject):
     def window(self):
         return object.__getattribute__(self, "_window")
 
+    @property
+    def context(self):
+        context = getattr(self.window, "presentation_context", None)
+        if context is None:
+            raise RuntimeError("WindowPresentationContext is not initialized")
+        return context
+
     def feature_controller(self, feature: str):
-        """Return a required peer controller through the composition registry."""
-        registry = getattr(self.window, "_controller_registry", None)
-        if registry is None:
-            raise RuntimeError("Feature controller registry is not initialized")
-        return registry.require(feature)
-
-    def __getattr__(self, name):
-        return getattr(self.window, name)
-
-    def __setattr__(self, name, value):
-        if name == "_window":
-            object.__setattr__(self, name, value)
-        else:
-            setattr(self.window, name, value)
-
-    def __delattr__(self, name):
-        if name == "_window":
-            raise AttributeError("feature controller ownership cannot be deleted")
-        delattr(self.window, name)
+        """Resolve a required peer controller through the composition registry."""
+        return self.context.controllers.require(feature)
 
     def qt_super_event(self, event_name, event):
         """Invoke the QMainWindow implementation for a forwarded Qt event."""
