@@ -80,5 +80,14 @@ class EvidenceMemoryRecallTests(unittest.TestCase):
         self.assertTrue(any("Could not inspect evidence" in line for line in captured.output))
 
 
+    def test_extra_memory_deletion_propagates_storage_failure(self):
+        with mock.patch.object(em, "_db", side_effect=RuntimeError("synthetic delete failure")):
+            with self.assertLogs("kira.evidence_memory", level="ERROR") as captured:
+                with self.assertRaisesRegex(RuntimeError, "synthetic delete failure"):
+                    em.delete_extra("ev:fact-1")
+
+        self.assertTrue(any("Could not delete an extra" in line for line in captured.output))
+
+
 if __name__ == "__main__":
     unittest.main()
