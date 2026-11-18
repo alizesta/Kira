@@ -448,6 +448,25 @@ class ChatApplicationServiceTests(unittest.TestCase):
             ],
         )
 
+    def test_begin_shutdown_keeps_session_resources_open_until_session_close(self):
+        submission = self.service.submit_message("kira", "finish before shutdown")
+        manager = self.service._attachment_manager
+
+        self.service.begin_shutdown()
+
+        self.assertTrue(self.service._shutting_down)
+        self.assertFalse(manager._closed)
+        with self.assertRaisesRegex(RuntimeError, "shutting down"):
+            self.service.submit_message("kira", "new work")
+
+        # SessionManager's dispose callback calls close_session after workers drain.
+        self.service.close_session("kira")
+        self.assertFalse(manager._closed)
+
+        self.service.dispose()
+        self.assertTrue(manager._closed)
+        self.assertTrue(self.service._disposed)
+
     def test_dispose_persists_partial_response_as_interrupted_once(self):
         submission = self.service.submit_message("kira", "hello")
         worker = self._start_provider(submission)

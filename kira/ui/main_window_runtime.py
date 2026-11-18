@@ -679,8 +679,16 @@ class RuntimeMixin:
             QTimer.singleShot(0, self.close)
 
     def _clear_chat_coordinator_queues(self):
-        """Drop scheduled/pending messages; the service releases its injected registry."""
-        self.chat_application_service.dispose()
+        """Cancel work now; keep attachments/command resources alive for Session teardown."""
+        self.chat_application_service.begin_shutdown()
+
+    def _dispose_chat_application_service(self) -> bool:
+        """Release Chat-owned registries only after SessionManager released each Session."""
+        try:
+            self.chat_application_service.dispose()
+            return True
+        except Exception:
+            return False
 
     def _dispose_window_feature_services(self) -> bool:
         """Release per-window application services after their Qt workers have drained."""
@@ -716,6 +724,10 @@ class RuntimeMixin:
             for session in self.session_application_service.list_sessions():
                 session.busy = False
             if not self.session_application_service.dispose():
+                event.ignore()
+                QTimer.singleShot(100, self.close)
+                return
+            if not self._dispose_chat_application_service():
                 event.ignore()
                 QTimer.singleShot(100, self.close)
                 return
@@ -788,6 +800,10 @@ class RuntimeMixin:
         for session in self.session_application_service.list_sessions():
             session.busy = False
         if not self.session_application_service.dispose():
+            event.ignore()
+            QTimer.singleShot(100, self.close)
+            return
+        if not self._dispose_chat_application_service():
             event.ignore()
             QTimer.singleShot(100, self.close)
             return

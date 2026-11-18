@@ -155,6 +155,7 @@ class ChatApplicationService:
         self._active_by_session: dict[str, str] = {}
         self._dispatch_scheduled: set[str] = set()
         self._disposed = False
+        self._shutting_down = False
 
     @property
     def max_attachments(self) -> int:
@@ -456,8 +457,8 @@ class ChatApplicationService:
         character_id: str | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> Submission:
-        if self._disposed:
-            raise RuntimeError("ChatApplicationService has been disposed")
+        if self._disposed or self._shutting_down:
+            raise RuntimeError("ChatApplicationService is shutting down or disposed")
         owner = str(session_id or "").strip()
         if not owner:
             raise ValueError("session_id must not be empty")
@@ -563,7 +564,7 @@ class ChatApplicationService:
     def dispatch_next(self, session_id: str, *, busy: bool = False) -> bool:
         """Schedule the next FIFO item for one session without crossing sessions."""
         owner = str(session_id or "").strip()
-        if not owner or self._disposed or busy or owner in self._active_by_session:
+        if not owner or self._disposed or self._shutting_down or busy or owner in self._active_by_session:
             return False
         if owner in self._dispatch_scheduled:
             return False
@@ -939,9 +940,23 @@ class ChatApplicationService:
         self._active_by_session.pop(owner, None)
         self.cleanup_attachments(session_id=owner)
 
+    def begin_shutdown(self) -> None:
+        """Reject new work and cancel current/queued requests without releasing session resources.
+
+        The Session lifecycle still needs the command registry and attachment manager
+        while it closes each session. Final disposal therefore remains a later phase.
+        """
+        if self._disposed or self._shutting_down:
+            return
+        self._shutting_down = True
+        for request_id, state in tuple(self._requests.items()):
+            if state.status in (RequestStatus.PENDING, RequestStatus.RUNNING):
+                self.cancel_request(request_id, partial_status="interrupted")
+
     def dispose(self) -> None:
         if self._disposed:
             return
+        self.begin_shutdown()
         for owner in tuple(self._coordinators):
             self.close_session(owner, interrupted=True)
         if self._command_registry is not None:
