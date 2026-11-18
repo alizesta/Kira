@@ -52,7 +52,7 @@ class CharacterSettingsController(WindowFeatureController):
             self.t,
             base_traits=BASE_TRAITS,
             moods=MOODS,
-            parent=self,
+            parent=self.window,
         )
         page = self.character_page
         page.character_selected.connect(self.select_character)
@@ -328,7 +328,7 @@ class CharacterSettingsController(WindowFeatureController):
             self.settings,
             self.t,
             glass_supported=winfx.supported(),
-            parent=self,
+            parent=self.window,
         )
         self.appearance_page.appearance_apply_requested.connect(self.apply_appearance)
         self.appearance_page.choose_color_requested.connect(self.choose_appearance_color)
@@ -459,7 +459,7 @@ class CharacterSettingsController(WindowFeatureController):
             self.t,
             web_depths=tuple(websearch.DEPTHS.items()),
             about_rows=about.about_rows(VERSION),
-            parent=self,
+            parent=self.window,
         )
         for name in (
             "ui_lang", "tavily_key", "web_depth", "web_fallback_chk", "web_test_btn",
@@ -486,7 +486,7 @@ class CharacterSettingsController(WindowFeatureController):
         """Compose the Skills page and adapt its intents to the application service."""
         from .pages.skills_page import SkillsPage
 
-        page = SkillsPage(parent=self)
+        page = SkillsPage(parent=self.window)
         page.install_zip_requested.connect(self.install_shared_skill_zip)
         page.install_folder_requested.connect(self.install_shared_skill_folder)
         page.enable_changed.connect(self.set_shared_skill_enabled)
@@ -569,7 +569,7 @@ class CharacterSettingsController(WindowFeatureController):
 
     def build_mcp_registry_group(self, parent_layout):
         """Mount the independent MCP registry panel and connect application actions."""
-        self.mcp_registry_panel = McpRegistryPanel(parent=self)
+        self.mcp_registry_panel = McpRegistryPanel(parent=self.window)
         self.mcp_registry_query = self.mcp_registry_panel.query_edit
         self.mcp_registry_search_btn = self.mcp_registry_panel.search_btn
         self.mcp_registry_list = self.mcp_registry_panel.results
@@ -588,7 +588,7 @@ class CharacterSettingsController(WindowFeatureController):
         if worker is not None and worker.isRunning():
             return
         self.mcp_registry_panel.set_searching(True)
-        self._mcp_registry_worker = RegistrySearchWorker(self.mcp_registry_panel.query(), self)
+        self._mcp_registry_worker = RegistrySearchWorker(self.mcp_registry_panel.query(), self.window)
         self._mcp_registry_worker.completed.connect(self._on_mcp_registry_results)
         self._mcp_registry_worker.start()
 
