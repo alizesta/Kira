@@ -556,8 +556,10 @@ class DesktopModule(WinModule):
         ctl = Param("control", "string", "control name exactly as shown by ui_list_controls", True)
         ctype = Param("type", "string", "optional control type: Button, Edit, MenuItem, CheckBox, ...")
         caps = [
-            Capability("window_list", "desktop", "list the open windows (title, app, state) with hwnd ids (changes nothing)", t.window_list, READ, (), cat),
-            Capability("window_active", "desktop", "which window is in front right now (changes nothing)", t.window_active, READ, (), cat),
+            Capability("window_list", "desktop", "list the open windows (title, app, state) with hwnd ids (changes nothing)", t.window_list, READ, (), cat,
+                       external=True),
+            Capability("window_active", "desktop", "which window is in front right now (changes nothing)", t.window_active, READ, (), cat,
+                       external=True),
             Capability("window_focus", "desktop", "bring ONE window to the front; ONLY when the user asks to go to / show / switch to it", t.window_focus, ACTION, (win,), cat,
                        intent_rx=FOCUS_RX, verifies_result=True, changes_system=True),
             Capability("window_close", "desktop", "close ONE window politely (like the X button; the app may ask to save). ONLY when the user explicitly asks to close it",
@@ -575,9 +577,9 @@ class DesktopModule(WinModule):
             Capability("clipboard_set", "desktop", "put text on the clipboard (so the user can paste it). ONLY when the user asks", t.clipboard_set, ACTION,
                        (Param("text", "string", "text to copy", True),), cat, intent_rx=CLIP_RX, verifies_result=True, changes_system=True),
             Capability("clipboard_get", "desktop", "read the text currently on the clipboard (it may be private, so the user confirms first)", t.clipboard_get, SENSITIVE, (), cat,
-                       confirm_summary=t.confirm_clipboard_get),
+                       confirm_summary=t.confirm_clipboard_get, external=True),
             Capability("ui_list_controls", "desktop", "list the buttons, menus, fields and checkboxes of a window by name (UI Automation; changes nothing)",
-                       t.ui_list, READ, (win,), cat),
+                       t.ui_list, READ, (win,), cat, external=True),
             Capability("ui_click", "desktop", "click / invoke ONE named control of a window (button, menu item, checkbox, tab ...). Controls that look destructive, a login, a "
                        "payment or an install are refused here (use ui_click_confirmed). ONLY on explicit request",
                        t.ui_click, ACTION, (win, ctl, ctype), cat, intent_rx=CLICK_RX, memo=lambda a, x: f"ui_click → {a.get('control')}", changes_system=True),
