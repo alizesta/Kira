@@ -57,6 +57,17 @@ class FeatureControllerRegistryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             registry.dispatch_event(object(), "session", "closeEvent", object())
 
+    def test_registry_membership_is_immutable_after_construction(self):
+        controllers = {"first": self.first}
+        registry = FeatureControllerRegistry(controllers)
+        controllers["second"] = self.second
+        self.assertIsNone(registry.get("second"))
+        self.assertIs(registry.require("first"), self.first)
+
+    def test_require_reports_missing_peer_as_lookup_error(self):
+        with self.assertRaisesRegex(LookupError, "missing"):
+            self.registry.require("missing")
+
     def test_missing_feature_attribute_raises_attribute_error(self):
         with self.assertRaises(AttributeError):
             self.registry.resolve("not_a_feature_method")
