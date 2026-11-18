@@ -84,6 +84,19 @@ class SessionScopedCancel:
         for event in events:
             event.set()
 
+    def release_session(self, owner: str) -> bool:
+        """Forget one cancellation event after its ToolAgent work has drained."""
+        key = str(owner or "")
+        if not key:
+            return False
+        with self._lock:
+            if self._active_owner == key:
+                return False
+            event = self._events.pop(key, None)
+        if event is not None:
+            event.set()
+        return event is not None
+
     def clear_all(self) -> None:
         with self._lock:
             events = [self._fallback, *self._events.values()]
@@ -311,6 +324,14 @@ class SessionScopedResearchStore:
 
     def clear(self) -> None:
         self._current_store().clear()
+
+    def release_session(self, owner: str) -> bool:
+        """Release the in-memory store; keep its file so the Session can be reopened later."""
+        key = str(owner or "")
+        if not key:
+            return False
+        with self._lock:
+            return self._stores.pop(key, None) is not None
 
     def clear_all(self) -> None:
         with self._lock:

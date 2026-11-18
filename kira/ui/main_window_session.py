@@ -261,6 +261,7 @@ class SessionMixin:
     def _release_chat_session_resources(self, session):
         """Release UI/provider resources after SessionManager confirms the work has drained."""
         self.chat_application_service.close_session(session.session_id)
+        self.tool_agent.release_session(session.cid)
         session.dispatch_scheduled = False
         response_relay = getattr(session, "response_relay", None)
         if session.client is not None:

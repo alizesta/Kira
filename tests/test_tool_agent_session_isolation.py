@@ -94,6 +94,31 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
         with self.agent._use_session("ren"):
             self.assertTrue(self.agent._cancel.is_set())
 
+    def test_release_session_drops_ephemeral_state_but_keeps_durable_task(self):
+        with TemporaryDirectory() as temp:
+            self.agent._init_autonomy(Path(temp))
+            durable = self.agent.tasks.new("resume this later", session_id="kira")
+            with self.agent._use_session("kira"):
+                self.agent._turn_cache["read_file{}"] = "temporary result"
+                self.agent._memos.append((1.0, "temporary memo"))
+                self.agent.last_results = ["temporary result"]
+                self.access.grant("write_file", {"path": "safe.txt"})
+            self.agent._pending_by_session["kira"] = Pending(
+                "delete_file", {"path": "safe.txt"}, "delete",
+                session_id="kira",
+            )
+            self.agent._pending_new_sessions.add("kira")
+            CANCEL.cancel_session("kira")
+
+            self.assertTrue(self.agent.release_session("kira"))
+
+            self.assertNotIn("kira", self.agent._session_states)
+            self.assertFalse(self.access.release_session("kira"))
+            self.assertNotIn("kira", self.agent._pending_by_session)
+            self.assertNotIn("kira", self.agent._pending_new_sessions)
+            self.assertIs(self.agent.tasks.active("kira"), durable)
+            self.assertTrue(CANCEL.release_session("kira") is False)
+
     def test_task_cancel_releases_only_the_matching_session_confirmation(self):
         with TemporaryDirectory() as temp:
             self.agent._init_autonomy(Path(temp))

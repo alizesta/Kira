@@ -361,6 +361,36 @@ class ToolAgent(AutonomyMixin):
             if line:
                 self._memos.append((time.time(), line[:300]))
 
+    def release_session(self, session_id: str) -> bool:
+        """Release ephemeral ToolAgent state after the character's Chat workers have drained.
+
+        Durable TaskStore and WebIntel JSON state are retained for a later reopen;
+        pending one-shot confirmations and in-memory results are deliberately discarded.
+        """
+        owner = str(session_id or "")
+        if not owner:
+            return False
+        self.request_cancel(owner)
+        with self._runtime_lock:
+            if owner in self._running_sessions or owner in self._active_web_sessions:
+                return False
+        self._pending_by_session.pop(owner, None)
+        self._pending_new_sessions.discard(owner)
+        self._resume_sessions.discard(owner)
+        self._pause_requests.discard(owner)
+        self._cancel_plan_requests.discard(owner)
+        self._turn_plan_ids.pop(owner, None)
+        with self._session_states_lock:
+            self._session_states.pop(owner, None)
+        self.registry.access.release_session(owner)
+        WEB_CANCEL.release_session(owner)
+        ctx = getattr(self.registry, "web_context", None)
+        store = getattr(ctx, "store", None) if ctx is not None else None
+        release_store = getattr(store, "release_session", None)
+        if callable(release_store):
+            release_store(owner)
+        return True
+
     def clear_session(self, session_id: str | None = None):
         """Clear per-character tool notes, confirmations and task history."""
         if session_id is None:

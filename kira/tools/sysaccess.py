@@ -152,6 +152,17 @@ class AccessManager:
         finally:
             self._session_context.reset(token)
 
+    def release_session(self, session_id: str) -> bool:
+        """Drop ephemeral access intent and grants after the owning Session is fully drained."""
+        owner = str(session_id or "")
+        if not owner:
+            return False
+        with self._lock:
+            state = self._session_states.pop(owner, None)
+            if state is not None:
+                state.grants.clear()
+        return state is not None
+
     # Compatibility accessors preserve the legacy no-session API while ToolAgent
     # executes every request inside use_session().
     @property
