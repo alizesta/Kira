@@ -1,4 +1,4 @@
-"""Chat behavior mixin for the desktop window."""
+"""Chat feature controller for the desktop window."""
 from .main_window_chat_support import (
     ApplicationEventKind,
     QMessageBox,
