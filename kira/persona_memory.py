@@ -565,10 +565,11 @@ def update_item(item_id: str, text: str) -> bool:
     key, kind, old_text = selected
     new_id = _id(kind, text)
     sync_evidence = key == "facts" and character_id == "kira"
-    if sync_evidence:
+    if sync_evidence and _evidence.enabled():
         # Complete the evidence-index mutation before changing the editable
         # persona item. Storage failures therefore leave the original item intact.
-        _evidence.update_by_persona_id(item_id, new_id, text)
+        if not _evidence.update_by_persona_id(item_id, new_id, text):
+            raise RuntimeError("Persona-memory edit was not synchronized to evidence memory")
 
     try:
         with _lock:
@@ -588,7 +589,7 @@ def update_item(item_id: str, text: str) -> bool:
             target["id"] = new_id
             _save(data)
     except Exception:
-        if sync_evidence:
+        if sync_evidence and _evidence.enabled():
             try:
                 _evidence.update_by_persona_id(new_id, item_id, old_text)
             except Exception:
