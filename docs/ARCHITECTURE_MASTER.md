@@ -77,7 +77,8 @@ Bootstrap currently registers required service modules for Memory, Mood, Charact
 |---|---|---|
 | Chat | `kira/chat/*`, `kira/app/chat_composition.py` | Fourteen task boundaries statically present; see module matrix. Runtime not verified. |
 | Persistence | `kira/chat/persistence.py`, Chat History service adapter, existing SQLite storage | Chat durable storage boundary exists. Other legacy stores still exist; do not assume all application data has migrated here. |
-| Characters | `kira/services`, `kira/character`, `kira/characters`, `kira/personality.py`, CharactersPage | Profile/service separation exists; MainWindow still owns switching and other application behavior. |
+| Characters | `kira/services`, `kira/character`, `kira/characters`, `kira/personality.py`, CharactersPage | Profile/service separation exists; UI still owns character presentation and settings workflows. |
+| Session orchestration | `kira/app/session_application.py`, `session_composition.py`, `kira/chat/session_manager.py` | SessionApplicationService owns character/session synchronization, conversation binding, activation, event translation and graceful drain policy; Qt resource attachment remains in the UI mixin. |
 | Memory | `kira/services`, `kira/persona_memory.py`, `kira/evidence_memory.py`, `kira/memory.py` | Service-backed and registered in bootstrap; legacy compatibility modules remain. |
 | Voice | `kira/voice.py`, `kira/listener.py`, `kira/local_voice.py`, speech/VAD modules, VoicePage | Capability exists; core Voice contract is documented as not yet wired to the implementation. MainWindow retains controller/policy work. |
 | Avatar & emotion | `kira/face.py`, `kira/vrm_avatar.py`, `kira/companion.py`, `kira/emotion/*`, `kira/body.py`, `kira/rig.py` | Rendering/emotion capability exists; not an independently managed application module. |
@@ -169,7 +170,7 @@ This is static architecture evidence, not proof of isolation across concurrent K
 
 ## 7. MainWindow and legacy migration
 
-The actual production window is imported by bootstrap from `kira.ui.main_window.MainWindow` (PR #55, merge commit `101361f60bb19a45484cbcdb7b52584eb3da0111`). The 5,634-line legacy module has been removed after its 322 MainWindow methods were moved into eight feature-oriented mixins (session/navigation, voice settings, character settings, provider settings, window lifecycle, attachments/vision, Chat/Web Research, and runtime/voice). Shared imports and Qt relay support live in `main_window_support.py`. `kira.main` retains only a lazy compatibility export to the new UI package. This removes the `oldmain.py` runtime dependency and separates the window implementation into owned UI modules; it does not yet remove all application policy from the window mixins.
+The actual production window is imported by bootstrap from `kira.ui.main_window.MainWindow` (PR #55, merge commit `101361f60bb19a45484cbcdb7b52584eb3da0111`). The 5,634-line legacy module has been removed after its 322 MainWindow methods were moved into eight feature-oriented mixins (session/navigation, voice settings, character settings, provider settings, window lifecycle, attachments/vision, Chat/Web Research, and runtime/voice). TASK 017 adds `SessionApplicationService` and moves character/session synchronization, durable conversation binding, activation, lifecycle event translation and graceful drain policy behind the injected application service. Qt resource attachment, tab rendering and remaining feature-specific policy still reside in UI mixins; the window is not yet a thin presentation shell.
 
 Target boundary:
 1. `kira/main.py` remains a small entry point.
