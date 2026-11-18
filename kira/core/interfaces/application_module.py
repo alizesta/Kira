@@ -1,17 +1,48 @@
 """Lifecycle contract implemented by independently managed application modules."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from collections.abc import Callable
+from typing import Any, Protocol
 
-if TYPE_CHECKING:
-    from ...app.dependency_container import DependencyContainer
-    from ...app.event_bus import EventBus
+
+class DependencyRegistry(Protocol):
+    """Minimal DI operations available to a managed module.
+
+    This structural contract deliberately lives in core: concrete containers
+    belong to the outer application composition layer.
+    """
+
+    def register_instance(self, key: str, instance: Any) -> None: ...
+
+    def register_factory(self, key: str, factory: Callable[[], Any]) -> None: ...
+
+    def resolve(self, key: str) -> Any: ...
+
+    def unregister(self, key: str) -> None: ...
+
+
+class ModuleEventBus(Protocol):
+    """Notification operations exposed to application modules."""
+
+    def subscribe(
+        self, event_name: str, callback: Callable[..., Any]
+    ) -> Callable[[], None]: ...
+
+    def subscribe_event(
+        self, event_type: Any, callback: Callable[[Any], Any]
+    ) -> Callable[[], None]: ...
+
+    def publish(self, event_name: str, **payload: Any) -> Any: ...
+
+    def publish_event(self, event: Any) -> Any: ...
 
 
 class ApplicationModule(Protocol):
     """A module receives shared infrastructure at registration and owns its resources."""
 
-    def register(self, container: "DependencyContainer", event_bus: "EventBus") -> None: ...
+    def register(
+        self, container: DependencyRegistry, event_bus: ModuleEventBus
+    ) -> None: ...
 
     def start(self) -> None: ...
 
