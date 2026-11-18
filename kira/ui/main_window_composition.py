@@ -64,6 +64,12 @@ def initialize_main_window(
     web_search_service=None,
     voice_application_service_factory=None,
     game_mode_application_service=None,
+    settings=None,
+    tool_agent=None,
+    provider_application_service=None,
+    coding_agent_application_service=None,
+    vision_application_service=None,
+    runtime_settings_application_service=None,
 ):
     """Build the window's services, pages, signals and runtime adapters."""
     self = window
@@ -100,7 +106,27 @@ def initialize_main_window(
         from ..app.game_mode_application import GameModeApplicationService
         game_mode_application_service = GameModeApplicationService()
     self.game_mode_application_service = game_mode_application_service
-    self.settings = load_settings()
+    self.settings = settings if settings is not None else load_settings()
+    if provider_application_service is None:
+        from ..app.provider_application import ProviderApplicationService
+        provider_application_service = ProviderApplicationService()
+    self.provider_application_service = provider_application_service
+    if runtime_settings_application_service is None:
+        from ..app.runtime_settings_application import RuntimeSettingsApplicationService
+        runtime_settings_application_service = RuntimeSettingsApplicationService()
+    self.runtime_settings_application_service = runtime_settings_application_service
+    self.runtime_settings_application_service.configure(self.settings)
+    if coding_agent_application_service is None:
+        from ..app.coding_agent_application import CodingAgentApplicationService
+        coding_agent_application_service = CodingAgentApplicationService()
+    self.coding_agent_application_service = coding_agent_application_service
+    if vision_application_service is None:
+        from ..app.vision_application import VisionApplicationService
+        vision_application_service = VisionApplicationService(
+            self.game_mode_application_service,
+            self.settings.get("vision_mode", "economic"),
+        )
+    self.vision_application_service = vision_application_service
     self._db_notes = self.chat_application_service.init_history()
     self.session_manager = session_manager or SessionManager(ChatSession)
     self.chat_event_publisher = chat_event_publisher
@@ -154,23 +180,21 @@ def initialize_main_window(
     self._provider_editing = set()      # providers currently in Edit mode (their unsaved fields are never collected)
     self._bench_busy = False
     self._ollama_models = []
-    self.client = HybridRouter(self.settings)
+    self.client = self.provider_application_service.create_router(self.settings)
     self.game_mode = GameModeMonitor(self)
     self._game_mode_enabled = False
     self._game_mode_profile = self.game_mode_application_service.COMPETITIVE_SAFE_MODE
     self._latest_game_frame = None
-    self._vision_gate = FrameGate(policy_for(self.settings.get('vision_mode', 'economic')))
+    # Vision cadence, safety gating and deduplication are owned by the application service.
     self._vision_worker = None
     self._vision_session = None
-    self._vision_last_note = ''
     self.game_audio_listener = None
     self._game_prev_mic = False
     self._game_prev_wake = False
-    self.tool_agent = ToolAgent(self.settings, DATA_DIR, ROOT)      # Computer Awareness + Unified Tool System (kira/tools)
-    usage.install(self.settings)                                    # usage ledger + limits (kira/usage.py); never blocks start-up
-    evidence_memory.configure(self.settings)                        # facts with provenance (kira/evidence_memory.py); never blocks start-up
+    self.tool_agent = tool_agent if tool_agent is not None else ToolAgent(self.settings, DATA_DIR, ROOT)
+    self.runtime_settings_application_service.configure(self.settings)
     self._tool_plan = None             # tool plan of the message being answered (None = ordinary chat, nothing added to the prompt)
-    self.ollama_client = OllamaClient.from_settings(self.settings)
+    self.ollama_client = self.provider_application_service.create_ollama_client(self.settings)
     self.director = EmotionDirector.from_default()        # emotion library + engine (kira/emotion, emotion_library/)
     self.animator = EmotionFaceAnimator(self, director=self.director)
     self.companion = CompanionWindow(self.animator)
@@ -211,7 +235,7 @@ def initialize_main_window(
     self._game_poll_timer.timeout.connect(self.game_mode.poll)
     self._game_poll_timer.start()
     self._game_capture_timer = QTimer(self)
-    self._game_capture_timer.setInterval(int(self._vision_gate.policy.interval_seconds * 1000))
+    self._game_capture_timer.setInterval(int(self.vision_application_service.policy.interval_seconds * 1000))
     self._game_capture_timer.timeout.connect(self._capture_game_frame)
     self.game_mode.game_detected.connect(self.on_game_detected)
     self.resize(900, 720)
