@@ -224,3 +224,8 @@ window-backed `WindowFeatureController` proxy and remaining cross-feature
 method calls are still migration targets. Focused registry and dependency
 contract tests have been added; they are not yet executed. Windows/GUI and
 GitHub Actions validation are intentionally outside this workstream.
+
+
+### Controller registry hardening delta — 2026-11-18
+
+`FeatureControllerRegistry` now owns an immutable snapshot of controller membership. Peer-controller dependencies use the registry's required lookup contract, which raises immediately when a declared feature is absent instead of returning an optional value. Regression tests cover defensive copying of registry membership and missing-peer failure. This is a narrow boundary-hardening step; it does not remove the broad `WindowFeatureController` window-backed attribute proxy or migrate residual shared UI state. Those remain open Flow 1 exit criteria.
