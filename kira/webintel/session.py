@@ -45,6 +45,8 @@ class SessionScopedCancel:
         with self._lock:
             if self._active_owner is not None and self._active_owner != key:
                 raise RuntimeError("A different WebIntel session is already active")
+            if key:
+                self._events.setdefault(key, threading.Event())
             self._active_owner = key
 
     def deactivate(self, owner: str) -> None:

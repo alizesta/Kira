@@ -531,7 +531,6 @@ class ToolAgent(AutonomyMixin):
                     self._running_sessions.discard(owner)
                     if web_locked:
                         self._active_web_sessions.discard(owner)
-                    no_web_active = not self._active_web_sessions
                 if web_locked:
                     WEB_CANCEL.deactivate(owner)
                     self._web_research_lock.release()

@@ -149,6 +149,12 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
     def test_webintel_cancel_event_is_scoped_to_active_owner(self):
         CANCEL.clear_all()
         try:
+            CANCEL.activate("brand-new-owner")
+            self.assertFalse(CANCEL.is_set())
+            CANCEL.set()
+            self.assertTrue(CANCEL.is_set())
+            CANCEL.deactivate("brand-new-owner")
+
             CANCEL.cancel_session("kira")
             CANCEL.activate("ren")
             self.assertFalse(CANCEL.is_set())
