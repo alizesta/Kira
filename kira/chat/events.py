@@ -11,7 +11,7 @@ from typing import Any, TYPE_CHECKING
 from uuid import uuid4
 
 if TYPE_CHECKING:
-    from ..app.event_bus import EventPublishReport, EventBus
+    from ..core.interfaces.application_module import EventPublicationReport, ModuleEventBus
 
 
 class ChatEventType(str, Enum):
@@ -147,7 +147,7 @@ class ChatEvent:
 @dataclass(frozen=True, slots=True)
 class ChatEventDispatch:
     event: ChatEvent
-    report: "EventPublishReport | None"
+    report: "EventPublicationReport | None"
     duplicate: bool = False
 
     @property
@@ -179,7 +179,7 @@ class ChatEventPublisher:
         ChatEventType.COMMAND_DISPATCH_FAILED: "command",
     }
 
-    def __init__(self, event_bus: "EventBus", *, terminal_history_limit: int = 8192):
+    def __init__(self, event_bus: "ModuleEventBus", *, terminal_history_limit: int = 8192):
         if event_bus is None or not callable(getattr(event_bus, "publish_event", None)):
             raise TypeError("a shared EventBus with publish_event() is required")
         if terminal_history_limit < 1:
