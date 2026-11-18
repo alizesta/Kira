@@ -1,45 +1,5 @@
 """Provider settings behavior mixin for the desktop window."""
-from .main_window_provider_settings_support import (
-    ApiAddPanel,
-    BenchWorker,
-    ModelCombo,
-    OllamaClient,
-    OllamaProviderPanel,
-    QAbstractItemView,
-    QBrush,
-    QCheckBox,
-    QColor,
-    QComboBox,
-    QDialog,
-    QDialogButtonBox,
-    QFormLayout,
-    QHBoxLayout,
-    QHeaderView,
-    QInputDialog,
-    QLabel,
-    QLineEdit,
-    QListWidget,
-    QListWidgetItem,
-    QMessageBox,
-    QProgressBar,
-    QPushButton,
-    QScrollArea,
-    QTabWidget,
-    QTableWidget,
-    QTableWidgetItem,
-    QTimer,
-    QToolButton,
-    QVBoxLayout,
-    QWidget,
-    Qt,
-    RouteEditor,
-    TaskWorker,
-    api_manager,
-    front_only,
-    re,
-    route_model,
-)
-
+from .main_window_provider_settings_support import *  # noqa: F401,F403
 
 class ProviderSettingsMixin:
     def refresh_model_catalogs(self):
@@ -50,13 +10,13 @@ class ProviderSettingsMixin:
         try:
             providers = [
                 (pid, dict(self.settings.get("providers", {}).get(pid, {})))
-                for pid in api_manager.api_ids(self.settings)
+                for pid in self.provider_application_service.api_ids(self.settings)
                 if self.settings.get("providers", {}).get(pid, {}).get("enabled", True)
             ]
             def refresh():
                 results = []
                 for pid, cfg in providers:
-                    results.append((pid, api_manager.rediscover(pid, cfg, timeout=15)))
+                    results.append((pid, self.provider_application_service.rediscover(pid, cfg, timeout=15)))
                 return results
             self._model_catalog_worker = TaskWorker(refresh)
             self._model_catalog_worker.done.connect(self._on_model_catalog_refresh)
@@ -77,10 +37,10 @@ class ProviderSettingsMixin:
         failed = []
         for pid, detection in value:
             if detection.ok:
-                api_manager.apply_models(self.settings, pid, detection.models, detection.rate_limit)
+                self.provider_application_service.apply_models(self.settings, pid, detection.models, detection.rate_limit)
                 updated += len(detection.models)
             else:
-                api_manager.apply_failure(self.settings, pid, detection)
+                self.provider_application_service.apply_failure(self.settings, pid, detection)
                 failed.append(pid)
         self.save_now()
         self.refresh_unified_models()
@@ -316,11 +276,11 @@ class ProviderSettingsMixin:
         for widget in self.cloud_model_lists.values():
             widget.blockSignals(True)
             widget.clear()
-        api_manager.ensure_registry(self.settings)
+        self.provider_application_service.ensure_registry(self.settings)
         free_only = str(self.settings.get("model_filter_mode") or "all") == "free"
-        for pid, entry in api_manager.registry(self.settings).items():
+        for pid, entry in self.provider_application_service.registry(self.settings).items():
             cfg = self.settings.get("providers", {}).get(pid, {})
-            label = route_model.provider_label(pid, cfg)
+            label = self.provider_application_service.provider_label(pid, cfg)
             for mid, meta in (entry.get("models") or {}).items():
                 if meta.get("status") == "unavailable" or meta.get("text") == "No":
                     continue
@@ -335,7 +295,7 @@ class ProviderSettingsMixin:
                 item.setToolTip(f"Text: {meta.get('text') or 'Unknown'} | Vision: {meta.get('vision') or 'Unknown'} | Tools: {meta.get('tools') or 'Unknown'}")
                 item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
                 enabled = any(r.get("provider") == pid and r.get("model") == mid and r.get("enabled")
-                              for r in route_model.get_routes(self.settings))
+                              for r in self.provider_application_service.get_routes(self.settings))
                 item.setCheckState(Qt.Checked if enabled else Qt.Unchecked)
                 self.cloud_model_lists["chat"].addItem(item)
         for kind, widget in self.cloud_model_lists.items():
@@ -352,7 +312,7 @@ class ProviderSettingsMixin:
         if hasattr(self, "local_model_list"):
             self.local_model_list.blockSignals(True)
             self.local_model_list.clear()
-            for route in route_model.get_routes(self.settings):
+            for route in self.provider_application_service.get_routes(self.settings):
                 if route.get("provider") != "ollama" or not route.get("model"):
                     continue
                 item = QListWidgetItem(route["model"])
@@ -371,7 +331,7 @@ class ProviderSettingsMixin:
             return
         checked = item.checkState() == Qt.Checked
         try:
-            api_manager.set_model_enabled(self.settings, provider, model, checked)
+            self.provider_application_service.set_model_enabled(self.settings, provider, model, checked)
         except Exception as exc:
             self.api_add_status.setText("✕ " + str(exc))
         self._api_changed(provider)
@@ -381,20 +341,20 @@ class ProviderSettingsMixin:
         route_id = item.data(Qt.UserRole)
         if not route_id:
             return
-        route_model.update_route(self.settings, route_id, enabled=item.checkState() == Qt.Checked)
+        self.provider_application_service.update_route(self.settings, route_id, enabled=item.checkState() == Qt.Checked)
         self.save_now()
         self.refresh_route_list()
         self.refresh_unified_models()
 
     def _discover_unified_api_key(self, key, account=""):
         """Detect chat-model capability only; audio never uses remote APIs."""
-        return api_manager.detect(key, account)
+        return self.provider_application_service.detect(key, account)
 
     def api_add(self):
         if self._api_busy():
             return
         key = self.api_key_edit.text().strip()
-        problem = api_manager.key_problem(key)
+        problem = self.provider_application_service.key_problem(key)
         if problem:
             self.api_add_status.setText("✕ " + problem)
             return
@@ -422,10 +382,10 @@ class ProviderSettingsMixin:
 
         chat_added = ""
         if detection and detection.ok:
-            duplicate = api_manager.find_duplicate(self.settings, key)
+            duplicate = self.provider_application_service.find_duplicate(self.settings, key)
             if not duplicate:
                 try:
-                    chat_added = api_manager.register(self.settings, detection, key)
+                    chat_added = self.provider_application_service.register(self.settings, detection, key)
                 except ValueError as exc:
                     self.api_add_status.setText("✕ " + str(exc))
             else:
@@ -433,10 +393,10 @@ class ProviderSettingsMixin:
         if chat_added:
             self._api_changed(chat_added)
             self.api_key_edit.clear()
-            label = route_model.provider_label(chat_added, self.settings["providers"][chat_added])
+            label = self.provider_application_service.provider_label(chat_added, self.settings["providers"][chat_added])
             self.api_add_status.setText("✓ اتصال Chat ثبت شد: " + label)
         else:
-            message = api_manager.describe_failure(detection) if detection else "هیچ مدل Chat قابل استفاده‌ای از این API شناسایی نشد."
+            message = self.provider_application_service.describe_failure(detection) if detection else "هیچ مدل Chat قابل استفاده‌ای از این API شناسایی نشد."
             self.api_add_status.setText("✕ " + message + "؛ کلید ثبت نشد.")
         self.refresh_unified_models()
 
@@ -460,18 +420,19 @@ class ProviderSettingsMixin:
     def collect_provider_settings(self):
         """Only the local Ollama switch lives in the form now; API keys / enabled flags are changed by the API Manager actions directly."""
         self.settings.setdefault("providers", {}).setdefault("ollama", {})["enabled"] = self.route_ollama_enabled.isChecked()
-        route_model.ensure_routes(self.settings)
+        self.provider_application_service.ensure_routes(self.settings)
 
     def ollama_edit_mode(self, on):
         self.ollama_panel.set_edit_mode(bool(on), self.settings.get("ollama_url") if not on else None)
 
     def save_ollama_edit(self):
-        url = self.ollama_url_edit.text().strip().rstrip("/")
-        if not re.match(r"^https?://\S+$", url, re.I):
-            self.route_status.setText("✕ آدرس Ollama باید با http:// یا https:// شروع شود.")
+        try:
+            url = self.provider_application_service.update_ollama_url(
+                self.settings, self.ollama_url_edit.text()
+            )
+        except ValueError as exc:
+            self.route_status.setText("✕ " + str(exc))
             return
-        self.settings["ollama_url"] = url
-        self.settings.setdefault("providers", {}).setdefault("ollama", {})["base_url"] = url
         self.url.setText(url)                                # same address as the Assistant tab
         self.save_now()
         self.ollama_edit_mode(False)
@@ -583,16 +544,16 @@ class ProviderSettingsMixin:
             self.set_badge("idle", self.client.preview_route())
 
     def refresh_api_table(self, select=None):
-        api_manager.ensure_registry(self.settings)
+        self.provider_application_service.ensure_registry(self.settings)
         keep = select or self._api_selected()
-        rows = api_manager.api_rows(self.settings)
+        rows = self.provider_application_service.api_rows(self.settings)
         self._api_loading = True
         self.api_table.blockSignals(True)
         self.api_table.setRowCount(len(rows))
         for i, r in enumerate(rows):
             service = "" if r["service"] in ("custom",) else f" · {r['service']}"
             cells = [f"{r['label']}  ({r['key']})" if r["key"] else r["label"], self.STATUS_FA.get(r["status"], r["status"]),
-                     "Unknown" if r["accessible"] is None else str(r["accessible"]), str(r["active"]), api_manager.fmt_time(r["checked_at"]),
+                     "Unknown" if r["accessible"] is None else str(r["accessible"]), str(r["active"]), self.provider_application_service.fmt_time(r["checked_at"]),
                      str(r["priority"]), "✓" if r["enabled"] else "—"]
             for c, text in enumerate(cells):
                 item = QTableWidgetItem(text)
@@ -620,12 +581,12 @@ class ProviderSettingsMixin:
             self.api_models.blockSignals(False)
             self._api_loading = False
             return
-        d = api_manager.api_details(self.settings, pid)
+        d = self.provider_application_service.api_details(self.settings, pid)
         rl = d["rate_limit"]
-        rl_text = ("\n    " + "\n    ".join(f"{k}: {v}" for k, v in sorted(rl.items())) + f"\n    (زمان گزارش: {api_manager.fmt_time(d['rate_limit_as_of'])})") if rl else "Not Available"
+        rl_text = ("\n    " + "\n    ".join(f"{k}: {v}" for k, v in sorted(rl.items())) + f"\n    (زمان گزارش: {self.provider_application_service.fmt_time(d['rate_limit_as_of'])})") if rl else "Not Available"
         self.api_det_info.setText(
             f"Provider: {d['label']}  ·  سرویس: {d['service']}  ·  کلید: {d['key'] or '—'}\n"
-            f"Status: {self.STATUS_FA.get(d['status'], d['status'])}  ·  آخرین بررسی: {api_manager.fmt_time(d['checked_at'])}"
+            f"Status: {self.STATUS_FA.get(d['status'], d['status'])}  ·  آخرین بررسی: {self.provider_application_service.fmt_time(d['checked_at'])}"
             + (f"\nآخرین خطا: {d['error']}" if d["error"] else "") +
             f"\nToken Usage: Not Available  ·  Remaining Quota: Not Available\nRate Limit: {rl_text}")
         self.api_models.setRowCount(len(d["models"]))
@@ -651,7 +612,7 @@ class ProviderSettingsMixin:
         if not pid:
             return
         try:
-            api_manager.set_model_enabled(self.settings, pid, item.data(Qt.UserRole), item.checkState() == Qt.Checked)
+            self.provider_application_service.set_model_enabled(self.settings, pid, item.data(Qt.UserRole), item.checkState() == Qt.Checked)
         except ValueError as exc:
             self.api_status.setText("✕ " + str(exc))
         QTimer.singleShot(0, lambda p=pid: self._api_changed(p))          # redraw after this signal has finished (the table is rebuilt)
@@ -664,7 +625,7 @@ class ProviderSettingsMixin:
             return
         cfg = dict(self.settings["providers"][pid])
         self.api_status.setText("در حال اعتبارسنجی و دریافت دوباره‌ی مدل‌ها…")
-        self._api_worker = TaskWorker(lambda: api_manager.rediscover(pid, cfg))
+        self._api_worker = TaskWorker(lambda: self.provider_application_service.rediscover(pid, cfg))
         self._api_worker.done.connect(lambda result, p=pid, q=quiet: self.on_api_refreshed(p, result, q))
         self._api_worker.start()
 
@@ -672,11 +633,11 @@ class ProviderSettingsMixin:
         if pid not in self.settings.get("providers", {}):
             return
         ok, det = result
-        label = route_model.provider_label(pid, self.settings["providers"][pid])
+        label = self.provider_application_service.provider_label(pid, self.settings["providers"][pid])
         if not ok:
-            det = api_manager.Detection("error", "", str(det))
+            det = self.provider_application_service.Detection("error", "", str(det))
         if det.ok:
-            diff = api_manager.apply_models(self.settings, pid, det.models, det.rate_limit)
+            diff = self.provider_application_service.apply_models(self.settings, pid, det.models, det.rate_limit)
             msg = f"✓ {label}: {len(det.models)} مدل در دسترس"
             if diff["new"]:
                 msg += f" · {len(diff['new'])} مدل جدید"
@@ -684,8 +645,8 @@ class ProviderSettingsMixin:
                 msg += f" · {len(diff['gone'])} مدل دیگر در دسترس نیست"
             self.api_status.setText(msg)
         else:
-            api_manager.apply_failure(self.settings, pid, det)
-            self.api_status.setText(f"{label}: " + api_manager.describe_failure(det))
+            self.provider_application_service.apply_failure(self.settings, pid, det)
+            self.api_status.setText(f"{label}: " + self.provider_application_service.describe_failure(det))
         self._api_changed(pid)
 
     # ---- Edit ----
@@ -694,12 +655,12 @@ class ProviderSettingsMixin:
         if not pid or pid not in self.settings.get("providers", {}) or self._api_busy():
             return
         cfg = self.settings["providers"][pid]
-        service = api_manager.service_of(pid, cfg)
-        custom = pid not in route_model.BUILTIN
+        service = self.provider_application_service.service_of(pid, cfg)
+        custom = pid not in self.provider_application_service.BUILTIN
         dlg = QDialog(self)
         dlg.setWindowTitle("Edit API")
         form = QFormLayout(dlg)
-        name = QLineEdit(route_model.provider_label(pid, cfg))
+        name = QLineEdit(self.provider_application_service.provider_label(pid, cfg))
         key = QLineEdit()
         key.setEchoMode(QLineEdit.Password)
         key.setPlaceholderText("کلید جدید (اختیاری) — خالی = کلید فعلی حفظ می‌شود")
@@ -707,7 +668,7 @@ class ProviderSettingsMixin:
         base = QLineEdit(str(cfg.get("base_url", "")))
         if custom:
             form.addRow("نام", name)
-        form.addRow(f"API Key (فعلی: {api_manager.mask_key(cfg.get('api_key')) or '—'})", key)
+        form.addRow(f"API Key (فعلی: {self.provider_application_service.mask_key(cfg.get('api_key')) or '—'})", key)
         if service == "cloudflare":
             form.addRow("Account ID", account)
         if custom and service == "custom":
@@ -724,8 +685,8 @@ class ProviderSettingsMixin:
         if not new_key:
             self.apply_api_edit(pid, fields, None, None)
             return
-        problem = api_manager.key_problem(new_key)
-        dup = api_manager.find_duplicate(self.settings, new_key)
+        problem = self.provider_application_service.key_problem(new_key)
+        dup = self.provider_application_service.find_duplicate(self.settings, new_key)
         if problem or (dup and dup != pid):
             self.api_status.setText("✕ " + (problem or "این کلید قبلاً برای API دیگری ثبت شده است."))
             return
@@ -733,27 +694,27 @@ class ProviderSettingsMixin:
         if fields["account_id"]:
             test_cfg["account_id"] = fields["account_id"].strip()
         self.api_status.setText("در حال اعتبارسنجی کلید جدید…")
-        self._api_worker = TaskWorker(lambda: api_manager.rediscover(pid, test_cfg))
+        self._api_worker = TaskWorker(lambda: self.provider_application_service.rediscover(pid, test_cfg))
         self._api_worker.done.connect(lambda result, p=pid, f=fields, k=new_key: self.on_api_edit_validated(p, f, k, result))
         self._api_worker.start()
 
     def on_api_edit_validated(self, pid, fields, new_key, result):
         ok, det = result
         if not ok or not det.ok:                                  # the old key stays untouched
-            self.api_status.setText("✕ کلید جدید ذخیره نشد. " + (api_manager.describe_failure(det) if ok else str(det)))
+            self.api_status.setText("✕ کلید جدید ذخیره نشد. " + (self.provider_application_service.describe_failure(det) if ok else str(det)))
             return
         self.apply_api_edit(pid, fields, new_key, det)
 
     def apply_api_edit(self, pid, fields, new_key, det):
         try:
-            route_model.update_provider(self.settings, pid, label=fields["label"], base_url=fields["base_url"],
+            self.provider_application_service.update_provider(self.settings, pid, label=fields["label"], base_url=fields["base_url"],
                                         account_id=fields["account_id"], api_key=new_key)
         except ValueError as exc:
             self.api_status.setText("✕ " + str(exc))
             return
         if det is not None:
-            api_manager.apply_models(self.settings, pid, det.models, det.rate_limit)
-        route_model.ensure_routes(self.settings)
+            self.provider_application_service.apply_models(self.settings, pid, det.models, det.rate_limit)
+        self.provider_application_service.ensure_routes(self.settings)
         self.api_status.setText("✓ تغییرات ذخیره شد." + (" کلید جدید معتبر بود و مدل‌ها دوباره خوانده شدند." if det is not None else ""))
         self._api_changed(pid)
 
@@ -763,7 +724,7 @@ class ProviderSettingsMixin:
         if not pid or pid not in self.settings.get("providers", {}):
             return
         on = not bool(self.settings["providers"][pid].get("enabled"))
-        api_manager.set_api_enabled(self.settings, pid, on)
+        self.provider_application_service.set_api_enabled(self.settings, pid, on)
         self.api_status.setText("✓ API فعال شد." if on else "API غیرفعال شد (کلید و مدل‌ها حفظ شدند).")
         self._api_changed(pid)
 
@@ -771,11 +732,11 @@ class ProviderSettingsMixin:
         if not pid or pid not in self.settings.get("providers", {}):
             return
         cfg = self.settings["providers"][pid]
-        n = sum(1 for r in route_model.get_routes(self.settings) if r["provider"] == pid)
-        builtin_note = "\n(کلید پاک و Routeهای این API غیرفعال می‌شوند.)" if pid in route_model.BUILTIN else f"\n({n} Route آن هم حذف می‌شود.)"
-        if QMessageBox.question(self, "حذف API", f"«{route_model.provider_label(pid, cfg)}» حذف شود؟{builtin_note}") != QMessageBox.Yes:
+        n = sum(1 for r in self.provider_application_service.get_routes(self.settings) if r["provider"] == pid)
+        builtin_note = "\n(کلید پاک و Routeهای این API غیرفعال می‌شوند.)" if pid in self.provider_application_service.BUILTIN else f"\n({n} Route آن هم حذف می‌شود.)"
+        if QMessageBox.question(self, "حذف API", f"«{self.provider_application_service.provider_label(pid, cfg)}» حذف شود؟{builtin_note}") != QMessageBox.Yes:
             return
-        api_manager.delete_api(self.settings, pid)
+        self.provider_application_service.delete_api(self.settings, pid)
         self.api_status.setText("✓ API حذف شد.")
         self._api_changed()
 
@@ -783,7 +744,7 @@ class ProviderSettingsMixin:
         if not pid:
             return
         try:
-            api_manager.move_api(self.settings, pid, delta)
+            self.provider_application_service.move_api(self.settings, pid, delta)
         except KeyError:
             self.api_status.setText("این API هنوز Route ندارد؛ اول یک مدل برایش فعال کن.")
             return
@@ -806,10 +767,10 @@ class ProviderSettingsMixin:
         providers = self.settings.get("providers", {})
         self.route_list.blockSignals(True)
         self.route_list.clear()
-        for i, r in enumerate(route_model.get_routes(self.settings)):
+        for i, r in enumerate(self.provider_application_service.get_routes(self.settings)):
             st = status.get(r["id"], {})
-            label = route_model.provider_label(r["provider"], providers.get(r["provider"]))
-            icon = "☁" if st.get("kind", route_model.provider_kind(r["provider"], providers.get(r["provider"]))) == "cloud" else "⌂"
+            label = self.provider_application_service.provider_label(r["provider"], providers.get(r["provider"]))
+            icon = "☁" if st.get("kind", self.provider_application_service.provider_kind(r["provider"], providers.get(r["provider"]))) == "cloud" else "⌂"
             marks = ("★ دستی  " if r["id"] == manual else "") + ("⚑ پیش‌فرض  " if r["id"] == default else "")
             health = self.HEALTH_TXT.get(st.get("health", "unknown"), "")
             extra = (f" {st['last_ms']}ms" if st.get("last_ms") is not None else "") + \
@@ -835,7 +796,7 @@ class ProviderSettingsMixin:
 
     def on_route_selected(self):
         rid = self._selected_route_id()
-        route = route_model.find_route(self.settings, rid) if rid else None
+        route = self.provider_application_service.find_route(self.settings, rid) if rid else None
         self._loading_route = True
         try:
             for w in (self.route_model_edit, self.route_enabled_chk, self.route_timeout, self.route_cooldown, self.route_ctx,
@@ -847,13 +808,13 @@ class ProviderSettingsMixin:
                 self.route_status.setText("Route‌ای انتخاب نشده.")
                 return
             cfg = self.settings.get("providers", {}).get(route["provider"], {})
-            local = route_model.provider_kind(route["provider"], cfg) == "local"
-            self.route_provider_lbl.setText(f"{route_model.provider_label(route['provider'], cfg)}  ({'Local' if local else 'Cloud'})  ·  {route['id']}")
+            local = self.provider_application_service.provider_kind(route["provider"], cfg) == "local"
+            self.route_provider_lbl.setText(f"{self.provider_application_service.provider_label(route['provider'], cfg)}  ({'Local' if local else 'Cloud'})  ·  {route['id']}")
             if route["provider"] == "ollama" and self._ollama_models:
                 self.route_model_edit.set_models(self._ollama_models)
             self.route_model_edit.setText(route["model"])
             self.route_enabled_chk.setChecked(bool(route.get("enabled", True)))
-            lo, hi = route_model.LOCAL_TIMEOUT if local else route_model.CLOUD_TIMEOUT
+            lo, hi = self.provider_application_service.LOCAL_TIMEOUT if local else self.provider_application_service.CLOUD_TIMEOUT
             self.route_timeout.setRange(lo, hi)
             self.route_timeout.setValue(int(route.get("timeout", 18)))
             self.route_cooldown.setValue(int(route.get("cooldown", 45)))
@@ -887,7 +848,7 @@ class ProviderSettingsMixin:
 
     def sync_ollama_primary(self):
         """Route 'ollama' is the model of the Assistant tab: keep the two in step both ways."""
-        r = route_model.find_route(self.settings, "ollama")
+        r = self.provider_application_service.find_route(self.settings, "ollama")
         if r and r["model"] and r["model"] != self.settings.get("model"):
             self.settings["model"] = r["model"]
             self.settings.setdefault("providers", {}).setdefault("ollama", {})["model"] = r["model"]
@@ -900,7 +861,7 @@ class ProviderSettingsMixin:
         if not rid:
             return
         try:
-            route_model.update_route(self.settings, rid, model=self.route_model_edit.text(), enabled=self.route_enabled_chk.isChecked(),
+            self.provider_application_service.update_route(self.settings, rid, model=self.route_model_edit.text(), enabled=self.route_enabled_chk.isChecked(),
                                      timeout=self.route_timeout.value(), cooldown=self.route_cooldown.value(),
                                      num_ctx=self.route_ctx.value(), num_predict=self.route_predict.value())
         except ValueError as exc:
@@ -914,7 +875,7 @@ class ProviderSettingsMixin:
         if self._loading_route:
             return
         ids = [self.route_list.item(i).data(Qt.UserRole) for i in range(self.route_list.count())]
-        route_model.reorder(self.settings, ids)
+        self.provider_application_service.reorder_routes(self.settings, ids)
         self.save_now()
         QTimer.singleShot(0, self.refresh_route_list)           # renumber labels after the drop has fully finished
         QTimer.singleShot(0, lambda: None if self.busy else self.set_badge("idle", self.client.preview_route()))
@@ -923,14 +884,14 @@ class ProviderSettingsMixin:
         rid = self._selected_route_id()
         if not rid:
             return
-        ids = [r["id"] for r in route_model.get_routes(self.settings)]
-        route_model.move_route(self.settings, rid, ids.index(rid) + delta)
+        ids = [r["id"] for r in self.provider_application_service.get_routes(self.settings)]
+        self.provider_application_service.move_route(self.settings, rid, ids.index(rid) + delta)
         self.after_route_change(select=rid)
 
     def default_selected_route(self):
         rid = self._selected_route_id()
         if rid:
-            route_model.set_default(self.settings, rid)
+            self.provider_application_service.set_default_route(self.settings, rid)
             self.after_route_change(select=rid)
 
     def delete_selected_route(self):
@@ -939,7 +900,7 @@ class ProviderSettingsMixin:
             return
         if QMessageBox.question(self, "حذف Route", "این Route حذف شود؟ (Provider و API Key آن دست‌نخورده می‌مانند.)") != QMessageBox.Yes:
             return
-        route_model.remove_route(self.settings, rid)
+        self.provider_application_service.remove_route(self.settings, rid)
         self.client.reset_cooldowns(rid)
         self.after_route_change()
 
@@ -950,7 +911,7 @@ class ProviderSettingsMixin:
 
     def add_route_from_values(self, provider, model, enabled=True):
         try:
-            route = route_model.add_route(self.settings, provider, model, enabled=enabled)
+            route = self.provider_application_service.add_route(self.settings, provider, model, enabled=enabled)
         except ValueError as exc:
             self.route_status.setText("✕ " + str(exc))
             return None
@@ -964,7 +925,7 @@ class ProviderSettingsMixin:
         prov = QComboBox()
         providers = self.settings.get("providers", {})
         for name in providers:
-            prov.addItem(route_model.provider_label(name, providers[name]), name)
+            prov.addItem(self.provider_application_service.provider_label(name, providers[name]), name)
         model = ModelCombo("")
         def fill():
             if prov.currentData() == "ollama":
@@ -981,13 +942,12 @@ class ProviderSettingsMixin:
 
     def add_provider_from_values(self, label, base_url, api_key="", local=False, first_model=""):
         try:
-            pid = route_model.add_provider(self.settings, label, base_url, api_key, local)
-            if first_model.strip():
-                route_model.add_route(self.settings, pid, first_model)
+            pid = self.provider_application_service.add_provider(
+                self.settings, label, base_url, api_key, local, first_model
+            )
         except ValueError as exc:
             self.route_status.setText("✕ " + str(exc))
             return None
-        route_model.ensure_routes(self.settings)
         self.save_now()
         self.refresh_api_table(pid)
         self.refresh_route_list()
@@ -1015,11 +975,10 @@ class ProviderSettingsMixin:
                 self.api_refresh(pid, quiet=True)
 
     def remove_provider_ui(self, pid):
-        n = sum(1 for r in route_model.get_routes(self.settings) if r["provider"] == pid)
+        n = sum(1 for r in self.provider_application_service.get_routes(self.settings) if r["provider"] == pid)
         if QMessageBox.question(self, "حذف Provider", f"این Provider و {n} Route آن حذف شوند؟") != QMessageBox.Yes:
             return
-        route_model.remove_provider(self.settings, pid)
-        api_manager.registry(self.settings).pop(pid, None)
+        self.provider_application_service.remove_provider(self.settings, pid)
         self.client.reset_cooldowns()
         self.save_now()
         self.refresh_api_table()
@@ -1059,7 +1018,7 @@ class ProviderSettingsMixin:
     def scan_ollama(self):
         self.route_scan_btn.setEnabled(False)
         self.route_status.setText("در حال جست‌وجوی مدل‌های نصب‌شده‌ی Ollama…")
-        client = OllamaClient.from_settings(self.settings)
+        client = self.provider_application_service.create_ollama_client(self.settings)
         def task():
             ok, models = client.status()
             if not ok:
@@ -1077,7 +1036,7 @@ class ProviderSettingsMixin:
             return
         self._ollama_models = list(value)
         self.model.set_models(value)
-        added = route_model.add_ollama_models(self.settings, value)
+        added = self.provider_application_service.add_ollama_models(self.settings, value)
         self.save_now()
         self.refresh_route_list()
         self.route_status.setText(f"✓ {len(value)} مدل نصب‌شده پیدا شد؛ {len(added)} Route جدید اضافه شد (به‌صورت غیرفعال تا خودت فعال کنی).")
@@ -1094,8 +1053,8 @@ class ProviderSettingsMixin:
         if not ids:
             self.route_status.setText("✕ Route فعالی برای Benchmark نیست.")
             return
-        cloud = [i for i in ids if route_model.provider_kind((route_model.find_route(self.settings, i) or {}).get("provider", ""),
-                 self.settings.get("providers", {}).get((route_model.find_route(self.settings, i) or {}).get("provider", ""))) == "cloud"]
+        cloud = [i for i in ids if self.provider_application_service.provider_kind((self.provider_application_service.find_route(self.settings, i) or {}).get("provider", ""),
+                 self.settings.get("providers", {}).get((self.provider_application_service.find_route(self.settings, i) or {}).get("provider", ""))) == "cloud"]
         if cloud and QMessageBox.question(self, "Benchmark", f"{len(cloud)} Route ابری هرکدام یک درخواست کوتاه (حدود ۴۸ توکن) از سهمیه‌ی API مصرف می‌کند. ادامه بدهم؟\n"
                                                            "Routeها یکی‌یکی تست می‌شوند، نه هم‌زمان.") != QMessageBox.Yes:
             return
