@@ -43,7 +43,10 @@ from .main_window_session_support import (
 )
 
 
-class SessionMixin:
+from .window_feature_controller import WindowFeatureController
+
+
+class SessionMixin(WindowFeatureController):
     @property
     def _attach_worker(self):
         controller = getattr(self, "attachment_controller", None)
