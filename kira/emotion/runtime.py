@@ -86,9 +86,9 @@ MEMORY_RECENCY_HALF_LIFE_DAYS = 14.0
 _MEMORY_RECALL_STOP_WORDS = frozenset((
     "این", "اون", "آن", "همین", "همون", "برای", "من", "تو", "که", "از", "به", "با", "رو", "را", "در", "و",
     "چه", "چی", "چیه", "چیست", "درباره", "مورد", "برنامه", "برنامه‌ای", "ای", "گفته", "گفتم", "گفت", "بود", "بودم",
-    "هستم", "است", "هست", "دارم", "داشتم", "خیلی", "می", "کنم", "کردم", "یادم", "یادته", "بگو", "بگم",
+    "هستم", "است", "هست", "دارم", "داره", "داشتم", "داشتی", "داشت", "خیلی", "می", "کنم", "کردم", "کردی", "کردیم", "گفتی", "گفتیم", "صحبت", "قبلا", "قبلاً", "قبل", "یادم", "یادت", "یادته", "بگو", "بگم",
     "چطور", "چگونه", "میشه", "شود", "می‌شود", "هم", "یک", "the", "and", "for", "with", "that", "this", "you", "your",
-    "was", "are", "have", "what", "how", "about", "please", "tell", "me", "do", "does", "did", "i", "my", "to", "a", "an", "is", "were", "has", "had", "when", "where", "why", "who", "can", "could", "would", "should", "we", "they", "he", "she", "it", "from", "on", "in", "at", "of", "as", "by", "say", "said",
+    "was", "are", "have", "what", "how", "about", "please", "tell", "me", "do", "does", "did", "i", "my", "to", "a", "an", "is", "were", "has", "had", "when", "where", "why", "who", "can", "could", "would", "should", "we", "they", "he", "she", "it", "from", "on", "in", "at", "of", "as", "by", "say", "said", "happen", "happened", "talk", "talked", "remember", "recall", "earlier", "before", "last", "time", "thing", "things",
 ))
 _MEMORY_RECALL_CANONICAL = {
     "آزمون": "امتحان", "امتحانات": "امتحان", "امتحان": "امتحان",
