@@ -56,6 +56,7 @@ def initialize_main_window(
     coding_agent_application_service=None,
     vision_application_service=None,
     runtime_settings_application_service=None,
+    shared_skills_application_service=None,
 ):
     """Build UI widgets and bind injected services to typed Qt callback adapters."""
     self = window
@@ -77,6 +78,7 @@ def initialize_main_window(
         "coding_agent_application_service": coding_agent_application_service,
         "vision_application_service": vision_application_service,
         "runtime_settings_application_service": runtime_settings_application_service,
+        "shared_skills_application_service": shared_skills_application_service,
         "tool_agent": tool_agent,
     }
     missing = tuple(name for name, value in required.items() if value is None)
@@ -93,6 +95,7 @@ def initialize_main_window(
     self.settings = settings
     self.provider_application_service = provider_application_service
     self.runtime_settings_application_service = runtime_settings_application_service
+    self.shared_skills_application_service = shared_skills_application_service
     self.runtime_settings_application_service.configure(self.settings)
     self.coding_agent_application_service = coding_agent_application_service
     self.vision_application_service = vision_application_service

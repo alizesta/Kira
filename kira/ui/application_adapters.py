@@ -150,10 +150,7 @@ class QtSpeakerAdapter:
 def create_chat_application_ports(window) -> ChatApplicationPorts:
     """Expose the minimum UI/provider boundary required by Chat application logic."""
     return ChatApplicationPorts(
-        prompt_enricher=lambda value: brain.extend_prompt(
-            value, window._brain, window.settings, window.client,
-            character_id=window.cur.cid,
-        ),
+        prompt_enricher=lambda value: _enrich_chat_prompt(window, value),
         worker_factory=lambda **request: QtProviderWorkerAdapter(StreamWorker(**request)),
         on_dispatch=window._dispatch_application_request,
         on_event=window._on_chat_application_event,
@@ -177,3 +174,13 @@ def create_voice_application_ports(window, speaker) -> VoiceApplicationPorts:
         ),
         on_waiting=lambda: window.set_status("st_loading"),
     )
+
+
+def _enrich_chat_prompt(window, prompt):
+    """Compose the shared Skill instructions for the active character session."""
+    result = brain.extend_prompt(
+        prompt, window._brain, window.settings, window.client,
+        character_id=window.cur.cid,
+    )
+    skills = window.shared_skills_application_service.prompt_for(window.cur.cid)
+    return (str(result or "").strip() + ("\n\n" if result and skills else "") + skills).strip()
