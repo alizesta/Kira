@@ -200,6 +200,11 @@ class LocalPiperSynthesisTests(unittest.TestCase):
         self.assertTrue(hub.snapshot_download.call_args_list[0].kwargs["local_files_only"])
         self.assertFalse(hub.snapshot_download.call_args_list[1].kwargs["local_files_only"])
 
+    def test_status_exposes_optional_ezafe_diagnostics(self):
+        expected = {"enabled": True, "loaded": False, "error": "offline"}
+        with mock.patch("kira.persian_ezafe.status", return_value=expected):
+            self.assertEqual(local_voice.status()["ezafe"], expected)
+
     def test_tts_ready_requires_sidecar_configuration(self):
         with tempfile.TemporaryDirectory() as temp:
             model=Path(temp)/"custom.onnx"
