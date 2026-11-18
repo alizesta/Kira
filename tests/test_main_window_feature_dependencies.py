@@ -233,7 +233,7 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
         allowed = {}
         for namespace, constant in namespaces.items():
             match = re.search(
-                rf"{constant}\\s*=\\s*frozenset\\(\\{{([\\s\\S]*?)\\}}\\)",
+                rf"{constant}\s*=\s*frozenset\(\{{([\s\S]*?)\}}\)",
                 context_source,
             )
             self.assertIsNotNone(match, constant)
@@ -243,7 +243,7 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
             source = (UI / filename).read_text(encoding="utf-8")
             for namespace, fields in allowed.items():
                 referenced = set(re.findall(
-                    rf"self\\.context\\.{namespace}\\.([A-Za-z_]\\w*)",
+                    rf"self\.context\.{namespace}\.([A-Za-z_]\w*)",
                     source,
                 ))
                 self.assertLessEqual(
@@ -255,7 +255,7 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
         composition = (UI / "main_window_composition.py").read_text(encoding="utf-8")
         for namespace, fields in allowed.items():
             referenced = set(re.findall(
-                rf"self\\.{namespace}\\.([A-Za-z_]\\w*)",
+                rf"self\.{namespace}\.([A-Za-z_]\w*)",
                 composition,
             ))
             self.assertLessEqual(
