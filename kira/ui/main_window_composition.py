@@ -43,7 +43,6 @@ def initialize_main_window(
     memory_service=None,
     mood_service=None,
     character_service=None,
-    chat_history_service=None,
     session_manager=None,
     chat_event_publisher=None,
     chat_application_service_factory=None,
@@ -66,7 +65,6 @@ def initialize_main_window(
         "memory_service": memory_service,
         "mood_service": mood_service,
         "character_service": character_service,
-        "chat_history_service": chat_history_service,
         "chat_event_publisher": chat_event_publisher,
         "chat_application_service_factory": chat_application_service_factory,
         "session_manager": session_manager,
@@ -87,7 +85,6 @@ def initialize_main_window(
     self.memory_service = memory_service
     self.mood_service = mood_service
     self.character_service = character_service
-    self.chat_history_service = chat_history_service
     if not callable(chat_application_service_factory):
         raise TypeError("chat_application_service_factory must be callable")
     self.chat_application_service = chat_application_service_factory(create_chat_application_ports(self))
