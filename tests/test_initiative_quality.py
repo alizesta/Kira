@@ -1,5 +1,6 @@
 import math
 import unittest
+from datetime import datetime, time as datetime_time, timedelta
 
 from kira.character.initiative import (
     DAY,
@@ -7,6 +8,7 @@ from kira.character.initiative import (
     InitiativeEngine,
     build_checkin_message,
     initiative_history_state,
+    _event_not_before,
 )
 
 
@@ -97,6 +99,52 @@ class InitiativeCandidateTests(unittest.TestCase):
         self.assertEqual(
             self.engine.select_candidate([row], now=self.now + 7 * DAY + 1)["id"],
             "next-week",
+        )
+
+    def test_today_and_tonight_events_wait_until_the_local_day_has_ended(self):
+        created = datetime(2026, 11, 19, 10, 30).timestamp()
+        expected = datetime.combine(
+            datetime.fromtimestamp(created).date() + timedelta(days=1),
+            datetime_time.min,
+        ).timestamp()
+        for phrase in ("2026-11-19: he said \"امروز امتحان دارم\"", "2026-11-19: he said \"امشب جلسه دارم\"", "2026-11-19: he said \"I have a meeting tonight\""):
+            self.assertEqual(_event_not_before(phrase, created), expected)
+
+    def test_tomorrow_is_deferred_until_the_entire_tomorrow_date_has_passed(self):
+        created = datetime(2026, 11, 19, 10, 30).timestamp()
+        expected = datetime.combine(
+            datetime.fromtimestamp(created).date() + timedelta(days=2),
+            datetime_time.min,
+        ).timestamp()
+        self.assertEqual(_event_not_before("he said \"امتحان فردا دارم\"", created), expected)
+        self.assertEqual(_event_not_before("he said \"The exam is tomorrow\"", created), expected)
+
+    def test_numeric_relative_future_dates_are_deferred_in_english_and_persian(self):
+        created = datetime(2026, 11, 19, 10, 30).timestamp()
+        date = datetime.fromtimestamp(created).date()
+        two_weeks_end = datetime.combine(date + timedelta(days=15), datetime_time.min).timestamp()
+        three_days_end = datetime.combine(date + timedelta(days=4), datetime_time.min).timestamp()
+        self.assertEqual(_event_not_before("he said \"The interview is in two weeks\"", created), two_weeks_end)
+        self.assertEqual(_event_not_before("he said \"جلسه سه روز دیگر است\"", created), three_days_end)
+        self.assertEqual(_event_not_before("he said \"جلسه ۳ روز آینده است\"", created), three_days_end)
+
+    def test_relative_weekday_and_weekend_dates_do_not_fire_at_week_start(self):
+        created = datetime(2026, 11, 19, 10, 30).timestamp()
+        date = datetime.fromtimestamp(created).date()
+        expected = datetime.combine(date + timedelta(days=8), datetime_time.min).timestamp()
+        self.assertEqual(_event_not_before("he said \"The interview is next week\"", created), expected)
+        self.assertEqual(_event_not_before("he said \"آخر هفته امتحان دارم\"", created), expected)
+
+    def test_next_month_boundary_handles_november_and_december_rollover(self):
+        november = datetime(2026, 11, 19, 10, 30).timestamp()
+        december = datetime(2026, 12, 19, 10, 30).timestamp()
+        self.assertEqual(
+            datetime.fromtimestamp(_event_not_before("next month exam", november)).date(),
+            datetime(2027, 1, 1).date(),
+        )
+        self.assertEqual(
+            datetime.fromtimestamp(_event_not_before("ماه بعد امتحان دارم", december)).date(),
+            datetime(2027, 2, 1).date(),
         )
 
     def test_blank_or_control_only_memory_is_rejected(self):
