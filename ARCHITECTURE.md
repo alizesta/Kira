@@ -1,166 +1,248 @@
-# Ai1 Architecture
+> **Current architecture notice — 2026-11-17**  
+> The canonical, current architecture documentation is now [docs/ARCHITECTURE_MASTER.md](docs/ARCHITECTURE_MASTER.md), [docs/MODULE_OWNERSHIP.md](docs/MODULE_OWNERSHIP.md) and [docs/ARCHITECTURE_ROADMAP.md](docs/ARCHITECTURE_ROADMAP.md), based on `new-main` at `101361f60bb19a45484cbcdb7b52584eb3da0111`. This file contains earlier incremental migration notes and dated snapshots; statements below that refer to a previous branch/base (including the old description of `kira/main.py` as the legacy window or the old migration branch) are historical, not current-state claims. Current entry point: `kira/main.py`; Composition Root: `kira/app/bootstrap.py`; production window: `kira/ui/main_window.py`, composed from eight feature-oriented mixins. The former 5,634-line `kira/oldmain.py` was removed after moving its 322 MainWindow methods into those UI modules. TASK 013 and TASK 014 were subsequently integrated together by merged PR #48. MainWindow is no longer a legacy file monolith, although application policy remains to be moved out of its mixins.  
+>
+> ---
 
-## Product identity
-Ai1 is the application. Kira, Mika and Ren are character profiles within Ai1.
+# Kira modular architecture
 
-## Character specialties and portraits
-- `kira/characters.py` defines Kira (coding/software), Mika (medical information) and Ren (news/intelligence) as prompt/presentation profiles.
-- All characters use the same model routes, tools, computer access and safety permissions. Specialty prompts do not grant capabilities.
-- Medical guidance is informational, not diagnosis or prescribing. Each profile has its own saved conversation and long-term memory (see 'Character chat sessions'); Mika's prompt requests careful handling.
-- Current-events analysis should use available research tools, validate dates and independent sources, and disclose uncertainty.
-- Kira's original profile portrait is `assets/characters/kira.svg`; keep this original SVG as her active portrait. Ren and Mika use separate generated JPEG text assets in `assets/characters/*.jpg.b64`, decoded by `MainWindow.refresh_character_card()`.
+## Goal
+Kira is migrating incrementally toward independent UI, application logic, services and infrastructure. A module should be replaceable or optional without forcing unrelated modules to import its implementation details.
 
-## VRM avatar
-- `kira/vrm_avatar.py` `KiraAvatar` (stack of the PNG `AvatarView` and a Qt WebEngine `VrmView`) replaces `AvatarView` in the chat card and companion. The VRM page (`assets/vrm/viewer.html`) only renders; all state (blink, mouth level, emotion members, look) comes from `EmotionFaceAnimator`. Fallback to the PNG avatar is automatic. See CHANGELOG 2026-11-12.
+## Target boundaries
+- **Application Core:** startup composition, lifecycle, dependency registration and event dispatch.
+- **Chat:** message UI/controller and chat orchestration.
+- **Voice:** local STT/TTS behind a stable service contract; no chat UI imports inside the engine.
+- **Memory:** persistence and retrieval behind service interfaces.
+- **Characters:** Kira, Mika and Ren profiles and character-specific state.
+- **Avatar:** rendering, emotion and animation, independent from chat generation.
+- **Settings:** settings pages/controllers and migration.
+- **Shared Infrastructure:** storage, providers, tools, logging and device adapters.
 
-## Release packaging
-- `.gitattributes` enforces CRLF working-tree line endings for Windows `.bat` scripts.
-- The ZIP builder independently normalizes batch-file line endings to CRLF, regardless of source checkout line endings.
-- `tests/test_release.py` validates optional `psutil` and the batch-line-ending normalization helper.
-- `scripts/build_metadata.py` stamps `kira/build_info.py` (build date `YYYY-MM-DD`, time `HH:MM`, auto-detected developer) and validates version/date/time/developer plus the `CHANGELOG.md` entry; `scripts/build_release.py` calls it before packaging and CI runs it with `--check`, so incomplete metadata blocks the release. The About rows are rendered from `kira/about.py`; rule: `PROJECT_CONTEXT.md` → "Version metadata and developer attribution".
+## Current migration foundation
+- `kira/main.py` remains a thin entry point and lazy compatibility export; the production MainWindow is implemented in `kira/ui/main_window.py`.
+- `kira/app/bootstrap.py` is the composition root. It creates QApplication, applies application style, resolves application services and constructs MainWindow. `kira/app/chat_composition.py` supplies the bootstrap-owned ChatApplicationService factory; MainWindow receives that factory as a UI adapter and retains a direct-construction compatibility fallback.
+- `kira/app/event_bus.py` provides named in-process notifications. Subscribers can unsubscribe; publishing uses a snapshot so callbacks can safely change subscriptions.
+- `kira/app/dependency_container.py` provides explicit instance/factory registration and lazy singleton resolution.
+- `kira/core/interfaces/` now defines ApplicationModule lifecycle, Character, ChatHistory, Voice, Memory and Mood consumer contracts; `core.exceptions.ChatHistoryError` keeps SQLite-specific failures out of UI code. The existing voice implementation is not yet wired through its contract.
+- `kira/services/` now contains character profile, character-scoped persona-memory, shared mood and SQLite chat-history adapters; these adapters do not import UI code.
 
-## Game Mode profiles
+## Verified migration status (2026-11-16)
 
-- `story`: manual opt-in for offline/story games. Enables the existing game-window Vision sampling and local WASAPI loopback speech analysis. Existing desktop tools, including explicitly requested keyboard/mouse/UI control, remain available for offline play.
-- `competitive_safe`: manual opt-in and fail-closed default for online/PvP or unknown games. Disables game-window capture, Vision attachment creation, system/game audio loopback, foreground-process polling, and local desktop/app/file/MCP/agent tools. Ordinary chat, web tools, the user's own microphone and local wake-word interaction remain available.
-- Profile permissions are centralized in `kira/game_mode_policy.py`; unknown profile values resolve to the restrictive capability set.
-- The Game Mode toolbar menu exposes Story Mode, Competitive Safe and Off. Detection only recommends a profile; it never chooses or enables one.
-- A central `ToolRegistry.execution_guard` enforces Competitive Safe restrictions for direct tool calls, confirmation flows and planned Agent tasks. The foreground-game polling timer is also stopped while this profile is active.
-- Competitive Safe blocks gameplay input and local desktop-control tools. Both profiles prohibit overlays, game-process memory access, code injection, graphics API hooks, game-file modification and game-driver installation. Competitive Safe reduces interaction but cannot guarantee that every anti-cheat permits Ai1 to run.
+- The current migration branch is `feat/voice-performance-mcp-discovery`; work remains in PR #28 and is not merged to `main`.
+- The application foundation exists in `kira/app`: bootstrap, EventBus, dependency container and a dependency-aware ModuleManager.
+- `kira/modules/ServiceModule` now adapts service factories to the ModuleManager lifecycle: it creates services on start, publishes instances through DI, invokes optional `start`/`stop`/`dispose` (or `close`) hooks, and unregisters services on disposal. Bootstrap registers Memory, Mood, Characters and Chat History as required managed modules and refuses startup if any required module fails. This is the first live use of ModuleManager; feature-level Chat, Voice, Avatar, Web Research, Coding Agent and Provider modules are not yet independently registered. The manager implements factory registration, dependency-first startup, failure isolation, enable/disable, unregister, reverse-order stop and dispose. It is exposed through the bootstrap runtime and shuts down on QApplication exit.
+- Consumer contracts now include ApplicationModule lifecycle, Character, ChatHistory, Voice, Memory and Mood Protocols.
+- Provider transport is now formalized by `core.interfaces.ChatProvider`; built-in adapters implement the same structural contract. `infrastructure.providers.ProviderRegistry` provides thread-safe register/replace/resolve/unregister operations, and `HybridRouter.provider_class()` resolves built-in adapters through it before its configured OpenAI-compatible fallback. Provider consumers can keep using the router while adapters are replaced through the registry. MemoryDialog calls injected MemoryService and MoodService; MainWindow uses CharacterService for active profile, prompt, display-name and avatar-file operations and ChatHistoryService for SQLite reads/writes, restore and import. Chat orchestration, avatar and provider contracts still need to be defined and wired.
+- Reusable UI pieces extracted from the legacy window are now in `kira/ui/components/{model_combo,route_editor,mcp_registry_panel,ollama_provider_panel,api_add_panel}.py`, `kira/ui/dialogs/{memory,model_picker}.py` and `kira/ui/pages/{help_page,voice_page,appearance_page,characters_page,assistant_page,preferences_page}.py`. `kira/ui/main_window_support.py` imports these public UI types; inline definitions for the extracted components and page layouts have been removed. HelpPage owns its content, links and translation refresh. VoicePage owns microphone, local STT and TTS controls, debounce timer and translation refresh; MainWindow connects intent signals to existing device/model/persistence handlers. AppearancePage owns the Acrylic/Mica selector, background color preview and visual sliders; the app controller alone applies the global stylesheet and persists theme changes. CharactersPage owns profile selection, character-specific voice/resources, behavior controls and personality sliders; the host supplies profile data and handles session switching, storage and avatar operations through application methods. AssistantPage now owns assistant/persona and Ollama model controls and emits connection/load/unload/benchmark intents. PreferencesPage owns language, Web Research preferences, history/memory actions and About metadata. RouteEditor owns route ordering, failover and selected-route controls and emits selection/edit/benchmark intents. McpRegistryPanel owns MCP Registry search, result selection, status and refresh controls; registry discovery and server installation remain in the application controller. OllamaProviderPanel owns the local-provider enable and URL-edit controls; URL validation and persistence remain in the controller. ApiAddPanel owns API-key entry, account ID and model-filter controls; API discovery, validation and registration remain in the controller. These widgets expose intent signals while MainWindow temporarily retains compatibility aliases for existing settings persistence and controllers.
+- Qt background adapters (`StreamWorker`, `AttachWorker`, `SearchWorker`, `TaskWorker`, `BenchWorker`, `ProviderTestWorker`, `VisionAnalysisWorker` and `OllamaTaskWorker`) live in `kira/ui/workers.py`; `main_window_support.py` imports them for the UI adapter.
+- The former 5,634-line `kira/oldmain.py` has been removed. `kira/main.py` is now a thin entry point; `kira/ui/main_window.py` composes eight feature-oriented mixins containing the original 322 MainWindow methods. Help, Voice, Appearance, Characters, Assistant and Preferences page layouts plus reusable components remain independently owned by their UI packages. Application policy and cross-feature actions still remain in some MainWindow mixins, so the window is decomposed but not yet a presentation-only shell.
+- `kira/ui` contains reusable components, dialogs, background Qt workers and independent Help/About, Voice, Appearance, Characters, Assistant and Preferences pages plus reusable RouteEditor, McpRegistryPanel, OllamaProviderPanel and ApiAddPanel components. `kira/services` contains concrete Character, Memory, Mood and SQLite chat-history adapters; all MainWindow persona-memory operations now pass through MemoryService, so it no longer imports `persona_memory` directly. Normal application startup registers and resolves these through DependencyContainer and injects them into MainWindow; direct `MainWindow()` construction retains a compatibility fallback for existing callers/tests. ModuleManager is instantiated in bootstrap and exposed on the window, but no feature module is registered with it yet. Existing packages such as `characters`, `webintel`, `mcp` and `emotion` are capability code, not yet lifecycle-managed modules; no user-facing module enable/disable UI exists yet.
+- The extracted widget, dialog, HelpPage, VoicePage, AppearancePage, CharactersPage and worker import boundaries, Character/Memory/Mood/ChatHistory adapter behavior, character-isolated memory prompt assembly and observation routing, module dependency ordering, failure isolation, disable/re-enable and shutdown disposal have targeted unit coverage. Windows offscreen GUI tests now check that extracted page widgets are owned by their page objects and Kira/Ren/Mika profiles load into CharactersPage. Full Windows CI and a real Windows app launch are still required; this GitHub-only session cannot certify microphone, audio-device, VRM rendering or desktop behavior on the user's machine.
 
-## Game Mode and Vision
+## Chat context and prompt ownership (TASK 003)
 
-### Components
-- `kira/game_mode.py` owns foreground-window/process inspection and game-window capture.
-- `GameModeMonitor.poll()` emits a detection signal once per process ID during the current application session. Detection never changes the manual enabled state.
-- `MainWindow` owns the visible Game Mode toggle and the suggestion message.
-- The manual toggle starts off on every launch; no persisted preference can silently enable capture. Capture interval and JPEG quality are centralized as `CAPTURE_INTERVAL_MS` and `CAPTURE_JPEG_QUALITY` constants in `kira/game_mode.py`.
-- `capture_last_game()` returns a window pixmap only while the monitor's enabled flag is true.
-- While Game Mode is enabled, a 1,000 ms Qt timer samples the detected game window. `GameModeMonitor` downsizes each captured frame to fit within 854×480 while preserving aspect ratio. MainWindow retains only the newest frame in memory and encodes it as JPEG (quality 68) when a user sends a message. The existing attachment composer and HybridRouter image payload path carry only that latest frame; no continuous background upload occurs.
-- Turning Game Mode off stops the capture timer immediately, clears the cached frame, and ensures the next message is sent without a game frame.
+- `kira/chat/context_builder.py` owns final per-turn prompt composition and provider-neutral message-context assembly. Its public boundary is `ContextBuilder.build(ContextRequest) -> ContextResult`.
+- The builder imports only the Python standard library. It has no dependency on PySide6, MainWindow, ChatSession, storage, a database, provider routing, or a named character. Character identity/profile data, memory text, mood text, tool/capability context, attachment payloads and history snapshots are supplied by the caller.
+- `ContextBuilder` receives the existing character-aware system-prompt composer and optional prompt enrichers through dependency injection. The production composition injects `kira.personality.build_system_prompt` and the existing deterministic brain prompt extension; neither implementation is duplicated in the builder.
+- The builder snapshots messages, applies the current-turn attachment payload, preserves message order, and can drop the oldest complete non-system conversational turns to meet an optional character-count budget. A zero budget preserves the previous unbounded behavior. The current user message is never dropped or truncated.
+- The Chat application layer remains responsible for obtaining history and calling Memory, Mood, Character, Brain and Tool services. The builder does not read or write history, manage memory, choose a provider/model, execute workers, stream responses, or retain session state.
+- TASK 003 changes only the legacy chat request-preparation call site in `kira/oldmain.py`; it does not alter `ChatCoordinator` queue ownership. `ChatRequest` now carries optional immutable `request_id` and `session_id` fields together; the application service supplies both and correlates queued work by those stable IDs rather than Python object identity. The coordinator remains the owner of request admission, pending FIFO work and provider-worker dispatch.
+- Ownership: `kira/chat/context_builder.py` and `tests/test_chat_context_builder.py` belong to TASK 003. `kira/chat/coordinator.py` and its TASK 002 tests remain owned by TASK 002. The integration call site in `kira/oldmain.py` is shared migration infrastructure and must not absorb new coordinator responsibilities.
 
-### Game audio and quiet companion behavior
-- `kira/game_audio.py` captures the default Windows WASAPI output device using `PyAudioWPatch` WASAPI loopback devices. It listens to the combined game/system output, segments speech with the existing VAD, and transcribes speech locally through `faster-whisper`.
-- Game audio is not written to disk and is not sent to cloud STT. If local faster-whisper is unavailable or WASAPI loopback cannot open, Game Mode remains active for Vision and shows a clear audio error.
-- A local keyword filter suppresses ordinary game dialogue. Only selected urgent, mission-completion and combat phrases can trigger a short spoken alert; per-category cooldowns suppress repetition.
-- Enabling Game Mode temporarily enables the microphone and existing wake-word mode. The microphone is used for the user's wake phrase and commands; while Kira is asleep, unrelated speech is ignored. The previous mic/wake toggle states are restored when Game Mode is disabled.
-- The loopback listener stops on Game Mode shutdown and application exit.
+## Chat response lifecycle (TASK 004)
 
-### Detection limits
-- Detection is based on the foreground process executable, window title and window dimensions. Known desktop apps and launchers are excluded.
-- A game is suggested when its process/title resembles a game or its foreground window is sufficiently large.
-- This is a heuristic, not a complete game catalogue. Some games may be missed and some immersive non-game applications may be suggested.
-- A suggestion is informational; the user must click the Game Mode toggle manually.
-- Only the last detected game window is captured. If the window closes, capture returns no frame.
+- `kira/chat/response_handler.py` owns per-request provider-event processing, ordered stream aggregation, terminal-state classification and bounded cleanup. Its public boundary is `ResponseHandler.begin_request(request_id, session_id)` followed by `ResponseHandler.handle(ProviderEvent) -> ResponseStreamEvent | None`.
+- Provider events are request- and session-scoped. Chunk events carry the original chunk and the accumulated content snapshot; final events carry a `ChatResponseResult` with `request_id`, `session_id`, one of `completed` / `failed` / `cancelled`, content, optional normalized error and provider metadata.
+- The handler uses a lock to serialize concurrent callbacks, rejects session-mismatched and late events, ignores duplicate terminal callbacks, removes active request state atomically, and retains only a bounded set of terminal IDs to reject duplicates.
+- Empty successful responses remain explicitly marked as empty so the Chat application layer can preserve its existing plain-prompt retry policy. Failed/interrupted streams retain partial content and are marked incomplete; explicit or provider-reported cancellation has the `cancelled` status.
+- The handler imports only the Python standard library. It does not access UI, Qt, MainWindow, ChatSession, storage, provider clients, queues, Memory, tools or ContextBuilder.
+- `ProviderResponseRelay` in the legacy composition layer captures the immutable request/session IDs for each worker. It translates the normalized result into existing application callbacks; display, partial-response policy, persistence, speech, avatar reactions and queue draining remain outside the handler.
+- TASK 004 owns `kira/chat/response_handler.py` and `tests/test_chat_response_handler.py`. The request-specific relay and wiring in `kira/oldmain.py` are shared migration integration. TASK 002 coordinator files and TASK 003 context-builder files are not modified.
 
-### Vision model compatibility
-The existing provider-neutral image pipeline sends image attachments to the selected Route. Ai1 does not yet automatically classify every provider/model as vision-capable or reroute around text-only models. Users should select a vision-capable model in Route Manager for Game Mode image questions. A text-only model may reject the image request.
+## Evidence-based migration map
 
-## Cloud Voice
-Cloud Voice is independent of chat model routing. It maintains its own provider order, API keys, enabled flags, selected models, voice IDs and cooldown state.
+1. **Stabilize UI boundaries:** Help, Voice, Appearance, Characters, Assistant and Preferences page layouts are extracted. Continue with the Chat page and remaining registered-API/detail tables and model catalog settings subpages; each extraction keeps a compatibility import only where existing call sites need it.
+2. **Split the shell by page:** make the window responsible for navigation, shared theme and page hosting; the Voice and Characters page widgets are now independent, but their controllers still partly live in MainWindow. Continue extracting Chat and Settings controllers and remove the remaining feature orchestration from the shell. Page actions must be delegated to controllers/services rather than calling other page internals.
+3. **Extract application services:** Character, Memory, Mood and SQLite chat history have Protocols, concrete adapters and production bootstrap injection. Continue with chat orchestration, Voice, Provider, Web Research and Coding Agent contracts; wire each implementation once in bootstrap and inject it into controllers.
+4. **Move remaining persistence and adapters:** chat history now has a dedicated SQLite repository with an additive schema migration. Continue centralizing settings storage, provider clients, model discovery, audio devices and logging behind infrastructure adapters; preserve all existing user-data formats and migration behavior.
+5. **Adopt the lifecycle manager:** the generic register/start/stop/dispose engine and dependency validation are implemented and unit-tested. Next, define manifests for actual feature modules, register them from bootstrap, persist enabled state and add user-facing enable/disable controls. Optional module failure must not prevent core chat from starting.
+6. **Enforce boundaries:** add import-boundary and lifecycle tests to prevent UI imports from services, direct cross-module implementation imports, circular dependencies and unload leaks.
+7. **Validate behavior:** run the full CI suite and targeted GUI/offscreen tests at each stage; do not mark a subsystem independent until its behavior is tested through its contract. Hardware-specific audio, avatar and desktop checks remain explicit manual acceptance items.
 
-### Request flow
-1. `Speaker` receives text and splits the response into complete sentences.
-2. `CloudVoice` checks the configured TTS provider order and available keys.
-3. A provider synthesizes audio for the current sentence.
-4. The audio is passed back to the existing playback pipeline.
-5. On quota/rate/auth failures, the affected key is cooled down and the next eligible key/provider is tried.
-6. If cloud synthesis fails, the existing Edge TTS and Windows voice fallbacks remain available.
+## Dependency rules
+1. UI may call application services through interfaces; services must not import UI widgets.
+2. Chat must not reach into Voice implementation objects or MainWindow fields. Use a service contract for direct commands and EventBus for notifications.
+3. EventBus is for broadcast facts such as transcript received, reply completed or speech started/stopped. Request/response operations use explicit interfaces.
+4. Dependencies are composed at startup and passed to consumers; modules should not construct unrelated services internally.
+5. Each module owns its settings and persistence schema. Cross-module access goes through a service contract or published event.
+6. Optional modules must fail closed and leave unrelated capabilities usable.
+7. Keep compatibility imports until callers and tests have migrated; do not delete old entry points during extraction.
 
-### MiniMax Global
-- Base URL: `https://api.minimax.io/v1`
-- HTTP endpoint: `POST /t2a_v2`
-- Authentication: `Authorization: Bearer <API_KEY>`
-- Models: `speech-2.8-turbo`, `speech-2.8-hd`
-- Output: MP3, hex-encoded in the JSON response
-- MiniMax is TTS-only. It does not register an STT model.
-- API key validation performs a short real synthesis request and consumes a small amount of TTS quota.
-- API key persistence reuses CloudVoiceStore and Windows DPAPI protection.
+## Migration sequence
+1. **Foundation:** application package, bootstrap, EventBus, dependency container and stable service contracts.
+2. **UI shell:** extract MainWindow shell/navigation and page registration while retaining compatibility imports.
+3. **Page extraction:** Help, Appearance, Voice, Characters, Assistant and Preferences views and the RouteEditor/McpRegistryPanel components are extracted; next move Chat and remaining registered-API/detail tables and model catalog settings views and move all page controllers out of MainWindow.
+4. **Service extraction:** character, memory, mood and chat-history persistence already have injected service contracts. Continue moving chat request orchestration and local voice orchestration behind their own contracts; inject implementations from bootstrap.
+5. **Module lifecycle:** add manifest-based registration, dependency checks, enable/disable and safe unload only after service boundaries are stable.
+6. **Independent modules:** extract Avatar, Web Research/Agent Reach and Coding Agent without coupling them to MainWindow internals.
 
-## Shared storage
-Cloud Voice settings are written atomically outside the application installation directory.
+## Non-goals for the first migration
+- Do not rewrite all of MainWindow in one change.
+- Do not introduce a plugin/module loader before interfaces and lifecycle behavior are tested.
+- Do not route every method call through EventBus.
+- Do not change user data formats or existing behavior as part of structural extraction.
 
-
-## Ai1 Code mode (inside Kira's chat)
-
-- **Agent** (`kira/auto_agent.py::AutoAgent`): decision loop. Context includes project brief, tree, static Python AST map and `.ai1/PROJECT_MEMORY.md` when present. A separate planner call uses the `deep` role route; execution uses `surface`; review uses `reflection`. Routes fall back through the normal Route Manager if a role route is not configured or unavailable. Edits run Ruff (or Pyflakes if installed) immediately; Python syntax and JSON are also parsed. A changed task must pass a check and receive a clean independent review before `finish` is accepted.
-- **Tools** (methods `tool_*`; paths remain inside the working copy): `plan`, `list`, `map` (AST imports / classes / functions), `read`, `search`, `write`, `replace`, `delete`, `run`, `shell`, `diff`, `git status|diff` (snapshot-based, no Git metadata or writes), `lint`, `review`, and `memory` (updates `.ai1/PROJECT_MEMORY.md`). File writes still preserve CRLF. `run` permits only Python tests / syntax commands and Ruff/Pyflakes; arbitrary PowerShell still requires approval for every command, and deleting a folder requires approval.
-- **Runner** (`_exec`, `_zip`, `copy_project`, `snapshot`): processes run with `Popen`, merged output, 120 s limit, killed immediately on Stop, environment stripped of key/token/secret/password variables, logs shown in the chat. Delivery: zip of the working copy (runtime folders, caches, secrets excluded) + `AI1CODE_REPORT.md`, `testzip()` integrity check, name `<Project>_YYYY-MM-DD_HH-MM_IRST.zip` (fixed UTC+03:30; Iran has no DST), stored in `DATA_DIR/ai1code_output`.
-
-Safety model: the agent edits a COPY (`tempfile`, removed afterwards); the selected project is the restore point and is never written. Changes are tracked by SHA-1 snapshots before / after (modified, created, deleted). If the original changes on disk while the agent runs, the report lists those files. Read-only mode (questions) runs the discovery tools on the project itself with no write / run / shell tools.
-
-UI side (`kira/chat_code_ui.py::CodeChat`, `kira/chat_code.py`):
-- Entry point: none visible. `CodeChat` (created in `MainWindow.build_chat_tab`) has no button, menu entry or window (`kira/code_workspace.py` and the `</>` button were removed); Kira's tab understands coding requests from the wording.
-- `MainWindow.submit()` offers each plain-text message of Kira's tab to `CodeChat.handle(text, voice)` after the busy-queue check (typed and spoken text alike; attachments take the normal path). `chat_code.classify_intent` decides `(intent, sure)` from file references, tracebacks, project words, edit verbs, bug / feature words and the project's own vocabulary (`project_vocabulary`: file stems and folder names): `task` -> agent with start confirmation; `question` -> read-only agent; clearly casual or general programming talk -> returns False (normal chat). Ambiguous wording with a project selected goes to one short `_Job` classifier call (TASK / QUESTION / CHAT, temperature 0, 25 s timeout, any failure = CHAT); CHAT re-enters `submit` with a one-shot bypass flag, and messages typed meanwhile are queued in order. Without a project folder an ambiguous message is never guessed at; a clear coding request asks for the folder once (`ensure_project`, saved as `code_workspace_path`). Explicit overrides: `/auto`, `/patch`, `/ask`, `/run`, `/files`, `/project` ("change the project folder" in words works too), `/apply`, `/reject`, `/help`.
-- The agent runs in a `_Job` thread; events (plan, steps, test logs) are posted to Kira's session via `MainWindow._as()`. Approval requests travel as a queued signal to the UI thread and the agent thread waits (Stop counts as "no"). Busy / Stop / pending queue reuse the normal session machinery; Stop sets `auto_stop` and kills a running process.
-- The chat view is a `QTextBrowser` with `setOpenLinks(False)`; `MainWindow.on_chat_link` opens http(s)/mailto externally and routes `kira-code://apply|reject|open/<id>` to `CodeChat` (`open` only reveals folders of zips created in this session).
-- Code answers are stored in Kira's chat history but never spoken. Diff bubbles are not restored after a restart.
-
-### One-file Diff flow (`/patch @file ...`)
-- Kept from the first version: `KiraCodeEngine` (no-tools prompt) proposes the full replacement between markers, shown as a coloured Diff with approve / reject links; apply re-confirms, compares disk bytes with the snapshot (stale -> abort), keeps `.ai1code.bak`, writes atomically. Not requested for files above the context budget, non-UTF-8 or containing secrets.
-
-### Known limits
-- Git-style status/diff compare against the mission-start snapshot; branch, commit, push and true repository status operations are not implemented. There is no automatic copy-back into the original project (the person takes the zip); a mission does not survive an app restart; `shell` is not sandboxed (that is why it asks every time). Project memory persists in the delivered ZIP and is available to later missions when that ZIP is used as the project.
+## Acceptance criteria
+- Existing launch command and imports continue to work.
+- EventBus subscription/unsubscription and dependency resolution have isolated tests.
+- Extracted services can be tested without constructing MainWindow or QApplication.
+- Disabling an optional module does not prevent the application shell or text chat from starting.
 
 
-## Game detector self-exclusion
-- `GameModeMonitor.poll()` rejects the current process ID before any game-name/title heuristics or large-window checks. This prevents Ai1's own full-size window (for example, `Project Kira 1 stable`) from being suggested as a game.
+## Chat attachment controller extraction
+
+- `kira.ui.controllers.ChatAttachmentController` owns pre-send attachment selection, asynchronous file loading, cancellation, pasted-image encoding, tile lifecycle and the attachment-count limit.
+- Its UI controls, worker/tile factories, attachment API and busy-state callback are injected. It does not import or reference `MainWindow`.
+- `MainWindow` currently provides thin compatibility delegates while send/upload orchestration is migrated in later steps. The controller is composed after the chat composer is created.
+- The upload-progress presentation remains in the chat coordinator for now; it is a separate responsibility and should be extracted behind its own contract rather than coupled into the file-reading controller.
 
 
-## Native function calling
-- Tool.json_schema() is the single schema source. HybridRouter.chat_with_tools() selects an eligible route and invokes native calls only when its adapter exposes that capability.
-- The OpenAI-compatible adapter sends tools with tool_choice=auto, parses structured tool_calls, and preserves assistant/tool messages in the next request. Google AI Studio uses Google's OpenAI-compatible endpoint, so Gemini routes use this adapter.
-- Ollama uses `/api/chat` with native `tools` definitions and maps assistant tool-call/tool-result messages to Ollama's message shape. A model that explicitly rejects tools reports native support as unavailable so the router can use another native route or fall back to the text protocol.
-- ToolAgent executes the structured call through the existing registry. Validation, access manager, one-shot confirmation grants, per-turn de-duplication, and Competitive Safe guard are unchanged and remain authoritative.
-- Cloudflare and routes without native support return to the existing text protocol. Tool-call rounds are non-streaming; final user-facing text remains streamed.
+## Chat request coordinator extraction (TASK 002)
 
-- Pure foreground identity filtering lives in kira/game_detection.py and is covered by the portable tests.test_game_detection module; GameModeMonitor delegates current-PID and known Ai1/Kira title checks to it.
+- `kira.chat.ChatCoordinator` is a Qt-free, per-chat request boundary. It owns the bounded FIFO queue (three pending requests), preserves attachment and voice metadata, dispatches idle requests through an injected callback, and delegates provider-worker construction/stream-signal wiring through `ChatProviderDispatcher`.
+- Each `ChatSession` owns an optional coordinator slot; `MainWindow` composes one coordinator per session and adapts queued requests to the existing chat request pipeline. Vision cancellation, coding-agent interception, message preparation, web/image search and response presentation remain in the application adapter. Message and conversation persistence is now owned by TASK 005's ChatPersistence service. Worker creation and provider signal dispatch are routed through `ChatProviderDispatcher`; TASK 004 owns provider-event processing and normalized response lifecycle.
+- The application adapter pins each drain operation to its originating `ChatSession`. A `dispatch_scheduled` reservation remains part of FIFO ordering: new submissions must queue behind it, and a dequeued request is dispatched directly rather than re-entering admission. Removed sessions remain alive while a worker, search, Vision operation, queued item or scheduled dispatch is pending; disposal clears the queue and releases the session's coordinator/adapter closure, worker references, router, timer, relay and view. Shutdown clears all pending queues and reservations. The per-request `ProviderResponseRelay` releases itself and its Session reference after a terminal event; completed Vision workers are also deleted when their owning session drains.
+- The coordinator imports no MainWindow, Qt, storage, Session Manager, Memory, Voice, Tools, Web Research or provider implementation. Those capabilities are not reimplemented or duplicated inside it.
+- Unit tests cover immediate dispatch, FIFO ordering, queue bounds, forced deferral, callback failure isolation, per-coordinator queue isolation and the legacy-window delegation boundary. Offscreen GUI regression tests cover two background sessions completing across tab switches, FIFO dispatch after completion, deferred disposal while a worker/request remains active, coordinator/worker/resource release after session removal, and queue clearing on application shutdown.
+- This is an incremental extraction, not completion of the full Chat feature migration: request preparation, search/tool policy and presentation still remain in the application adapter. Persistence is extracted behind the TASK 005 repository/service contract.
+## Independent model-delegation contract
 
+A feature is ready to be assigned to a separate implementation model only when its boundary is explicit:
 
-## Game Mode CI matrix
-- Portable title/PID identity tests run in the Linux release job.
-- The Windows release gate runs `tests.test_game_detection` and `tests.test_game_mode` on `windows-latest` with `QT_QPA_PLATFORM=offscreen` before ZIP packaging.
-- The Windows job exercises the monitor's Qt integration with mocked foreground-window data. It cannot verify the user's real Ai1 window title, DPI/display setup, or foreground process state; those still require an interactive Windows 11 smoke test.
+1. **Single ownership:** one package owns the feature's state, behavior and tests. Other modules do not reach into its private fields.
+2. **Public surface:** expose a small API from the package `__init__.py`; keep implementation details private to the feature package.
+3. **Explicit dependencies:** constructor/function inputs or Protocol interfaces define every external dependency. Feature code must not import `MainWindow`, read its attributes, or create unrelated services globally.
+4. **Direction of control:** the application shell/bootstrap wires modules together. Feature modules communicate through their public contracts; use EventBus for notifications, not as a universal method-call router.
+5. **Replaceability:** tests can exercise the feature with fakes or adapters without constructing the whole application. Optional features have defined startup/shutdown behavior and fail without taking down unrelated features.
+6. **Change isolation:** a delegated task names the owned package, public contract, permitted dependencies and test target. A model must not modify neighboring feature packages unless the task explicitly requires a contract change.
 
-- The Windows test fixture creates a QApplication even in offscreen mode because the generic large-window heuristic queries QApplication.primaryScreen().
-
-- The Ollama native message round-trip test builds the serialized assistant arguments with `json.dumps`, then verifies the adapter restores the structured object in the outgoing Ollama request.
-
-
-## Model Discovery / Route Manager validation
-- Discovery is provider-family based: official Google model listing with pagination, OpenAI-compatible `/models`, Cloudflare model search, and Ollama's local `/api/tags` scan.
-- The API Manager registry is metadata-only and never stores API keys. Refresh marks vanished models unavailable while preserving existing Routes; newly listed models are visible but not automatically enabled.
-- Gemini's listing endpoint does not report all runtime capabilities. Tool Calling / Vision remain Unknown unless the provider explicitly reports them; actual request success is still the runtime authority.
-- UI discovery runs in TaskWorker and updates the API Details table after completion. Tests now cover Gemini pagination and the Route Manager's refresh/model-toggle wiring.
+The long-term shell is intentionally boring: bootstrap creates and wires feature modules; `MainWindow` hosts the UI and forwards user intent. Neither should own feature algorithms or persistence rules.
 
 
-## User-data migration and backup coverage
-- `storage.has_user_data` recognizes settings, chat SQLite, evidence SQLite, persona-memory JSON, Cloud Voice settings and the Hugging Face / voice / runtime cache folders.
-- `migrate_legacy` copies each missing file independently, preserving destination files and leaving legacy sources untouched. On the standard A: destination it carries forward the previous AppData data and model caches without deleting the originals.
-- `backup_user_data` copies persona JSON and Cloud Voice JSON, and uses SQLite's online backup API for both chat and evidence databases.
-- Windows stores persistent Kira data and AI caches in `A:\\Project KIRA\\Kira Attachments`. If that location is absent or not writable, it falls back to `%LOCALAPPDATA%\\Kira`. `KIRA_DATA_DIR` remains an explicit override for portable/test setups.
+## Legacy entry-point migration
 
-- The release workflow file itself is included in its path filters; workflow and permission changes therefore trigger validation.
+The monolithic application window is being retired through a controlled, reversible migration:
 
-- The release workflow has one top-level `permissions: contents: write` declaration, required by the GitHub Release action. Avoid duplicate YAML permission keys.
+1. `kira/main.py` is the stable executable entry point. `python -m kira.main` remains the supported launch command.
+2. `kira/app/bootstrap.py` is the single composition root: it creates shared infrastructure and wires application modules. Startup wiring must not be duplicated in the entry-point file.
+3. The former monolith has been split into feature-oriented UI mixins under `kira/ui/main_window_*.py`; bootstrap constructs `kira.ui.main_window.MainWindow` directly.
+4. `kira.main.MainWindow` is only a lazy compatibility export for existing imports. New production code must not import it. New feature code must not depend on MainWindow internals; `kira.oldmain` has been deleted.
+5. Continue migrating feature policy from the UI mixins into their existing application/capability owners, with public contracts and injected dependencies. Add isolated tests for each migrated boundary.
+6. Keep the launch command, settings, user data, and user-visible behavior stable while policy migration continues. `oldmain.py` has been removed; runtime and Windows launch acceptance remain outstanding.
 
-
-## Character-scoped long-term memory
-- `persona_memory.character_scope(id)` uses a context-local character ID so concurrent execution contexts do not accidentally write to another profile's memory.
-- Kira keeps the legacy `kira_persona_memory.json`; other profiles use `kira_persona_memory_<id>.json`. The external user-data directory and migration/backup logic cover all these files.
-- Kira alone uses the evidence-backed SQLite fact index. Ren/Mika facts, voice samples, moments, habits and summaries are stored in their own JSON files and never query Kira's evidence index.
-- The Memory dialog is bound to the active character. Short-term SQLite chat history remains shared; this change isolates long-term persona memory only.
-
-- The storage layer discovers every `kira_persona_memory*.json` file for migration and rolling backups, so the newly separated Ren/Mika memory stores survive data-folder migration and recovery.
-
-- The old SQLite chat schema has no character ID, so Ren/Mika must not digest its older rows or run per-profile summaries against the global chat. Kira alone retains the legacy history digest. Clearing the shared chat resets voice/digest state for all profiles while preserving their facts/moments/habits.
-- The pre-existing Kira evidence index may include unattributed facts backfilled from shared historical chat. New Ren/Mika messages are excluded; no historical attribution is invented.
+The migration reference is temporary. Its purpose is to preserve working behavior while the new application structure takes ownership; it must not become a permanent service layer or an import target for new modules.
 
 
-## Character chat sessions
-- `kira/chat_sessions.py` (Qt-free): `ChatSession` holds everything one conversation needs (busy, worker, pending queue, stream text/position, turn state, router, view, timer, badge, draft, unread). `session_property` makes MainWindow's old attribute names (`busy`, `worker`, `_stream_text`, ...) read/write the *current* session; `front_only_property` exposes one-per-computer objects (speaker, director, animator, bubble, status line, stop/send buttons, input, voice button) normally for the front session and as `NOOP`/`Muted` stand-ins for background sessions (director keeps `parse_reply/format_hint/library`).
-- `MainWindow._as(session)` runs a handler as that session (sets `cur` and temporarily `settings['active_character_id']`). Worker/timer/search signals reach the GUI thread through one `SessionRelay(QObject)` per session, which calls the normal handlers inside `_as`. `front` is the visible tab; `switch_session(cid)` changes it (theme, art, badge, draft, stop-button state), `sync_sessions()` creates/removes tabs after add/delete character.
-- Storage: `kira/memory.py` `messages.character_id`; all reads/writes/clears accept `character_id`; `read_rows_full/_merge/_write_all` carry a 4-tuple (role, content, created_at, character_id).
-- Theme: `kira/theme.py` `CHARACTER_THEMES`, `character_theme`, `character_style(theme, effect)`; `chat_render.message_html(..., accent=)`.
-- Shared on purpose: ToolAgent, EmotionDirector/animator (front only), Speaker (front only), route health/cooldowns (`states`, `cooldowns` dicts shared by the per-session routers), settings.
-- Tests: `tests/test_character_chats.py` (storage, session helpers, themes; GUI cases run only where PySide6 exists).
+## Chat persistence boundary (TASK 005)
+
+- `kira/chat/persistence.py` is the Qt-free owner of durable conversation and message storage. It defines `ChatRepository`, `SqliteChatRepository` and the application-facing `ChatPersistence` façade. SQLite connections, transactions, migrations, ordering, backups, corruption recovery, imports, snapshots and pending writes are contained in this module.
+- The production `SqliteChatHistoryService` is injected at startup and delegates through the shared `ChatPersistence` instance. MainWindow calls the service contract only; it does not open SQLite connections, issue SQL or depend on the database schema.
+- `kira/memory.py` is a compatibility façade for historical imports and integrations. It forwards the legacy function signatures to the repository. The evidence-memory index resolves message IDs through the history API; its `rows_with_ids` cursor remains ordered by monotonically increasing message ID, independently of timestamp-based history presentation.
+- `ChatPersistence` supports creating, retrieving, listing, updating, closing and deleting conversations, and appending/querying/deleting messages. A stable active conversation is resolved per character by default; explicit conversation IDs allow multiple independent conversations for one character. Character IDs are data attributes, not dependencies on character implementations.
+- Each UI `ChatSession` now retains its persisted `conversation_id`. MainWindow resolves it when the session is initialized and supplies the same ID to message writes, history restoration, prompt-context reads, web-search context, long-history memory and mode detection. The session adapter no longer joins separate conversations belonging to the same character.
+- Message records retain the legacy integer ID and timestamp and add `conversation_id`, JSON `metadata` and a `status` (`streaming`, `complete`, `interrupted`, `failed` or `cancelled`). Repeated stream snapshots can update one message by its stable message ID instead of adding duplicates. The legacy API continues to return the original role/content shape.
+- Conversation rows store a UUID identifier, character ID, title, JSON metadata, lifecycle status and creation/update timestamps. Kira, Ren, Mika and custom characters use the same repository and database; reads and deletes are scoped by character or conversation.
+- The adapter preserves the existing `kira_memory.sqlite3` file, row IDs, roles, content, timestamps, character ownership, in-memory pending writes, corruption quarantine, recovery from backups, clear snapshots, restore and import. Import is append-only: it never rewrites existing target rows; it retains source message IDs when they are unused and assigns new IDs above the existing/source maximum only for collisions. Existing deduplication and chronological presentation are preserved.
+- Schema version 1 is additive. Before changing an existing legacy schema, an SQLite online backup is stored under `snapshots/pre-migration-*`; all DDL and backfill updates run in one SQLite transaction. Legacy rows are assigned a deterministic UUIDv5 conversation per character, with empty metadata and `complete` status. Original message rows and IDs are not rewritten or deleted. The version is recorded in `persistence_schema` and `PRAGMA user_version`; newer database versions are rejected without downgrade. A fresh database does not create a misleading pre-migration snapshot.
+- Clear and per-conversation deletion take an explicit SQLite `BEGIN IMMEDIATE` lock through the safety snapshot and delete, preventing another writer from slipping messages between the backup and deletion. Normal operations on an already-migrated database do not take a schema write lock.
+- Interrupted provider responses and visible partial text saved during window shutdown are marked explicitly as `interrupted`; user-stopped output is marked `cancelled`. Existing completed-message calls retain their previous service signature.
+- `tests/test_chat_persistence_contract.py` covers dependency injection without Qt, Kira/Ren/Mika isolation, stable and multiple conversations, metadata/timestamp/status round-trip, idempotent stream updates, ownership checks, database-outage queue routing, concurrent writes, import ID preservation/collision handling and additive/rollback-safe migration. `tests/test_chat_persistence.py` and `tests/test_character_chats.py` cover restart, locking, corruption recovery, backup/restore, import, monotonic evidence cursors, partial-stream status and UI session isolation.
+
+### Validation status
+
+- Implementation and test changes are committed directly to `new-main`. The local checkout is unavailable in this execution environment, so no local Python compile/import or unittest command has been executed.
+- GitHub Actions jobs have repeatedly failed before executing steps (`steps=[]`, `logs_url=null`); this is not a passing test result and does not establish a code failure. The focused and full suites still require a runner that can actually start the jobs.
+- TASK 005 code extraction is implemented; automated/Windows acceptance remains unverified until focused tests, regression tests, Qt offscreen tests and a real Windows app smoke test execute successfully.
+
+## Chat Application Service (TASK 006)
+
+- `kira/chat/application_service.py` is the Qt-free application orchestration boundary. It owns logical request/session identity, per-session lifecycle, cancellation, terminal cleanup and application event publication.
+- The service composes the existing `ChatCoordinator`, `ContextBuilder`, `ResponseHandler` and `ChatPersistence` contracts; it does not copy their queue, prompt, stream-normalization or storage logic.
+- MainWindow submits user intent and receives request-scoped events. It no longer imports Coordinator, ContextBuilder, ResponseHandler or calls the persistence adapter directly. History reads/writes and queue draining also go through ChatApplicationService.
+- Provider attempts use internal attempt IDs while retaining the stable logical `request_id` and `session_id`. This permits the existing empty-response plain-prompt retry without reopening a terminal ResponseHandler request.
+- A successful provider attempt is presented to the application adapter before the logical request is completed, so the existing retry/presentation policy is preserved. `complete_request` persists the final assistant response before publishing the completed event. Failed, interrupted and cancelled partial output is persisted with an explicit status.
+- One coordinator and active logical request are owned per session. Tab changes cannot retarget callbacks; one session's failure/cancellation does not finalize another session.
+- Each `ChatSession` is bound to a stable persisted `conversation_id`; submit, history reads, ContextBuilder input and all message writes preserve that identity across tab switches and restarts.
+- Application shutdown delegates active-request cancellation and partial-result persistence to ChatApplicationService exactly once; shutdown partials retain the `interrupted` status while explicit user cancellation remains `cancelled`.
+- Provider callbacks are marshalled through the session's Qt relay signal before ResponseHandler and UI observers run; the application service remains Qt-free.
+- MainWindow remains responsible for UI rendering, Voice/Avatar effects, Character/Memory/Mood/Brain enrichment, Tool Agent interception, Vision and web/image search policy. Attachment file ownership and content preparation are delegated to the Chat Attachments boundary; the UI retains file selection, progress and display.
+- The focused API, contracts, lifecycle and test instructions are documented in `docs/CHAT_APPLICATION_SERVICE.md`.
+
+## Chat Events & Notification System (TASK 008)
+
+- `kira/app/event_bus.py` remains the only EventBus. `ChatEventPublisher` is a typed producer façade over the shared instance; it does not create or own another subscriber registry.
+- `kira/chat/events.py` defines the frozen `ChatEvent` data contract, validated `ChatEventType` catalogue, deeply immutable payload/metadata, UTC timestamp and bounded terminal-event de-duplication.
+- Bootstrap injects the same EventBus into ModuleManager and ChatEventPublisher, then injects the publisher into the current Chat application adapter. EventBus is closed after ModuleManager shutdown so consumers can unsubscribe during disposal.
+- ChatApplicationService publishes request-submitted/started/completed/failed/cancelled, stream-started/chunk/completed/interrupted and message-saved/persistence-failed facts because it owns those request/provider/persistence transitions. The current MainWindow publishes session-created/activated/deactivated/closed/failed and history-loaded facts; the extracted Session Lifecycle owner may later take over session transitions and extend runtime failure states.
+- Queued request correlation is retained by preserving the original immutable ChatRequest through FIFO scheduling. Event payload request_id remains the logical request identity; provider-attempt IDs are metadata/payload values rather than replacements for the logical ID.
+- EventBus serializes concurrent publications through one FIFO dispatcher. Concurrent and nested publishers enqueue without blocking and receive a queued=True report; the active dispatcher completes fan-out in sequence. Subscribers run outside the registry lock on the dispatcher thread (no Qt/thread marshalling); individual exceptions are logged and returned in EventPublishReport without stopping fan-out.
+- Typed and legacy subscribers coexist on the same named topic. Duplicate callback registration is prevented per delivery mode. Unsubscribe is idempotent; a subscription snapshot already selected for the current event is allowed to finish.
+- Request, stream and session terminal notification families are de-duplicated in a bounded publisher ledger. Stream terminal identity includes provider_request_id so plain-prompt retries remain distinct attempts; a new session-created notification clears stale terminal state for a reused session ID. This is notification de-duplication only; request/session state remains owned by its application component.
+- message_saved includes the saved text for in-process consumers. It is private application data: subscribers must not forward it externally unless their own feature contract explicitly authorizes that use.
+- Direct service calls remain mandatory when a caller needs a result or operation guarantee. EventBus is only for broadcasting completed facts, not routing all Chat method calls.
+- `tests/test_chat_events.py` is Qt-free and covers event schema/immutability, legacy compatibility, fan-out, duplicate subscriber prevention, unsubscription, failure isolation, stable snapshots, nested and concurrent FIFO delivery, session/request isolation, terminal de-duplication, shutdown and bootstrap/MainWindow integration. The portable workflow runs this suite; Draft PRs skip the Windows full suite.
+
+## Chat Session lifecycle and state ownership (TASK 007)
+
+- `kira/chat/session_manager.py` is the Qt-free owner of runtime Session identity, registration, activation, deactivation, legal state transitions, notifications, graceful close and final disposal. It manages the existing `kira.chat_sessions.ChatSession` model; it does not introduce a parallel Session model.
+- `session_id` is a generated, immutable identifier for one runtime Session lifetime. `conversation_id` remains independently owned by ChatPersistence and is bound by the application/persistence adapter after runtime Session creation. SessionManager has no Persistence dependency and never reads/writes conversations or messages.
+- Runtime states are `created`, `active`, `idle`, `closing`, `closed` and `failed`. A reentrant lock serializes transitions and ensures only one Session is active at a time. Closed Session identities cannot be reactivated; failed Sessions can only enter the closing path for cleanup.
+- State changes are published as immutable `SessionStateChanged` events. Listener failures are isolated. Repeated deactivation and close requests are idempotent.
+- Closing is graceful: the manager marks a Session closing, rejects activation, checks the injected pending-work predicate, waits for admitted work to drain, calls the injected disposer, then marks it closed. A failed disposal is surfaced as `failed` and can be retried. Closing one Session does not mutate another.
+- The existing MainWindow is retained only as a compatibility/resource adapter. Bootstrap creates and injects SessionManager; MainWindow delegates registry, creation, activation, closing and shutdown lifecycle to it. Qt resources are released by an injected callback after the pending-work check; SessionManager imports no Qt/UI modules.
+- The character-keyed `sessions` mapping is now a live read-only compatibility view. New lifecycle code must use SessionManager APIs rather than mutating the registry directly.
+- `tests/test_chat_session_manager.py` exercises runtime identity, status transitions, Kira/Ren/Mika isolation, active-session switching, graceful close with pending work, disposal retry, event subscription, idempotency and concurrent activation. Tests are pure Python and do not construct Qt or MainWindow.
+- **Application Service integration:** ChatApplicationService is the logical request owner and uses the immutable runtime `session_id`; the associated `character_id` and durable `conversation_id` remain separate fields for history persistence. MainWindow injects SessionManager from bootstrap and delegates create, activate, graceful close and resource disposal to it.
+- Windows and GUI tests are intentionally outside TASK 007's test scope.
+
+
+## Chat Attachments & Content Processing (TASK 009)
+
+- `kira/chat/attachments.py` provides the Qt-free `AttachmentManager`, immutable `Attachment` record, source/status enums and session-scoped file lifecycle. `kira/chat/attachment_content.py` owns the Qt-free, bounded format parsers; `kira.attachments` is a compatibility re-export rather than a parallel parser.
+- The manager validates the existing allowlist using both filename extension and content signatures, enforces the existing 5-file, 15 MiB image and 50 MiB file defaults, and derives MIME metadata from validated bytes.
+- Files are copied to generated paths under a manager-owned temporary root and a hashed session directory. User filenames are metadata only; reads and deletes re-check the resolved managed path and session ownership. ZIP and DOCX content processing is bounded and never extracts archive members to arbitrary paths.
+- `ChatApplicationService` registers legacy UI-produced attachment payloads against a request-scoped message key, exposes preparation/removal/cleanup operations and releases temporary files on request completion, cancellation, session close or service shutdown.
+- MainWindow and the existing attachment controller keep selection, progress and presentation responsibilities. They submit attachment payloads through ChatApplicationService; AttachmentManager returns structured text/file/image data, and ContextBuilder alone composes the provider-facing user message.
+- The current supported format set is retained: PNG, JPEG, WEBP, GIF, BMP, PDF, DOCX, ZIP, and the existing text/data/configuration/source allowlist. Audio/video decoding is not added by this task.
+- The compatibility functions remain available through both `kira.chat.attachments` and `kira.attachments` so existing paste, desktop capture, game-vision and file-upload call sites continue to use the established payload shape. The manager no longer imports the legacy parser module.
+- Contract coverage is added in `tests/test_chat_attachments.py` and `tests/test_chat_application_service.py`. Per maintainer instruction, tests are intentionally deferred until TASK 010 is complete; neither Windows nor GUI tests are requested.
+
+## Chat Commands & Actions (TASK 010)
+
+- `kira/chat/commands.py` provides the framework-independent command registry, immutable request/result contracts, parameter validation, permission checks, duplicate-result protection and cooperative cancellation.
+- `kira/chat/command_adapters.py` registers the existing usage, body-control, web/image-search, ToolAgent confirmation/task-control and fixed desktop-shortcut behaviors through injected handlers. It does not duplicate feature execution or bypass existing confirmation and safety gates.
+- `ChatApplicationService` dispatches commands against the active logical request and runtime Session identity. MainWindow supplies the existing feature owners and preserves normal provider chat when no command handles the input.
+- Desktop shortcut commands require the `desktop.launch` permission and are denied under Competitive Safe mode. ToolAgent retains ownership of sensitive-operation confirmation and task controls.
+- The command registry is scoped to the application adapter and is released with the MainWindow lifecycle. Tests cover parsing, schema validation, permission denial, session/request correlation, duplicate dispatch, cancellation and adapter compatibility.
+- Out-of-band task controls use a unique command request ID and retain the active chat request as `parent_request_id`; runtime Session identity and character-scoped ToolAgent identity are passed separately.
+- Command dispatch start/completion/failure notifications use the shared typed Chat Events publisher; the registry is cancelled by session and closed during application shutdown.
+- The complete command/handler contract, built-in command inventory, permission boundary and registration guide are documented in `docs/CHAT_COMMANDS.md`.
+
+## Chat Conversation Lifecycle (TASK 013)
+
+- `kira/chat/conversation_lifecycle.py` owns durable Conversation transitions (active, archived, trashed and legacy closed), lifecycle timestamps, explicit permanent-delete authorization and immutable operation results.
+- The service receives the shared `ChatPersistence` and `ChatEventPublisher` through constructor injection. It owns no database, EventBus, Session, Qt object or UI state.
+- Persistence remains the sole storage owner. Lifecycle status uses the existing `conversations.status` field and timestamps use the existing JSON metadata field; no parallel store or schema version bump is introduced.
+- Group archive and soft-delete operations prevalidate every target and commit through one atomic repository batch operation. Permanent deletion is single-conversation only, requires a specific authorization provider, requires the conversation to be trashed, and delegates to the repository's existing snapshot-and-delete operation.
+- Runtime Session lifecycle remains exclusively in `SessionManager`; durable Conversation lifecycle is independent. The composition root injects the lifecycle service into `ChatApplicationService`, which exposes thin delegation methods without implementing transition rules.
+- Typed conversation lifecycle notifications are published after persistence commits through the existing shared EventBus. Search can filter by conversation status; transfer preserves archived/trashed status and lifecycle metadata.
+- The full API, transition table, event payloads, authorization contract and deferred validation are documented in `docs/CHAT_CONVERSATION_LIFECYCLE.md`.
+
+## Chat Conversation Metadata & Organization (TASK 014)
+
+- `kira/chat/organization.py` owns conversation titles, tags, virtual folder assignments, favorites, categories, color/description, manual ordering and organization filters. It is Qt/UI independent and receives the existing ChatPersistence facade through a narrow repository protocol.
+- Organization data is namespaced under each conversation's existing metadata document. Existing metadata keys and message rows are preserved; no second database or SQL ownership is introduced. TASK 012's existing conversation-metadata transfer path carries the namespace unchanged.
+- Tags and folders are value-based. Empty taxonomy definitions are descriptors only until assigned; deleting a folder returns its conversations to the default `inbox`. This is an explicit limitation of the current per-conversation persistence contract.
+- Metadata notifications use the shared ChatEventPublisher event `conversation_metadata_updated`; observer failures do not undo a persisted update.
+- TASK 007 retains Session ownership, TASK 011 retains message search, and TASK 013 retains archive/restore/delete status. Organization never mutates message content or lifecycle status.
+- The persistence facade currently offers whole-document metadata updates, so concurrent external metadata writers and cross-conversation bulk deletion are not atomic. A future persistence-level patch/bulk contract is needed to close this gap.

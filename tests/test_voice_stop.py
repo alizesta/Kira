@@ -238,7 +238,7 @@ class VoiceNeverBlocksChatTests(unittest.TestCase):
 
     def test_voice_error_signal_then_next_message_still_works(self):
         w = self.win
-        w.speaker.error.emit("edge-tts: getaddrinfo failed")
+        w.speaker.error.emit("Piper local TTS: model unavailable")
         with self.reply("ادامه"):
             self.send_and_wait("پیام")
         self.assertIn("ادامه", w.chat.toPlainText())

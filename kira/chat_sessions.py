@@ -1,7 +1,7 @@
 """One independent chat session per character (Qt-free helpers so they can be tested without a GUI).
 
 Every character (Kira / Ren / Mika / custom) has its own ChatSession: its own saved history, chat view, model router,
-generation worker, pending-message queue and stream state. Several sessions can therefore generate at the same time.
+generation worker and stream state. ChatApplicationService owns the per-session pending queues and request lifecycle.
 
 MainWindow keeps its familiar attribute names (busy, worker, _stream_text, ...): they are properties that read/write the
 session that is *current* while an event is handled (see MainWindow._as). Things that exist once per computer - the
@@ -11,16 +11,17 @@ face or overwrites the status of the character you are looking at.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from uuid import uuid4
+
 # name -> default factory. Everything a single request / conversation needs lives here.
 SESSION_FIELDS = {
     "busy": lambda: False,
     "worker": lambda: None,
-    "_pending": lambda: [],               # messages typed while this character was answering (sent in order afterwards)
     "_stream_text": lambda: "",
     "_stream_pos": lambda: None,
     "_stream_dirty": lambda: False,
     "_stream_mood": lambda: None,
-    "_partial_saved": lambda: False,
     "_emotion_applied": lambda: False,
     "_body_done": lambda: [],             # body command names already performed for the message being answered (no repeats)
     "_t_req": lambda: None,
@@ -42,12 +43,21 @@ SESSION_FIELDS = {
     "_search_base": lambda: None,
     "_route_info": lambda: None,
     "_badge_phase": lambda: "idle",
+    "application_request_id": lambda: None,
 }
 
 
 class ChatSession:
-    def __init__(self, character_id: str):
+    def __init__(self, character_id: str, *, session_id: str | None = None):
         self.cid = str(character_id)
+        self.character_id = self.cid
+        self._session_id = str(session_id or uuid4())
+        self.status = "created"
+        self.created_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        self.updated_at = self.created_at
+        self.metadata = {}
+        self.last_error = None
+        self.conversation_id: str | None = None  # Durable identity owned by ChatPersistence
         for name, factory in SESSION_FIELDS.items():
             setattr(self, name, factory())
         self.view = None            # QTextBrowser of this chat
@@ -59,6 +69,11 @@ class ChatSession:
         self.draft = ""             # text typed but not sent yet
         self.unread = False         # a reply arrived while another tab was in front
         self.loaded = False         # history shown in the view
+
+    @property
+    def session_id(self) -> str:
+        """Immutable identifier for this in-memory Session lifetime."""
+        return self._session_id
 
     def __repr__(self):
         return f"<ChatSession {self.cid} busy={self.busy}>"

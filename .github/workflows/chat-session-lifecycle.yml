@@ -1,0 +1,133 @@
+name: Chat Session Lifecycle Tests
+
+on:
+  push:
+    branches: [new-main]
+  pull_request:
+    branches: [new-main]
+    paths:
+      - "kira/chat/session_manager.py"
+      - "kira/chat/application_service.py"
+      - "kira/chat/attachments.py"
+      - "kira/chat/commands.py"
+      - "kira/chat/command_adapters.py"
+      - "kira/actions.py"
+      - "kira/tools/autonomy.py"
+      - "kira/chat/events.py"
+      - "kira/chat/__init__.py"
+      - "kira/ui/main_window.py"
+      - "kira/ui/main_window_*.py"
+      - "kira/app/web_search.py"
+      - "kira/app/voice_application.py"
+      - "kira/app/voice_composition.py"
+      - "kira/core/interfaces/voice_service.py"
+      - "tests/test_voice_application.py"
+      - "tests/test_voice_application_wiring.py"
+      - "kira/app/game_mode_application.py"
+      - "kira/game_audio_policy.py"
+      - "tests/test_game_mode_application.py"
+      - "tests/test_game_audio_policy.py"
+      - "tests/test_game_mode_application_wiring.py"
+      - "tests/test_main_window_feature_dependencies.py"
+      - "tests/test_web_search_application.py"
+      - "tests/test_web_search_wiring.py"
+      - "tests/test_main_window_syntax.py"
+      - "tests/test_main_entrypoint.py"
+      - "tests/test_app_architecture.py"
+      - "kira/chat_sessions.py"
+      - "tests/test_chat_session_manager.py"
+      - "tests/test_chat_application_service.py"
+      - "tests/test_chat_attachments.py"
+      - "tests/test_chat_commands.py"
+      - "tests/test_chat_command_adapters.py"
+      - "tests/test_actions.py"
+      - "tests/test_chat_application_wiring.py"
+      - ".github/workflows/chat-session-lifecycle.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  session-manager-tests:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run Qt-free chat application and session lifecycle tests
+        run: >-
+          python -m unittest
+          tests.test_chat_application_service
+          tests.test_web_search_application
+          tests.test_web_search_wiring
+          tests.test_voice_application
+          tests.test_voice_application_wiring
+          tests.test_game_mode_application
+          tests.test_game_audio_policy
+          tests.test_game_mode_application_wiring
+          tests.test_main_window_feature_dependencies
+          tests.test_chat_application_wiring
+          tests.test_chat_session_manager
+          tests.test_chat_events
+          tests.test_chat_attachments
+          tests.test_chat_commands
+          tests.test_chat_command_adapters
+          tests.test_actions
+          tests.test_main_window_syntax
+          -v
+      - name: Check changed Python modules
+        run: >-
+          python -m py_compile
+          kira/chat/session_manager.py
+          kira/chat/application_service.py
+          kira/chat/events.py
+          kira/chat/__init__.py
+          kira/chat/attachments.py
+          kira/chat/commands.py
+          kira/chat/command_adapters.py
+          kira/actions.py
+          kira/tools/autonomy.py
+          kira/chat_sessions.py
+          kira/ui/main_window.py
+          kira/ui/main_window_support.py
+          kira/ui/main_window_root_support.py
+          kira/ui/main_window_attachments_vision_support.py
+          kira/ui/main_window_character_settings_support.py
+          kira/ui/main_window_chat_support.py
+          kira/ui/main_window_lifecycle_support.py
+          kira/ui/main_window_provider_settings_support.py
+          kira/ui/main_window_runtime_support.py
+          kira/ui/main_window_session_support.py
+          kira/ui/main_window_voice_settings_support.py
+          kira/ui/main_window_session.py
+          kira/ui/main_window_voice_settings.py
+          kira/ui/main_window_character_settings.py
+          kira/ui/main_window_provider_settings.py
+          kira/ui/main_window_lifecycle.py
+          kira/ui/main_window_attachments_vision.py
+          kira/ui/main_window_chat.py
+          kira/ui/main_window_runtime.py
+          tests/test_main_window_syntax.py
+          tests/test_main_entrypoint.py
+          tests/test_app_architecture.py
+          kira/app/bootstrap.py
+          kira/app/web_search.py
+          kira/app/voice_application.py
+          kira/app/voice_composition.py
+          kira/core/interfaces/voice_service.py
+          kira/game_audio.py
+          kira/game_audio_policy.py
+          kira/app/game_mode_application.py
+          tests/test_game_mode_application.py
+          tests/test_game_audio_policy.py
+          tests/test_game_mode_application_wiring.py
+          tests/test_voice_application.py
+          tests/test_voice_application_wiring.py
+          tests/test_web_search_application.py
+          tests/test_web_search_wiring.py
+          tests/test_chat_session_manager.py

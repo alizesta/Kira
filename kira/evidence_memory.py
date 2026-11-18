@@ -225,10 +225,8 @@ def _fact_id(subject, predicate, value) -> str:
 def _find_message_id(role, content):
     """Row id of the saved chat message with exactly this text (newest first); None when it cannot be found."""
     try:
-        from .memory import _db as chat_db
-        with chat_db() as con:
-            row = con.execute("SELECT id FROM messages WHERE role=? AND content=? ORDER BY id DESC LIMIT 1", (role, str(content))).fetchone()
-        return int(row[0]) if row else None
+        from .memory import message_id_for
+        return message_id_for(role, content, "kira")
     except Exception:                                                  # noqa: BLE001 - provenance is best effort
         return None
 

@@ -1,445 +1,251 @@
-"""Chat history (SQLite). Same public API as always: init_db, add_message, recent_messages, clear_memory, conversation_context.
+"""Backward-compatible imports for the extracted chat persistence repository.
 
-Task 02 hardening - the goal is that a chat can never silently vanish:
-* every connection is closed, with a busy timeout (no 'database is locked' / Windows file locks);
-* a database error never reaches the chat: the message is kept in memory, written on the next successful call, and
-  add_message() returns False so the window can tell the person;
-* a damaged database file is NEVER deleted: it is renamed (kira_memory.corrupt-<time>.sqlite3), readable rows are
-  salvaged, merged with the newest valid backup, and written to a fresh database;
-* clear_memory() first saves a snapshot (snapshots/cleared-<time>/) and refuses to delete if that fails;
-  restore_last_cleared() brings those messages back; import_messages() merges chats from an older database.
+New application code must depend on kira.chat.persistence. This module only
+preserves the historical public functions used by existing Kira integrations.
 """
 from __future__ import annotations
 
 import contextlib
-import shutil
 import sqlite3
-import threading
-import time
 from pathlib import Path
 
 from .config import DB_PATH
+from .chat.persistence import (
+    ChatPersistence,
+    PersistenceError,
+    _DEFAULT_REPOSITORY,
+    _character_id,
+)
 
 DB_NAME = "kira_memory.sqlite3"
 SNAPSHOTS_KEEP = 5
+DEFAULT_CHARACTER = "kira"
+ChatStoreError = PersistenceError
+
+repository = _DEFAULT_REPOSITORY
+repository._db_path = lambda: Path(DB_PATH)
+chat_persistence = ChatPersistence(repository)
+_pending = repository._pending
+_lock = repository._lock
+last_error: str | None = repository.last_error
+startup_notes = repository.startup_notes
 
 
-class ChatStoreError(RuntimeError):
-    """The chat database could not do what was asked (and nothing was lost)."""
+def _sync_in():
+    # The repository is shared with the application service; never overwrite
+    # its latest error state with this compatibility module's stale mirror.
+    repository._db_path = lambda: Path(DB_PATH)
 
 
-_lock = threading.RLock()
-_pending: list[tuple[str, str, str]] = []   # (role, content, character_id) that could not be written yet (database problem)
-DEFAULT_CHARACTER = "kira"                  # rows written before per-character chats existed belong to Kira
-last_error: str | None = None
-startup_notes: list[str] = []
+def _sync_out():
+    global last_error
+    last_error = repository.last_error
 
 
-# ---------------- low level ----------------
 @contextlib.contextmanager
 def _db(path=None):
-    con = sqlite3.connect(str(path or DB_PATH), timeout=15)
-    try:
-        with con:                            # commit on success, rollback on error
-            yield con
-    finally:
-        con.close()
+    with repository._db(path) as con:
+        yield con
 
 
 def _create(con):
-    con.execute("""CREATE TABLE IF NOT EXISTS messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        character_id TEXT NOT NULL DEFAULT 'kira'
-    )""")
-    cols = [r[1] for r in con.execute("PRAGMA table_info(messages)")]
-    if "character_id" not in cols:                      # database made by an older version: every old row is Kira's
-        con.execute("ALTER TABLE messages ADD COLUMN character_id TEXT NOT NULL DEFAULT 'kira'")
+    repository._create_schema(con)
 
 
-def _cid(character_id) -> str:
-    value = str(character_id or "").strip().lower()
-    return value or DEFAULT_CHARACTER
+def _cid(character_id):
+    return _character_id(character_id)
 
 
 def _row4(row):
-    """(role, content, created_at[, character_id]) -> 4-tuple."""
-    role, content, ts = row[0], row[1], row[2] if len(row) > 2 else ""
-    cid = row[3] if len(row) > 3 else DEFAULT_CHARACTER
-    return (role, content, ts, _cid(cid))
+    role, content = row[0], row[1]
+    stamp = row[2] if len(row) > 2 else ""
+    cid = _cid(row[3] if len(row) > 3 else None)
+    return role, content, stamp, cid
 
 
 def _data_dir() -> Path:
     return Path(DB_PATH).parent
 
 
-def _is_corruption(exc) -> bool:
-    if isinstance(exc, sqlite3.DatabaseError) and not isinstance(exc, (sqlite3.OperationalError, sqlite3.IntegrityError)):
-        return True
-    text = str(exc).lower()
-    return any(k in text for k in ("malformed", "not a database", "disk image", "corrupt", "file is encrypted"))
-
-
 def _healthy(path: Path) -> bool:
-    """True when the file is a readable SQLite database whose structure passes quick_check (or does not exist yet)."""
-    path = Path(path)
-    if not path.exists():
-        return True
-    try:
-        con = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=5)
-        try:
-            row = con.execute("PRAGMA quick_check").fetchone()
-            if not row or row[0] != "ok":
-                return False
-            tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            if "messages" in tables:
-                con.execute("SELECT COUNT(*) FROM messages").fetchone()
-            return True
-        finally:
-            con.close()
-    except sqlite3.Error:
-        return False
+    return repository._healthy(path)
 
 
-def read_rows(path) -> list[tuple[str, str, str]]:
-    """(role, content, created_at) of every readable message in a database file; partial result for a damaged file."""
-    return [(r, c, t) for r, c, t, _ in read_rows_full(path)]
+def read_rows(path):
+    return repository.read_rows(path)
 
 
-def read_rows_full(path) -> list[tuple[str, str, str, str]]:
-    """(role, content, created_at, character_id) of every readable message; partial result for a damaged file.
-    A database from before per-character chats has no character column: those rows are Kira's."""
-    rows: list[tuple[str, str, str, str]] = []
-    path = Path(path)
-    if not path.is_file():
-        return rows
-    try:
-        con = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=5)
-    except sqlite3.Error:
-        return rows
-    try:
-        try:
-            has_cid = any(r[1] == "character_id" for r in con.execute("PRAGMA table_info(messages)"))
-        except sqlite3.Error:
-            has_cid = False
-        cid_sql = "COALESCE(character_id, 'kira')" if has_cid else "'kira'"
-        cur = con.execute(f"SELECT role, content, COALESCE(created_at, ''), {cid_sql} FROM messages ORDER BY id")
-        while True:
-            try:
-                batch = cur.fetchmany(200)
-            except sqlite3.Error:
-                break                        # keep what was readable before the damaged page
-            if not batch:
-                break
-            rows.extend((str(r), str(c), str(t), _cid(k)) for r, c, t, k in batch if r in ("user", "assistant", "system") and str(c).strip())
-    except sqlite3.Error:
-        pass
-    finally:
-        con.close()
-    return rows
+def read_rows_full(path):
+    # Historical API: (role, content, timestamp, character_id).
+    return [(row[1], row[2], row[3], row[4]) for row in repository.read_rows_full(path)]
 
 
 def _merge(*sources):
-    """Union of row lists without duplicates, oldest first. Earlier sources win ties inside the same second."""
-    seen, out = set(), []
-    for order, rows in enumerate(sources):
-        for i, row in enumerate(rows):
-            role, content, ts, cid = _row4(row)
-            key = (role, content, ts, cid)
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append((ts or "", order, i, role, content, cid))
-    out.sort(key=lambda x: (x[0], x[1], x[2]))
-    return [(r, c, t, k) for t, _, _, r, c, k in out]
+    # Preserve the historical private helper's four-field row shape.
+    return [(row[1], row[2], row[3], row[4]) for row in repository._merge(*sources)]
 
 
 def _write_all(rows):
-    """Replace the table content with `rows` in ONE transaction (rolled back entirely if anything fails)."""
-    with _db() as con:
-        _create(con)
-        con.execute("DELETE FROM messages")
-        con.executemany("INSERT INTO messages(role, content, created_at, character_id) VALUES (?, ?, NULLIF(?, ''), ?)",
-                        [_row4(r) for r in rows])
+    return repository._write_all(rows)
 
 
 def _backup_dirs():
-    root = _data_dir() / "backups"
-    try:
-        return sorted((p for p in root.iterdir() if p.is_dir()), reverse=True)
-    except OSError:
-        return []
+    return repository._backup_dirs()
 
 
 def _latest_backup_rows():
-    for folder in _backup_dirs():
-        candidate = folder / DB_NAME
-        if candidate.is_file() and _healthy(candidate):
-            return read_rows(candidate), candidate
-    return [], None
+    rows, path = repository._latest_backup_rows()
+    legacy_rows = [(row[1], row[2], row[3], row[4]) for row in rows]
+    return legacy_rows, path
 
 
-def _recover(reason: str) -> str:
-    """Quarantine a damaged database (never delete it), then rebuild from salvaged rows + the newest valid backup."""
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    salvaged = read_rows(DB_PATH)
-    quarantine = Path(DB_PATH).with_name(f"kira_memory.corrupt-{stamp}.sqlite3")
-    n = 1
-    while quarantine.exists():
-        n += 1
-        quarantine = quarantine.with_name(f"kira_memory.corrupt-{stamp}-{n}.sqlite3")
-    try:
-        Path(DB_PATH).replace(quarantine)
-        for suffix in ("-journal", "-wal", "-shm"):                 # sidecar files belong to the damaged database
-            side = Path(str(DB_PATH) + suffix)
-            if side.exists():
-                side.replace(Path(str(quarantine) + suffix))
-    except OSError as exc:
-        raise ChatStoreError(f"فایل دیتابیس خراب جابه‌جا نشد: {exc}") from exc
-    backup_rows, backup = _latest_backup_rows()
-    rows = _merge(backup_rows, salvaged)
-    _write_all(rows)
-    where = f" و از پشتیبان «{backup.parent.name}» کامل شد" if backup and backup_rows else ""
-    return (f"دیتابیس گفتگو خراب بود ({reason}). فایل خراب پاک نشد و با نام «{quarantine.name}» کنار گذاشته شد؛ "
-            f"{len(salvaged)} پیام از آن نجات یافت{where}. در مجموع {len(rows)} پیام بازیابی شد.")
+def _recover(reason: str):
+    result = repository._recover(reason)
+    _sync_out()
+    return result
 
 
 def _note_error(exc):
-    global last_error
-    last_error = f"{type(exc).__name__}: {exc}"
+    repository._note_error(exc)
+    _sync_out()
 
 
-# ---------------- public API (unchanged signatures) ----------------
 def init_db() -> list[str]:
-    """Create the table, verify the file, auto-recover a damaged one. Never raises; returns notes for the person."""
-    notes: list[str] = []
-    with _lock:
-        try:
-            Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-            if not _healthy(DB_PATH):
-                notes.append(_recover("بررسی سلامت فایل ناموفق بود"))
-            with _db() as con:
-                _create(con)
-        except (sqlite3.Error, OSError, ChatStoreError) as exc:
-            _note_error(exc)
-            notes.append(f"دیتابیس گفتگو باز نشد ({exc}). گفتگو فعلاً فقط در حافظه نگه داشته می‌شود.")
-    startup_notes[:] = notes
-    return notes
+    _sync_in()
+    result = repository.init_db()
+    _sync_out()
+    return result
 
 
-def _flush_pending_locked():
-    if not _pending:
-        return
-    with _db() as con:
-        _create(con)
-        con.executemany("INSERT INTO messages(role, content, character_id) VALUES (?, ?, ?)", _pending)
-    _pending.clear()
+def add_message(role, content, character_id=None, **options) -> bool:
+    _sync_in()
+    result = repository.add_message(role, content, character_id, **options)
+    _sync_out()
+    return result
 
 
-def add_message(role, content, character_id=None) -> bool:
-    """Save one message. Returns True when it is on disk; False when the database failed (the message is kept in memory
-    and written with the next successful call, so nothing is lost while the program stays open)."""
-    global last_error
-    role, content, cid = str(role), str(content), _cid(character_id)
-    with _lock:
-        for attempt in (1, 2):
-            try:
-                _flush_pending_locked()
-                with _db() as con:
-                    _create(con)
-                    con.execute("INSERT INTO messages(role, content, character_id) VALUES (?, ?, ?)", (role, content, cid))
-                last_error = None
-                return True
-            except (sqlite3.Error, OSError) as exc:
-                _note_error(exc)
-                if attempt == 1 and _is_corruption(exc):
-                    try:
-                        startup_notes.append(_recover(str(exc)))
-                        continue
-                    except (sqlite3.Error, OSError, ChatStoreError) as rec:
-                        _note_error(rec)
-                break
-        _pending.append((role, content, cid))
-        del _pending[:-500]                         # bounded
-        return False
+def recent_messages(limit=12, character_id=None, conversation_id=None):
+    _sync_in()
+    result = repository.recent_messages(limit, character_id, conversation_id)
+    _sync_out()
+    return result
 
 
-def recent_messages(limit=12, character_id=None):
-    """Newest `limit` messages, oldest first. character_id=None: every character (the old shared chat); otherwise only that character's chat."""
-    with _lock:
-        for attempt in (1, 2):
-            try:
-                _flush_pending_locked()
-                with _db() as con:
-                    if character_id is None:
-                        rows = con.execute("SELECT role, content FROM messages ORDER BY id DESC LIMIT ?", (int(limit),)).fetchall()
-                    else:
-                        rows = con.execute("SELECT role, content FROM messages WHERE character_id = ? ORDER BY id DESC LIMIT ?",
-                                           (_cid(character_id), int(limit))).fetchall()
-                return [{"role": role, "content": content} for role, content in reversed(rows)]
-            except (sqlite3.Error, OSError) as exc:
-                _note_error(exc)
-                if attempt == 1 and _is_corruption(exc):
-                    try:
-                        startup_notes.append(_recover(str(exc)))
-                        continue
-                    except (sqlite3.Error, OSError, ChatStoreError) as rec:
-                        _note_error(rec)
-                break
-        # database unusable right now: the conversation continues from what is held in memory
-        kept = [(r, c) for r, c, k in _pending if character_id is None or k == _cid(character_id)]
-        return [{"role": r, "content": c} for r, c in kept[-int(limit):]]
+def get_messages(limit=1000, character_id=None, conversation_id=None, after_id=0):
+    _sync_in()
+    try:
+        return repository.get_messages(limit, character_id, conversation_id, after_id)
+    finally:
+        _sync_out()
 
 
 def rows_with_ids(limit=3000, after_id=0, character_id=None):
-    """[(id, role, content, created_at)] oldest first: the newest `limit` messages with id > after_id. Read-only; [] when the store is unusable.
-    Used by the evidence memory to point each fact at the exact message it came from."""
     try:
-        with _lock, _db() as con:
-            if character_id is None:
-                rows = con.execute("SELECT id, role, content, created_at FROM messages WHERE id > ? ORDER BY id DESC LIMIT ?",
-                                   (int(after_id), int(limit))).fetchall()
-            else:
-                rows = con.execute("SELECT id, role, content, created_at FROM messages WHERE id > ? AND character_id = ? ORDER BY id DESC LIMIT ?",
-                                   (int(after_id), _cid(character_id), int(limit))).fetchall()
-        return [(int(i), str(r), str(c), str(ts or "")) for i, r, c, ts in reversed(rows)]
-    except (sqlite3.Error, OSError):
-        return []
-
-
-def max_message_id() -> int:
-    try:
-        with _lock, _db() as con:
-            return int(con.execute("SELECT COALESCE(MAX(id), 0) FROM messages").fetchone()[0])
-    except (sqlite3.Error, OSError):
-        return 0
-
-
-def message_count(character_id=None) -> int:
-    try:
-        with _db() as con:
-            if character_id is None:
-                return int(con.execute("SELECT COUNT(*) FROM messages").fetchone()[0])
-            return int(con.execute("SELECT COUNT(*) FROM messages WHERE character_id = ?", (_cid(character_id),)).fetchone()[0])
-    except (sqlite3.Error, OSError):
-        return 0
-
-
-def pending_count() -> int:
-    return len(_pending)
-
-
-# ---------------- snapshots: protection against deleting by mistake ----------------
-def _snapshot(kind: str) -> Path:
-    root = _data_dir() / "snapshots"
-    root.mkdir(parents=True, exist_ok=True)
-    stamp = time.strftime("%Y%m%d-%H%M%S")
-    target, n = root / f"{kind}-{stamp}", 1
-    while target.exists():
-        n += 1
-        target = root / f"{kind}-{stamp}-{n}"
-    target.mkdir()
-    src = sqlite3.connect(str(DB_PATH), timeout=15)
-    try:
-        dst = sqlite3.connect(str(target / DB_NAME))
-        try:
-            src.backup(dst)
-        finally:
-            dst.close()
+        return repository.rows_with_ids(limit, after_id, character_id)
     finally:
-        src.close()
-    for old in sorted((p for p in root.iterdir() if p.is_dir() and p.name.startswith(kind + "-")))[:-SNAPSHOTS_KEEP]:
-        shutil.rmtree(old, ignore_errors=True)
-    return target
+        _sync_out()
+
+
+def max_message_id():
+    try:
+        return repository.max_message_id()
+    finally:
+        _sync_out()
+
+
+def message_id_for(role, content, character_id=None):
+    try:
+        return repository.message_id_for(role, content, character_id)
+    finally:
+        _sync_out()
+
+
+def message_count(character_id=None, conversation_id=None):
+    try:
+        return repository.message_count(character_id, conversation_id)
+    except (sqlite3.Error, OSError):
+        return 0
+    finally:
+        _sync_out()
+
+
+def pending_count():
+    try:
+        return repository.pending_count()
+    finally:
+        _sync_out()
+
+
+def _snapshot(kind: str):
+    return repository._snapshot(kind)
 
 
 def list_snapshots(kind="cleared"):
-    root = _data_dir() / "snapshots"
-    try:
-        return sorted((p for p in root.iterdir() if p.is_dir() and p.name.startswith(kind + "-")), reverse=True)
-    except OSError:
-        return []
+    return repository.list_snapshots(kind)
 
 
 def clear_memory(character_id=None):
-    """Delete the chat history (every character, or only `character_id`'s chat) - only after a snapshot was saved.
-    If the snapshot cannot be made nothing is deleted."""
-    with _lock:
-        try:
-            if message_count():
-                _snapshot("cleared")
-        except (sqlite3.Error, OSError) as exc:
-            raise ChatStoreError(f"نسخه‌ی پشتیبان قبل از پاک‌سازی ساخته نشد؛ چیزی پاک نشد. ({exc})") from exc
-        try:
-            with _db() as con:
-                _create(con)
-                if character_id is None:
-                    con.execute("DELETE FROM messages")
-                else:
-                    con.execute("DELETE FROM messages WHERE character_id = ?", (_cid(character_id),))
-        except (sqlite3.Error, OSError) as exc:
-            raise ChatStoreError(f"پاک‌سازی ناموفق بود: {exc}") from exc
-        if character_id is None:
-            _pending.clear()
-        else:
-            _pending[:] = [p for p in _pending if p[2] != _cid(character_id)]
+    _sync_in()
+    try:
+        return repository.clear_memory(character_id)
+    finally:
+        _sync_out()
 
 
-def import_messages(source) -> int:
-    """Merge the messages of another chat database (older version, backup, snapshot) into the current one.
-    Nothing is overwritten or removed: duplicates are skipped, order is chronological. Returns how many were added."""
-    source = Path(source)
-    if not source.is_file():
-        raise ChatStoreError("فایل انتخاب‌شده پیدا نشد.")
-    incoming = read_rows_full(source)
-    if not incoming:
-        return 0
-    with _lock:
-        try:
-            with _db() as con:
-                _create(con)
-                current = [(str(r), str(c), str(t), _cid(k)) for r, c, t, k in
-                           con.execute("SELECT role, content, COALESCE(created_at, ''), character_id FROM messages ORDER BY id")]
-        except (sqlite3.Error, OSError) as exc:
-            raise ChatStoreError(f"ورود چت ناموفق بود (چیزی تغییر نکرد): {exc}") from exc
-        merged = _merge(current, incoming)
-        added = len(merged) - len(current)
-        if added <= 0:
-            return 0                                   # nothing new: no snapshot, no rewrite
-        try:
-            if current:
-                _snapshot("before-import")             # safety copy of the chat as it is now
-            _write_all(merged)
-        except (sqlite3.Error, OSError) as exc:
-            raise ChatStoreError(f"ورود چت ناموفق بود (چیزی تغییر نکرد): {exc}") from exc
-        return added
+def import_messages(source):
+    _sync_in()
+    try:
+        return repository.import_messages(source)
+    finally:
+        _sync_out()
 
 
-def restore_last_cleared() -> int:
-    """Bring back the messages deleted by the most recent clear_memory(). Returns how many were restored."""
-    for snap in list_snapshots("cleared"):
-        candidate = snap / DB_NAME
-        if candidate.is_file():
-            return import_messages(candidate)
-    raise ChatStoreError("هیچ پاک‌سازی قبلی برای بازگردانی پیدا نشد.")
+def restore_last_cleared():
+    try:
+        return repository.restore_last_cleared()
+    finally:
+        _sync_out()
 
 
-def conversation_context(limit=12, max_chars=12000, character_id=None):
-    """Provider-neutral chat history, newest messages retained within a size budget (one character's chat when given)."""
-    messages = recent_messages(max(1, int(limit)), character_id)
-    kept = []
-    used = 0
-    for item in reversed(messages):
-        role = item.get("role")
-        content = str(item.get("content") or "").strip()
-        if role not in ("user", "assistant") or not content:
-            continue
-        content = content[-4000:]
-        cost = len(content)
-        if kept and used + cost > max_chars:
-            break
-        kept.append({"role": role, "content": content})
-        used += cost
-    return list(reversed(kept))
+def conversation_context(limit=12, max_chars=12000, character_id=None, conversation_id=None):
+    _sync_in()
+    try:
+        return repository.conversation_context(limit, max_chars, character_id, conversation_id)
+    finally:
+        _sync_out()
+
+
+def create_conversation(character_id=None, title="", metadata=None, conversation_id=None):
+    return repository.create_conversation(character_id, title, metadata, conversation_id)
+
+
+def get_or_create_conversation(character_id=None):
+    return repository.get_or_create_conversation(character_id)
+
+
+def get_conversation(conversation_id):
+    return repository.get_conversation(conversation_id)
+
+
+def list_conversations(character_id=None):
+    return repository.list_conversations(character_id)
+
+
+def update_conversation(conversation_id, **changes):
+    return repository.update_conversation(conversation_id, **changes)
+
+
+def close_conversation(conversation_id):
+    return repository.close_conversation(conversation_id)
+
+
+def delete_conversation(conversation_id):
+    return repository.delete_conversation(conversation_id)
+
+
+def update_stream_message(message_id, content, **options):
+    return repository.update_stream_message(message_id, content, **options)
+
+
+if __name__ == "__main__":
+    print("Chat database:", DB_PATH)

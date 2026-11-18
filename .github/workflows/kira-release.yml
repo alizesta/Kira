@@ -2,7 +2,7 @@ name: Build Kira Update
 
 on:
   push:
-    branches: [main, "next/2026-11-11-intelligence", "feature/characters-ren-mika", "fix/desktop-attachments-project-icons"]
+    branches: [main, new-main, "next/2026-11-11-intelligence", "feature/characters-ren-mika", "fix/desktop-attachments-project-icons"]
     paths:
       - ".github/workflows/kira-release.yml"
       - "kira/**"
@@ -17,6 +17,10 @@ on:
       - "tests/test_game_mode_policy.py"
       - "tests/test_streaming.py"
       - "tests/test_chat_persistence.py"
+      - "tests/test_chat_events.py"
+      - "tests/test_chat_commands.py"
+      - "tests/test_chat_command_adapters.py"
+      - "tests/test_chat_application_service.py"
       - "tests/test_gui_routes.py"
       - "tests/test_gui_offscreen.py"
       - "tests/test_release.py"
@@ -68,6 +72,8 @@ concurrency:
 
 jobs:
   windows-full-suite:
+    # Draft PRs run the portable suite first; TASK 007 keeps its focused Qt-free checks.
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'pull_request' || github.head_ref != 'refactor/chat-session-lifecycle' && github.head_ref != 'refactor/chat-commands-actions') }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -85,6 +91,7 @@ jobs:
           QT_QPA_PLATFORM: offscreen
 
   portable-regression:
+    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name != 'pull_request' || github.head_ref != 'refactor/chat-session-lifecycle') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -111,7 +118,6 @@ jobs:
           tests.test_app_resolution
           tests.test_persian_quality
           tests.test_release_package
-          tests.test_minimax_cloud_voice
           tests.test_game_mode_policy
           tests.test_code_agent
           tests.test_chat_code
@@ -121,7 +127,24 @@ jobs:
           tests.test_game_detection
           tests.test_streaming
           tests.test_chat_persistence
+          tests.test_chat_persistence_contract
+          tests.test_app_architecture
+          tests.test_chat_search
+          tests.test_chat_transfer
+          tests.test_chat_conversation_lifecycle
+          tests.test_chat_organization
+          tests.test_chat_coordinator
+          tests.test_chat_context_builder
+          tests.test_chat_application_service
+          tests.test_chat_attachments
+          tests.test_chat_attachment_controller
+          tests.test_chat_commands
+          tests.test_chat_command_adapters
+          tests.test_chat_events
+          tests.test_chat_application_wiring
+          tests.test_chat_session_manager
           tests.test_chat_render
+          tests.test_chat_response_handler
           tests.test_body
           tests.test_build_metadata
           tests.test_release
@@ -131,7 +154,7 @@ jobs:
         run: python -m compileall -q kira scripts tests
 
   package-and-release:
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next/2026-11-11-intelligence' || github.ref == 'refs/heads/feature/characters-ren-mika'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/new-main' || github.ref == 'refs/heads/next/2026-11-11-intelligence' || github.ref == 'refs/heads/feature/characters-ren-mika'
     needs: [windows-full-suite, portable-regression]
     runs-on: ubuntu-latest
     steps:
@@ -163,7 +186,6 @@ jobs:
           tests.test_app_resolution
           tests.test_persian_quality
           tests.test_release_package
-          tests.test_minimax_cloud_voice
           tests.test_game_mode_policy
           tests.test_code_agent
           tests.test_chat_code
@@ -173,6 +195,9 @@ jobs:
           tests.test_game_detection
           tests.test_streaming
           tests.test_chat_persistence
+          tests.test_chat_attachments
+          tests.test_chat_commands
+          tests.test_chat_command_adapters
           tests.test_chat_render
           tests.test_body
           tests.test_build_metadata

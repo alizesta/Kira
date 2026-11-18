@@ -47,18 +47,13 @@ DEFAULTS = {
     "speak_replies": True,
     "active_modes": True,                # per-message Active Mode (chat / task / plain answer): the request outranks the personality
     "stream_speech": True,               # speech starts from the first finished sentence while the reply is still being written
-    "voice_fa": "fa-IR-DilaraNeural",
-    "voice_en": "en-US-AriaNeural",
-    "voice_rate": 0,
-    "voice_pitch": 0,
+    "voice_rate": 0,                      # local Piper speech speed adjustment
     "voice_volume": 0.9,
-    "voice_style": "",                    # speaking style preset (only engines that support it use it)
-    "voice_style_degree": 50,             # 0-100, how strong the style is (ElevenLabs multilingual v2)
     "output_device": "",                  # "" = Windows default speaker; otherwise the device description
     "mic_device": "",                     # "" = Windows default microphone; otherwise the device name
     "mic_gain": 100,                      # 50-300 %: software gain of the microphone (independent of the speaker volume)
-    "local_voice_asr": True,              # Qwen3-ASR 0.6B first; Cloud Voice is the fallback
-    "local_voice_tts": True,              # Mana Persian Piper first; Cloud Voice is the fallback
+    "local_voice_asr": True,              # Qwen3-ASR first; faster-whisper is the only fallback
+    "local_voice_tts": True,              # Piper local TTS only; no network or Windows voice fallback
     "local_voice_asr_model": "Qwen/Qwen3-ASR-0.6B",
     "local_voice_tts_model": "",
     "model_filter_mode": "all",
@@ -73,7 +68,6 @@ DEFAULTS = {
     "wake_timeout": 25,
     "mic_sensitivity": 100,               # 50-200 %: lower = ignores more room noise
     "barge_in": True,                     # talking over Kira stops her (headphones give the best result)
-    "voice_ja": "ja-JP-NanamiNeural",
     "ui_lang": "fa",
     "window_effect": "acrylic",          # Windows 11: acrylic | mica | off (ignored elsewhere)
     "click_reactions": True,
@@ -189,6 +183,19 @@ def load_settings():
             LOAD_WARNINGS.append(f"فایل تنظیمات خراب بود و خوانده نشد ({exc}). با تنظیمات پیش‌فرض اجرا شد.{where}")
             return deepcopy(DEFAULTS)
         merged = {**DEFAULTS, **saved}
+        # Remove obsolete remote/edge voice selections; speech is now local Piper/Qwen/Whisper only.
+        for stale_voice_key in (
+            "voice_fa", "voice_en", "voice_ja", "voice_pitch", "voice_style", "voice_style_degree",
+            "cloud_voice_provider", "cloud_voice_id", "cloud_voices",
+        ):
+            merged.pop(stale_voice_key, None)
+        profiles = merged.get("character_voice")
+        if isinstance(profiles, dict):
+            for profile in profiles.values():
+                if isinstance(profile, dict):
+                    for stale_voice_key in ("voice_fa", "voice_en", "voice_ja", "voice_pitch", "voice_style",
+                                            "voice_style_degree", "cloud_voice_provider", "cloud_voice_id"):
+                        profile.pop(stale_voice_key, None)
         merged["api_registry"] = deepcopy(saved["api_registry"]) if isinstance(saved.get("api_registry"), dict) else {}      # never share DEFAULTS' dict
         # Stock persona texts from earlier versions are not user customisation: Kira's character now
         # lives in kira/personality.py, so clear them. A persona the user really edited is preserved

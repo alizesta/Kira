@@ -90,6 +90,7 @@ class Pending:
     created: float = field(default_factory=time.time)
     step_id: int | None = None        # the step of a task this confirmation belongs to (autonomy.py)
     plan_id: str = ""
+    session_id: str = ""
 
 
 class ToolAgent(AutonomyMixin):
@@ -110,8 +111,9 @@ class ToolAgent(AutonomyMixin):
         self._turn_id = 0
         self._turn_cache: dict[str, ToolResult] = {}
         self._memos: deque = deque(maxlen=6)
-        self._pending: Pending | None = None
-        self._pending_new = False
+        self._pending_by_session: dict[str, Pending] = {}
+        self._turn_session_id = ""
+        self._pending_new_sessions: set[str] = set()
         self._last_cats: set = set()
         self._last_used_turn = -99
         self.last_results: list[ToolResult] = []
@@ -126,11 +128,11 @@ class ToolAgent(AutonomyMixin):
             # Cancel once on entry; repeated profile refreshes must not stop allowed web research.
             if not was_safe:
                 self.request_cancel()
-            pending = self._pending
-            if pending is not None:
+            for session_id, pending in tuple(self._pending_by_session.items()):
                 tool = self.registry.get(pending.tool)
                 if tool is None or not tool_categories_allowed("competitive_safe", tool.categories):
-                    self._pending = None
+                    self._pending_by_session.pop(session_id, None)
+                    self._pending_new_sessions.discard(session_id)
 
     def _game_mode_execution_guard(self, tool):
         """The ONE app-level gate for tool execution (ToolRegistry.execution_guard). It must hold on every path,
@@ -162,11 +164,12 @@ class ToolAgent(AutonomyMixin):
             return 4
 
     # ------------------------------------------------------------ planning (cheap, deterministic, no model call)
-    def begin_turn(self):
-        """Call once per NEW user message (not for the automatic plain retry of the same message)."""
+    def begin_turn(self, session_id: str | None = None):
+        """Call once per NEW user message and bind confirmations to its character session."""
+        self._turn_session_id = str(session_id or "")
         self._turn_id += 1
         self._turn_cache = {}
-        self._pending_new = False
+        self._pending_new_sessions.discard(self._turn_session_id)
         self.last_results = []
         self._cancel.clear()
         WEB_CANCEL.clear()
@@ -252,40 +255,58 @@ class ToolAgent(AutonomyMixin):
             if line:
                 self._memos.append((time.time(), line[:300]))
 
-    def clear_session(self):
+    def clear_session(self, session_id: str | None = None):
         self.clear_tasks()
         self._memos.clear()
-        self._pending = None
+        if session_id is None:
+            self._pending_by_session.clear()
+            self._pending_new_sessions.clear()
+        else:
+            owner = str(session_id)
+            self._pending_by_session.pop(owner, None)
+            self._pending_new_sessions.discard(owner)
         self._turn_cache = {}
         ctx = getattr(self.registry, "web_context", None)
         if ctx is not None:
             ctx.store.clear()                                # the temporary research memory goes with the chat
 
     # ------------------------------------------------------------ confirmation of level-3 tools
-    def has_pending(self) -> bool:
-        return self._pending is not None and time.time() - self._pending.created <= CONFIRM_TTL
+    def has_pending(self, session_id: str | None = None) -> bool:
+        owner = self._turn_session_id if session_id is None else str(session_id)
+        pending = self._pending_by_session.get(owner)
+        return pending is not None and time.time() - pending.created <= CONFIRM_TTL
 
-    def handle_confirmation_reply(self, text: str):
-        """Called with every user message BEFORE the model is asked. Returns the text to show, or None when the message is
-        not an answer to a pending confirmation (then it is handled normally and a stale confirmation is dropped)."""
-        p = self._pending
-        if p is None:
+    def has_new_pending_confirmation(self, session_id: str | None = None) -> bool:
+        owner = self._turn_session_id if session_id is None else str(session_id)
+        return owner in self._pending_new_sessions
+
+    def handle_confirmation_reply(self, text: str, *, session_id: str | None = None):
+        """Resolve only a pending confirmation owned by the current chat session."""
+        owner = self._turn_session_id if session_id is None else str(session_id)
+        pending = self._pending_by_session.get(owner)
+        if pending is None:
             return None
-        if time.time() - p.created > CONFIRM_TTL:
-            self._pending = None
+        if time.time() - pending.created > CONFIRM_TTL:
+            self._pending_by_session.pop(owner, None)
+            self._pending_new_sessions.discard(owner)
             return None
-        t = re.sub(r"\s+", " ", str(text or "").lower().translate(_NORM)).strip(" .!؟?،,")
-        words = len(t.split())
-        if t and words <= 8 and CANCEL_RX.search(t):
-            self._pending = None
-            return "باشه، لغو شد. هیچ تغییری ندادم." + self._after_confirm(p, None, False)
-        if t and words <= 8 and is_bare_confirmation(t):
-            self._pending = None
-            self.registry.access.grant(p.tool, p.args)         # one-shot, bound to exactly this tool + these arguments
-            res = self.registry.execute(p.tool, p.args, confirmed=True)
-            self._memoize(res)
-            return (("✅ " + res.text) if res.ok else f"❌ انجام نشد: {res.text}") + self._after_confirm(p, res, True)
-        self._pending = None                                 # the user went on to something else: the old question is void
+        normalized = re.sub(
+            r"\s+", " ", str(text or "").lower().translate(_NORM)
+        ).strip(" .!؟?،,")
+        words = len(normalized.split())
+        if normalized and words <= 8 and CANCEL_RX.search(normalized):
+            self._pending_by_session.pop(owner, None)
+            self._pending_new_sessions.discard(owner)
+            return "باشه، لغو شد. هیچ تغییری ندادم." + self._after_confirm(pending, None, False)
+        if normalized and words <= 8 and is_bare_confirmation(normalized):
+            self._pending_by_session.pop(owner, None)
+            self._pending_new_sessions.discard(owner)
+            self.registry.access.grant(pending.tool, pending.args)
+            result = self.registry.execute(pending.tool, pending.args, confirmed=True)
+            self._memoize(result)
+            return (("✅ " + result.text) if result.ok else f"❌ انجام نشد: {result.text}") + self._after_confirm(pending, result, True)
+        self._pending_by_session.pop(owner, None)
+        self._pending_new_sessions.discard(owner)
         return None
 
     # ------------------------------------------------------------ cancel (Stop button)
@@ -312,8 +333,11 @@ class ToolAgent(AutonomyMixin):
             res = self.registry.execute(name, args)
             self._turn_cache[sig] = res
             if res.status == NEEDS_CONFIRM:
-                self._pending = Pending(res.tool, dict(res.args), res.summary)
-                self._pending_new = True
+                self._pending_by_session[self._turn_session_id] = Pending(
+                    res.tool, dict(res.args), res.summary,
+                    session_id=self._turn_session_id,
+                )
+                self._pending_new_sessions.add(self._turn_session_id)
             else:
                 self._memoize(res)
             if on_tool:
@@ -385,7 +409,7 @@ class ToolAgent(AutonomyMixin):
                         continue
                     text = str(native.get("text") or "").strip()
                     if text:
-                        if self._pending_new and not re.search(r"تأیید|تایید|confirm", text):
+                        if self.has_new_pending_confirmation(self._turn_session_id) and not re.search(r"تأیید|تایید|confirm", text):
                             text += "\n\n(برای انجام همین کار «تأیید» بنویس؛ برای انصراف «لغو».)"
                         emit(text)
                         return self._final(native, text, executed)
@@ -430,7 +454,7 @@ class ToolAgent(AutonomyMixin):
                 emit(text)
                 return self._final(res, text, executed)
             text = gate.visible
-            if self._pending_new and not re.search(r"تأیید|تایید|confirm", text):
+            if self.has_new_pending_confirmation(self._turn_session_id) and not re.search(r"تأیید|تایید|confirm", text):
                 footer = "\n\n(برای انجام همین کار «تأیید» بنویس؛ برای انصراف «لغو».)"
                 emit(footer)
                 text += footer

@@ -39,7 +39,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(s["providers"]["ollama"]["num_ctx"], 4096)   # new key got its default
         self.assertEqual(s["providers"]["ollama"]["keep_alive"], "2m")
         self.assertEqual(s["provider_order"], ["cloudflare", "groq", "mistral", "openrouter", "ollama"])
-        self.assertEqual(config.VERSION, "1 stable")
+        self.assertEqual(config.VERSION, "1.1")
 
     def test_01b_retired_groq_models_migrate(self):
         for old, new in (("llama-3.3-70b-versatile", "openai/gpt-oss-120b"), ("llama-3.1-8b-instant", "openai/gpt-oss-20b")):

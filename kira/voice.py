@@ -1,12 +1,9 @@
-"""Kira's speech pipeline: local Persian Piper -> Windows SAPI -> Edge TTS -> Cloud Voice.
-Audio is played through Qt; its loudness envelope drives the mouth movement."""
-import asyncio
+"""Kira local-only speech output: Piper synthesis and Qt audio playback."""
 import hashlib
 import json
 import math
 import os
 import re
-import sys
 import tempfile
 import threading
 import wave
@@ -22,17 +19,6 @@ PIPER_FA = "Mana Persian Piper"
 CACHE_DIR = DATA_DIR / "voice_cache"
 CACHE_DIR.mkdir(exist_ok=True)
 HOP_MS = 40
-SAPI_SCRIPT = r"""
-Add-Type -AssemblyName System.Speech
-$s = New-Object System.Speech.Synthesis.SpeechSynthesizer
-try { $s.SelectVoiceByHints([System.Speech.Synthesis.VoiceGender]::NotSet, [System.Speech.Synthesis.VoiceAge]::NotSet, 0, [System.Globalization.CultureInfo]::GetCultureInfo($args[2])) } catch {}
-$s.Rate = [int]$args[3]
-$s.SetOutputToWaveFile($args[1])
-$s.Speak([IO.File]::ReadAllText($args[0], [Text.Encoding]::UTF8))
-$culture = $s.Voice.Culture.Name
-$s.Dispose()
-Write-Output $culture
-"""
 
 
 def _envelope(pcm, rate):
@@ -40,8 +26,10 @@ def _envelope(pcm, rate):
     import numpy as np
     a = pcm.astype(np.float32) / 32768.0
     hop = max(1, rate * HOP_MS // 1000)
-    n = max(1, len(a) // hop)
-    env = np.sqrt((a[:n * hop].reshape(n, hop) ** 2).mean(axis=1))
+    n = max(1, (len(a) + hop - 1) // hop)
+    # Pad the final hop so even a very short valid utterance cannot fail reshape().
+    padded = np.pad(a, (0, n * hop - len(a)))
+    env = np.sqrt((padded.reshape(n, hop) ** 2).mean(axis=1))
     ref = float(np.percentile(env, 95)) or 1.0
     return (np.clip(env / ref, 0, 1) ** 0.8).tolist()
 
@@ -57,13 +45,6 @@ def clean_for_speech(text):
     text = re.sub(r"[*_`#>~|]", "", text)
     return re.sub(r"\s+", " ", text).strip()
 
-
-def pick_voice(text, settings):
-    if re.search(r"[\u3040-\u30FF\u4E00-\u9FFF]", text):
-        return settings.get("voice_ja") or "ja-JP-NanamiNeural"
-    latin = len(re.findall(r"[A-Za-z]", text))
-    arabic = len(re.findall(r"[\u0600-\u06FF]", text))
-    return settings.get("voice_en") if latin > arabic else settings.get("voice_fa")
 
 
 PREFETCH = 2                    # sentences made ahead of the one that is playing
@@ -85,7 +66,6 @@ class _Session:
         self.playing = False
         self.worker = None
         self.cond = threading.Condition()
-        self.notes = set()              # Cloud Voice notes already sent in this reply
         self.error_sent = False
         self.streaming = False          # fed while the reply is still being written
 
@@ -100,7 +80,6 @@ class Speaker(QObject):
     cancelled = Signal()
     level = Signal(float)
     error = Signal(str)
-    cloud_note = Signal(str)            # Cloud Voice switched key / provider, or fell back to the local voice
     _ready = Signal(int, int, str, list)
     _failed = Signal(int, str)
 
@@ -129,6 +108,15 @@ class Speaker(QObject):
         self._devices = None            # created lazily on first playback (needs a working audio backend)
         self._prefer_default_output = False  # do not reuse a stale endpoint after Windows invalidates it
         self._stream_dead = False       # a live reply was stopped (barge-in / stop / device change): its rest is NOT spoken
+        if bool(self.settings.get("local_voice_tts", True)):
+            try:
+                from . import local_voice
+                selected_tts = self.settings.get("local_voice_tts_model", "")
+                if local_voice.tts_ready(selected_tts):
+                    threading.Thread(target=lambda: local_voice.warmup_tts(selected_tts),
+                                     daemon=True, name="kira-tts-warmup").start()
+            except Exception:
+                pass
 
     def _watch_devices(self):
         if self._devices is None:
@@ -344,177 +332,60 @@ class Speaker(QObject):
             pass
 
     def _synth(self, s, idx, text):
-        """One sentence -> (audio file, envelope), or None when every engine failed. Cloud Voice, then Edge, then Windows voices."""
-        voice = pick_voice(text, self.settings)
-        r = max(-50, min(50, int(self.settings.get("voice_rate", 0)) + s.rate))
-        p = max(-50, min(50, int(self.settings.get("voice_pitch", 0)) + s.pitch))
-        cloud = None
-        try:
-            from . import cloud_voice
-            svc = cloud_voice.service()
-            cloud = svc if svc.tts_ready() else None
-        except Exception:                      # Cloud Voice must never be able to break the normal voice
-            cloud = None
-        sig = cloud.tts_signature() if cloud else ""
-        style = str(self.settings.get("voice_style") or "")
-        degree = int(self.settings.get("voice_style_degree", 50))
-        local_model = str(self.settings.get("local_voice_tts_model") or "")
-        cloud_voices = json.dumps(self.settings.get("cloud_voices", {}) or {}, ensure_ascii=False, sort_keys=True)
-        key = hashlib.sha1((
-            f"local-piper-v2|{bool(self.settings.get('local_voice_tts', True))}|{local_model}|{cloud_voices}|"
-            f"{voice}|{r}|{p}|{text}|{sig}|{style}|{degree}"
-        ).encode("utf-8")).hexdigest()[:20]
+        """Synthesize one sentence using the configured local Piper voice only."""
+        from . import local_voice
+        model_path = str(self.settings.get("local_voice_tts_model") or "").strip()
+        if not bool(self.settings.get("local_voice_tts", True)):
+            raise RuntimeError("استفاده از TTS محلی غیرفعال است؛ از بخش مدل‌های Local آن را فعال کن.")
+        if not local_voice.tts_ready(model_path):
+            raise RuntimeError("موتور TTS محلی Piper آماده نیست؛ مدل محلی را از بخش Local نصب یا انتخاب کن.")
+        rate = max(-50, min(50, int(self.settings.get("voice_rate", 0)) + s.rate))
+        cache_key = hashlib.sha1(f"local-piper-v3|{model_path}|{rate}|{text}".encode("utf-8")).hexdigest()[:20]
         tag = f"kira_{s.gen}_{idx}"
         base = str(CACHE_DIR) if s.cache else self._tmp
-        cw, cj = os.path.join(base, key + ".wav"), os.path.join(base, key + ".json")
-        if s.cache and os.path.exists(cw) and os.path.exists(cj):
-            with open(cj, encoding="utf-8") as f:
-                return cw, json.load(f)
-        errors = []
-        # 0) Offline Persian TTS. It only converts text to audio; chat remains on the selected chat route.
-        use_local_piper = bool(self.settings.get("local_voice_tts", True)) or voice == PIPER_FA
-        if use_local_piper and re.search(r"[\u0600-\u06FF]", text):
+        wav_path, meta_path = os.path.join(base, cache_key + ".wav"), os.path.join(base, cache_key + ".json")
+        if s.cache and os.path.isfile(wav_path) and os.path.isfile(meta_path):
             try:
-                from . import local_voice
-                if local_voice.tts_ready(self.settings.get("local_voice_tts_model", "")):
-                    audio = local_voice.synthesize_persian(text, self.settings.get("local_voice_tts_model", ""), r)
-                    return self._synth_cloud(tag, audio, "wav", s.cache, base, key, cw, cj)
-            except Exception as e:
-                errors.append(f"local-persian-tts: {type(e).__name__}: {e}")
-                if "local-tts-down" not in s.notes:
-                    s.notes.add("local-tts-down")
-                    self.cloud_note.emit(f"TTS محلی فارسی ناموفق بود؛ موتور بعدی امتحان می‌شود. ({type(e).__name__}: {str(e)[:220]})")
-        # If the custom Piper voice fails, use the configured Edge voice as fallback.
-        fallback_voice = (self.settings.get("voice_fa") or "fa-IR-DilaraNeural") if voice == PIPER_FA else voice
-        # Offline Windows voices are tried before any network-backed TTS service.
-        if sys.platform == "win32":
-            try:
-                return self._synth_sapi(tag, text, fallback_voice, r, s.cache, cw, cj)
-            except Exception as e:
-                errors.append(f"Windows: {e}")
-        # Edge neural voices are network-backed but remain a legacy fallback before Cloud Voice.
-        try:
-            return self._synth_edge(tag, text, fallback_voice, r, p, s.cache, base, key, cw, cj)
-        except Exception as e:
-            errors.append(f"edge-tts: {type(e).__name__}: {e}")
-        # Cloud Voice is the final TTS provider fallback, after the available local engines.
-        if cloud is not None:
-            try:
-                audio, ext, info = cloud.synthesize(text, opts={"rate": r, "style": style, "style_degree": degree, "voices": self.settings.get("cloud_voices", {})})
-                if info.get("failovers") and "failover" not in s.notes:
-                    s.notes.add("failover")
-                    self.cloud_note.emit("Cloud Voice (TTS): " + " ← ".join(info["failovers"]) + f" → {info['provider']} / {info['key']}")
-                return self._synth_cloud(tag, audio, ext, s.cache, base, key, cw, cj)
-            except Exception as e:
-                errors.append(f"cloud: {e}")
-                if "cloud-down" not in s.notes:
-                    s.notes.add("cloud-down")
-                    self.cloud_note.emit(f"Cloud Voice (TTS) ناموفق بود؛ همهٔ موتورهای صوتی امتحان شدند. ({str(e)[:160]})")
-        if not s.error_sent:
-            s.error_sent = True
-            self._failed.emit(s.gen, "ساخت صدا ناموفق بود. " + " | ".join(errors))
-        return None
+                with wave.open(wav_path, "rb") as existing:
+                    if existing.getnframes() > 0:
+                        with open(meta_path, encoding="utf-8") as stream:
+                            envelope = json.load(stream)
+                        if isinstance(envelope, list):
+                            return wav_path, envelope
+            except (OSError, ValueError, wave.Error, json.JSONDecodeError):
+                for stale in (wav_path, meta_path):
+                    try: os.remove(stale)
+                    except OSError: pass
+        audio = local_voice.synthesize_persian(text, model_path, rate)
+        return self._save_local_wav(tag, audio, s.cache, wav_path, meta_path)
 
-    def _synth_edge(self, tag, text, voice, rate, pitch, cache, base, key, cw, cj):
-        import edge_tts
-        mp3 = os.path.join(base, (key if cache else tag) + ".mp3")
-        if cache and os.path.exists(mp3):
-            return mp3, []
-
-        async def run():
-            await edge_tts.Communicate(text, voice, rate=f"{rate:+d}%", pitch=f"{pitch:+d}Hz").save(mp3)
-        asyncio.run(run())
-        try:
-            import miniaudio
-            import numpy as np
-        except ImportError:
-            return mp3, []                     # play the mp3 directly, approximate lip-sync
-        dec = miniaudio.decode_file(mp3, output_format=miniaudio.SampleFormat.SIGNED16,
-                                    nchannels=1, sample_rate=SR)
-        pcm = np.frombuffer(dec.samples, dtype=np.int16)
-        wav = cw if cache else os.path.join(self._tmp, f"{tag}.wav")
-        with wave.open(wav, "wb") as w:
-            w.setnchannels(1)
-            w.setsampwidth(2)
-            w.setframerate(SR)
-            w.writeframes(pcm.tobytes())
-        env = _envelope(pcm, SR)
-        os.remove(mp3)
-        if cache:
-            with open(cj, "w", encoding="utf-8") as f:
-                json.dump(env, f)
-        return wav, env
-
-    def _synth_cloud(self, tag, audio, ext, cache, base, key, cw, cj):
-        """Audio bytes from Cloud Voice (wav or mp3) -> the same playback + lip-sync envelope path as the local voices."""
+    def _save_local_wav(self, tag, audio, cache, wav_path, meta_path):
+        """Validate Piper's WAV output, calculate the lip-sync envelope and cache it."""
         import numpy as np
-        if ext == "wav":
-            wav = cw if cache else os.path.join(self._tmp, f"{tag}.wav")
-            with open(wav, "wb") as f:
-                f.write(audio)
-            with wave.open(wav, "rb") as w:
-                pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
-                if w.getnchannels() > 1:
-                    pcm = pcm[::w.getnchannels()]
-                env = _envelope(pcm, w.getframerate())
-        else:
-            mp3 = os.path.join(base, (key if cache else tag) + ".mp3")
-            with open(mp3, "wb") as f:
-                f.write(audio)
-            try:
-                import miniaudio
-            except ImportError:
-                return mp3, []                 # play the mp3 directly, approximate lip-sync
-            dec = miniaudio.decode_file(mp3, output_format=miniaudio.SampleFormat.SIGNED16, nchannels=1, sample_rate=SR)
-            pcm = np.frombuffer(dec.samples, dtype=np.int16)
-            wav = cw if cache else os.path.join(self._tmp, f"{tag}.wav")
-            with wave.open(wav, "wb") as w:
-                w.setnchannels(1)
-                w.setsampwidth(2)
-                w.setframerate(SR)
-                w.writeframes(pcm.tobytes())
-            env = _envelope(pcm, SR)
-            os.remove(mp3)
-        if cache:
-            with open(cj, "w", encoding="utf-8") as f:
-                json.dump(env, f)
-        return wav, env
-
-    def _synth_sapi(self, tag, text, voice, rate, cache, cw, cj):
-        """Offline fallback using the voices installed in Windows (System.Speech via PowerShell)."""
-        import subprocess
-        culture = "-".join(voice.split("-")[:2]) or "en-US"
-        wav = cw if cache else os.path.join(self._tmp, f"{tag}.wav")
-        txt = os.path.join(self._tmp, f"{tag}.txt")
-        ps1 = os.path.join(self._tmp, "say.ps1")
-        with open(txt, "w", encoding="utf-8") as f:
-            f.write(text)
-        with open(ps1, "w", encoding="utf-8-sig") as f:
-            f.write(SAPI_SCRIPT)
-        out = subprocess.run(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ps1, txt, wav, culture,
-             str(max(-10, min(10, rate // 5)))],
-            capture_output=True, text=True, timeout=60, creationflags=0x08000000)
-        got = (out.stdout or "").strip().splitlines()[-1:] or [""]
-        if out.returncode != 0 or not os.path.exists(wav):
-            raise RuntimeError((out.stderr or "powershell failed").strip()[:200])
-        if got[0][:2].lower() != culture[:2].lower():
-            os.remove(wav)
-            raise RuntimeError(f"no offline Windows voice for {culture} (installed: {got[0]})")
-        with wave.open(wav, "rb") as w:
-            import numpy as np
-            pcm = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16)
-            if w.getnchannels() > 1:
-                pcm = pcm[::w.getnchannels()]
-            env = _envelope(pcm, w.getframerate())
+        if not isinstance(audio, (bytes, bytearray)) or not bytes(audio).startswith(b"RIFF"):
+            raise RuntimeError("مدل Piper خروجی WAV معتبر تولید نکرد.")
+        path = wav_path if cache else os.path.join(self._tmp, f"{tag}.wav")
+        with open(path, "wb") as stream:
+            stream.write(audio)
         try:
-            os.remove(txt)
-        except OSError:
-            pass
+            with wave.open(path, "rb") as wav:
+                channels, rate = max(1, int(wav.getnchannels())), int(wav.getframerate())
+                pcm = np.frombuffer(wav.readframes(wav.getnframes()), dtype=np.int16)
+                if channels > 1:
+                    pcm = pcm[::channels]
+                if pcm.size == 0 or rate <= 0:
+                    raise RuntimeError("مدل Piper فایل صوتی خالی یا نامعتبر تولید کرد.")
+                envelope = _envelope(pcm, rate)
+        except (OSError, wave.Error) as exc:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            raise RuntimeError(f"خواندن خروجی WAV ناموفق بود: {exc}") from exc
         if cache:
-            with open(cj, "w", encoding="utf-8") as f:
-                json.dump(env, f)
-        return wav, env
+            with open(meta_path, "w", encoding="utf-8") as stream:
+                json.dump(envelope, stream)
+        return path, envelope
 
     # ---- GUI thread ----
     def _on_failed(self, gen, msg):

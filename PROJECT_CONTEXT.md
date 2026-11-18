@@ -39,7 +39,7 @@ Ai1 is a Windows desktop anime-style digital companion. It combines local and cl
 - Python / PySide6 desktop application
 - Local chat through Ollama
 - Cloud chat through the Route Manager
-- Voice services managed separately in Cloud Voice
+- Speech input/output use local Qwen3-ASR, faster-whisper fallback and Piper; Chat Route providers are not used for audio
 
 ## Game Mode
 - Game Mode has two manually selected profiles: Story Mode and Competitive Safe.
@@ -60,18 +60,19 @@ Ai1 is a Windows desktop anime-style digital companion. It combines local and cl
 - Vision requests require a vision-capable model on the selected Route. Text-only models may reject image payloads; the existing provider error path explains this limitation.
 
 ## Voice architecture
-- `kira/voice.py`: sentence-level speech queue, pre-generation and playback.
-- `kira/cloud_voice.py`: cloud STT/TTS provider registry, key storage, validation, priorities, cooldowns and failover.
-- `kira/cloud_voice_ui.py`: Cloud Voice settings UI.
-- `kira/listener.py`: microphone/STT input pipeline and wake-word handling.
+- `kira/listener.py`: microphone capture, segmentation, local Qwen3-ASR recognition and local faster-whisper fallback.
+- `kira/vad.py`: room calibration, speech segmentation, pause merging and barge-in detection.
+- `kira/local_voice.py`: local Qwen3-ASR loading/transcription and Piper TTS synthesis/warmup.
+- `kira/voice.py`: sentence queue, local Piper WAV generation/cache, Qt playback and lip-sync envelope.
 - `kira/game_audio.py`: Windows WASAPI loopback capture and local-only game speech transcription/important-event filtering.
-- Cloud Voice settings and protected API keys are stored outside the application folder.
+- Speech recognition and synthesis never use Cloud Voice, Edge TTS, Windows SAPI or Google Speech Recognition. Cloud API providers remain available for chat text only.
+- A legacy `cloud_voice.json`, if present from an older release, is preserved with user data for safety but is not read or used by the active application.
 
 ## Active work
-MiniMax Global TTS integration. It is a TTS-only provider; it must not be added to chat Route Manager or STT provider lists. Supported models: `speech-2.8-turbo`, `speech-2.8-hd`.
+Local-only speech stack: Qwen3-ASR primary STT, faster-whisper local fallback, Piper local TTS. Do not reintroduce remote speech recognition or synthesis fallbacks.
 
 ## Working rules
-- Preserve existing provider and local voice fallbacks.
+- Never introduce remote voice fallback; STT and TTS must remain local. Cloud providers are for text chat only.
 - Never log or display full API keys.
 - Keep provider settings and keys outside the application folder.
 - Add regression tests for provider-specific behavior and safety-sensitive capture behavior.
@@ -130,7 +131,7 @@ MiniMax Global TTS integration. It is a TTS-only provider; it must not be added 
 
 ## Stage 4: User-memory durability
 - Settings, chat history, persona memory JSON and evidence-backed SQLite memory live under the external user-data directory (Windows: `%LOCALAPPDATA%\\Kira`; `KIRA_DATA_DIR` is the test/override path).
-- Legacy migration now copies persona memory and the evidence database as well as settings/chat/Cloud Voice data, without overwriting files already present in the destination or deleting the source.
+- Legacy migration now copies persona memory and the evidence database as well as settings/chat and legacy Cloud Voice data for preservation only, without overwriting files already present in the destination or deleting the source. The active application does not read legacy Cloud Voice data.
 - Rolling backups now include the persona memory JSON and evidence database. Added tests for data-directory resolution, legacy migration and backup coverage.
 
 - The release workflow now includes its own YAML file in the push path filter, so changes to release gates and permissions are validated by a fresh run rather than silently skipping the job.

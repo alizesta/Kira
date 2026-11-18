@@ -1,4 +1,4 @@
-"""Microphone listener: speech segmentation (kira/vad.py) + faster-whisper (local, CPU) or the Google web recognizer.
+"""Microphone listener: local-only Qwen3-ASR / faster-whisper plus speech segmentation (kira/vad.py).
 
 Behaviour (see vad.py / speech_text.py for the details):
   * less sensitive to room noise: speech-band level, measured noise floor, onset check, hysteresis;
@@ -14,7 +14,6 @@ import time
 
 from PySide6.QtCore import QThread, Signal
 
-from . import cloud_voice
 from .speech_fixes import SpeechFixes
 from .speech_text import clean_transcript, grace_for, initial_prompt, is_hallucination, merge_text
 from .vad import BLOCK, RATE, Segmenter
@@ -27,12 +26,11 @@ class Listener(QThread):
     state = Signal(str)     # loading | listening | hearing | transcribing
     error = Signal(str)
     interrupted = Signal()  # the person started talking while Kira was speaking
-    note = Signal(str)      # non-fatal information (Cloud Voice switched key/provider or fell back to the local engine)
+    note = Signal(str)      # non-fatal information from local speech engines
 
     def __init__(self, model_name="small", language="fa", parent=None, sensitivity=100, barge_in=True, settings=None):
         super().__init__(parent)
-        # Qwen is selected through the same STT selector, but Whisper remains
-        # the local fallback if Qwen cannot load or returns no transcript.
+        # Qwen is preferred when enabled; faster-whisper is the only fallback.
         selected_model = str(model_name or "small").strip()
         self.model_name = "small" if selected_model.casefold().startswith("qwen/") else selected_model
         self.language = None if language in ("", "auto") else language
@@ -48,9 +46,8 @@ class Listener(QThread):
         self._sr = None
         self._seg = None
         self.fixes = SpeechFixes()      # the user's dictionary (hotwords + word fixes), re-read when the file changes
-        self._model = None              # the local engine's model, loaded lazily when Cloud Voice is first in line
-        self.via = ""                   # "cloud:<provider>" or "local" - what recognised the last sentence
-        self._cloud_failed = False      # last cloud attempt failed (the note is sent once per streak)
+        self._model = None              # faster-whisper model, loaded only when the local fallback is needed
+        self.via = ""                   # local:qwen3-asr or local:whisper
         self._local_asr_failed = False  # avoid retrying a broken local model for every segment
         self._hotwords_ok = True        # becomes False if the installed faster-whisper does not know `hotwords`
         self._pending, self._pending_until, self._pending_since = "", 0.0, 0.0
@@ -85,6 +82,17 @@ class Listener(QThread):
         # QThread reference until finished and the window's close handler defers shutdown.
         self._run = False
 
+    def _close_stream(self, stream):
+        """Stop and release the microphone independently so one cleanup error cannot leak the device."""
+        try:
+            stream.stop()
+        except Exception as exc:
+            self.note.emit(f"بستن ورودی میکروفن: {type(exc).__name__}")
+        try:
+            stream.close()
+        except Exception as exc:
+            self.note.emit(f"آزادسازی ورودی میکروفن: {type(exc).__name__}")
+
     # ---- thread ----
     def run(self):
         try:
@@ -95,6 +103,8 @@ class Listener(QThread):
             return
         self.state.emit("loading")
         self.engine = None
+        if not self._run:
+            return
         local_ready = False
         if bool(self.settings.get("local_voice_asr", True)):
             try:
@@ -102,13 +112,27 @@ class Listener(QThread):
                 local_ready = local_voice.asr_ready()
             except Exception:
                 local_ready = False
-        if not local_ready and not self._cloud_ready() and not self._load_local():
+        if local_ready:
+            try:
+                from . import local_voice
+                selected_asr = str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B")
+                local_voice.load_asr(selected_asr)
+            except Exception as exc:
+                local_ready = False
+                self._local_asr_failed = True
+                self.note.emit(f"بارگذاری Qwen3-ASR ناموفق بود؛ تلاش برای Whisper محلی. ({type(exc).__name__})")
+        if not self._run:
+            return
+        if not local_ready and not self._load_local():
             return
         model = self._model
 
         q = queue.Queue()
 
-        gain = max(0.5, min(3.0, float(self.settings.get("mic_gain", 100)) / 100.0)) if hasattr(self, "settings") else 1.0
+        try:
+            gain = max(0.5, min(3.0, float(self.settings.get("mic_gain", 100)) / 100.0))
+        except (TypeError, ValueError):
+            gain = 1.0
 
         def callback(indata, frames, t, status):
             block = indata[:, 0].copy()
@@ -116,20 +140,32 @@ class Listener(QThread):
                 block = np.clip(block * gain, -1.0, 1.0)
             q.put(block)
 
+        stream = None
         try:
             device = self._input_device(sd)
-            stream = sd.InputStream(samplerate=RATE, channels=1, dtype="float32", blocksize=BLOCK, callback=callback, device=device)
+            stream = sd.InputStream(
+                samplerate=RATE, channels=1, dtype="float32",
+                blocksize=BLOCK, callback=callback, device=device,
+            )
             stream.start()
-        except Exception as e:
-            self.error.emit(f"میکروفون باز نشد: {e}")
+        except Exception as exc:
+            if stream is not None:
+                self._close_stream(stream)
+            self.error.emit(f"میکروفون باز نشد: {exc}")
+            return
+
+        if not self._run:
+            self._close_stream(stream)
             return
 
         seg = self._seg = Segmenter(self.sensitivity)
         try:
-            while self._run:                                             # ~0.8 s: measure the room noise first
+            while self._run:                                             # ~0.38 s: measure room noise first
                 first = self._next_block(q)
                 if first is None or not seg.calibrate(first):
                     break
+            if not self._run:
+                return
             self.state.emit("listening")
             while self._run:
                 try:
@@ -146,37 +182,25 @@ class Listener(QThread):
                 for ev in seg.feed(blk, self.kira_speaking, self.kira_level):
                     self._on_event(ev, model)
         finally:
-            stream.stop()
-            stream.close()
-
-    def _cloud_ready(self):
-        try:
-            return cloud_voice.service().stt_ready()
-        except Exception:
-            return False
+            self._close_stream(stream)
+            self._seg = None
 
     def _load_local(self):
-        """Load the local engine (faster-whisper, else the Google web recognizer). False + `error` when none works."""
-        if self.engine is not None:
+        """Load faster-whisper as the local fallback when Qwen3-ASR is unavailable."""
+        if self.engine == "whisper" and self._model is not None:
             return True
         try:
             from faster_whisper import WhisperModel
+        except ImportError:
+            self.error.emit("هیچ موتور STT محلی نصب نیست. از بخش مدل‌های Local، Qwen3-ASR یا Whisper را نصب کن.")
+            return False
+        try:
             self._model = WhisperModel(self.model_name, device="cpu", compute_type="int8")
             self.engine = "whisper"
-        except ImportError:
-            pass
-        except Exception as e:
-            self.error.emit(f"بارگذاری مدل گفتار ناموفق بود (بار اول اینترنت لازم است): {e}")
+            return True
+        except Exception as exc:
+            self.error.emit(f"بارگذاری Whisper محلی ناموفق بود: {type(exc).__name__}: {exc}")
             return False
-        if self.engine is None:
-            try:
-                import speech_recognition as sr
-                self._sr = sr
-                self.engine = "google"
-            except ImportError:
-                self.error.emit("هیچ موتور تشخیص گفتار نصب نیست. install.bat را دوباره اجرا کن.")
-                return False
-        return True
 
     def _next_block(self, q):
         while self._run:
@@ -225,47 +249,9 @@ class Listener(QThread):
         if len(text) > 1:
             self.heard.emit(text)
 
-    # ---- recognition: both return the text (or "") ----
-    def _transcribe_google(self, audio):
-        """Fallback when faster-whisper is unavailable: free Google web recognizer (online)."""
-        import numpy as np
-        sr = self._sr
-        lang = {"fa": "fa-IR", "en": "en-US"}.get(self.language or "fa", "fa-IR")
-        pcm = (np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes()
-        try:
-            return sr.Recognizer().recognize_google(sr.AudioData(pcm, RATE, 2), language=lang).strip()
-        except sr.UnknownValueError:
-            return ""
-        except Exception as e:
-            self.error.emit(f"تشخیص گفتار آنلاین ناموفق بود (اینترنت لازم است): {e}")
-            return ""
-
-    def _transcribe_cloud(self, audio):
-        """Cloud Voice (user's provider/key order). -> text, or None when the local engine must take over."""
-        try:
-            svc = cloud_voice.service()
-            if not svc.stt_ready():
-                return None
-            self.fixes.refresh()
-            text, info = svc.transcribe(audio, RATE, self.language, initial_prompt(self.language, self.fixes.hotwords_text()))
-        except cloud_voice.AllFailed as e:
-            if not self._cloud_failed:
-                self.note.emit(f"Cloud Voice (STT) ناموفق بود؛ با موتور محلی ادامه می‌دهم. ({str(e)[:160]})")
-            self._cloud_failed = True
-            return None
-        except Exception as e:                                  # noqa: BLE001 - never lose speech because of the cloud layer
-            if not self._cloud_failed:
-                self.note.emit(f"Cloud Voice (STT) خطا داد؛ موتور محلی جای آن را می‌گیرد: {type(e).__name__}")
-            self._cloud_failed = True
-            return None
-        self._cloud_failed = False
-        self.via = f"cloud:{info['provider']}"
-        if info.get("failovers"):
-            self.note.emit("Cloud Voice (STT): " + " ← ".join(info["failovers"]) + f" → {info['provider']} / {info['key']}")
-        return text
-
+    # ---- local recognition: return the transcript or an empty string ----
     def _transcribe_local_qwen(self, audio):
-        """Qwen3-ASR is the first STT engine; None means use the next engine."""
+        """Run Qwen3-ASR locally; None means the local Whisper fallback may run."""
         if self._local_asr_failed or not bool(self.settings.get("local_voice_asr", True)):
             return None
         try:
@@ -278,15 +264,15 @@ class Listener(QThread):
                 initial_prompt(self.language, self.fixes.hotwords_text()),
                 str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B"),
             )
-            # An empty Qwen result is not a successful transcription: let Whisper / Cloud Voice try.
+            # An empty Qwen result is not a successful transcription: let local Whisper try.
             return str(text or "").strip() or None
         except Exception as exc:
             self._local_asr_failed = True
-            self.note.emit(f"STT محلی Qwen3-ASR در دسترس نبود؛ موتور جایگزین بعدی امتحان می‌شود. ({type(exc).__name__})")
+            self.note.emit(f"STT محلی Qwen3-ASR در دسترس نبود؛ Whisper محلی امتحان می‌شود. ({type(exc).__name__})")
             return None
 
     def _transcribe_whisper(self, audio):
-        """Legacy offline Whisper fallback, tried before Cloud Voice when installed."""
+        """Offline faster-whisper recognition."""
         model = self._model
         self.fixes.refresh()
         hot = self.fixes.hotwords_text()
@@ -314,37 +300,13 @@ class Listener(QThread):
         return " ".join(part for part in parts if part).strip()
 
     def _transcribe(self, model, audio):
-        # First choice: the dedicated offline multilingual ASR.
+        """Use Qwen3-ASR first, then faster-whisper. Never send microphone audio online."""
         text = self._transcribe_local_qwen(audio)
         if text is not None:
             self.via = "local:qwen3-asr"
             return text
-
-        # Second choice: the existing offline Whisper engine, if installed.
-        if self.engine is None:
-            try:
-                from faster_whisper import WhisperModel
-                self._model = WhisperModel(self.model_name, device="cpu", compute_type="int8")
-                self.engine = "whisper"
-            except ImportError:
-                pass
-            except Exception as exc:
-                self.note.emit(f"Whisper محلی در دسترس نبود؛ موتور بعدی امتحان می‌شود. ({type(exc).__name__})")
-        if self.engine == "whisper":
-            self.via = "local:whisper"
-            return self._transcribe_whisper(audio)
-
-        # Cloud Voice is tried only after the installed local ASR engines.
-        text = self._transcribe_cloud(audio)
-        if text is not None:
-            return text
-
-        # Last legacy fallback: Google recognizer, only if no local ASR or Cloud Voice worked.
-        if not self._load_local():
+        if self.engine is None and not self._load_local():
             return ""
-        if self.engine == "google":
-            self.via = "google"
-            return self._transcribe_google(audio)
         if self.engine == "whisper":
             self.via = "local:whisper"
             return self._transcribe_whisper(audio)

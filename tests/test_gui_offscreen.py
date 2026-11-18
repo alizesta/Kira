@@ -81,6 +81,72 @@ class GuiTests(unittest.TestCase):
         self.assertIn("Ollama", self.win.status.text())
         self.assertTrue(self.win.isVisible())
 
+    def test_extracted_settings_pages_own_their_widgets(self):
+        from kira.ui.components import ApiAddPanel, McpRegistryPanel, OllamaProviderPanel, RouteEditor
+        from kira.ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
+
+        window = self.win
+        self.assertIsInstance(window.api_add_panel, ApiAddPanel)
+        self.assertTrue(window.api_add_panel.isAncestorOf(window.api_key_edit))
+        self.assertTrue(window.api_add_panel.isAncestorOf(window.model_filter))
+        from kira.ui.components import ChatHeader
+        self.assertIsInstance(window.chat_header, ChatHeader)
+        self.assertTrue(window.chat_header.isAncestorOf(window.title))
+        self.assertTrue(window.chat_header.isAncestorOf(window.mood_emotion_icon))
+        self.assertTrue(window.chat_header.isAncestorOf(window.mood_indicator))
+        self.assertTrue(window.chat_header.isAncestorOf(window.companion_btn))
+        from kira.ui.components import ChatComposer
+        self.assertIsInstance(window.chat_composer, ChatComposer)
+        self.assertEqual(window.chat_composer.parent().objectName(), "chatCard")
+        for widget in (
+            window.input,
+            window.send_btn,
+            window.attach_btn,
+            window.screen_capture_btn,
+            window.web_btn,
+            window.img_search_btn,
+            window.gen_stop_btn,
+        ):
+            self.assertTrue(window.chat_composer.isAncestorOf(widget))
+        from kira.ui.controllers import ChatAttachmentController
+        self.assertIsInstance(window.attachment_controller, ChatAttachmentController)
+        self.assertIs(window._tiles, window.attachment_controller.tiles)
+        self.assertIs(window._load_tiles, window.attachment_controller.loading_tiles)
+        self.assertIs(window.attachment_controller.attach_strip, window.chat_composer.attach_strip)
+        self.assertIsInstance(window.mcp_registry_panel, McpRegistryPanel)
+        self.assertTrue(window.mcp_registry_panel.isAncestorOf(window.mcp_registry_list))
+        self.assertTrue(window.mcp_registry_panel.isAncestorOf(window.mcp_registry_query))
+        self.assertIsInstance(window.ollama_panel, OllamaProviderPanel)
+        self.assertTrue(window.ollama_panel.isAncestorOf(window.route_ollama_enabled))
+        self.assertTrue(window.ollama_panel.isAncestorOf(window.ollama_url_edit))
+        self.assertIsInstance(window.route_editor, RouteEditor)
+        self.assertTrue(window.route_editor.isAncestorOf(window.route_list))
+        self.assertTrue(window.route_editor.isAncestorOf(window.route_model_edit))
+        self.assertIsInstance(window.preferences_page, PreferencesPage)
+        self.assertTrue(window.preferences_page.isAncestorOf(window.ui_lang))
+        self.assertTrue(window.preferences_page.isAncestorOf(window.tavily_key))
+        self.assertIsInstance(window.assistant_page, AssistantPage)
+        self.assertTrue(window.assistant_page.isAncestorOf(window.model))
+        self.assertTrue(window.assistant_page.isAncestorOf(window.persona))
+        self.assertIsInstance(window.appearance_page, AppearancePage)
+        self.assertIsInstance(window.character_page, CharactersPage)
+        self.assertIsInstance(window.voice_page, VoicePage)
+        self.assertFalse(hasattr(window, "window_effect"))
+        self.assertFalse(hasattr(window, "character_combo"))
+        self.assertFalse(hasattr(window, "mic_device"))
+        self.assertEqual(
+            set(window.character_page.personality_sliders),
+            {
+                "playfulness", "warmth", "curiosity", "confidence", "assertiveness",
+                "teasing", "empathy", "independence", "patience", "carefulness",
+            },
+        )
+        character_ids = {
+            window.character_page.character_combo.itemData(i)
+            for i in range(window.character_page.character_combo.count())
+        }
+        self.assertTrue({"kira", "ren", "mika"}.issubset(character_ids))
+
     # 17) hamburger menu
     def test_17_hamburger_visible_and_menu_complete(self):
         w = self.win

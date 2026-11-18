@@ -35,6 +35,7 @@ class IsolatedDb(unittest.TestCase):
         self.patch.start()
         memory._pending.clear()
         memory.last_error = None
+        memory.repository.last_error = None
         memory.init_db()
 
     def tearDown(self):
@@ -86,6 +87,24 @@ class SaveAndRestoreTests(IsolatedDb):
             memory.message_count()
         self.assertTrue(opened and len(opened) == len(closed))
 
+    def test_rows_with_ids_uses_monotonic_id_cursor_even_when_imported_timestamps_are_older(self):
+        memory.add_message("user", "newer", "kira")
+        memory.add_message("user", "newer second", "kira")
+        old = self.dir / "older.sqlite3"
+        con = sqlite3.connect(old)
+        con.execute("CREATE TABLE messages (id INTEGER PRIMARY KEY, role TEXT, content TEXT, created_at TEXT)")
+        con.execute("INSERT INTO messages(id, role, content, created_at) VALUES (1, 'user', 'older import', '2020-01-01 00:00:00')")
+        con.commit()
+        con.close()
+        memory.import_messages(old)
+
+        rows = memory.rows_with_ids(limit=10, after_id=0, character_id="kira")
+        ids = [row[0] for row in rows]
+        self.assertEqual(ids, sorted(ids))
+        self.assertEqual(len(set(ids)), len(ids))
+        next_rows = memory.rows_with_ids(limit=10, after_id=max(ids[:-1]), character_id="kira")
+        self.assertEqual(next_rows[-1][0], max(ids))
+
     def test_concurrent_saves_lose_nothing(self):
         errors = []
 
@@ -103,16 +122,16 @@ class SaveAndRestoreTests(IsolatedDb):
 class DatabaseErrorTests(IsolatedDb):
     def test_locked_database_keeps_messages_in_memory_then_flushes_in_order(self):
         self.fill(2)
-        with mock.patch.object(memory, "_db", side_effect=sqlite3.OperationalError("database is locked")):
+        with mock.patch.object(memory.repository, "_db", side_effect=sqlite3.OperationalError("database is locked")):
             self.assertFalse(memory.add_message("user", "p1"))
             self.assertFalse(memory.add_message("assistant", "p2"))
             self.assertEqual(memory.pending_count(), 2)
             self.assertEqual(self.texts(), ["p1", "p2"])                        # chat context still works from memory
-            self.assertIn("locked", memory.last_error)
+            self.assertIn("locked", memory.repository.last_error)
         self.assertTrue(memory.add_message("user", "p3"))                      # disk is back: everything is written
         self.assertEqual(self.texts(), ["m0", "m1", "p1", "p2", "p3"])
         self.assertEqual(memory.pending_count(), 0)
-        self.assertIsNone(memory.last_error)
+        self.assertIsNone(memory.repository.last_error)
 
     def test_garbage_file_is_quarantined_never_deleted_and_a_fresh_db_is_created(self):
         self.fill(3)
@@ -128,6 +147,7 @@ class DatabaseErrorTests(IsolatedDb):
 
     def test_recovery_rebuilds_from_the_newest_valid_backup(self):
         self.fill(30)
+        original_ids = [row["id"] for row in memory.get_messages(limit=100)]
         self.assertIsNotNone(storage.backup_user_data(self.dir, min_age_hours=0))
         memory.add_message("user", "newer than the backup")
         self.db.write_bytes(b"\x00" * 4096)
@@ -135,6 +155,7 @@ class DatabaseErrorTests(IsolatedDb):
         self.assertTrue(notes)
         self.assertEqual(memory.message_count(), 30)                           # everything the backup had
         self.assertEqual(self.texts(3), ["m27", "m28", "m29"])
+        self.assertEqual([row["id"] for row in memory.get_messages(limit=100)], original_ids)
         self.assertIn("پشتیبان", notes[0])
 
     def test_partially_damaged_file_salvages_readable_rows_and_merges_with_backup(self):
@@ -159,7 +180,7 @@ class DatabaseErrorTests(IsolatedDb):
         self.assertTrue(memory.startup_notes)
 
     def test_unwritable_folder_never_raises_into_the_app(self):
-        with mock.patch.object(memory, "_db", side_effect=OSError("disk full")):
+        with mock.patch.object(memory.repository, "_db", side_effect=OSError("disk full")):
             self.assertEqual(memory.init_db()[0].startswith("دیتابیس گفتگو باز نشد"), True)
             self.assertFalse(memory.add_message("user", "x"))
             self.assertEqual(memory.recent_messages(3), [{"role": "user", "content": "x"}])
@@ -170,16 +191,18 @@ class DatabaseErrorTests(IsolatedDb):
 class ClearRestoreImportTests(IsolatedDb):
     def test_clear_saves_a_snapshot_and_restore_brings_everything_back_in_order(self):
         self.fill(10)
+        original_ids = [row["id"] for row in memory.get_messages(limit=100)]
         memory.clear_memory()
         self.assertEqual(memory.message_count(), 0)
         self.assertEqual(len(memory.list_snapshots("cleared")), 1)
         self.assertEqual(memory.restore_last_cleared(), 10)
         self.assertEqual(self.texts(), [f"m{i}" for i in range(10)])
+        self.assertEqual([row["id"] for row in memory.get_messages(limit=100)], original_ids)
         self.assertEqual(memory.restore_last_cleared(), 0)                      # idempotent: no duplicates
 
     def test_clear_is_refused_when_the_snapshot_cannot_be_made(self):
         self.fill(5)
-        with mock.patch.object(memory, "_snapshot", side_effect=OSError("no space")):
+        with mock.patch.object(memory.repository, "_snapshot", side_effect=OSError("no space")):
             with self.assertRaises(memory.ChatStoreError):
                 memory.clear_memory()
         self.assertEqual(memory.message_count(), 5)                             # nothing was deleted
@@ -210,8 +233,10 @@ class ClearRestoreImportTests(IsolatedDb):
         with memory._db() as c:
             c.executemany("INSERT INTO messages(role, content, created_at) VALUES (?,?,?)",
                           [("user", "shared", "2025-06-01 09:00:00"), ("assistant", "new-1", "2025-06-01 09:00:03")])
+        original_message_id = memory.message_id_for("assistant", "new-1", "kira")
         self.assertEqual(memory.import_messages(old), 2)
         self.assertEqual(self.texts(), ["old-1", "old-2", "shared", "new-1"])
+        self.assertEqual(memory.message_id_for("assistant", "new-1", "kira"), original_message_id)
         self.assertEqual(memory.import_messages(old), 0)                         # running it twice changes nothing
         self.assertEqual(len(memory.list_snapshots("before-import")), 1)          # safety snapshot of the current chat
         with self.assertRaises(memory.ChatStoreError):
@@ -318,7 +343,7 @@ class WindowPersistenceTests(IsolatedDb):
 
     def test_disk_failure_does_not_block_chat_warns_once_and_catches_up(self):
         w = self.win
-        with mock.patch.object(memory, "_db", side_effect=sqlite3.OperationalError("database is locked")):
+        with mock.patch.object(memory.repository, "_db", side_effect=sqlite3.OperationalError("database is locked")):
             self.send(w, "یک", "الف")
             self.send(w, "دو", "ب")
             text = w.chat.toPlainText()
@@ -361,7 +386,7 @@ class WindowPersistenceTests(IsolatedDb):
             w.clear_chat()
         self.assertEqual(memory.message_count(), 2)
         with mock.patch("kira.main.QMessageBox.question", return_value=QMessageBox.Yes), \
-                mock.patch.object(memory, "_snapshot", side_effect=OSError("no space")), \
+                mock.patch.object(memory.repository, "_snapshot", side_effect=OSError("no space")), \
                 mock.patch("kira.main.QMessageBox.warning") as warn:
             w.clear_chat()
         warn.assert_called_once()
@@ -396,6 +421,9 @@ class WindowPersistenceTests(IsolatedDb):
             w.worker.wait(3000)
             QCoreApplication.processEvents()
         self.assertEqual(self.texts(), ["سوال", "نیمه‌ی پاسخ " + "الف" * 45])                  # saved once, no late duplicate
+        saved = memory.get_messages(limit=20, character_id="kira")
+        self.assertEqual(saved[-1]["status"], "interrupted")
+        self.assertEqual(saved[-1]["content"], "نیمه‌ی پاسخ " + "الف" * 45)
 
     def test_error_while_starting_a_request_never_leaves_the_window_busy(self):
         w = self.win
