@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
+import time
 from unittest.mock import patch
 
 from kira import brain, modes
@@ -105,6 +106,61 @@ class BrainContextGuardTests(unittest.TestCase):
         state = {"turn": 2, "hint": {"text": "bad", "created": float("nan"), "turn": 2}}
         self.assertEqual(brain._pending_hint(state, 100), "")
 
+
+
+class BrainStateRecoveryTests(unittest.TestCase):
+    def test_corrupt_nested_state_is_normalized_without_disabling_future_hints(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(brain, "DATA_DIR", Path(tmp)):
+                path = brain._path("test-state")
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    '{"turn":"4","hint":{"text":"usable","created":"bad","turn":99,"sig":"x"},'
+                    '"sigs":[["valid",3],["broken","not-a-turn"],["other",99],{}],'
+                    '"reflect":{"last":"nan","hour":["bad",9999999999999999]},'
+                    '"writer":{"last_run":"oops","next_try":NaN}}',
+                    encoding="utf-8",
+                )
+                state = brain._load("test-state")
+                self.assertEqual(state["turn"], 4)
+                self.assertIsNone(state["hint"])
+                self.assertEqual(state["sigs"], [["valid", 3]])
+                self.assertEqual(state["reflect"], {"last": 0.0, "hour": []})
+                self.assertEqual(state["writer"], {"last_run": 0.0, "next_try": 0.0})
+                self.assertTrue(brain._store_hint("fresh", "new reminder", "test-state"))
+                self.assertEqual(brain.status("test-state")["hint_pending"], True)
+
+    def test_fractional_or_boolean_counters_are_rejected(self):
+        self.assertEqual(brain._safe_state_int(2.5, 7), 7)
+        self.assertEqual(brain._safe_state_int(True, 7), 7)
+        self.assertEqual(brain._safe_state_int("12", 7), 12)
+
+    def test_empty_hint_or_signature_is_not_persisted(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(brain, "DATA_DIR", Path(tmp)):
+            self.assertFalse(brain._store_hint("", "hint", "empty"))
+            self.assertFalse(brain._store_hint("signature", "   ", "empty"))
+
+
+class BrainMemoryWriterTests(unittest.TestCase):
+    def test_writer_does_not_advance_cursor_when_fact_storage_failed(self):
+        import kira.evidence_memory as evidence_memory
+        import kira.memory as memory_store
+        rows = [(index, "user", f"message {index}", "") for index in range(1, 11)]
+        with tempfile.TemporaryDirectory() as tmp:
+            with (
+                patch.object(brain, "DATA_DIR", Path(tmp)),
+                patch.object(memory_store, "rows_with_ids", return_value=rows),
+                patch.object(evidence_memory, "enabled", return_value=True),
+                patch.object(evidence_memory, "writer_cursor", return_value=0),
+                patch.object(evidence_memory, "ingest_model_facts", return_value=(0, ["store error: sqlite"])),
+                patch.object(evidence_memory, "set_writer_cursor") as set_cursor,
+                patch.object(brain, "make_aux_router", return_value=object()),
+                patch.object(brain, "_ask", return_value='{"facts": []}'),
+            ):
+                brain._memory_writer(object(), {"brain_memory_writer": "idle"})
+                set_cursor.assert_not_called()
+                state = brain._load()
+                self.assertGreater(state["writer"]["next_try"], time.time())
 
 
 class BrainReflectionQualityTests(unittest.TestCase):

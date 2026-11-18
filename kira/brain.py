@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import re
 import threading
@@ -36,6 +37,8 @@ from pathlib import Path
 
 from . import modes
 from .config import DATA_DIR
+
+_log = logging.getLogger(__name__)
 
 SURFACE, DEEP, REFLECTION, MEMORY = "surface", "deep", "reflection", "memory"
 ROLES = (SURFACE, DEEP, REFLECTION, MEMORY)
@@ -154,32 +157,106 @@ def _empty_state() -> dict:
     return {"turn": 0, "hint": None, "sigs": [], "reflect": {"last": 0, "hour": []}, "writer": {"last_run": 0, "next_try": 0}}
 
 
+def _safe_state_int(value, default=0, *, maximum=2_147_483_647):
+    """Coerce persisted counters without allowing booleans, fractions or unbounded values."""
+    if isinstance(value, bool):
+        return default
+    try:
+        number = int(value)
+        if isinstance(value, float) and not value.is_integer():
+            return default
+    except (TypeError, ValueError, OverflowError):
+        return default
+    return max(0, min(number, maximum))
+
+
+def _safe_state_time(value, *, now=None):
+    """Return a finite, non-negative epoch; reject implausible future state."""
+    if isinstance(value, bool):
+        return 0.0
+    try:
+        stamp = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    if not math.isfinite(stamp) or stamp < 0:
+        return 0.0
+    current = time.time() if now is None else float(now)
+    return stamp if stamp <= current + 60 else 0.0
+
+
 def _load(character_id: str | None = None) -> dict:
+    """Load and schema-normalize persisted state; corrupted optional fields never disable reflection."""
     try:
         data = json.loads(_path(character_id).read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            base = _empty_state()
-            base.update({k: v for k, v in data.items() if k in base})
-            for key in ("reflect", "writer"):
-                if not isinstance(base[key], dict):
-                    base[key] = _empty_state()[key]
-            if not isinstance(base["sigs"], list):
-                base["sigs"] = []
-            return base
-    except (OSError, ValueError):
-        pass
-    return _empty_state()
+    except (OSError, ValueError, TypeError):
+        return _empty_state()
+    if not isinstance(data, dict):
+        return _empty_state()
+
+    now = time.time()
+    state = _empty_state()
+    state["turn"] = _safe_state_int(data.get("turn", 0))
+    raw_hint = data.get("hint")
+    if isinstance(raw_hint, dict):
+        text = _clean_hint(raw_hint.get("text"))
+        created = _safe_state_time(raw_hint.get("created"), now=now)
+        hint_turn = _safe_state_int(raw_hint.get("turn", 0))
+        signature = str(raw_hint.get("sig") or "")[:120]
+        if text and created and hint_turn <= state["turn"] and signature:
+            state["hint"] = {
+                "text": text, "created": created, "turn": hint_turn, "sig": signature,
+            }
+
+    signatures = []
+    raw_signatures = data.get("sigs")
+    if isinstance(raw_signatures, list):
+        for entry in raw_signatures[-SIG_KEEP:]:
+            if not isinstance(entry, (list, tuple)) or len(entry) != 2:
+                continue
+            signature = str(entry[0] or "").strip()[:120]
+            turn = _safe_state_int(entry[1])
+            if signature and turn <= state["turn"] and state["turn"] - turn <= SIG_REPEAT_TURNS:
+                signatures.append([signature, turn])
+    state["sigs"] = signatures
+
+    raw_reflect = data.get("reflect")
+    if isinstance(raw_reflect, dict):
+        last = _safe_state_time(raw_reflect.get("last", 0), now=now)
+        hour = []
+        raw_hour = raw_reflect.get("hour")
+        if isinstance(raw_hour, list):
+            for value in raw_hour[-MODEL_REFLECT_PER_HOUR * 2:]:
+                stamp = _safe_state_time(value, now=now)
+                if stamp and now - stamp < 3600:
+                    hour.append(stamp)
+        state["reflect"] = {"last": last, "hour": hour}
+
+    raw_writer = data.get("writer")
+    if isinstance(raw_writer, dict):
+        state["writer"] = {
+            "last_run": _safe_state_time(raw_writer.get("last_run", 0), now=now),
+            "next_try": _safe_state_time(raw_writer.get("next_try", 0), now=now),
+        }
+    return state
 
 
-def _save(state: dict, character_id: str | None = None) -> None:
+def _save(state: dict, character_id: str | None = None) -> bool:
+    """Atomically persist normalized state and make storage failures observable."""
+    path = _path(character_id)
+    tmp = path.with_suffix(".json.tmp")
     try:
-        path = _path(character_id)
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+        payload = json.dumps(state, ensure_ascii=False, allow_nan=False)
+        tmp.write_text(payload, encoding="utf-8")
         tmp.replace(path)
-    except OSError:
-        pass                                                           # losing a hint is harmless
+        return True
+    except (OSError, TypeError, ValueError):
+        _log.exception("Could not persist brain state for character %s", _character_key(character_id))
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            _log.warning("Could not remove temporary brain state file %s", tmp)
+        return False
 
 
 def reset_state(character_id: str | None = None) -> None:
@@ -329,11 +406,17 @@ def _spawn(name, fn, *args) -> bool:
         try:
             fn(*args)
         except Exception:                                              # noqa: BLE001 - a background pass never disturbs the app
-            pass
+            _log.exception("Background brain task %s failed", name)
         finally:
             with _lock:
                 _bg_busy.discard(name)
-    threading.Thread(target=run, daemon=True, name=f"kira-brain-{name}").start()
+    try:
+        threading.Thread(target=run, daemon=True, name=f"kira-brain-{name}").start()
+    except RuntimeError:
+        with _lock:
+            _bg_busy.discard(name)
+        _log.exception("Could not start background brain task %s", name)
+        return False
     return True
 
 
@@ -391,19 +474,26 @@ def _model_reflect(router, settings, user_text, reply, character_id: str | None 
 
 
 def _store_hint(signature, hint, character_id: str | None = None) -> bool:
-    """Keep ONE pending hint; never repeat a recent signature; never overwrite a hint that is still waiting."""
+    """Keep ONE pending hint; tolerate damaged history and never overwrite a live hint."""
+    signature = str(signature or "").strip()[:120]
+    clean = _clean_hint(hint)
+    if not signature or not clean:
+        return False
     with _lock:
         state = _load(character_id)
-        turn = int(state.get("turn", 0))
+        turn = _safe_state_int(state.get("turn", 0))
         if _pending_hint(state, time.time()):
             return False
-        recent = [s for s in state["sigs"] if isinstance(s, list) and len(s) == 2]
-        if any(s[0] == signature and turn - int(s[1]) < SIG_REPEAT_TURNS for s in recent):
+        recent = [
+            [str(item[0])[:120], _safe_state_int(item[1])]
+            for item in state.get("sigs", [])
+            if isinstance(item, (list, tuple)) and len(item) == 2 and str(item[0] or "").strip()
+        ]
+        if any(item[0] == signature and 0 <= turn - item[1] < SIG_REPEAT_TURNS for item in recent):
             return False
-        state["hint"] = {"text": _clean_hint(hint), "sig": signature, "created": time.time(), "turn": turn}
+        state["hint"] = {"text": clean, "sig": signature, "created": time.time(), "turn": turn}
         state["sigs"] = (recent + [[signature, turn]])[-SIG_KEEP:]
-        _save(state, character_id)
-        return True
+        return _save(state, character_id)
 
 
 WRITER_SYSTEM = None                  # filled lazily from evidence_memory.WRITER_PROMPT
@@ -441,8 +531,22 @@ def _memory_writer(router, settings) -> None:
             state["writer"]["next_try"] = time.time() + WRITER_FAIL_BACKOFF
             _save(state)
         return
-    em.ingest_model_facts(raw, events)
-    em.set_writer_cursor(max(r[0] for r in rows))                      # whatever the model answered, these messages are not sent again
+    try:
+        _accepted, rejected = em.ingest_model_facts(raw, events)
+        storage_failure = any(str(reason).lower().startswith("store error:") for reason in (rejected or []))
+        if storage_failure:
+            raise RuntimeError("Evidence-memory storage failed; writer cursor was not advanced")
+        latest_id = max(int(row[0]) for row in rows)
+        em.set_writer_cursor(latest_id)
+        if int(em.writer_cursor()) < latest_id:
+            raise RuntimeError("Evidence-memory writer cursor did not persist")
+    except Exception:                                                  # noqa: BLE001 - retain the source window for a safe retry
+        _log.exception("Memory writer failed before its cursor could be committed")
+        with _lock:
+            state = _load()
+            state["writer"]["next_try"] = time.time() + WRITER_FAIL_BACKOFF
+            _save(state)
+        return
 
 
 # ----------------------------------------------------------------------------------------------- after the reply
@@ -479,7 +583,7 @@ def after_turn(
         except Exception:                                              # noqa: BLE001
             pass
     except Exception:                                                  # noqa: BLE001
-        pass
+        _log.exception("Post-turn brain processing failed")
     return info
 
 
