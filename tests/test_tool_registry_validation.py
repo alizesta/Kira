@@ -29,6 +29,8 @@ class ToolArgumentValidationTests(unittest.TestCase):
             self.registry.clean_args(self.tool, {"count": "1e1000000"})
         with self.assertRaises(ToolError):
             self.registry.clean_args(self.tool, {"count": str(2**63)})
+        with self.assertRaises(ToolError):
+            self.registry.clean_args(self.tool, {"count": "9" * 10000})
 
     def test_number_rejects_non_finite_values(self):
         for value in ("NaN", "Infinity", "-Infinity"):
