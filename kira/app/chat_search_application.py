@@ -179,13 +179,6 @@ class ChatSearchService:
 
 
 __all__ = [
-    "ChatMessageReference", "ChatSearchError", "ChatSearchHit", "ChatSearchPage",
-    "ChatSearchRepository", "ChatSearchRepositoryError", "ChatSearchRequest",
-    "ChatSearchService", "ChatSearchValidationError",
-]
-
-
-__all__ = [
     "ChatSearchRepositoryError",
     "ChatSearchService",
 ]
