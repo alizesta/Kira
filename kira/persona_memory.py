@@ -578,7 +578,88 @@ def maintain(rows: list[dict], window: int, now=None) -> bool:
 
 
 # ---------------- layer 3: digest ----------------
-def digest(older: list[dict]) -> list[str]:
+def _rank_relevant_items(items: list[dict], query: str | None, limit: int) -> list[dict]:
+    """Rank this character's own saved items against the current turn using Persian-aware BM25."""
+    items = [item for item in items if isinstance(item, dict) and str(item.get("text") or "").strip()]
+    if not items or not query or not _evidence.needs_recall(query):
+        return []
+
+    query_tokens = _evidence.tokens(query)
+    if not query_tokens:
+        return []
+    docs = {
+        str(index): _evidence.tokens(item.get("text") or "")
+        for index, item in enumerate(items)
+    }
+    scores = _evidence._bm25(docs, query_tokens)
+    if not scores:
+        return []
+
+    best = max(scores.values())
+    threshold = best * _evidence.MIN_BM25_RATIO
+    ranked = sorted(
+        (index for index, score in scores.items() if score >= threshold),
+        key=lambda index: (
+            scores[index],
+            float(items[int(index)].get("ts") or items[int(index)].get("created_at") or 0),
+        ),
+        reverse=True,
+    )
+    return [items[int(index)] for index in ranked[:max(1, int(limit))]]
+
+
+def _select_persona_facts(facts: list[dict], query: str | None) -> list[dict]:
+    """Keep identity facts available, but retrieve other facts by current-topic relevance."""
+    if not query:
+        return list(facts[-FACTS_SHOWN:])
+
+    pinned = sorted(
+        (item for item in facts if item.get("kind") in ("name", "nick", "pref_len")),
+        key=lambda item: float(item.get("ts") or 0),
+        reverse=True,
+    )[:3]
+    pinned_ids = {item.get("id") for item in pinned}
+    remaining = [item for item in facts if item.get("id") not in pinned_ids]
+    recalled = _rank_relevant_items(remaining, query, FACTS_SHOWN - len(pinned))
+    return pinned + recalled
+
+
+def _fit_memory_block(header: str, parts: list[str], budget: int) -> str:
+    """Keep complete memory lines within budget; never cut a fact or sentence mid-text."""
+    budget = max(0, int(budget))
+    if not header or len(header) > budget:
+        return ""
+    selected = [header]
+    used = len(header)
+    for part in parts:
+        part = str(part or "").strip()
+        if not part:
+            continue
+        separator = 2
+        if used + separator + len(part) <= budget:
+            selected.append(part)
+            used += separator + len(part)
+            continue
+
+        # A section may contain several independent bullets. Include only whole
+        # lines that fit, starting with its heading; skip an overlong line rather
+        # than returning a truncated or misleading memory fragment.
+        lines = part.splitlines()
+        partial = []
+        for line in lines:
+            candidate = "\\n".join(partial + [line])
+            if used + separator + len(candidate) > budget:
+                break
+            partial.append(line)
+        if partial:
+            fragment = "\\n".join(partial)
+            selected.append(fragment)
+            used += separator + len(fragment)
+        break
+    return "\\n\\n".join(selected)
+
+
+def digest(older: list[dict], query: str | None = None) -> list[str]:
     """Short lines describing what the user brought up in messages older than the verbatim window."""
     lines = []
     for item in older:
@@ -588,6 +669,9 @@ def digest(older: list[dict]) -> list[str]:
         text = re.sub(r"---\s*فایل ضمیمه.*", "[attached a file]", text)
         if len(text) >= 8:
             lines.append(text[:100] + ("…" if len(text) > 100 else ""))
+    if query:
+        ranked = _rank_relevant_items([{"text": line, "ts": index} for index, line in enumerate(lines)], query, DIGEST_LINES)
+        return [item["text"] for item in ranked]
     return lines[-DIGEST_LINES:]
 
 
@@ -603,8 +687,12 @@ HEADER_RELEVANT = ("Kira's own memory (real, stored on this computer; it stays t
 
 
 def build_block(older: list[dict] | None = None, voice_samples: bool = True, now=None, query: str | None = None, budget: int | None = None) -> str:
-    """``query`` = the user's current message: with it, facts are chosen by relevance (evidence memory); without it (or when the evidence
-    layer is unavailable) the older "last facts" list is used exactly as before. ``budget`` = characters this block may use."""
+    """Build a compact memory block using current-topic recall and character-local stores.
+
+    Kira continues to use her evidence-backed index. Ren, Mika and custom characters
+    retrieve only from their own existing persona store using the same Persian-aware
+    lexical ranking; no cross-character facts or replacement database are introduced.
+    """
     now = time.time() if now is None else now
     budget = int(budget or BLOCK_BUDGET)
     relevant = None
@@ -613,51 +701,74 @@ def build_block(older: list[dict] | None = None, voice_samples: bool = True, now
             relevant = _evidence.build_block(query, budget=max(300, int(budget * 0.45)))
         except Exception:                                              # noqa: BLE001 - never let the index break the prompt
             relevant = None
+
     with _lock:
         data = _load()
+
     parts = []
     voice = data["voice"][-10:][::-1][::2][:VOICE_SHOWN]
-    if voice and voice_samples:                  # her own recent banter is a style anchor: left out when the turn is a practical request
-        samples = "\n".join(f"- {v}" for v in reversed(voice))
+    if voice and voice_samples:
+        samples = "\n".join(f"- {value}" for value in reversed(voice))
         voice_name = "Kira" if _current_character.get() == "kira" else _current_character.get().title()
-        parts.append(f"How {voice_name} really sounds (their own recent lines). Match this rhythm, slang, attitude and length in "
-                     "your reply; do not copy the sentences:\n" + samples)
+        parts.append(
+            f"How {voice_name} really sounds (their own recent lines). Match this rhythm, slang, attitude and length in "
+            "your reply; do not copy the sentences:\n" + samples
+        )
+
     character_id = _current_character.get()
     character_name = character_id.title()
     if relevant is None:
-        fact_lines = [f["text"] for f in data["facts"]]
-        notes = [t for t in fact_lines if t.startswith("He asked her")]
-        rest = [t for t in fact_lines if not t.startswith("He asked her")]
-        shown = (rest[-(FACTS_SHOWN - min(len(notes), 6)):] + notes[-6:])
-        if shown:
+        selected_facts = _select_persona_facts(data["facts"], query)
+        if selected_facts:
             heading = "What she knows about him:" if character_id == "kira" else f"What {character_name} knows about the user:"
-            parts.append(heading + "\n" + "\n".join(f"- {t}" for t in shown))
+            parts.append(heading + "\n" + "\n".join(f"- {item['text']}" for item in selected_facts))
     elif relevant:
         parts.append(relevant)
-    rel = habit_lines(now)
-    if rel:
-        parts.append(("The relationship and his habits:\n" if character_id == "kira" else "The user's observed habits:\n")
-                     + "\n".join(f"- {t}" for t in rel))
-    moments = [m for m in data["moments"] if not _expired(m, now) and (voice_samples or m.get("kind") != "joke")]
+
+    habits = habit_lines(now)
+    if habits:
+        heading = "The relationship and his habits:\n" if character_id == "kira" else "The user's observed habits:\n"
+        parts.append(heading + "\n".join(f"- {line}" for line in habits))
+
+    moments = [item for item in data["moments"] if not _expired(item, now) and (voice_samples or item.get("kind") != "joke")]
+    if query is not None:
+        moments = _rank_relevant_items(moments, query, MOMENTS_SHOWN)
+    else:
+        moments = moments[-MOMENTS_SHOWN:]
     if moments:
-        heading = ("Moments and things he told her" if character_id == "kira" else f"Moments {character_name} remembers")
-        parts.append(heading + " (dated; they may be over by now, so ask rather than assume):\n"
-                     + "\n".join(f"- {m['text']}" for m in moments[-MOMENTS_SHOWN:]))
-    if data["summaries"]:
-        parts.append("Older conversations (compressed summaries; may be incomplete):\n"
-                     + "\n".join(f"- {m['text']}" for m in data["summaries"][-SUMMARIES_SHOWN:]))
-    # Older chat rows have no character ID in the legacy SQLite schema; never attribute that shared history to Ren/Mika.
-    older_lines = digest(older or []) if character_id == "kira" else []
+        heading = "Moments and things he told her" if character_id == "kira" else f"Moments {character_name} remembers"
+        parts.append(
+            heading + " (dated; they may be over by now, so ask rather than assume):\n"
+            + "\n".join(f"- {item['text']}" for item in moments)
+        )
+
+    summaries = data["summaries"]
+    summaries = (
+        _rank_relevant_items(summaries, query, SUMMARIES_SHOWN)
+        if query is not None else summaries[-SUMMARIES_SHOWN:]
+    )
+    if summaries:
+        parts.append(
+            "Older conversations (compressed summaries; may be incomplete):\n"
+            + "\n".join(f"- {item['text']}" for item in summaries)
+        )
+
+    # Older chat rows have no character ID in the legacy SQLite schema; never
+    # attribute that shared history to Ren/Mika.
+    older_lines = digest(older or [], query=query) if character_id == "kira" else []
     if older_lines:
         heading = "Earlier topics he raised" if character_id == "kira" else f"Earlier topics the user raised with {character_name}"
-        parts.append(heading + " (older than the messages below):\n" + "\n".join(f"- {t}" for t in older_lines))
+        parts.append(heading + " (older than the messages below):\n" + "\n".join(f"- {line}" for line in older_lines))
+
     if not parts:
         return ""
     if character_id == "kira":
         header = HEADER if relevant is None else HEADER_RELEVANT
     else:
-        header = (f"{character_name}'s own memory (real, stored on this computer and isolated from other characters). "
-                  "Use it naturally and sparingly; never recite it or mention that it is a list. It contains only what this character knows about the user; "
-                  "anything not listed here is not remembered and must not be guessed.")
-    block = header + "\n\n" + "\n\n".join(parts)
-    return block[:budget]
+        header = (
+            f"{character_name}'s own memory (real, stored on this computer and isolated from other characters). "
+            "Use it naturally and sparingly; never recite it or mention that it is a list. It contains only what this character knows about the user; "
+            "anything not listed here is not remembered and must not be guessed."
+        )
+    return _fit_memory_block(header, parts, budget)
+
