@@ -17,8 +17,10 @@ _SECRET_KEY = re.compile(
     r"(?:api.?key|access.?token|refresh.?token|token|password|passwd|secret|credential|authorization|cookie|private.?key)",
     re.I,
 )
-_ALLOWED_ROLES = {"user", "assistant", "system"}
-_ALLOWED_STATUSES = {"streaming", "complete", "interrupted", "failed", "cancelled"}
+ALLOWED_ROLES = frozenset({"user", "assistant", "system"})
+ALLOWED_STATUSES = frozenset({"streaming", "complete", "interrupted", "failed", "cancelled"})
+_ALLOWED_ROLES = ALLOWED_ROLES
+_ALLOWED_STATUSES = ALLOWED_STATUSES
 
 
 class TransferError(ValueError):
