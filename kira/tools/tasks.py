@@ -325,14 +325,20 @@ class TaskStore:
             return
 
         plans = []
+        malformed = False
         for index, item in enumerate(raw.get("plans", [])):
             if not isinstance(item, dict):
+                malformed = True
                 _LOGGER.warning("Ignoring malformed task record %s in %s", index, self.path)
                 continue
             try:
                 plans.append(TaskPlan.from_dict(item))
             except Exception:                                # noqa: BLE001 - retain other valid tasks
+                malformed = True
                 _LOGGER.exception("Ignoring malformed task record %s in %s", index, self.path)
+        if malformed:
+            self._load_failed = True
+            _LOGGER.error("Some task records in %s were unreadable; original file will be preserved", self.path)
         for p in plans:
             if p.status in (P_RUNNING, P_PLANNING):          # the program was closed while this task was running
                 p.status, p.interrupted = P_PAUSED, True
@@ -429,10 +435,11 @@ class TaskStore:
             ), None)
 
     def latest(self, session_id: str | None = None) -> TaskPlan | None:
-        return self.active(session_id) or next(
-            (p for p in reversed(self.plans) if session_id is None or p.session_id == str(session_id)),
-            None,
-        )
+        with self.lock:
+            return self.active(session_id) or next(
+                (p for p in reversed(self.plans) if session_id is None or p.session_id == str(session_id)),
+                None,
+            )
 
     def new(self, goal: str, *, session_id: str = "") -> TaskPlan:
         with self.lock:
