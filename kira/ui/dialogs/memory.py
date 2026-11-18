@@ -120,7 +120,16 @@ class MemoryDialog(QDialog):
             "تاریخچه‌ی کوتاه‌مدت گفتگو و حافظه‌ی شخصیت‌های دیگر دست‌نخورده می‌ماند."
         )
         if QMessageBox.question(self, "فراموش‌کردن همه", question) == QMessageBox.Yes:
-            self.memory_service.forget_all(self.character_id)
+            try:
+                self.memory_service.forget_all(self.character_id)
+            except Exception:
+                QMessageBox.warning(
+                    self,
+                    "پاک‌سازی کامل نشد",
+                    "حذف همه‌ی داده‌های حافظه کامل نشد؛ ممکن است بخشی از اطلاعات باقی مانده باشد. جزئیات خطا در گزارش برنامه ثبت شده است.",
+                )
+                self.refresh()
+                return
             if self.character_id == "kira":
                 self.mood_service.reset()
             self.refresh()
