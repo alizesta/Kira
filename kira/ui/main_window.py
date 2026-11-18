@@ -22,6 +22,8 @@ class MainWindow(
     SessionMixin,
     QMainWindow,
 ):
+    voice_listener_finished = Signal(object, bool, bool)
+
     # Per-chat state: one ChatSession per character; these names read/write the session that is current (see chat_sessions.py).
     busy = session_property("busy")
     worker = session_property("worker")
@@ -55,6 +57,7 @@ class MainWindow(
     _stream_timer = property(lambda self: self.cur.timer)
     # One-per-computer things belong to the chat in front; a background chat gets silent stand-ins.
     speaker = front_only_property("speaker")
+    voice_application_service = front_only_property("voice_application_service")
     director = front_only_property("director", ("parse_reply", "format_hint", "library"))
     animator = front_only_property("animator")
     bubble = front_only_property("bubble")
@@ -64,8 +67,18 @@ class MainWindow(
     input = front_only_property("input")
     voice_btn = front_only_property("voice_btn")
 
+    @property
+    def listener(self):
+        service = getattr(self, "voice_application_service", None)
+        return service.listener if service is not None else None
+
+    @property
+    def _stopping_listener(self):
+        service = getattr(self, "voice_application_service", None)
+        return service.stopping_listener if service is not None else None
+
     def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None,
-                 session_manager=None, chat_event_publisher=None, chat_application_service_factory=None, web_search_service=None):
+                 session_manager=None, chat_event_publisher=None, chat_application_service_factory=None, web_search_service=None, voice_application_service_factory=None):
         super().__init__()
         # Direct MainWindow construction remains supported for existing callers;
         # normal application startup injects these services from app.bootstrap.
@@ -180,7 +193,13 @@ class MainWindow(
         self.companion.geometry_changed.connect(self.update_bubble)
         self.companion.visibility.connect(lambda _=None: self.update_bubble())
         self.speaker = Speaker(self.settings, self)
-        self.listener = None
+        self.voice_listener_finished.connect(self._on_voice_listener_finished)
+        if voice_application_service_factory is None:
+            from ..app.voice_composition import create_voice_application_service_factory
+            voice_application_service_factory = create_voice_application_service_factory()
+        if not callable(voice_application_service_factory):
+            raise TypeError("voice_application_service_factory must be callable")
+        self.voice_application_service = voice_application_service_factory(self, self.speaker)
         self.awake = False
         self.busy = False
         self._speech_live = False
