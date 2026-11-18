@@ -1,7 +1,7 @@
 """Composition of the desktop window and its UI feature adapters.
 
-This module owns widget/service assembly. MainWindow remains the Qt shell and
-feature mixin host; application services receive typed ports, never the window.
+This module owns widget/service assembly. MainWindow is the Qt shell and controller registry; application services
+receive typed ports, never the window.
 """
 from __future__ import annotations
 
