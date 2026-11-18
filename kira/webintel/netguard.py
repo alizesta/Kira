@@ -139,10 +139,15 @@ def fetch(url: str, *, timeout: float = 15.0, max_bytes: int = 3_000_000, max_re
             if time.monotonic() - started > total_timeout:
                 raise GuardError("مهلت کل دریافت صفحه تمام شد.")
             check_host(current)
+            # A requests.Session persists Set-Cookie values from responses. This
+            # fetcher follows redirects manually and must not forward cookies from
+            # one untrusted page/host to the next hop.
+            session.cookies.clear()
             try:
                 resp = session.get(current, headers={"User-Agent": UA, "Accept": "text/html,application/xhtml+xml,application/pdf,text/plain;q=0.8,*/*;q=0.2",
                                                      "Accept-Language": accept_lang, "DNT": "1"},
                                    timeout=(min(8.0, timeout), timeout), stream=True, allow_redirects=False)
+                session.cookies.clear()
             except requests.Timeout as exc:
                 raise GuardError("مهلت پاسخ سایت تمام شد.") from exc
             except requests.exceptions.SSLError as exc:
