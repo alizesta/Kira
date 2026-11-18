@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import sys
 
+from ..core.interfaces.transfer import ChatTransferFilePort
 
-def run_application() -> None:
+
+def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -> None:
     from PySide6.QtWidgets import QApplication
 
     from .. import winfx
@@ -31,6 +33,7 @@ def run_application() -> None:
         container,
         settings=settings,
         event_publisher=chat_event_publisher,
+        transfer_file_port=transfer_file_port,
     )
 
     states = module_manager.start_all()
