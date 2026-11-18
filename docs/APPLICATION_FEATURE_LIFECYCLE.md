@@ -7,7 +7,7 @@
 
 ## Implemented service registrations
 
-The application feature registry now manages three extracted use cases through
+The application feature registry now manages four shared Chat use cases through
 `ServiceModule` and `ModuleManager`:
 
 | Module ID | DI service key | Implementation |
@@ -73,7 +73,7 @@ concrete filesystem adapter.
 ## Lifecycle and failure semantics
 
 The existing required-module policy is preserved. If Chat History fails to
-start, its dependent Organization/Search/Transfer module cannot start; the
+start, its dependent Lifecycle/Organization/Search/Transfer module cannot start; the
 desktop Composition Root sees the failed module state and shuts down the graph.
 The new services have no independent worker/device lifecycle. ServiceModule
 still owns their registration/unregistration, while Chat History remains
