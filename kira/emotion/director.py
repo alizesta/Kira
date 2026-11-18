@@ -1,7 +1,7 @@
 """Glue between the application and the emotion engine (pure Python, no Qt).
 
 The application calls:
-  event(name)          startup / user_message / response_started / response_finished / response_failed /
+  event(name)          startup / user_message / response_started / response_finished / response_failed / response_cancelled /
                        tts_started / tts_stopped / user_interrupt   (mapping lives in events.json)
   parse_reply(raw)     -> ReplyMeta (visible text + emotion metadata)
   on_reply(meta)       trigger the detected emotion
@@ -53,9 +53,8 @@ class EmotionDirector:
         return _parse_reply(raw, self.library)
 
     def on_reply(self, meta, now=None):
-        """Trigger the emotion found in a reply; also marks the reply as finished."""
+        """Apply the emotion tag for a reply; stream lifecycle events are owned by the caller."""
         now = self._now(now)
-        self.event("response_finished", now)
         if meta is not None and meta.emotions:
             return self.engine.request(meta.emotions, meta.intensity, "default", "response", now)
         return "ignored"
@@ -70,6 +69,9 @@ class EmotionDirector:
             self.engine.interrupt(now)
         if ev.get("release_events"):
             self.engine.release(sources=("event",), tags=tuple(ev["release_events"]), now=now)
+        if ev.get("release_responses"):
+            self.engine.release(sources=("response",), now=now)
+            self.engine.pending = None
         if "speaking" in ev and name != "user_interrupt":
             self.engine.set_speaking(bool(ev["speaking"]), hard=not ev["speaking"])
         if ev.get("pulse"):

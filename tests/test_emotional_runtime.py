@@ -109,6 +109,29 @@ class EmotionalRuntimeTests(unittest.TestCase):
         self.assertEqual(state["last_initiative"], 1000)
         self.assertEqual(state["last_initiative_memory_id"], "exam-123")
 
+    def test_topic_query_excludes_recent_unrelated_emotional_memories(self):
+        self.runtime.on_user_message(
+            "فردا برای امتحان زبان خیلی استرس دارم", ["stressed"], now=1000
+        )
+        self.runtime.on_user_message(
+            "برای سفر شیراز خیلی هیجان دارم", ["excited"], now=1001
+        )
+
+        state = self.runtime.snapshot(now=1002, query="مشکل کارت گرافیک")
+
+        self.assertEqual(state["recalled_memories"], [])
+
+    def test_negative_emotional_reply_text_is_saved_as_emotional_memory(self):
+        self.runtime.on_reply(
+            ["sad"], 70, now=1000, text="از اینکه تنها ماندی ناراحتم"
+        )
+
+        state = self.runtime.snapshot(now=1000)
+
+        self.assertTrue(state["memories"])
+        self.assertEqual(state["memories"][-1]["kind"], "kira_emotion")
+        self.assertIn("تنها", state["memories"][-1]["text"])
+
 
 if __name__ == "__main__":
     unittest.main()

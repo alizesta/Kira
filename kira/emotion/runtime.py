@@ -315,9 +315,11 @@ class EmotionalRuntime:
             recency = max(0.0, 12.0 - age_days * 0.45)
             impact = _clamp(memory.get("impact", 0))
             signal_bonus = 5.0 if memory.get("signal") in ("down", "stressed", "excited", "apology") else 0.0
+            # A supplied topic is a relevance constraint, not just a ranking hint.
+            # Recent/high-impact memories from unrelated topics must not leak into this turn.
+            if query_tokens and overlap == 0:
+                continue
             score = impact * 0.22 + recency + signal_bonus + overlap * (24.0 if query_tokens else 0.0)
-            if query_tokens and overlap == 0 and age_days > 3:
-                score -= 10.0
             if score > 8.0:
                 ranked.append((score, memory))
         ranked.sort(key=lambda item: (item[0], float(item[1].get("reinforced_at") or item[1].get("created") or 0)), reverse=True)
