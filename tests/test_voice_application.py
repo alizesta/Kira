@@ -110,7 +110,8 @@ class VoiceApplicationServiceTests(unittest.TestCase):
         self.assertEqual(effective, {"voice_rate": 140, "voice_volume": 0.8, "api_key": "never-copy"})
         self.assertEqual(self.speaker.settings, effective)
         self.assertEqual(shared["voice_rate"], 100)
-        self.assertNotIn("api_key", effective)
+        self.assertEqual(effective["api_key"], "never-copy")
+        self.assertNotEqual(effective["api_key"], "ignored")
 
     def test_transcript_policy_ignores_speech_without_wake_word_when_asleep(self):
         decision = self.service.interpret_transcript(
