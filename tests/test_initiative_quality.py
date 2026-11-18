@@ -188,6 +188,17 @@ class InitiativeCandidateTests(unittest.TestCase):
 
 
 class InitiativeEligibilityTests(unittest.TestCase):
+    def test_boolean_timestamps_are_rejected_as_corrupt(self):
+        self.assertIsNone(_finite_number(True))
+        self.assertIsNone(_finite_number(False))
+        result = self.engine.evaluate(
+            now=self.now,
+            last_interaction=True,
+            enabled=True,
+            has_relevant_memory=True,
+        )
+        self.assertEqual(result["reason"], "invalid_activity_time")
+
     def setUp(self):
         self.engine = InitiativeEngine()
         self.now = 100_000.0
@@ -306,6 +317,15 @@ class InitiativeEligibilityTests(unittest.TestCase):
 
 
 class InitiativeHistoryTests(unittest.TestCase):
+    def test_malformed_non_iterable_recent_events_fail_closed_without_crashing(self):
+        state = initiative_history_state([], recent_events=object(), now=20 * DAY)
+        self.assertEqual(state["sent_today"], 0)
+        self.assertEqual(state["history"], [])
+
+    def test_non_iterable_exclusion_state_does_not_crash_candidate_selection(self):
+        engine = InitiativeEngine()
+        self.assertIsNone(engine.select_candidate([], now=100_000, exclude_ids=object()))
+
     def test_settings_and_runtime_events_share_one_daily_count(self):
         now = 20 * DAY
         state = initiative_history_state(
