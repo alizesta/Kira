@@ -18,7 +18,7 @@ import threading
 import time
 
 from . import protocol, planner
-from .registry import ToolResult, NEEDS_CONFIRM, BAD_ARGS, OK, ERROR, READ, SENSITIVE, clip
+from .registry import ToolResult, NEEDS_CONFIRM, BAD_ARGS, DENIED, OK, ERROR, READ, SENSITIVE, clip
 from .tasks import (TaskStore, TaskPlan, Step, call_sig, verify, classify_error, summarize_result, parse_control, _safe,
                     PENDING, RUNNING, DONE, FAILED, UNMET, SKIPPED, AWAITING,
                     P_PLANNING, P_RUNNING, P_WAIT_USER, P_WAIT_CONFIRM, P_PAUSED, P_DONE, P_FAILED, P_CANCELLED, P_SUPERSEDED,
@@ -508,6 +508,7 @@ class AutonomyMixin:
         results = [ToolResult("?", BAD_ARGS, msg) for msg in errors]
         notes: list[str] = []
         total = max(len(tp.steps), 1)
+        awaiting_confirmation = self.has_pending(self._turn_session_id)
         for call in calls[:protocol.MAX_CALLS_PER_ROUND]:
             if self._cancel.is_set():
                 break
@@ -520,6 +521,19 @@ class AutonomyMixin:
                 notes.append(f"unknown tool '{name}'")
                 continue
             st = tp.bind(name, call.get("step"), label, tool.level >= SENSITIVE)
+            if awaiting_confirmation:
+                # A Session has one confirmation slot. Keep later plan steps
+                # pending instead of replacing the operation the user saw.
+                results.append(ToolResult(
+                    name,
+                    DENIED,
+                    "این مرحله اجرا نشد؛ مرحله‌ی قبلی منتظر تأیید صریح کاربر است. "
+                    "پس از تعیین تکلیف آن، وظیفه را ادامه بده.",
+                    args if isinstance(args, dict) else {},
+                    tool.level,
+                ))
+                notes.append(f"step {st.id}: not run because an earlier step awaits confirmation")
+                continue
             waiting = tp.deps_unmet(st)
             if waiting:
                 results.append(ToolResult(name, BAD_ARGS, f"مرحله‌ی {st.id} هنوز نمی‌تواند اجرا شود: اول مرحله‌ی {', '.join(map(str, waiting))} باید تمام شود.", args, tool.level))
@@ -552,6 +566,8 @@ class AutonomyMixin:
                 on_tool({"phase": "tool_done", "tool": name, "label": label, "status": res.status, "ms": res.ms})
             results.append(res)
             notes.append(self._settle_step(tp, st, res, sig, Pending))
+            if res.status == NEEDS_CONFIRM:
+                awaiting_confirmation = True
         return results, notes
 
     def _settle_step(self, tp, st, res: ToolResult, sig: str, Pending) -> str:
