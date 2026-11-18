@@ -307,5 +307,49 @@ class PersonaMemoryTests(unittest.TestCase):
 
             self.assertEqual(pm._load()["voice"], [])
 
+
+    def test_delete_keeps_persona_item_when_evidence_delete_fails(self):
+        original = "His job is software engineer"
+        pm.add_fact("job", original)
+        item_id = pm._id("job", original)
+
+        with mock.patch.object(pm._evidence, "delete_by_persona_id", side_effect=RuntimeError("evidence unavailable")):
+            with self.assertRaisesRegex(RuntimeError, "evidence unavailable"):
+                pm.delete_item(item_id)
+
+        self.assertIn(original, pm.facts())
+
+    def test_edit_keeps_persona_item_when_evidence_sync_fails(self):
+        original = "His job is software engineer"
+        replacement = "His job is systems architect"
+        pm.add_fact("job", original)
+        item_id = pm._id("job", original)
+
+        with mock.patch.object(pm._evidence, "update_by_persona_id", side_effect=RuntimeError("evidence unavailable")):
+            with self.assertRaisesRegex(RuntimeError, "evidence unavailable"):
+                pm.update_item(item_id, replacement)
+
+        self.assertIn(original, pm.facts())
+        self.assertNotIn(replacement, pm.facts())
+
+    def test_forget_all_keeps_persona_store_when_evidence_clear_fails(self):
+        original = "His job is software engineer"
+        pm.add_fact("job", original)
+
+        with mock.patch.object(pm._evidence, "forget_all", side_effect=RuntimeError("evidence unavailable")):
+            with self.assertRaisesRegex(RuntimeError, "evidence unavailable"):
+                pm.forget_all()
+
+        self.assertIn(original, pm.facts())
+
+    def test_add_note_does_not_claim_success_when_evidence_write_fails(self):
+        with mock.patch.object(pm._evidence, "enabled", return_value=True), mock.patch.object(
+            pm._evidence, "add_manual", side_effect=RuntimeError("evidence unavailable")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "evidence unavailable"):
+                pm.add_note("remember this important note")
+
+        self.assertEqual(pm.facts(), [])
+
 if __name__ == "__main__":
     unittest.main()
