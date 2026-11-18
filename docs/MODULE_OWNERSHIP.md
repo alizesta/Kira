@@ -253,3 +253,25 @@ call sites migrate.
 Static regression coverage now asserts the shell inheritance boundary, service-
 free constructor, controller registry, and event forwarding. Runtime GUI
 acceptance remains pending.
+
+
+### Feature Controller boundary follow-up — 2026-11-18
+
+The compatibility lookup and Qt event dispatch are centralized in
+`FeatureControllerRegistry`. The registry preserves the established controller
+order while exposing ownership inspection for legacy method collisions.
+`MainWindow` no longer implements its own controller scan or event-owner
+lookup.
+
+The Chat controller now receives the independent `ChatAttachmentController`
+explicitly from `main_window_composition.py`. Sending a message reads and
+clears attachment state through that controller; attachment errors are also
+reported through its presentation contract. This removes Chat's former
+cross-feature calls to `attach_loading`, `clear_attachments`,
+`show_attach_error`, and direct reads of the legacy `_tiles` collection.
+
+This is an incremental boundary improvement, not completion of controller
+independence: the remaining feature controllers still use the window-backed
+compatibility proxy, and several cross-feature UI workflows remain to be
+converted to explicit dependencies. Python regression tests were added but
+have not been executed in this environment.
