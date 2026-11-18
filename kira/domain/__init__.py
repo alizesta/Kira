@@ -1,5 +1,16 @@
 """Pure business rules and value contracts for Kira's domain layer."""
 
+from .search import (
+    ChatMessageReference,
+    ChatSearchError,
+    ChatSearchHit,
+    ChatSearchPage,
+    ChatSearchRequest,
+    ChatSearchValidationError,
+    message_datetime,
+    parse_search_datetime,
+    search_snippet,
+)
 from .organization import (
     DEFAULT_FOLDER_ID,
     MAX_DESCRIPTION_LENGTH,
@@ -29,6 +40,15 @@ from .conversations import (
 )
 
 __all__ = [
+    "ChatMessageReference",
+    "ChatSearchError",
+    "ChatSearchHit",
+    "ChatSearchPage",
+    "ChatSearchRequest",
+    "ChatSearchValidationError",
+    "message_datetime",
+    "parse_search_datetime",
+    "search_snippet",
     "DEFAULT_FOLDER_ID",
     "MAX_DESCRIPTION_LENGTH",
     "MAX_LABEL_LENGTH",
