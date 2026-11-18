@@ -13,6 +13,7 @@ transient errors, and every loop has a hard cap (agent_max_steps / agent_max_rep
 from __future__ import annotations
 
 import json
+import logging
 import re
 import threading
 import time
@@ -23,6 +24,8 @@ from .tasks import (TaskStore, TaskPlan, Step, call_sig, verify, classify_error,
                     PENDING, RUNNING, DONE, FAILED, UNMET, SKIPPED, AWAITING,
                     P_PLANNING, P_RUNNING, P_WAIT_USER, P_WAIT_CONFIRM, P_PAUSED, P_DONE, P_FAILED, P_CANCELLED, P_SUPERSEDED,
                     STEP_MAX_ATTEMPTS, FAIL_SIG_MAX)
+
+_LOGGER = logging.getLogger(__name__)
 
 _PREF_TASK_RX = re.compile(r"(?:همیشه|هر\s*بار|از\s*این\s*به\s*بعد)\s+(.{6,140})", re.I)
 _PREF_TASK_TOPIC = re.compile(r"گزارش|مرتب|فایل|پوشه|پیدا|لیست|فهرست|بپرس|تأیید|تایید|خلاصه|کوتاه|جزئیات", re.I)
@@ -116,7 +119,7 @@ class AutonomyMixin:
             from .. import persona_memory
             persona_memory.add_note("ترجیح در انجام کارها: " + _safe(m.group(0), 150))
         except Exception:                                    # noqa: BLE001 - memory is a bonus
-            pass
+            _LOGGER.debug("Could not store the task preference in persona memory", exc_info=True)
 
     # ------------------------------------------------------------------ the user's commands about the task
     def handle_task_command(self, text: str, *, session_id: str | None = None):
