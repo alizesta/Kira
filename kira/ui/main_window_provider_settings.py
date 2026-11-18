@@ -40,7 +40,7 @@ from .main_window_provider_settings_support import (
 from .window_feature_controller import WindowFeatureController
 
 
-class ProviderSettingsMixin(WindowFeatureController):
+class ProviderSettingsController(WindowFeatureController):
     def refresh_model_catalogs(self):
         if getattr(self, "_model_catalog_worker", None) is not None and self._model_catalog_worker.isRunning():
             return
@@ -1141,3 +1141,7 @@ class ProviderSettingsMixin(WindowFeatureController):
 
     # ---------- settings ----------
     # ---- Windows 11 glass ----
+
+
+# Backward-compatible import name for callers migrating from mixin composition.
+ProviderSettingsMixin = ProviderSettingsController
