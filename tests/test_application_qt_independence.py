@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 INNER_ROOTS = (
     ROOT / "kira" / "app",
     ROOT / "kira" / "chat",
-    ROOT / "kira" / "core" / "interfaces",
+    ROOT / "kira" / "core",
+    ROOT / "kira" / "domain",
 )
 QT_MODULE_PREFIXES = ("PySide", "PyQt", "qtpy", "shiboken6")
 QT_RUNTIME_NAMES = {
