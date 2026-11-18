@@ -9,7 +9,7 @@ from unittest import mock
 from kira.tools import fileops
 from kira.tools.access import PathPolicy
 from kira.tools.builtin import build_registry
-from kira.tools.fileagent import valid_name
+from kira.tools.fileagent import FileAgent, Journal, valid_name
 from kira.tools.registry import OK, NEEDS_CONFIRM, DENIED, ERROR, BAD_ARGS, ToolError
 
 
@@ -47,6 +47,19 @@ class FileAgentTests(unittest.TestCase):
         self.assertEqual(first.status, NEEDS_CONFIRM, first.text)
         self.reg.user_text = "تأیید"
         return self.reg.execute(name, first.args, confirmed=True)
+
+    def test_delete_folder_confirmation_discloses_incomplete_count(self):
+        def partial_walk(root, followlinks=False, onerror=None):
+            if onerror is not None:
+                onerror(PermissionError("access denied"))
+            yield str(root), [], []
+
+        agent = FileAgent(self.policy, Journal(self.data))
+        with mock.patch("kira.tools.fileagent.os.walk", side_effect=partial_walk):
+            summary = agent.confirm_delete_folder({"path": str(self.root)})
+
+        self.assertIn("شمارش 1 مورد", summary)
+        self.assertIn("تعداد و حجم واقعی می‌تواند بیشتر باشد", summary)
 
     def test_create_folder_and_file_never_overwrite(self):
         d = str(self.root / "گزارش آبان")
