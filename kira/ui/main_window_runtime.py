@@ -27,7 +27,7 @@ from .main_window_runtime_support import (
 from .window_feature_controller import WindowFeatureController
 
 
-class RuntimeMixin(WindowFeatureController):
+class RuntimeController(WindowFeatureController):
     def _check_chat_command_permission(self, command, _request):
         reason = self.game_mode_application_service.command_denial_reason(
             self._game_mode_profile, command.required_permissions
@@ -893,3 +893,7 @@ class RuntimeMixin(WindowFeatureController):
     @staticmethod
     def html(s):
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
+
+
+# Backward-compatible import name for callers migrating from mixin composition.
+RuntimeMixin = RuntimeController
