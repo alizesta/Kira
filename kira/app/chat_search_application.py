@@ -5,7 +5,10 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from ..core.interfaces.search import ChatSearchRepositoryPort
+from ..core.interfaces.search import (
+    ChatSearchRepositoryPort,
+    ConversationStatusReaderPort,
+)
 from ..domain.search import (
     ChatMessageReference,
     ChatSearchError,
@@ -26,7 +29,13 @@ class ChatSearchRepositoryError(ChatSearchError):
 class ChatSearchService:
     """Matching, filtering, ranking and pagination over an injected message reader."""
 
-    def __init__(self, repository: ChatSearchRepositoryPort, *, batch_size: int = 500):
+    def __init__(
+        self,
+        repository: ChatSearchRepositoryPort,
+        *,
+        conversation_reader: ConversationStatusReaderPort | None = None,
+        batch_size: int = 500,
+    ):
         if repository is None or not callable(getattr(repository, "messages_after", None)):
             raise TypeError("repository must implement messages_after(after_id, limit)")
         try:
@@ -34,6 +43,9 @@ class ChatSearchService:
         except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError("batch_size must be a positive integer") from exc
         self._repository = repository
+        self._conversation_reader = conversation_reader or (
+            repository if callable(getattr(repository, "list_conversations", None)) else None
+        )
 
     def search(self, request: ChatSearchRequest | str, **options: Any) -> ChatSearchPage:
         if isinstance(request, str):
@@ -70,8 +82,8 @@ class ChatSearchService:
             raise ChatSearchValidationError("conversation_statuses may contain active, archived, trashed or closed")
         allowed_conversation_ids = None
         if conversation_statuses:
-            list_conversations = getattr(self._repository, "list_conversations", None)
-            if not callable(list_conversations):
+            list_conversations = self._conversation_reader
+            if list_conversations is None:
                 raise ChatSearchRepositoryError("repository does not support conversation status filtering")
             try:
                 allowed_conversation_ids = {
