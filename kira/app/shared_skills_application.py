@@ -44,6 +44,8 @@ class SharedSkillsApplicationService:
     def _ensure_available(self) -> None:
         if self._disposed:
             raise RuntimeError("Shared Skills service has been disposed")
+        if not self._started:
+            raise RuntimeError("Shared Skills service has not been started")
 
     def list_installed(self) -> tuple[SkillManifest, ...]:
         self._ensure_available()
