@@ -568,7 +568,7 @@ def avatar_hint(now=None):
                 if active >= 18:
                     return behavior_map[state["behavior"]], min(65, active + 18)
     except Exception:
-        _log.debug("Avatar hint resolution failed; falling back to current mood", exc_info=True)
+        pass
     cur = current(now)
     if cur["age"] > 120:
         return None
