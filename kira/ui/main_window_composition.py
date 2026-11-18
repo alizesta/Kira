@@ -186,7 +186,6 @@ def initialize_main_window(
     self._game_prev_mic = False
     self._game_prev_wake = False
     self.tool_agent = tool_agent if tool_agent is not None else ToolAgent(self.settings, DATA_DIR, ROOT)
-    self.runtime_settings_application_service.configure(self.settings)
     self._tool_plan = None             # tool plan of the message being answered (None = ordinary chat, nothing added to the prompt)
     self.ollama_client = self.provider_application_service.create_ollama_client(self.settings)
     self.director = EmotionDirector.from_default()        # emotion library + engine (kira/emotion, emotion_library/)
