@@ -443,6 +443,147 @@ class SessionController(WindowFeatureController):
         bar = self.context.session.view.verticalScrollBar()
         bar.setValue(bar.maximum())
 
+    def maybe_proactive_checkin(self):
+        """Run the existing Initiative policy as a silent, per-character local check-in."""
+        monotonic_now = time.monotonic()
+        if monotonic_now - getattr(self, "_initiative_checked_at", -1e9) < 30:
+            return False
+        self._initiative_checked_at = monotonic_now
+
+        try:
+            state = self.context.state
+            session = getattr(state, "front", None)
+            if session is None or state._closing or state.cur is not session:
+                return False
+
+            settings = self.context.services.settings
+            character_id = str(getattr(session, "cid", "") or "")
+            opt_ins = settings.get("character_initiative")
+            # A literal JSON true is the only consent signal; corrupt values fail closed.
+            if not character_id or not isinstance(opt_ins, dict) or opt_ins.get(character_id) is not True:
+                return False
+
+            if not self.window.isVisible() or not self.window.isActiveWindow():
+                return False
+            if QApplication.activeModalWidget() is not None:
+                return False
+            if bool(getattr(session, "busy", False)) or str(getattr(session, "draft", "") or "").strip():
+                return False
+            if self._session_has_pending_chat_work(session):
+                return False
+            if self._worker_is_running(getattr(session, "_vision_worker", None)):
+                return False
+
+            input_widget = getattr(self.context.views, "input", None)
+            if input_widget is not None:
+                has_focus = getattr(input_widget, "hasFocus", None)
+                if callable(has_focus) and has_focus():
+                    return False
+                for accessor_name in ("text", "toPlainText"):
+                    accessor = getattr(input_widget, accessor_name, None)
+                    if callable(accessor) and str(accessor() or "").strip():
+                        return False
+
+            # Never interrupt microphone capture, wake mode, or audio playback.
+            if bool(getattr(state, "awake", False)):
+                return False
+            if bool(getattr(session, "_speech_live", False)) or bool(getattr(session, "_voice_next", False)):
+                return False
+            mic_button = getattr(self.context.views, "mic_btn", None)
+            if mic_button is not None and callable(getattr(mic_button, "isChecked", None)) and mic_button.isChecked():
+                return False
+            voice = self.context.services.voice_application_service
+            if voice.is_speaking() or getattr(voice, "stopping_listener", None) is not None:
+                return False
+            listener = getattr(voice, "listener", None)
+            if listener is not None:
+                running = getattr(listener, "is_running", None)
+                if not callable(running) or running():
+                    return False
+
+            now = time.time()
+            profile = self.context.services.character_service.all_profiles(settings).get(character_id) or {}
+            traits = self.character_traits(character_id, profile)
+            with mood.character_scope(character_id, traits):
+                emotional = mood.current()
+            age = float(emotional.get("age", 0.0))
+            if not math.isfinite(age) or age < 0:
+                return False
+
+            with persona_memory.character_scope(character_id):
+                memories = persona_memory.list_items(now=now)
+
+            history_by_character = settings.get("character_initiative_history")
+            if not isinstance(history_by_character, dict):
+                history_by_character = {}
+            history_state = initiative_history_state(
+                history_by_character.get(character_id, []),
+                recent_events=emotional.get("recent_events", []),
+                last_memory_id=emotional.get("last_initiative_memory_id", ""),
+                last_sent_at=emotional.get("last_initiative", 0.0),
+                now=now,
+            )
+
+            engine = InitiativeEngine()
+            engine.last_initiative = emotional.get("last_initiative", 0.0)
+            candidate = engine.select_candidate(
+                memories,
+                now=now,
+                exclude_ids=history_state["excluded_ids"],
+            )
+            decision = engine.evaluate(
+                now=now,
+                last_interaction=now - age,
+                enabled=True,
+                app_active=True,
+                quiet_hours=engine.is_quiet_hour(now=now),
+                busy=False,
+                has_relevant_memory=bool(candidate),
+                sent_today=history_state["sent_today"],
+            )
+            if not decision.get("eligible") or candidate is None:
+                return False
+
+            message = build_checkin_message(candidate, language="auto")
+            if not message:
+                return False
+
+            # Persist as an assistant message only. Do not feed this system-generated
+            # prompt back into persona voice samples, mood learning, or provider chat.
+            outcome = self.context.services.chat_application_service.persist_message(
+                session.session_id,
+                "assistant",
+                message,
+                request_id=getattr(session, "application_request_id", None),
+                conversation_id=getattr(session, "conversation_id", None),
+                status="complete",
+                character_id=character_id,
+                metadata={
+                    "proactive": "initiative",
+                    "memory_id": str(candidate.get("id") or "")[:64],
+                },
+            )
+            if not outcome.ok:
+                return False
+
+            state._save_warned = False
+            with mood.character_scope(character_id, traits):
+                mood.mark_initiative_sent(memory_id=candidate["id"], now=now)
+
+            updated_history = history_state["history"] + [
+                {"at": now, "memory_id": str(candidate["id"])[:64]}
+            ]
+            updated_by_character = dict(history_by_character)
+            updated_by_character[character_id] = updated_history[-64:]
+            settings["character_initiative_history"] = updated_by_character
+            self.feature_controller("runtime").save_now()
+
+            # add_chat only paints the stored assistant message; there is no TTS or worker.
+            self.add_chat("assistant", message)
+            return True
+        except Exception:  # noqa: BLE001 - this optional feature must never interrupt chat
+            return False
+
     def update_mood_indicator(self):
         """Render the active character's current emotion as a custom neon face; chat-message emoji are untouched."""
         label = getattr(self.context.views, "mood_indicator", None)
@@ -452,7 +593,7 @@ class SessionController(WindowFeatureController):
         self._sync_mood_character()
         # The existing UI poll is the scheduler; RuntimeController throttles it to 30 seconds.
         try:
-            self.feature_controller("runtime").maybe_proactive_checkin()
+            self.maybe_proactive_checkin()
         except Exception:                              # noqa: BLE001 - background initiative is optional
             pass
 
