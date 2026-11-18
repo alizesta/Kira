@@ -17,10 +17,10 @@ class ChatApplicationWiringTests(unittest.TestCase):
     def method(self, name):
         return window_method_node(name)
 
-    def test_bootstrap_passes_the_injected_history_service(self):
-        bootstrap = ast.parse((ROOT / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8"))
+    def test_feature_graph_binds_the_injected_history_service(self):
+        modules = ast.parse((ROOT / "kira" / "app" / "feature_modules.py").read_text(encoding="utf-8"))
         calls = [
-            node for node in ast.walk(bootstrap)
+            node for node in ast.walk(modules)
             if isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id == "create_chat_application_service_factory"
@@ -28,17 +28,18 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         persistence = [kw.value for kw in calls[0].keywords if kw.arg == "persistence"]
         self.assertEqual(len(persistence), 1)
-        self.assertIsInstance(persistence[0], ast.Name)
-        self.assertEqual(persistence[0].id, "chat_history_service")
+        self.assertIsInstance(persistence[0], ast.Call)
+        self.assertIsInstance(persistence[0].func, ast.Attribute)
+        self.assertEqual(persistence[0].func.attr, "resolve")
+        self.assertEqual(persistence[0].args[0].value, "chat_history_service")
 
-    def test_bootstrap_injects_chat_service_factory_into_main_window(self):
-        bootstrap = (ROOT / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8")
+    def test_ui_composition_receives_bootstrap_owned_chat_factory(self):
+        bootstrap = (ROOT / "kira" / "ui" / "bootstrap.py").read_text(encoding="utf-8")
         composition = (ROOT / "kira" / "app" / "chat_composition.py").read_text(encoding="utf-8")
-        self.assertIn("chat_application_service_factory", bootstrap)
-        self.assertIn("create_chat_application_service_factory", bootstrap)
+        self.assertIn('chat_application_service_factory=container.resolve("chat_application_service_factory")', bootstrap)
         self.assertIn("chat_application_service_factory(create_chat_application_ports(self))", self.source)
         self.assertIn("ChatApplicationService", composition)
-        self.assertIn("_dispatch_application_request", composition + (ROOT / "kira" / "ui" / "application_adapters.py").read_text(encoding="utf-8"))
+        self.assertIn("_dispatch_application_request", self.source + (ROOT / "kira" / "ui" / "application_adapters.py").read_text(encoding="utf-8"))
 
     def test_session_conversation_identity_flows_through_application_service(self):
         session_service = (ROOT / "kira" / "app" / "session_application.py").read_text(encoding="utf-8")
@@ -55,9 +56,16 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("self.chat_application_service.submit_message", self.source)
         self.assertIn("self.chat_application_service.start_provider_request", self.source)
 
-    def test_session_manager_owns_runtime_lifecycle_and_request_identity(self):
-        self.assertIn("session_manager or SessionManager(ChatSession)", self.source)
-        self.assertIn("create_session_application_service_factory", self.source)
+    def test_session_manager_is_created_at_the_outer_composition_root(self):
+        bootstrap = (ROOT / "kira" / "ui" / "bootstrap.py").read_text(encoding="utf-8")
+        modules = (ROOT / "kira" / "app" / "feature_modules.py").read_text(encoding="utf-8")
+        self.assertIn("session_manager = SessionManager(ChatSession)", bootstrap)
+        self.assertIn("session_manager=session_manager", bootstrap)
+        self.assertIn('session_application_service_factory=container.resolve("session_application_service_factory")', bootstrap)
+        self.assertIn("self.session_manager = session_manager", self.source)
+        self.assertNotIn("session_manager or SessionManager(ChatSession)", self.source)
+        self.assertIn("session_application_service_factory", modules)
+        self.assertIn("session_application_service_factory(", self.source)
         self.assertIn("self.session_application_service.create_active_session(", self.source)
         self.assertIn("self.session_application_service.activate_session(sess.session_id)", self.source)
         self.assertIn("self.session_application_service.dispose()", self.source)
@@ -78,7 +86,7 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("def compose_attachments(", service)
         self.assertIn("def max_attachments(", service)
 
-    def test_shutdown_delegates_partial_response_cleanup_to_application_service(self):
+    def test_shutdown_uses_two_phase_chat_application_disposal(self):
         close_event = self.method("closeEvent")
         close_calls = [node for node in ast.walk(close_event) if isinstance(node, ast.Call)]
         close_methods = [
@@ -88,14 +96,24 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("_clear_chat_coordinator_queues", close_methods)
         self.assertNotIn("save_message", close_methods)
 
-        cleanup = self.method("_clear_chat_coordinator_queues")
-        cleanup_calls = [node for node in ast.walk(cleanup) if isinstance(node, ast.Call)]
+        begin_shutdown = self.method("_clear_chat_coordinator_queues")
+        begin_calls = [node for node in ast.walk(begin_shutdown) if isinstance(node, ast.Call)]
+        self.assertTrue(any(
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "begin_shutdown"
+            and isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr == "chat_application_service"
+            for node in begin_calls
+        ))
+
+        final_dispose = self.method("_dispose_chat_application_service")
+        dispose_calls = [node for node in ast.walk(final_dispose) if isinstance(node, ast.Call)]
         self.assertTrue(any(
             isinstance(node.func, ast.Attribute)
             and node.func.attr == "dispose"
             and isinstance(node.func.value, ast.Attribute)
             and node.func.value.attr == "chat_application_service"
-            for node in cleanup_calls
+            for node in dispose_calls
         ))
 
 
