@@ -509,6 +509,21 @@ def build_checkin_message(candidate, language="auto", max_topic_chars=130):
         matches.append((int(match.group(1)), int(match.group(2)), int(match.group(3)), "year_first"))
     for match in day_first.finditer(content):
         matches.append((int(match.group(3)), int(match.group(2)), int(match.group(1)), "day_first"))
+    if not matches:
+        # Named calendar months and short numeric date forms are explicit date
+        # intent even when their locale/order is unsupported. Defer rather than
+        # treating an unparsed absolute date as immediately due.
+        named_month = re.search(
+            r"فروردین|اردیبهشت|خرداد|تیر|مرداد|شهریور|مهر|آبان|آذر|دی|بهمن|اسفند|"
+            r"ژانویه|فوریه|مارس|آوریل|مه|ژوئن|ژوئیه|اوت|سپتامبر|اکتبر|نوامبر|دسامبر|"
+            r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|jun(?:e)?|jul(?:y)?|"
+            r"aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b",
+            content,
+            re.I,
+        )
+        short_numeric_date = re.search(r"(?<!\d)\d{1,2}[./-]\d{1,2}(?!\d)", content)
+        if named_month or short_numeric_date:
+            return float("inf")
     due_times = []
     for year, month, day, _order in matches:
         if 1200 <= year <= 1599:
