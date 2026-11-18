@@ -38,7 +38,7 @@ BEHAVIOUR_GUIDES = {
 
 EMOTION_BIAS = {
     "protective": {"protective": 18, "gentle": 8},
-    "calm": {"gentle": 10, "focused": 4},
+    "calm": {"gentle": 10, "focused": 4, "balanced": 6},
     "sad": {"gentle": 24, "quiet": 18, "protective": 8},
     "fearful": {"gentle": 14, "quiet": 12, "protective": 12},
     "angry": {"assertive": 16, "focused": 8, "tsundere": 5},
@@ -52,7 +52,6 @@ EMOTION_BIAS = {
     "flirty": {"flirty": 18, "affectionate": 8, "teasing": 5},
     "affectionate": {"affectionate": 18, "gentle": 6},
     "proud": {"confident": 18, "teasing": 6},
-    "calm": {"gentle": 10, "balanced": 6},
     "disappointed": {"quiet": 10, "assertive": 8},
     "relieved": {"affectionate": 8, "playful": 5},
 }
