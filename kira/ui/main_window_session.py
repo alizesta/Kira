@@ -450,6 +450,11 @@ class SessionController(WindowFeatureController):
         if label is None or face_label is None:
             return
         self._sync_mood_character()
+        # The existing UI poll is the scheduler; RuntimeController throttles it to 30 seconds.
+        try:
+            self.feature_controller("runtime").maybe_proactive_checkin()
+        except Exception:                              # noqa: BLE001 - background initiative is optional
+            pass
 
         face_map = {
             "neutral": "neutral", "happy": "happy", "sad": "sad", "angry": "angry",
