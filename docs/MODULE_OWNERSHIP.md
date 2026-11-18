@@ -150,7 +150,7 @@ The Chat core modules should depend on Python data contracts and narrow Protocol
 
 | Capability | Current source candidates / owners | Current integration boundary |
 |---|---|---|
-| Bootstrap & DI | `kira/app/bootstrap.py`, `dependency_container.py`, `module_manager.py` | Composition is centralized; only four required service modules are registered. |
+| Bootstrap & DI | `kira/app/bootstrap.py`, `dependency_container.py`, `module_manager.py` | `bootstrap.py` registers the complete feature graph and owns construction of application-level/runtime dependencies; the Qt window composition accepts injected dependencies and creates only UI/device adapters. |
 | Character profiles | `kira/services/character_service.py`, `kira/characters`, CharactersPage | CharacterProfileService owns profile create/update/delete, preference/resource normalization and personality mutation; UI owns forms and Qt page coordination. |
 | Memory | `kira/services`, `persona_memory.py`, `evidence_memory.py`, `memory.py` | Memory service is registered/injected; legacy sources/adapters remain. |
 | Voice | `kira/core/interfaces/voice_service.py`, `kira/app/voice_application.py`, `voice_composition.py`, `voice.py`, `listener.py`, `local_voice.py` | VoiceApplicationService implements VoiceService and owns microphone lifecycle, speech/stream/file delegation and wake/sleep/stop transcript policy; Speaker/Listener remain injected adapters. |
@@ -210,3 +210,22 @@ and runs its resource-release callback while the Chat attachment/command
 adapters are still alive. Only after every Session is closed does Chat
 ApplicationService dispose the command registry and AttachmentManager; the
 QApplication shutdown signal then releases the global module graph.
+
+
+## 9. Composition Root boundary
+
+`kira/app/bootstrap.py` is the production Composition Root. It loads settings,
+creates the shared container/EventBus/ModuleManager, registers and starts the
+application feature graph, constructs the SessionManager and ToolAgent, resolves
+the registered services/factories, and injects them into MainWindow.
+
+`kira/ui/main_window_composition.py` is an outer Qt adapter assembler, not a
+fallback service locator. It rejects missing Bootstrap dependencies before
+building the window, does not import or instantiate application/service-layer
+implementations, and creates only presentation/device objects plus typed
+Chat/Voice callback ports. Chat, Session and Voice factories are supplied by
+Bootstrap because their concrete instances require window-scoped Qt callbacks.
+
+The architecture regression suite `tests/test_composition_root_contract.py`
+guards the injection contract and prevents direct application-service construction
+from returning to the UI composition module.
