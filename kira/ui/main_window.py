@@ -82,10 +82,8 @@ class MainWindow(QMainWindow):
     def __getattr__(self, name):
         controllers = self.__dict__.get("_feature_controllers", {})
         for controller in controllers.values():
-            try:
+            if name in type(controller).__dict__:
                 return getattr(controller, name)
-            except AttributeError:
-                continue
         raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
 
     def _dispatch_qt_event(self, controller_name, event_name, event):
