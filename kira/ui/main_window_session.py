@@ -2,6 +2,7 @@
 from .main_window_session_support import (
     KIRA_PROFILE,
     QApplication,
+    math,
     QColor,
     QComboBox,
     QDesktopServices,
@@ -470,10 +471,15 @@ class SessionController(WindowFeatureController):
                 return False
             if QApplication.activeModalWidget() is not None:
                 return False
-            if bool(getattr(session, "busy", False)) or str(getattr(session, "draft", "") or "").strip():
-                return False
-            if self._session_has_pending_chat_work(session):
-                return False
+            # A background character may still be generating a reply or hold an unsent draft.
+            # Initiative is suppressed until every character session is genuinely idle.
+            for pending_session in state.sessions.values():
+                if (
+                    bool(getattr(pending_session, "busy", False))
+                    or str(getattr(pending_session, "draft", "") or "").strip()
+                    or self._session_has_pending_chat_work(pending_session)
+                ):
+                    return False
             if self._worker_is_running(getattr(session, "_vision_worker", None)):
                 return False
 
