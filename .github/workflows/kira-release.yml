@@ -2,7 +2,7 @@ name: Build Kira Update
 
 on:
   push:
-    branches: [main, "next/2026-11-11-intelligence", "feature/characters-ren-mika", "fix/desktop-attachments-project-icons"]
+    branches: [main, new-main, "next/2026-11-11-intelligence", "feature/characters-ren-mika", "fix/desktop-attachments-project-icons"]
     paths:
       - ".github/workflows/kira-release.yml"
       - "kira/**"
@@ -154,7 +154,7 @@ jobs:
         run: python -m compileall -q kira scripts tests
 
   package-and-release:
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next/2026-11-11-intelligence' || github.ref == 'refs/heads/feature/characters-ren-mika'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/new-main' || github.ref == 'refs/heads/next/2026-11-11-intelligence' || github.ref == 'refs/heads/feature/characters-ren-mika'
     needs: [windows-full-suite, portable-regression]
     runs-on: ubuntu-latest
     steps:
