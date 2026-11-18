@@ -63,7 +63,7 @@ These belong in the later explicitly authorized testing phase, not in TASK 016.
 
 1. Keep `kira/main.py` as the thin entry point and `kira/ui/bootstrap.py` as the single production Composition Root.
 2. Keep the production Composition Root authoritative: application/runtime dependencies are constructed in Bootstrap and injected; UI composition must reject missing dependencies rather than silently constructing service-layer fallbacks.
-3. Principal policy boundaries are extracted, including Chat command dispatch and attachment payload composition behind ChatApplicationService. Remaining UI code is the request-to-view sequence, Qt worker/widget lifecycle, dialogs and presentation; retain those responsibilities in feature mixins.
+3. Principal policy boundaries are extracted, including Chat command dispatch and attachment payload composition behind ChatApplicationService. Remaining UI code is the request-to-view sequence, Qt worker/widget lifecycle, dialogs and presentation; retain those responsibilities in window-scoped feature controllers.
 4. The complete application service/factory graph is registered through ModuleManager; per-window Qt workers and runtime Chat/Session/Voice instances are drained by the window lifecycle before application-wide module shutdown.
 5. AD-03/AD-04 source-level fixes are now present: atomic latest-row mutations and transactional character-scoped bulk metadata updates. Runtime acceptance remains pending.
 
@@ -115,7 +115,7 @@ This is a prioritized sequence, not a mandate to create six separate tasks. Rela
 
 ## 6. Legacy migration strategy
 
-- Keep `kira/ui/main_window.py` as the UI composition point; its feature mixins are transitional adapters, not new domain owners.
+- Keep `kira/ui/main_window.py` as the UI composition point; its feature controllers are transitional UI adapters, not new domain owners.
 - Move one coherent controller/service boundary at a time.
 - Bootstrap creates concrete services and injects them; page widgets emit intents and render results.
 - Preserve public imports until callers have moved.
