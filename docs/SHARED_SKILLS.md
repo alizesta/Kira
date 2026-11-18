@@ -8,35 +8,35 @@ Shared Skills are reusable, installable instruction bundles. One library is used
 
 A Skill directory or ZIP contains:
 
-- \`manifest.json\`
-- \`SKILL.md\`
+- `manifest.json`
+- `SKILL.md`
 
 Example manifest:
 
-\`\`\`json
+```json
 {
   "id": "research-helper",
   "name": "Research Helper",
   "version": "1.0.0",
   "description": "A structured research workflow"
 }
-\`\`\`
+```
 
-Skill IDs are lowercase and unique. Only \`SKILL.md\` is loaded. Python modules, executables, shell scripts and other bundled code are never imported or executed.
+Skill IDs are lowercase and unique. Only `SKILL.md` is loaded. Python modules, executables, shell scripts and other bundled code are never imported or executed.
 
 ## Runtime and storage
 
-The desktop app creates one \`SharedSkillService\` at \`DATA_DIR/skills\`. Its public API is:
+The desktop app creates one `SharedSkillService` at `DATA_DIR/skills`. Its public API is:
 
-- \`install(path)\`: install a directory or ZIP atomically.
-- \`list_installed()\`: list validated packages.
-- \`set_enabled(settings, skill_id, True/False)\`: enable/disable globally.
-- \`set_enabled(settings, skill_id, True/False, character_id="ren")\`: add or disable for one character.
-- \`enabled_for(settings, character_id)\`: resolve the effective Skill set.
-- \`prompt_for(settings, character_id)\`: build the bounded prompt contribution.
-- \`uninstall(skill_id, settings)\`: remove the package and clean enablement references.
+- `install(path)`: install a directory or ZIP atomically.
+- `list_installed()`: list validated packages.
+- `set_enabled(settings, skill_id, True/False)`: enable/disable globally.
+- `set_enabled(settings, skill_id, True/False, character_id="ren")`: add or disable for one character.
+- `enabled_for(settings, character_id)`: resolve the effective Skill set.
+- `prompt_for(settings, character_id)`: build the bounded prompt contribution.
+- `uninstall(skill_id, settings)`: remove the package and clean enablement references.
 
-The app resolves the active character's enabled Skills for every chat turn. Global Skills apply to all characters unless that character has an explicit disable override. Character-only Skills do not leak into other characters. The \`shared_skills\` settings object is persisted by the existing application settings mechanism.
+The app resolves the active character's enabled Skills for every chat turn. Global Skills apply to all characters unless that character has an explicit disable override. Character-only Skills do not leak into other characters. Enablement methods mutate the in-memory settings mapping. The caller must save that mapping through the existing `save_settings(settings)` function; this change does not add a management screen or automatically persist arbitrary API calls.
 
 ## Safety boundaries
 
@@ -49,4 +49,4 @@ The app resolves the active character's enabled Skills for every chat turn. Glob
 
 ## Current delivery boundary
 
-The registry, installer, global/per-character enablement policy and chat prompt integration are implemented. The desktop runtime exposes \`window.skill_service\` for the management UI or trusted application workflows. A dedicated Skills management page/dialog is not part of this change; until that UI is added, installation and enablement are available through the service API and settings object. Runtime tests and Windows desktop acceptance must still be executed before release.
+The registry, installer, global/per-character enablement policy and chat prompt integration are implemented. The desktop runtime exposes `window.skill_service` for the management UI or trusted application workflows. A dedicated Skills management page/dialog is not part of this change; until that UI is added, installation and enablement are available through the service API and settings object. Call `save_settings(window.settings)` after changing enablement. Runtime tests and Windows desktop acceptance must still be executed before release.
