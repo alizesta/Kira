@@ -203,12 +203,14 @@ class SessionApplicationServiceTests(unittest.TestCase):
         self.assertTrue(self.service.has_pending_work(session))
         session.worker = None
 
-        vision_worker = SimpleNamespace(isRunning=lambda: True)
-        self.assertTrue(
-            self.service.has_pending_work(
-                session, vision_session=session, vision_worker=vision_worker
-            )
-        )
+        session._vision_session = session
+        session._vision_worker = SimpleNamespace(isRunning=lambda: True)
+        self.assertTrue(self.service.has_pending_work(session))
+
+        # Vision work belongs to its ChatSession; another session must not
+        # inherit the active window's worker state.
+        other = self.manager.create_session("ren")
+        self.assertFalse(self.service.has_pending_work(other))
 
     def test_active_application_request_prevents_session_drain(self):
         session = self.manager.create_session("kira")
