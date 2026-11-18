@@ -59,7 +59,7 @@ def initialize_main_window(
 ):
     """Build UI widgets and bind injected services to typed Qt callback adapters."""
     self = window
-    # Application services are constructed and lifecycle-managed by app.bootstrap.
+    # Application services are constructed and lifecycle-managed by the outer UI Composition Root.
     # This module is only the outer Qt/UI adapter composition boundary.
     required = {
         "memory_service": memory_service,
