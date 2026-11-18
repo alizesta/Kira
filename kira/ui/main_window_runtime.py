@@ -78,7 +78,7 @@ class RuntimeController(WindowFeatureController):
             self.voice_application_service.stream_text(text)
             self._speech_live = True
         except Exception as exc:                                    # noqa: BLE001
-            self.on_voice_error(f"صدا ناموفق بود: {type(exc).__name__}: {exc}")
+            self.feature_controller("session").on_voice_error(f"صدا ناموفق بود: {type(exc).__name__}: {exc}")
 
     def on_stream_chunk(self, piece, accumulated_content=None):
         # ResponseHandler owns ordered aggregation; the window keeps only the
@@ -102,7 +102,7 @@ class RuntimeController(WindowFeatureController):
         self._speak_stream(text)
         name = self.character_service.display_name(self.settings)
         ui_dir = "rtl" if self.settings.get("ui_lang", "fa") == "fa" else "ltr"
-        html = message_html("assistant", name, text, ui_dir, accent=self.accent())
+        html = message_html("assistant", name, text, ui_dir, accent=self.feature_controller("session").accent())
         doc = self.chat.document()
         cur = QTextCursor(doc)
         if self._stream_pos is None:
@@ -151,7 +151,7 @@ class RuntimeController(WindowFeatureController):
         menu = self.route_menu
         menu.clear()
         menu.addAction("جزئیات Route فعال…", self.show_route_details)
-        menu.addAction(self.t("route_open"), lambda: self.go_tab(self.tab_keys.index("tab_ai")))
+        menu.addAction(self.feature_controller("session").t("route_open"), lambda: self.feature_controller("session").go_tab(self.tab_keys.index("tab_ai")))
         menu.addSeparator()
         manual = self.settings.get("manual_route_id", "")
         auto = menu.addAction("خودکار (بر اساس اولویت)")
@@ -173,7 +173,7 @@ class RuntimeController(WindowFeatureController):
         if len(routes) > len(shown):
             menu.addSeparator()
             more = menu.addAction(f"{len(routes) - len(shown)} Route دیگر در مدیریت Route…")
-            more.triggered.connect(lambda checked=False: self.go_tab(self.tab_keys.index("tab_ai")))
+            more.triggered.connect(lambda checked=False: self.feature_controller("session").go_tab(self.tab_keys.index("tab_ai")))
 
     def show_route_details(self):
         info = self._route_info or self.client.preview_route()
@@ -201,7 +201,7 @@ class RuntimeController(WindowFeatureController):
         if route_id:
             self.client.reset_cooldowns(route_id)
         self.save_now()
-        self.refresh_route_list()
+        self.feature_controller("provider_settings").refresh_route_list()
         if not self.busy:
             self.set_badge("idle", self.client.preview_route())
 
@@ -219,7 +219,7 @@ class RuntimeController(WindowFeatureController):
 
     def on_stream_event(self, e):
         phase = e.get("phase")
-        self.on_upload_event(phase, e.get("percent"))
+        self.feature_controller("attachments_vision").on_upload_event(phase, e.get("percent"))
         if phase == "uploading":                                   # request body (images / files) being sent to the model
             self.status.setText(f"در حال ارسال ضمیمه‌ها به مدل… {e.get('percent', 0)}%")
             return
@@ -232,7 +232,7 @@ class RuntimeController(WindowFeatureController):
         elif phase == "failover":
             self.status.setText(f"Failover → {e['label']} / {e['model']}")
         elif phase in ("connecting", "waiting"):
-            self.set_status("st_thinking")
+            self.feature_controller("session").set_status("st_thinking")
 
     def on_tool_event(self, e):
         """Status line while a tool runs (no layout change). The real outcome is always reported by Kira's answer."""
@@ -254,7 +254,7 @@ class RuntimeController(WindowFeatureController):
         text = meta.text
         if not text.strip() and not res.get("stopped") and not res.get("interrupted") and not getattr(self, "_plain_retry", False):
             self._plain_retry = True            # model answered with a tag only: ask again without tags (counted as a retry)
-            self.start_worker(plain=True)
+            self.feature_controller("chat").start_worker(plain=True)
             return
         if not res.get("stopped") and not res.get("interrupted"):
             request_id = getattr(self.cur, "application_request_id", None)
@@ -269,18 +269,18 @@ class RuntimeController(WindowFeatureController):
         if res.get("stopped"):
             if text.strip():
                 self.save_message("assistant", raw, status="cancelled", metadata={"stream": "stopped"}, persist=False)
-            self.add_chat("system", "تولید پاسخ متوقف شد." + (" متن دریافت‌شده نگه داشته شد." if text.strip() else ""))
+            self.feature_controller("session").add_chat("system", "تولید پاسخ متوقف شد." + (" متن دریافت‌شده نگه داشته شد." if text.strip() else ""))
             if self._speech_live:
                 self.safe_stop_speaker()                           # the Stop button also silences the rest of the spoken reply
             self.animator.set_expression("neutral", hold=2)
         elif res.get("interrupted"):
             self.save_message("assistant", raw, status="interrupted", metadata={"stream": "provider_interrupted"}, persist=False)
-            self.add_chat("error", f"ارتباط وسط پاسخ قطع شد؛ بخش دریافت‌شده نگه داشته شد و تکرار نمی‌شود.\n{res['interrupted']}")
+            self.feature_controller("session").add_chat("error", f"ارتباط وسط پاسخ قطع شد؛ بخش دریافت‌شده نگه داشته شد و تکرار نمی‌شود.\n{res['interrupted']}")
             if self._speech_live:
                 self.voice_application_service.stream_end()                          # what arrived is still spoken to its end
             self.director.event("response_failed")
         elif not text.strip():
-            self.add_chat("error", self.t("empty"))
+            self.feature_controller("session").add_chat("error", self.feature_controller("session").t("empty"))
             self.director.event("response_failed")
         else:
             self.save_message("assistant", raw, persist=False)
@@ -297,7 +297,7 @@ class RuntimeController(WindowFeatureController):
             else:
                 self.say(text)
         if self._web_found and text.strip():
-            self.add_sources(self._web_found)
+            self.feature_controller("chat").add_sources(self._web_found)
         self._web_found = None
         self._send_next_pending()
 
@@ -309,11 +309,11 @@ class RuntimeController(WindowFeatureController):
         self._stream_pos = None
         if getattr(self, "_speech_live", False):
             self.voice_application_service.stream_end()
-        self.add_chat("error", self.t("reply_err", e=error))
+        self.feature_controller("session").add_chat("error", self.feature_controller("session").t("reply_err", e=error))
         self.director.event("response_failed")
         self.finish_request(None)
         self.set_badge("error")
-        self.check_status()
+        self.feature_controller("lifecycle").check_status()
         self._send_next_pending()
 
     def _schedule_chat_callback(self, callback):
@@ -324,7 +324,7 @@ class RuntimeController(WindowFeatureController):
         session = session or self.cur
         if self._closing or self.sessions.get(session.cid) is not session:
             return
-        if self._vision_session is session and not self._worker_is_running(self._vision_worker):
+        if self._vision_session is session and not self.feature_controller("session")._worker_is_running(self._vision_worker):
             worker = self._vision_worker
             if worker is not None:
                 try:
@@ -335,22 +335,22 @@ class RuntimeController(WindowFeatureController):
             self._vision_session = None
         self.chat_application_service.dispatch_next(session.session_id, busy=session.busy)
         profiles = self.character_service.all_profiles(self.settings)
-        if session.cid not in profiles and not self._session_has_pending_chat_work(session):
+        if session.cid not in profiles and not self.feature_controller("session")._session_has_pending_chat_work(session):
             self._schedule_chat_callback(self.sync_sessions)
 
     def finish_request(self, res=None):
-        self.clear_upload_tiles()
+        self.feature_controller("attachments_vision").clear_upload_tiles()
         self.busy = False
         if self.cur is not self.front:
             self.cur.unread = True                                 # an answer arrived for a tab you are not looking at
-        self.refresh_tab_buttons()
+        self.feature_controller("session").refresh_tab_buttons()
         self._speech_live = False
         self.gen_stop_btn.hide()
         self.gen_stop_btn.setEnabled(True)
         self.send_btn.setEnabled(True)
         self.input.setEnabled(True)
         self.input.setFocus()
-        self.set_status("st_ready")
+        self.feature_controller("session").set_status("st_ready")
         if res and res.get("provider"):
             m = res.get("metrics") or {}
             detail = f"آخرین پاسخ: {res['provider']} / {res['model']}"
@@ -367,10 +367,10 @@ class RuntimeController(WindowFeatureController):
                             "model": res["model"], "kind": res["kind"]})
         elif res is not None:
             self.set_badge("idle", self.client.preview_route())
-        self.refresh_route_list()
+        self.feature_controller("provider_settings").refresh_route_list()
 
     def reply_local(self, text, expression="happy"):
-        self.add_chat("assistant", text)
+        self.feature_controller("session").add_chat("assistant", text)
         self.save_message("assistant", text)
         self.chat_application_service.complete_local_request(self.cur.application_request_id)
         self.animator.set_expression(expression, hold=4)
@@ -390,7 +390,7 @@ class RuntimeController(WindowFeatureController):
             ok = True
         self.memory_service.observe(self.cur.cid, role, content)
         try:
-            self._sync_mood_character()
+            self.feature_controller("session")._sync_mood_character()
             if role == "user":
                 mood.on_user_message(content)
                 if self.cur is self.front:
@@ -405,7 +405,7 @@ class RuntimeController(WindowFeatureController):
             self._save_warned = False
         elif persist and not ok and not self._save_warned:
             self._save_warned = True
-            self.add_chat("error", "ذخیره‌ی گفتگو روی دیسک ناموفق بود. گفتگو تا بسته‌شدن برنامه در حافظه می‌ماند و با اولین ذخیره‌ی موفق نوشته می‌شود."
+            self.feature_controller("session").add_chat("error", "ذخیره‌ی گفتگو روی دیسک ناموفق بود. گفتگو تا بسته‌شدن برنامه در حافظه می‌ماند و با اولین ذخیره‌ی موفق نوشته می‌شود."
                                    f"\nعلت: {self.chat_application_service.last_persistence_error}")
         return ok
 
@@ -414,14 +414,14 @@ class RuntimeController(WindowFeatureController):
         try:
             self.voice_application_service.stop_speaking()
         except Exception as exc:                                  # noqa: BLE001
-            self.on_voice_error(f"توقف صدا ناموفق بود: {type(exc).__name__}: {exc}")
+            self.feature_controller("session").on_voice_error(f"توقف صدا ناموفق بود: {type(exc).__name__}: {exc}")
 
     def say(self, text):
         if self.voice_btn.isChecked():
             try:
                 self.voice_application_service.speak(text)
             except Exception as exc:                              # noqa: BLE001
-                self.on_voice_error(f"صدا ناموفق بود: {type(exc).__name__}: {exc}")
+                self.feature_controller("session").on_voice_error(f"صدا ناموفق بود: {type(exc).__name__}: {exc}")
 
     def on_mood_changed(self, mood):
         if mood == "bored" and self.settings.get("idle_talk", True) and not self.busy \
@@ -488,7 +488,7 @@ class RuntimeController(WindowFeatureController):
     def on_speech_started(self):
         self.director.event("tts_started")           # real audio playback has begun
         self.voice_application_service.begin_speaking()
-        self.set_status("st_speaking")
+        self.feature_controller("session").set_status("st_speaking")
 
     def on_speech_finished(self):
         self.director.event("tts_stopped")           # playback ended or was stopped
@@ -497,7 +497,7 @@ class RuntimeController(WindowFeatureController):
         if self.listener:
             self.on_listener_state("listening")
         else:
-            self.set_status("st_ready")
+            self.feature_controller("session").set_status("st_ready")
 
     def _on_kira_level(self, level):
         if self.listener:
@@ -536,7 +536,7 @@ class RuntimeController(WindowFeatureController):
 
     def stop_listener(self):
         self.voice_application_service.stop_recording()
-        self.set_status("st_ready")
+        self.feature_controller("session").set_status("st_ready")
         self.update_engine_label()
 
     def _on_voice_listener_finished(self, listener, was_current, restart_requested):
@@ -548,10 +548,10 @@ class RuntimeController(WindowFeatureController):
         if restart_requested and self.mic_btn.isChecked():
             QTimer.singleShot(0, self.start_listener)
         elif was_current:
-            self.set_status("st_ready")
+            self.feature_controller("session").set_status("st_ready")
 
     def on_listener_error(self, msg):
-        self.add_chat("error", msg)
+        self.feature_controller("session").add_chat("error", msg)
         self.mic_btn.setChecked(False)
         if self.wake_btn.isChecked():
             self.wake_btn.setChecked(False)
@@ -563,9 +563,9 @@ class RuntimeController(WindowFeatureController):
     def on_listener_state(self, state):
         if state == "listening":
             self.update_engine_label()
-            self.set_status("st_sleeping" if (self.wake_btn.isChecked() and not self.awake) else "st_listening")
+            self.feature_controller("session").set_status("st_sleeping" if (self.wake_btn.isChecked() and not self.awake) else "st_listening")
         else:
-            self.set_status({"loading": "st_loading", "hearing": "st_hearing", "transcribing": "st_transcribing"}.get(state, "st_ready"))
+            self.feature_controller("session").set_status({"loading": "st_loading", "hearing": "st_hearing", "transcribing": "st_transcribing"}.get(state, "st_ready"))
 
     def update_engine_label(self):
         eng = getattr(self.listener, "engine", None) if self.listener else None
@@ -615,15 +615,15 @@ class RuntimeController(WindowFeatureController):
             return
         if decision.action == "wake_only":
             self.wake_up()
-            self.reply_local(self.t("yes"))
+            self.reply_local(self.feature_controller("session").t("yes"))
             return
         if decision.action == "wake_submit":
             self.wake_up()
             text = decision.text
         elif decision.action == "sleep":
-            self.add_chat("user", text)
+            self.feature_controller("session").add_chat("user", text)
             self.go_sleep()
-            self.say(self.t("night"))
+            self.say(self.feature_controller("session").t("night"))
             return
         elif decision.action == "stop":
             if self.wake_btn.isChecked() and self.awake:
@@ -633,7 +633,7 @@ class RuntimeController(WindowFeatureController):
         elif self.wake_btn.isChecked() and self.awake:
             self.wake_timer.start(int(self.settings["wake_timeout"]) * 1000)
         self._voice_next = True
-        self.submit(text)
+        self.feature_controller("chat").submit(text)
 
     # ---------- companion window ----------
 
@@ -649,7 +649,7 @@ class RuntimeController(WindowFeatureController):
 
     def update_companion_btn(self):
         shown = self.companion.isVisible()
-        self.companion_btn.setToolTip(self.t("hide_char" if shown else "show_char"))
+        self.companion_btn.setToolTip(self.feature_controller("session").t("hide_char" if shown else "show_char"))
         self.companion_btn.setChecked(shown)
 
     def _running_background_workers(self):
@@ -714,7 +714,7 @@ class RuntimeController(WindowFeatureController):
         if (getattr(self, "tray", None) is not None and self.settings.get("close_to_tray")
                 and not getattr(self, "_quitting", False)):
             event.ignore()                                           # X only hides; "Exit" in the tray menu really quits
-            self.hide_to_tray()
+            self.feature_controller("lifecycle").hide_to_tray()
             return
         if getattr(self, "_closing", False):
             if self._running_background_workers():
@@ -741,7 +741,7 @@ class RuntimeController(WindowFeatureController):
         if local_worker is not None and local_worker.isRunning():
             if not getattr(self, "_close_after_local_voice", False):
                 self._close_after_local_voice = True
-                self.add_chat("system", "بارگذاری یا آزمایش موتور صوتی هنوز در حال اجراست؛ Kira پس از پایان امن آن بسته می‌شود.")
+                self.feature_controller("session").add_chat("system", "بارگذاری یا آزمایش موتور صوتی هنوز در حال اجراست؛ Kira پس از پایان امن آن بسته می‌شود.")
             event.ignore()
             return
         # ChatApplicationService owns cancellation and persists partial output once.
@@ -755,7 +755,7 @@ class RuntimeController(WindowFeatureController):
         self.tool_agent.request_cancel()
         # Stop attachment reads as soon as shutdown starts; a large file must not
         # keep the window alive for the full read when the user already cancelled.
-        self.cancel_attachments()
+        self.feature_controller("attachments_vision").cancel_attachments()
         for sess in self.sessions.values():
             if sess.client is not None:
                 sess.client.cancel()
@@ -765,8 +765,8 @@ class RuntimeController(WindowFeatureController):
             timer = getattr(self, timer_name, None)
             if timer is not None:
                 timer.stop()
-        self._set_game_vision_capture(False)
-        self._stop_game_audio_listener()
+        self.feature_controller("attachments_vision")._set_game_vision_capture(False)
+        self.feature_controller("attachments_vision")._stop_game_audio_listener()
         self.game_mode.set_enabled(False)
         for sess in self.sessions.values():
             for w in (sess.worker, sess._search_worker):
@@ -782,7 +782,7 @@ class RuntimeController(WindowFeatureController):
         self.companion.close()
         running = self._running_background_workers()
         if running:
-            self.add_chat(
+            self.feature_controller("session").add_chat(
                 "system",
                 "چند کار پس‌زمینه هنوز در حال پایان‌اند؛ پنجره بعد از پایان امن آن‌ها بسته می‌شود."
             )
@@ -817,15 +817,15 @@ class RuntimeController(WindowFeatureController):
         for sess in self.sessions.values():             # every character's conversation is shown again from the database
             if sess.view is None:
                 continue
-            with self._as(sess):
+            with self.feature_controller("session")._as(sess):
                 self.chat.clear()
-                self.restore_history(200)
+                self.feature_controller("session").restore_history(200)
 
     def clear_chat(self):
         who = self.character_service.display_name(self.settings)
         question = (f"تاریخچه‌ی گفتگوی «{who}» پاک شود؟ (گفتگوی بقیه‌ی کاراکترها دست‌نخورده می‌ماند)"
                     if self.settings.get("ui_lang", "fa") == "fa" else f"Delete the saved history of {who}? (the other characters' chats stay)")
-        if QMessageBox.question(self.window, self.t("clear_t"), question) == QMessageBox.Yes:
+        if QMessageBox.question(self.window, self.feature_controller("session").t("clear_t"), question) == QMessageBox.Yes:
             try:
                 self.chat_application_service.clear_history(self.cur.cid)      # only THIS character's conversation; saves a snapshot first, nothing is deleted if that fails
                 # Facts, moments and habits remain in the character's own memory file.
@@ -833,10 +833,10 @@ class RuntimeController(WindowFeatureController):
                 self.tool_agent.clear_session(self.cur.cid) # clear only this character's tasks, tool context, grants and temporary research
                 brain.reset_state(self.cur.cid)
             except ChatHistoryError as exc:
-                QMessageBox.warning(self.window, self.t("clear_t"), str(exc))
+                QMessageBox.warning(self.window, self.feature_controller("session").t("clear_t"), str(exc))
                 return
             self.chat.clear()
-            self.add_chat("system", self.t("mem_cleared") + " (اگر اشتباه بود: تنظیمات ← عمومی ← «بازگرداندن آخرین پاک‌سازی».)")
+            self.feature_controller("session").add_chat("system", self.feature_controller("session").t("mem_cleared") + " (اگر اشتباه بود: تنظیمات ← عمومی ← «بازگرداندن آخرین پاک‌سازی».)")
 
     def apply_mood_to_avatar(self):
         """A quick front-session avatar reaction; background Sessions never drive the visible avatar."""
@@ -869,7 +869,7 @@ class RuntimeController(WindowFeatureController):
             QMessageBox.information(self.window, "بازگرداندن گفتگو", str(exc))
             return
         self.reload_chat_view()
-        self.add_chat("system", f"{n} پیام بازگردانده شد." if n else "همه‌ی پیام‌های آن پاک‌سازی از قبل در گفتگو بودند.")
+        self.feature_controller("session").add_chat("system", f"{n} پیام بازگردانده شد." if n else "همه‌ی پیام‌های آن پاک‌سازی از قبل در گفتگو بودند.")
 
     def import_old_chat(self, path=None):
         """Merge chats from an older Kira database (nothing is overwritten; duplicates are skipped)."""
@@ -888,7 +888,7 @@ class RuntimeController(WindowFeatureController):
             QMessageBox.warning(self.window, "ورود گفتگو", str(exc))
             return
         self.reload_chat_view()
-        self.add_chat("system", f"{n} پیام از فایل قدیمی وارد شد." if n else "پیام جدیدی در آن فایل نبود (همه از قبل وجود داشتند).")
+        self.feature_controller("session").add_chat("system", f"{n} پیام از فایل قدیمی وارد شد." if n else "پیام جدیدی در آن فایل نبود (همه از قبل وجود داشتند).")
 
     @staticmethod
     def html(s):
