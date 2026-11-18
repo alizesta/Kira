@@ -640,7 +640,7 @@ class SessionMixin(WindowFeatureController):
             self.refresh_voice_caps()               # Refresh local-only speech status
 
     def resizeEvent(self, event):
-        super().resizeEvent(event)
+        self.qt_super_event("resizeEvent", event)
         card = getattr(self, "avatar_card", None)
         if card is not None:                         # narrow window: give the whole width to the conversation
             card.setVisible(self.width() >= 640)
