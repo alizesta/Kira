@@ -192,6 +192,25 @@ class BrainMemoryWriterTests(unittest.TestCase):
 
 
 class BrainReflectionQualityTests(unittest.TestCase):
+    def test_reflection_off_does_not_inject_a_stale_hint(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(brain, "DATA_DIR", Path(tmp)):
+            self.assertTrue(brain._store_hint("old", "stale reminder", "reflection-off"))
+            decision = brain.Decision(stage=brain.SURFACE, reflection="off", mode="auto")
+            prompt = brain.extend_prompt("base prompt", decision, {}, None, character_id="reflection-off")
+        self.assertEqual(prompt, "base prompt")
+
+    def test_non_kira_reflection_does_not_read_kira_identity(self):
+        with patch("kira.evidence_memory.current_value", side_effect=AssertionError("Kira memory leaked")):
+            findings = brain.check_reply(
+                "Your name is Alex.", tools=[], mode_name=modes.CHAT,
+                character_id="ren",
+            )
+        self.assertEqual(findings, [])
+
+    def test_non_kira_turn_cannot_run_kiras_legacy_memory_writer(self):
+        with patch("kira.evidence_memory.enabled", side_effect=AssertionError("writer should not start")):
+            brain._memory_writer(object(), {"brain_memory_writer": "idle"}, "mika")
+
     def test_partial_tool_failure_is_not_hidden_by_another_success(self):
         findings = brain.check_reply(
             "کار انجام شد.",
