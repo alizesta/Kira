@@ -248,6 +248,20 @@ class FileAgentTests(unittest.TestCase):
         self.assertTrue(all((self.root / n).exists() for n in ("a.jpg", "b.pdf", "c.mp3", "d.xyz")))               # the WHOLE operation went back
         self.assertFalse((self.root / "Other" / "d.xyz").exists())
 
+    def test_undo_write_rejects_backup_outside_allowed_roots(self):
+        target = self.root / "important.txt"
+        target.write_text("current", encoding="utf-8")
+        outside_backup = Path(self.tmp.name, "outside-backup.txt")
+        outside_backup.write_text("attacker-controlled", encoding="utf-8")
+        journal = Journal(self.data)
+        journal.add("write", path=str(target), backup=str(outside_backup))
+        agent = FileAgent(self.policy, journal)
+
+        with self.assertRaises(ToolError):
+            agent.undo_last({})
+
+        self.assertEqual(target.read_text(encoding="utf-8"), "current")
+
     def test_undo_create_rename_append(self):
         f = self.root / "u.txt"
         self.run_tool("create_file", {"path": str(f), "content": "base"})
