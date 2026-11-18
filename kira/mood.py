@@ -466,7 +466,7 @@ def reset():
     try:
         _runtime_for().reset()
     except Exception:
-        pass
+        _log.warning("Unable to reset structured emotional state", exc_info=True)
 
 
 # ---------------- reading the state ----------------

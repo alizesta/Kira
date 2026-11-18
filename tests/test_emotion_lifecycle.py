@@ -35,9 +35,13 @@ class AssistantObservationPolicyTests(unittest.TestCase):
         self.assertIn('status="interrupted", metadata={"stream": "provider_interrupted"}, persist=False, observe=False', source)
         self.assertIn('self.save_message("assistant", text, observe=False)', source)
 
-    def test_user_message_observation_is_independent_of_assistant_status(self):
+    def test_only_user_and_complete_assistant_roles_are_observed(self):
+        self.assertTrue(should_observe_message("user", "complete", observe=True))
         self.assertTrue(should_observe_message("user", "cancelled", observe=True))
         self.assertFalse(should_observe_message("user", "complete", observe=False))
+        for role in ("system", "tool", "developer", ""):
+            with self.subTest(role=role):
+                self.assertFalse(should_observe_message(role, "complete", observe=True))
 
 
 if __name__ == "__main__":

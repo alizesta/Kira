@@ -129,7 +129,7 @@ class EmotionalRuntime:
     """Persistent emotional state. No provider, UI or Qt dependency."""
     def __init__(self, library=None, path=None, clock=time.time, base_traits=None):
         self.library = library
-        self.config = ((library.rules.get("emotional_runtime") or {}) if library else {})
+        self.config = _as_mapping(library.rules.get("emotional_runtime")) if library else {}
         self.path = Path(path) if path else Path(DATA_DIR) / STATE_FILE
         self.clock = clock
         self._lock = LOCK
