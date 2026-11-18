@@ -87,6 +87,26 @@ class ArchitectureBoundaryTests(unittest.TestCase):
             "all other kira packages are outer-layer dependencies.",
         )
 
+    def test_domain_is_pure_and_does_not_depend_on_core_or_outer_layers(self):
+        domain_root = ROOT / "kira" / "domain"
+        self.assertTrue(domain_root.is_dir(), "The pure Domain package must exist.")
+        files = sorted(domain_root.rglob("*.py"))
+        violations = []
+        for path in files:
+            for imported in _imported_modules(path):
+                if imported == "kira" or (
+                    imported.startswith("kira.")
+                    and not _matches_prefix(imported, ("kira.domain",))
+                ):
+                    violations.append(
+                        f"{path.relative_to(ROOT)} imports {imported}"
+                    )
+        self.assertEqual(
+            violations,
+            [],
+            "Domain may depend only on itself and the Python standard library.",
+        )
+
     def test_chat_ui_calls_web_search_application_service_not_engine_module(self):
         ui_paths = (
             ROOT / "kira" / "ui" / "main_window_chat.py",
