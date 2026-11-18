@@ -1,6 +1,5 @@
 """Lifecycle behavior mixin for the desktop window."""
 from .main_window_lifecycle_support import (
-    OllamaClient,
     OllamaTaskWorker,
     QApplication,
     QDesktopServices,
