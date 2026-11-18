@@ -3,7 +3,7 @@
 **Snapshot date:** 2026-11-18  
 **Repository:** `alizesta/Kira`  
 **Base branch:** `new-main`  
-**Base SHA:** `101361f60bb19a45484cbcdb7b52584eb3da0111`  
+**Base SHA:** `516765f0ceca9b674f32bec2d6491bf82b2e434f`  
 **Evidence:** TASK 015 static audit (`docs/TASK_015_FINAL_ARCHITECTURE_AUDIT.md`, Draft PR #47), current `new-main` source and documentation, and merged TASK 013+014 integration PR #48 (merge commit `b54d092a330b6383ca4244320ffaeec9267db561`).  
 **Verification boundary:** static inspection only. No tests, compile/import checks, application execution, Windows checks or GUI checks were run for TASK 016.
 
@@ -11,11 +11,11 @@
 
 ## 1. Executive architecture summary
 
-Kira is an incremental modularization of a PySide6 desktop application. The Python entry point is now thin and delegates startup to `kira.app.bootstrap`. Bootstrap is the composition root and constructs the dependency container, shared EventBus, typed Chat event publisher, ModuleManager, required service modules, SessionManager and Chat application-service factory. The production window now lives in `kira.ui.main_window.MainWindow` and its feature-oriented mixins under `kira/ui/main_window_*.py`. The legacy `kira/oldmain.py` file has been removed. The window is decomposed by UI capability, but substantial application policy and cross-feature orchestration still remain in those mixins; it is **not yet a thin presentation shell**.
+Kira is an incremental modularization of a PySide6 desktop application. The Python entry point is now thin and delegates startup to `kira.app.bootstrap`. Bootstrap is the composition root and constructs the dependency container, shared EventBus, typed Chat event publisher, ModuleManager, required service modules, SessionManager, Chat application-service factory and the injected Web Search application service. The production window now lives in `kira.ui.main_window.MainWindow` and its feature-oriented mixins under `kira/ui/main_window_*.py`. The legacy `kira/oldmain.py` file has been removed. The window is decomposed by UI capability, but substantial application policy and cross-feature orchestration still remain in those mixins; it is **not yet a thin presentation shell**.
 
 The Chat domain is the most clearly separated feature area. All fourteen Chat task modules are present on `new-main` after PR #48 merged TASK 013 and TASK 014 together. The Chat core services are designed to be Qt-free and communicate through injected contracts. Persistence remains the durable storage boundary. Runtime Session state is separate from durable Conversation state. The EventBus broadcasts notifications; it is not a general-purpose service-call router.
 
-The generic ModuleManager and DependencyContainer exist and are used by bootstrap, but only the Memory, Mood, Character Profile and Chat History service modules are registered there today. Chat, Voice, Avatar, Web Research, Coding Agent and Provider capabilities are not yet independently lifecycle-managed feature modules.
+The generic ModuleManager and DependencyContainer exist and are used by bootstrap, but only the Memory, Mood, Character Profile and Chat History service modules are registered there today. Chat, Voice, Avatar, Web Research, Coding Agent and Provider capabilities are not independently lifecycle-managed feature modules. Web Search application policy is injected directly; it is not a ModuleManager lifecycle module.
 
 ## 2. Evidence and status interpretation
 
@@ -63,13 +63,13 @@ The diagram is a bounded view of the production startup and Chat composition. It
 | Element | Current responsibility | Status / boundary |
 |---|---|---|
 | `kira/main.py` | Exposes `main()`, imports and calls `run_application()`; retains a lazy compatibility export of `MainWindow` from `kira.ui.main_window`. | Implemented thin entry point; compatibility export remains. |
-| `kira/app/bootstrap.py` | Creates QApplication, dependency container, EventBus, ChatEventPublisher, ModuleManager, required services, SessionManager, Chat factory and MainWindow; connects shutdown. | Actual Composition Root. |
+| `kira/app/bootstrap.py` | Creates QApplication, dependency container, EventBus, ChatEventPublisher, ModuleManager, required services, SessionManager, Chat factory, WebSearchApplicationService and MainWindow; connects shutdown. | Actual Composition Root. |
 | `kira/app/dependency_container.py` | Instance/factory registration, lazy resolution and unregister. | Implemented; explicit DI container, not proof that every dependency uses it. |
 | `kira/app/module_manager.py` | Module registration, dependency ordering, start/stop/enable/disable/unregister/dispose and failure isolation. | Implemented engine; feature registration is partial. |
 | `kira/app/event_bus.py` | In-process publish/subscribe notifications and typed event delivery support. | One shared application bus. |
 | `kira/ui/main_window.py` + `main_window_*.py` | MainWindow composition plus feature-oriented UI behavior mixins. | Active production window; remaining policy/orchestration debt is explicit in the mixins. |
 
-Bootstrap currently registers required service modules for Memory, Mood, Characters and Chat History. It starts them before constructing the window, injects their resolved services and retains the container, bus, publisher, SessionManager and ModuleManager on the window for application lifetime. The Chat factory is created with the resolved Chat History persistence adapter and shared ChatEventPublisher.
+Bootstrap currently registers required service modules for Memory, Mood, Characters and Chat History. It starts them before constructing the window, injects their resolved services and retains the container, bus, publisher, SessionManager and ModuleManager on the window for application lifetime. The Chat factory is created with the resolved Chat History persistence adapter and shared ChatEventPublisher. `WebSearchApplicationService` is injected into MainWindow; it owns Gemini credential selection, follow-up query rewriting, web/image request options and search-evidence normalization. SearchWorker creation and result presentation remain in the UI adapter.
 
 ### 3.2 Capability inventory
 
@@ -83,7 +83,7 @@ Bootstrap currently registers required service modules for Memory, Mood, Charact
 | Avatar & emotion | `kira/face.py`, `kira/vrm_avatar.py`, `kira/companion.py`, `kira/emotion/*`, `kira/body.py`, `kira/rig.py` | Rendering/emotion capability exists; not an independently managed application module. |
 | Tools & commands | `kira/tools/*`, `kira/actions.py`, `kira/chat/commands.py`, `kira/chat/command_adapters.py` | Chat command registry/adapter contracts exist and are installed by MainWindow; general tool execution remains in capability/legacy integration code. |
 | Coding Agent | `kira/auto_agent.py`, `kira/code_agent.py`, `kira/chat_code.py`, `kira/chat_code_ui.py` | Source capability exists; not a separately registered ModuleManager feature module. |
-| Web Research | `kira/webintel/*`, `kira/websearch.py`, discovery/search adapters | Source capability exists; policy and worker lifecycle remain coupled to the legacy application layer. |
+| Web Research | `kira/app/web_search.py`, `kira/websearch.py`, `kira/webintel/*`, discovery/search adapters | `WebSearchApplicationService` owns provider credentials, follow-up rewriting, web/image options and evidence merging. SearchWorker lifecycle and result presentation remain in the UI adapter. |
 | Vision | `kira/vision_pipeline.py`, `kira/vision_ocr.py`, game detection/mode/audio modules | Source capability exists; not established as a separately injected Vision application service. |
 | UI | `kira/ui/pages`, `components`, `dialogs`, `workers.py`, `main_window.py` and feature mixins | Several pages/components/workers extracted; MainWindow remains a large UI/application adapter. |
 | Shared Skills | No first-party shared Skills module/contract was established by TASK 015's TASK 001–014 audit or the inspected `kira/` package tree on this base. | Do not claim shared installable Skills are delivered by these Chat tasks. Treat a separately merged Skills implementation as separate evidence. |
@@ -114,7 +114,7 @@ flowchart TD
     Events -.-> Bus["shared EventBus"]
 ```
 
-The flow is conceptual at the public-contract level: MainWindow still creates some context/policy inputs and adapts provider callbacks. The direct request/response path uses service calls and injected callbacks. EventBus is for notification, not to invoke another module's business API.
+The flow is conceptual at the public-contract level: MainWindow adapts provider callbacks and owns worker/UI presentation. Web Search query/provider/request/evidence policy is delegated to the injected `WebSearchApplicationService`. The direct request/response path uses service calls and injected callbacks. EventBus is for notification, not to invoke another module's business API.
 
 ### 4.1 Identity and lifecycle boundaries
 

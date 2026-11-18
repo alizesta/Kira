@@ -1,5 +1,6 @@
 """Main desktop window composed from feature-oriented UI behavior mixins."""
 from .main_window_support import *  # noqa: F401,F403
+from ..app.web_search import WebSearchApplicationService
 from .main_window_session import SessionMixin
 from .main_window_voice_settings import VoiceSettingsMixin
 from .main_window_character_settings import CharacterSettingsMixin
@@ -64,7 +65,7 @@ class MainWindow(
     voice_btn = front_only_property("voice_btn")
 
     def __init__(self, memory_service=None, mood_service=None, character_service=None, chat_history_service=None,
-                 session_manager=None, chat_event_publisher=None, chat_application_service_factory=None):
+                 session_manager=None, chat_event_publisher=None, chat_application_service_factory=None, web_search_service=None):
         super().__init__()
         # Direct MainWindow construction remains supported for existing callers;
         # normal application startup injects these services from app.bootstrap.
@@ -100,6 +101,7 @@ class MainWindow(
                 schedule=lambda callback: QTimer.singleShot(0, callback),
                 cancel_provider=self._cancel_application_provider,
             )
+        self.web_search_service = web_search_service or WebSearchApplicationService()
         self.settings = load_settings()
         self._db_notes = self.chat_application_service.init_history()
         self.session_manager = session_manager or SessionManager(ChatSession)
