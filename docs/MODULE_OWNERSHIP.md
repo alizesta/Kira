@@ -270,6 +270,12 @@ reported through its presentation contract. This removes Chat's former
 cross-feature calls to `attach_loading`, `clear_attachments`,
 `show_attach_error`, and direct reads of the legacy `_tiles` collection.
 
+Chat's calls into Session, Runtime and Attachments/Vision peer workflows now
+also name their owning controller through `feature_controller(...)`, rather
+than relying on MainWindow's compatibility attribute lookup. The registry
+provides the peer lookup target; application services remain the owner of
+non-presentation policy.
+
 This is an incremental boundary improvement, not completion of controller
 independence: the remaining feature controllers still use the window-backed
 compatibility proxy, and several cross-feature UI workflows remain to be
