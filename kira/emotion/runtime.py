@@ -496,7 +496,7 @@ class EmotionalRuntime:
             recency = 12.0 * (0.5 ** (age_days / MEMORY_RECENCY_HALF_LIFE_DAYS))
             impact = _clamp(_finite_float(memory.get("impact", 0.0)))
             signal_bonus = 5.0 if memory.get("signal") in ("down", "stressed", "excited", "apology") else 0.0
-            score = impact * 0.22 + recency + signal_bonus + overlap * (24.0 if query_tokens else 0.0)
+            score = impact * 0.22 + recency + signal_bonus + overlap * (24.0 if query_words else 0.0)
             if score > 8.0:
                 ranked.append((score, reinforced, memory))
         ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
