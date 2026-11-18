@@ -3,9 +3,42 @@ import unittest
 
 from kira.tools.agent import ToolAgent
 from kira.tools.registry import DENIED, NEEDS_CONFIRM, SENSITIVE, Tool, ToolRegistry
+from kira.tools.tasks import PENDING, TaskPlan
 
 
 class ToolAgentPendingConfirmationTests(unittest.TestCase):
+    def test_planned_batch_does_not_run_steps_after_first_confirmation(self):
+        agent = ToolAgent.__new__(ToolAgent)
+        agent._init_session_turn_states()
+        agent.registry = ToolRegistry()
+        agent._pending_by_session = {}
+        agent._pending_new_sessions = set()
+        executed = []
+
+        for name in ("delete_first", "delete_second"):
+            agent.registry.register(Tool(
+                name=name,
+                description="test protected operation",
+                handler=lambda args, tool_name=name: executed.append(tool_name) or "done",
+                level=SENSITIVE,
+                confirm_summary=lambda args, tool_name=name: f"confirm {tool_name}: {args}",
+            ))
+
+        plan = TaskPlan(id="plan-1", goal="delete two files", session_id="kira")
+        calls = [
+            {"tool": "delete_first", "args": {"path": "first.txt"}, "step": 1},
+            {"tool": "delete_second", "args": {"path": "second.txt"}, "step": 2},
+        ]
+        with agent._use_session("kira"):
+            results, notes = agent._run_calls_planned(plan, calls, [], None, 5)
+
+        self.assertEqual([result.status for result in results], [NEEDS_CONFIRM, DENIED])
+        self.assertEqual(agent._pending_by_session["kira"].tool, "delete_first")
+        self.assertEqual(executed, [])
+        self.assertEqual(plan.calls, 1)
+        self.assertEqual(plan.step(2).status, PENDING)
+        self.assertTrue(any("not run because an earlier step awaits confirmation" in note for note in notes))
+
     def test_only_first_confirmation_is_pending_and_later_calls_are_explicitly_deferred(self):
         agent = ToolAgent.__new__(ToolAgent)
         agent._init_session_turn_states()
