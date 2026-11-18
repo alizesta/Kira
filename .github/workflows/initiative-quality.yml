@@ -51,7 +51,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run initiative policy and character decision tests
-        run: python -m unittest tests.test_initiative_quality tests.test_character_decision -v
+        run: python -m unittest tests.test_initiative_quality tests.test_character_decision tests.test_character_profile_service -v
       - name: Compile changed Python modules
         run: >-
           python -m py_compile
@@ -63,4 +63,4 @@ jobs:
           kira/ui/main_window_character_settings.py
           kira/ui/pages/characters_page.py
           tests/test_initiative_quality.py
-          tests/test_character_decision.py
+          tests/test_character_decision.py\n          tests/test_character_profile_service.py
