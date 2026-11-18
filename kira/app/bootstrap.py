@@ -82,7 +82,6 @@ def run_application() -> None:
         settings.get("vision_mode", "economic"),
     )
     runtime_settings_application_service = RuntimeSettingsApplicationService()
-    runtime_settings_application_service.configure(settings)
     try:
         window = MainWindow(
             memory_service=container.resolve("memory_service"),
