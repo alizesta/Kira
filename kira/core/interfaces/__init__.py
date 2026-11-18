@@ -17,6 +17,7 @@ from .application_services import (
 from .chat_provider import ChatProvider
 from .character_service import CharacterService
 from .chat_history_service import ChatHistoryService
+from .context import PromptEnricherPort, SystemPromptBuilderPort
 from .conversation_lifecycle import (
     ConversationEventPublisherPort,
     ConversationLifecycleRepositoryPort,
@@ -48,6 +49,8 @@ __all__ = [
     "RuntimeSessionPort",
     "SessionManagerPort",
     "SessionStateEventPort",
+    "PromptEnricherPort",
+    "SystemPromptBuilderPort",
     "ConversationEventPublisherPort",
     "ConversationLifecycleRepositoryPort",
     "PermanentDeleteAuthorizationPort",
