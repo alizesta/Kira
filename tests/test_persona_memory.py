@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -251,6 +252,32 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertIn("سفر شیراز", lines[0])
         self.assertIn("هتل", lines[0])
         self.assertLessEqual(len(lines[0]), 242)
+
+
+    def test_corrupt_habits_do_not_erase_valid_persona_facts(self):
+        payload = {
+            "voice": [],
+            "facts": [{"kind": "job", "text": "شغل کاربر مهندس نرم‌افزار است", "ts": 1000}],
+            "moments": [],
+            "summaries": [],
+            "habits": {"hours": ["bad"] * 24, "messages": "broken", "chars": 0},
+            "summarized": "broken",
+        }
+        pm._path().write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+        loaded = pm._load()
+
+        self.assertEqual(loaded["facts"][0]["text"], "شغل کاربر مهندس نرم‌افزار است")
+        self.assertEqual(loaded["habits"]["messages"], 0)
+        self.assertEqual(loaded["habits"]["hours"], [0] * 24)
+        self.assertEqual(loaded["summarized"], 0)
+
+    def test_observation_failures_are_logged_without_escaping(self):
+        with mock.patch.object(pm, "extract_facts_detailed", side_effect=RuntimeError("synthetic failure")):
+            with self.assertLogs("kira.persona_memory", level="WARNING") as captured:
+                pm.observe("user", "این یک پیام معتبر برای تست است")
+
+        self.assertTrue(any("Persona-memory observation failed" in line for line in captured.output))
 
 if __name__ == "__main__":
     unittest.main()
