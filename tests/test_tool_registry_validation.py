@@ -35,6 +35,22 @@ class ToolArgumentValidationTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ToolError):
                 self.registry.clean_args(self.tool, {"count": 1, "ratio": value})
 
+    def test_array_and_object_arguments_keep_their_declared_json_types(self):
+        tool = Tool(
+            "structured_probe",
+            "test structured coercion",
+            lambda args: "ok",
+            (Param("items", "array", required=True), Param("options", "object")),
+        )
+        self.assertEqual(
+            self.registry.clean_args(tool, {"items": [1, "two"], "options": {"enabled": True}}),
+            {"items": [1, "two"], "options": {"enabled": True}},
+        )
+        with self.assertRaises(ToolError):
+            self.registry.clean_args(tool, {"items": "not-an-array"})
+        with self.assertRaises(ToolError):
+            self.registry.clean_args(tool, {"items": [], "options": []})
+
     def test_integer_boolean_is_not_coerced_to_one_or_zero(self):
         with self.assertRaises(ToolError):
             self.registry.clean_args(self.tool, {"count": True})
