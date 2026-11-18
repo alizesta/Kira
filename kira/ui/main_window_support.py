@@ -28,7 +28,11 @@ def front_only(fn):
 
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
-        if self.cur is not self.front:
+        context = getattr(self, "context", None)
+        if context is not None:
+            if context.is_background_session:
+                return None
+        elif self.cur is not self.front:
             return None
         return fn(self, *args, **kwargs)
 
@@ -40,18 +44,35 @@ class SessionRelay(QObject):
 
     provider_event = Signal(object)
 
-    def __init__(self, window, session):
-        super().__init__(window)
-        self.w, self.s = window, session
+    _HANDLER_OWNERS = {
+        "on_stream_chunk": "runtime",
+        "on_stream_event": "runtime",
+        "on_tool_event": "runtime",
+        "on_stream_done": "runtime",
+        "on_error": "runtime",
+        "_stream_flush": "runtime",
+        "on_web_done": "chat",
+        "_on_game_vision_result": "attachments_vision",
+        "_send_next_pending": "runtime",
+    }
+
+    def __init__(self, context, session):
+        super().__init__(context.host)
+        self.context, self.session = context, session
         self.provider_event.connect(self._handle_provider_event)
 
     @Slot(object)
     def _handle_provider_event(self, event):
-        self.w.chat_application_service.handle_provider_event(event)
+        self.context.services.chat_application_service.handle_provider_event(event)
 
     def _run(self, name, *args):
-        with self.w._as(self.s):
-            getattr(self.w, name)(*args)
+        owner = self._HANDLER_OWNERS.get(name)
+        if owner is None:
+            raise LookupError(f"No feature owner is registered for SessionRelay handler {name!r}")
+        session_controller = self.context.controllers.require("session")
+        controller = self.context.controllers.require(owner)
+        with session_controller._as(self.session):
+            getattr(controller, name)(*args)
 
     @Slot(str)
     def chunk(self, piece):
