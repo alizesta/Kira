@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from kira.emotion.lifecycle import should_observe_assistant_message, should_observe_message
 
@@ -18,6 +19,21 @@ class AssistantObservationPolicyTests(unittest.TestCase):
         self.assertFalse(should_observe_message("assistant", "interrupted", observe=True))
         self.assertFalse(should_observe_message("assistant", "failed", observe=True))
         self.assertTrue(should_observe_message("assistant", "complete", observe=True))
+
+    def test_runtime_wires_the_observation_gate_before_memory_side_effects(self):
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "kira"
+            / "ui"
+            / "main_window_runtime.py"
+        ).read_text(encoding="utf-8")
+        gate = "should_observe = should_observe_message(role, status, observe=observe)"
+        observe_call = "self.context.services.memory_service.observe(self.context.state.cur.cid, role, content)"
+        self.assertIn(gate, source)
+        self.assertLess(source.index(gate), source.index(observe_call))
+        self.assertIn('status="cancelled", metadata={"stream": "stopped"}, persist=False, observe=False', source)
+        self.assertIn('status="interrupted", metadata={"stream": "provider_interrupted"}, persist=False, observe=False', source)
+        self.assertIn('self.save_message("assistant", text, observe=False)', source)
 
     def test_user_message_observation_is_independent_of_assistant_status(self):
         self.assertTrue(should_observe_message("user", "cancelled", observe=True))
