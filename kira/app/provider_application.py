@@ -45,7 +45,7 @@ class ProviderApplicationService:
         )
 
     def rebuild_session_routers(self, settings, sessions, previous_router=None):
-        """Recreate per-character routers while preserving shared health and cooldown state."""
+        """Share route health across replacements while resetting their cooldown map."""
         sessions = tuple(sessions)
         if not sessions:
             return ()

@@ -65,6 +65,32 @@ class ServiceModuleTests(unittest.TestCase):
         self.assertTrue(second.stopped)
         self.assertTrue(second.closed)
 
+    def test_shutdown_unregisters_service_even_when_cleanup_raises(self):
+        container = DependencyContainer()
+        manager = ModuleManager(container, EventBus())
+
+        class BrokenCleanupService:
+            def stop(self):
+                pass
+
+            def close(self):
+                raise RuntimeError("cleanup failed")
+
+        manager.register(
+            "fragile",
+            lambda: ServiceModule("fragile_service", BrokenCleanupService),
+        )
+        manager.start("fragile")
+        self.assertIsInstance(container.resolve("fragile_service"), BrokenCleanupService)
+
+        errors = manager.shutdown()
+
+        self.assertIn("fragile", errors)
+        self.assertIn("dispose: RuntimeError: cleanup failed", errors["fragile"])
+        self.assertEqual(manager.state("fragile"), ModuleState.DISPOSED)
+        with self.assertRaises(KeyError):
+            container.resolve("fragile_service")
+
     def test_unrelated_service_modules_start_independently(self):
         container = DependencyContainer()
         manager = ModuleManager(container, EventBus())

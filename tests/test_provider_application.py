@@ -81,6 +81,7 @@ class ProviderApplicationServiceTests(unittest.TestCase):
 
         previous = Router(self.settings)
         previous.states = {"route-a": {"health": "healthy"}}
+        previous.cooldowns = {"route-a": 30.0}
         first, second = Session(previous), Session(previous)
         created = []
         service = ProviderApplicationService(

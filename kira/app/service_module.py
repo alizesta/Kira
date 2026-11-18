@@ -56,12 +56,29 @@ class ServiceModule:
             stop()
 
     def dispose(self) -> None:
+        """Release the service and its DI registration even if cleanup fails."""
         instance = self._instance
+        container = self._container
+        cleanup_error = None
+
         if instance is not None:
-            cleanup = getattr(instance, "dispose", None) or getattr(instance, "close", None)
+            cleanup = getattr(instance, "dispose", None)
+            if not callable(cleanup):
+                cleanup = getattr(instance, "close", None)
             if callable(cleanup):
-                cleanup()
-        if self._container is not None:
-            self._container.unregister(self.service_key)
+                try:
+                    cleanup()
+                except Exception as exc:
+                    cleanup_error = exc
+
+        if container is not None:
+            try:
+                container.unregister(self.service_key)
+            except Exception as exc:
+                if cleanup_error is None:
+                    cleanup_error = exc
+
         self._instance = None
         self._container = None
+        if cleanup_error is not None:
+            raise cleanup_error
