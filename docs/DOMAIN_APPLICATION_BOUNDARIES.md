@@ -138,7 +138,8 @@ and notification ports. No new service imports Qt or a concrete UI controller.
   and `tests/test_chat_transfer.py` continue to exercise the compatibility
   facades against the application use cases.
 - `tests/test_architecture_boundaries.py` now requires an actual Domain
-  package and checks Core/Domain dependency direction.
+  package, checks Core/Domain dependency direction, and explicitly forbids
+  Domain imports from Core or any outer Kira package.
 - Both Chat Session Lifecycle and portable release workflows include the new
   test modules; the lifecycle workflow also compiles the extracted source
   modules.
