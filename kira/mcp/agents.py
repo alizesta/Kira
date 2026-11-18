@@ -41,6 +41,7 @@ HEALTH_TTL = 30.0
 POLL_EVERY = 6.0
 POLL_MAX_AGE = 6 * 3600
 JOB_KEEP = 40
+MAX_AGENT_RESPONSE = 1_000_000
 IDEM_WINDOW = 3600
 VERIFY_TTL = 300
 QUOTE_MIN = 6
@@ -72,13 +73,53 @@ class AgentHttp:
             headers["Authorization"] = "Bearer " + token
         data = json.dumps(body).encode("utf-8") if body is not None else None
         req = urllib.request.Request(self.cfg["url"] + path, data=data, headers=headers, method=method)
+        timeout = max(0.01, float(self.cfg["timeout"]))
+        response_queue: queue.Queue = queue.Queue(maxsize=1)
+        response_lock = threading.Lock()
+        active = {"response": None}
+
+        def perform():
+            outcome = None
+            try:
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    with response_lock:
+                        active["response"] = resp
+                    raw = resp.read(MAX_AGENT_RESPONSE + 1)
+                    if len(raw) > MAX_AGENT_RESPONSE:
+                        outcome = (False, ToolError("پاسخ ایجنت از سقف اندازه مجاز بزرگ‌تر بود.", ERROR))
+                    else:
+                        outcome = (True, raw.decode("utf-8", "replace"))
+            except urllib.error.HTTPError as exc:
+                outcome = (False, ToolError(f"ایجنت «{self.cfg['name']}» خطای HTTP {exc.code} داد.", ERROR))
+            except (urllib.error.URLError, OSError) as exc:
+                outcome = (False, ToolError(f"ایجنت «{self.cfg['name']}» در دسترس نیست: {clean_text(exc, 120)}", ERROR))
+            except Exception as exc:                          # noqa: BLE001 - malformed endpoints must not strand the chat worker
+                outcome = (False, ToolError(f"پاسخ ایجنت قابل دریافت نبود ({type(exc).__name__}).", ERROR))
+            finally:
+                with response_lock:
+                    active["response"] = None
+                if outcome is not None:
+                    try:
+                        response_queue.put_nowait(outcome)
+                    except queue.Full:
+                        pass
+
+        worker = threading.Thread(target=perform, daemon=True, name="kira-agent-http-request")
+        worker.start()
         try:
-            with urllib.request.urlopen(req, timeout=self.cfg["timeout"]) as resp:
-                raw = resp.read(1_000_000).decode("utf-8", "replace")
-        except urllib.error.HTTPError as exc:
-            raise ToolError(f"ایجنت «{self.cfg['name']}» خطای HTTP {exc.code} داد.", ERROR) from exc
-        except (urllib.error.URLError, OSError) as exc:
-            raise ToolError(f"ایجنت «{self.cfg['name']}» در دسترس نیست: {clean_text(exc, 120)}", ERROR) from exc
+            ok, value = response_queue.get(timeout=timeout)
+        except queue.Empty as exc:
+            with response_lock:
+                resp = active["response"]
+            if resp is not None:
+                try:
+                    resp.close()
+                except Exception:
+                    pass
+            raise ToolError(f"ارتباط با ایجنت از مهلت کل {timeout:g} ثانیه عبور کرد.", ERROR) from exc
+        if not ok:
+            raise value
+        raw = value
         try:
             data = json.loads(raw) if raw.strip() else {}
         except ValueError as exc:
