@@ -366,8 +366,9 @@ def _event_not_before(text, created_at):
     # an event that is already due merely because the date parser cannot resolve it.
     time_reference = re.search(
         r"\b(?:at|around|by)\s+(?:\d{1,2}(?::[0-5]\d)?|one|two|three|four|five|six|seven|eight|nine|ten)"
-        r"\s*(?:am|pm)?\b|\b\d{1,2}(?::[0-5]\d)\s*(?:am|pm)\b|"
-        r"ساعت\s*(?:\d{1,2}(?::[0-5]\d)?|یک|یه|دو|سه|چهار|پنج|شش|هفت|هشت|نه|ده)",
+        r"\s*(?:am|pm)?\b|\b\d{1,2}(?::[0-5]\d)?\s*(?:am|pm)\b|"
+        r"ساعت\s*(?:\d{1,2}(?::[0-5]\d)?|یک|یه|دو|سه|چهار|پنج|شش|هفت|هشت|نه|ده)|"
+        r"\b\d{1,2}\s*(?:صبح|ظهر|عصر|شب)\b",
         value,
         re.I,
     )
