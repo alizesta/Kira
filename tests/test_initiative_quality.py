@@ -445,10 +445,12 @@ class InitiativePersistenceRecoveryTests(unittest.TestCase):
             records = store.recent_message_records(limit=20, character_id="ren")
             self.assertEqual(len(records), 1)
             self.assertEqual(records[0]["metadata"]["memory_id"], "durable-1")
-            self.assertEqual(persisted_checkin_events(records), [])
-            self.assertEqual(persisted_checkin_events(records, now=datetime.now(timezone.utc).timestamp()),
-                             [{"name": "proactive_check_in", "at": records[0]["metadata"].get("at"), "detail": "durable-1"}]
-                             if records[0]["metadata"].get("at") else persisted_checkin_events(records, now=datetime.now(timezone.utc).timestamp()))
+            now = datetime.now(timezone.utc).timestamp()
+            recovered = persisted_checkin_events(records, now=now)
+            self.assertEqual(len(recovered), 1)
+            self.assertEqual(recovered[0]["detail"], "durable-1")
+            expected_at = datetime.fromisoformat(records[0]["created_at"]).replace(tzinfo=timezone.utc).timestamp()
+            self.assertAlmostEqual(recovered[0]["at"], expected_at, places=3)
 
     def test_repository_inspection_failure_is_not_reported_as_empty_history(self):
         from kira.chat.persistence import ChatPersistence, PersistenceError, SqliteChatRepository
