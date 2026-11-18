@@ -2,7 +2,7 @@
 
 **Snapshot:** 2026-11-18  
 **Base branch:** `new-main`  
-**Base SHA:** `590183cbde242a60e1dcb976ea6dd9ec37c18e80`  
+**Base SHA:** `e5b9e6a851aad3c764f5178228fd7b04707d94d7`  
 **Input:** TASK 015 audit plus post-audit merged TASK 013+014 integration PR #48.  
 **Execution policy:** Architecture implementation delta on `new-main`. Source tests were added; runtime execution remains unverified in this environment.
 
