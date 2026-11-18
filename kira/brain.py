@@ -488,7 +488,8 @@ def _model_reflect(router, settings, user_text, reply, character_id: str | None 
             return
         r["last"] = now
         r["hour"].append(now)
-        _save(state, character_id)                                    # counted BEFORE the call: a failure is never retried in a loop
+        if not _save(state, character_id):                            # without a durable rate-limit, do not launch the optional call
+            return
     # The evidence index currently belongs to Kira only. A different
     # character must never receive Kira's personal facts as reflection context.
     facts = ""
