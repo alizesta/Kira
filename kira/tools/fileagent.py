@@ -277,7 +277,7 @@ class FileAgent:
     def _copy(self, a: dict):
         src = self.policy.check(a["source"])
         name = a.get("new_name") or os.path.basename(src)
-        target = self._new_target(a["destination_folder"], name, allow_exec=not a.get("new_name"))
+        target = self._new_target(a["destination_folder"], name)
         if os.path.isdir(src):
             if target == src or target.startswith(src + os.sep):
                 raise ToolError("پوشه را نمی‌شود داخل خودش کپی کرد.")
@@ -290,7 +290,8 @@ class FileAgent:
                 out = []
                 for n in names:
                     p = os.path.join(folder, n)
-                    if os.path.islink(p) or self.policy.sensitive_name(p):
+                    if (os.path.islink(p) or self.policy.sensitive_name(p)
+                            or os.path.splitext(n)[1].lower() in EXECUTABLE_EXT):
                         out.append(n)
                         skipped.append(n)
                 return out
@@ -306,8 +307,10 @@ class FileAgent:
                     _LOGGER.exception("Could not remove partial folder copy: %s", target)
                     raise ToolError(f"کپی پوشه ناقص ماند و پاک‌سازی مقصد هم ناموفق بود: {target}") from exc
                 raise ToolError(f"کپی پوشه ناموفق بود؛ مقصد ناقص پاک شد: {type(exc).__name__}: {exc}") from exc
-            note = f" ({len(skipped)} مورد حساس/لینک رد شد)" if skipped else ""
+            note = f" ({len(skipped)} مورد حساس/لینک/اجرایی رد شد)" if skipped else ""
         else:
+            if os.path.splitext(src)[1].lower() in EXECUTABLE_EXT:
+                raise ToolError("کپی فایل اجرایی یا اسکریپت مجاز نیست.", DENIED)
             shutil.copy2(src, target)
             note = ""
             if os.path.getsize(target) != os.path.getsize(src):
