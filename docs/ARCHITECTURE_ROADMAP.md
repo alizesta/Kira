@@ -86,9 +86,9 @@ These belong in the later explicitly authorized testing phase, not in TASK 016.
 
 1. Keep generic Chat, command, tool and capability contracts character-neutral.
 2. Store character identity, persona, voice preferences and enablement policy in character/profile/session data, not in generic command handlers.
-3. Verify whether a shared installable Skills implementation exists on the target branch before planning further work. TASK 015's audited Chat scope and the inspected `kira/` tree did not establish one; do not mark it delivered based on a separate branch or PR.
-4. If shared Skills are brought into this architecture, one library/runtime should support global and per-character enablement without duplicating skill code per character.
-5. Verify isolation for Kira, Ren and Mika before treating cross-character reuse as accepted.
+3. Shared Skills now have one installable library/runtime with validated directory/ZIP packages and no bundled-code execution.
+4. Global enablement and per-character additions/exclusions are resolved independently for each chat turn; Skill content cannot grant tool permissions or override system policy.
+5. Remaining work: add the dedicated management UI, persist enablement changes through that UI, and run Kira/Ren/Mika isolation plus Windows runtime acceptance.
 
 **Exit condition:** adding a character does not require rewriting Chat, persistence, command dispatch or generic capability modules.
 
