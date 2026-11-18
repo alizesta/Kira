@@ -371,7 +371,8 @@ def add_manual(text, now=None, persona_id=None, predicate="note") -> bool:
             return _ingest(con, subject="user", predicate=predicate, value=text, text=text, category="permanent", quote=text, speaker="user",
                            message_id=None, source_kind="manual", now=now, persona_id=persona_id) is not None
     except Exception:                                                  # noqa: BLE001
-        return False
+        _log.exception("Could not store manually edited evidence memory")
+        raise
 
 
 def delete_by_persona_id(persona_id) -> int:
@@ -390,7 +391,8 @@ def delete_by_persona_id(persona_id) -> int:
             _delete_rows(con, set(ids))
             return len(set(ids))
     except Exception:                                                  # noqa: BLE001
-        return 0
+        _log.exception("Could not delete evidence for a removed persona-memory item")
+        raise
 
 
 def update_by_persona_id(old_persona_id, new_persona_id, text, now=None) -> bool:
@@ -400,9 +402,13 @@ def update_by_persona_id(old_persona_id, new_persona_id, text, now=None) -> bool
             row = con.execute("SELECT predicate, category FROM facts WHERE persona_id=? LIMIT 1", (old_persona_id,)).fetchone()
         predicate = row["predicate"] if row else "note"
     except Exception:                                                  # noqa: BLE001
-        predicate = "note"
+        _log.exception("Could not inspect evidence before updating a persona-memory item")
+        raise
     delete_by_persona_id(old_persona_id)
-    return add_manual(text, now, persona_id=new_persona_id, predicate=predicate)
+    stored = add_manual(text, now, persona_id=new_persona_id, predicate=predicate)
+    if _enabled and not stored:
+        raise RuntimeError("Updated persona-memory item could not be synchronized to evidence memory")
+    return stored
 
 
 def forget_all() -> None:
