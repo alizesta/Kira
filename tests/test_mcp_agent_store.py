@@ -109,6 +109,20 @@ class JobStoreTests(unittest.TestCase):
                 status = hub.health_text({"agent": "worker"})
             self.assertIn("آماده نیست", status)
 
+    def test_string_false_health_value_is_not_truthy(self):
+        with tempfile.TemporaryDirectory() as temp:
+            hub = AgentHub(mock.Mock(), Path(temp), lambda: {})
+            agent = mock.Mock()
+            agent.cfg = {"name": "worker-string"}
+            agent.health.return_value = {"ok": "false"}
+
+            with self.assertRaises(ToolError):
+                hub._probe(agent)
+
+            with mock.patch.object(hub, "_agent", return_value=agent):
+                status = hub.health_text({"agent": "worker-string"})
+            self.assertIn("آماده نیست", status)
+
     def test_unknown_remote_job_state_is_marked_as_error_not_progress(self):
         with tempfile.TemporaryDirectory() as temp:
             hub = AgentHub(mock.Mock(), Path(temp), lambda: {})
