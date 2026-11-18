@@ -206,7 +206,7 @@ class SessionController(WindowFeatureController):
             self.context.views.chat_stack.addWidget(session.view)
             session.timer = QTimer(self.window)
             session.timer.setInterval(60)
-            session.relay = SessionRelay(self.window, session)
+            session.relay = SessionRelay(self.context, session)
             session.timer.timeout.connect(session.relay.tick)
         if session.client is None:
             session.client = self._new_router()
