@@ -26,6 +26,7 @@ class MainEntrypointTests(unittest.TestCase):
         from kira.ui.main_window_chat import ChatController
         from kira.ui.main_window_runtime import RuntimeController
         from kira.ui.main_window_session import SessionController
+        from kira.ui.window_feature_controller import WindowFeatureController
 
         self.assertEqual(MainWindow.__bases__, (QMainWindow,))
         self.assertFalse(hasattr(MainWindow, "send_message"))
@@ -34,7 +35,7 @@ class MainEntrypointTests(unittest.TestCase):
             RuntimeController._schedule_chat_callback.__qualname__,
             "RuntimeController._schedule_chat_callback",
         )
-        self.assertTrue(issubclass(SessionController, object))
+        self.assertTrue(issubclass(SessionController, WindowFeatureController))
 
     def test_bootstrap_constructs_the_modular_window_directly(self):
         import inspect
