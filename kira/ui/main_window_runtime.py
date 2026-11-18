@@ -28,7 +28,7 @@ from .main_window_runtime_support import (
 
 
 from .window_feature_controller import WindowFeatureController
-from ..emotion.lifecycle import should_observe_assistant_message
+from ..emotion.lifecycle import should_observe_message
 
 
 class RuntimeController(WindowFeatureController):
@@ -395,11 +395,7 @@ class RuntimeController(WindowFeatureController):
             ok = outcome.ok
         else:
             ok = True
-        should_observe = bool(
-            observe and (
-                role != "assistant" or should_observe_assistant_message(status)
-            )
-        )
+        should_observe = should_observe_message(role, status, observe=observe)
         if should_observe:
             self.context.services.memory_service.observe(self.context.state.cur.cid, role, content)
             try:

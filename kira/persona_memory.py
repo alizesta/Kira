@@ -663,20 +663,41 @@ def _fit_memory_block(header: str, parts: list[str], budget: int) -> str:
     return "\n\n".join(selected)
 
 
+def _compact_digest_line(text: str, max_chars: int = 240) -> str:
+    text = " ".join(str(text or "").split())
+    if len(text) <= max_chars:
+        return text
+    excerpt = text[:max_chars]
+    # Prefer a complete sentence; otherwise stop at a word boundary.
+    boundary = max(excerpt.rfind(mark) for mark in (". ", "! ", "? ", "؟ ", "。"))
+    if boundary >= int(max_chars * 0.55):
+        excerpt = excerpt[:boundary + 1]
+    else:
+        boundary = excerpt.rfind(" ")
+        if boundary >= int(max_chars * 0.65):
+            excerpt = excerpt[:boundary]
+    return excerpt.rstrip() + "…"
+
+
 def digest(older: list[dict], query: str | None = None) -> list[str]:
-    """Short lines describing what the user brought up in messages older than the verbatim window."""
-    lines = []
+    """Retrieve from full older user messages; compact only after relevance ranking."""
+    source_lines = []
     for item in older:
-        if item.get("role") != "user":
+        if not isinstance(item, dict) or item.get("role") != "user":
             continue
         text = " ".join(str(item.get("content") or "").split())
-        text = re.sub(r"---\s*فایل ضمیمه.*", "[attached a file]", text)
+        text = re.sub(r"---\\s*فایل ضمیمه.*", "[attached a file]", text)
         if len(text) >= 8:
-            lines.append(text[:240] + ("…" if len(text) > 240 else ""))
+            # Keep enough source text for topic matching, but cap pathological history rows.
+            source_lines.append(text[:2000])
     if query:
-        ranked = _rank_relevant_items([{"text": line, "ts": index} for index, line in enumerate(lines)], query, DIGEST_LINES)
-        return [item["text"] for item in ranked]
-    return lines[-DIGEST_LINES:]
+        ranked = _rank_relevant_items(
+            [{"text": line, "ts": index} for index, line in enumerate(source_lines)],
+            query,
+            DIGEST_LINES,
+        )
+        return [_compact_digest_line(item["text"]) for item in ranked]
+    return [_compact_digest_line(line) for line in source_lines[-DIGEST_LINES:]]
 
 
 # ---------------- the block that goes into the system prompt ----------------

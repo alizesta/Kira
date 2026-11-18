@@ -182,5 +182,21 @@ class EmotionalRuntimeTests(unittest.TestCase):
         self.assertGreater(state["memory_count"], 0)
         self.assertLessEqual(state["memory_count"], 120)
 
+    def test_malformed_state_sections_do_not_reset_valid_memory_or_energy(self):
+        self.path.write_text(
+            '{"energy":61,"emotions":[],"behaviors":"bad","relationship":[],"'
+            'personality_traits":{"teasing":"bad"},"feedback_evidence":{"x":{"count":"bad"}},'
+            '"memories":[{"kind":"interaction","text":"حافظه معتبر","impact":12,'
+            '"created":9999999999,"reinforced_at":9999999999}]}',
+            encoding="utf-8",
+        )
+        restored = EmotionalRuntime(self.library, self.path, clock=lambda: 1001.0)
+        state = restored.snapshot(now=1001.0)
+        self.assertEqual(state["energy"], 61)
+        self.assertEqual(state["emotions"], {})
+        self.assertEqual(len(state["memories"]), 1)
+        self.assertEqual(state["memories"][0]["created"], 1001.0)
+        self.assertEqual(state["memories"][0]["reinforced_at"], 1001.0)
+
 if __name__ == "__main__":
     unittest.main()

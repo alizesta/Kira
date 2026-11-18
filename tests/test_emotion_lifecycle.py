@@ -1,6 +1,6 @@
 import unittest
 
-from kira.emotion.lifecycle import should_observe_assistant_message
+from kira.emotion.lifecycle import should_observe_assistant_message, should_observe_message
 
 
 class AssistantObservationPolicyTests(unittest.TestCase):
@@ -11,6 +11,17 @@ class AssistantObservationPolicyTests(unittest.TestCase):
         for status in ("cancelled", "interrupted", "failed", "partial", "pending"):
             with self.subTest(status=status):
                 self.assertFalse(should_observe_assistant_message(status))
+
+    def test_local_or_cancelled_assistant_output_is_not_observed(self):
+        self.assertFalse(should_observe_message("assistant", "complete", observe=False))
+        self.assertFalse(should_observe_message("assistant", "cancelled", observe=True))
+        self.assertFalse(should_observe_message("assistant", "interrupted", observe=True))
+        self.assertFalse(should_observe_message("assistant", "failed", observe=True))
+        self.assertTrue(should_observe_message("assistant", "complete", observe=True))
+
+    def test_user_message_observation_is_independent_of_assistant_status(self):
+        self.assertTrue(should_observe_message("user", "cancelled", observe=True))
+        self.assertFalse(should_observe_message("user", "complete", observe=False))
 
 
 if __name__ == "__main__":
