@@ -96,6 +96,7 @@ jobs:
           tests.test_app_architecture
           tests.test_service_module
           tests.test_application_module_lifecycle
+          tests.test_composition_root_contract
           tests.test_voice_application
           tests.test_session_application
           tests.test_provider_application
@@ -131,6 +132,8 @@ jobs:
           python -m py_compile
           kira/app/feature_modules.py
           kira/app/bootstrap.py
+          kira/ui/main_window_composition.py
+          tests/test_composition_root_contract.py
           kira/app/module_manager.py
           kira/app/service_module.py
           kira/app/vision_application.py
@@ -142,6 +145,7 @@ jobs:
           tests/test_app_architecture.py
           tests/test_service_module.py
           tests/test_application_module_lifecycle.py
+          tests/test_composition_root_contract.py
           tests/test_voice_application.py
           kira/chat/organization.py
           tests/test_chat_persistence_contract.py
