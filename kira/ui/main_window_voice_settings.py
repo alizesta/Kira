@@ -335,7 +335,7 @@ class VoiceSettingsController(WindowFeatureController):
 
     def import_local_model(self):
         path, _ = QFileDialog.getOpenFileName(
-            self, "معرفی مدل به Kira", str(Path.home()),
+            self.window, "معرفی مدل به Kira", str(Path.home()),
             "Model files (*.gguf *.onnx *.bin *.safetensors *.pt *.pth *.json);;All files (*)"
         )
         if not path:
@@ -381,7 +381,7 @@ class VoiceSettingsController(WindowFeatureController):
                         "این پوشه یک مدل متنی Hugging Face است، اما Ollama مستقیماً پوشه‌ی Transformers را وارد نمی‌کند. نسخه‌ی GGUF همین مدل را انتخاب کن.")
                     return
                 category, ok = QInputDialog.getItem(
-                    self, "نوع مدل", "معماری مدل از روی فایل‌هایش قطعی نبود؛ نوع واقعی را انتخاب کن.",
+                    self.window, "نوع مدل", "معماری مدل از روی فایل‌هایش قطعی نبود؛ نوع واقعی را انتخاب کن.",
                     ["STT · Qwen3-ASR", "STT · Whisper", "TTS · Piper ONNX", "Chat · GGUF"], 0, False)
                 if not ok:
                     return
