@@ -1,4 +1,4 @@
-"""Tests for scoped dependencies across MainWindow feature mixins."""
+"""Tests for scoped dependencies across composed MainWindow feature controllers."""
 import ast
 from pathlib import Path
 import unittest
@@ -96,7 +96,7 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
         self.assertIn("def front_only", source)
         self.assertIn("def load_reactions", source)
 
-    def test_feature_support_modules_do_not_import_other_feature_mixins(self):
+    def test_feature_support_modules_do_not_import_other_feature_controllers(self):
         for path in UI.glob("main_window_*_support.py"):
             source = path.read_text(encoding="utf-8")
             for line in source.splitlines():
