@@ -106,16 +106,28 @@ class Journal:
 
 def _count_tree(root: str):
     files = size = skipped = 0
-    for base, dirs, names in os.walk(root, followlinks=False):
-        dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(base, d))]
-        for n in names:
-            p = os.path.join(base, n)
-            if os.path.islink(p):
+
+    def onerror(_error):
+        nonlocal skipped
+        skipped += 1
+
+    for base, dirs, names in os.walk(root, followlinks=False, onerror=onerror):
+        retained_dirs = []
+        for directory in dirs:
+            directory_path = os.path.join(base, directory)
+            if os.path.islink(directory_path):
+                skipped += 1
+            else:
+                retained_dirs.append(directory)
+        dirs[:] = retained_dirs
+        for name in names:
+            path = os.path.join(base, name)
+            if os.path.islink(path):
                 skipped += 1
                 continue
             files += 1
             try:
-                size += os.path.getsize(p)
+                size += os.path.getsize(path)
             except OSError:
                 skipped += 1
     return files, size, skipped
@@ -302,8 +314,13 @@ class FileAgent:
         return {**a, "path": path}
 
     def confirm_delete_folder(self, a: dict) -> str:
-        files, size, _ = _count_tree(a["path"])
-        return f"پوشه‌ی «{a['path']}» با {files} فایل ({_fmt_size(size)}) به سطل بازیافت ویندوز منتقل می‌شود (قابل برگرداندن است)."
+        files, size, skipped = _count_tree(a["path"])
+        warning = (
+            f" شمارش {skipped} مورد به‌دلیل لینک یا خطای دسترسی/خواندن ممکن نبود؛ تعداد و حجم واقعی می‌تواند بیشتر باشد."
+            if skipped else ""
+        )
+        return (f"پوشه‌ی «{a['path']}» با {files} فایل ({_fmt_size(size)}) به سطل بازیافت ویندوز منتقل می‌شود "
+                f"(قابل برگرداندن است).{warning}")
 
     def delete_folder(self, a: dict) -> str:
         a = self.precheck_delete_folder(a)
