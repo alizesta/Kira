@@ -18,6 +18,12 @@ on:
       - "kira/ui/main_window.py"
       - "kira/ui/main_window_*.py"
       - "kira/app/web_search.py"
+      - "kira/app/provider_application.py"
+      - "kira/app/vision_application.py"
+      - "kira/app/coding_agent_application.py"
+      - "kira/app/runtime_settings_application.py"
+      - "kira/services/character_service.py"
+      - "kira/services/mood_service.py"
       - "kira/app/voice_application.py"
       - "kira/app/voice_composition.py"
       - "kira/core/interfaces/voice_service.py"
@@ -42,6 +48,13 @@ on:
       - "tests/test_chat_command_adapters.py"
       - "tests/test_actions.py"
       - "tests/test_chat_application_wiring.py"
+      - "tests/test_session_application.py"
+      - "tests/test_provider_application.py"
+      - "tests/test_vision_application.py"
+      - "tests/test_coding_agent_application.py"
+      - "tests/test_runtime_settings_application.py"
+      - "tests/test_character_profile_service.py"
+      - "tests/test_application_policy_wiring.py"
       - ".github/workflows/chat-session-lifecycle.yml"
 
 permissions:
@@ -63,6 +76,12 @@ jobs:
         run: >-
           python -m unittest
           tests.test_session_application
+          tests.test_provider_application
+          tests.test_vision_application
+          tests.test_coding_agent_application
+          tests.test_runtime_settings_application
+          tests.test_character_profile_service
+          tests.test_application_policy_wiring
           tests.test_chat_application_service
           tests.test_web_search_application
           tests.test_web_search_wiring
@@ -116,9 +135,22 @@ jobs:
           tests/test_main_window_syntax.py
           tests/test_main_entrypoint.py
           tests/test_app_architecture.py
+          tests/test_application_policy_wiring.py
+          tests/test_session_application.py
+          tests/test_provider_application.py
+          tests/test_vision_application.py
+          tests/test_coding_agent_application.py
+          tests/test_runtime_settings_application.py
+          tests/test_character_profile_service.py
           kira/app/bootstrap.py
           kira/app/session_application.py
           kira/app/session_composition.py
+          kira/app/provider_application.py
+          kira/app/vision_application.py
+          kira/app/coding_agent_application.py
+          kira/app/runtime_settings_application.py
+          kira/services/character_service.py
+          kira/services/mood_service.py
           kira/app/web_search.py
           kira/app/voice_application.py
           kira/app/voice_composition.py
@@ -133,5 +165,3 @@ jobs:
           tests/test_voice_application_wiring.py
           tests/test_web_search_application.py
           tests/test_web_search_wiring.py
-          tests.test_chat_session_manager.py
-          tests.test_session_application.py
