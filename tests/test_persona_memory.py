@@ -246,7 +246,7 @@ class PersonaMemoryTests(unittest.TestCase):
 
     def test_digest_ranks_full_message_and_centers_excerpt_on_matched_topic(self):
         source = "درباره یک موضوع دیگر صحبت کردیم. " + ("متن نامرتبط " * 18) + "در پایان درباره سفر شیراز و هتل صحبت کردیم"
-        lines = pm.digest([{"role": "user", "content": source}], query="سفر شیراز هتل")
+        lines = pm.digest([{"role": "user", "content": source}], query="مسافرت شیراز هتل")
         self.assertEqual(len(lines), 1)
         self.assertIn("سفر شیراز", lines[0])
         self.assertIn("هتل", lines[0])

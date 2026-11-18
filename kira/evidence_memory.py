@@ -698,18 +698,28 @@ _QUERY_SYNONYMS = {
 }
 
 
-def _query_tokens(text) -> list[str]:
-    """Expand only the query with a small, conservative Persian synonym set."""
-    base = tokens(text)
+def query_terms(text) -> list[str]:
+    """Return normalized query words plus their conservative Persian synonyms."""
     words = _WORD.findall(norm(text))
-    expanded = list(base)
-    seen = set(base)
+    expanded = list(words)
+    seen = set(words)
     for word in words:
         for synonym in _QUERY_SYNONYMS.get(word, ()):
-            for feature in tokens(synonym):
-                if feature not in seen:
-                    seen.add(feature)
-                    expanded.append(feature)
+            if synonym not in seen:
+                seen.add(synonym)
+                expanded.append(synonym)
+    return expanded
+
+
+def _query_tokens(text) -> list[str]:
+    """Expand only the query with a small, conservative Persian synonym set."""
+    expanded = []
+    seen = set()
+    for term in query_terms(text):
+        for feature in tokens(term):
+            if feature not in seen:
+                seen.add(feature)
+                expanded.append(feature)
     return expanded
 
 

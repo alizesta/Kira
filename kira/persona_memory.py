@@ -671,7 +671,7 @@ def _compact_digest_line(text: str, max_chars: int = 240, query: str | None = No
     start = 0
     if query:
         normalized = _evidence.norm(text)
-        query_words = re.findall(r"[a-z0-9آ-ی]{3,}", _evidence.norm(query))
+        query_words = [word for word in _evidence.query_terms(query) if len(word) >= 3]
         positions = [normalized.find(word) for word in query_words]
         positions = [position for position in positions if position >= 0]
         if positions:

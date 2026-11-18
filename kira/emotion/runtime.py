@@ -518,7 +518,7 @@ class EmotionalRuntime:
                 self._state["relationship"], valid, self.config.get("relationship_deltas", {})
             )
             if text and any(e in valid for e in ("sad", "angry", "fearful", "disappointed")):
-                self._memory("kira_emotion", str(text)[:120], level * 0.25, now)
+                self._memory("kira_emotion", str(text), level * 0.25, now)
             self._save()
         return self.snapshot(now)
 

@@ -150,6 +150,13 @@ class EmotionalRuntimeTests(unittest.TestCase):
         self.assertTrue(state["recalled_memories"])
         self.assertIn("امتحان", state["recalled_memories"][0]["text"])
 
+    def test_emotional_memory_keeps_relevant_reply_text_after_first_120_chars(self):
+        reply = "ناراحتم " + ("کلمه " * 30) + "به خاطر امتحان"
+        self.runtime.on_reply(["sad"], 70, now=1000, text=reply)
+        state = self.runtime.snapshot(now=1001, query="امتحان")
+        self.assertTrue(state["recalled_memories"])
+        self.assertIn("امتحان", state["recalled_memories"][0]["text"])
+
     def test_recalled_emotional_memory_preserves_speaker(self):
         self.runtime.on_reply(["sad"], 70, now=1000, text="از اینکه تنها ماندی ناراحتم")
         state = self.runtime.snapshot(now=1001, query="تنها ماندی")
