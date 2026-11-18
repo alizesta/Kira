@@ -1,4 +1,4 @@
-"""Application composition and lifecycle infrastructure."""
+"""Toolkit-independent application services and lifecycle infrastructure."""
 
 from .event_bus import EventBus, EventPublishReport, SubscriberFailure
 from .module_manager import ModuleManager, ModuleManagerError, ModuleState
