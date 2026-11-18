@@ -1,6 +1,8 @@
 """Main desktop window composed from feature-oriented UI behavior mixins."""
-from .main_window_root_support import *  # noqa: F401,F403
-from ..app.web_search import WebSearchApplicationService
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QMainWindow
+
+from ..chat_sessions import session_property, front_only_property
 from .main_window_session import SessionMixin
 from .main_window_voice_settings import VoiceSettingsMixin
 from .main_window_character_settings import CharacterSettingsMixin
