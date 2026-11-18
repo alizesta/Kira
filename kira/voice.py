@@ -1,6 +1,7 @@
 """Kira local-only speech output: Piper synthesis and Qt audio playback."""
 import hashlib
 import json
+import math
 import os
 import re
 import tempfile
