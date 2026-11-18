@@ -208,3 +208,19 @@ Regression tests cover the shell's base class, controller registration,
 constructor boundary, composition-root wiring and event-forwarding contract.
 Static source validation is in place; runtime GUI behavior and full application
 tests still require a functioning CI runner.
+
+
+### Feature Controller boundary delta — 2026-11-18
+
+The controller compatibility lookup and Qt event dispatch now pass through
+`FeatureControllerRegistry`, which centralizes feature ownership and reports
+legacy method collisions. Chat's attachment workflow is injected explicitly
+from UI composition through the independent `ChatAttachmentController`; Chat
+no longer reaches the attachment feature through legacy forwarding methods or
+the shared `_tiles` collection.
+
+This advances the residual UI boundary work but does not close it. The
+window-backed `WindowFeatureController` proxy and remaining cross-feature
+method calls are still migration targets. Focused registry and dependency
+contract tests have been added; they are not yet executed. Windows/GUI and
+GitHub Actions validation are intentionally outside this workstream.
