@@ -133,6 +133,7 @@ def decide(text, mode=None, plan=None, has_attachment=False, has_task=False, set
         stage = DEEP if (reasons and bm != "surface_only") else SURFACE
         return Decision(stage, tuple(reasons), route_for(stage, settings), reflection, bm)
     except Exception:                                                  # noqa: BLE001 - the old single-request path is always the fallback
+        _log.exception("Brain decision failed; falling back to the surface stage")
         return Decision()
 
 
@@ -363,6 +364,7 @@ def extend_prompt(prompt, decision, settings=None, router=None, *, character_id:
                     extras.append(HINT_BLOCK.format(hint=hint))
         return prompt + ("\n\n" + "\n\n".join(extras) if extras else "")
     except Exception:                                                  # noqa: BLE001
+        _log.exception("Brain prompt extension failed; using the original prompt")
         return prompt
 
 
@@ -623,7 +625,7 @@ def after_turn(
             HybridRouter._write_telemetry({"brain": True, "stage": info["stage"], "reasons": info["reasons"], "hint": info["hint"],
                                            "background": info["background"], "mode": mode_name, "tools": len(tools or [])}, "brain_telemetry.jsonl")
         except Exception:                                              # noqa: BLE001
-            pass
+            _log.debug("Could not write optional brain telemetry", exc_info=True)
     except Exception:                                                  # noqa: BLE001
         _log.exception("Post-turn brain processing failed")
     return info

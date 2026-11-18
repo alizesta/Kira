@@ -354,6 +354,7 @@ def record_user_message(content, facts=None, moments=None, now=None) -> int:
                 stored += 1 if fid else 0
             _prune(con)
     except Exception:                                                  # noqa: BLE001
+        _log.warning("Evidence-memory ingestion failed; some user facts may not have been indexed", exc_info=True)
         return stored
     if stored and _embedding_config():
         schedule_vector_backfill()
@@ -368,10 +369,12 @@ def add_manual(text, now=None, persona_id=None, predicate="note") -> bool:
     now = time.time() if now is None else now
     try:
         with _lock, _db() as con:
-            return _ingest(con, subject="user", predicate=predicate, value=text, text=text, category="permanent", quote=text, speaker="user",
-                           message_id=None, source_kind="manual", now=now, persona_id=persona_id) is not None
+            stored = _ingest(con, subject="user", predicate=predicate, value=text, text=text, category="permanent", quote=text, speaker="user",
+                             message_id=None, source_kind="manual", now=now, persona_id=persona_id) is not None
+        return stored
     except Exception:                                                  # noqa: BLE001
-        return False
+        _log.exception("Could not store manually edited evidence memory")
+        raise
 
 
 def delete_by_persona_id(persona_id) -> int:
@@ -390,33 +393,82 @@ def delete_by_persona_id(persona_id) -> int:
             _delete_rows(con, set(ids))
             return len(set(ids))
     except Exception:                                                  # noqa: BLE001
-        return 0
+        _log.exception("Could not delete evidence for a removed persona-memory item")
+        raise
 
 
 def update_by_persona_id(old_persona_id, new_persona_id, text, now=None) -> bool:
-    """The person edited an item: replace the stored fact by their own wording (evidence = their edit)."""
+    """Atomically replace a persona-backed evidence fact with the user's edited wording."""
+    if not _enabled:
+        return False
+    text = " ".join(str(text or "").split())[:200]
+    if len(text) < 2:
+        return False
+    now = time.time() if now is None else now
     try:
         with _lock, _db() as con:
-            row = con.execute("SELECT predicate, category FROM facts WHERE persona_id=? LIMIT 1", (old_persona_id,)).fetchone()
-        predicate = row["predicate"] if row else "note"
+            row = con.execute(
+                "SELECT subject, predicate FROM facts WHERE persona_id=? LIMIT 1",
+                (old_persona_id,),
+            ).fetchone()
+            predicate = row["predicate"] if row else "note"
+            subject = row["subject"] if row else "user"
+            rows = con.execute(
+                "SELECT id, subject, predicate FROM facts WHERE persona_id=?",
+                (old_persona_id,),
+            ).fetchall()
+            ids = []
+            for item in rows:
+                if item["predicate"] in SINGLE_VALUED:
+                    ids.extend(
+                        found[0]
+                        for found in con.execute(
+                            "SELECT id FROM facts WHERE subject=? AND predicate=?",
+                            (item["subject"], item["predicate"]),
+                        )
+                    )
+                else:
+                    ids.append(item["id"])
+            _delete_rows(con, set(ids))
+            stored_id = _ingest(
+                con,
+                subject=subject,
+                predicate=predicate,
+                value=text,
+                text=text,
+                category="permanent",
+                quote=text,
+                speaker="user",
+                message_id=None,
+                source_kind="manual",
+                now=now,
+                persona_id=new_persona_id,
+            )
+            if stored_id is None:
+                raise RuntimeError("Updated persona-memory item could not be synchronized to evidence memory")
+        return True
     except Exception:                                                  # noqa: BLE001
-        predicate = "note"
-    delete_by_persona_id(old_persona_id)
-    return add_manual(text, now, persona_id=new_persona_id, predicate=predicate)
+        _log.exception("Could not atomically update persona-backed evidence memory")
+        raise
 
 
 def forget_all() -> None:
-    """Everything this module stores about the person is deleted. The history backfill is marked done so it is never rebuilt from the chat."""
+    """Delete all evidence-backed memory; explicit management failures are raised to the caller."""
     try:
+        # Resolve the history watermark before opening the write transaction. If
+        # it cannot be read, do not clear data with a zero cursor that could
+        # cause the forgotten history to be imported again on the next startup.
+        history_watermark = _chat_max_id()
         with _lock, _db() as con:
             for table in ("vectors", "evidence", "facts", "quarantine"):
                 con.execute(f"DELETE FROM {table}")
             _meta_set(con, "backfilled", "1")
-            _meta_set(con, "seen_upto", _chat_max_id())              # what was forgotten must not be rebuilt from the saved chat
-            _meta_set(con, "writer_upto", _chat_max_id())
+            _meta_set(con, "seen_upto", history_watermark)
+            _meta_set(con, "writer_upto", history_watermark)
         _tok_cache.clear()
     except Exception:                                                  # noqa: BLE001
-        pass
+        _log.exception("Could not clear evidence memory")
+        raise
 
 
 # ----------------------------------------------------------------------------------------------- model-written facts (validated)
@@ -495,7 +547,8 @@ def _chat_max_id() -> int:
         from .memory import max_message_id
         return int(max_message_id())
     except Exception:                                                  # noqa: BLE001
-        return 0
+        _log.exception("Could not read chat-history watermark for evidence-memory deletion")
+        raise
 
 
 def _backfill_once() -> None:
@@ -541,7 +594,7 @@ def _backfill_once() -> None:
         if _embedding_config():
             schedule_vector_backfill()
     except Exception:                                                  # noqa: BLE001 - the index can be rebuilt later; never disturb the app
-        pass
+        _log.warning("Evidence-memory history backfill failed; it will retry on a later startup", exc_info=True)
     finally:
         with _lock:
             _backfill_running = False
@@ -669,7 +722,7 @@ def _vector_pass() -> None:
             for r, v in zip(rows, vectors):
                 con.execute("INSERT OR REPLACE INTO vectors(fact_id, model, dim, blob) VALUES (?,?,?,?)", (r["id"], cfg["tag"], len(v), _pack(v)))
     except Exception:                                                  # noqa: BLE001
-        pass
+        _log.debug("Optional evidence-memory vector backfill failed; lexical retrieval remains available", exc_info=True)
     finally:
         with _lock:
             _vector_job_running = False
@@ -889,7 +942,8 @@ def set_writer_cursor(message_id) -> None:
         with _lock, _db() as con:
             _meta_set(con, "writer_upto", int(message_id))
     except Exception:                                                  # noqa: BLE001
-        pass
+        _log.exception("Could not persist the evidence-memory writer cursor")
+        raise
 
 
 def interest_line(max_chars=140, query=None) -> str:
@@ -975,6 +1029,7 @@ def build_block(query, budget=1500):
             if _meta_get(con, "backfilled") != "1":
                 return None
     except Exception:                                                  # noqa: BLE001
+        _log.warning("Evidence-memory index is unavailable; falling back to persona memory", exc_info=True)
         return None
     facts = retrieve(query)
     body = render(facts, max(200, budget - 160))
@@ -1027,7 +1082,7 @@ def budget_for(settings, router=None) -> int:
                 cpt = CHARS_PER_TOKEN
             return max(800, min(DEFAULT_BUDGET, int(num_ctx * float(cpt) * 0.10)))
     except Exception:                                                  # noqa: BLE001
-        pass
+        _log.debug("Could not calculate route-specific memory budget; using the default", exc_info=True)
     return DEFAULT_BUDGET
 
 
@@ -1045,6 +1100,43 @@ def list_extra_items(known_persona_ids=()) -> list[dict]:
         return []
 
 
+def update_extra(item_id, text, now=None) -> bool:
+    """Atomically replace an evidence-only memory item with the user's edited wording."""
+    fid = str(item_id)[3:]
+    text = " ".join(str(text or "").split())[:200]
+    if len(text) < 2 or not _enabled:
+        return False
+    now = time.time() if now is None else now
+    try:
+        with _lock, _db() as con:
+            row = con.execute(
+                "SELECT subject, predicate FROM facts WHERE id=?",
+                (fid,),
+            ).fetchone()
+            if row is None:
+                return False
+            _delete_rows(con, [fid])
+            new_id = _ingest(
+                con,
+                subject=row["subject"],
+                predicate=row["predicate"],
+                value=text,
+                text=text,
+                category="permanent",
+                quote=text,
+                speaker="user",
+                message_id=None,
+                source_kind="manual",
+                now=now,
+            )
+            if new_id is None:
+                raise RuntimeError("Edited evidence-memory item could not be reinserted")
+        return True
+    except Exception:                                                  # noqa: BLE001
+        _log.exception("Could not update an evidence-only memory item")
+        raise
+
+
 def delete_extra(item_id) -> bool:
     fid = str(item_id)[3:]
     try:
@@ -1054,7 +1146,8 @@ def delete_extra(item_id) -> bool:
             _delete_rows(con, [fid])
         return True
     except Exception:                                                  # noqa: BLE001
-        return False
+        _log.exception("Could not delete an extra evidence-memory item")
+        raise
 
 
 def stats() -> dict:

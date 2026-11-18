@@ -4,6 +4,10 @@ import math
 
 from .main_window_session_support import (
     KIRA_PROFILE,
+    InitiativeEngine,
+    build_checkin_message,
+    initiative_history_state,
+    persona_memory,
     QApplication,
     sessions_are_idle,
     QColor,
@@ -194,7 +198,7 @@ class SessionController(WindowFeatureController):
         try:
             self.context.services.mood_service.set_character_traits(cid, self.character_traits(cid, profile))
         except Exception:                                   # noqa: BLE001 - mood is a bonus, never block the UI
-            pass
+            _log.debug("Could not synchronize character mood traits", exc_info=True)
 
     @staticmethod
     def _schedule_chat_callback(callback):
@@ -349,7 +353,7 @@ class SessionController(WindowFeatureController):
             try:
                 self.context.services.voice_application_service.stream_reset()
             except Exception:                           # noqa: BLE001
-                pass
+                _log.exception("Could not reset streamed voice while switching characters")
             self.feature_controller("attachments_vision").clear_upload_tiles()
         self.context.state.front = self.context.state.cur = sess
         sess.unread = False
@@ -358,7 +362,7 @@ class SessionController(WindowFeatureController):
         try:
             self.context.services.mood_service.set_active_character(cid, self.character_traits(cid, self.context.services.character_service.all_profiles(self.context.services.settings).get(cid)))
         except Exception:                               # noqa: BLE001 - never block switching tabs
-            pass
+            _log.debug("Could not activate character mood runtime", exc_info=True)
         self.context.views.chat_stack.setCurrentWidget(sess.view)
         if old is not sess:
             self.context.views.input.setText(sess.draft)
@@ -384,7 +388,7 @@ class SessionController(WindowFeatureController):
             try:
                 save_settings(self.context.services.settings)
             except Exception:                           # noqa: BLE001 - never block switching tabs
-                pass
+                _log.exception("Could not persist active character selection")
 
     def apply_chat_theme(self):
         """Glass + neon colours of the chat in front (same glass, the character's own colours)."""
@@ -416,6 +420,7 @@ class SessionController(WindowFeatureController):
             )
         except Exception:
             # Leave the Session unloaded so the next synchronization retries history.
+            _log.exception("Could not restore persisted chat history")
             return False
         shown = 0
         for item in history:
@@ -635,10 +640,8 @@ class SessionController(WindowFeatureController):
             return
         self._sync_mood_character()
         # The existing UI poll is the scheduler; this controller throttles it to 30 seconds.
-        try:
-            self.maybe_proactive_checkin()
-        except Exception:                              # noqa: BLE001 - background initiative is optional
-            pass
+        # maybe_proactive_checkin owns its logged fail-closed boundary.
+        self.maybe_proactive_checkin()
 
         face_map = {
             "neutral": "neutral", "happy": "happy", "sad": "sad", "angry": "angry",
@@ -724,6 +727,7 @@ class SessionController(WindowFeatureController):
             face_label.setToolTip(tooltip)
             label.setToolTip(tooltip)
         except Exception:                                    # noqa: BLE001 - the indicator must never break the window
+            _log.exception("Could not render the active character mood indicator; using neutral fallback")
             fallback = make_icon("emotion_neutral", normal="#B9D4F5", hover="#B9D4F5",
                                  checked="#B9D4F5", disabled="#52617B")
             face_label.setPixmap(fallback.pixmap(QSize(30, 30)))
