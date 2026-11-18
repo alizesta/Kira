@@ -53,7 +53,9 @@ FeatureModule registration and legacy-wide cleanup remain coordinated with Flow 
 - `kira/app/chat_transfer_application.py` owns export, preview, parsing,
   validation orchestration, safe atomic file output and import delegation.
 - `kira/core/interfaces/transfer.py` defines the Persistence port for
-  paginated export reads and atomic validated imports.
+  paginated export reads and atomic validated imports, plus `ChatTransferFilePort`
+  for bounded import file reads and atomic export writes. The Application use case
+  accepts the file adapter as an optional injection.
 - `kira/chat/transfer.py` remains a compatibility facade.
 
 ### Chat Request and Response contracts
@@ -151,10 +153,11 @@ in application services and defining ports only where a stable cross-layer
 capability exists. Avoid inventing contracts for transient implementation
 details merely to remove every `Any`.
 
-Two explicit cross-flow follow-ups remain: Flow 3 should move path-based import
-reads and atomic export-file writes behind an Infrastructure file port; Flow 4
-must inject that adapter and register Organization/Search/Transfer use cases in
-the central application lifecycle. Flow 2 has not claimed those integrations.
+Two explicit cross-flow follow-ups remain: Flow 3 must implement the
+`ChatTransferFilePort` Infrastructure adapter; the current stdlib file-I/O path
+remains only as a compatibility fallback. Flow 4 must inject that adapter and
+register Organization/Search/Transfer use cases in the central application
+lifecycle. Flow 2 has not claimed those integrations.
 
 Central application-service registration, Bootstrap injection, FeatureModule
 lifecycle and UI-controller consumption are coordinated through Flows 1 and 4,
