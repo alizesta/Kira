@@ -19,7 +19,7 @@ class ChatApplicationServiceArchitectureTests(unittest.TestCase):
         self.assertNotIn("self.chat_history_service.", source)
         feature_modules = (Path(__file__).resolve().parents[1] / "kira" / "app" / "feature_modules.py").read_text(encoding="utf-8")
         self.assertIn('persistence=container.resolve("chat_history_service")', feature_modules)
-        self.assertIn("chat_application_service_factory=create_chat_factory", feature_modules)
+        self.assertIn('"chat_application_service_factory": selected("chat_application_service_factory", create_chat_factory)', feature_modules)
         self.assertNotIn("persistence=self.chat_history_service", source)
         self.assertIn("self.chat_application_service.submit_message", source)
         self.assertIn("self.chat_application_service.start_provider_request", source)
