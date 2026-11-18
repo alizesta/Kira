@@ -22,7 +22,10 @@ from .main_window_lifecycle_support import (
 )
 
 
-class LifecycleMixin:
+from .window_feature_controller import WindowFeatureController
+
+
+class LifecycleMixin(WindowFeatureController):
     def showEvent(self, event):
         super().showEvent(event)
         winfx.apply_effect(self.winId(), self._effect)
