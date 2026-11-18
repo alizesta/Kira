@@ -160,22 +160,26 @@ class FileTools:
             raise ToolError("این مسیر پوشه نیست.")
         limit = max(1, min(int(a.get("max_items") or 40), 100))
         dirs, files, hidden, scan_errors = [], [], 0, 0
-        for entry in os.scandir(path):
-            try:
-                allowed = self.policy.is_allowed(entry.path)
-            except OSError:
-                scan_errors += 1
-                continue
-            if not allowed:
-                hidden += 1
-                continue
-            try:
-                st = entry.stat(follow_symlinks=False)
-                is_dir = entry.is_dir(follow_symlinks=False)
-            except OSError:
-                scan_errors += 1
-                continue
-            (dirs if is_dir else files).append((entry.name, st))
+        try:
+            for entry in os.scandir(path):
+                try:
+                    allowed = self.policy.is_allowed(entry.path)
+                except OSError:
+                    scan_errors += 1
+                    continue
+                if not allowed:
+                    hidden += 1
+                    continue
+                try:
+                    st = entry.stat(follow_symlinks=False)
+                    is_dir = entry.is_dir(follow_symlinks=False)
+                except OSError:
+                    scan_errors += 1
+                    continue
+                (dirs if is_dir else files).append((entry.name, st))
+        except OSError:
+            # scandir may fail to open the directory or while advancing its iterator.
+            scan_errors += 1
         dirs.sort(key=lambda x: x[0].lower())
         files.sort(key=lambda x: x[1].st_mtime, reverse=True)
         lines = [f"{path} — {len(dirs)} پوشه و {len(files)} فایل"]
