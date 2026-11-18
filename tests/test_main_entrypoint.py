@@ -7,7 +7,7 @@ class MainEntrypointTests(unittest.TestCase):
     def test_main_delegates_startup_to_the_composition_root(self):
         import kira.main as entrypoint
 
-        with mock.patch("kira.app.bootstrap.run_application") as run_application:
+        with mock.patch("kira.ui.bootstrap.run_application") as run_application:
             entrypoint.main()
 
         run_application.assert_called_once_with()
