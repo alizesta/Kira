@@ -1,7 +1,7 @@
 # KIRA MODULE OWNERSHIP
 
 **Snapshot:** 2026-11-18  
-**Base:** `new-main` at `e027a87eded5837984609f0dbfe9d8f5f0ac5349`  
+**Base:** `new-main` at `d7e1ce69331eac178c17bfd0cf549a578d240caf`  
 **Scope:** TASK 001–020 and adjacent application capabilities. This register describes observed ownership, not desired ownership where implementation is absent.
 
 ## 1. Ownership rules
