@@ -22,6 +22,10 @@ from .conversation_lifecycle import (
     ConversationLifecycleRepositoryPort,
     PermanentDeleteAuthorizationPort,
 )
+from .organization import (
+    ConversationMetadataEventPublisherPort,
+    ConversationOrganizationRepositoryPort,
+)
 from .memory_service import MemoryService
 from .mood_service import MoodService
 from .provider_worker import ProviderWorkerPort
@@ -42,6 +46,8 @@ __all__ = [
     "ConversationEventPublisherPort",
     "ConversationLifecycleRepositoryPort",
     "PermanentDeleteAuthorizationPort",
+    "ConversationMetadataEventPublisherPort",
+    "ConversationOrganizationRepositoryPort",
     "ChatProvider",
     "CharacterService",
     "ChatHistoryService",
