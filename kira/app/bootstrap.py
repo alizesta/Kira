@@ -14,6 +14,7 @@ def run_application() -> None:
     from ..config import load_settings
     from .dependency_container import DependencyContainer
     from .chat_composition import create_chat_application_service_factory
+    from .session_composition import create_session_application_service_factory
     from .web_search import WebSearchApplicationService
     from .voice_composition import create_voice_application_service_factory
     from .game_mode_application import GameModeApplicationService
@@ -63,6 +64,9 @@ def run_application() -> None:
         persistence=chat_history_service,
         event_publisher=chat_event_publisher,
     )
+    session_service_factory = create_session_application_service_factory(
+        event_publisher=chat_event_publisher
+    )
     web_search_service = WebSearchApplicationService()
     voice_service_factory = create_voice_application_service_factory()
     game_mode_application_service = GameModeApplicationService()
@@ -73,6 +77,7 @@ def run_application() -> None:
             character_service=container.resolve("character_service"),
             chat_history_service=chat_history_service,
             chat_application_service_factory=chat_service_factory,
+            session_application_service_factory=session_service_factory,
             web_search_service=web_search_service,
             voice_application_service_factory=voice_service_factory,
             game_mode_application_service=game_mode_application_service,
