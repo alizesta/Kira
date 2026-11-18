@@ -43,12 +43,20 @@
 
 The historical audit counts remain 12 DONE / 2 PARTIAL. The post-audit merge is recorded separately; no runtime status is inferred.
 
+### 2.2 TASK 018 — Web Search application policy
+
+| Task | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
+|---|---|---|---|---|
+| 018 | Web Search application — `kira/app/web_search.py` | `WebSearchApplicationService`: Gemini credential selection, follow-up query rewriting, web/image request options, search evidence formatting and prepared-content merging | Settings snapshots, active Chat client, `kira.websearch` engine contracts | Qt, widgets, SearchWorker lifecycle, result presentation, direct provider/device construction |
+
+The service is injected by Bootstrap into MainWindow. SearchWorker creation, signals and rendering remain UI responsibilities. Focused Qt-free tests are included; execution/runtime acceptance is pending until CI can allocate a runner.
+
 ## 3. Cross-module API and dependency policy
 
 ### 3.1 Allowed high-level calls
 
 - Bootstrap constructs the graph and injects the shared services.
-- MainWindow calls ChatApplicationService for Chat submission, request lifecycle and history operations.
+- MainWindow calls ChatApplicationService for Chat submission, request lifecycle and history operations, and delegates Web Search policy to the injected WebSearchApplicationService.
 - ChatApplicationService calls its injected Coordinator, ContextBuilder, ResponseHandler, AttachmentManager, command port and persistence/history contract.
 - Search receives a read-only persistence reader and returns immutable result/page contracts.
 - Transfer validates and maps the transfer format, then delegates durable import to Persistence.
@@ -96,7 +104,7 @@ The Chat core modules should depend on Python data contracts and narrow Protocol
 | Voice | `voice.py`, `listener.py`, `local_voice.py`, VAD/speech modules, VoicePage | Implementation exists; Voice interface is not yet wired through the implementation. |
 | Avatar/emotion | `face.py`, `vrm_avatar.py`, `companion.py`, `emotion/*`, `body.py`, `rig.py` | Capability code exists; no independent lifecycle-managed feature module confirmed. |
 | Tools/coding agent | `tools/*`, `actions.py`, `auto_agent.py`, `code_agent.py`, `chat_code.py` | Existing tools/agent integration remains application/legacy-bound; Chat command contracts are separate. |
-| Web Research | `webintel/*`, `websearch.py`, discovery adapters | Search capability exists; worker/policy integration remains in legacy application layer. |
+| Web Research | `kira/app/web_search.py`, `webintel/*`, `websearch.py`, discovery adapters | WebSearchApplicationService owns credential/query/request/evidence policy; SearchWorker and result presentation remain UI adapters. |
 | Vision | `vision_pipeline.py`, `vision_ocr.py`, game detection/mode/audio | Capability code exists; dedicated application-service ownership not established by this audit. |
 | UI | `ui/main_window.py`, `ui/main_window_*.py`, `ui/pages`, `ui/components`, `ui/dialogs`, `ui/workers.py` | MainWindow is composed from eight feature-oriented mixins; cross-feature policy still remains in the window adapter. |
 
