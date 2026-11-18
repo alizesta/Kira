@@ -1,8 +1,4 @@
-"""Application startup composition root.
-
-The UI window is imported from its feature-oriented package. Keeping
-construction here prevents the entry point from owning UI setup details.
-"""
+"""Application startup composition root."""
 from __future__ import annotations
 
 import sys
@@ -11,44 +7,30 @@ import sys
 def run_application() -> None:
     from PySide6.QtWidgets import QApplication
 
-    from ..config import load_settings
-    from .dependency_container import DependencyContainer
-    from .chat_composition import create_chat_application_service_factory
-    from .session_composition import create_session_application_service_factory
-    from .web_search import WebSearchApplicationService
-    from .voice_composition import create_voice_application_service_factory
-    from .game_mode_application import GameModeApplicationService
-    from .provider_application import ProviderApplicationService
-    from .coding_agent_application import CodingAgentApplicationService
-    from .runtime_settings_application import RuntimeSettingsApplicationService
-    from .vision_application import VisionApplicationService
-    from .event_bus import EventBus
+    from .. import winfx
     from ..chat.events import ChatEventPublisher
     from ..chat.session_manager import SessionManager
     from ..chat_sessions import ChatSession
-    from .module_manager import ModuleManager, ModuleState
-    from ..ui.main_window import MainWindow
-    from ..services import CharacterProfileService, PersonaMemoryService, MoodStateService, SqliteChatHistoryService
-    from ..modules import ServiceModule
+    from ..config import load_settings
     from ..theme import build_style
-    from .. import winfx
+    from ..ui.main_window import MainWindow
+    from .dependency_container import DependencyContainer
+    from .event_bus import EventBus
+    from .feature_modules import register_application_modules
+    from .module_manager import ModuleManager, ModuleState
 
+    settings = load_settings()
     container = DependencyContainer()
     event_bus = EventBus()
     chat_event_publisher = ChatEventPublisher(event_bus)
     module_manager = ModuleManager(container, event_bus)
-    service_modules = (
-        ("memory", "memory_service", PersonaMemoryService),
-        ("mood", "mood_service", MoodStateService),
-        ("characters", "character_service", CharacterProfileService),
-        ("chat_history", "chat_history_service", SqliteChatHistoryService),
+    module_ids = register_application_modules(
+        module_manager,
+        container,
+        settings=settings,
+        event_publisher=chat_event_publisher,
     )
-    for module_id, service_key, factory in service_modules:
-        module_manager.register(
-            module_id,
-            lambda key=service_key, service_factory=factory: ServiceModule(key, service_factory),
-            optional=False,
-        )
+
     states = module_manager.start_all()
     failed = {
         module_id: module_manager.error(module_id)
@@ -60,57 +42,39 @@ def run_application() -> None:
         event_bus.close()
         raise RuntimeError(f"Required application modules failed to start: {failed}")
 
-    settings = load_settings()
-    app = QApplication(sys.argv)
-    app.setStyleSheet(build_style(winfx.active_effect(settings.get("window_effect"))))
-    session_manager = SessionManager(ChatSession)
-    chat_history_service = container.resolve("chat_history_service")
-    chat_service_factory = create_chat_application_service_factory(
-        persistence=chat_history_service,
-        event_publisher=chat_event_publisher,
-    )
-    session_service_factory = create_session_application_service_factory(
-        event_publisher=chat_event_publisher
-    )
-    web_search_service = WebSearchApplicationService()
-    voice_service_factory = create_voice_application_service_factory()
-    game_mode_application_service = GameModeApplicationService()
-    provider_application_service = ProviderApplicationService()
-    coding_agent_application_service = CodingAgentApplicationService()
-    vision_application_service = VisionApplicationService(
-        game_mode_application_service,
-        settings.get("vision_mode", "economic"),
-    )
-    runtime_settings_application_service = RuntimeSettingsApplicationService()
     try:
+        app = QApplication(sys.argv)
+        app.setStyleSheet(build_style(winfx.active_effect(settings.get("window_effect"))))
+        session_manager = SessionManager(ChatSession)
         window = MainWindow(
             memory_service=container.resolve("memory_service"),
             mood_service=container.resolve("mood_service"),
             character_service=container.resolve("character_service"),
-            chat_history_service=chat_history_service,
-            chat_application_service_factory=chat_service_factory,
-            session_application_service_factory=session_service_factory,
-            web_search_service=web_search_service,
-            voice_application_service_factory=voice_service_factory,
-            game_mode_application_service=game_mode_application_service,
+            chat_history_service=container.resolve("chat_history_service"),
+            chat_application_service_factory=container.resolve("chat_application_service_factory"),
+            session_application_service_factory=container.resolve("session_application_service_factory"),
+            web_search_service=container.resolve("web_search_service"),
+            voice_application_service_factory=container.resolve("voice_application_service_factory"),
+            game_mode_application_service=container.resolve("game_mode_application_service"),
             session_manager=session_manager,
             chat_event_publisher=chat_event_publisher,
             settings=settings,
-            provider_application_service=provider_application_service,
-            coding_agent_application_service=coding_agent_application_service,
-            vision_application_service=vision_application_service,
-            runtime_settings_application_service=runtime_settings_application_service,
+            provider_application_service=container.resolve("provider_application_service"),
+            coding_agent_application_service=container.resolve("coding_agent_application_service"),
+            vision_application_service=container.resolve("vision_application_service"),
+            runtime_settings_application_service=container.resolve("runtime_settings_application_service"),
         )
     except Exception:
         module_manager.shutdown()
         event_bus.close()
         raise
-    # Retain the composition root for the lifetime of the application.
+
     window._dependency_container = container
     window._event_bus = event_bus
     window._chat_event_publisher = chat_event_publisher
     window._session_manager = session_manager
     window._module_manager = module_manager
+    window._feature_module_ids = module_ids
     app.aboutToQuit.connect(module_manager.shutdown)
     app.aboutToQuit.connect(event_bus.close)
     window.show()

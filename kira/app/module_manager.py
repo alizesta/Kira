@@ -35,6 +35,7 @@ class _ModuleRecord:
     state: ModuleState = ModuleState.REGISTERED
     instance: ApplicationModule | None = None
     registered: bool = False
+    started: bool = False
     error: str | None = None
 
 
@@ -119,6 +120,7 @@ class ModuleManager:
 
             start_called = True
             record.instance.start()
+            record.started = True
             record.state = ModuleState.STARTED
             record.error = None
             if module_id not in self._start_order:
@@ -137,6 +139,7 @@ class ModuleManager:
                     pass
             record.instance = None
             record.registered = False
+            record.started = False
             if module_id in self._creation_order:
                 self._creation_order.remove(module_id)
             record.state = ModuleState.FAILED
@@ -158,7 +161,7 @@ class ModuleManager:
 
     def stop(self, module_id: str) -> None:
         record = self._record(module_id)
-        if record.state != ModuleState.STARTED:
+        if not record.started:
             return
         dependents = self._active_dependents(module_id)
         if dependents:
@@ -167,6 +170,7 @@ class ModuleManager:
             )
         try:
             record.instance.stop()
+            record.started = False
             record.state = ModuleState.STOPPED
             if module_id in self._start_order:
                 self._start_order.remove(module_id)
@@ -179,12 +183,12 @@ class ModuleManager:
         record = self._record(module_id)
         if not record.optional:
             raise ModuleManagerError(f"Required module cannot be disabled: {module_id}")
-        dependents = self._active_dependents(module_id)
+        dependents = self._enabled_dependents(module_id)
         if dependents:
             raise ModuleManagerError(
-                f"Stop dependent modules first: {', '.join(dependents)}"
+                f"Disable dependent modules first: {', '.join(dependents)}"
             )
-        if record.state == ModuleState.STARTED:
+        if record.started:
             self.stop(module_id)
         if record.instance is not None:
             try:
@@ -221,7 +225,7 @@ class ModuleManager:
             raise ModuleManagerError(
                 f"Unregister dependent modules first: {', '.join(dependents)}"
             )
-        if record.state == ModuleState.STARTED:
+        if record.started:
             self.stop(module_id)
         if record.instance is not None:
             try:
@@ -244,9 +248,10 @@ class ModuleManager:
             if record is None:
                 continue
             if record.instance is not None:
-                if record.state != ModuleState.STOPPED:
+                if record.started:
                     try:
                         record.instance.stop()
+                        record.started = False
                     except Exception as exc:
                         errors[module_id] = f"stop: {type(exc).__name__}: {exc}"
                 try:
@@ -255,6 +260,7 @@ class ModuleManager:
                     errors[module_id] = f"{errors.get(module_id, '')} dispose: {type(exc).__name__}: {exc}".strip()
             record.instance = None
             record.registered = False
+            record.started = False
             record.state = ModuleState.DISPOSED
             if module_id in self._start_order:
                 self._start_order.remove(module_id)
@@ -266,7 +272,16 @@ class ModuleManager:
         return [
             key
             for key, record in self._modules.items()
-            if record.state == ModuleState.STARTED and module_id in record.dependencies
+            if record.started and module_id in record.dependencies
+        ]
+
+    def _enabled_dependents(self, module_id: str) -> list[str]:
+        return [
+            key
+            for key, record in self._modules.items()
+            if record.enabled
+            and record.state not in (ModuleState.DISABLED, ModuleState.DISPOSED)
+            and module_id in record.dependencies
         ]
 
     def _record(self, module_id: str) -> _ModuleRecord:
