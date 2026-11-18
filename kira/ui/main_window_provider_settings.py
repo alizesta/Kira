@@ -1,5 +1,5 @@
 """Provider settings behavior mixin for the desktop window."""
-from .main_window_support import *  # noqa: F401,F403
+from .main_window_provider_settings_support import *  # noqa: F401,F403
 
 
 class ProviderSettingsMixin:
