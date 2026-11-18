@@ -1,4 +1,5 @@
 """Privacy regressions for the manually redirected WebIntel fetcher."""
+import time
 import unittest
 from unittest import mock
 
@@ -42,6 +43,34 @@ class NetguardRedirectPrivacyTests(unittest.TestCase):
             self.assertTrue(netguard._peer_blocked(response))
             sock.getpeername.return_value = ("8.8.8.8", 443)
             self.assertFalse(netguard._peer_blocked(response))
+
+    def test_total_deadline_stops_a_slow_trickling_response(self):
+        class SlowResponse:
+            def __init__(self):
+                self.closed = False
+
+            def iter_content(self, chunk_size=32768):
+                yield b"partial"
+                while not self.closed:
+                    time.sleep(0.01)
+                    yield b"x"
+
+            def close(self):
+                self.closed = True
+
+        response = SlowResponse()
+        started = time.monotonic()
+        body, truncated = netguard._read_body_with_deadline(
+            response,
+            started,
+            total_timeout=0.08,
+            max_bytes=4096,
+        )
+
+        self.assertEqual(body, b"partial")
+        self.assertTrue(truncated)
+        self.assertTrue(response.closed)
+        self.assertLess(time.monotonic() - started, 0.5)
 
     def test_response_cookies_are_cleared_before_following_redirects(self):
         start = "https://example.com/start"
