@@ -390,7 +390,8 @@ class RuntimeMixin:
             self._sync_mood_character()
             if role == "user":
                 mood.on_user_message(content)
-                self.apply_mood_to_avatar()
+                if self.cur is self.front:
+                    self.apply_mood_to_avatar()
             elif role == "assistant":
                 meta = self.director.parse_reply(content)
                 if meta is not None:

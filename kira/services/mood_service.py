@@ -13,5 +13,11 @@ class MoodStateService:
     def set_active_character(self, character_id: str, traits: dict[str, Any]) -> None:
         mood.set_active_character(character_id, traits)
 
+    def set_character_traits(self, character_id: str, traits: dict[str, Any]) -> None:
+        mood.set_character_traits(character_id, traits)
+
+    def character_scope(self, character_id: str, traits: dict[str, Any] | None = None):
+        return mood.character_scope(character_id, traits)
+
     def reset(self) -> None:
         mood.reset()

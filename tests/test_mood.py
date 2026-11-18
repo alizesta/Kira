@@ -14,12 +14,22 @@ class MoodStateTests(unittest.TestCase):
         self.path = Path(self.temp.name) / "kira_mood.json"
         self.path_patch = patch.object(mood, "_path", return_value=self.path)
         self.path_patch.start()
-        self.runtime_patch = patch.object(mood, "_emotional_runtime", EmotionalRuntime(path=self.path, clock=lambda: 1000.0))
+        runtime = EmotionalRuntime(path=self.path, clock=lambda: 1000.0)
+        self.runtime_patch = patch.object(mood, "_emotional_runtime", runtime)
         self.runtime_patch.start()
+        self.runtime_cache_patch = patch.object(mood, "_RUNTIME_CACHE", {"kira": runtime})
+        self.runtime_cache_patch.start()
+        self.active_character_patch = patch.object(mood, "_ACTIVE_CHARACTER_ID", "kira")
+        self.active_character_patch.start()
+        self.migrated_ids_patch = patch.object(mood, "_RUNTIME_MIGRATED_IDS", set())
+        self.migrated_ids_patch.start()
         self.migrated_patch = patch.object(mood, "_runtime_migrated", False)
         self.migrated_patch.start()
 
     def tearDown(self):
+        self.migrated_ids_patch.stop()
+        self.active_character_patch.stop()
+        self.runtime_cache_patch.stop()
         self.migrated_patch.stop()
         self.runtime_patch.stop()
         self.path_patch.stop()

@@ -8,6 +8,8 @@ import unittest
 from kira.tools.agent import Pending, ToolAgent, ToolPlan
 from kira.tools.sysaccess import AccessManager
 from kira.webintel.session import CANCEL, DEFAULT_BUDGET, SessionScopedResearchStore
+from kira import mood
+from kira.emotion.runtime import EmotionalRuntime
 from kira.tools.tasks import HISTORY_KEEP, P_DONE, TaskStore
 from kira import brain
 from unittest.mock import patch
@@ -177,6 +179,50 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
             self.assertNotIn("kira", self.agent._pending_new_sessions)
             self.assertIs(self.agent.tasks.active("kira"), durable)
             self.assertTrue(CANCEL.release_session("kira") is False)
+
+
+    def test_mood_context_keeps_background_character_state_separate(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            kira_runtime = EmotionalRuntime(path=root / "kira_emotional_state.json")
+            with patch.object(mood, "DATA_DIR", root), \
+                 patch.object(mood, "_RUNTIME_CACHE", {"kira": kira_runtime}), \
+                 patch.object(mood, "_RUNTIME_MIGRATED_IDS", set()), \
+                 patch.object(mood, "_ACTIVE_CHARACTER_ID", "kira"), \
+                 patch.object(mood, "_emotional_runtime", kira_runtime):
+                mood.set_active_character("kira")
+                with mood.character_scope("ren"):
+                    self.assertEqual(mood._current_character_id(), "ren")
+                    self.assertEqual(
+                        mood._path(),
+                        root / "characters" / "ren" / "legacy_mood.json",
+                    )
+                    mood.on_user_message("امروز خیلی ناراحتم و حالم خوب نیست", now=1000)
+                    self.assertIn("down", mood.current(now=1000)["user_states"])
+                    ren_runtime = mood._runtime_for()
+                    self.assertIsNot(ren_runtime, kira_runtime)
+
+                self.assertEqual(mood._current_character_id(), "kira")
+                self.assertNotIn("down", mood.current(now=1000)["user_states"])
+                self.assertTrue((root / "characters" / "ren" / "legacy_mood.json").exists())
+                self.assertTrue((root / "characters" / "ren" / "emotional_state.json").exists())
+
+    def test_mood_character_scope_restores_nested_context(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            kira_runtime = EmotionalRuntime(path=root / "kira_emotional_state.json")
+            with patch.object(mood, "DATA_DIR", root), \
+                 patch.object(mood, "_RUNTIME_CACHE", {"kira": kira_runtime}), \
+                 patch.object(mood, "_RUNTIME_MIGRATED_IDS", set()), \
+                 patch.object(mood, "_ACTIVE_CHARACTER_ID", "kira"), \
+                 patch.object(mood, "_emotional_runtime", kira_runtime):
+                mood.set_active_character("kira")
+                with mood.character_scope("ren"):
+                    self.assertEqual(mood._current_character_id(), "ren")
+                    with mood.character_scope("mika"):
+                        self.assertEqual(mood._current_character_id(), "mika")
+                    self.assertEqual(mood._current_character_id(), "ren")
+                self.assertEqual(mood._current_character_id(), "kira")
 
     def test_task_cancel_releases_only_the_matching_session_confirmation(self):
         with TemporaryDirectory() as temp:

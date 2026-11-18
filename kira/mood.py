@@ -19,6 +19,8 @@ import os
 import re
 import threading
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from .config import DATA_DIR
 from .emotion.runtime import EmotionalRuntime, EMOTIONS as RUNTIME_EMOTIONS, STATE_FILE
@@ -27,6 +29,10 @@ from .character.learning import detect_feedback
 _emotional_runtime = EmotionalRuntime()
 _runtime_migrated = False
 _ACTIVE_CHARACTER_ID = "kira"
+_ACTIVE_CHARACTER_CONTEXT: ContextVar[str | None] = ContextVar("mood_active_character", default=None)
+_RUNTIME_CACHE: dict[str, EmotionalRuntime] = {"kira": _emotional_runtime}
+_RUNTIME_MIGRATED_IDS: set[str] = set()
+_RUNTIME_CACHE_LOCK = threading.RLock()
 
 FILE_NAME = "kira_mood.json"
 HALF_LIFE = 900.0
@@ -151,36 +157,79 @@ AVATAR = {"down": ("affectionate", 40), "stressed": ("protective", 38), "hostile
 _lock = threading.Lock()
 
 
-def _path():
-    """Legacy mood compatibility file; kept separate from the structured runtime file."""
-    if _ACTIVE_CHARACTER_ID == "kira":
-        return DATA_DIR / FILE_NAME  # preserve the original Kira mood file
-    return DATA_DIR / "characters" / _ACTIVE_CHARACTER_ID / "legacy_mood.json"
+def _safe_character_id(character_id) -> str:
+    return re.sub(r"[^a-zA-Z0-9_-]", "", str(character_id or "kira"))[:80] or "kira"
 
 
-def _runtime_path():
-    """Structured emotional state for the active profile."""
-    if _ACTIVE_CHARACTER_ID == "kira":
-        return DATA_DIR / STATE_FILE  # preserve the existing structured Kira state
-    return DATA_DIR / "characters" / _ACTIVE_CHARACTER_ID / "emotional_state.json"
+def _current_character_id() -> str:
+    return _ACTIVE_CHARACTER_CONTEXT.get() or _ACTIVE_CHARACTER_ID
+
+
+def _path(character_id=None):
+    """Legacy mood file for one character; Kira keeps the original file location."""
+    owner = _safe_character_id(character_id) if character_id is not None else _current_character_id()
+    if owner == "kira":
+        return DATA_DIR / FILE_NAME
+    return DATA_DIR / "characters" / owner / "legacy_mood.json"
+
+
+def _runtime_path(character_id=None):
+    """Structured emotional state for one character; Kira keeps the original file location."""
+    owner = _safe_character_id(character_id) if character_id is not None else _current_character_id()
+    if owner == "kira":
+        return DATA_DIR / STATE_FILE
+    return DATA_DIR / "characters" / owner / "emotional_state.json"
+
+
+def _runtime_for(character_id=None) -> EmotionalRuntime:
+    owner = _safe_character_id(character_id) if character_id is not None else _current_character_id()
+    with _RUNTIME_CACHE_LOCK:
+        runtime = _RUNTIME_CACHE.get(owner)
+        if runtime is None:
+            runtime = EmotionalRuntime(path=_runtime_path(owner))
+            _RUNTIME_CACHE[owner] = runtime
+        return runtime
+
+
+def set_character_traits(character_id, base_traits=None):
+    """Update one character's baseline without changing the visible/default character."""
+    runtime = _runtime_for(character_id)
+    if base_traits is not None:
+        normalized = runtime._normalise_traits(base_traits)
+        if runtime.base_traits != normalized:
+            runtime.set_base_traits(base_traits)
+    return dict(runtime.base_traits)
+
+
+@contextmanager
+def character_scope(character_id, base_traits=None):
+    """Temporarily bind Mood reads/writes to one character without changing the visible tab."""
+    owner = _safe_character_id(character_id)
+    token = _ACTIVE_CHARACTER_CONTEXT.set(owner)
+    try:
+        set_character_traits(owner, base_traits)
+        yield _runtime_for(owner)
+    finally:
+        _ACTIVE_CHARACTER_CONTEXT.reset(token)
 
 
 def set_active_character(character_id, base_traits=None):
-    """Switch persistent emotional and learned personality state to the selected profile."""
+    """Select the visible/default profile while reusing its cached emotional runtime."""
     global _ACTIVE_CHARACTER_ID, _emotional_runtime, _runtime_migrated
-    safe_id = re.sub(r"[^a-zA-Z0-9_-]", "", str(character_id or "kira"))[:80] or "kira"
-    profile_changed = safe_id != _ACTIVE_CHARACTER_ID
-    _ACTIVE_CHARACTER_ID = safe_id
-    legacy_path = _path()
-    runtime_path = _runtime_path()
+    safe_id = _safe_character_id(character_id)
+    legacy_path = _path(safe_id)
+    runtime_path = _runtime_path(safe_id)
     legacy_path.parent.mkdir(parents=True, exist_ok=True)
     runtime_path.parent.mkdir(parents=True, exist_ok=True)
-    runtime_path_changed = str(getattr(_emotional_runtime, "path", "")) != str(runtime_path)
-    if profile_changed or runtime_path_changed:
-        _emotional_runtime = EmotionalRuntime(path=runtime_path, base_traits=base_traits)
-        _runtime_migrated = False
-    elif base_traits is not None:
-        _emotional_runtime.set_base_traits(base_traits)
+    runtime = _runtime_for(safe_id)
+    if base_traits is not None:
+        normalized = runtime._normalise_traits(base_traits)
+        if runtime.base_traits != normalized:
+            runtime.set_base_traits(base_traits)
+    with _RUNTIME_CACHE_LOCK:
+        _ACTIVE_CHARACTER_ID = safe_id
+        _emotional_runtime = runtime
+        _runtime_migrated = safe_id in _RUNTIME_MIGRATED_IDS
     return _ACTIVE_CHARACTER_ID
 
 
@@ -210,13 +259,18 @@ def _load() -> dict:
 
 def _ensure_runtime_migration():
     global _runtime_migrated
-    if _runtime_migrated:
-        return
-    try:
-        _emotional_runtime.migrate_legacy(_load())
-    except Exception:
-        pass
-    _runtime_migrated = True
+    owner = _current_character_id()
+    with _RUNTIME_CACHE_LOCK:
+        if owner in _RUNTIME_MIGRATED_IDS:
+            _runtime_migrated = owner == _ACTIVE_CHARACTER_ID
+            return
+        runtime = _runtime_for(owner)
+        try:
+            runtime.migrate_legacy(_load(owner))
+        except Exception:
+            pass
+        _RUNTIME_MIGRATED_IDS.add(owner)
+        _runtime_migrated = owner == _ACTIVE_CHARACTER_ID
 
 
 def _save(state: dict):
@@ -333,10 +387,10 @@ def on_user_message(text, now=None) -> list[str]:
         })
         _save(state)
     try:
-        _emotional_runtime.on_user_message(text, found, now=now)
+        _runtime_for().on_user_message(text, found, now=now)
         feedback = detect_feedback(text)
         if feedback:
-            _emotional_runtime.observe_feedback(feedback, text=text, now=now)
+            _runtime_for().observe_feedback(feedback, text=text, now=now)
     except Exception:
         pass
     return found
@@ -365,7 +419,7 @@ def on_reply(emotions, intensity=None, now=None):
         })
         _save(state)
     try:
-        _emotional_runtime.on_reply(emotions, intensity, now=now)
+        _runtime_for().on_reply(emotions, intensity, now=now)
     except Exception:
         pass
 
@@ -376,7 +430,7 @@ def on_event(name, detail=None):
     """Record application/avatar events in the provider-independent emotional runtime."""
     _ensure_runtime_migration()
     try:
-        return _emotional_runtime.trigger(name, detail)
+        return _runtime_for().trigger(name, detail)
     except Exception:
         return None
 
@@ -384,7 +438,7 @@ def on_event(name, detail=None):
 def mark_initiative_sent(memory_id=None, now=None):
     _ensure_runtime_migration()
     try:
-        return _emotional_runtime.mark_initiative_sent(memory_id=memory_id, now=now)
+        return _runtime_for().mark_initiative_sent(memory_id=memory_id, now=now)
     except Exception:
         return None
 
@@ -394,7 +448,7 @@ def reset():
         _save({"scores": {}, "behavior_scores": {}, "energy": ENERGY_START, "energy_updated": time.time(),
                "updated": 0.0, "last_chat": 0.0, "user_states": [], "away_hours": 0.0})
     try:
-        _emotional_runtime.reset()
+        _runtime_for().reset()
     except Exception:
         pass
 
@@ -432,7 +486,7 @@ def current(now=None, query=None) -> dict:
 
 def _runtime_snapshot(now=None, query=None):
     try:
-        state = _emotional_runtime.snapshot(now, query=query)
+        state = _runtime_for().snapshot(now, query=query)
         return {"emotion": state["emotion"], "intensity": state["intensity"],
                 "secondary": state["secondary_emotions"][0][0] if state["secondary_emotions"] else "",
                 "secondary_emotions": state["secondary_emotions"], "behavior": state["behavior"],
@@ -455,7 +509,7 @@ def avatar_hint(now=None):
     """Return the runtime's current emotional expression for the avatar, if recent and meaningful."""
     _ensure_runtime_migration()
     try:
-        state = _emotional_runtime.snapshot(now)
+        state = _runtime_for().snapshot(now)
         if state["age"] <= 120:
             if state["intensity"] >= 12 and state["emotion"] != "neutral":
                 return state["emotion"], max(18, state["intensity"])
@@ -488,7 +542,7 @@ def build_block(mode_name="chat", now=None, query=None) -> str:
     if mode_name == "strict":
         return ""
     try:
-        layered = _emotional_runtime.build_prompt("task" if mode_name == "task" else "chat", now, query=query)
+        layered = _runtime_for().build_prompt("task" if mode_name == "task" else "chat", now, query=query)
     except Exception:
         layered = ""
     cur = current(now, query=query)

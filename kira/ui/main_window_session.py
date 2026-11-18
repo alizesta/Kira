@@ -104,8 +104,12 @@ class SessionMixin:
         prev, prev_cid = self.cur, self.settings.get("active_character_id", "kira")
         self.cur = session
         self.settings["active_character_id"] = session.cid
+        profile = self.character_service.all_profiles(self.settings).get(session.cid) or {}
         try:
-            yield session
+            with self.mood_service.character_scope(
+                session.cid, self.character_traits(session.cid, profile)
+            ):
+                yield session
         finally:
             self.cur = prev if self.sessions.get(prev.cid) is prev else self.front
             self.settings["active_character_id"] = prev_cid
@@ -177,7 +181,7 @@ class SessionMixin:
         cid = getattr(getattr(self, "cur", None), "cid", "") or self.character_service.active_id(self.settings)
         profile = self.character_service.all_profiles(self.settings).get(cid) or {}
         try:
-            mood.set_active_character(cid, self.character_traits(cid, profile))
+            self.mood_service.set_character_traits(cid, self.character_traits(cid, profile))
         except Exception:                                   # noqa: BLE001 - mood is a bonus, never block the UI
             pass
 
