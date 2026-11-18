@@ -118,6 +118,40 @@ class NativeFunctionCallingTests(unittest.TestCase):
         self.assertEqual(cleaned[1]["tool_calls"][0]["function"]["name"], "open_app")
 
 
+    def test_openai_provider_returns_none_for_explicitly_unsupported_tool_calls(self):
+        provider = OpenAICompatibleProvider(
+            {"model": "test-model", "api_key": "test-secret", "base_url": "https://example.invalid/v1"},
+            name="custom",
+        )
+        response = Resp(400, {"error": {"message": "This model does not support tools"}})
+        with mock.patch("requests.post", return_value=response):
+            result = provider.chat_with_tools(
+                [{"role": "user", "content": "Use a tool"}],
+                "system",
+                tools=[{"name": "get_datetime", "parameters": {"type": "object"}}],
+            )
+        self.assertIsNone(result)
+
+    def test_router_does_not_turn_native_provider_errors_into_text_fallback(self):
+        router = HybridRouter({})
+        route = {"id": "custom-route", "provider": "custom", "model": "test-model"}
+        provider = mock.Mock()
+        provider.chat_with_tools.side_effect = RuntimeError("provider network failure")
+        router._candidates = lambda: [route]
+        router.eligibility = lambda _route: (True, "ok")
+        router.route_info = lambda _route: {"kind": "cloud", "label": "Test"}
+        router._make_provider = lambda _route: provider
+        router._provider_cfg = lambda _route: {"api_key": "test-secret"}
+        router._mark_failure = lambda _route, _exc, _secrets: ("network", None, 45)
+
+        with self.assertRaisesRegex(RuntimeError, "Native Function Calling"):
+            router.chat_with_tools(
+                [{"role": "user", "content": "Use a tool"}],
+                "system",
+                tools=[{"name": "get_datetime", "parameters": {"type": "object"}}],
+            )
+        provider.chat_with_tools.assert_called_once()
+
     def test_router_accounts_for_native_function_calling_requests(self):
         router = HybridRouter({})
         route = {"id": "custom-route", "provider": "custom", "model": "test-model"}
