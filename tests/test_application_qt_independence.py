@@ -12,10 +12,11 @@ INNER_ROOTS = (
     ROOT / "kira" / "chat",
     ROOT / "kira" / "core" / "interfaces",
 )
-QT_MODULE_PREFIXES = ("PySide", "PyQt")
+QT_MODULE_PREFIXES = ("PySide", "PyQt", "qtpy", "shiboken6")
 QT_RUNTIME_NAMES = {
     "QApplication", "QCoreApplication", "QWidget", "QMainWindow",
-    "QObject", "QThread", "QTimer",
+    "QObject", "QThread", "QTimer", "QThreadPool", "QEventLoop",
+    "QMetaObject", "QMutex", "QWaitCondition", "Qt",
 }
 
 
@@ -45,13 +46,24 @@ class ApplicationQtIndependenceTests(unittest.TestCase):
                 for node in ast.walk(tree):
                     if isinstance(node, ast.Import):
                         modules = [alias.name for alias in node.names]
+                        imports_ui = any(
+                            module == "kira.ui" or module.startswith("kira.ui.")
+                            for module in modules
+                        )
                     elif isinstance(node, ast.ImportFrom):
-                        modules = [node.module or ""]
+                        module = node.module or ""
+                        imports_ui = (
+                            module == "kira.ui"
+                            or module.startswith("kira.ui.")
+                            or module.endswith(".ui")
+                            or (node.level > 0 and module in {"", "."}
+                                and any(alias.name == "ui" for alias in node.names))
+                        )
+                        modules = [module]
                     else:
                         continue
-                    for module in modules:
-                        if module == "kira.ui" or module.startswith("kira.ui.") or module in {".ui", "..ui"} or module.endswith(".ui"):
-                            violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: {module}")
+                    if imports_ui:
+                        violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: UI import")
         self.assertEqual(violations, [])
 
     def test_inner_layers_do_not_reference_qt_runtime_types(self):
