@@ -14,6 +14,10 @@ def parse(path: str) -> ast.Module:
 
 
 class CompositionRootContractTests(unittest.TestCase):
+    def test_qt_composition_root_is_outside_application_package(self):
+        self.assertTrue((ROOT / "kira" / "ui" / "bootstrap.py").is_file())
+        self.assertFalse((ROOT / "kira" / "app" / "bootstrap.py").exists())
+
     def test_window_composition_requires_bootstrap_owned_dependencies(self):
         module = parse("kira/ui/main_window_composition.py")
         function = next(
