@@ -172,6 +172,64 @@ class ProviderApplicationService:
     def apply_failure(settings: dict[str, Any], provider_id: str, detection) -> None:
         api_manager.apply_failure(settings, provider_id, detection)
 
+    Detection = api_manager.Detection
+
+    @staticmethod
+    def api_ids(settings):
+        return api_manager.api_ids(settings)
+
+    @staticmethod
+    def rediscover(provider_id, config, timeout=15):
+        return api_manager.rediscover(provider_id, config, timeout=timeout)
+
+    @staticmethod
+    def ensure_registry(settings):
+        return api_manager.ensure_registry(settings)
+
+    @staticmethod
+    def registry(settings):
+        return api_manager.registry(settings)
+
+    @staticmethod
+    def detect(api_key, account=None):
+        return api_manager.detect(api_key, account)
+
+    @staticmethod
+    def key_problem(api_key):
+        return api_manager.key_problem(api_key)
+
+    @staticmethod
+    def find_duplicate(settings, api_key):
+        return api_manager.find_duplicate(settings, api_key)
+
+    @staticmethod
+    def register(settings, detection, api_key):
+        return api_manager.register(settings, detection, api_key)
+
+    @staticmethod
+    def describe_failure(detection):
+        return api_manager.describe_failure(detection)
+
+    @staticmethod
+    def api_rows(settings):
+        return api_manager.api_rows(settings)
+
+    @staticmethod
+    def fmt_time(value):
+        return api_manager.fmt_time(value)
+
+    @staticmethod
+    def api_details(settings, provider_id):
+        return api_manager.api_details(settings, provider_id)
+
+    @staticmethod
+    def service_of(provider_id, config):
+        return api_manager.service_of(provider_id, config)
+
+    @staticmethod
+    def mask_key(api_key):
+        return api_manager.mask_key(api_key)
+
     @staticmethod
     def update_ollama_url(settings: dict[str, Any], value: str) -> str:
         url = str(value or "").strip().rstrip("/")
