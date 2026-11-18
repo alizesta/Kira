@@ -46,19 +46,13 @@ class ResponseEventKind(str, Enum):
     FINAL = "final"
 
 
-class ResponseError(Exception):
+@dataclass(frozen=True)
+class ResponseError:
     """Provider failure normalized without depending on a provider SDK."""
 
-    def __init__(
-        self,
-        code: str,
-        message: str,
-        recoverable: bool = False,
-    ) -> None:
-        super().__init__(message)
-        self.code = str(code)
-        self.message = str(message)
-        self.recoverable = bool(recoverable)
+    code: str
+    message: str
+    recoverable: bool = False
 
 
 @dataclass(frozen=True)
