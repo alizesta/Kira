@@ -53,6 +53,29 @@ class ToolArgumentValidationTests(unittest.TestCase):
         with self.assertRaises(ToolError):
             self.registry.clean_args(tool, {"items": [], "options": []})
 
+    def test_structured_arguments_reject_nested_non_finite_values(self):
+        tool = Tool("nested_probe", "test nested JSON", lambda args: "ok", (Param("payload", "object", required=True),))
+        for payload in (
+            {"values": [float("nan")]},
+            {"values": [float("inf")]},
+            {1: "non-string key"},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(ToolError):
+                self.registry.clean_args(tool, {"payload": payload})
+
+    def test_structured_arguments_enforce_depth_and_size_limits(self):
+        tool = Tool("nested_probe", "test nested JSON", lambda args: "ok", (Param("payload", "array", required=True),))
+        too_deep = []
+        cursor = too_deep
+        for _ in range(34):
+            child = []
+            cursor.append(child)
+            cursor = child
+        with self.assertRaises(ToolError):
+            self.registry.clean_args(tool, {"payload": too_deep})
+        with self.assertRaises(ToolError):
+            self.registry.clean_args(tool, {"payload": list(range(10001))})
+
     def test_integer_boolean_is_not_coerced_to_one_or_zero(self):
         with self.assertRaises(ToolError):
             self.registry.clean_args(self.tool, {"count": True})
