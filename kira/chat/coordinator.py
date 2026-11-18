@@ -121,7 +121,7 @@ class ChatCoordinator:
     def clear(self) -> None:
         self._pending.clear()
 
-    def start_provider_request(self, *, callbacks: Mapping[str, Callable[..., Any]], **request: Any) -> Any:
+    def start_provider_request(self, *, callbacks: Mapping[str, Callable[..., Any]], **request: Any) -> ProviderWorkerPort:
         """Start a provider request and route stream events to injected ports."""
         if self._provider_dispatcher is None:
             raise RuntimeError("No provider dispatcher has been configured")
