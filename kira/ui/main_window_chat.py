@@ -19,7 +19,6 @@ from .main_window_chat_support import (
     save_settings,
     sources_html,
     usage,
-    websearch,
 )
 
 
