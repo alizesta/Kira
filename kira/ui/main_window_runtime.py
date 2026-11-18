@@ -4,6 +4,8 @@ from .main_window_runtime_support import (
     Listener,
     InitiativeEngine,
     build_checkin_message,
+    math,
+    persona_memory,
     MemoryDialog,
     Path,
     PermissionDecision,
@@ -496,7 +498,6 @@ class RuntimeController(WindowFeatureController):
                     return False
 
             now = time.time()
-            controller = self
             profile = self.context.services.character_service.all_profiles(settings).get(character_id) or {}
             traits = session_controller.character_traits(character_id, profile)
             with mood.character_scope(character_id, traits):
