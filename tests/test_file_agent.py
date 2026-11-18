@@ -84,6 +84,23 @@ class FileAgentTests(unittest.TestCase):
         with self.assertRaises(ToolError):
             self.policy.check(str(target))
 
+    def test_search_reports_skipped_inaccessible_folders(self):
+        blocked = self.root / "blocked"
+        blocked.mkdir()
+        (blocked / "needle.txt").write_text("not visible to the scan", encoding="utf-8")
+        real_scandir = os.scandir
+
+        def guarded_scandir(path):
+            if os.path.normcase(os.path.abspath(os.fspath(path))) == os.path.normcase(str(blocked)):
+                raise PermissionError("access denied")
+            return real_scandir(path)
+
+        with mock.patch.object(fileops.os, "scandir", side_effect=guarded_scandir):
+            result = fileops.FileTools(self.policy).search_files({"query": "needle"})
+
+        self.assertIn("نتایج ممکن است ناقص باشند", result)
+        self.assertIn("1 پوشه/مورد", result)
+
     def test_copy_file_and_folder_rename_and_no_overwrite(self):
         src = self.root / "src"
         (src / "sub").mkdir(parents=True)
