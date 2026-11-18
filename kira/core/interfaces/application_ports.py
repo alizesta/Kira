@@ -8,11 +8,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from .provider_worker import ProviderWorkerPort
+from .voice_ports import SpeakerPort, VoiceListenerPort
+
 
 @dataclass(frozen=True, slots=True)
 class ChatApplicationPorts:
     prompt_enricher: Callable[[str], str]
-    worker_factory: Callable[..., Any]
+    worker_factory: Callable[..., ProviderWorkerPort]
     on_dispatch: Callable[[Any], Any]
     on_event: Callable[[Any], Any]
     schedule: Callable[[Callable[[], Any]], Any]
@@ -21,8 +24,8 @@ class ChatApplicationPorts:
 
 @dataclass(frozen=True, slots=True)
 class VoiceApplicationPorts:
-    speaker: Any
-    listener_factory: Callable[[], Any]
+    speaker: SpeakerPort
+    listener_factory: Callable[[], VoiceListenerPort]
     on_heard: Callable[[str], None]
     on_interrupted: Callable[[], None]
     on_state: Callable[[str], None]
