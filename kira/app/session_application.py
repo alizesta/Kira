@@ -144,8 +144,6 @@ class SessionApplicationService:
         *,
         ensure_resources: Callable[[Any, Mapping[str, Any]], None],
         restore_history: Callable[[Any], bool | None],
-        vision_session: Any | None = None,
-        vision_worker: Any | None = None,
     ) -> tuple[str, ...]:
         """Synchronize runtime Sessions with character profiles and drain deleted profiles."""
         order = [
@@ -183,11 +181,7 @@ class SessionApplicationService:
         for character_id, session in tuple(sessions.items()):
             if character_id in profiles:
                 continue
-            if self.has_pending_work(
-                session,
-                vision_session=vision_session,
-                vision_worker=vision_worker,
-            ):
+            if self.has_pending_work(session):
                 continue
             self.close_session(session)
         return tuple(order)
@@ -204,9 +198,6 @@ class SessionApplicationService:
     def has_pending_work(
         self,
         session: Any,
-        *,
-        vision_session: Any | None = None,
-        vision_worker: Any | None = None,
     ) -> bool:
         """Check application requests and owned worker activity before graceful close."""
         if (
@@ -219,7 +210,10 @@ class SessionApplicationService:
             getattr(session, "_search_worker", None)
         ):
             return True
-        return vision_session is session and self.worker_is_running(vision_worker)
+        return (
+            getattr(session, "_vision_session", None) is session
+            and self.worker_is_running(getattr(session, "_vision_worker", None))
+        )
 
     def close_session(self, session: Any) -> bool:
         """Delegate graceful lifecycle closure to the canonical SessionManager."""
