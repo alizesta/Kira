@@ -1,6 +1,8 @@
 import unittest
 
 from kira.chat.context_builder import ContextBuilder, ContextRequest
+from kira.character.decision import DecisionEngine
+from kira.personas import CHARACTERS, prompt_for
 
 
 class ContextBuilderTests(unittest.TestCase):
@@ -192,6 +194,39 @@ class ContextBuilderTests(unittest.TestCase):
         self.assertEqual([item["role"] for item in result.messages], ["system", "user"])
         self.assertEqual(result.messages[0]["content"], "system rule")
         self.assertEqual(result.messages[-1]["content"], "latest")
+
+    def test_active_character_latest_user_message_reaches_final_provider_prompt(self):
+        character_id = "mika"
+        latest_user_message = "دکتر گفته باید جراحی کنم"
+        traits = CHARACTERS[character_id]["traits"]
+        engine = DecisionEngine(traits)
+        decision = engine.decide(latest_user_message, {"emotion": "happy"})
+        mood_block = engine.build_prompt(decision)
+        profile_block = prompt_for({"active_character_id": character_id})
+
+        builder = ContextBuilder(
+            lambda _settings, **kwargs: (
+                f"identity:{kwargs['character_profile']['name']}\\n"
+                f"{kwargs['mood_block']}"
+            )
+        )
+        result = builder.build(ContextRequest(
+            character_id=character_id,
+            character_profile={"name": "Mika"},
+            messages=[
+                {"role": "user", "content": "سلام"},
+                {"role": "assistant", "content": "سلام، چه خبر؟"},
+                {"role": "user", "content": latest_user_message},
+            ],
+            mood=mood_block,
+            character_context=profile_block,
+        ))
+
+        self.assertEqual(result.character_id, character_id)
+        self.assertEqual(result.messages[-1]["content"], latest_user_message)
+        self.assertIn("Selected behaviour: gentle", result.system_prompt)
+        self.assertIn("[PROFILE SAFETY AND CAPABILITY BOUNDARY]", result.system_prompt)
+        self.assertIn("identity:Mika", result.system_prompt)
 
     def test_missing_prompt_builder_is_rejected(self):
         with self.assertRaises(TypeError):
