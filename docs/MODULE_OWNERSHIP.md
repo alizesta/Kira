@@ -93,7 +93,7 @@ These services are directly injected by Bootstrap/Composition; they are not auto
 
 | Task | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
 |---|---|---|---|---|
-| 020 | MainWindow feature dependencies — `kira/ui/main_window_*_support.py` | One scoped dependency module for each of the nine feature mixins (root, attachments/vision, character settings, chat, lifecycle, provider settings, runtime, session and voice settings) | Feature-owned application/domain modules, Qt adapters, workers and the shared support helpers | Imports from another feature mixin; a global wildcard dependency barrel |
+| 020 | MainWindow feature dependencies — `kira/ui/main_window_*_support.py` | One scoped dependency module for each of the nine feature controllers (root, attachments/vision, character settings, chat, lifecycle, provider settings, runtime, session and voice settings) | Feature-owned application/domain modules, Qt adapters, workers and the shared support helpers | Imports from another feature controller; a global wildcard dependency barrel |
 
 `main_window_support.py` is limited to SessionRelay, the front-only decorator, reaction loading and shared Qt signal/helper code. Feature support modules may import only this shared helper module, never another feature controller or feature support module.
 
