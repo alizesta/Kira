@@ -135,7 +135,7 @@ class InitiativeCandidateTests(unittest.TestCase):
     def test_weekday_and_weekend_dates_are_deferred_to_their_actual_calendar_day(self):
         created = datetime(2026, 11, 19, 10, 30).timestamp()  # Thursday
         date = datetime.fromtimestamp(created).date()
-        next_week_end = datetime.combine(date + timedelta(days=8), datetime_time.min).timestamp()
+        next_week_end = datetime.combine(date + timedelta(days=11), datetime_time.min).timestamp()
         friday_end = datetime.combine(date + timedelta(days=2), datetime_time.min).timestamp()
         sunday_end = datetime.combine(date + timedelta(days=4), datetime_time.min).timestamp()
         next_friday_end = datetime.combine(date + timedelta(days=9), datetime_time.min).timestamp()
@@ -148,13 +148,15 @@ class InitiativeCandidateTests(unittest.TestCase):
 
     def test_subday_durations_wait_until_after_the_expected_event(self):
         created = datetime(2026, 11, 19, 10, 30).timestamp()
-        self.assertEqual(_event_not_before('he said "I have an exam in two hours"', created), created + 3 * 3600)
-        self.assertEqual(_event_not_before('he said "دو ساعت دیگه جلسه دارم"', created), created + 3 * 3600)
-        self.assertEqual(_event_not_before('he said "I have a call in 30 minutes"', created), created + 90 * 60)
+        expected_end = datetime.combine(datetime.fromtimestamp(created).date() + timedelta(days=1), datetime_time.min).timestamp()
+        self.assertEqual(_event_not_before('he said "I have an exam in two hours"', created), expected_end)
+        self.assertEqual(_event_not_before('he said "دو ساعت دیگه جلسه دارم"', created), expected_end)
+        self.assertEqual(_event_not_before('he said "I have a call in 30 minutes"', created), expected_end)
 
     def test_clock_time_without_a_date_fails_closed(self):
         created = datetime(2026, 11, 19, 10, 30).timestamp()
         self.assertTrue(math.isinf(_event_not_before('he said "My appointment is at 5pm"', created)))
+        self.assertTrue(math.isinf(_event_not_before('he said "My appointment is 5pm"', created)))
         self.assertTrue(math.isinf(_event_not_before('he said "قرار ساعت پنج عصر دارم"', created)))
         self.assertNotEqual(_event_not_before('he said "My appointment is tomorrow at 5pm"', created), float("inf"))
 
@@ -169,6 +171,11 @@ class InitiativeCandidateTests(unittest.TestCase):
             datetime.fromtimestamp(_event_not_before("ماه بعد امتحان دارم", december)).date(),
             datetime(2027, 2, 1).date(),
         )
+        self.assertEqual(
+            datetime.fromtimestamp(_event_not_before("امتحان این ماه دارم", november)).date(),
+            datetime(2026, 12, 1).date(),
+        )
+        self.assertTrue(math.isinf(_event_not_before("The event is next year", november)))
 
     def test_blank_or_control_only_memory_is_rejected(self):
         rows = [
