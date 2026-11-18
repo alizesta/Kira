@@ -149,6 +149,19 @@ class ChatOrganizationServiceTests(unittest.TestCase):
         with self.assertRaises(OrganizationError):
             self.service.move_conversation("ren-1", "inbox")
 
+    def test_deleted_folder_is_not_resurrected_by_a_stale_local_registry(self):
+        folder = self.service.create_folder("Temporary")
+        self.service.move_conversation("kira-1", folder.id)
+        self.assertNotIn(folder.id, self.service._known_folders)
+
+        another_instance = ChatOrganizationService(
+            self.repository, character_id="kira"
+        )
+        self.assertEqual(another_instance.delete_folder(folder.id), 1)
+
+        with self.assertRaisesRegex(OrganizationError, "folder does not exist"):
+            self.service.move_conversation("kira-2", folder.id)
+
     def test_favorite_metadata_filters_combine_with_and_semantics(self):
         self.service.add_tag("kira-1", "work")
         self.service.add_tag("kira-2", "work")

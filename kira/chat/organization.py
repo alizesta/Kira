@@ -255,6 +255,9 @@ class ChatOrganizationService:
 
         with self._lock:
             updated = self._mutate_record(conversation_id, mutation)
+            # The first committed assignment makes this folder durable through
+            # conversation metadata; subsequent checks must consult SQLite.
+            self._known_folders.pop(folder, None)
         organization = _organization(updated.get("metadata"))
         return OrganizationResult(True, str(updated["id"]), organization)
 
@@ -276,7 +279,14 @@ class ChatOrganizationService:
         normalized = _label(name, "folder name")
         folder_id = normalized.casefold()
         with self._lock:
-            self._known_folders[folder_id] = normalized
+            # Empty folder definitions are intentionally process-local. If this
+            # folder already has durable assignments, do not cache a stale
+            # "new folder" marker that could resurrect it after another
+            # repository instance deletes those assignments.
+            if self._folder_is_assigned(folder_id):
+                self._known_folders.pop(folder_id, None)
+            else:
+                self._known_folders[folder_id] = normalized
         return Folder(folder_id, normalized)
 
     def delete_folder(self, folder_id: str) -> int:
@@ -295,9 +305,7 @@ class ChatOrganizationService:
             self._known_folders.pop(key, None)
             return changed
 
-    def _folder_exists(self, folder_id: str) -> bool:
-        if folder_id in self._known_folders:
-            return True
+    def _folder_is_assigned(self, folder_id: str) -> bool:
         try:
             records = self._repository.list_conversations(self._character_id)
         except Exception as exc:
@@ -307,6 +315,9 @@ class ChatOrganizationService:
             if _key(org.get("folder_id") or DEFAULT_FOLDER_ID, "folder") == folder_id:
                 return True
         return False
+
+    def _folder_exists(self, folder_id: str) -> bool:
+        return folder_id in self._known_folders or self._folder_is_assigned(folder_id)
 
     def move_conversation(self, conversation_id: str, folder_id: str) -> OrganizationResult:
         folder = _key(folder_id, "folder id")
