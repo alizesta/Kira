@@ -10,7 +10,7 @@ def should_observe_message(role: str, status: str | None, observe: bool = True) 
         return True
     if normalized_role != "assistant":
         return False
-    return str(status or "complete").strip().lower() == "complete
+    return str(status or "complete").strip().lower() == "complete"
 
 
 def should_observe_assistant_message(status: str | None) -> bool:
