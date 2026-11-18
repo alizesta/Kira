@@ -175,6 +175,14 @@ class CommandExecutionContext:
         self._cancel_event = cancel_event
 
     @property
+    def session_id(self) -> str:
+        return self.request.session_id
+
+    @property
+    def metadata(self) -> Mapping[str, Any]:
+        return self.request.metadata
+
+    @property
     def cancelled(self) -> bool:
         return self._cancel_event.is_set()
 

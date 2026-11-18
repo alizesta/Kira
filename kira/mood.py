@@ -291,6 +291,7 @@ def _save(state: dict):
     path = _path()
     tmp = path.with_suffix(".tmp")
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)  # background characters have no folder until first save
         tmp.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
         os.replace(tmp, path)
     except OSError:

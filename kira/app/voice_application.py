@@ -93,7 +93,7 @@ class VoiceApplicationService(VoiceService):
                 match = WAKE_RE.search(value)
                 if not match:
                     return VoiceTranscriptDecision("ignore")
-                remainder = value[match.end():].strip(" ،,.!؟?؛")
+                remainder = value[match.end():].lstrip(" ،,.!؟?؛").strip()
                 if len(remainder) < 2:
                     return VoiceTranscriptDecision("wake_only")
                 value = remainder

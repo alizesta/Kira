@@ -79,6 +79,8 @@ class ChatAttachmentController:
                 self.remove_tile(tile, cancel_worker=False)
         self.show_error([])
 
+    LOADING_TEXT = "در حال بارگذاری ضمیمه‌ها؛ برای لغو روی ضربدر بزن."
+
     def add_paths(self, paths):
         """Load selected files asynchronously, enforcing the per-message limit."""
         if self.is_loading():
@@ -113,7 +115,8 @@ class ChatAttachmentController:
         )
         self.worker.finished.connect(self.on_finished)
         self.send_button.setEnabled(False)
-        self.error_label.setText("در حال بارگذاری ضمیمه‌ها؛ برای لغو روی ضربدر بزن.")
+        self._limit_errors = list(errors)
+        self.error_label.setText("\n".join([*errors, self.LOADING_TEXT]))
         self.error_close_button.setVisible(True)
         self.error_widget.show()
         self.worker.start()
@@ -124,8 +127,9 @@ class ChatAttachmentController:
             tile.set_progress(percent)
 
     def on_finished(self):
-        if self.error_label.text().startswith("در حال بارگذاری"):
-            self.show_error([])
+        if self.LOADING_TEXT in self.error_label.text():
+            # keep any "limit reached" notice; only drop the transient loading line
+            self.show_error(getattr(self, "_limit_errors", []))
 
     def on_loaded(self, index, attachment):
         tile = self.loading_tiles[index] if index < len(self.loading_tiles) else None
