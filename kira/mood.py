@@ -243,9 +243,9 @@ def _norm(text) -> str:
     return normalize_detection_text(text)
 
 
-def _load() -> dict:
+def _load(character_id=None) -> dict:
     try:
-        data = json.loads(_path().read_text(encoding="utf-8"))
+        data = json.loads(_path(character_id).read_text(encoding="utf-8"))
         if isinstance(data, dict) and isinstance(data.get("scores"), dict):
             return {
                 "scores": {k: float(v) for k, v in data["scores"].items() if k in EMOTIONS},
