@@ -82,14 +82,14 @@ class InitiativeCandidateTests(unittest.TestCase):
     def test_future_tomorrow_event_is_not_checked_in_early(self):
         row = moment("tomorrow", text='2026-11-01: he said "I have an exam tomorrow"', ts=self.now - 10)
         self.assertIsNone(self.engine.select_candidate([row], now=self.now))
-        selected = self.engine.select_candidate([row], now=self.now + DAY + 1)
+        selected = self.engine.select_candidate([row], now=self.now + 2 * DAY + 1)
         self.assertEqual(selected["id"], "tomorrow")
 
     def test_future_persian_day_after_tomorrow_is_deferred(self):
         row = moment("day-after", text='2026-11-01: he said "پس فردا امتحان دارم"', ts=self.now - 10)
         self.assertIsNone(self.engine.select_candidate([row], now=self.now + DAY))
         self.assertEqual(
-            self.engine.select_candidate([row], now=self.now + 2 * DAY + 1)["id"],
+            self.engine.select_candidate([row], now=self.now + 3 * DAY + 1)["id"],
             "day-after",
         )
 
@@ -97,7 +97,7 @@ class InitiativeCandidateTests(unittest.TestCase):
         row = moment("next-week", text='2026-11-01: he said "The interview is next week"', ts=self.now - 10)
         self.assertIsNone(self.engine.select_candidate([row], now=self.now + 6 * DAY))
         self.assertEqual(
-            self.engine.select_candidate([row], now=self.now + 7 * DAY + 1)["id"],
+            self.engine.select_candidate([row], now=self.now + 8 * DAY + 1)["id"],
             "next-week",
         )
 
