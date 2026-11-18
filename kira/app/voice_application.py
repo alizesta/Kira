@@ -10,6 +10,7 @@ import re
 from typing import Any, Callable
 
 from ..core.interfaces.voice_service import VoiceService
+from ..core.interfaces.voice_ports import SpeakerPort, VoiceListenerPort
 
 
 WAKE_RE = re.compile(
@@ -35,8 +36,8 @@ class VoiceApplicationService(VoiceService):
     def __init__(
         self,
         *,
-        speaker: Any,
-        listener_factory: Callable[[], Any],
+        speaker: SpeakerPort,
+        listener_factory: Callable[[], VoiceListenerPort],
         on_heard: Callable[[str], None],
         on_interrupted: Callable[[], None],
         on_state: Callable[[str], None],
@@ -108,7 +109,7 @@ class VoiceApplicationService(VoiceService):
         if listener is None:
             return False
         try:
-            return bool(listener.isRunning())
+            return bool(listener.is_running())
         except RuntimeError:
             # A Qt worker can be deleted between a queued finish signal and a UI action.
             return False
@@ -128,12 +129,12 @@ class VoiceApplicationService(VoiceService):
             self.stopping_listener = None
         self.restart_after_stop = False
         listener = self.listener_factory()
-        listener.heard.connect(self.on_heard)
-        listener.interrupted.connect(self.on_interrupted)
-        listener.state.connect(self.on_state)
-        listener.error.connect(self.on_error)
-        listener.note.connect(self.on_note)
-        listener.finished.connect(lambda current=listener: self._listener_finished(current))
+        listener.subscribe("heard", self.on_heard)
+        listener.subscribe("interrupted", self.on_interrupted)
+        listener.subscribe("state", self.on_state)
+        listener.subscribe("error", self.on_error)
+        listener.subscribe("note", self.on_note)
+        listener.subscribe("finished", lambda current=listener: self._listener_finished(current))
         self.listener = listener
         try:
             listener.start()
@@ -204,22 +205,22 @@ class VoiceApplicationService(VoiceService):
         self.speaker.play_file(path)
 
     def is_speaking(self) -> bool:
-        return bool(getattr(self.speaker, "_began", False))
+        return bool(self.speaker.is_speaking())
 
     def begin_speaking(self) -> None:
         listener = self.listener
         if listener is not None:
-            listener.begin_kira_speech()
+            listener.begin_speaking()
 
     def end_speaking(self) -> None:
         listener = self.listener
         if listener is not None:
-            listener.end_kira_speech()
+            listener.end_speaking()
 
     def unmute_if_idle(self) -> None:
         listener = self.listener
-        if listener is not None and not getattr(self.speaker, "_began", False):
-            listener.muted = False
+        if listener is not None and not self.speaker.is_speaking():
+            listener.set_muted(False)
 
     def stop_all(self) -> None:
         self.stop_recording()
