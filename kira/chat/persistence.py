@@ -7,6 +7,7 @@ application code consume ChatPersistence and never need to know the DB schema.
 from __future__ import annotations
 
 import contextlib
+import copy
 import json
 import shutil
 import sqlite3
@@ -745,20 +746,33 @@ class SqliteChatRepository:
                     if row is None:
                         raise PersistenceError(f"conversation not found: {conv_id}")
                     current = self._conversation_record(row)
-                    updated = mutator(dict(current))
+                    updated = mutator(copy.deepcopy(current))
                     if not isinstance(updated, dict):
                         raise TypeError("metadata mutation callback must return a conversation dictionary")
                     if str(updated.get("id") or "") != conv_id:
                         raise ValueError("metadata mutation cannot change conversation identity")
 
-                    metadata = _json_object(updated.get("metadata"))
+                    for protected_field in ("character_id", "status", "created_at", "updated_at"):
+                        if (
+                            protected_field in updated
+                            and updated[protected_field] != current.get(protected_field)
+                        ):
+                            raise ValueError(
+                                f"metadata mutation cannot change {protected_field}"
+                            )
+
+                    metadata = updated.get("metadata", current.get("metadata", {}))
+                    if not isinstance(metadata, dict):
+                        raise TypeError("conversation metadata mutation must return a dictionary")
                     try:
-                        metadata_json = json.dumps(metadata, ensure_ascii=False)
+                        metadata_json = json.dumps(
+                            metadata, ensure_ascii=False, allow_nan=False
+                        )
                     except (TypeError, ValueError) as exc:
                         raise PersistenceError(
                             f"conversation metadata is not JSON serializable: {conv_id}"
                         ) from exc
-                    title = str(updated.get("title") or "")
+                    title = str(updated.get("title", current.get("title")) or "")
                     if title != str(current.get("title") or "") or metadata != current.get("metadata", {}):
                         pending_updates.append((conv_id, title, metadata_json))
 
@@ -808,20 +822,33 @@ class SqliteChatRepository:
                 for row in rows:
                     current = self._conversation_record(row)
                     conv_id = str(current["id"])
-                    updated = mutator(dict(current))
+                    updated = mutator(copy.deepcopy(current))
                     if not isinstance(updated, dict):
                         raise TypeError("metadata mutation callback must return a conversation dictionary")
                     if str(updated.get("id") or "") != conv_id:
                         raise ValueError("metadata mutation cannot change conversation identity")
 
-                    metadata = _json_object(updated.get("metadata"))
+                    for protected_field in ("character_id", "status", "created_at", "updated_at"):
+                        if (
+                            protected_field in updated
+                            and updated[protected_field] != current.get(protected_field)
+                        ):
+                            raise ValueError(
+                                f"metadata mutation cannot change {protected_field}"
+                            )
+
+                    metadata = updated.get("metadata", current.get("metadata", {}))
+                    if not isinstance(metadata, dict):
+                        raise TypeError("conversation metadata mutation must return a dictionary")
                     try:
-                        metadata_json = json.dumps(metadata, ensure_ascii=False)
+                        metadata_json = json.dumps(
+                            metadata, ensure_ascii=False, allow_nan=False
+                        )
                     except (TypeError, ValueError) as exc:
                         raise PersistenceError(
                             f"conversation metadata is not JSON serializable: {conv_id}"
                         ) from exc
-                    title = str(updated.get("title") or "")
+                    title = str(updated.get("title", current.get("title")) or "")
                     if title != str(current.get("title") or "") or metadata != current.get("metadata", {}):
                         pending_updates.append((conv_id, title, metadata_json))
                     identifiers.append(conv_id)

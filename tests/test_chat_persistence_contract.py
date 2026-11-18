@@ -177,6 +177,103 @@ class SqliteChatRepositoryTests(unittest.TestCase):
             {"external": {"keep": 2}},
         )
 
+    def test_mutate_conversation_persists_nested_in_place_metadata_changes(self):
+        conversation = self.persistence.create_conversation(
+            "kira", metadata={"external": {"settings": {"labels": ["before"]}}}
+        )
+
+        def mutate(record):
+            record["metadata"]["external"]["settings"]["labels"].append("after")
+            return record
+
+        updated = self.persistence.mutate_conversations([
+            (conversation["id"], mutate),
+        ])
+
+        self.assertEqual(
+            updated[conversation["id"]]["metadata"]["external"]["settings"]["labels"],
+            ["before", "after"],
+        )
+        self.assertEqual(
+            self.persistence.get_conversation(conversation["id"])["metadata"],
+            {"external": {"settings": {"labels": ["before", "after"]}}},
+        )
+
+    def test_mutate_all_persists_nested_in_place_metadata_changes(self):
+        first = self.persistence.create_conversation(
+            "kira", metadata={"external": {"flags": {"seen": False}}}
+        )
+        second = self.persistence.create_conversation(
+            "kira", metadata={"external": {"flags": {"seen": False}}}
+        )
+
+        def mutate(record):
+            record["metadata"]["external"]["flags"]["seen"] = True
+            return record
+
+        updated = self.persistence.mutate_all_conversations("kira", mutate)
+
+        self.assertEqual(set(updated), {first["id"], second["id"]})
+        for conversation_id in (first["id"], second["id"]):
+            self.assertTrue(
+                self.persistence.get_conversation(conversation_id)["metadata"]["external"]["flags"]["seen"]
+            )
+
+    def test_metadata_mutation_cannot_change_lifecycle_or_character_fields(self):
+        conversation = self.persistence.create_conversation("kira", title="protected")
+
+        def mutate(record):
+            record["status"] = "archived"
+            return record
+
+        with self.assertRaisesRegex(PersistenceError, "cannot change status"):
+            self.persistence.mutate_conversations([(conversation["id"], mutate)])
+
+        current = self.persistence.get_conversation(conversation["id"])
+        self.assertEqual(current["status"], "active")
+        self.assertEqual(current["title"], "protected")
+
+    def test_metadata_mutation_rejects_non_finite_json_numbers(self):
+        conversation = self.persistence.create_conversation("kira")
+
+        def mutate(record):
+            record["metadata"]["invalid"] = float("nan")
+            return record
+
+        with self.assertRaisesRegex(PersistenceError, "not JSON serializable"):
+            self.persistence.mutate_all_conversations("kira", mutate)
+
+        self.assertEqual(
+            self.persistence.get_conversation(conversation["id"])["metadata"],
+            {},
+        )
+
+    def test_mutate_all_rolls_back_every_row_when_a_later_callback_fails(self):
+        first = self.persistence.create_conversation(
+            "kira", metadata={"external": {"keep": "first"}}
+        )
+        second = self.persistence.create_conversation(
+            "kira", metadata={"external": {"keep": "second"}}
+        )
+
+        def mutate(record):
+            record["metadata"]["organization"] = {"favorite": True}
+            if record["id"] == second["id"]:
+                raise RuntimeError("simulated bulk callback failure")
+            return record
+
+        with self.assertRaisesRegex(PersistenceError, "simulated bulk callback failure"):
+            self.persistence.mutate_all_conversations("kira", mutate)
+
+        self.assertEqual(
+            self.persistence.get_conversation(first["id"])["metadata"],
+            {"external": {"keep": "first"}},
+        )
+        self.assertEqual(
+            self.persistence.get_conversation(second["id"])["metadata"],
+            {"external": {"keep": "second"}},
+        )
+
     def test_metadata_timestamp_order_and_partial_status_round_trip(self):
         conversation = self.persistence.get_or_create_conversation("mika")
         self.persistence.add_message(

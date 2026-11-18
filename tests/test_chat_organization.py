@@ -1,4 +1,5 @@
 import copy
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -35,12 +36,15 @@ class _Repository:
         self.fail_update = False
         self.fail_mutation_after = None
         self._lock = threading.RLock()
+        self.read_during_mutation = []
 
     def get_conversation(self, conversation_id):
         row = self.rows.get(conversation_id)
         return copy.deepcopy(row) if row is not None else None
 
     def list_conversations(self, character_id=None):
+        is_owned = getattr(self._lock, "_is_owned", lambda: False)
+        self.read_during_mutation.append(bool(is_owned()))
         records = list(self.rows.values())
         if character_id is not None:
             records = [row for row in records if row["character_id"] == character_id]
@@ -129,6 +133,10 @@ class ChatOrganizationServiceTests(unittest.TestCase):
         restarted = ChatOrganizationService(self.repository, character_id="kira")
         restarted.move_conversation("kira-2", folder.id)
         self.assertEqual(restarted.get_organization("kira-2").metadata["folder_id"], "projects")
+        self.assertTrue(
+            self.repository.read_during_mutation[-1],
+            "folder existence must be checked while the repository write lock is held",
+        )
 
         changed = restarted.delete_folder(folder.id)
         self.assertEqual(changed, 2)
@@ -189,20 +197,29 @@ class ChatOrganizationServiceTests(unittest.TestCase):
             second_persistence = ChatPersistence(SqliteChatRepository(database))
             self.assertEqual(first_persistence.init_db(), [])
             conversation = first_persistence.create_conversation("kira", title="Concurrent")
-            first = ChatOrganizationService(first_persistence, character_id="kira")
-            second = ChatOrganizationService(second_persistence, character_id="kira")
+            services = [
+                ChatOrganizationService(ChatPersistence(SqliteChatRepository(database)), character_id="kira")
+                for _ in range(4)
+            ]
+            barrier = threading.Barrier(len(services))
+            labels = ("alpha", "beta", "gamma", "delta")
 
-            with ThreadPoolExecutor(max_workers=2) as pool:
+            def add_competing_tag(item):
+                service, label = item
+                barrier.wait(timeout=10)
+                return service.add_tag(conversation["id"], label)
+
+            with ThreadPoolExecutor(max_workers=len(services)) as pool:
                 results = list(pool.map(
-                    lambda item: item[0].add_tag(conversation["id"], item[1]),
-                    ((first, "alpha"), (second, "beta")),
+                    add_competing_tag,
+                    zip(services, labels),
                 ))
 
             self.assertTrue(all(result.success for result in results))
             stored = first_persistence.get_conversation(conversation["id"])
             self.assertEqual(
                 set(stored["metadata"]["organization"]["tags"]),
-                {"alpha", "beta"},
+                {"alpha", "beta", "gamma", "delta"},
             )
 
     def test_bulk_delete_is_atomic_when_one_conversation_update_fails(self):
@@ -219,6 +236,42 @@ class ChatOrganizationServiceTests(unittest.TestCase):
         self.assertEqual(
             self.service.get_organization("kira-2").metadata["tags"], ["obsolete"]
         )
+
+    def test_sqlite_bulk_delete_rolls_back_when_a_later_row_update_fails(self):
+        with tempfile.TemporaryDirectory(prefix="kira-organization-atomic-") as directory:
+            database = Path(directory) / "history.sqlite3"
+            from kira.chat.persistence import ChatPersistence, SqliteChatRepository
+
+            persistence = ChatPersistence(SqliteChatRepository(database))
+            self.assertEqual(persistence.init_db(), [])
+            first = persistence.create_conversation("kira", title="first")
+            second = persistence.create_conversation("kira", title="second")
+            service = ChatOrganizationService(persistence, character_id="kira")
+            service.add_tag(first["id"], "obsolete")
+            service.add_tag(second["id"], "obsolete")
+
+            # Force the second UPDATE to fail after the first UPDATE has run.
+            # The repository must roll both writes back as one SQLite transaction.
+            escaped_id = second["id"].replace("'", "''")
+            with sqlite3.connect(database) as connection:
+                connection.execute(
+                    "CREATE TRIGGER reject_second_organization_update "
+                    "BEFORE UPDATE OF metadata ON conversations "
+                    f"WHEN OLD.id = '{escaped_id}' "
+                    "BEGIN SELECT RAISE(ABORT, 'simulated disk constraint'); END"
+                )
+
+            with self.assertRaises(OrganizationRepositoryError):
+                service.delete_tag("obsolete")
+
+            self.assertEqual(
+                persistence.get_conversation(first["id"])["metadata"]["organization"]["tags"],
+                ["obsolete"],
+            )
+            self.assertEqual(
+                persistence.get_conversation(second["id"])["metadata"]["organization"]["tags"],
+                ["obsolete"],
+            )
 
     def test_repository_failures_are_normalized(self):
         self.repository.fail_update = True

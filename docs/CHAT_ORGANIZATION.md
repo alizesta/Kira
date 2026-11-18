@@ -35,6 +35,15 @@ Filters combine by AND and return copied records; they never mutate source data.
 - TASK 013 remains the owner of archive/restore/delete lifecycle. This service never changes conversation status or deletes conversations.
 - TASK 006 coordinates calls; TASK 010 may invoke the public API but owns no organization rules.
 
-## Known limitations
+## Atomicity and concurrency guarantees
 
-The existing persistence facade exposes whole-document conversation metadata updates rather than an atomic JSON-path patch. The service serializes its own in-process mutations, but independent writers can still race when updating the same conversation metadata. Empty folder/tag definitions are not persisted until assigned to a conversation. Delete-tag/delete-folder perform per-conversation updates rather than a cross-conversation transaction; a repository-level bulk operation is required for atomicity.
+Organization metadata is mutated only through the injected persistence facade. The SQLite repository provides two write-transaction operations:
+
+- `mutate_conversations` applies one or more conversation callbacks under a single `BEGIN IMMEDIATE` transaction. Each callback receives an independent deep copy of the latest row; concurrent repository instances cannot overwrite a stale metadata snapshot.
+- `mutate_all_conversations` selects the requested character's rows and applies the complete batch under the same write transaction. A callback or SQL failure rolls back every update in that batch.
+
+Both operations persist only title and metadata. Conversation identity, character ownership, lifecycle status and timestamps are protected from callback mutation. Metadata must be a JSON object with finite JSON numbers; invalid values abort the transaction instead of being silently normalized or stored as non-standard JSON.
+
+Single-conversation operations (rename, tag assignment/removal, favorite and metadata changes), bulk tag/folder deletion and folder movement all use those transaction boundaries. Folder existence is checked inside the move callback after SQLite has acquired its write lock, so a concurrent folder deletion cannot pass a stale pre-check and then be undone by a delayed move. In-process folder-registry changes are serialized by the service lock.
+
+The remaining product limitation is unchanged: empty folder/tag definitions are descriptors only and are not persisted until a conversation references them. Event publication is best-effort after commit; it is a notification channel, not a transactional outbox.

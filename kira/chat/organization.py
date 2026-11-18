@@ -288,10 +288,12 @@ class ChatOrganizationService:
             if _key(organization.get("folder_id") or DEFAULT_FOLDER_ID, "folder") == key:
                 organization["folder_id"] = DEFAULT_FOLDER_ID
 
-        changed = self._update_all(reset)
+        # Serialize the DB bulk reset and this instance's folder registry update.
+        # Other service instances are serialized by the repository's SQLite write transaction.
         with self._lock:
+            changed = self._update_all(reset)
             self._known_folders.pop(key, None)
-        return changed
+            return changed
 
     def _folder_exists(self, folder_id: str) -> bool:
         if folder_id in self._known_folders:
@@ -309,10 +311,14 @@ class ChatOrganizationService:
     def move_conversation(self, conversation_id: str, folder_id: str) -> OrganizationResult:
         folder = _key(folder_id, "folder id")
         with self._lock:
-            if not self._folder_exists(folder):
-                raise OrganizationError("folder does not exist; create it before moving a conversation")
-
             def mutation(_record: dict[str, Any], organization: dict[str, Any]) -> None:
+                # This callback runs after mutate_conversations has acquired
+                # BEGIN IMMEDIATE. Checking here makes folder validation and
+                # assignment one serialized operation across repository instances.
+                if not self._folder_exists(folder):
+                    raise OrganizationError(
+                        "folder does not exist; create it before moving a conversation"
+                    )
                 organization["folder_id"] = folder or DEFAULT_FOLDER_ID
 
             updated = self._mutate_record(conversation_id, mutation)
