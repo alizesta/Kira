@@ -39,7 +39,51 @@ class CompositionRootContractTests(unittest.TestCase):
             "provider_application_service", "coding_agent_application_service",
             "vision_application_service", "runtime_settings_application_service",
             "shared_skills_application_service",
+            "conversation_organization_application_service",
+            "chat_search_application_service",
+            "chat_transfer_application_service",
         }.issubset(keys))
+
+    def test_organization_search_and_transfer_are_registered_and_injected(self):
+        modules = parse("kira/app/feature_modules.py")
+        bootstrap = parse("kira/ui/bootstrap.py")
+        composition = parse("kira/ui/main_window_composition.py")
+
+        registered_strings = {
+            node.value for node in ast.walk(modules)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
+        self.assertTrue({
+            "conversation_organization",
+            "chat_search",
+            "chat_transfer",
+            "conversation_organization_application_service",
+            "chat_search_application_service",
+            "chat_transfer_application_service",
+        }.issubset(registered_strings))
+
+        bootstrap_keywords = {
+            node.arg for node in ast.walk(bootstrap) if isinstance(node, ast.keyword)
+        }
+        composition_args = {
+            node.arg for node in ast.walk(composition) if isinstance(node, ast.arg)
+        }
+        composition_required = next(
+            node.value for node in ast.walk(composition)
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "required" for target in node.targets)
+        )
+        composition_required_keys = {
+            key.value for key in composition_required.keys if isinstance(key, ast.Constant)
+        }
+        keys = {
+            "conversation_organization_application_service",
+            "chat_search_application_service",
+            "chat_transfer_application_service",
+        }
+        self.assertTrue(keys.issubset(bootstrap_keywords))
+        self.assertTrue(keys.issubset(composition_args))
+        self.assertTrue(keys.issubset(composition_required_keys))
 
     def test_ui_composition_does_not_construct_application_services(self):
         module = parse("kira/ui/main_window_composition.py")
@@ -85,6 +129,28 @@ class CompositionRootContractTests(unittest.TestCase):
         keywords = {item.arg for item in initialize_calls[0].keywords}
         self.assertIn("tool_agent", keywords)
         self.assertIn("session_manager", keywords)
+
+    def test_bootstrap_exposes_transfer_file_adapter_injection(self):
+        bootstrap = parse("kira/ui/bootstrap.py")
+        run_application = next(
+            node for node in bootstrap.body
+            if isinstance(node, ast.FunctionDef) and node.name == "run_application"
+        )
+        self.assertIn(
+            "transfer_file_port",
+            {argument.arg for argument in run_application.args.kwonlyargs},
+        )
+        registration_calls = [
+            node for node in ast.walk(run_application)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "register_application_modules"
+        ]
+        self.assertEqual(len(registration_calls), 1)
+        self.assertIn(
+            "transfer_file_port",
+            {item.arg for item in registration_calls[0].keywords},
+        )
 
     def test_shared_skills_is_registered_and_injected_from_bootstrap(self):
         modules = parse("kira/app/feature_modules.py")
