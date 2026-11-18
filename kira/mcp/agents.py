@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
+import tempfile
 import threading
 import time
 import urllib.error
@@ -31,6 +33,8 @@ from pathlib import Path
 
 from ..tools.registry import Tool, Param, ToolError, READ, ACTION, SENSITIVE, ERROR, DENIED, BAD_ARGS
 from .hub import clean_text
+
+_LOGGER = logging.getLogger(__name__)
 
 JOBS_FILE = "kira_jobs.json"
 HEALTH_TTL = 30.0
@@ -109,23 +113,50 @@ class JobStore:
         self.path = Path(data_dir) / JOBS_FILE
         self._lock = threading.RLock()
         self.jobs: dict[str, dict] = {}
+        self._load_failed = False
         try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
-            if isinstance(data, dict) and isinstance(data.get("jobs"), dict):
-                self.jobs = {k: v for k, v in data["jobs"].items() if isinstance(v, dict)}
-        except (OSError, ValueError):
+            if not isinstance(data, dict) or not isinstance(data.get("jobs"), dict):
+                raise ValueError("job store must contain an object with a jobs mapping")
+            self.jobs = {k: v for k, v in data["jobs"].items() if isinstance(k, str) and isinstance(v, dict)}
+        except FileNotFoundError:
             pass
+        except (OSError, ValueError, TypeError):
+            self._load_failed = True
+            _LOGGER.exception("Could not load delegated-job state from %s; original file will be preserved", self.path)
 
     def _save(self):
+        if self._load_failed:
+            _LOGGER.error("Refusing to overwrite unreadable delegated-job state at %s; changes remain memory-only", self.path)
+            return False
+        tmp = None
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             keep = sorted(self.jobs.values(), key=lambda j: j.get("created", 0), reverse=True)[:JOB_KEEP]
             self.jobs = {j["id"]: j for j in keep}
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps({"jobs": self.jobs}, ensure_ascii=False), encoding="utf-8")
-            tmp.replace(self.path)
-        except OSError:
-            pass
+            fd, tmp = tempfile.mkstemp(
+                prefix=f".{self.path.name}.",
+                suffix=".tmp",
+                dir=self.path.parent,
+            )
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump({"jobs": self.jobs}, stream, ensure_ascii=False)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(tmp, self.path)
+            tmp = None
+            return True
+        except Exception:                                  # noqa: BLE001 - job persistence must not break the live agent
+            _LOGGER.exception("Could not save delegated-job state to %s", self.path)
+            return False
+        finally:
+            if tmp is not None:
+                try:
+                    os.unlink(tmp)
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    _LOGGER.debug("Could not remove temporary job file %s", tmp, exc_info=True)
 
     def find_open(self, idem: str):
         now = time.time()
@@ -211,8 +242,10 @@ class AgentHub:
                     continue
                 try:
                     self._refresh(job)
-                except ToolError:
-                    pass
+                except ToolError as exc:
+                    _LOGGER.debug("Could not refresh delegated job %s: %s", job.get("id"), exc)
+                except Exception:
+                    _LOGGER.exception("Unexpected delegated-job polling failure for %s", job.get("id"))
 
     def _refresh(self, job: dict) -> dict:
         agent = self._agent(job["agent"])
