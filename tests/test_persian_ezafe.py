@@ -134,15 +134,16 @@ class PersianEzafeTests(unittest.TestCase):
         persian_ezafe._retry_after = 0.0
         persian_ezafe._last_error = ""
         with mock.patch.object(persian_ezafe.time, "monotonic", return_value=10.0), \
-             mock.patch.object(persian_ezafe, "_initialize_predictor", side_effect=OSError("network")):
+             mock.patch.object(persian_ezafe, "_initialize_predictor", side_effect=OSError("network")) as initialize:
             with self.assertRaisesRegex(OSError, "network"):
                 persian_ezafe._load_predictor()
             with self.assertRaisesRegex(RuntimeError, "cooling down"):
                 persian_ezafe._load_predictor()
-        state = persian_ezafe.status()
+            state = persian_ezafe.status()
+        self.assertEqual(initialize.call_count, 1, "cooldown must prevent an immediate repeated download")
         self.assertEqual(state["load_failures"], 1)
         self.assertIn("network", state["error"])
-        self.assertGreater(state["retry_in_seconds"], 0)
+        self.assertEqual(state["retry_in_seconds"], 5.0)
 
     def test_cache_directory_aligns_huggingface_environment(self):
         with tempfile.TemporaryDirectory() as temp, mock.patch.dict(

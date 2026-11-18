@@ -190,6 +190,22 @@ class CharacterDecisionTests(unittest.TestCase):
                 snapshot = mood._runtime_snapshot()
         self.assertEqual(snapshot["personality_traits"], ren_traits)
 
+    def test_runtime_construction_failure_keeps_ren_baseline_traits(self):
+        ren_traits = CHARACTERS["ren"]["traits"]
+        with mock.patch.object(mood, "_current_character_id", return_value="ren"), \
+             mock.patch.object(mood, "_runtime_for", side_effect=OSError("runtime unavailable")):
+            with self.assertLogs("kira.mood", level="ERROR"):
+                snapshot = mood._runtime_snapshot()
+        self.assertEqual(snapshot["personality_traits"], ren_traits)
+
+    def test_runtime_initialization_failure_does_not_abort_prompt_generation(self):
+        with mock.patch.object(mood, "_current_character_id", return_value="ren"), \
+             mock.patch.object(mood, "_runtime_for", side_effect=OSError("runtime unavailable")):
+            with self.assertLogs("kira.mood", level="ERROR"):
+                block = mood.build_block("chat", query="سلام")
+        self.assertIn("[CHARACTER DECISION]", block)
+        self.assertIn("curiosity=0.92", block)
+
     def test_decision_failure_is_logged_and_returns_safe_prompt(self):
         class FakeRuntime:
             @staticmethod

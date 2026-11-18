@@ -38,6 +38,7 @@ _ACTIVE_CHARACTER_CONTEXT: ContextVar[str | None] = ContextVar("mood_active_char
 _RUNTIME_CACHE: dict[str, EmotionalRuntime] = {"kira": _emotional_runtime}
 _RUNTIME_MIGRATED_IDS: set[str] = set()
 _RUNTIME_CACHE_LOCK = threading.RLock()
+_RUNTIME_INIT_FAILURES: set[str] = set()
 
 FILE_NAME = "kira_mood.json"
 HALF_LIFE = 900.0
@@ -269,11 +270,19 @@ def _ensure_runtime_migration():
         if owner in _RUNTIME_MIGRATED_IDS:
             _runtime_migrated = owner == _ACTIVE_CHARACTER_ID
             return
-        runtime = _runtime_for(owner)
+        try:
+            runtime = _runtime_for(owner)
+        except Exception:
+            if owner not in _RUNTIME_INIT_FAILURES:
+                _log.exception("Could not initialize emotional runtime for character %s", owner)
+                _RUNTIME_INIT_FAILURES.add(owner)
+            _runtime_migrated = False if owner == _ACTIVE_CHARACTER_ID else _runtime_migrated
+            return
+        _RUNTIME_INIT_FAILURES.discard(owner)
         try:
             runtime.migrate_legacy(_load(owner))
         except Exception:
-            pass
+            _log.exception("Legacy mood migration failed for character %s", owner)
         _RUNTIME_MIGRATED_IDS.add(owner)
         _runtime_migrated = owner == _ACTIVE_CHARACTER_ID
 
@@ -489,15 +498,29 @@ def current(now=None, query=None) -> dict:
     }
 
 
+def _profile_trait_fallback(character_id=None):
+    """Use the built-in profile baseline when its runtime is unavailable."""
+    owner = _safe_character_id(character_id or _current_character_id())
+    try:
+        from .personas import CHARACTERS
+        profile = CHARACTERS.get(owner) or {}
+        traits = profile.get("traits")
+        if isinstance(traits, dict) and traits:
+            return dict(traits)
+    except Exception:
+        _log.exception("Could not resolve built-in traits for character %s", owner)
+    return dict(BASE_TRAITS)
+
+
 def _runtime_snapshot(now=None, query=None):
     """Read runtime state while preserving the active profile if its state store fails."""
-    runtime = None
+    owner = _current_character_id()
     try:
-        runtime = _runtime_for()
-        profile_traits = dict(getattr(runtime, "base_traits", {}) or BASE_TRAITS)
+        runtime = _runtime_for(owner)
+        profile_traits = dict(getattr(runtime, "base_traits", {}) or _profile_trait_fallback(owner))
     except Exception:
-        profile_traits = dict(BASE_TRAITS)
-        _log.exception("Could not resolve the active character's emotional runtime")
+        profile_traits = _profile_trait_fallback(owner)
+        _log.exception("Could not resolve the emotional runtime for character %s", owner)
         return {"personality_traits": profile_traits}
 
     try:
