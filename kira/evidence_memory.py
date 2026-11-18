@@ -415,12 +415,16 @@ def update_by_persona_id(old_persona_id, new_persona_id, text, now=None) -> bool
 def forget_all() -> None:
     """Delete all evidence-backed memory; explicit management failures are raised to the caller."""
     try:
+        # Resolve the history watermark before opening the write transaction. If
+        # it cannot be read, do not clear data with a zero cursor that could
+        # cause the forgotten history to be imported again on the next startup.
+        history_watermark = _chat_max_id()
         with _lock, _db() as con:
             for table in ("vectors", "evidence", "facts", "quarantine"):
                 con.execute(f"DELETE FROM {table}")
             _meta_set(con, "backfilled", "1")
-            _meta_set(con, "seen_upto", _chat_max_id())              # what was forgotten must not be rebuilt from the saved chat
-            _meta_set(con, "writer_upto", _chat_max_id())
+            _meta_set(con, "seen_upto", history_watermark)
+            _meta_set(con, "writer_upto", history_watermark)
         _tok_cache.clear()
     except Exception:                                                  # noqa: BLE001
         _log.exception("Could not clear evidence memory")
@@ -503,7 +507,8 @@ def _chat_max_id() -> int:
         from .memory import max_message_id
         return int(max_message_id())
     except Exception:                                                  # noqa: BLE001
-        return 0
+        _log.exception("Could not read chat-history watermark for evidence-memory deletion")
+        raise
 
 
 def _backfill_once() -> None:
