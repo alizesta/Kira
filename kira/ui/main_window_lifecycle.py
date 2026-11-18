@@ -86,7 +86,7 @@ class LifecycleController(WindowFeatureController):
         try:
             save_settings(s)
         except Exception as exc:
-            QMessageBox.critical(self, "خطا در ذخیره تنظیمات", f"تنظیمات ذخیره نشدند:\n{exc}")
+            QMessageBox.critical(self.window, "خطا در ذخیره تنظیمات", f"تنظیمات ذخیره نشدند:\n{exc}")
             return
         # Construct all routers before replacing any live Session router.
         self.provider_application_service.rebuild_session_routers(
