@@ -217,6 +217,83 @@ class InitiativeEngine:
         return sent_at
 
 
+def initiative_history_state(
+    history,
+    recent_events=(),
+    last_memory_id="",
+    last_sent_at=0,
+    now=None,
+    retention_seconds=DEFAULT_MEMORY_MAX_AGE_SECONDS,
+):
+    """Return validated sent history, recently used IDs, and a local-calendar daily count.
+
+    The settings record is authoritative; EmotionalRuntime's recent event ring and last
+    sent marker are independent recovery evidence. Identical IDs are counted only once.
+    """
+    current = _finite_number(time.time() if now is None else now)
+    if current is None or current < 0:
+        return {"history": [], "excluded_ids": set(), "sent_today": 0}
+
+    retention = _bounded_seconds(retention_seconds, DEFAULT_MEMORY_MAX_AGE_SECONDS)
+    now_local = time.localtime(current)
+    today_key = (now_local.tm_year, now_local.tm_yday)
+
+    def accepted_stamp(value):
+        stamp = _finite_number(value)
+        if stamp is None or stamp <= 0 or stamp > current + FUTURE_CLOCK_SKEW_SECONDS:
+            return None
+        if current - stamp > retention:
+            return None
+        return stamp
+
+    def day_key(stamp):
+        local = time.localtime(stamp)
+        return local.tm_year, local.tm_yday
+
+    valid_history = []
+    excluded = set()
+    today_ids = set()
+
+    for entry in history if isinstance(history, list) else ():
+        if not isinstance(entry, dict):
+            continue
+        stamp = accepted_stamp(entry.get("at"))
+        if stamp is None:
+            continue
+        memory_id = str(entry.get("memory_id") or "").strip()[:64]
+        valid_history.append({"at": stamp, "memory_id": memory_id})
+        if memory_id:
+            excluded.add(memory_id)
+        if day_key(stamp) == today_key:
+            today_ids.add(memory_id or f"at:{int(stamp)}")
+
+    for event in recent_events or ():
+        if not isinstance(event, dict) or event.get("name") != "proactive_check_in":
+            continue
+        stamp = accepted_stamp(event.get("at"))
+        if stamp is None:
+            continue
+        memory_id = str(event.get("detail") or "").strip()[:64]
+        if memory_id:
+            excluded.add(memory_id)
+        if day_key(stamp) == today_key:
+            today_ids.add(memory_id or f"at:{int(stamp)}")
+
+    last_stamp = accepted_stamp(last_sent_at)
+    last_id = str(last_memory_id or "").strip()[:64]
+    if last_stamp is not None:
+        if last_id:
+            excluded.add(last_id)
+        if day_key(last_stamp) == today_key:
+            today_ids.add(last_id or f"at:{int(last_stamp)}")
+
+    return {
+        "history": valid_history,
+        "excluded_ids": excluded,
+        "sent_today": len(today_ids),
+    }
+
+
 def build_checkin_message(candidate, language="auto", max_topic_chars=130):
     """Create a brief, no-pressure check-in from the exact remembered quote; never invent details."""
     if not isinstance(candidate, dict) or candidate.get("kind") not in InitiativeEngine.CANDIDATE_KINDS:
