@@ -278,7 +278,7 @@ class AgentHub:
             ok, why = cached[1], cached[2]
         else:
             try:
-                ok, why = bool(agent.health().get("ok", True)), ""
+                ok, why = bool(agent.health().get("ok", False)), ""
             except ToolError as exc:
                 ok, why = False, str(exc)
             self._health[name] = (time.monotonic(), ok, why)
@@ -313,7 +313,13 @@ class AgentHub:
         data = agent.status(job["remote_id"])
         state = str(data.get("state", "")).lower()
         if state not in ("progress", "question", "approval", "result", "error"):
-            state = "progress"
+            _LOGGER.warning("Agent %s returned an unsupported job state %r", job.get("agent"), state)
+            fields = {
+                "state": "error",
+                "text": "ایجنت وضعیت نامعتبر برگرداند؛ نتیجه قابل تأیید نیست.",
+            }
+            self.store.update(job["id"], **fields)
+            return self.store.get(job["id"]) or {**job, **fields}
         fields = {"state": state, "text": clean_text(data.get("text"), 1800)}
         if state in ("question", "approval"):
             fields["question"] = clean_text(data.get("question") or data.get("text"), 500)
@@ -417,7 +423,7 @@ class AgentHub:
         lines = []
         for name in names:
             try:
-                ok = bool(self._agent(name).health().get("ok", True))
+                ok = bool(self._agent(name).health().get("ok", False))
                 lines.append(f"- {name}: {'آماده' if ok else 'آماده نیست'}")
             except ToolError as exc:
                 lines.append(f"- {name}: {exc}")
