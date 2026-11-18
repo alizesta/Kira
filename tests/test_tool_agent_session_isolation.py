@@ -327,17 +327,23 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
 
                 self.assertTrue(brain._store_hint("same-signature", "Kira-only hint", "kira"))
                 self.assertTrue(brain._store_hint("same-signature", "Ren-only hint", "ren"))
+                kira_state = brain._load("kira")
+                kira_state["writer"] = {"last_run": 123, "next_try": 456}
+                brain._save(kira_state, "kira")
                 self.assertEqual(brain._load("kira")["hint"]["text"], "Kira-only hint")
                 self.assertEqual(brain._load("ren")["hint"]["text"], "Ren-only hint")
 
                 brain.reset_state("kira")
-                self.assertIsNone(brain._load("kira")["hint"])
+                reset_kira = brain._load("kira")
+                self.assertIsNone(reset_kira["hint"])
+                self.assertEqual(reset_kira["writer"], {"last_run": 123, "next_try": 456})
                 self.assertEqual(brain._load("ren")["hint"]["text"], "Ren-only hint")
 
-                brain.after_turn(
-                    None, {}, brain.Decision(reflection="off"),
-                    "hello", "answer", character_id="ren",
-                )
+                with patch("kira.hybrid_ai.HybridRouter._write_telemetry"):
+                    brain.after_turn(
+                        None, {}, brain.Decision(reflection="off"),
+                        "hello", "answer", character_id="ren",
+                    )
                 self.assertEqual(brain._load("ren")["turn"], 1)
                 self.assertEqual(brain._load("kira")["turn"], 0)
 
