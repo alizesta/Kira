@@ -46,7 +46,7 @@ from .main_window_session_support import (
 from .window_feature_controller import WindowFeatureController
 
 
-class SessionMixin(WindowFeatureController):
+class SessionController(WindowFeatureController):
     @property
     def _attach_worker(self):
         controller = getattr(self, "attachment_controller", None)
@@ -734,3 +734,7 @@ class SessionMixin(WindowFeatureController):
                                     checked=palette["main"], disabled="#52617B"))
         if hasattr(self, "_refresh_icon_glow"):
             self._refresh_icon_glow()
+
+
+# Backward-compatible import name for callers migrating from mixin composition.
+SessionMixin = SessionController
