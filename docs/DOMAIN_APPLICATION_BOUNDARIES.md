@@ -153,17 +153,25 @@ in application services and defining ports only where a stable cross-layer
 capability exists. Avoid inventing contracts for transient implementation
 details merely to remove every `Any`.
 
-Two explicit cross-flow follow-ups remain: Flow 3 must implement the
-`ChatTransferFilePort` Infrastructure adapter; the current stdlib file-I/O path
-remains only as a compatibility fallback. Flow 4 must inject that adapter and
-register Organization/Search/Transfer use cases in the central application
-lifecycle. Flow 2 has not claimed those integrations.
+Flow 3 has implemented `LocalChatTransferFileAdapter` in
+`kira/infrastructure/chat_transfer_file_adapter.py`. It performs bounded,
+regular-file-only reads and same-directory atomic export writes. Focused tests
+cover size limits, symlink/special-file rejection, safe destination names,
+replacement failure and temporary-file cleanup.
 
-Central application-service registration, Bootstrap injection and FeatureModule
-lifecycle are implemented by Flow 4 in `kira/app/feature_modules.py` and
-`kira/ui/bootstrap.py`. The three services are injected into MainWindow through
-the outer Qt composition boundary; actual controller consumption is coordinated
-with Flow 1. The Transfer file adapter implementation remains Flow 3 work.
+Flow 4 registers Conversation Lifecycle, Organization, Search and Transfer
+through `ServiceModule` / `ModuleManager`, injects their application services
+from Bootstrap, and shares the application-scoped Conversation Lifecycle
+service with Chat Application. Bootstrap creates `LocalChatTransferFileAdapter`
+by default and passes it through the Core `ChatTransferFilePort`; callers may
+override the adapter explicitly. The Application service retains its standard
+library fallback only for direct compatibility callers that bypass the
+production Composition Root.
+
+The Organization, Search and Transfer services are injected into the strict
+`WindowPresentationContext.services` namespace alongside the other
+application-owned dependencies. Persistence remains the sole owner of durable
+records and transactions.
 
 ## Verification boundary
 
