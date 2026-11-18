@@ -13,6 +13,7 @@ from .main_window_lifecycle import LifecycleController
 from .main_window_attachments_vision import AttachmentsVisionController
 from .main_window_chat import ChatController
 from .main_window_runtime import RuntimeController
+from .feature_controller_registry import FeatureControllerRegistry
 
 
 class MainWindow(QMainWindow):
@@ -68,7 +69,7 @@ class MainWindow(QMainWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._feature_controllers = {
+        controllers = {
             "runtime": RuntimeController(self),
             "chat": ChatController(self),
             "attachments_vision": AttachmentsVisionController(self),
@@ -78,22 +79,26 @@ class MainWindow(QMainWindow):
             "voice_settings": VoiceSettingsController(self),
             "session": SessionController(self),
         }
+        # Keep the ordered mapping for compatibility with existing diagnostics;
+        # all lookup and dispatch behavior is centralized in the registry.
+        self._feature_controllers = controllers
+        self._controller_registry = FeatureControllerRegistry(controllers)
 
     def __getattr__(self, name):
-        controllers = self.__dict__.get("_feature_controllers", {})
-        for controller in controllers.values():
-            if name in type(controller).__dict__:
-                return getattr(controller, name)
+        registry = self.__dict__.get("_controller_registry")
+        if registry is not None:
+            try:
+                return registry.resolve(name)
+            except AttributeError:
+                pass
         raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
 
     def _dispatch_qt_event(self, controller_name, event_name, event):
-        controller = self.__dict__.get("_feature_controllers", {}).get(controller_name)
-        if controller is not None:
-            return getattr(controller, event_name)(event)
-        base_handler = getattr(QMainWindow, event_name, None)
-        if base_handler is not None:
-            return base_handler(self, event)
-        return None
+        registry = self.__dict__.get("_controller_registry")
+        if registry is None:
+            base_handler = getattr(QMainWindow, event_name, None)
+            return base_handler(self, event) if base_handler is not None else None
+        return registry.dispatch_event(self, controller_name, event_name, event)
 
     # Qt virtual events are explicit shell responsibilities and are forwarded
     # to the relevant feature controller.
