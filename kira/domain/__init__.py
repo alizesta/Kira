@@ -1,5 +1,20 @@
 """Pure business rules and value contracts for Kira's domain layer."""
 
+from .transfer import (
+    ALLOWED_ROLES,
+    ALLOWED_STATUSES,
+    EXPORT_VERSION,
+    MAX_CONTENT_CHARS,
+    MAX_CONVERSATIONS,
+    MAX_FILE_BYTES,
+    MAX_MESSAGES,
+    MAX_METADATA_DEPTH as TRANSFER_MAX_METADATA_DEPTH,
+    SCHEMA_VERSION,
+    ImportPreview,
+    ImportResult,
+    TransferError,
+    sanitize_transfer_metadata,
+)
 from .search import (
     ChatMessageReference,
     ChatSearchError,
@@ -41,6 +56,19 @@ from .conversations import (
 )
 
 __all__ = [
+    "ALLOWED_ROLES",
+    "ALLOWED_STATUSES",
+    "EXPORT_VERSION",
+    "MAX_CONTENT_CHARS",
+    "MAX_CONVERSATIONS",
+    "MAX_FILE_BYTES",
+    "MAX_MESSAGES",
+    "TRANSFER_MAX_METADATA_DEPTH",
+    "SCHEMA_VERSION",
+    "ImportPreview",
+    "ImportResult",
+    "TransferError",
+    "sanitize_transfer_metadata",
     "ChatMessageReference",
     "ChatSearchError",
     "ChatSearchHit",
