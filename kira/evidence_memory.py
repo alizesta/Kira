@@ -703,6 +703,29 @@ def _bm25(docs: dict[str, list[str]], query: list[str]) -> dict[str, float]:
     return scores
 
 
+
+def rank_texts(texts, query, min_ratio=MIN_BM25_RATIO):
+    """Return indices ranked by Persian-aware BM25 relevance to one query."""
+    if not needs_recall(query):
+        return []
+    query_tokens = tokens(query)
+    if not query_tokens:
+        return []
+    docs = {str(index): tokens(text) for index, text in enumerate(texts or [])}
+    if not docs:
+        return []
+    scores = _bm25(docs, query_tokens)
+    if not scores:
+        return []
+    best = max(scores.values())
+    ratio = max(0.0, min(1.0, float(min_ratio)))
+    threshold = best * ratio
+    return sorted(
+        (int(index) for index, score in scores.items() if score >= threshold),
+        key=lambda index: (-scores[str(index)], index),
+    )
+
+
 def _semantic(query_text, ids, cfg) -> dict[str, float]:
     """Cosine similarity of the query to the stored vectors of `ids` (empty when embeddings are off, failing or not computed yet)."""
     if cfg is None:
@@ -824,21 +847,30 @@ def set_writer_cursor(message_id) -> None:
         pass
 
 
-def interest_line(max_chars=140) -> str:
-    """One compact line of what he likes / dislikes (cheap and personal; the rest of the facts must earn their place by relevance)."""
+def interest_line(max_chars=140, query=None) -> str:
+    """Compact likes/dislikes; topic recall only exposes interests matching this turn."""
     if not _enabled or max_chars < 40:
         return ""
     try:
         with _lock, _db() as con:
-            likes = [r["value"] for r in con.execute("SELECT value FROM facts WHERE predicate='like' AND status='active' ORDER BY updated_at DESC LIMIT 6")]
-            dislikes = [r["value"] for r in con.execute("SELECT value FROM facts WHERE predicate='dislike' AND status='active' ORDER BY updated_at DESC LIMIT 4")]
-    except Exception:                                                  # noqa: BLE001
+            likes = [r["value"] for r in con.execute(
+                "SELECT value FROM facts WHERE predicate='like' AND status='active' ORDER BY updated_at DESC LIMIT 12"
+            )]
+            dislikes = [r["value"] for r in con.execute(
+                "SELECT value FROM facts WHERE predicate='dislike' AND status='active' ORDER BY updated_at DESC LIMIT 12"
+            )]
+    except Exception:
         return ""
+    if query is not None:
+        if not needs_recall(query):
+            return ""
+        likes = [likes[i] for i in rank_texts(likes, query)[:4]]
+        dislikes = [dislikes[i] for i in rank_texts(dislikes, query)[:3]]
     parts = []
     if likes:
-        parts.append("He likes: " + "; ".join(v[:40] for v in likes))
+        parts.append("He likes: " + "; ".join(value[:40] for value in likes))
     if dislikes:
-        parts.append("He dislikes: " + "; ".join(v[:40] for v in dislikes))
+        parts.append("He dislikes: " + "; ".join(value[:40] for value in dislikes))
     return (" | ".join(parts))[:max_chars]
 
 
@@ -872,21 +904,38 @@ def build_block(query, budget=1500):
         return None
     facts = retrieve(query)
     body = render(facts, max(200, budget - 160))
-    line = interest_line(140 if budget >= 1200 else 0)
+    line = interest_line(140 if budget >= 1200 else 0, query=query)
     if not body and not line:
         return ""
     head = "What she knows about him that fits this message (each item comes from something he really wrote; the date is when he said it):"
     return head + ("\n" + body if body else "") + (("\n" + line) if line else "")
 
 
+_FOLLOW_UP_RX = re.compile(
+    r"^(?:(?:و\s*)?(?:اون|آن|این|همون|همین)(?:\s+(?:یکی|مورد))?|"
+    r"اولی|دومی|سومی|قبلی|مورد\s+قبلی|"
+    r"that\s+one|the\s+other\s+one|what\s+about\s+(?:it|that)|and\s+(?:it|that))"
+    r"(?:[\s.!?؟،,]|$)",
+    re.I,
+)
+
+
 def query_from_context(context) -> str:
-    """The text used to look facts up: the user's newest message; a very short one ("and that one?") is joined with the previous message."""
-    users = [str(m.get("content") or "") for m in (context or []) if isinstance(m, dict) and m.get("role") == "user"]
+    """Join a short turn to the prior turn only when it is an anaphoric follow-up."""
+    users = [
+        str(message.get("content") or "").strip()
+        for message in (context or [])
+        if isinstance(message, dict) and message.get("role") == "user"
+    ]
     if not users:
         return ""
     query = users[-1][:500]
     if len(query) < 25 and len(users) > 1:
-        query = users[-2][-200:] + " " + query
+        if _SMALLTALK.match(query):
+            return query
+        normal = norm(query).strip(" .!?؟،,")
+        if _FOLLOW_UP_RX.match(normal):
+            return (users[-2][-200:] + " " + query).strip()
     return query
 
 

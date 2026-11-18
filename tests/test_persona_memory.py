@@ -172,5 +172,62 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertEqual(pm.facts(), [])
 
 
+    def test_ready_but_empty_evidence_index_falls_back_to_persona_facts(self):
+        with pm.character_scope("kira"):
+            pm.add_fact("job", "شغل کاربر مهندس نرم‌افزار است", now=1000)
+            with mock.patch.object(pm._evidence, "build_block", return_value=""):
+                block = pm.build_block(query="درباره کار مهندس نرم‌افزار بگو", now=1001)
+        self.assertIn("مهندس نرم‌افزار", block)
+
+    def test_memory_budget_does_not_let_voice_starve_facts(self):
+        header = "Header"
+        oversized_voice = "Voice:\n- " + ("v" * 300)
+        facts = "Facts:\n- مهم‌ترین واقعیت"
+        budget = len(header) + 2 + len(facts)
+        block = pm._fit_memory_block(header, [oversized_voice, facts], budget)
+        self.assertIn("مهم‌ترین واقعیت", block)
+        self.assertNotIn("v" * 100, block)
+        self.assertLessEqual(len(block), budget)
+
+    def test_zero_budget_is_respected(self):
+        self.assertEqual(pm._fit_memory_block("Header", ["Fact"], 0), "")
+        with pm.character_scope("mika"):
+            pm.add_fact("job", "شغل کاربر مهندس نرم‌افزار است", now=1000)
+            self.assertEqual(pm.build_block(query="مهندس نرم‌افزار", budget=0), "")
+
+    def test_missing_identity_ids_do_not_hide_other_facts(self):
+        facts = [
+            {"kind": "name", "text": "نام کاربر علی است", "ts": 1000},
+            {"kind": "job", "text": "شغل کاربر مهندس نرم‌افزار است", "ts": 1001},
+        ]
+        selected = pm._select_persona_facts(facts, "مهندس نرم‌افزار")
+        self.assertEqual(len(selected), 2)
+
+    def test_relevance_fixture_has_useful_top_one_recall(self):
+        corpus = [
+            "کاربر موسیقی راک را دوست دارد",
+            "کاربر به موسیقی سنتی علاقه دارد",
+            "کاربر مهندس نرم‌افزار است",
+            "کاربر هفته آینده به شیراز سفر می‌کند",
+        ]
+        cases = [
+            ("آلبوم موسیقی راک", 0),
+            ("شغل مهندس نرم‌افزار", 2),
+            ("برنامه سفر شیراز", 3),
+        ]
+        hits = 0
+        for query, expected in cases:
+            ranking = pm._evidence.rank_texts(corpus, query)
+            self.assertTrue(ranking, f"no result for {query}")
+            hits += int(ranking[0] == expected)
+        self.assertGreaterEqual(hits / len(cases), 0.66)
+
+    def test_short_smalltalk_does_not_pull_previous_topic_into_query(self):
+        context = [
+            {"role": "user", "content": "درباره کارت گرافیک صحبت کردیم"},
+            {"role": "user", "content": "مرسی"},
+        ]
+        self.assertEqual(pm._evidence.query_from_context(context), "مرسی")
+
 if __name__ == "__main__":
     unittest.main()

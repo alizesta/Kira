@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import math
 from contextlib import contextmanager
 from contextvars import ContextVar
 import os
@@ -47,6 +49,7 @@ DAY = 86400
 TTL = {"event": 45 * DAY, "promise": 30 * DAY, "joke": 120 * DAY}
 
 _lock = threading.Lock()
+_log = logging.getLogger(__name__)
 _current_character = ContextVar("ai1_persona_memory_character", default="kira")
 
 
@@ -580,64 +583,54 @@ def maintain(rows: list[dict], window: int, now=None) -> bool:
 # ---------------- layer 3: digest ----------------
 def _memory_item_timestamp(item: dict) -> float:
     try:
-        return float(item.get("ts") or item.get("created_at") or 0)
+        value = float(item.get("ts") or item.get("created_at") or 0)
+        return value if math.isfinite(value) else 0.0
     except (TypeError, ValueError, OverflowError):
         return 0.0
 
 
 def _rank_relevant_items(items: list[dict], query: str | None, limit: int) -> list[dict]:
-    """Rank this character's own saved items against the current turn using Persian-aware BM25."""
-    items = [item for item in items if isinstance(item, dict) and str(item.get("text") or "").strip()]
-    if not items or not query or not _evidence.needs_recall(query):
+    """Rank character-local saved items using the shared Persian-aware BM25 API."""
+    items = [
+        item for item in items
+        if isinstance(item, dict) and str(item.get("text") or "").strip()
+    ]
+    if not items or not query or not _evidence.needs_recall(query) or limit <= 0:
         return []
-
     try:
-        query_tokens = _evidence.tokens(query)
-        if not query_tokens:
-            return []
-        docs = {
-            str(index): _evidence.tokens(item.get("text") or "")
-            for index, item in enumerate(items)
-        }
-        scores = _evidence._bm25(docs, query_tokens)
-    except Exception:                                              # noqa: BLE001 - recall is optional; stored memory remains intact
+        indices = _evidence.rank_texts(
+            [str(item.get("text") or "") for item in items],
+            query,
+            min_ratio=_evidence.MIN_BM25_RATIO,
+        )
+        return [items[index] for index in indices[:max(0, int(limit))] if 0 <= index < len(items)]
+    except Exception:  # noqa: BLE001 - recall is optional; the stored memory remains intact
+        _log.debug("Persona-memory relevance ranking failed", exc_info=True)
         return []
-    if not scores:
-        return []
-
-    best = max(scores.values())
-    threshold = best * _evidence.MIN_BM25_RATIO
-    ranked = sorted(
-        (index for index, score in scores.items() if score >= threshold),
-        key=lambda index: (
-            scores[index],
-            _memory_item_timestamp(items[int(index)]),
-        ),
-        reverse=True,
-    )
-    return [items[int(index)] for index in ranked[:max(1, int(limit))]]
 
 
 def _select_persona_facts(facts: list[dict], query: str | None) -> list[dict]:
-    """Keep identity facts available, but retrieve other facts by current-topic relevance."""
+    """Keep identity facts available, but retrieve all other facts by current-topic relevance."""
     if not query:
         return list(facts[-FACTS_SHOWN:])
-
     pinned = sorted(
         (item for item in facts if item.get("kind") in ("name", "nick", "pref_len")),
         key=_memory_item_timestamp,
         reverse=True,
     )[:3]
-    pinned_ids = {item.get("id") for item in pinned}
-    remaining = [item for item in facts if item.get("id") not in pinned_ids]
+    pinned_objects = {id(item) for item in pinned}
+    remaining = [item for item in facts if id(item) not in pinned_objects]
     recalled = _rank_relevant_items(remaining, query, FACTS_SHOWN - len(pinned))
     return pinned + recalled
 
 
 def _fit_memory_block(header: str, parts: list[str], budget: int) -> str:
-    """Keep complete memory lines within budget; never cut a fact or sentence mid-text."""
-    budget = max(0, int(budget))
-    if not header or len(header) > budget:
+    """Fit complete lines and continue to later sections when one section is oversized."""
+    try:
+        budget = max(0, int(budget))
+    except (TypeError, ValueError, OverflowError):
+        return ""
+    if budget <= 0 or not header or len(header) > budget:
         return ""
     selected = [header]
     used = len(header)
@@ -651,21 +644,22 @@ def _fit_memory_block(header: str, parts: list[str], budget: int) -> str:
             used += separator + len(part)
             continue
 
-        # A section may contain several independent bullets. Include only whole
-        # lines that fit, starting with its heading; skip an overlong line rather
-        # than returning a truncated or misleading memory fragment.
         lines = part.splitlines()
-        partial = []
-        for line in lines:
-            candidate = "\n".join(partial + [line])
-            if used + separator + len(candidate) > budget:
-                break
-            partial.append(line)
-        if partial:
-            fragment = "\n".join(partial)
+        if not lines:
+            continue
+        heading = lines[0]
+        if used + separator + len(heading) > budget:
+            continue
+        fitting = [heading]
+        for line in lines[1:]:
+            candidate = "\n".join(fitting + [line])
+            if used + separator + len(candidate) <= budget:
+                fitting.append(line)
+        # Never emit a bare section heading without at least one complete item.
+        if len(fitting) > 1:
+            fragment = "\n".join(fitting)
             selected.append(fragment)
             used += separator + len(fragment)
-        break
     return "\n\n".join(selected)
 
 
@@ -678,7 +672,7 @@ def digest(older: list[dict], query: str | None = None) -> list[str]:
         text = " ".join(str(item.get("content") or "").split())
         text = re.sub(r"---\s*فایل ضمیمه.*", "[attached a file]", text)
         if len(text) >= 8:
-            lines.append(text[:100] + ("…" if len(text) > 100 else ""))
+            lines.append(text[:240] + ("…" if len(text) > 240 else ""))
     if query:
         ranked = _rank_relevant_items([{"text": line, "ts": index} for index, line in enumerate(lines)], query, DIGEST_LINES)
         return [item["text"] for item in ranked]
@@ -697,54 +691,43 @@ HEADER_RELEVANT = ("Kira's own memory (real, stored on this computer; it stays t
 
 
 def build_block(older: list[dict] | None = None, voice_samples: bool = True, now=None, query: str | None = None, budget: int | None = None) -> str:
-    """Build a compact memory block using current-topic recall and character-local stores.
-
-    Kira continues to use her evidence-backed index. Ren, Mika and custom characters
-    retrieve only from their own existing persona store using the same Persian-aware
-    lexical ranking; no cross-character facts or replacement database are introduced.
-    """
+    """Build a compact memory block ordered by relevance and importance."""
     now = time.time() if now is None else now
-    budget = int(budget or BLOCK_BUDGET)
+    budget = BLOCK_BUDGET if budget is None else int(budget)
+    if budget <= 0:
+        return ""
+
+    character_id = _current_character.get()
+    character_name = character_id.title()
     relevant = None
-    if query is not None and _current_character.get() == "kira":
+    if query is not None and character_id == "kira":
         try:
             relevant = _evidence.build_block(query, budget=max(300, int(budget * 0.45)))
-        except Exception:                                              # noqa: BLE001 - never let the index break the prompt
+        except Exception:  # noqa: BLE001 - evidence recall must never block chat
+            _log.debug("Evidence-memory lookup failed; using persona fallback", exc_info=True)
             relevant = None
 
     with _lock:
         data = _load()
 
     parts = []
-    voice = data["voice"][-10:][::-1][::2][:VOICE_SHOWN]
-    if voice and voice_samples:
-        samples = "\n".join(f"- {value}" for value in reversed(voice))
-        voice_name = "Kira" if _current_character.get() == "kira" else _current_character.get().title()
-        parts.append(
-            f"How {voice_name} really sounds (their own recent lines). Match this rhythm, slang, attitude and length in "
-            "your reply; do not copy the sentences:\n" + samples
-        )
-
-    character_id = _current_character.get()
-    character_name = character_id.title()
-    if relevant is None:
+    # An empty ready index is not proof that the editable legacy store has no match.
+    if relevant:
+        parts.append(relevant)
+    else:
         selected_facts = _select_persona_facts(data["facts"], query)
         if selected_facts:
             heading = "What she knows about him:" if character_id == "kira" else f"What {character_name} knows about the user:"
             parts.append(heading + "\n" + "\n".join(f"- {item['text']}" for item in selected_facts))
-    elif relevant:
-        parts.append(relevant)
 
-    habits = habit_lines(now)
-    if habits:
-        heading = "The relationship and his habits:\n" if character_id == "kira" else "The user's observed habits:\n"
-        parts.append(heading + "\n".join(f"- {line}" for line in habits))
-
-    moments = [item for item in data["moments"] if not _expired(item, now) and (voice_samples or item.get("kind") != "joke")]
-    if query is not None:
-        moments = _rank_relevant_items(moments, query, MOMENTS_SHOWN)
-    else:
-        moments = moments[-MOMENTS_SHOWN:]
+    moments = [
+        item for item in data["moments"]
+        if not _expired(item, now) and (voice_samples or item.get("kind") != "joke")
+    ]
+    moments = (
+        _rank_relevant_items(moments, query, MOMENTS_SHOWN)
+        if query is not None else moments[-MOMENTS_SHOWN:]
+    )
     if moments:
         heading = "Moments and things he told her" if character_id == "kira" else f"Moments {character_name} remembers"
         parts.append(
@@ -763,12 +746,33 @@ def build_block(older: list[dict] | None = None, voice_samples: bool = True, now
             + "\n".join(f"- {item['text']}" for item in summaries)
         )
 
-    # Older chat rows have no character ID in the legacy SQLite schema; never
-    # attribute that shared history to Ren/Mika.
+    # Legacy chat rows have no character id; never attribute their digest to another character.
     older_lines = digest(older or [], query=query) if character_id == "kira" else []
     if older_lines:
         heading = "Earlier topics he raised" if character_id == "kira" else f"Earlier topics the user raised with {character_name}"
         parts.append(heading + " (older than the messages below):\n" + "\n".join(f"- {line}" for line in older_lines))
+
+    # Style samples and observational habits have lower priority than facts and events.
+    if voice_samples:
+        voice = data["voice"][-10:][::-1][::2][:VOICE_SHOWN]
+        if voice:
+            samples = "\n".join(f"- {value}" for value in reversed(voice))
+            voice_name = "Kira" if character_id == "kira" else character_name
+            parts.append(
+                f"How {voice_name} really sounds (their own recent lines). Match this rhythm, slang, attitude and length in "
+                "your reply; do not copy the sentences:\n" + samples
+            )
+
+    habits = habit_lines(now)
+    if query is not None:
+        habits = [
+            item["text"] for item in _rank_relevant_items(
+                [{"text": line} for line in habits], query, 2
+            )
+        ]
+    if habits:
+        heading = "The relationship and his habits:" if character_id == "kira" else "The user's observed habits:"
+        parts.append(heading + "\n" + "\n".join(f"- {line}" for line in habits))
 
     if not parts:
         return ""
@@ -781,4 +785,3 @@ def build_block(older: list[dict] | None = None, voice_samples: bool = True, now
             "anything not listed here is not remembered and must not be guessed."
         )
     return _fit_memory_block(header, parts, budget)
-
