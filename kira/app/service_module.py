@@ -4,8 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from ..app.dependency_container import DependencyContainer
-from ..app.event_bus import EventBus
+from ..core.interfaces.application_module import DependencyRegistry, ModuleEventBus
 
 
 class ServiceModule:
@@ -19,10 +18,10 @@ class ServiceModule:
             raise TypeError("service factory must be callable")
         self.service_key = key
         self.factory = factory
-        self._container: DependencyContainer | None = None
+        self._container: DependencyRegistry | None = None
         self._instance: Any | None = None
 
-    def register(self, container: DependencyContainer, event_bus: EventBus) -> None:
+    def register(self, container: DependencyRegistry, event_bus: ModuleEventBus) -> None:
         del event_bus  # Services receive EventBus only when their contract requires it.
         if self._container is not None:
             raise RuntimeError(f"Service module is already registered: {self.service_key}")
