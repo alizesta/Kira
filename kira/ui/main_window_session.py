@@ -65,7 +65,7 @@ class SessionController(WindowFeatureController):
         for setter, key in self.context.state._tr:
             setter(self.t(key))
         self.context.views.input.setPlaceholderText(self.t("input_ph"))
-        if hasattr(self, "_menu_actions"):
+        if hasattr(self.context.state, "_menu_actions"):
             for action, key in zip(self.context.state._menu_actions, self.context.views.tab_keys):
                 action.setText(self.t(key))
         self.window.setWindowTitle(f"Project {self.context.services.settings['assistant_name']}  {VERSION}")
@@ -82,11 +82,11 @@ class SessionController(WindowFeatureController):
             self.context.views.preferences_page.retranslate()
         if hasattr(self.context.views, "voice_page"):
             self.context.views.voice_page.retranslate()
-        if hasattr(self, "appearance_page"):
+        if hasattr(self.context.views, "appearance_page"):
             self.context.views.appearance_page.retranslate()
-        if hasattr(self, "character_page"):
+        if hasattr(self.context.views, "character_page"):
             self.context.views.character_page.retranslate()
-        if hasattr(self, "_menu_actions"):
+        if hasattr(self.context.state, "_menu_actions"):
             for action, key in zip(self.context.state._menu_actions, self.context.views.tab_keys):
                 action.setText(self.t(key))
 
@@ -151,7 +151,7 @@ class SessionController(WindowFeatureController):
             self.handle_chat_link(url)
             return
         if url.scheme() == "kira-code":
-            code_chat = getattr(self, "code_chat", None)
+            code_chat = getattr(self.context.views, "code_chat", None)
             if code_chat is not None:
                 code_chat.on_link(url)
             return
@@ -371,7 +371,7 @@ class SessionController(WindowFeatureController):
         phase, info = sess.badge
         self.feature_controller("runtime").set_badge(phase if sess.busy else "idle", info if sess.busy else self.context.session.client.preview_route())
         self.refresh_tab_buttons()
-        if hasattr(self, "character_page"):
+        if hasattr(self.context.views, "character_page"):
             self.feature_controller("character_settings").refresh_character_choices()
             self.feature_controller("character_settings").refresh_character_card(cid)
         self.feature_controller("character_settings").refresh_personality_controls()
