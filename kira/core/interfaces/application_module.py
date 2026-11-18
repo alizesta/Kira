@@ -1,7 +1,7 @@
 """Lifecycle contract implemented by independently managed application modules."""
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 
 
@@ -21,6 +21,28 @@ class DependencyRegistry(Protocol):
     def unregister(self, key: str) -> None: ...
 
 
+class PublishedEvent(Protocol):
+    """Immutable event envelope accepted by the shared application EventBus."""
+
+    event_type: Any
+    event_id: str
+    timestamp: Any
+    session_id: str | None
+    request_id: str | None
+    payload: Mapping[str, Any]
+    metadata: Mapping[str, Any]
+
+
+class EventPublicationReport(Protocol):
+    """Result returned after a typed event publication is dispatched."""
+
+    event_name: str
+    sequence: int
+    delivered: int
+    failures: tuple[Any, ...]
+    queued: bool
+
+
 class ModuleEventBus(Protocol):
     """Notification operations exposed to application modules."""
 
@@ -34,7 +56,7 @@ class ModuleEventBus(Protocol):
 
     def publish(self, event_name: str, **payload: Any) -> Any: ...
 
-    def publish_event(self, event: Any) -> Any: ...
+    def publish_event(self, event: PublishedEvent) -> EventPublicationReport: ...
 
 
 class ApplicationModule(Protocol):
