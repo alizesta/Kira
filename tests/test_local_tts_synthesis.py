@@ -71,6 +71,9 @@ class LocalPiperSynthesisTests(unittest.TestCase):
         self.piper_patch = mock.patch.dict(sys.modules, {"piper": _fake_piper_module()})
         self.piper_patch.start()
         self.addCleanup(self.piper_patch.stop)
+        self.ezafe_patch = mock.patch("kira.persian_ezafe.add_persian_ezafe", side_effect=lambda text: text)
+        self.ezafe_patch.start()
+        self.addCleanup(self.ezafe_patch.stop)
         self.addCleanup(self._restore_state)
 
     def _model_path(self, name):

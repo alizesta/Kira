@@ -2,6 +2,7 @@ import unittest
 from pathlib import Path
 
 from kira import characters
+from kira.character.traits import BASE_TRAITS
 from kira.characters.kira import PROFILE as KIRA_PROFILE
 from kira.personas import prompt_for
 
@@ -105,7 +106,7 @@ class CharacterProfilesTests(unittest.TestCase):
     def test_builtin_character_traits_are_distinct_and_overrides_are_scoped(self):
         profiles = characters.CHARACTERS
         for cid in ("kira", "ren", "mika"):
-            self.assertEqual(set(profiles[cid]["traits"]), set(characters.BASE_TRAITS))
+            self.assertEqual(set(profiles[cid]["traits"]), set(BASE_TRAITS))
         self.assertNotEqual(profiles["kira"]["traits"], profiles["ren"]["traits"])
         self.assertNotEqual(profiles["ren"]["traits"], profiles["mika"]["traits"])
         prompt = characters.prompt_for({
