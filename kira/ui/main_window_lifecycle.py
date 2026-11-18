@@ -25,7 +25,7 @@ from .main_window_lifecycle_support import (
 from .window_feature_controller import WindowFeatureController
 
 
-class LifecycleMixin(WindowFeatureController):
+class LifecycleController(WindowFeatureController):
     def showEvent(self, event):
         self.qt_super_event("showEvent", event)
         winfx.apply_effect(self.winId(), self._effect)
@@ -329,3 +329,7 @@ class LifecycleMixin(WindowFeatureController):
             self.set_status("st_ok" if model_installed(detail, m) else "st_nomodel", m=m)
         else:
             self.set_status("st_off")
+
+
+# Backward-compatible import name for callers migrating from mixin composition.
+LifecycleMixin = LifecycleController
