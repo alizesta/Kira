@@ -682,6 +682,23 @@ class RuntimeMixin:
         """Drop scheduled/pending messages; the service releases its injected registry."""
         self.chat_application_service.dispose()
 
+    def _dispose_window_feature_services(self) -> bool:
+        """Release per-window application services after their Qt workers have drained."""
+        voice_service = getattr(self, "voice_application_service", None)
+        if voice_service is not None:
+            try:
+                if not voice_service.dispose():
+                    return False
+            except Exception:
+                return False
+        vision_service = getattr(self, "vision_application_service", None)
+        if vision_service is not None:
+            try:
+                vision_service.reset()
+            except Exception:
+                return False
+        return True
+
     def closeEvent(self, event):
         if (getattr(self, "tray", None) is not None and self.settings.get("close_to_tray")
                 and not getattr(self, "_quitting", False)):
@@ -691,6 +708,10 @@ class RuntimeMixin:
         if getattr(self, "_closing", False):
             if self._running_background_workers():
                 event.ignore()
+                return
+            if not self._dispose_window_feature_services():
+                event.ignore()
+                QTimer.singleShot(100, self.close)
                 return
             for session in self.session_application_service.list_sessions():
                 session.busy = False
@@ -725,7 +746,10 @@ class RuntimeMixin:
                 sess.client.cancel()
             if sess.timer is not None:
                 sess.timer.stop()
-        self._game_poll_timer.stop()
+        for timer_name in ("wake_timer", "_game_poll_timer", "_game_capture_timer", "_mood_ui_timer"):
+            timer = getattr(self, timer_name, None)
+            if timer is not None:
+                timer.stop()
         self._set_game_vision_capture(False)
         self._stop_game_audio_listener()
         self.game_mode.set_enabled(False)
@@ -756,6 +780,10 @@ class RuntimeMixin:
             # Cover the race where a worker finishes while its finished slot is connected.
             if not self._running_background_workers():
                 QTimer.singleShot(0, self.close)
+            return
+        if not self._dispose_window_feature_services():
+            event.ignore()
+            QTimer.singleShot(100, self.close)
             return
         for session in self.session_application_service.list_sessions():
             session.busy = False

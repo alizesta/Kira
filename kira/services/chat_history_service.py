@@ -32,6 +32,15 @@ class SqliteChatHistoryService:
     def init_db(self) -> list[str]:
         return self._persistence.init_db()
 
+    def start(self) -> list[str]:
+        """Initialize durable storage before dependent application features start."""
+        return self.init_db()
+
+    def stop(self) -> int:
+        """Flush queued writes before the persistence module is released."""
+        flush = getattr(self._persistence, "flush_pending", None)
+        return int(flush() or 0) if callable(flush) else 0
+
     def add_message(self, role: str, content: str, character_id: str | None = None, **options) -> bool:
         return self._persistence.add_message(role, content, character_id, **options)
 

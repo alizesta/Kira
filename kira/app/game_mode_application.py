@@ -30,6 +30,23 @@ class GameModeApplicationService:
 
     def __init__(self) -> None:
         self._game_audio_alerts: dict[str, tuple[float, str]] = {}
+        self._active = True
+        self._disposed = False
+
+    def start(self) -> None:
+        if self._disposed:
+            raise RuntimeError("GameModeApplicationService has been disposed")
+        self._active = True
+
+    def stop(self) -> None:
+        self._active = False
+        self._game_audio_alerts.clear()
+
+    def dispose(self) -> None:
+        if self._disposed:
+            return
+        self.stop()
+        self._disposed = True
 
     @staticmethod
     def normalize_profile(profile: str | None) -> str:
@@ -72,7 +89,9 @@ class GameModeApplicationService:
     ) -> GameAudioAlert | None:
         """Apply game-mode permission, importance, category and cooldown policy."""
         if (
-            not enabled
+            not self._active
+            or self._disposed
+            or not enabled
             or not self.can_emit_automatic_game_audio_alerts(profile)
             or busy
             or speaking

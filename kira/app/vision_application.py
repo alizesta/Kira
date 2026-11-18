@@ -20,6 +20,8 @@ class VisionApplicationService:
         self.game_mode_service = game_mode_service
         self.frame_gate = FrameGate(policy_for(mode))
         self._last_note = ""
+        self._active = True
+        self._disposed = False
 
     @property
     def last_note(self) -> str:
@@ -29,15 +31,35 @@ class VisionApplicationService:
     def last_note(self, value: str) -> None:
         self._last_note = str(value or "")
 
+    def start(self) -> None:
+        if self._disposed:
+            raise RuntimeError("VisionApplicationService has been disposed")
+        self._active = True
+
+    def stop(self) -> None:
+        self._active = False
+        self.reset()
+
+    def dispose(self) -> None:
+        if self._disposed:
+            return
+        self.stop()
+        self._disposed = True
+
     def set_mode(self, mode: str):
         """Set a supported cadence; unknown values resolve to the economic policy."""
+        if self._disposed:
+            raise RuntimeError("VisionApplicationService has been disposed")
         policy = policy_for(mode)
         self.frame_gate.set_policy(policy)
         return policy
 
     def capture_allowed(self, enabled: bool, profile: str | None) -> bool:
         """Require an explicit Game Mode opt-in and a profile that permits capture."""
-        return bool(enabled) and self.game_mode_service.can_capture_vision(profile)
+        return (
+            self._active and not self._disposed and bool(enabled)
+            and self.game_mode_service.can_capture_vision(profile)
+        )
 
     def should_analyze(
         self,
@@ -77,7 +99,10 @@ class VisionApplicationService:
         return self.frame_gate.policy
 
     def accept_frame(self, jpeg: bytes, visual_sample: bytes | None = None) -> bool:
-        return self.frame_gate.accept(jpeg, visual_sample=visual_sample)
+        return (
+            self._active and not self._disposed
+            and self.frame_gate.accept(jpeg, visual_sample=visual_sample)
+        )
 
     def mark_latency(self, milliseconds: int) -> None:
         self.frame_gate.mark_latency(milliseconds)

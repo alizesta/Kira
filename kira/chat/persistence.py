@@ -41,6 +41,7 @@ class ChatRepository(Protocol):
     @last_error.setter
     def last_error(self, value: str | None) -> None: ...
     def init_db(self) -> list[str]: ...
+    def flush_pending(self) -> int: ...
     def create_conversation(self, character_id=None, title="", metadata=None,
                             conversation_id=None) -> dict[str, Any]: ...
     def get_or_create_conversation(self, character_id=None) -> dict[str, Any]: ...
@@ -565,6 +566,22 @@ class SqliteChatRepository:
             for row in self._pending:
                 self._ensure_conversation_row(con, row[3], row[2])
         self._pending.clear()
+
+    def flush_pending(self) -> int:
+        """Persist every queued message before application shutdown."""
+        with self._lock:
+            pending_count = len(self._pending)
+            if not pending_count:
+                return 0
+            try:
+                self._flush_pending_locked()
+            except (sqlite3.Error, OSError, PersistenceError) as exc:
+                self._note_error(exc)
+                raise PersistenceError(
+                    f"Could not flush {pending_count} pending chat messages: {exc}"
+                ) from exc
+            self.last_error = None
+            return pending_count
 
     @staticmethod
     def _conversation_record(row):
@@ -1465,6 +1482,9 @@ class ChatPersistence:
 
     def init_db(self) -> list[str]:
         return self._repository.init_db()
+
+    def flush_pending(self) -> int:
+        return self._invoke(self._repository.flush_pending)
 
     def create_conversation(self, character_id=None, title="", metadata=None, conversation_id=None):
         return self._invoke(self._repository.create_conversation, character_id, title, metadata, conversation_id)

@@ -59,6 +59,27 @@ class VoiceApplicationService(VoiceService):
         self.listener = None
         self.stopping_listener = None
         self.restart_after_stop = False
+        self._disposed = False
+
+    def start(self) -> None:
+        if self._disposed:
+            raise RuntimeError("VoiceApplicationService has been disposed")
+
+    def stop(self) -> None:
+        self.stop_all()
+
+    def dispose(self) -> bool:
+        """Stop audio and release the listener only after its worker has exited."""
+        if self._disposed:
+            return True
+        self.stop_all()
+        if self._is_running(self.listener) or self._is_running(self.stopping_listener):
+            return False
+        self.listener = None
+        self.stopping_listener = None
+        self.restart_after_stop = False
+        self._disposed = True
+        return True
 
     @staticmethod
     def interpret_transcript(
@@ -94,6 +115,8 @@ class VoiceApplicationService(VoiceService):
 
     def start_recording(self) -> None:
         """Start one listener; defer replacement until the prior QThread has fully exited."""
+        if self._disposed:
+            raise RuntimeError("VoiceApplicationService has been disposed")
         if self.listener is not None:
             self.stop_recording()
         previous = self.stopping_listener
