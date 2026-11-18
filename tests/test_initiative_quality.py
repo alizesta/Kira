@@ -509,6 +509,24 @@ class InitiativeSessionGuardTests(unittest.TestCase):
         ))
 
 
+class InitiativeIntegrationImportTests(unittest.TestCase):
+    def test_session_controller_imports_every_initiative_dependency_it_uses(self):
+        source = Path(__file__).resolve().parents[1] / "kira" / "ui" / "main_window_session.py"
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        imported = set()
+        for node in tree.body:
+            if isinstance(node, ast.ImportFrom) and node.module == "main_window_session_support":
+                imported.update(alias.asname or alias.name for alias in node.names)
+
+        required = {
+            "InitiativeEngine",
+            "build_checkin_message",
+            "initiative_history_state",
+            "persona_memory",
+        }
+        self.assertTrue(required.issubset(imported), sorted(required - imported))
+
+
 class InitiativeMessageTests(unittest.TestCase):
     def test_persian_event_message_uses_the_remembered_quote_not_storage_label(self):
         text = build_checkin_message(
