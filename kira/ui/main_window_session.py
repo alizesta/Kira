@@ -198,7 +198,7 @@ class SessionController(WindowFeatureController):
         try:
             self.context.services.mood_service.set_character_traits(cid, self.character_traits(cid, profile))
         except Exception:                                   # noqa: BLE001 - mood is a bonus, never block the UI
-            pass
+            _log.debug("Could not synchronize character mood traits", exc_info=True)
 
     @staticmethod
     def _schedule_chat_callback(callback):
@@ -353,7 +353,7 @@ class SessionController(WindowFeatureController):
             try:
                 self.context.services.voice_application_service.stream_reset()
             except Exception:                           # noqa: BLE001
-                pass
+                _log.exception("Could not reset streamed voice while switching characters")
             self.feature_controller("attachments_vision").clear_upload_tiles()
         self.context.state.front = self.context.state.cur = sess
         sess.unread = False
@@ -362,7 +362,7 @@ class SessionController(WindowFeatureController):
         try:
             self.context.services.mood_service.set_active_character(cid, self.character_traits(cid, self.context.services.character_service.all_profiles(self.context.services.settings).get(cid)))
         except Exception:                               # noqa: BLE001 - never block switching tabs
-            pass
+            _log.debug("Could not activate character mood runtime", exc_info=True)
         self.context.views.chat_stack.setCurrentWidget(sess.view)
         if old is not sess:
             self.context.views.input.setText(sess.draft)
@@ -388,7 +388,7 @@ class SessionController(WindowFeatureController):
             try:
                 save_settings(self.context.services.settings)
             except Exception:                           # noqa: BLE001 - never block switching tabs
-                pass
+                _log.exception("Could not persist active character selection")
 
     def apply_chat_theme(self):
         """Glass + neon colours of the chat in front (same glass, the character's own colours)."""
@@ -420,6 +420,7 @@ class SessionController(WindowFeatureController):
             )
         except Exception:
             # Leave the Session unloaded so the next synchronization retries history.
+            _log.exception("Could not restore persisted chat history")
             return False
         shown = 0
         for item in history:
