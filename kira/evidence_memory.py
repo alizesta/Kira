@@ -354,6 +354,7 @@ def record_user_message(content, facts=None, moments=None, now=None) -> int:
                 stored += 1 if fid else 0
             _prune(con)
     except Exception:                                                  # noqa: BLE001
+        _log.warning("Evidence-memory ingestion failed; some user facts may not have been indexed", exc_info=True)
         return stored
     if stored and _embedding_config():
         schedule_vector_backfill()
@@ -593,7 +594,7 @@ def _backfill_once() -> None:
         if _embedding_config():
             schedule_vector_backfill()
     except Exception:                                                  # noqa: BLE001 - the index can be rebuilt later; never disturb the app
-        pass
+        _log.warning("Evidence-memory history backfill failed; it will retry on a later startup", exc_info=True)
     finally:
         with _lock:
             _backfill_running = False
@@ -941,7 +942,8 @@ def set_writer_cursor(message_id) -> None:
         with _lock, _db() as con:
             _meta_set(con, "writer_upto", int(message_id))
     except Exception:                                                  # noqa: BLE001
-        pass
+        _log.exception("Could not persist the evidence-memory writer cursor")
+        raise
 
 
 def interest_line(max_chars=140, query=None) -> str:
@@ -1027,6 +1029,7 @@ def build_block(query, budget=1500):
             if _meta_get(con, "backfilled") != "1":
                 return None
     except Exception:                                                  # noqa: BLE001
+        _log.warning("Evidence-memory index is unavailable; falling back to persona memory", exc_info=True)
         return None
     facts = retrieve(query)
     body = render(facts, max(200, budget - 160))
@@ -1079,7 +1082,7 @@ def budget_for(settings, router=None) -> int:
                 cpt = CHARS_PER_TOKEN
             return max(800, min(DEFAULT_BUDGET, int(num_ctx * float(cpt) * 0.10)))
     except Exception:                                                  # noqa: BLE001
-        pass
+        _log.debug("Could not calculate route-specific memory budget; using the default", exc_info=True)
     return DEFAULT_BUDGET
 
 
