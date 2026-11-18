@@ -2,6 +2,8 @@
 import unittest
 from dataclasses import FrozenInstanceError
 
+from kira.core.interfaces.conversation_lifecycle import ConversationLifecycleApplicationPort
+from kira.chat.conversation_lifecycle import ConversationLifecycleService
 from kira.domain.chat import (
     ApplicationEventKind,
     ChatApplicationEvent,
@@ -76,6 +78,17 @@ class ChatDomainContractTests(unittest.TestCase):
         self.assertEqual(result.character_id, "mika")
         with self.assertRaises(FrozenInstanceError):
             request.character_id = "ren"
+
+    def test_conversation_lifecycle_application_service_implements_core_port(self):
+        class Repository:
+            def get_conversation(self, conversation_id): return None
+            def list_conversations(self, character_id=None): return []
+            def update_conversation_lifecycle(self, changes): return True
+            def delete_conversation(self, conversation_id, *, expected_status=None): return 0
+        class Publisher:
+            def publish(self, event_type, **kwargs): return None
+        service = ConversationLifecycleService(Repository(), Publisher())
+        self.assertIsInstance(service, ConversationLifecycleApplicationPort)
 
     def test_submission_result_contract_has_expected_admission_states(self):
         self.assertEqual(
