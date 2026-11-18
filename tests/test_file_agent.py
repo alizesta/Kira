@@ -121,6 +121,24 @@ class FileAgentTests(unittest.TestCase):
         self.assertIn("فهرست ممکن است ناقص باشد", result)
         self.assertIn("1 مورد ناموفق", result)
 
+    def test_list_folder_discloses_scandir_iterator_failure(self):
+        (self.root / "visible.txt").write_text("visible", encoding="utf-8")
+        real_scandir = os.scandir
+
+        def failing_scandir(path):
+            iterator = real_scandir(path)
+            try:
+                yield next(iterator)
+                raise PermissionError("scan interrupted")
+            finally:
+                iterator.close()
+
+        with mock.patch.object(fileops.os, "scandir", side_effect=failing_scandir):
+            result = fileops.FileTools(self.policy).list_folder({"path": str(self.root)})
+
+        self.assertIn("فهرست ممکن است ناقص باشد", result)
+        self.assertIn("1 مورد ناموفق", result)
+
     def test_search_reports_skipped_inaccessible_folders(self):
         blocked = self.root / "blocked"
         blocked.mkdir()
