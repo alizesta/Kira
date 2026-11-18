@@ -185,24 +185,44 @@ def _resolve_tts_model_path(model_path="") -> tuple[Path, str]:
 
 
 def _load_tts_voice(model_path=""):
-    """Load and cache one active Piper voice, bounded to avoid retaining multiple ONNX models."""
+    """Load one active Piper voice and guard against unsafe two-model memory peaks."""
     global _tts, _tts_model_path, _tts_model_label, _tts_model_signature
+
     path, label = _resolve_tts_model_path(model_path)
     key = str(path)
     stat = path.stat()
     signature = (key, stat.st_size, stat.st_mtime_ns)
-    if _tts is not None and _tts_model_signature == signature: return _tts
+
+    if _tts is not None and _tts_model_signature == signature:
+        return _tts
+
     if _tts is not None:
         try:
             import psutil
-            required=max(256*1024*1024,stat.st_size*3)
-            available=int(psutil.virtual_memory().available)
-            if available<required:
-                raise MemoryError(f"Insufficient memory to switch Piper voice safely ({available} available; approximately {required} required)")
-        except ImportError: pass
+        except ImportError:
+            psutil = None
+
+        if psutil is not None:
+            # Piper's ONNX runtime can use several times the serialized model
+            # size. Keep the current voice resident unless a conservative budget
+            # indicates that the replacement can be loaded without exhausting RAM.
+            required_bytes = max(256 * 1024 * 1024, stat.st_size * 3)
+            available_bytes = int(psutil.virtual_memory().available)
+            if available_bytes < required_bytes:
+                raise MemoryError(
+                    "Insufficient memory to switch Piper voice safely "
+                    f"({available_bytes} available; approximately "
+                    f"{required_bytes} required)"
+                )
+
     from piper import PiperVoice
-    voice=PiperVoice.load(str(path))
-    _tts,_tts_model_path,_tts_model_label,_tts_model_signature=voice,key,label,signature
+
+    voice = PiperVoice.load(str(path))
+    # Swap only after successful loading so a failed switch preserves the old voice.
+    _tts = voice
+    _tts_model_path = key
+    _tts_model_label = label
+    _tts_model_signature = signature
     return voice
 
 
