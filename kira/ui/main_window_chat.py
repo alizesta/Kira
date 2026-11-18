@@ -353,7 +353,7 @@ class ChatMixin:
         gem = self.web_search_service.gemini_credentials(self.settings)
         self.web_test_btn.setEnabled(False)
         self.web_test_btn.setText("در حال آزمایش (چند ثانیه)…")
-        self._web_test_worker = TaskWorker(lambda: websearch.diagnose(key, depth, self.web_search_service.WEB_TEST_QUERY, gem))
+        self._web_test_worker = TaskWorker(lambda: self.web_search_service.diagnose(key, depth, self.web_search_service.WEB_TEST_QUERY, gem))
         self._web_test_worker.done.connect(self.on_web_test_done)
         self._web_test_worker.start()
 
@@ -374,7 +374,7 @@ class ChatMixin:
                                 + "\nکیرا به همین ترتیب امتحان می‌کند و از اولین موتور سالم استفاده می‌شود.")
 
     def add_sources(self, found):
-        html = sources_html(found.get("results"), f"منابع ({websearch.ENGINE_NAMES.get(found.get('engine'), 'وب')}) · جست‌وجو برای «{found.get('query', '')}»")
+        html = sources_html(found.get("results"), f"منابع ({self.web_search_service.engine_label(found.get('engine'))}) · جست‌وجو برای «{found.get('query', '')}»")
         a = found.get("assessment") or {}
         if html and a.get("phrase"):
             text = self.web_search_service.assessment_text(a)
@@ -395,7 +395,7 @@ class ChatMixin:
             if result.get("note"):
                 self.add_chat("system", "🌐 " + result["note"])
             self._turn_extra = self.web_search_service.merge_search_content(
-                base, images, websearch.format_block(result),
+                base, images, self.web_search_service.format_evidence(result),
                 image_search=bool(getattr(self, "_image_search_turn", False)),
             )
             self.status.setText(f"{'🔎 Google' if result.get('engine') == 'google' else ('🦆 DuckDuckGo' if result.get('engine') == 'ddg' else '🌐 Tavily')}: {len(result['results'])} منبع پیدا شد؛ در حال پاسخ دادن…")
@@ -413,7 +413,7 @@ class ChatMixin:
             # no usable web result: do not let the model improvise from memory; Kira says she does not know
             self.add_chat("system", f"🌐 جست‌وجوی وب انجام نشد: {result}")
             self._turn_extra = None
-            self.reply_local(websearch.failure_reply(result), "sad")
+            self.reply_local(self.web_search_service.failure_reply(result), "sad")
             self.finish_request(None)
             self._send_next_pending()
             return
@@ -563,8 +563,8 @@ class ChatMixin:
             body_parser=body_ctl.parse_user_command,
             body_is_active=self.body_active,
             body_handler=self.run_body,
-            web_parser=websearch.plan,
-            image_parser=websearch.image_command,
+            web_parser=self.web_search_service.parse_web_command,
+            image_parser=self.web_search_service.parse_image_command,
             task_control_parser=parse_tool_task_control,
             task_running_checker=self.tool_agent.is_task_running,
             tool_agent=self.tool_agent,
