@@ -2,9 +2,9 @@
 
 **Snapshot:** 2026-11-18  
 **Base branch:** `new-main`  
-**Base SHA:** `101361f60bb19a45484cbcdb7b52584eb3da0111`  
+**Base SHA:** `7caa6a3ee8cb2a68d80a3015a9134d42cf89d6e3`  
 **Input:** TASK 015 audit plus post-audit merged TASK 013+014 integration PR #48.  
-**Execution policy:** Documentation only. No tests, compile/import checks or application execution were run.
+**Execution policy:** Architecture implementation delta on `new-main`. Source tests were added; runtime execution remains unverified in this environment.
 
 ## 1. Roadmap principles
 
@@ -31,9 +31,9 @@ Severity reflects architectural impact and evidence, not an assertion that a run
 |---|---|---|---|---|---|---|
 | AD-01 | **High** | The former 5,634-line `oldmain.py` and its 322 MainWindow methods have been removed from the runtime path and split into eight feature-oriented UI mixins. Web Search query/provider/request/evidence policy is now extracted to `WebSearchApplicationService`; MainWindow still coordinates other application policy across capabilities. | `kira/ui/main_window.py`, `kira/ui/main_window_*.py` | Application/UI architecture | The file-level monolith is removed and Web Search policy now has an injected application-service owner, but feature policy is not yet fully owned by independent application services/controllers. | Continue moving policy from the mixins into existing domain/application services and inject narrow contracts through bootstrap. Keep MainWindow as UI composition and intent translation only. |
 | AD-02 | **Medium** | ModuleManager lifecycle engine exists, but bootstrap currently registers only Memory, Mood, Character Profile and Chat History service modules. WebSearchApplicationService is injected directly but is not independently lifecycle-managed; Chat/Voice/Avatar/Coding Agent/Provider are also not independently registered. | `kira/app/bootstrap.py`, `module_manager.py`, `service_module.py` | Bootstrap / capability owners | The lifecycle manager does not yet govern the wider capability set; enable/disable and shutdown ownership are uneven. | Register a feature only when it has a stable lifecycle contract and real need for optional lifecycle control. Do not add empty wrapper modules merely to populate the manager. |
-| AD-03 | **Medium** | Organization uses whole-document metadata updates. Independent writers can race and overwrite another writer's changes. | `kira/chat/organization.py`, `kira/chat/persistence.py` | Organization + Persistence | Concurrent metadata mutations can lose updates. No occurrence is claimed; this is a documented design limitation. | Add an atomic metadata patch/update contract at the Persistence boundary, then make Organization use it. Preserve unknown metadata keys and existing data format. |
-| AD-04 | **Medium** | Deleting tags/folders updates conversations individually; it is not one cross-conversation transaction. | `kira/chat/organization.py`, `kira/chat/persistence.py` | Persistence (transaction) + Organization (policy) | Partial completion is possible if a multi-conversation operation fails midway. | Add a narrowly scoped bulk metadata operation in Persistence and delegate the multi-record transaction to it. Combine with AD-03 where practical. |
-| AD-05 | **Medium** | Voice implementation is present but the documented Voice interface is not wired through the implementation; MainWindow's voice mixins remain involved in voice controllers. | `kira/voice.py`, `kira/listener.py`, `kira/local_voice.py`, `kira/ui/main_window_runtime.py`, core interfaces | Voice capability owner | Voice implementation is harder to replace or use independently; UI and device policy remain coupled. | Define/complete the narrow Voice service adapter and inject it at bootstrap. Keep device/Qt adapters at the outer boundary. |
+| AD-03 | **Addressed in source** | Organization mutations now execute against the latest conversation record inside a SQLite `BEGIN IMMEDIATE` transaction. The mutation changes only the organization namespace and preserves unrelated metadata keys. | `kira/chat/organization.py`, `kira/chat/persistence.py` | Organization + Persistence | Stale read-modify-write overwrites within Organization are prevented by the repository transaction boundary. | Runtime concurrency acceptance is still pending; tests cover two repository instances writing distinct tags concurrently. |
+| AD-04 | **Addressed in source** | Tag/folder bulk cleanup selects the character-scoped rows and mutates them within one repository transaction. | `kira/chat/organization.py`, `kira/chat/persistence.py` | Persistence (transaction) + Organization (policy) | A failure in any callback rolls the complete batch back instead of partially clearing assignments. | Runtime rollback acceptance is still pending; tests cover an injected mid-batch failure. |
+| AD-05 | **Implemented in source** | `VoiceApplicationService` implements the Core `VoiceService` contract and is created through `voice_composition.py` using `VoiceApplicationPorts`; MainWindow receives the service factory rather than being passed to application logic. | `kira/app/voice_application.py`, `voice_composition.py`, `core/interfaces/voice_service.py`, `ui/application_adapters.py` | Voice capability owner | Device workers and UI callbacks are injected adapters; the service itself imports no Qt. Remaining voice presentation policy still resides in UI mixins. | Keep device/Qt adapters at the outer boundary and treat remaining UI policy as AD-01 work. |
 | AD-06 | **Low** | Compatibility imports/defaults remain, including the `kira.main.MainWindow` compatibility export, `kira/attachments.py`, and legacy memory entry points. | `kira/main.py`, `kira/attachments.py`, `kira/memory.py`, `kira/persona_memory.py` | Migration owners | Obsolete paths may persist and confuse future ownership if not clearly marked. | Remove only after repository-wide call-site migration and compatibility requirements are resolved. No deletion in this roadmap task. |
 
 ### 3.1 Runtime-only verification items (not confirmed defects)
@@ -59,7 +59,7 @@ These belong in the later explicitly authorized testing phase, not in TASK 016.
 2. Continue replacing direct construction/compatibility fallback paths with injected services where a real call site needs it.
 3. Continue moving MainWindow policy/controller responsibilities into existing application and capability owners; keep the window as an adapter.
 4. Register additional ModuleManager-managed features only when their lifecycle and shutdown contracts are concrete.
-5. Address Organization metadata lost-update and non-atomic bulk-operation limitations at the Persistence boundary (AD-03/AD-04).
+5. AD-03/AD-04 source-level fixes are now present: atomic latest-row mutations and transactional character-scoped bulk metadata updates. Runtime acceptance remains pending.
 
 **Exit condition:** ownership and composition boundaries are explicit; no new feature module duplicates an existing service or storage owner.
 
@@ -90,7 +90,7 @@ These belong in the later explicitly authorized testing phase, not in TASK 016.
 
 **Goal:** extend Voice, Memory, Avatar/Emotion, Vision, Web Research and Coding Agent behind explicit application contracts.
 
-1. Complete the Voice contract wiring (AD-05).
+1. Voice contract wiring is already present; retain the `VoiceService`/`VoiceApplicationPorts` boundary and move only remaining UI-owned policy under AD-01.
 2. Keep Memory and Character services injected through bootstrap; retire legacy adapters only after call-site migration.
 3. Define independent Avatar/Emotion and Vision application boundaries only when there is a concrete consumer and lifecycle need.
 4. Keep Web Research and Coding Agent policy outside MainWindow as they are extracted; do not create speculative service wrappers.
@@ -101,11 +101,9 @@ These belong in the later explicitly authorized testing phase, not in TASK 016.
 ## 5. Recommended execution order
 
 1. **MainWindow policy extraction** (AD-01), selected from a feature with a clear existing contract.
-2. **One Persistence improvement covering AD-03 and AD-04**, retaining metadata compatibility.
-3. **Voice contract wiring** (AD-05), using the existing interface rather than inventing a parallel one.
-4. **ModuleManager adoption selectively** (AD-02), only after the chosen capability has a real lifecycle.
-5. **Runtime acceptance** for the Chat and multi-character cases, only after the user authorizes the testing phase.
-6. **Shared capability/Skills integration** only after confirming the actual implementation and target branch.
+2. **Selective ModuleManager adoption** (AD-02), only for features with concrete lifecycle needs.
+3. **Runtime acceptance** for Chat, metadata concurrency/rollback, Voice and multi-character cases.
+4. **Shared capability/Skills integration** only after confirming the actual implementation and target branch.
 
 This is a prioritized sequence, not a mandate to create six separate tasks. Related changes should be grouped into a small number of coherent implementation units.
 
@@ -121,12 +119,12 @@ This is a prioritized sequence, not a mandate to create six separate tasks. Rela
 
 ## 7. Testing boundary and acceptance handoff
 
-TASK 016 performed documentation/static repository inspection only. It did not run Unit, Integration, Regression, Windows, GUI, Compile, Import Check or the application.
+TASK 016 itself was documentation/static inspection only. The subsequent implementation delta added focused Unit tests for architecture boundaries, atomic metadata rollback and concurrent organization writes. Those tests have not been executed in this environment.
 
 When testing is explicitly authorized after TASK 016:
 - Test Chat contracts and production DI wiring.
 - Test lifecycle and organization with persistence/event integration.
-- Test metadata concurrent writes and multi-record operations after AD-03/AD-04 are addressed.
+- Execute the added metadata concurrency/rollback tests and the architecture-boundary suite; source-level fixes exist, but acceptance requires an actual test run.
 - Test character isolation across Kira/Ren/Mika, including restart and transfer.
 - Test event delivery and provider terminal/cancellation behavior.
 - Run the approved full regression and Windows/offscreen GUI checks.
