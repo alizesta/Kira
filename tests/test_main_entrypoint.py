@@ -19,20 +19,22 @@ class MainEntrypointTests(unittest.TestCase):
         self.assertIs(entrypoint.MainWindow, ModularMainWindow)
         self.assertNotIn("MainWindow", vars(entrypoint))
 
-    def test_window_is_composed_from_feature_owned_mixins(self):
-        from kira.ui.main_window import MainWindow
-        from kira.ui.main_window_chat import ChatMixin
-        from kira.ui.main_window_runtime import RuntimeMixin
-        from kira.ui.main_window_session import SessionMixin
+    def test_window_is_a_qt_shell_with_composed_feature_controllers(self):
+        from PySide6.QtWidgets import QMainWindow
 
-        self.assertTrue(issubclass(MainWindow, ChatMixin))
-        self.assertTrue(issubclass(MainWindow, RuntimeMixin))
-        self.assertTrue(issubclass(MainWindow, SessionMixin))
-        self.assertEqual(MainWindow.send_message.__qualname__, "ChatMixin.send_message")
+        from kira.ui.main_window import MainWindow
+        from kira.ui.main_window_chat import ChatController
+        from kira.ui.main_window_runtime import RuntimeController
+        from kira.ui.main_window_session import SessionController
+
+        self.assertEqual(MainWindow.__bases__, (QMainWindow,))
+        self.assertFalse(hasattr(MainWindow, "send_message"))
+        self.assertEqual(ChatController.send_message.__qualname__, "ChatController.send_message")
         self.assertEqual(
-            MainWindow._schedule_chat_callback.__qualname__,
-            "RuntimeMixin._schedule_chat_callback",
+            RuntimeController._schedule_chat_callback.__qualname__,
+            "RuntimeController._schedule_chat_callback",
         )
+        self.assertTrue(issubclass(SessionController, object))
 
     def test_bootstrap_constructs_the_modular_window_directly(self):
         import inspect
@@ -40,6 +42,8 @@ class MainEntrypointTests(unittest.TestCase):
 
         source = inspect.getsource(bootstrap.run_application)
         self.assertIn("from .main_window import MainWindow", source)
+        self.assertIn("window = MainWindow()", source)
+        self.assertIn("initialize_main_window(", source)
         self.assertNotIn("oldmain", source)
 
 
