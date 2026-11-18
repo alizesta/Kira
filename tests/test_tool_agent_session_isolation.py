@@ -95,10 +95,8 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
             self.assertTrue(self.agent._cancel.is_set())
 
     def test_task_cancel_releases_only_the_matching_session_confirmation(self):
-        from tempfile import TemporaryDirectory
-
         with TemporaryDirectory() as temp:
-            self.agent._init_autonomy(temp)
+            self.agent._init_autonomy(Path(temp))
             plan = self.agent.tasks.new("remove a file", session_id="kira")
             self.agent._pending_by_session["kira"] = Pending(
                 "delete_file", {"path": "safe.txt"}, "delete file",
