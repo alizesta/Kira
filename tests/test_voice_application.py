@@ -101,6 +101,17 @@ class VoiceApplicationServiceTests(unittest.TestCase):
             on_waiting=lambda: self.waiting.append("waiting"),
         )
 
+    def test_character_voice_overrides_are_isolated_and_allowlisted(self):
+        shared = {"voice_rate": 100, "voice_volume": 0.5, "api_key": "never-copy"}
+        effective = self.service.apply_character_settings(
+            shared,
+            {"voice_rate": 140, "voice_volume": 0.8, "api_key": "ignored"},
+        )
+        self.assertEqual(effective, {"voice_rate": 140, "voice_volume": 0.8, "api_key": "never-copy"})
+        self.assertEqual(self.speaker.settings, effective)
+        self.assertEqual(shared["voice_rate"], 100)
+        self.assertNotIn("api_key", effective)
+
     def test_transcript_policy_ignores_speech_without_wake_word_when_asleep(self):
         decision = self.service.interpret_transcript(
             "هوا چطوره؟", wake_enabled=True, awake=False
