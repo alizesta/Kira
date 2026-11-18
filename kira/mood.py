@@ -15,11 +15,14 @@ avatar a quick matching reaction. Nothing here touches routing.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import threading
 import time
 from contextlib import contextmanager
+
+logger = logging.getLogger(__name__)
 from contextvars import ContextVar
 
 from .config import DATA_DIR
@@ -502,7 +505,15 @@ def _runtime_snapshot(now=None, query=None):
                 "recent_events": state["recent_events"], "runtime_emotion": state["emotion"],
                 "runtime_intensity": state["intensity"], "runtime_behaviors": state["behaviors"]}
     except Exception:
-        return {}
+        logger.exception("Character emotional runtime snapshot failed; preserving profile baseline")
+        try:
+            traits = dict(getattr(_runtime_for(), "base_traits", {}) or {})
+        except Exception:
+            logger.exception("Unable to read active character baseline after runtime snapshot failure")
+            traits = {}
+        return {"personality_traits": traits, "relationship": {}, "emotional_memories": [],
+                "emotional_memory_count": 0, "emotional_components": [], "last_initiative": 0.0,
+                "last_initiative_memory_id": "", "recent_events": []}
 
 
 def avatar_hint(now=None):
@@ -583,4 +594,22 @@ def build_block(mode_name="chat", now=None, query=None) -> str:
     if mode_name == "task" and lines:
         lines.insert(0, "Delivery note for this practical request (substance and accuracy unchanged):")
     legacy = "\n".join(lines)
-    return "\n".join(part for part in (layered, legacy) if part)
+    decision_block = ""
+    try:
+        # Apply the selected profile's stable traits to a deterministic delivery
+        # decision. This is shared by every provider and remains subordinate to
+        # the actual request, task mode and serious-context safeguards.
+        from .character.decision import DecisionEngine
+        decision_engine = DecisionEngine(cur.get("personality_traits"))
+        decision = decision_engine.decide(query or "", cur, mode_name)
+        decision_block = decision_engine.build_prompt(decision)
+    except Exception:
+        logger.exception("Character DecisionEngine failed while building the provider-neutral mood prompt")
+        try:
+            from .character.decision import DecisionEngine
+            fallback = DecisionEngine(cur.get("personality_traits"))
+            decision_block = fallback.build_prompt(fallback.decide("", {}, mode_name))
+        except Exception:
+            logger.exception("Neutral character decision fallback also failed")
+            decision_block = ""
+    return "\n".join(part for part in (layered, legacy, decision_block) if part)

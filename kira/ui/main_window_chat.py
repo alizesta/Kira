@@ -474,7 +474,8 @@ class ChatController(WindowFeatureController):
         except Exception:                                         # noqa: BLE001 - memory is a bonus, never block a reply
             memory_block = ""
         try:                                                      # her persisted mood + how he seems right now (same text for every provider)
-            mood_block = mood.build_block(mode.name if mode else modes.CHAT)
+            mood_query = next((str(item.get("content") or "") for item in reversed(history) if isinstance(item, dict) and item.get("role") == "user"), "")
+            mood_block = mood.build_block(mode.name if mode else modes.CHAT, query=mood_query)
         except Exception:                                         # noqa: BLE001
             mood_block = ""
 

@@ -1,8 +1,11 @@
 import unittest
+from unittest import mock
 
 from kira.character.decision import BASE_TRAITS, BEHAVIOUR_GUIDES, DecisionEngine, decide as decide_character
 from kira.character.initiative import InitiativeEngine
 from kira.character.learning import detect_feedback
+from kira.personas import CHARACTERS
+from kira import mood
 
 
 class CharacterDecisionTests(unittest.TestCase):
@@ -19,6 +22,31 @@ class CharacterDecisionTests(unittest.TestCase):
         decision = self.engine.decide("من خیلی افسرده‌ام و حالم بده", {"emotion": "happy"})
         self.assertTrue(decision.serious_context)
         self.assertIn(decision.behaviour, ("gentle", "protective", "quiet"))
+
+    def test_indirect_sensitive_context_and_persian_normalization(self):
+        for phrase in ("فردا باید جراحی کنم","دکتر گفته سرطان دارم","از خشونت خانگی می‌ترسم",
+                       "بعد از طلاق در بحران مالی افتادم","مورد آزار جنسی قرار گرفتم",
+                       "I am going through chemotherapy"):
+            with self.subTest(phrase=phrase):
+                result=self.engine.decide(phrase,{"emotion":"happy"})
+                self.assertTrue(result.serious_context)
+                self.assertNotIn(result.behaviour,("playful","teasing","flirty","sarcastic"))
+
+    def test_serious_matching_uses_word_boundaries(self):
+        self.assertFalse(self.engine.decide("hospitality is growing",{}).serious_context)
+
+    def test_secondary_behaviour_preserves_compatible_traits(self):
+        engine=DecisionEngine({**BASE_TRAITS,"empathy":1.0,"warmth":1.0,"carefulness":1.0,
+                               "patience":1.0,"playfulness":0.0,"teasing":0.0})
+        result=engine.decide("hello",{"emotion":"neutral"})
+        self.assertTrue(result.secondary_behaviours)
+        self.assertIn("Secondary temperament:",engine.build_prompt(result))
+
+    def test_initiative_is_metadata_only(self):
+        a=self.engine.decide("hello",{},initiative="wait")
+        b=self.engine.decide("hello",{},initiative="check_in")
+        self.assertEqual(a.behaviour,b.behaviour)
+        self.assertEqual(b.initiative,"check_in")
 
     def test_task_mode_prefers_focus(self):
         decision = self.engine.decide("یک فایل بساز", {"emotion": "happy"}, "task")
@@ -51,6 +79,48 @@ class CharacterDecisionTests(unittest.TestCase):
         self.assertEqual(detect_feedback("این شوخی خوب بود"), "liked_teasing")
         self.assertEqual(detect_feedback("شوخی نکن"), "disliked_teasing")
         self.assertEqual(detect_feedback("فردا امتحان دارم"), None)
+
+    def test_builtin_characters_have_distinct_baseline_decisions(self):
+        expected = {"kira": "playful", "ren": "curious", "mika": "affectionate"}
+        for character_id, behaviour in expected.items():
+            with self.subTest(character=character_id):
+                decision = DecisionEngine(CHARACTERS[character_id]["traits"]).decide(
+                    "سلام", {"emotion": "neutral", "energy": 76}
+                )
+                self.assertEqual(decision.behaviour, behaviour)
+
+    def test_mood_prompt_uses_the_active_profile_decision(self):
+        class FakeRuntime:
+            @staticmethod
+            def build_prompt(*_args, **_kwargs):
+                return ""
+
+        expected = {"kira": "playful", "ren": "curious", "mika": "affectionate"}
+        for character_id, behaviour in expected.items():
+            snapshot = {
+                "emotion": "neutral", "intensity": 10, "secondary_emotions": [],
+                "emotional_components": [], "energy": 76, "energy_label": "normal",
+                "behaviors": [], "away_hours": 0, "user_states": [],
+                "personality_traits": CHARACTERS[character_id]["traits"],
+                "relationship": {"closeness": 28, "trust": 50, "tension": 0},
+                "emotional_memories": [],
+            }
+            with self.subTest(character=character_id), \
+                 mock.patch.object(mood, "_ensure_runtime_migration"), \
+                 mock.patch.object(mood, "_runtime_for", return_value=FakeRuntime()), \
+                 mock.patch.object(mood, "current", return_value=snapshot):
+                block = mood.build_block("chat", query="سلام")
+            self.assertIn("[CHARACTER DECISION]", block)
+            self.assertIn(f"Selected behaviour: {behaviour}", block)
+
+    def test_task_and_serious_context_override_personality_flavour(self):
+        for character_id in ("kira", "ren", "mika"):
+            engine = DecisionEngine(CHARACTERS[character_id]["traits"])
+            task = engine.decide("یک فایل بساز", {"emotion": "neutral"}, "task")
+            serious = engine.decide("من خیلی افسرده‌ام", {"emotion": "happy"})
+            self.assertEqual(task.behaviour, "focused")
+            self.assertTrue(serious.serious_context)
+            self.assertIn(serious.behaviour, ("gentle", "protective", "quiet"))
 
     def test_extended_behaviours_are_selectable_and_described(self):
         for behaviour in ("sarcastic", "clingy", "stubborn", "sulking", "cheerful", "reserved", "flirty", "energetic"):

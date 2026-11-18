@@ -57,11 +57,13 @@ class LocalPiperSynthesisTests(unittest.TestCase):
             local_voice._tts,
             local_voice._tts_model_path,
             local_voice._tts_model_label,
+            local_voice._tts_model_signature,
             local_voice._tts_error,
         )
         local_voice._tts = None
         local_voice._tts_model_path = ""
         local_voice._tts_model_label = ""
+        local_voice._tts_model_signature = None
         local_voice._tts_error = None
         _FakePiperVoice.loads = []
         _FakePiperVoice.instances = {}
@@ -76,6 +78,7 @@ class LocalPiperSynthesisTests(unittest.TestCase):
             local_voice._tts,
             local_voice._tts_model_path,
             local_voice._tts_model_label,
+            local_voice._tts_model_signature,
             local_voice._tts_error,
         ) = self.previous
 
@@ -187,6 +190,26 @@ class LocalPiperSynthesisTests(unittest.TestCase):
         self.assertEqual(hub.snapshot_download.call_count, 2)
         self.assertTrue(hub.snapshot_download.call_args_list[0].kwargs["local_files_only"])
         self.assertFalse(hub.snapshot_download.call_args_list[1].kwargs["local_files_only"])
+
+    def test_tts_ready_requires_sidecar_configuration(self):
+        with tempfile.TemporaryDirectory() as temp:
+            model=Path(temp)/"custom.onnx"
+            model.write_bytes(b"fake model")
+            with mock.patch.dict(sys.modules,{"piper":_fake_piper_module()}):
+                self.assertFalse(local_voice.tts_ready(str(model)))
+                Path(str(model)+".json").write_text("{}",encoding="utf-8")
+                self.assertTrue(local_voice.tts_ready(str(model)))
+
+    def test_same_path_model_reloads_when_file_signature_changes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path=Path(temp)/"mutable.onnx"
+            path.write_bytes(b"first")
+            Path(str(path)+".json").write_text("{}",encoding="utf-8")
+            with mock.patch.object(local_voice,"_resolve_tts_model_path",return_value=(path,"voice")):
+                local_voice._load_tts_voice(str(path))
+                path.write_bytes(b"second version")
+                local_voice._load_tts_voice(str(path))
+            self.assertEqual(_FakePiperVoice.loads,[str(path),str(path)])
 
     def test_custom_model_must_have_its_piper_sidecar_configuration(self):
         with tempfile.TemporaryDirectory() as temp:

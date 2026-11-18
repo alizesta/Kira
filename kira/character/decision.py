@@ -7,6 +7,8 @@ the active task mode, then exposes a compact instruction block to every provider
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
+import unicodedata
 from typing import Mapping
 
 from .traits import BASE_TRAITS
@@ -78,10 +80,36 @@ BEHAVIOUR_BIAS = {
 }
 
 SERIOUS_TERMS = (
-    "suicide", "kill myself", "self harm", "abuse", "emergency", "hospital",
-    "خودکشی", "خودزنی", "آسیب به خود", "اورژانس", "بیمارستان", "سوگ", "فوت",
-    "افسرده", "افسردگی", "اضطراب شدید", "حمله عصبی",
+    "suicide", "kill myself", "want to die", "self harm", "self-harm", "sexual abuse",
+    "domestic violence", "sexual assault", "rape", "abuse", "emergency", "hospital",
+    "cancer", "chemotherapy", "surgery", "operation", "divorce", "financial crisis",
+    "bankruptcy", "homeless", "grief", "bereavement", "death", "terminal illness",
+    "trauma", "panic attack", "depression", "خودکشی", "خودزنی", "آسیب به خود",
+    "آسیب زدن به خود", "نمیخوام زنده باشم", "نمی خواهم زنده باشم", "کاش بمیرم",
+    "به زندگی پایان بدم", "قصد مردن دارم", "سوء استفاده", "سوءاستفاده", "آزار جنسی",
+    "تعرض جنسی", "تجاوز", "خشونت خانگی", "خشونت خانوادگی", "کتک میخورم",
+    "کتک می خورم", "سرطان", "شیمی درمانی", "شیمی‌درمانی", "جراحی", "عمل جراحی",
+    "بیمارستان", "اورژانس", "طلاق", "ورشکستگی", "بحران مالی", "بی پولی شدید",
+    "بی‌پولی شدید", "بی خانمان", "بی‌خانمان", "فوت", "مرگ", "از دست دادن عزیز",
+    "سوگ", "عزاداری", "بیماری لاعلاج", "بیماری سخت", "تروما", "حمله پانیک",
+    "حمله عصبی", "افسردگی", "افسرده", "اضطراب شدید", "حمله اضطراب", "آسیب روانی",
 )
+
+
+def normalize_serious_text(value):
+    text = str(value or "").casefold().replace("\u200c", " ").replace("\u200f", "")
+    text = text.translate(str.maketrans({"ي": "ی", "ى": "ی", "ك": "ک", "ة": "ه", "ۀ": "ه"}))
+    text = "".join(ch for ch in text if ch != "ـ" and unicodedata.category(ch) != "Mn")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+_NORMALIZED_SERIOUS_TERMS = tuple(normalize_serious_text(term) for term in SERIOUS_TERMS)
+
+
+def _contains_serious_context(user_text):
+    normalized = normalize_serious_text(user_text)
+    return any(re.search(rf"(?<!\w){re.escape(term)}(?!\w)", normalized, flags=re.UNICODE)
+               for term in _NORMALIZED_SERIOUS_TERMS)
 
 
 @dataclass(frozen=True)
@@ -92,6 +120,7 @@ class CharacterDecision:
     serious_context: bool = False
     initiative: str = "wait"
     reasons: tuple[str, ...] = ()
+    secondary_behaviours: tuple[str, ...] = ()
 
 
 class DecisionEngine:
@@ -113,7 +142,8 @@ class DecisionEngine:
             "playful": traits["playfulness"] * 20,
             "teasing": traits["teasing"] * 20,
             "gentle": traits["empathy"] * 18,
-            "protective": traits["empathy"] * 12 + traits["warmth"] * 8,
+            # Protective is context-sensitive, not the default for every character.
+            "protective": traits["empathy"] * 8 + traits["warmth"] * 4,
             "focused": traits["patience"] * 12 + traits.get("carefulness", 0.76) * 8,
             "assertive": traits["assertiveness"] * 18,
             "affectionate": traits["warmth"] * 20,
@@ -167,8 +197,9 @@ class DecisionEngine:
 
     def decide(self, user_text="", mood=None, mode_name="chat", initiative="wait"):
         mood = mood or {}
-        text = str(user_text or "").lower()
-        serious = any(term in text for term in SERIOUS_TERMS)
+        serious_states = {"down", "stressed", "hostile", "afraid", "unsafe", "grieving"}
+        normalized_states = {normalize_serious_text(item) for item in (mood.get("user_states") or ())}
+        serious = _contains_serious_context(user_text) or bool(serious_states.intersection(normalized_states))
         energy = int(mood.get("energy", 76) or 0)
         scores = {name: self._score(name, mood, self.traits) for name in BEHAVIOUR_GUIDES}
         reasons = []
@@ -201,9 +232,16 @@ class DecisionEngine:
             scores["clingy"] -= 8
             reasons.append("relationship-tension")
 
-        chosen = max(scores, key=scores.get)
-        intensity = max(20, min(100, int(round(scores[chosen] * 1.35))))
-        return CharacterDecision(chosen, intensity, dict(self.traits), serious, initiative, tuple(reasons))
+        ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
+        chosen, primary_score = ranked[0]
+        forbidden = {"playful", "teasing", "flirty", "sarcastic", "clingy", "sulking"} if serious else set()
+        if mode_name in ("task", "strict"):
+            forbidden.update({"teasing", "flirty", "sarcastic"})
+        secondary = tuple(name for name, score in ranked[1:]
+                          if name not in forbidden and score >= primary_score - 12)[:1]
+        intensity = max(20, min(100, int(round(primary_score * 1.35))))
+        # Initiative is metadata; opt-in and scheduling belong to InitiativeEngine.
+        return CharacterDecision(chosen, intensity, dict(self.traits), serious, initiative, tuple(reasons), secondary)
 
     def build_prompt(self, decision):
         guide = BEHAVIOUR_GUIDES.get(decision.behaviour, BEHAVIOUR_GUIDES["balanced"])
@@ -217,7 +255,8 @@ class DecisionEngine:
             "[CHARACTER DECISION]\n"
             f"Selected behaviour: {decision.behaviour} (intensity {decision.intensity}/100).\n"
             f"Behaviour instruction: {guide}\n"
-            f"Stable character traits (0-1): {traits}.\n"
+            + ("Secondary temperament: " + "; ".join(f"{name}: {BEHAVIOUR_GUIDES[name]}" for name in decision.secondary_behaviours) + "\n" if decision.secondary_behaviours else "")
+            + f"Stable character traits (0-1): {traits}.\n"
             f"Decision factors: {', '.join(decision.reasons) if decision.reasons else 'baseline character'}\n"
             f"{safety}\n"
             "Do not announce these internal labels. Express the decision naturally in the user's language. "

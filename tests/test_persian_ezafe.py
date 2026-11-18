@@ -88,6 +88,30 @@ class PersianEzafeTests(unittest.TestCase):
             self.assertEqual(persian_ezafe.add_persian_ezafe(text), text)
         self.assertIn("offline", persian_ezafe.status()["error"])
 
+    def test_partial_word_at_truncation_boundary_is_untouched(self):
+        text="کلمه‌"
+        tokenizer=_Tokenizer([(0,2)])
+        session=_Session([1])
+        with mock.patch.object(persian_ezafe,"_load_predictor",
+             return_value=(tokenizer,session,{"input_ids","attention_mask"},np)):
+            self.assertEqual(persian_ezafe.add_persian_ezafe(text),text)
+
+    def test_failed_initialization_can_retry_after_cooldown(self):
+        old=(persian_ezafe._predictor,persian_ezafe._next_retry_at,persian_ezafe._last_error)
+        try:
+            persian_ezafe._predictor=None
+            persian_ezafe._next_retry_at=0
+            persian_ezafe._last_error=""
+            ready=(object(),object(),{"input_ids","attention_mask"},np)
+            with mock.patch.object(persian_ezafe,"_initialize_predictor",
+                 side_effect=[RuntimeError("temporary network failure"),ready]), \
+                 mock.patch.object(persian_ezafe,"_RETRY_DELAY_SECONDS",0):
+                with self.assertRaisesRegex(RuntimeError,"temporary network"):
+                    persian_ezafe._load_predictor()
+                self.assertIs(persian_ezafe._load_predictor(),ready)
+        finally:
+            persian_ezafe._predictor,persian_ezafe._next_retry_at,persian_ezafe._last_error=old
+
     def test_empty_text_does_not_load_model(self):
         with mock.patch.object(persian_ezafe, "_load_predictor") as load:
             self.assertEqual(persian_ezafe.add_persian_ezafe("  "), "  ")

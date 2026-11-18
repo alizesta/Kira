@@ -25,6 +25,7 @@ _asr = None
 _asr_model_name = None
 _tts = None  # Keep only the currently selected voice in memory.
 _tts_model_path = ""
+_tts_model_signature = None
 _tts_model_label = ""
 _asr_error = None
 _tts_error = None
@@ -43,6 +44,8 @@ def tts_ready(model_path="") -> bool:
     if model_path:
         path = Path(str(model_path)).expanduser()
         if not path.is_file() or path.suffix.lower() != ".onnx":
+            return False
+        if not Path(str(path) + ".json").is_file():
             return False
     try:
         import piper  # noqa: F401
@@ -180,19 +183,23 @@ def _resolve_tts_model_path(model_path="") -> tuple[Path, str]:
 
 def _load_tts_voice(model_path=""):
     """Load and cache one active Piper voice, bounded to avoid retaining multiple ONNX models."""
-    global _tts, _tts_model_path, _tts_model_label
+    global _tts, _tts_model_path, _tts_model_label, _tts_model_signature
     path, label = _resolve_tts_model_path(model_path)
     key = str(path)
-    if _tts is not None and _tts_model_path == key:
-        return _tts
-
+    stat = path.stat()
+    signature = (key, stat.st_size, stat.st_mtime_ns)
+    if _tts is not None and _tts_model_signature == signature: return _tts
+    if _tts is not None:
+        try:
+            import psutil
+            required=max(256*1024*1024,stat.st_size*3)
+            available=int(psutil.virtual_memory().available)
+            if available<required:
+                raise MemoryError(f"Insufficient memory to switch Piper voice safely ({available} available; approximately {required} required)")
+        except ImportError: pass
     from piper import PiperVoice
-    voice = PiperVoice.load(str(path))
-    # Swap only after a successful load, so a failed model change does not destroy
-    # the previously working voice.
-    _tts = voice
-    _tts_model_path = key
-    _tts_model_label = label
+    voice=PiperVoice.load(str(path))
+    _tts,_tts_model_path,_tts_model_label,_tts_model_signature=voice,key,label,signature
     return voice
 
 
@@ -392,16 +399,18 @@ def cache_directory() -> str:
 
 
 def status(model_path="") -> dict:
-    """Small diagnostic snapshot; does not load either model."""
+    """Diagnostic snapshot for Piper and optional Persian preprocessing."""
+    try:
+        from . import persian_ezafe
+        ezafe_state=persian_ezafe.status()
+    except Exception as exc:
+        ezafe_state={"enabled":False,"loaded":False,"model":"","error":str(exc)[:240]}
     return {
-        "asr_installed": asr_ready(),
-        "tts_installed": tts_ready(model_path),
-        "asr_loaded": _asr is not None,
-        "asr_model": _asr_model_name or "",
-        "tts_loaded": _tts is not None,
-        "tts_model": _tts_model_label if _tts is not None else "",
+        "asr_installed": asr_ready(), "tts_installed": tts_ready(model_path),
+        "asr_loaded": _asr is not None, "asr_model": _asr_model_name or "",
+        "tts_loaded": _tts is not None, "tts_model": _tts_model_label if _tts is not None else "",
         "asr_error": str(_asr_error)[:240] if _asr_error else "",
-        "tts_error": str(_tts_error)[:240] if _tts_error else "",
+        "tts_error": str(_tts_error)[:240] if _tts_error else "", "ezafe": ezafe_state,
     }
 
 def discover_cached_models() -> dict:
