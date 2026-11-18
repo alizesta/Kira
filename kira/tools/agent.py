@@ -27,7 +27,7 @@ from . import protocol
 from .autonomy import AutonomyMixin
 from .access import PathPolicy
 from .builtin import build_registry
-from .registry import ToolResult, NEEDS_CONFIRM, BAD_ARGS, OK, LEVEL_NAMES, clip
+from .registry import ToolResult, NEEDS_CONFIRM, BAD_ARGS, DENIED, OK, LEVEL_NAMES, clip
 from ..webintel.session import CANCEL as WEB_CANCEL
 from ..game_mode_policy import tool_categories_allowed
 
@@ -495,6 +495,7 @@ class ToolAgent(AutonomyMixin):
     # ------------------------------------------------------------ running tools
     def _run_calls(self, calls, errors, on_tool):
         results = [ToolResult("?", BAD_ARGS, msg) for msg in errors]
+        awaiting_confirmation = self.has_pending(self._turn_session_id)
         for call in calls[:protocol.MAX_CALLS_PER_ROUND]:
             if self._cancel.is_set():
                 break
@@ -507,7 +508,18 @@ class ToolAgent(AutonomyMixin):
             label = TOOL_LABELS.get(name, name)
             if on_tool:
                 on_tool({"phase": "tool_start", "tool": name, "label": label})
-            res = self.registry.execute(name, args)
+            if awaiting_confirmation:
+                # One Session has one user-facing confirmation slot. Do not
+                # overwrite it with another sensitive call from this model round.
+                res = ToolResult(
+                    name,
+                    DENIED,
+                    "این فراخوانی اجرا نشد؛ یک عملیات دیگر منتظر تأیید صریح کاربر است. "
+                    "پس از تعیین تکلیف آن، درخواست باقی‌مانده را دوباره بفرست.",
+                    args if isinstance(args, dict) else {},
+                )
+            else:
+                res = self.registry.execute(name, args)
             self._turn_cache[sig] = res
             if res.status == NEEDS_CONFIRM:
                 self._pending_by_session[self._turn_session_id] = Pending(
@@ -515,6 +527,7 @@ class ToolAgent(AutonomyMixin):
                     session_id=self._turn_session_id,
                 )
                 self._pending_new_sessions.add(self._turn_session_id)
+                awaiting_confirmation = True
             else:
                 self._memoize(res)
             if on_tool:
