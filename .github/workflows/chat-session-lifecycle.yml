@@ -60,12 +60,6 @@ on:
       - "kira/app/runtime_settings_application.py"
       - "kira/services/character_service.py"
       - "kira/services/mood_service.py"
-      - "kira/mood.py"
-      - "kira/emotion/**"
-      - "emotion_library/events.json"
-      - "tests/test_mood.py"
-      - "tests/test_emotional_runtime.py"
-      - "tests/test_emotion_director.py"
       - "kira/app/voice_application.py"
       - "kira/app/voice_composition.py"
       - "kira/core/interfaces/voice_service.py"
@@ -166,9 +160,6 @@ jobs:
           tests.test_chat_command_adapters
           tests.test_actions
           tests.test_main_window_syntax
-          tests.test_emotional_runtime
-          tests.test_mood
-          tests.test_emotion_director
           -v
       - name: Check changed Python modules
         run: >-
@@ -232,12 +223,6 @@ jobs:
           kira/ui/main_window_attachments_vision.py
           kira/ui/main_window_chat.py
           kira/ui/main_window_runtime.py
-          kira/emotion/runtime.py
-          kira/emotion/director.py
-          kira/mood.py
-          tests/test_emotional_runtime.py
-          tests/test_mood.py
-          tests/test_emotion_director.py
           tests/test_main_window_syntax.py
           tests/test_main_entrypoint.py
           tests/test_main_window_feature_dependencies.py

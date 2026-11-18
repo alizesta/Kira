@@ -1,0 +1,64 @@
+name: Emotional Quality Tests
+
+on:
+  push:
+    branches: [new-main]
+    paths:
+      - "kira/mood.py"
+      - "kira/emotion/runtime.py"
+      - "kira/emotion/director.py"
+      - "kira/ui/main_window_chat.py"
+      - "kira/ui/main_window_runtime.py"
+      - "emotion_library/events.json"
+      - "tests/test_mood.py"
+      - "tests/test_emotional_runtime.py"
+      - "tests/test_emotion_director.py"
+      - "docs/EMOTIONAL_RUNTIME_FA.md"
+      - ".github/workflows/emotional-quality.yml"
+  pull_request:
+    branches: [new-main]
+    paths:
+      - "kira/mood.py"
+      - "kira/emotion/runtime.py"
+      - "kira/emotion/director.py"
+      - "kira/ui/main_window_chat.py"
+      - "kira/ui/main_window_runtime.py"
+      - "emotion_library/events.json"
+      - "tests/test_mood.py"
+      - "tests/test_emotional_runtime.py"
+      - "tests/test_emotion_director.py"
+      - "docs/EMOTIONAL_RUNTIME_FA.md"
+      - ".github/workflows/emotional-quality.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  emotional-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run emotional continuity and lifecycle tests
+        run: >-
+          python -m unittest
+          tests.test_mood
+          tests.test_emotional_runtime
+          tests.test_emotion_director
+          -v
+      - name: Compile changed Python modules
+        run: >-
+          python -m py_compile
+          kira/mood.py
+          kira/emotion/runtime.py
+          kira/emotion/director.py
+          kira/ui/main_window_chat.py
+          kira/ui/main_window_runtime.py
+          tests/test_mood.py
+          tests/test_emotional_runtime.py
+          tests/test_emotion_director.py
