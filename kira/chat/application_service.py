@@ -603,7 +603,7 @@ class ChatApplicationService:
         provider_callbacks: Mapping[str, Callable[..., Any]] | None = None,
         provider_event_dispatcher: Callable[[ProviderEvent], Any] | None = None,
         **provider_request: Any,
-    ) -> Any:
+    ) -> ProviderWorkerPort:
         state = self._requests.get(str(request_id or ""))
         if state is None or state.status is not RequestStatus.RUNNING:
             raise ValueError("request is not active")
