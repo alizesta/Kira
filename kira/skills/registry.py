@@ -14,7 +14,6 @@ import shutil
 import stat
 import tempfile
 import zipfile
-from typing import Any
 
 
 SKILL_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,63}$")
