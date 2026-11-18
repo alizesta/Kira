@@ -1,9 +1,11 @@
 import unittest
+from unittest import mock
 
 from kira.character.decision import BASE_TRAITS, BEHAVIOUR_GUIDES, DecisionEngine, decide as decide_character
 from kira.character.initiative import InitiativeEngine
 from kira.character.learning import detect_feedback
 from kira.personas import CHARACTERS
+from kira import mood
 
 
 class CharacterDecisionTests(unittest.TestCase):
@@ -61,6 +63,30 @@ class CharacterDecisionTests(unittest.TestCase):
                     "سلام", {"emotion": "neutral", "energy": 76}
                 )
                 self.assertEqual(decision.behaviour, behaviour)
+
+    def test_mood_prompt_uses_the_active_profile_decision(self):
+        class FakeRuntime:
+            @staticmethod
+            def build_prompt(*_args, **_kwargs):
+                return ""
+
+        expected = {"kira": "playful", "ren": "curious", "mika": "affectionate"}
+        for character_id, behaviour in expected.items():
+            snapshot = {
+                "emotion": "neutral", "intensity": 10, "secondary_emotions": [],
+                "emotional_components": [], "energy": 76, "energy_label": "normal",
+                "behaviors": [], "away_hours": 0, "user_states": [],
+                "personality_traits": CHARACTERS[character_id]["traits"],
+                "relationship": {"closeness": 28, "trust": 50, "tension": 0},
+                "emotional_memories": [],
+            }
+            with self.subTest(character=character_id), \
+                 mock.patch.object(mood, "_ensure_runtime_migration"), \
+                 mock.patch.object(mood, "_runtime_for", return_value=FakeRuntime()), \
+                 mock.patch.object(mood, "current", return_value=snapshot):
+                block = mood.build_block("chat", query="سلام")
+            self.assertIn("[CHARACTER DECISION]", block)
+            self.assertIn(f"Selected behaviour: {behaviour}", block)
 
     def test_task_and_serious_context_override_personality_flavour(self):
         for character_id in ("kira", "ren", "mika"):
