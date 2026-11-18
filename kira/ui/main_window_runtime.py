@@ -697,10 +697,6 @@ class RuntimeMixin:
                 event.ignore()
                 QTimer.singleShot(100, self.close)
                 return
-            unsubscribe = getattr(self, "_session_event_unsubscribe", None)
-            if callable(unsubscribe):
-                unsubscribe()
-                self._session_event_unsubscribe = None
             event.accept()
             QTimer.singleShot(0, QApplication.quit)
             return
