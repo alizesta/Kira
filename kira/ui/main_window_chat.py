@@ -474,6 +474,11 @@ class ChatMixin:
             self._brain = brain.Decision()
 
         character_layer = self.character_service.prompt_for(self.settings)
+        # Skill instructions are shared assets with global/per-character enablement.
+        # They remain subordinate to system policy and existing tool permission checks.
+        skill_layer = self.skill_service.prompt_for(self.settings, self.cur.cid)
+        if skill_layer:
+            character_layer = (character_layer + "\n\n" + skill_layer).strip()
         body_context = ""
         if self.body_active():                                    # preserve existing 3D body instruction and completed-action note
             body_context = ("" if plain else body_ctl.format_hint()) + body_ctl.done_note(self._body_done)
