@@ -135,6 +135,8 @@ jobs:
           tests.test_domain_chat_contracts
           tests.test_domain_conversation_rules
           tests.test_application_service_ports
+          tests.test_feature_module_registration
+          tests.test_chat_history_service_capabilities
           tests.test_session_application
           tests.test_provider_application
           tests.test_vision_application
