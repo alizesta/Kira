@@ -1,7 +1,7 @@
 # KIRA MODULE OWNERSHIP
 
 **Snapshot:** 2026-11-18  
-**Source baseline:** `new-main` at `6c89820ce56be19654ddb08db6b719d041dc61d9`  
+**Source baseline:** `new-main` at `e398ed518ef446600ef7582888f1dca2803845d98`  
 **Scope:** TASK 001–020 and adjacent application capabilities. This register describes observed ownership, not desired ownership where implementation is absent.
 
 ## 1. Ownership rules
@@ -80,7 +80,7 @@ Bootstrap injects the Voice factory into MainWindow. Speaker and Listener remain
 
 | Capability | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
 |---|---|---|---|---|
-| Provider / routes | `kira/app/provider_application.py` | `ProviderApplicationService`: provider and API registry operations, route mutation, Ollama settings validation/client creation, router creation and per-session router replacement | Existing route/API registry contracts, provider/router factories | Qt widgets, UI dialogs, direct MainWindow references |
+| Provider / routes | `kira/app/provider_application.py` | `ProviderApplicationService`: provider and API registry operations, route mutation/selection, Ollama settings validation/client creation, router creation and per-session router replacement | Existing route/API registry contracts, provider/router factories | Qt widgets, UI dialogs, direct MainWindow references |
 | Vision | `kira/app/vision_application.py` | `VisionApplicationService`: capture permission, policy/cadence, busy-state admission, frame deduplication, result deduplication and latency statistics | Vision pipeline and GameModeApplicationService | Qt screen capture, timers, worker threads, UI presentation |
 | Coding Agent | `kira/app/coding_agent_application.py` | `CodingAgentApplicationService`: attachment-free turn handoff, local request completion and session stop delegation | Existing CodeChat execution adapter and completion callback | Agent runtime implementation, widgets, persistence |
 | Runtime settings | `kira/app/runtime_settings_application.py` | `RuntimeSettingsApplicationService`: initial configuration and propagation of shared settings to evidence memory, usage and optional ToolAgent | Existing shared capability contracts | Settings widgets/dialogs, UI rendering |
