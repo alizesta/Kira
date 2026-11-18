@@ -132,11 +132,11 @@ class CharacterSettingsController(WindowFeatureController):
         """Give the speaker an isolated settings snapshot for the active character."""
         cid = self.context.services.character_service.active_id(self.context.services.settings)
         override = (self.context.services.settings.get("character_voice") or {}).get(cid) or {}
-        if getattr(self, "speaker", None) is not None:
+        if getattr(self.context.adapters, "speaker", None) is not None:
             self.context.services.voice_application_service.apply_character_settings(self.context.services.settings, override)
 
     def refresh_personality_controls(self):
-        if not getattr(getattr(self, "character_page", None), "personality_sliders", None):
+        if not getattr(getattr(self.context.views, "character_page", None), "personality_sliders", None):
             return
         self.refresh_character_controls()
         traits = self.feature_controller("session").character_traits(self.feature_controller("session").active_character().get("id", "kira")) or BASE_TRAITS
@@ -356,15 +356,15 @@ class CharacterSettingsController(WindowFeatureController):
         page.schedule_appearance()
 
     def schedule_appearance(self, *_):
-        page = getattr(self, "appearance_page", None)
+        page = getattr(self.context.views, "appearance_page", None)
         if page is not None:
             page.schedule_appearance()
 
     def apply_appearance(self, save=False):
         """Apply the current Appearance controls immediately; persist only after the short debounce."""
-        if not hasattr(self, "appearance_page"):
+        if not hasattr(self.context.views, "appearance_page"):
             return
-        previous = getattr(self, "_effect", "off")
+        previous = getattr(self.context.state, "_effect", "off")
         color = self.context.views.appearance_page.background_color or (self.context.services.settings.get("appearance") or {}).get("background_color", "#0A0A1C")
         appearance = {
             "background_color": color,
@@ -396,13 +396,13 @@ class CharacterSettingsController(WindowFeatureController):
         app = QApplication.instance()
         if app is not None:
             app.setStyleSheet(build_style(current, appearance))
-        if hasattr(self, "glow_effects"):
+        if hasattr(self.context.views, "glow_effects"):
             self.feature_controller("session").apply_chat_theme()
         self._refresh_icon_glow()
         self._apply_neon_glow_effects(appearance)
         winfx.apply_effect(self.window.winId(), current)
         self.context.views.appearance_page.set_background_color(color)
-        if (previous == "off") != (current == "off") and previous != current and getattr(self, "isVisible", lambda: False)():
+        if (previous == "off") != (current == "off") and previous != current and getattr(self.window, "isVisible", lambda: False)():
             self.feature_controller("session").add_chat("system", "برای اعمال کامل حالت شیشه‌ای، برنامه را یک بار ببند و دوباره باز کن.")
         if save:
             save_settings(self.context.services.settings)
@@ -423,10 +423,10 @@ class CharacterSettingsController(WindowFeatureController):
         targets = []
         for name in ("menu_btn", "mic_btn", "wake_btn", "voice_btn", "stop_btn",
                      "send_btn", "gen_stop_btn"):
-            widget = getattr(self, name, None)
+            widget = getattr(self.context.views, name, None)
             if widget is not None:
                 targets.append((widget, palette["second"], 10 + intensity * 0.12, 14 + intensity * 0.38))
-        save_button = getattr(self, "save_btn", None)
+        save_button = getattr(self.context.views, "save_btn", None)
         if save_button is not None:
             targets.append((save_button, palette["main"], 10 + intensity * 0.12, 14 + intensity * 0.34))
 
@@ -465,7 +465,7 @@ class CharacterSettingsController(WindowFeatureController):
             "ui_lang", "tavily_key", "web_depth", "web_fallback_chk", "web_test_btn",
             "restore_chat_btn", "memory_btn", "import_chat_btn", "about_labels",
         ):
-            setattr(self, name, getattr(self.context.views.preferences_page, name))
+            setattr(self.context.views, name, getattr(self.context.views.preferences_page, name))
 
         self.context.views.preferences_page.web_search_test_requested.connect(self.feature_controller("chat").test_web_search)
         self.context.views.preferences_page.clear_history_requested.connect(self.feature_controller("runtime").clear_chat)
