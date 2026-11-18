@@ -59,12 +59,14 @@ def _matches_prefix(module_name: str, prefixes: tuple[str, ...]) -> bool:
 class ArchitectureBoundaryTests(unittest.TestCase):
     def test_core_contracts_do_not_depend_on_outer_application_layers(self):
         core_roots = [ROOT / "kira" / name for name in ("core", "domain")]
+        self.assertTrue((ROOT / "kira" / "domain").is_dir(), "The pure Domain package must exist.")
         files = sorted(
             path
             for package_root in core_roots
             if package_root.is_dir()
             for path in package_root.rglob("*.py")
         )
+        self.assertTrue(files, "Core and Domain must contain explicit source contracts.")
         violations = []
         for path in files:
             for imported in _imported_modules(path):
@@ -83,6 +85,26 @@ class ArchitectureBoundaryTests(unittest.TestCase):
             [],
             "Core/domain packages may import only Core/Domain packages and the standard library; "
             "all other kira packages are outer-layer dependencies.",
+        )
+
+    def test_domain_is_pure_and_does_not_depend_on_core_or_outer_layers(self):
+        domain_root = ROOT / "kira" / "domain"
+        self.assertTrue(domain_root.is_dir(), "The pure Domain package must exist.")
+        files = sorted(domain_root.rglob("*.py"))
+        violations = []
+        for path in files:
+            for imported in _imported_modules(path):
+                if imported == "kira" or (
+                    imported.startswith("kira.")
+                    and not _matches_prefix(imported, ("kira.domain",))
+                ):
+                    violations.append(
+                        f"{path.relative_to(ROOT)} imports {imported}"
+                    )
+        self.assertEqual(
+            violations,
+            [],
+            "Domain may depend only on itself and the Python standard library.",
         )
 
     def test_chat_ui_calls_web_search_application_service_not_engine_module(self):

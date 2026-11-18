@@ -27,6 +27,22 @@ class _Repository:
         raise AssertionError("preview must not mutate persistence")
 
 
+class _MemoryFilePort:
+    def __init__(self):
+        self.files = {}
+
+    def read_bytes(self, source, *, max_bytes):
+        value = self.files[Path(source)]
+        if len(value) > max_bytes:
+            raise ValueError("file too large")
+        return value
+
+    def write_bytes_atomically(self, directory, filename, content):
+        path = Path(directory) / filename
+        self.files[path] = bytes(content)
+        return path
+
+
 class ChatTransferPreviewTests(unittest.TestCase):
     def test_round_trip_preserves_trashed_status_lifecycle_and_organization_metadata(self):
         with tempfile.TemporaryDirectory(prefix="kira-transfer-lifecycle-") as directory:
@@ -79,6 +95,19 @@ class ChatTransferPreviewTests(unittest.TestCase):
             )
             self.assertEqual([item["content"] for item in messages], ["message before trash"])
             self.assertEqual(messages[0]["metadata"], {"source": "test"})
+
+    def test_file_adapter_port_handles_import_reads_and_atomic_export_writes(self):
+        file_port = _MemoryFilePort()
+        transfer = ChatTransfer(_Repository(), file_port=file_port)
+
+        destination = transfer.write_export(
+            Path("memory-exports"), filename="snapshot.json"
+        )
+
+        self.assertEqual(destination, Path("memory-exports") / "snapshot.json")
+        preview = transfer.preview_import(destination)
+        self.assertTrue(preview.valid, preview.errors)
+        self.assertEqual(preview.conversation_count, 1)
 
     def test_preview_reports_message_id_collision_from_another_conversation(self):
         transfer = ChatTransfer(_Repository())
