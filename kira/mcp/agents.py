@@ -159,7 +159,27 @@ class JobStore:
             data = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(data, dict) or not isinstance(data.get("jobs"), dict):
                 raise ValueError("job store must contain an object with a jobs mapping")
-            self.jobs = {k: v for k, v in data["jobs"].items() if isinstance(k, str) and isinstance(v, dict)}
+            malformed = False
+            for key, job in data["jobs"].items():
+                valid = (
+                    isinstance(key, str)
+                    and isinstance(job, dict)
+                    and job.get("id") == key
+                    and isinstance(job.get("agent"), str)
+                    and isinstance(job.get("remote_id"), str)
+                    and isinstance(job.get("state"), str)
+                    and isinstance(job.get("created"), (int, float))
+                    and not isinstance(job.get("created"), bool)
+                )
+                if valid:
+                    self.jobs[key] = job
+                else:
+                    malformed = True
+                    _LOGGER.warning("Ignoring malformed delegated-job record %r in %s", key, self.path)
+            if malformed:
+                # Keep valid in-memory jobs usable, but never overwrite a source
+                # file whose invalid records may contain recoverable job state.
+                self._load_failed = True
         except FileNotFoundError:
             pass
         except (OSError, ValueError, TypeError):
