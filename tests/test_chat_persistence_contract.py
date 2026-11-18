@@ -118,6 +118,65 @@ class SqliteChatRepositoryTests(unittest.TestCase):
         self.assertEqual(self.persistence.recent_messages(10, "ren", first["id"]), [{"role": "user", "content": "one"}])
         self.assertEqual(self.persistence.recent_messages(10, "ren", second["id"]), [{"role": "user", "content": "two"}])
 
+    def test_atomic_conversation_metadata_mutations_rollback_as_a_batch(self):
+        first = self.persistence.create_conversation(
+            "kira", title="first", metadata={"external": {"keep": True}}
+        )
+        second = self.persistence.create_conversation(
+            "kira", title="second", metadata={"external": {"keep": True}}
+        )
+
+        def mutate(record):
+            metadata = dict(record["metadata"])
+            metadata["organization"] = {"favorite": True}
+            if record["id"] == second["id"]:
+                raise RuntimeError("simulated second-row failure")
+            record["metadata"] = metadata
+            return record
+
+        with self.assertRaisesRegex(PersistenceError, "simulated second-row failure"):
+            self.persistence.mutate_conversations([
+                (first["id"], mutate),
+                (second["id"], mutate),
+            ])
+
+        self.assertEqual(
+            self.persistence.get_conversation(first["id"])["metadata"],
+            {"external": {"keep": True}},
+        )
+        self.assertEqual(
+            self.persistence.get_conversation(second["id"])["metadata"],
+            {"external": {"keep": True}},
+        )
+
+    def test_atomic_mutate_all_is_character_scoped_and_preserves_other_metadata(self):
+        kira = self.persistence.create_conversation(
+            "kira", title="Kira", metadata={"external": {"keep": 1}}
+        )
+        ren = self.persistence.create_conversation(
+            "ren", title="Ren", metadata={"external": {"keep": 2}}
+        )
+
+        def mutate(record):
+            metadata = dict(record["metadata"])
+            organization = dict(metadata.get("organization", {}))
+            organization["tags"] = ["reviewed"]
+            metadata["organization"] = organization
+            record["metadata"] = metadata
+            return record
+
+        updated = self.persistence.mutate_all_conversations("kira", mutate)
+
+        self.assertEqual(set(updated), {kira["id"]})
+        self.assertEqual(
+            self.persistence.get_conversation(kira["id"])["metadata"],
+            {"external": {"keep": 1}, "organization": {"tags": ["reviewed"]}},
+        )
+        self.assertEqual(
+            self.persistence.get_conversation(ren["id"])["metadata"],
+            {"external": {"keep": 2}},
+        )
+
     def test_metadata_timestamp_order_and_partial_status_round_trip(self):
         conversation = self.persistence.get_or_create_conversation("mika")
         self.persistence.add_message(
