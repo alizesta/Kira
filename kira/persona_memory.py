@@ -578,20 +578,30 @@ def maintain(rows: list[dict], window: int, now=None) -> bool:
 
 
 # ---------------- layer 3: digest ----------------
+def _memory_item_timestamp(item: dict) -> float:
+    try:
+        return float(item.get("ts") or item.get("created_at") or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+
+
 def _rank_relevant_items(items: list[dict], query: str | None, limit: int) -> list[dict]:
     """Rank this character's own saved items against the current turn using Persian-aware BM25."""
     items = [item for item in items if isinstance(item, dict) and str(item.get("text") or "").strip()]
     if not items or not query or not _evidence.needs_recall(query):
         return []
 
-    query_tokens = _evidence.tokens(query)
-    if not query_tokens:
+    try:
+        query_tokens = _evidence.tokens(query)
+        if not query_tokens:
+            return []
+        docs = {
+            str(index): _evidence.tokens(item.get("text") or "")
+            for index, item in enumerate(items)
+        }
+        scores = _evidence._bm25(docs, query_tokens)
+    except Exception:                                              # noqa: BLE001 - recall is optional; stored memory remains intact
         return []
-    docs = {
-        str(index): _evidence.tokens(item.get("text") or "")
-        for index, item in enumerate(items)
-    }
-    scores = _evidence._bm25(docs, query_tokens)
     if not scores:
         return []
 
@@ -601,7 +611,7 @@ def _rank_relevant_items(items: list[dict], query: str | None, limit: int) -> li
         (index for index, score in scores.items() if score >= threshold),
         key=lambda index: (
             scores[index],
-            float(items[int(index)].get("ts") or items[int(index)].get("created_at") or 0),
+            _memory_item_timestamp(items[int(index)]),
         ),
         reverse=True,
     )
@@ -615,7 +625,7 @@ def _select_persona_facts(facts: list[dict], query: str | None) -> list[dict]:
 
     pinned = sorted(
         (item for item in facts if item.get("kind") in ("name", "nick", "pref_len")),
-        key=lambda item: float(item.get("ts") or 0),
+        key=_memory_item_timestamp,
         reverse=True,
     )[:3]
     pinned_ids = {item.get("id") for item in pinned}
