@@ -1,7 +1,7 @@
 """Glue between the application and the emotion engine (pure Python, no Qt).
 
 The application calls:
-  event(name)          startup / user_message / response_started / response_finished / response_failed /
+  event(name)          startup / user_message / response_started / response_finished / response_failed / response_cancelled /
                        tts_started / tts_stopped / user_interrupt   (mapping lives in events.json)
   parse_reply(raw)     -> ReplyMeta (visible text + emotion metadata)
   on_reply(meta)       trigger the detected emotion
