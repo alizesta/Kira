@@ -1,8 +1,8 @@
 """Thread-safe in-process notification bus shared by application modules.
 
-The legacy keyword-payload API remains supported. Typed chat notifications use
-subscribe_event() / publish_event() on this same bus; no parallel event bus is
-created.
+The legacy keyword-payload API remains supported. Typed feature notifications use
+subscribe_event() / publish_event() with the Core PublishedEvent contract; no
+feature-specific or parallel event bus is created.
 """
 from __future__ import annotations
 
@@ -92,7 +92,7 @@ class EventBus:
         return self._subscribe(event_name, callback, receives_event=False)
 
     def subscribe_event(self, event_type: Any, callback: Callable[[Any], Any]) -> Callable[[], None]:
-        """Subscribe to typed ChatEvent instances published on this same bus."""
+        """Subscribe to typed feature events published through the Core event contract."""
         return self._subscribe(event_type, callback, receives_event=True)
 
     def _subscribe(
