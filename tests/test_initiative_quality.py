@@ -366,5 +366,23 @@ class InitiativeMessageTests(unittest.TestCase):
         self.assertNotIn("epsi", text)
 
 
+    def test_numeric_gregorian_absolute_dates_are_deferred_until_the_date_ends(self):
+        created = datetime(2026, 11, 19, 10, 30).timestamp()
+        expected = datetime(2026, 11, 26, 0, 0).timestamp()
+        self.assertEqual(_event_not_before('he said "Exam on 2026-11-25"', created), expected)
+        self.assertEqual(_event_not_before('he said "Exam on 25/11/2026"', created), expected)
+
+    def test_numeric_jalali_absolute_dates_are_converted_and_conservatively_buffered(self):
+        created = datetime(2026, 11, 19, 10, 30).timestamp()
+        expected = datetime(2026, 11, 24, 0, 0).timestamp()
+        self.assertEqual(_event_not_before('he said "امتحان 1405/09/01"', created), expected)
+        self.assertEqual(_event_not_before('he said "امتحان ۱۴۰۵/۰۹/۰۱"', created), expected)
+
+    def test_invalid_absolute_dates_fail_closed_instead_of_becoming_due_immediately(self):
+        created = datetime(2026, 11, 19, 10, 30).timestamp()
+        self.assertTrue(math.isinf(_event_not_before('he said "امتحان 2026-02-30"', created)))
+        self.assertTrue(math.isinf(_event_not_before('he said "امتحان 1405/13/01"', created)))
+
+
 if __name__ == "__main__":
     unittest.main()
