@@ -1049,6 +1049,7 @@ def list_extra_items(known_persona_ids=()) -> list[dict]:
                                            "AND predicate NOT IN ('event','promise') ORDER BY created_at") if not r["persona_id"] or r["persona_id"] not in known]
         return [{"id": "ev:" + r["id"], "group": "fact", "kind": "fact", "text": r["text"], "ts": int(r["created_at"])} for r in rows]
     except Exception:                                                  # noqa: BLE001
+        _log.warning("Could not list extra evidence-memory items", exc_info=True)
         return []
 
 
@@ -1061,7 +1062,8 @@ def delete_extra(item_id) -> bool:
             _delete_rows(con, [fid])
         return True
     except Exception:                                                  # noqa: BLE001
-        return False
+        _log.exception("Could not delete an extra evidence-memory item")
+        raise
 
 
 def stats() -> dict:
