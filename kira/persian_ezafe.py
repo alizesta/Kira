@@ -20,6 +20,7 @@ _FALSE_VALUES = frozenset({"0", "false", "no", "off", "disabled"})
 
 _lock = threading.RLock()
 _predictor = None
+_load_attempted = False
 _last_error = ""
 
 
@@ -30,11 +31,23 @@ def is_enabled() -> bool:
 
 def _load_predictor():
     """Load the quantized ONNX model and its matching tokenizer once per process."""
-    global _predictor, _last_error
+    global _predictor, _load_attempted, _last_error
     with _lock:
         if _predictor is not None:
             return _predictor
+        if _load_attempted:
+            raise RuntimeError(_last_error or "ALBERT initialization already failed in this process")
+        _load_attempted = True
 
+        try:
+            return _initialize_predictor()
+        except Exception as exc:
+            _last_error = f"{type(exc).__name__}: {exc}"
+            raise
+
+
+def _initialize_predictor():
+        global _predictor, _last_error
         from huggingface_hub import snapshot_download
         import numpy as np
         import onnxruntime as ort
