@@ -259,7 +259,7 @@ class AttachmentsVisionMixin:
     def on_game_audio_transcript(self, text):
         if (not self._game_mode_enabled
                 or not game_mode_permissions(self._game_mode_profile)["automatic_game_audio_alerts"]
-                or self.busy or self.speaker._began or not is_important_game_audio(text)):
+                or self.busy or self.voice_application_service.is_speaking() or not is_important_game_audio(text)):
             return
         now = time.monotonic()
         lower = text.casefold()
