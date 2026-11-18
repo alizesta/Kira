@@ -126,6 +126,9 @@ class SessionMixin:
 
     def _new_router(self):
         """Router of one chat. Cooldowns / health are shared with the other chats (a failing key is failing for everyone)."""
+        provider_service = getattr(self, "provider_application_service", None)
+        if provider_service is not None:
+            return provider_service.create_router(self.settings)
         router = HybridRouter(self.settings)
         base = next((sess.client for sess in self.sessions.values() if sess.client is not None), None)
         if base is not None:
@@ -191,112 +194,56 @@ class SessionMixin:
         QTimer.singleShot(0, callback)
 
     def _ensure_session_conversation(self, session):
-        """Bind one character session to its durable conversation without blocking chat on storage errors."""
-        if getattr(session, "conversation_id", None):
-            return session.conversation_id
-        try:
-            record = self.chat_application_service.get_or_create_conversation(session.cid)
-            conversation_id = (
-                record.get("id") or record.get("conversation_id")
-                if isinstance(record, dict) else None
-            )
-            session.conversation_id = str(conversation_id) if conversation_id else None
-        except Exception:
-            session.conversation_id = None
-        return session.conversation_id
+        return self.session_application_service.bind_conversation(session)
 
     def _publish_session_state_event(self, event):
-        publisher = getattr(self, "chat_event_publisher", None)
-        if publisher is None:
-            return
-        event_type = {
-            "created": "session_created",
-            "active": "session_activated",
-            "idle": "session_deactivated",
-            "closed": "session_closed",
-            "failed": "session_failed",
-        }.get(str(event.status))
-        if event_type is None:
-            return
-        try:
-            publisher.publish(
-                event_type,
-                session_id=event.session_id,
-                payload={
-                    "character_id": event.character_id,
-                    "previous_status": event.previous_status,
-                    "status": event.status,
-                },
-            )
-        except Exception:
-            # Notifications are best-effort and must not interrupt Session lifecycle.
-            return
+        """Compatibility callback; event translation belongs to the application service."""
+        self.session_application_service.publish_state_change(event)
 
-    def _ensure_session(self, cid, profile):
-        sess = self.session_manager.get_session_for_character(cid)
-        if sess is not None and sess.status == "closing":
-            if not self.session_manager.reopen_session(sess.session_id):
-                return None
-        elif sess is not None and sess.status == "failed":
-            if not self.session_manager.close_session(sess.session_id):
-                return None
-            sess = None
-        if sess is None:
-            sess = self.session_manager.create_session(cid)
-        self._ensure_session_conversation(sess)
-        if sess.view is None:
-            sess.view = self.make_session_view()
-            self.chat_stack.addWidget(sess.view)
-            sess.timer = QTimer(self)
-            sess.timer.setInterval(60)
-            sess.relay = SessionRelay(self, sess)
-            sess.timer.timeout.connect(sess.relay.tick)
-        if sess.client is None:
-            sess.client = self._new_router()
-        sess.theme = self.theme_for_character(cid, profile)
-        if sess.cid not in self.char_tab_buttons:
+    def _ensure_session_ui_resources(self, session, profile):
+        """Attach Qt resources after the application service resolves the Session."""
+        if session.view is None:
+            session.view = self.make_session_view()
+            self.chat_stack.addWidget(session.view)
+            session.timer = QTimer(self)
+            session.timer.setInterval(60)
+            session.relay = SessionRelay(self, session)
+            session.timer.timeout.connect(session.relay.tick)
+        if session.client is None:
+            session.client = self._new_router()
+        session.theme = self.theme_for_character(session.cid, profile)
+        if session.cid not in self.char_tab_buttons:
             button = QPushButton()
             button.setObjectName("charTab")
             button.setCheckable(True)
             button.setCursor(Qt.PointingHandCursor)
             button.setFocusPolicy(Qt.NoFocus)
-            button.clicked.connect(lambda checked=False, c=cid: self.switch_session(c))
+            button.clicked.connect(lambda checked=False, c=session.cid: self.switch_session(c))
             self.char_tab_group.addButton(button)
-            self.char_tab_buttons[cid] = button
-        return sess
+            self.char_tab_buttons[session.cid] = button
+
+    def _ensure_session(self, cid, profile):
+        return self.session_application_service.ensure_session(
+            cid,
+            profile,
+            ensure_resources=self._ensure_session_ui_resources,
+        )
+
+    def _restore_session_history(self, session):
+        with self._as(session):
+            self.restore_history()
 
     def sync_sessions(self):
-        """Make the tabs match the characters that exist now (built-in ones + custom ones, minus deleted ones)."""
+        """Rebuild visible character tabs from application-owned session state."""
         profiles = self.character_service.all_profiles(self.settings)
-        order = [c for c in ("kira", "ren", "mika") if c in profiles] + [c for c in profiles if c not in ("kira", "ren", "mika")]
-        for cid in order:
-            sess = self._ensure_session(cid, profiles[cid])
-            if sess is None:
-                continue
-            if not sess.loaded:
-                sess.loaded = True
-                with self._as(sess):
-                    self.restore_history()
-                publisher = getattr(self, "chat_event_publisher", None)
-                if publisher is not None:
-                    try:
-                        publisher.publish(
-                            "history_loaded",
-                            session_id=sess.session_id,
-                            payload={
-                                "character_id": sess.cid,
-                                "conversation_id": sess.conversation_id,
-                            },
-                        )
-                    except Exception:
-                        pass
-        order += [c for c in self.sessions if c not in order]          # a deleted character that is still answering keeps its tab for now
-        for cid in [c for c in self.sessions if c not in profiles]:      # a deleted character stays until its queued/active work is drained
-            sess = self.sessions[cid]
-            if self._session_has_pending_chat_work(sess):
-                continue
-            self._dispose_chat_session(sess)
-        while self.char_tabs_row.count():                                # rebuild the row in character order
+        order = self.session_application_service.sync_sessions(
+            profiles,
+            ensure_resources=self._ensure_session_ui_resources,
+            restore_history=self._restore_session_history,
+            vision_session=getattr(self, "_vision_session", None),
+            vision_worker=getattr(self, "_vision_worker", None),
+        )
+        while self.char_tabs_row.count():
             self.char_tabs_row.takeAt(0)
         for cid in order:
             if cid in self.char_tab_buttons:
@@ -306,28 +253,18 @@ class SessionMixin:
 
     @staticmethod
     def _worker_is_running(worker):
-        if worker is None:
-            return False
-        try:
-            return bool(worker.isRunning())
-        except RuntimeError:
-            return False
+        from ..app.session_application import SessionApplicationService
+        return SessionApplicationService.worker_is_running(worker)
 
     def _session_has_pending_chat_work(self, session):
-        if (session.busy
-                or self.chat_application_service.has_active_request(session.session_id)
-                or self.chat_application_service.has_pending_work(session.session_id)):
-            return True
-        if self._worker_is_running(getattr(session, "worker", None)) or self._worker_is_running(
-            getattr(session, "_search_worker", None)
-        ):
-            return True
-        return (getattr(self, "_vision_session", None) is session
-                and self._worker_is_running(getattr(self, "_vision_worker", None)))
+        return self.session_application_service.has_pending_work(
+            session,
+            vision_session=getattr(self, "_vision_session", None),
+            vision_worker=getattr(self, "_vision_worker", None),
+        )
 
     def _dispose_chat_session(self, session):
-        """Request lifecycle closure; SessionManager owns the state transition."""
-        return self.session_manager.close_session(session.session_id)
+        return self.session_application_service.close_session(session)
 
     def _release_chat_session_resources(self, session):
         """Release UI/provider resources after SessionManager confirms the work has drained."""
@@ -397,7 +334,7 @@ class SessionMixin:
     def switch_session(self, cid, save=True):
         """Bring one character's chat to the front: its conversation, its colours, its picture. Other chats keep working."""
         sess = self.sessions.get(cid)
-        if sess is None or not self.session_manager.activate_session(sess.session_id):
+        if sess is None or not self.session_application_service.activate_session(sess.session_id):
             return
         if cid != self.front.cid:
             self._flush_character_autosave()
