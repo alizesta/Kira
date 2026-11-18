@@ -41,7 +41,10 @@ from .main_window_character_settings_support import (
 )
 
 
-class CharacterSettingsMixin:
+from .window_feature_controller import WindowFeatureController
+
+
+class CharacterSettingsMixin(WindowFeatureController):
     def build_characters_tab(self):
         """Compose the independent Characters page and delegate actions to the host."""
         self.character_page = CharactersPage(
