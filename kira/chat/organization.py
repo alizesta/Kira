@@ -224,7 +224,7 @@ class ChatOrganizationService:
             True, str(updated["id"]), organization, value=normalized
         )
 
-    def create_tag(    def create_tag(self, name: str) -> Tag:
+    def create_tag(self, name: str) -> Tag:
         normalized = _label(name, "tag name")
         return Tag(normalized.casefold(), normalized)
 
@@ -262,7 +262,7 @@ class ChatOrganizationService:
         organization = _organization(updated.get("metadata"))
         return OrganizationResult(True, str(updated["id"]), organization)
 
-    def create_folder(    def create_folder(self, name: str) -> Folder:
+    def create_folder(self, name: str) -> Folder:
         normalized = _label(name, "folder name")
         folder_id = normalized.casefold()
         with self._lock:
@@ -353,7 +353,7 @@ class ChatOrganizationService:
         organization = _organization(updated.get("metadata"))
         return OrganizationResult(True, str(updated["id"]), organization)
 
-    def get_organization(    def get_organization(self, conversation_id: str) -> OrganizationResult:
+    def get_organization(self, conversation_id: str) -> OrganizationResult:
         record = self._conversation(conversation_id)
         org = _organization(record.get("metadata"))
         org.setdefault("tags", [])
@@ -403,7 +403,7 @@ class ChatOrganizationService:
                 self._publish(record, _organization(record.get("metadata")))
         return len(changed_ids)
 
-    def filter_conversations(    def filter_conversations(self, filters: OrganizationFilter | None = None, **options: Any) -> list[dict[str, Any]]:
+    def filter_conversations(self, filters: OrganizationFilter | None = None, **options: Any) -> list[dict[str, Any]]:
         if filters is not None and options:
             raise OrganizationError("pass OrganizationFilter or keyword filters, not both")
         request = filters or OrganizationFilter(**options)
