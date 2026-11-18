@@ -99,6 +99,28 @@ class FileAgentTests(unittest.TestCase):
         with self.assertRaises(ToolError):
             self.policy.check(str(target))
 
+    def test_list_folder_discloses_items_with_unreadable_metadata(self):
+        target = self.root / "unreadable.txt"
+        target.write_text("exists", encoding="utf-8")
+
+        class FailingEntry:
+            name = target.name
+            path = str(target)
+
+            @staticmethod
+            def stat(follow_symlinks=False):
+                raise PermissionError("metadata denied")
+
+            @staticmethod
+            def is_dir(follow_symlinks=False):
+                return False
+
+        with mock.patch.object(fileops.os, "scandir", return_value=[FailingEntry()]):
+            result = fileops.FileTools(self.policy).list_folder({"path": str(self.root)})
+
+        self.assertIn("فهرست ممکن است ناقص باشد", result)
+        self.assertIn("1 مورد ناموفق", result)
+
     def test_search_reports_skipped_inaccessible_folders(self):
         blocked = self.root / "blocked"
         blocked.mkdir()
