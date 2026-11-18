@@ -470,12 +470,13 @@ def forget_conversation():
 
 
 def forget_all():
-    """Everything Kira stored about him and the relationship (not the chat history itself)."""
-    _last_reply[_current_character.get()] = ""
+    """Forget persona and evidence memory; evidence deletion must succeed before the persona store is cleared."""
+    character_id = _current_character.get()
+    if character_id == "kira":
+        _evidence.forget_all()
     with _lock:
         _save(_empty())
-    if _current_character.get() == "kira":
-        _evidence.forget_all()
+    _last_reply[character_id] = ""
 
 
 # ---------------- view / edit ----------------
@@ -504,10 +505,27 @@ def list_items(now=None) -> list[dict]:
 def delete_item(item_id: str) -> bool:
     if str(item_id).startswith("ev:"):
         return _evidence.delete_extra(item_id) if _current_character.get() == "kira" else False
-    removed = _delete_persona_item(item_id)
-    if _current_character.get() == "kira":
-        _evidence.delete_by_persona_id(item_id)                          # the evidence of what he deleted goes too
-    return removed
+
+    character_id = _current_character.get()
+    with _lock:
+        data = _load()
+        item = next(
+            (
+                (key, entry)
+                for key in ("facts", "moments", "summaries")
+                for entry in data[key]
+                if (entry.get("id") or _id(entry.get("kind", "summary"), entry["text"])) == item_id
+            ),
+            None,
+        )
+    if item is None:
+        return False
+
+    # Remove the searchable copy first. A database failure leaves the editable
+    # persona item intact instead of silently orphaning stale evidence.
+    if character_id == "kira":
+        _evidence.delete_by_persona_id(item_id)
+    return _delete_persona_item(item_id)
 
 
 def _delete_persona_item(item_id: str) -> bool:
@@ -526,26 +544,56 @@ def update_item(item_id: str, text: str) -> bool:
     text = " ".join(str(text or "").split())[:200]
     if len(text) < 2:
         return False
+    character_id = _current_character.get()
     if str(item_id).startswith("ev:"):
-        return (_evidence.delete_extra(item_id) and _evidence.add_manual(text)) if _current_character.get() == "kira" else False
-    sync = None
+        return _evidence.update_extra(item_id, text) if character_id == "kira" else False
+
+    selected = None
     with _lock:
         data = _load()
         for key in ("facts", "moments", "summaries"):
             for it in data[key]:
-                if (it.get("id") or _id(it.get("kind", "summary"), it["text"])) == item_id:
-                    it["text"] = text
-                    new_id = _id(it.get("kind", "summary"), text)
-                    it["id"] = new_id
-                    _save(data)
-                    sync = (key, new_id)
+                current_id = it.get("id") or _id(it.get("kind", "summary"), it["text"])
+                if current_id == item_id:
+                    selected = (key, it.get("kind", "summary"), it["text"])
                     break
-            if sync:
+            if selected:
                 break
-    if sync is None:
+    if selected is None:
         return False
-    if sync[0] == "facts" and _current_character.get() == "kira":      # outside the lock: the two stores never wait for each other
-        _evidence.update_by_persona_id(item_id, sync[1], text)          # his own wording replaces the stored fact
+
+    key, kind, old_text = selected
+    new_id = _id(kind, text)
+    sync_evidence = key == "facts" and character_id == "kira"
+    if sync_evidence:
+        # Complete the evidence-index mutation before changing the editable
+        # persona item. Storage failures therefore leave the original item intact.
+        _evidence.update_by_persona_id(item_id, new_id, text)
+
+    try:
+        with _lock:
+            data = _load()
+            target = next(
+                (
+                    entry
+                    for group in ("facts", "moments", "summaries")
+                    for entry in data[group]
+                    if (entry.get("id") or _id(entry.get("kind", "summary"), entry["text"])) == item_id
+                ),
+                None,
+            )
+            if target is None:
+                raise RuntimeError("Persona-memory item changed while it was being edited")
+            target["text"] = text
+            target["id"] = new_id
+            _save(data)
+    except Exception:
+        if sync_evidence:
+            try:
+                _evidence.update_by_persona_id(new_id, item_id, old_text)
+            except Exception:
+                _log.exception("Could not roll back evidence after persona-memory edit failed")
+        raise
     return True
 
 
@@ -554,9 +602,20 @@ def add_note(text: str, now=None) -> bool:
     if len(text) < 3:
         return False
     label = _LABELS["note"].format(text)
-    add_fact("note", label, now)
-    if _current_character.get() == "kira":
-        _evidence.add_manual(label, now, persona_id=_id("note", label))
+    character_id = _current_character.get()
+    persona_id = _id("note", label)
+    if character_id == "kira" and _evidence.enabled():
+        if not _evidence.add_manual(label, now, persona_id=persona_id):
+            raise RuntimeError("Manual note could not be synchronized to evidence memory")
+    try:
+        add_fact("note", label, now)
+    except Exception:
+        if character_id == "kira" and _evidence.enabled():
+            try:
+                _evidence.delete_by_persona_id(persona_id)
+            except Exception:
+                _log.exception("Could not roll back evidence after adding a persona-memory note failed")
+        raise
     return True
 
 
