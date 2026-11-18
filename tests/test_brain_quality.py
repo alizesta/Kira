@@ -211,6 +211,18 @@ class BrainReflectionQualityTests(unittest.TestCase):
         with patch("kira.evidence_memory.enabled", side_effect=AssertionError("writer should not start")):
             brain._memory_writer(object(), {"brain_memory_writer": "idle"}, "mika")
 
+    def test_non_kira_model_reflection_does_not_retrieve_kira_evidence(self):
+        import kira.evidence_memory as evidence_memory
+        with (
+            patch.object(brain, "_allowed", return_value=True),
+            patch.object(brain, "_load", return_value=brain._empty_state()),
+            patch.object(brain, "_save", return_value=True),
+            patch.object(brain, "make_aux_router", return_value=object()),
+            patch.object(brain, "_ask", return_value='{"issue": false, "hint": ""}'),
+            patch.object(evidence_memory, "retrieve", side_effect=AssertionError("Kira facts leaked")),
+        ):
+            brain._model_reflect(object(), {}, "ren user message", "ren reply", "ren")
+
     def test_partial_tool_failure_is_not_hidden_by_another_success(self):
         findings = brain.check_reply(
             "کار انجام شد.",
