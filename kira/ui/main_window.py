@@ -1,10 +1,9 @@
-"""Thin Qt shell; feature behavior is composed from window-scoped controllers."""
+"""Thin Qt host; feature methods and presentation state live outside the shell."""
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QMainWindow
 
-from ..chat_sessions import session_property, front_only_property
 from .main_window_session import SessionController
 from .main_window_voice_settings import VoiceSettingsController
 from .main_window_character_settings import CharacterSettingsController
@@ -13,62 +12,18 @@ from .main_window_lifecycle import LifecycleController
 from .main_window_attachments_vision import AttachmentsVisionController
 from .main_window_chat import ChatController
 from .main_window_runtime import RuntimeController
+from .feature_controller_registry import FeatureControllerRegistry
+from .window_presentation_context import WindowPresentationContext
 
 
 class MainWindow(QMainWindow):
-    """Qt host and feature-controller registry; no feature mixin inheritance."""
+    """Qt host that owns only the feature-controller graph and presentation context."""
 
     voice_listener_finished = Signal(object, bool, bool)
 
-    # Session-bound state remains on the shell because it is shared by the
-    # window-scoped feature controllers and the active ChatSession.
-    busy = session_property("busy")
-    worker = session_property("worker")
-    _stream_text = session_property("_stream_text")
-    _stream_pos = session_property("_stream_pos")
-    _stream_dirty = session_property("_stream_dirty")
-    _stream_mood = session_property("_stream_mood")
-    _emotion_applied = session_property("_emotion_applied")
-    _body_done = session_property("_body_done")
-    _t_req = session_property("_t_req")
-    _t_first = session_property("_t_first")
-    _speech_live = session_property("_speech_live")
-    _turn_extra = session_property("_turn_extra")
-    _turn_attach_kinds = session_property("_turn_attach_kinds")
-    _turn_voice = session_property("_turn_voice")
-    _turn_mode = session_property("_turn_mode")
-    _tool_plan = session_property("_tool_plan")
-    _brain = session_property("_brain")
-    _brain_user_text = session_property("_brain_user_text")
-    _brain_mode_name = session_property("_brain_mode_name")
-    _plain_retry = session_property("_plain_retry")
-    _web_found = session_property("_web_found")
-    _image_search_turn = session_property("_image_search_turn")
-    _search_token = session_property("_search_token")
-    _search_worker = session_property("_search_worker")
-    _search_base = session_property("_search_base")
-    _route_info = session_property("_route_info")
-    _badge_phase = session_property("_badge_phase")
-    client = session_property("client")
-    chat = property(lambda self: self.cur.view)
-    _stream_timer = property(lambda self: self.cur.timer)
-
-    # Device/presentation objects are front-window resources; controllers
-    # access them through this explicit shell-owned compatibility surface.
-    speaker = front_only_property("speaker")
-    voice_application_service = front_only_property("voice_application_service")
-    director = front_only_property("director", ("parse_reply", "format_hint", "library"))
-    animator = front_only_property("animator")
-    bubble = front_only_property("bubble")
-    status = front_only_property("status")
-    gen_stop_btn = front_only_property("gen_stop_btn")
-    send_btn = front_only_property("send_btn")
-    input = front_only_property("input")
-    voice_btn = front_only_property("voice_btn")
-
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._feature_controllers = {
+        controllers = {
             "runtime": RuntimeController(self),
             "chat": ChatController(self),
             "attachments_vision": AttachmentsVisionController(self),
@@ -78,25 +33,18 @@ class MainWindow(QMainWindow):
             "voice_settings": VoiceSettingsController(self),
             "session": SessionController(self),
         }
-
-    def __getattr__(self, name):
-        controllers = self.__dict__.get("_feature_controllers", {})
-        for controller in controllers.values():
-            if name in type(controller).__dict__:
-                return getattr(controller, name)
-        raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
+        registry = FeatureControllerRegistry(controllers)
+        self.presentation_context = WindowPresentationContext(self, registry)
 
     def _dispatch_qt_event(self, controller_name, event_name, event):
-        controller = self.__dict__.get("_feature_controllers", {}).get(controller_name)
-        if controller is not None:
-            return getattr(controller, event_name)(event)
-        base_handler = getattr(QMainWindow, event_name, None)
-        if base_handler is not None:
-            return base_handler(self, event)
-        return None
+        context = getattr(self, "presentation_context", None)
+        if context is None:
+            base_handler = getattr(QMainWindow, event_name, None)
+            return base_handler(self, event) if base_handler is not None else None
+        return context.controllers.dispatch_event(self, controller_name, event_name, event)
 
-    # Qt virtual events are explicit shell responsibilities and are forwarded
-    # to the relevant feature controller.
+    # Qt virtual events are shell responsibilities and are forwarded to their
+    # explicitly declared feature owner.
     def showEvent(self, event):
         return self._dispatch_qt_event("lifecycle", "showEvent", event)
 
@@ -117,13 +65,3 @@ class MainWindow(QMainWindow):
 
     def dropEvent(self, event):
         return self._dispatch_qt_event("attachments_vision", "dropEvent", event)
-
-    @property
-    def listener(self):
-        service = getattr(self, "voice_application_service", None)
-        return service.listener if service is not None else None
-
-    @property
-    def _stopping_listener(self):
-        service = getattr(self, "voice_application_service", None)
-        return service.stopping_listener if service is not None else None
