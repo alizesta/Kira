@@ -1,9 +1,4 @@
-"""Explicit ownership registry for window-scoped presentation controllers.
-
-The registry is the only compatibility boundary that resolves legacy MainWindow
-feature methods. Controller ownership and Qt event routing are declared here,
-rather than inferred independently by the shell.
-"""
+"""Explicit ownership registry and Qt event routing for presentation controllers."""
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -39,18 +34,6 @@ class FeatureControllerRegistry:
         if controller is None:
             raise LookupError(f"Feature controller {feature!r} is not registered")
         return controller
-
-    def resolve(self, attribute: str):
-        """Resolve a method declared by exactly one feature controller.
-
-        During migration, duplicate names retain the historical first-owner
-        behavior. The owner can be inspected with owners_for and migrated
-        explicitly without changing the shell's public compatibility surface.
-        """
-        for controller in self._controllers.values():
-            if attribute in type(controller).__dict__:
-                return getattr(controller, attribute)
-        raise AttributeError(attribute)
 
     def owners_for(self, attribute: str) -> tuple[str, ...]:
         return tuple(
