@@ -82,15 +82,27 @@ class VoiceApplicationService(VoiceService):
             return VoiceTranscriptDecision("stop")
         return VoiceTranscriptDecision("submit", value)
 
+    @staticmethod
+    def _is_running(listener: Any) -> bool:
+        if listener is None:
+            return False
+        try:
+            return bool(listener.isRunning())
+        except RuntimeError:
+            # A Qt worker can be deleted between a queued finish signal and a UI action.
+            return False
+
     def start_recording(self) -> None:
         """Start one listener; defer replacement until the prior QThread has fully exited."""
         if self.listener is not None:
             self.stop_recording()
         previous = self.stopping_listener
-        if previous is not None and previous.isRunning():
+        if previous is not None and self._is_running(previous):
             self.restart_after_stop = True
             self.on_waiting()
             return
+        if previous is not None:
+            self.stopping_listener = None
         self.restart_after_stop = False
         listener = self.listener_factory()
         listener.heard.connect(self.on_heard)
@@ -100,16 +112,26 @@ class VoiceApplicationService(VoiceService):
         listener.note.connect(self.on_note)
         listener.finished.connect(lambda current=listener: self._listener_finished(current))
         self.listener = listener
-        listener.start()
+        try:
+            listener.start()
+        except Exception:
+            self.listener = None
+            raise
 
     def stop_recording(self) -> None:
         """Request non-blocking listener shutdown and retain ownership until its finished signal."""
         self.restart_after_stop = False
         if self.listener is not None:
             listener, self.listener = self.listener, None
-            listener.stop()
-            if listener.isRunning():
+            try:
+                listener.stop()
+            except RuntimeError:
+                self.stopping_listener = None
+                return
+            if self._is_running(listener):
                 self.stopping_listener = listener
+            elif self.stopping_listener is listener:
+                self.stopping_listener = None
 
     def _listener_finished(self, listener: Any) -> None:
         was_current = self.listener is listener
