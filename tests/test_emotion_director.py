@@ -18,7 +18,6 @@ class EmotionDirectorLifecycleTests(unittest.TestCase):
     def test_streamed_reply_tag_does_not_finish_generation_early(self):
         self.director.event("response_started", now=100.0)
         meta = self.director.parse_reply("[happy:65]\nسلام، خوشحالم می‌بینمت.")
-        
         result = self.director.on_reply(meta, now=101.0)
 
         self.assertEqual(result, "applied")
