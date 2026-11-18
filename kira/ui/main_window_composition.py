@@ -221,6 +221,11 @@ def initialize_main_window(
         attachment_api=att,
         max_files=att.MAX_FILES,
     )
+    # Chat receives the independent attachment workflow explicitly; it no
+    # longer reaches into the AttachmentsVision feature controller for it.
+    self._controller_registry.get("chat").bind_attachment_controller(
+        self.attachment_controller
+    )
     # Compatibility aliases remain while callers migrate to the controller contract.
     self._tiles = self.attachment_controller.tiles
     self._load_tiles = self.attachment_controller.loading_tiles
