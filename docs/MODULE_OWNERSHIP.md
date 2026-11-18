@@ -76,6 +76,18 @@ Bootstrap injects the Voice factory into MainWindow. Speaker and Listener remain
 
 
 
+### 2.5 Extended application policy boundaries
+
+| Capability | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
+|---|---|---|---|---|
+| Provider / routes | `kira/app/provider_application.py` | `ProviderApplicationService`: provider and API registry operations, route mutation, Ollama settings validation/client creation, router creation and per-session router replacement | Existing route/API registry contracts, provider/router factories | Qt widgets, UI dialogs, direct MainWindow references |
+| Vision | `kira/app/vision_application.py` | `VisionApplicationService`: capture permission, policy/cadence, busy-state admission, frame deduplication, result deduplication and latency statistics | Vision pipeline and GameModeApplicationService | Qt screen capture, timers, worker threads, UI presentation |
+| Coding Agent | `kira/app/coding_agent_application.py` | `CodingAgentApplicationService`: attachment-free turn handoff, local request completion and session stop delegation | Existing CodeChat execution adapter and completion callback | Agent runtime implementation, widgets, persistence |
+| Runtime settings | `kira/app/runtime_settings_application.py` | `RuntimeSettingsApplicationService`: initial configuration and propagation of shared settings to evidence memory, usage and optional ToolAgent | Existing shared capability contracts | Settings widgets/dialogs, UI rendering |
+| Character profile | `kira/services/character_service.py` | `CharacterProfileService`: create/update/delete, profile validation, per-character preferences/resources, personality traits/notes and active profile resolution | `kira.characters` data contracts, settings mapping | Qt page construction, SessionManager runtime lifecycle, UI presentation |
+
+These services are directly injected by Bootstrap/Composition; they are not automatically registered as ModuleManager lifecycle modules. UI-owned widget, signal and worker lifecycle remains at the outer adapter boundary.
+
 ### 2.6 TASK 020 — MainWindow feature dependency boundaries
 
 | Task | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
