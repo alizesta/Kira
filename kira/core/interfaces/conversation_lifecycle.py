@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 
-from ...domain.conversations import ConversationLifecycleResult, ConversationOperation, ConversationStatus
+from ...domain.conversations import ConversationLifecycleResult, ConversationStatus
 
 
 
