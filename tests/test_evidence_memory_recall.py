@@ -54,5 +54,14 @@ class EvidenceMemoryRecallTests(unittest.TestCase):
         self.assertTrue(any("Evidence-memory interest ranking failed" in line for line in ranking_logs.output))
 
 
+    def test_forget_all_logs_and_propagates_storage_failure(self):
+        with mock.patch.object(em, "_db", side_effect=RuntimeError("synthetic delete failure")):
+            with self.assertLogs("kira.evidence_memory", level="ERROR") as captured:
+                with self.assertRaisesRegex(RuntimeError, "synthetic delete failure"):
+                    em.forget_all()
+
+        self.assertTrue(any("Could not clear evidence memory" in line for line in captured.output))
+
+
 if __name__ == "__main__":
     unittest.main()
