@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Any
+from typing import Callable
+
+from ..core.interfaces.application_module import ApplicationModule
 
 from .dependency_container import DependencyContainer
 from .event_bus import EventBus
@@ -26,12 +28,12 @@ class ModuleState(str, Enum):
 @dataclass
 class _ModuleRecord:
     module_id: str
-    factory: Callable[[], Any]
+    factory: Callable[[], ApplicationModule]
     dependencies: tuple[str, ...]
     optional: bool
     enabled: bool = True
     state: ModuleState = ModuleState.REGISTERED
-    instance: Any | None = None
+    instance: ApplicationModule | None = None
     registered: bool = False
     error: str | None = None
 
@@ -58,7 +60,7 @@ class ModuleManager:
     def register(
         self,
         module_id: str,
-        factory: Callable[[], Any],
+        factory: Callable[[], ApplicationModule],
         *,
         dependencies=(),
         optional: bool = True,
@@ -274,7 +276,7 @@ class ModuleManager:
             raise ModuleManagerError(f"Module is not registered: {module_id}") from exc
 
     @staticmethod
-    def _validate_lifecycle(module: Any) -> None:
+    def _validate_lifecycle(module: ApplicationModule) -> None:
         missing = [
             name
             for name in ("register", "start", "stop", "dispose")
