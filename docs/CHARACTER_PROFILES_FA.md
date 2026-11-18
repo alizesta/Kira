@@ -28,6 +28,8 @@ The desktop companion artwork and TTS voice selection are still shared UI settin
 
 Every character receives the same shared capability contract: the same routed model, tool registry and permissions, planner, task modes, memory/context access, safety rules, reasoning quality bar and result-verification requirements. Character profiles may change only conversational expression (tone, temperament, humour, warmth, assertiveness, emotional style and relationship style). They cannot add or remove tools, change the model, bypass confirmations, or reduce task quality. This is also enforced by one shared ToolAgent and HybridRouter instance in the application, not only by prompt wording.
 
+The built-in Kira, Ren and Mika profiles each define an independent baseline across ten temperament traits (playfulness, warmth, curiosity, confidence, assertiveness, teasing, empathy, independence, patience and carefulness). The baseline is injected into every provider-neutral character prompt as stable style guidance. User overrides are stored per character. The deterministic DecisionEngine also uses the active profile's baseline together with current emotion, relationship signals, user context and task mode; temporary mood does not overwrite the stable profile.
+
 ## Add another profile
 
 Use **Characters → New character**. Give it a name, description and character-specific notes, then use **Personality** to set its baseline traits. Its emotional state and voice-style samples are stored separately from Kira's.
