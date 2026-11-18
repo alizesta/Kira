@@ -34,7 +34,7 @@ The Application service already limits serialized exports to its transfer-file s
 
 ## Composition
 
-The adapter is injected through the existing ChatTransfer(..., file_port=...) contract. Bootstrap/feature lifecycle construction of the concrete adapter remains Flow 4's responsibility through the run_application(transfer_file_port=...) injection point. The legacy standard-library fallback in the Application service remains for compatibility with existing direct callers; production wiring should provide this adapter.
+The adapter is injected through the existing ChatTransfer(..., file_port=...) contract. Bootstrap creates LocalChatTransferFileAdapter by default and passes it through run_application(transfer_file_port=...). Callers may still inject a different ChatTransferFilePort explicitly. The Application service's legacy standard-library fallback remains only for compatibility with direct callers that bypass the production Composition Root.
 
 ## Verification
 
