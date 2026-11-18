@@ -55,6 +55,7 @@ def run_application() -> None:
             chat_application_service_factory=container.resolve("chat_application_service_factory"),
             session_application_service_factory=container.resolve("session_application_service_factory"),
             web_search_service=container.resolve("web_search_service"),
+            shared_skills_application_service=container.resolve("shared_skills_application_service"),
             voice_application_service_factory=container.resolve("voice_application_service_factory"),
             game_mode_application_service=container.resolve("game_mode_application_service"),
             session_manager=session_manager,
