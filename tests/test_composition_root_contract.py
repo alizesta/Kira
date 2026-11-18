@@ -151,6 +151,14 @@ class CompositionRootContractTests(unittest.TestCase):
             "transfer_file_port",
             {item.arg for item in registration_calls[0].keywords},
         )
+        self.assertIn(
+            "LocalChatTransferFileAdapter",
+            {
+                node.func.id for node in ast.walk(run_application)
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            },
+            "Bootstrap must supply a concrete filesystem adapter by default",
+        )
 
     def test_shared_skills_is_registered_and_injected_from_bootstrap(self):
         modules = parse("kira/app/feature_modules.py")
