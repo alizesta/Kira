@@ -275,12 +275,17 @@ class FeatureModuleRegistrationTests(unittest.TestCase):
             schedule=lambda callback: callback(),
             cancel_provider=lambda request, worker: None,
         )
-        service = factory(ports)
+        first_window_service = factory(ports)
+        second_window_service = factory(ports)
         try:
-            self.assertIsInstance(service, ChatApplicationService)
-            self.assertIs(service._conversation_lifecycle, lifecycle)
+            self.assertIsInstance(first_window_service, ChatApplicationService)
+            self.assertIsInstance(second_window_service, ChatApplicationService)
+            self.assertIsNot(first_window_service, second_window_service)
+            self.assertIs(first_window_service._conversation_lifecycle, lifecycle)
+            self.assertIs(second_window_service._conversation_lifecycle, lifecycle)
         finally:
-            service.dispose()
+            first_window_service.dispose()
+            second_window_service.dispose()
 
     def test_starting_a_dependent_service_starts_persistence_first(self):
         self.manager.start("chat_transfer")
