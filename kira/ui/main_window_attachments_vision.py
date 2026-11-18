@@ -145,7 +145,7 @@ class AttachmentsVisionMixin:
             for key, action in self.vision_rate_actions.items():
                 action.setChecked(key == policy.name)
         self._game_capture_timer.setInterval(max(250, int(policy.interval_seconds * 1000)))
-        if self._game_mode_enabled and game_mode_permissions(self._game_mode_profile)["vision_capture"]:
+        if self._game_mode_enabled and self.game_mode_application_service.can_capture_vision(self._game_mode_profile):
             self._capture_game_frame()
             if not self._game_capture_timer.isActive():
                 self._game_capture_timer.start()
@@ -181,22 +181,22 @@ class AttachmentsVisionMixin:
 
     def set_game_mode_profile(self, profile):
         """Apply a manually selected gameplay profile; never infer or enable it automatically."""
-        self._game_mode_profile = normalize_game_mode_profile(profile)
-        self.game_mode_story_action.setChecked(self._game_mode_profile == STORY_MODE)
-        self.game_mode_safe_action.setChecked(self._game_mode_profile == COMPETITIVE_SAFE_MODE)
+        self._game_mode_profile = self.game_mode_application_service.normalize_profile(profile)
+        self.game_mode_story_action.setChecked(self.game_mode_application_service.is_story(self._game_mode_profile))
+        self.game_mode_safe_action.setChecked(self.game_mode_application_service.is_competitive_safe(self._game_mode_profile))
         self.set_game_mode(True)
 
     def set_game_mode(self, enabled):
         enabled = bool(enabled)
         was_enabled = self._game_mode_enabled
         self._game_mode_enabled = enabled
-        permissions = game_mode_permissions(self._game_mode_profile)
+        permissions = self.game_mode_application_service.permissions(self._game_mode_profile)
         vision_allowed = bool(permissions["vision_capture"])
         audio_allowed = bool(permissions["game_audio_loopback"])
 
         # Capture is gated by the selected profile, not only by the master toggle.
         self._set_game_vision_capture(enabled and vision_allowed)
-        safe_profile = enabled and self._game_mode_profile == COMPETITIVE_SAFE_MODE
+        safe_profile = enabled and self.game_mode_application_service.is_competitive_safe(self._game_mode_profile)
         self.tool_agent.set_competitive_safe_mode(safe_profile)
         # Safe mode does not keep polling foreground process metadata while an online game is running.
         if safe_profile:
@@ -228,7 +228,7 @@ class AttachmentsVisionMixin:
         if not enabled:
             self.game_mode_btn.setToolTip("Game Mode خاموش است؛ برای فعال‌کردن دستی کلیک کن")
             self.add_chat("system", "🎮 Game Mode خاموش شد؛ تمام Captureها و شنود صدای بازی متوقف شدند.")
-        elif self._game_mode_profile == STORY_MODE:
+        elif self.game_mode_application_service.is_story(self._game_mode_profile):
             self.game_mode_btn.setToolTip("Story Mode فعال است؛ Vision و تحلیل محلی صدای بازی فعال‌اند")
             self.add_chat("system", "🎮 Story Mode فعال شد. Vision و تحلیل محلی صدای بازی فعال‌اند. دست‌کاری پردازش، حافظه یا ورودی بازی همچنان ممنوع است.")
         else:
@@ -253,33 +253,24 @@ class AttachmentsVisionMixin:
 
     def on_game_audio_error(self, message):
         if (self._game_mode_enabled
-                and game_mode_permissions(self._game_mode_profile)["game_audio_loopback"]):
+                and self.game_mode_application_service.permissions(self._game_mode_profile)["game_audio_loopback"]):
             self.add_chat("system", "🎧 " + message)
 
     def on_game_audio_transcript(self, text):
-        if (not self._game_mode_enabled
-                or not game_mode_permissions(self._game_mode_profile)["automatic_game_audio_alerts"]
-                or self.busy or self.voice_application_service.is_speaking() or not is_important_game_audio(text)):
-            return
-        now = time.monotonic()
-        lower = text.casefold()
-        category = ("urgent" if re.search(r"low health|low hp|critical|danger|warning|خطر|هشدار|خونت کم|جونت کم", lower, re.I)
-                    else "complete" if re.search(r"mission complete|quest complete|victory|achievement|مرحله تمام|ماموریت تمام|دستاورد", lower, re.I)
-                    else "combat")
-        previous = self._game_audio_alerts.get(category, (0.0, ""))
-        if now - previous[0] < 25 or lower == previous[1]:
-            return
-        self._game_audio_alerts[category] = (now, lower)
-        alerts = {
-            "urgent": "حواست باشه، از صدای بازی هشدار خطر یا کمبود سلامتی شنیدم.",
-            "complete": "به نظر می‌رسه یک مرحله، مأموریت یا دستاورد مهم تکمیل شده.",
-            "combat": "به نظر می‌رسه اتفاق مهمی در مبارزه یا نزدیک‌شدن دشمن رخ داده.",
-        }
-        self.reply_local(alerts[category], "surprised" if category == "urgent" else "thinking")
+        alert = self.game_mode_application_service.classify_game_audio(
+            text,
+            now=time.monotonic(),
+            enabled=self._game_mode_enabled,
+            profile=self._game_mode_profile,
+            busy=self.busy,
+            speaking=self.voice_application_service.is_speaking(),
+        )
+        if alert is not None:
+            self.reply_local(alert.message, alert.emotion)
 
     def _capture_game_frame(self):
         """Capture a bounded frame and analyze only changed frames at the selected low-cost rate."""
-        if not self._game_mode_enabled or not game_mode_permissions(self._game_mode_profile)["vision_capture"]:
+        if not self._game_mode_enabled or not self.game_mode_application_service.can_capture_vision(self._game_mode_profile):
             self._latest_game_frame = None
             self._vision_gate.reset()
             return
@@ -332,7 +323,7 @@ class AttachmentsVisionMixin:
             f"فریم تکراری ردشده: {stats['unchanged_skips']} · تأخیر آخرین تحلیل: {latency_ms}ms"
         )
         if (not self._game_mode_enabled
-                or not game_mode_permissions(self._game_mode_profile)["vision_capture"]):
+                or not self.game_mode_application_service.can_capture_vision(self._game_mode_profile)):
             return
         if not ok:
             # Unsupported image models are reported once, not every sampling interval.
@@ -362,7 +353,7 @@ class AttachmentsVisionMixin:
     def _game_vision_attachment(self):
         """Attach only the newest 480p JPEG frame captured while Game Mode is manually enabled."""
         if (not self._game_mode_enabled
-                or not game_mode_permissions(self._game_mode_profile)["vision_capture"]
+                or not self.game_mode_application_service.can_capture_vision(self._game_mode_profile)
                 or self._latest_game_frame is None):
             return None
         try:
