@@ -6,7 +6,7 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
-from kira.mcp.agents import AgentHttp, JOBS_FILE, JobStore
+from kira.mcp.agents import AgentHttp, AgentHub, JOBS_FILE, JobStore
 from kira.tools.registry import ToolError
 
 
@@ -58,6 +58,43 @@ class JobStoreTests(unittest.TestCase):
 
         self.assertTrue(response.closed)
         self.assertLess(time.monotonic() - started, 0.5)
+
+    def test_missing_health_ok_field_is_not_treated_as_healthy(self):
+        with tempfile.TemporaryDirectory() as temp:
+            hub = AgentHub(mock.Mock(), Path(temp), lambda: {})
+            agent = mock.Mock()
+            agent.cfg = {"name": "worker"}
+            agent.health.return_value = {}
+
+            with self.assertRaises(ToolError):
+                hub._probe(agent)
+
+            with mock.patch.object(hub, "_agent", return_value=agent):
+                status = hub.health_text({"agent": "worker"})
+            self.assertIn("آماده نیست", status)
+
+    def test_unknown_remote_job_state_is_marked_as_error_not_progress(self):
+        with tempfile.TemporaryDirectory() as temp:
+            hub = AgentHub(mock.Mock(), Path(temp), lambda: {})
+            job = {
+                "id": "job-1",
+                "agent": "worker",
+                "remote_id": "remote-1",
+                "state": "progress",
+                "text": "",
+                "question": "",
+                "created": 1.0,
+                "updated": 1.0,
+            }
+            hub.store.add(job)
+            agent = mock.Mock()
+            agent.status.return_value = {"state": "done", "text": "finished"}
+
+            with mock.patch.object(hub, "_agent", return_value=agent):
+                updated = hub._refresh(job)
+
+            self.assertEqual(updated["state"], "error")
+            self.assertIn("وضعیت نامعتبر", updated["text"])
 
     def test_job_store_writes_valid_json_and_unique_atomic_temp_files(self):
         with tempfile.TemporaryDirectory() as temp:
