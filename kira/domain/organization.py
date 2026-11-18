@@ -69,6 +69,11 @@ def normalize_label(
     return normalized
 
 
+def contains_control_characters(value: Any) -> bool:
+    """Return whether text contains ASCII control characters."""
+    return isinstance(value, str) and _CONTROL.search(value) is not None
+
+
 def normalize_key(value: Any, field_name: str) -> str:
     """Return the case-insensitive identity form for a validated label."""
     return normalize_label(value, field_name).casefold()
@@ -114,6 +119,7 @@ __all__ = [
     "OrganizationError",
     "OrganizationFilter",
     "Tag",
+    "contains_control_characters",
     "normalize_key",
     "normalize_label",
     "organization_metadata",
