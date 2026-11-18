@@ -21,7 +21,10 @@ from .main_window_chat_support import (
 )
 
 
-class ChatMixin:
+from .window_feature_controller import WindowFeatureController
+
+
+class ChatMixin(WindowFeatureController):
     def send_message(self):
         if self.attach_loading():
             self.status.setText("ضمیمه‌ها هنوز در حال بارگذاری‌اند؛ چند لحظه صبر کن.")
