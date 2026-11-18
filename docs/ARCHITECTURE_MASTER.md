@@ -2,10 +2,10 @@
 
 **Snapshot date:** 2026-11-18  
 **Repository:** `alizesta/Kira`  
-**Base branch:** `main`  
-**Base SHA:** `493313adb5e05f5e4f352ecf8d9946117d2fcb2a`  
+**Base branch:** `new-main`  
+**Base SHA:** `7caa6a3ee8cb2a68d80a3015a9134d42cf89d6e3`  
 **Evidence:** TASK 015 static audit (`docs/TASK_015_FINAL_ARCHITECTURE_AUDIT.md`, Draft PR #47), current `new-main` source and documentation, and merged TASK 013+014 integration PR #48 (merge commit `b54d092a330b6383ca4244320ffaeec9267db561`).  
-**Verification boundary:** static inspection only. No tests, compile/import checks, application execution, Windows checks or GUI checks were run for TASK 016.
+**Verification boundary:** The historical TASK 016 audit was static-only. The subsequent implementation delta added targeted architecture and persistence tests, but no runtime test, compile/import check or application execution is claimed here.
 
 > This document is the current architecture entry point. It distinguishes the repository state observed at this snapshot from the desired migration direction. A planned boundary is not evidence that the boundary is already implemented.
 
@@ -117,6 +117,10 @@ flowchart TD
 
 The flow is conceptual at the public-contract level: MainWindow adapts provider callbacks and owns worker/UI presentation. Web Search query/provider/request/evidence policy is delegated to `WebSearchApplicationService`; microphone lifecycle and transcript policy are delegated to `VoiceApplicationService`; Game Mode permission and alert policy are delegated to `GameModeApplicationService`. Device construction, Qt signal relay and presentation remain in the UI adapter. Each feature mixin imports its scoped dependency module; the shared support module contains only cross-feature relays and helpers. The direct request/response path uses service calls and injected callbacks. EventBus is for notification, not to invoke another module's business API.
 
+### 3.1 Dependency direction contracts
+
+The module lifecycle contract now lives in `kira/core/interfaces/application_module.py` and exposes structural `DependencyRegistry` and `ModuleEventBus` ports. It no longer imports concrete `kira.app` implementations, even under `TYPE_CHECKING`. `ModuleManager` and `ServiceModule` implement against those Core ports while the concrete container and event bus remain in the outer application layer. The Qt-free `tests/test_architecture_boundaries.py` suite statically checks Core/Domain and Application import direction; it has been added to the portable test lists but not run in this implementation session.
+
 ### 4.1 Identity and lifecycle boundaries
 
 - **Request:** one logical user turn, identified by `request_id`.
@@ -149,7 +153,7 @@ SessionManager must not become a second owner of Conversation persistence. Conve
 
 `ChatPersistence` / `SqliteChatRepository` owns Chat schema, transactions, recovery, conversation/message reads and writes. Chat services consume its facade/Protocol. Search reads through the injected message cursor; Transfer delegates import writes to the repository transaction boundary; Lifecycle delegates durable state transitions and guarded deletion to persistence; Organization updates the existing conversation metadata document through the persistence API. None of those feature services opens a second database or writes SQL directly.
 
-Known persistence limitations are recorded in the roadmap and ownership register: Organization currently updates whole metadata documents, so independent writers can race; bulk tag/folder deletion updates conversations individually and is not a cross-conversation atomic transaction.
+The AD-03/AD-04 source-level limitations are now addressed: Organization applies mutations to the latest row inside a SQLite write transaction; character-scoped tag/folder bulk changes execute in one atomic transaction. `mutate_conversations` and `mutate_all_conversations` preserve unrelated metadata keys and leave lifecycle status under its dedicated transaction API. Focused tests cover concurrent repository instances and rollback after a mid-batch failure; those tests have not yet been executed.
 
 ## 5. Event and notification policy
 
