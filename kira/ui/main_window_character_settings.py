@@ -44,7 +44,7 @@ from .main_window_character_settings_support import (
 from .window_feature_controller import WindowFeatureController
 
 
-class CharacterSettingsMixin(WindowFeatureController):
+class CharacterSettingsController(WindowFeatureController):
     def build_characters_tab(self):
         """Compose the independent Characters page and delegate actions to the host."""
         self.character_page = CharactersPage(
@@ -545,3 +545,7 @@ class CharacterSettingsMixin(WindowFeatureController):
             self.mcp_registry_panel.set_status(f"سرور «{name}» ثبت شد؛ Kira در حال اتصال و کشف خودکار ابزارهاست.")
         except Exception as exc:
             self.mcp_registry_panel.set_status("افزودن سرور ناموفق بود: " + str(exc)[:240])
+
+
+# Backward-compatible import name for callers migrating from mixin composition.
+CharacterSettingsMixin = CharacterSettingsController
