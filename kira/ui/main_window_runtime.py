@@ -1,4 +1,4 @@
-"""Runtime behavior mixin for the desktop window."""
+"""Runtime feature controller for the desktop window."""
 from .main_window_runtime_support import (
     ChatHistoryError,
     Listener,
