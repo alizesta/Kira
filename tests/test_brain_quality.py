@@ -198,6 +198,7 @@ class BrainReflectionQualityTests(unittest.TestCase):
             decision = brain.Decision(stage=brain.SURFACE, reflection="off", mode="auto")
             prompt = brain.extend_prompt("base prompt", decision, {}, None, character_id="reflection-off")
         self.assertEqual(prompt, "base prompt")
+        self.assertIsNone(brain._load("reflection-off")["hint"])
 
     def test_non_kira_reflection_does_not_read_kira_identity(self):
         with patch("kira.evidence_memory.current_value", side_effect=AssertionError("Kira memory leaked")):
