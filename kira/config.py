@@ -63,6 +63,8 @@ DEFAULTS = {
     "character_voice": {},
     "character_notes": {},
     "character_resources": {},
+    "character_initiative": {},       # per-character proactive check-in opt-in; absent/false stays disabled
+
     "whisper_model": "small",
     "stt_language": "fa",
     "wake_timeout": 25,
