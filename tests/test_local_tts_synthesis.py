@@ -137,6 +137,23 @@ class LocalPiperSynthesisTests(unittest.TestCase):
         self.assertTrue(state["tts_loaded"])
         self.assertEqual(state["tts_model"], str(second))
 
+    def test_memory_guard_refuses_two_model_peak_and_keeps_active_voice(self):
+        first = self._model_path("voice-memory-a.onnx")
+        second = self._model_path("voice-memory-b.onnx")
+        with mock.patch.object(
+            local_voice, "_resolve_tts_model_path",
+            side_effect=[(first, str(first)), (second, str(second))],
+        ):
+            local_voice._load_tts_voice(str(first))
+            active = local_voice._tts
+            psutil = types.ModuleType("psutil")
+            psutil.virtual_memory = lambda: types.SimpleNamespace(available=1)
+            with mock.patch.dict(sys.modules, {"psutil": psutil}):
+                with self.assertRaisesRegex(MemoryError, "Insufficient memory"):
+                    local_voice._load_tts_voice(str(second))
+        self.assertIs(local_voice._tts, active)
+        self.assertEqual(_FakePiperVoice.loads, [str(first)])
+
     def test_failed_model_switch_keeps_previous_voice_loaded(self):
         first = self._model_path("voice-ok.onnx")
         broken = self._model_path("voice-broken.onnx")

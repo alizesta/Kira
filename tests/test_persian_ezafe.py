@@ -88,6 +88,44 @@ class PersianEzafeTests(unittest.TestCase):
             self.assertEqual(persian_ezafe.add_persian_ezafe(text), text)
         self.assertIn("offline", persian_ezafe.status()["error"])
 
+    def test_albert_download_uses_the_shared_kira_huggingface_cache(self):
+        import tempfile
+        import types
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as temp:
+            snapshot = Path(temp) / "snapshot"
+            quantized = snapshot / "quantized"
+            quantized.mkdir(parents=True)
+            (quantized / "model_quantized.onnx").write_bytes(b"fake model")
+
+            hub = types.ModuleType("huggingface_hub")
+            hub.snapshot_download = mock.Mock(return_value=str(snapshot))
+            ort = types.ModuleType("onnxruntime")
+            ort.SessionOptions = type("SessionOptions", (), {})
+            class Session:
+                def __init__(self, *_args, **_kwargs):
+                    pass
+                def get_inputs(self):
+                    return [types.SimpleNamespace(name="input_ids"),
+                            types.SimpleNamespace(name="attention_mask")]
+            ort.InferenceSession = Session
+            transformers = types.ModuleType("transformers")
+            class AutoTokenizer:
+                @staticmethod
+                def from_pretrained(*_args, **_kwargs):
+                    return _Tokenizer([])
+            transformers.AutoTokenizer = AutoTokenizer
+
+            with mock.patch.dict(sys.modules, {
+                "huggingface_hub": hub, "onnxruntime": ort, "transformers": transformers,
+            }), mock.patch("kira.local_voice.cache_directory", return_value=temp):
+                persian_ezafe._initialize_predictor()
+
+            self.assertEqual(hub.snapshot_download.call_args.kwargs["cache_dir"], temp)
+            self.assertEqual(hub.snapshot_download.call_args.kwargs["repo_id"],
+                             "abreza/persian-ezafe-albert")
+
     def test_partial_word_at_truncation_boundary_is_untouched(self):
         text="کلمه‌"
         tokenizer=_Tokenizer([(0,2)])
