@@ -126,14 +126,7 @@ class SessionMixin:
 
     def _new_router(self):
         """Router of one chat. Cooldowns / health are shared with the other chats (a failing key is failing for everyone)."""
-        provider_service = getattr(self, "provider_application_service", None)
-        if provider_service is not None:
-            return provider_service.create_router(self.settings)
-        router = HybridRouter(self.settings)
-        base = next((sess.client for sess in self.sessions.values() if sess.client is not None), None)
-        if base is not None:
-            router.cooldowns, router.states = base.cooldowns, base.states
-        return router
+        return self.provider_application_service.create_router(self.settings)
 
     def make_session_view(self):
         view = QTextBrowser()                              # read-only chat whose links open in the default browser
