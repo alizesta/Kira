@@ -1,61 +1,760 @@
-"""Bounded initiative policy for Kira.
+"""Safe, opt-in proactive check-in policy for one character's own remembered moments.
 
-This module does not send messages itself. It selects a recent user-shared milestone
-and decides whether an opt-in check-in is appropriate.
+The engine is deterministic and side-effect free apart from its explicit mark_sent()
+helper. Scheduling, persistence and presentation remain owned by the desktop runtime.
 """
 from __future__ import annotations
 
+import hashlib
+import json
+import math
+import re
 import time
+from datetime import datetime, time as datetime_time, timedelta, timezone
+
+
+DAY = 86400
+DEFAULT_MINIMUM_IDLE_SECONDS = 45 * 60
+DEFAULT_COOLDOWN_SECONDS = 4 * 3600
+DEFAULT_MEMORY_MAX_AGE_SECONDS = 10 * DAY
+MAX_CHECKINS_PER_DAY = 2
+QUIET_START_HOUR = 22
+QUIET_END_HOUR = 9
+FUTURE_CLOCK_SKEW_SECONDS = 60
+
+
+def _finite_number(value):
+    # bool is an int subclass in Python; accepting True as timestamp 1.0 can
+    # turn corrupted persisted activity into an apparently very long idle.
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def sessions_are_idle(sessions):
+    """Fail closed unless every character session has no active request or unsent draft."""
+    if sessions is None:
+        return False
+    seen = False
+    try:
+        for session in sessions:
+            seen = True
+            if session is None or not hasattr(session, "busy") or not hasattr(session, "draft"):
+                return False
+            busy = getattr(session, "busy")
+            draft = getattr(session, "draft")
+            if not isinstance(busy, bool):
+                return False
+            if draft is not None and not isinstance(draft, str):
+                return False
+            if busy or str(draft or "").strip():
+                return False
+    except Exception:  # noqa: BLE001 - malformed session state must suppress unsolicited contact
+        return False
+    return seen
+
+
+def _bounded_seconds(value, default, *, allow_zero=False):
+    number = _finite_number(value)
+    if number is None:
+        return int(default)
+    minimum = 0 if allow_zero else 1
+    return int(max(minimum, min(number, 365 * DAY)))
+
+
+def _normalise(text):
+    value = str(text or "").lower()
+    value = value.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"))
+    return value.replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ").replace("\u200f", " ")
+
+
+def _after_local_day(created_at, days_after_today):
+    """Local midnight after the full date on which the remembered event is expected."""
+    try:
+        local_created = datetime.fromtimestamp(float(created_at))
+        event_day = local_created.date() + timedelta(days=max(0, int(days_after_today)))
+        return datetime.combine(event_day + timedelta(days=1), datetime_time.min).timestamp()
+    except (OverflowError, OSError, TypeError, ValueError):
+        # A failed local-calendar conversion must defer, never make the event due early.
+        return float("inf")
+
+
+def _after_current_month(created_at):
+    """First local midnight after the current calendar month has fully elapsed."""
+    try:
+        local_created = datetime.fromtimestamp(float(created_at))
+        year = local_created.year + (1 if local_created.month == 12 else 0)
+        month = 1 if local_created.month == 12 else local_created.month + 1
+        return datetime(year, month, 1).timestamp()
+    except (OverflowError, OSError, TypeError, ValueError):
+        return float("inf")
+
+
+def _after_next_month(created_at):
+    """First local midnight after the next calendar month has fully elapsed."""
+    try:
+        local_created = datetime.fromtimestamp(float(created_at))
+        following_year = local_created.year
+        following_month = local_created.month + 2
+        if following_month > 12:
+            following_year += (following_month - 1) // 12
+            following_month = ((following_month - 1) % 12) + 1
+        return datetime(following_year, following_month, 1).timestamp()
+    except (OverflowError, OSError, TypeError, ValueError):
+        return float("inf")
+
+
+_NUMBER_WORDS = {
+    "one": 1, "a": 1, "یک": 1, "یه": 1,
+    "two": 2, "دو": 2, "three": 3, "سه": 3,
+    "four": 4, "چهار": 4, "five": 5, "پنج": 5,
+    "six": 6, "شش": 6, "seven": 7, "هفت": 7,
+    "eight": 8, "هشت": 8, "nine": 9, "نه": 9,
+    "ten": 10, "ده": 10, "چند": 7,
+}
+_NUMBER_TOKEN = r"(?:\d{1,3}|one|a|two|three|four|five|six|seven|eight|nine|ten|یک|یه|دو|سه|چهار|پنج|شش|هفت|هشت|نه|ده|چند)"
+_DURATION_UNIT = r"(روز|day|days|هفته|week|weeks|ماه|month|months)"
+
+
+def _duration_days(amount, unit):
+    try:
+        count = int(amount) if str(amount).isdigit() else _NUMBER_WORDS[str(amount).lower()]
+    except (KeyError, TypeError, ValueError):
+        return None
+    unit = str(unit).lower()
+    multiplier = 7 if unit in ("هفته", "week", "weeks") else 30 if unit in ("ماه", "month", "months") else 1
+    return max(1, min(365, count * multiplier))
+
+
+def _duration_seconds(amount, unit):
+    try:
+        count = int(amount) if str(amount).isdigit() else _NUMBER_WORDS[str(amount).lower()]
+    except (KeyError, TypeError, ValueError):
+        return None
+    unit = str(unit).lower()
+    multiplier = 60 if unit in ("دقیقه", "minute", "minutes") else 3600
+    return max(1, min(365 * DAY, count * multiplier))
+
+
+def _weekday_offsets(value, created_at):
+    """Resolve explicit weekday references relative to the memory's local creation date."""
+    try:
+        current_date = datetime.fromtimestamp(float(created_at)).date()
+    except (OverflowError, OSError, TypeError, ValueError):
+        return []
+    offsets = []
+    english_days = {
+        "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+        "friday": 4, "saturday": 5, "sunday": 6,
+    }
+    english_pattern = re.compile(
+        r"\b(?:(next|this|on|last|previous)\s+)?"
+        r"(monday|tuesday|wednesday|thursday|friday|saturday|sunday)"
+        r"(?:\s+(next\s+week|this\s+week))?\b",
+        re.I,
+    )
+    for match in english_pattern.finditer(value):
+        qualifier = str(match.group(1) or "").lower()
+        suffix = str(match.group(3) or "").lower()
+        target = english_days[match.group(2).lower()]
+        offset = (target - current_date.weekday()) % 7
+        if qualifier in ("last", "previous"):
+            offset = 0
+        elif qualifier == "next":
+            offset += 7
+        elif qualifier == "this" and target < current_date.weekday():
+            offset = 0
+        if suffix == "next week":
+            offset += 7
+        offsets.append(offset)
+
+    persian_days = {
+        "شنبه": 5, "یکشنبه": 6, "یک شنبه": 6, "دوشنبه": 0, "دو شنبه": 0,
+        "سه شنبه": 1, "چهارشنبه": 2, "پنجشنبه": 3, "جمعه": 4,
+    }
+    persian_pattern = re.compile(
+        r"(?<![آ-ی])(?:(?:این|همین)\s*)?"
+        r"(?P<day>یک\s*شنبه|دو\s*شنبه|سه\s*شنبه|چهارشنبه|پنجشنبه|جمعه|شنبه)"
+        r"(?P<qual>\s*(?:هفته\s*بعد|بعد|آینده|گذشته|قبل))?"
+    )
+    for match in persian_pattern.finditer(value):
+        day = re.sub(r"\s+", " ", match.group("day"))
+        target = persian_days[day]
+        qualifier = str(match.group("qual") or "").strip()
+        offset = (target - current_date.weekday()) % 7
+        if qualifier in ("گذشته", "قبل"):
+            offset = 0
+        elif "هفته" in qualifier or qualifier == "بعد":
+            offset += 7
+        elif qualifier == "آینده" and offset == 0:
+            offset = 7
+        elif match.group(0).startswith(("این", "همین")) and target < current_date.weekday():
+            offset = 0
+        offsets.append(offset)
+    return offsets
+
+
+def _gregorian_to_jalali(value):
+    """Convert a Gregorian date to a Jalali tuple for round-trip validation."""
+    gy, gm, gd = value.year, value.month, value.day
+    g_month_days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    j_month_days = [31, 31, 31, 31, 31, 31, 30, 30, 30, 30, 30, 29]
+    year_from_1600 = gy - 1600
+    day_number = (
+        365 * year_from_1600
+        + (year_from_1600 + 3) // 4
+        - (year_from_1600 + 99) // 100
+        + (year_from_1600 + 399) // 400
+    )
+    for month_index in range(gm - 1):
+        day_number += g_month_days[month_index]
+    if gm > 2 and (gy % 4 == 0 and (gy % 100 != 0 or gy % 400 == 0)):
+        day_number += 1
+    day_number += gd - 1
+
+    jalali_day_number = day_number - 79
+    cycles_33 = jalali_day_number // 12053
+    jalali_day_number %= 12053
+    jy = 979 + 33 * cycles_33 + 4 * (jalali_day_number // 1461)
+    jalali_day_number %= 1461
+    if jalali_day_number >= 366:
+        jy += (jalali_day_number - 1) // 365
+        jalali_day_number = (jalali_day_number - 1) % 365
+    jm = 1
+    while jm <= 11 and jalali_day_number >= j_month_days[jm - 1]:
+        jalali_day_number -= j_month_days[jm - 1]
+        jm += 1
+    return jy, jm, jalali_day_number + 1
+
+
+def _jalali_to_gregorian_date(year, month, day):
+    """Convert and validate a numeric Jalali date without an external dependency."""
+    if not (1 <= month <= 12):
+        return None
+    max_day = 31 if month <= 6 else 30
+    if not (1 <= day <= max_day):
+        return None
+    try:
+        adjusted_year = year + 1595
+        day_number = (
+            -355668
+            + 365 * adjusted_year
+            + (adjusted_year // 33) * 8
+            + ((adjusted_year % 33) + 3) // 4
+            + day
+        )
+        day_number += (month - 1) * 31 if month < 7 else (month - 7) * 30 + 186
+
+        gy = 400 * (day_number // 146097)
+        day_number %= 146097
+        if day_number > 36524:
+            day_number -= 1
+            gy += 100 * (day_number // 36524)
+            day_number %= 36524
+            if day_number >= 365:
+                day_number += 1
+        gy += 4 * (day_number // 1461)
+        day_number %= 1461
+        if day_number > 365:
+            gy += (day_number - 1) // 365
+            day_number = (day_number - 1) % 365
+        gd = day_number + 1
+
+        month_days = [31, 29 if (gy % 4 == 0 and (gy % 100 != 0 or gy % 400 == 0)) else 28,
+                      31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        gm = 1
+        while gm <= 12 and gd > month_days[gm - 1]:
+            gd -= month_days[gm - 1]
+            gm += 1
+        converted = datetime(gy, gm, gd).date()
+    except (OverflowError, OSError, TypeError, ValueError):
+        return None
+    return converted if _gregorian_to_jalali(converted) == (year, month, day) else None
+
+
+def _absolute_date_due(text):
+    """Return the first safe local time after an explicit calendar date.
+
+    Numeric Gregorian (ISO/day-month-year) and numeric Jalali dates are supported.
+    Invalid or unsupported date-shaped expressions fail closed instead of being
+    treated as immediately due.
+    """
+    value = _normalise(text)
+    quoted = re.search(r'\bhe said\s+["“](.*)["”](?:\s*\(a promise\))?$', value, re.I)
+    content = quoted.group(1) if quoted else re.sub(r'^\d{4}-\d{2}-\d{2}:\s*', '', value)
+
+    year_first = re.compile(r'(?<!\d)(\d{4})[./-](\d{1,2})[./-](\d{1,2})(?!\d)')
+    day_first = re.compile(r'(?<!\d)(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?!\d)')
+    matches = []
+    for match in year_first.finditer(content):
+        matches.append((int(match.group(1)), int(match.group(2)), int(match.group(3))))
+    for match in day_first.finditer(content):
+        matches.append((int(match.group(3)), int(match.group(2)), int(match.group(1))))
+
+    if not matches:
+        # Unsupported named-month and short numeric formats are explicit date
+        # intent. Defer them rather than guessing their locale or calendar.
+        named_month = re.search(
+            r"فروردین|اردیبهشت|خرداد|تیر|مرداد|شهریور|مهر|آبان|آذر|دی|بهمن|اسفند|"
+            r"ژانویه|فوریه|مارس|آوریل|مه|ژوئن|ژوئیه|اوت|سپتامبر|اکتبر|نوامبر|دسامبر|"
+            r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|jun(?:e)?|jul(?:y)?|"
+            r"aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b",
+            content,
+            re.I,
+        )
+        textual_may = re.search(r"\bmay\s+\d{1,2}(?:,\s*\d{4})?\b", content, re.I)
+        short_numeric_date = re.search(r"(?<!\d)\d{1,2}[./-]\d{1,2}(?!\d)", content)
+        if named_month or textual_may or short_numeric_date:
+            return float("inf")
+
+    due_times = []
+    for year, month, day in matches:
+        if 1200 <= year <= 1599:
+            event_date = _jalali_to_gregorian_date(year, month, day)
+        elif 1900 <= year <= 2200:
+            try:
+                event_date = datetime(year, month, day).date()
+            except ValueError:
+                event_date = None
+        else:
+            event_date = None
+        if event_date is None:
+            return float("inf")
+        # Add a day after Jalali conversion to stay conservative around calendar
+        # and leap-year boundaries; never ask before the complete event date.
+        day_buffer = 1 if 1200 <= year <= 1599 else 0
+        due_times.append(
+            datetime.combine(event_date + timedelta(days=1 + day_buffer), datetime_time.min).timestamp()
+        )
+    return max(due_times) if due_times else None
+
+def _event_not_before(text, created_at):
+    """Return the first safe local time to ask, after the entire mentioned date has passed.
+
+    The check-in is deliberately deferred to the next local midnight after the stated
+    event day. This prevents a morning message about an evening/tomorrow appointment
+    from triggering a premature "how did it go?" check-in.
+    """
+    value = _normalise(text)
+    day_offsets = []
+
+    if re.search(r"پس\s*فردا|day\s+after\s+tomorrow", value):
+        day_offsets.append(2)
+    elif re.search(r"فردا|\btomorrow\b", value):
+        day_offsets.append(1)
+
+    # Events later today (or "tonight") are not due until the date is over.
+    if re.search(r"امروز|امشب|امروز\s*(?:عصر|بعدازظهر)|\btoday\b|\btonight\b|\bthis\s+(?:afternoon|evening)\b", value):
+        day_offsets.append(0)
+
+    try:
+        local_weekday = datetime.fromtimestamp(float(created_at)).weekday()
+    except (OverflowError, OSError, TypeError, ValueError):
+        return float("inf")
+    # A whole-week reference is only due after that calendar week has ended.
+    weekday_offsets = _weekday_offsets(value, created_at)
+    if not weekday_offsets:
+        if re.search(r"هفته(?:\s+ی)?\s*(?:بعد|آینده)", value):
+            day_offsets.append((4 - local_weekday) % 7 + 7)  # next Persian week ends Friday
+        if re.search(r"\bnext\s+week\b", value):
+            day_offsets.append((6 - local_weekday) % 7 + 7)  # next English week ends Sunday
+        if re.search(r"این\s*هفته", value):
+            day_offsets.append((4 - local_weekday) % 7)
+        if re.search(r"\bthis\s+week\b", value):
+            day_offsets.append((6 - local_weekday) % 7)
+    # The Persian weekend is Friday; English weekend check-ins wait until Sunday ends.
+    if re.search(r"آخر\s*هفته", value):
+        day_offsets.append((4 - local_weekday) % 7)
+    if re.search(r"\bthis\s+weekend\b", value):
+        day_offsets.append((6 - local_weekday) % 7)
+    if re.search(r"\bnext\s+weekend\b", value):
+        day_offsets.append((6 - local_weekday) % 7 + 7)
+    day_offsets.extend(weekday_offsets)
+
+    # Parse explicit relative durations such as "in two weeks", "3 days from now",
+    # "سه روز دیگه", and "دو هفته بعد". A vague count ("چند") is interpreted
+    # conservatively; distant dates naturally age out under the 10-day memory window.
+    patterns = (
+        rf"\b(?:in|after)\s+({_NUMBER_TOKEN})\s*({_DURATION_UNIT})\b",
+        rf"({_NUMBER_TOKEN})\s*({_DURATION_UNIT})(?:\s+ی)?\s*(?:from\s+now|later|away|دیگه|دیگر|بعد|آینده)",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, value, re.I):
+            days = _duration_days(match.group(1), match.group(2))
+            if days is not None:
+                day_offsets.append(days)
+
+    due_times = [_after_local_day(created_at, days) for days in day_offsets]
+
+    subday_patterns = (
+        rf"\b(?:in|after)\s+({_NUMBER_TOKEN})\s*(دقیقه|minute|minutes|ساعت|hour|hours)\b",
+        rf"({_NUMBER_TOKEN})\s*(دقیقه|minute|minutes|ساعت|hour|hours)(?:\s+ی)?\s*(?:from now|later|away|دیگه|دیگر|بعد|آینده)",
+    )
+    for pattern in subday_patterns:
+        for match in re.finditer(pattern, value, re.I):
+            seconds = _duration_seconds(match.group(1), match.group(2))
+            if seconds is not None:
+                # Wait until the full local date of the expected event has ended.
+                due_times.append(_after_local_day(float(created_at) + seconds, 0))
+
+    next_month_due = None
+    if re.search(r"این\s*ماه|\bthis\s+month\b", value):
+        due_times.append(_after_current_month(created_at))
+    if re.search(r"ماه(?:\s+ی)?\s*(?:بعد|آینده)|\bnext\s+month\b", value):
+        next_month_due = _after_next_month(created_at)
+        due_times.append(next_month_due)
+    if re.search(r"سال(?:\s+ی)?\s*(?:بعد|آینده)|\bnext\s+year\b", value):
+        return float("inf")
+
+    absolute_due = _absolute_date_due(text)
+    if absolute_due is not None:
+        due_times.append(absolute_due)
+
+    # A clock time without a recognised date is ambiguous. Never interpret it as
+    # an event that is already due merely because the date parser cannot resolve it.
+    time_reference = re.search(
+        r"\b(?:at|around|by)\s+(?:\d{1,2}(?::[0-5]\d)?|one|two|three|four|five|six|seven|eight|nine|ten)"
+        r"\s*(?:am|pm)?\b|\b\d{1,2}(?::[0-5]\d)?\s*(?:am|pm)\b|"
+        r"ساعت\s*(?:\d{1,2}(?::[0-5]\d)?|یک|یه|دو|سه|چهار|پنج|شش|هفت|هشت|نه|ده)|"
+        r"\b\d{1,2}\s*(?:صبح|ظهر|عصر|شب)\b",
+        value,
+        re.I,
+    )
+    if time_reference and not day_offsets and not due_times and absolute_due is None and next_month_due is None:
+        return float("inf")
+
+    return max(due_times, default=float(created_at))
+
+
+
+
+def _clean_memory_text(value):
+    text = re.sub(r"[\x00-\x1f\x7f]+", " ", str(value or ""))
+    return " ".join(text.split())[:280].strip()
 
 
 class InitiativeEngine:
-    CANDIDATE_KINDS = {"event", "promise"}
+    """Select a due, recent event/promise and enforce quiet, idle and rate limits."""
 
-    def __init__(self, minimum_idle_seconds=45 * 60, cooldown_seconds=4 * 3600,
-                 memory_max_age_seconds=10 * 86400):
-        self.minimum_idle_seconds = int(minimum_idle_seconds)
-        self.cooldown_seconds = int(cooldown_seconds)
-        self.memory_max_age_seconds = int(memory_max_age_seconds)
+    CANDIDATE_KINDS = frozenset({"event", "promise"})
+
+    def __init__(
+        self,
+        minimum_idle_seconds=DEFAULT_MINIMUM_IDLE_SECONDS,
+        cooldown_seconds=DEFAULT_COOLDOWN_SECONDS,
+        memory_max_age_seconds=DEFAULT_MEMORY_MAX_AGE_SECONDS,
+    ):
+        self.minimum_idle_seconds = _bounded_seconds(minimum_idle_seconds, DEFAULT_MINIMUM_IDLE_SECONDS)
+        self.cooldown_seconds = _bounded_seconds(cooldown_seconds, DEFAULT_COOLDOWN_SECONDS, allow_zero=True)
+        self.memory_max_age_seconds = _bounded_seconds(memory_max_age_seconds, DEFAULT_MEMORY_MAX_AGE_SECONDS)
         self.last_initiative = 0.0
 
-    def select_candidate(self, items, now=None, exclude_id=None):
-        """Choose a recent remembered event/promise; jokes and static facts never trigger an unsolicited message."""
-        now = time.time() if now is None else float(now)
-        candidates = []
-        for item in items or []:
+    @staticmethod
+    def is_quiet_hour(now=None, *, local_hour=None, start_hour=QUIET_START_HOUR, end_hour=QUIET_END_HOUR):
+        """Use the operating system's local clock; the default quiet window is 22:00–09:00."""
+        try:
+            hour = int(local_hour) if local_hour is not None else time.localtime(
+                time.time() if now is None else float(now)
+            ).tm_hour
+            start = int(start_hour)
+            end = int(end_hour)
+        except (TypeError, ValueError, OverflowError, OSError):
+            return True
+        if not (0 <= hour <= 23 and 0 <= start <= 23 and 0 <= end <= 23) or start == end:
+            return True
+        if start < end:
+            return start <= hour < end
+        return hour >= start or hour < end
+
+    @staticmethod
+    def _item_id(item):
+        raw = str(item.get("id") or "").strip()
+        if raw:
+            return raw[:64]
+        # Compatibility for callers that supply older memory rows without an ID.
+        digest = hashlib.sha256(
+            f"{item.get('kind', '')}|{item.get('text', '')}".encode("utf-8", errors="replace")
+        ).hexdigest()[:24]
+        return f"legacy-{digest}"
+
+    def select_candidate(self, items, now=None, exclude_id=None, exclude_ids=None):
+        """Return the newest due event/promise, excluding recently contacted memory IDs.
+
+        Static facts, jokes, summaries, malformed rows, future timestamps and expired
+        memories never become unsolicited check-ins.
+        """
+        current = _finite_number(time.time() if now is None else now)
+        if current is None or current < 0:
+            return None
+
+        if isinstance(exclude_ids, (str, bytes)):
+            exclude_values = (exclude_ids,)
+        else:
+            exclude_values = exclude_ids or ()
+        try:
+            excluded = {str(value) for value in exclude_values if str(value or "").strip()}
+        except (TypeError, ValueError):
+            return None
+        if exclude_id:
+            excluded.add(str(exclude_id))
+        candidates_by_id = {}
+
+        try:
+            source_items = iter(items if items is not None else ())
+        except TypeError:
+            return None
+        for item in source_items:
             if not isinstance(item, dict) or item.get("group") != "moment":
                 continue
-            if item.get("kind") not in self.CANDIDATE_KINDS:
+            kind = str(item.get("kind") or "")
+            if kind not in self.CANDIDATE_KINDS:
                 continue
-            if exclude_id and str(item.get("id") or "") == str(exclude_id):
+
+            memory_id = self._item_id(item)
+            if memory_id in excluded:
                 continue
-            try:
-                stamp = float(item.get("ts") or 0)
-            except (TypeError, ValueError):
+
+            stamp = _finite_number(item.get("ts"))
+            if stamp is None or stamp <= 0 or stamp > current + FUTURE_CLOCK_SKEW_SECONDS:
                 continue
-            age = max(0.0, now - stamp)
-            text = str(item.get("text") or "").strip()
-            if not text or age > self.memory_max_age_seconds:
+            age = max(0.0, current - stamp)
+            if age > self.memory_max_age_seconds:
                 continue
-            candidates.append((stamp, item))
+
+            text = _clean_memory_text(item.get("text"))
+            if not text or current < _event_not_before(text, stamp):
+                continue
+
+            selected = dict(item)
+            selected.update({"id": memory_id, "kind": kind, "text": text, "ts": stamp})
+            previous = candidates_by_id.get(memory_id)
+            if previous is None or stamp > previous["ts"]:
+                candidates_by_id[memory_id] = selected
+
+        candidates = list(candidates_by_id.values())
         if not candidates:
             return None
-        candidates.sort(key=lambda pair: pair[0], reverse=True)
-        return dict(candidates[0][1])
+        candidates.sort(key=lambda item: (item["ts"], item["kind"] == "promise"), reverse=True)
+        return candidates[0]
 
-    def evaluate(self, now=None, last_interaction=0, busy=False, enabled=False,
-                 app_active=True, quiet_hours=False, has_relevant_memory=False):
-        now = time.time() if now is None else float(now)
-        idle = max(0.0, now - float(last_interaction or now))
+    def evaluate(
+        self,
+        now=None,
+        last_interaction=0,
+        busy=False,
+        enabled=False,
+        app_active=True,
+        quiet_hours=False,
+        has_relevant_memory=False,
+        sent_today=0,
+    ):
+        """Eligibility check only. The caller marks a check-in after it is saved successfully."""
+        current = _finite_number(time.time() if now is None else now)
+        if current is None or current < 0:
+            return {"eligible": False, "reason": "invalid_time", "idle_seconds": 0.0}
+
+        interaction = _finite_number(last_interaction)
+        if interaction is None or interaction < 0 or interaction > current + FUTURE_CLOCK_SKEW_SECONDS:
+            return {"eligible": False, "reason": "invalid_activity_time", "idle_seconds": 0.0}
+        # Zero means there is no recorded interaction timestamp, not that the user has
+        # been away since the Unix epoch. Unknown activity must never trigger a check-in.
+        if interaction == 0:
+            interaction = current
+        idle = max(0.0, current - interaction)
+
         if not enabled or not app_active or quiet_hours or busy:
             return {"eligible": False, "reason": "policy_blocked", "idle_seconds": idle}
         if idle < self.minimum_idle_seconds:
             return {"eligible": False, "reason": "not_idle_long_enough", "idle_seconds": idle}
-        if self.last_initiative > 0 and now - self.last_initiative < self.cooldown_seconds:
+
+        last_sent = _finite_number(self.last_initiative)
+        if last_sent is None or last_sent < 0 or last_sent > current + FUTURE_CLOCK_SKEW_SECONDS:
+            if self.last_initiative not in (None, 0, 0.0, ""):
+                return {"eligible": False, "reason": "invalid_initiative_time", "idle_seconds": idle}
+            last_sent = 0.0
+        if last_sent > 0 and current - last_sent < self.cooldown_seconds:
             return {"eligible": False, "reason": "cooldown", "idle_seconds": idle}
+
+        try:
+            if isinstance(sent_today, bool):
+                raise ValueError("boolean is not a daily count")
+            numeric_count = float(sent_today)
+            if not math.isfinite(numeric_count) or numeric_count < 0 or not numeric_count.is_integer():
+                raise ValueError("daily count must be a finite non-negative integer")
+            sent_count = int(numeric_count)
+        except (TypeError, ValueError, OverflowError):
+            return {"eligible": False, "reason": "invalid_daily_count", "idle_seconds": idle}
+        if sent_count >= MAX_CHECKINS_PER_DAY:
+            return {"eligible": False, "reason": "daily_limit", "idle_seconds": idle}
         if not has_relevant_memory:
             return {"eligible": False, "reason": "nothing_relevant_to_recall", "idle_seconds": idle}
+
         return {"eligible": True, "reason": "relevant_memory_after_idle", "idle_seconds": idle}
 
     def mark_sent(self, now=None):
-        self.last_initiative = time.time() if now is None else float(now)
+        """Update the in-memory cooldown only after the caller confirms persistence."""
+        sent_at = _finite_number(time.time() if now is None else now)
+        if sent_at is None or sent_at < 0:
+            raise ValueError("initiative timestamp must be a finite non-negative number")
+        self.last_initiative = sent_at
+        return sent_at
+
+
+def initiative_history_state(
+    history,
+    recent_events=(),
+    last_memory_id="",
+    last_sent_at=0,
+    now=None,
+    retention_seconds=DEFAULT_MEMORY_MAX_AGE_SECONDS,
+):
+    """Reconcile mirrored send records by memory identity and near-identical send time."""
+    current = _finite_number(time.time() if now is None else now)
+    if current is None or current < 0:
+        return {"history": [], "excluded_ids": set(), "sent_today": 0}
+    retention = _bounded_seconds(retention_seconds, DEFAULT_MEMORY_MAX_AGE_SECONDS)
+    now_local = time.localtime(current)
+    today_key = (now_local.tm_year, now_local.tm_yday)
+
+    def accepted_stamp(value):
+        stamp = _finite_number(value)
+        if stamp is None or stamp <= 0 or stamp > current + FUTURE_CLOCK_SKEW_SECONDS:
+            return None
+        if current - stamp > retention:
+            return None
+        return stamp
+
+    def day_key(stamp):
+        local = time.localtime(stamp)
+        return local.tm_year, local.tm_yday
+
+    valid_history = []
+    excluded = set()
+    today_records: list[tuple[str, float]] = []
+
+    def add_daily_record(memory_id, stamp):
+        if day_key(stamp) != today_key:
+            return
+        identity = str(memory_id or "").strip()[:64]
+        # Mirrored persistence layers may timestamp one send a fraction apart.
+        if any(old_id == identity and abs(old_stamp - stamp) <= 2.0 for old_id, old_stamp in today_records):
+            return
+        today_records.append((identity, stamp))
+
+    for entry in history if isinstance(history, list) else ():
+        if not isinstance(entry, dict):
+            continue
+        stamp = accepted_stamp(entry.get("at"))
+        if stamp is None:
+            continue
+        memory_id = str(entry.get("memory_id") or "").strip()[:64]
+        valid_history.append({"at": stamp, "memory_id": memory_id})
+        if memory_id:
+            excluded.add(memory_id)
+        add_daily_record(memory_id, stamp)
+
+    try:
+        event_iter = iter(recent_events or ())
+    except TypeError:
+        event_iter = ()
+    for event in event_iter:
+        if not isinstance(event, dict) or event.get("name") != "proactive_check_in":
+            continue
+        stamp = accepted_stamp(event.get("at"))
+        if stamp is None:
+            continue
+        memory_id = str(event.get("detail") or "").strip()[:64]
+        if memory_id:
+            excluded.add(memory_id)
+        add_daily_record(memory_id, stamp)
+
+    last_stamp = accepted_stamp(last_sent_at)
+    last_id = str(last_memory_id or "").strip()[:64]
+    if last_stamp is not None:
+        if last_id:
+            excluded.add(last_id)
+        add_daily_record(last_id, last_stamp)
+
+    return {"history": valid_history, "excluded_ids": excluded, "sent_today": len(today_records)}
+
+
+def persisted_checkin_events(records, now=None, retention_seconds=DEFAULT_MEMORY_MAX_AGE_SECONDS):
+    """Recover Initiative sends from durable chat-message metadata after interrupted state writes."""
+    current = _finite_number(time.time() if now is None else now)
+    if current is None or current < 0:
+        return []
+    retention = _bounded_seconds(retention_seconds, DEFAULT_MEMORY_MAX_AGE_SECONDS)
+    recovered = []
+    for record in records if isinstance(records, (list, tuple)) else ():
+        if not isinstance(record, dict) or record.get("role") != "assistant":
+            continue
+        status = str(record.get("status") or "")
+        if status and status != "complete":
+            continue
+        metadata = record.get("metadata")
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except (TypeError, ValueError):
+                continue
+        if not isinstance(metadata, dict) or metadata.get("proactive") != "initiative":
+            continue
+        raw_stamp = record.get("created_at") or record.get("timestamp") or record.get("at")
+        stamp = _finite_number(raw_stamp)
+        if stamp is None and isinstance(raw_stamp, str):
+            try:
+                parsed = datetime.fromisoformat(raw_stamp.strip().replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                stamp = parsed.timestamp()
+            except (OverflowError, OSError, TypeError, ValueError):
+                continue
+        stamp = _finite_number(stamp)
+        if stamp is None or stamp <= 0 or stamp > current + FUTURE_CLOCK_SKEW_SECONDS:
+            continue
+        if current - stamp > retention:
+            continue
+        recovered.append({"name": "proactive_check_in", "at": stamp, "detail": str(metadata.get("memory_id") or "")[:64]})
+    return recovered
+
+def build_checkin_message(candidate, language="auto", max_topic_chars=130):
+    """Create a brief, no-pressure check-in from the exact remembered quote; never invent details."""
+    if not isinstance(candidate, dict) or candidate.get("kind") not in InitiativeEngine.CANDIDATE_KINDS:
+        return ""
+
+    raw = _clean_memory_text(candidate.get("text"))
+    quoted = re.search(r'\bhe said\s+["“](.+)["”](?:\s*\(a promise\))?$', raw, re.I)
+    topic = _clean_memory_text(quoted.group(1)) if quoted else ""
+    try:
+        limit = max(24, min(180, int(max_topic_chars)))
+    except (TypeError, ValueError, OverflowError):
+        limit = 130
+    if len(topic) > limit:
+        clipped = topic[:limit]
+        # Prefer a complete final word over a mid-word cut. Keep the bounded
+        # hard slice when a single token itself is longer than the limit.
+        if " " in clipped:
+            clipped = clipped.rsplit(" ", 1)[0]
+        topic = clipped
+    topic = topic.rstrip(" ،,.;:\u200c") if topic else ""
+
+    lang = str(language or "").lower()
+    if lang not in ("fa", "en"):
+        lang = "fa" if re.search(r"[\u0600-\u06ff]", raw) else "en"
+
+    if lang == "fa":
+        if not topic:
+            return "راستی، درباره‌ی اون موضوعی که قبلاً گفتی خبری شد؟"
+        if candidate.get("kind") == "promise":
+            return f"راستی، درباره‌ی «{topic}» که گفته بودی خبرش رو می‌دی، خبری شد؟"
+        return f"راستی، درباره‌ی «{topic}» که گفتی، آخرش چی شد؟"
+
+    if not topic:
+        return "By the way, did you have any update on the thing you mentioned earlier?"
+    if candidate.get("kind") == "promise":
+        return f"By the way, any update on “{topic}” that you said you'd let me know about?"
+    return f"By the way, how did “{topic}” go?"

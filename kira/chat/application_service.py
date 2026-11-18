@@ -991,6 +991,10 @@ class ChatApplicationService:
     ):
         return self._persistence.recent_messages(limit, character_id, conversation_id)
 
+    def recent_message_records(self, limit: int = 2000, character_id: str | None = None):
+        """Return persisted message metadata needed to reconcile interrupted local workflows."""
+        return self._persistence.recent_message_records(limit, character_id)
+
     def conversation_context(
         self, limit: int = 12, max_chars: int = 12000,
         character_id: str | None = None, conversation_id: str | None = None,

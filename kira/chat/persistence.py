@@ -63,6 +63,7 @@ class ChatRepository(Protocol):
                              character_id: str | None = None, conversation_id: str | None = None) -> list[dict[str, str]]: ...
     def recent_messages(self, limit: int = 12, character_id: str | None = None,
                         conversation_id: str | None = None) -> list[dict[str, str]]: ...
+    def recent_message_records(self, limit: int = 2000, character_id: str | None = None) -> list[dict[str, Any]]: ...
     def get_messages(self, limit: int = 1000, character_id: str | None = None,
                      conversation_id: str | None = None, after_id: int = 0) -> list[dict[str, Any]]: ...
     def get_transfer_messages(self, conversation_id: str, character_id: str, after_created_at: str = "", after_id: int = 0, limit: int = 1000) -> list[dict[str, Any]]: ...
@@ -1099,6 +1100,38 @@ class SqliteChatRepository:
                         (conversation_id is None or row[3] == str(conversation_id))]
                 return [{"role": row[0], "content": row[1]} for row in kept[-limit:]]
 
+    def recent_message_records(self, limit=2000, character_id=None):
+        """Return recent persisted records with metadata for crash-safe recovery policies."""
+        try:
+            page_size = max(0, min(int(limit), 5000))
+        except (TypeError, ValueError, OverflowError):
+            page_size = 0
+        if page_size == 0:
+            return []
+        with self._lock:
+            try:
+                self._flush_pending_locked()
+                with self._db() as con:
+                    where, args = [], []
+                    if character_id is not None:
+                        where.append("character_id=?")
+                        args.append(_character_id(character_id))
+                    clause = " WHERE " + " AND ".join(where) if where else ""
+                    rows = con.execute(
+                        "SELECT id, role, content, created_at, character_id, conversation_id, metadata, status "
+                        f"FROM messages{clause} ORDER BY COALESCE(created_at, '') DESC, id DESC LIMIT ?",
+                        (*args, page_size),
+                    ).fetchall()
+                return [{
+                    "id": int(row["id"]), "role": str(row["role"]), "content": str(row["content"]),
+                    "created_at": str(row["created_at"] or ""), "character_id": str(row["character_id"] or ""),
+                    "conversation_id": str(row["conversation_id"] or ""),
+                    "metadata": _json_object(row["metadata"]), "status": str(row["status"] or ""),
+                } for row in reversed(rows)]
+            except (sqlite3.Error, OSError) as exc:
+                self._note_error(exc)
+                raise PersistenceError(f"Could not inspect persisted chat message records: {exc}") from exc
+
     def get_messages(self, limit=1000, character_id=None, conversation_id=None, after_id=0):
         with self._lock:
             self._flush_pending_locked()
@@ -1546,6 +1579,9 @@ class ChatPersistence:
 
     def recent_messages(self, limit=12, character_id=None, conversation_id=None):
         return self._repository.recent_messages(limit, character_id, conversation_id)
+
+    def recent_message_records(self, limit=2000, character_id=None):
+        return self._invoke(self._repository.recent_message_records, limit, character_id)
 
     def get_messages(self, limit=1000, character_id=None, conversation_id=None, after_id=0):
         return self._invoke(self._repository.get_messages, limit, character_id, conversation_id, after_id)

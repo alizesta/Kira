@@ -107,7 +107,10 @@ class CharacterProfileService:
                 if not isinstance(item, dict) or str(item.get("id") or "") != character_id
             ]
         settings["active_character_id"] = "kira"
-        for key in ("character_voice", "character_notes", "character_resources", "character_traits"):
+        for key in (
+            "character_voice", "character_notes", "character_resources", "character_traits",
+            "character_initiative", "character_initiative_history",
+        ):
             bucket = settings.get(key)
             if isinstance(bucket, dict):
                 bucket.pop(character_id, None)

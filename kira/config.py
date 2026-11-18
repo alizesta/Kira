@@ -63,6 +63,9 @@ DEFAULTS = {
     "character_voice": {},
     "character_notes": {},
     "character_resources": {},
+    "character_initiative": {},        # per-character, explicit opt-in; defaults off
+    "character_initiative_history": {},  # bounded per-character sent timestamps and memory IDs
+
     "whisper_model": "small",
     "stt_language": "fa",
     "wake_timeout": 25,
