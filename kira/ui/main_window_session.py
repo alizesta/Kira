@@ -727,6 +727,7 @@ class SessionController(WindowFeatureController):
             face_label.setToolTip(tooltip)
             label.setToolTip(tooltip)
         except Exception:                                    # noqa: BLE001 - the indicator must never break the window
+            _log.exception("Could not render the active character mood indicator; using neutral fallback")
             fallback = make_icon("emotion_neutral", normal="#B9D4F5", hover="#B9D4F5",
                                  checked="#B9D4F5", disabled="#52617B")
             face_label.setPixmap(fallback.pixmap(QSize(30, 30)))
