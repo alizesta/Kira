@@ -9,6 +9,14 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from ..core.interfaces.application_services import (
+    ApplicationEventPublisherPort,
+    ChatApplicationPort,
+    RuntimeSessionPort,
+    SessionManagerPort,
+    SessionStateEventPort,
+)
+
 
 class SessionApplicationService:
     """Coordinate runtime Session lifecycle with durable Chat conversations."""
@@ -23,9 +31,9 @@ class SessionApplicationService:
 
     def __init__(
         self,
-        session_manager: Any,
-        chat_application_service: Any,
-        event_publisher: Any | None = None,
+        session_manager: SessionManagerPort,
+        chat_application_service: ChatApplicationPort,
+        event_publisher: ApplicationEventPublisherPort | None = None,
     ) -> None:
         if session_manager is None:
             raise TypeError("session_manager is required")
@@ -39,7 +47,7 @@ class SessionApplicationService:
             if self.event_publisher is not None else None
         )
 
-    def create_active_session(self, character_id: str) -> Any:
+    def create_active_session(self, character_id: str) -> RuntimeSessionPort:
         """Create the initial runtime Session and make it the active conversation."""
         session = self.session_manager.create_session(character_id)
         if not self.session_manager.activate_session(session.session_id):
@@ -51,7 +59,7 @@ class SessionApplicationService:
         """Apply the canonical SessionManager activation transition."""
         return self.session_manager.activate_session(session_id)
 
-    def list_sessions(self) -> tuple[Any, ...]:
+    def list_sessions(self) -> tuple[RuntimeSessionPort, ...]:
         """Return the manager's stable Session snapshot for shutdown coordination."""
         return self.session_manager.list_sessions()
 
@@ -64,23 +72,23 @@ class SessionApplicationService:
             unsubscribe()
         return True
 
-    def bind_conversation(self, session: Any) -> str | None:
+    def bind_conversation(self, session: RuntimeSessionPort) -> str | None:
         """Bind a runtime Session to durable history without blocking on storage failure."""
-        existing = getattr(session, "conversation_id", None)
+        existing = session.conversation_id
         if existing:
             return existing
         try:
             record = self.chat_application_service.get_or_create_conversation(session.cid)
             conversation_id = (
                 record.get("id") or record.get("conversation_id")
-                if isinstance(record, dict) else None
+                if isinstance(record, Mapping) else None
             )
             session.conversation_id = str(conversation_id) if conversation_id else None
         except Exception:
             session.conversation_id = None
         return session.conversation_id
 
-    def publish_state_change(self, event: Any) -> None:
+    def publish_state_change(self, event: SessionStateEventPort) -> None:
         """Translate SessionManager state transitions into shared application events."""
         if self.event_publisher is None:
             return
@@ -100,7 +108,7 @@ class SessionApplicationService:
         except Exception:
             return
 
-    def publish_history_loaded(self, session: Any) -> None:
+    def publish_history_loaded(self, session: RuntimeSessionPort) -> None:
         """Publish a best-effort notification after a character history is restored."""
         if self.event_publisher is None:
             return
@@ -121,8 +129,8 @@ class SessionApplicationService:
         character_id: str,
         profile: Mapping[str, Any],
         *,
-        ensure_resources: Callable[[Any, Mapping[str, Any]], None],
-    ) -> Any | None:
+        ensure_resources: Callable[[RuntimeSessionPort, Mapping[str, Any]], None],
+    ) -> RuntimeSessionPort | None:
         """Resolve/reopen/create one character Session, then ask the UI to attach resources."""
         session = self.session_manager.get_session_for_character(character_id)
         if session is not None and session.status == "closing":
@@ -142,9 +150,9 @@ class SessionApplicationService:
         self,
         profiles: Mapping[str, Mapping[str, Any]],
         *,
-        ensure_resources: Callable[[Any, Mapping[str, Any]], None],
-        restore_history: Callable[[Any], bool | None],
-        vision_session: Any | None = None,
+        ensure_resources: Callable[[RuntimeSessionPort, Mapping[str, Any]], None],
+        restore_history: Callable[[RuntimeSessionPort], bool | None],
+        vision_session: RuntimeSessionPort | None = None,
         vision_worker: Any | None = None,
     ) -> tuple[str, ...]:
         """Synchronize runtime Sessions with character profiles and drain deleted profiles."""
@@ -203,9 +211,9 @@ class SessionApplicationService:
 
     def has_pending_work(
         self,
-        session: Any,
+        session: RuntimeSessionPort,
         *,
-        vision_session: Any | None = None,
+        vision_session: RuntimeSessionPort | None = None,
         vision_worker: Any | None = None,
     ) -> bool:
         """Check application requests and owned worker activity before graceful close."""
@@ -215,12 +223,12 @@ class SessionApplicationService:
             or self.chat_application_service.has_pending_work(session.session_id)
         ):
             return True
-        if self.worker_is_running(getattr(session, "worker", None)) or self.worker_is_running(
-            getattr(session, "_search_worker", None)
+        if self.worker_is_running(session.worker) or self.worker_is_running(
+            session._search_worker
         ):
             return True
         return vision_session is session and self.worker_is_running(vision_worker)
 
-    def close_session(self, session: Any) -> bool:
+    def close_session(self, session: RuntimeSessionPort) -> bool:
         """Delegate graceful lifecycle closure to the canonical SessionManager."""
         return self.session_manager.close_session(session.session_id)
