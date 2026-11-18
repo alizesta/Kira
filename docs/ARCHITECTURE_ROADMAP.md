@@ -21,7 +21,7 @@ TASK 015 recorded **12 DONE / 2 PARTIAL / 0 NOT DONE / 0 BLOCKED / 0 UNVERIFIED*
 
 PR #48 subsequently merged both modules into `new-main` at `b54d092a330b6383ca4244320ffaeec9267db561`. Static inspection confirms `conversation_lifecycle.py`, `organization.py`, their public exports and shared event contract are present in the current tree. Therefore, the integration blocker identified in the audit has been resolved at source-control level. This does not revise the historical audit counts and does not establish runtime correctness.
 
-PR #55 removed the legacy `oldmain.py` runtime module and moved its 322 MainWindow methods into eight feature-oriented mixins. The subsequent implementation delta added and wired `SessionApplicationService`, `ProviderApplicationService`, `VisionApplicationService`, `CodingAgentApplicationService` and `RuntimeSettingsApplicationService`; Character Profile mutations and per-character voice overrides now pass through their service owners. Web Search, Voice and Game Mode application boundaries were retained and strengthened. ToolAgent request state, external-content taint, one-shot grants, pending confirmations, cancellation and task control are now character-session scoped; WebIntel research storage and cancellation are isolated per character. Closing a Session releases ephemeral ToolAgent/access state while retaining durable task and research files for a later reopen. Task history retention is also per character. MainWindow still owns Qt widgets, signal/worker adapters, dialogs and result presentation.
+PR #55 removed the legacy `oldmain.py` runtime module and moved its 322 MainWindow methods into eight feature-oriented mixins. The subsequent implementation delta added and wired `SessionApplicationService`, `ProviderApplicationService`, `VisionApplicationService`, `CodingAgentApplicationService` and `RuntimeSettingsApplicationService`; Character Profile mutations and per-character voice overrides now pass through their service owners. Web Search, Voice and Game Mode application boundaries were retained and strengthened. ToolAgent request state, external-content taint, one-shot grants, pending confirmations, cancellation and task control are now character-session scoped; WebIntel research storage and cancellation are isolated per character. Closing a Session releases ephemeral ToolAgent/access state while retaining durable task and research files for a later reopen. Task history retention is also per character. MainWindow is now a thin Qt shell; window-scoped feature controllers own UI workflows, widgets, signal/worker adapters, dialogs and result presentation.
 
 ## 3. Technical debt register
 
@@ -63,7 +63,7 @@ These belong in the later explicitly authorized testing phase, not in TASK 016.
 
 1. Keep `kira/main.py` as the thin entry point and `kira/ui/bootstrap.py` as the single production Composition Root.
 2. Keep the production Composition Root authoritative: application/runtime dependencies are constructed in Bootstrap and injected; UI composition must reject missing dependencies rather than silently constructing service-layer fallbacks.
-3. Principal policy boundaries are extracted, including Chat command dispatch and attachment payload composition behind ChatApplicationService. Remaining UI code is the request-to-view sequence, Qt worker/widget lifecycle, dialogs and presentation; retain those responsibilities in window-scoped feature controllers.
+3. Principal policy boundaries are extracted, including Chat command dispatch and attachment payload composition behind ChatApplicationService. Remaining UI code is the request-to-view sequence, Qt worker/widget lifecycle, dialogs and presentation; retain those responsibilities in window-scoped feature controllers hosted by the thin MainWindow shell.
 4. The complete application service/factory graph is registered through ModuleManager; per-window Qt workers and runtime Chat/Session/Voice instances are drained by the window lifecycle before application-wide module shutdown.
 5. AD-03/AD-04 source-level fixes are now present: atomic latest-row mutations and transactional character-scoped bulk metadata updates. Runtime acceptance remains pending.
 
@@ -115,7 +115,7 @@ This is a prioritized sequence, not a mandate to create six separate tasks. Rela
 
 ## 6. Legacy migration strategy
 
-- Keep `kira/ui/main_window.py` as the UI composition point; its feature controllers are transitional UI adapters, not new domain owners.
+- Keep `kira/ui/main_window.py` as the Qt shell only; `kira/ui/main_window_composition.py` and the window-scoped feature controllers own UI composition and presentation, not domain policy.
 - Move one coherent controller/service boundary at a time.
 - Bootstrap creates concrete services and injects them; page widgets emit intents and render results.
 - Preserve public imports until callers have moved.
@@ -187,3 +187,24 @@ The application services no longer call Qt signal `.connect()`, QThread
 `.isRunning()`, or Qt-specific listener methods directly. Regression tests
 guard these boundaries. Runtime test execution is still required before
 claiming runtime acceptance.
+
+
+### MainWindow UI Shell completion delta — 2026-11-18
+
+`MainWindow` now derives only from `QMainWindow`. The eight former mixins are
+window-scoped controllers composed in an explicit registry; feature methods
+are no longer part of the MainWindow inheritance surface. The shell exposes
+only session/front-window descriptors, controller lookup, and Qt virtual-event
+forwarding. The constructor accepts only the optional Qt parent and no longer
+constructs application services or widgets.
+
+The UI Composition Root now creates the shell first and performs the
+service/widget assembly separately. Qt event overrides are explicitly routed
+to lifecycle, session, runtime, and attachment controllers, which call the
+appropriate QMainWindow base event implementation where required. Compatibility
+aliases remain for existing imports.
+
+Regression tests cover the shell's base class, controller registration,
+constructor boundary, composition-root wiring and event-forwarding contract.
+Static source validation is in place; runtime GUI behavior and full application
+tests still require a functioning CI runner.
