@@ -280,6 +280,20 @@ class FileAgentTests(unittest.TestCase):
 
         self.assertEqual(target.read_text(encoding="utf-8"), "current")
 
+    def test_undo_append_refuses_same_size_intervening_edits(self):
+        target = self.root / "append-guard.txt"
+        target.write_text("base", encoding="utf-8")
+        appended = self.run_tool("append_text", {"path": str(target), "content": "tail"}, text="add tail")
+        self.assertEqual(appended.status, OK, appended.text)
+        expected_size = target.stat().st_size
+        target.write_text("evil" + " " * (expected_size - 4), encoding="utf-8")
+        modified = target.read_text(encoding="utf-8")
+
+        undo = self.sensitive("undo_file_operation", {})
+        self.assertEqual(undo.status, ERROR)
+        self.assertEqual(target.read_text(encoding="utf-8"), modified)
+        self.assertIn("محتوای فایل بعد از عملیات append تغییر کرده", undo.text)
+
     def test_undo_create_rename_append(self):
         f = self.root / "u.txt"
         self.run_tool("create_file", {"path": str(f), "content": "base"})
