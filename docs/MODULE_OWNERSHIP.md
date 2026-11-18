@@ -94,7 +94,7 @@ These services are directly injected by Bootstrap/Composition; they are not auto
 |---|---|---|---|---|
 | 020 | MainWindow feature dependencies — `kira/ui/main_window_*_support.py` | One scoped dependency module for each of the nine feature mixins (root, attachments/vision, character settings, chat, lifecycle, provider settings, runtime, session and voice settings) | Feature-owned application/domain modules, Qt adapters, workers and the shared support helpers | Imports from another feature mixin; a global wildcard dependency barrel |
 
-`main_window_support.py` is limited to SessionRelay, the front-only decorator, reaction loading and shared Qt signal/helper code. Feature support modules may import only this shared helper module, never another feature mixin or feature support module.
+`main_window_support.py` is limited to SessionRelay, the front-only decorator, reaction loading and shared Qt signal/helper code. Feature support modules may import only this shared helper module, never another feature controller or feature support module.
 
 ## 3. Cross-module API and dependency policy
 
@@ -158,7 +158,7 @@ The Chat core modules should depend on Python data contracts and narrow Protocol
 | Tools/coding agent | `kira/app/coding_agent_application.py`, `tools/*`, `auto_agent.py`, `code_agent.py`, `chat_code.py` | CodingAgentApplicationService owns eligible handoff, attachment bypass and stop delegation; the current execution engine and UI worker adapters remain separate. |
 | Web Research | `kira/app/web_search.py`, `webintel/*`, `websearch.py`, discovery adapters | WebSearchApplicationService owns credential/query/request/evidence policy; SearchWorker and result presentation remain UI adapters. |
 | Vision | `kira/app/vision_application.py`, `vision_pipeline.py`, `vision_ocr.py` | VisionApplicationService owns capture eligibility, cadence/frame gating and duplicate-result suppression; Qt capture/timers/workers remain UI adapters. |
-| UI | `ui/main_window.py`, `ui/main_window_composition.py`, feature mixins/support modules, pages/components/dialogs/workers | MainWindow is a compact Qt host; Session, Provider, Vision, Coding Agent, Runtime Settings and Character profile policies are delegated to services. Qt widget state, worker/timer lifetime, dialog flows and result rendering remain UI adapter responsibilities. |
+| UI | `ui/main_window.py`, `ui/main_window_composition.py`, feature controllers/support modules, pages/components/dialogs/workers | MainWindow is a compact Qt host; Session, Provider, Vision, Coding Agent, Runtime Settings and Character profile policies are delegated to services. Qt widget state, worker/timer lifetime, dialog flows and result rendering remain UI adapter responsibilities. |
 
 Implementation and reviewer checklist for the current source delta: [ARCHITECTURE_IMPLEMENTATION_HANDOFF_2026-11-18.md](ARCHITECTURE_IMPLEMENTATION_HANDOFF_2026-11-18.md).
 
@@ -171,7 +171,7 @@ Static code supports this design. Runtime isolation across concurrent sessions, 
 ## 7. Legacy and compatibility owners
 
 - `kira.main.MainWindow` is a lazy compatibility export to `kira.ui.main_window.MainWindow`.
-- `kira.ui.main_window.MainWindow` is the production UI adapter; its feature behavior is split across `kira/ui/main_window_*.py` mixins.
+- `kira.ui.main_window.MainWindow` is the production UI adapter; its feature behavior is composed from window-scoped controllers in `kira/ui/main_window_*.py`.
 - `kira/oldmain.py` has been removed; new production code must not reintroduce imports from that path.
 - `kira/services/chat_history_service.py` is an adapter over the persistence facade; it is not a second database owner.
 - `kira/attachments.py` is a compatibility facade; canonical Chat attachment/content processing is under `kira/chat/`.
