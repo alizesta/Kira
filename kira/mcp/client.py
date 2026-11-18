@@ -50,24 +50,44 @@ class _Base:
 
     def initialize(self, timeout: float) -> None:
         result = self.request("initialize", {"protocolVersion": PROTOCOL, "capabilities": {}, "clientInfo": {"name": "kira", "version": "1"}}, timeout)
-        self.server_info = result.get("serverInfo") if isinstance(result, dict) and isinstance(result.get("serverInfo"), dict) else {}
+        if not isinstance(result, dict):
+            raise McpError("initialize returned a malformed result")
+        self.server_info = result.get("serverInfo") if isinstance(result.get("serverInfo"), dict) else {}
         self.notify("notifications/initialized", {})
 
     def list_tools(self, timeout: float) -> list:
         tools, cursor = [], None
+        seen_cursors = set()
         for _ in range(10):
             result = self.request("tools/list", {"cursor": cursor} if cursor else {}, timeout)
-            if not isinstance(result, dict):
+            if not isinstance(result, dict) or not isinstance(result.get("tools"), list):
+                raise McpError("tools/list returned a malformed tools collection")
+            page = result["tools"]
+            if any(not isinstance(item, dict) or not isinstance(item.get("name"), str) or not item["name"].strip() for item in page):
+                raise McpError("tools/list returned a malformed tool definition")
+            tools.extend(page)
+            next_cursor = result.get("nextCursor")
+            if next_cursor is not None and (not isinstance(next_cursor, str) or not next_cursor.strip()):
+                raise McpError("tools/list returned an invalid pagination cursor")
+            if not next_cursor or len(tools) >= MAX_TOOLS:
                 break
-            tools.extend(t for t in result.get("tools", []) if isinstance(t, dict) and isinstance(t.get("name"), str))
-            cursor = result.get("nextCursor")
-            if not cursor or len(tools) >= MAX_TOOLS:
-                break
+            if next_cursor in seen_cursors:
+                raise McpError("tools/list repeated a pagination cursor")
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+        else:
+            if cursor:
+                raise McpError("tools/list exceeded the pagination limit")
         return tools[:MAX_TOOLS]
 
     def call_tool(self, name: str, arguments: dict, timeout: float) -> dict:
         result = self.request("tools/call", {"name": name, "arguments": arguments or {}}, timeout)
-        return result if isinstance(result, dict) else {}
+        if not isinstance(result, dict):
+            raise McpError("tools/call returned a malformed result")
+        content = result.get("content", [])
+        if not isinstance(content, list) or any(not isinstance(item, dict) for item in content):
+            raise McpError("tools/call returned malformed content")
+        return result
 
     def request(self, method, params, timeout):                         # pragma: no cover - implemented by subclasses
         raise NotImplementedError
