@@ -11,8 +11,9 @@ def run_application() -> None:
     from ..chat.events import ChatEventPublisher
     from ..chat.session_manager import SessionManager
     from ..chat_sessions import ChatSession
-    from ..config import load_settings
+    from ..config import DATA_DIR, ROOT, load_settings
     from ..theme import build_style
+    from ..tools import ToolAgent
     from ..ui.main_window import MainWindow
     from .dependency_container import DependencyContainer
     from .event_bus import EventBus
@@ -46,6 +47,7 @@ def run_application() -> None:
         app = QApplication(sys.argv)
         app.setStyleSheet(build_style(winfx.active_effect(settings.get("window_effect"))))
         session_manager = SessionManager(ChatSession)
+        tool_agent = ToolAgent(settings, DATA_DIR, ROOT)
         window = MainWindow(
             memory_service=container.resolve("memory_service"),
             mood_service=container.resolve("mood_service"),
@@ -59,6 +61,7 @@ def run_application() -> None:
             session_manager=session_manager,
             chat_event_publisher=chat_event_publisher,
             settings=settings,
+            tool_agent=tool_agent,
             provider_application_service=container.resolve("provider_application_service"),
             coding_agent_application_service=container.resolve("coding_agent_application_service"),
             vision_application_service=container.resolve("vision_application_service"),
