@@ -6,6 +6,8 @@ on:
     paths:
       - "kira/character/initiative.py"
       - "kira/chat/persistence.py"
+      - "kira/services/chat_history_service.py"
+      - "kira/services/chat_history_service.py"
       - "kira/chat/application_service.py"
       - "kira/core/interfaces/chat_history_service.py"
       - "kira/chat/persistence.py"
@@ -65,6 +67,7 @@ jobs:
           python -m py_compile
           kira/character/initiative.py
           kira/chat/persistence.py
+          kira/services/chat_history_service.py
           kira/chat/application_service.py
           kira/core/interfaces/chat_history_service.py
           kira/config.py

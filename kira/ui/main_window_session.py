@@ -550,7 +550,7 @@ class SessionController(WindowFeatureController):
                 history_by_character = {}
             try:
                 persisted_records = self.context.services.chat_application_service.recent_message_records(
-                    limit=2000, character_id=character_id
+                    limit=5000, character_id=character_id
                 )
             except Exception:
                 # If durable history cannot be inspected, fail closed rather than
