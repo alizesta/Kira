@@ -1,7 +1,6 @@
 """Runtime feature controller for the desktop window."""
 import logging
 
-_log = logging.getLogger(__name__)
 from .main_window_runtime_support import (
     ChatHistoryError,
     Listener,
@@ -29,6 +28,9 @@ from .main_window_runtime_support import (
 
 from .window_feature_controller import WindowFeatureController
 from ..emotion.lifecycle import should_observe_message
+
+
+_log = logging.getLogger(__name__)
 
 
 class RuntimeController(WindowFeatureController):

@@ -663,11 +663,24 @@ def _fit_memory_block(header: str, parts: list[str], budget: int) -> str:
     return "\n\n".join(selected)
 
 
-def _compact_digest_line(text: str, max_chars: int = 240) -> str:
+def _compact_digest_line(text: str, max_chars: int = 240, query: str | None = None) -> str:
     text = " ".join(str(text or "").split())
     if len(text) <= max_chars:
         return text
-    excerpt = text[:max_chars]
+
+    start = 0
+    if query:
+        normalized = _evidence.norm(text)
+        query_words = re.findall(r"[a-z0-9آ-ی]{3,}", _evidence.norm(query))
+        positions = [normalized.find(word) for word in query_words]
+        positions = [position for position in positions if position >= 0]
+        if positions:
+            # Center the excerpt around the matched subject instead of always
+            # keeping the beginning of a long message.
+            start = max(0, min(positions) - max_chars // 3)
+            start = min(start, max(0, len(text) - max_chars))
+
+    excerpt = text[start:start + max_chars]
     # Prefer a complete sentence; otherwise stop at a word boundary.
     boundary = max(excerpt.rfind(mark) for mark in (". ", "! ", "? ", "؟ ", "。"))
     if boundary >= int(max_chars * 0.55):
@@ -676,7 +689,9 @@ def _compact_digest_line(text: str, max_chars: int = 240) -> str:
         boundary = excerpt.rfind(" ")
         if boundary >= int(max_chars * 0.65):
             excerpt = excerpt[:boundary]
-    return excerpt.rstrip() + "…"
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if start + len(excerpt) < len(text) else ""
+    return prefix + excerpt.rstrip() + suffix
 
 
 def digest(older: list[dict], query: str | None = None) -> list[str]:
@@ -686,7 +701,7 @@ def digest(older: list[dict], query: str | None = None) -> list[str]:
         if not isinstance(item, dict) or item.get("role") != "user":
             continue
         text = " ".join(str(item.get("content") or "").split())
-        text = re.sub(r"---\\s*فایل ضمیمه.*", "[attached a file]", text)
+        text = re.sub(r"---\s*فایل ضمیمه.*", "[attached a file]", text)
         if len(text) >= 8:
             # Keep enough source text for topic matching, but cap pathological history rows.
             source_lines.append(text[:2000])
@@ -696,7 +711,7 @@ def digest(older: list[dict], query: str | None = None) -> list[str]:
             query,
             DIGEST_LINES,
         )
-        return [_compact_digest_line(item["text"]) for item in ranked]
+        return [_compact_digest_line(item["text"], query=query) for item in ranked]
     return [_compact_digest_line(line) for line in source_lines[-DIGEST_LINES:]]
 
 

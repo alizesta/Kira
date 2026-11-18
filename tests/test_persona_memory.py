@@ -229,11 +229,13 @@ class PersonaMemoryTests(unittest.TestCase):
         ]
         self.assertEqual(pm._evidence.query_from_context(context), "مرسی")
 
-    def test_digest_ranks_full_message_before_compacting_prompt_excerpt(self):
+    def test_digest_ranks_full_message_and_centers_excerpt_on_matched_topic(self):
         source = "درباره یک موضوع دیگر صحبت کردیم. " + ("متن نامرتبط " * 18) + "در پایان درباره سفر شیراز و هتل صحبت کردیم"
         lines = pm.digest([{"role": "user", "content": source}], query="سفر شیراز هتل")
         self.assertEqual(len(lines), 1)
         self.assertIn("سفر شیراز", lines[0])
+        self.assertIn("هتل", lines[0])
+        self.assertLessEqual(len(lines[0]), 242)
 
 if __name__ == "__main__":
     unittest.main()

@@ -334,7 +334,8 @@ class EmotionalRuntime:
 
     def _event(self, name, now, detail=None):
         self._state["recent_events"].append({"name": str(name), "at": now, "detail": str(detail or "")[:180]})
-        self._state["recent_events"] = self._state["recent_events"][-int(self.config.get("event_limit", MAX_EVENTS)):]
+        event_limit = _safe_int(self.config.get("event_limit", MAX_EVENTS), MAX_EVENTS, minimum=1, maximum=MAX_EVENTS)
+        self._state["recent_events"] = self._state["recent_events"][-event_limit:]
 
     def _memory(self, kind, text, impact, now, signal=None):
         text = str(text or "").strip()[:280]
@@ -352,7 +353,8 @@ class EmotionalRuntime:
         self._state["memories"].append({"kind": kind, "signal": signal, "speaker": "assistant" if kind == "kira_emotion" else "user", "text": text, "impact": _clamp(impact),
                                         "created": now, "reinforced_at": now, "last_recalled": 0.0,
                                         "recall_count": 0, "reinforcements": 0})
-        self._state["memories"] = self._state["memories"][-int(self.config.get("memory_limit", MAX_MEMORIES)):]
+        memory_limit = _safe_int(self.config.get("memory_limit", MAX_MEMORIES), MAX_MEMORIES, minimum=1, maximum=MAX_MEMORIES)
+        self._state["memories"] = self._state["memories"][-memory_limit:]
 
     def observe_feedback(self, category, text="", now=None):
         """Learn from repeated, explicit feedback without letting one message rewrite Kira's identity."""
