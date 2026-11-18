@@ -565,7 +565,7 @@ class ProviderSettingsController(WindowFeatureController):
         return item.data(Qt.UserRole) if item else None
 
     def _api_busy(self):
-        worker = getattr(self, "_api_worker", None)
+        worker = getattr(self.context.state, "_api_worker", None)
         if worker is not None and worker.isRunning():
             self.api_status.setText("صبر کن؛ عملیات قبلی هنوز تمام نشده است.")
             return True
