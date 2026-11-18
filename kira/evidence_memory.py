@@ -700,7 +700,7 @@ _QUERY_SYNONYMS = {
 
 def query_terms(text) -> list[str]:
     """Return normalized query words plus their conservative Persian synonyms."""
-    words = _WORD.findall(norm(text))
+    words = [word for word in _WORD.findall(norm(text)) if word not in _STOP and (len(word) >= 2 or word.isdigit())]
     expanded = list(words)
     seen = set(words)
     for word in words:
@@ -937,7 +937,10 @@ def render(facts, budget) -> str:
             mark += f" (he changed this; earlier: {fact['earlier'][:60]})"
         if fact["category"] in ("event", "temporary"):
             mark += " (may be over by now)"
-        line = f"- {fact['text']} [{day}]{mark}"
+        fact_text = " ".join(str(fact.get("text") or "").split())
+        if not fact_text:
+            continue
+        line = f"- {fact_text} [{day}]{mark}
         if used + len(line) + (1 if lines else 0) > max(0, int(budget)):
             continue
         lines.append(line)
