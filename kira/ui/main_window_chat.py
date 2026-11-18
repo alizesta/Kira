@@ -447,6 +447,7 @@ class ChatController(WindowFeatureController):
             window, character_id=self.context.state.cur.cid, conversation_id=conversation_id
         )
         mode = self.detect_mode(history)                          # Active Mode of THIS message (None = switched off in settings)
+        last_user = next((m.get("content", "") for m in reversed(history) if m.get("role") == "user"), "")
         try:
             older = self.context.services.chat_application_service.recent_messages(
                 window + 40, character_id=self.context.state.cur.cid, conversation_id=conversation_id
@@ -474,7 +475,7 @@ class ChatController(WindowFeatureController):
         except Exception:                                         # noqa: BLE001 - memory is a bonus, never block a reply
             memory_block = ""
         try:                                                      # her persisted mood + how he seems right now (same text for every provider)
-            mood_block = mood.build_block(mode.name if mode else modes.CHAT)
+            mood_block = mood.build_block(mode.name if mode else modes.CHAT, query=last_user)
         except Exception:                                         # noqa: BLE001
             mood_block = ""
 
@@ -483,7 +484,6 @@ class ChatController(WindowFeatureController):
         try:
             extra0 = self.context.session._turn_extra
             has_att = bool(self.context.session._turn_attach_kinds or (extra0 and (extra0.get("images") or "--- فایل ضمیمه" in str(extra0.get("model", "")))))
-            last_user = next((m.get("content", "") for m in reversed(history) if m.get("role") == "user"), "")
             self.context.session._brain_user_text = str(last_user)
             self.context.session._brain_mode_name = mode.name if mode else None
             self.context.session._brain = brain.decide(last_user, mode, self.context.session._tool_plan, has_att, self.context.services.tool_agent.tasks.active(self.context.state.cur.cid) is not None, self.context.services.settings)
