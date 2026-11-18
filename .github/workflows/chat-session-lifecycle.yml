@@ -28,6 +28,7 @@ on:
       - "tests/test_game_mode_application.py"
       - "tests/test_game_audio_policy.py"
       - "tests/test_game_mode_application_wiring.py"
+      - "tests/test_main_window_feature_dependencies.py"
       - "tests/test_web_search_application.py"
       - "tests/test_web_search_wiring.py"
       - "tests/test_main_window_syntax.py"
@@ -69,6 +70,7 @@ jobs:
           tests.test_game_mode_application
           tests.test_game_audio_policy
           tests.test_game_mode_application_wiring
+          tests.test_main_window_feature_dependencies
           tests.test_chat_application_wiring
           tests.test_chat_session_manager
           tests.test_chat_events
@@ -93,6 +95,15 @@ jobs:
           kira/chat_sessions.py
           kira/ui/main_window.py
           kira/ui/main_window_support.py
+          kira/ui/main_window_root_support.py
+          kira/ui/main_window_attachments_vision_support.py
+          kira/ui/main_window_character_settings_support.py
+          kira/ui/main_window_chat_support.py
+          kira/ui/main_window_lifecycle_support.py
+          kira/ui/main_window_provider_settings_support.py
+          kira/ui/main_window_runtime_support.py
+          kira/ui/main_window_session_support.py
+          kira/ui/main_window_voice_settings_support.py
           kira/ui/main_window_session.py
           kira/ui/main_window_voice_settings.py
           kira/ui/main_window_character_settings.py
