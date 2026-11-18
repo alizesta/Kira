@@ -3,7 +3,7 @@ import unittest
 from unittest import mock
 
 from tests.helpers import Resp
-from kira.hybrid_ai import OpenAICompatibleProvider, normalize_messages, provider_class
+from kira.hybrid_ai import HybridRouter, OpenAICompatibleProvider, normalize_messages, provider_class
 from kira.ollama_client import OllamaClient
 
 
@@ -116,6 +116,30 @@ class NativeFunctionCallingTests(unittest.TestCase):
         self.assertEqual([m["role"] for m in cleaned], ["user", "assistant", "tool"])
         self.assertEqual(cleaned[-1]["tool_call_id"], "call_1")
         self.assertEqual(cleaned[1]["tool_calls"][0]["function"]["name"], "open_app")
+
+
+    def test_router_accounts_for_native_function_calling_requests(self):
+        router = HybridRouter({})
+        route = {"id": "custom-route", "provider": "custom", "model": "test-model"}
+        provider = mock.Mock()
+        provider.chat_with_tools.return_value = {
+            "text": "",
+            "tool_calls": [{"id": "call_1", "tool": "get_datetime", "args": {}}],
+        }
+        router._candidates = lambda: [route]
+        router.eligibility = lambda _route: (True, "ok")
+        router.route_info = lambda _route: {"kind": "cloud", "label": "Test"}
+        router._make_provider = lambda _route: provider
+        with mock.patch.object(router, "_ledger") as ledger, mock.patch.object(router, "_write_telemetry") as telemetry:
+            result = router.chat_with_tools(
+                [{"role": "user", "content": "What time is it?"}],
+                "system",
+                tools=[{"name": "get_datetime", "parameters": {"type": "object"}}],
+            )
+        self.assertEqual(result["tool_calls"][0]["tool"], "get_datetime")
+        ledger.assert_called_once_with(router.last_metrics, "tool_call", provider)
+        telemetry.assert_called_once()
+        self.assertEqual(router.last_attempts[-1]["result"], "tool_call")
 
 
 if __name__ == "__main__":

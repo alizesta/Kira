@@ -1098,6 +1098,7 @@ class HybridRouter:
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("درخواست قبلی هنوز در حال انجام است؛ درخواست تکراری ارسال نشد.")
         self._cancel.clear()
+        self.last_attempts = []
         started = time.monotonic()
         supported = False
         failures = []
@@ -1133,6 +1134,27 @@ class HybridRouter:
                                "chars": len(result.get("text") or ""), "role": _ROLE.get() or None}
                     self.last_metrics = metrics
                     self.metrics.append(metrics)
+                    self.last_attempts.append({
+                        "provider": route["provider"],
+                        "route_id": route["id"],
+                        "model": route["model"],
+                        "result": metrics["result"],
+                        "duration_ms": elapsed,
+                    })
+                    # Native function-calling requests are real provider requests too.
+                    # Record reported token usage and metadata just like the streaming path.
+                    self._ledger(metrics, metrics["result"], provider)
+                    self._write_telemetry({
+                        "provider": route["provider"],
+                        "model": route["model"],
+                        "result": metrics["result"],
+                        "duration_ms": elapsed,
+                        "attempts": self.last_attempts,
+                        "request_id": metrics["request_id"],
+                        "stream": False,
+                        "failovers": metrics["failovers"],
+                        "retries": 0,
+                    })
                     return {**result, "provider": route["provider"], "model": route["model"], "route_id": route["id"],
                             "kind": info["kind"], "label": info["label"], "metrics": metrics,
                             "stopped": False, "interrupted": None}

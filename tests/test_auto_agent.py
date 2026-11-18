@@ -665,5 +665,22 @@ class ReliabilityTests(AgentBase):
 
 
 
+class BoundedExecutionOutputTests(unittest.TestCase):
+    def test_verbose_process_output_is_bounded_and_retains_the_final_complete_line(self):
+        with tempfile.TemporaryDirectory() as directory:
+            agent = object.__new__(aa.AutoAgent)
+            agent.work = Path(directory)
+            agent.should_stop = lambda: False
+            code, output = agent._exec([
+                sys.executable,
+                "-c",
+                "import sys; sys.stdout.write('x' * 400000 + '\\nTAIL_MARKER\\n')",
+            ])
+        self.assertEqual(code, 0)
+        self.assertLessEqual(len(output), aa.MAX_OBSERVATION)
+        self.assertIn("TAIL_MARKER", output)
+        self.assertIn("برای محدودیت حافظه حذف شد", output)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -15,6 +15,7 @@ from tests import helpers
 from tests.helpers import StreamResp, sse
 
 from kira import memory, storage, config
+from kira.chat.persistence import MAX_PENDING_MESSAGES
 
 try:
     from PySide6.QtWidgets import QApplication, QMessageBox
@@ -132,6 +133,22 @@ class DatabaseErrorTests(IsolatedDb):
         self.assertEqual(self.texts(), ["m0", "m1", "p1", "p2", "p3"])
         self.assertEqual(memory.pending_count(), 0)
         self.assertIsNone(memory.repository.last_error)
+
+    def test_full_pending_queue_preserves_accepted_messages_and_reports_new_write(self):
+        memory._pending.extend(
+            ("user", f"pending-{index}", "kira", "conversation", "{}", "complete")
+            for index in range(MAX_PENDING_MESSAGES)
+        )
+        before = list(memory._pending)
+        with mock.patch.object(
+            memory.repository, "_db",
+            side_effect=sqlite3.OperationalError("database is locked"),
+        ):
+            self.assertFalse(memory.add_message("user", "not-queued"))
+        self.assertEqual(memory.pending_count(), MAX_PENDING_MESSAGES)
+        self.assertEqual(memory._pending, before)
+        self.assertIn("queue is full", memory.repository.last_error)
+        self.assertIn("newest message was not queued", memory.repository.last_error)
 
     def test_garbage_file_is_quarantined_never_deleted_and_a_fresh_db_is_created(self):
         self.fill(3)

@@ -23,6 +23,7 @@ DB_NAME = "kira_memory.sqlite3"
 DEFAULT_CHARACTER = "kira"
 SCHEMA_VERSION = 1
 SNAPSHOTS_KEEP = 5
+MAX_PENDING_MESSAGES = 500
 
 
 class PersistenceError(RuntimeError):
@@ -958,7 +959,7 @@ class SqliteChatRepository:
 
     def add_message(self, role, content, character_id=None, *, conversation_id=None, metadata=None,
                     status="complete", message_id=None) -> bool:
-        """Append a message; explicit message_id updates an existing row idempotently."""
+        """Append idempotently; preserve queued writes and report overflow without evicting older messages."""
         cid = _character_id(character_id)
         role, body = str(role), str(content)
         if role not in ("user", "assistant", "system"):
@@ -1024,8 +1025,14 @@ class SqliteChatRepository:
                             self._note_error(recovery)
                     break
             pending_conv = resolved_conv_id or fallback_conv_id or _legacy_conversation_id(cid)
+            if len(self._pending) >= MAX_PENDING_MESSAGES:
+                self.last_error = (
+                    f"{self.last_error or 'Chat database is unavailable'}; "
+                    f"in-memory write queue is full ({MAX_PENDING_MESSAGES} messages); "
+                    "the newest message was not queued and existing pending messages were retained."
+                )
+                return False
             self._pending.append((role, body, cid, pending_conv, meta_json, status))
-            del self._pending[:-500]
             return False
 
     @staticmethod
