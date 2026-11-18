@@ -33,7 +33,6 @@ class MainWindow(QMainWindow):
             "voice_settings": VoiceSettingsController(self),
             "session": SessionController(self),
         }
-        self._feature_controllers = controllers
         registry = FeatureControllerRegistry(controllers)
         self.presentation_context = WindowPresentationContext(self, registry)
 
