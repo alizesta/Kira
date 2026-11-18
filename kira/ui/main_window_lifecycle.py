@@ -27,7 +27,7 @@ from .window_feature_controller import WindowFeatureController
 
 class LifecycleMixin(WindowFeatureController):
     def showEvent(self, event):
-        super().showEvent(event)
+        self.qt_super_event("showEvent", event)
         winfx.apply_effect(self.winId(), self._effect)
         QTimer.singleShot(0, self.update_bubble)
 
@@ -189,7 +189,7 @@ class LifecycleMixin(WindowFeatureController):
             bubble.hide()
 
     def hideEvent(self, event):
-        super().hideEvent(event)
+        self.qt_super_event("hideEvent", event)
         QTimer.singleShot(0, self.update_bubble)
 
     def hide_to_tray(self):
@@ -218,7 +218,7 @@ class LifecycleMixin(WindowFeatureController):
             app.quit()
 
     def changeEvent(self, event):
-        super().changeEvent(event)
+        self.qt_super_event("changeEvent", event)
         if (event.type() == event.Type.WindowStateChange and self.isMinimized()
                 and getattr(self, "tray", None) is not None and self.settings.get("minimize_to_tray")):
             QTimer.singleShot(0, self.hide_to_tray)
