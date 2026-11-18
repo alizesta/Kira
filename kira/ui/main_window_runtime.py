@@ -283,7 +283,8 @@ class RuntimeMixin:
             self.save_message("assistant", raw, persist=False)
             try:                                                   # quiet second look (rules; optional background model call)
                 brain.after_turn(self.client, self.settings, getattr(self, "_brain", brain.Decision()), getattr(self, "_brain_user_text", ""),
-                                 text, res.get("tools"), getattr(self, "_brain_mode_name", None), bool(self._tool_plan))
+                                 text, res.get("tools"), getattr(self, "_brain_mode_name", None), bool(self._tool_plan),
+                                 character_id=self.cur.cid)
             except Exception:                                      # noqa: BLE001
                 pass
             if not self._emotion_applied:                          # no tag from the model: tag-less fallback (keywords / neutral)
@@ -782,7 +783,7 @@ class RuntimeMixin:
                 # Facts, moments and habits remain in the character's own memory file.
                 self.memory_service.forget_conversation(self.cur.cid)
                 self.tool_agent.clear_session(self.cur.cid) # clear only this character's tasks, tool context, grants and temporary research
-                brain.reset_state()
+                brain.reset_state(self.cur.cid)
             except ChatHistoryError as exc:
                 QMessageBox.warning(self, self.t("clear_t"), str(exc))
                 return

@@ -25,6 +25,7 @@ Settings (all optional; see docs/BRAIN_FA.md):
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import threading
@@ -125,17 +126,29 @@ def decide(text, mode=None, plan=None, has_attachment=False, has_task=False, set
 
 
 # ----------------------------------------------------------------------------------------------- state (local file, provider independent)
-def _path() -> Path:
-    return Path(DATA_DIR) / STATE_NAME
+def _character_key(character_id: str | None = None) -> str:
+    """Normalize the owner of reply hints; omitted IDs retain the legacy Kira namespace."""
+    owner = str(character_id or "kira").strip().lower()
+    return owner or "kira"
+
+
+def _path(character_id: str | None = None) -> Path:
+    owner = _character_key(character_id)
+    root = Path(DATA_DIR)
+    if owner == "kira":
+        # Keep the existing Kira file at its original location for compatibility.
+        return root / STATE_NAME
+    digest = hashlib.sha256(owner.encode("utf-8")).hexdigest()[:24]
+    return root / "brain" / digest / STATE_NAME
 
 
 def _empty_state() -> dict:
     return {"turn": 0, "hint": None, "sigs": [], "reflect": {"last": 0, "hour": []}, "writer": {"last_run": 0, "next_try": 0}}
 
 
-def _load() -> dict:
+def _load(character_id: str | None = None) -> dict:
     try:
-        data = json.loads(_path().read_text(encoding="utf-8"))
+        data = json.loads(_path(character_id).read_text(encoding="utf-8"))
         if isinstance(data, dict):
             base = _empty_state()
             base.update({k: v for k, v in data.items() if k in base})
@@ -150,9 +163,9 @@ def _load() -> dict:
     return _empty_state()
 
 
-def _save(state: dict) -> None:
+def _save(state: dict, character_id: str | None = None) -> None:
     try:
-        path = _path()
+        path = _path(character_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
@@ -161,12 +174,12 @@ def _save(state: dict) -> None:
         pass                                                           # losing a hint is harmless
 
 
-def reset_state() -> None:
-    """The chat was cleared: a pending hint about a reply that no longer exists is dropped (the memory writer's cursor is kept)."""
+def reset_state(character_id: str | None = None) -> None:
+    """Clear only one character's pending reply hint; retain the shared memory-writer cursor."""
     with _lock:
-        state = _load()
+        state = _load(character_id)
         state.update(turn=0, hint=None, sigs=[])
-        _save(state)
+        _save(state, character_id)
 
 
 # ----------------------------------------------------------------------------------------------- prompt
@@ -204,7 +217,7 @@ def _pending_hint(state: dict, now: float) -> str:
     return _clean_hint(hint.get("text"))
 
 
-def extend_prompt(prompt, decision, settings=None, router=None) -> str:
+def extend_prompt(prompt, decision, settings=None, router=None, *, character_id: str | None = None) -> str:
     """The system prompt plus, only when needed: the one-line deep block and the pending hint. Simple turns get the prompt back unchanged."""
     try:
         if decision.mode == "off":
@@ -213,11 +226,11 @@ def extend_prompt(prompt, decision, settings=None, router=None) -> str:
         if decision.stage == DEEP and not _small_context(settings, router, decision):
             extras.append(DEEP_BLOCK)
         with _lock:
-            state = _load()
+            state = _load(character_id)
             hint = _pending_hint(state, time.time())
             if state.get("hint") and not hint:
                 state["hint"] = None                                   # expired
-                _save(state)
+                _save(state, character_id)
         if hint:
             extras.append(HINT_BLOCK.format(hint=hint))
         return prompt + ("\n\n" + "\n\n".join(extras) if extras else "")
@@ -326,33 +339,33 @@ def _parse_json(raw):
     return json.loads(raw[start:end + 1]) if start != -1 and end > start else None
 
 
-def _model_reflect(router, settings, user_text, reply) -> None:
+def _model_reflect(router, settings, user_text, reply, character_id: str | None = None) -> None:
     from . import evidence_memory as em
     if not _allowed(REFLECTION):
         return
     now = time.time()
     with _lock:
-        state = _load()
+        state = _load(character_id)
         r = state["reflect"]
         r["hour"] = [t for t in r.get("hour", []) if now - t < 3600]
         if now - float(r.get("last", 0)) < MODEL_REFLECT_GAP or len(r["hour"]) >= MODEL_REFLECT_PER_HOUR:
             return
         r["last"] = now
         r["hour"].append(now)
-        _save(state)                                                   # counted BEFORE the call: a failure is never retried in a loop
+        _save(state, character_id)                                    # counted BEFORE the call: a failure is never retried in a loop
     facts = "\n".join("- " + f["text"][:160] for f in em.retrieve(user_text, limit=4))
     body = f"-----\nUSER MESSAGE:\n{user_text[:900]}\n\nKIRA REPLY:\n{reply[:1500]}\n\nKNOWN FACTS ABOUT THE USER:\n{facts or '(none)'}"
     data = _parse_json(_ask(make_aux_router(router), REFLECTION, REFLECT_PROMPT, body, settings))
     if isinstance(data, dict) and data.get("issue") is True:
         hint = _clean_hint(data.get("hint"))
         if hint:
-            _store_hint(("model:" + re.sub(r"\W+", "", hint.lower())[:24]), hint)
+            _store_hint(("model:" + re.sub(r"\W+", "", hint.lower())[:24]), hint, character_id)
 
 
-def _store_hint(signature, hint) -> bool:
+def _store_hint(signature, hint, character_id: str | None = None) -> bool:
     """Keep ONE pending hint; never repeat a recent signature; never overwrite a hint that is still waiting."""
     with _lock:
-        state = _load()
+        state = _load(character_id)
         turn = int(state.get("turn", 0))
         if _pending_hint(state, time.time()):
             return False
@@ -361,7 +374,7 @@ def _store_hint(signature, hint) -> bool:
             return False
         state["hint"] = {"text": _clean_hint(hint), "sig": signature, "created": time.time(), "turn": turn}
         state["sigs"] = (recent + [[signature, turn]])[-SIG_KEEP:]
-        _save(state)
+        _save(state, character_id)
         return True
 
 
@@ -405,7 +418,10 @@ def _memory_writer(router, settings) -> None:
 
 
 # ----------------------------------------------------------------------------------------------- after the reply
-def after_turn(router, settings, decision, user_text, reply, tools=None, mode_name=None, tool_expected=False) -> dict:
+def after_turn(
+    router, settings, decision, user_text, reply, tools=None, mode_name=None,
+    tool_expected=False, *, character_id: str | None = None,
+) -> dict:
     """Called once when a reply finished normally. Counts the turn, consumes a delivered hint, runs the free reflection and starts the
     optional background passes. Returns a small metadata dict (also written to logs/brain_telemetry.jsonl). Never raises, never asks the user."""
     info = {"stage": getattr(decision, "stage", SURFACE), "reasons": list(getattr(decision, "reasons", ())), "hint": None, "background": []}
@@ -413,18 +429,18 @@ def after_turn(router, settings, decision, user_text, reply, tools=None, mode_na
         if decision.mode == "off":
             return info
         with _lock:
-            state = _load()
+            state = _load(character_id)
             state["turn"] = int(state.get("turn", 0)) + 1
             if isinstance(state.get("hint"), dict) and (state["hint"].get("delivered") or int(state["turn"]) - int(state["hint"].get("turn", 0)) >= 1):
                 state["hint"] = None                                   # it was part of this turn's prompt: used once
-            _save(state)
+            _save(state, character_id)
         if decision.reflection != "off":
             for signature, hint in check_reply(reply, tools, mode_name, tool_expected):
-                if _store_hint(signature, hint):
+                if _store_hint(signature, hint, character_id):
                     info["hint"] = signature
                 break                                                  # at most one remark per turn
             if (decision.reflection == "model" and decision.stage == DEEP and info["hint"] is None and len(str(reply)) >= 80
-                    and _spawn("reflect", _model_reflect, router, settings, str(user_text), str(reply))):
+                    and _spawn("reflect", _model_reflect, router, settings, str(user_text), str(reply), character_id)):
                 info["background"].append("reflection")
         if str(_setting(settings, "brain_memory_writer", "off")).lower() == "idle" and _spawn("writer", _memory_writer, router, settings):
             info["background"].append("memory")
@@ -439,8 +455,8 @@ def after_turn(router, settings, decision, user_text, reply, tools=None, mode_na
     return info
 
 
-def status() -> dict:
-    """Small summary for diagnostics."""
+def status(character_id: str | None = None) -> dict:
+    """Small summary for diagnostics; defaults to the legacy Kira brain state."""
     with _lock:
-        state = _load()
+        state = _load(character_id)
     return {"turn": state.get("turn"), "hint_pending": bool(_pending_hint(state, time.time())), "background_running": sorted(_bg_busy)}

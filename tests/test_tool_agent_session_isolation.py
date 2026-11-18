@@ -9,6 +9,8 @@ from kira.tools.agent import Pending, ToolAgent, ToolPlan
 from kira.tools.sysaccess import AccessManager
 from kira.webintel.session import CANCEL, DEFAULT_BUDGET, SessionScopedResearchStore
 from kira.tools.tasks import HISTORY_KEEP, P_DONE, TaskStore
+from kira import brain
+from unittest.mock import patch
 
 
 class ToolAgentSessionIsolationTests(unittest.TestCase):
@@ -313,6 +315,48 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
             CANCEL.deactivate("ren")
             CANCEL.deactivate("kira")
             CANCEL.clear_all()
+
+    def test_brain_hints_and_turns_are_isolated_per_character(self):
+        with TemporaryDirectory() as temp:
+            with patch.object(brain, "DATA_DIR", Path(temp)):
+                brain.reset_state("kira")
+                brain.reset_state("ren")
+
+                self.assertEqual(brain._path("kira"), Path(temp) / brain.STATE_NAME)
+                self.assertNotEqual(brain._path("ren"), brain._path("kira"))
+
+                self.assertTrue(brain._store_hint("same-signature", "Kira-only hint", "kira"))
+                self.assertTrue(brain._store_hint("same-signature", "Ren-only hint", "ren"))
+                self.assertEqual(brain._load("kira")["hint"]["text"], "Kira-only hint")
+                self.assertEqual(brain._load("ren")["hint"]["text"], "Ren-only hint")
+
+                brain.reset_state("kira")
+                self.assertIsNone(brain._load("kira")["hint"])
+                self.assertEqual(brain._load("ren")["hint"]["text"], "Ren-only hint")
+
+                brain.after_turn(
+                    None, {}, brain.Decision(reflection="off"),
+                    "hello", "answer", character_id="ren",
+                )
+                self.assertEqual(brain._load("ren")["turn"], 1)
+                self.assertEqual(brain._load("kira")["turn"], 0)
+
+    def test_brain_prompt_consumes_only_the_current_character_hint(self):
+        with TemporaryDirectory() as temp:
+            with patch.object(brain, "DATA_DIR", Path(temp)):
+                brain._store_hint("kira", "Only Kira context", "kira")
+                brain._store_hint("ren", "Only Ren context", "ren")
+                decision = brain.Decision()
+                kira_prompt = brain.extend_prompt("base", decision, character_id="kira")
+                ren_prompt = brain.extend_prompt("base", decision, character_id="ren")
+                mika_prompt = brain.extend_prompt("base", decision, character_id="mika")
+
+                self.assertIn("Only Kira context", kira_prompt)
+                self.assertNotIn("Only Ren context", kira_prompt)
+                self.assertIn("Only Ren context", ren_prompt)
+                self.assertNotIn("Only Kira context", ren_prompt)
+                self.assertNotIn("Only Kira context", mika_prompt)
+                self.assertNotIn("Only Ren context", mika_prompt)
 
     def test_plan_carries_its_character_identity(self):
         plan = ToolPlan({"files"}, session_id="mika")

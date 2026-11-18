@@ -15,7 +15,8 @@ def create_chat_application_ports(window) -> ChatApplicationPorts:
     """Expose the minimum UI/provider boundary required by Chat application logic."""
     return ChatApplicationPorts(
         prompt_enricher=lambda value: brain.extend_prompt(
-            value, window._brain, window.settings, window.client
+            value, window._brain, window.settings, window.client,
+            character_id=window.cur.cid,
         ),
         worker_factory=StreamWorker,
         on_dispatch=window._dispatch_application_request,
