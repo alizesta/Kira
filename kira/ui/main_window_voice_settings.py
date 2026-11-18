@@ -292,7 +292,7 @@ class VoiceSettingsController(WindowFeatureController):
     def apply_local_whisper_model(self):
         value = self.context.views.local_whisper_path.text().strip() or "small"
         self.context.services.settings["whisper_model"] = value
-        if hasattr(self, "whisper"):
+        if hasattr(self.context.views.voice_page, "whisper"):
             if self.context.views.voice_page.whisper.findText(value) < 0:
                 self.context.views.voice_page.whisper.addItem(value)
             self.context.views.voice_page.whisper.setCurrentText(value)
@@ -449,7 +449,7 @@ class VoiceSettingsController(WindowFeatureController):
             self.context.views.api_add_status.setText("✕ واردکردن مدل ناموفق بود: " + str(value))
             return
         model = str(value)
-        if hasattr(self, "model"):
+        if hasattr(self.context.views, "model"):
             if self.context.views.model.findText(model) < 0:
                 self.context.views.model.addItem(model)
             self.context.views.model.setCurrentText(model)
@@ -548,13 +548,13 @@ class VoiceSettingsController(WindowFeatureController):
         if worker is not None and worker.isRunning():
             return
         button.setEnabled(False)
-        if hasattr(self, "local_voice_progress"):
+        if hasattr(self.context.views, "local_voice_progress"):
             self.context.views.local_voice_progress.show()
         worker = TaskWorker(fn)
         self.context.state._local_voice_worker = worker
         def completed(result):
             button.setEnabled(True)
-            if hasattr(self, "local_voice_progress"):
+            if hasattr(self.context.views, "local_voice_progress"):
                 self.context.views.local_voice_progress.hide()
             callback(result)
 
@@ -647,7 +647,7 @@ class VoiceSettingsController(WindowFeatureController):
     def _on_local_stt_test_finished(self, listener):
         if getattr(self, "_local_stt_test_listener", None) is listener:
             self._local_stt_test_listener = None
-        if hasattr(self, "local_stt_test_btn"):
+        if hasattr(self.context.views, "local_stt_test_btn"):
             self.context.views.local_stt_test_btn.setText("تست STT")
 
     def _on_local_tts_tested(self, result):
