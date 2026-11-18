@@ -208,3 +208,39 @@ Regression tests cover the shell's base class, controller registration,
 constructor boundary, composition-root wiring and event-forwarding contract.
 Static source validation is in place; runtime GUI behavior and full application
 tests still require a functioning CI runner.
+
+
+### Feature Controller boundary delta — 2026-11-18
+
+The controller compatibility lookup and Qt event dispatch now pass through
+`FeatureControllerRegistry`, which centralizes feature ownership and reports
+legacy method collisions. Chat's attachment workflow is injected explicitly
+from UI composition through the independent `ChatAttachmentController`; Chat
+no longer reaches the attachment feature through legacy forwarding methods or
+the shared `_tiles` collection.
+
+This advances the residual UI boundary work but does not close it. The
+window-backed `WindowFeatureController` proxy and remaining cross-feature
+method calls are still migration targets. Focused registry and dependency
+contract tests have been added; they are not yet executed. Windows/GUI and
+GitHub Actions validation are intentionally outside this workstream.
+
+
+### Controller registry hardening delta — 2026-11-18
+
+`FeatureControllerRegistry` now owns an immutable snapshot of controller membership. Peer-controller dependencies use the registry's required lookup contract, which raises immediately when a declared feature is absent instead of returning an optional value. Regression tests cover defensive copying of registry membership and missing-peer failure. This is a narrow boundary-hardening step; it does not remove the broad `WindowFeatureController` window-backed attribute proxy or migrate residual shared UI state. Those remain open Flow 1 exit criteria.
+
+
+### Flow 1 closure delta — explicit presentation context — 2026-11-18
+
+This section supersedes the earlier residual-UI notes above for the current refactor/ui-controller-boundaries branch.
+
+- Added WindowPresentationContext as the sole controller-to-host boundary. Its state, services, adapters, and views buckets enforce explicit allowlists; reads or writes outside those contracts raise AttributeError.
+- Per-conversation request/stream state is read and written through the active ChatSession. Vision worker/session state and the pending voice-input flag are now session-scoped instead of window-global.
+- All eight feature controllers have migrated their shared reads/writes to the named context buckets. Controller-local transient state remains on its owning controller; cross-controller workflow calls resolve a required peer by feature name through FeatureControllerRegistry.require().
+- Chat and Voice Qt callback ports now receive the presentation context and obtain callbacks from their owning feature controllers. Shared Skills prompt enrichment reads the active ChatSession and injected application service.
+- Removed WindowFeatureController generic __getattr__/__setattr__ forwarding, removed MainWindow.__getattr__ feature-method lookup and the shell's session/front-only compatibility descriptors, and removed the registry's legacy method-resolution operation. MainWindow now owns the Qt host, controller registry, presentation context, and explicit Qt virtual-event forwarding only.
+- Kept the Qt host reference explicit as controller.window for QObject parenting and native window APIs; this is a host port, not a general attribute proxy.
+- Added static contract checks that compare every direct context-bucket reference in all eight controllers and the UI composition module against the declared field allowlists, and validate every shutdown-resource owner mapping against its owning state/session/controller contract.
+
+Flow 1's source-architecture exit criteria are complete. Focused regression coverage was updated for strict namespace contracts, front-session isolation, peer-controller lookup, and the absence of the legacy proxy. Python tests were not executed in this environment. Windows/GUI and GitHub Actions validation remain excluded from this workstream, so runtime acceptance is still pending.

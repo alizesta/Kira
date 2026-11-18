@@ -147,40 +147,40 @@ class QtSpeakerAdapter:
         return bool(getattr(self._speaker, "_began", False))
 
 
-def create_chat_application_ports(window) -> ChatApplicationPorts:
+def create_chat_application_ports(context) -> ChatApplicationPorts:
     """Expose the minimum UI/provider boundary required by Chat application logic."""
     return ChatApplicationPorts(
-        prompt_enricher=lambda value: _enrich_chat_prompt(window, value),
+        prompt_enricher=lambda value: _enrich_chat_prompt(context, value),
         worker_factory=lambda **request: QtProviderWorkerAdapter(StreamWorker(**request)),
-        on_dispatch=window._dispatch_application_request,
-        on_event=window._on_chat_application_event,
+        on_dispatch=context.controllers.require("chat")._dispatch_application_request,
+        on_event=context.controllers.require("chat")._on_chat_application_event,
         schedule=lambda callback: QTimer.singleShot(0, callback),
-        cancel_provider=window._cancel_application_provider,
+        cancel_provider=context.controllers.require("chat")._cancel_application_provider,
     )
 
 
-def create_voice_application_ports(window, speaker) -> VoiceApplicationPorts:
+def create_voice_application_ports(context, speaker) -> VoiceApplicationPorts:
     """Expose device and presentation callbacks without leaking MainWindow to app code."""
     return VoiceApplicationPorts(
         speaker=QtSpeakerAdapter(speaker),
-        listener_factory=lambda: QtVoiceListenerAdapter(window._create_voice_listener()),
-        on_heard=window.on_heard,
-        on_interrupted=window.on_user_barge_in,
-        on_state=window.on_listener_state,
-        on_error=window.on_listener_error,
-        on_note=window.on_voice_note,
-        on_finished=lambda listener, was_current, restart: window.voice_listener_finished.emit(
+        listener_factory=lambda: QtVoiceListenerAdapter(context.controllers.require("runtime")._create_voice_listener()),
+        on_heard=context.controllers.require("runtime").on_heard,
+        on_interrupted=context.controllers.require("runtime").on_user_barge_in,
+        on_state=context.controllers.require("runtime").on_listener_state,
+        on_error=context.controllers.require("runtime").on_listener_error,
+        on_note=context.controllers.require("voice_settings").on_voice_note,
+        on_finished=lambda listener, was_current, restart: context.host.voice_listener_finished.emit(
             listener.raw_listener, was_current, restart
         ),
-        on_waiting=lambda: window.set_status("st_loading"),
+        on_waiting=lambda: context.controllers.require("session").set_status("st_loading"),
     )
 
 
-def _enrich_chat_prompt(window, prompt):
+def _enrich_chat_prompt(context, prompt):
     """Compose the shared Skill instructions for the active character session."""
     result = brain.extend_prompt(
-        prompt, window._brain, window.settings, window.client,
-        character_id=window.cur.cid,
+        prompt, context.session._brain, context.services.settings, context.session.client,
+        character_id=context.session.cid,
     )
-    skills = window.shared_skills_application_service.prompt_for(window.cur.cid)
+    skills = context.services.shared_skills_application_service.prompt_for(context.session.cid)
     return (str(result or "").strip() + ("\n\n" if result and skills else "") + skills).strip()

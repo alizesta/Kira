@@ -44,48 +44,48 @@ class ProviderSettingsController(WindowFeatureController):
     def refresh_model_catalogs(self):
         if getattr(self, "_model_catalog_worker", None) is not None and self._model_catalog_worker.isRunning():
             return
-        self.mcp_registry_panel.set_refreshing(True)
-        self.mcp_registry_panel.set_status("در حال بررسی APIها و دریافت مدل‌های تازه…")
+        self.context.views.mcp_registry_panel.set_refreshing(True)
+        self.context.views.mcp_registry_panel.set_status("در حال بررسی APIها و دریافت مدل‌های تازه…")
         try:
             providers = [
-                (pid, dict(self.settings.get("providers", {}).get(pid, {})))
-                for pid in self.provider_application_service.api_ids(self.settings)
-                if self.settings.get("providers", {}).get(pid, {}).get("enabled", True)
+                (pid, dict(self.context.services.settings.get("providers", {}).get(pid, {})))
+                for pid in self.context.services.provider_application_service.api_ids(self.context.services.settings)
+                if self.context.services.settings.get("providers", {}).get(pid, {}).get("enabled", True)
             ]
             def refresh():
                 results = []
                 for pid, cfg in providers:
-                    results.append((pid, self.provider_application_service.rediscover(pid, cfg, timeout=15)))
+                    results.append((pid, self.context.services.provider_application_service.rediscover(pid, cfg, timeout=15)))
                 return results
             self._model_catalog_worker = TaskWorker(refresh)
             self._model_catalog_worker.done.connect(self._on_model_catalog_refresh)
             self._model_catalog_worker.start()
             self.scan_ollama()
-            self.refresh_local_voice_status()
+            self.feature_controller("voice_settings").refresh_local_voice_status()
         except Exception as exc:
-            self.mcp_registry_panel.set_refreshing(False)
-            self.mcp_registry_panel.set_status("تازه‌سازی کامل نشد: " + str(exc)[:200])
+            self.context.views.mcp_registry_panel.set_refreshing(False)
+            self.context.views.mcp_registry_panel.set_status("تازه‌سازی کامل نشد: " + str(exc)[:200])
 
     def _on_model_catalog_refresh(self, result):
-        self.mcp_registry_panel.set_refreshing(False)
+        self.context.views.mcp_registry_panel.set_refreshing(False)
         ok, value = result
         if not ok:
-            self.mcp_registry_panel.set_status("دریافت مدل‌های API ناموفق بود: " + str(value)[:200])
+            self.context.views.mcp_registry_panel.set_status("دریافت مدل‌های API ناموفق بود: " + str(value)[:200])
             return
         updated = 0
         failed = []
         for pid, detection in value:
             if detection.ok:
-                self.provider_application_service.apply_models(self.settings, pid, detection.models, detection.rate_limit)
+                self.context.services.provider_application_service.apply_models(self.context.services.settings, pid, detection.models, detection.rate_limit)
                 updated += len(detection.models)
             else:
-                self.provider_application_service.apply_failure(self.settings, pid, detection)
+                self.context.services.provider_application_service.apply_failure(self.context.services.settings, pid, detection)
                 failed.append(pid)
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_unified_models()
         self.refresh_api_table()
         suffix = ("؛ خطا در " + "، ".join(failed)) if failed else ""
-        self.mcp_registry_panel.set_status(f"مدل‌های API تازه‌سازی شد: {updated} مدل از {len(value)} اتصال{suffix}.")
+        self.context.views.mcp_registry_panel.set_status(f"مدل‌های API تازه‌سازی شد: {updated} مدل از {len(value)} اتصال{suffix}.")
 
     def build_ai_tab(self):
         """Unified cloud/local model catalogue with advanced route and provider controls."""
@@ -99,15 +99,15 @@ class ProviderSettingsController(WindowFeatureController):
         layout.addWidget(add_box)
 
         import_row = QHBoxLayout()
-        self.import_model_btn = QPushButton("＋ معرفی مدل از فایل یا پوشه‌ی سیستم")
-        self.import_model_btn.setToolTip("فایل GGUF برای Chat، مدل CTranslate2/Qwen برای STT یا Piper ONNX برای TTS")
-        self.import_model_btn.clicked.connect(self.import_local_model)
-        import_row.addWidget(self.import_model_btn)
+        self.context.views.import_model_btn = QPushButton("＋ معرفی مدل از فایل یا پوشه‌ی سیستم")
+        self.context.views.import_model_btn.setToolTip("فایل GGUF برای Chat، مدل CTranslate2/Qwen برای STT یا Piper ONNX برای TTS")
+        self.context.views.import_model_btn.clicked.connect(self.feature_controller("voice_settings").import_local_model)
+        import_row.addWidget(self.context.views.import_model_btn)
         import_row.addStretch(1)
         layout.addLayout(import_row)
 
-        self.build_mcp_registry_group(layout)
-        cloud_box, cloud_form = self.group("مدل‌های Chat Cloud")
+        self.feature_controller("character_settings").build_mcp_registry_group(layout)
+        cloud_box, cloud_form = self.feature_controller("session").group("مدل‌های Chat Cloud")
         model_list = QListWidget()
         model_list.setAlternatingRowColors(True)
         model_list.setMinimumHeight(105)
@@ -117,12 +117,12 @@ class ProviderSettingsController(WindowFeatureController):
         cloud_form.addRow(model_list)
         layout.addWidget(cloud_box)
 
-        local_box, local_form = self.group("مدل‌های Local")
+        local_box, local_form = self.feature_controller("session").group("مدل‌های Local")
         local_form.setContentsMargins(8, 6, 8, 6)
         local_form.setHorizontalSpacing(8)
         local_form.setVerticalSpacing(4)
-        self.local_model_tabs = QTabWidget()
-        self.local_model_tabs.setMaximumHeight(255)
+        self.context.views.local_model_tabs = QTabWidget()
+        self.context.views.local_model_tabs.setMaximumHeight(255)
 
         # Local Chat: Ollama remains the provider, but every installed model is listed here.
         local_chat = QWidget()
@@ -139,7 +139,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.route_scan_btn = QPushButton("یافتن مدل‌های نصب‌شده")
         self.route_scan_btn.clicked.connect(self.scan_ollama)
         local_chat_layout.addWidget(self.route_scan_btn)
-        self.local_model_tabs.addTab(local_chat, "Chat")
+        self.context.views.local_model_tabs.addTab(local_chat, "Chat")
 
         # Local STT: Qwen ASR and faster-whisper can use a downloaded local directory.
         local_stt = QWidget()
@@ -147,32 +147,32 @@ class ProviderSettingsController(WindowFeatureController):
         local_stt_layout.setContentsMargins(2, 2, 2, 2)
         local_stt_layout.setSpacing(4)
         self.local_asr_chk = QCheckBox("استفاده از Qwen3-ASR محلی")
-        self.local_asr_chk.setChecked(bool(self.settings.get("local_voice_asr", True)))
-        self.local_asr_chk.toggled.connect(lambda on: self.set_local_voice_option("local_voice_asr", on))
+        self.local_asr_chk.setChecked(bool(self.context.services.settings.get("local_voice_asr", True)))
+        self.local_asr_chk.toggled.connect(lambda on: self.feature_controller("voice_settings").set_local_voice_option("local_voice_asr", on))
         local_stt_layout.addWidget(self.local_asr_chk)
         self.local_asr_model_list = QComboBox()
         self.local_asr_model_list.setToolTip("مدل‌های STT موجود در کش Hugging Face")
         self.local_asr_model_list.setMaximumHeight(30)
-        self.local_asr_model_list.currentIndexChanged.connect(self.select_local_asr_model)
+        self.local_asr_model_list.currentIndexChanged.connect(self.feature_controller("voice_settings").select_local_asr_model)
         local_stt_layout.addWidget(QLabel("مدل‌های دانلودشده‌ی STT"))
         local_stt_layout.addWidget(self.local_asr_model_list)
         # Keep the optional custom path internally; the normal flow needs no manual path entry.
-        self.local_asr_path_edit = QLineEdit(str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B"))
-        self.local_asr_path_edit.setVisible(False)
+        self.context.views.local_asr_path_edit = QLineEdit(str(self.context.services.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B"))
+        self.context.views.local_asr_path_edit.setVisible(False)
         self.local_asr_browse_btn = QPushButton("انتخاب پوشه")
-        self.local_asr_browse_btn.clicked.connect(self.choose_local_asr_folder)
+        self.local_asr_browse_btn.clicked.connect(self.feature_controller("voice_settings").choose_local_asr_folder)
         asr_actions = QHBoxLayout()
-        self.local_asr_download_btn = QPushButton("نصب خودکار Qwen + مدل")
-        self.local_asr_download_btn.clicked.connect(self.download_local_qwen_model)
-        self.local_asr_load_btn = QPushButton("بارگذاری مدل")
-        self.local_asr_load_btn.clicked.connect(self.load_local_asr)
-        asr_actions.addWidget(self.local_asr_download_btn)
-        asr_actions.addWidget(self.local_asr_load_btn)
+        self.context.views.local_asr_download_btn = QPushButton("نصب خودکار Qwen + مدل")
+        self.context.views.local_asr_download_btn.clicked.connect(self.feature_controller("voice_settings").download_local_qwen_model)
+        self.context.views.local_asr_load_btn = QPushButton("بارگذاری مدل")
+        self.context.views.local_asr_load_btn.clicked.connect(self.feature_controller("voice_settings").load_local_asr)
+        asr_actions.addWidget(self.context.views.local_asr_download_btn)
+        asr_actions.addWidget(self.context.views.local_asr_load_btn)
         local_stt_layout.addLayout(asr_actions)
         # Whisper selection and one-click installation are available in the main Voice settings above.
-        self.local_whisper_path = QLineEdit(str(self.settings.get("whisper_model") or "small"))
-        self.local_whisper_path.setVisible(False)
-        self.local_model_tabs.addTab(local_stt, "STT")
+        self.context.views.local_whisper_path = QLineEdit(str(self.context.services.settings.get("whisper_model") or "small"))
+        self.context.views.local_whisper_path.setVisible(False)
+        self.context.views.local_model_tabs.addTab(local_stt, "STT")
 
         # Local TTS: bundled Persian Piper or a user-selected ONNX voice.
         local_tts = QWidget()
@@ -180,56 +180,56 @@ class ProviderSettingsController(WindowFeatureController):
         local_tts_layout.setContentsMargins(2, 2, 2, 2)
         local_tts_layout.setSpacing(4)
         self.local_tts_chk = QCheckBox("استفاده از Piper محلی")
-        self.local_tts_chk.setChecked(bool(self.settings.get("local_voice_tts", True)))
-        self.local_tts_chk.toggled.connect(lambda on: self.set_local_voice_option("local_voice_tts", on))
+        self.local_tts_chk.setChecked(bool(self.context.services.settings.get("local_voice_tts", True)))
+        self.local_tts_chk.toggled.connect(lambda on: self.feature_controller("voice_settings").set_local_voice_option("local_voice_tts", on))
         local_tts_layout.addWidget(self.local_tts_chk)
         self.local_tts_model_list = QComboBox()
         self.local_tts_model_list.setToolTip("صداهای Piper دانلودشده و صدای فارسی پیش‌فرض")
         self.local_tts_model_list.setMaximumHeight(30)
-        self.local_tts_model_list.currentIndexChanged.connect(self.select_local_tts_model)
+        self.local_tts_model_list.currentIndexChanged.connect(self.feature_controller("voice_settings").select_local_tts_model)
         local_tts_layout.addWidget(QLabel("مدل‌های دانلودشده‌ی TTS"))
         local_tts_layout.addWidget(self.local_tts_model_list)
-        self.local_tts_model_path = QLineEdit(str(self.settings.get("local_voice_tts_model") or ""))
-        self.local_tts_model_path.setPlaceholderText("مسیر فایل Piper ONNX یا شناسه مخزن Hugging Face؛ خالی = صدای پیش‌فرض")
-        self.local_tts_model_path.setLayoutDirection(Qt.LeftToRight)
+        self.context.views.local_tts_model_path = QLineEdit(str(self.context.services.settings.get("local_voice_tts_model") or ""))
+        self.context.views.local_tts_model_path.setPlaceholderText("مسیر فایل Piper ONNX یا شناسه مخزن Hugging Face؛ خالی = صدای پیش‌فرض")
+        self.context.views.local_tts_model_path.setLayoutDirection(Qt.LeftToRight)
         tts_path_row = QHBoxLayout()
-        tts_path_row.addWidget(self.local_tts_model_path, 1)
+        tts_path_row.addWidget(self.context.views.local_tts_model_path, 1)
         self.local_tts_browse_btn = QPushButton("انتخاب ONNX")
-        self.local_tts_browse_btn.clicked.connect(self.choose_local_tts_model)
+        self.local_tts_browse_btn.clicked.connect(self.feature_controller("voice_settings").choose_local_tts_model)
         tts_path_row.addWidget(self.local_tts_browse_btn)
-        self.local_tts_download_btn = QPushButton("نصب خودکار Piper + صدا")
-        self.local_tts_download_btn.clicked.connect(self.download_local_tts_model)
-        tts_path_row.addWidget(self.local_tts_download_btn)
+        self.context.views.local_tts_download_btn = QPushButton("نصب خودکار Piper + صدا")
+        self.context.views.local_tts_download_btn.clicked.connect(self.feature_controller("voice_settings").download_local_tts_model)
+        tts_path_row.addWidget(self.context.views.local_tts_download_btn)
         local_tts_layout.addLayout(tts_path_row)
-        self.local_tts_test_btn = QPushButton("تست TTS")
-        self.local_tts_test_btn.clicked.connect(self.test_local_tts)
-        local_tts_layout.addWidget(self.local_tts_test_btn)
-        self.local_model_tabs.addTab(local_tts, "TTS")
+        self.context.views.local_tts_test_btn = QPushButton("تست TTS")
+        self.context.views.local_tts_test_btn.clicked.connect(self.feature_controller("voice_settings").test_local_tts)
+        local_tts_layout.addWidget(self.context.views.local_tts_test_btn)
+        self.context.views.local_model_tabs.addTab(local_tts, "TTS")
 
-        self.local_voice_status = QLabel()
-        self.local_voice_status.setWordWrap(True)
-        self.local_voice_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.local_voice_status.setMaximumHeight(96)
-        self.local_voice_status.setObjectName("hint")
+        self.context.views.local_voice_status = QLabel()
+        self.context.views.local_voice_status.setWordWrap(True)
+        self.context.views.local_voice_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.context.views.local_voice_status.setMaximumHeight(96)
+        self.context.views.local_voice_status.setObjectName("hint")
         self.local_voice_copy_btn = QPushButton("کپی لاگ")
         self.local_voice_copy_btn.setMaximumWidth(90)
-        self.local_voice_copy_btn.clicked.connect(self.copy_local_voice_log)
-        self.local_voice_progress = QProgressBar()
-        self.local_voice_progress.setRange(0, 0)
-        self.local_voice_progress.setTextVisible(False)
-        self.local_voice_progress.setMaximumHeight(7)
-        self.local_voice_progress.hide()
-        local_form.addRow(self.local_model_tabs)
+        self.local_voice_copy_btn.clicked.connect(self.feature_controller("voice_settings").copy_local_voice_log)
+        self.context.views.local_voice_progress = QProgressBar()
+        self.context.views.local_voice_progress.setRange(0, 0)
+        self.context.views.local_voice_progress.setTextVisible(False)
+        self.context.views.local_voice_progress.setMaximumHeight(7)
+        self.context.views.local_voice_progress.hide()
+        local_form.addRow(self.context.views.local_model_tabs)
         local_status_row = QHBoxLayout()
-        local_status_row.addWidget(self.local_voice_status, 1)
+        local_status_row.addWidget(self.context.views.local_voice_status, 1)
         local_status_row.addWidget(self.local_voice_copy_btn)
         local_form.addRow(local_status_row)
-        local_form.addRow(self.local_voice_progress)
-        self.local_voice_box = local_box
+        local_form.addRow(self.context.views.local_voice_progress)
+        self.context.views.local_voice_box = local_box
         local_test_row = QHBoxLayout()
-        self.local_stt_test_btn = QPushButton("تست STT")
-        self.local_stt_test_btn.clicked.connect(self.test_local_stt)
-        local_test_row.addWidget(self.local_stt_test_btn)
+        self.context.views.local_stt_test_btn = QPushButton("تست STT")
+        self.context.views.local_stt_test_btn.clicked.connect(self.feature_controller("voice_settings").test_local_stt)
+        local_test_row.addWidget(self.context.views.local_stt_test_btn)
         local_test_row.addStretch(1)
         local_form.addRow(local_test_row)
         layout.addWidget(local_box)
@@ -248,7 +248,7 @@ class ProviderSettingsController(WindowFeatureController):
 
         # RouteEditor owns route/failover controls; MainWindow only handles intents.
         self.route_editor = RouteEditor(
-            self.settings,
+            self.context.services.settings,
             model_combo_factory=ModelCombo,
             parent=self.window,
         )
@@ -260,7 +260,7 @@ class ProviderSettingsController(WindowFeatureController):
             "route_predict", "route_status", "route_test_btn", "route_bench_btn",
             "route_bench_all_btn", "bench_out",
         ):
-            setattr(self, name, getattr(self.route_editor, name))
+            setattr(self.context.views, name, getattr(self.route_editor, name))
 
         self.route_editor.selection_changed.connect(self.on_route_selected)
         self.route_editor.order_changed.connect(self.on_routes_reordered)
@@ -270,9 +270,9 @@ class ProviderSettingsController(WindowFeatureController):
         self.route_editor.delete_requested.connect(self.delete_selected_route)
         self.route_editor.default_requested.connect(self.default_selected_route)
         self.route_editor.select_manual_requested.connect(
-            lambda: self.select_route(self._selected_route_id() or "")
+            lambda: self.feature_controller("runtime").select_route(self._selected_route_id() or "")
         )
-        self.route_editor.select_auto_requested.connect(lambda: self.select_route(""))
+        self.route_editor.select_auto_requested.connect(lambda: self.feature_controller("runtime").select_route(""))
         self.route_editor.test_requested.connect(self.test_selected_route)
         self.route_editor.benchmark_requested.connect(self.run_benchmark)
         self.route_editor.details_changed.connect(self.route_edit_changed)
@@ -290,11 +290,11 @@ class ProviderSettingsController(WindowFeatureController):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(page)
-        self.tabs.addTab(scroll, "")
+        self.context.views.tabs.addTab(scroll, "")
         self.refresh_route_list()
         self.refresh_api_table()
         self.refresh_unified_models()
-        self.refresh_local_voice_status()
+        self.feature_controller("voice_settings").refresh_local_voice_status()
 
     def _make_model_list(self, kind, cloud=True):
         model_list = QListWidget()
@@ -315,11 +315,11 @@ class ProviderSettingsController(WindowFeatureController):
         for widget in self.cloud_model_lists.values():
             widget.blockSignals(True)
             widget.clear()
-        self.provider_application_service.ensure_registry(self.settings)
-        free_only = str(self.settings.get("model_filter_mode") or "all") == "free"
-        for pid, entry in self.provider_application_service.registry(self.settings).items():
-            cfg = self.settings.get("providers", {}).get(pid, {})
-            label = self.provider_application_service.provider_label(pid, cfg)
+        self.context.services.provider_application_service.ensure_registry(self.context.services.settings)
+        free_only = str(self.context.services.settings.get("model_filter_mode") or "all") == "free"
+        for pid, entry in self.context.services.provider_application_service.registry(self.context.services.settings).items():
+            cfg = self.context.services.settings.get("providers", {}).get(pid, {})
+            label = self.context.services.provider_application_service.provider_label(pid, cfg)
             for mid, meta in (entry.get("models") or {}).items():
                 if meta.get("status") == "unavailable" or meta.get("text") == "No":
                     continue
@@ -334,7 +334,7 @@ class ProviderSettingsController(WindowFeatureController):
                 item.setToolTip(f"Text: {meta.get('text') or 'Unknown'} | Vision: {meta.get('vision') or 'Unknown'} | Tools: {meta.get('tools') or 'Unknown'}")
                 item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
                 enabled = any(r.get("provider") == pid and r.get("model") == mid and r.get("enabled")
-                              for r in self.provider_application_service.get_routes(self.settings))
+                              for r in self.context.services.provider_application_service.get_routes(self.context.services.settings))
                 item.setCheckState(Qt.Checked if enabled else Qt.Unchecked)
                 self.cloud_model_lists["chat"].addItem(item)
         for kind, widget in self.cloud_model_lists.items():
@@ -351,7 +351,7 @@ class ProviderSettingsController(WindowFeatureController):
         if hasattr(self, "local_model_list"):
             self.local_model_list.blockSignals(True)
             self.local_model_list.clear()
-            for route in self.provider_application_service.get_routes(self.settings):
+            for route in self.context.services.provider_application_service.get_routes(self.context.services.settings):
                 if route.get("provider") != "ollama" or not route.get("model"):
                     continue
                 item = QListWidgetItem(route["model"])
@@ -370,9 +370,9 @@ class ProviderSettingsController(WindowFeatureController):
             return
         checked = item.checkState() == Qt.Checked
         try:
-            self.provider_application_service.set_model_enabled(self.settings, provider, model, checked)
+            self.context.services.provider_application_service.set_model_enabled(self.context.services.settings, provider, model, checked)
         except Exception as exc:
-            self.api_add_status.setText("✕ " + str(exc))
+            self.context.views.api_add_status.setText("✕ " + str(exc))
         self._api_changed(provider)
         self.refresh_unified_models()
 
@@ -380,63 +380,63 @@ class ProviderSettingsController(WindowFeatureController):
         route_id = item.data(Qt.UserRole)
         if not route_id:
             return
-        self.provider_application_service.update_route(self.settings, route_id, enabled=item.checkState() == Qt.Checked)
-        self.save_now()
+        self.context.services.provider_application_service.update_route(self.context.services.settings, route_id, enabled=item.checkState() == Qt.Checked)
+        self.feature_controller("runtime").save_now()
         self.refresh_route_list()
         self.refresh_unified_models()
 
     def _discover_unified_api_key(self, key, account=""):
         """Detect chat-model capability only; audio never uses remote APIs."""
-        return self.provider_application_service.detect(key, account)
+        return self.context.services.provider_application_service.detect(key, account)
 
     def api_add(self):
         if self._api_busy():
             return
         key = self.api_key_edit.text().strip()
-        problem = self.provider_application_service.key_problem(key)
+        problem = self.context.services.provider_application_service.key_problem(key)
         if problem:
-            self.api_add_status.setText("✕ " + problem)
+            self.context.views.api_add_status.setText("✕ " + problem)
             return
         self.api_add_btn.setEnabled(False)
-        self.api_add_status.setText("در حال شناسایی مدل‌های Chat از API…")
-        self._api_worker = TaskWorker(lambda: self._discover_unified_api_key(key))
-        self._api_worker.done.connect(lambda result, k=key: self.on_api_detected(result, k))
-        self._api_worker.start()
+        self.context.views.api_add_status.setText("در حال شناسایی مدل‌های Chat از API…")
+        self.context.state._api_worker = TaskWorker(lambda: self._discover_unified_api_key(key))
+        self.context.state._api_worker.done.connect(lambda result, k=key: self.on_api_detected(result, k))
+        self.context.state._api_worker.start()
 
     def on_api_detected(self, result, key, account=""):
         self.api_add_btn.setEnabled(True)
         ok, detection = result
         if not ok:
-            self.api_add_status.setText("✕ " + str(detection))
+            self.context.views.api_add_status.setText("✕ " + str(detection))
             return
         if detection and detection.state == "needs_account" and not account:
             account_id, accepted = QInputDialog.getText(self.window, "Cloudflare", "Account ID:")
             if accepted and account_id.strip():
                 self.api_add_btn.setEnabled(False)
-                self.api_add_status.setText("در حال تکمیل شناسایی Cloudflare…")
-                self._api_worker = TaskWorker(lambda: self._discover_unified_api_key(key, account_id.strip()))
-                self._api_worker.done.connect(lambda res, k=key, a=account_id.strip(): self.on_api_detected(res, k, a))
-                self._api_worker.start()
+                self.context.views.api_add_status.setText("در حال تکمیل شناسایی Cloudflare…")
+                self.context.state._api_worker = TaskWorker(lambda: self._discover_unified_api_key(key, account_id.strip()))
+                self.context.state._api_worker.done.connect(lambda res, k=key, a=account_id.strip(): self.on_api_detected(res, k, a))
+                self.context.state._api_worker.start()
             return
 
         chat_added = ""
         if detection and detection.ok:
-            duplicate = self.provider_application_service.find_duplicate(self.settings, key)
+            duplicate = self.context.services.provider_application_service.find_duplicate(self.context.services.settings, key)
             if not duplicate:
                 try:
-                    chat_added = self.provider_application_service.register(self.settings, detection, key)
+                    chat_added = self.context.services.provider_application_service.register(self.context.services.settings, detection, key)
                 except ValueError as exc:
-                    self.api_add_status.setText("✕ " + str(exc))
+                    self.context.views.api_add_status.setText("✕ " + str(exc))
             else:
                 chat_added = duplicate
         if chat_added:
             self._api_changed(chat_added)
             self.api_key_edit.clear()
-            label = self.provider_application_service.provider_label(chat_added, self.settings["providers"][chat_added])
-            self.api_add_status.setText("✓ اتصال Chat ثبت شد: " + label)
+            label = self.context.services.provider_application_service.provider_label(chat_added, self.context.services.settings["providers"][chat_added])
+            self.context.views.api_add_status.setText("✓ اتصال Chat ثبت شد: " + label)
         else:
-            message = self.provider_application_service.describe_failure(detection) if detection else "هیچ مدل Chat قابل استفاده‌ای از این API شناسایی نشد."
-            self.api_add_status.setText("✕ " + message + "؛ کلید ثبت نشد.")
+            message = self.context.services.provider_application_service.describe_failure(detection) if detection else "هیچ مدل Chat قابل استفاده‌ای از این API شناسایی نشد."
+            self.context.views.api_add_status.setText("✕ " + message + "؛ کلید ثبت نشد.")
         self.refresh_unified_models()
 
     def build_local_model_group(self):
@@ -445,8 +445,8 @@ class ProviderSettingsController(WindowFeatureController):
 
     def build_ollama_group(self):
         """Host the Ollama settings widget and delegate its intents to the app controller."""
-        self.ollama_panel = OllamaProviderPanel(self.settings, parent=self.window)
-        self.route_ollama_enabled = self.ollama_panel.enabled
+        self.ollama_panel = OllamaProviderPanel(self.context.services.settings, parent=self.window)
+        self.context.views.route_ollama_enabled = self.ollama_panel.enabled
         self.ollama_url_edit = self.ollama_panel.url_edit
         self.ollama_edit_btn = self.ollama_panel.edit_btn
         self.ollama_save_btn = self.ollama_panel.save_btn
@@ -458,24 +458,24 @@ class ProviderSettingsController(WindowFeatureController):
 
     def collect_provider_settings(self):
         """Only the local Ollama switch lives in the form now; API keys / enabled flags are changed by the API Manager actions directly."""
-        self.settings.setdefault("providers", {}).setdefault("ollama", {})["enabled"] = self.route_ollama_enabled.isChecked()
-        self.provider_application_service.ensure_routes(self.settings)
+        self.context.services.settings.setdefault("providers", {}).setdefault("ollama", {})["enabled"] = self.context.views.route_ollama_enabled.isChecked()
+        self.context.services.provider_application_service.ensure_routes(self.context.services.settings)
 
     def ollama_edit_mode(self, on):
-        self.ollama_panel.set_edit_mode(bool(on), self.settings.get("ollama_url") if not on else None)
+        self.ollama_panel.set_edit_mode(bool(on), self.context.services.settings.get("ollama_url") if not on else None)
 
     def save_ollama_edit(self):
         try:
-            url = self.provider_application_service.update_ollama_url(
-                self.settings, self.ollama_url_edit.text()
+            url = self.context.services.provider_application_service.update_ollama_url(
+                self.context.services.settings, self.ollama_url_edit.text()
             )
         except ValueError as exc:
-            self.route_status.setText("✕ " + str(exc))
+            self.context.views.route_status.setText("✕ " + str(exc))
             return
-        self.url.setText(url)                                # same address as the Assistant tab
-        self.save_now()
+        self.context.views.url.setText(url)                                # same address as the Assistant tab
+        self.feature_controller("runtime").save_now()
         self.ollama_edit_mode(False)
-        self.route_status.setText("✓ آدرس Ollama ذخیره شد.")
+        self.context.views.route_status.setText("✓ آدرس Ollama ذخیره شد.")
 
     # ---------- API Manager ----------
     API_COLUMNS = ["Provider", "API Status", "مدل‌های قابل‌دسترسی", "مدل‌های فعال", "آخرین اعتبارسنجی", "اولویت", "فعال"]
@@ -486,7 +486,7 @@ class ProviderSettingsController(WindowFeatureController):
     def build_api_boxes(self):
         """Compose independent API credential form with the registered API/detail tables."""
         self.api_add_panel = ApiAddPanel(
-            self.settings,
+            self.context.services.settings,
             filter_options=(
                 ("all", "همه‌ی مدل‌ها"),
                 ("free", "فقط مدل‌های رایگانِ تأییدشده"),
@@ -497,11 +497,11 @@ class ProviderSettingsController(WindowFeatureController):
         self.api_account_edit = self.api_add_panel.account_edit
         self.api_add_btn = self.api_add_panel.add_btn
         self.model_filter = self.api_add_panel.model_filter
-        self.api_add_status = self.api_add_panel.status
+        self.context.views.api_add_status = self.api_add_panel.status
         self.api_add_panel.add_requested.connect(self.api_add)
         self.api_add_panel.filter_changed.connect(self.on_model_filter_changed)
         add_box = self.api_add_panel
-        list_box, lf = self.group("Registered APIs")
+        list_box, lf = self.feature_controller("session").group("Registered APIs")
         self.api_table = QTableWidget(0, len(self.API_COLUMNS))
         self.api_table.setHorizontalHeaderLabels(self.API_COLUMNS)
         self.api_table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -530,7 +530,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.api_status.setWordWrap(True)
         lf.addRow(self.api_status)
 
-        det_box, df = self.group("API Details")
+        det_box, df = self.feature_controller("session").group("API Details")
         self.api_det_info = QLabel("یک API را از فهرست بالا انتخاب کن.")
         self.api_det_info.setWordWrap(True)
         self.api_det_info.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -551,12 +551,12 @@ class ProviderSettingsController(WindowFeatureController):
         note.setWordWrap(True)
         df.addRow(note)
         self._api_loading = False
-        self._api_worker = None
+        self.context.state._api_worker = None
         return add_box, list_box, det_box
 
     def on_model_filter_changed(self, *_):
-        self.settings["model_filter_mode"] = self.model_filter.currentData() or "all"
-        self.save_now()
+        self.context.services.settings["model_filter_mode"] = self.model_filter.currentData() or "all"
+        self.feature_controller("runtime").save_now()
         self.refresh_unified_models()
 
     def _api_selected(self):
@@ -565,7 +565,7 @@ class ProviderSettingsController(WindowFeatureController):
         return item.data(Qt.UserRole) if item else None
 
     def _api_busy(self):
-        worker = getattr(self, "_api_worker", None)
+        worker = getattr(self.context.state, "_api_worker", None)
         if worker is not None and worker.isRunning():
             self.api_status.setText("صبر کن؛ عملیات قبلی هنوز تمام نشده است.")
             return True
@@ -573,26 +573,26 @@ class ProviderSettingsController(WindowFeatureController):
 
     def _api_changed(self, select=None, refresh_details=True):
         """After any change: reset cooldowns (a fixed key gets another chance), save, redraw."""
-        self.client.reset_cooldowns()
-        self.save_now()
+        self.context.session.client.reset_cooldowns()
+        self.feature_controller("runtime").save_now()
         self.refresh_api_table(select)
         if hasattr(self, "cloud_model_lists"):
             self.refresh_unified_models()
         self.refresh_route_list()
-        if not self.busy:
-            self.set_badge("idle", self.client.preview_route())
+        if not self.context.session.busy:
+            self.feature_controller("runtime").set_badge("idle", self.context.session.client.preview_route())
 
     def refresh_api_table(self, select=None):
-        self.provider_application_service.ensure_registry(self.settings)
+        self.context.services.provider_application_service.ensure_registry(self.context.services.settings)
         keep = select or self._api_selected()
-        rows = self.provider_application_service.api_rows(self.settings)
+        rows = self.context.services.provider_application_service.api_rows(self.context.services.settings)
         self._api_loading = True
         self.api_table.blockSignals(True)
         self.api_table.setRowCount(len(rows))
         for i, r in enumerate(rows):
             service = "" if r["service"] in ("custom",) else f" · {r['service']}"
             cells = [f"{r['label']}  ({r['key']})" if r["key"] else r["label"], self.STATUS_FA.get(r["status"], r["status"]),
-                     "Unknown" if r["accessible"] is None else str(r["accessible"]), str(r["active"]), self.provider_application_service.fmt_time(r["checked_at"]),
+                     "Unknown" if r["accessible"] is None else str(r["accessible"]), str(r["active"]), self.context.services.provider_application_service.fmt_time(r["checked_at"]),
                      str(r["priority"]), "✓" if r["enabled"] else "—"]
             for c, text in enumerate(cells):
                 item = QTableWidgetItem(text)
@@ -612,7 +612,7 @@ class ProviderSettingsController(WindowFeatureController):
         self._api_loading = True
         self.api_models.blockSignals(True)
         self.api_models.setRowCount(0)
-        have = bool(pid) and pid in self.settings.get("providers", {})
+        have = bool(pid) and pid in self.context.services.settings.get("providers", {})
         for key, btn in self.api_btns.items():
             btn.setEnabled(have or key == "details")
         if not have:
@@ -620,12 +620,12 @@ class ProviderSettingsController(WindowFeatureController):
             self.api_models.blockSignals(False)
             self._api_loading = False
             return
-        d = self.provider_application_service.api_details(self.settings, pid)
+        d = self.context.services.provider_application_service.api_details(self.context.services.settings, pid)
         rl = d["rate_limit"]
-        rl_text = ("\n    " + "\n    ".join(f"{k}: {v}" for k, v in sorted(rl.items())) + f"\n    (زمان گزارش: {self.provider_application_service.fmt_time(d['rate_limit_as_of'])})") if rl else "Not Available"
+        rl_text = ("\n    " + "\n    ".join(f"{k}: {v}" for k, v in sorted(rl.items())) + f"\n    (زمان گزارش: {self.context.services.provider_application_service.fmt_time(d['rate_limit_as_of'])})") if rl else "Not Available"
         self.api_det_info.setText(
             f"Provider: {d['label']}  ·  سرویس: {d['service']}  ·  کلید: {d['key'] or '—'}\n"
-            f"Status: {self.STATUS_FA.get(d['status'], d['status'])}  ·  آخرین بررسی: {self.provider_application_service.fmt_time(d['checked_at'])}"
+            f"Status: {self.STATUS_FA.get(d['status'], d['status'])}  ·  آخرین بررسی: {self.context.services.provider_application_service.fmt_time(d['checked_at'])}"
             + (f"\nآخرین خطا: {d['error']}" if d["error"] else "") +
             f"\nToken Usage: Not Available  ·  Remaining Quota: Not Available\nRate Limit: {rl_text}")
         self.api_models.setRowCount(len(d["models"]))
@@ -651,7 +651,7 @@ class ProviderSettingsController(WindowFeatureController):
         if not pid:
             return
         try:
-            self.provider_application_service.set_model_enabled(self.settings, pid, item.data(Qt.UserRole), item.checkState() == Qt.Checked)
+            self.context.services.provider_application_service.set_model_enabled(self.context.services.settings, pid, item.data(Qt.UserRole), item.checkState() == Qt.Checked)
         except ValueError as exc:
             self.api_status.setText("✕ " + str(exc))
         QTimer.singleShot(0, lambda p=pid: self._api_changed(p))          # redraw after this signal has finished (the table is rebuilt)
@@ -660,23 +660,23 @@ class ProviderSettingsController(WindowFeatureController):
     # ---- Refresh / Rediscover ----
 
     def api_refresh(self, pid, quiet=False):
-        if not pid or pid not in self.settings.get("providers", {}) or self._api_busy():
+        if not pid or pid not in self.context.services.settings.get("providers", {}) or self._api_busy():
             return
-        cfg = dict(self.settings["providers"][pid])
+        cfg = dict(self.context.services.settings["providers"][pid])
         self.api_status.setText("در حال اعتبارسنجی و دریافت دوباره‌ی مدل‌ها…")
-        self._api_worker = TaskWorker(lambda: self.provider_application_service.rediscover(pid, cfg))
-        self._api_worker.done.connect(lambda result, p=pid, q=quiet: self.on_api_refreshed(p, result, q))
-        self._api_worker.start()
+        self.context.state._api_worker = TaskWorker(lambda: self.context.services.provider_application_service.rediscover(pid, cfg))
+        self.context.state._api_worker.done.connect(lambda result, p=pid, q=quiet: self.on_api_refreshed(p, result, q))
+        self.context.state._api_worker.start()
 
     def on_api_refreshed(self, pid, result, quiet=False):
-        if pid not in self.settings.get("providers", {}):
+        if pid not in self.context.services.settings.get("providers", {}):
             return
         ok, det = result
-        label = self.provider_application_service.provider_label(pid, self.settings["providers"][pid])
+        label = self.context.services.provider_application_service.provider_label(pid, self.context.services.settings["providers"][pid])
         if not ok:
-            det = self.provider_application_service.Detection("error", "", str(det))
+            det = self.context.services.provider_application_service.Detection("error", "", str(det))
         if det.ok:
-            diff = self.provider_application_service.apply_models(self.settings, pid, det.models, det.rate_limit)
+            diff = self.context.services.provider_application_service.apply_models(self.context.services.settings, pid, det.models, det.rate_limit)
             msg = f"✓ {label}: {len(det.models)} مدل در دسترس"
             if diff["new"]:
                 msg += f" · {len(diff['new'])} مدل جدید"
@@ -684,22 +684,22 @@ class ProviderSettingsController(WindowFeatureController):
                 msg += f" · {len(diff['gone'])} مدل دیگر در دسترس نیست"
             self.api_status.setText(msg)
         else:
-            self.provider_application_service.apply_failure(self.settings, pid, det)
-            self.api_status.setText(f"{label}: " + self.provider_application_service.describe_failure(det))
+            self.context.services.provider_application_service.apply_failure(self.context.services.settings, pid, det)
+            self.api_status.setText(f"{label}: " + self.context.services.provider_application_service.describe_failure(det))
         self._api_changed(pid)
 
     # ---- Edit ----
 
     def api_edit(self, pid):
-        if not pid or pid not in self.settings.get("providers", {}) or self._api_busy():
+        if not pid or pid not in self.context.services.settings.get("providers", {}) or self._api_busy():
             return
-        cfg = self.settings["providers"][pid]
-        service = self.provider_application_service.service_of(pid, cfg)
-        custom = pid not in self.provider_application_service.BUILTIN
+        cfg = self.context.services.settings["providers"][pid]
+        service = self.context.services.provider_application_service.service_of(pid, cfg)
+        custom = pid not in self.context.services.provider_application_service.BUILTIN
         dlg = QDialog(self.window)
         dlg.setWindowTitle("Edit API")
         form = QFormLayout(dlg)
-        name = QLineEdit(self.provider_application_service.provider_label(pid, cfg))
+        name = QLineEdit(self.context.services.provider_application_service.provider_label(pid, cfg))
         key = QLineEdit()
         key.setEchoMode(QLineEdit.Password)
         key.setPlaceholderText("کلید جدید (اختیاری) — خالی = کلید فعلی حفظ می‌شود")
@@ -707,7 +707,7 @@ class ProviderSettingsController(WindowFeatureController):
         base = QLineEdit(str(cfg.get("base_url", "")))
         if custom:
             form.addRow("نام", name)
-        form.addRow(f"API Key (فعلی: {self.provider_application_service.mask_key(cfg.get('api_key')) or '—'})", key)
+        form.addRow(f"API Key (فعلی: {self.context.services.provider_application_service.mask_key(cfg.get('api_key')) or '—'})", key)
         if service == "cloudflare":
             form.addRow("Account ID", account)
         if custom and service == "custom":
@@ -724,8 +724,8 @@ class ProviderSettingsController(WindowFeatureController):
         if not new_key:
             self.apply_api_edit(pid, fields, None, None)
             return
-        problem = self.provider_application_service.key_problem(new_key)
-        dup = self.provider_application_service.find_duplicate(self.settings, new_key)
+        problem = self.context.services.provider_application_service.key_problem(new_key)
+        dup = self.context.services.provider_application_service.find_duplicate(self.context.services.settings, new_key)
         if problem or (dup and dup != pid):
             self.api_status.setText("✕ " + (problem or "این کلید قبلاً برای API دیگری ثبت شده است."))
             return
@@ -733,49 +733,49 @@ class ProviderSettingsController(WindowFeatureController):
         if fields["account_id"]:
             test_cfg["account_id"] = fields["account_id"].strip()
         self.api_status.setText("در حال اعتبارسنجی کلید جدید…")
-        self._api_worker = TaskWorker(lambda: self.provider_application_service.rediscover(pid, test_cfg))
-        self._api_worker.done.connect(lambda result, p=pid, f=fields, k=new_key: self.on_api_edit_validated(p, f, k, result))
-        self._api_worker.start()
+        self.context.state._api_worker = TaskWorker(lambda: self.context.services.provider_application_service.rediscover(pid, test_cfg))
+        self.context.state._api_worker.done.connect(lambda result, p=pid, f=fields, k=new_key: self.on_api_edit_validated(p, f, k, result))
+        self.context.state._api_worker.start()
 
     def on_api_edit_validated(self, pid, fields, new_key, result):
         ok, det = result
         if not ok or not det.ok:                                  # the old key stays untouched
-            self.api_status.setText("✕ کلید جدید ذخیره نشد. " + (self.provider_application_service.describe_failure(det) if ok else str(det)))
+            self.api_status.setText("✕ کلید جدید ذخیره نشد. " + (self.context.services.provider_application_service.describe_failure(det) if ok else str(det)))
             return
         self.apply_api_edit(pid, fields, new_key, det)
 
     def apply_api_edit(self, pid, fields, new_key, det):
         try:
-            self.provider_application_service.update_provider(self.settings, pid, label=fields["label"], base_url=fields["base_url"],
+            self.context.services.provider_application_service.update_provider(self.context.services.settings, pid, label=fields["label"], base_url=fields["base_url"],
                                         account_id=fields["account_id"], api_key=new_key)
         except ValueError as exc:
             self.api_status.setText("✕ " + str(exc))
             return
         if det is not None:
-            self.provider_application_service.apply_models(self.settings, pid, det.models, det.rate_limit)
-        self.provider_application_service.ensure_routes(self.settings)
+            self.context.services.provider_application_service.apply_models(self.context.services.settings, pid, det.models, det.rate_limit)
+        self.context.services.provider_application_service.ensure_routes(self.context.services.settings)
         self.api_status.setText("✓ تغییرات ذخیره شد." + (" کلید جدید معتبر بود و مدل‌ها دوباره خوانده شدند." if det is not None else ""))
         self._api_changed(pid)
 
     # ---- Enable / Disable, Delete, Priority ----
 
     def api_toggle(self, pid):
-        if not pid or pid not in self.settings.get("providers", {}):
+        if not pid or pid not in self.context.services.settings.get("providers", {}):
             return
-        on = not bool(self.settings["providers"][pid].get("enabled"))
-        self.provider_application_service.set_api_enabled(self.settings, pid, on)
+        on = not bool(self.context.services.settings["providers"][pid].get("enabled"))
+        self.context.services.provider_application_service.set_api_enabled(self.context.services.settings, pid, on)
         self.api_status.setText("✓ API فعال شد." if on else "API غیرفعال شد (کلید و مدل‌ها حفظ شدند).")
         self._api_changed(pid)
 
     def api_delete(self, pid):
-        if not pid or pid not in self.settings.get("providers", {}):
+        if not pid or pid not in self.context.services.settings.get("providers", {}):
             return
-        cfg = self.settings["providers"][pid]
-        n = sum(1 for r in self.provider_application_service.get_routes(self.settings) if r["provider"] == pid)
-        builtin_note = "\n(کلید پاک و Routeهای این API غیرفعال می‌شوند.)" if pid in self.provider_application_service.BUILTIN else f"\n({n} Route آن هم حذف می‌شود.)"
-        if QMessageBox.question(self.window, "حذف API", f"«{self.provider_application_service.provider_label(pid, cfg)}» حذف شود؟{builtin_note}") != QMessageBox.Yes:
+        cfg = self.context.services.settings["providers"][pid]
+        n = sum(1 for r in self.context.services.provider_application_service.get_routes(self.context.services.settings) if r["provider"] == pid)
+        builtin_note = "\n(کلید پاک و Routeهای این API غیرفعال می‌شوند.)" if pid in self.context.services.provider_application_service.BUILTIN else f"\n({n} Route آن هم حذف می‌شود.)"
+        if QMessageBox.question(self.window, "حذف API", f"«{self.context.services.provider_application_service.provider_label(pid, cfg)}» حذف شود؟{builtin_note}") != QMessageBox.Yes:
             return
-        self.provider_application_service.delete_api(self.settings, pid)
+        self.context.services.provider_application_service.delete_api(self.context.services.settings, pid)
         self.api_status.setText("✓ API حذف شد.")
         self._api_changed()
 
@@ -783,7 +783,7 @@ class ProviderSettingsController(WindowFeatureController):
         if not pid:
             return
         try:
-            self.provider_application_service.move_api(self.settings, pid, delta)
+            self.context.services.provider_application_service.move_api(self.context.services.settings, pid, delta)
         except KeyError:
             self.api_status.setText("این API هنوز Route ندارد؛ اول یک مدل برایش فعال کن.")
             return
@@ -793,23 +793,23 @@ class ProviderSettingsController(WindowFeatureController):
     HEALTH_TXT = {"unknown": "— بدون تست", "healthy": "● سالم", "degraded": "◐ مشکل موقت", "down": "✕ خراب"}
 
     def _selected_route_id(self):
-        item = self.route_list.currentItem()
+        item = self.context.views.route_list.currentItem()
         return item.data(Qt.UserRole) if item else None
 
     @front_only
     def refresh_route_list(self):
-        if not hasattr(self, "route_list"):
+        if not hasattr(self.context.views, "route_list"):
             return
         keep = self._selected_route_id()
-        status = {x["name"]: x for x in self.client.status()}
-        manual, default = self.settings.get("manual_route_id", ""), self.settings.get("default_route_id", "")
-        providers = self.settings.get("providers", {})
-        self.route_list.blockSignals(True)
-        self.route_list.clear()
-        for i, r in enumerate(self.provider_application_service.get_routes(self.settings)):
+        status = {x["name"]: x for x in self.context.session.client.status()}
+        manual, default = self.context.services.settings.get("manual_route_id", ""), self.context.services.settings.get("default_route_id", "")
+        providers = self.context.services.settings.get("providers", {})
+        self.context.views.route_list.blockSignals(True)
+        self.context.views.route_list.clear()
+        for i, r in enumerate(self.context.services.provider_application_service.get_routes(self.context.services.settings)):
             st = status.get(r["id"], {})
-            label = self.provider_application_service.provider_label(r["provider"], providers.get(r["provider"]))
-            icon = "☁" if st.get("kind", self.provider_application_service.provider_kind(r["provider"], providers.get(r["provider"]))) == "cloud" else "⌂"
+            label = self.context.services.provider_application_service.provider_label(r["provider"], providers.get(r["provider"]))
+            icon = "☁" if st.get("kind", self.context.services.provider_application_service.provider_kind(r["provider"], providers.get(r["provider"]))) == "cloud" else "⌂"
             marks = ("★ دستی  " if r["id"] == manual else "") + ("⚑ پیش‌فرض  " if r["id"] == default else "")
             health = self.HEALTH_TXT.get(st.get("health", "unknown"), "")
             extra = (f" {st['last_ms']}ms" if st.get("last_ms") is not None else "") + \
@@ -820,49 +820,49 @@ class ProviderSettingsController(WindowFeatureController):
             item.setData(Qt.UserRole, r["id"])
             if reason:
                 item.setForeground(QBrush(QColor("#8d93ab")))
-            self.route_list.addItem(item)
-        for i in range(self.route_list.count()):
-            if self.route_list.item(i).data(Qt.UserRole) == keep:
-                self.route_list.setCurrentRow(i)
+            self.context.views.route_list.addItem(item)
+        for i in range(self.context.views.route_list.count()):
+            if self.context.views.route_list.item(i).data(Qt.UserRole) == keep:
+                self.context.views.route_list.setCurrentRow(i)
                 break
         else:
-            if self.route_list.count():
-                self.route_list.setCurrentRow(0)
-        self.route_list.blockSignals(False)
-        self.route_manual_lbl.setText("انتخاب دستی: " + (manual or "خودکار (بر اساس اولویت)") +
-                                      ("" if self.settings.get("failover_enabled", True) else " · Failover خاموش است"))
+            if self.context.views.route_list.count():
+                self.context.views.route_list.setCurrentRow(0)
+        self.context.views.route_list.blockSignals(False)
+        self.context.views.route_manual_lbl.setText("انتخاب دستی: " + (manual or "خودکار (بر اساس اولویت)") +
+                                      ("" if self.context.services.settings.get("failover_enabled", True) else " · Failover خاموش است"))
         self.on_route_selected()
 
     def on_route_selected(self):
         rid = self._selected_route_id()
-        route = self.provider_application_service.find_route(self.settings, rid) if rid else None
-        self._loading_route = True
+        route = self.context.services.provider_application_service.find_route(self.context.services.settings, rid) if rid else None
+        self.context.state._loading_route = True
         try:
-            for w in (self.route_model_edit, self.route_enabled_chk, self.route_timeout, self.route_cooldown, self.route_ctx,
-                      self.route_predict, self.route_test_btn, self.route_del_btn, self.route_default_btn, self.route_use_btn,
-                      self.route_up_btn, self.route_down_btn, self.route_bench_btn):
+            for w in (self.context.views.route_model_edit, self.context.views.route_enabled_chk, self.context.views.route_timeout, self.context.views.route_cooldown, self.context.views.route_ctx,
+                      self.context.views.route_predict, self.context.views.route_test_btn, self.context.views.route_del_btn, self.context.views.route_default_btn, self.context.views.route_use_btn,
+                      self.context.views.route_up_btn, self.context.views.route_down_btn, self.context.views.route_bench_btn):
                 w.setEnabled(route is not None)
             if not route:
-                self.route_provider_lbl.setText("-")
-                self.route_status.setText("Route‌ای انتخاب نشده.")
+                self.context.views.route_provider_lbl.setText("-")
+                self.context.views.route_status.setText("Route‌ای انتخاب نشده.")
                 return
-            cfg = self.settings.get("providers", {}).get(route["provider"], {})
-            local = self.provider_application_service.provider_kind(route["provider"], cfg) == "local"
-            self.route_provider_lbl.setText(f"{self.provider_application_service.provider_label(route['provider'], cfg)}  ({'Local' if local else 'Cloud'})  ·  {route['id']}")
-            if route["provider"] == "ollama" and self._ollama_models:
-                self.route_model_edit.set_models(self._ollama_models)
-            self.route_model_edit.setText(route["model"])
-            self.route_enabled_chk.setChecked(bool(route.get("enabled", True)))
-            lo, hi = self.provider_application_service.LOCAL_TIMEOUT if local else self.provider_application_service.CLOUD_TIMEOUT
-            self.route_timeout.setRange(lo, hi)
-            self.route_timeout.setValue(int(route.get("timeout", 18)))
-            self.route_cooldown.setValue(int(route.get("cooldown", 45)))
+            cfg = self.context.services.settings.get("providers", {}).get(route["provider"], {})
+            local = self.context.services.provider_application_service.provider_kind(route["provider"], cfg) == "local"
+            self.context.views.route_provider_lbl.setText(f"{self.context.services.provider_application_service.provider_label(route['provider'], cfg)}  ({'Local' if local else 'Cloud'})  ·  {route['id']}")
+            if route["provider"] == "ollama" and self.context.state._ollama_models:
+                self.context.views.route_model_edit.set_models(self.context.state._ollama_models)
+            self.context.views.route_model_edit.setText(route["model"])
+            self.context.views.route_enabled_chk.setChecked(bool(route.get("enabled", True)))
+            lo, hi = self.context.services.provider_application_service.LOCAL_TIMEOUT if local else self.context.services.provider_application_service.CLOUD_TIMEOUT
+            self.context.views.route_timeout.setRange(lo, hi)
+            self.context.views.route_timeout.setValue(int(route.get("timeout", 18)))
+            self.context.views.route_cooldown.setValue(int(route.get("cooldown", 45)))
             is_ollama = route["provider"] == "ollama"
-            self.route_ctx.setEnabled(is_ollama)
-            self.route_predict.setEnabled(is_ollama)
-            self.route_ctx.setValue(int(route.get("num_ctx", 0)))
-            self.route_predict.setValue(int(route.get("num_predict", 0)))
-            st = next((x for x in self.client.status() if x["name"] == rid), {})
+            self.context.views.route_ctx.setEnabled(is_ollama)
+            self.context.views.route_predict.setEnabled(is_ollama)
+            self.context.views.route_ctx.setValue(int(route.get("num_ctx", 0)))
+            self.context.views.route_predict.setValue(int(route.get("num_predict", 0)))
+            st = next((x for x in self.context.session.client.status() if x["name"] == rid), {})
             parts = [self.HEALTH_TXT.get(st.get("health", "unknown"), "")]
             if st.get("last_ms") is not None:
                 parts.append(f"آخرین پاسخ {st['last_ms']} ms")
@@ -870,67 +870,67 @@ class ProviderSettingsController(WindowFeatureController):
                 parts.append(f"استراحت {st['cooldown']}s")
             if st.get("last_error"):
                 parts.append("آخرین خطا: " + st["last_error"])
-            self.route_status.setText("  ·  ".join(p for p in parts if p))
+            self.context.views.route_status.setText("  ·  ".join(p for p in parts if p))
         finally:
-            self._loading_route = False
+            self.context.state._loading_route = False
 
     def after_route_change(self, select=None):
         self.sync_ollama_primary()
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_route_list()
         if select:
-            for i in range(self.route_list.count()):
-                if self.route_list.item(i).data(Qt.UserRole) == select:
-                    self.route_list.setCurrentRow(i)
-        if not self.busy:
-            self.set_badge("idle", self.client.preview_route())
+            for i in range(self.context.views.route_list.count()):
+                if self.context.views.route_list.item(i).data(Qt.UserRole) == select:
+                    self.context.views.route_list.setCurrentRow(i)
+        if not self.context.session.busy:
+            self.feature_controller("runtime").set_badge("idle", self.context.session.client.preview_route())
 
     def sync_ollama_primary(self):
         """Route 'ollama' is the model of the Assistant tab: keep the two in step both ways."""
-        r = self.provider_application_service.find_route(self.settings, "ollama")
-        if r and r["model"] and r["model"] != self.settings.get("model"):
-            self.settings["model"] = r["model"]
-            self.settings.setdefault("providers", {}).setdefault("ollama", {})["model"] = r["model"]
-            self.model.setText(r["model"])
+        r = self.context.services.provider_application_service.find_route(self.context.services.settings, "ollama")
+        if r and r["model"] and r["model"] != self.context.services.settings.get("model"):
+            self.context.services.settings["model"] = r["model"]
+            self.context.services.settings.setdefault("providers", {}).setdefault("ollama", {})["model"] = r["model"]
+            self.context.views.model.setText(r["model"])
 
     def route_edit_changed(self):
-        if self._loading_route:
+        if self.context.state._loading_route:
             return
         rid = self._selected_route_id()
         if not rid:
             return
         try:
-            self.provider_application_service.update_route(self.settings, rid, model=self.route_model_edit.text(), enabled=self.route_enabled_chk.isChecked(),
-                                     timeout=self.route_timeout.value(), cooldown=self.route_cooldown.value(),
-                                     num_ctx=self.route_ctx.value(), num_predict=self.route_predict.value())
+            self.context.services.provider_application_service.update_route(self.context.services.settings, rid, model=self.context.views.route_model_edit.text(), enabled=self.context.views.route_enabled_chk.isChecked(),
+                                     timeout=self.context.views.route_timeout.value(), cooldown=self.context.views.route_cooldown.value(),
+                                     num_ctx=self.context.views.route_ctx.value(), num_predict=self.context.views.route_predict.value())
         except ValueError as exc:
-            self.route_status.setText("✕ " + str(exc))
+            self.context.views.route_status.setText("✕ " + str(exc))
             return
-        self.client.reset_cooldowns(rid)
+        self.context.session.client.reset_cooldowns(rid)
         self.after_route_change()
 
     def on_routes_reordered(self):
         """Drag & drop finished: the new visual order becomes the priority / failover order."""
-        if self._loading_route:
+        if self.context.state._loading_route:
             return
-        ids = [self.route_list.item(i).data(Qt.UserRole) for i in range(self.route_list.count())]
-        self.provider_application_service.reorder_routes(self.settings, ids)
-        self.save_now()
+        ids = [self.context.views.route_list.item(i).data(Qt.UserRole) for i in range(self.context.views.route_list.count())]
+        self.context.services.provider_application_service.reorder_routes(self.context.services.settings, ids)
+        self.feature_controller("runtime").save_now()
         QTimer.singleShot(0, self.refresh_route_list)           # renumber labels after the drop has fully finished
-        QTimer.singleShot(0, lambda: None if self.busy else self.set_badge("idle", self.client.preview_route()))
+        QTimer.singleShot(0, lambda: None if self.context.session.busy else self.feature_controller("runtime").set_badge("idle", self.context.session.client.preview_route()))
 
     def move_selected(self, delta):
         rid = self._selected_route_id()
         if not rid:
             return
-        ids = [r["id"] for r in self.provider_application_service.get_routes(self.settings)]
-        self.provider_application_service.move_route(self.settings, rid, ids.index(rid) + delta)
+        ids = [r["id"] for r in self.context.services.provider_application_service.get_routes(self.context.services.settings)]
+        self.context.services.provider_application_service.move_route(self.context.services.settings, rid, ids.index(rid) + delta)
         self.after_route_change(select=rid)
 
     def default_selected_route(self):
         rid = self._selected_route_id()
         if rid:
-            self.provider_application_service.set_default_route(self.settings, rid)
+            self.context.services.provider_application_service.set_default_route(self.context.services.settings, rid)
             self.after_route_change(select=rid)
 
     def delete_selected_route(self):
@@ -939,20 +939,20 @@ class ProviderSettingsController(WindowFeatureController):
             return
         if QMessageBox.question(self.window, "حذف Route", "این Route حذف شود؟ (Provider و API Key آن دست‌نخورده می‌مانند.)") != QMessageBox.Yes:
             return
-        self.provider_application_service.remove_route(self.settings, rid)
-        self.client.reset_cooldowns(rid)
+        self.context.services.provider_application_service.remove_route(self.context.services.settings, rid)
+        self.context.session.client.reset_cooldowns(rid)
         self.after_route_change()
 
     def on_failover_toggled(self, on):
-        self.settings["failover_enabled"] = bool(on)
-        self.save_now()
+        self.context.services.settings["failover_enabled"] = bool(on)
+        self.feature_controller("runtime").save_now()
         self.refresh_route_list()
 
     def add_route_from_values(self, provider, model, enabled=True):
         try:
-            route = self.provider_application_service.add_route(self.settings, provider, model, enabled=enabled)
+            route = self.context.services.provider_application_service.add_route(self.context.services.settings, provider, model, enabled=enabled)
         except ValueError as exc:
-            self.route_status.setText("✕ " + str(exc))
+            self.context.views.route_status.setText("✕ " + str(exc))
             return None
         self.after_route_change(select=route["id"])
         return route
@@ -962,13 +962,13 @@ class ProviderSettingsController(WindowFeatureController):
         dlg.setWindowTitle("افزودن Route")
         form = QFormLayout(dlg)
         prov = QComboBox()
-        providers = self.settings.get("providers", {})
+        providers = self.context.services.settings.get("providers", {})
         for name in providers:
-            prov.addItem(self.provider_application_service.provider_label(name, providers[name]), name)
+            prov.addItem(self.context.services.provider_application_service.provider_label(name, providers[name]), name)
         model = ModelCombo("")
         def fill():
             if prov.currentData() == "ollama":
-                model.set_models(self._ollama_models)
+                model.set_models(self.context.state._ollama_models)
         prov.currentIndexChanged.connect(lambda *_: fill())
         form.addRow("Provider", prov)
         form.addRow("Model ID", model)
@@ -981,13 +981,13 @@ class ProviderSettingsController(WindowFeatureController):
 
     def add_provider_from_values(self, label, base_url, api_key="", local=False, first_model=""):
         try:
-            pid = self.provider_application_service.add_provider(
-                self.settings, label, base_url, api_key, local, first_model
+            pid = self.context.services.provider_application_service.add_provider(
+                self.context.services.settings, label, base_url, api_key, local, first_model
             )
         except ValueError as exc:
-            self.route_status.setText("✕ " + str(exc))
+            self.context.views.route_status.setText("✕ " + str(exc))
             return None
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_api_table(pid)
         self.refresh_route_list()
         return pid
@@ -1014,104 +1014,104 @@ class ProviderSettingsController(WindowFeatureController):
                 self.api_refresh(pid, quiet=True)
 
     def remove_provider_ui(self, pid):
-        n = sum(1 for r in self.provider_application_service.get_routes(self.settings) if r["provider"] == pid)
+        n = sum(1 for r in self.context.services.provider_application_service.get_routes(self.context.services.settings) if r["provider"] == pid)
         if QMessageBox.question(self.window, "حذف Provider", f"این Provider و {n} Route آن حذف شوند؟") != QMessageBox.Yes:
             return
-        self.provider_application_service.remove_provider(self.settings, pid)
-        self.client.reset_cooldowns()
-        self.save_now()
+        self.context.services.provider_application_service.remove_provider(self.context.services.settings, pid)
+        self.context.session.client.reset_cooldowns()
+        self.feature_controller("runtime").save_now()
         self.refresh_api_table()
         self.refresh_route_list()
 
     def provider_changed(self):
         """Key / enable / URL edited in a provider box: autosave (an empty key field keeps the saved key)."""
-        if getattr(self, "_loading_route", False) or not hasattr(self, "route_ollama_enabled"):
+        if getattr(self.context.state, "_loading_route", False) or not hasattr(self.context.views, "route_ollama_enabled"):
             return
         self.collect_provider_settings()
-        self.client.reset_cooldowns()
-        self.save_now()
+        self.context.session.client.reset_cooldowns()
+        self.feature_controller("runtime").save_now()
         self.refresh_route_list()
-        if not self.busy:
-            self.set_badge("idle", self.client.preview_route())
+        if not self.context.session.busy:
+            self.feature_controller("runtime").set_badge("idle", self.context.session.client.preview_route())
 
     def test_selected_route(self):
         rid = self._selected_route_id()
         if not rid:
             return
-        self.route_test_btn.setEnabled(False)
-        self.route_status.setText("در حال تست…")
-        self._route_worker = TaskWorker(lambda: self.client.test_route(rid))
-        self._route_worker.done.connect(self.on_route_test_done)
-        self._route_worker.start()
+        self.context.views.route_test_btn.setEnabled(False)
+        self.context.views.route_status.setText("در حال تست…")
+        self.context.state._route_worker = TaskWorker(lambda: self.context.session.client.test_route(rid))
+        self.context.state._route_worker.done.connect(self.on_route_test_done)
+        self.context.state._route_worker.start()
 
     def on_route_test_done(self, result):
         ok, value = result
-        self.route_test_btn.setEnabled(True)
+        self.context.views.route_test_btn.setEnabled(True)
         self.refresh_route_list()
         if ok:
             good, msg, ms = value
-            self.route_status.setText(("✓ " if good else "✕ ") + msg + (f"  ({ms} ms)" if ms is not None else ""))
+            self.context.views.route_status.setText(("✓ " if good else "✕ ") + msg + (f"  ({ms} ms)" if ms is not None else ""))
         else:
-            self.route_status.setText("✕ " + value)
+            self.context.views.route_status.setText("✕ " + value)
 
     def scan_ollama(self):
         self.route_scan_btn.setEnabled(False)
-        self.route_status.setText("در حال جست‌وجوی مدل‌های نصب‌شده‌ی Ollama…")
-        client = self.provider_application_service.create_ollama_client(self.settings)
+        self.context.views.route_status.setText("در حال جست‌وجوی مدل‌های نصب‌شده‌ی Ollama…")
+        client = self.context.services.provider_application_service.create_ollama_client(self.context.services.settings)
         def task():
             ok, models = client.status()
             if not ok:
                 raise RuntimeError(models)
             return models
-        self._scan_worker = TaskWorker(task)
-        self._scan_worker.done.connect(self.on_scan_done)
-        self._scan_worker.start()
+        self.context.state._scan_worker = TaskWorker(task)
+        self.context.state._scan_worker.done.connect(self.on_scan_done)
+        self.context.state._scan_worker.start()
 
     def on_scan_done(self, result):
         ok, value = result
         self.route_scan_btn.setEnabled(True)
         if not ok:
-            self.route_status.setText("✕ " + value)
+            self.context.views.route_status.setText("✕ " + value)
             return
-        self._ollama_models = list(value)
-        self.model.set_models(value)
-        added = self.provider_application_service.add_ollama_models(self.settings, value)
-        self.save_now()
+        self.context.state._ollama_models = list(value)
+        self.context.views.model.set_models(value)
+        added = self.context.services.provider_application_service.add_ollama_models(self.context.services.settings, value)
+        self.feature_controller("runtime").save_now()
         self.refresh_route_list()
-        self.route_status.setText(f"✓ {len(value)} مدل نصب‌شده پیدا شد؛ {len(added)} Route جدید اضافه شد (به‌صورت غیرفعال تا خودت فعال کنی).")
+        self.context.views.route_status.setText(f"✓ {len(value)} مدل نصب‌شده پیدا شد؛ {len(added)} Route جدید اضافه شد (به‌صورت غیرفعال تا خودت فعال کنی).")
         self.refresh_unified_models()
 
     def run_benchmark(self, all_enabled):
-        if self.busy:
-            self.route_status.setText("✕ یک پاسخ در حال تولید است؛ بعد از پایان آن Benchmark بگیر.")
+        if self.context.session.busy:
+            self.context.views.route_status.setText("✕ یک پاسخ در حال تولید است؛ بعد از پایان آن Benchmark بگیر.")
             return
         if all_enabled:
-            ids = [i["route_id"] for i in self.client.available_routes()]
+            ids = [i["route_id"] for i in self.context.session.client.available_routes()]
         else:
             ids = [self._selected_route_id()] if self._selected_route_id() else []
         if not ids:
-            self.route_status.setText("✕ Route فعالی برای Benchmark نیست.")
+            self.context.views.route_status.setText("✕ Route فعالی برای Benchmark نیست.")
             return
-        cloud = [i for i in ids if self.provider_application_service.provider_kind((self.provider_application_service.find_route(self.settings, i) or {}).get("provider", ""),
-                 self.settings.get("providers", {}).get((self.provider_application_service.find_route(self.settings, i) or {}).get("provider", ""))) == "cloud"]
+        cloud = [i for i in ids if self.context.services.provider_application_service.provider_kind((self.context.services.provider_application_service.find_route(self.context.services.settings, i) or {}).get("provider", ""),
+                 self.context.services.settings.get("providers", {}).get((self.context.services.provider_application_service.find_route(self.context.services.settings, i) or {}).get("provider", ""))) == "cloud"]
         if cloud and QMessageBox.question(self.window, "Benchmark", f"{len(cloud)} Route ابری هرکدام یک درخواست کوتاه (حدود ۴۸ توکن) از سهمیه‌ی API مصرف می‌کند. ادامه بدهم؟\n"
                                                            "Routeها یکی‌یکی تست می‌شوند، نه هم‌زمان.") != QMessageBox.Yes:
             return
-        self.busy = True
-        self._bench_busy = True
-        self.bench_out.setPlainText("در حال اجرا…")
+        self.context.session.busy = True
+        self.context.state._bench_busy = True
+        self.context.views.bench_out.setPlainText("در حال اجرا…")
         self._bench_lines = []
-        self._bench_worker = BenchWorker(self.client, ids)
-        self._bench_worker.progress.connect(self.on_bench_progress)
-        self._bench_worker.done.connect(self.on_bench_done)
-        self._bench_worker.start()
+        self.context.state._bench_worker = BenchWorker(self.context.session.client, ids)
+        self.context.state._bench_worker.progress.connect(self.on_bench_progress)
+        self.context.state._bench_worker.done.connect(self.on_bench_done)
+        self.context.state._bench_worker.start()
 
     def on_bench_progress(self, e):
         if e.get("phase") == "running":
-            self.bench_out.setPlainText("\n".join(self._bench_lines + [f"… {e['label']} / {e['model']}"]))
+            self.context.views.bench_out.setPlainText("\n".join(self._bench_lines + [f"… {e['label']} / {e['model']}"]))
         else:
             self._bench_lines.append(self.format_bench_row(e))
-            self.bench_out.setPlainText("\n".join(self._bench_lines))
+            self.context.views.bench_out.setPlainText("\n".join(self._bench_lines))
 
     @staticmethod
     def format_bench_row(r):
@@ -1124,20 +1124,20 @@ class ProviderSettingsController(WindowFeatureController):
                 + (f" · {r['model_gb']}GB, GPU {r['gpu_pct']}%" if r.get("gpu_pct") is not None else ""))
 
     def on_bench_done(self, result):
-        self.busy = False
-        self._speech_live = False
-        self._bench_busy = False
+        self.context.session.busy = False
+        self.context.session._speech_live = False
+        self.context.state._bench_busy = False
         ok, value = result
         if not ok:
-            self.bench_out.setPlainText("✕ " + value)
+            self.context.views.bench_out.setPlainText("✕ " + value)
         else:
             ranked = sorted([r for r in value if r["ok"] and r["first_token_ms"] is not None], key=lambda r: r["first_token_ms"])
             lines = [self.format_bench_row(r) for r in value]
             if ranked:
                 lines.append(f"\nسریع‌ترین اولین Token: {ranked[0]['label']} / {ranked[0]['model']} ({ranked[0]['first_token_ms']} ms)")
-            self.bench_out.setPlainText("\n".join(lines))
+            self.context.views.bench_out.setPlainText("\n".join(lines))
         self.refresh_route_list()
-        self._send_next_pending()
+        self.feature_controller("runtime")._send_next_pending()
 
     # ---------- settings ----------
     # ---- Windows 11 glass ----
