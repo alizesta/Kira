@@ -1,4 +1,4 @@
-"""Lifecycle behavior mixin for the desktop window."""
+"""Window lifecycle feature controller."""
 from .main_window_lifecycle_support import (
     OllamaTaskWorker,
     QApplication,
