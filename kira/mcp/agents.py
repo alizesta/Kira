@@ -282,7 +282,7 @@ class AgentHub:
             ok, why = cached[1], cached[2]
         else:
             try:
-                ok, why = bool(agent.health().get("ok", False)), ""
+                ok, why = agent.health().get("ok") is True, ""
             except ToolError as exc:
                 ok, why = False, str(exc)
             self._health[name] = (time.monotonic(), ok, why)
@@ -427,7 +427,7 @@ class AgentHub:
         lines = []
         for name in names:
             try:
-                ok = bool(self._agent(name).health().get("ok", False))
+                ok = self._agent(name).health().get("ok") is True
                 lines.append(f"- {name}: {'آماده' if ok else 'آماده نیست'}")
             except ToolError as exc:
                 lines.append(f"- {name}: {exc}")
