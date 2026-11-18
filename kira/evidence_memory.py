@@ -61,6 +61,7 @@ DEFAULT_BUDGET = 4200
 CHARS_PER_TOKEN = 2.5
 
 _lock = threading.RLock()
+_ensure_lock = threading.Lock()
 _settings: dict = {}
 _enabled = True
 _ready_path: str | None = None
@@ -122,7 +123,12 @@ def configure(settings) -> None:
     _settings = settings if isinstance(settings, dict) else {}
     _enabled = str(_settings.get("evidence_memory", "auto")).lower() != "off"
     if _enabled:
-        _start_background(_backfill_once)
+        try:
+            _start_background(_backfill_once)
+        except RuntimeError:
+            # Evidence backfill is optional and rebuildable; inability to create
+            # a worker must not make settings/bootstrap fail or disturb Chat.
+            pass
 
 
 def enabled() -> bool:
@@ -167,29 +173,36 @@ def _quarantine_file(path: Path, why: str) -> None:
 
 
 def _ensure() -> None:
+    """Initialize one evidence database exactly once per active data path.
+
+    The dedicated lock protects concurrent first-use calls without serializing
+    normal reads/writes through the main evidence lock.
+    """
     global _ready_path
     path = _path()
-    if _ready_path == str(path):
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        try:
-            con = sqlite3.connect(str(path), timeout=10)
+    key = str(path)
+    with _ensure_lock:
+        if _ready_path == key:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
             try:
-                ok = con.execute("PRAGMA quick_check").fetchone()
-            finally:
-                con.close()
-            if not ok or ok[0] != "ok":
-                _quarantine_file(path, "quick_check failed")
-        except sqlite3.DatabaseError:
-            _quarantine_file(path, "not a database")
-    con = sqlite3.connect(str(path), timeout=10)
-    try:
-        with con:
-            con.executescript(_SCHEMA)
-    finally:
-        con.close()
-    _ready_path = str(path)
+                con = sqlite3.connect(str(path), timeout=10)
+                try:
+                    ok = con.execute("PRAGMA quick_check").fetchone()
+                finally:
+                    con.close()
+                if not ok or ok[0] != "ok":
+                    _quarantine_file(path, "quick_check failed")
+            except sqlite3.DatabaseError:
+                _quarantine_file(path, "not a database")
+        con = sqlite3.connect(str(path), timeout=10)
+        try:
+            with con:
+                con.executescript(_SCHEMA)
+        finally:
+            con.close()
+        _ready_path = key
 
 
 @contextlib.contextmanager
@@ -527,7 +540,8 @@ def _backfill_once() -> None:
     except Exception:                                                  # noqa: BLE001 - the index can be rebuilt later; never disturb the app
         pass
     finally:
-        _backfill_running = False
+        with _lock:
+            _backfill_running = False
 
 
 # ----------------------------------------------------------------------------------------------- embeddings (optional)
@@ -624,7 +638,13 @@ def schedule_vector_backfill() -> None:
         if _vector_job_running or _embedding_config() is None or time.time() < _embed_fail_until:
             return
         _vector_job_running = True
-    _start_background(_vector_pass)
+    try:
+        _start_background(_vector_pass)
+    except RuntimeError:
+        # A process shutting down may reject a new thread. Do not leave the
+        # single-flight flag stuck, or future embedding backfills will never run.
+        with _lock:
+            _vector_job_running = False
 
 
 def _vector_pass() -> None:
@@ -648,7 +668,8 @@ def _vector_pass() -> None:
     except Exception:                                                  # noqa: BLE001
         pass
     finally:
-        _vector_job_running = False
+        with _lock:
+            _vector_job_running = False
 
 
 # ----------------------------------------------------------------------------------------------- retrieval

@@ -410,7 +410,22 @@ class OpenAICompatibleProvider(BaseProvider):
         url, headers, payload = self._prepare(messages, system_prompt, temperature, False)
         payload["tools"] = [{"type": "function", "function": schema} for schema in tools]
         payload["tool_choice"] = "auto"
-        data = self._post_json(url, headers, payload)
+        try:
+            data = self._post_json(url, headers, payload)
+        except ProviderError as exc:
+            detail = str(exc).lower()
+            unsupported = (
+                "does not support tools",
+                "doesn't support tools",
+                "tool calling is not supported",
+                "tools are not supported",
+                "does not support tool calls",
+                "unsupported tools",
+                "tool use is not supported",
+            )
+            if exc.status_code in (400, 422) and any(term in detail for term in unsupported):
+                return None
+            raise
         try:
             message = data["choices"][0]["message"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -1098,8 +1113,8 @@ class HybridRouter:
         if not self._lock.acquire(blocking=False):
             raise RuntimeError("درخواست قبلی هنوز در حال انجام است؛ درخواست تکراری ارسال نشد.")
         self._cancel.clear()
+        self.last_attempts = []
         started = time.monotonic()
-        supported = False
         failures = []
         emit = on_event or (lambda event: None)
         try:
@@ -1121,19 +1136,50 @@ class HybridRouter:
                     if result is None:                         # this model/provider explicitly lacks native tool support
                         self._active = None
                         continue
-                    supported = True
                     elapsed = int((time.monotonic() - started) * 1000)
                     self._mark_success(route, elapsed)
-                    self.last_provider, self.last_model, self.last_route_id = route["provider"], route["model"], route["id"]
+                    active_model = getattr(provider, "active_model", None)
+                    model = active_model if isinstance(active_model, str) and active_model else route["model"]
+                    self.last_provider, self.last_model, self.last_route_id = route["provider"], model, route["id"]
                     self.last_kind, self.last_error, self.last_duration_ms = info["kind"], None, elapsed
                     metrics = {"request_id": uuid.uuid4().hex[:8], "started_at": datetime.now(timezone.utc).isoformat(),
                                "stream": False, "retries": 0, "failovers": len(failures), "provider": route["provider"],
-                               "model": route["model"], "route_id": route["id"], "kind": info["kind"],
+                               "model": model, "route_id": route["id"], "kind": info["kind"],
                                "total_ms": elapsed, "result": "tool_call" if result.get("tool_calls") else "success",
                                "chars": len(result.get("text") or ""), "role": _ROLE.get() or None}
                     self.last_metrics = metrics
                     self.metrics.append(metrics)
-                    return {**result, "provider": route["provider"], "model": route["model"], "route_id": route["id"],
+                    self.last_attempts.append({
+                        "provider": route["provider"],
+                        "route_id": route["id"],
+                        "model": model,
+                        "result": metrics["result"],
+                        "duration_ms": elapsed,
+                    })
+                    stats = getattr(provider, "last_stats", None)
+                    stats = stats if isinstance(stats, dict) else None
+                    if stats:
+                        metrics.update(
+                            load_ms=stats.get("load_ms"),
+                            eval_tokens=stats.get("eval_tokens"),
+                            eval_ms=stats.get("eval_ms"),
+                        )
+                    # Native function-calling requests are real provider requests too.
+                    # Record reported token usage and metadata just like the streaming path.
+                    self._ledger(metrics, metrics["result"], provider, stats)
+                    self._write_telemetry({
+                        "provider": route["provider"],
+                        "model": model,
+                        "result": metrics["result"],
+                        "duration_ms": elapsed,
+                        "attempts": self.last_attempts,
+                        **{key: metrics.get(key) for key in (
+                            "request_id", "route_id", "kind", "stream", "connect_ms",
+                            "first_token_ms", "total_ms", "retries", "failovers", "role",
+                            "load_ms", "eval_tokens", "eval_ms",
+                        )},
+                    })
+                    return {**result, "provider": route["provider"], "model": model, "route_id": route["id"],
                             "kind": info["kind"], "label": info["label"], "metrics": metrics,
                             "stopped": False, "interrupted": None}
                 except Exception as exc:                              # noqa: BLE001
@@ -1144,9 +1190,9 @@ class HybridRouter:
                     failures.append(f"{route['id']}: {redact(exc, *secrets)}")
                     self.last_attempts.append({"provider": route["provider"], "route_id": route["id"],
                                                "result": "error", "error_kind": kind, "status_code": status})
-            if not supported:
-                return None
-            raise RuntimeError("همه‌ی Routeهای سازگار با Native Function Calling ناموفق بودند:\n" + "\n".join(failures))
+            if failures:
+                raise RuntimeError("همه‌ی Routeهای سازگار با Native Function Calling ناموفق بودند:\n" + "\n".join(failures))
+            return None
         finally:
             self._active = None
             self._lock.release()

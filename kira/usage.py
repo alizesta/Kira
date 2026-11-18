@@ -15,6 +15,7 @@ Show it: type /usage in the chat, or run `python -m kira.usage [days]`.
 from __future__ import annotations
 
 import contextlib
+import math
 import sqlite3
 import threading
 import time
@@ -40,6 +41,8 @@ COLUMNS = ("ts", "request_id", "role", "provider", "model", "route_id", "status"
 # ---------------------------------------------------------------------------------------------- parsing what a provider reported
 def _num(value):
     if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if isinstance(value, float) and not math.isfinite(value):
         return None
     return value if value >= 0 else None
 
@@ -82,8 +85,9 @@ def merge_usage(current, new):
 # ---------------------------------------------------------------------------------------------- storage
 def configure(settings) -> None:
     global _settings
-    _settings = settings if isinstance(settings, dict) else {}
-    _cache.clear()
+    with _lock:
+        _settings = settings if isinstance(settings, dict) else {}
+        _cache.clear()
 
 
 def _path() -> Path:
@@ -145,18 +149,22 @@ def _cost(rec: dict):
 def record(rec: dict) -> None:
     """Write one request. Never raises: the ledger must not be able to break a chat."""
     try:
-        reported, estimated, kind = _cost(rec)
         causes = rec.get("failover_causes")
-        row = (time.time(), rec.get("request_id"), rec.get("role") or "surface", rec.get("provider"), rec.get("model"), rec.get("route_id"),
-               rec.get("status"), int(rec.get("failovers") or 0), ",".join(causes) if isinstance(causes, (list, tuple)) else causes,
-               rec.get("connect_ms"), rec.get("first_token_ms"), rec.get("total_ms"),
-               _num(rec.get("tokens_in")), _num(rec.get("tokens_out")), _num(rec.get("tokens_cache")), _num(rec.get("tokens_reasoning")),
-               rec.get("tokens_source") if _num(rec.get("tokens_in")) is not None or _num(rec.get("tokens_out")) is not None else None,
-               reported, estimated, kind, rec.get("error_kind"))
-        with _lock, contextlib.closing(_connect()) as con:
-            con.execute(f"INSERT INTO requests ({','.join(COLUMNS)}) VALUES ({','.join('?' * len(COLUMNS))})", row)
-            con.commit()
-        _cache.clear()
+        with _lock:
+            # Price configuration, the durable write and cache invalidation form
+            # one critical section. A concurrent limit query cannot republish a
+            # stale daily count after this request has been committed.
+            reported, estimated, kind = _cost(rec)
+            row = (time.time(), rec.get("request_id"), rec.get("role") or "surface", rec.get("provider"), rec.get("model"), rec.get("route_id"),
+                   rec.get("status"), int(rec.get("failovers") or 0), ",".join(causes) if isinstance(causes, (list, tuple)) else causes,
+                   rec.get("connect_ms"), rec.get("first_token_ms"), rec.get("total_ms"),
+                   _num(rec.get("tokens_in")), _num(rec.get("tokens_out")), _num(rec.get("tokens_cache")), _num(rec.get("tokens_reasoning")),
+                   rec.get("tokens_source") if _num(rec.get("tokens_in")) is not None or _num(rec.get("tokens_out")) is not None else None,
+                   reported, estimated, kind, rec.get("error_kind"))
+            with contextlib.closing(_connect()) as con:
+                con.execute(f"INSERT INTO requests ({','.join(COLUMNS)}) VALUES ({','.join('?' * len(COLUMNS))})", row)
+                con.commit()
+            _cache.clear()
     except Exception:                                                                # noqa: BLE001
         pass
 
@@ -170,26 +178,29 @@ def _day_start() -> float:
 def _today(kind: str, name: str):
     """(requests, known_tokens) today for role / provider; cached for a few seconds because routes are listed often."""
     key = (kind, name)
-    hit = _cache.get(key)
-    if hit and time.monotonic() - hit[0] < LIMIT_CACHE_SECONDS:
-        return hit[1]
     column = "role" if kind == "role" else "provider"
-    try:
-        with _lock, contextlib.closing(_connect()) as con:
-            row = con.execute(f"SELECT COUNT(*), COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)),0) FROM requests "
-                              f"WHERE ts >= ? AND {column} = ?", (_day_start(), name)).fetchone()
-        value = (int(row[0]), int(row[1]))
-    except Exception:                                                                # noqa: BLE001
-        value = (0, 0)
-    _cache[key] = (time.monotonic(), value)
-    return value
+    with _lock:
+        hit = _cache.get(key)
+        if hit and time.monotonic() - hit[0] < LIMIT_CACHE_SECONDS:
+            return hit[1]
+        try:
+            with contextlib.closing(_connect()) as con:
+                row = con.execute(f"SELECT COUNT(*), COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)),0) FROM requests "
+                                  f"WHERE ts >= ? AND {column} = ?", (_day_start(), name)).fetchone()
+            value = (int(row[0]), int(row[1]))
+        except Exception:                                                            # noqa: BLE001
+            value = (0, 0)
+        _cache[key] = (time.monotonic(), value)
+        return value
 
 
 def limit_state(kind: str, name: str) -> str:
     """'' (no limit / under it) | 'warn' | 'block'."""
-    limits = _settings.get("usage_limits")
-    cfg = limits.get(f"{kind}:{name}") if isinstance(limits, dict) else None
-    if not isinstance(cfg, dict):
+    with _lock:
+        limits = _settings.get("usage_limits")
+        raw_cfg = limits.get(f"{kind}:{name}") if isinstance(limits, dict) else None
+        cfg = dict(raw_cfg) if isinstance(raw_cfg, dict) else None
+    if cfg is None:
         return ""
     reqs, toks = _today(kind, name)
     over = ((_num(cfg.get("requests_per_day")) is not None and reqs >= cfg["requests_per_day"])

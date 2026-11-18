@@ -13,6 +13,7 @@ the project is zipped with a Gregorian date + Iran-time stamp. Safety model:
 from __future__ import annotations
 
 import ast
+from collections import deque
 import difflib
 import hashlib
 import importlib.util
@@ -24,6 +25,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -35,6 +37,7 @@ from .code_agent import (
 
 MAX_STEPS = 40
 MAX_OBSERVATION = 9000
+MAX_CAPTURE_BYTES = max(MAX_OBSERVATION * 8, 256 * 1024)
 MAX_TRANSCRIPT_CHARS = 70_000
 MAX_WRITE_BYTES = 300 * 1024
 RUN_TIMEOUT = 120
@@ -912,46 +915,127 @@ class AutoAgent:
         return args
 
     def _exec(self, cmd):
-        """Run a bounded process in the working copy and terminate its process tree on Stop/timeout."""
+        """Run a bounded process while retaining only a safe, bounded output tail."""
         import signal
         import time
+
         kwargs = {}
         if os.name == "nt":
             kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         else:
             kwargs["start_new_session"] = True
-        proc = subprocess.Popen(cmd, cwd=str(self.work), env=self._clean_env(), stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **kwargs)
-        end, out, note = time.monotonic() + RUN_TIMEOUT, b"", ""
-        while True:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(self.work),
+            env=self._clean_env(),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            **kwargs,
+        )
+
+        chunks = deque()
+        captured_bytes = 0
+        truncated = False
+        capture_lock = threading.Lock()
+
+        def drain_output():
+            nonlocal captured_bytes, truncated
             try:
-                out, _ = proc.communicate(timeout=0.3)
-                break
-            except subprocess.TimeoutExpired:
-                if self.should_stop():
-                    note = "\n(با Stop متوقف شد)"
-                elif time.monotonic() > end:
-                    note = f"\n(بعد از {RUN_TIMEOUT} ثانیه متوقف شد)"
-                if note:
+                while True:
+                    block = proc.stdout.read(64 * 1024)
+                    if not block:
+                        break
+                    with capture_lock:
+                        chunks.append(block)
+                        captured_bytes += len(block)
+                        while captured_bytes > MAX_CAPTURE_BYTES and chunks:
+                            excess = captured_bytes - MAX_CAPTURE_BYTES
+                            oldest = chunks[0]
+                            if len(oldest) <= excess:
+                                captured_bytes -= len(chunks.popleft())
+                            else:
+                                chunks[0] = oldest[excess:]
+                                captured_bytes -= excess
+                            truncated = True
+            except (OSError, ValueError):
+                pass
+            finally:
+                try:
+                    proc.stdout.close()
+                except (OSError, ValueError):
+                    pass
+
+        reader = threading.Thread(
+            target=drain_output,
+            name="ai1code-process-output",
+            daemon=True,
+        )
+        reader.start()
+
+        end = time.monotonic() + RUN_TIMEOUT
+        note = ""
+        while proc.poll() is None or reader.is_alive():
+            if self.should_stop():
+                note = "\n(با Stop متوقف شد)"
+            elif time.monotonic() > end:
+                note = f"\n(بعد از {RUN_TIMEOUT} ثانیه متوقف شد)"
+            if note:
+                try:
+                    if os.name == "nt":
+                        subprocess.run(
+                            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                            stdin=subprocess.DEVNULL,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            timeout=5,
+                            check=False,
+                        )
+                    else:
+                        os.killpg(proc.pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError, OSError, subprocess.TimeoutExpired):
                     try:
-                        if os.name == "nt":
-                            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                           stderr=subprocess.DEVNULL, timeout=5, check=False)
-                        else:
-                            os.killpg(proc.pid, signal.SIGKILL)
-                    except (ProcessLookupError, PermissionError, OSError, subprocess.TimeoutExpired):
                         proc.kill()
+                    except (ProcessLookupError, OSError):
+                        pass
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
                     try:
-                        out, _ = proc.communicate(timeout=5)
-                    except subprocess.TimeoutExpired:
                         proc.kill()
+                    except (ProcessLookupError, OSError):
+                        pass
+                    proc.wait(timeout=2)
+                reader.join(timeout=5)
+                if reader.is_alive():
+                    try:
                         proc.stdout.close()
-                        proc.wait(timeout=2)
-                        out = b""
-                    break
-        code = proc.returncode if not note else -1
-        return code, redact_secrets(out.decode("utf-8", "replace") + note)[-MAX_OBSERVATION:]
+                    except (OSError, ValueError):
+                        pass
+                    reader.join(timeout=1)
+                break
+            time.sleep(0.3)
+
+        if proc.poll() is None:
+            proc.wait()
+        reader.join(timeout=5)
+
+        with capture_lock:
+            out = b"".join(chunks)
+            was_truncated = truncated
+
+        # The ring buffer can begin in the middle of a line. Drop that partial
+        # line before secret redaction so a key assignment is never split away
+        # from its marker and accidentally exposed in the retained output.
+        if was_truncated:
+            first_line_end = out.find(b"\n")
+            out = out[first_line_end + 1:] if first_line_end >= 0 else b""
+
+        output = redact_secrets(out.decode("utf-8", "replace"))
+        if was_truncated:
+            output += "\n[بخش ابتدایی خروجی طولانی برای محدودیت حافظه حذف شد]"
+        return_code = proc.returncode if not note else -1
+        return return_code, (output + note)[-MAX_OBSERVATION:]
 
     def _show_log(self, title, code, text):
         self.emit(f"{title} ← exit {code}\n```\n{_clip(text.strip() or '(بدون خروجی)', 1800)}\n```")

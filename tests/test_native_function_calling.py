@@ -3,7 +3,7 @@ import unittest
 from unittest import mock
 
 from tests.helpers import Resp
-from kira.hybrid_ai import OpenAICompatibleProvider, normalize_messages, provider_class
+from kira.hybrid_ai import HybridRouter, OpenAICompatibleProvider, normalize_messages, provider_class
 from kira.ollama_client import OllamaClient
 
 
@@ -116,6 +116,68 @@ class NativeFunctionCallingTests(unittest.TestCase):
         self.assertEqual([m["role"] for m in cleaned], ["user", "assistant", "tool"])
         self.assertEqual(cleaned[-1]["tool_call_id"], "call_1")
         self.assertEqual(cleaned[1]["tool_calls"][0]["function"]["name"], "open_app")
+
+
+    def test_openai_provider_returns_none_for_explicitly_unsupported_tool_calls(self):
+        provider = OpenAICompatibleProvider(
+            {"model": "test-model", "api_key": "test-secret", "base_url": "https://example.invalid/v1"},
+            name="custom",
+        )
+        response = Resp(400, {"error": {"message": "This model does not support tools"}})
+        with mock.patch("requests.post", return_value=response):
+            result = provider.chat_with_tools(
+                [{"role": "user", "content": "Use a tool"}],
+                "system",
+                tools=[{"name": "get_datetime", "parameters": {"type": "object"}}],
+            )
+        self.assertIsNone(result)
+
+    def test_router_does_not_turn_native_provider_errors_into_text_fallback(self):
+        router = HybridRouter({})
+        route = {"id": "custom-route", "provider": "custom", "model": "test-model"}
+        provider = mock.Mock()
+        provider.chat_with_tools.side_effect = RuntimeError("provider network failure")
+        router._candidates = lambda: [route]
+        router.eligibility = lambda _route: (True, "ok")
+        router.route_info = lambda _route: {"kind": "cloud", "label": "Test"}
+        router._make_provider = lambda _route: provider
+        router._provider_cfg = lambda _route: {"api_key": "test-secret"}
+        router._mark_failure = lambda _route, _exc, _secrets: ("network", None, 45)
+
+        with self.assertRaisesRegex(RuntimeError, "Native Function Calling"):
+            router.chat_with_tools(
+                [{"role": "user", "content": "Use a tool"}],
+                "system",
+                tools=[{"name": "get_datetime", "parameters": {"type": "object"}}],
+            )
+        provider.chat_with_tools.assert_called_once()
+
+    def test_router_accounts_for_native_function_calling_requests(self):
+        router = HybridRouter({})
+        route = {"id": "custom-route", "provider": "custom", "model": "test-model"}
+        provider = mock.Mock()
+        provider.chat_with_tools.return_value = {
+            "text": "",
+            "tool_calls": [{"id": "call_1", "tool": "get_datetime", "args": {}}],
+        }
+        provider.last_stats = {"prompt_tokens": 12, "eval_tokens": 7, "eval_ms": 350}
+        provider.active_model = "actual-model"
+        router._candidates = lambda: [route]
+        router.eligibility = lambda _route: (True, "ok")
+        router.route_info = lambda _route: {"kind": "cloud", "label": "Test"}
+        router._make_provider = lambda _route: provider
+        with mock.patch.object(router, "_ledger") as ledger, mock.patch.object(router, "_write_telemetry") as telemetry:
+            result = router.chat_with_tools(
+                [{"role": "user", "content": "What time is it?"}],
+                "system",
+                tools=[{"name": "get_datetime", "parameters": {"type": "object"}}],
+            )
+        self.assertEqual(result["tool_calls"][0]["tool"], "get_datetime")
+        self.assertEqual(result["model"], "actual-model")
+        ledger.assert_called_once_with(router.last_metrics, "tool_call", provider, provider.last_stats)
+        telemetry.assert_called_once()
+        self.assertEqual(router.last_metrics["eval_tokens"], 7)
+        self.assertEqual(router.last_attempts[-1]["result"], "tool_call")
 
 
 if __name__ == "__main__":
