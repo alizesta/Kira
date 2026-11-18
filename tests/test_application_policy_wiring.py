@@ -39,7 +39,10 @@ class ApplicationPolicyWiringTests(unittest.TestCase):
         )
         self.assertIn("self.provider_application_service.add_provider(", ui)
         self.assertIn("self.provider_application_service.rebuild_session_routers(", ui)
-        self.assertNotIn("route_model.", ui)
+        runtime = source("kira/ui/main_window_runtime.py")
+        self.assertIn("self.provider_application_service.find_route(", runtime)
+        self.assertIn("self.provider_application_service.set_manual_route(", runtime)
+        self.assertNotIn("route_model.", ui + runtime)
         self.assertNotIn("api_manager.", ui)
         self.assertNotIn("OllamaClient.from_settings(", ui)
 
