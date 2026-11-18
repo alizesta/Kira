@@ -1,5 +1,17 @@
 # Task Handoff
 
+## Architecture implementation update (2026-11-18) — TASK 017–020 source work
+
+- The principal outstanding application-policy boundaries have now been implemented on `new-main`: Session orchestration (`SessionApplicationService`), Provider/routes (`ProviderApplicationService`), Vision (`VisionApplicationService`), Coding Agent handoff (`CodingAgentApplicationService`), shared Runtime Settings (`RuntimeSettingsApplicationService`), and Character profile/preferences/personality ownership (`CharacterProfileService`).
+- Existing Web Search, Voice and Game Mode application-service boundaries remain integrated. Per-character voice overrides are applied through `VoiceApplicationService`.
+- Nine feature-specific MainWindow support modules remain scoped; Qt widgets, timers/workers, device adapters, dialogs and rendering remain UI responsibilities.
+- Focused unit/wiring test modules and CI command/compile lists were added or extended. A static source audit found no missing names in the nine feature-support import sets or composition-to-root-support imports.
+- **Not runtime-verified:** GitHub Actions jobs inspected on this branch completed with `runner_id=0`, `steps=[]` and no retrievable logs (`BlobNotFound`). No test, Python import, compile or Windows GUI run is claimed.
+- Reviewer handoff and checklist: [docs/ARCHITECTURE_IMPLEMENTATION_HANDOFF_2026-11-18.md](docs/ARCHITECTURE_IMPLEMENTATION_HANDOFF_2026-11-18.md).
+- Architecture records: [docs/ARCHITECTURE_MASTER.md](docs/ARCHITECTURE_MASTER.md), [docs/ARCHITECTURE_ROADMAP.md](docs/ARCHITECTURE_ROADMAP.md), [docs/MODULE_OWNERSHIP.md](docs/MODULE_OWNERSHIP.md).
+
+Historical Windows/GUI and release validation items below remain historical and are not marked as completed by this architecture work.
+
 ## Latest task: no button, Kira understands + better coding (2026-11-13)
 - `</>` removed; routing is automatic (see CHANGELOG 2026-11-13). Validate on Windows 11 with a real route: ordinary chat stays ordinary (greetings, 'what is a decorator?'); 'مدل دوبعدی رو حذف کن' starts a mission after the folder question and start confirmation; 'چرا آواتار دوبعدی قبل از VRM لود میشه؟' answers read-only with file names; an ambiguous 'این تابع رو درست کن' shows 'کیرا در حال فهمیدن…' then picks; speak a coding request by voice; check that code blocks look right in normal chat replies.
 - Watch for false positives (normal talk routed to the agent) and false negatives (a real request answered as chat): the word lists are in `kira/chat_code.py`.
@@ -37,7 +49,7 @@ Fix regression failures from `ProjectKira_261111_0603.zip`: batch-file CRLF pack
 Character specialization and generated portraits. The implementation is complete in source; verify the new portraits and role prompts in the Windows 11 UI. The earlier Ai1 Code phase 2 Windows validation remains outstanding.
 
 ## Branch
-`feature/characters-ren-mika`
+`new-main` (canonical architecture integration branch)
 
 ## Implemented in phase 2
 - Code Agent can propose a complete replacement for the selected file only.
