@@ -1,7 +1,9 @@
 """Lifecycle and concurrency regression tests for the optional MCP hub."""
+import tempfile
 import threading
 import time
 import unittest
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
 
@@ -62,8 +64,9 @@ class McpHubLifecycleTests(unittest.TestCase):
         existing = Tool("agent_status", "existing tool", lambda _args: "keep", ())
         registry.register(existing)
 
-        with mock.patch("kira.mcp.hub.McpHub.refresh_async"):
-            result = install(registry, None, lambda: {})
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch("kira.mcp.hub.McpHub.refresh_async"):
+                result = install(registry, Path(temp), lambda: {})
 
         self.assertIsNone(result)
         self.assertIs(registry.get("agent_status"), existing)
