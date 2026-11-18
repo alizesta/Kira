@@ -410,7 +410,7 @@ class ProviderSettingsController(WindowFeatureController):
             self.api_add_status.setText("✕ " + str(detection))
             return
         if detection and detection.state == "needs_account" and not account:
-            account_id, accepted = QInputDialog.getText(self, "Cloudflare", "Account ID:")
+            account_id, accepted = QInputDialog.getText(self.window, "Cloudflare", "Account ID:")
             if accepted and account_id.strip():
                 self.api_add_btn.setEnabled(False)
                 self.api_add_status.setText("در حال تکمیل شناسایی Cloudflare…")
@@ -773,7 +773,7 @@ class ProviderSettingsController(WindowFeatureController):
         cfg = self.settings["providers"][pid]
         n = sum(1 for r in self.provider_application_service.get_routes(self.settings) if r["provider"] == pid)
         builtin_note = "\n(کلید پاک و Routeهای این API غیرفعال می‌شوند.)" if pid in self.provider_application_service.BUILTIN else f"\n({n} Route آن هم حذف می‌شود.)"
-        if QMessageBox.question(self, "حذف API", f"«{self.provider_application_service.provider_label(pid, cfg)}» حذف شود؟{builtin_note}") != QMessageBox.Yes:
+        if QMessageBox.question(self.window, "حذف API", f"«{self.provider_application_service.provider_label(pid, cfg)}» حذف شود؟{builtin_note}") != QMessageBox.Yes:
             return
         self.provider_application_service.delete_api(self.settings, pid)
         self.api_status.setText("✓ API حذف شد.")
@@ -937,7 +937,7 @@ class ProviderSettingsController(WindowFeatureController):
         rid = self._selected_route_id()
         if not rid:
             return
-        if QMessageBox.question(self, "حذف Route", "این Route حذف شود؟ (Provider و API Key آن دست‌نخورده می‌مانند.)") != QMessageBox.Yes:
+        if QMessageBox.question(self.window, "حذف Route", "این Route حذف شود؟ (Provider و API Key آن دست‌نخورده می‌مانند.)") != QMessageBox.Yes:
             return
         self.provider_application_service.remove_route(self.settings, rid)
         self.client.reset_cooldowns(rid)
@@ -1015,7 +1015,7 @@ class ProviderSettingsController(WindowFeatureController):
 
     def remove_provider_ui(self, pid):
         n = sum(1 for r in self.provider_application_service.get_routes(self.settings) if r["provider"] == pid)
-        if QMessageBox.question(self, "حذف Provider", f"این Provider و {n} Route آن حذف شوند؟") != QMessageBox.Yes:
+        if QMessageBox.question(self.window, "حذف Provider", f"این Provider و {n} Route آن حذف شوند؟") != QMessageBox.Yes:
             return
         self.provider_application_service.remove_provider(self.settings, pid)
         self.client.reset_cooldowns()
@@ -1094,7 +1094,7 @@ class ProviderSettingsController(WindowFeatureController):
             return
         cloud = [i for i in ids if self.provider_application_service.provider_kind((self.provider_application_service.find_route(self.settings, i) or {}).get("provider", ""),
                  self.settings.get("providers", {}).get((self.provider_application_service.find_route(self.settings, i) or {}).get("provider", ""))) == "cloud"]
-        if cloud and QMessageBox.question(self, "Benchmark", f"{len(cloud)} Route ابری هرکدام یک درخواست کوتاه (حدود ۴۸ توکن) از سهمیه‌ی API مصرف می‌کند. ادامه بدهم؟\n"
+        if cloud and QMessageBox.question(self.window, "Benchmark", f"{len(cloud)} Route ابری هرکدام یک درخواست کوتاه (حدود ۴۸ توکن) از سهمیه‌ی API مصرف می‌کند. ادامه بدهم؟\n"
                                                            "Routeها یکی‌یکی تست می‌شوند، نه هم‌زمان.") != QMessageBox.Yes:
             return
         self.busy = True
