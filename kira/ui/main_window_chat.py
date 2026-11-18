@@ -25,14 +25,28 @@ from .window_feature_controller import WindowFeatureController
 
 
 class ChatController(WindowFeatureController):
+    def bind_attachment_controller(self, controller):
+        """Inject the independent attachment workflow after UI composition."""
+        if controller is None:
+            raise TypeError("attachment controller is required")
+        object.__setattr__(self, "_attachment_controller", controller)
+
+    @property
+    def attachment_controller(self):
+        try:
+            return object.__getattribute__(self, "_attachment_controller")
+        except AttributeError as exc:
+            raise RuntimeError("ChatController attachment dependency is not composed") from exc
+
     def send_message(self):
-        if self.attach_loading():
+        attachments = self.attachment_controller
+        if attachments.is_loading():
             self.status.setText("ضمیمه‌ها هنوز در حال بارگذاری‌اند؛ چند لحظه صبر کن.")
             return
         text = self.input.text().strip()
-        files = [t.att for t in self._tiles if t.att]
+        files = attachments.attachments
         if text or files:
-            self.clear_attachments()
+            attachments.clear()
             self.input.clear()
             self.submit(text, files)
 
@@ -213,7 +227,7 @@ class ChatController(WindowFeatureController):
             # Search must only run with a successfully prepared image payload.
             img_search = bool(packed.get("images")) and (force_img or self.settings.get("image_search", False))
         if packed and packed.get("errors"):
-            self.show_attach_error(packed["errors"])
+            self.attachment_controller.show_error(packed["errors"])
             if not packed.get("prepared_count") and not text.strip():
                 self.chat_application_service.fail_request(
                     self.cur.application_request_id,
