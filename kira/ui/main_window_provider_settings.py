@@ -250,7 +250,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.route_editor = RouteEditor(
             self.settings,
             model_combo_factory=ModelCombo,
-            parent=self,
+            parent=self.window,
         )
         for name in (
             "route_list", "route_manual_lbl", "failover_chk", "route_up_btn",
@@ -445,7 +445,7 @@ class ProviderSettingsController(WindowFeatureController):
 
     def build_ollama_group(self):
         """Host the Ollama settings widget and delegate its intents to the app controller."""
-        self.ollama_panel = OllamaProviderPanel(self.settings, parent=self)
+        self.ollama_panel = OllamaProviderPanel(self.settings, parent=self.window)
         self.route_ollama_enabled = self.ollama_panel.enabled
         self.ollama_url_edit = self.ollama_panel.url_edit
         self.ollama_edit_btn = self.ollama_panel.edit_btn
@@ -491,7 +491,7 @@ class ProviderSettingsController(WindowFeatureController):
                 ("all", "همه‌ی مدل‌ها"),
                 ("free", "فقط مدل‌های رایگانِ تأییدشده"),
             ),
-            parent=self,
+            parent=self.window,
         )
         self.api_key_edit = self.api_add_panel.key_edit
         self.api_account_edit = self.api_add_panel.account_edit
@@ -696,7 +696,7 @@ class ProviderSettingsController(WindowFeatureController):
         cfg = self.settings["providers"][pid]
         service = self.provider_application_service.service_of(pid, cfg)
         custom = pid not in self.provider_application_service.BUILTIN
-        dlg = QDialog(self)
+        dlg = QDialog(self.window)
         dlg.setWindowTitle("Edit API")
         form = QFormLayout(dlg)
         name = QLineEdit(self.provider_application_service.provider_label(pid, cfg))
@@ -958,7 +958,7 @@ class ProviderSettingsController(WindowFeatureController):
         return route
 
     def add_route_dialog(self):
-        dlg = QDialog(self)
+        dlg = QDialog(self.window)
         dlg.setWindowTitle("افزودن Route")
         form = QFormLayout(dlg)
         prov = QComboBox()
@@ -993,7 +993,7 @@ class ProviderSettingsController(WindowFeatureController):
         return pid
 
     def add_provider_dialog(self):
-        dlg = QDialog(self)
+        dlg = QDialog(self.window)
         dlg.setWindowTitle("افزودن Provider")
         form = QFormLayout(dlg)
         name, url, key, model = QLineEdit(), QLineEdit("https://"), QLineEdit(), QLineEdit()
