@@ -122,6 +122,13 @@ class EmotionalRuntimeTests(unittest.TestCase):
 
         self.assertEqual(state["recalled_memories"], [])
 
+    def test_low_intensity_negative_reply_does_not_create_emotional_memory(self):
+        self.runtime.on_reply(
+            ["sad"], 25, now=1000, text="از اینکه تنها ماندی ناراحتم"
+        )
+        state = self.runtime.snapshot(now=1000)
+        self.assertFalse(any(item["kind"] == "kira_emotion" for item in state["memories"]))
+
     def test_negative_emotional_reply_text_is_saved_as_emotional_memory(self):
         self.runtime.on_reply(
             ["sad"], 70, now=1000, text="از اینکه تنها ماندی ناراحتم"
