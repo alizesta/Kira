@@ -29,10 +29,9 @@ def front_only(fn):
     @wraps(fn)
     def wrapper(self, *args, **kwargs):
         context = getattr(self, "context", None)
-        if context is not None:
-            if context.is_background_session:
-                return None
-        elif self.cur is not self.front:
+        if context is None:
+            raise RuntimeError("front_only handlers require a WindowPresentationContext")
+        if context.is_background_session:
             return None
         return fn(self, *args, **kwargs)
 
