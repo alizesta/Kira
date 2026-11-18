@@ -208,6 +208,7 @@ class CharacterDecisionTests(unittest.TestCase):
         self.assertEqual(snapshot["personality_traits"], ren_traits)
 
     def test_runtime_initialization_failure_does_not_abort_prompt_generation(self):
+        self.addCleanup(mood._RUNTIME_INIT_FAILURES.discard, "ren")
         with mock.patch.object(mood, "_current_character_id", return_value="ren"), \
              mock.patch.object(mood, "_runtime_for", side_effect=OSError("runtime unavailable")):
             with self.assertLogs("kira.mood", level="ERROR"):

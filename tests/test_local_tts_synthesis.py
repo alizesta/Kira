@@ -166,6 +166,27 @@ class LocalPiperSynthesisTests(unittest.TestCase):
         self.assertEqual(local_voice._tts_model_path, str(second))
         self.assertEqual(local_voice._tts_model_label, str(second))
 
+    def test_memory_pressure_failed_switch_restores_previous_voice(self):
+        first = Path(tempfile.gettempdir()) / "voice-memory-restore-old.onnx"
+        second = Path(tempfile.gettempdir()) / "voice-memory-restore-new.onnx"
+        _FakePiperVoice.memory_fail_once.add(str(second))
+        _FakePiperVoice.fail_paths.add(str(second))
+        with mock.patch.object(
+            local_voice, "_resolve_tts_model_path",
+            side_effect=[(first, str(first)), (second, str(second))],
+        ):
+            local_voice.synthesize_persian("اول", model_path=str(first))
+            with self.assertRaisesRegex(RuntimeError, "previous voice restored"):
+                local_voice.synthesize_persian("دوم", model_path=str(second))
+
+        self.assertEqual(
+            _FakePiperVoice.loads,
+            [str(first), str(second), str(second), str(first)],
+        )
+        self.assertIs(local_voice._tts, _FakePiperVoice.instances[str(first)])
+        self.assertEqual(local_voice._tts_model_path, str(first))
+        self.assertEqual(local_voice._tts_model_label, str(first))
+
     def test_replaced_model_at_same_path_is_reloaded(self):
         with tempfile.TemporaryDirectory() as temp:
             model = Path(temp) / "mutable.onnx"
