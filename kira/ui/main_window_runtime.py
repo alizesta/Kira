@@ -792,7 +792,9 @@ class RuntimeMixin:
             self.add_chat("system", self.t("mem_cleared") + " (اگر اشتباه بود: تنظیمات ← عمومی ← «بازگرداندن آخرین پاک‌سازی».)")
 
     def apply_mood_to_avatar(self):
-        """A quick avatar reaction that matches how he seems right now (sad -> soft, joke -> laughing ...). Never raises."""
+        """A quick front-session avatar reaction; background Sessions never drive the visible avatar."""
+        if self.cur is not self.front:
+            return
         try:
             hint = mood.avatar_hint()
             eid = self.director.library.resolve_name(hint[0]) if hint else None

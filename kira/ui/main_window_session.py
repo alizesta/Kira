@@ -104,8 +104,8 @@ class SessionMixin:
         prev, prev_cid = self.cur, self.settings.get("active_character_id", "kira")
         self.cur = session
         self.settings["active_character_id"] = session.cid
-        profile = self.character_service.all_profiles(self.settings).get(session.cid) or {}
         try:
+            profile = self.character_service.all_profiles(self.settings).get(session.cid) or {}
             with self.mood_service.character_scope(
                 session.cid, self.character_traits(session.cid, profile)
             ):
@@ -177,7 +177,7 @@ class SessionMixin:
         return traits
 
     def _sync_mood_character(self):
-        """Point the persisted mood at the character in front so its neon chips and prompt follow that profile."""
+        """Refresh one character's baseline traits without changing the visible/default Mood context."""
         cid = getattr(getattr(self, "cur", None), "cid", "") or self.character_service.active_id(self.settings)
         profile = self.character_service.all_profiles(self.settings).get(cid) or {}
         try:
