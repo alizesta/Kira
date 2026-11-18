@@ -23,8 +23,9 @@ _asr_lock = threading.RLock()
 _tts_lock = threading.RLock()
 _asr = None
 _asr_model_name = None
-_tts = None
-_custom_tts = {}  # Cache for user-selected Piper ONNX voices.
+_tts = None  # Keep only the currently selected voice in memory.
+_tts_model_path = ""
+_tts_model_label = ""
 _asr_error = None
 _tts_error = None
 
@@ -38,16 +39,13 @@ def asr_ready() -> bool:
 
 
 def tts_ready(model_path="") -> bool:
+    """Check the local Piper runtime and, for custom voices, the selected ONNX file."""
     if model_path:
-        if not Path(str(model_path)).is_file():
-            return False
-        try:
-            import piper  # noqa: F401
-            return True
-        except ImportError:
+        path = Path(str(model_path)).expanduser()
+        if not path.is_file() or path.suffix.lower() != ".onnx":
             return False
     try:
-        import persian_speech_runtime  # noqa: F401
+        import piper  # noqa: F401
         return True
     except ImportError:
         return False
@@ -142,23 +140,73 @@ def transcribe(audio, sample_rate=16000, language="fa", prompt="", model_name="Q
         return str(text or "").strip()
 
 
-def preload_tts(model_path="") -> bool:
-    """Load the selected Piper voice in the background before the first reply."""
-    global _tts
+def _resolve_tts_model_path(model_path="") -> tuple[Path, str]:
+    """Resolve either the selected Piper ONNX file or Kira's bundled Mana model.
+
+    Keep the Hugging Face snapshot path (do not resolve its Windows symlink); Piper
+    can fail to open a resolved blob target on Windows.
+    """
     selected = str(model_path or "").strip()
-    with _tts_lock:
-        if selected:
-            path = Path(selected).expanduser().absolute()
-            if not path.is_file() or path.suffix.lower() != ".onnx":
-                return False
-            if str(path) not in _custom_tts:
-                from piper import PiperVoice
-                _custom_tts[str(path)] = PiperVoice.load(str(path))
-            return True
-        if _tts is None:
-            from persian_speech_runtime import PiperSpeechEngine
-            _tts = PiperSpeechEngine()
+    if selected:
+        path = Path(selected).expanduser().absolute()
+        if not path.is_file() or path.suffix.lower() != ".onnx":
+            raise RuntimeError(f"Custom Piper model does not exist: {path}")
+        if not Path(str(path) + ".json").is_file():
+            raise RuntimeError(f"Custom Piper model configuration is missing: {path}.json")
+        return path, str(path)
+
+    repo_id = "MahtaFetrat/Mana-Persian-Piper"
+    filename = "fa_IR-mana-medium.onnx"
+    cache_dir = os.environ.get("HF_HUB_CACHE") or str(Path(_DATA_ROOT) / "huggingface" / "hub")
+    Path(cache_dir).mkdir(parents=True, exist_ok=True)
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as exc:
+        raise RuntimeError("برای صدای پیش‌فرض Mana به huggingface_hub نیاز است.") from exc
+
+    # Reuse the model already prepared by Kira when offline; download only when
+    # the snapshot is genuinely absent or incomplete.
+    try:
+        snapshot = snapshot_download(repo_id=repo_id, cache_dir=cache_dir, local_files_only=True)
+    except Exception:
+        snapshot = snapshot_download(repo_id=repo_id, cache_dir=cache_dir, local_files_only=False)
+    path = Path(snapshot) / filename
+    if not path.is_file():
+        raise RuntimeError(f"مدل پیش‌فرض Mana در snapshot پیدا نشد: {path}")
+    if not Path(str(path) + ".json").is_file():
+        raise RuntimeError(f"فایل پیکربندی مدل Mana پیدا نشد: {path}.json")
+    return path, "bundled"
+
+
+def _load_tts_voice(model_path=""):
+    """Load and cache one active Piper voice, bounded to avoid retaining multiple ONNX models."""
+    global _tts, _tts_model_path, _tts_model_label
+    path, label = _resolve_tts_model_path(model_path)
+    key = str(path)
+    if _tts is not None and _tts_model_path == key:
+        return _tts
+
+    from piper import PiperVoice
+    voice = PiperVoice.load(str(path))
+    # Swap only after a successful load, so a failed model change does not destroy
+    # the previously working voice.
+    _tts = voice
+    _tts_model_path = key
+    _tts_model_label = label
+    return voice
+
+
+def preload_tts(model_path="") -> bool:
+    """Load the selected local Piper ONNX voice before the first spoken response."""
+    global _tts_error
+    try:
+        with _tts_lock:
+            _load_tts_voice(model_path)
+            _tts_error = None
         return True
+    except Exception as exc:
+        _tts_error = exc
+        raise RuntimeError(f"Piper preload failed: {type(exc).__name__}: {exc}") from exc
 
 
 def warmup_tts(model_path="") -> bool:
@@ -172,70 +220,40 @@ def warmup_tts(model_path="") -> bool:
 
 
 def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
-    """Return WAV from a chosen Piper ONNX voice or the bundled Persian engine."""
-    global _tts, _tts_error
+    """Synthesize Persian speech with Piper's native timing controls.
+
+    Piper's length_scale changes phoneme duration directly. Altering only the WAV
+    sample-rate header changes both speed and pitch, so the active voice now uses
+    the same native synthesis path for Mana and user-selected ONNX models.
+    """
+    global _tts_error
     clean = str(text or "").strip()
     if not clean:
         return b""
     selected = str(model_path or "").strip()
-    with _tts_lock:
-        if selected:
-            # Preserve the Hugging Face snapshot path. Resolving its Windows cache
-            # symlink can point at a blob target that Piper cannot open.
-            path = Path(selected).expanduser().absolute()
-            if not path.is_file() or path.suffix.lower() != ".onnx":
-                raise RuntimeError(f"Custom Piper model does not exist: {path}")
-            try:
-                voice = _custom_tts.get(str(path))
-                if voice is None:
-                    from piper import PiperVoice
-                    voice = PiperVoice.load(str(path))
-                    _custom_tts.clear()
-                    _custom_tts[str(path)] = voice
-                output = io.BytesIO()
-                with wave.open(output, "wb") as wav_file:
-                    voice.synthesize_wav(clean, wav_file)
-                payload = output.getvalue()
-                _tts_error = None
-            except Exception as exc:
-                _tts_error = exc
-                raise RuntimeError(f"Custom Piper synthesis failed: {type(exc).__name__}: {exc}") from exc
-        else:
-            if _tts is None:
-                try:
-                    from persian_speech_runtime import PiperSpeechEngine
-                    _tts = PiperSpeechEngine()
-                    _tts_error = None
-                except Exception as exc:
-                    _tts_error = exc
-                    raise RuntimeError(f"Persian Piper load failed: {type(exc).__name__}: {exc}") from exc
-            try:
-                payload = _tts.stream(clean)
-            except Exception as exc:
-                raise RuntimeError(f"Persian Piper synthesis failed: {type(exc).__name__}: {exc}") from exc
+    speed = max(0.5, min(1.5, 1.0 + float(rate or 0) / 100.0))
+
+    try:
+        with _tts_lock:
+            voice = _load_tts_voice(selected)
+            from piper import SynthesisConfig
+
+            output = io.BytesIO()
+            config = SynthesisConfig(length_scale=1.0 / speed)
+            with wave.open(output, "wb") as wav_file:
+                voice.synthesize_wav(clean, wav_file, syn_config=config)
+            payload = output.getvalue()
+            _tts_error = None
+    except Exception as exc:
+        _tts_error = exc
+        model_label = selected or "Mana Persian Piper"
+        raise RuntimeError(
+            f"Piper synthesis failed for {model_label}: {type(exc).__name__}: {exc}"
+        ) from exc
+
     if not isinstance(payload, (bytes, bytearray)) or not payload.startswith(b"RIFF"):
         raise RuntimeError("Persian Piper returned invalid WAV data")
-    # Piper exposes a stable WAV stream. Adjust its playback sample rate so per-character
-    # speed also applies when the selected offline voice is used (pitch changes slightly).
-    speed = max(0.5, min(1.5, 1.0 + float(rate or 0) / 100.0))
-    if abs(speed - 1.0) > 0.001:
-        try:
-            with wave.open(io.BytesIO(payload), "rb") as source:
-                params = source.getparams()
-                frames = source.readframes(source.getnframes())
-            output = io.BytesIO()
-            with wave.open(output, "wb") as target:
-                target.setnchannels(params.nchannels)
-                target.setsampwidth(params.sampwidth)
-                target.setframerate(max(8000, min(96000, round(params.framerate * speed))))
-                target.setcomptype(params.comptype, params.compname)
-                target.writeframes(frames)
-            payload = output.getvalue()
-        except (wave.Error, OSError, ValueError):
-            pass
     return bytes(payload)
-
-
 
 
 def _ensure_pillow_compatible() -> None:
@@ -361,8 +379,8 @@ def status(model_path="") -> dict:
         "tts_installed": tts_ready(model_path),
         "asr_loaded": _asr is not None,
         "asr_model": _asr_model_name or "",
-        "tts_loaded": _tts is not None or bool(_custom_tts),
-        "tts_model": next(iter(_custom_tts), "") or ("bundled" if _tts is not None else ""),
+        "tts_loaded": _tts is not None,
+        "tts_model": _tts_model_label if _tts is not None else "",
         "asr_error": str(_asr_error)[:240] if _asr_error else "",
         "tts_error": str(_tts_error)[:240] if _tts_error else "",
     }

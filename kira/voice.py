@@ -340,7 +340,7 @@ class Speaker(QObject):
         if not local_voice.tts_ready(model_path):
             raise RuntimeError("موتور TTS محلی Piper آماده نیست؛ مدل محلی را از بخش Local نصب یا انتخاب کن.")
         rate = max(-50, min(50, int(self.settings.get("voice_rate", 0)) + s.rate))
-        cache_key = hashlib.sha1(f"local-piper-v3|{model_path}|{rate}|{text}".encode("utf-8")).hexdigest()[:20]
+        cache_key = hashlib.sha1(f"local-piper-v4|{model_path}|{rate}|{text}".encode("utf-8")).hexdigest()[:20]
         tag = f"kira_{s.gen}_{idx}"
         base = str(CACHE_DIR) if s.cache else self._tmp
         wav_path, meta_path = os.path.join(base, cache_key + ".wav"), os.path.join(base, cache_key + ".json")

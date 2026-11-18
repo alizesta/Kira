@@ -58,10 +58,11 @@ def prepare_asr() -> bool:
 
 def prepare_tts() -> bool:
     try:
-        from persian_speech_runtime import PiperSpeechEngine
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from kira import local_voice
         print("Preparing Mana Persian Piper and generating a short test WAV ...")
-        engine = PiperSpeechEngine()
-        wav = engine.stream("سلام. صدای فارسی محلی کیرا آماده است.")
+        wav = local_voice.synthesize_persian("سلام. صدای فارسی محلی کیرا آماده است.")
         if not isinstance(wav, (bytes, bytearray)) or not wav.startswith(b"RIFF"):
             raise RuntimeError("Piper did not return valid WAV bytes")
         out = Path(os.environ["KIRA_DATA_DIR"]) / "voice_cache" / "local_persian_setup_test.wav"
