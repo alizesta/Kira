@@ -469,7 +469,7 @@ class ChatMixin:
             last_user = next((m.get("content", "") for m in reversed(history) if m.get("role") == "user"), "")
             self._brain_user_text = str(last_user)
             self._brain_mode_name = mode.name if mode else None
-            self._brain = brain.decide(last_user, mode, self._tool_plan, has_att, self.tool_agent.tasks.active() is not None, self.settings)
+            self._brain = brain.decide(last_user, mode, self._tool_plan, has_att, self.tool_agent.tasks.active(self.cur.cid) is not None, self.settings)
         except Exception:                                         # noqa: BLE001
             self._brain = brain.Decision()
 

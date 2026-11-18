@@ -1,12 +1,14 @@
 """Regression tests for per-character ToolAgent and system-access state."""
 from contextvars import ContextVar
 from tempfile import TemporaryDirectory
+from pathlib import Path
 from types import SimpleNamespace
 import unittest
 
 from kira.tools.agent import Pending, ToolAgent, ToolPlan
 from kira.tools.sysaccess import AccessManager
 from kira.webintel.session import CANCEL, DEFAULT_BUDGET, SessionScopedResearchStore
+from kira.tools.tasks import TaskStore
 
 
 class ToolAgentSessionIsolationTests(unittest.TestCase):
@@ -117,6 +119,29 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
             self.assertNotIn("kira", self.agent._pending_new_sessions)
             self.assertIn("ren", self.agent._pending_by_session)
             self.assertIn("ren", self.agent._pending_new_sessions)
+
+    def test_task_store_active_history_and_clear_are_character_scoped(self):
+        with TemporaryDirectory() as temp:
+            root = Path(temp)
+            store = TaskStore(root)
+            kira = store.new("Kira project task", session_id="kira")
+            ren = store.new("Ren research task", session_id="ren")
+            mika = store.new("Mika note", session_id="mika")
+
+            self.assertIs(store.active("kira"), kira)
+            self.assertIs(store.active("ren"), ren)
+            self.assertIs(store.active("mika"), mika)
+
+            store.save()
+            restored = TaskStore(root)
+            self.assertEqual(restored.active("kira").goal, "Kira project task")
+            self.assertEqual(restored.active("ren").goal, "Ren research task")
+            self.assertEqual(restored.active("mika").goal, "Mika note")
+
+            restored.clear("ren")
+            self.assertIsNone(restored.active("ren"))
+            self.assertEqual(restored.active("kira").goal, "Kira project task")
+            self.assertEqual(restored.active("mika").goal, "Mika note")
 
     def test_webintel_research_storage_is_independent_and_persistent_per_character(self):
         owner = ContextVar("test_webintel_owner", default="")

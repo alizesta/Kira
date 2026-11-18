@@ -80,6 +80,11 @@ class ApplicationPolicyWiringTests(unittest.TestCase):
         lifecycle = source("kira/ui/main_window_lifecycle.py")
         self.assertIn("self.runtime_settings_application_service.apply(", lifecycle)
 
+    def test_tool_task_presence_is_scoped_to_the_active_character(self):
+        chat = source("kira/ui/main_window_chat.py")
+        self.assertIn("self.tool_agent.tasks.active(self.cur.cid) is not None", chat)
+        self.assertNotIn("self.tool_agent.tasks.active() is not None", chat)
+
     def test_character_profile_and_voice_mutations_are_service_owned(self):
         ui = source("kira/ui/main_window_character_settings.py")
         self.assertIn("self.character_service.create_profile(", ui)
