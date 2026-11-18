@@ -41,6 +41,8 @@ class SkillManifest:
         manifest_path = directory / "manifest.json"
         if not manifest_path.is_file() or manifest_path.is_symlink():
             raise SkillError("Skill must contain a regular manifest.json file.")
+        if manifest_path.stat().st_size > MAX_FILE_BYTES:
+            raise SkillError("manifest.json exceeds the 256 KiB limit.")
         try:
             raw = json.loads(manifest_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -109,6 +111,11 @@ class SkillRegistry:
         source_path = Path(source).expanduser()
         if not source_path.exists():
             raise SkillError("Skill source does not exist.")
+        resolved_source = source_path.resolve()
+        if resolved_source == self.root or self.root.is_relative_to(resolved_source):
+            raise SkillError("Skill source cannot be the library itself or a parent containing it.")
+        if resolved_source.is_relative_to(self.root):
+            raise SkillError("Install from outside the shared Skill library.")
         staging = Path(tempfile.mkdtemp(prefix=".skill-install-", dir=str(self.root)))
         try:
             payload = staging / "payload"
