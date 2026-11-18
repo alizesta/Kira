@@ -392,14 +392,21 @@ class RuntimeController(WindowFeatureController):
             ok = outcome.ok
         else:
             ok = True
-        self.context.services.memory_service.observe(self.context.state.cur.cid, role, content)
+        proactive_initiative = (
+            isinstance(metadata, dict) and metadata.get("proactive") == "initiative"
+        )
+        if not proactive_initiative:
+            self.context.services.memory_service.observe(self.context.state.cur.cid, role, content)
         try:
-            self.feature_controller("session")._sync_mood_character()
-            if role == "user":
+            if proactive_initiative:
+                pass  # proactive prompts are not voice samples or emotional replies
+            else:
+                self.feature_controller("session")._sync_mood_character()
+            if not proactive_initiative and role == "user":
                 mood.on_user_message(content)
                 if self.context.state.cur is self.context.state.front:
                     self.apply_mood_to_avatar()
-            elif role == "assistant":
+            elif not proactive_initiative and role == "assistant":
                 meta = self.context.adapters.director.parse_reply(content)
                 if meta is not None:
                     mood.on_reply(meta.emotions, meta.intensity)
