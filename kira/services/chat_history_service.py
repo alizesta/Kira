@@ -67,8 +67,13 @@ class SqliteChatHistoryService:
     def close_conversation(self, conversation_id):
         return self._persistence.close_conversation(conversation_id)
 
-    def delete_conversation(self, conversation_id):
-        return self._persistence.delete_conversation(conversation_id)
+    def delete_conversation(self, conversation_id, *, expected_status: str | None = None):
+        return self._persistence.delete_conversation(
+            conversation_id, expected_status=expected_status
+        )
+
+    def update_conversation_lifecycle(self, changes):
+        return self._persistence.update_conversation_lifecycle(changes)
 
     def update_stream_message(self, message_id, content, **options):
         return self._persistence.update_stream_message(message_id, content, **options)
