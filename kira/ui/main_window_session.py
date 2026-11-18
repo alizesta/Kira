@@ -1,6 +1,5 @@
 """Session behavior mixin for the desktop window."""
 from .main_window_session_support import (
-    HybridRouter,
     KIRA_PROFILE,
     QApplication,
     QColor,
