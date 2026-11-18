@@ -6,6 +6,7 @@ from kira.character.initiative import (
     MAX_CHECKINS_PER_DAY,
     InitiativeEngine,
     build_checkin_message,
+    initiative_history_state,
 )
 
 
@@ -211,6 +212,60 @@ class InitiativeEligibilityTests(unittest.TestCase):
                 self.engine.mark_sent(value)
         self.assertEqual(self.engine.mark_sent(self.now), self.now)
         self.assertEqual(self.engine.last_initiative, self.now)
+
+
+class InitiativeHistoryTests(unittest.TestCase):
+    def test_settings_and_runtime_events_share_one_daily_count(self):
+        now = 20 * DAY
+        state = initiative_history_state(
+            [{"at": now - 10, "memory_id": "event-1"}],
+            [{"name": "proactive_check_in", "at": now - 10, "detail": "event-1"}],
+            last_memory_id="event-1",
+            last_sent_at=now - 10,
+            now=now,
+        )
+        self.assertEqual(state["sent_today"], 1)
+        self.assertEqual(state["excluded_ids"], {"event-1"})
+
+    def test_recent_history_and_runtime_marker_enforce_daily_cap(self):
+        now = 20 * DAY
+        state = initiative_history_state(
+            [{"at": now - 100, "memory_id": "one"}],
+            [{"name": "proactive_check_in", "at": now - 50, "detail": "two"}],
+            last_memory_id="two",
+            last_sent_at=now - 50,
+            now=now,
+        )
+        self.assertEqual(state["sent_today"], 2)
+        self.assertEqual(state["excluded_ids"], {"one", "two"})
+
+    def test_expired_malformed_and_unrelated_events_are_ignored(self):
+        now = 20 * DAY
+        state = initiative_history_state(
+            [
+                {"at": now - 11 * DAY, "memory_id": "expired"},
+                {"at": "bad", "memory_id": "malformed"},
+                {"at": now - 20, "memory_id": "valid"},
+            ],
+            [
+                {"name": "user_message", "at": now - 10, "detail": "not-checkin"},
+                {"name": "proactive_check_in", "at": now + 120, "detail": "future"},
+            ],
+            now=now,
+        )
+        self.assertEqual(state["sent_today"], 1)
+        self.assertEqual(state["history"], [{"at": now - 20, "memory_id": "valid"}])
+        self.assertEqual(state["excluded_ids"], {"valid"})
+
+    def test_previous_local_day_does_not_consume_today_limit(self):
+        now = 20 * DAY
+        yesterday = now - DAY
+        state = initiative_history_state(
+            [{"at": yesterday, "memory_id": "yesterday"}],
+            now=now,
+        )
+        self.assertEqual(state["sent_today"], 0)
+        self.assertIn("yesterday", state["excluded_ids"])
 
 
 class InitiativeMessageTests(unittest.TestCase):
