@@ -1,5 +1,7 @@
 """Qt-free tests for Web Search application policy."""
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from kira.app.web_search import WebSearchApplicationService
 
@@ -58,6 +60,63 @@ class WebSearchApplicationServiceTests(unittest.TestCase):
             self.service.make_search_query([], "literal Persian query", client),
             "literal Persian query",
         )
+
+    def test_plan_request_uses_application_policy_and_respects_tool_precedence(self):
+        with patch(
+            "kira.app.web_search.websearch.plan",
+            return_value=("automatic query", False),
+        ) as planner:
+            self.assertEqual(
+                self.service.plan_request("ordinary message", {"web_search": True}),
+                ("automatic query", False),
+            )
+            self.assertEqual(
+                self.service.plan_request(
+                    "open a local file",
+                    {"web_search": True},
+                    SimpleNamespace(strong=True, web=False),
+                ),
+                (None, False),
+            )
+            self.assertEqual(
+                self.service.plan_request(
+                    "research this",
+                    {"web_search": True},
+                    SimpleNamespace(strong=False, web=True),
+                ),
+                (None, False),
+            )
+            self.assertEqual(planner.call_count, 3)
+
+    def test_plan_request_obeys_disabled_and_slash_command_rules(self):
+        with patch(
+            "kira.app.web_search.websearch.plan",
+            return_value=("explicit query", True),
+        ) as planner:
+            self.assertEqual(
+                self.service.plan_request("normal", {"web_search": False}),
+                (None, False),
+            )
+            planner.assert_not_called()
+            self.assertEqual(
+                self.service.plan_request("/web exact phrase", {"web_search": False}),
+                ("explicit query", True),
+            )
+            planner.assert_called_once_with("/web exact phrase")
+
+    def test_explicit_web_request_bypasses_tool_precedence_and_caps_query(self):
+        literal = "  " + ("literal " * 60) + "  "
+        with patch("kira.app.web_search.websearch.plan") as planner:
+            query, forced = self.service.plan_request(
+                literal,
+                {"web_search": False},
+                SimpleNamespace(strong=True, web=True),
+                force_web=True,
+            )
+
+        self.assertEqual(query, literal.strip()[:300])
+        self.assertTrue(forced)
+        planner.assert_not_called()
 
     def test_web_search_options_preserve_literal_query_and_create_followup_rewrite(self):
         client = _ChatClient("resolved query")
