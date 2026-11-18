@@ -1,7 +1,6 @@
 """Integration tests for lifecycle-managed Chat application service registration."""
 from __future__ import annotations
 
-import json
 import unittest
 from pathlib import Path
 
@@ -15,6 +14,9 @@ from kira.app.module_manager import ModuleManager, ModuleState
 from kira.app.organization_application import ChatOrganizationService
 from kira.app.chat_search_application import ChatSearchService
 from kira.app.chat_transfer_application import ChatTransfer
+from kira.core.interfaces.application_ports import ChatApplicationPorts
+from kira.chat.application_service import ChatApplicationService
+from kira.chat.conversation_lifecycle import ConversationLifecycleService
 
 
 class MemoryChatHistory:
@@ -154,6 +156,7 @@ class FeatureModuleRegistrationTests(unittest.TestCase):
 
     def test_new_use_cases_are_registered_with_chat_history_dependencies(self):
         expected = {
+            "conversation_lifecycle",
             "conversation_organization",
             "chat_search",
             "chat_transfer",
@@ -164,6 +167,10 @@ class FeatureModuleRegistrationTests(unittest.TestCase):
                 APPLICATION_FEATURE_DEPENDENCIES[module_id],
                 ("chat_history",),
             )
+        self.assertEqual(
+            APPLICATION_FEATURE_DEPENDENCIES["chat_application"],
+            ("chat_history", "conversation_lifecycle"),
+        )
 
     def test_each_use_case_resolves_the_same_lifecycle_managed_repository(self):
         self.manager.start("conversation_organization")
@@ -220,6 +227,27 @@ class FeatureModuleRegistrationTests(unittest.TestCase):
         preview = transfer.preview_import(destination)
         self.assertTrue(preview.valid, preview.errors)
         self.assertEqual(preview.conversation_count, 1)
+
+    def test_chat_application_factory_receives_the_shared_lifecycle_service(self):
+        self.manager.start("chat_application")
+        lifecycle = self.container.resolve("conversation_lifecycle_service")
+        factory = self.container.resolve("chat_application_service_factory")
+
+        self.assertIsInstance(lifecycle, ConversationLifecycleService)
+        ports = ChatApplicationPorts(
+            prompt_enricher=lambda prompt: prompt,
+            worker_factory=lambda **kwargs: None,
+            on_dispatch=lambda request: None,
+            on_event=lambda event: None,
+            schedule=lambda callback: callback(),
+            cancel_provider=lambda request, worker: None,
+        )
+        service = factory(ports)
+        try:
+            self.assertIsInstance(service, ChatApplicationService)
+            self.assertIs(service._conversation_lifecycle, lifecycle)
+        finally:
+            service.dispose()
 
     def test_starting_a_dependent_service_starts_persistence_first(self):
         self.manager.start("chat_transfer")
