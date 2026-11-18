@@ -1,4 +1,4 @@
-"""Character settings behavior mixin for the desktop window."""
+"""Character and appearance feature controller."""
 from .main_window_character_settings_support import (
     APP_NAME,
     AppearancePage,
