@@ -43,8 +43,10 @@ class ChatSearchService:
         except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError("batch_size must be a positive integer") from exc
         self._repository = repository
-        self._conversation_reader = conversation_reader or (
-            repository if callable(getattr(repository, "list_conversations", None)) else None
+        self._conversation_reader = (
+            conversation_reader
+            if conversation_reader is not None
+            else repository if callable(getattr(repository, "list_conversations", None)) else None
         )
 
     def search(self, request: ChatSearchRequest | str, **options: Any) -> ChatSearchPage:
