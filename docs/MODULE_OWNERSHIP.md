@@ -185,13 +185,16 @@ The legacy imports `kira/chat/organization.py`, `kira/chat/search.py` and `kira/
 
 The desktop Composition Root registers the application service/factory graph
 through `kira/app/feature_modules.py` and `ServiceModule`. Managed registrations
-cover Memory, Mood, Character Profile, Chat History, Web Search, Game Mode,
-Provider, Coding Agent, Runtime Settings, Vision, and the Chat/Session/Voice
-composition factories.
+cover Memory, Mood, Character Profile, Chat History, Conversation Organization,
+Chat Search, Chat Transfer, Web Search, Shared Skills, Game Mode, Provider,
+Coding Agent, Runtime Settings, Vision, and the Chat/Session/Voice composition
+factories.
 
 The graph declares the dependencies that affect startup and shutdown ordering:
-Chat Application depends on Chat History; Session Application depends on Chat
-Application; Vision depends on Game Mode. The manager starts dependencies first
+Conversation Organization, Chat Search, Chat Transfer and Chat Application
+depend on Chat History; Session Application depends on Chat Application; Vision
+depends on Game Mode. Chat Transfer additionally accepts the optional
+Core-owned `ChatTransferFilePort` supplied by the outer composition root. The manager starts dependencies first
 and disposes created modules in reverse creation order. A service that is stopped
 can be restarted using the same instance; disable/re-enable creates a fresh one.
 Partial start failures receive stop/dispose cleanup and do not leave a DI key
@@ -202,10 +205,15 @@ module stop. Vision and Game Mode clear transient policy state when stopped.
 The concrete ChatApplicationService, SessionApplicationService and
 VoiceApplicationService instances are constructed with window-scoped callback
 ports implemented by UI adapters and are therefore window-scoped, not
-application singletons. Organization, Search and Transfer are use-case services
-with injected Core ports; their final ModuleManager registration and bootstrap
-wiring is coordinated with Flow 4 rather than duplicated in Flow 2. Their contracts (`ProviderWorkerPort`, `SpeakerPort`,
-and `VoiceListenerPort`) live in Core and contain no Qt types.
+application singletons. Organization, Search and Transfer are now application-wide, lifecycle-managed
+services registered by `feature_modules.py` and resolved by Bootstrap. Each
+shares the Chat History persistence adapter; Organization also receives the
+shared Chat event publisher, and Search receives the explicit Conversation
+status reader. Transfer receives the optional file adapter through the
+`transfer_file_port` registration argument. The original Chat modules remain
+compatibility facades. The concrete Chat/Session/Voice instances still use
+window-scoped callback ports. Their contracts (`ProviderWorkerPort`,
+`SpeakerPort`, and `VoiceListenerPort`) live in Core and contain no Qt types.
 The window owns their two-phase graceful shutdown. It first rejects new Chat work
 and cancels pending/running requests without closing the command registry or
 AttachmentManager. It then drains provider/search/attachment/vision/game-audio
