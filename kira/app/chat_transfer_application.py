@@ -11,6 +11,8 @@ from typing import Any, Mapping
 
 from ..core.interfaces.transfer import ChatTransferRepositoryPort
 from ..domain.transfer import (
+    ALLOWED_ROLES,
+    ALLOWED_STATUSES,
     EXPORT_VERSION,
     MAX_CONTENT_CHARS,
     MAX_CONVERSATIONS,
@@ -196,10 +198,10 @@ class ChatTransfer:
                 if type(mid) is not int or mid < 1: raise TransferError(f"conversations[{ci}].messages[{mi}].id must be positive integer")
                 if mid in seen_message_ids: raise TransferError(f"Duplicate message ID in export: {mid}")
                 seen_message_ids.add(mid)
-                if not isinstance(role, str) or role not in _ALLOWED_ROLES or not isinstance(content, str) or len(content) > MAX_CONTENT_CHARS:
+                if not isinstance(role, str) or role not in ALLOWED_ROLES or not isinstance(content, str) or len(content) > MAX_CONTENT_CHARS:
                     raise TransferError(f"conversations[{ci}].messages[{mi}] has invalid role/content")
                 msg_status = msg.get("status", "complete")
-                if not isinstance(msg_status, str) or msg_status not in _ALLOWED_STATUSES: raise TransferError(f"conversations[{ci}].messages[{mi}].status is invalid")
+                if not isinstance(msg_status, str) or msg_status not in ALLOWED_STATUSES: raise TransferError(f"conversations[{ci}].messages[{mi}].status is invalid")
                 if msg.get("conversation_id", conv_id) != conv_id: raise TransferError("Message conversation reference mismatch")
                 supplied_character = msg.get("character_id", char_id)
                 if not isinstance(supplied_character, str) or supplied_character.strip().lower() != char_id.strip().lower():
