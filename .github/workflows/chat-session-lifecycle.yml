@@ -4,7 +4,7 @@ on:
   push:
     branches: [new-main]
   pull_request:
-    branches: [new-main]
+    branches: [new-main, architecture/domain-application-contracts]
     paths:
       - "kira/chat/persistence.py"
       - "kira/chat/organization.py"
