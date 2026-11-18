@@ -54,5 +54,51 @@ class EvidenceMemoryRecallTests(unittest.TestCase):
         self.assertTrue(any("Evidence-memory interest ranking failed" in line for line in ranking_logs.output))
 
 
+    def test_manual_memory_write_propagates_storage_failure(self):
+        with mock.patch.object(em, "_db", side_effect=RuntimeError("synthetic write failure")):
+            with self.assertLogs("kira.evidence_memory", level="ERROR") as captured:
+                with self.assertRaisesRegex(RuntimeError, "synthetic write failure"):
+                    em.add_manual("manual fact")
+        self.assertTrue(any("Could not store manually edited evidence memory" in line for line in captured.output))
+
+    def test_persona_delete_propagates_storage_failure(self):
+        with mock.patch.object(em, "_db", side_effect=RuntimeError("synthetic delete failure")):
+            with self.assertLogs("kira.evidence_memory", level="ERROR") as captured:
+                with self.assertRaisesRegex(RuntimeError, "synthetic delete failure"):
+                    em.delete_by_persona_id("persona-1")
+        self.assertTrue(any("Could not delete evidence" in line for line in captured.output))
+
+    def test_persona_update_does_not_fallback_after_lookup_failure(self):
+        with mock.patch.object(em, "_db", side_effect=RuntimeError("synthetic lookup failure")):
+            with self.assertLogs("kira.evidence_memory", level="ERROR") as captured:
+                with self.assertRaisesRegex(RuntimeError, "synthetic lookup failure"):
+                    em.update_by_persona_id("old-id", "new-id", "updated memory")
+        self.assertTrue(any("Could not inspect evidence" in line for line in captured.output))
+
+    def test_forget_all_propagates_storage_failure(self):
+        with mock.patch.object(em, "_db", side_effect=RuntimeError("synthetic clear failure")):
+            with self.assertLogs("kira.evidence_memory", level="ERROR") as captured:
+                with self.assertRaisesRegex(RuntimeError, "synthetic clear failure"):
+                    em.forget_all()
+        self.assertTrue(any("Could not clear evidence memory" in line for line in captured.output))
+
+    def test_extra_item_delete_propagates_storage_failure(self):
+        with mock.patch.object(em, "_db", side_effect=RuntimeError("synthetic delete failure")):
+            with self.assertLogs("kira.evidence_memory", level="ERROR") as captured:
+                with self.assertRaisesRegex(RuntimeError, "synthetic delete failure"):
+                    em.delete_extra("ev:fact-1")
+        self.assertTrue(any("Could not delete an extra" in line for line in captured.output))
+
+    def test_extra_item_update_is_atomic_when_reinsert_fails(self):
+        self.assertTrue(em.add_manual("original evidence fact"))
+        item = em.list_extra_items()[0]
+        with mock.patch.object(em, "_ingest", side_effect=RuntimeError("synthetic reinsert failure")):
+            with self.assertLogs("kira.evidence_memory", level="ERROR"):
+                with self.assertRaisesRegex(RuntimeError, "synthetic reinsert failure"):
+                    em.update_extra(item["id"], "replacement evidence fact")
+        remaining = em.list_extra_items()
+        self.assertEqual([entry["id"] for entry in remaining], [item["id"]])
+
+
 if __name__ == "__main__":
     unittest.main()
