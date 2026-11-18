@@ -52,13 +52,7 @@ class ChatProviderDispatcher:
     construction and stream callbacks are injected by the application.
     """
 
-    _SIGNALS = {
-        "tool_event": "tool_event",
-        "event": "event",
-        "chunk": "chunk",
-        "complete": "finished_ok",
-        "error": "failed",
-    }
+    _EVENTS = frozenset({"tool_event", "event", "chunk", "complete", "error"})
 
     def __init__(self, worker_factory: Callable[..., Any]):
         if not callable(worker_factory):
@@ -66,15 +60,18 @@ class ChatProviderDispatcher:
         self._worker_factory = worker_factory
 
     def start(self, *, callbacks: Mapping[str, Callable[..., Any]], **request: Any) -> Any:
-        unknown = set(callbacks) - set(self._SIGNALS)
+        unknown = set(callbacks) - self._EVENTS
         if unknown:
             raise ValueError(f"Unsupported provider callbacks: {', '.join(sorted(unknown))}")
         worker = self._worker_factory(**request)
-        for callback_name, signal_name in self._SIGNALS.items():
-            callback = callbacks.get(callback_name)
+        subscribe = getattr(worker, "subscribe", None)
+        start = getattr(worker, "start", None)
+        if not callable(subscribe) or not callable(start):
+            raise TypeError("provider workers must implement subscribe(event, callback) and start()")
+        for event_name, callback in callbacks.items():
             if callback is not None:
-                getattr(worker, signal_name).connect(callback)
-        worker.start()
+                subscribe(event_name, callback)
+        start()
         return worker
 
 
