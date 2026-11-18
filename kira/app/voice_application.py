@@ -143,6 +143,17 @@ class VoiceApplicationService(VoiceService):
         self.restart_after_stop = False
         self.on_finished(listener, was_current, restart_requested)
 
+    def apply_character_settings(self, settings: dict[str, Any], overrides=None):
+        """Apply only the supported per-character voice overrides to Speaker."""
+        effective = dict(settings)
+        effective.update({
+            key: value
+            for key, value in (overrides or {}).items()
+            if key in ("voice_rate", "voice_volume")
+        })
+        self.settings = effective
+        return effective
+
     @property
     def settings(self):
         return self.speaker.settings
