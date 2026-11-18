@@ -507,7 +507,9 @@ class SessionController(WindowFeatureController):
             with mood.character_scope(character_id, traits):
                 emotional = mood.current(now=now)
             age = float(emotional.get("age", 0.0))
-            if not math.isfinite(age) or age < 0:
+            # mood.current() uses 1e9 as its "no recorded user chat yet" sentinel.
+            # It is not a real idle duration and must never trigger unsolicited contact.
+            if not math.isfinite(age) or age < 0 or age >= 1e8:
                 return False
 
             with persona_memory.character_scope(character_id):
