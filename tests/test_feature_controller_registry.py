@@ -124,6 +124,56 @@ class FeatureControllerRegistryTests(unittest.TestCase):
         self.assertIn('self.feature_controller("runtime")', chat_source)
         self.assertIn('self.feature_controller("attachments_vision")', chat_source)
 
+    def test_feature_controllers_do_not_call_peer_methods_through_window_proxy(self):
+        root = Path(__file__).resolve().parents[1]
+        filenames = (
+            "main_window_attachments_vision.py",
+            "main_window_character_settings.py",
+            "main_window_chat.py",
+            "main_window_lifecycle.py",
+            "main_window_provider_settings.py",
+            "main_window_runtime.py",
+            "main_window_session.py",
+            "main_window_voice_settings.py",
+        )
+        trees = {
+            name: ast.parse((root / "kira/ui" / name).read_text(encoding="utf-8"))
+            for name in filenames
+        }
+        methods_by_file = {}
+        owners = {}
+        for name, tree in trees.items():
+            controller = next(
+                node for node in tree.body if isinstance(node, ast.ClassDef)
+            )
+            methods = {
+                node.name for node in controller.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+            methods_by_file[name] = methods
+            for method in methods:
+                owners.setdefault(method, set()).add(name)
+
+        violations = []
+        for name, tree in trees.items():
+            controller = next(
+                node for node in tree.body if isinstance(node, ast.ClassDef)
+            )
+            for node in ast.walk(controller):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                if not (
+                    isinstance(func, ast.Attribute)
+                    and isinstance(func.value, ast.Name)
+                    and func.value.id == "self"
+                ):
+                    continue
+                peer_owners = owners.get(func.attr, set()) - {name}
+                if peer_owners and func.attr not in methods_by_file[name]:
+                    violations.append((name, func.attr, sorted(peer_owners)))
+        self.assertEqual(violations, [])
+
     def test_composition_injects_attachment_workflow_into_chat_controller(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / "kira/ui/main_window_composition.py").read_text(encoding="utf-8")
