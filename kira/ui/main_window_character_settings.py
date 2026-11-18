@@ -335,6 +335,9 @@ class CharacterSettingsController(WindowFeatureController):
         initiative_settings = self.context.services.settings.get("character_initiative")
         if isinstance(initiative_settings, dict):
             initiative_settings.pop(cid, None)
+        initiative_history = self.context.services.settings.get("character_initiative_history")
+        if isinstance(initiative_history, dict):
+            initiative_history.pop(cid, None)
         self.feature_controller("session").sync_sessions()                           # its tab (and conversation view) goes away
         self.feature_controller("session").switch_session("kira")
         self.feature_controller("runtime").save_now()
