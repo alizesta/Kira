@@ -1,4 +1,7 @@
 """Runtime feature controller for the desktop window."""
+import logging
+
+_log = logging.getLogger(__name__)
 from .main_window_runtime_support import (
     ChatHistoryError,
     Listener,
@@ -255,6 +258,7 @@ class RuntimeController(WindowFeatureController):
         text = meta.text
         if not text.strip() and not res.get("stopped") and not res.get("interrupted") and not getattr(self.context.session, "_plain_retry", False):
             self.context.session._plain_retry = True            # model answered with a tag only: ask again without tags (counted as a retry)
+            self.context.adapters.director.event("response_failed")
             self.feature_controller("chat").start_worker(plain=True)
             return
         if not res.get("stopped") and not res.get("interrupted"):

@@ -406,7 +406,7 @@ def on_user_message(text, now=None) -> list[str]:
         if feedback:
             _runtime_for().observe_feedback(feedback, text=text, now=now)
     except Exception:
-        pass
+        _log.warning("Unable to update user mood or feedback", exc_info=True)
     return found
 
 
