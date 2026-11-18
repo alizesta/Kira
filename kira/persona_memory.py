@@ -158,7 +158,8 @@ def _load() -> dict:
         try:
             payload = json.loads(voice_path.read_text(encoding="utf-8"))
             samples = payload.get("voice", []) if isinstance(payload, dict) else []
-            data["voice"] = [str(x) for x in samples if isinstance(x, str)][-MAX_VOICE:]
+            if isinstance(samples, list):
+                data["voice"] = [sample for sample in samples if isinstance(sample, str)][-MAX_VOICE:]
         except FileNotFoundError:
             pass
         except (OSError, ValueError, TypeError):
