@@ -1,7 +1,7 @@
 import unittest
 from unittest import mock
 
-from kira.character.decision import BASE_TRAITS, BEHAVIOUR_GUIDES, DecisionEngine, decide as decide_character
+from kira.character.decision import BASE_TRAITS, BEHAVIOUR_GUIDES, EMOTION_BIAS, DecisionEngine, decide as decide_character
 from kira.character.initiative import InitiativeEngine
 from kira.character.learning import detect_feedback
 from kira.personas import CHARACTERS
@@ -321,3 +321,11 @@ class InitiativeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EmotionBiasMappingTests(unittest.TestCase):
+    def test_calm_emotion_preserves_all_intended_bias_components(self):
+        self.assertEqual(
+            EMOTION_BIAS["calm"],
+            {"gentle": 10, "focused": 4, "balanced": 6},
+        )
