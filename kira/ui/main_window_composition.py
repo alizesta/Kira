@@ -58,7 +58,7 @@ def initialize_main_window(
     vision_application_service=None,
     runtime_settings_application_service=None,
 ):
-    """Build the window's services, pages, signals and runtime adapters."""
+    """Build UI widgets and bind injected services to typed Qt callback adapters."""
     self = window
     # Application services are constructed and lifecycle-managed by app.bootstrap.
     # This module is only the outer Qt/UI adapter composition boundary.
