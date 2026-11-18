@@ -29,7 +29,7 @@ class CharacterProfilesTests(unittest.TestCase):
         mika_prompt = prompt_for({"active_character_id": "mika"})
         for prompt in (kira_prompt, ren_prompt, mika_prompt):
             self.assertIn("[CHARACTER TEMPERAMENT — STABLE BASELINE]", prompt)
-            self.assertIn("same model", prompt.lower())
+            self.assertIn("model, reasoning, tools, permissions, task", prompt)
             self.assertIn("safety remain exactly the same", prompt)
         self.assertIn("playful", kira_prompt)
         self.assertIn("observant and inquisitive", ren_prompt)
