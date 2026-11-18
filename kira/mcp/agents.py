@@ -76,6 +76,7 @@ class AgentHttp:
         timeout = max(0.01, float(self.cfg["timeout"]))
         response_queue: queue.Queue = queue.Queue(maxsize=1)
         response_lock = threading.Lock()
+        stop = threading.Event()
         active = {"response": None}
 
         def perform():
@@ -84,6 +85,8 @@ class AgentHttp:
                 with urllib.request.urlopen(req, timeout=timeout) as resp:
                     with response_lock:
                         active["response"] = resp
+                    if stop.is_set():
+                        return
                     raw = resp.read(MAX_AGENT_RESPONSE + 1)
                     if len(raw) > MAX_AGENT_RESPONSE:
                         outcome = (False, ToolError("پاسخ ایجنت از سقف اندازه مجاز بزرگ‌تر بود.", ERROR))
@@ -109,6 +112,7 @@ class AgentHttp:
         try:
             ok, value = response_queue.get(timeout=timeout)
         except queue.Empty as exc:
+            stop.set()
             with response_lock:
                 resp = active["response"]
             if resp is not None:
