@@ -13,7 +13,10 @@ from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 from uuid import uuid4
 
+from ..core.interfaces.application_services import ApplicationEventPublisherPort
 from ..core.interfaces.chat_history_service import ChatHistoryService
+from ..core.interfaces.context import PromptEnricherPort, SystemPromptBuilderPort
+from ..core.interfaces.conversation_lifecycle import ConversationLifecycleApplicationPort
 from ..core.interfaces.provider_worker import ProviderWorkerPort
 from ..domain.chat import (
     ApplicationEventKind,
@@ -60,19 +63,19 @@ class ChatApplicationService:
         self,
         *,
         persistence: ChatHistoryService,
-        system_prompt_builder: Callable[..., str],
+        system_prompt_builder: SystemPromptBuilderPort,
         worker_factory: Callable[..., ProviderWorkerPort],
         on_dispatch: Callable[[ChatApplicationRequest], Any],
         on_event: Callable[[ChatApplicationEvent], Any] | None = None,
-        event_publisher: Any | None = None,
-        prompt_enricher: Callable[[str], str] | None = None,
+        event_publisher: ApplicationEventPublisherPort | None = None,
+        prompt_enricher: PromptEnricherPort | None = None,
         schedule: Callable[[Callable[[], Any]], Any] | None = None,
         cancel_provider: Callable[[ChatApplicationRequest, ProviderWorkerPort | None], Any] | None = None,
         max_pending: int = 3,
         request_history_limit: int = 512,
         attachment_manager: AttachmentManager | None = None,
         command_registry: CommandRegistry | None = None,
-        conversation_lifecycle: Any | None = None,
+        conversation_lifecycle: ConversationLifecycleApplicationPort | None = None,
     ) -> None:
         if persistence is None:
             raise TypeError("persistence is required")
@@ -275,7 +278,7 @@ class ChatApplicationService:
             # A UI observer must not corrupt the request lifecycle.
             return
 
-    def set_event_publisher(self, publisher: Any | None) -> None:
+    def set_event_publisher(self, publisher: ApplicationEventPublisherPort | None) -> None:
         """Attach the shared typed notification publisher without transferring lifecycle ownership."""
         if publisher is not None and not callable(getattr(publisher, "publish", None)):
             raise TypeError("event publisher must expose publish()")
@@ -977,7 +980,7 @@ class ChatApplicationService:
             conversation_id, authorization=authorization
         )
 
-    def _require_conversation_lifecycle(self):
+    def _require_conversation_lifecycle(self) -> ConversationLifecycleApplicationPort:
         if self._conversation_lifecycle is None:
             raise RuntimeError("Conversation Lifecycle service is not configured")
         return self._conversation_lifecycle
