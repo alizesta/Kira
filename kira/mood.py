@@ -15,6 +15,7 @@ avatar a quick matching reaction. Nothing here touches routing.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import threading
@@ -25,6 +26,10 @@ from contextvars import ContextVar
 from .config import DATA_DIR
 from .emotion.runtime import EmotionalRuntime, EMOTIONS as RUNTIME_EMOTIONS, STATE_FILE
 from .character.learning import detect_feedback
+from .character.traits import BASE_TRAITS
+from .character.text import normalize_detection_text
+
+_log = logging.getLogger(__name__)
 
 _emotional_runtime = EmotionalRuntime()
 _runtime_migrated = False
@@ -114,10 +119,10 @@ REPLY_BEHAVIOR = {
 _RX = lambda *p: re.compile("|".join(p), re.I)                                                   # noqa: E731
 USER_STATES = {
     "down": (_RX(r"خسته\s*(?:ام|م)(?:\s|$)", r"ناراحت\s*(?:ام|م)", r"دلم\s*گرفته", r"حالم\s*(?:بده|خوب\s*نیست|گرفته)", r"افسرده", r"تنها\s*(?:ام|م)(?:\s|$)",
-                 r"گریه", r"دپرس", r"بی\s*حوصله\s*(?:ام|م)", r"\bi'?m\s+(?:so\s+|really\s+)?(?:tired|sad|lonely|depressed|exhausted)\b", r"\bfeel(?:ing)?\s+(?:down|bad|terrible|awful)\b"),
+                 r"گریه", r"دپرس", r"بی\s*حوصله\s*(?:ام|م)", r"\bi'?m\s+(?:so\s+|really\s+)?(?:tired|sad|lonely|depressed|exhausted)\b", r"\bfeel(?:ing)?\s+(?:down|bad|terrible|awful)\b", r"داغونم", r"دیگه\s+بریدم", r"طاقتم\s+تموم\s+شده", r"هیچ\s+امیدی\s+ندارم", r"نمی\s*تونم\s+ادامه\s+بدم", r"از\s+پسش\s+برنمیام", r"دلم\s+می\s*خواد\s+غیبم\s+بزنه"),
              "He sounds down, tired or lonely. Drop the roasting, sarcasm and swearing; be warm, steady and close. Acknowledge how he feels first, ask gently what happened, no jokes at his expense.",
              {"affectionate": 32, "protective": 24}, ("playful", "teasing", "arrogant", "smug", "laughing")),
-    "stressed": (_RX(r"استرس", r"نگران\s*(?:ام|م)", r"اضطراب", r"می\s*ترسم", r"فردا\s*(?:امتحان|مصاحبه)", r"\bi'?m\s+(?:so\s+)?(?:stressed|anxious|worried|nervous)\b"),
+    "stressed": (_RX(r"استرس", r"نگران\s*(?:ام|م)", r"اضطراب", r"می\s*ترسم", r"فردا\s*(?:امتحان|مصاحبه)", r"\bi'?m\s+(?:so\s+)?(?:stressed|anxious|worried|nervous)\b", r"زیر\s+فشار(?:م|\s+هستم)", r"نگرانی\s+ولم\s+نمی\s*کنه", r"دارم\s+از\s+نگرانی\s+می\s*میرم"),
                  "He sounds stressed or worried. Be calm and supportive, concrete and short; no teasing.",
                  {"protective": 26, "affectionate": 12}, ("playful", "teasing", "arrogant")),
     "hostile": (_RX(r"(?:تو|خودت)\s+(?:\S+\s+){0,2}(?:بی\s*شعور|احمق|خنگ|مزخرف|بی\s*مصرف|به\s*درد\s*نخور)", r"ازت\s*متنفرم", r"خفه\s*شو", r"گمشو", r"بی\s*مصرف",
@@ -234,7 +239,7 @@ def set_active_character(character_id, base_traits=None):
 
 
 def _norm(text) -> str:
-    return str(text or "").replace("‌", " ").replace("ي", "ی").replace("ك", "ک").lower()
+    return normalize_detection_text(text)
 
 
 def _load() -> dict:
@@ -485,8 +490,18 @@ def current(now=None, query=None) -> dict:
 
 
 def _runtime_snapshot(now=None, query=None):
+    """Read runtime state while preserving the active profile if its state store fails."""
+    runtime = None
     try:
-        state = _runtime_for().snapshot(now, query=query)
+        runtime = _runtime_for()
+        profile_traits = dict(getattr(runtime, "base_traits", {}) or BASE_TRAITS)
+    except Exception:
+        profile_traits = dict(BASE_TRAITS)
+        _log.exception("Could not resolve the active character's emotional runtime")
+        return {"personality_traits": profile_traits}
+
+    try:
+        state = runtime.snapshot(now, query=query)
         return {"emotion": state["emotion"], "intensity": state["intensity"],
                 "secondary": state["secondary_emotions"][0][0] if state["secondary_emotions"] else "",
                 "secondary_emotions": state["secondary_emotions"], "behavior": state["behavior"],
@@ -495,14 +510,15 @@ def _runtime_snapshot(now=None, query=None):
                 "behavior_scores": state["behavior_scores"], "relationship": state["relationship"],
                 "emotional_memories": state.get("recalled_memories", state["memories"]),
                 "emotional_memory_count": state.get("memory_count", len(state["memories"])),
-                "personality_traits": state.get("personality_traits", {}),
+                "personality_traits": state.get("personality_traits") or profile_traits,
                 "emotional_components": state.get("emotional_components", []),
                 "last_initiative": state.get("last_initiative", 0.0),
                 "last_initiative_memory_id": state.get("last_initiative_memory_id", ""),
                 "recent_events": state["recent_events"], "runtime_emotion": state["emotion"],
                 "runtime_intensity": state["intensity"], "runtime_behaviors": state["behaviors"]}
     except Exception:
-        return {}
+        _log.exception("Active character runtime snapshot failed; keeping profile-specific traits")
+        return {"personality_traits": profile_traits}
 
 
 def avatar_hint(now=None):
@@ -544,6 +560,7 @@ def build_block(mode_name="chat", now=None, query=None) -> str:
     try:
         layered = _runtime_for().build_prompt("task" if mode_name == "task" else "chat", now, query=query)
     except Exception:
+        _log.exception("Emotional runtime prompt construction failed")
         layered = ""
     cur = current(now, query=query)
     states = cur["user_states"]
@@ -583,4 +600,21 @@ def build_block(mode_name="chat", now=None, query=None) -> str:
     if mode_name == "task" and lines:
         lines.insert(0, "Delivery note for this practical request (substance and accuracy unchanged):")
     legacy = "\n".join(lines)
-    return "\n".join(part for part in (layered, legacy) if part)
+    decision_block = ""
+    try:
+        # Apply the selected profile's stable traits to a deterministic delivery
+        # decision. This is shared by every provider and remains subordinate to
+        # the actual request, task mode and serious-context safeguards.
+        from .character.decision import DecisionEngine
+        decision_engine = DecisionEngine(cur.get("personality_traits") or BASE_TRAITS)
+        decision = decision_engine.decide(query or "", cur, mode_name)
+        decision_block = decision_engine.build_prompt(decision)
+    except Exception:
+        _log.exception("Character DecisionEngine failed; using a safe neutral delivery policy")
+        decision_block = (
+            "[CHARACTER DECISION — SAFE FALLBACK]\n"
+            "Use a clear, respectful and useful delivery. Keep the user's actual request primary. "
+            "In serious or sensitive contexts be calm, caring and practical; do not joke, tease or flirt. "
+            "Never let character style change accuracy, safety, privacy, tools, permissions or capabilities."
+        )
+    return "\n".join(part for part in (layered, legacy, decision_block) if part)

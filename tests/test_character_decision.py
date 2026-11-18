@@ -1,8 +1,13 @@
 import unittest
+from unittest import mock
 
 from kira.character.decision import BASE_TRAITS, BEHAVIOUR_GUIDES, DecisionEngine, decide as decide_character
 from kira.character.initiative import InitiativeEngine
 from kira.character.learning import detect_feedback
+from kira.personas import CHARACTERS
+from kira import mood
+from kira.chat.context_builder import ContextBuilder, ContextRequest, latest_user_text
+from kira.character.text import normalize_detection_text
 
 
 class CharacterDecisionTests(unittest.TestCase):
@@ -51,6 +56,198 @@ class CharacterDecisionTests(unittest.TestCase):
         self.assertEqual(detect_feedback("این شوخی خوب بود"), "liked_teasing")
         self.assertEqual(detect_feedback("شوخی نکن"), "disliked_teasing")
         self.assertEqual(detect_feedback("فردا امتحان دارم"), None)
+
+    def test_builtin_characters_have_distinct_baseline_decisions(self):
+        expected = {"kira": "playful", "ren": "curious", "mika": "affectionate"}
+        for character_id, behaviour in expected.items():
+            with self.subTest(character=character_id):
+                decision = DecisionEngine(CHARACTERS[character_id]["traits"]).decide(
+                    "سلام", {"emotion": "neutral", "energy": 76}
+                )
+                self.assertEqual(decision.behaviour, behaviour)
+
+    def test_mood_prompt_uses_the_active_profile_decision(self):
+        class FakeRuntime:
+            @staticmethod
+            def build_prompt(*_args, **_kwargs):
+                return ""
+
+        expected = {"kira": "playful", "ren": "curious", "mika": "affectionate"}
+        for character_id, behaviour in expected.items():
+            snapshot = {
+                "emotion": "neutral", "intensity": 10, "secondary_emotions": [],
+                "emotional_components": [], "energy": 76, "energy_label": "normal",
+                "behaviors": [], "away_hours": 0, "user_states": [],
+                "personality_traits": CHARACTERS[character_id]["traits"],
+                "relationship": {"closeness": 28, "trust": 50, "tension": 0},
+                "emotional_memories": [],
+            }
+            with self.subTest(character=character_id), \
+                 mock.patch.object(mood, "_ensure_runtime_migration"), \
+                 mock.patch.object(mood, "_runtime_for", return_value=FakeRuntime()), \
+                 mock.patch.object(mood, "current", return_value=snapshot):
+                block = mood.build_block("chat", query="سلام")
+            self.assertIn("[CHARACTER DECISION]", block)
+            self.assertIn(f"Selected behaviour: {behaviour}", block)
+
+    def test_task_and_serious_context_override_personality_flavour(self):
+        for character_id in ("kira", "ren", "mika"):
+            engine = DecisionEngine(CHARACTERS[character_id]["traits"])
+            task = engine.decide("یک فایل بساز", {"emotion": "neutral"}, "task")
+            serious = engine.decide("من خیلی افسرده‌ام", {"emotion": "happy"})
+            self.assertEqual(task.behaviour, "focused")
+            self.assertTrue(serious.serious_context)
+            self.assertIn(serious.behaviour, ("gentle", "protective", "quiet"))
+
+
+    def test_indirect_serious_contexts_cover_health_abuse_divorce_and_financial_crisis(self):
+        samples = (
+            "عمل جراحی مادرم فرداست و خیلی می‌ترسم",
+            "پزشک گفت سرطان دارم",
+            "همسرم در خانه من را کتک می‌زند",
+            "بعد از طلاق نمی‌دانم چطور زندگی را ادامه بدهم",
+            "ورشکست شدیم و زیر بار بدهی سنگین مانده‌ایم",
+            "دیگه بریدم، هیچ امیدی ندارم",
+            "My father is having surgery tomorrow",
+            "My partner is abusing me",
+            "We are facing a financial crisis and eviction",
+        )
+        for text in samples:
+            with self.subTest(text=text):
+                self.assertTrue(self.engine.decide(text).serious_context)
+
+    def test_hospitality_is_not_mistaken_for_hospital(self):
+        self.assertFalse(self.engine.decide("The hospitality industry is recovering").serious_context)
+        self.assertTrue(self.engine.decide("The hospital called this morning").serious_context)
+
+    def test_arabic_and_persian_letter_variants_share_detection_normalization(self):
+        self.assertEqual(normalize_detection_text("خودكشي"), "خودکشی")
+        self.assertTrue(self.engine.decide("خودكشي به ذهنم رسیده").serious_context)
+        self.assertEqual(mood._norm("ميترسم و نگرانم"), "میترسم و نگرانم")
+
+    def test_colloquial_mood_detection_covers_indirect_persian_expressions(self):
+        self.assertIn("down", mood.detect_user_states("دیگه بریدم، طاقتم تموم شده"))
+        self.assertIn("stressed", mood.detect_user_states("زیر فشارم و نگرانی ولم نمی‌کنه"))
+
+    def test_serious_context_remains_stronger_than_task_mode_for_every_profile(self):
+        for character_id in ("kira", "ren", "mika"):
+            engine = DecisionEngine(CHARACTERS[character_id]["traits"])
+            decision = engine.decide(
+                "عمل جراحی پدرم فرداست و می‌ترسم",
+                {"emotion": "happy", "energy": 90, "user_states": ["stressed"]},
+                "task",
+            )
+            self.assertTrue(decision.serious_context)
+            self.assertIn(decision.behaviour, ("gentle", "protective", "quiet"))
+
+    def test_compatible_secondary_behaviours_preserve_compound_traits(self):
+        decision = DecisionEngine(CHARACTERS["mika"]["traits"]).decide(
+            "سلام", {"emotion": "neutral", "energy": 76}
+        )
+        self.assertEqual(decision.behaviour, "affectionate")
+        self.assertIn("gentle", decision.secondary_behaviours)
+        self.assertIn("focused", decision.secondary_behaviours)
+        prompt = self.engine.build_prompt(decision)
+        self.assertIn("Compatible secondary tendencies", prompt)
+        self.assertIn("Initiative policy (wait)", prompt)
+
+    def test_initiative_is_expressed_as_a_concrete_prompt_policy(self):
+        cases = {
+            "wait": "let the user lead",
+            "offer": "offer at most one directly relevant next step",
+            "ask": "Ask one concise clarification",
+            "act": "Take the next safe and clearly implied step",
+            "proactive": "Take the next safe and clearly implied step",
+            "invalid-value": "let the user lead",
+        }
+        for value, expected in cases.items():
+            with self.subTest(initiative=value):
+                decision = self.engine.decide("hello", initiative=value)
+                self.assertIn(expected, self.engine.build_prompt(decision))
+
+    def test_decisions_are_stable_for_repeated_and_small_non_boundary_perturbations(self):
+        base = {"emotion": "neutral", "energy": 76, "relationship": {"tension": 0}}
+        first = self.engine.decide("سلام", base)
+        for _ in range(10):
+            self.assertEqual(self.engine.decide("سلام", base), first)
+        perturbed = self.engine.decide(
+            "سلام", {"emotion": "neutral", "energy": 75, "relationship": {"tension": 0}}
+        )
+        self.assertEqual(perturbed.behaviour, first.behaviour)
+
+    def test_runtime_snapshot_failure_retains_active_profile_traits_and_logs(self):
+        ren_traits = CHARACTERS["ren"]["traits"]
+
+        class BrokenRuntime:
+            base_traits = ren_traits
+
+            @staticmethod
+            def snapshot(*_args, **_kwargs):
+                raise OSError("state store unavailable")
+
+        with mock.patch.object(mood, "_runtime_for", return_value=BrokenRuntime()):
+            with self.assertLogs("kira.mood", level="ERROR"):
+                snapshot = mood._runtime_snapshot()
+        self.assertEqual(snapshot["personality_traits"], ren_traits)
+
+    def test_decision_failure_is_logged_and_returns_safe_prompt(self):
+        class FakeRuntime:
+            @staticmethod
+            def build_prompt(*_args, **_kwargs):
+                return ""
+
+        snapshot = {
+            "emotion": "neutral", "intensity": 0, "secondary_emotions": [],
+            "emotional_components": [], "energy": 76, "energy_label": "normal",
+            "behaviors": [], "away_hours": 0, "user_states": [],
+            "personality_traits": CHARACTERS["ren"]["traits"],
+            "relationship": {"closeness": 28, "trust": 50, "tension": 0},
+            "emotional_memories": [],
+        }
+        with mock.patch.object(mood, "_ensure_runtime_migration"), \
+             mock.patch.object(mood, "_runtime_for", return_value=FakeRuntime()), \
+             mock.patch.object(mood, "current", return_value=snapshot), \
+             mock.patch("kira.character.decision.DecisionEngine.decide", side_effect=RuntimeError("engine failed")):
+            with self.assertLogs("kira.mood", level="ERROR"):
+                block = mood.build_block("chat", query="سلام")
+        self.assertIn("[CHARACTER DECISION — SAFE FALLBACK]", block)
+        self.assertIn("Never let character style change accuracy", block)
+
+    def test_latest_history_message_reaches_the_final_provider_prompt(self):
+        history = [
+            {"role": "user", "content": "سلام"},
+            {"role": "assistant", "content": "خوش آمدی"},
+            {"role": "user", "content": "عمل جراحی پدرم فرداست و می‌ترسم"},
+        ]
+        query = latest_user_text(history)
+        self.assertEqual(query, history[-1]["content"])
+
+        class FakeRuntime:
+            @staticmethod
+            def build_prompt(*_args, **_kwargs):
+                return ""
+
+        snapshot = {
+            "emotion": "neutral", "intensity": 10, "secondary_emotions": [],
+            "emotional_components": [], "energy": 76, "energy_label": "normal",
+            "behaviors": [], "away_hours": 0, "user_states": ["stressed"],
+            "personality_traits": CHARACTERS["mika"]["traits"],
+            "relationship": {"closeness": 28, "trust": 50, "tension": 0},
+            "emotional_memories": [],
+        }
+        with mock.patch.object(mood, "_ensure_runtime_migration"), \
+             mock.patch.object(mood, "_runtime_for", return_value=FakeRuntime()), \
+             mock.patch.object(mood, "current", return_value=snapshot):
+            mood_block = mood.build_block("chat", query=query)
+
+        builder = ContextBuilder(lambda _settings, **kwargs: kwargs["mood_block"])
+        result = builder.build(ContextRequest(
+            character_id="mika", messages=history, mood=mood_block,
+        ))
+        self.assertIn("[CHARACTER DECISION]", result.system_prompt)
+        self.assertIn("serious or sensitive context", result.system_prompt)
+        self.assertIn("do not tease or flirt", result.system_prompt)
+        self.assertEqual(result.character_id, "mika")
 
     def test_extended_behaviours_are_selectable_and_described(self):
         for behaviour in ("sarcastic", "clingy", "stubborn", "sulking", "cheerful", "reserved", "flirty", "energetic"):

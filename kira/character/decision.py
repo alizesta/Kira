@@ -7,9 +7,11 @@ the active task mode, then exposes a compact instruction block to every provider
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import Mapping
 
 from .traits import BASE_TRAITS
+from .text import normalize_detection_text
 
 BEHAVIOUR_GUIDES = {
     "playful": "Be witty and playful; use light banter when the situation welcomes it.",
@@ -83,6 +85,40 @@ SERIOUS_TERMS = (
     "افسرده", "افسردگی", "اضطراب شدید", "حمله عصبی",
 )
 
+# Explicit boundaries prevent substring mistakes such as matching "hospital"
+# inside "hospitality". Persian patterns run after shared orthographic normalization.
+SERIOUS_PATTERNS = tuple(re.compile(pattern) for pattern in (
+    r"(?<![a-z0-9])(?:suicid(?:e|al)|kill\s+myself|self[\s-]?harm|abus(?:e|ed|es|ive|ing)|emergency|hospital|cancer|tumou?r|surger(?:y|ies)|chemotherap(?:y|ies)|domestic\s+violence|sexual\s+assault|rape|divorc(?:e|ed)|bereavement|grief|bankrupt(?:cy)?|eviction|homeless|financial\s+crisis|serious\s+debt|laid\s+off|trauma|ptsd)(?![a-z0-9])",
+    r"(?<![آ-ی])(?:خودکشی|خودزنی|آسیب\s+(?:زدن\s+)?به\s+خود(?:م|ش|مان)?|دیگه\s+نمی\s+خوام\s+زنده\s+باشم|دلم\s+می\s+خواد\s+بمیرم|کاش\s+نبودم|از\s+زندگی\s+خسته\s+شدم|اورژانس|بیمارستان|سوگ|فوت|درگذشت|مرگ|سرطان|تومور|جراحی|عمل\s+جراحی|شیمی\s+درمانی|تجاوز|آزار\s+جنسی|تعرض|خشونت\s+خانگی|خشونت\s+جنسی|سوء\s+استفاده|مورد\s+آزار|طلاق|جدایی|ورشکستگی|بی\s+خانمان|بحران\s+مالی|مشکل\s+مالی|بدهی\s+سنگین|اخراج\s+شدم|از\s+کار\s+بیکار\s+شدم|افسردگی|افسرده|اضطراب\s+شدید|حمله\s+عصبی|دیگه\s+بریدم|طاقتم\s+تموم\s+شده|هیچ\s+امیدی\s+ندارم|نمی\s+تونم\s+ادامه\s+بدم|از\s+پسش\s+برنمیام)(?![آ-ی])",
+))
+
+SECONDARY_COMPATIBILITY = {
+    "playful": {"affectionate", "curious", "confident", "energetic"},
+    "teasing": {"playful", "affectionate", "confident"},
+    "gentle": {"protective", "affectionate", "quiet", "focused"},
+    "protective": {"gentle", "focused", "affectionate"},
+    "focused": {"curious", "gentle", "assertive", "reserved"},
+    "assertive": {"focused", "confident", "curious"},
+    "affectionate": {"gentle", "curious", "playful", "protective", "focused"},
+    "curious": {"focused", "assertive", "gentle", "confident"},
+    "quiet": {"gentle", "reserved", "protective", "focused"},
+    "confident": {"assertive", "curious", "playful", "focused"},
+    "reserved": {"quiet", "focused", "gentle"},
+    "cheerful": {"playful", "affectionate", "energetic"},
+    "energetic": {"playful", "confident", "cheerful"},
+    "balanced": {"gentle", "focused", "curious"},
+}
+INITIATIVE_GUIDANCE = {
+    "wait": "Do not invent an unsolicited next step; answer the request and let the user lead.",
+    "offer": "After answering, offer at most one directly relevant next step without pressure.",
+    "ask": "Ask one concise clarification only when missing information materially blocks progress.",
+    "act": "Take the next safe and clearly implied step without asking for redundant confirmation.",
+}
+_INITIATIVE_ALIASES = {
+    "none": "wait", "passive": "wait", "suggest": "offer", "propose": "offer",
+    "clarify": "ask", "question": "ask", "proactive": "act", "execute": "act",
+}
+
 
 @dataclass(frozen=True)
 class CharacterDecision:
@@ -92,6 +128,7 @@ class CharacterDecision:
     serious_context: bool = False
     initiative: str = "wait"
     reasons: tuple[str, ...] = ()
+    secondary_behaviours: tuple[str, ...] = ()
 
 
 class DecisionEngine:
@@ -113,7 +150,8 @@ class DecisionEngine:
             "playful": traits["playfulness"] * 20,
             "teasing": traits["teasing"] * 20,
             "gentle": traits["empathy"] * 18,
-            "protective": traits["empathy"] * 12 + traits["warmth"] * 8,
+            # Protective is context-sensitive, not the default for every character.
+            "protective": traits["empathy"] * 8 + traits["warmth"] * 4,
             "focused": traits["patience"] * 12 + traits.get("carefulness", 0.76) * 8,
             "assertive": traits["assertiveness"] * 18,
             "affectionate": traits["warmth"] * 20,
@@ -167,8 +205,14 @@ class DecisionEngine:
 
     def decide(self, user_text="", mood=None, mode_name="chat", initiative="wait"):
         mood = mood or {}
-        text = str(user_text or "").lower()
-        serious = any(term in text for term in SERIOUS_TERMS)
+        text = normalize_detection_text(user_text)
+        serious_states = {"down", "stressed", "hostile"}
+        detected_states = {str(item).casefold() for item in (mood.get("user_states") or ())}
+        serious = (
+            any(pattern.search(text) for pattern in SERIOUS_PATTERNS)
+            or bool(serious_states.intersection(detected_states))
+            or bool(mood.get("serious_context"))
+        )
         energy = int(mood.get("energy", 76) or 0)
         scores = {name: self._score(name, mood, self.traits) for name in BEHAVIOUR_GUIDES}
         reasons = []
@@ -201,9 +245,28 @@ class DecisionEngine:
             scores["clingy"] -= 8
             reasons.append("relationship-tension")
 
+        # Insertion order is the stable tie-breaker. Compatible secondary
+        # tendencies preserve combinations such as empathy plus carefulness.
         chosen = max(scores, key=scores.get)
-        intensity = max(20, min(100, int(round(scores[chosen] * 1.35))))
-        return CharacterDecision(chosen, intensity, dict(self.traits), serious, initiative, tuple(reasons))
+        primary_score = scores[chosen]
+        compatible = SECONDARY_COMPATIBILITY.get(chosen, set())
+        threshold = max(8.0, primary_score * 0.65)
+        margin = max(10.0, abs(primary_score) * 0.35)
+        order = {name: index for index, name in enumerate(scores)}
+        secondary = tuple(
+            name for name in sorted(scores, key=lambda item: (-scores[item], order[item]))
+            if name != chosen and name in compatible
+            and scores[name] >= threshold and primary_score - scores[name] <= margin
+        )[:2]
+        initiative_value = str(initiative or "wait").strip().casefold()
+        initiative_value = _INITIATIVE_ALIASES.get(initiative_value, initiative_value)
+        if initiative_value not in INITIATIVE_GUIDANCE:
+            initiative_value = "wait"
+        intensity = max(20, min(100, int(round(primary_score * 1.35))))
+        return CharacterDecision(
+            chosen, intensity, dict(self.traits), serious, initiative_value,
+            tuple(reasons), secondary,
+        )
 
     def build_prompt(self, decision):
         guide = BEHAVIOUR_GUIDES.get(decision.behaviour, BEHAVIOUR_GUIDES["balanced"])
@@ -213,10 +276,21 @@ class DecisionEngine:
             if decision.serious_context else
             "Keep humour and affection context-sensitive. Never let a persona trait reduce accuracy or usefulness."
         )
+        secondary = [
+            f"{name}: {BEHAVIOUR_GUIDES[name]}"
+            for name in decision.secondary_behaviours if name in BEHAVIOUR_GUIDES
+        ]
+        secondary_text = (
+            "Compatible secondary tendencies: " + " | ".join(secondary) + "\n"
+            if secondary else ""
+        )
+        initiative_text = INITIATIVE_GUIDANCE[decision.initiative]
         return (
             "[CHARACTER DECISION]\n"
             f"Selected behaviour: {decision.behaviour} (intensity {decision.intensity}/100).\n"
             f"Behaviour instruction: {guide}\n"
+            f"{secondary_text}"
+            f"Initiative policy ({decision.initiative}): {initiative_text}\n"
             f"Stable character traits (0-1): {traits}.\n"
             f"Decision factors: {', '.join(decision.reasons) if decision.reasons else 'baseline character'}\n"
             f"{safety}\n"
