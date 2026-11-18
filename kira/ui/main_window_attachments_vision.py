@@ -42,7 +42,7 @@ class AttachmentsVisionController(WindowFeatureController):
     def pick_attachments(self):
         exts = " ".join("*" + e for e in sorted(att.IMAGE_TYPES))
         paths, _ = QFileDialog.getOpenFileNames(
-            self, "انتخاب عکس یا فایل", "",
+            self.window, "انتخاب عکس یا فایل", "",
             f"عکس و فایل‌های پشتیبانی‌شده ({exts} *.txt *.md *.json *.csv *.log *.py *.js *.html *.xml *.yaml *.yml *.ini *.docx *.pdf *.zip);;همه‌ی فایل‌ها (*)")
         if paths:
             self.add_attachment_paths(paths)
