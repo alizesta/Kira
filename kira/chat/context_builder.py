@@ -8,48 +8,18 @@ injected prompt-building/enrichment callables.
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass, field
-from typing import Any, Callable, Mapping, Protocol, Sequence
+from typing import Any, Mapping, Sequence
 
 
-class SystemPromptBuilder(Protocol):
-    def __call__(self, settings: Mapping[str, Any], **kwargs: Any) -> str: ...
+from ..core.interfaces.context import (
+    PromptEnricherPort,
+    SystemPromptBuilderPort,
+)
+from ..domain.chat import ContextRequest, ContextResult
 
-
-class PromptEnricher(Protocol):
-    def __call__(self, prompt: str) -> str: ...
-
-
-@dataclass(frozen=True)
-class ContextRequest:
-    """All data needed for one turn; values are snapshots, never live UI objects."""
-
-    messages: Sequence[Mapping[str, Any]] = field(default_factory=tuple)
-    character_id: str = ""
-    character_profile: Mapping[str, Any] = field(default_factory=dict)
-    settings: Mapping[str, Any] = field(default_factory=dict)
-    memory: str = ""
-    mood: str = ""
-    character_context: str = ""
-    format_hint: str = ""
-    voice_input: bool = False
-    mode: Any = None
-    body_context: str = ""
-    tool_context: str = ""
-    active_capabilities: Sequence[str] = field(default_factory=tuple)
-    turn_extra: Mapping[str, Any] | None = None
-    max_context_chars: int = 0
-
-
-@dataclass(frozen=True)
-class ContextResult:
-    """Final provider-neutral system prompt and ordered message snapshot."""
-
-    system_prompt: str
-    messages: tuple[dict[str, Any], ...]
-    character_id: str
-    retained_context_chars: int
-    dropped_messages: int = 0
+# Preserve historical type names and imports during the migration.
+SystemPromptBuilder = SystemPromptBuilderPort
+PromptEnricher = PromptEnricherPort
 
 
 class ContextBuilder:
