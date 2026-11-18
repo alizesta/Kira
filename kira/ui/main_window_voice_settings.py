@@ -171,7 +171,7 @@ class VoiceSettingsController(WindowFeatureController):
         self.save_now()
 
     def choose_local_asr_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "پوشه‌ی مدل STT را انتخاب کن", str(Path.home()))
+        folder = QFileDialog.getExistingDirectory(self.window, "پوشه‌ی مدل STT را انتخاب کن", str(Path.home()))
         if not folder:
             return
         self.local_asr_path_edit.setText(folder)
@@ -209,7 +209,7 @@ class VoiceSettingsController(WindowFeatureController):
         )
 
     def choose_local_whisper_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "پوشه مدل Whisper را انتخاب کن", str(Path.home()))
+        folder = QFileDialog.getExistingDirectory(self.window, "پوشه مدل Whisper را انتخاب کن", str(Path.home()))
         if not folder:
             return
         self.voice_page.whisper.setCurrentText(folder)
@@ -300,21 +300,21 @@ class VoiceSettingsController(WindowFeatureController):
         self.add_chat("system", "مدل STT محلی به‌روزرسانی شد.")
 
     def choose_local_tts_model(self):
-        path, _ = QFileDialog.getOpenFileName(self, "مدل Piper ONNX", str(Path.home()), "Piper ONNX (*.onnx)")
+        path, _ = QFileDialog.getOpenFileName(self.window, "مدل Piper ONNX", str(Path.home()), "Piper ONNX (*.onnx)")
         if path:
             self._install_piper_voice(Path(path))
 
     def _install_piper_voice(self, source):
         source = Path(source).expanduser().resolve()
         if not source.is_file() or source.suffix.lower() != ".onnx":
-            QMessageBox.warning(self, "مدل TTS", "فایل انتخاب‌شده باید Piper ONNX باشد.")
+            QMessageBox.warning(self.window, "مدل TTS", "فایل انتخاب‌شده باید Piper ONNX باشد.")
             return
         metadata = Path(str(source) + ".json")
         if not metadata.is_file():
             sibling = source.with_suffix(".json")
             metadata = sibling if sibling.is_file() else metadata
         if not metadata.is_file():
-            QMessageBox.warning(self, "مدل TTS", "فایل پیکربندی کنار مدل (.onnx.json یا .json) پیدا نشد.")
+            QMessageBox.warning(self.window, "مدل TTS", "فایل پیکربندی کنار مدل (.onnx.json یا .json) پیدا نشد.")
             return
         try:
             target_dir = DATA_DIR / "voice_models"
@@ -331,7 +331,7 @@ class VoiceSettingsController(WindowFeatureController):
             self.refresh_local_voice_status()
             self.api_add_status.setText("مدل Piper به پوشه‌ی داده‌ی Kira کپی شد و برای TTS انتخاب شد.")
         except OSError as exc:
-            QMessageBox.warning(self, "مدل TTS", str(exc))
+            QMessageBox.warning(self.window, "مدل TTS", str(exc))
 
     def import_local_model(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -339,7 +339,7 @@ class VoiceSettingsController(WindowFeatureController):
             "Model files (*.gguf *.onnx *.bin *.safetensors *.pt *.pth *.json);;All files (*)"
         )
         if not path:
-            path = QFileDialog.getExistingDirectory(self, "یا پوشه‌ی مدل را انتخاب کن", str(Path.home()))
+            path = QFileDialog.getExistingDirectory(self.window, "یا پوشه‌ی مدل را انتخاب کن", str(Path.home()))
         if not path:
             return
         self._import_local_model_path(Path(path))
@@ -377,7 +377,7 @@ class VoiceSettingsController(WindowFeatureController):
                     self.refresh_local_voice_status()
                     return
                 if any(token in signature for token in ("causallm", "forcausallm", "textgeneration", "llama", "qwen3for")):
-                    QMessageBox.information(self, "مدل Chat شناسایی شد",
+                    QMessageBox.information(self.window, "مدل Chat شناسایی شد",
                         "این پوشه یک مدل متنی Hugging Face است، اما Ollama مستقیماً پوشه‌ی Transformers را وارد نمی‌کند. نسخه‌ی GGUF همین مدل را انتخاب کن.")
                     return
                 category, ok = QInputDialog.getItem(
@@ -395,10 +395,10 @@ class VoiceSettingsController(WindowFeatureController):
                     self.local_whisper_path.setText(str(source))
                     self.apply_local_whisper_model()
                     return
-                QMessageBox.information(self, "معرفی مدل", "برای TTS فایل Piper ONNX و برای Chat فایل GGUF را انتخاب کن.")
+                QMessageBox.information(self.window, "معرفی مدل", "برای TTS فایل Piper ONNX و برای Chat فایل GGUF را انتخاب کن.")
                 return
             else:
-                QMessageBox.warning(self, "مدل شناسایی نشد", "در پوشه، فایل GGUF، Piper ONNX، model.bin یا config.json پیدا نشد.")
+                QMessageBox.warning(self.window, "مدل شناسایی نشد", "در پوشه، فایل GGUF، Piper ONNX، model.bin یا config.json پیدا نشد.")
                 return
 
         if source.name.lower().endswith(".onnx.json"):
@@ -415,11 +415,11 @@ class VoiceSettingsController(WindowFeatureController):
         elif source.suffix.lower() in (".json", ".safetensors", ".pt", ".pth"):
             self._import_local_model_path(source.parent)
         else:
-            QMessageBox.warning(self, "مدل شناسایی نشد", "پسوند فایل پشتیبانی نمی‌شود. GGUF برای Chat، Piper ONNX برای TTS و پوشه‌ی مدل برای STT را انتخاب کن.")
+            QMessageBox.warning(self.window, "مدل شناسایی نشد", "پسوند فایل پشتیبانی نمی‌شود. GGUF برای Chat، Piper ONNX برای TTS و پوشه‌ی مدل برای STT را انتخاب کن.")
 
     def _create_ollama_model(self, source):
         if not shutil.which("ollama"):
-            QMessageBox.warning(self, "Ollama", "Ollama روی سیستم پیدا نشد.")
+            QMessageBox.warning(self.window, "Ollama", "Ollama روی سیستم پیدا نشد.")
             return
         name = re.sub(r"[^a-zA-Z0-9._-]+", "-", source.stem.lower()).strip("-._")[:48] or "imported-model"
         self.import_model_btn.setEnabled(False)
