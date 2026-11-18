@@ -129,6 +129,8 @@ jobs:
           tests.test_avatar_art
           tests.test_app_resolution
           tests.test_architecture_boundaries
+          tests.test_application_module_lifecycle
+          tests.test_composition_root_contract
           tests.test_domain_organization
           tests.test_domain_search
           tests.test_domain_transfer
@@ -216,6 +218,8 @@ jobs:
           tests.test_avatar_art
           tests.test_app_resolution
           tests.test_architecture_boundaries
+          tests.test_application_module_lifecycle
+          tests.test_composition_root_contract
           tests.test_domain_organization
           tests.test_domain_search
           tests.test_domain_transfer
