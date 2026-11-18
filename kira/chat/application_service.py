@@ -9,83 +9,32 @@ from __future__ import annotations
 from collections import OrderedDict
 import base64
 import binascii
-from dataclasses import dataclass, field
-from enum import Enum
+from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 from uuid import uuid4
 
 from ..core.interfaces.chat_history_service import ChatHistoryService
 from ..core.interfaces.provider_worker import ProviderWorkerPort
+from ..domain.chat import (
+    ApplicationEventKind,
+    ChatApplicationEvent,
+    ChatApplicationRequest,
+    ChatRequest,
+    ChatResponseResult,
+    PersistenceOutcome,
+    ProviderEvent,
+    ProviderEventKind,
+    RequestStatus,
+    ResponseEventKind,
+    ResponseStatus,
+    Submission,
+    SubmissionResult,
+)
 from .attachments import Attachment, AttachmentManager, compose as compose_attachment_payload
 from .commands import CommandDispatch, CommandRegistry
 from .context_builder import ContextBuilder, ContextRequest
-from .coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
-from .response_handler import (
-    ChatResponseResult,
-    ProviderEvent,
-    ProviderEventKind,
-    ResponseEventKind,
-    ResponseHandler,
-    ResponseStatus,
-)
-
-
-class RequestStatus(str, Enum):
-    PENDING = "pending"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
-
-class ApplicationEventKind(str, Enum):
-    REQUEST_STARTED = "request_started"
-    PROVIDER_CHUNK = "provider_chunk"
-    PROVIDER_FINAL = "provider_final"
-    REQUEST_COMPLETED = "request_completed"
-    REQUEST_FAILED = "request_failed"
-    REQUEST_CANCELLED = "request_cancelled"
-    PERSISTENCE_WARNING = "persistence_warning"
-
-
-@dataclass(frozen=True)
-class ChatApplicationRequest:
-    request_id: str
-    session_id: str
-    text: str
-    attachments: tuple[Mapping[str, Any], ...] = ()
-    voice: bool = False
-    conversation_id: str | None = None
-    character_id: str | None = None
-    metadata: Mapping[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class ChatApplicationEvent:
-    request_id: str
-    session_id: str
-    kind: ApplicationEventKind
-    status: RequestStatus
-    content: str = ""
-    chunk: str = ""
-    result: ChatResponseResult | None = None
-    error: str | None = None
-    persistence_ok: bool | None = None
-    metadata: Mapping[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class Submission:
-    request: ChatApplicationRequest
-    status: RequestStatus
-    queued: bool
-    accepted: bool
-
-
-@dataclass(frozen=True)
-class PersistenceOutcome:
-    ok: bool
-    error: str | None = None
+from .coordinator import ChatCoordinator, ChatProviderDispatcher
+from .response_handler import ResponseHandler
 
 
 @dataclass
