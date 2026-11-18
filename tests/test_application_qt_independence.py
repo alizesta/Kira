@@ -37,6 +37,23 @@ class ApplicationQtIndependenceTests(unittest.TestCase):
                             violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: {module}")
         self.assertEqual(violations, [])
 
+    def test_inner_layers_do_not_import_ui_implementations(self):
+        violations = []
+        for root in INNER_ROOTS:
+            for path in root.rglob("*.py"):
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        modules = [alias.name for alias in node.names]
+                    elif isinstance(node, ast.ImportFrom):
+                        modules = [node.module or ""]
+                    else:
+                        continue
+                    for module in modules:
+                        if module == "kira.ui" or module.startswith("kira.ui.") or module in {".ui", "..ui"} or module.endswith(".ui"):
+                            violations.append(f"{path.relative_to(ROOT)}:{node.lineno}: {module}")
+        self.assertEqual(violations, [])
+
     def test_inner_layers_do_not_reference_qt_runtime_types(self):
         violations = []
         for root in INNER_ROOTS:
