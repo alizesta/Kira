@@ -4,7 +4,6 @@ import unittest
 from kira.domain.conversations import (
     ConversationOperation,
     ConversationStatus,
-    InvalidConversationTransition,
     allowed_source_statuses,
     is_transition_allowed,
 )
