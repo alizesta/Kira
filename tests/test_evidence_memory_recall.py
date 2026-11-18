@@ -127,5 +127,25 @@ class EvidenceMemoryRecallTests(unittest.TestCase):
         self.assertEqual(after[0]["text"], before[0]["text"])
 
 
+    def test_message_ingestion_failure_is_logged_and_does_not_escape_chat(self):
+        with mock.patch.object(em, "_db", side_effect=RuntimeError("synthetic ingestion failure")):
+            with self.assertLogs("kira.evidence_memory", level="WARNING") as captured:
+                stored = em.record_user_message(
+                    "I enjoy rock music",
+                    facts=[{"kind": "like", "label": "He likes rock music", "value": "rock music", "quote": "rock music"}],
+                )
+
+        self.assertEqual(stored, 0)
+        self.assertTrue(any("Evidence-memory ingestion failed" in line for line in captured.output))
+
+    def test_writer_cursor_failure_is_logged_and_propagated(self):
+        with mock.patch.object(em, "_db", side_effect=RuntimeError("synthetic cursor failure")):
+            with self.assertLogs("kira.evidence_memory", level="ERROR") as captured:
+                with self.assertRaisesRegex(RuntimeError, "synthetic cursor failure"):
+                    em.set_writer_cursor(42)
+
+        self.assertTrue(any("Could not persist the evidence-memory writer cursor" in line for line in captured.output))
+
+
 if __name__ == "__main__":
     unittest.main()
