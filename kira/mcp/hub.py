@@ -83,6 +83,7 @@ class McpHub:
         self._clients: dict = {}
         self._cfg: dict = {"servers": {}, "agents": {}, "error": ""}
         self._lock = threading.RLock()
+        self._state_lock = threading.RLock()
         self._server_locks: dict[str, threading.RLock] = {}
         self._server_locks_lock = threading.Lock()
         self._thread: threading.Thread | None = None
@@ -121,28 +122,34 @@ class McpHub:
                 self._connect(name, cfg)
         except Exception as exc:                                       # noqa: BLE001 - a broken server never affects the app
             _LOGGER.exception("MCP hub refresh failed")
-            self.state["_hub"] = {"status": "error", "error": clean_text(exc, 160), "tools": 0}
+            with self._state_lock:
+                self.state["_hub"] = {"status": "error", "error": clean_text(exc, 160), "tools": 0}
 
     def _drop(self, name: str) -> None:
         with self._server_lock(name):
-            client = self._clients.pop(name, None)
+            with self._lock:
+                client = self._clients.pop(name, None)
             if client is not None:
                 try:
                     client.close()
                 except Exception:
                     _LOGGER.exception("Could not close MCP server %s", name)
             self.registry.unregister_where(lambda t, n=name: getattr(t, "mcp_server", "") == n)
-            self.state.pop(name, None)
+            with self._state_lock:
+                self.state.pop(name, None)
 
     def _connect(self, name: str, cfg: dict) -> bool:
         with self._server_lock(name):
             return self._connect_locked(name, cfg)
 
     def _connect_locked(self, name: str, cfg: dict) -> bool:
-        st = self.state.setdefault(name, {"status": "starting", "error": "", "tools": 0, "next_try": 0.0})
-        if time.monotonic() < st.get("next_try", 0.0):
+        with self._state_lock:
+            st = self.state.setdefault(name, {"status": "starting", "error": "", "tools": 0, "next_try": 0.0})
+            next_try = st.get("next_try", 0.0)
+        if time.monotonic() < next_try:
             return False
-        old = self._clients.pop(name, None)
+        with self._lock:
+            old = self._clients.pop(name, None)
         if old is not None:
             try:
                 old.close()
@@ -165,10 +172,13 @@ class McpHub:
                 _LOGGER.exception("Could not close failed MCP client for %s", name)
             if not isinstance(exc, (McpError, OSError)):
                 _LOGGER.exception("Unexpected MCP startup failure for %s", name)
-            st.update(status="error", error=clean_text(exc, 160) + (f" | {tail}" if tail else ""), tools=0, next_try=time.monotonic() + RESTART_BACKOFF)
+            with self._state_lock:
+                st.update(status="error", error=clean_text(exc, 160) + (f" | {tail}" if tail else ""), tools=0, next_try=time.monotonic() + RESTART_BACKOFF)
             return False
-        self._clients[name] = client
-        st.update(status="ready", error="", tools=self._register(name, cfg, tools), next_try=0.0)
+        with self._lock:
+            self._clients[name] = client
+        with self._state_lock:
+            st.update(status="ready", error="", tools=self._register(name, cfg, tools), next_try=0.0)
         return True
 
     def _register(self, server: str, cfg: dict, tools: list) -> int:
@@ -215,11 +225,15 @@ class McpHub:
         cfg = self._cfg["servers"].get(server)
         if cfg is None:
             raise ToolError("این سرور دیگر در kira_mcp.json نیست.", ERROR)
-        client = self._clients.get(server)
+        with self._lock:
+            client = self._clients.get(server)
         if client is None or not client.alive():
             if not self._connect(server, cfg):
-                raise ToolError(f"سرور «{server}» در دسترس نیست: {self.state.get(server, {}).get('error', '')}", ERROR)
-            client = self._clients[server]
+                with self._state_lock:
+                    error = self.state.get(server, {}).get("error", "")
+                raise ToolError(f"سرور «{server}» در دسترس نیست: {error}", ERROR)
+            with self._lock:
+                client = self._clients[server]
         try:
             result = client.call_tool(tool, args, cfg["timeout"])
         except McpError as exc:                                        # NOT retried: the call may already have had an effect
@@ -232,7 +246,9 @@ class McpHub:
 
     def info_text(self) -> str:
         lines = []
-        for name, st in self.state.items():
+        with self._state_lock:
+            states = tuple((name, dict(state)) for name, state in self.state.items())
+        for name, st in states:
             lines.append(f"- {name}: {st.get('status')} ({st.get('tools', 0)} tools)" + (f" — {st['error']}" if st.get("error") else ""))
         if self._cfg.get("error"):
             lines.append("config error: " + clean_text(self._cfg["error"], 200))
@@ -243,7 +259,8 @@ class McpHub:
             names = tuple(self._clients)
         for name in names:
             with self._server_lock(name):
-                client = self._clients.pop(name, None)
+                with self._lock:
+                    client = self._clients.pop(name, None)
                 if client is not None:
                     try:
                         client.close()
