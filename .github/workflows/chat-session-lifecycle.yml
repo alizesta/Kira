@@ -231,6 +231,8 @@ jobs:
           kira/domain/chat.py
           kira/chat/context_builder.py
           kira/core/interfaces/context.py
+          kira/core/interfaces/application_services.py
+          kira/core/interfaces/__init__.py
           tests/test_domain_chat_contracts.py
           kira/app/chat_transfer_application.py
           kira/core/interfaces/transfer.py
