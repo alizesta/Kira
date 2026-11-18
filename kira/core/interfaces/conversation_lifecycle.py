@@ -4,6 +4,43 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 
+from ...domain.conversations import ConversationLifecycleResult, ConversationOperation, ConversationStatus
+
+
+
+class ConversationLifecycleApplicationPort(Protocol):
+    """Application use cases exposed to Chat orchestration without concrete coupling."""
+
+    def list_conversations(
+        self,
+        *,
+        character_id: str | None = None,
+        statuses: Sequence[ConversationStatus | str] = (ConversationStatus.ACTIVE,),
+    ) -> list[dict[str, Any]]: ...
+
+    def archive(self, conversation_id: str) -> ConversationLifecycleResult: ...
+
+    def restore(self, conversation_id: str) -> ConversationLifecycleResult: ...
+
+    def trash(self, conversation_id: str) -> ConversationLifecycleResult: ...
+
+    def restore_trashed(self, conversation_id: str) -> ConversationLifecycleResult: ...
+
+    def archive_many(
+        self, conversation_ids: Sequence[str]
+    ) -> tuple[ConversationLifecycleResult, ...]: ...
+
+    def trash_many(
+        self, conversation_ids: Sequence[str]
+    ) -> tuple[ConversationLifecycleResult, ...]: ...
+
+    def permanent_delete(
+        self,
+        conversation_id: str,
+        *,
+        authorization: PermanentDeleteAuthorizationPort,
+    ) -> ConversationLifecycleResult: ...
+
 
 class ConversationLifecycleRepositoryPort(Protocol):
     """Durable read/transaction boundary required by Conversation lifecycle."""
@@ -38,6 +75,7 @@ class PermanentDeleteAuthorizationPort(Protocol):
 
 
 __all__ = [
+    "ConversationLifecycleApplicationPort",
     "ConversationEventPublisherPort",
     "ConversationLifecycleRepositoryPort",
     "PermanentDeleteAuthorizationPort",
