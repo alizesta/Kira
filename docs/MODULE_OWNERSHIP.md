@@ -1,7 +1,7 @@
 # KIRA MODULE OWNERSHIP
 
 **Snapshot:** 2026-11-18  
-**Base:** `new-main` at `8919547982c97bce8759aca1ddddb779e1c5f0a0`  
+**Base:** `new-main` at `fd023c555ed07e6aae7d3032c98e3a6948284ea5`  
 **Scope:** TASK 001–020 and adjacent application capabilities. This register describes observed ownership, not desired ownership where implementation is absent.
 
 ## 1. Ownership rules
@@ -50,9 +50,9 @@ The historical audit counts remain 12 DONE / 2 PARTIAL. The post-audit merge is 
 
 | Task | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
 |---|---|---|---|---|
-| 018 | Web Search application — `kira/app/web_search.py` | `WebSearchApplicationService`: automatic/forced search eligibility and query planning (`plan_request`), Gemini credential selection, follow-up query rewriting, web/image request options, search evidence formatting and prepared-content merging | Settings snapshots, active Chat client, `kira.websearch` engine contracts, optional tool-plan summary | Qt, widgets, SearchWorker lifecycle, result presentation, direct provider/device construction, search policy duplicated in MainWindow |
+| 018 | Web Search application — `kira/app/web_search.py` | `WebSearchApplicationService`: automatic/forced search eligibility and query planning (`plan_request`), Web/Image command parsing, diagnostics, engine labels, evidence/failure formatting, Gemini credential selection, follow-up query rewriting, request options and prepared-content merging | Settings snapshots, active Chat client, `kira.websearch` engine contracts, optional tool-plan summary | Qt, widgets, SearchWorker lifecycle, result presentation, direct provider/device construction, search policy duplicated in MainWindow |
 
-The service is injected by Bootstrap into MainWindow. `plan_request` owns the automatic/forced one-shot search decision and suppresses duplicate web search when a local/tool plan takes precedence; MainWindow only consumes the returned plan and starts the UI worker. SearchWorker creation, signals and rendering remain UI responsibilities. Focused Qt-free tests cover normal, disabled, slash-command, forced and tool-plan precedence cases; execution/runtime acceptance is pending.
+The service is injected by Bootstrap into MainWindow. `plan_request` owns the automatic/forced one-shot search decision and suppresses duplicate web search when a local/tool plan takes precedence. Chat UI uses only the application service for command parsing, diagnostics and evidence formatting; it does not import `kira.websearch`. SearchWorker creation, signals and rendering remain UI responsibilities. Focused Qt-free tests cover normal, disabled, slash-command, forced and tool-plan precedence cases; execution/runtime acceptance is pending.
 
 
 ### 2.3 TASK 019 — Voice application lifecycle
