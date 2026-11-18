@@ -1,7 +1,7 @@
 # KIRA MODULE OWNERSHIP
 
 **Snapshot:** 2026-11-18  
-**Base:** `new-main` at `7caa6a3ee8cb2a68d80a3015a9134d42cf89d6e3`  
+**Base:** `new-main` at `8919547982c97bce8759aca1ddddb779e1c5f0a0`  
 **Scope:** TASK 001–020 and adjacent application capabilities. This register describes observed ownership, not desired ownership where implementation is absent.
 
 ## 1. Ownership rules
@@ -28,7 +28,7 @@
 | 005 | Persistence & History — `kira/chat/persistence.py`, Chat History adapter | `ChatRepository`, `SqliteChatRepository`, `ChatPersistence` and repository/facade operations | SQLite/infrastructure, repository contracts, transaction/recovery code | Search ranking, lifecycle policy, organization rules, UI widgets, second database | **Sole Chat durable-storage owner** | No business notification ownership |
 | 006 | Chat Application Service — `kira/chat/application_service.py`, `kira/app/chat_composition.py` | `ChatApplicationService`: submit/start/handle/complete/cancel/status/dispatch/session-close/dispose and history facade methods | Injected persistence, coordinator/context/response/attachment/command contracts, worker factory, callback/scheduler ports, event publisher | Qt widgets, direct provider SDK ownership, SQL/schema, duplicated domain rules from other services | Uses Persistence; does not own schema/transactions | Coordinates application events via injected publisher/callback |
 | 007 | Session Lifecycle — `kira/chat/session_manager.py`, `kira/chat_sessions.py` | `SessionManager`, runtime Session records and character/session lookup | Session factory/type, character/session identifiers | Durable Conversation status, message history, SQL, archive/trash rules | None | Session notifications may be published by application event layer |
-| 008 | Events & Notifications — `kira/app/event_bus.py`, `kira/chat/events.py` | `EventBus`, `ChatEvent`, `ChatEventPublisher`, typed event enums | Shared in-process bus, immutable event payloads | Business API routing, persistence ownership, request/session state transitions | None | **Sole shared notification transport**; terminal event de-duplication is publisher-local |
+| 008 | Events & Notifications — `kira/app/event_bus.py`, `kira/chat/events.py`, `kira/core/interfaces/application_module.py` | `EventBus`, Core `PublishedEvent` / `EventPublicationReport` / `ModuleEventBus`, `ChatEvent`, `ChatEventPublisher` | Feature-neutral Core event envelope and in-process notification bus | Business API routing, persistence ownership, request/session state transitions, direct dependency from the shared EventBus to Chat | None | **Sole shared notification transport**; Chat publisher owns typed event construction and terminal de-duplication |
 | 009 | Attachments & Content Processing — `kira/chat/attachments.py`, `attachment_content.py` | Attachment records/manager and bounded content extraction contracts | Injected storage/path adapters, parser adapters and immutable content data | Qt widgets, chat queue ownership, prompt policy, durable Conversation lifecycle | Owns attachment records/content processing boundary; not Chat history database | Reports attachment outcomes through caller/application callbacks |
 | 010 | Commands & Actions — `kira/chat/commands.py`, `command_adapters.py` | `CommandRegistry`, `CommandDefinition`, `CommandRequest`, `CommandResult`, adapters | Injected handlers, permission checker, immutable request/session context | Hard-coded Kira persona policy, persistence, UI rendering, unrestricted direct system execution | None | Command results/events are relayed by application layer |
 | 011 | Search & Retrieval — `kira/chat/search.py` | `ChatSearchRequest`, `ChatSearchHit`, `ChatSearchPage`, `ChatSearchService.search()` | Injected `messages_after` repository reader; optional conversation listing for status filter | SQL ownership, writing/deleting records, conversation organization policy, UI widgets | Read-only through Persistence | None |
@@ -50,9 +50,9 @@ The historical audit counts remain 12 DONE / 2 PARTIAL. The post-audit merge is 
 
 | Task | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
 |---|---|---|---|---|
-| 018 | Web Search application — `kira/app/web_search.py` | `WebSearchApplicationService`: Gemini credential selection, follow-up query rewriting, web/image request options, search evidence formatting and prepared-content merging | Settings snapshots, active Chat client, `kira.websearch` engine contracts | Qt, widgets, SearchWorker lifecycle, result presentation, direct provider/device construction |
+| 018 | Web Search application — `kira/app/web_search.py` | `WebSearchApplicationService`: automatic/forced search eligibility and query planning (`plan_request`), Gemini credential selection, follow-up query rewriting, web/image request options, search evidence formatting and prepared-content merging | Settings snapshots, active Chat client, `kira.websearch` engine contracts, optional tool-plan summary | Qt, widgets, SearchWorker lifecycle, result presentation, direct provider/device construction, search policy duplicated in MainWindow |
 
-The service is injected by Bootstrap into MainWindow. SearchWorker creation, signals and rendering remain UI responsibilities. Focused Qt-free tests are included; execution/runtime acceptance is pending until CI can allocate a runner.
+The service is injected by Bootstrap into MainWindow. `plan_request` owns the automatic/forced one-shot search decision and suppresses duplicate web search when a local/tool plan takes precedence; MainWindow only consumes the returned plan and starts the UI worker. SearchWorker creation, signals and rendering remain UI responsibilities. Focused Qt-free tests cover normal, disabled, slash-command, forced and tool-plan precedence cases; execution/runtime acceptance is pending.
 
 
 ### 2.3 TASK 019 — Voice application lifecycle
@@ -80,7 +80,7 @@ Bootstrap injects the Voice factory into MainWindow. Speaker and Listener remain
 ### 3.1 Allowed high-level calls
 
 - Bootstrap constructs the graph and injects the shared services.
-- MainWindow calls ChatApplicationService for Chat submission, request lifecycle and history operations, delegates Web Search policy to WebSearchApplicationService, and delegates Voice lifecycle/transcript policy to VoiceApplicationService and Game Mode permission/audio-alert policy to GameModeApplicationService.
+- MainWindow calls ChatApplicationService for Chat submission, request lifecycle and history operations, delegates Web Search eligibility/query planning/provider options to WebSearchApplicationService, and delegates Voice lifecycle/transcript policy to VoiceApplicationService and Game Mode permission/audio-alert policy to GameModeApplicationService.
 - ChatApplicationService calls its injected Coordinator, ContextBuilder, ResponseHandler, AttachmentManager, command port and persistence/history contract.
 - Search receives a read-only persistence reader and returns immutable result/page contracts.
 - Transfer validates and maps the transfer format, then delegates durable import to Persistence.
