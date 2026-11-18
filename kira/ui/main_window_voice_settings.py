@@ -43,7 +43,10 @@ from .main_window_voice_settings_support import (
 )
 
 
-class VoiceSettingsMixin:
+from .window_feature_controller import WindowFeatureController
+
+
+class VoiceSettingsMixin(WindowFeatureController):
     def build_chat_tab(self):
         page = QWidget()
         self.chat_page = page
