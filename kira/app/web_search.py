@@ -112,10 +112,10 @@ class WebSearchApplicationService:
         )
         if not enabled:
             return None, False
-
-        query, forced = websearch.plan(user_text)
         if force_web:
             return user_text.strip()[:300], True
+
+        query, forced = websearch.plan(user_text)
 
         if query and not forced and tool_plan is not None:
             if getattr(tool_plan, "strong", False) or getattr(tool_plan, "web", False):
