@@ -113,7 +113,8 @@ class DecisionEngine:
             "playful": traits["playfulness"] * 20,
             "teasing": traits["teasing"] * 20,
             "gentle": traits["empathy"] * 18,
-            "protective": traits["empathy"] * 12 + traits["warmth"] * 8,
+            # Protective is context-sensitive, not the default for every character.
+            "protective": traits["empathy"] * 8 + traits["warmth"] * 4,
             "focused": traits["patience"] * 12 + traits.get("carefulness", 0.76) * 8,
             "assertive": traits["assertiveness"] * 18,
             "affectionate": traits["warmth"] * 20,
@@ -168,7 +169,8 @@ class DecisionEngine:
     def decide(self, user_text="", mood=None, mode_name="chat", initiative="wait"):
         mood = mood or {}
         text = str(user_text or "").lower()
-        serious = any(term in text for term in SERIOUS_TERMS)
+        serious_states = {"down", "stressed", "hostile"}
+        serious = any(term in text for term in SERIOUS_TERMS) or bool(serious_states.intersection(mood.get("user_states") or ()))
         energy = int(mood.get("energy", 76) or 0)
         scores = {name: self._score(name, mood, self.traits) for name in BEHAVIOUR_GUIDES}
         reasons = []
