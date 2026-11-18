@@ -410,7 +410,22 @@ class OpenAICompatibleProvider(BaseProvider):
         url, headers, payload = self._prepare(messages, system_prompt, temperature, False)
         payload["tools"] = [{"type": "function", "function": schema} for schema in tools]
         payload["tool_choice"] = "auto"
-        data = self._post_json(url, headers, payload)
+        try:
+            data = self._post_json(url, headers, payload)
+        except ProviderError as exc:
+            detail = str(exc).lower()
+            unsupported = (
+                "does not support tools",
+                "doesn't support tools",
+                "tool calling is not supported",
+                "tools are not supported",
+                "does not support tool calls",
+                "unsupported tools",
+                "tool use is not supported",
+            )
+            if exc.status_code in (400, 422) and any(term in detail for term in unsupported):
+                return None
+            raise
         try:
             message = data["choices"][0]["message"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -1177,9 +1192,9 @@ class HybridRouter:
                     failures.append(f"{route['id']}: {redact(exc, *secrets)}")
                     self.last_attempts.append({"provider": route["provider"], "route_id": route["id"],
                                                "result": "error", "error_kind": kind, "status_code": status})
-            if not supported:
-                return None
-            raise RuntimeError("همه‌ی Routeهای سازگار با Native Function Calling ناموفق بودند:\n" + "\n".join(failures))
+            if failures:
+                raise RuntimeError("همه‌ی Routeهای سازگار با Native Function Calling ناموفق بودند:\n" + "\n".join(failures))
+            return None
         finally:
             self._active = None
             self._lock.release()
