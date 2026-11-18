@@ -83,6 +83,7 @@ MAX_MEMORIES = 120
 MAX_EVENTS = 80
 MEMORY_RETENTION_DAYS = {"interaction": 45.0, "kira_emotion": 90.0}
 MEMORY_RECENCY_HALF_LIFE_DAYS = 14.0
+EMOTIONAL_MEMORY_MIN_INTENSITY = 50.0
 _log = logging.getLogger(__name__)
 
 def _finite_float(value, default=0.0):
@@ -517,7 +518,9 @@ class EmotionalRuntime:
             self.relationship_engine.on_reply(
                 self._state["relationship"], valid, self.config.get("relationship_deltas", {})
             )
-            if text and any(e in valid for e in ("sad", "angry", "fearful", "disappointed")):
+            if text and level >= EMOTIONAL_MEMORY_MIN_INTENSITY and any(
+                e in valid for e in ("sad", "angry", "fearful", "disappointed")
+            ):
                 self._memory("kira_emotion", str(text), level * 0.25, now)
             self._save()
         return self.snapshot(now)
