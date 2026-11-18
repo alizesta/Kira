@@ -83,6 +83,20 @@ MAX_MEMORIES = 120
 MAX_EVENTS = 80
 MEMORY_RETENTION_DAYS = {"interaction": 45.0, "kira_emotion": 90.0}
 MEMORY_RECENCY_HALF_LIFE_DAYS = 14.0
+_MEMORY_RECALL_STOP_WORDS = frozenset((
+    "این", "اون", "آن", "همین", "همون", "برای", "من", "تو", "که", "از", "به", "با", "رو", "را", "در", "و",
+    "چه", "چی", "چیه", "چیست", "درباره", "مورد", "برنامه", "برنامه‌ای", "گفته", "گفتم", "گفت", "بود", "بودم",
+    "هستم", "است", "هست", "دارم", "داشتم", "خیلی", "می", "کنم", "کردم", "یادم", "یادته", "بگو", "بگم",
+    "چطور", "چگونه", "میشه", "شود", "می‌شود", "هم", "یک", "the", "and", "for", "with", "that", "this", "you", "your",
+    "was", "are", "have", "what", "how", "about", "please", "tell", "me", "do", "does", "did",
+))
+_MEMORY_RECALL_CANONICAL = {
+    "آزمون": "امتحان", "امتحانات": "امتحان", "امتحان": "امتحان",
+    "مسافرت": "سفر", "سفر": "سفر",
+    "دکتر": "پزشک", "پزشک": "پزشک",
+    "اضطراب": "نگرانی", "استرس": "نگرانی", "نگرانی": "نگرانی", "نگران": "نگرانی", "نگرانم": "نگرانی",
+    "گرافیک": "gpu", "gpu": "gpu", "گرافیکم": "gpu",
+}
 _log = logging.getLogger(__name__)
 
 def _finite_float(value, default=0.0):
@@ -433,11 +447,27 @@ class EmotionalRuntime:
                 tokens.update("#" + word[i:i + 3] for i in range(len(word) - 2))
         return tokens
 
+    @staticmethod
+    def _memory_word_tokens(text):
+        """Canonical content words for precise recall; incidental trigrams cannot trigger a memory."""
+        import re
+        value = str(text or "").translate(str.maketrans({
+            "ي": "ی", "ك": "ک", "ۀ": "ه", "ة": "ه", "أ": "ا", "إ": "ا",
+            "ؤ": "و", "ئ": "ی", "۰": "0", "۱": "1", "۲": "2", "۳": "3",
+            "۴": "4", "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9",
+        })).replace("\\u200c", " ").lower()
+        value = re.sub(r"[ً-ٰٟـ\\u200d\\u200e\\u200f]", "", value)
+        return {
+            _MEMORY_RECALL_CANONICAL.get(word, word)
+            for word in re.findall(r"[a-z0-9آ-ی]{2,}", value)
+            if word not in _MEMORY_RECALL_STOP_WORDS
+        }
+
     def recall_memories(self, query=None, limit=4, now=None):
         """Retrieve topic-relevant emotional memories with bounded retention and recency weighting."""
         now = self.clock() if now is None else _finite_float(now, self.clock())
-        query_tokens = self._memory_tokens(query) if query is not None else set()
-        if query is not None and not query_tokens:
+        query_words = self._memory_word_tokens(query) if query is not None else set()
+        if query is not None and not query_words:
             return []
         with self._lock:
             memories = [
@@ -451,9 +481,13 @@ class EmotionalRuntime:
             text = str(memory.get("text") or "")
             if not text:
                 continue
-            overlap = len(query_tokens & self._memory_tokens(text)) if query_tokens else 0
-            if query is not None and overlap == 0:
-                continue
+            matched_words = query_words & self._memory_word_tokens(text) if query_words else set()
+            overlap = len(matched_words)
+            if query is not None:
+                coverage = overlap / max(1, len(query_words))
+                minimum_coverage = 0.75 if len(query_words) <= 2 else 0.60
+                if overlap == 0 or coverage < minimum_coverage:
+                    continue
             reinforced = _finite_float(memory.get("reinforced_at") or memory.get("created"), now)
             age_days = max(0.0, now - reinforced) / 86400.0
             retention_days = MEMORY_RETENTION_DAYS.get(str(memory.get("kind") or ""), 45.0)

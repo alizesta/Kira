@@ -134,6 +134,17 @@ class EmotionalRuntimeTests(unittest.TestCase):
         self.assertIn("تنها", state["memories"][-1]["text"])
 
 
+    def test_shared_generic_word_does_not_recall_a_different_destination(self):
+        self.runtime.on_user_message("برای سفر اصفهان خیلی هیجان دارم", ["excited"], now=1000)
+        state = self.runtime.snapshot(now=1001, query="سفر شیراز")
+        self.assertEqual(state["recalled_memories"], [])
+
+    def test_long_persian_follow_up_query_keeps_the_actual_topic_terms(self):
+        self.runtime.on_user_message("برای سفر شیراز خیلی هیجان دارم", ["excited"], now=1000)
+        state = self.runtime.snapshot(now=1001, query="برای سفر شیراز چه برنامه‌ای گفته بودم؟")
+        self.assertTrue(state["recalled_memories"])
+        self.assertIn("شیراز", state["recalled_memories"][0]["text"])
+
     def test_query_with_no_effective_tokens_returns_no_old_memories(self):
         self.runtime.on_user_message("فردا امتحان مهم دارم و نگرانم", ["stressed"], now=1000)
         state = self.runtime.snapshot(now=1001, query="از و به")
