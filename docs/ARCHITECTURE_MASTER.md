@@ -187,7 +187,7 @@ No code migration is part of TASK 016.
 
 ## 8. Technical debt and next steps
 
-See [ARCHITECTURE_ROADMAP.md](ARCHITECTURE_ROADMAP.md) and [MODULE_OWNERSHIP.md](MODULE_OWNERSHIP.md) for the updated debt register and service contracts. Remaining work is runtime acceptance for the new services and existing Chat flows, plus review of UI-bound command/attachment orchestration and selective ModuleManager registration where a real lifecycle need exists. Runtime isolation, concurrency, event delivery and lifecycle behavior are unverified, not confirmed defects.
+See [ARCHITECTURE_ROADMAP.md](ARCHITECTURE_ROADMAP.md) and [MODULE_OWNERSHIP.md](MODULE_OWNERSHIP.md) for the updated debt register and service contracts. Chat command dispatch, attachment lifecycle/content preparation and fallback payload composition are owned by ChatApplicationService, CommandRegistry and AttachmentManager. Remaining source work is UI request sequencing, Qt worker/widget lifecycle, dialogs and rendering; these remain UI adapter responsibilities. ModuleManager registration has been reviewed: only resource-owning services with real lifecycle contracts are registered. Runtime acceptance for the new services and existing Chat flows remains outstanding; isolation, concurrency, event delivery and lifecycle behavior are unverified, not confirmed defects.
 
 The implementation and verification evidence is summarized in [ARCHITECTURE_IMPLEMENTATION_HANDOFF_2026-11-18.md](ARCHITECTURE_IMPLEMENTATION_HANDOFF_2026-11-18.md).
 

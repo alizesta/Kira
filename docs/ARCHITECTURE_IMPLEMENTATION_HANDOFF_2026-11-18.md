@@ -20,6 +20,10 @@ This change set completes the principal source-level application-policy extracti
 
 The original task definitions and their merged PR states are not rewritten by this handoff. This report documents the additional source-level delta on `new-main`.
 
+A follow-up source fix on `new-main` also makes `ServiceModule.dispose()` unregister its DI service even when the service cleanup hook raises, with a dedicated regression test. Chat attachment fallback composition and the per-message attachment limit are exposed by `ChatApplicationService`; Chat UI no longer imports the low-level attachment module for those policies. The remaining MainWindow command/attachment work is UI sequencing and presentation, not an unowned payload-composition rule.
+
+The selective ModuleManager audit found no justified additional registrations: policy-only services are stateless, while Voice/Vision worker lifetimes remain tied to UI adapters. The current resource-owning module registrations are retained.
+
 ## 2. Files and responsibilities added or changed
 
 ### Session application
