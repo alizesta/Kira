@@ -96,6 +96,9 @@ class _Speaker:
     def play_file(self, path):
         self.played.append(path)
 
+    def is_speaking(self):
+        return self._began
+
 
 class VoiceApplicationServiceTests(unittest.TestCase):
     def setUp(self):
