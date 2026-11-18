@@ -223,7 +223,7 @@ class SessionMixin:
 
     def _restore_session_history(self, session):
         with self._as(session):
-            self.restore_history()
+            return self.restore_history()
 
     def sync_sessions(self):
         """Rebuild visible character tabs from application-owned session state."""
@@ -405,7 +405,8 @@ class SessionMixin:
                 limit, character_id=self.cur.cid, conversation_id=self.cur.conversation_id
             )
         except Exception:
-            history = []
+            # Leave the Session unloaded so the next synchronization retries history.
+            return False
         shown = 0
         for item in history:
             role = item.get("role")
@@ -422,6 +423,7 @@ class SessionMixin:
             self.add_chat("system", self.t("history_restored"))
         else:
             self.add_chat("assistant", self.greeting_text())
+        return True
 
     def add_chat(self, kind, text, name=None, images=None):
         """Append one message bubble; direction is decided per line so Persian reads right-to-left.

@@ -167,8 +167,15 @@ class SessionApplicationService:
             if session is None:
                 continue
             if not session.loaded:
+                try:
+                    restored = restore_history(session)
+                except Exception:
+                    # A transient history/storage failure must not permanently mark
+                    # this Session as loaded; a later synchronization can retry.
+                    continue
+                if restored is False:
+                    continue
                 session.loaded = True
-                restore_history(session)
                 self.publish_history_loaded(session)
 
         sessions = self.session_manager.sessions_by_character

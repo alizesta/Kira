@@ -119,6 +119,59 @@ class SessionApplicationServiceTests(unittest.TestCase):
             ["history_loaded", "history_loaded", "history_loaded"],
         )
 
+    def test_history_restore_failure_does_not_mark_session_loaded_and_retries(self):
+        session = self.manager.create_session("kira")
+        attempts = []
+
+        def restore_history(target):
+            attempts.append(target.session_id)
+            if len(attempts) == 1:
+                raise RuntimeError("temporary database failure")
+            return True
+
+        for _ in range(2):
+            self.service.sync_sessions(
+                {"kira": {"name": "Kira"}},
+                ensure_resources=lambda _session, _profile: None,
+                restore_history=restore_history,
+            )
+            if not session.loaded:
+                self.assertNotIn(
+                    "history_loaded",
+                    [name for name, _payload in self.publisher.events],
+                )
+
+        self.assertEqual(attempts, [session.session_id, session.session_id])
+        self.assertTrue(session.loaded)
+        self.assertEqual(
+            [name for name, _payload in self.publisher.events].count("history_loaded"),
+            1,
+        )
+
+    def test_history_restore_can_explicitly_defer_session_loading(self):
+        session = self.manager.create_session("ren")
+        self.service.sync_sessions(
+            {"ren": {"name": "Ren"}},
+            ensure_resources=lambda _session, _profile: None,
+            restore_history=lambda _session: False,
+        )
+        self.assertFalse(session.loaded)
+        self.assertNotIn(
+            "history_loaded",
+            [name for name, _payload in self.publisher.events],
+        )
+
+        self.service.sync_sessions(
+            {"ren": {"name": "Ren"}},
+            ensure_resources=lambda _session, _profile: None,
+            restore_history=lambda _session: True,
+        )
+        self.assertTrue(session.loaded)
+        self.assertEqual(
+            [name for name, _payload in self.publisher.events].count("history_loaded"),
+            1,
+        )
+
     def test_deleted_character_session_is_retained_while_work_is_pending(self):
         session = self.manager.create_session("deleted")
         session.busy = True
