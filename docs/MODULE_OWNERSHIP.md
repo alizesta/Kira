@@ -185,15 +185,17 @@ The legacy imports `kira/chat/organization.py`, `kira/chat/search.py` and `kira/
 
 The desktop Composition Root registers the application service/factory graph
 through `kira/app/feature_modules.py` and `ServiceModule`. Managed registrations
-cover Memory, Mood, Character Profile, Chat History, Conversation Organization,
-Chat Search, Chat Transfer, Web Search, Shared Skills, Game Mode, Provider,
+cover Memory, Mood, Character Profile, Chat History, Conversation Lifecycle,
+Conversation Organization, Chat Search, Chat Transfer, Web Search, Shared Skills,
+Game Mode, Provider,
 Coding Agent, Runtime Settings, Vision, and the Chat/Session/Voice composition
 factories.
 
 The graph declares the dependencies that affect startup and shutdown ordering:
-Conversation Organization, Chat Search, Chat Transfer and Chat Application
-depend on Chat History; Session Application depends on Chat Application; Vision
-depends on Game Mode. Chat Transfer additionally accepts the optional
+Conversation Lifecycle, Conversation Organization, Chat Search and Chat Transfer
+depend on Chat History; Chat Application depends on both Chat History and
+Conversation Lifecycle; Session Application depends on Chat Application;
+Vision depends on Game Mode. Chat Transfer additionally accepts the optional
 Core-owned `ChatTransferFilePort` supplied by the outer composition root. The manager starts dependencies first
 and disposes created modules in reverse creation order. A service that is stopped
 can be restarted using the same instance; disable/re-enable creates a fresh one.
@@ -205,7 +207,9 @@ module stop. Vision and Game Mode clear transient policy state when stopped.
 The concrete ChatApplicationService, SessionApplicationService and
 VoiceApplicationService instances are constructed with window-scoped callback
 ports implemented by UI adapters and are therefore window-scoped, not
-application singletons. Organization, Search and Transfer are now application-wide, lifecycle-managed
+application singletons. ConversationLifecycleService is application-scoped and
+injected into the Chat factory so multiple windows share the same persistence
+and notification boundary. Organization, Search and Transfer are now application-wide, lifecycle-managed
 services registered by `feature_modules.py` and resolved by Bootstrap. Each
 shares the Chat History persistence adapter; Organization also receives the
 shared Chat event publisher, and Search receives the explicit Conversation
