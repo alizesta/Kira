@@ -7,7 +7,7 @@ import re
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from ..core.interfaces.transfer import ChatTransferRepositoryPort
 from ..domain.transfer import (
