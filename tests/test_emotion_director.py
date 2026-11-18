@@ -41,6 +41,19 @@ class EmotionDirectorLifecycleTests(unittest.TestCase):
         self.assertFalse(self._has_entry(source="response"))
         self.assertIsNone(self.director.engine.pending)
 
+    def test_user_interrupt_releases_active_response_emotion(self):
+        self.director.event("response_started", now=100.0)
+        self.director.on_reply(
+            self.director.parse_reply("[happy:65]\\nسلام"), now=101.0
+        )
+
+        self.director.event("user_interrupt", now=102.0)
+
+        self.assertFalse(self._has_entry(source="event", tag="response_started"))
+        self.assertFalse(self._has_entry(source="response"))
+        self.assertIsNone(self.director.engine.pending)
+        self.assertTrue(self._has_entry(source="event", tag="user_interrupt"))
+
     def test_failed_response_discards_partial_emotion_and_uses_failure_reaction(self):
         self.director.event("response_started", now=100.0)
         self.director.on_reply(
