@@ -1,5 +1,9 @@
 import copy
+import tempfile
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 from kira.chat.organization import (
     ChatOrganizationService,
@@ -29,6 +33,8 @@ class _Repository:
             },
         }
         self.fail_update = False
+        self.fail_mutation_after = None
+        self._lock = threading.RLock()
 
     def get_conversation(self, conversation_id):
         row = self.rows.get(conversation_id)
@@ -40,14 +46,44 @@ class _Repository:
             records = [row for row in records if row["character_id"] == character_id]
         return copy.deepcopy(records)
 
-    def update_conversation(self, conversation_id, **changes):
-        if self.fail_update:
-            raise OSError("storage unavailable")
-        row = self.rows.get(conversation_id)
-        if row is None:
-            return False
-        row.update(copy.deepcopy(changes))
-        return True
+    def mutate_conversations(self, mutations):
+        with self._lock:
+            snapshot = copy.deepcopy(self.rows)
+            result = {}
+            try:
+                for index, (conversation_id, mutator) in enumerate(mutations, start=1):
+                    if self.fail_update or self.fail_mutation_after == index:
+                        raise OSError("storage unavailable")
+                    row = self.rows.get(conversation_id)
+                    if row is None:
+                        raise OSError(f"conversation not found: {conversation_id}")
+                    updated = mutator(copy.deepcopy(row))
+                    self.rows[conversation_id] = copy.deepcopy(updated)
+                    result[conversation_id] = copy.deepcopy(updated)
+                return result
+            except Exception:
+                self.rows = snapshot
+                raise
+
+    def mutate_all_conversations(self, character_id, mutator):
+        with self._lock:
+            snapshot = copy.deepcopy(self.rows)
+            result = {}
+            selected = [
+                key for key, row in self.rows.items()
+                if character_id is None or row["character_id"] == character_id
+            ]
+            try:
+                for index, conversation_id in enumerate(selected, start=1):
+                    if self.fail_update or self.fail_mutation_after == index:
+                        raise OSError("storage unavailable")
+                    updated = mutator(copy.deepcopy(self.rows[conversation_id]))
+                    self.rows[conversation_id] = copy.deepcopy(updated)
+                    result[conversation_id] = copy.deepcopy(updated)
+                return result
+            except Exception:
+                self.rows = snapshot
+                raise
 
 
 class _Events:
@@ -143,6 +179,46 @@ class ChatOrganizationServiceTests(unittest.TestCase):
         self.service.update_metadata("kira-1", {"description": ""})
         organization = self.service.get_organization("kira-1").metadata
         self.assertNotIn("description", organization)
+
+    def test_competing_sqlite_writers_do_not_lose_organization_updates(self):
+        with tempfile.TemporaryDirectory(prefix="kira-organization-race-") as directory:
+            database = Path(directory) / "history.sqlite3"
+            from kira.chat.persistence import ChatPersistence, SqliteChatRepository
+
+            first_persistence = ChatPersistence(SqliteChatRepository(database))
+            second_persistence = ChatPersistence(SqliteChatRepository(database))
+            self.assertEqual(first_persistence.init_db(), [])
+            conversation = first_persistence.create_conversation("kira", title="Concurrent")
+            first = ChatOrganizationService(first_persistence, character_id="kira")
+            second = ChatOrganizationService(second_persistence, character_id="kira")
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(pool.map(
+                    lambda item: item[0].add_tag(conversation["id"], item[1]),
+                    ((first, "alpha"), (second, "beta")),
+                ))
+
+            self.assertTrue(all(result.success for result in results))
+            stored = first_persistence.get_conversation(conversation["id"])
+            self.assertEqual(
+                set(stored["metadata"]["organization"]["tags"]),
+                {"alpha", "beta"},
+            )
+
+    def test_bulk_delete_is_atomic_when_one_conversation_update_fails(self):
+        self.service.add_tag("kira-1", "obsolete")
+        self.service.add_tag("kira-2", "obsolete")
+        self.repository.fail_mutation_after = 2
+
+        with self.assertRaises(OrganizationRepositoryError):
+            self.service.delete_tag("obsolete")
+
+        self.assertEqual(
+            self.service.get_organization("kira-1").metadata["tags"], ["obsolete"]
+        )
+        self.assertEqual(
+            self.service.get_organization("kira-2").metadata["tags"], ["obsolete"]
+        )
 
     def test_repository_failures_are_normalized(self):
         self.repository.fail_update = True
