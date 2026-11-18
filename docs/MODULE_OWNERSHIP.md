@@ -278,12 +278,10 @@ method is owned by another feature controller. The registry provides the
 peer lookup target; application services remain the owner of non-presentation
 policy.
 
-This is an incremental boundary improvement, not completion of controller
-independence: feature controllers still use the window-backed compatibility
-proxy for shared state, widgets, and host services. Those dependencies must
-be replaced by narrower, explicit presentation contexts before the proxy can
-be removed. Python regression tests were added but have not been executed in
-this environment.
+This paragraph records the intermediate state before the explicit presentation
+context migration. It is superseded by the completed ownership contract in the
+"Explicit presentation context ownership" section below. The Python regression
+tests remain unexecuted in this environment.
 
 
 ### Controller registry contract
@@ -291,7 +289,7 @@ this environment.
 - `FeatureControllerRegistry` owns a defensive, read-only snapshot of feature-controller membership.
 - Required peer dependencies must use `WindowFeatureController.feature_controller()` and fail with `LookupError` when the feature is not registered.
 - Optional lookup is reserved for composition/dispatch paths that explicitly support an absent controller.
-- This registry contract does not yet replace the legacy window-backed attribute proxy; that migration remains tracked in the architecture roadmap.
+- The registry contract is now paired with WindowPresentationContext; the former window-backed attribute proxy and MainWindow feature-method forwarding have been removed.
 
 
 ### Explicit presentation context ownership — 2026-11-18
