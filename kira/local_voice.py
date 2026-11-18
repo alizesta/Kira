@@ -199,21 +199,23 @@ def _load_tts_voice(model_path=""):
     if _tts is not None:
         try:
             import psutil
-        except ImportError:
-            psutil = None
+        except ImportError as exc:
+            raise RuntimeError(
+                "psutil is required for safe Piper voice switching; "
+                "install requirements-voice-local.txt"
+            ) from exc
 
-        if psutil is not None:
-            # Piper's ONNX runtime can use several times the serialized model
-            # size. Keep the current voice resident unless a conservative budget
-            # indicates that the replacement can be loaded without exhausting RAM.
-            required_bytes = max(256 * 1024 * 1024, stat.st_size * 3)
-            available_bytes = int(psutil.virtual_memory().available)
-            if available_bytes < required_bytes:
-                raise MemoryError(
-                    "Insufficient memory to switch Piper voice safely "
-                    f"({available_bytes} available; approximately "
-                    f"{required_bytes} required)"
-                )
+        # Piper's ONNX runtime can use several times the serialized model size.
+        # Keep the current voice resident unless a conservative budget indicates
+        # that the replacement can be loaded without exhausting RAM.
+        required_bytes = max(256 * 1024 * 1024, stat.st_size * 3)
+        available_bytes = int(psutil.virtual_memory().available)
+        if available_bytes < required_bytes:
+            raise MemoryError(
+                "Insufficient memory to switch Piper voice safely "
+                f"({available_bytes} available; approximately "
+                f"{required_bytes} required)"
+            )
 
     from piper import PiperVoice
 
