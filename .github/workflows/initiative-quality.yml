@@ -16,7 +16,7 @@ on:
       - "kira/ui/pages/characters_page.py"
       - "tests/test_initiative_quality.py"
       - "tests/test_character_decision.py"
-      - "docs/CHARACTER_DECISION_ENGINE_FA.md"
+      - "docs/INITIATIVE_ENGINE_FA.md"
       - ".github/workflows/initiative-quality.yml"
   pull_request:
     branches: [new-main]
@@ -32,7 +32,7 @@ on:
       - "kira/ui/pages/characters_page.py"
       - "tests/test_initiative_quality.py"
       - "tests/test_character_decision.py"
-      - "docs/CHARACTER_DECISION_ENGINE_FA.md"
+      - "docs/INITIATIVE_ENGINE_FA.md"
       - ".github/workflows/initiative-quality.yml"
 
 permissions:
