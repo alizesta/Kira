@@ -346,18 +346,21 @@ def extend_prompt(prompt, decision, settings=None, router=None, *, character_id:
         extras = []
         if decision.stage == DEEP and not _small_context(settings, router, decision):
             extras.append(DEEP_BLOCK)
-        # Turning reflection off must suppress both new reviews and any stale
-        # review note left by an earlier setting. Never leak an old hint into
-        # a prompt when the feature is disabled.
-        if decision.reflection != "off":
-            with _lock:
-                state = _load(character_id)
+        # Turning reflection off invalidates any pending note as well as
+        # suppressing it now; re-enabling later must not resurrect stale advice.
+        with _lock:
+            state = _load(character_id)
+            if decision.reflection == "off":
+                if state.get("hint"):
+                    state["hint"] = None
+                    _save(state, character_id)
+            else:
                 hint = _pending_hint(state, time.time())
                 if state.get("hint") and not hint:
                     state["hint"] = None                               # expired
                     _save(state, character_id)
-            if hint:
-                extras.append(HINT_BLOCK.format(hint=hint))
+                if hint:
+                    extras.append(HINT_BLOCK.format(hint=hint))
         return prompt + ("\n\n" + "\n\n".join(extras) if extras else "")
     except Exception:                                                  # noqa: BLE001
         return prompt
