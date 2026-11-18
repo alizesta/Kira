@@ -49,6 +49,11 @@ class FeatureControllerRegistry:
         )
 
     def dispatch_event(self, window, feature: str, event_name: str, event):
+        expected_owner = QT_EVENT_OWNERS.get(event_name)
+        if expected_owner is not None and feature != expected_owner:
+            raise ValueError(
+                f"{event_name} belongs to {expected_owner!r}, not {feature!r}"
+            )
         controller = self.get(feature)
         if controller is not None:
             handler = getattr(controller, event_name, None)
