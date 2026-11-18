@@ -66,8 +66,8 @@ class VoiceSettingsMixin:
             route_chip_factory=RouteChip,
             code_chat_factory=CodeChat,
             make_icon=make_icon,
-            story_mode=STORY_MODE,
-            competitive_safe_mode=COMPETITIVE_SAFE_MODE,
+            story_mode=self.game_mode_application_service.STORY_MODE,
+            competitive_safe_mode=self.game_mode_application_service.COMPETITIVE_SAFE_MODE,
             parent=chat_card,
         )
         composer = self.chat_composer
