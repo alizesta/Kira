@@ -47,14 +47,14 @@ from .window_feature_controller import WindowFeatureController
 class CharacterSettingsController(WindowFeatureController):
     def build_characters_tab(self):
         """Compose the independent Characters page and delegate actions to the host."""
-        self.character_page = CharactersPage(
-            self.settings,
-            self.t,
+        self.context.views.character_page = CharactersPage(
+            self.context.services.settings,
+            self.feature_controller("session").t,
             base_traits=BASE_TRAITS,
             moods=MOODS,
             parent=self.window,
         )
-        page = self.character_page
+        page = self.context.views.character_page
         page.character_selected.connect(self.select_character)
         page.add_character_requested.connect(self.add_character)
         page.edit_character_requested.connect(self.edit_character)
@@ -62,41 +62,41 @@ class CharacterSettingsController(WindowFeatureController):
         page.choose_theme_color_requested.connect(self.choose_character_theme_color)
         page.reset_theme_color_requested.connect(self.reset_character_theme_color)
         page.preview_requested.connect(
-            lambda mood: self.animator.set_expression(mood, hold=8)
+            lambda mood: self.context.adapters.animator.set_expression(mood, hold=8)
         )
-        page.open_sounds_requested.connect(self.open_sounds)
+        page.open_sounds_requested.connect(self.feature_controller("lifecycle").open_sounds)
         page.save_requested.connect(lambda: self.save_character_settings(silent=True))
         page.save_personality_requested.connect(self.save_personality_profile)
-        self.tabs.addTab(page, "")
+        self.context.views.tabs.addTab(page, "")
         self.refresh_character_choices()
         self.refresh_character_card()
         self.refresh_personality_controls()
 
     def build_personality_tab(self):
         """Compatibility entry point; personality controls are owned by CharactersPage."""
-        return self.character_page.character_subtabs.widget(1)
+        return self.context.views.character_page.character_subtabs.widget(1)
 
     def refresh_character_controls(self):
-        cid = self.character_service.active_id(self.settings)
-        voice = (self.settings.get("character_voice") or {}).get(cid) or {}
-        self.character_page.char_voice_rate.blockSignals(True)
-        self.character_page.char_voice_rate.setValue(int(voice.get("voice_rate", self.settings.get("voice_rate", 0))))
-        self.character_page.char_voice_rate.blockSignals(False)
-        self.character_page.char_voice_volume.blockSignals(True)
-        self.character_page.char_voice_volume.setValue(round(float(voice.get("voice_volume", self.settings.get("voice_volume", 0.9))) * 100))
-        self.character_page.char_voice_volume.blockSignals(False)
-        resources = (self.settings.get("character_resources") or {}).get(cid) or {}
-        for widget, key in ((self.character_page.char_skills_edit, "skills"), (self.character_page.char_mcp_edit, "mcp"),
-                            (self.character_page.char_connectors_edit, "connectors")):
+        cid = self.context.services.character_service.active_id(self.context.services.settings)
+        voice = (self.context.services.settings.get("character_voice") or {}).get(cid) or {}
+        self.context.views.character_page.char_voice_rate.blockSignals(True)
+        self.context.views.character_page.char_voice_rate.setValue(int(voice.get("voice_rate", self.context.services.settings.get("voice_rate", 0))))
+        self.context.views.character_page.char_voice_rate.blockSignals(False)
+        self.context.views.character_page.char_voice_volume.blockSignals(True)
+        self.context.views.character_page.char_voice_volume.setValue(round(float(voice.get("voice_volume", self.context.services.settings.get("voice_volume", 0.9))) * 100))
+        self.context.views.character_page.char_voice_volume.blockSignals(False)
+        resources = (self.context.services.settings.get("character_resources") or {}).get(cid) or {}
+        for widget, key in ((self.context.views.character_page.char_skills_edit, "skills"), (self.context.views.character_page.char_mcp_edit, "mcp"),
+                            (self.context.views.character_page.char_connectors_edit, "connectors")):
             widget.blockSignals(True)
             value = resources.get(key) or []
             widget.setText(", ".join(value) if isinstance(value, (list, tuple)) else str(value))
             widget.blockSignals(False)
-        notes = (self.settings.get("character_notes") or {}).get(cid) or ""
-        if hasattr(self.character_page, "character_notes_edit"):
-            self.character_page.character_notes_edit.blockSignals(True)
-            self.character_page.character_notes_edit.setPlainText(str(notes))
-            self.character_page.character_notes_edit.blockSignals(False)
+        notes = (self.context.services.settings.get("character_notes") or {}).get(cid) or ""
+        if hasattr(self.context.views.character_page, "character_notes_edit"):
+            self.context.views.character_page.character_notes_edit.blockSignals(True)
+            self.context.views.character_page.character_notes_edit.setPlainText(str(notes))
+            self.context.views.character_page.character_notes_edit.blockSignals(False)
         self.apply_character_voice_settings()
 
     def _flush_character_autosave(self):
@@ -106,22 +106,22 @@ class CharacterSettingsController(WindowFeatureController):
             self.save_character_settings(silent=True)
 
     def save_character_settings(self, silent=False):
-        cid = self.character_service.active_id(self.settings)
+        cid = self.context.services.character_service.active_id(self.context.services.settings)
         notes = (
-            self.character_page.character_notes_edit.toPlainText().strip()
-            if hasattr(self.character_page, "character_notes_edit") else None
+            self.context.views.character_page.character_notes_edit.toPlainText().strip()
+            if hasattr(self.context.views.character_page, "character_notes_edit") else None
         )
-        self.character_service.save_preferences(
-            self.settings,
+        self.context.services.character_service.save_preferences(
+            self.context.services.settings,
             cid,
             voice={
-                "voice_rate": self.character_page.char_voice_rate.value(),
-                "voice_volume": self.character_page.char_voice_volume.value() / 100.0,
+                "voice_rate": self.context.views.character_page.char_voice_rate.value(),
+                "voice_volume": self.context.views.character_page.char_voice_volume.value() / 100.0,
             },
             resources={
-                "skills": self.character_page.char_skills_edit.text(),
-                "mcp": self.character_page.char_mcp_edit.text(),
-                "connectors": self.character_page.char_connectors_edit.text(),
+                "skills": self.context.views.character_page.char_skills_edit.text(),
+                "mcp": self.context.views.character_page.char_mcp_edit.text(),
+                "connectors": self.context.views.character_page.char_connectors_edit.text(),
             },
             notes=notes,
         )
@@ -130,17 +130,17 @@ class CharacterSettingsController(WindowFeatureController):
 
     def apply_character_voice_settings(self):
         """Give the speaker an isolated settings snapshot for the active character."""
-        cid = self.character_service.active_id(self.settings)
-        override = (self.settings.get("character_voice") or {}).get(cid) or {}
+        cid = self.context.services.character_service.active_id(self.context.services.settings)
+        override = (self.context.services.settings.get("character_voice") or {}).get(cid) or {}
         if getattr(self, "speaker", None) is not None:
-            self.voice_application_service.apply_character_settings(self.settings, override)
+            self.context.services.voice_application_service.apply_character_settings(self.context.services.settings, override)
 
     def refresh_personality_controls(self):
         if not getattr(getattr(self, "character_page", None), "personality_sliders", None):
             return
         self.refresh_character_controls()
         traits = self.feature_controller("session").character_traits(self.feature_controller("session").active_character().get("id", "kira")) or BASE_TRAITS
-        for key, slider in self.character_page.personality_sliders.items():
+        for key, slider in self.context.views.character_page.personality_sliders.items():
             slider.blockSignals(True)
             slider.setValue(int(round(float(traits.get(key, BASE_TRAITS.get(key, 0.5))) * 100)))
             slider.blockSignals(False)
@@ -148,16 +148,16 @@ class CharacterSettingsController(WindowFeatureController):
     def save_personality_profile(self, silent=False):
         profile = self.feature_controller("session").active_character()
         cid = profile.get("id", "kira")
-        traits = {key: slider.value() / 100.0 for key, slider in self.character_page.personality_sliders.items()}
+        traits = {key: slider.value() / 100.0 for key, slider in self.context.views.character_page.personality_sliders.items()}
         try:
             notes = (
-                self.character_page.character_notes_edit.toPlainText().strip()
-                if hasattr(self.character_page, "character_notes_edit") else None
+                self.context.views.character_page.character_notes_edit.toPlainText().strip()
+                if hasattr(self.context.views.character_page, "character_notes_edit") else None
             )
-            self.character_service.save_personality(
-                self.settings, cid, traits=traits, notes=notes
+            self.context.services.character_service.save_personality(
+                self.context.services.settings, cid, traits=traits, notes=notes
             )
-            self.mood_service.set_active_character(cid, traits)
+            self.context.services.mood_service.set_active_character(cid, traits)
             self.save_character_settings(silent=True)
             self.refresh_personality_controls()
             if not silent:
@@ -170,42 +170,42 @@ class CharacterSettingsController(WindowFeatureController):
             return False
 
     def refresh_character_choices(self):
-        current = self.character_service.active_id(self.settings)
-        self.character_page.character_combo.blockSignals(True)
-        self.character_page.character_combo.clear()
-        profiles = self.character_service.all_profiles(self.settings)
+        current = self.context.services.character_service.active_id(self.context.services.settings)
+        self.context.views.character_page.character_combo.blockSignals(True)
+        self.context.views.character_page.character_combo.clear()
+        profiles = self.context.services.character_service.all_profiles(self.context.services.settings)
         for cid in ("kira", "ren", "mika"):
             if cid in profiles:
                 p = profiles[cid]
-                self.character_page.character_combo.addItem(p.get("name_fa", p["name"]) + " · " + p["name"], cid)
+                self.context.views.character_page.character_combo.addItem(p.get("name_fa", p["name"]) + " · " + p["name"], cid)
         for cid, p in profiles.items():
             if cid not in ("kira", "ren", "mika"):
-                self.character_page.character_combo.addItem(p.get("name_fa", p["name"]) + " · " + p["name"], cid)
-        self.character_page.character_combo.setCurrentIndex(max(0, self.character_page.character_combo.findData(current)))
-        self.character_page.character_combo.blockSignals(False)
-        self.character_page.character_edit_btn.setEnabled(current != "kira")
-        self.character_page.character_delete_btn.setEnabled(current != "kira")
+                self.context.views.character_page.character_combo.addItem(p.get("name_fa", p["name"]) + " · " + p["name"], cid)
+        self.context.views.character_page.character_combo.setCurrentIndex(max(0, self.context.views.character_page.character_combo.findData(current)))
+        self.context.views.character_page.character_combo.blockSignals(False)
+        self.context.views.character_page.character_edit_btn.setEnabled(current != "kira")
+        self.context.views.character_page.character_delete_btn.setEnabled(current != "kira")
         self._refresh_character_theme_preview()
 
     def _refresh_character_theme_preview(self):
-        if not hasattr(self.character_page, "character_theme_color_preview"):
+        if not hasattr(self.context.views.character_page, "character_theme_color_preview"):
             return
-        cid = self.character_service.active_id(self.settings)
+        cid = self.context.services.character_service.active_id(self.context.services.settings)
         colour = self.feature_controller("session").theme_for_character(cid)["main"]
-        self.character_page.character_theme_color_preview.setText(colour)
-        self.character_page.character_theme_color_preview.setStyleSheet(
+        self.context.views.character_page.character_theme_color_preview.setText(colour)
+        self.context.views.character_page.character_theme_color_preview.setStyleSheet(
             f"QLabel {{ background: {colour}; color: white; border: 1px solid rgba(255,255,255,0.5); "
             "border-radius: 7px; padding: 5px; }"
         )
 
     def choose_character_theme_color(self):
-        cid = self.character_service.active_id(self.settings)
+        cid = self.context.services.character_service.active_id(self.context.services.settings)
         current = QColor(self.feature_controller("session").theme_for_character(cid)["main"])
         selected = QColorDialog.getColor(current, self, "رنگ تم شخصیت")
         if not selected.isValid():
             return
-        self.settings.setdefault("character_theme_colors", {})[cid] = selected.name()
-        for session in self.sessions.values():
+        self.context.services.settings.setdefault("character_theme_colors", {})[cid] = selected.name()
+        for session in self.context.state.sessions.values():
             session.theme = self.feature_controller("session").theme_for_character(session.cid)
         self._refresh_character_theme_preview()
         self.feature_controller("session").apply_chat_theme()
@@ -214,9 +214,9 @@ class CharacterSettingsController(WindowFeatureController):
         self.feature_controller("runtime").save_now()
 
     def reset_character_theme_color(self):
-        cid = self.character_service.active_id(self.settings)
-        self.settings.setdefault("character_theme_colors", {}).pop(cid, None)
-        for session in self.sessions.values():
+        cid = self.context.services.character_service.active_id(self.context.services.settings)
+        self.context.services.settings.setdefault("character_theme_colors", {}).pop(cid, None)
+        for session in self.context.state.sessions.values():
             session.theme = self.feature_controller("session").theme_for_character(session.cid)
         self._refresh_character_theme_preview()
         self.feature_controller("session").apply_chat_theme()
@@ -225,7 +225,7 @@ class CharacterSettingsController(WindowFeatureController):
         self.feature_controller("runtime").save_now()
 
     def refresh_character_card(self, character_id=None):
-        profile = self.character_service.all_profiles(self.settings).get(character_id or self.character_service.active_id(self.settings), self.character_service.all_profiles(self.settings).get("kira", {}))
+        profile = self.context.services.character_service.all_profiles(self.context.services.settings).get(character_id or self.context.services.character_service.active_id(self.context.services.settings), self.context.services.character_service.all_profiles(self.context.services.settings).get("kira", {}))
         image_name = str(profile.get("image") or "").strip()
         pixmap = QPixmap()
         if image_name:
@@ -239,15 +239,15 @@ class CharacterSettingsController(WindowFeatureController):
             except (OSError, ValueError):
                 pixmap = QPixmap()
         pixmap = self._fit_portrait(pixmap)
-        self.character_page.character_portrait.setPixmap(pixmap)
-        self.character_page.character_description.setText(profile.get("description", ""))
+        self.context.views.character_page.character_portrait.setPixmap(pixmap)
+        self.context.views.character_page.character_description.setText(profile.get("description", ""))
 
     def _fit_portrait(self, pixmap):
         """Fill the portrait frame without stretching: pictures whose proportions differ from the frame are
         cropped (centred, biased toward the face). A picture that already fits (Kira's SVG) is left untouched."""
         if pixmap.isNull():
             return pixmap
-        size = self.character_page.character_portrait.size()
+        size = self.context.views.character_page.character_portrait.size()
         if abs(pixmap.width() / pixmap.height() - size.width() / size.height()) < 0.03:
             return pixmap
         x, y, w, h = avatar_art.cover_crop(pixmap.width(), pixmap.height(), size.width(), size.height())
@@ -257,16 +257,16 @@ class CharacterSettingsController(WindowFeatureController):
     def apply_character_art(self):
         """Chat page + floating companion show the active character: Kira's own animated PNG, or the character's
         full-body picture (a profile without one falls back to Kira's art). Called at start-up and on every change."""
-        profile = self.character_service.active(self.settings)
-        self.animator.set_character_art(self.character_service.avatar_file(profile, ROOT))
-        self.animator.rig.intensity = float(self.settings.get("motion_strength", self.animator.rig.intensity)) * self.animator.motion_gain
-        self.animator.touch()
+        profile = self.context.services.character_service.active(self.context.services.settings)
+        self.context.adapters.animator.set_character_art(self.context.services.character_service.avatar_file(profile, ROOT))
+        self.context.adapters.animator.rig.intensity = float(self.context.services.settings.get("motion_strength", self.context.adapters.animator.rig.intensity)) * self.context.adapters.animator.motion_gain
+        self.context.adapters.animator.touch()
 
     def select_character(self, index):
-        character_id = self.character_page.character_combo.itemData(index)
+        character_id = self.context.views.character_page.character_combo.itemData(index)
         if not character_id:
             return
-        if character_id != self.front.cid:
+        if character_id != self.context.state.front.cid:
             self.feature_controller("session").switch_session(character_id)         # the character list in Settings and the tabs on the chat page are the same switch
             self.feature_controller("runtime").save_now()
 
@@ -280,8 +280,8 @@ class CharacterSettingsController(WindowFeatureController):
         prompt, ok = QInputDialog.getMultiLineText(self.window, "شخصیت جدید", "دستور شخصیت و لحن:")
         if not ok:
             return
-        profile = self.character_service.create_profile(
-            self.settings, name, description, prompt
+        profile = self.context.services.character_service.create_profile(
+            self.context.services.settings, name, description, prompt
         )
         cid = profile["id"]
         self.feature_controller("session").sync_sessions()                           # a new tab with its own conversation
@@ -289,10 +289,10 @@ class CharacterSettingsController(WindowFeatureController):
         self.feature_controller("runtime").save_now()
 
     def edit_character(self):
-        cid = self.character_service.active_id(self.settings)
+        cid = self.context.services.character_service.active_id(self.context.services.settings)
         if cid == "kira":
             return
-        profile = dict(self.character_service.all_profiles(self.settings)[cid])
+        profile = dict(self.context.services.character_service.all_profiles(self.context.services.settings)[cid])
         name, ok = QInputDialog.getText(self.window, "ویرایش شخصیت", "نام:", QLineEdit.Normal, profile.get("name", ""))
         if not ok or not name.strip():
             return
@@ -302,8 +302,8 @@ class CharacterSettingsController(WindowFeatureController):
         prompt, ok = QInputDialog.getMultiLineText(self.window, "ویرایش شخصیت", "دستور شخصیت و لحن:", profile.get("prompt", ""))
         if not ok:
             return
-        self.character_service.update_profile(
-            self.settings, cid, name=name, description=description, prompt=prompt
+        self.context.services.character_service.update_profile(
+            self.context.services.settings, cid, name=name, description=description, prompt=prompt
         )
         self.feature_controller("session").sync_sessions()
         self.feature_controller("session").apply_chat_theme()
@@ -312,42 +312,42 @@ class CharacterSettingsController(WindowFeatureController):
         self.feature_controller("runtime").save_now()
 
     def delete_character(self):
-        cid = self.character_service.active_id(self.settings)
+        cid = self.context.services.character_service.active_id(self.context.services.settings)
         if cid == "kira":
             return
         if QMessageBox.question(self.window, "حذف شخصیت", "این شخصیت حذف شود؟") != QMessageBox.Yes:
             return
-        self.character_service.delete_profile(self.settings, cid)
+        self.context.services.character_service.delete_profile(self.context.services.settings, cid)
         self.feature_controller("session").sync_sessions()                           # its tab (and conversation view) goes away
         self.feature_controller("session").switch_session("kira")
         self.feature_controller("runtime").save_now()
 
     def build_appearance_tab(self):
         """Compose the independent appearance page and connect controller actions."""
-        self.appearance_page = AppearancePage(
-            self.settings,
-            self.t,
+        self.context.views.appearance_page = AppearancePage(
+            self.context.services.settings,
+            self.feature_controller("session").t,
             glass_supported=winfx.supported(),
             parent=self.window,
         )
-        self.appearance_page.appearance_apply_requested.connect(self.apply_appearance)
-        self.appearance_page.choose_color_requested.connect(self.choose_appearance_color)
-        self.appearance_page.reset_requested.connect(self.reset_appearance)
-        self.tabs.addTab(self.appearance_page, "")
+        self.context.views.appearance_page.appearance_apply_requested.connect(self.apply_appearance)
+        self.context.views.appearance_page.choose_color_requested.connect(self.choose_appearance_color)
+        self.context.views.appearance_page.reset_requested.connect(self.reset_appearance)
+        self.context.views.tabs.addTab(self.context.views.appearance_page, "")
 
     def _set_appearance_color_preview(self, value):
         """Compatibility helper; AppearancePage owns its colour preview."""
-        self.appearance_page.set_background_color(value)
+        self.context.views.appearance_page.set_background_color(value)
 
     def choose_appearance_color(self):
-        current = QColor(self.appearance_page.background_color)
+        current = QColor(self.context.views.appearance_page.background_color)
         selected = QColorDialog.getColor(current, self, "رنگ پس‌زمینه")
         if selected.isValid():
-            self.appearance_page.set_background_color(selected.name())
+            self.context.views.appearance_page.set_background_color(selected.name())
             self.schedule_appearance()
 
     def reset_appearance(self):
-        page = self.appearance_page
+        page = self.context.views.appearance_page
         page.set_background_color("#0A0A1C")
         page.window_effect.setCurrentIndex(max(0, page.window_effect.findData("acrylic")))
         page.appearance_brightness.setValue(100)
@@ -365,33 +365,33 @@ class CharacterSettingsController(WindowFeatureController):
         if not hasattr(self, "appearance_page"):
             return
         previous = getattr(self, "_effect", "off")
-        color = self.appearance_page.background_color or (self.settings.get("appearance") or {}).get("background_color", "#0A0A1C")
+        color = self.context.views.appearance_page.background_color or (self.context.services.settings.get("appearance") or {}).get("background_color", "#0A0A1C")
         appearance = {
             "background_color": color,
-            "brightness": self.appearance_page.appearance_brightness.value(),
-            "glow": self.appearance_page.appearance_glow.value(),
-            "transparency": self.appearance_page.appearance_transparency.value(),
+            "brightness": self.context.views.appearance_page.appearance_brightness.value(),
+            "glow": self.context.views.appearance_page.appearance_glow.value(),
+            "transparency": self.context.views.appearance_page.appearance_transparency.value(),
         }
         # Reduce the old high default once; subsequent values are entirely user-controlled.
-        if not self.settings.get("appearance_glow_adjusted"):
+        if not self.context.services.settings.get("appearance_glow_adjusted"):
             appearance["glow"] = min(int(appearance["glow"]), 18)
-            self.appearance_page.appearance_glow.blockSignals(True)
-            self.appearance_page.appearance_glow.setValue(appearance["glow"])
-            self.appearance_page.appearance_glow.blockSignals(False)
-            self.settings["appearance_glow_adjusted"] = True
+            self.context.views.appearance_page.appearance_glow.blockSignals(True)
+            self.context.views.appearance_page.appearance_glow.setValue(appearance["glow"])
+            self.context.views.appearance_page.appearance_glow.blockSignals(False)
+            self.context.services.settings["appearance_glow_adjusted"] = True
         # One-time migration from the restrained glow to the Neon Shooter bloom level.
         # Preserve stronger user-selected values; only lift the old low default.
-        if not self.settings.get("appearance_neon_shooter_v1"):
+        if not self.context.services.settings.get("appearance_neon_shooter_v1"):
             if int(appearance["glow"]) < 42:
                 appearance["glow"] = 58
-            self.appearance_page.appearance_glow.blockSignals(True)
-            self.appearance_page.appearance_glow.setValue(int(appearance["glow"]))
-            self.appearance_page.appearance_glow.blockSignals(False)
-            self.settings["appearance_neon_shooter_v1"] = True
-        self.settings["appearance"] = appearance
-        wanted = self.appearance_page.window_effect.currentData() or "acrylic"
+            self.context.views.appearance_page.appearance_glow.blockSignals(True)
+            self.context.views.appearance_page.appearance_glow.setValue(int(appearance["glow"]))
+            self.context.views.appearance_page.appearance_glow.blockSignals(False)
+            self.context.services.settings["appearance_neon_shooter_v1"] = True
+        self.context.services.settings["appearance"] = appearance
+        wanted = self.context.views.appearance_page.window_effect.currentData() or "acrylic"
         current = winfx.active_effect(wanted)
-        self._effect = current
+        self.context.state._effect = current
         set_glow_intensity(appearance["glow"] / 100.0)
         app = QApplication.instance()
         if app is not None:
@@ -400,19 +400,19 @@ class CharacterSettingsController(WindowFeatureController):
             self.feature_controller("session").apply_chat_theme()
         self._refresh_icon_glow()
         self._apply_neon_glow_effects(appearance)
-        winfx.apply_effect(self.winId(), current)
-        self.appearance_page.set_background_color(color)
+        winfx.apply_effect(self.window.winId(), current)
+        self.context.views.appearance_page.set_background_color(color)
         if (previous == "off") != (current == "off") and previous != current and getattr(self, "isVisible", lambda: False)():
             self.feature_controller("session").add_chat("system", "برای اعمال کامل حالت شیشه‌ای، برنامه را یک بار ببند و دوباره باز کن.")
         if save:
-            save_settings(self.settings)
+            save_settings(self.context.services.settings)
 
     def _apply_neon_glow_effects(self, appearance=None):
         """Bloom the glass panels and action controls without touching animated avatar widgets."""
-        appearance = appearance if isinstance(appearance, dict) else (self.settings.get("appearance") or {})
+        appearance = appearance if isinstance(appearance, dict) else (self.context.services.settings.get("appearance") or {})
         intensity = max(0, min(100, int(appearance.get("glow", 58))))
-        cid = self.character_service.active_id(self.settings)
-        palette = self.feature_controller("session").theme_for_character(cid, self.character_service.all_profiles(self.settings).get(cid, {}))
+        cid = self.context.services.character_service.active_id(self.context.services.settings)
+        palette = self.feature_controller("session").theme_for_character(cid, self.context.services.character_service.all_profiles(self.context.services.settings).get(cid, {}))
         if not hasattr(self, "_neon_widget_effects"):
             self._neon_widget_effects = {}
 
@@ -443,9 +443,9 @@ class CharacterSettingsController(WindowFeatureController):
             effect.setColor(tint)
 
     def _refresh_icon_glow(self):
-        cid = self.character_service.active_id(self.settings)
-        palette = self.feature_controller("session").theme_for_character(cid, self.character_service.all_profiles(self.settings).get(cid, {}))
-        for button in self.findChildren(QToolButton):
+        cid = self.context.services.character_service.active_id(self.context.services.settings)
+        palette = self.feature_controller("session").theme_for_character(cid, self.context.services.character_service.all_profiles(self.context.services.settings).get(cid, {}))
+        for button in self.window.findChildren(QToolButton):
             name = button.property("kiraIconName")
             if not name:
                 continue
@@ -454,9 +454,9 @@ class CharacterSettingsController(WindowFeatureController):
 
     def build_general_tab(self):
         """Compose preferences and help pages; the preferences widget owns its controls."""
-        self.preferences_page = PreferencesPage(
-            self.settings,
-            self.t,
+        self.context.views.preferences_page = PreferencesPage(
+            self.context.services.settings,
+            self.feature_controller("session").t,
             web_depths=tuple(websearch.DEPTHS.items()),
             about_rows=about.about_rows(VERSION),
             parent=self.window,
@@ -465,22 +465,22 @@ class CharacterSettingsController(WindowFeatureController):
             "ui_lang", "tavily_key", "web_depth", "web_fallback_chk", "web_test_btn",
             "restore_chat_btn", "memory_btn", "import_chat_btn", "about_labels",
         ):
-            setattr(self, name, getattr(self.preferences_page, name))
+            setattr(self, name, getattr(self.context.views.preferences_page, name))
 
-        self.preferences_page.web_search_test_requested.connect(self.test_web_search)
-        self.preferences_page.clear_history_requested.connect(self.clear_chat)
-        self.preferences_page.restore_history_requested.connect(self.restore_cleared_chat)
-        self.preferences_page.open_memory_requested.connect(self.open_memory_dialog)
-        self.preferences_page.import_history_requested.connect(self.import_old_chat)
+        self.context.views.preferences_page.web_search_test_requested.connect(self.feature_controller("chat").test_web_search)
+        self.context.views.preferences_page.clear_history_requested.connect(self.feature_controller("runtime").clear_chat)
+        self.context.views.preferences_page.restore_history_requested.connect(self.feature_controller("runtime").restore_cleared_chat)
+        self.context.views.preferences_page.open_memory_requested.connect(self.feature_controller("runtime").open_memory_dialog)
+        self.context.views.preferences_page.import_history_requested.connect(self.feature_controller("runtime").import_old_chat)
 
         subtabs = QTabWidget()
-        subtabs.addTab(self.preferences_page, "")
+        subtabs.addTab(self.context.views.preferences_page, "")
         subtabs.addTab(self.build_skills_tab(), "Skills")
         subtabs.addTab(self.build_help_tab(), "")
         self.general_subtabs = subtabs
         self.feature_controller("session").reg(lambda text: subtabs.setTabText(0, text), "tab_preferences")
         self.feature_controller("session").reg(lambda text: subtabs.setTabText(2, text), "tab_help")
-        self.tabs.addTab(self.feature_controller("session").page(subtabs), "")
+        self.context.views.tabs.addTab(self.feature_controller("session").page(subtabs), "")
 
     def build_skills_tab(self):
         """Compose the Skills page and adapt its intents to the application service."""
@@ -500,9 +500,9 @@ class CharacterSettingsController(WindowFeatureController):
         if page is None:
             return
         page.set_skills(
-            self.shared_skills_application_service.list_installed(),
-            self.character_service.all_profiles(self.settings),
-            self.shared_skills_application_service,
+            self.context.services.shared_skills_application_service.list_installed(),
+            self.context.services.character_service.all_profiles(self.context.services.settings),
+            self.context.services.shared_skills_application_service,
         )
 
     def install_shared_skill_zip(self):
@@ -523,7 +523,7 @@ class CharacterSettingsController(WindowFeatureController):
 
     def _install_shared_skill(self, source):
         try:
-            manifest = self.shared_skills_application_service.install(source)
+            manifest = self.context.services.shared_skills_application_service.install(source)
             self.refresh_shared_skills()
             self.skills_page.set_status(f"Skill «{manifest.name}» نصب شد.")
         except Exception as exc:
@@ -531,7 +531,7 @@ class CharacterSettingsController(WindowFeatureController):
 
     def set_shared_skill_enabled(self, skill_id, enabled, character_id):
         try:
-            self.shared_skills_application_service.set_enabled(
+            self.context.services.shared_skills_application_service.set_enabled(
                 skill_id, enabled, character_id=character_id
             )
             self.refresh_shared_skills()
@@ -541,7 +541,7 @@ class CharacterSettingsController(WindowFeatureController):
 
     def uninstall_shared_skill(self, skill_id):
         name = skill_id
-        for item in self.shared_skills_application_service.list_installed():
+        for item in self.context.services.shared_skills_application_service.list_installed():
             if item.skill_id == skill_id:
                 name = item.name
                 break
@@ -550,7 +550,7 @@ class CharacterSettingsController(WindowFeatureController):
         ) != QMessageBox.Yes:
             return
         try:
-            if self.shared_skills_application_service.uninstall(skill_id):
+            if self.context.services.shared_skills_application_service.uninstall(skill_id):
                 self.refresh_shared_skills()
                 self.skills_page.set_status(f"Skill «{name}» حذف شد.")
         except Exception as exc:
@@ -558,28 +558,28 @@ class CharacterSettingsController(WindowFeatureController):
 
     def build_help_tab(self):
         """Build the standalone Help/About page; it owns its content and translations."""
-        self.help_page = HelpPage(
-            self.t,
+        self.context.views.help_page = HelpPage(
+            self.feature_controller("session").t,
             app_name=APP_NAME,
             version=VERSION,
             releases_url=RELEASES_URL,
             project_url=PROJECT_URL,
         )
-        return self.help_page
+        return self.context.views.help_page
 
     def build_mcp_registry_group(self, parent_layout):
         """Mount the independent MCP registry panel and connect application actions."""
-        self.mcp_registry_panel = McpRegistryPanel(parent=self.window)
-        self.mcp_registry_query = self.mcp_registry_panel.query_edit
-        self.mcp_registry_search_btn = self.mcp_registry_panel.search_btn
-        self.mcp_registry_list = self.mcp_registry_panel.results
-        self.mcp_registry_add_btn = self.mcp_registry_panel.add_btn
-        self.mcp_registry_refresh_btn = self.mcp_registry_panel.refresh_btn
-        self.mcp_registry_status = self.mcp_registry_panel.status
-        self.mcp_registry_panel.search_requested.connect(self.search_mcp_registry)
-        self.mcp_registry_panel.add_requested.connect(self.add_mcp_registry_server)
-        self.mcp_registry_panel.refresh_models_requested.connect(self.refresh_model_catalogs)
-        parent_layout.addWidget(self.mcp_registry_panel)
+        self.context.views.mcp_registry_panel = McpRegistryPanel(parent=self.window)
+        self.mcp_registry_query = self.context.views.mcp_registry_panel.query_edit
+        self.mcp_registry_search_btn = self.context.views.mcp_registry_panel.search_btn
+        self.mcp_registry_list = self.context.views.mcp_registry_panel.results
+        self.mcp_registry_add_btn = self.context.views.mcp_registry_panel.add_btn
+        self.mcp_registry_refresh_btn = self.context.views.mcp_registry_panel.refresh_btn
+        self.mcp_registry_status = self.context.views.mcp_registry_panel.status
+        self.context.views.mcp_registry_panel.search_requested.connect(self.search_mcp_registry)
+        self.context.views.mcp_registry_panel.add_requested.connect(self.add_mcp_registry_server)
+        self.context.views.mcp_registry_panel.refresh_models_requested.connect(self.feature_controller("provider_settings").refresh_model_catalogs)
+        parent_layout.addWidget(self.context.views.mcp_registry_panel)
         QTimer.singleShot(1200, self.search_mcp_registry)
 
     def search_mcp_registry(self):
@@ -587,18 +587,18 @@ class CharacterSettingsController(WindowFeatureController):
         worker = getattr(self, "_mcp_registry_worker", None)
         if worker is not None and worker.isRunning():
             return
-        self.mcp_registry_panel.set_searching(True)
-        self._mcp_registry_worker = RegistrySearchWorker(self.mcp_registry_panel.query(), self.window)
+        self.context.views.mcp_registry_panel.set_searching(True)
+        self._mcp_registry_worker = RegistrySearchWorker(self.context.views.mcp_registry_panel.query(), self.window)
         self._mcp_registry_worker.completed.connect(self._on_mcp_registry_results)
         self._mcp_registry_worker.start()
 
     def _on_mcp_registry_results(self, records, error):
-        self.mcp_registry_panel.show_results(records, error)
+        self.context.views.mcp_registry_panel.show_results(records, error)
 
     def add_mcp_registry_server(self):
-        record = self.mcp_registry_panel.selected_record()
+        record = self.context.views.mcp_registry_panel.selected_record()
         if record is None:
-            self.mcp_registry_panel.set_status("اول یک سرور از فهرست انتخاب کن.")
+            self.context.views.mcp_registry_panel.set_status("اول یک سرور از فهرست انتخاب کن.")
             return
         from ..mcp.registry import server_config
         try:
@@ -609,17 +609,17 @@ class CharacterSettingsController(WindowFeatureController):
                 raise ValueError("ساختار kira_mcp.json معتبر نیست")
             servers = raw.setdefault("servers", {})
             if name in servers:
-                self.mcp_registry_panel.set_status(f"سرور «{name}» از قبل ثبت شده است.")
+                self.context.views.mcp_registry_panel.set_status(f"سرور «{name}» از قبل ثبت شده است.")
                 return
             servers[name] = cfg
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(raw, ensure_ascii=False, indent=2), encoding="utf-8")
-            hub = getattr(self.tool_agent, "mcp", None)
+            hub = getattr(self.context.services.tool_agent, "mcp", None)
             if hub is not None:
                 hub.refresh_async()
-            self.mcp_registry_panel.set_status(f"سرور «{name}» ثبت شد؛ Kira در حال اتصال و کشف خودکار ابزارهاست.")
+            self.context.views.mcp_registry_panel.set_status(f"سرور «{name}» ثبت شد؛ Kira در حال اتصال و کشف خودکار ابزارهاست.")
         except Exception as exc:
-            self.mcp_registry_panel.set_status("افزودن سرور ناموفق بود: " + str(exc)[:240])
+            self.context.views.mcp_registry_panel.set_status("افزودن سرور ناموفق بود: " + str(exc)[:240])
 
 
 # Backward-compatible import name for callers migrating from mixin composition.
