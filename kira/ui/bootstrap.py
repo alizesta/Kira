@@ -52,7 +52,6 @@ def run_application() -> None:
             memory_service=container.resolve("memory_service"),
             mood_service=container.resolve("mood_service"),
             character_service=container.resolve("character_service"),
-            chat_history_service=container.resolve("chat_history_service"),
             chat_application_service_factory=container.resolve("chat_application_service_factory"),
             session_application_service_factory=container.resolve("session_application_service_factory"),
             web_search_service=container.resolve("web_search_service"),
