@@ -116,11 +116,14 @@ class InitiativeEngine:
         if current is None or current < 0:
             return None
 
-        excluded = {str(value) for value in (exclude_ids or ()) if str(value or "").strip()}
+        if isinstance(exclude_ids, (str, bytes)):
+            exclude_values = (exclude_ids,)
+        else:
+            exclude_values = exclude_ids or ()
+        excluded = {str(value) for value in exclude_values if str(value or "").strip()}
         if exclude_id:
             excluded.add(str(exclude_id))
-        candidates = []
-        seen_ids = set()
+        candidates_by_id = {}
 
         for item in items or ():
             if not isinstance(item, dict) or item.get("group") != "moment":
@@ -130,7 +133,7 @@ class InitiativeEngine:
                 continue
 
             memory_id = self._item_id(item)
-            if memory_id in excluded or memory_id in seen_ids:
+            if memory_id in excluded:
                 continue
 
             stamp = _finite_number(item.get("ts"))
@@ -144,11 +147,13 @@ class InitiativeEngine:
             if not text or current < _event_not_before(text, stamp):
                 continue
 
-            seen_ids.add(memory_id)
             selected = dict(item)
             selected.update({"id": memory_id, "kind": kind, "text": text, "ts": stamp})
-            candidates.append(selected)
+            previous = candidates_by_id.get(memory_id)
+            if previous is None or stamp > previous["ts"]:
+                candidates_by_id[memory_id] = selected
 
+        candidates = list(candidates_by_id.values())
         if not candidates:
             return None
         candidates.sort(key=lambda item: (item["ts"], item["kind"] == "promise"), reverse=True)
