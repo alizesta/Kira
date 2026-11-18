@@ -10,8 +10,10 @@ Access levels:
 """
 from __future__ import annotations
 
+import math
 import re
 import threading
+from decimal import Decimal, InvalidOperation
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -111,10 +113,22 @@ def _coerce(param: Param, value: Any) -> Any:
         return str(value).strip()
     if param.type == "integer":
         if isinstance(value, bool):
-            raise ValueError("باید عدد باشد")
-        return int(float(str(value).strip()))
+            raise ValueError("باید عدد صحیح باشد")
+        try:
+            number = Decimal(str(value).strip())
+        except (InvalidOperation, ValueError):
+            raise ValueError("باید عدد صحیح باشد")
+        if not number.is_finite() or number != number.to_integral_value():
+            raise ValueError("باید عدد صحیح و متناهی باشد")
+        return int(number)
     if param.type == "number":
-        return float(str(value).strip())
+        try:
+            number = float(str(value).strip())
+        except (ValueError, TypeError) as exc:
+            raise ValueError("باید عدد باشد") from exc
+        if not math.isfinite(number):
+            raise ValueError("باید عدد متناهی باشد")
+        return number
     if param.type == "boolean":
         if isinstance(value, bool):
             return value
