@@ -58,7 +58,7 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.proj = Path(self.tmp.name)
         (self.proj / "app.py").write_text("def save():\n    return 1\n", encoding="utf-8")
         from kira.ui.main_window import MainWindow
-from kira.theme import STYLE
+        from kira.theme import STYLE
         APP.setStyleSheet(STYLE)
         self.win = MainWindow()
         self.win.show()

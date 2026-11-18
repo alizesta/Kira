@@ -196,7 +196,7 @@ class ChatApplicationServiceTests(unittest.TestCase):
         self.assertEqual(options["metadata"]["session_id"], "runtime-session-123")
         self.assertEqual(options["metadata"]["character_id"], "kira")
 
-    def test_context_provider_response_and_persistence_are_composed):
+    def test_context_provider_response_and_persistence_are_composed(self):
         submission = self.service.submit_message("kira", "hello")
         worker = self._start_provider(submission)
         self.assertTrue(worker.started)

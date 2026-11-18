@@ -1,5 +1,26 @@
 """Chat behavior mixin for the desktop window."""
-from .main_window_chat_support import *  # noqa: F401,F403
+from .main_window_chat_support import (
+    ApplicationEventKind,
+    QMessageBox,
+    QTimer,
+    SearchWorker,
+    TaskWorker,
+    att,
+    body_ctl,
+    brain,
+    create_default_command_registry,
+    evidence_memory,
+    match_safe_action,
+    message_html,
+    modes,
+    mood,
+    parse_tool_task_control,
+    run_safe_action,
+    save_settings,
+    sources_html,
+    usage,
+    websearch,
+)
 
 
 class ChatMixin:

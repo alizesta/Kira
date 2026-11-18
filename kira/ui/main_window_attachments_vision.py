@@ -1,5 +1,23 @@
 """Attachments vision behavior mixin for the desktop window."""
-from .main_window_attachments_vision_support import *  # noqa: F401,F403
+from .main_window_attachments_vision_support import (
+    AttachmentTile,
+    CAPTURE_JPEG_QUALITY,
+    GameAudioListener,
+    QApplication,
+    QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QImage,
+    QSystemTrayIcon,
+    QTimer,
+    Qt,
+    VisionAnalysisWorker,
+    att,
+    front_only,
+    policy_for,
+    save_settings,
+    time,
+)
 
 
 class AttachmentsVisionMixin:

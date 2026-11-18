@@ -1,5 +1,28 @@
 """Runtime behavior mixin for the desktop window."""
-from .main_window_runtime_support import *  # noqa: F401,F403
+from .main_window_runtime_support import (
+    ChatHistoryError,
+    Listener,
+    MemoryDialog,
+    Path,
+    PermissionDecision,
+    QApplication,
+    QFileDialog,
+    QMessageBox,
+    QTextCursor,
+    QTimer,
+    ROOT,
+    SOUNDS_DIR,
+    body_ctl,
+    brain,
+    message_html,
+    mood,
+    random,
+    route_model,
+    save_settings,
+    scrub_lines,
+    storage,
+    time,
+)
 
 
 class RuntimeMixin:

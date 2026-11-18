@@ -289,7 +289,7 @@ class WindowPersistenceTests(IsolatedDb):
 
     def open_window(self):
         from kira.ui.main_window import MainWindow
-from kira.theme import STYLE
+        from kira.theme import STYLE
         APP.setStyleSheet(STYLE)
         w = MainWindow()
         w.show()

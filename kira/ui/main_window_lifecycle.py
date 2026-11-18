@@ -1,5 +1,30 @@
 """Lifecycle behavior mixin for the desktop window."""
-from .main_window_lifecycle_support import *  # noqa: F401,F403
+from .main_window_lifecycle_support import (
+    HybridRouter,
+    OllamaClient,
+    OllamaTaskWorker,
+    QApplication,
+    QDesktopServices,
+    QIcon,
+    QMenu,
+    QMessageBox,
+    QSystemTrayIcon,
+    QTimer,
+    QUrl,
+    ROOT,
+    SOUNDS_DIR,
+    SpeechFixes,
+    build_style,
+    clamp_num_ctx,
+    clamp_num_predict,
+    evidence_memory,
+    model_installed,
+    parse_keep_alive,
+    route_model,
+    save_settings,
+    usage,
+    winfx,
+)
 
 
 class LifecycleMixin:

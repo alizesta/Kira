@@ -5,7 +5,45 @@ feature mixin host; application services receive typed ports, never the window.
 """
 from __future__ import annotations
 
-from .main_window_root_support import *  # noqa: F401,F403
+from .main_window_root_support import (
+    AttachWorker,
+    AttachmentTile,
+    ChatAttachmentController,
+    ChatSession,
+    CompanionBubble,
+    CompanionWindow,
+    DATA_DIR,
+    EmotionDirector,
+    EmotionFaceAnimator,
+    FrameGate,
+    GameModeMonitor,
+    HybridRouter,
+    LOAD_WARNINGS,
+    OllamaClient,
+    QFrame,
+    QHBoxLayout,
+    QMenu,
+    QPushButton,
+    QSize,
+    QTabWidget,
+    QTimer,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+    Qt,
+    ROOT,
+    SessionManager,
+    Speaker,
+    ToolAgent,
+    att,
+    evidence_memory,
+    load_reactions,
+    load_settings,
+    make_icon,
+    policy_for,
+    usage,
+    winfx,
+)
 from ..app.web_search import WebSearchApplicationService
 from .application_adapters import (
     create_chat_application_ports,
