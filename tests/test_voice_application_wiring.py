@@ -18,13 +18,18 @@ class VoiceApplicationWiringTests(unittest.TestCase):
                 imports.append(node.module or "")
         self.assertFalse(any(name.startswith(("PySide", "PyQt")) for name in imports))
 
-    def test_bootstrap_injects_voice_factory_and_window_has_direct_use_fallback(self):
-        bootstrap = (ROOT / "kira/app/bootstrap.py").read_text(encoding="utf-8")
+    def test_outer_composition_injects_voice_factory_and_typed_ports(self):
+        bootstrap = (ROOT / "kira/ui/bootstrap.py").read_text(encoding="utf-8")
+        modules = (ROOT / "kira/app/feature_modules.py").read_text(encoding="utf-8")
+        composition = (ROOT / "kira/ui/main_window_composition.py").read_text(encoding="utf-8")
+        adapters = (ROOT / "kira/ui/application_adapters.py").read_text(encoding="utf-8")
         window = (ROOT / "kira/ui/main_window.py").read_text(encoding="utf-8")
-        self.assertIn("create_voice_application_service_factory()", bootstrap)
-        self.assertIn("voice_application_service_factory=voice_service_factory", bootstrap)
+        self.assertIn('voice_application_service_factory=container.resolve("voice_application_service_factory")', bootstrap)
+        self.assertIn("create_voice_application_service_factory", modules)
+        self.assertIn("voice_application_service_factory(create_voice_application_ports(self, self.speaker))", composition)
+        self.assertIn("QtVoiceListenerAdapter", adapters)
+        self.assertIn("QtSpeakerAdapter", adapters)
         self.assertIn("voice_application_service_factory=None", window)
-        self.assertIn("self.voice_application_service = voice_application_service_factory(self, self.speaker)", window)
 
     def test_ui_delegates_voice_policy_and_worker_lifecycle(self):
         runtime = (ROOT / "kira/ui/main_window_runtime.py").read_text(encoding="utf-8")
