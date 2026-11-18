@@ -20,6 +20,11 @@ from ..domain.search import (
     search_snippet,
 )
 
+# Private helper aliases retained for older integrations.
+_parse_datetime = parse_search_datetime
+_message_datetime = message_datetime
+_snippet = search_snippet
+
 __all__ = [
     "ChatMessageReference",
     "ChatSearchError",
