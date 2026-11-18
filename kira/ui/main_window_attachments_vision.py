@@ -160,7 +160,7 @@ class AttachmentsVisionController(WindowFeatureController):
         policy = self.context.services.vision_application_service.set_mode(mode)
         self.context.services.settings["vision_mode"] = policy.name
         save_settings(self.context.services.settings)
-        if hasattr(self, "vision_rate_actions"):
+        if hasattr(self.context.views, "vision_rate_actions"):
             for key, action in self.context.views.vision_rate_actions.items():
                 action.setChecked(key == policy.name)
         self.context.state._game_capture_timer.setInterval(max(250, int(policy.interval_seconds * 1000)))
@@ -184,12 +184,12 @@ class AttachmentsVisionController(WindowFeatureController):
             self._cancel_vision_worker()
 
     def _cancel_vision_worker(self):
-        worker = getattr(self, "_vision_worker", None)
+        worker = getattr(self.context.session, "_vision_worker", None)
         if worker is not None and worker.isRunning():
             worker.cancel_request()
 
     def _stop_local_code_jobs(self):
-        code_chat = getattr(self, "code_chat", None)
+        code_chat = getattr(self.context.views, "code_chat", None)
         session = getattr(code_chat, "session", None) if code_chat is not None else None
         if session is not None:
             with self.feature_controller("session")._as(session):
@@ -264,8 +264,8 @@ class AttachmentsVisionController(WindowFeatureController):
         if listener is not None:
             listener.stop()
             if listener.isRunning():
-                self._stopping_game_audio_listener = listener
-                listener.finished.connect(lambda: setattr(self, "_stopping_game_audio_listener", None))
+                self.context.state._stopping_game_audio_listener = listener
+                listener.finished.connect(lambda: setattr(self.context.state, "_stopping_game_audio_listener", None))
 
     def on_game_audio_error(self, message):
         if (self.context.state._game_mode_enabled
@@ -363,7 +363,7 @@ class AttachmentsVisionController(WindowFeatureController):
         name = info.get("title") or info.get("exe") or "بازی"
         note = (f"🎮 بازی «{name[:90]}» شناسایی شد. اگر آفلاین/داستانی است Story Mode و اگر آنلاین/PvP یا نامشخص است Competitive Safe را انتخاب کن. انتخاب با خودت است.")
         self.feature_controller("session").add_chat("system", note)
-        tray = getattr(self, "tray", None)
+        tray = getattr(self.context.views, "tray", None)
         if tray is not None and tray.isVisible():
             tray.showMessage("Ai1 · Game Mode", "بازی شناسایی شد. برای کمک در حین بازی، Game Mode را خودت فعال کن.",
                              QSystemTrayIcon.Information, 7000)
