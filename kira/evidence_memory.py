@@ -401,7 +401,7 @@ def update_by_persona_id(old_persona_id, new_persona_id, text, now=None) -> bool
     if not _enabled:
         return False
     text = " ".join(str(text or "").split())[:200]
-    if len(text) < 3:
+    if len(text) < 2:
         return False
     now = time.time() if now is None else now
     try:
@@ -1101,7 +1101,7 @@ def update_extra(item_id, text, now=None) -> bool:
     """Atomically replace an evidence-only memory item with the user's edited wording."""
     fid = str(item_id)[3:]
     text = " ".join(str(text or "").split())[:200]
-    if len(text) < 3 or not _enabled:
+    if len(text) < 2 or not _enabled:
         return False
     now = time.time() if now is None else now
     try:
