@@ -60,6 +60,7 @@ def initialize_main_window(
     session_manager=None,
     chat_event_publisher=None,
     chat_application_service_factory=None,
+    session_application_service_factory=None,
     web_search_service=None,
     voice_application_service_factory=None,
     game_mode_application_service=None,
@@ -102,19 +103,25 @@ def initialize_main_window(
     self.settings = load_settings()
     self._db_notes = self.chat_application_service.init_history()
     self.session_manager = session_manager or SessionManager(ChatSession)
+    self.chat_event_publisher = chat_event_publisher
+    if session_application_service_factory is None:
+        from ..app.session_composition import create_session_application_service_factory
+        session_application_service_factory = create_session_application_service_factory(
+            event_publisher=chat_event_publisher
+        )
+    if not callable(session_application_service_factory):
+        raise TypeError("session_application_service_factory must be callable")
+    self.session_application_service = session_application_service_factory(
+        self.session_manager, self.chat_application_service
+    )
     self.session_manager.set_runtime_callbacks(
         has_pending_work=self._session_has_pending_chat_work,
         dispose_callback=self._release_chat_session_resources,
     )
-    self.chat_event_publisher = chat_event_publisher
-    self._session_event_unsubscribe = self.session_manager.subscribe(
-        self._publish_session_state_event
-    )
     self.sessions = self.session_manager.sessions_by_character
-    self.cur = self.session_manager.create_session(
+    self.cur = self.session_application_service.create_active_session(
         self.character_service.active_id(self.settings)
     )
-    self.session_manager.activate_session(self.cur.session_id)
     self.front = self.cur
     self._ensure_session_conversation(self.cur)
     self._save_warned = False
