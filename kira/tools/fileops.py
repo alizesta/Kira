@@ -159,16 +159,23 @@ class FileTools:
         if not os.path.isdir(path):
             raise ToolError("این مسیر پوشه نیست.")
         limit = max(1, min(int(a.get("max_items") or 40), 100))
-        dirs, files, hidden = [], [], 0
+        dirs, files, hidden, scan_errors = [], [], 0, 0
         for entry in os.scandir(path):
-            if not self.policy.is_allowed(entry.path):
+            try:
+                allowed = self.policy.is_allowed(entry.path)
+            except OSError:
+                scan_errors += 1
+                continue
+            if not allowed:
                 hidden += 1
                 continue
             try:
                 st = entry.stat(follow_symlinks=False)
+                is_dir = entry.is_dir(follow_symlinks=False)
             except OSError:
+                scan_errors += 1
                 continue
-            (dirs if entry.is_dir(follow_symlinks=False) else files).append((entry.name, st))
+            (dirs if is_dir else files).append((entry.name, st))
         dirs.sort(key=lambda x: x[0].lower())
         files.sort(key=lambda x: x[1].st_mtime, reverse=True)
         lines = [f"{path} — {len(dirs)} پوشه و {len(files)} فایل"]
@@ -187,6 +194,10 @@ class FileTools:
             lines.append(f"... {len(dirs) + len(files) - shown} مورد دیگر نشان داده نشد.")
         if hidden:
             lines.append(f"{hidden} مورد حساس/غیرمجاز پنهان شد.")
+        if scan_errors:
+            lines.append(
+                f"توجه: خواندن اطلاعات {scan_errors} مورد ناموفق بود؛ فهرست ممکن است ناقص باشد."
+            )
         return "\n".join(lines)
 
     def file_info(self, a: dict) -> str:
