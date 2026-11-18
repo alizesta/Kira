@@ -298,5 +298,14 @@ class PersonaMemoryTests(unittest.TestCase):
 
         self.assertTrue(any("Persona-memory observation failed" in line for line in captured.output))
 
+
+    def test_malformed_character_voice_container_does_not_become_single_character_samples(self):
+        with pm.character_scope("ren"):
+            voice_path = pm._voice_path()
+            voice_path.parent.mkdir(parents=True, exist_ok=True)
+            voice_path.write_text('{"voice":"not-a-list"}', encoding="utf-8")
+
+            self.assertEqual(pm._load()["voice"], [])
+
 if __name__ == "__main__":
     unittest.main()
