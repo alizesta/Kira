@@ -39,6 +39,7 @@ from .main_window_root_support import (
     winfx,
 )
 from ..app.web_search import WebSearchApplicationService
+from ..skills import SharedSkillService
 from .application_adapters import (
     create_chat_application_ports,
     create_voice_application_ports,
@@ -101,6 +102,8 @@ def initialize_main_window(
         game_mode_application_service = GameModeApplicationService()
     self.game_mode_application_service = game_mode_application_service
     self.settings = settings if settings is not None else load_settings()
+    # One character-neutral library; enablement is resolved per active character.
+    self.skill_service = SharedSkillService(DATA_DIR / "skills")
     if provider_application_service is None:
         from ..app.provider_application import ProviderApplicationService
         provider_application_service = ProviderApplicationService()
