@@ -2,9 +2,9 @@
 
 **Repository:** `alizesta/Kira`  
 **Target branch:** `new-main`  
-**Source baseline:** `6c89820ce56be19654ddb08db6b719d041dc61d9`  
+**Source baseline:** `e398ed518ef446600ef758288f1dca2803845d98`  
 **Starting point:** `6aaa9ce3955dc0ebdf8429255819128e01ee5897`  
-**Change range:** https://github.com/alizesta/Kira/compare/6aaa9ce3955dc0ebdf8429255819128e01ee5897...6c89820ce56be19654ddb08db6b719d041dc61d9
+**Change range:** https://github.com/alizesta/Kira/compare/6aaa9ce3955dc0ebdf8429255819128e01ee5897...e398ed518ef446600ef758288f1dca2803845d98
 
 ## 1. Executive status
 
