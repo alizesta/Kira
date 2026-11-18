@@ -53,41 +53,41 @@ class SessionController(WindowFeatureController):
         return controller.worker if controller is not None else None
 
     def t(self, key, **kw):
-        s = STR.get(self.settings.get("ui_lang", "fa"), STR["fa"]).get(key, key)
+        s = STR.get(self.context.services.settings.get("ui_lang", "fa"), STR["fa"]).get(key, key)
         return s.format(**kw) if kw else s
 
     def reg(self, setter, key):
-        self._tr.append((setter, key))
+        self.context.state._tr.append((setter, key))
 
     def retranslate(self):
-        lang = self.settings.get("ui_lang", "fa")
+        lang = self.context.services.settings.get("ui_lang", "fa")
         QApplication.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
-        for setter, key in self._tr:
+        for setter, key in self.context.state._tr:
             setter(self.t(key))
-        self.input.setPlaceholderText(self.t("input_ph"))
+        self.context.views.input.setPlaceholderText(self.t("input_ph"))
         if hasattr(self, "_menu_actions"):
-            for action, key in zip(self._menu_actions, self.tab_keys):
+            for action, key in zip(self.context.state._menu_actions, self.context.views.tab_keys):
                 action.setText(self.t(key))
-        self.setWindowTitle(f"Project {self.settings['assistant_name']}  {VERSION}")
-        self.title.setText(f"Project {self.settings['assistant_name']}")
-        self.set_status(*self._status[:1], **self._status[1])
+        self.window.setWindowTitle(f"Project {self.context.services.settings['assistant_name']}  {VERSION}")
+        self.context.views.title.setText(f"Project {self.context.services.settings['assistant_name']}")
+        self.set_status(*self.context.state._status[:1], **self.context.state._status[1])
         self.feature_controller("runtime").update_companion_btn()
         self.feature_controller("runtime").update_engine_label()
         self.refresh_tab_buttons()
         if hasattr(self, "help_page"):
-            self.help_page.retranslate()
+            self.context.views.help_page.retranslate()
         if hasattr(self, "assistant_page"):
-            self.assistant_page.retranslate()
+            self.context.views.assistant_page.retranslate()
         if hasattr(self, "preferences_page"):
-            self.preferences_page.retranslate()
+            self.context.views.preferences_page.retranslate()
         if hasattr(self, "voice_page"):
-            self.voice_page.retranslate()
+            self.context.views.voice_page.retranslate()
         if hasattr(self, "appearance_page"):
-            self.appearance_page.retranslate()
+            self.context.views.appearance_page.retranslate()
         if hasattr(self, "character_page"):
-            self.character_page.retranslate()
+            self.context.views.character_page.retranslate()
         if hasattr(self, "_menu_actions"):
-            for action, key in zip(self._menu_actions, self.tab_keys):
+            for action, key in zip(self.context.state._menu_actions, self.context.views.tab_keys):
                 action.setText(self.t(key))
 
     def on_voice_error(self, message):
@@ -104,35 +104,35 @@ class SessionController(WindowFeatureController):
     def _as(self, session):
         """Run code as `session` (its history, router, stream state and character). Used by every worker / timer callback,
         so a reply for a background tab is handled exactly like one for the visible tab - just without voice / face / status."""
-        prev, prev_cid = self.cur, self.settings.get("active_character_id", "kira")
-        self.cur = session
-        self.settings["active_character_id"] = session.cid
+        prev, prev_cid = self.context.state.cur, self.context.services.settings.get("active_character_id", "kira")
+        self.context.state.cur = session
+        self.context.services.settings["active_character_id"] = session.cid
         try:
-            profile = self.character_service.all_profiles(self.settings).get(session.cid) or {}
-            with self.mood_service.character_scope(
+            profile = self.context.services.character_service.all_profiles(self.context.services.settings).get(session.cid) or {}
+            with self.context.services.mood_service.character_scope(
                 session.cid, self.character_traits(session.cid, profile)
             ):
                 yield session
         finally:
-            self.cur = prev if self.sessions.get(prev.cid) is prev else self.front
-            self.settings["active_character_id"] = prev_cid
+            self.context.state.cur = prev if self.context.state.sessions.get(prev.cid) is prev else self.context.state.front
+            self.context.services.settings["active_character_id"] = prev_cid
 
     def theme_for_character(self, character_id, profile=None):
         """Resolve a character palette with the saved user-selected accent colour."""
         cid = str(character_id or "kira")
-        selected = dict(profile or self.character_service.all_profiles(self.settings).get(cid, {}))
-        custom = (self.settings.get("character_theme_colors") or {}).get(cid)
+        selected = dict(profile or self.context.services.character_service.all_profiles(self.context.services.settings).get(cid, {}))
+        custom = (self.context.services.settings.get("character_theme_colors") or {}).get(cid)
         if custom:
             selected["theme_color"] = custom
         return theme_mod.character_theme(cid, selected)
 
     def accent(self):
-        theme = getattr(self.cur, "theme", None)
+        theme = getattr(self.context.state.cur, "theme", None)
         return theme_mod.chat_accent(theme) if theme else None
 
     def _new_router(self):
         """Router of one chat. Cooldowns / health are shared with the other chats (a failing key is failing for everyone)."""
-        return self.provider_application_service.create_router(self.settings)
+        return self.context.services.provider_application_service.create_router(self.context.services.settings)
 
     def make_session_view(self):
         view = QTextBrowser()                              # read-only chat whose links open in the default browser
@@ -160,31 +160,31 @@ class SessionController(WindowFeatureController):
 
     def active_character(self):
         """Full profile of the character in front. Kira keeps her canonical identity (the profiles list only carries UI data)."""
-        cid = getattr(getattr(self, "cur", None), "cid", "") or self.character_service.active_id(self.settings)
+        cid = getattr(getattr(self, "cur", None), "cid", "") or self.context.services.character_service.active_id(self.context.services.settings)
         if cid == "kira":
             profile = dict(KIRA_PROFILE)
         else:
-            profile = dict(self.character_service.all_profiles(self.settings).get(cid) or self.character_service.active(self.settings))
-        traits = (self.settings.get("character_traits") or {}).get(cid)
+            profile = dict(self.context.services.character_service.all_profiles(self.context.services.settings).get(cid) or self.context.services.character_service.active(self.context.services.settings))
+        traits = (self.context.services.settings.get("character_traits") or {}).get(cid)
         if isinstance(traits, dict):
             profile["traits"] = {**profile.get("traits", {}), **traits}
         return profile
 
     def character_traits(self, cid, profile=None):
         """Baseline traits of one character (settings overrides win over the built-in defaults)."""
-        profile = profile if isinstance(profile, dict) else (self.character_service.all_profiles(self.settings).get(cid) or {})
+        profile = profile if isinstance(profile, dict) else (self.context.services.character_service.all_profiles(self.context.services.settings).get(cid) or {})
         traits = dict(profile.get("traits") or {})
-        override = (self.settings.get("character_traits") or {}).get(cid)
+        override = (self.context.services.settings.get("character_traits") or {}).get(cid)
         if isinstance(override, dict):
             traits.update(override)
         return traits
 
     def _sync_mood_character(self):
         """Refresh one character's baseline traits without changing the visible/default Mood context."""
-        cid = getattr(getattr(self, "cur", None), "cid", "") or self.character_service.active_id(self.settings)
-        profile = self.character_service.all_profiles(self.settings).get(cid) or {}
+        cid = getattr(getattr(self, "cur", None), "cid", "") or self.context.services.character_service.active_id(self.context.services.settings)
+        profile = self.context.services.character_service.all_profiles(self.context.services.settings).get(cid) or {}
         try:
-            self.mood_service.set_character_traits(cid, self.character_traits(cid, profile))
+            self.context.services.mood_service.set_character_traits(cid, self.character_traits(cid, profile))
         except Exception:                                   # noqa: BLE001 - mood is a bonus, never block the UI
             pass
 
@@ -193,17 +193,17 @@ class SessionController(WindowFeatureController):
         QTimer.singleShot(0, callback)
 
     def _ensure_session_conversation(self, session):
-        return self.session_application_service.bind_conversation(session)
+        return self.context.services.session_application_service.bind_conversation(session)
 
     def _publish_session_state_event(self, event):
         """Compatibility callback; event translation belongs to the application service."""
-        self.session_application_service.publish_state_change(event)
+        self.context.services.session_application_service.publish_state_change(event)
 
     def _ensure_session_ui_resources(self, session, profile):
         """Attach Qt resources after the application service resolves the Session."""
         if session.view is None:
             session.view = self.make_session_view()
-            self.chat_stack.addWidget(session.view)
+            self.context.views.chat_stack.addWidget(session.view)
             session.timer = QTimer(self.window)
             session.timer.setInterval(60)
             session.relay = SessionRelay(self.window, session)
@@ -211,18 +211,18 @@ class SessionController(WindowFeatureController):
         if session.client is None:
             session.client = self._new_router()
         session.theme = self.theme_for_character(session.cid, profile)
-        if session.cid not in self.char_tab_buttons:
+        if session.cid not in self.context.views.char_tab_buttons:
             button = QPushButton()
             button.setObjectName("charTab")
             button.setCheckable(True)
             button.setCursor(Qt.PointingHandCursor)
             button.setFocusPolicy(Qt.NoFocus)
             button.clicked.connect(lambda checked=False, c=session.cid: self.switch_session(c))
-            self.char_tab_group.addButton(button)
-            self.char_tab_buttons[session.cid] = button
+            self.context.views.char_tab_group.addButton(button)
+            self.context.views.char_tab_buttons[session.cid] = button
 
     def _ensure_session(self, cid, profile):
-        return self.session_application_service.ensure_session(
+        return self.context.services.session_application_service.ensure_session(
             cid,
             profile,
             ensure_resources=self._ensure_session_ui_resources,
@@ -234,20 +234,20 @@ class SessionController(WindowFeatureController):
 
     def sync_sessions(self):
         """Rebuild visible character tabs from application-owned session state."""
-        profiles = self.character_service.all_profiles(self.settings)
-        order = self.session_application_service.sync_sessions(
+        profiles = self.context.services.character_service.all_profiles(self.context.services.settings)
+        order = self.context.services.session_application_service.sync_sessions(
             profiles,
             ensure_resources=self._ensure_session_ui_resources,
             restore_history=self._restore_session_history,
             vision_session=getattr(self, "_vision_session", None),
             vision_worker=getattr(self, "_vision_worker", None),
         )
-        while self.char_tabs_row.count():
-            self.char_tabs_row.takeAt(0)
+        while self.context.views.char_tabs_row.count():
+            self.context.views.char_tabs_row.takeAt(0)
         for cid in order:
-            if cid in self.char_tab_buttons:
-                self.char_tabs_row.addWidget(self.char_tab_buttons[cid])
-        self.char_tabs_row.addStretch(1)
+            if cid in self.context.views.char_tab_buttons:
+                self.context.views.char_tabs_row.addWidget(self.context.views.char_tab_buttons[cid])
+        self.context.views.char_tabs_row.addStretch(1)
         self.refresh_tab_buttons()
 
     @staticmethod
@@ -256,19 +256,19 @@ class SessionController(WindowFeatureController):
         return SessionApplicationService.worker_is_running(worker)
 
     def _session_has_pending_chat_work(self, session):
-        return self.session_application_service.has_pending_work(
+        return self.context.services.session_application_service.has_pending_work(
             session,
             vision_session=getattr(self, "_vision_session", None),
             vision_worker=getattr(self, "_vision_worker", None),
         )
 
     def _dispose_chat_session(self, session):
-        return self.session_application_service.close_session(session)
+        return self.context.services.session_application_service.close_session(session)
 
     def _release_chat_session_resources(self, session):
         """Release UI/provider resources after SessionManager confirms the work has drained."""
-        self.chat_application_service.close_session(session.session_id)
-        self.tool_agent.release_session(session.cid)
+        self.context.services.chat_application_service.close_session(session.session_id)
+        self.context.services.tool_agent.release_session(session.cid)
         session.dispatch_scheduled = False
         response_relay = getattr(session, "response_relay", None)
         if session.client is not None:
@@ -290,13 +290,13 @@ class SessionController(WindowFeatureController):
             session.relay.deleteLater()
             session.relay = None
         if session.view is not None:
-            self.chat_stack.removeWidget(session.view)
+            self.context.views.chat_stack.removeWidget(session.view)
             session.view.deleteLater()
             session.view = None
-        button = self.char_tab_buttons.pop(session.cid, None)
+        button = self.context.views.char_tab_buttons.pop(session.cid, None)
         if button is not None:
-            self.char_tabs_row.removeWidget(button)
-            self.char_tab_group.removeButton(button)
+            self.context.views.char_tabs_row.removeWidget(button)
+            self.context.views.char_tab_group.removeButton(button)
             button.deleteLater()
         if getattr(self, "_vision_session", None) is session:
             vision_worker = getattr(self, "_vision_worker", None)
@@ -305,11 +305,11 @@ class SessionController(WindowFeatureController):
                     vision_worker.deleteLater()
                 except RuntimeError:
                     pass
-                self._vision_worker = None
-            self._vision_session = None
-        if not getattr(self, "_closing", False) and (self.front is session or self.cur is session):
+                self.context.session._vision_worker = None
+            self.context.session._vision_session = None
+        if not getattr(self, "_closing", False) and (self.context.state.front is session or self.context.state.cur is session):
             fallback = next(
-                (item for item in self.session_manager.list_sessions()
+                (item for item in self.context.services.session_manager.list_sessions()
                  if item is not session and item.status not in ("closing", "closed", "failed")),
                 None,
             )
@@ -318,58 +318,58 @@ class SessionController(WindowFeatureController):
         return True
 
     def refresh_tab_buttons(self):
-        profiles = self.character_service.all_profiles(self.settings)
-        for cid, button in self.char_tab_buttons.items():
-            sess = self.sessions.get(cid)
+        profiles = self.context.services.character_service.all_profiles(self.context.services.settings)
+        for cid, button in self.context.views.char_tab_buttons.items():
+            sess = self.context.state.sessions.get(cid)
             profile = profiles.get(cid) or {}
-            name = profile.get("name_fa") if self.settings.get("ui_lang", "fa") == "fa" else profile.get("name")
+            name = profile.get("name_fa") if self.context.services.settings.get("ui_lang", "fa") == "fa" else profile.get("name")
             mark = ""
             if sess is not None and sess.busy:
                 mark = "  ⏳"
             elif sess is not None and sess.unread:
                 mark = "  ●"
             button.setText(f"{name or cid}{mark}")
-            button.setChecked(sess is self.front)
+            button.setChecked(sess is self.context.state.front)
 
     def switch_session(self, cid, save=True):
         """Bring one character's chat to the front: its conversation, its colours, its picture. Other chats keep working."""
-        sess = self.sessions.get(cid)
-        if sess is None or not self.session_application_service.activate_session(sess.session_id):
+        sess = self.context.state.sessions.get(cid)
+        if sess is None or not self.context.services.session_application_service.activate_session(sess.session_id):
             return
-        if cid != self.front.cid:
+        if cid != self.context.state.front.cid:
             self.feature_controller("character_settings")._flush_character_autosave()
-        old = self.front
+        old = self.context.state.front
         if old is not sess:
-            old.draft = self.input.text()
+            old.draft = self.context.views.input.text()
             if old._speech_live:                       # the voice belongs to the chat in front
                 old._speech_live = False
             self.feature_controller("runtime").safe_stop_speaker()
             try:
-                self.voice_application_service.stream_reset()
+                self.context.services.voice_application_service.stream_reset()
             except Exception:                           # noqa: BLE001
                 pass
             self.feature_controller("attachments_vision").clear_upload_tiles()
-        self.front = self.cur = sess
+        self.context.state.front = self.context.state.cur = sess
         sess.unread = False
-        self.settings["active_character_id"] = cid
+        self.context.services.settings["active_character_id"] = cid
         self.refresh_navigation_icons()
         try:
-            self.mood_service.set_active_character(cid, self.character_traits(cid, self.character_service.all_profiles(self.settings).get(cid)))
+            self.context.services.mood_service.set_active_character(cid, self.character_traits(cid, self.context.services.character_service.all_profiles(self.context.services.settings).get(cid)))
         except Exception:                               # noqa: BLE001 - never block switching tabs
             pass
-        self.chat_stack.setCurrentWidget(sess.view)
+        self.context.views.chat_stack.setCurrentWidget(sess.view)
         if old is not sess:
-            self.input.setText(sess.draft)
+            self.context.views.input.setText(sess.draft)
         self.apply_chat_theme()
         self.feature_controller("character_settings").apply_character_art()
-        self.gen_stop_btn.setVisible(bool(sess.busy))
-        self.gen_stop_btn.setEnabled(True)
+        self.context.views.gen_stop_btn.setVisible(bool(sess.busy))
+        self.context.views.gen_stop_btn.setEnabled(True)
         if sess.busy:
             self.set_status("st_thinking")
         else:
             self.set_status("st_ready")
         phase, info = sess.badge
-        self.feature_controller("runtime").set_badge(phase if sess.busy else "idle", info if sess.busy else self.client.preview_route())
+        self.feature_controller("runtime").set_badge(phase if sess.busy else "idle", info if sess.busy else self.context.session.client.preview_route())
         self.refresh_tab_buttons()
         if hasattr(self, "character_page"):
             self.feature_controller("character_settings").refresh_character_choices()
@@ -380,37 +380,37 @@ class SessionController(WindowFeatureController):
         bar.setValue(bar.maximum())
         if save:
             try:
-                save_settings(self.settings)
+                save_settings(self.context.services.settings)
             except Exception:                           # noqa: BLE001 - never block switching tabs
                 pass
 
     def apply_chat_theme(self):
         """Glass + neon colours of the chat in front (same glass, the character's own colours)."""
-        theme = self.front.theme or self.theme_for_character(self.front.cid)
-        self.chat_page.setStyleSheet(theme_mod.character_style(theme, getattr(self, "_effect", "off"), self.settings.get("appearance", {})))
+        theme = self.context.state.front.theme or self.theme_for_character(self.context.state.front.cid)
+        self.context.views.chat_page.setStyleSheet(theme_mod.character_style(theme, getattr(self, "_effect", "off"), self.context.services.settings.get("appearance", {})))
         r, g, b = (int(theme["main"].lstrip("#")[i:i + 2], 16) for i in (0, 2, 4))
-        for glow in self.glow_effects:
-            appearance = self.settings.get("appearance", {})
+        for glow in self.context.views.glow_effects:
+            appearance = self.context.services.settings.get("appearance", {})
             intensity = max(0, min(100, int(appearance.get("glow", 34))))
             glow.setBlurRadius(14 + intensity * 0.38)
             glow.setColor(QColor(r, g, b, round(54 + intensity * 0.92)))
-        self.feature_controller("character_settings")._apply_neon_glow_effects(self.settings.get("appearance", {}))
+        self.feature_controller("character_settings")._apply_neon_glow_effects(self.context.services.settings.get("appearance", {}))
 
     def greeting_text(self):
-        profile = self.character_service.active(self.settings)
+        profile = self.context.services.character_service.active(self.context.services.settings)
         if profile["id"] == "kira":
             return self.t("greeting")
-        name = profile.get("name_fa") if self.settings.get("ui_lang", "fa") == "fa" else profile.get("name")
-        if self.settings.get("ui_lang", "fa") == "fa":
+        name = profile.get("name_fa") if self.context.services.settings.get("ui_lang", "fa") == "fa" else profile.get("name")
+        if self.context.services.settings.get("ui_lang", "fa") == "fa":
             return f"سلام! من {name} هستم. {profile.get('description', '')}"
         return f"Hi! I'm {name}. {profile.get('description', '')}"
 
     def restore_history(self, limit=40):
         """Show the saved conversation of the CURRENT chat again after a restart (it is already used as model context)."""
         try:
-            self._ensure_session_conversation(self.cur)
-            history = self.chat_application_service.recent_messages(
-                limit, character_id=self.cur.cid, conversation_id=self.cur.conversation_id
+            self._ensure_session_conversation(self.context.state.cur)
+            history = self.context.services.chat_application_service.recent_messages(
+                limit, character_id=self.context.state.cur.cid, conversation_id=self.context.state.cur.conversation_id
             )
         except Exception:
             # Leave the Session unloaded so the next synchronization retries history.
@@ -419,7 +419,7 @@ class SessionController(WindowFeatureController):
         for item in history:
             role = item.get("role")
             if role == "assistant":
-                text = self.director.parse_reply(item.get("content", "")).text      # emotion tags never shown
+                text = self.context.adapters.director.parse_reply(item.get("content", "")).text      # emotion tags never shown
             elif role == "user":
                 text = item.get("content", "")
             else:
@@ -439,14 +439,14 @@ class SessionController(WindowFeatureController):
         if name is None:
             name = {"user": self.t("you"), "assistant": self.active_character().get("name", "Character"),
                     "error": self.t("error"), "system": ""}.get(kind, "")
-        ui_dir = "rtl" if self.settings.get("ui_lang", "fa") == "fa" else "ltr"
+        ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "fa") == "fa" else "ltr"
         extra = self.thumbnail_html(images)
         footer = self.chat_actions_html(kind, text)
         with bubble_accent(self.accent()):
-            self.chat.append(message_html(kind, name, text, ui_dir, extra, footer))
+            self.context.session.view.append(message_html(kind, name, text, ui_dir, extra, footer))
         if getattr(self, "bubble", None) is not None:
-            self.bubble.push(kind, name, text, ui_dir)
-        bar = self.chat.verticalScrollBar()
+            self.context.adapters.bubble.push(kind, name, text, ui_dir)
+        bar = self.context.session.view.verticalScrollBar()
         bar.setValue(bar.maximum())
 
     def update_mood_indicator(self):
@@ -551,9 +551,9 @@ class SessionController(WindowFeatureController):
         """Neon icon chips with generous separation; labels stay in tooltips to keep the chat compact."""
         if kind not in ("assistant", "user") or not str(text or "").strip():
             return ""
-        self._chat_action_seq += 1
-        key = str(self._chat_action_seq)
-        self._chat_action_texts[key] = str(text)
+        self.context.state._chat_action_seq += 1
+        key = str(self.context.state._chat_action_seq)
+        self.context.state._chat_action_texts[key] = str(text)
         # Keep action targets for all messages currently present in the chat view.
         actions = [
             ("copy", "⧉", "#8CF5FF", "#103A52", "#39DFFF", "کپی"),
@@ -582,19 +582,19 @@ class SessionController(WindowFeatureController):
         if url.scheme() == "kira-action":
             action = url.host()
             key = url.path().strip("/")
-            text = self._chat_action_texts.get(key)
+            text = self.context.state._chat_action_texts.get(key)
             if text is None:
                 return
             if action == "copy":
                 QApplication.clipboard().setText(text)
                 self.set_status("st_ready")
             elif action == "edit":
-                self.input.setText(text)
-                self.input.setFocus()
-                self.input.moveCursor(QTextCursor.End)
+                self.context.views.input.setText(text)
+                self.context.views.input.setFocus()
+                self.context.views.input.moveCursor(QTextCursor.End)
             elif action == "speak":
                 # Speaker.speak() owns cancellation/replacement of the previous session.
-                self.voice_application_service.speak(text)
+                self.context.services.voice_application_service.speak(text)
             return
         if url.scheme() in ("http", "https", "mailto"):
             QDesktopServices.openUrl(url)
@@ -608,43 +608,43 @@ class SessionController(WindowFeatureController):
             if not img.loadFromData(base64.b64decode(a["b64"])):
                 continue
             img = img.scaledToWidth(min(220, img.width()), Qt.SmoothTransformation)
-            self._att_seq += 1
-            key = f"kira-att://{self._att_seq}"
-            self.chat.document().addResource(QTextDocument.ImageResource, QUrl(key), img)
+            self.context.state._att_seq += 1
+            key = f"kira-att://{self.context.state._att_seq}"
+            self.context.session.view.document().addResource(QTextDocument.ImageResource, QUrl(key), img)
             parts.append(f'<p style="margin:0 0 6px 0;"><img src="{key}" width="{img.width()}" height="{img.height()}"></p>')
         return "".join(parts)
 
     def on_input_changed(self, text):
         """Typed text flows in its own direction (Persian right-to-left, English left-to-right)."""
-        ui_dir = "rtl" if self.settings.get("ui_lang", "fa") == "fa" else "ltr"
+        ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "fa") == "fa" else "ltr"
         d = detect_direction(text, ui_dir)
-        self.input.setLayoutDirection(Qt.RightToLeft if d == "rtl" else Qt.LeftToRight)
+        self.context.views.input.setLayoutDirection(Qt.RightToLeft if d == "rtl" else Qt.LeftToRight)
 
     @front_only
     def set_status(self, key, **kw):
-        self._status = (key, kw)
-        self.status.setText(self.t(key, **kw))
+        self.context.state._status = (key, kw)
+        self.context.views.status.setText(self.t(key, **kw))
 
     # ---------- navigation / responsive layout ----------
 
     def go_tab(self, index):
-        self.tabs.setCurrentIndex(index)
+        self.context.views.tabs.setCurrentIndex(index)
         self._sync_nav()
 
     def _sync_nav(self, _index=None):
-        i = self.tabs.currentIndex()
+        i = self.context.views.tabs.currentIndex()
         for index, button in enumerate(getattr(self, "nav_buttons", [])):
-            button.setChecked(i == self._nav_icon_map[index][1])
-        self.save_btn.setVisible(i != 0)            # the chat page needs no Save button
-        if hasattr(self, "voice_page") and i == self.tab_keys.index("tab_voice"):
+            button.setChecked(i == self.context.state._nav_icon_map[index][1])
+        self.context.views.save_btn.setVisible(i != 0)            # the chat page needs no Save button
+        if hasattr(self, "voice_page") and i == self.context.views.tab_keys.index("tab_voice"):
             self.feature_controller("voice_settings").refresh_voice_caps()               # Refresh local-only speech status
 
     def resizeEvent(self, event):
         self.qt_super_event("resizeEvent", event)
         card = getattr(self, "avatar_card", None)
         if card is not None:                         # narrow window: give the whole width to the conversation
-            card.setVisible(self.width() >= 640)
-            card.setFixedWidth(max(200, min(300, int(self.width() * 0.30))))
+            card.setVisible(self.window.width() >= 640)
+            card.setFixedWidth(max(200, min(300, int(self.window.width() * 0.30))))
 
     # ---------- UI building ----------
 
@@ -682,8 +682,8 @@ class SessionController(WindowFeatureController):
         """Short fields (numbers, choices, sliders) keep a size that fits their content; long text fields keep the room they need.
         Nothing stretches to the end of the window for no reason."""
         lim = self.FIELD_LIMITS
-        for i in range(1, self.tabs.count()):                          # page 0 is the chat: left as it is
-            page = self.tabs.widget(i)
+        for i in range(1, self.context.views.tabs.count()):                          # page 0 is the chat: left as it is
+            page = self.context.views.tabs.widget(i)
             for w in page.findChildren(QSpinBox) + page.findChildren(QDoubleSpinBox):
                 w.setMaximumWidth(lim["spin"])
             for w in page.findChildren(QSlider):
@@ -701,8 +701,8 @@ class SessionController(WindowFeatureController):
     def icon_button(self, name, checkable=False):
         """Small neon icon button using the active character's own accent colours."""
         b = QToolButton()
-        cid = self.character_service.active_id(self.settings)
-        profile = self.character_service.all_profiles(self.settings).get(cid, {})
+        cid = self.context.services.character_service.active_id(self.context.services.settings)
+        profile = self.context.services.character_service.all_profiles(self.context.services.settings).get(cid, {})
         palette = self.theme_for_character(cid, profile)
         b.setProperty("kiraIconName", name)
         b.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
@@ -715,8 +715,8 @@ class SessionController(WindowFeatureController):
 
     def refresh_navigation_icons(self):
         """Keep shared navigation glyphs in sync when the active character changes."""
-        cid = self.character_service.active_id(self.settings)
-        profile = self.character_service.all_profiles(self.settings).get(cid, {})
+        cid = self.context.services.character_service.active_id(self.context.services.settings)
+        profile = self.context.services.character_service.all_profiles(self.context.services.settings).get(cid, {})
         palette = self.theme_for_character(cid, profile)
         for button, (name, _tab_index) in zip(getattr(self, "nav_buttons", []), getattr(self, "_nav_icon_map", [])):
             button.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
