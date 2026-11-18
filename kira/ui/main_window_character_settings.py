@@ -78,6 +78,15 @@ class CharacterSettingsController(WindowFeatureController):
 
     def refresh_character_controls(self):
         cid = self.context.services.character_service.active_id(self.context.services.settings)
+        initiative_settings = self.context.services.settings.get("character_initiative")
+        initiative_enabled = (
+            initiative_settings.get(cid, False) is True
+            if isinstance(initiative_settings, dict) else False
+        )
+        initiative_checkbox = self.context.views.character_page.initiative_chk
+        initiative_checkbox.blockSignals(True)
+        initiative_checkbox.setChecked(initiative_enabled)
+        initiative_checkbox.blockSignals(False)
         voice = (self.context.services.settings.get("character_voice") or {}).get(cid) or {}
         self.context.views.character_page.char_voice_rate.blockSignals(True)
         self.context.views.character_page.char_voice_rate.setValue(int(voice.get("voice_rate", self.context.services.settings.get("voice_rate", 0))))
@@ -100,13 +109,25 @@ class CharacterSettingsController(WindowFeatureController):
         self.apply_character_voice_settings()
 
     def _flush_character_autosave(self):
-        timer = getattr(self, "_character_save_timer", None)
-        if timer is not None and timer.isActive():
-            timer.stop()
+        pending = False
+        page = getattr(self.context.views, "character_page", None)
+        for timer in (
+            getattr(page, "save_timer", None),
+            getattr(self, "_character_save_timer", None),
+        ):
+            if timer is not None and timer.isActive():
+                timer.stop()
+                pending = True
+        if pending:
             self.save_character_settings(silent=True)
 
     def save_character_settings(self, silent=False):
         cid = self.context.services.character_service.active_id(self.context.services.settings)
+        initiative_settings = self.context.services.settings.get("character_initiative")
+        if not isinstance(initiative_settings, dict):
+            initiative_settings = {}
+        initiative_settings[cid] = bool(self.context.views.character_page.initiative_chk.isChecked())
+        self.context.services.settings["character_initiative"] = initiative_settings
         notes = (
             self.context.views.character_page.character_notes_edit.toPlainText().strip()
             if hasattr(self.context.views.character_page, "character_notes_edit") else None

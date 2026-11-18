@@ -1,0 +1,82 @@
+name: Initiative Quality Tests
+
+on:
+  push:
+    branches: [new-main]
+    paths:
+      - "kira/character/initiative.py"
+      - "kira/chat/persistence.py"
+      - "kira/services/chat_history_service.py"
+      - "kira/services/chat_history_service.py"
+      - "kira/chat/application_service.py"
+      - "kira/core/interfaces/chat_history_service.py"
+      - "kira/chat/persistence.py"
+      - "kira/chat/application_service.py"
+      - "kira/core/interfaces/chat_history_service.py"
+      - "kira/emotion/runtime.py"
+      - "kira/mood.py"
+      - "kira/persona_memory.py"
+      - "kira/config.py"
+      - "kira/strings.py"
+      - "kira/ui/main_window_session_support.py"
+      - "kira/ui/main_window_session.py"
+      - "kira/ui/main_window_character_settings.py"
+      - "kira/ui/pages/characters_page.py"
+      - "kira/services/character_service.py"
+      - "tests/test_initiative_quality.py"
+      - "tests/test_character_decision.py"
+      - "tests/test_character_profile_service.py"
+      - "docs/INITIATIVE_ENGINE_FA.md"
+      - ".github/workflows/initiative-quality.yml"
+  pull_request:
+    branches: [new-main]
+    paths:
+      - "kira/character/initiative.py"
+      - "kira/emotion/runtime.py"
+      - "kira/mood.py"
+      - "kira/persona_memory.py"
+      - "kira/config.py"
+      - "kira/strings.py"
+      - "kira/ui/main_window_session.py"
+      - "kira/ui/main_window_session_support.py"
+      - "kira/ui/main_window_character_settings.py"
+      - "kira/ui/pages/characters_page.py"
+      - "tests/test_initiative_quality.py"
+      - "tests/test_character_decision.py"
+      - "docs/INITIATIVE_ENGINE_FA.md"
+      - ".github/workflows/initiative-quality.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  initiative-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run initiative policy and character decision tests
+        run: python -m unittest tests.test_initiative_quality tests.test_character_decision tests.test_character_profile_service -v
+      - name: Compile changed Python modules
+        run: >-
+          python -m py_compile
+          kira/character/initiative.py
+          kira/chat/persistence.py
+          kira/services/chat_history_service.py
+          kira/chat/application_service.py
+          kira/core/interfaces/chat_history_service.py
+          kira/config.py
+          kira/strings.py
+          kira/ui/main_window_session.py
+          kira/ui/main_window_session_support.py
+          kira/ui/main_window_character_settings.py
+          kira/ui/pages/characters_page.py
+          kira/services/character_service.py
+          tests/test_initiative_quality.py
+          tests/test_character_decision.py
+          tests/test_character_profile_service.py

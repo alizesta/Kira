@@ -53,10 +53,15 @@ class CharacterProfileServiceTests(unittest.TestCase):
         profile = self.service.create_profile(self.settings, "Custom")
         cid = profile["id"]
         self.settings["character_traits"] = {cid: {"focus": 0.8}}
+        self.settings["character_initiative"] = {cid: True}
+        self.settings["character_initiative_history"] = {cid: [{"at": 1, "memory_id": "m"}]}
         self.assertTrue(self.service.delete_profile(self.settings, cid))
         self.assertNotIn(cid, self.service.all_profiles(self.settings))
         self.assertEqual(self.settings["active_character_id"], "kira")
-        for key in ("character_voice", "character_notes", "character_resources", "character_traits"):
+        for key in (
+            "character_voice", "character_notes", "character_resources", "character_traits",
+            "character_initiative", "character_initiative_history",
+        ):
             self.assertNotIn(cid, self.settings.get(key, {}))
 
     def test_delete_builtin_hides_it_but_default_kira_is_protected(self):
