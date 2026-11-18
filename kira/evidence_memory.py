@@ -633,7 +633,13 @@ def schedule_vector_backfill() -> None:
         if _vector_job_running or _embedding_config() is None or time.time() < _embed_fail_until:
             return
         _vector_job_running = True
-    _start_background(_vector_pass)
+    try:
+        _start_background(_vector_pass)
+    except RuntimeError:
+        # A process shutting down may reject a new thread. Do not leave the
+        # single-flight flag stuck, or future embedding backfills will never run.
+        with _lock:
+            _vector_job_running = False
 
 
 def _vector_pass() -> None:

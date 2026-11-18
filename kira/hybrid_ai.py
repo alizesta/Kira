@@ -1166,7 +1166,7 @@ class HybridRouter:
                             "load_ms", "eval_tokens", "eval_ms",
                         )},
                     })
-                    return {**result, "provider": route["provider"], "model": route["model"], "route_id": route["id"],
+                    return {**result, "provider": route["provider"], "model": model, "route_id": route["id"],
                             "kind": info["kind"], "label": info["label"], "metrics": metrics,
                             "stopped": False, "interrupted": None}
                 except Exception as exc:                              # noqa: BLE001
