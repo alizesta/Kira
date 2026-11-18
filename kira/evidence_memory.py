@@ -123,7 +123,12 @@ def configure(settings) -> None:
     _settings = settings if isinstance(settings, dict) else {}
     _enabled = str(_settings.get("evidence_memory", "auto")).lower() != "off"
     if _enabled:
-        _start_background(_backfill_once)
+        try:
+            _start_background(_backfill_once)
+        except RuntimeError:
+            # Evidence backfill is optional and rebuildable; inability to create
+            # a worker must not make settings/bootstrap fail or disturb Chat.
+            pass
 
 
 def enabled() -> bool:

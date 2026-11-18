@@ -31,6 +31,15 @@ class EvidenceMemoryConcurrencyTests(unittest.TestCase):
                 self.assertEqual(result[0], "ok")
                 self.assertTrue({"facts", "evidence", "vectors", "meta", "quarantine"}.issubset(tables))
 
+    def test_failed_history_backfill_thread_start_does_not_break_configuration(self):
+        with mock.patch.object(
+            evidence_memory,
+            "_start_background",
+            side_effect=RuntimeError("thread start rejected"),
+        ):
+            evidence_memory.configure({"evidence_memory": "auto"})
+        self.assertTrue(evidence_memory.enabled())
+
     def test_failed_vector_thread_start_releases_single_flight_flag(self):
         with (
             mock.patch.object(evidence_memory, "_vector_job_running", False),
