@@ -457,7 +457,7 @@ class ChatController(WindowFeatureController):
                 character_id,
                 older,
                 voice_samples=(mode is None or mode.name == modes.CHAT),
-                query=evidence_memory.query_from_context(history) if character_id == "kira" else None,
+                query=evidence_memory.query_from_context(history),
                 budget=evidence_memory.budget_for(self.context.services.settings, self.context.session.client),
             )
             total = self.context.services.chat_application_service.message_count(
