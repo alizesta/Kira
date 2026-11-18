@@ -88,6 +88,24 @@ class ArchitectureBoundaryTests(unittest.TestCase):
             "not concrete application, presentation or infrastructure modules.",
         )
 
+    def test_chat_ui_calls_web_search_application_service_not_engine_module(self):
+        ui_paths = (
+            ROOT / "kira" / "ui" / "main_window_chat.py",
+            ROOT / "kira" / "ui" / "main_window_chat_support.py",
+        )
+        violations = []
+        for path in ui_paths:
+            for imported in _imported_modules(path):
+                if _matches_prefix(imported, ("kira.websearch",)):
+                    violations.append(
+                        f"{path.relative_to(ROOT)} imports {imported}"
+                    )
+        self.assertEqual(violations, [])
+        chat_source = ui_paths[0].read_text(encoding="utf-8")
+        self.assertNotIn("websearch.", chat_source)
+        self.assertIn("self.web_search_service.plan_request(", chat_source)
+        self.assertIn("self.web_search_service.format_evidence(", chat_source)
+
     def test_shared_event_bus_and_chat_publisher_depend_on_core_contracts(self):
         event_bus_imports = _imported_modules(ROOT / "kira" / "app" / "event_bus.py")
         chat_event_imports = _imported_modules(ROOT / "kira" / "chat" / "events.py")
