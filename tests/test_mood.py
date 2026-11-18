@@ -111,5 +111,11 @@ class MoodStateTests(unittest.TestCase):
         self.assertIn("تنها", state["emotional_memories"][-1]["text"])
 
 
+    def test_reply_text_is_forwarded_to_emotional_runtime(self):
+        mood.on_reply(["sad"], intensity=70, now=1000, text="از تنهایی ناراحتم")
+        state = mood.current(now=1000)
+        self.assertTrue(state["emotional_memories"])
+        self.assertIn("تنهایی", state["emotional_memories"][-1]["text"])
+
 if __name__ == "__main__":
     unittest.main()

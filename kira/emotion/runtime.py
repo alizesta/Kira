@@ -6,6 +6,8 @@ decay, relationship drift, emotional memories, event reactions and final mood.
 from __future__ import annotations
 
 import json
+import logging
+import math
 import os
 import threading
 import time
@@ -79,9 +81,19 @@ BEHAVIOR_HALF_LIFE = 55 * 60.0
 ENERGY_RECOVERY = 0.0032  # points/second; capped at 100
 MAX_MEMORIES = 120
 MAX_EVENTS = 80
+MEMORY_RETENTION_DAYS = {"interaction": 45.0, "kira_emotion": 90.0}
+MEMORY_RECENCY_HALF_LIFE_DAYS = 14.0
+_log = logging.getLogger(__name__)
+
+def _finite_float(value, default=0.0):
+    try:
+        number = float(value)
+        return number if math.isfinite(number) else float(default)
+    except (TypeError, ValueError, OverflowError):
+        return float(default)
 
 def _clamp(v, lo=0.0, hi=100.0):
-    return max(lo, min(hi, float(v)))
+    return max(lo, min(hi, _finite_float(v, lo)))
 
 def _decay(values, elapsed, half_life, baseline=None):
     factor = 0.5 ** (max(0.0, elapsed) / half_life)
@@ -151,7 +163,30 @@ class EmotionalRuntime:
             rel = raw.get("relationship") or {}
             state["relationship"] = {k: _clamp(rel.get(k, DEFAULTS["relationship"][k])) for k in RELATIONSHIP_KEYS}
             state["energy"] = _clamp(raw.get("energy", self.config.get("energy_start", 76)))
-            state["memories"] = list(raw.get("memories") or [])[-int(self.config.get("memory_limit", MAX_MEMORIES)):]
+            memories = []
+            raw_memories = raw.get("memories") if isinstance(raw.get("memories"), list) else []
+            limit = max(1, int(self.config.get("memory_limit", MAX_MEMORIES)))
+            for saved in raw_memories[-limit:]:
+                if not isinstance(saved, dict) or not str(saved.get("text") or "").strip():
+                    continue
+                item = dict(saved)
+                kind = str(item.get("kind") or "interaction")
+                if kind not in ("interaction", "kira_emotion"):
+                    continue
+                item["kind"] = kind
+                item["text"] = str(item["text"]).strip()[:280]
+                item["impact"] = _clamp(_finite_float(item.get("impact", 0.0)))
+                item["created"] = max(0.0, _finite_float(item.get("created", 0.0)))
+                item["reinforced_at"] = max(
+                    item["created"],
+                    _finite_float(item.get("reinforced_at", item["created"]), item["created"]),
+                )
+                item["last_recalled"] = max(0.0, _finite_float(item.get("last_recalled", 0.0)))
+                item["recall_count"] = max(0, int(_finite_float(item.get("recall_count", 0))))
+                item["reinforcements"] = max(0, int(_finite_float(item.get("reinforcements", 0))))
+                item["speaker"] = "assistant" if kind == "kira_emotion" else "user"
+                memories.append(item)
+            state["memories"] = memories
             state["recent_events"] = list(raw.get("recent_events") or [])[-int(self.config.get("event_limit", MAX_EVENTS)):]
             state["last_user_signals"] = list(raw.get("last_user_signals") or [])
             stored_traits = raw.get("personality_traits") if isinstance(raw.get("personality_traits"), dict) else {}
@@ -243,7 +278,7 @@ class EmotionalRuntime:
             existing["reinforcements"] = int(existing.get("reinforcements", 0)) + 1
             return
         # Only high-signal events become long-lived memories; ordinary chat stays in short event history.
-        self._state["memories"].append({"kind": kind, "signal": signal, "text": text, "impact": _clamp(impact),
+        self._state["memories"].append({"kind": kind, "signal": signal, "speaker": "assistant" if kind == "kira_emotion" else "user", "text": text, "impact": _clamp(impact),
                                         "created": now, "reinforced_at": now, "last_recalled": 0.0,
                                         "recall_count": 0, "reinforcements": 0})
         self._state["memories"] = self._state["memories"][-int(self.config.get("memory_limit", MAX_MEMORIES)):]
@@ -295,38 +330,53 @@ class EmotionalRuntime:
     @staticmethod
     def _memory_tokens(text):
         import re
-        value = str(text or "").replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ").lower()
-        tokens = set(re.findall(r"[a-z0-9آ-ی]{2,}", value))
+        value = str(text or "").translate(str.maketrans({
+            "ي": "ی", "ك": "ک", "ۀ": "ه", "ة": "ه", "أ": "ا", "إ": "ا",
+            "ؤ": "و", "ئ": "ی", "۰": "0", "۱": "1", "۲": "2", "۳": "3",
+            "۴": "4", "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9",
+        })).replace("\u200c", " ").lower()
+        value = re.sub(r"[ً-ٰٟـ\u200d\u200e\u200f]", "", value)
+        words = re.findall(r"[a-z0-9آ-ی]{2,}", value)
         stop = {
             "این", "اون", "برای", "من", "تو", "که", "از", "به", "با", "رو", "را", "در", "و",
             "the", "and", "for", "with", "that", "this", "you", "your", "was", "are", "have",
         }
-        return tokens - stop
+        tokens = {word for word in words if word not in stop}
+        # Trigrams allow lexical recall across common Persian inflections.
+        for word in words:
+            if word not in stop and len(word) >= 4:
+                tokens.update("#" + word[i:i + 3] for i in range(len(word) - 2))
+        return tokens
 
     def recall_memories(self, query=None, limit=4, now=None):
-        """Retrieve high-signal memories relevant to the current message, with recency and impact weighting."""
-        now = self.clock() if now is None else float(now)
-        query_tokens = self._memory_tokens(query)
+        """Retrieve topic-relevant emotional memories with bounded retention and recency weighting."""
+        now = self.clock() if now is None else _finite_float(now, self.clock())
+        query_tokens = self._memory_tokens(query) if query is not None else set()
+        if query is not None and not query_tokens:
+            return []
         ranked = []
         for memory in self._state["memories"]:
-            text = str(memory.get("text", ""))
-            overlap = len(query_tokens & self._memory_tokens(text)) if query_tokens else 0
-            age_days = max(0.0, now - float(memory.get("reinforced_at") or memory.get("created") or now)) / 86400.0
-            recency = max(0.0, 12.0 - age_days * 0.45)
-            impact = _clamp(memory.get("impact", 0))
-            signal_bonus = 5.0 if memory.get("signal") in ("down", "stressed", "excited", "apology") else 0.0
-            # A supplied topic is a relevance constraint, not just a ranking hint.
-            # Recent/high-impact memories from unrelated topics must not leak into this turn.
-            if query_tokens and overlap == 0:
+            if not isinstance(memory, dict):
                 continue
+            text = str(memory.get("text") or "")
+            if not text:
+                continue
+            overlap = len(query_tokens & self._memory_tokens(text)) if query_tokens else 0
+            if query is not None and overlap == 0:
+                continue
+            reinforced = _finite_float(memory.get("reinforced_at") or memory.get("created"), now)
+            age_days = max(0.0, now - reinforced) / 86400.0
+            retention_days = MEMORY_RETENTION_DAYS.get(str(memory.get("kind") or ""), 45.0)
+            if age_days > retention_days:
+                continue
+            recency = 12.0 * (0.5 ** (age_days / MEMORY_RECENCY_HALF_LIFE_DAYS))
+            impact = _clamp(_finite_float(memory.get("impact", 0.0)))
+            signal_bonus = 5.0 if memory.get("signal") in ("down", "stressed", "excited", "apology") else 0.0
             score = impact * 0.22 + recency + signal_bonus + overlap * (24.0 if query_tokens else 0.0)
             if score > 8.0:
-                ranked.append((score, memory))
-        ranked.sort(key=lambda item: (item[0], float(item[1].get("reinforced_at") or item[1].get("created") or 0)), reverse=True)
-        selected = []
-        for _score, memory in ranked[:max(1, int(limit))]:
-            selected.append(dict(memory))
-        return selected
+                ranked.append((score, reinforced, memory))
+        ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return [dict(memory) for _score, _time, memory in ranked[:max(0, int(limit))]]
 
     def on_user_message(self, text, signals=(), now=None):
         now = self.clock() if now is None else float(now)
@@ -456,8 +506,15 @@ class EmotionalRuntime:
             "Keep continuity with prior turns. Do not announce internal state or fabricate memories.",
         ]
         if state["recalled_memories"]:
-            lines.append("Relevant recalled emotional continuity (use only when naturally relevant; do not assume an old event is still current): " +
-                         "; ".join(m["text"] for m in state["recalled_memories"][:3]))
+            recalled_lines = []
+            for memory in state["recalled_memories"][:3]:
+                speaker = memory.get("speaker") or ("assistant" if memory.get("kind") == "kira_emotion" else "user")
+                source = "Kira's prior response" if speaker == "assistant" else "User's prior experience"
+                recalled_lines.append(f"{source}: {memory['text']}")
+            lines.append(
+                "Relevant recalled emotional continuity (use only when naturally relevant; do not assume an old event is current): "
+                + "; ".join(recalled_lines)
+            )
         trait_changes = []
         for key, value in state["personality_traits"].items():
             baseline = self.base_traits[key]

@@ -1,3 +1,4 @@
+import math
 import tempfile
 import unittest
 from pathlib import Path
@@ -132,6 +133,54 @@ class EmotionalRuntimeTests(unittest.TestCase):
         self.assertEqual(state["memories"][-1]["kind"], "kira_emotion")
         self.assertIn("تنها", state["memories"][-1]["text"])
 
+
+    def test_query_with_no_effective_tokens_returns_no_old_memories(self):
+        self.runtime.on_user_message("فردا امتحان مهم دارم و نگرانم", ["stressed"], now=1000)
+        state = self.runtime.snapshot(now=1001, query="از و به")
+        self.assertEqual(state["recalled_memories"], [])
+
+    def test_interaction_memories_expire_after_retention_window(self):
+        self.runtime.on_user_message("فردا امتحان مهم دارم و نگرانم", ["stressed"], now=1000)
+        state = self.runtime.snapshot(now=1000 + 46 * 86400, query="امتحان فردا")
+        self.assertEqual(state["recalled_memories"], [])
+
+    def test_recalled_emotional_memory_preserves_speaker(self):
+        self.runtime.on_reply(["sad"], 70, now=1000, text="از اینکه تنها ماندی ناراحتم")
+        state = self.runtime.snapshot(now=1001, query="تنها ماندی")
+        self.assertTrue(state["recalled_memories"])
+        self.assertEqual(state["recalled_memories"][0]["speaker"], "assistant")
+        prompt = self.runtime.build_prompt("chat", now=1001, query="تنها ماندی")
+        self.assertIn("Kira's prior response:", prompt)
+
+    def test_corrupt_memory_entries_are_filtered_and_sanitized(self):
+        self.path.write_text(
+            '{"memories":[null, 12, {"kind":"interaction","text":"معتبر","impact":NaN,'
+            '"created":Infinity,"reinforced_at":"bad"}, {"kind":"unknown","text":"نادیده"}]}',
+            encoding="utf-8",
+        )
+        restored = EmotionalRuntime(self.library, self.path, clock=lambda: 1001.0)
+        state = restored.snapshot(now=1001.0)
+        self.assertEqual(len(state["memories"]), 1)
+        self.assertTrue(math.isfinite(state["memories"][0]["impact"]))
+
+    def test_concurrent_updates_keep_memory_records_well_formed(self):
+        import threading
+        workers = [
+            threading.Thread(
+                target=self.runtime.on_user_message,
+                args=(f"برای موضوع شماره {index} استرس دارم", ["stressed"]),
+                kwargs={"now": 1000 + index},
+            )
+            for index in range(12)
+        ]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=5)
+            self.assertFalse(worker.is_alive())
+        state = self.runtime.snapshot(now=1020)
+        self.assertGreater(state["memory_count"], 0)
+        self.assertLessEqual(state["memory_count"], 120)
 
 if __name__ == "__main__":
     unittest.main()
