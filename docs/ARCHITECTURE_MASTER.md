@@ -11,7 +11,7 @@
 
 ## 1. Executive architecture summary
 
-Kira is an incremental modularization of a PySide6 desktop application. The Python entry point is thin and delegates startup to `kira.app.bootstrap`. Bootstrap is the composition root and constructs the dependency container, shared EventBus, typed Chat event publisher, ModuleManager, required service modules, SessionManager, Chat and Session application-service factories, and the injected Web Search, Voice, Game Mode, Provider, Vision, Coding Agent and Runtime Settings application services. The production window lives in `kira.ui.main_window.MainWindow`, with feature-oriented mixins under `kira/ui/main_window_*.py` and scoped dependency modules. The legacy `kira/oldmain.py` file has been removed. `MainWindow` now acts as a compact Qt host: widget/service assembly is delegated to `kira.ui.main_window_composition.initialize_main_window`, while the class retains the feature mixins and their state descriptors. Chat and Voice application composition no longer accepts a concrete MainWindow; typed callback/device contracts live in `kira/core/interfaces/application_ports.py`, and UI adapters construct those ports in `kira/ui/application_adapters.py`. This removes the direct application-composition dependency on the window class. It does not claim that all feature policy has left the mixins; remaining policy and cross-feature orchestration debt is tracked below.
+Kira is an incremental modularization of a PySide6 desktop application. The Python entry point is thin and delegates startup to `kira.app.bootstrap`. Bootstrap is the composition root and constructs the dependency container, shared EventBus, typed Chat event publisher, ModuleManager, required service modules, SessionManager, Chat and Session application-service factories, and the injected Web Search, Voice, Game Mode, Provider, Vision, Coding Agent and Runtime Settings application services. The application package (`kira/app`) and Chat orchestration are toolkit-independent; Qt worker/signal/device translation lives in `kira/ui/application_adapters.py`, behind `ProviderWorkerPort`, `VoiceListenerPort` and `SpeakerPort`. The desktop Composition Root lives outside the Application package in `kira/ui/bootstrap.py`. The production window lives in `kira.ui.main_window.MainWindow`, with feature-oriented mixins under `kira/ui/main_window_*.py` and scoped dependency modules. The legacy `kira/oldmain.py` file has been removed. `MainWindow` now acts as a compact Qt host: widget/service assembly is delegated to `kira.ui.main_window_composition.initialize_main_window`, while the class retains the feature mixins and their state descriptors. Chat and Voice application composition no longer accepts a concrete MainWindow; typed callback/device contracts live in `kira/core/interfaces/application_ports.py`, `provider_worker.py` and `voice_ports.py`, and UI adapters construct those ports in `kira/ui/application_adapters.py`. Chat History persistence is bound inside the application feature graph and is no longer injected into MainWindow. This removes the direct application-composition dependency on the window class. It does not claim that all feature policy has left the mixins; remaining policy and cross-feature orchestration debt is tracked below.
 
 The Chat domain is the most clearly separated feature area. All fourteen Chat task modules are present on `new-main` after PR #48 merged TASK 013 and TASK 014 together. The Chat core services are designed to be Qt-free and communicate through injected contracts. Persistence remains the durable storage boundary. Runtime Session state is separate from durable Conversation state. The EventBus broadcasts notifications; it is not a general-purpose service-call router. ToolAgent's transient caches, permission taint/grants, confirmations, cancellation and task-control bookkeeping are isolated by character Session. WebIntel's resumable research data is persisted in a per-character namespace, and its process-wide worker cancellation facade is activated for only one serialized research owner at a time. Brain reply hints, turn counters and Reflection rate limits are also per character; the legacy Kira brain file remains backward-compatible, while the optional Memory Writer cursor remains global to the shared history stream.
 
@@ -35,7 +35,7 @@ Status labels in this document:
 
 ```mermaid
 flowchart TD
-    Entry["kira/main.py<br/>entry point"] --> Boot["kira/app/bootstrap.py<br/>composition root"]
+    Entry["kira/main.py<br/>entry point"] --> Boot["kira/ui/bootstrap.py<br/>composition root"]
     Boot --> DI["DependencyContainer"]
     Boot --> Bus["EventBus"]
     Bus --> Publisher["ChatEventPublisher"]
@@ -63,7 +63,7 @@ The diagram is a bounded view of the production startup and Chat composition. It
 | Element | Current responsibility | Status / boundary |
 |---|---|---|
 | `kira/main.py` | Exposes `main()`, imports and calls `run_application()`; retains a lazy compatibility export of `MainWindow` from `kira.ui.main_window`. | Implemented thin entry point; compatibility export remains. |
-| `kira/app/bootstrap.py` | Creates QApplication, dependency container, EventBus, ChatEventPublisher, ModuleManager, required services, SessionManager, Chat and Session factories, Provider/Vision/Coding Agent/Runtime Settings services, WebSearch/Voice/Game Mode services and MainWindow; connects shutdown. | Actual Composition Root. |
+| `kira/ui/bootstrap.py` | Creates QApplication, dependency container, EventBus, ChatEventPublisher, ModuleManager, required services, SessionManager, Chat and Session factories, Provider/Vision/Coding Agent/Runtime Settings services, WebSearch/Voice/Game Mode services and MainWindow; connects shutdown. | Actual Composition Root. |
 | `kira/app/dependency_container.py` | Instance/factory registration, lazy resolution and unregister. | Implemented; explicit DI container, not proof that every dependency uses it. |
 | `kira/app/module_manager.py` | Module registration, dependency ordering, start/stop/enable/disable/unregister/dispose and failure isolation. | Implemented engine; feature registration is partial. |
 | `kira/app/event_bus.py` | In-process publish/subscribe notifications and typed event delivery support. | One shared application bus. |
@@ -178,7 +178,7 @@ The actual production window is imported by bootstrap from `kira.ui.main_window.
 
 Target boundary:
 1. `kira/main.py` remains a small entry point.
-2. `kira/app/bootstrap.py` remains the only production Composition Root.
+2. `kira/ui/bootstrap.py` remains the only production Composition Root; `kira/app`, `kira/chat` and `kira/core/interfaces` must remain free of Qt and UI imports.
 3. MainWindow hosts pages, translates UI intents and renders state.
 4. Feature policy and orchestration move behind application services/controllers.
 5. Compatibility exports/fallback construction are removed only after call sites migrate.
