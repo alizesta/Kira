@@ -61,7 +61,7 @@ class ProviderSettingsController(WindowFeatureController):
             self._model_catalog_worker.done.connect(self._on_model_catalog_refresh)
             self._model_catalog_worker.start()
             self.scan_ollama()
-            self.refresh_local_voice_status()
+            self.feature_controller("voice_settings").refresh_local_voice_status()
         except Exception as exc:
             self.mcp_registry_panel.set_refreshing(False)
             self.mcp_registry_panel.set_status("تازه‌سازی کامل نشد: " + str(exc)[:200])
@@ -81,7 +81,7 @@ class ProviderSettingsController(WindowFeatureController):
             else:
                 self.provider_application_service.apply_failure(self.settings, pid, detection)
                 failed.append(pid)
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_unified_models()
         self.refresh_api_table()
         suffix = ("؛ خطا در " + "، ".join(failed)) if failed else ""
@@ -106,8 +106,8 @@ class ProviderSettingsController(WindowFeatureController):
         import_row.addStretch(1)
         layout.addLayout(import_row)
 
-        self.build_mcp_registry_group(layout)
-        cloud_box, cloud_form = self.group("مدل‌های Chat Cloud")
+        self.feature_controller("character_settings").build_mcp_registry_group(layout)
+        cloud_box, cloud_form = self.feature_controller("session").group("مدل‌های Chat Cloud")
         model_list = QListWidget()
         model_list.setAlternatingRowColors(True)
         model_list.setMinimumHeight(105)
@@ -117,7 +117,7 @@ class ProviderSettingsController(WindowFeatureController):
         cloud_form.addRow(model_list)
         layout.addWidget(cloud_box)
 
-        local_box, local_form = self.group("مدل‌های Local")
+        local_box, local_form = self.feature_controller("session").group("مدل‌های Local")
         local_form.setContentsMargins(8, 6, 8, 6)
         local_form.setHorizontalSpacing(8)
         local_form.setVerticalSpacing(4)
@@ -148,7 +148,7 @@ class ProviderSettingsController(WindowFeatureController):
         local_stt_layout.setSpacing(4)
         self.local_asr_chk = QCheckBox("استفاده از Qwen3-ASR محلی")
         self.local_asr_chk.setChecked(bool(self.settings.get("local_voice_asr", True)))
-        self.local_asr_chk.toggled.connect(lambda on: self.set_local_voice_option("local_voice_asr", on))
+        self.local_asr_chk.toggled.connect(lambda on: self.feature_controller("voice_settings").set_local_voice_option("local_voice_asr", on))
         local_stt_layout.addWidget(self.local_asr_chk)
         self.local_asr_model_list = QComboBox()
         self.local_asr_model_list.setToolTip("مدل‌های STT موجود در کش Hugging Face")
@@ -181,7 +181,7 @@ class ProviderSettingsController(WindowFeatureController):
         local_tts_layout.setSpacing(4)
         self.local_tts_chk = QCheckBox("استفاده از Piper محلی")
         self.local_tts_chk.setChecked(bool(self.settings.get("local_voice_tts", True)))
-        self.local_tts_chk.toggled.connect(lambda on: self.set_local_voice_option("local_voice_tts", on))
+        self.local_tts_chk.toggled.connect(lambda on: self.feature_controller("voice_settings").set_local_voice_option("local_voice_tts", on))
         local_tts_layout.addWidget(self.local_tts_chk)
         self.local_tts_model_list = QComboBox()
         self.local_tts_model_list.setToolTip("صداهای Piper دانلودشده و صدای فارسی پیش‌فرض")
@@ -270,9 +270,9 @@ class ProviderSettingsController(WindowFeatureController):
         self.route_editor.delete_requested.connect(self.delete_selected_route)
         self.route_editor.default_requested.connect(self.default_selected_route)
         self.route_editor.select_manual_requested.connect(
-            lambda: self.select_route(self._selected_route_id() or "")
+            lambda: self.feature_controller("runtime").select_route(self._selected_route_id() or "")
         )
-        self.route_editor.select_auto_requested.connect(lambda: self.select_route(""))
+        self.route_editor.select_auto_requested.connect(lambda: self.feature_controller("runtime").select_route(""))
         self.route_editor.test_requested.connect(self.test_selected_route)
         self.route_editor.benchmark_requested.connect(self.run_benchmark)
         self.route_editor.details_changed.connect(self.route_edit_changed)
@@ -294,7 +294,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.refresh_route_list()
         self.refresh_api_table()
         self.refresh_unified_models()
-        self.refresh_local_voice_status()
+        self.feature_controller("voice_settings").refresh_local_voice_status()
 
     def _make_model_list(self, kind, cloud=True):
         model_list = QListWidget()
@@ -381,7 +381,7 @@ class ProviderSettingsController(WindowFeatureController):
         if not route_id:
             return
         self.provider_application_service.update_route(self.settings, route_id, enabled=item.checkState() == Qt.Checked)
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_route_list()
         self.refresh_unified_models()
 
@@ -473,7 +473,7 @@ class ProviderSettingsController(WindowFeatureController):
             self.route_status.setText("✕ " + str(exc))
             return
         self.url.setText(url)                                # same address as the Assistant tab
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.ollama_edit_mode(False)
         self.route_status.setText("✓ آدرس Ollama ذخیره شد.")
 
@@ -501,7 +501,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.api_add_panel.add_requested.connect(self.api_add)
         self.api_add_panel.filter_changed.connect(self.on_model_filter_changed)
         add_box = self.api_add_panel
-        list_box, lf = self.group("Registered APIs")
+        list_box, lf = self.feature_controller("session").group("Registered APIs")
         self.api_table = QTableWidget(0, len(self.API_COLUMNS))
         self.api_table.setHorizontalHeaderLabels(self.API_COLUMNS)
         self.api_table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -530,7 +530,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.api_status.setWordWrap(True)
         lf.addRow(self.api_status)
 
-        det_box, df = self.group("API Details")
+        det_box, df = self.feature_controller("session").group("API Details")
         self.api_det_info = QLabel("یک API را از فهرست بالا انتخاب کن.")
         self.api_det_info.setWordWrap(True)
         self.api_det_info.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -556,7 +556,7 @@ class ProviderSettingsController(WindowFeatureController):
 
     def on_model_filter_changed(self, *_):
         self.settings["model_filter_mode"] = self.model_filter.currentData() or "all"
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_unified_models()
 
     def _api_selected(self):
@@ -574,13 +574,13 @@ class ProviderSettingsController(WindowFeatureController):
     def _api_changed(self, select=None, refresh_details=True):
         """After any change: reset cooldowns (a fixed key gets another chance), save, redraw."""
         self.client.reset_cooldowns()
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_api_table(select)
         if hasattr(self, "cloud_model_lists"):
             self.refresh_unified_models()
         self.refresh_route_list()
         if not self.busy:
-            self.set_badge("idle", self.client.preview_route())
+            self.feature_controller("runtime").set_badge("idle", self.client.preview_route())
 
     def refresh_api_table(self, select=None):
         self.provider_application_service.ensure_registry(self.settings)
@@ -876,14 +876,14 @@ class ProviderSettingsController(WindowFeatureController):
 
     def after_route_change(self, select=None):
         self.sync_ollama_primary()
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_route_list()
         if select:
             for i in range(self.route_list.count()):
                 if self.route_list.item(i).data(Qt.UserRole) == select:
                     self.route_list.setCurrentRow(i)
         if not self.busy:
-            self.set_badge("idle", self.client.preview_route())
+            self.feature_controller("runtime").set_badge("idle", self.client.preview_route())
 
     def sync_ollama_primary(self):
         """Route 'ollama' is the model of the Assistant tab: keep the two in step both ways."""
@@ -915,9 +915,9 @@ class ProviderSettingsController(WindowFeatureController):
             return
         ids = [self.route_list.item(i).data(Qt.UserRole) for i in range(self.route_list.count())]
         self.provider_application_service.reorder_routes(self.settings, ids)
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         QTimer.singleShot(0, self.refresh_route_list)           # renumber labels after the drop has fully finished
-        QTimer.singleShot(0, lambda: None if self.busy else self.set_badge("idle", self.client.preview_route()))
+        QTimer.singleShot(0, lambda: None if self.busy else self.feature_controller("runtime").set_badge("idle", self.client.preview_route()))
 
     def move_selected(self, delta):
         rid = self._selected_route_id()
@@ -945,7 +945,7 @@ class ProviderSettingsController(WindowFeatureController):
 
     def on_failover_toggled(self, on):
         self.settings["failover_enabled"] = bool(on)
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_route_list()
 
     def add_route_from_values(self, provider, model, enabled=True):
@@ -987,7 +987,7 @@ class ProviderSettingsController(WindowFeatureController):
         except ValueError as exc:
             self.route_status.setText("✕ " + str(exc))
             return None
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_api_table(pid)
         self.refresh_route_list()
         return pid
@@ -1019,7 +1019,7 @@ class ProviderSettingsController(WindowFeatureController):
             return
         self.provider_application_service.remove_provider(self.settings, pid)
         self.client.reset_cooldowns()
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_api_table()
         self.refresh_route_list()
 
@@ -1029,10 +1029,10 @@ class ProviderSettingsController(WindowFeatureController):
             return
         self.collect_provider_settings()
         self.client.reset_cooldowns()
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_route_list()
         if not self.busy:
-            self.set_badge("idle", self.client.preview_route())
+            self.feature_controller("runtime").set_badge("idle", self.client.preview_route())
 
     def test_selected_route(self):
         rid = self._selected_route_id()
@@ -1076,7 +1076,7 @@ class ProviderSettingsController(WindowFeatureController):
         self._ollama_models = list(value)
         self.model.set_models(value)
         added = self.provider_application_service.add_ollama_models(self.settings, value)
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_route_list()
         self.route_status.setText(f"✓ {len(value)} مدل نصب‌شده پیدا شد؛ {len(added)} Route جدید اضافه شد (به‌صورت غیرفعال تا خودت فعال کنی).")
         self.refresh_unified_models()
@@ -1137,7 +1137,7 @@ class ProviderSettingsController(WindowFeatureController):
                 lines.append(f"\nسریع‌ترین اولین Token: {ranked[0]['label']} / {ranked[0]['model']} ({ranked[0]['first_token_ms']} ms)")
             self.bench_out.setPlainText("\n".join(lines))
         self.refresh_route_list()
-        self._send_next_pending()
+        self.feature_controller("runtime")._send_next_pending()
 
     # ---------- settings ----------
     # ---- Windows 11 glass ----
