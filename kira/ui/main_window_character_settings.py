@@ -166,7 +166,7 @@ class CharacterSettingsController(WindowFeatureController):
             return True
         except Exception as exc:                            # noqa: BLE001
             if not silent:
-                QMessageBox.warning(self, self.t("character_error_title"), str(exc))
+                QMessageBox.warning(self.window, self.t("character_error_title"), str(exc))
             return False
 
     def refresh_character_choices(self):
@@ -271,13 +271,13 @@ class CharacterSettingsController(WindowFeatureController):
             self.save_now()
 
     def add_character(self):
-        name, ok = QInputDialog.getText(self, "شخصیت جدید", "نام:")
+        name, ok = QInputDialog.getText(self.window, "شخصیت جدید", "نام:")
         if not ok or not name.strip():
             return
-        description, ok = QInputDialog.getText(self, "شخصیت جدید", "توضیح کوتاه:")
+        description, ok = QInputDialog.getText(self.window, "شخصیت جدید", "توضیح کوتاه:")
         if not ok:
             return
-        prompt, ok = QInputDialog.getMultiLineText(self, "شخصیت جدید", "دستور شخصیت و لحن:")
+        prompt, ok = QInputDialog.getMultiLineText(self.window, "شخصیت جدید", "دستور شخصیت و لحن:")
         if not ok:
             return
         profile = self.character_service.create_profile(
@@ -293,13 +293,13 @@ class CharacterSettingsController(WindowFeatureController):
         if cid == "kira":
             return
         profile = dict(self.character_service.all_profiles(self.settings)[cid])
-        name, ok = QInputDialog.getText(self, "ویرایش شخصیت", "نام:", QLineEdit.Normal, profile.get("name", ""))
+        name, ok = QInputDialog.getText(self.window, "ویرایش شخصیت", "نام:", QLineEdit.Normal, profile.get("name", ""))
         if not ok or not name.strip():
             return
-        description, ok = QInputDialog.getText(self, "ویرایش شخصیت", "توضیح:", QLineEdit.Normal, profile.get("description", ""))
+        description, ok = QInputDialog.getText(self.window, "ویرایش شخصیت", "توضیح:", QLineEdit.Normal, profile.get("description", ""))
         if not ok:
             return
-        prompt, ok = QInputDialog.getMultiLineText(self, "ویرایش شخصیت", "دستور شخصیت و لحن:", profile.get("prompt", ""))
+        prompt, ok = QInputDialog.getMultiLineText(self.window, "ویرایش شخصیت", "دستور شخصیت و لحن:", profile.get("prompt", ""))
         if not ok:
             return
         self.character_service.update_profile(
@@ -315,7 +315,7 @@ class CharacterSettingsController(WindowFeatureController):
         cid = self.character_service.active_id(self.settings)
         if cid == "kira":
             return
-        if QMessageBox.question(self, "حذف شخصیت", "این شخصیت حذف شود؟") != QMessageBox.Yes:
+        if QMessageBox.question(self.window, "حذف شخصیت", "این شخصیت حذف شود؟") != QMessageBox.Yes:
             return
         self.character_service.delete_profile(self.settings, cid)
         self.sync_sessions()                           # its tab (and conversation view) goes away
@@ -517,7 +517,7 @@ class CharacterSettingsController(WindowFeatureController):
     def install_shared_skill_folder(self):
         from PySide6.QtWidgets import QFileDialog
 
-        path = QFileDialog.getExistingDirectory(self, "Install Skill folder")
+        path = QFileDialog.getExistingDirectory(self.window, "Install Skill folder")
         if path:
             self._install_shared_skill(path)
 
