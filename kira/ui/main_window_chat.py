@@ -474,6 +474,9 @@ class ChatMixin:
             self._brain = brain.Decision()
 
         character_layer = self.character_service.prompt_for(self.settings)
+        skill_layer = self.shared_skills_application_service.prompt_for(self.cur.cid)
+        if skill_layer:
+            character_layer = (character_layer + "\n\n" + skill_layer).strip()
         body_context = ""
         if self.body_active():                                    # preserve existing 3D body instruction and completed-action note
             body_context = ("" if plain else body_ctl.format_hint()) + body_ctl.done_note(self._body_done)
