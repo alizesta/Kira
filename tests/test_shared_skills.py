@@ -100,6 +100,24 @@ class SharedSkillServiceTests(unittest.TestCase):
         with self.assertRaises(SkillError):
             self.service.install(self.source)
 
+    def test_install_rejects_library_as_source(self):
+        with self.assertRaises(SkillError):
+            self.service.install(self.root / "library")
+
+    def test_prompt_respects_total_character_budget(self):
+        self._write_skill(self.source, "helper", "Helpful", "x" * 100_000)
+        self.service.install(self.source)
+        settings = {}
+        self.service.set_enabled(settings, "helper", True)
+        prompt = self.service.prompt_for(settings, "kira")
+        self.assertLessEqual(len(prompt), 20_000)
+
+    def test_character_ids_are_case_normalized(self):
+        self.service.install(self.source)
+        settings = {}
+        self.service.set_enabled(settings, "helper", True, character_id="REN")
+        self.assertEqual(self.service.enabled_for(settings, "ren"), ("helper",))
+
 
 if __name__ == "__main__":
     unittest.main()
