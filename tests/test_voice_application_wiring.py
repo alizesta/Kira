@@ -29,7 +29,9 @@ class VoiceApplicationWiringTests(unittest.TestCase):
         self.assertIn("voice_application_service_factory(create_voice_application_ports(self, self.speaker))", composition)
         self.assertIn("QtVoiceListenerAdapter", adapters)
         self.assertIn("QtSpeakerAdapter", adapters)
-        self.assertIn("voice_application_service_factory=None", window)
+        self.assertIn("class MainWindow(QMainWindow):", window)
+        self.assertNotIn("initialize_main_window", window)
+        self.assertNotIn("voice_application_service_factory", window)
 
     def test_ui_delegates_voice_policy_and_worker_lifecycle(self):
         runtime = (ROOT / "kira/ui/main_window_runtime.py").read_text(encoding="utf-8")
