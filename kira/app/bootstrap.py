@@ -18,6 +18,10 @@ def run_application() -> None:
     from .web_search import WebSearchApplicationService
     from .voice_composition import create_voice_application_service_factory
     from .game_mode_application import GameModeApplicationService
+    from .provider_application import ProviderApplicationService
+    from .coding_agent_application import CodingAgentApplicationService
+    from .runtime_settings_application import RuntimeSettingsApplicationService
+    from .vision_application import VisionApplicationService
     from .event_bus import EventBus
     from ..chat.events import ChatEventPublisher
     from ..chat.session_manager import SessionManager
@@ -56,8 +60,9 @@ def run_application() -> None:
         event_bus.close()
         raise RuntimeError(f"Required application modules failed to start: {failed}")
 
+    settings = load_settings()
     app = QApplication(sys.argv)
-    app.setStyleSheet(build_style(winfx.active_effect(load_settings().get("window_effect"))))
+    app.setStyleSheet(build_style(winfx.active_effect(settings.get("window_effect"))))
     session_manager = SessionManager(ChatSession)
     chat_history_service = container.resolve("chat_history_service")
     chat_service_factory = create_chat_application_service_factory(
@@ -70,6 +75,14 @@ def run_application() -> None:
     web_search_service = WebSearchApplicationService()
     voice_service_factory = create_voice_application_service_factory()
     game_mode_application_service = GameModeApplicationService()
+    provider_application_service = ProviderApplicationService()
+    coding_agent_application_service = CodingAgentApplicationService()
+    vision_application_service = VisionApplicationService(
+        game_mode_application_service,
+        settings.get("vision_mode", "economic"),
+    )
+    runtime_settings_application_service = RuntimeSettingsApplicationService()
+    runtime_settings_application_service.configure(settings)
     try:
         window = MainWindow(
             memory_service=container.resolve("memory_service"),
@@ -83,6 +96,11 @@ def run_application() -> None:
             game_mode_application_service=game_mode_application_service,
             session_manager=session_manager,
             chat_event_publisher=chat_event_publisher,
+            settings=settings,
+            provider_application_service=provider_application_service,
+            coding_agent_application_service=coding_agent_application_service,
+            vision_application_service=vision_application_service,
+            runtime_settings_application_service=runtime_settings_application_service,
         )
     except Exception:
         module_manager.shutdown()
