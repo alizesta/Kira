@@ -87,6 +87,30 @@ class SqliteChatHistoryService:
     def update_stream_message(self, message_id, content, **options):
         return self._persistence.update_stream_message(message_id, content, **options)
 
+    def mutate_conversations(self, mutations):
+        """Expose atomic per-conversation metadata mutations to application use cases."""
+        return self._persistence.mutate_conversations(mutations)
+
+    def mutate_all_conversations(self, character_id, mutator):
+        """Expose atomic character-scoped metadata mutations to application use cases."""
+        return self._persistence.mutate_all_conversations(character_id, mutator)
+
+    def messages_after(self, after_id=0, limit=500):
+        """Read a stable, monotonically ordered page for Chat Search."""
+        return self._persistence.messages_after(after_id, limit)
+
+    def get_transfer_messages(
+        self, conversation_id, character_id, after_created_at="", after_id=0, limit=1000
+    ):
+        """Read a bounded Conversation page for export without exposing SQL."""
+        return self._persistence.get_transfer_messages(
+            conversation_id, character_id, after_created_at, after_id, limit
+        )
+
+    def import_transfer_records(self, conversations, messages):
+        """Commit a previously validated transfer through Persistence's atomic transaction."""
+        return self._persistence.import_transfer_records(conversations, messages)
+
     def message_count(self, character_id: str | None = None, conversation_id: str | None = None) -> int:
         return self._persistence.message_count(character_id, conversation_id)
 

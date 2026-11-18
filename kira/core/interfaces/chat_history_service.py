@@ -1,6 +1,7 @@
 """Consumer-facing contract for persisted chat history."""
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -21,6 +22,31 @@ class ChatHistoryService(Protocol):
     def get_or_create_conversation(self, character_id=None) -> dict[str, Any]: ...
     def get_conversation(self, conversation_id: str) -> dict[str, Any] | None: ...
     def list_conversations(self, character_id=None) -> list[dict[str, Any]]: ...
+    def mutate_conversations(
+        self,
+        mutations: Sequence[
+            tuple[str, Callable[[dict[str, Any]], dict[str, Any]]]
+        ],
+    ) -> dict[str, dict[str, Any]]: ...
+    def mutate_all_conversations(
+        self,
+        character_id: str | None,
+        mutator: Callable[[dict[str, Any]], dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]: ...
+    def messages_after(self, after_id: int = 0, limit: int = 500) -> list[dict[str, Any]]: ...
+    def get_transfer_messages(
+        self,
+        conversation_id: str,
+        character_id: str,
+        after_created_at: str = "",
+        after_id: int = 0,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]: ...
+    def import_transfer_records(
+        self,
+        conversations: list[dict[str, Any]],
+        messages: list[dict[str, Any]],
+    ) -> dict[str, Any]: ...
     def update_conversation(self, conversation_id: str, **changes) -> bool: ...
     def close_conversation(self, conversation_id: str) -> bool: ...
     def delete_conversation(self, conversation_id: str, *, expected_status: str | None = None) -> int: ...

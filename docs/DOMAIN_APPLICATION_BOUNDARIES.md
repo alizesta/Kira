@@ -159,9 +159,11 @@ remains only as a compatibility fallback. Flow 4 must inject that adapter and
 register Organization/Search/Transfer use cases in the central application
 lifecycle. Flow 2 has not claimed those integrations.
 
-Central application-service registration, Bootstrap injection, FeatureModule
-lifecycle and UI-controller consumption are coordinated through Flows 1 and 4,
-not duplicated here.
+Central application-service registration, Bootstrap injection and FeatureModule
+lifecycle are implemented by Flow 4 in `kira/app/feature_modules.py` and
+`kira/ui/bootstrap.py`. The three services are injected into MainWindow through
+the outer Qt composition boundary; actual controller consumption is coordinated
+with Flow 1. The Transfer file adapter implementation remains Flow 3 work.
 
 ## Verification boundary
 

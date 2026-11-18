@@ -12,6 +12,7 @@ from typing import Any
 from .dependency_container import DependencyContainer
 from .module_manager import ModuleManager
 from .service_module import ServiceModule
+from ..core.interfaces.transfer import ChatTransferFilePort
 
 
 APPLICATION_FEATURE_DEPENDENCIES = {
@@ -19,6 +20,10 @@ APPLICATION_FEATURE_DEPENDENCIES = {
     "mood": (),
     "characters": (),
     "chat_history": (),
+    "conversation_lifecycle": ("chat_history",),
+    "conversation_organization": ("chat_history",),
+    "chat_search": ("chat_history",),
+    "chat_transfer": ("chat_history",),
     "web_search": (),
     "shared_skills": (),
     "game_mode": (),
@@ -26,7 +31,7 @@ APPLICATION_FEATURE_DEPENDENCIES = {
     "coding_agent": (),
     "runtime_settings": (),
     "vision": ("game_mode",),
-    "chat_application": ("chat_history",),
+    "chat_application": ("chat_history", "conversation_lifecycle"),
     "session_application": ("chat_application",),
     "voice_application": (),
 }
@@ -39,6 +44,7 @@ def register_application_modules(
     settings: dict[str, Any],
     event_publisher: Any,
     service_factories: Mapping[str, Callable[[], Any]] | None = None,
+    transfer_file_port: ChatTransferFilePort | None = None,
 ) -> tuple[str, ...]:
     """Register every app service/factory under one dependency-aware lifecycle."""
     if module_manager.container is not container:
@@ -73,20 +79,70 @@ def register_application_modules(
         game_mode = container.resolve("game_mode_application_service")
         return VisionApplicationService(game_mode, settings.get("vision_mode", "economic"))
 
+    def create_conversation_lifecycle_service() -> Any:
+        from ..chat.conversation_lifecycle import ConversationLifecycleService
+
+        return ConversationLifecycleService(
+            container.resolve("chat_history_service"),
+            event_publisher,
+        )
+
     def create_chat_factory() -> Any:
         return create_chat_application_service_factory(
             persistence=container.resolve("chat_history_service"),
             event_publisher=event_publisher,
+            conversation_lifecycle=container.resolve("conversation_lifecycle_service"),
         )
 
     def create_session_factory() -> Any:
         return create_session_application_service_factory(event_publisher=event_publisher)
+
+    def create_organization_service() -> Any:
+        from .organization_application import ChatOrganizationService
+
+        return ChatOrganizationService(
+            container.resolve("chat_history_service"),
+            event_publisher=event_publisher,
+        )
+
+    def create_search_service() -> Any:
+        from .chat_search_application import ChatSearchService
+
+        repository = container.resolve("chat_history_service")
+        return ChatSearchService(
+            repository,
+            conversation_reader=repository,
+        )
+
+    def create_transfer_service() -> Any:
+        from .chat_transfer_application import ChatTransfer
+
+        return ChatTransfer(
+            container.resolve("chat_history_service"),
+            file_port=transfer_file_port,
+        )
 
     factories: dict[str, Callable[[], Any]] = {
         "memory_service": selected("memory_service", PersonaMemoryService),
         "mood_service": selected("mood_service", MoodStateService),
         "character_service": selected("character_service", CharacterProfileService),
         "chat_history_service": selected("chat_history_service", SqliteChatHistoryService),
+        "conversation_lifecycle_service": selected(
+            "conversation_lifecycle_service",
+            create_conversation_lifecycle_service,
+        ),
+        "conversation_organization_application_service": selected(
+            "conversation_organization_application_service",
+            create_organization_service,
+        ),
+        "chat_search_application_service": selected(
+            "chat_search_application_service",
+            create_search_service,
+        ),
+        "chat_transfer_application_service": selected(
+            "chat_transfer_application_service",
+            create_transfer_service,
+        ),
         "web_search_service": selected("web_search_service", WebSearchApplicationService),
         "shared_skills_application_service": selected(
             "shared_skills_application_service",
@@ -108,6 +164,10 @@ def register_application_modules(
         ("mood", "mood_service"),
         ("characters", "character_service"),
         ("chat_history", "chat_history_service"),
+        ("conversation_lifecycle", "conversation_lifecycle_service"),
+        ("conversation_organization", "conversation_organization_application_service"),
+        ("chat_search", "chat_search_application_service"),
+        ("chat_transfer", "chat_transfer_application_service"),
         ("web_search", "web_search_service"),
         ("shared_skills", "shared_skills_application_service"),
         ("game_mode", "game_mode_application_service"),

@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import sys
 
+from ..core.interfaces.transfer import ChatTransferFilePort
 
-def run_application() -> None:
+
+def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -> None:
     from PySide6.QtWidgets import QApplication
 
     from .. import winfx
@@ -21,6 +23,11 @@ def run_application() -> None:
     from ..app.feature_modules import register_application_modules
     from ..app.module_manager import ModuleManager, ModuleState
 
+    if transfer_file_port is None:
+        from ..infrastructure.chat_transfer_file_adapter import LocalChatTransferFileAdapter
+
+        transfer_file_port = LocalChatTransferFileAdapter()
+
     settings = load_settings()
     container = DependencyContainer()
     event_bus = EventBus()
@@ -31,6 +38,7 @@ def run_application() -> None:
         container,
         settings=settings,
         event_publisher=chat_event_publisher,
+        transfer_file_port=transfer_file_port,
     )
 
     states = module_manager.start_all()
@@ -59,6 +67,11 @@ def run_application() -> None:
             session_application_service_factory=container.resolve("session_application_service_factory"),
             web_search_service=container.resolve("web_search_service"),
             shared_skills_application_service=container.resolve("shared_skills_application_service"),
+            conversation_organization_application_service=container.resolve(
+                "conversation_organization_application_service"
+            ),
+            chat_search_application_service=container.resolve("chat_search_application_service"),
+            chat_transfer_application_service=container.resolve("chat_transfer_application_service"),
             voice_application_service_factory=container.resolve("voice_application_service_factory"),
             game_mode_application_service=container.resolve("game_mode_application_service"),
             session_manager=session_manager,

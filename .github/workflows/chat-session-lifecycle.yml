@@ -22,6 +22,9 @@ on:
       - "kira/chat/context_builder.py"
       - "kira/core/interfaces/context.py"
       - "tests/test_application_service_ports.py"
+      - "tests/test_feature_module_registration.py"
+      - "tests/test_chat_history_service_capabilities.py"
+      - "tests/test_composition_root_contract.py"
       - "kira/core/interfaces/**"
       - "kira/ui/application_adapters.py"
       - "kira/ui/bootstrap.py"
@@ -114,6 +117,7 @@ jobs:
           tests.test_service_module
           tests.test_application_module_lifecycle
           tests.test_composition_root_contract
+          tests.test_chat_conversation_lifecycle
           tests.test_application_qt_independence
           tests.test_chat_coordinator
           tests.test_voice_application
@@ -132,6 +136,8 @@ jobs:
           tests.test_chat_transfer
           tests.test_chat_search
           tests.test_application_service_ports
+          tests.test_feature_module_registration
+          tests.test_chat_history_service_capabilities
           tests.test_tool_agent_session_isolation
           tests.test_service_module
           tests.test_chat_application_service
@@ -159,6 +165,12 @@ jobs:
         run: >-
           python -m py_compile
           kira/app/feature_modules.py
+          kira/app/chat_composition.py
+          kira/chat/conversation_lifecycle.py
+          kira/core/interfaces/chat_history_service.py
+          kira/services/chat_history_service.py
+          tests/test_feature_module_registration.py
+          tests/test_chat_history_service_capabilities.py
           kira/ui/bootstrap.py
           kira/ui/main_window_composition.py
           tests/test_composition_root_contract.py
