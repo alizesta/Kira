@@ -47,47 +47,47 @@ def _load_predictor():
 
 
 def _initialize_predictor():
-        global _predictor, _last_error
-        from huggingface_hub import snapshot_download
-        import numpy as np
-        import onnxruntime as ort
-        from transformers import AutoTokenizer
+    global _predictor, _last_error
+    from huggingface_hub import snapshot_download
+    import numpy as np
+    import onnxruntime as ort
+    from transformers import AutoTokenizer
 
-        cache_dir = os.environ.get("HF_HUB_CACHE")
-        kwargs = {
-            "repo_id": _MODEL_ID,
-            "allow_patterns": ["quantized/*"],
-        }
-        if cache_dir:
-            kwargs["cache_dir"] = cache_dir
-        try:
-            snapshot = snapshot_download(local_files_only=True, **kwargs)
-        except Exception:
-            snapshot = snapshot_download(local_files_only=False, **kwargs)
+    cache_dir = os.environ.get("HF_HUB_CACHE")
+    kwargs = {
+        "repo_id": _MODEL_ID,
+        "allow_patterns": ["quantized/*"],
+    }
+    if cache_dir:
+        kwargs["cache_dir"] = cache_dir
+    try:
+        snapshot = snapshot_download(local_files_only=True, **kwargs)
+    except Exception:
+        snapshot = snapshot_download(local_files_only=False, **kwargs)
 
-        model_dir = Path(snapshot) / "quantized"
-        model_path = model_dir / _MODEL_FILE.name
-        if not model_path.is_file():
-            raise FileNotFoundError(f"ALBERT ONNX weights not found: {model_path}")
+    model_dir = Path(snapshot) / "quantized"
+    model_path = model_dir / _MODEL_FILE.name
+    if not model_path.is_file():
+        raise FileNotFoundError(f"ALBERT ONNX weights not found: {model_path}")
 
-        tokenizer = AutoTokenizer.from_pretrained(
-            str(model_dir), use_fast=True, local_files_only=True
-        )
-        if not getattr(tokenizer, "is_fast", False):
-            raise RuntimeError("ALBERT tokenizer must support offset mappings")
+    tokenizer = AutoTokenizer.from_pretrained(
+        str(model_dir), use_fast=True, local_files_only=True
+    )
+    if not getattr(tokenizer, "is_fast", False):
+        raise RuntimeError("ALBERT tokenizer must support offset mappings")
 
-        options = ort.SessionOptions()
-        options.intra_op_num_threads = max(1, min(4, os.cpu_count() or 1))
-        session = ort.InferenceSession(
-            str(model_path), sess_options=options, providers=["CPUExecutionProvider"]
-        )
-        input_names = {item.name for item in session.get_inputs()}
-        if "input_ids" not in input_names or "attention_mask" not in input_names:
-            raise RuntimeError(f"Unexpected ALBERT ONNX inputs: {sorted(input_names)}")
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = max(1, min(4, os.cpu_count() or 1))
+    session = ort.InferenceSession(
+        str(model_path), sess_options=options, providers=["CPUExecutionProvider"]
+    )
+    input_names = {item.name for item in session.get_inputs()}
+    if "input_ids" not in input_names or "attention_mask" not in input_names:
+        raise RuntimeError(f"Unexpected ALBERT ONNX inputs: {sorted(input_names)}")
 
-        _predictor = (tokenizer, session, input_names, np)
-        _last_error = ""
-        return _predictor
+    _predictor = (tokenizer, session, input_names, np)
+    _last_error = ""
+    return _predictor
 
 
 def _word_spans(text: str):
