@@ -1,4 +1,4 @@
-"""Attachments vision behavior mixin for the desktop window."""
+"""Attachment and vision feature controller for the desktop window."""
 from .main_window_attachments_vision_support import (
     AttachmentTile,
     CAPTURE_JPEG_QUALITY,
