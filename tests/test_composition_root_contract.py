@@ -60,7 +60,7 @@ class CompositionRootContractTests(unittest.TestCase):
         self.assertFalse(forbidden_calls & constructed)
 
     def test_bootstrap_owns_runtime_tool_agent_and_injects_it(self):
-        module = parse("kira/app/bootstrap.py")
+        module = parse("kira/ui/bootstrap.py")
         calls = [
             node for node in ast.walk(module)
             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
