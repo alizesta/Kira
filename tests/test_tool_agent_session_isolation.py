@@ -94,6 +94,63 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
         with self.agent._use_session("ren"):
             self.assertTrue(self.agent._cancel.is_set())
 
+    def test_clear_session_clears_only_the_selected_character_tool_context(self):
+        with TemporaryDirectory() as temp:
+            self.agent._init_autonomy(Path(temp))
+            kira_task = self.agent.tasks.new("Kira task", session_id="kira")
+            ren_task = self.agent.tasks.new("Ren task", session_id="ren")
+            cleared_owners = []
+
+            class ResearchStore:
+                def clear(self):
+                    cleared_owners.append(self.access.session_id)
+
+            self.agent.registry.web_context = SimpleNamespace(
+                store=ResearchStore()
+            )
+            self.agent.registry.web_context.store.access = self.access
+
+            with self.agent._use_session("kira"):
+                self.agent._turn_cache["kira"] = "temporary"
+                self.agent._memos.append((1.0, "Kira memo"))
+                self.agent._last_cats = {"files"}
+                self.agent._last_used_turn = 3
+                self.agent.last_results = ["Kira result"]
+                self.access.begin_turn("open external page")
+                self.access._tainted = True
+                self.access.grant("write_file", {"path": "kira.txt"})
+            with self.agent._use_session("ren"):
+                self.agent._turn_cache["ren"] = "keep"
+                self.agent._memos.append((2.0, "Ren memo"))
+                self.agent._last_cats = {"web"}
+                self.agent._last_used_turn = 2
+                self.agent.last_results = ["Ren result"]
+                self.access.begin_turn("research Ren")
+                self.access.grant("write_file", {"path": "ren.txt"})
+
+            self.agent.clear_session("kira")
+
+            with self.agent._use_session("kira"):
+                self.assertEqual(self.agent._turn_cache, {})
+                self.assertEqual(list(self.agent._memos), [])
+                self.assertEqual(self.agent._last_cats, set())
+                self.assertEqual(self.agent._last_used_turn, -99)
+                self.assertEqual(self.agent.last_results, [])
+                self.assertEqual(self.access.user_text, "")
+                self.assertFalse(self.access.tainted)
+                self.assertFalse(self.access.consume_grant("write_file", {"path": "kira.txt"}))
+            with self.agent._use_session("ren"):
+                self.assertEqual(self.agent._turn_cache["ren"], "keep")
+                self.assertEqual(list(self.agent._memos), [(2.0, "Ren memo")])
+                self.assertEqual(self.agent._last_cats, {"web"})
+                self.assertEqual(self.agent._last_used_turn, 2)
+                self.assertEqual(self.agent.last_results, ["Ren result"])
+                self.assertTrue(self.access.consume_grant("write_file", {"path": "ren.txt"}))
+
+            self.assertEqual(cleared_owners, ["kira"])
+            self.assertIsNone(self.agent.tasks.active("kira"))
+            self.assertIs(self.agent.tasks.active("ren"), ren_task)
+
     def test_release_session_drops_ephemeral_state_but_keeps_durable_task(self):
         with TemporaryDirectory() as temp:
             self.agent._init_autonomy(Path(temp))

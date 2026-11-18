@@ -416,11 +416,15 @@ class ToolAgent(AutonomyMixin):
         owner = str(session_id)
         self.clear_tasks(owner)
         with self._use_session(owner):
+            self._cancel.set()
             self._memos.clear()
             self._turn_cache.clear()
+            self._last_cats = set()
+            self._last_used_turn = -99
             self.last_results = []
             self._pending_by_session.pop(owner, None)
             self._pending_new_sessions.discard(owner)
+            self.registry.access.begin_turn("")
             self.registry.access.revoke_grants(owner)
             WEB_CANCEL.cancel_session(owner)
             ctx = getattr(self.registry, "web_context", None)
