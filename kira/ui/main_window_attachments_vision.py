@@ -293,7 +293,7 @@ class AttachmentsVisionMixin:
         if self._latest_game_frame is None or self._vision_worker is not None and self._vision_worker.isRunning():
             return
         # Never compete with a user chat request for the same provider route.
-        if self.busy or self.client.busy or self.speaker._began:
+        if self.busy or self.client.busy or self.voice_application_service.is_speaking():
             return
         try:
             from PySide6.QtCore import QBuffer, QByteArray, QIODevice
