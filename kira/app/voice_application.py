@@ -57,8 +57,8 @@ class VoiceApplicationService(VoiceService):
         self.on_note = on_note
         self.on_finished = on_finished
         self.on_waiting = on_waiting
-        self.listener = None
-        self.stopping_listener = None
+        self.listener: VoiceListenerPort | None = None
+        self.stopping_listener: VoiceListenerPort | None = None
         self.restart_after_stop = False
         self._disposed = False
 
@@ -105,7 +105,7 @@ class VoiceApplicationService(VoiceService):
         return VoiceTranscriptDecision("submit", value)
 
     @staticmethod
-    def _is_running(listener: Any) -> bool:
+    def _is_running(listener: VoiceListenerPort | None) -> bool:
         if listener is None:
             return False
         try:
@@ -157,7 +157,7 @@ class VoiceApplicationService(VoiceService):
             elif self.stopping_listener is listener:
                 self.stopping_listener = None
 
-    def _listener_finished(self, listener: Any) -> None:
+    def _listener_finished(self, listener: VoiceListenerPort) -> None:
         was_current = self.listener is listener
         if was_current:
             self.listener = None
