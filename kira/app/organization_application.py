@@ -21,6 +21,7 @@ from ..domain.organization import (
     ORGANIZATION_KEY,
     Folder,
     OrganizationError,
+    contains_control_characters,
     OrganizationFilter,
     Tag,
     normalize_key,
@@ -187,8 +188,6 @@ class ChatOrganizationService:
 
         with self._lock:
             updated = self._mutate_record(conversation_id, mutation)
-            # The first committed assignment makes this folder durable through
-            # conversation metadata; subsequent checks must consult SQLite.
         organization = organization_metadata(updated.get("metadata"))
         return OrganizationResult(True, str(updated["id"]), organization)
 
@@ -290,7 +289,7 @@ class ChatOrganizationService:
             organization.update(copy.deepcopy(safe))
             if "color" in organization and organization["color"] is not None:
                 color = str(organization["color"]).strip()
-                if len(color) > 32 or _CONTROL.search(color):
+                if len(color) > 32 or contains_control_characters(color):
                     raise OrganizationError("color must be a short color token")
                 organization["color"] = color
             if "description" in organization:
@@ -311,7 +310,7 @@ class ChatOrganizationService:
         organization = organization_metadata(updated.get("metadata"))
         return OrganizationResult(True, str(updated["id"]), organization)
 
-    def getorganization_metadata(self, conversation_id: str) -> OrganizationResult:
+    def get_organization(self, conversation_id: str) -> OrganizationResult:
         record = self._conversation(conversation_id)
         org = organization_metadata(record.get("metadata"))
         org.setdefault("tags", [])
