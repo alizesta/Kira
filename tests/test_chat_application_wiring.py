@@ -41,7 +41,9 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("_dispatch_application_request", composition + (ROOT / "kira" / "ui" / "application_adapters.py").read_text(encoding="utf-8"))
 
     def test_session_conversation_identity_flows_through_application_service(self):
-        self.assertIn("self.chat_application_service.get_or_create_conversation(session.cid)", self.source)
+        session_service = (ROOT / "kira" / "app" / "session_application.py").read_text(encoding="utf-8")
+        self.assertIn("self.session_application_service.bind_conversation(session)", self.source)
+        self.assertIn("get_or_create_conversation(session.cid)", session_service)
         self.assertIn("conversation_id=self.cur.conversation_id", self.source)
         self.assertIn("self.cur.conversation_id", self.source)
 
