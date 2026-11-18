@@ -6,7 +6,7 @@ import re
 import threading
 import unicodedata
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 ORGANIZATION_KEY = "organization"
 DEFAULT_FOLDER_ID = "inbox"
@@ -29,7 +29,12 @@ class OrganizationRepositoryError(RuntimeError):
 class OrganizationRepository(Protocol):
     def get_conversation(self, conversation_id: str) -> dict[str, Any] | None: ...
     def list_conversations(self, character_id: str | None = None) -> list[dict[str, Any]]: ...
-    def update_conversation(self, conversation_id: str, **changes: Any) -> bool: ...
+    def mutate_conversations(
+        self, mutations: list[tuple[str, Callable[[dict[str, Any]], dict[str, Any]]]]
+    ) -> dict[str, dict[str, Any]]: ...
+    def mutate_all_conversations(
+        self, character_id: str | None, mutator: Callable[[dict[str, Any]], dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]: ...
 
 
 @dataclass(frozen=True)
@@ -147,44 +152,79 @@ class ChatOrganizationService:
         except Exception:
             return
 
-    def _save(self, record: dict[str, Any], organization: Mapping[str, Any]) -> OrganizationResult:
-        metadata = copy.deepcopy(record.get("metadata")) if isinstance(record.get("metadata"), dict) else {}
-        metadata[ORGANIZATION_KEY] = _safe_value(organization)
+    def _mutate_record(
+        self,
+        conversation_id: Any,
+        mutation: Callable[[dict[str, Any], dict[str, Any]], None],
+    ) -> dict[str, Any]:
+        identifier = str(conversation_id or "").strip()
+        if not identifier or len(identifier) > 256:
+            raise OrganizationError("conversation_id is invalid")
+
+        def apply(record: dict[str, Any]) -> dict[str, Any]:
+            owner = str(record.get("character_id") or "").strip().lower()
+            if self._character_id and owner != self._character_id:
+                raise OrganizationError(
+                    "conversation is outside the active character scope"
+                )
+            metadata = (
+                copy.deepcopy(record.get("metadata"))
+                if isinstance(record.get("metadata"), dict)
+                else {}
+            )
+            organization = _organization(metadata)
+            mutation(record, organization)
+            metadata[ORGANIZATION_KEY] = _safe_value(organization)
+            record["metadata"] = metadata
+            return record
+
         try:
-            if not self._repository.update_conversation(str(record["id"]), metadata=metadata):
-                raise OrganizationRepositoryError("persistence did not update the conversation")
-            updated = self._conversation(record["id"])
-        except OrganizationRepositoryError:
+            updated = self._repository.mutate_conversations([(identifier, apply)])
+            record = updated.get(identifier)
+            if not isinstance(record, dict):
+                raise OrganizationRepositoryError(
+                    "persistence did not return the updated conversation"
+                )
+        except (OrganizationError, OrganizationRepositoryError):
             raise
         except Exception as exc:
             raise OrganizationRepositoryError(str(exc)) from exc
-        current = _organization(updated.get("metadata"))
-        self._publish(updated, current)
-        return OrganizationResult(True, str(record["id"]), current)
 
-    def rename_conversation(self, conversation_id: str, title: str, *, automatic: bool = False) -> OrganizationResult:
+        self._publish(record, _organization(record.get("metadata")))
+        return record
+
+    def rename_conversation(
+        self, conversation_id: str, title: str, *, automatic: bool = False
+    ) -> OrganizationResult:
         normalized = _label(title, "title", MAX_TITLE_LENGTH)
-        with self._lock:
-            record = self._conversation(conversation_id)
-            org = _organization(record.get("metadata"))
-            if automatic and (org.get("title_source") == "manual" or
-                              (str(record.get("title") or "").strip() and org.get("title_source") != "automatic")):
-                return OrganizationResult(True, str(record["id"]), org, value="manual-title-preserved")
-            org["title_source"] = "automatic" if automatic else "manual"
-            metadata = copy.deepcopy(record.get("metadata")) if isinstance(record.get("metadata"), dict) else {}
-            metadata[ORGANIZATION_KEY] = org
-            try:
-                if not self._repository.update_conversation(str(record["id"]), title=normalized, metadata=metadata):
-                    raise OrganizationRepositoryError("persistence did not update the conversation")
-                updated = self._conversation(record["id"])
-            except OrganizationRepositoryError:
-                raise
-            except Exception as exc:
-                raise OrganizationRepositoryError(str(exc)) from exc
-            self._publish(updated, org)
-            return OrganizationResult(True, str(record["id"]), org, value=normalized)
+        outcome = {"preserved": False}
 
-    def create_tag(self, name: str) -> Tag:
+        def mutation(record: dict[str, Any], organization: dict[str, Any]) -> None:
+            if automatic and (
+                organization.get("title_source") == "manual"
+                or (
+                    str(record.get("title") or "").strip()
+                    and organization.get("title_source") != "automatic"
+                )
+            ):
+                outcome["preserved"] = True
+                return
+            organization["title_source"] = "automatic" if automatic else "manual"
+            record["title"] = normalized
+
+        with self._lock:
+            updated = self._mutate_record(conversation_id, mutation)
+        organization = _organization(updated.get("metadata"))
+        if outcome["preserved"]:
+            return OrganizationResult(
+                True, str(updated["id"]), organization,
+                value="manual-title-preserved",
+            )
+        return OrganizationResult(
+            True, str(updated["id"]), organization, value=normalized
+        )
+
+    def create_tag(    def create_tag(self, name: str) -> Tag:
         normalized = _label(name, "tag name")
         return Tag(normalized.casefold(), normalized)
 
@@ -196,24 +236,33 @@ class ChatOrganizationService:
 
     def add_tag(self, conversation_id: str, tag: str) -> OrganizationResult:
         value = _label(tag, "tag")
-        with self._lock:
-            record = self._conversation(conversation_id)
-            org = _organization(record.get("metadata"))
-            tags = list(org.get("tags") or [])
+
+        def mutation(_record: dict[str, Any], organization: dict[str, Any]) -> None:
+            tags = list(organization.get("tags") or [])
             if not any(_key(item, "tag") == _key(value, "tag") for item in tags):
                 tags.append(value)
-            org["tags"] = tags
-            return self._save(record, org)
+            organization["tags"] = tags
+
+        with self._lock:
+            updated = self._mutate_record(conversation_id, mutation)
+        organization = _organization(updated.get("metadata"))
+        return OrganizationResult(True, str(updated["id"]), organization)
 
     def remove_tag(self, conversation_id: str, tag: str) -> OrganizationResult:
         key = _key(tag, "tag")
-        with self._lock:
-            record = self._conversation(conversation_id)
-            org = _organization(record.get("metadata"))
-            org["tags"] = [value for value in org.get("tags", []) if _key(value, "tag") != key]
-            return self._save(record, org)
 
-    def create_folder(self, name: str) -> Folder:
+        def mutation(_record: dict[str, Any], organization: dict[str, Any]) -> None:
+            organization["tags"] = [
+                value for value in organization.get("tags", [])
+                if _key(value, "tag") != key
+            ]
+
+        with self._lock:
+            updated = self._mutate_record(conversation_id, mutation)
+        organization = _organization(updated.get("metadata"))
+        return OrganizationResult(True, str(updated["id"]), organization)
+
+    def create_folder(    def create_folder(self, name: str) -> Folder:
         normalized = _label(name, "folder name")
         folder_id = normalized.casefold()
         with self._lock:
@@ -224,9 +273,11 @@ class ChatOrganizationService:
         key = _key(folder_id, "folder id")
         if key == DEFAULT_FOLDER_ID:
             raise OrganizationError("the default folder cannot be deleted")
-        def reset(org):
-            if _key(org.get("folder_id") or DEFAULT_FOLDER_ID, "folder") == key:
-                org["folder_id"] = DEFAULT_FOLDER_ID
+
+        def reset(organization):
+            if _key(organization.get("folder_id") or DEFAULT_FOLDER_ID, "folder") == key:
+                organization["folder_id"] = DEFAULT_FOLDER_ID
+
         changed = self._update_all(reset)
         with self._lock:
             self._known_folders.pop(key, None)
@@ -250,19 +301,25 @@ class ChatOrganizationService:
         with self._lock:
             if not self._folder_exists(folder):
                 raise OrganizationError("folder does not exist; create it before moving a conversation")
-            record = self._conversation(conversation_id)
-            org = _organization(record.get("metadata"))
-            org["folder_id"] = folder or DEFAULT_FOLDER_ID
-            return self._save(record, org)
+
+            def mutation(_record: dict[str, Any], organization: dict[str, Any]) -> None:
+                organization["folder_id"] = folder or DEFAULT_FOLDER_ID
+
+            updated = self._mutate_record(conversation_id, mutation)
+        organization = _organization(updated.get("metadata"))
+        return OrganizationResult(True, str(updated["id"]), organization)
 
     def set_favorite(self, conversation_id: str, favorite: bool) -> OrganizationResult:
         if not isinstance(favorite, bool):
             raise OrganizationError("favorite must be boolean")
+
+        def mutation(_record: dict[str, Any], organization: dict[str, Any]) -> None:
+            organization["favorite"] = favorite
+
         with self._lock:
-            record = self._conversation(conversation_id)
-            org = _organization(record.get("metadata"))
-            org["favorite"] = favorite
-            return self._save(record, org)
+            updated = self._mutate_record(conversation_id, mutation)
+        organization = _organization(updated.get("metadata"))
+        return OrganizationResult(True, str(updated["id"]), organization)
 
     def update_metadata(self, conversation_id: str, changes: Mapping[str, Any]) -> OrganizationResult:
         if not isinstance(changes, Mapping):
@@ -270,28 +327,33 @@ class ChatOrganizationService:
         safe = _safe_value(changes)
         if {"tags", "folder_id", "favorite", "title_source"}.intersection(safe):
             raise OrganizationError("use the dedicated organization operation for reserved fields")
-        with self._lock:
-            record = self._conversation(conversation_id)
-            org = _organization(record.get("metadata"))
-            org.update(safe)
-            if "color" in org and org["color"] is not None:
-                color = str(org["color"]).strip()
+
+        def mutation(_record: dict[str, Any], organization: dict[str, Any]) -> None:
+            organization.update(copy.deepcopy(safe))
+            if "color" in organization and organization["color"] is not None:
+                color = str(organization["color"]).strip()
                 if len(color) > 32 or _CONTROL.search(color):
                     raise OrganizationError("color must be a short color token")
-                org["color"] = color
-            if "description" in org:
-                if org["description"] is None or org["description"] == "":
-                    org.pop("description", None)
+                organization["color"] = color
+            if "description" in organization:
+                if organization["description"] is None or organization["description"] == "":
+                    organization.pop("description", None)
                 else:
-                    org["description"] = _label(org["description"], "description", MAX_DESCRIPTION_LENGTH)
-            if "order" in org:
+                    organization["description"] = _label(
+                        organization["description"], "description", MAX_DESCRIPTION_LENGTH
+                    )
+            if "order" in organization:
                 try:
-                    org["order"] = int(org["order"])
+                    organization["order"] = int(organization["order"])
                 except (TypeError, ValueError, OverflowError) as exc:
                     raise OrganizationError("order must be an integer") from exc
-            return self._save(record, org)
 
-    def get_organization(self, conversation_id: str) -> OrganizationResult:
+        with self._lock:
+            updated = self._mutate_record(conversation_id, mutation)
+        organization = _organization(updated.get("metadata"))
+        return OrganizationResult(True, str(updated["id"]), organization)
+
+    def get_organization(    def get_organization(self, conversation_id: str) -> OrganizationResult:
         record = self._conversation(conversation_id)
         org = _organization(record.get("metadata"))
         org.setdefault("tags", [])
@@ -303,26 +365,45 @@ class ChatOrganizationService:
             "updated_at": str(record.get("updated_at") or ""),
         })
 
-    def _update_all(self, mutation) -> int:
+    def _update_all(self, mutation: Callable[[dict[str, Any]], None]) -> int:
+        changed_ids: set[str] = set()
+
+        def apply(record: dict[str, Any]) -> dict[str, Any]:
+            owner = str(record.get("character_id") or "").strip().lower()
+            if self._character_id and owner != self._character_id:
+                raise OrganizationError(
+                    "conversation is outside the active character scope"
+                )
+            metadata = (
+                copy.deepcopy(record.get("metadata"))
+                if isinstance(record.get("metadata"), dict)
+                else {}
+            )
+            organization = _organization(metadata)
+            before = copy.deepcopy(organization)
+            mutation(organization)
+            if organization != before:
+                metadata[ORGANIZATION_KEY] = _safe_value(organization)
+                record["metadata"] = metadata
+                changed_ids.add(str(record["id"]))
+            return record
+
         try:
-            records = self._repository.list_conversations(self._character_id)
+            updated = self._repository.mutate_all_conversations(
+                self._character_id, apply
+            )
+        except (OrganizationError, OrganizationRepositoryError):
+            raise
         except Exception as exc:
             raise OrganizationRepositoryError(str(exc)) from exc
-        changed = 0
-        for record in records:
-            if not isinstance(record, dict) or not record.get("id"):
-                continue
-            with self._lock:
-                current = self._conversation(record["id"])
-                org = _organization(current.get("metadata"))
-                before = copy.deepcopy(org)
-                mutation(org)
-                if org != before:
-                    self._save(current, org)
-                    changed += 1
-        return changed
 
-    def filter_conversations(self, filters: OrganizationFilter | None = None, **options: Any) -> list[dict[str, Any]]:
+        for conversation_id in changed_ids:
+            record = updated.get(conversation_id)
+            if isinstance(record, dict):
+                self._publish(record, _organization(record.get("metadata")))
+        return len(changed_ids)
+
+    def filter_conversations(    def filter_conversations(self, filters: OrganizationFilter | None = None, **options: Any) -> list[dict[str, Any]]:
         if filters is not None and options:
             raise OrganizationError("pass OrganizationFilter or keyword filters, not both")
         request = filters or OrganizationFilter(**options)
