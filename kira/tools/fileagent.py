@@ -12,11 +12,13 @@ Safety model (all enforced in code, never by trusting the model):
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
 import sys
 import tempfile
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -24,6 +26,8 @@ from pathlib import Path
 from .access import PathPolicy, EXECUTABLE_EXT
 from .fileops import TEXT_EXT, _fmt_size, _recycle
 from .registry import Tool, Param, ToolError, ACTION, SENSITIVE, DENIED
+
+_LOGGER = logging.getLogger(__name__)
 
 JOURNAL_NAME = "kira_file_ops.json"
 JOURNAL_KEEP = 30
@@ -67,41 +71,87 @@ def valid_name(name: str, *, allow_exec: bool = False) -> str:
 
 
 class Journal:
+    """Thread-safe, atomic persistence for reversible file-operation history."""
+
     def __init__(self, data_dir):
         self.path = Path(data_dir) / JOURNAL_NAME if data_dir else None
         self.items: list[dict] = []
+        self._lock = threading.RLock()
         if self.path is not None:
             try:
                 data = json.loads(self.path.read_text(encoding="utf-8"))
-                self.items = [x for x in data if isinstance(x, dict)] if isinstance(data, list) else []
-            except (OSError, ValueError):
+                self.items = [x for x in data if isinstance(x, dict)][-JOURNAL_KEEP:] if isinstance(data, list) else []
+            except FileNotFoundError:
                 pass
+            except (OSError, ValueError):
+                _LOGGER.warning("Could not load file-operation journal: %s", self.path, exc_info=True)
 
     def _save(self):
         if self.path is None:
             return
-        try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.path.with_suffix(".tmp")
-            tmp.write_text(json.dumps(self.items[-JOURNAL_KEEP:], ensure_ascii=False), encoding="utf-8")
-            tmp.replace(self.path)
-        except OSError:
-            pass
+        with self._lock:
+            tmp = None
+            try:
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                fd, tmp = tempfile.mkstemp(
+                    prefix=f".{self.path.name}.",
+                    suffix=".tmp",
+                    dir=self.path.parent,
+                )
+                with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                    json.dump(self.items[-JOURNAL_KEEP:], stream, ensure_ascii=False, default=str)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(tmp, self.path)
+                tmp = None
+            except OSError:
+                # The filesystem operation has already happened when Journal.add()
+                # is called. Keep in-memory history and log the persistence failure
+                # rather than falsely reporting the file operation itself as failed.
+                _LOGGER.warning("Could not persist file-operation journal: %s", self.path, exc_info=True)
+            finally:
+                if tmp is not None:
+                    try:
+                        os.unlink(tmp)
+                    except FileNotFoundError:
+                        pass
+                    except OSError:
+                        _LOGGER.debug("Could not remove temporary journal file: %s", tmp, exc_info=True)
 
     def add(self, op: str, **fields):
-        self.items.append({"op": op, "ts": time.time(), **fields})
-        self.items = self.items[-JOURNAL_KEEP:]
-        self._save()
+        with self._lock:
+            self.items.append({"journal_id": uuid.uuid4().hex, "op": op, "ts": time.time(), **fields})
+            self.items = self.items[-JOURNAL_KEEP:]
+            self._save()
 
     def last(self):
-        for item in reversed(self.items):
-            if not item.get("undone"):
-                return item
+        with self._lock:
+            for item in reversed(self.items):
+                if not item.get("undone"):
+                    return dict(item)
         return None
 
     def mark_undone(self, item):
-        item["undone"] = True
-        self._save()
+        with self._lock:
+            journal_id = str(item.get("journal_id") or "")
+            target = next(
+                (entry for entry in reversed(self.items)
+                 if journal_id and entry.get("journal_id") == journal_id),
+                None,
+            )
+            if target is None and not journal_id:
+                target = next(
+                    (entry for entry in reversed(self.items)
+                     if entry.get("op") == item.get("op")
+                     and entry.get("ts") == item.get("ts")
+                     and not entry.get("undone")),
+                    None,
+                )
+            if target is None or target.get("undone"):
+                return False
+            target["undone"] = True
+            self._save()
+            return True
 
 
 def _count_tree(root: str):
