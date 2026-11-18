@@ -3,8 +3,8 @@
 Every character (Kira / Ren / Mika / custom) has its own ChatSession: its own saved history, chat view, model router,
 generation worker and stream state. ChatApplicationService owns the per-session pending queues and request lifecycle.
 
-MainWindow keeps its familiar attribute names (busy, worker, _stream_text, ...): they are properties that read/write the
-session that is *current* while an event is handled (see MainWindow._as). Things that exist once per computer - the
+WindowPresentationContext exposes the ChatSession that is *current* while an event is handled (see SessionController._as),
+so per-conversation request and stream state stays with its owning session. Things that exist once per computer - the
 voice, the face animation, the companion bubble, the status line - belong to the visible (front) session only; while a
 background session handles an event they are replaced by `NOOP` / `Muted` so a background reply never speaks, moves the
 face or overwrites the status of the character you are looking at.
@@ -44,6 +44,9 @@ SESSION_FIELDS = {
     "_route_info": lambda: None,
     "_badge_phase": lambda: "idle",
     "application_request_id": lambda: None,
+    "_vision_worker": lambda: None,
+    "_vision_session": lambda: None,
+    "_voice_next": lambda: False,
 }
 
 
