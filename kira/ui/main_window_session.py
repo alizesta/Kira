@@ -204,7 +204,7 @@ class SessionController(WindowFeatureController):
         if session.view is None:
             session.view = self.make_session_view()
             self.chat_stack.addWidget(session.view)
-            session.timer = QTimer(self)
+            session.timer = QTimer(self.window)
             session.timer.setInterval(60)
             session.relay = SessionRelay(self, session)
             session.timer.timeout.connect(session.relay.tick)
