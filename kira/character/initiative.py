@@ -91,6 +91,60 @@ def _duration_days(amount, unit):
     return max(1, min(365, count * multiplier))
 
 
+def _duration_seconds(amount, unit):
+    try:
+        count = int(amount) if str(amount).isdigit() else _NUMBER_WORDS[str(amount).lower()]
+    except (KeyError, TypeError, ValueError):
+        return None
+    unit = str(unit).lower()
+    multiplier = 60 if unit in ("دقیقه", "minute", "minutes") else 3600
+    return max(1, min(365 * DAY, count * multiplier))
+
+
+def _weekday_offsets(value, created_at):
+    """Resolve explicit weekday references relative to the memory's local creation date."""
+    try:
+        current_date = datetime.fromtimestamp(float(created_at)).date()
+    except (OverflowError, OSError, TypeError, ValueError):
+        return []
+    offsets = []
+    english_days = {
+        "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+        "friday": 4, "saturday": 5, "sunday": 6,
+    }
+    english_pattern = re.compile(
+        r"\b(?:(next|this|on)\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+        re.I,
+    )
+    for match in english_pattern.finditer(value):
+        qualifier = str(match.group(1) or "").lower()
+        target = english_days[match.group(2).lower()]
+        offset = (target - current_date.weekday()) % 7
+        if qualifier == "next":
+            offset += 7
+        offsets.append(offset)
+
+    persian_days = {
+        "شنبه": 5, "یکشنبه": 6, "یک شنبه": 6, "دوشنبه": 0, "دو شنبه": 0,
+        "سه شنبه": 1, "چهارشنبه": 2, "پنجشنبه": 3, "جمعه": 4,
+    }
+    persian_pattern = re.compile(
+        r"(?<![آ-ی])(?P<day>یک\s*شنبه|دو\s*شنبه|سه\s*شنبه|چهارشنبه|پنجشنبه|جمعه|شنبه)"
+        r"(?P<qual>\s*(?:هفته\s*بعد|بعد|آینده))?"
+    )
+    for match in persian_pattern.finditer(value):
+        day = re.sub(r"\s+", " ", match.group("day"))
+        target = persian_days[day]
+        qualifier = str(match.group("qual") or "").strip()
+        offset = (target - current_date.weekday()) % 7
+        if "هفته" in qualifier or qualifier == "بعد":
+            offset += 7
+        elif qualifier == "آینده" and offset == 0:
+            offset = 7
+        offsets.append(offset)
+    return offsets
+
+
 def _gregorian_to_jalali(value):
     """Convert a Gregorian date to a Jalali tuple for round-trip validation."""
     gy, gm, gd = value.year, value.month, value.day
@@ -246,10 +300,19 @@ def _event_not_before(text, created_at):
 
     if re.search(r"هفته(?:\s+ی)?\s*(?:بعد|آینده)|\bnext\s+week\b", value):
         day_offsets.append(7)
-    if re.search(r"آخر\s*هفته|\bthis\s+weekend\b", value):
-        day_offsets.append(7)
+
+    try:
+        local_weekday = datetime.fromtimestamp(float(created_at)).weekday()
+    except (OverflowError, OSError, TypeError, ValueError):
+        return float("inf")
+    # The Persian weekend is Friday; English weekend check-ins wait until Sunday ends.
+    if re.search(r"آخر\s*هفته", value):
+        day_offsets.append((4 - local_weekday) % 7)
+    if re.search(r"\bthis\s+weekend\b", value):
+        day_offsets.append((6 - local_weekday) % 7)
     if re.search(r"\bnext\s+weekend\b", value):
-        day_offsets.append(14)
+        day_offsets.append((6 - local_weekday) % 7 + 7)
+    day_offsets.extend(_weekday_offsets(value, created_at))
 
     # Parse explicit relative durations such as "in two weeks", "3 days from now",
     # "سه روز دیگه", and "دو هفته بعد". A vague count ("چند") is interpreted
@@ -266,12 +329,37 @@ def _event_not_before(text, created_at):
 
     due_times = [_after_local_day(created_at, days) for days in day_offsets]
 
+    subday_patterns = (
+        rf"\b(?:in|after)\s+({_NUMBER_TOKEN})\s*(دقیقه|minute|minutes|ساعت|hour|hours)\b",
+        rf"({_NUMBER_TOKEN})\s*(دقیقه|minute|minutes|ساعت|hour|hours)(?:\s+ی)?\s*(?:from now|later|away|دیگه|دیگر|بعد|آینده)",
+    )
+    for pattern in subday_patterns:
+        for match in re.finditer(pattern, value, re.I):
+            seconds = _duration_seconds(match.group(1), match.group(2))
+            if seconds is not None:
+                # A one-hour grace period avoids asking at the exact expected start time.
+                due_times.append(float(created_at) + seconds + 3600)
+
+    next_month_due = None
     if re.search(r"ماه(?:\s+ی)?\s*(?:بعد|آینده)|\bnext\s+month\b", value):
-        due_times.append(_after_next_month(created_at))
+        next_month_due = _after_next_month(created_at)
+        due_times.append(next_month_due)
 
     absolute_due = _absolute_date_due(text)
     if absolute_due is not None:
         due_times.append(absolute_due)
+
+    # A clock time without a recognised date is ambiguous. Never interpret it as
+    # an event that is already due merely because the date parser cannot resolve it.
+    time_reference = re.search(
+        r"\b(?:at|around|by)\s+(?:\d{1,2}(?::[0-5]\d)?|one|two|three|four|five|six|seven|eight|nine|ten)"
+        r"\s*(?:am|pm)?\b|\b\d{1,2}(?::[0-5]\d)\s*(?:am|pm)\b|"
+        r"ساعت\s*(?:\d{1,2}(?::[0-5]\d)?|یک|یه|دو|سه|چهار|پنج|شش|هفت|هشت|نه|ده)",
+        value,
+        re.I,
+    )
+    if time_reference and not day_offsets and not due_times and absolute_due is None and next_month_due is None:
+        return float("inf")
 
     return max(due_times, default=float(created_at))
 
@@ -449,7 +537,8 @@ def initiative_history_state(
     """Return validated sent history, recently used IDs, and a local-calendar daily count.
 
     The settings record is authoritative; EmotionalRuntime's recent event ring and last
-    sent marker are independent recovery evidence. Identical IDs are counted only once.
+    sent marker are independent recovery evidence. Mirrored copies of one send are deduplicated
+    by memory ID plus timestamp, while separate sends of the same memory still count separately.
     """
     current = _finite_number(time.time() if now is None else now)
     if current is None or current < 0:
@@ -486,7 +575,7 @@ def initiative_history_state(
         if memory_id:
             excluded.add(memory_id)
         if day_key(stamp) == today_key:
-            today_ids.add(memory_id or f"at:{int(stamp)}")
+            today_ids.add(f"{memory_id}@{stamp:.3f}" if memory_id else f"at:{int(stamp)}")
 
     for event in recent_events or ():
         if not isinstance(event, dict) or event.get("name") != "proactive_check_in":
