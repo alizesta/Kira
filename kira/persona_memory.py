@@ -102,28 +102,67 @@ def _empty() -> dict:
 
 
 def _load() -> dict:
+    """Load each persisted section independently so one damaged field cannot erase valid memories."""
     data = _empty()
     try:
         raw = json.loads(_path().read_text(encoding="utf-8"))
-        if isinstance(raw, dict):
-            data["voice"] = [str(x) for x in raw.get("voice", []) if isinstance(x, str)]
-            for key in ("facts", "moments", "summaries"):
-                data[key] = [f for f in raw.get(key, []) if isinstance(f, dict) and f.get("text")]
-            h = raw.get("habits")
-            if isinstance(h, dict) and isinstance(h.get("hours"), list) and len(h["hours"]) == 24:
-                data["habits"] = {"hours": [int(x) for x in h["hours"]], "messages": int(h.get("messages") or 0), "chars": int(h.get("chars") or 0),
-                                  "first_seen": float(h.get("first_seen") or 0), "days": [str(d) for d in h.get("days", [])][-400:]}
-            data["summarized"] = int(raw.get("summarized") or 0)
+    except FileNotFoundError:
+        raw = {}
     except (OSError, ValueError, TypeError):
-        pass
+        _log.warning("Unable to read persona memory for character %s", _current_character.get(), exc_info=True)
+        raw = {}
+
+    if isinstance(raw, dict):
+        voice = raw.get("voice")
+        if isinstance(voice, list):
+            data["voice"] = [value for value in voice if isinstance(value, str)][-MAX_VOICE:]
+
+        for key, limit in (("facts", MAX_FACTS), ("moments", MAX_MOMENTS), ("summaries", MAX_SUMMARIES)):
+            values = raw.get(key)
+            if isinstance(values, list):
+                data[key] = [
+                    item for item in values[-limit:]
+                    if isinstance(item, dict) and isinstance(item.get("text"), str) and item["text"].strip()
+                ]
+
+        habits = raw.get("habits")
+        if isinstance(habits, dict):
+            hours = habits.get("hours")
+            if isinstance(hours, list) and len(hours) == 24:
+                def finite_number(value, default=0.0):
+                    try:
+                        number = float(value)
+                        return number if math.isfinite(number) else float(default)
+                    except (TypeError, ValueError, OverflowError):
+                        return float(default)
+
+                def safe_count(value):
+                    return max(0, min(10**9, int(finite_number(value))))
+
+                data["habits"] = {
+                    "hours": [safe_count(value) for value in hours],
+                    "messages": safe_count(habits.get("messages")),
+                    "chars": safe_count(habits.get("chars")),
+                    "first_seen": max(0.0, finite_number(habits.get("first_seen"))),
+                    "days": [str(day)[:10] for day in habits.get("days", []) if isinstance(day, (str, int, float))][-400:]
+                    if isinstance(habits.get("days", []), list) else [],
+                }
+
+        try:
+            data["summarized"] = max(0, min(10**9, int(raw.get("summarized") or 0)))
+        except (TypeError, ValueError, OverflowError):
+            data["summarized"] = 0
+
     voice_path = _voice_path()
     if voice_path is not None:
         try:
             payload = json.loads(voice_path.read_text(encoding="utf-8"))
             samples = payload.get("voice", []) if isinstance(payload, dict) else []
             data["voice"] = [str(x) for x in samples if isinstance(x, str)][-MAX_VOICE:]
+        except FileNotFoundError:
+            pass
         except (OSError, ValueError, TypeError):
-            pass                                                  # keep whatever the character's memory file holds
+            _log.warning("Unable to read voice memory for character %s", _current_character.get(), exc_info=True)
     return data
 
 
@@ -410,7 +449,12 @@ def observe(role: str, content: str, now=None):
                 add_moment("joke", f"A line of {character_id.title()} that made the user laugh: \"{last_reply[:140]}\"", now)
             _note_habits(str(content), now)
     except Exception:                                             # noqa: BLE001
-        pass
+        _log.warning(
+            "Persona-memory observation failed for character %s (role=%s)",
+            character_id,
+            str(role or "")[:24],
+            exc_info=True,
+        )
 
 
 def forget_conversation():
