@@ -855,7 +855,7 @@ class RuntimeController(WindowFeatureController):
         profile = self.character_service.all_profiles(self.settings).get(character_id, {})
         character_name = profile.get("name") or character_id.title()
         MemoryDialog(
-            self,
+            self.window,
             character_id,
             character_name=character_name,
             memory_service=self.memory_service,
