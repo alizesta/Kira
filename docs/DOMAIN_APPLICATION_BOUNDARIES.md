@@ -132,8 +132,8 @@ and notification ports. No new service imports Qt or a concrete UI controller.
 - `tests/test_domain_transfer.py`: secret filtering and bounded metadata.
 - `tests/test_domain_chat_contracts.py`: request/session identity pairing, immutable Chat/context DTOs, provider events and application/response event contracts.
 - Existing `tests/test_chat_context_builder.py` continues to exercise context assembly through the compatibility import.
-- `tests/test_application_service_ports.py`: Session, Chat and Event
-  structural-port conformance.
+- `tests/test_application_service_ports.py`: Session, Chat, Event and
+  Conversation Lifecycle structural-port conformance.
 - Existing `tests/test_chat_organization.py`, `tests/test_chat_search.py`
   and `tests/test_chat_transfer.py` continue to exercise the compatibility
   facades against the application use cases.
