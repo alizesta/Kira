@@ -113,7 +113,7 @@ class RuntimeController(WindowFeatureController):
         if self.context.session._stream_pos > 0:
             cur.insertBlock()
         cur.insertHtml(html)
-        if getattr(self, "bubble", None) is not None:
+        if getattr(self.context.adapters, "bubble", None) is not None:
             self.context.adapters.bubble.set_live(name, text, ui_dir)
         bar = self.context.session.view.verticalScrollBar()
         bar.setValue(bar.maximum())
@@ -655,7 +655,7 @@ class RuntimeController(WindowFeatureController):
     def _running_background_workers(self):
         """Return every owned QThread that must finish before Qt destroys the window."""
         workers = []
-        for session in getattr(self, "sessions", {}).values():
+        for session in getattr(self.context.state, "sessions", {}).values():
             workers.extend((getattr(session, "worker", None), getattr(session, "_search_worker", None)))
         for name in (
             "_local_voice_worker", "_api_worker", "_route_worker", "_bench_worker",
@@ -663,7 +663,7 @@ class RuntimeController(WindowFeatureController):
             "_web_test_worker", "_attach_worker", "_model_import_worker", "_stopping_listener",
             "_stopping_game_audio_listener", "game_audio_listener", "listener",
         ):
-            workers.append(getattr(self, name, None))
+            workers.append(self.context.resource(name))
         unique = []
         seen = set()
         for worker in workers:
@@ -678,7 +678,7 @@ class RuntimeController(WindowFeatureController):
         return unique
 
     def _resume_close_after_workers(self):
-        if getattr(self, "_closing", False):
+        if getattr(self.context.state, "_closing", False):
             QTimer.singleShot(0, self.window.close)
 
     def _clear_chat_coordinator_queues(self):
@@ -695,14 +695,14 @@ class RuntimeController(WindowFeatureController):
 
     def _dispose_window_feature_services(self) -> bool:
         """Release per-window application services after their Qt workers have drained."""
-        voice_service = getattr(self, "voice_application_service", None)
+        voice_service = getattr(self.context.services, "voice_application_service", None)
         if voice_service is not None:
             try:
                 if not voice_service.dispose():
                     return False
             except Exception:
                 return False
-        vision_service = getattr(self, "vision_application_service", None)
+        vision_service = getattr(self.context.services, "vision_application_service", None)
         if vision_service is not None:
             try:
                 vision_service.reset()
@@ -711,12 +711,12 @@ class RuntimeController(WindowFeatureController):
         return True
 
     def closeEvent(self, event):
-        if (getattr(self, "tray", None) is not None and self.context.services.settings.get("close_to_tray")
+        if (getattr(self.context.views, "tray", None) is not None and self.context.services.settings.get("close_to_tray")
                 and not getattr(self, "_quitting", False)):
             event.ignore()                                           # X only hides; "Exit" in the tray menu really quits
             self.feature_controller("lifecycle").hide_to_tray()
             return
-        if getattr(self, "_closing", False):
+        if getattr(self.context.state, "_closing", False):
             if self._running_background_workers():
                 event.ignore()
                 return
@@ -737,9 +737,9 @@ class RuntimeController(WindowFeatureController):
             event.accept()
             QTimer.singleShot(0, QApplication.quit)
             return
-        local_worker = getattr(self, "_local_voice_worker", None)
+        local_worker = self.context.resource("_local_voice_worker")
         if local_worker is not None and local_worker.isRunning():
-            if not getattr(self, "_close_after_local_voice", False):
+            if not getattr(self.context.state, "_close_after_local_voice", False):
                 self.context.state._close_after_local_voice = True
                 self.feature_controller("session").add_chat("system", "بارگذاری یا آزمایش موتور صوتی هنوز در حال اجراست؛ Kira پس از پایان امن آن بسته می‌شود.")
             event.ignore()
@@ -747,9 +747,9 @@ class RuntimeController(WindowFeatureController):
         # ChatApplicationService owns cancellation and persists partial output once.
         self.context.state._closing = True
         self._clear_chat_coordinator_queues()
-        if getattr(self, "code_chat", None) is not None:
+        if getattr(self.context.views, "code_chat", None) is not None:
             self.context.views.code_chat.shutdown()
-        if getattr(self, "tray", None) is not None:
+        if getattr(self.context.views, "tray", None) is not None:
             self.context.views.tray.hide()
         self.context.adapters.bubble.close()
         self.context.services.tool_agent.request_cancel()
@@ -762,7 +762,7 @@ class RuntimeController(WindowFeatureController):
             if sess.timer is not None:
                 sess.timer.stop()
         for timer_name in ("wake_timer", "_game_poll_timer", "_game_capture_timer", "_mood_ui_timer"):
-            timer = getattr(self, timer_name, None)
+            timer = self.context.resource(timer_name)
             if timer is not None:
                 timer.stop()
         self.feature_controller("attachments_vision")._set_game_vision_capture(False)
@@ -774,7 +774,7 @@ class RuntimeController(WindowFeatureController):
                     w.wait(3000)
         for name in ("_api_worker", "_route_worker", "_bench_worker", "_scan_worker", "_provider_test_worker",
                      "_ollama_worker", "_vision_worker", "_web_test_worker", "_attach_worker"):
-            w = getattr(self, name, None)
+            w = self.context.resource(name)
             if w is not None and w.isRunning():
                 w.wait(5000)
         self.stop_listener()
