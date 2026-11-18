@@ -199,8 +199,10 @@ registered. Disabling a dependency is rejected while a dependent remains enabled
 Chat History initializes storage at module start and flushes pending writes at
 module stop. Vision and Game Mode clear transient policy state when stopped.
 The concrete ChatApplicationService, SessionApplicationService and
-VoiceApplicationService instances are constructed with window-specific Qt
-callback ports and are therefore window-scoped, not application singletons.
+VoiceApplicationService instances are constructed with window-scoped callback
+ports implemented by UI adapters and are therefore window-scoped, not
+application singletons. Their contracts (`ProviderWorkerPort`, `SpeakerPort`,
+and `VoiceListenerPort`) live in Core and contain no Qt types.
 The window owns their two-phase graceful shutdown. It first rejects new Chat work
 and cancels pending/running requests without closing the command registry or
 AttachmentManager. It then drains provider/search/attachment/vision/game-audio
@@ -222,7 +224,7 @@ the registered services/factories, and injects them into MainWindow.
 `kira/ui/main_window_composition.py` is an outer Qt adapter assembler, not a
 fallback service locator. It rejects missing Bootstrap dependencies before
 building the window, does not import or instantiate application/service-layer
-implementations, and creates presentation/device objects plus typed Chat/Voice callback ports.
+implementations, and creates presentation/device objects plus typed, toolkit-neutral Chat/Voice callback ports. Qt signal and worker translation stays in `kira/ui/application_adapters.py`.
 It invokes only the Chat/Session/Voice factories supplied by Bootstrap to create
 window-scoped application services that require those live Qt callback ports;
 it does not import or directly construct their implementations.
