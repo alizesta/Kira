@@ -109,13 +109,18 @@ def check_host(url: str) -> None:
 
 
 def _peer_blocked(resp) -> bool:
-    """Best effort: the address we actually connected to must not be internal (guards against DNS changing between check and connect)."""
-    try:
-        sock = resp.raw._connection.sock or resp.raw._fp.fp.raw._sock                # noqa: SLF001
-        ip = ipaddress.ip_address(sock.getpeername()[0])
-        return _ip_blocked(ip) and not _uses_proxy(resp.url)
-    except Exception:                                            # noqa: BLE001 - not available on every urllib3 build
+    """Reject private peers; fail closed for direct connections when the socket cannot be inspected."""
+    # A configured proxy owns DNS resolution and the actual outbound socket.
+    # For direct requests, inability to inspect the peer must not disable the
+    # DNS-rebinding defence: check_host() and requests may resolve at different times.
+    if _uses_proxy(resp.url):
         return False
+    try:
+        sock = resp.raw._connection.sock or resp.raw._fp.fp.raw._sock  # noqa: SLF001
+        ip = ipaddress.ip_address(sock.getpeername()[0])
+        return _ip_blocked(ip)
+    except Exception:  # noqa: BLE001 - no peer evidence means a direct connection is not trusted
+        return True
 
 
 class Fetched:
