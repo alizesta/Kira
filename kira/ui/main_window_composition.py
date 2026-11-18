@@ -120,6 +120,19 @@ def initialize_main_window(
     self.state._save_warned = False
     self.session._emotion_applied = False
     self.state._closing = False
+    for resource_name in (
+        "_local_voice_worker",
+        "_model_import_worker",
+        "_api_worker",
+        "_route_worker",
+        "_bench_worker",
+        "_scan_worker",
+        "_provider_test_worker",
+        "_ollama_worker",
+        "_web_test_worker",
+        "_stopping_game_audio_listener",
+    ):
+        setattr(self.state, resource_name, None)
     self.state.reactions = load_reactions()
     self.state._last_variant = {}
     self.state._clicks = {}
