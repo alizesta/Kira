@@ -52,8 +52,10 @@ class NetguardRedirectPrivacyTests(unittest.TestCase):
             def iter_content(self, chunk_size=32768):
                 yield b"partial"
                 while not self.closed:
-                    time.sleep(0.01)
-                    yield b"x"
+                    # The next chunk arrives only after the total deadline.
+                    time.sleep(0.2)
+                    if not self.closed:
+                        yield b"x"
 
             def close(self):
                 self.closed = True
