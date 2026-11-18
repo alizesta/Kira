@@ -1,7 +1,26 @@
 """Core-owned Persistence port for atomic Chat history imports and exports."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Protocol
+
+
+
+class ChatTransferFilePort(Protocol):
+    """File-system adapter for bounded import reads and atomic export writes."""
+
+    def read_bytes(self, source: Path) -> bytes:
+        """Read one regular import file; the Application layer enforces size limits."""
+        ...
+
+    def write_bytes_atomically(
+        self,
+        directory: Path,
+        filename: str,
+        content: bytes,
+    ) -> Path:
+        """Write complete bytes using a temporary file and atomic replacement."""
+        ...
 
 
 class ChatTransferRepositoryPort(Protocol):
@@ -31,4 +50,4 @@ class ChatTransferRepositoryPort(Protocol):
     ) -> dict[str, Any]: ...
 
 
-__all__ = ["ChatTransferRepositoryPort"]
+__all__ = ["ChatTransferFilePort", "ChatTransferRepositoryPort"]
