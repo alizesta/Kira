@@ -647,16 +647,16 @@ def _fit_memory_block(header: str, parts: list[str], budget: int) -> str:
         lines = part.splitlines()
         partial = []
         for line in lines:
-            candidate = "\\n".join(partial + [line])
+            candidate = "\n".join(partial + [line])
             if used + separator + len(candidate) > budget:
                 break
             partial.append(line)
         if partial:
-            fragment = "\\n".join(partial)
+            fragment = "\n".join(partial)
             selected.append(fragment)
             used += separator + len(fragment)
         break
-    return "\\n\\n".join(selected)
+    return "\n\n".join(selected)
 
 
 def digest(older: list[dict], query: str | None = None) -> list[str]:
