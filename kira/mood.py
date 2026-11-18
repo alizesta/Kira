@@ -538,7 +538,7 @@ def avatar_hint(now=None):
 
 def build_block(mode_name="chat", now=None, query=None) -> str:
     _ensure_runtime_migration()
-    """Prompt text. Chat gets the full emotional state; task gets only delivery-critical user context."""
+    """Prompt text. The structured runtime owns state; legacy rules add only situational delivery guidance."""
     if mode_name == "strict":
         return ""
     try:
@@ -547,21 +547,45 @@ def build_block(mode_name="chat", now=None, query=None) -> str:
         layered = ""
     cur = current(now, query=query)
     states = cur["user_states"]
+
+    # Do not describe the same emotion, energy and behavior twice. The previous
+    # implementation appended a second legacy snapshot after the runtime block;
+    # the two snapshots could disagree because they decay independently.
+    guidance = []
+    if layered:
+        if mode_name == "chat":
+            if cur["intensity"] >= 25:
+                guidance.append("Emotional expression guidance: " + SHOW.get(cur["emotion"], "measured and natural") + ".")
+            active = cur["behaviors"]
+            if active:
+                disposition = ", ".join(
+                    f"{name} ({BEHAVIOR_SHOW.get(name, name)})" for name, _value in active[:2]
+                )
+                guidance.append("Behavior expression guidance: " + disposition + ".")
+            if cur["away_hours"]:
+                guidance.append(
+                    f"He was away for about {cur['away_hours']:.0f} hours. "
+                    "She may show once, naturally, that she noticed; do not turn it into a speech."
+                )
+        for name in states:
+            if mode_name == "chat" or name in SERIOUS:
+                guidance.append("Reading him right now: " + USER_STATES[name][1])
+        if mode_name == "task" and guidance:
+            guidance.insert(0, "Delivery note for this practical request (substance and accuracy unchanged):")
+        return "\n".join(part for part in (layered, *guidance) if part)
+
+    # Safe compatibility fallback: retain the legacy prompt if the structured
+    # runtime is unavailable, rather than losing emotional guidance entirely.
     lines = []
     if mode_name == "chat":
         emo, level = cur["emotion"], cur["intensity"]
         if level >= 25 or states:
-            line = f"Mood now (persistent, gradual): {emo} ~{level}/100 - {SHOW.get(emo, '')}."
-            if cur["secondary_emotions"]:
-                underneath = ", ".join(f"{name} ~{value}/100" for name, value in cur["secondary_emotions"])
-                line += f" Other active feelings: {underneath}."
-            if cur.get("emotional_components"):
-                components = ", ".join(name for name, _value in cur["emotional_components"])
-                line += f" Underlying emotional components: {components}."
-            lines.append(line + " Keep emotional continuity; do not flip moods abruptly.")
+            lines.append(
+                f"Mood now (persistent, gradual): {emo} ~{level}/100 - {SHOW.get(emo, '')}. "
+                "Keep emotional continuity; do not flip moods abruptly."
+            )
         else:
             lines.append("Mood now: calm and balanced (low emotional intensity).")
-
         energy_guidance = {
             "exhausted": "very low conversational energy; be brief and gentle",
             "tired": "low conversational energy; keep the pace relaxed",
@@ -570,17 +594,24 @@ def build_block(mode_name="chat", now=None, query=None) -> str:
             "active": "lively conversational energy",
             "hyper": "very high conversational energy; energetic but not chaotic",
         }
-        lines.append(f"Energy: {cur['energy_label']} ({cur['energy']}/100) - {energy_guidance[cur['energy_label']]}.")
+        lines.append(
+            f"Energy: {cur['energy_label']} ({cur['energy']}/100) - "
+            f"{energy_guidance[cur['energy_label']]}."
+        )
         active = cur["behaviors"]
         if active:
-            disposition = ", ".join(f"{name} ({BEHAVIOR_SHOW.get(name, name)})" for name, _value in active[:2])
+            disposition = ", ".join(
+                f"{name} ({BEHAVIOR_SHOW.get(name, name)})" for name, _value in active[:2]
+            )
             lines.append("Behavioral disposition (how to deliver, not a separate mood): " + disposition + ".")
         if cur["away_hours"]:
-            lines.append(f"He was away for about {cur['away_hours']:.0f} hours. She may show once, naturally, that she noticed (missed him / a bit sulky); not a speech.")
+            lines.append(
+                f"He was away for about {cur['away_hours']:.0f} hours. "
+                "She may show once, naturally, that she noticed (missed him / a bit sulky); not a speech."
+            )
     for name in states:
         if mode_name == "chat" or name in SERIOUS:
             lines.append("Reading him right now: " + USER_STATES[name][1])
     if mode_name == "task" and lines:
         lines.insert(0, "Delivery note for this practical request (substance and accuracy unchanged):")
-    legacy = "\n".join(lines)
-    return "\n".join(part for part in (layered, legacy) if part)
+    return "\n".join(lines)
