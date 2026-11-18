@@ -21,12 +21,11 @@ class WindowFeatureController(QObject):
         return object.__getattribute__(self, "_window")
 
     def feature_controller(self, feature: str):
-        """Return a named peer controller for an explicit UI workflow dependency."""
+        """Return a required peer controller through the composition registry."""
         registry = getattr(self.window, "_controller_registry", None)
-        controller = registry.get(feature) if registry is not None else None
-        if controller is None:
-            raise LookupError(f"Feature controller {feature!r} is not registered")
-        return controller
+        if registry is None:
+            raise RuntimeError("Feature controller registry is not initialized")
+        return registry.require(feature)
 
     def __getattr__(self, name):
         return getattr(self.window, name)
