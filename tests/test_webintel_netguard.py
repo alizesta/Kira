@@ -22,6 +22,27 @@ class _Response:
 
 
 class NetguardRedirectPrivacyTests(unittest.TestCase):
+    def test_peer_check_fails_closed_for_uninspectable_direct_connections(self):
+        response = mock.Mock()
+        response.url = "https://example.com/"
+        with mock.patch.object(netguard, "_uses_proxy", return_value=False):
+            self.assertTrue(netguard._peer_blocked(response))
+
+        with mock.patch.object(netguard, "_uses_proxy", return_value=True):
+            self.assertFalse(netguard._peer_blocked(response))
+
+    def test_peer_check_rejects_private_address_and_accepts_public_address(self):
+        response = mock.Mock()
+        response.url = "https://example.com/"
+        sock = mock.Mock()
+        response.raw._connection.sock = sock
+
+        with mock.patch.object(netguard, "_uses_proxy", return_value=False):
+            sock.getpeername.return_value = ("127.0.0.1", 443)
+            self.assertTrue(netguard._peer_blocked(response))
+            sock.getpeername.return_value = ("8.8.8.8", 443)
+            self.assertFalse(netguard._peer_blocked(response))
+
     def test_response_cookies_are_cleared_before_following_redirects(self):
         start = "https://example.com/start"
         target = "https://cdn.example.com/final"
