@@ -12,8 +12,10 @@ Rules enforced in code (never by trusting the model or the page):
 from __future__ import annotations
 
 import ipaddress
+import queue
 import re
 import socket
+import threading
 import time
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
@@ -123,6 +125,64 @@ def _peer_blocked(resp) -> bool:
         return True
 
 
+def _read_body_with_deadline(resp, started: float, total_timeout: float, max_bytes: int):
+    """Read a streaming response without letting slow trickle traffic defeat the total deadline."""
+    events: queue.Queue = queue.Queue()
+    stop = threading.Event()
+
+    def produce():
+        total = 0
+        try:
+            for chunk in resp.iter_content(chunk_size=32768):
+                if stop.is_set():
+                    break
+                if not chunk:
+                    continue
+                events.put(("chunk", chunk))
+                total += len(chunk)
+                if total >= max_bytes:
+                    break
+        except Exception as exc:  # noqa: BLE001 - propagate the transport failure to the owning thread
+            events.put(("error", exc))
+        finally:
+            events.put(("done", None))
+
+    reader = threading.Thread(target=produce, daemon=True, name="kira-web-body-reader")
+    reader.start()
+    chunks, size, truncated = [], 0, False
+    try:
+        while True:
+            remaining = total_timeout - (time.monotonic() - started)
+            if remaining <= 0:
+                truncated = True
+                break
+            try:
+                kind, value = events.get(timeout=remaining)
+            except queue.Empty:
+                truncated = True
+                break
+            if kind == "chunk":
+                chunks.append(value)
+                size += len(value)
+                if size >= max_bytes:
+                    truncated = True
+                    break
+            elif kind == "error":
+                if not chunks:
+                    raise GuardError(f"دریافت صفحه نیمه‌کاره قطع شد ({type(value).__name__}).") from value
+                truncated = True
+                break
+            else:
+                break
+    finally:
+        stop.set()
+        try:
+            resp.close()
+        except Exception:
+            pass
+    return b"".join(chunks)[:max_bytes], truncated
+
+
 class Fetched:
     __slots__ = ("url", "final_url", "status", "ctype", "body", "encoding", "truncated", "redirects", "ms")
 
@@ -180,26 +240,8 @@ def fetch(url: str, *, timeout: float = 15.0, max_bytes: int = 3_000_000, max_re
                 declared = int(resp.headers.get("Content-Length") or 0)
             except ValueError:
                 declared = 0
-            chunks, size, truncated = [], 0, False
-            try:
-                for chunk in resp.iter_content(chunk_size=32768):
-                    if not chunk:
-                        continue
-                    size += len(chunk)
-                    chunks.append(chunk)
-                    if size >= max_bytes:
-                        truncated = True
-                        break
-                    if time.monotonic() - started > total_timeout:
-                        truncated = True
-                        break
-            except requests.RequestException as exc:
-                if not chunks:
-                    raise GuardError(f"دریافت صفحه نیمه‌کاره قطع شد ({type(exc).__name__}).") from exc
-                truncated = True
-            finally:
-                resp.close()
-            return Fetched(url=url, final_url=current, status=resp.status_code, ctype=ctype or "text/html", body=b"".join(chunks)[:max_bytes],
+            body, truncated = _read_body_with_deadline(resp, started, total_timeout, max_bytes)
+            return Fetched(url=url, final_url=current, status=resp.status_code, ctype=ctype or "text/html", body=body,
                            encoding=resp.encoding, truncated=truncated or (declared > max_bytes), redirects=hops,
                            ms=int((time.monotonic() - started) * 1000))
         raise GuardError(f"تعداد Redirect بیشتر از {max_redirects} شد.")
