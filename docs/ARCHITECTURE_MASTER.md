@@ -3,7 +3,7 @@
 **Snapshot date:** 2026-11-18  
 **Repository:** `alizesta/Kira`  
 **Base branch:** `new-main`  
-**Base SHA:** `7caa6a3ee8cb2a68d80a3015a9134d42cf89d6e3`  
+**Base SHA:** `8919547982c97bce8759aca1ddddb779e1c5f0a0`  
 **Evidence:** TASK 015 static audit (`docs/TASK_015_FINAL_ARCHITECTURE_AUDIT.md`, Draft PR #47), current `new-main` source and documentation, and merged TASK 013+014 integration PR #48 (merge commit `b54d092a330b6383ca4244320ffaeec9267db561`).  
 **Verification boundary:** The historical TASK 016 audit was static-only. The subsequent implementation delta added targeted architecture and persistence tests, but no runtime test, compile/import check or application execution is claimed here.
 
@@ -115,11 +115,11 @@ flowchart TD
     Events -.-> Bus["shared EventBus"]
 ```
 
-The flow is conceptual at the public-contract level: MainWindow adapts provider callbacks and owns worker/UI presentation. Web Search query/provider/request/evidence policy is delegated to `WebSearchApplicationService`; microphone lifecycle and transcript policy are delegated to `VoiceApplicationService`; Game Mode permission and alert policy are delegated to `GameModeApplicationService`. Device construction, Qt signal relay and presentation remain in the UI adapter. Each feature mixin imports its scoped dependency module; the shared support module contains only cross-feature relays and helpers. The direct request/response path uses service calls and injected callbacks. EventBus is for notification, not to invoke another module's business API.
+The flow is conceptual at the public-contract level: MainWindow adapts provider callbacks and owns worker/UI presentation. Web Search eligibility, query planning, provider/request/evidence policy is delegated to `WebSearchApplicationService`; microphone lifecycle and transcript policy are delegated to `VoiceApplicationService`; Game Mode permission and alert policy are delegated to `GameModeApplicationService`. Device construction, Qt signal relay and presentation remain in the UI adapter. Each feature mixin imports its scoped dependency module; the shared support module contains only cross-feature relays and helpers. The direct request/response path uses service calls and injected callbacks. EventBus is for notification, not to invoke another module's business API.
 
 ### 3.1 Dependency direction contracts
 
-The module lifecycle contract now lives in `kira/core/interfaces/application_module.py` and exposes structural `DependencyRegistry` and `ModuleEventBus` ports. It no longer imports concrete `kira.app` implementations, even under `TYPE_CHECKING`. `ModuleManager` and `ServiceModule` implement against those Core ports while the concrete container and event bus remain in the outer application layer. The Qt-free `tests/test_architecture_boundaries.py` suite statically checks Core/Domain and Application import direction; it has been added to the portable test lists but not run in this implementation session.
+The module lifecycle and event contracts now live in `kira/core/interfaces/application_module.py`: structural `DependencyRegistry`, `ModuleEventBus`, `PublishedEvent` and `EventPublicationReport` ports. Core no longer imports concrete `kira.app` implementations, even under `TYPE_CHECKING`. `ModuleManager` and `ServiceModule` use the Core lifecycle ports; `ChatEventPublisher` depends on `ModuleEventBus`; and the shared `EventBus` validates/publishes the generic event envelope without importing `kira.chat`. The Qt-free `tests/test_architecture_boundaries.py` suite checks these directions and is included in the portable test lists, but has not been run in this environment.
 
 ### 4.1 Identity and lifecycle boundaries
 
@@ -157,7 +157,7 @@ The AD-03/AD-04 source-level limitations are now addressed: Organization applies
 
 ## 5. Event and notification policy
 
-The application has one EventBus instance created by bootstrap. `ChatEventPublisher` creates immutable typed Chat events and publishes them through that shared bus. The typed contract includes request/stream/session/command lifecycle events and the TASK 013 lifecycle plus TASK 014 metadata notifications. The publisher owns notification construction and terminal-notification de-duplication only; it does not own request, Session, Conversation or persistence state.
+Bootstrap creates one shared, feature-neutral `EventBus`. The bus accepts the Core `PublishedEvent` envelope and does not import any feature package. `ChatEventPublisher` implements the Chat notification contract over the Core `ModuleEventBus` port and creates immutable typed events for request/stream/session/command lifecycles, Conversation Lifecycle and Organization metadata updates. It owns notification construction and terminal-notification de-duplication only; it does not own request, Session, Conversation or persistence state.
 
 Use direct injected service methods for request/response and business operations. Publish events after state changes when observers need notification. Do not use EventBus as a universal dependency locator, RPC bus or substitute for a result-returning API.
 
