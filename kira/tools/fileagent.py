@@ -16,7 +16,9 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 import time
+import uuid
 from pathlib import Path
 
 from .access import PathPolicy, EXECUTABLE_EXT
@@ -257,17 +259,36 @@ class FileAgent:
         path, data = a["path"], str(a.get("content") or "").encode("utf-8")
         backup = ""
         if os.path.exists(path):
-            backup = f"{path}.bak-{time.strftime('%Y%m%d-%H%M%S')}"
+            # Multiple characters can request writes concurrently. A timestamp
+            # alone is not unique enough: never let a later write overwrite an
+            # earlier recovery copy.
+            backup = f"{path}.bak-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
             shutil.copy2(path, backup)
-            if not os.path.exists(backup):
-                raise ToolError("پشتیبان ساخته نشد؛ فایل دست نخورد.")
+            if not os.path.isfile(backup) or os.path.getsize(backup) != os.path.getsize(path):
+                raise ToolError("پشتیبان ساخته نشد یا کامل نیست؛ فایل دست نخورد.")
         elif not os.path.isdir(os.path.dirname(path)):
             raise ToolError("پوشه‌ی فایل وجود ندارد.")
-        tmp = f"{path}.kira-tmp"
-        with open(tmp, "wb") as fh:
-            fh.write(data)
-        os.replace(tmp, path)
-        if os.path.getsize(path) != len(data):
+
+        # A shared '<target>.kira-tmp' collides when two ToolAgent sessions
+        # write the same path at once. Use a unique sibling so os.replace
+        # remains atomic on the target filesystem.
+        fd, tmp = tempfile.mkstemp(
+            prefix=f".{Path(path).name}.kira-",
+            suffix=".tmp",
+            dir=os.path.dirname(path),
+        )
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(data)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path)
+        finally:
+            try:
+                os.unlink(tmp)
+            except FileNotFoundError:
+                pass
+        if not os.path.isfile(path) or os.path.getsize(path) != len(data):
             raise ToolError("اندازه‌ی فایل بعد از نوشتن درست نیست.")
         self.journal.add("write", path=path, backup=backup)
         return f"فایل نوشته شد: {path}" + (f" (پشتیبان: {backup})" if backup else "")
