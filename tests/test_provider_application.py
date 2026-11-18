@@ -53,6 +53,21 @@ class ProviderApplicationServiceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.service.remove_provider(self.settings, "ollama")
 
+    def test_create_ollama_client_from_dialog_values_is_a_provider_service_operation(self):
+        service = ProviderApplicationService()
+        client = service.create_ollama_client_from_values(
+            "http://localhost:11434",
+            "qwen2.5:3b",
+            num_ctx=4096,
+            keep_alive="5m",
+            num_predict=512,
+        )
+        self.assertEqual(client.base_url, "http://localhost:11434")
+        self.assertEqual(client.model, "qwen2.5:3b")
+        self.assertEqual(client.num_ctx, 4096)
+        self.assertEqual(client.keep_alive, "5m")
+        self.assertEqual(client.num_predict, 512)
+
     def test_router_rebuild_preserves_shared_health_state_and_resets_cooldowns(self):
         class Router:
             def __init__(self, settings):
