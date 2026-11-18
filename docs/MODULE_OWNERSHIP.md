@@ -93,7 +93,7 @@ These services are directly injected by Bootstrap/Composition; they are not auto
 
 | Task | Module / canonical source | Public API / ownership | Allowed dependencies | Must not own / forbidden coupling |
 |---|---|---|---|---|
-| 020 | MainWindow feature dependencies — `kira/ui/main_window_*_support.py` | One scoped dependency module for each of the nine feature controllers (root, attachments/vision, character settings, chat, lifecycle, provider settings, runtime, session and voice settings) | Feature-owned application/domain modules, Qt adapters, workers and the shared support helpers | Imports from another feature controller; a global wildcard dependency barrel |
+| 020 | MainWindow feature dependencies — `kira/ui/main_window_*_support.py` | One scoped dependency module for each of the eight feature controllers (attachments/vision, character settings, chat, lifecycle, provider settings, runtime, session and voice settings), plus a separate root-composition support module | Feature-owned application/domain modules, Qt adapters, workers and the shared support helpers | Imports from another feature controller; a global wildcard dependency barrel |
 
 `main_window_support.py` is limited to SessionRelay, the front-only decorator, reaction loading and shared Qt signal/helper code. Feature support modules may import only this shared helper module, never another feature controller or feature support module.
 
@@ -255,3 +255,53 @@ call sites migrate.
 Static regression coverage now asserts the shell inheritance boundary, service-
 free constructor, controller registry, and event forwarding. Runtime GUI
 acceptance remains pending.
+
+
+### Feature Controller boundary follow-up — 2026-11-18
+
+The compatibility lookup and Qt event dispatch are centralized in
+`FeatureControllerRegistry`. The registry preserves the established controller
+order while exposing ownership inspection for legacy method collisions.
+`MainWindow` no longer implements its own controller scan or event-owner
+lookup.
+
+The Chat controller now receives the independent `ChatAttachmentController`
+explicitly from `main_window_composition.py`. Sending a message reads and
+clears attachment state through that controller; attachment errors are also
+reported through its presentation contract. This removes Chat's former
+cross-feature calls to `attach_loading`, `clear_attachments`,
+`show_attach_error`, and direct reads of the legacy `_tiles` collection.
+
+All eight feature controllers now name cross-controller UI workflow calls
+through `feature_controller(...)`, rather than relying on MainWindow's
+compatibility attribute lookup to discover peer methods. A static AST
+regression test rejects new direct `self.peer_method(...)` calls when that
+method is owned by another feature controller. The registry provides the
+peer lookup target; application services remain the owner of non-presentation
+policy.
+
+This paragraph records the intermediate state before the explicit presentation
+context migration. It is superseded by the completed ownership contract in the
+"Explicit presentation context ownership" section below. The Python regression
+tests remain unexecuted in this environment.
+
+
+### Controller registry contract
+
+- `FeatureControllerRegistry` owns a defensive, read-only snapshot of feature-controller membership.
+- Required peer dependencies must use `WindowFeatureController.feature_controller()` and fail with `LookupError` when the feature is not registered.
+- Optional lookup is reserved for composition/dispatch paths that explicitly support an absent controller.
+- The registry contract is now paired with WindowPresentationContext; the former window-backed attribute proxy and MainWindow feature-method forwarding have been removed.
+
+
+### Explicit presentation context ownership — 2026-11-18
+
+WindowPresentationContext is now the only shared presentation contract provided to the window-scoped feature controllers. Its strict buckets own window-level UI state, injected application services, platform/presentation adapters, and shared widget references. Each bucket rejects undeclared fields; there is no fallback to arbitrary MainWindow attributes.
+
+Per-session state is stored on the active ChatSession and exposed through context.session. This includes Vision worker/session handles and the pending voice-input flag. Context front-only buckets preserve the existing Kira/Ren/Mika presentation isolation by returning NOOP or Muted resources when a background session is processing an event.
+
+The eight feature controllers use explicit context.state, context.services, context.adapters and context.views references. Peer workflow calls use feature_controller(owner), which resolves a required dependency through the immutable FeatureControllerRegistry. Chat/Voice application callback adapters receive the context and retrieve callbacks from their owning controllers.
+
+WindowFeatureController no longer forwards arbitrary attribute reads or writes to the host, and MainWindow no longer forwards feature methods or session/front-only properties. The host reference remains available only as the explicit Qt parent and native-window API boundary. The shell owns no feature policy or shared presentation state.
+
+Source-level contracts are documented and regression tests were updated, but Python tests have not been executed. Windows/GUI and GitHub Actions validation remain outside this development stream.
