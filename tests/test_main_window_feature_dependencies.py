@@ -186,6 +186,8 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
         application = (ROOT / "kira" / "app" / "session_application.py").read_text(encoding="utf-8")
 
         self.assertIn('getattr(session, "_vision_worker", None)', runtime)
+        self.assertIn("vision_worker.cancel_request()", runtime)
+        self.assertIn("(sess.worker, sess._search_worker, sess._vision_worker)", runtime)
         self.assertIn('getattr(session, "_vision_session", None) is session', application)
         self.assertNotIn("vision_session=vision_session", application)
         self.assertNotIn("vision_worker=vision_worker", application)
