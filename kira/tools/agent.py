@@ -19,6 +19,8 @@ import re
 import threading
 import time
 from collections import deque
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 
 from . import protocol
@@ -80,6 +82,19 @@ class ToolPlan:
     resume: bool = False              # continue / answer an unfinished task instead of planning a new one
     reasons: tuple = ()
     web: bool = False                 # the request is a web research / page reading request (the tool route handles it, the old one-shot auto search is skipped)
+    session_id: str = ""               # bind plans to the character whose request created them
+
+
+@dataclass
+class _ToolTurnState:
+    session_id: str = ""
+    turn_id: int = 0
+    turn_cache: dict[str, ToolResult] = field(default_factory=dict)
+    memos: deque = field(default_factory=lambda: deque(maxlen=6))
+    last_categories: set = field(default_factory=set)
+    last_used_turn: int = -99
+    last_results: list[ToolResult] = field(default_factory=list)
+    cancel: threading.Event = field(default_factory=threading.Event)
 
 
 @dataclass
@@ -107,17 +122,105 @@ class ToolAgent(AutonomyMixin):
             self.mcp = _mcp.install(self.registry, data_dir or self.policy.data_dir, lambda: self.settings)
         except Exception:                                 # noqa: BLE001
             self.mcp = None
-        self._cancel = threading.Event()
-        self._turn_id = 0
-        self._turn_cache: dict[str, ToolResult] = {}
-        self._memos: deque = deque(maxlen=6)
+        self._init_session_turn_states()
         self._pending_by_session: dict[str, Pending] = {}
-        self._turn_session_id = ""
         self._pending_new_sessions: set[str] = set()
-        self._last_cats: set = set()
-        self._last_used_turn = -99
-        self.last_results: list[ToolResult] = []
         self._init_autonomy(data_dir)            # task plans, task state, user control of a running task
+
+    def _init_session_turn_states(self):
+        """Create isolated ToolAgent request state while keeping one shared tool catalogue."""
+        self._session_states: dict[str, _ToolTurnState] = {}
+        self._fallback_turn_state = _ToolTurnState()
+        self._session_states_lock = threading.RLock()
+        self._active_turn_state = ContextVar(
+            f"toolagent_turn_state_{id(self)}", default=None
+        )
+        self._runtime_lock = threading.RLock()
+        self._running_sessions: set[str] = set()
+        self._active_web_sessions: set[str] = set()
+        # WebIntel's current research store and cancellation signal are still
+        # process-wide. Serialize its long-running tool calls so two characters
+        # cannot overwrite one another's active research at the same time.
+        self._web_research_lock = threading.Lock()
+
+    def _state_for(self, session_id: str | None = None) -> _ToolTurnState:
+        owner = str(session_id or "")
+        if not owner:
+            return self._fallback_turn_state
+        with self._session_states_lock:
+            return self._session_states.setdefault(owner, _ToolTurnState(session_id=owner))
+
+    def _current_turn_state(self) -> _ToolTurnState:
+        state = self._active_turn_state.get()
+        return state if state is not None else self._fallback_turn_state
+
+    @contextmanager
+    def _use_session(self, session_id: str):
+        """Apply the same character scope to ToolAgent bookkeeping and system-access policy."""
+        owner = str(session_id or "")
+        state = self._state_for(owner)
+        token = self._active_turn_state.set(state)
+        try:
+            with self.registry.access.use_session(owner):
+                yield state
+        finally:
+            self._active_turn_state.reset(token)
+
+    @property
+    def _turn_session_id(self) -> str:
+        return self._current_turn_state().session_id
+
+    @property
+    def _turn_id(self) -> int:
+        return self._current_turn_state().turn_id
+
+    @_turn_id.setter
+    def _turn_id(self, value: int) -> None:
+        self._current_turn_state().turn_id = int(value)
+
+    @property
+    def _turn_cache(self) -> dict[str, ToolResult]:
+        return self._current_turn_state().turn_cache
+
+    @_turn_cache.setter
+    def _turn_cache(self, value: dict[str, ToolResult]) -> None:
+        self._current_turn_state().turn_cache = value
+
+    @property
+    def _memos(self) -> deque:
+        return self._current_turn_state().memos
+
+    @_memos.setter
+    def _memos(self, value: deque) -> None:
+        self._current_turn_state().memos = value
+
+    @property
+    def _last_cats(self) -> set:
+        return self._current_turn_state().last_categories
+
+    @_last_cats.setter
+    def _last_cats(self, value: set) -> None:
+        self._current_turn_state().last_categories = set(value)
+
+    @property
+    def _last_used_turn(self) -> int:
+        return self._current_turn_state().last_used_turn
+
+    @_last_used_turn.setter
+    def _last_used_turn(self, value: int) -> None:
+        self._current_turn_state().last_used_turn = int(value)
+
+    @property
+    def last_results(self) -> list[ToolResult]:
+        return self._current_turn_state().last_results
+
+    @last_results.setter
+    def last_results(self, value: list[ToolResult]) -> None:
+        self._current_turn_state().last_results = list(value)
+
+    @property
+    def _cancel(self) -> threading.Event:
+        return self._current_turn_state().cancel
 
     # ------------------------------------------------------------ game-mode permission boundary
     def set_competitive_safe_mode(self, enabled: bool):
@@ -165,30 +268,36 @@ class ToolAgent(AutonomyMixin):
 
     # ------------------------------------------------------------ planning (cheap, deterministic, no model call)
     def begin_turn(self, session_id: str | None = None):
-        """Call once per NEW user message and bind confirmations to its character session."""
-        self._turn_session_id = str(session_id or "")
-        self._turn_id += 1
-        self._turn_cache = {}
-        self._pending_new_sessions.discard(self._turn_session_id)
-        self.last_results = []
-        self._cancel.clear()
-        WEB_CANCEL.clear()
-        self._turn_reset()
+        """Reset only the request state belonging to the character receiving a new turn."""
+        owner = self._current_turn_state().session_id if session_id is None else str(session_id or "")
+        with self._use_session(owner):
+            self._turn_id += 1
+            self._turn_cache.clear()
+            self._pending_new_sessions.discard(owner)
+            self.last_results = []
+            self._cancel.clear()
+            self._turn_reset()
+            with self._runtime_lock:
+                web_active = bool(self._active_web_sessions)
+            if not web_active:
+                WEB_CANCEL.clear()
 
-    def plan(self, text: str) -> ToolPlan | None:
-        """Does this message need the tool catalog in the prompt? None = ordinary chat: nothing is added (no context cost).
-        A message that looks multi-step, or that continues an unfinished task, comes back flagged (complex / resume) for the planner."""
-        self.registry.user_text = str(text or "")
-        if self.mode() == "off":
-            return None
-        plan = self.decide(text, self._plan_simple(text))
-        if plan is not None:
-            if self._competitive_safe_mode:
-                plan.categories.intersection_update({"web"})
-                if not plan.categories:
-                    return None
-            plan.web = "web" in plan.categories and (bool(protocol.detect_categories(text) & {"web"}) or self._web_resume(text))
-        return plan
+    def plan(self, text: str, *, session_id: str | None = None) -> ToolPlan | None:
+        """Plan inside the owning Session so user intent and follow-up state cannot leak across characters."""
+        owner = self._current_turn_state().session_id if session_id is None else str(session_id or "")
+        with self._use_session(owner):
+            self.registry.user_text = str(text or "")
+            if self.mode() == "off":
+                return None
+            plan = self.decide(text, self._plan_simple(text))
+            if plan is not None:
+                if self._competitive_safe_mode:
+                    plan.categories.intersection_update({"web"})
+                    if not plan.categories:
+                        return None
+                plan.web = "web" in plan.categories and (bool(protocol.detect_categories(text) & {"web"}) or self._web_resume(text))
+                plan.session_id = owner
+            return plan
 
     def _web_resume(self, text: str) -> bool:
         """A short 'continue' while a web research is paused."""
@@ -256,19 +365,33 @@ class ToolAgent(AutonomyMixin):
                 self._memos.append((time.time(), line[:300]))
 
     def clear_session(self, session_id: str | None = None):
-        self.clear_tasks()
-        self._memos.clear()
+        """Clear per-character tool notes, confirmations and task history."""
         if session_id is None:
+            self.clear_tasks()
+            with self._session_states_lock:
+                states = [self._fallback_turn_state, *self._session_states.values()]
+            for state in states:
+                state.memos.clear()
+                state.turn_cache.clear()
+                state.last_results.clear()
+                state.cancel.set()
             self._pending_by_session.clear()
             self._pending_new_sessions.clear()
-        else:
-            owner = str(session_id)
+            self.registry.access.revoke_grants()
+            ctx = getattr(self.registry, "web_context", None)
+            if ctx is not None:
+                ctx.store.clear()
+            return
+
+        owner = str(session_id)
+        self.clear_tasks(owner)
+        with self._use_session(owner):
+            self._memos.clear()
+            self._turn_cache.clear()
+            self.last_results = []
             self._pending_by_session.pop(owner, None)
             self._pending_new_sessions.discard(owner)
-        self._turn_cache = {}
-        ctx = getattr(self.registry, "web_context", None)
-        if ctx is not None:
-            ctx.store.clear()                                # the temporary research memory goes with the chat
+            self.registry.access.revoke_grants(owner)
 
     # ------------------------------------------------------------ confirmation of level-3 tools
     def has_pending(self, session_id: str | None = None) -> bool:
@@ -281,8 +404,12 @@ class ToolAgent(AutonomyMixin):
         return owner in self._pending_new_sessions
 
     def handle_confirmation_reply(self, text: str, *, session_id: str | None = None):
-        """Resolve only a pending confirmation owned by the current chat session."""
-        owner = self._turn_session_id if session_id is None else str(session_id)
+        """Resolve a confirmation using only the intent/grant state of its owning Session."""
+        owner = self._current_turn_state().session_id if session_id is None else str(session_id or "")
+        with self._use_session(owner):
+            return self._resolve_confirmation_reply(text, owner)
+
+    def _resolve_confirmation_reply(self, text: str, owner: str):
         pending = self._pending_by_session.get(owner)
         if pending is None:
             return None
@@ -310,10 +437,26 @@ class ToolAgent(AutonomyMixin):
         return None
 
     # ------------------------------------------------------------ cancel (Stop button)
-    def request_cancel(self):
-        self._cancel.set()
-        self.registry.access.revoke_grants()                 # Stop also withdraws any confirmation that was given but not used yet
-        WEB_CANCEL.set()                                     # a running web research stops at the next step and stays resumable
+    def request_cancel(self, session_id: str | None = None):
+        """Cancel one character's tool turn, or all tools for an application-wide safety/shutdown action."""
+        if session_id is None:
+            with self._session_states_lock:
+                states = [self._fallback_turn_state, *self._session_states.values()]
+            for state in states:
+                state.cancel.set()
+            self.registry.access.revoke_grants()
+            WEB_CANCEL.set()
+            return
+
+        owner = str(session_id or "")
+        with self._use_session(owner):
+            self._cancel.set()
+            self.registry.access.revoke_grants(owner)
+        with self._runtime_lock:
+            # WebIntel still uses one process-wide cancel event, so only the
+            # serialized active research owner may set it for a scoped Stop.
+            if owner in self._active_web_sessions:
+                WEB_CANCEL.set()
 
     # ------------------------------------------------------------ running tools
     def _run_calls(self, calls, errors, on_tool):
@@ -360,12 +503,34 @@ class ToolAgent(AutonomyMixin):
 
     # ------------------------------------------------------------ the turn loop
     def run(self, router, messages, system_prompt, temperature, plan, retry_index=0, on_chunk=None, on_event=None, on_tool=None):
-        """Same return value as HybridRouter.chat_stream (a dict with 'text', 'stopped', 'interrupted', metrics...), plus 'tools' (and 'task').
-        'text' is ONLY the final answer: tool blocks are never part of it and never reach the chat window.
-        A multi-step request (plan.complex) goes through the planner (autonomy.py); everything else runs the original loop below."""
-        if getattr(plan, "complex", False) and self.planning_enabled():
-            return self.run_planned(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
-        return self._run_simple(router, messages, system_prompt, self.temperature(temperature), plan, retry_index, on_chunk or (lambda s: None), on_event, on_tool)
+        """Run a ToolPlan in its creating character's state and serialize shared WebIntel access."""
+        owner = str(getattr(plan, "session_id", "") or self._current_turn_state().session_id)
+        with self._use_session(owner):
+            web_locked = False
+            if getattr(plan, "web", False):
+                while not self._web_research_lock.acquire(timeout=0.1):
+                    if self._cancel.is_set():
+                        return self._final({}, "جست‌وجوی وب متوقف شد.", [], stopped=True)
+                web_locked = True
+
+            with self._runtime_lock:
+                self._running_sessions.add(owner)
+                if web_locked:
+                    self._active_web_sessions.add(owner)
+            try:
+                if getattr(plan, "complex", False) and self.planning_enabled():
+                    return self.run_planned(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
+                return self._run_simple(router, messages, system_prompt, self.temperature(temperature), plan, retry_index, on_chunk or (lambda s: None), on_event, on_tool)
+            finally:
+                with self._runtime_lock:
+                    self._running_sessions.discard(owner)
+                    if web_locked:
+                        self._active_web_sessions.discard(owner)
+                    no_web_active = not self._active_web_sessions
+                if web_locked:
+                    self._web_research_lock.release()
+                if no_web_active:
+                    WEB_CANCEL.clear()
 
     def _run_simple(self, router, messages, system_prompt, temp, plan, retry_index, emit, on_event, on_tool):
         rounds = self.max_rounds()

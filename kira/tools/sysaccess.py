@@ -33,7 +33,9 @@ import re
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 
 from .registry import ToolError, redact_secrets, READ, ACTION, SENSITIVE
 
@@ -112,18 +114,65 @@ def _args_brief(args: dict) -> str:
     return redact_secrets(", ".join(parts))[:160]
 
 
+@dataclass
+class _AccessTurnState:
+    user_text: str = ""
+    tainted: bool = False
+    grants: dict[str, float] = field(default_factory=dict)
+
+
 class AccessManager:
     def __init__(self, registry):
         self.registry = registry
         self.journal = Journal()
-        self._grants: dict[str, float] = {}
         self._lock = threading.RLock()
-        self._tainted = False
-        self._turn_text = ""
+        self._fallback_state = _AccessTurnState()
+        self._session_states: dict[str, _AccessTurnState] = {}
+        self._session_context = ContextVar(
+            f"access_session_{id(self)}", default=""
+        )
         # True in the real application (ToolAgent turns it on): a confirmed execute() then needs a grant that the agent created from the user's own
         # bare confirmation. A bare ToolRegistry (development / unit tests) keeps accepting confirmed=True from its caller.
         self.require_grants = False
         self._local = threading.local()
+
+    def _state_for(self, session_id: str | None = None) -> _AccessTurnState:
+        owner = self._session_context.get() if session_id is None else str(session_id or "")
+        if not owner:
+            return self._fallback_state
+        with self._lock:
+            return self._session_states.setdefault(owner, _AccessTurnState())
+
+    @contextmanager
+    def use_session(self, session_id: str):
+        """Bind intent, taint and confirmation grants to one character's Chat Session."""
+        token = self._session_context.set(str(session_id or ""))
+        try:
+            yield self._state_for()
+        finally:
+            self._session_context.reset(token)
+
+    # Compatibility accessors preserve the legacy no-session API while ToolAgent
+    # executes every request inside use_session().
+    @property
+    def _turn_text(self) -> str:
+        return self._state_for().user_text
+
+    @_turn_text.setter
+    def _turn_text(self, value: str) -> None:
+        self._state_for().user_text = str(value or "")
+
+    @property
+    def _tainted(self) -> bool:
+        return self._state_for().tainted
+
+    @_tainted.setter
+    def _tainted(self, value: bool) -> None:
+        self._state_for().tainted = bool(value)
+
+    @property
+    def _grants(self) -> dict[str, float]:
+        return self._state_for().grants
 
     # ------------------------------------------------------------ policy
     @staticmethod
@@ -189,9 +238,15 @@ class AccessManager:
             exp = self._grants.pop(_digest(tool, args), 0.0)
             return exp > time.time()
 
-    def revoke_grants(self):
+    def revoke_grants(self, session_id: str | None = None):
+        """Revoke one Session's grants, or every grant when called without an owner."""
         with self._lock:
-            self._grants.clear()
+            if session_id is None:
+                self._fallback_state.grants.clear()
+                for state in self._session_states.values():
+                    state.grants.clear()
+            else:
+                self._state_for(str(session_id)).grants.clear()
 
     # ------------------------------------------------------------ backends
     def set_backend(self, name: str):

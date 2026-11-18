@@ -232,7 +232,7 @@ class ChatMixin:
         self._tool_plan = (
             None
             if command_dispatch.handled and not command_dispatch.continue_chat
-            else self.tool_agent.plan(text)
+            else self.tool_agent.plan(text, session_id=self.cur.cid)
         )
         self.save_message("user", packed["stored"] if packed else original_text)
         if command_dispatch.handled and not command_dispatch.continue_chat:
@@ -550,9 +550,7 @@ class ChatMixin:
             self.add_chat("system", "جست‌وجو متوقف شد.")
             self.chat_application_service.cancel_request(self.cur.application_request_id)
             return
-        if not any(o.busy for o in self.sessions.values() if o is not self.cur):
-            self.tool_agent.request_cancel()                      # also stops a tool loop between two steps (the tool agent is shared:
-                                                                  # not while another character is in the middle of its own task)
+        self.tool_agent.request_cancel(self.cur.cid)
         self.chat_application_service.cancel_request(self.cur.application_request_id)
         self.gen_stop_btn.setEnabled(False)
 
