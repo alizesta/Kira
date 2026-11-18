@@ -11,6 +11,7 @@ Safety model (all enforced in code, never by trusting the model):
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -255,7 +256,17 @@ class FileAgent:
             fh.write(data)
         if os.path.getsize(path) != before + len(data):
             raise ToolError("اندازه‌ی فایل بعد از نوشتن درست نیست.")
-        persisted = self.journal.add("append", path=path, size_before=before)
+        digest = hashlib.sha256()
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                digest.update(chunk)
+        persisted = self.journal.add(
+            "append",
+            path=path,
+            size_before=before,
+            size_after=os.path.getsize(path),
+            sha256_after=digest.hexdigest(),
+        )
         return f"{_fmt_size(len(data))} به انتهای فایل اضافه شد: {path}" + self._journal_note(persisted)
 
     def copy_item(self, a: dict) -> str:
@@ -600,10 +611,22 @@ class FileAgent:
             shutil.move(real, back)
         elif op == "append":
             real = self.policy.check(path)
-            if os.path.getsize(real) < item["size_before"]:
-                raise ToolError("فایل بعد از آن تغییر کرده؛ برنگرداندم.")
+            size_before = item["size_before"]
+            expected_size = item.get("size_after")
+            expected_digest = item.get("sha256_after")
             with open(real, "r+b") as fh:
-                fh.truncate(item["size_before"])
+                if expected_size is not None and fh.seek(0, os.SEEK_END) != expected_size:
+                    raise ToolError("فایل بعد از عملیات append تغییر کرده؛ برنگرداندم.")
+                if expected_digest:
+                    fh.seek(0)
+                    digest = hashlib.sha256()
+                    for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                    if digest.hexdigest() != expected_digest:
+                        raise ToolError("محتوای فایل بعد از عملیات append تغییر کرده؛ برنگرداندم.")
+                elif fh.seek(0, os.SEEK_END) < size_before:
+                    raise ToolError("فایل بعد از آن تغییر کرده؛ برنگرداندم.")
+                fh.truncate(size_before)
         elif op == "write":
             real = self.policy.check(path, must_exist=False)
             backup_path = item.get("backup")
