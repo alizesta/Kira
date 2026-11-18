@@ -111,11 +111,11 @@ class VoiceApplicationService(VoiceService):
         try:
             return bool(listener.is_running())
         except RuntimeError:
-            # A Qt worker can be deleted between a queued finish signal and a UI action.
+            # A worker can be released between its completion notification and a caller action.
             return False
 
     def start_recording(self) -> None:
-        """Start one listener; defer replacement until the prior QThread has fully exited."""
+        """Start one listener; defer replacement until the prior listener worker has fully exited."""
         if self._disposed:
             raise RuntimeError("VoiceApplicationService has been disposed")
         if self.listener is not None:
