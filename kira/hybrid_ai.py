@@ -1125,11 +1125,13 @@ class HybridRouter:
                     supported = True
                     elapsed = int((time.monotonic() - started) * 1000)
                     self._mark_success(route, elapsed)
-                    self.last_provider, self.last_model, self.last_route_id = route["provider"], route["model"], route["id"]
+                    active_model = getattr(provider, "active_model", None)
+                    model = active_model if isinstance(active_model, str) and active_model else route["model"]
+                    self.last_provider, self.last_model, self.last_route_id = route["provider"], model, route["id"]
                     self.last_kind, self.last_error, self.last_duration_ms = info["kind"], None, elapsed
                     metrics = {"request_id": uuid.uuid4().hex[:8], "started_at": datetime.now(timezone.utc).isoformat(),
                                "stream": False, "retries": 0, "failovers": len(failures), "provider": route["provider"],
-                               "model": route["model"], "route_id": route["id"], "kind": info["kind"],
+                               "model": model, "route_id": route["id"], "kind": info["kind"],
                                "total_ms": elapsed, "result": "tool_call" if result.get("tool_calls") else "success",
                                "chars": len(result.get("text") or ""), "role": _ROLE.get() or None}
                     self.last_metrics = metrics
@@ -1137,23 +1139,32 @@ class HybridRouter:
                     self.last_attempts.append({
                         "provider": route["provider"],
                         "route_id": route["id"],
-                        "model": route["model"],
+                        "model": model,
                         "result": metrics["result"],
                         "duration_ms": elapsed,
                     })
+                    stats = getattr(provider, "last_stats", None)
+                    stats = stats if isinstance(stats, dict) else None
+                    if stats:
+                        metrics.update(
+                            load_ms=stats.get("load_ms"),
+                            eval_tokens=stats.get("eval_tokens"),
+                            eval_ms=stats.get("eval_ms"),
+                        )
                     # Native function-calling requests are real provider requests too.
                     # Record reported token usage and metadata just like the streaming path.
-                    self._ledger(metrics, metrics["result"], provider)
+                    self._ledger(metrics, metrics["result"], provider, stats)
                     self._write_telemetry({
                         "provider": route["provider"],
-                        "model": route["model"],
+                        "model": model,
                         "result": metrics["result"],
                         "duration_ms": elapsed,
                         "attempts": self.last_attempts,
-                        "request_id": metrics["request_id"],
-                        "stream": False,
-                        "failovers": metrics["failovers"],
-                        "retries": 0,
+                        **{key: metrics.get(key) for key in (
+                            "request_id", "route_id", "kind", "stream", "connect_ms",
+                            "first_token_ms", "total_ms", "retries", "failovers", "role",
+                            "load_ms", "eval_tokens", "eval_ms",
+                        )},
                     })
                     return {**result, "provider": route["provider"], "model": route["model"], "route_id": route["id"],
                             "kind": info["kind"], "label": info["label"], "metrics": metrics,
