@@ -1,3 +1,4 @@
+import math
 import tempfile
 import unittest
 from pathlib import Path
@@ -109,6 +110,113 @@ class EmotionalRuntimeTests(unittest.TestCase):
         self.assertEqual(state["last_initiative"], 1000)
         self.assertEqual(state["last_initiative_memory_id"], "exam-123")
 
+    def test_topic_query_excludes_recent_unrelated_emotional_memories(self):
+        self.runtime.on_user_message(
+            "فردا برای امتحان زبان خیلی استرس دارم", ["stressed"], now=1000
+        )
+        self.runtime.on_user_message(
+            "برای سفر شیراز خیلی هیجان دارم", ["excited"], now=1001
+        )
+
+        state = self.runtime.snapshot(now=1002, query="مشکل کارت گرافیک")
+
+        self.assertEqual(state["recalled_memories"], [])
+
+    def test_low_intensity_negative_reply_does_not_create_emotional_memory(self):
+        self.runtime.on_reply(
+            ["sad"], 25, now=1000, text="از اینکه تنها ماندی ناراحتم"
+        )
+        state = self.runtime.snapshot(now=1000)
+        self.assertFalse(any(item["kind"] == "kira_emotion" for item in state["memories"]))
+
+    def test_negative_emotional_reply_text_is_saved_as_emotional_memory(self):
+        self.runtime.on_reply(
+            ["sad"], 70, now=1000, text="از اینکه تنها ماندی ناراحتم"
+        )
+
+        state = self.runtime.snapshot(now=1000)
+
+        self.assertTrue(state["memories"])
+        self.assertEqual(state["memories"][-1]["kind"], "kira_emotion")
+        self.assertIn("تنها", state["memories"][-1]["text"])
+
+
+    def test_query_with_no_effective_tokens_returns_no_old_memories(self):
+        self.runtime.on_user_message("فردا امتحان مهم دارم و نگرانم", ["stressed"], now=1000)
+        state = self.runtime.snapshot(now=1001, query="از و به")
+        self.assertEqual(state["recalled_memories"], [])
+
+    def test_interaction_memories_expire_after_retention_window(self):
+        self.runtime.on_user_message("فردا امتحان مهم دارم و نگرانم", ["stressed"], now=1000)
+        state = self.runtime.snapshot(now=1000 + 46 * 86400, query="امتحان فردا")
+        self.assertEqual(state["recalled_memories"], [])
+
+    def test_emotional_recall_matches_common_persian_synonyms(self):
+        self.runtime.on_user_message("فردا امتحان مهم دارم و نگرانم", ["stressed"], now=1000)
+        state = self.runtime.snapshot(now=1001, query="آزمون فردا")
+        self.assertTrue(state["recalled_memories"])
+        self.assertIn("امتحان", state["recalled_memories"][0]["text"])
+
+    def test_emotional_memory_keeps_relevant_reply_text_after_first_120_chars(self):
+        reply = "ناراحتم " + ("کلمه " * 30) + "به خاطر امتحان"
+        self.runtime.on_reply(["sad"], 70, now=1000, text=reply)
+        state = self.runtime.snapshot(now=1001, query="امتحان")
+        self.assertTrue(state["recalled_memories"])
+        self.assertIn("امتحان", state["recalled_memories"][0]["text"])
+
+    def test_recalled_emotional_memory_preserves_speaker(self):
+        self.runtime.on_reply(["sad"], 70, now=1000, text="از اینکه تنها ماندی ناراحتم")
+        state = self.runtime.snapshot(now=1001, query="تنها ماندی")
+        self.assertTrue(state["recalled_memories"])
+        self.assertEqual(state["recalled_memories"][0]["speaker"], "assistant")
+        prompt = self.runtime.build_prompt("chat", now=1001, query="تنها ماندی")
+        self.assertIn("Kira's prior response:", prompt)
+
+    def test_corrupt_memory_entries_are_filtered_and_sanitized(self):
+        self.path.write_text(
+            '{"memories":[null, 12, {"kind":"interaction","text":"معتبر","impact":NaN,'
+            '"created":Infinity,"reinforced_at":"bad"}, {"kind":"unknown","text":"نادیده"}]}',
+            encoding="utf-8",
+        )
+        restored = EmotionalRuntime(self.library, self.path, clock=lambda: 1001.0)
+        state = restored.snapshot(now=1001.0)
+        self.assertEqual(len(state["memories"]), 1)
+        self.assertTrue(math.isfinite(state["memories"][0]["impact"]))
+
+    def test_concurrent_updates_keep_memory_records_well_formed(self):
+        import threading
+        workers = [
+            threading.Thread(
+                target=self.runtime.on_user_message,
+                args=(f"برای موضوع شماره {index} استرس دارم", ["stressed"]),
+                kwargs={"now": 1000 + index},
+            )
+            for index in range(12)
+        ]
+        for worker in workers:
+            worker.start()
+        for worker in workers:
+            worker.join(timeout=5)
+            self.assertFalse(worker.is_alive())
+        state = self.runtime.snapshot(now=1020)
+        self.assertGreater(state["memory_count"], 0)
+        self.assertLessEqual(state["memory_count"], 120)
+
+    def test_malformed_state_sections_do_not_reset_valid_memory_or_energy(self):
+        self.path.write_text(
+            '{"energy":61,"emotions":[],"behaviors":"bad","relationship":[],"'
+            'personality_traits":{"teasing":"bad"},"feedback_evidence":{"x":{"count":"bad"}},'
+            '"memories":[{"kind":"interaction","text":"حافظه معتبر","impact":12,'
+            '"created":9999999999,"reinforced_at":9999999999}]}',
+            encoding="utf-8",
+        )
+        restored = EmotionalRuntime(self.library, self.path, clock=lambda: 1001.0)
+        state = restored.snapshot(now=1001.0)
+        self.assertEqual(state["energy"], 61)
+        self.assertEqual(state["emotions"], {})
+        self.assertEqual(len(state["memories"]), 1)
+        self.assertEqual(state["memories"][0]["created"], 1001.0)
+        self.assertEqual(state["memories"][0]["reinforced_at"], 1001.0)
 
 if __name__ == "__main__":
     unittest.main()

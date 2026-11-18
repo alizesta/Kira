@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import math
 from contextlib import contextmanager
 from contextvars import ContextVar
 import os
@@ -47,6 +49,7 @@ DAY = 86400
 TTL = {"event": 45 * DAY, "promise": 30 * DAY, "joke": 120 * DAY}
 
 _lock = threading.Lock()
+_log = logging.getLogger(__name__)
 _current_character = ContextVar("ai1_persona_memory_character", default="kira")
 
 
@@ -99,28 +102,68 @@ def _empty() -> dict:
 
 
 def _load() -> dict:
+    """Load each persisted section independently so one damaged field cannot erase valid memories."""
     data = _empty()
     try:
         raw = json.loads(_path().read_text(encoding="utf-8"))
-        if isinstance(raw, dict):
-            data["voice"] = [str(x) for x in raw.get("voice", []) if isinstance(x, str)]
-            for key in ("facts", "moments", "summaries"):
-                data[key] = [f for f in raw.get(key, []) if isinstance(f, dict) and f.get("text")]
-            h = raw.get("habits")
-            if isinstance(h, dict) and isinstance(h.get("hours"), list) and len(h["hours"]) == 24:
-                data["habits"] = {"hours": [int(x) for x in h["hours"]], "messages": int(h.get("messages") or 0), "chars": int(h.get("chars") or 0),
-                                  "first_seen": float(h.get("first_seen") or 0), "days": [str(d) for d in h.get("days", [])][-400:]}
-            data["summarized"] = int(raw.get("summarized") or 0)
+    except FileNotFoundError:
+        raw = {}
     except (OSError, ValueError, TypeError):
-        pass
+        _log.warning("Unable to read persona memory for character %s", _current_character.get(), exc_info=True)
+        raw = {}
+
+    if isinstance(raw, dict):
+        voice = raw.get("voice")
+        if isinstance(voice, list):
+            data["voice"] = [value for value in voice if isinstance(value, str)][-MAX_VOICE:]
+
+        for key, limit in (("facts", MAX_FACTS), ("moments", MAX_MOMENTS), ("summaries", MAX_SUMMARIES)):
+            values = raw.get(key)
+            if isinstance(values, list):
+                data[key] = [
+                    item for item in values[-limit:]
+                    if isinstance(item, dict) and isinstance(item.get("text"), str) and item["text"].strip()
+                ]
+
+        habits = raw.get("habits")
+        if isinstance(habits, dict):
+            hours = habits.get("hours")
+            if isinstance(hours, list) and len(hours) == 24:
+                def finite_number(value, default=0.0):
+                    try:
+                        number = float(value)
+                        return number if math.isfinite(number) else float(default)
+                    except (TypeError, ValueError, OverflowError):
+                        return float(default)
+
+                def safe_count(value):
+                    return max(0, min(10**9, int(finite_number(value))))
+
+                data["habits"] = {
+                    "hours": [safe_count(value) for value in hours],
+                    "messages": safe_count(habits.get("messages")),
+                    "chars": safe_count(habits.get("chars")),
+                    "first_seen": max(0.0, finite_number(habits.get("first_seen"))),
+                    "days": [str(day)[:10] for day in habits.get("days", []) if isinstance(day, (str, int, float))][-400:]
+                    if isinstance(habits.get("days", []), list) else [],
+                }
+
+        try:
+            data["summarized"] = max(0, min(10**9, int(raw.get("summarized") or 0)))
+        except (TypeError, ValueError, OverflowError):
+            data["summarized"] = 0
+
     voice_path = _voice_path()
     if voice_path is not None:
         try:
             payload = json.loads(voice_path.read_text(encoding="utf-8"))
             samples = payload.get("voice", []) if isinstance(payload, dict) else []
-            data["voice"] = [str(x) for x in samples if isinstance(x, str)][-MAX_VOICE:]
+            if isinstance(samples, list):
+                data["voice"] = [sample for sample in samples if isinstance(sample, str)][-MAX_VOICE:]
+        except FileNotFoundError:
+            pass
         except (OSError, ValueError, TypeError):
-            pass                                                  # keep whatever the character's memory file holds
+            _log.warning("Unable to read voice memory for character %s", _current_character.get(), exc_info=True)
     return data
 
 
@@ -138,7 +181,7 @@ def _save(data: dict):
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
         os.replace(tmp, path)
     except OSError:
-        pass                                                      # memory is a bonus; never break the chat
+        _log.warning("Unable to persist persona memory for character %s", _current_character.get(), exc_info=True)
 
 
 def _id(kind: str, text: str) -> str:
@@ -407,7 +450,12 @@ def observe(role: str, content: str, now=None):
                 add_moment("joke", f"A line of {character_id.title()} that made the user laugh: \"{last_reply[:140]}\"", now)
             _note_habits(str(content), now)
     except Exception:                                             # noqa: BLE001
-        pass
+        _log.warning(
+            "Persona-memory observation failed for character %s (role=%s)",
+            character_id,
+            str(role or "")[:24],
+            exc_info=True,
+        )
 
 
 def forget_conversation():
@@ -578,17 +626,138 @@ def maintain(rows: list[dict], window: int, now=None) -> bool:
 
 
 # ---------------- layer 3: digest ----------------
-def digest(older: list[dict]) -> list[str]:
-    """Short lines describing what the user brought up in messages older than the verbatim window."""
-    lines = []
+def _memory_item_timestamp(item: dict) -> float:
+    try:
+        value = float(item.get("ts") or item.get("created_at") or 0)
+        return value if math.isfinite(value) else 0.0
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+
+
+def _rank_relevant_items(items: list[dict], query: str | None, limit: int) -> list[dict]:
+    """Rank character-local saved items using the shared Persian-aware BM25 API."""
+    items = [
+        item for item in items
+        if isinstance(item, dict) and str(item.get("text") or "").strip()
+    ]
+    if not items or not query or not _evidence.needs_recall(query) or limit <= 0:
+        return []
+    try:
+        indices = _evidence.rank_texts(
+            [str(item.get("text") or "") for item in items],
+            query,
+            min_ratio=_evidence.MIN_BM25_RATIO,
+        )
+        return [items[index] for index in indices[:max(0, int(limit))] if 0 <= index < len(items)]
+    except Exception:  # noqa: BLE001 - recall is optional; the stored memory remains intact
+        _log.debug("Persona-memory relevance ranking failed", exc_info=True)
+        return []
+
+
+def _select_persona_facts(facts: list[dict], query: str | None) -> list[dict]:
+    """Keep identity facts available, but retrieve all other facts by current-topic relevance."""
+    if not query:
+        return list(facts[-FACTS_SHOWN:])
+    pinned = sorted(
+        (item for item in facts if item.get("kind") in ("name", "nick", "pref_len")),
+        key=_memory_item_timestamp,
+        reverse=True,
+    )[:3]
+    pinned_objects = {id(item) for item in pinned}
+    remaining = [item for item in facts if id(item) not in pinned_objects]
+    recalled = _rank_relevant_items(remaining, query, FACTS_SHOWN - len(pinned))
+    return pinned + recalled
+
+
+def _fit_memory_block(header: str, parts: list[str], budget: int) -> str:
+    """Fit complete lines and continue to later sections when one section is oversized."""
+    try:
+        budget = max(0, int(budget))
+    except (TypeError, ValueError, OverflowError):
+        return ""
+    if budget <= 0 or not header or len(header) > budget:
+        return ""
+    selected = [header]
+    used = len(header)
+    for part in parts:
+        part = str(part or "").strip()
+        if not part:
+            continue
+        separator = 2
+        if used + separator + len(part) <= budget:
+            selected.append(part)
+            used += separator + len(part)
+            continue
+
+        lines = part.splitlines()
+        if not lines:
+            continue
+        heading = lines[0]
+        if used + separator + len(heading) > budget:
+            continue
+        fitting = [heading]
+        for line in lines[1:]:
+            candidate = "\n".join(fitting + [line])
+            if used + separator + len(candidate) <= budget:
+                fitting.append(line)
+        # Never emit a bare section heading without at least one complete item.
+        if len(fitting) > 1:
+            fragment = "\n".join(fitting)
+            selected.append(fragment)
+            used += separator + len(fragment)
+    return "\n\n".join(selected)
+
+
+def _compact_digest_line(text: str, max_chars: int = 240, query: str | None = None) -> str:
+    text = " ".join(str(text or "").split())
+    if len(text) <= max_chars:
+        return text
+
+    start = 0
+    if query:
+        normalized = _evidence.norm(text)
+        query_words = [word for word in _evidence.query_terms(query) if len(word) >= 3]
+        positions = [normalized.find(word) for word in query_words]
+        positions = [position for position in positions if position >= 0]
+        if positions:
+            # Center the excerpt around the matched subject instead of always
+            # keeping the beginning of a long message.
+            start = max(0, min(positions) - max_chars // 3)
+            start = min(start, max(0, len(text) - max_chars))
+
+    excerpt = text[start:start + max_chars]
+    # Prefer a complete sentence; otherwise stop at a word boundary.
+    boundary = max(excerpt.rfind(mark) for mark in (". ", "! ", "? ", "؟ ", "。"))
+    if boundary >= int(max_chars * 0.55):
+        excerpt = excerpt[:boundary + 1]
+    else:
+        boundary = excerpt.rfind(" ")
+        if boundary >= int(max_chars * 0.65):
+            excerpt = excerpt[:boundary]
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if start + len(excerpt) < len(text) else ""
+    return prefix + excerpt.rstrip() + suffix
+
+
+def digest(older: list[dict], query: str | None = None) -> list[str]:
+    """Retrieve from full older user messages; compact only after relevance ranking."""
+    source_lines = []
     for item in older:
-        if item.get("role") != "user":
+        if not isinstance(item, dict) or item.get("role") != "user":
             continue
         text = " ".join(str(item.get("content") or "").split())
         text = re.sub(r"---\s*فایل ضمیمه.*", "[attached a file]", text)
         if len(text) >= 8:
-            lines.append(text[:100] + ("…" if len(text) > 100 else ""))
-    return lines[-DIGEST_LINES:]
+            # Keep enough source text for topic matching, but cap pathological history rows.
+            source_lines.append(text[:2000])
+    if query:
+        ranked = _rank_relevant_items(
+            [{"text": line, "ts": index} for index, line in enumerate(source_lines)],
+            query,
+            DIGEST_LINES,
+        )
+        return [_compact_digest_line(item["text"], query=query) for item in ranked]
+    return [_compact_digest_line(line) for line in source_lines[-DIGEST_LINES:]]
 
 
 # ---------------- the block that goes into the system prompt ----------------
@@ -603,61 +772,97 @@ HEADER_RELEVANT = ("Kira's own memory (real, stored on this computer; it stays t
 
 
 def build_block(older: list[dict] | None = None, voice_samples: bool = True, now=None, query: str | None = None, budget: int | None = None) -> str:
-    """``query`` = the user's current message: with it, facts are chosen by relevance (evidence memory); without it (or when the evidence
-    layer is unavailable) the older "last facts" list is used exactly as before. ``budget`` = characters this block may use."""
+    """Build a compact memory block ordered by relevance and importance."""
     now = time.time() if now is None else now
-    budget = int(budget or BLOCK_BUDGET)
-    relevant = None
-    if query is not None and _current_character.get() == "kira":
-        try:
-            relevant = _evidence.build_block(query, budget=max(300, int(budget * 0.45)))
-        except Exception:                                              # noqa: BLE001 - never let the index break the prompt
-            relevant = None
-    with _lock:
-        data = _load()
-    parts = []
-    voice = data["voice"][-10:][::-1][::2][:VOICE_SHOWN]
-    if voice and voice_samples:                  # her own recent banter is a style anchor: left out when the turn is a practical request
-        samples = "\n".join(f"- {v}" for v in reversed(voice))
-        voice_name = "Kira" if _current_character.get() == "kira" else _current_character.get().title()
-        parts.append(f"How {voice_name} really sounds (their own recent lines). Match this rhythm, slang, attitude and length in "
-                     "your reply; do not copy the sentences:\n" + samples)
+    budget = BLOCK_BUDGET if budget is None else int(budget)
+    if budget <= 0:
+        return ""
+
     character_id = _current_character.get()
     character_name = character_id.title()
-    if relevant is None:
-        fact_lines = [f["text"] for f in data["facts"]]
-        notes = [t for t in fact_lines if t.startswith("He asked her")]
-        rest = [t for t in fact_lines if not t.startswith("He asked her")]
-        shown = (rest[-(FACTS_SHOWN - min(len(notes), 6)):] + notes[-6:])
-        if shown:
-            heading = "What she knows about him:" if character_id == "kira" else f"What {character_name} knows about the user:"
-            parts.append(heading + "\n" + "\n".join(f"- {t}" for t in shown))
-    elif relevant:
+    relevant = None
+    if query is not None and character_id == "kira":
+        try:
+            relevant = _evidence.build_block(query, budget=max(300, int(budget * 0.45)))
+        except Exception:  # noqa: BLE001 - evidence recall must never block chat
+            _log.debug("Evidence-memory lookup failed; using persona fallback", exc_info=True)
+            relevant = None
+
+    with _lock:
+        data = _load()
+
+    parts = []
+    # An empty ready index is not proof that the editable legacy store has no match.
+    if relevant:
         parts.append(relevant)
-    rel = habit_lines(now)
-    if rel:
-        parts.append(("The relationship and his habits:\n" if character_id == "kira" else "The user's observed habits:\n")
-                     + "\n".join(f"- {t}" for t in rel))
-    moments = [m for m in data["moments"] if not _expired(m, now) and (voice_samples or m.get("kind") != "joke")]
+    else:
+        selected_facts = _select_persona_facts(data["facts"], query)
+        if selected_facts:
+            heading = "What she knows about him:" if character_id == "kira" else f"What {character_name} knows about the user:"
+            parts.append(heading + "\n" + "\n".join(f"- {item['text']}" for item in selected_facts))
+
+    moments = [
+        item for item in data["moments"]
+        if not _expired(item, now) and (voice_samples or item.get("kind") != "joke")
+    ]
+    moments = (
+        _rank_relevant_items(moments, query, MOMENTS_SHOWN)
+        if query is not None else moments[-MOMENTS_SHOWN:]
+    )
     if moments:
-        heading = ("Moments and things he told her" if character_id == "kira" else f"Moments {character_name} remembers")
-        parts.append(heading + " (dated; they may be over by now, so ask rather than assume):\n"
-                     + "\n".join(f"- {m['text']}" for m in moments[-MOMENTS_SHOWN:]))
-    if data["summaries"]:
-        parts.append("Older conversations (compressed summaries; may be incomplete):\n"
-                     + "\n".join(f"- {m['text']}" for m in data["summaries"][-SUMMARIES_SHOWN:]))
-    # Older chat rows have no character ID in the legacy SQLite schema; never attribute that shared history to Ren/Mika.
-    older_lines = digest(older or []) if character_id == "kira" else []
+        heading = "Moments and things he told her" if character_id == "kira" else f"Moments {character_name} remembers"
+        parts.append(
+            heading + " (dated; they may be over by now, so ask rather than assume):\n"
+            + "\n".join(f"- {item['text']}" for item in moments)
+        )
+
+    summaries = data["summaries"]
+    summaries = (
+        _rank_relevant_items(summaries, query, SUMMARIES_SHOWN)
+        if query is not None else summaries[-SUMMARIES_SHOWN:]
+    )
+    if summaries:
+        parts.append(
+            "Older conversations (compressed summaries; may be incomplete):\n"
+            + "\n".join(f"- {item['text']}" for item in summaries)
+        )
+
+    # Legacy chat rows have no character id; never attribute their digest to another character.
+    older_lines = digest(older or [], query=query) if character_id == "kira" else []
     if older_lines:
         heading = "Earlier topics he raised" if character_id == "kira" else f"Earlier topics the user raised with {character_name}"
-        parts.append(heading + " (older than the messages below):\n" + "\n".join(f"- {t}" for t in older_lines))
+        parts.append(heading + " (older than the messages below):\n" + "\n".join(f"- {line}" for line in older_lines))
+
+    # Style samples and observational habits have lower priority than facts and events.
+    if voice_samples:
+        voice = data["voice"][-10:][::-1][::2][:VOICE_SHOWN]
+        if voice:
+            samples = "\n".join(f"- {value}" for value in reversed(voice))
+            voice_name = "Kira" if character_id == "kira" else character_name
+            parts.append(
+                f"How {voice_name} really sounds (their own recent lines). Match this rhythm, slang, attitude and length in "
+                "your reply; do not copy the sentences:\n" + samples
+            )
+
+    habits = habit_lines(now)
+    if query is not None:
+        habits = [
+            item["text"] for item in _rank_relevant_items(
+                [{"text": line} for line in habits], query, 2
+            )
+        ]
+    if habits:
+        heading = "The relationship and his habits:" if character_id == "kira" else "The user's observed habits:"
+        parts.append(heading + "\n" + "\n".join(f"- {line}" for line in habits))
+
     if not parts:
         return ""
     if character_id == "kira":
         header = HEADER if relevant is None else HEADER_RELEVANT
     else:
-        header = (f"{character_name}'s own memory (real, stored on this computer and isolated from other characters). "
-                  "Use it naturally and sparingly; never recite it or mention that it is a list. It contains only what this character knows about the user; "
-                  "anything not listed here is not remembered and must not be guessed.")
-    block = header + "\n\n" + "\n\n".join(parts)
-    return block[:budget]
+        header = (
+            f"{character_name}'s own memory (real, stored on this computer and isolated from other characters). "
+            "Use it naturally and sparingly; never recite it or mention that it is a list. It contains only what this character knows about the user; "
+            "anything not listed here is not remembered and must not be guessed."
+        )
+    return _fit_memory_block(header, parts, budget)

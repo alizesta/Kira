@@ -51,12 +51,19 @@
       "release_events": [
         "response_started"
       ],
+      "release_responses": true,
       "runtime_emotions": {
         "frustrated": 10
       },
       "runtime_behaviors": {
         "focused": 5
       }
+    },
+    "response_cancelled": {
+      "release_events": [
+        "response_started"
+      ],
+      "release_responses": true
     },
     "tts_started": {
       "speaking": true,
@@ -79,6 +86,7 @@
       "release_events": [
         "response_started"
       ],
+      "release_responses": true,
       "runtime_emotions": {
         "surprised": 8
       },

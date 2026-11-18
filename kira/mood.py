@@ -407,11 +407,11 @@ def on_user_message(text, now=None) -> list[str]:
         if feedback:
             _runtime_for().observe_feedback(feedback, text=text, now=now)
     except Exception:
-        pass
+        _log.warning("Unable to update user mood or feedback", exc_info=True)
     return found
 
 
-def on_reply(emotions, intensity=None, now=None):
+def on_reply(emotions, intensity=None, now=None, text=""):
     _ensure_runtime_migration()
     """Carry the active character's reply emotions forward and update their behavioral disposition."""
     now = time.time() if now is None else now
@@ -434,9 +434,9 @@ def on_reply(emotions, intensity=None, now=None):
         })
         _save(state)
     try:
-        _runtime_for().on_reply(emotions, intensity, now=now)
+        _runtime_for().on_reply(emotions, intensity, now=now, text=text)
     except Exception:
-        pass
+        _log.warning("Unable to update reply mood", exc_info=True)
 
 
 
@@ -447,6 +447,7 @@ def on_event(name, detail=None):
     try:
         return _runtime_for().trigger(name, detail)
     except Exception:
+        _log.warning("Unable to record emotional event %s", name, exc_info=True)
         return None
 
 
@@ -455,6 +456,7 @@ def mark_initiative_sent(memory_id=None, now=None):
     try:
         return _runtime_for().mark_initiative_sent(memory_id=memory_id, now=now)
     except Exception:
+        _log.warning("Unable to persist proactive emotional initiative", exc_info=True)
         return None
 
 
@@ -465,7 +467,7 @@ def reset():
     try:
         _runtime_for().reset()
     except Exception:
-        pass
+        _log.warning("Unable to reset structured emotional state", exc_info=True)
 
 
 # ---------------- reading the state ----------------
@@ -578,7 +580,7 @@ def avatar_hint(now=None):
 
 def build_block(mode_name="chat", now=None, query=None) -> str:
     _ensure_runtime_migration()
-    """Prompt text. Chat gets the full emotional state; task gets only delivery-critical user context."""
+    """The structured runtime is authoritative; legacy rules add only situational guidance."""
     if mode_name == "strict":
         return ""
     try:
@@ -588,47 +590,74 @@ def build_block(mode_name="chat", now=None, query=None) -> str:
         layered = ""
     cur = current(now, query=query)
     states = cur["user_states"]
-    lines = []
-    if mode_name == "chat":
-        emo, level = cur["emotion"], cur["intensity"]
-        if level >= 25 or states:
-            line = f"Mood now (persistent, gradual): {emo} ~{level}/100 - {SHOW.get(emo, '')}."
-            if cur["secondary_emotions"]:
-                underneath = ", ".join(f"{name} ~{value}/100" for name, value in cur["secondary_emotions"])
-                line += f" Other active feelings: {underneath}."
-            if cur.get("emotional_components"):
-                components = ", ".join(name for name, _value in cur["emotional_components"])
-                line += f" Underlying emotional components: {components}."
-            lines.append(line + " Keep emotional continuity; do not flip moods abruptly.")
-        else:
-            lines.append("Mood now: calm and balanced (low emotional intensity).")
 
-        energy_guidance = {
-            "exhausted": "very low conversational energy; be brief and gentle",
-            "tired": "low conversational energy; keep the pace relaxed",
-            "low": "somewhat low conversational energy; avoid forced excitement",
-            "normal": "normal conversational energy",
-            "active": "lively conversational energy",
-            "hyper": "very high conversational energy; energetic but not chaotic",
-        }
-        lines.append(f"Energy: {cur['energy_label']} ({cur['energy']}/100) - {energy_guidance[cur['energy_label']]}.")
-        active = cur["behaviors"]
-        if active:
-            disposition = ", ".join(f"{name} ({BEHAVIOR_SHOW.get(name, name)})" for name, _value in active[:2])
-            lines.append("Behavioral disposition (how to deliver, not a separate mood): " + disposition + ".")
-        if cur["away_hours"]:
-            lines.append(f"He was away for about {cur['away_hours']:.0f} hours. She may show once, naturally, that she noticed (missed him / a bit sulky); not a speech.")
-    for name in states:
-        if mode_name == "chat" or name in SERIOUS:
-            lines.append("Reading him right now: " + USER_STATES[name][1])
-    if mode_name == "task" and lines:
-        lines.insert(0, "Delivery note for this practical request (substance and accuracy unchanged):")
-    legacy = "\n".join(lines)
+    if layered:
+        guidance = []
+        if mode_name == "chat":
+            if cur["intensity"] >= 25:
+                guidance.append("Emotional expression guidance: " + SHOW.get(cur["emotion"], "measured and natural") + ".")
+            active = cur["behaviors"]
+            if active:
+                disposition = ", ".join(
+                    f"{name} ({BEHAVIOR_SHOW.get(name, name)})" for name, _value in active[:2]
+                )
+                guidance.append("Behavior expression guidance: " + disposition + ".")
+            if cur["away_hours"]:
+                guidance.append(
+                    f"He was away for about {cur['away_hours']:.0f} hours. "
+                    "She may show once, naturally, that she noticed; do not turn it into a speech."
+                )
+        for name in states:
+            if mode_name == "chat" or name in SERIOUS:
+                guidance.append("Reading him right now: " + USER_STATES[name][1])
+        if mode_name == "task" and guidance:
+            guidance.insert(0, "Delivery note for this practical request (substance and accuracy unchanged):")
+        legacy = "\n".join(guidance)
+    else:
+        # Compatibility fallback when the structured runtime cannot be read.
+        lines = []
+        if mode_name == "chat":
+            emo, level = cur["emotion"], cur["intensity"]
+            if level >= 25 or states:
+                lines.append(
+                    f"Mood now (persistent, gradual): {emo} ~{level}/100 - {SHOW.get(emo, '')}. "
+                    "Keep emotional continuity; do not flip moods abruptly."
+                )
+            else:
+                lines.append("Mood now: calm and balanced (low emotional intensity).")
+            energy_guidance = {
+                "exhausted": "very low conversational energy; be brief and gentle",
+                "tired": "low conversational energy; keep the pace relaxed",
+                "low": "somewhat low conversational energy; avoid forced excitement",
+                "normal": "normal conversational energy",
+                "active": "lively conversational energy",
+                "hyper": "very high conversational energy; energetic but not chaotic",
+            }
+            lines.append(
+                f"Energy: {cur['energy_label']} ({cur['energy']}/100) - "
+                f"{energy_guidance[cur['energy_label']] }."
+            )
+            active = cur["behaviors"]
+            if active:
+                disposition = ", ".join(
+                    f"{name} ({BEHAVIOR_SHOW.get(name, name)})" for name, _value in active[:2]
+                )
+                lines.append("Behavioral disposition (how to deliver, not a separate mood): " + disposition + ".")
+            if cur["away_hours"]:
+                lines.append(
+                    f"He was away for about {cur['away_hours']:.0f} hours. "
+                    "She may show once, naturally, that she noticed (missed him / a bit sulky); not a speech."
+                )
+        for name in states:
+            if mode_name == "chat" or name in SERIOUS:
+                lines.append("Reading him right now: " + USER_STATES[name][1])
+        if mode_name == "task" and lines:
+            lines.insert(0, "Delivery note for this practical request (substance and accuracy unchanged):")
+        legacy = "\n".join(lines)
+
+    # Keep Task 02's deterministic character decision and safe fallback intact.
     decision_block = ""
     try:
-        # Apply the selected profile's stable traits to a deterministic delivery
-        # decision. This is shared by every provider and remains subordinate to
-        # the actual request, task mode and serious-context safeguards.
         from .character.decision import DecisionEngine
         decision_engine = DecisionEngine(cur.get("personality_traits") or BASE_TRAITS)
         decision = decision_engine.decide(query or "", cur, mode_name)

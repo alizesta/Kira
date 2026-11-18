@@ -24,6 +24,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import logging
 import math
 import re
 import sqlite3
@@ -33,6 +34,8 @@ from collections import Counter
 from pathlib import Path
 
 from .config import DATA_DIR
+
+_log = logging.getLogger(__name__)
 
 DB_NAME = "kira_evidence.sqlite3"
 DAY = 86400
@@ -682,6 +685,47 @@ def _doc_tokens(row, evidence_quote) -> list[str]:
     return toks
 
 
+
+_QUERY_SYNONYMS = {
+    "امتحان": ("آزمون",),
+    "آزمون": ("امتحان",),
+    "سفر": ("مسافرت",),
+    "مسافرت": ("سفر",),
+    "دکتر": ("پزشک",),
+    "پزشک": ("دکتر",),
+    "نگرانی": ("اضطراب",),
+    "اضطراب": ("نگرانی", "استرس"),
+    "استرس": ("اضطراب", "نگرانی"),
+    "گرافیک": ("gpu",),
+    "gpu": ("گرافیک",),
+}
+
+
+def query_terms(text) -> list[str]:
+    """Return normalized query words plus their conservative Persian synonyms."""
+    words = [word for word in _WORD.findall(norm(text)) if word not in _STOP and (len(word) >= 2 or word.isdigit())]
+    expanded = list(words)
+    seen = set(words)
+    for word in words:
+        for synonym in _QUERY_SYNONYMS.get(word, ()):
+            if synonym not in seen:
+                seen.add(synonym)
+                expanded.append(synonym)
+    return expanded
+
+
+def _query_tokens(text) -> list[str]:
+    """Expand only the query with a small, conservative Persian synonym set."""
+    expanded = []
+    seen = set()
+    for term in query_terms(text):
+        for feature in tokens(term):
+            if feature not in seen:
+                seen.add(feature)
+                expanded.append(feature)
+    return expanded
+
+
 def _bm25(docs: dict[str, list[str]], query: list[str]) -> dict[str, float]:
     n = len(docs)
     if not n or not query:
@@ -701,6 +745,29 @@ def _bm25(docs: dict[str, list[str]], query: list[str]) -> dict[str, float]:
         if s > 0:
             scores[fid] = s
     return scores
+
+
+
+def rank_texts(texts, query, min_ratio=MIN_BM25_RATIO):
+    """Return indices ranked by Persian-aware BM25 relevance to one query."""
+    if not needs_recall(query):
+        return []
+    query_tokens = _query_tokens(query)
+    if not query_tokens:
+        return []
+    docs = {str(index): tokens(text) for index, text in enumerate(texts or [])}
+    if not docs:
+        return []
+    scores = _bm25(docs, query_tokens)
+    if not scores:
+        return []
+    best = max(scores.values())
+    ratio = max(0.0, min(1.0, float(min_ratio)))
+    threshold = best * ratio
+    return sorted(
+        (int(index) for index, score in scores.items() if score >= threshold),
+        key=lambda index: (-scores[str(index)], index),
+    )
 
 
 def _semantic(query_text, ids, cfg) -> dict[str, float]:
@@ -764,7 +831,7 @@ def retrieve(query, limit=None, now=None) -> list[dict]:
         if needs_recall(query):                                         # 2) rank (an embedding request may happen here, without any lock)
             by_id = {r["id"]: r for r in rows}
             docs = {r["id"]: _doc_tokens(r, quotes.get(r["id"], "")) for r in rows}
-            lex = _bm25(docs, tokens(query))
+            lex = _bm25(docs, _query_tokens(query))
             lex_rank = sorted(lex, key=lex.get, reverse=True)
             best = lex[lex_rank[0]] if lex_rank else 0.0
             lex_rank = [i for i in lex_rank if lex[i] >= MIN_BM25_RATIO * best][:limit * 2]
@@ -791,6 +858,7 @@ def retrieve(query, limit=None, now=None) -> list[dict]:
                         "created_at": r["created_at"], "pinned": r["predicate"] in PINNED, "earlier": earlier})
         return out
     except Exception:                                                  # noqa: BLE001
+        _log.warning("Evidence-memory retrieval failed", exc_info=True)
         return []
 
 
@@ -824,39 +892,77 @@ def set_writer_cursor(message_id) -> None:
         pass
 
 
-def interest_line(max_chars=140) -> str:
-    """One compact line of what he likes / dislikes (cheap and personal; the rest of the facts must earn their place by relevance)."""
+def interest_line(max_chars=140, query=None) -> str:
+    """Compact likes/dislikes line; never cut a stored interest mid-value."""
     if not _enabled or max_chars < 40:
         return ""
     try:
         with _lock, _db() as con:
-            likes = [r["value"] for r in con.execute("SELECT value FROM facts WHERE predicate='like' AND status='active' ORDER BY updated_at DESC LIMIT 6")]
-            dislikes = [r["value"] for r in con.execute("SELECT value FROM facts WHERE predicate='dislike' AND status='active' ORDER BY updated_at DESC LIMIT 4")]
-    except Exception:                                                  # noqa: BLE001
+            likes = [r["value"] for r in con.execute(
+                "SELECT value FROM facts WHERE predicate='like' AND status='active' ORDER BY updated_at DESC"
+            )]
+            dislikes = [r["value"] for r in con.execute(
+                "SELECT value FROM facts WHERE predicate='dislike' AND status='active' ORDER BY updated_at DESC"
+            )]
+    except Exception:
+        _log.warning("Evidence-memory interest recall failed", exc_info=True)
         return ""
-    parts = []
-    if likes:
-        parts.append("He likes: " + "; ".join(v[:40] for v in likes))
-    if dislikes:
-        parts.append("He dislikes: " + "; ".join(v[:40] for v in dislikes))
-    return (" | ".join(parts))[:max_chars]
+    if query is not None:
+        try:
+            if not needs_recall(query):
+                return ""
+            likes = [likes[index] for index in rank_texts(likes, query)[:4]]
+            dislikes = [dislikes[index] for index in rank_texts(dislikes, query)[:3]]
+        except Exception:  # noqa: BLE001 - interest recall must never break chat
+            _log.warning("Evidence-memory interest ranking failed", exc_info=True)
+            return ""
+
+    sections = []
+    used = 0
+    for label, values in (("He likes:", likes), ("He dislikes:", dislikes)):
+        selected = []
+        for value in values:
+            value = " ".join(str(value or "").split())
+            if not value:
+                continue
+            candidate = label + " " + "; ".join(selected + [value])
+            extra = len(candidate) + (3 if sections else 0)
+            if used + extra <= max_chars:
+                selected.append(value)
+        if selected:
+            section = label + " " + "; ".join(selected)
+            sections.append(section)
+            used += len(section) + (3 if len(sections) > 1 else 0)
+    return " | ".join(sections)
 
 
 def render(facts, budget) -> str:
     lines, used = [], 0
-    for f in facts:
-        day = time.strftime("%Y-%m-%d", time.localtime(f["created_at"]))
-        mark = " (he sounded unsure)" if f["status"] == "uncertain" else ""
-        if f.get("earlier"):
-            mark += f" (he changed this; earlier: {f['earlier'][:60]})"
-        if f["category"] in ("event", "temporary"):
+    for fact in facts:
+        created_at = _finite_timestamp(fact.get("created_at"))
+        day = time.strftime("%Y-%m-%d", time.localtime(created_at))
+        mark = " (he sounded unsure)" if fact["status"] == "uncertain" else ""
+        if fact.get("earlier"):
+            mark += f" (he changed this; earlier: {fact['earlier'][:60]})"
+        if fact["category"] in ("event", "temporary"):
             mark += " (may be over by now)"
-        line = f"- {f['text'][:200]} [{day}]{mark}"
-        if used + len(line) > budget:
-            break
+        fact_text = " ".join(str(fact.get("text") or "").split())
+        if not fact_text:
+            continue
+        line = f"- {fact_text} [{day}]{mark}"
+        if used + len(line) + (1 if lines else 0) > max(0, int(budget)):
+            continue
         lines.append(line)
-        used += len(line) + 1
+        used += len(line) + (1 if len(lines) > 1 else 0)
     return "\n".join(lines)
+
+
+def _finite_timestamp(value) -> float:
+    try:
+        stamp = float(value)
+        return stamp if math.isfinite(stamp) and stamp >= 0 else 0.0
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
 
 
 def build_block(query, budget=1500):
@@ -872,21 +978,38 @@ def build_block(query, budget=1500):
         return None
     facts = retrieve(query)
     body = render(facts, max(200, budget - 160))
-    line = interest_line(140 if budget >= 1200 else 0)
+    line = interest_line(140 if budget >= 1200 else 0, query=query)
     if not body and not line:
         return ""
     head = "What she knows about him that fits this message (each item comes from something he really wrote; the date is when he said it):"
     return head + ("\n" + body if body else "") + (("\n" + line) if line else "")
 
 
+_FOLLOW_UP_RX = re.compile(
+    r"^(?:(?:و\s*)?(?:اون|آن|این|همون|همین)(?:\s+(?:یکی|مورد))?|"
+    r"اولی|دومی|سومی|قبلی|مورد\s+قبلی|"
+    r"that\s+one|the\s+other\s+one|what\s+about\s+(?:it|that)|and\s+(?:it|that))"
+    r"(?:[\s.!?؟،,]|$)",
+    re.I,
+)
+
+
 def query_from_context(context) -> str:
-    """The text used to look facts up: the user's newest message; a very short one ("and that one?") is joined with the previous message."""
-    users = [str(m.get("content") or "") for m in (context or []) if isinstance(m, dict) and m.get("role") == "user"]
+    """Join a short turn to the prior turn only when it is an anaphoric follow-up."""
+    users = [
+        str(message.get("content") or "").strip()
+        for message in (context or [])
+        if isinstance(message, dict) and message.get("role") == "user"
+    ]
     if not users:
         return ""
     query = users[-1][:500]
     if len(query) < 25 and len(users) > 1:
-        query = users[-2][-200:] + " " + query
+        if _SMALLTALK.match(query):
+            return query
+        normal = norm(query).strip(" .!?؟،,")
+        if _FOLLOW_UP_RX.match(normal):
+            return (users[-2][-200:] + " " + query).strip()
     return query
 
 

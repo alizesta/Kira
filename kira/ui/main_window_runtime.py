@@ -1,4 +1,6 @@
 """Runtime feature controller for the desktop window."""
+import logging
+
 from .main_window_runtime_support import (
     ChatHistoryError,
     Listener,
@@ -25,6 +27,10 @@ from .main_window_runtime_support import (
 
 
 from .window_feature_controller import WindowFeatureController
+from ..emotion.lifecycle import should_observe_message
+
+
+_log = logging.getLogger(__name__)
 
 
 class RuntimeController(WindowFeatureController):
@@ -254,6 +260,7 @@ class RuntimeController(WindowFeatureController):
         text = meta.text
         if not text.strip() and not res.get("stopped") and not res.get("interrupted") and not getattr(self.context.session, "_plain_retry", False):
             self.context.session._plain_retry = True            # model answered with a tag only: ask again without tags (counted as a retry)
+            self.context.adapters.director.event("response_failed")
             self.feature_controller("chat").start_worker(plain=True)
             return
         if not res.get("stopped") and not res.get("interrupted"):
@@ -267,14 +274,15 @@ class RuntimeController(WindowFeatureController):
         self.context.adapters.bubble.commit_live()
         self.finish_request(res)
         if res.get("stopped"):
+            self.context.adapters.director.event("response_cancelled")
             if text.strip():
-                self.save_message("assistant", raw, status="cancelled", metadata={"stream": "stopped"}, persist=False)
+                self.save_message("assistant", raw, status="cancelled", metadata={"stream": "stopped"}, persist=False, observe=False)
             self.feature_controller("session").add_chat("system", "تولید پاسخ متوقف شد." + (" متن دریافت‌شده نگه داشته شد." if text.strip() else ""))
             if self.context.session._speech_live:
                 self.safe_stop_speaker()                           # the Stop button also silences the rest of the spoken reply
             self.context.adapters.animator.set_expression("neutral", hold=2)
         elif res.get("interrupted"):
-            self.save_message("assistant", raw, status="interrupted", metadata={"stream": "provider_interrupted"}, persist=False)
+            self.save_message("assistant", raw, status="interrupted", metadata={"stream": "provider_interrupted"}, persist=False, observe=False)
             self.feature_controller("session").add_chat("error", f"ارتباط وسط پاسخ قطع شد؛ بخش دریافت‌شده نگه داشته شد و تکرار نمی‌شود.\n{res['interrupted']}")
             if self.context.session._speech_live:
                 self.context.services.voice_application_service.stream_end()                          # what arrived is still spoken to its end
@@ -283,6 +291,7 @@ class RuntimeController(WindowFeatureController):
             self.feature_controller("session").add_chat("error", self.feature_controller("session").t("empty"))
             self.context.adapters.director.event("response_failed")
         else:
+            self.context.adapters.director.event("response_finished")
             self.save_message("assistant", raw, persist=False)
             try:                                                   # quiet second look (rules; optional background model call)
                 brain.after_turn(self.context.session.client, self.context.services.settings, getattr(self.context.session, "_brain", brain.Decision()), getattr(self.context.session, "_brain_user_text", ""),
@@ -371,12 +380,12 @@ class RuntimeController(WindowFeatureController):
 
     def reply_local(self, text, expression="happy"):
         self.feature_controller("session").add_chat("assistant", text)
-        self.save_message("assistant", text)
+        self.save_message("assistant", text, observe=False)
         self.context.services.chat_application_service.complete_local_request(self.context.state.cur.application_request_id)
         self.context.adapters.animator.set_expression(expression, hold=4)
         self.say(text)
 
-    def save_message(self, role, content, *, status="complete", metadata=None, persist=True):
+    def save_message(self, role, content, *, status="complete", metadata=None, persist=True, observe=True):
         """Persist through ChatApplicationService; keep character memory/mood observation in the UI adapter."""
         if persist:
             outcome = self.context.services.chat_application_service.persist_message(
@@ -388,19 +397,21 @@ class RuntimeController(WindowFeatureController):
             ok = outcome.ok
         else:
             ok = True
-        self.context.services.memory_service.observe(self.context.state.cur.cid, role, content)
-        try:
-            self.feature_controller("session")._sync_mood_character()
-            if role == "user":
-                mood.on_user_message(content)
-                if self.context.state.cur is self.context.state.front:
-                    self.apply_mood_to_avatar()
-            elif role == "assistant":
-                meta = self.context.adapters.director.parse_reply(content)
-                if meta is not None:
-                    mood.on_reply(meta.emotions, meta.intensity)
-        except Exception:                                         # noqa: BLE001 - mood is a bonus, never block the chat
-            pass
+        should_observe = should_observe_message(role, status, observe=observe)
+        if should_observe:
+            self.context.services.memory_service.observe(self.context.state.cur.cid, role, content)
+            try:
+                self.feature_controller("session")._sync_mood_character()
+                if role == "user":
+                    mood.on_user_message(content)
+                    if self.context.state.cur is self.context.state.front:
+                        self.apply_mood_to_avatar()
+                elif role == "assistant":
+                    meta = self.context.adapters.director.parse_reply(content)
+                    if meta is not None:
+                        mood.on_reply(meta.emotions, meta.intensity, text=meta.text)
+            except Exception:                                     # noqa: BLE001 - mood is a bonus, never block the chat
+                _log.warning("Unable to update conversation memory/emotion state", exc_info=True)
         if persist and ok:
             self.context.state._save_warned = False
         elif persist and not ok and not self.context.state._save_warned:

@@ -88,8 +88,27 @@ class MoodStateTests(unittest.TestCase):
 
     def test_mood_prompt_recalls_memories_relevant_to_the_current_message(self):
         mood.on_user_message("فردا امتحان مهم دارم و نگرانم", now=1000)
-        block = mood.build_block("chat", now=1000, query="امتحان فردا")
+        mood.on_user_message("هورا، بالاخره برای سفر کیش بلیت گرفتم", now=1001)
+        block = mood.build_block("chat", now=1002, query="امتحان فردا")
         self.assertIn("فردا امتحان", block)
+        self.assertNotIn("سفر کیش", block)
+
+    def test_mood_prompt_has_one_authoritative_emotion_and_energy_snapshot(self):
+        mood.on_user_message("فردا امتحان مهم دارم و نگرانم", now=1000)
+
+        block = mood.build_block("chat", now=1000, query="امتحان")
+
+        self.assertEqual(block.count("Persistent emotional state:"), 1)
+        self.assertEqual(block.count("Energy:"), 1)
+        self.assertNotIn("Mood now:", block)
+
+    def test_reply_text_reaches_emotional_memory_through_legacy_facade(self):
+        mood.on_reply(["sad"], intensity=70, now=1000, text="از اینکه تنها ماندی ناراحتم")
+
+        state = mood.current(now=1000)
+
+        self.assertTrue(state["emotional_memories"])
+        self.assertIn("تنها", state["emotional_memories"][-1]["text"])
 
 
 if __name__ == "__main__":

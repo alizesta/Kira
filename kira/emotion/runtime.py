@@ -6,6 +6,8 @@ decay, relationship drift, emotional memories, event reactions and final mood.
 from __future__ import annotations
 
 import json
+import logging
+import math
 import os
 import threading
 import time
@@ -79,9 +81,38 @@ BEHAVIOR_HALF_LIFE = 55 * 60.0
 ENERGY_RECOVERY = 0.0032  # points/second; capped at 100
 MAX_MEMORIES = 120
 MAX_EVENTS = 80
+MEMORY_RETENTION_DAYS = {"interaction": 45.0, "kira_emotion": 90.0}
+MEMORY_RECENCY_HALF_LIFE_DAYS = 14.0
+EMOTIONAL_MEMORY_MIN_INTENSITY = 50.0
+_log = logging.getLogger(__name__)
+
+def _finite_float(value, default=0.0):
+    try:
+        number = float(value)
+        return number if math.isfinite(number) else float(default)
+    except (TypeError, ValueError, OverflowError):
+        return float(default)
+
+def _safe_int(value, default=0, minimum=0, maximum=None):
+    number = _finite_float(value, default)
+    try:
+        result = int(number)
+    except (TypeError, ValueError, OverflowError):
+        result = int(default)
+    result = max(int(minimum), result)
+    return min(int(maximum), result) if maximum is not None else result
+
+
+def _as_mapping(value):
+    return value if isinstance(value, dict) else {}
+
+
+def _as_list(value):
+    return value if isinstance(value, list) else []
+
 
 def _clamp(v, lo=0.0, hi=100.0):
-    return max(lo, min(hi, float(v)))
+    return max(lo, min(hi, _finite_float(v, lo)))
 
 def _decay(values, elapsed, half_life, baseline=None):
     factor = 0.5 ** (max(0.0, elapsed) / half_life)
@@ -99,7 +130,7 @@ class EmotionalRuntime:
     """Persistent emotional state. No provider, UI or Qt dependency."""
     def __init__(self, library=None, path=None, clock=time.time, base_traits=None):
         self.library = library
-        self.config = ((library.rules.get("emotional_runtime") or {}) if library else {})
+        self.config = _as_mapping(library.rules.get("emotional_runtime")) if library else {}
         self.path = Path(path) if path else Path(DATA_DIR) / STATE_FILE
         self.clock = clock
         self._lock = LOCK
@@ -113,7 +144,7 @@ class EmotionalRuntime:
         result = {}
         for key, baseline in BASE_TRAITS.items():
             try:
-                result[key] = max(0.0, min(1.0, float(values.get(key, baseline))))
+                result[key] = max(0.0, min(1.0, _finite_float(values.get(key, baseline), baseline)))
             except (TypeError, ValueError):
                 result[key] = float(baseline)
         return result
@@ -140,40 +171,116 @@ class EmotionalRuntime:
         return dict(revised)
 
     def _load(self):
+        """Load persisted state field-by-field; one malformed section must not reset the whole profile."""
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
-            if not isinstance(raw, dict):
-                return self._fresh()
-            state = self._fresh()
-            state.update({k: raw[k] for k in state if k in raw})
-            state["emotions"] = {k: _clamp(v) for k, v in (raw.get("emotions") or {}).items() if k in EMOTIONS}
-            state["behaviors"] = {k: _clamp(v) for k, v in (raw.get("behaviors") or {}).items() if k in BEHAVIORS}
-            rel = raw.get("relationship") or {}
-            state["relationship"] = {k: _clamp(rel.get(k, DEFAULTS["relationship"][k])) for k in RELATIONSHIP_KEYS}
-            state["energy"] = _clamp(raw.get("energy", self.config.get("energy_start", 76)))
-            state["memories"] = list(raw.get("memories") or [])[-int(self.config.get("memory_limit", MAX_MEMORIES)):]
-            state["recent_events"] = list(raw.get("recent_events") or [])[-int(self.config.get("event_limit", MAX_EVENTS)):]
-            state["last_user_signals"] = list(raw.get("last_user_signals") or [])
-            stored_traits = raw.get("personality_traits") if isinstance(raw.get("personality_traits"), dict) else {}
-            state["personality_traits"] = {
-                key: max(0.0, min(1.0, float(stored_traits.get(key, baseline))))
-                for key, baseline in self.base_traits.items()
-            }
-            evidence = raw.get("feedback_evidence") if isinstance(raw.get("feedback_evidence"), dict) else {}
-            state["feedback_evidence"] = {
-                str(key): {
-                    "count": max(0, int(value.get("count", 0))),
-                    "applied": max(0, int(value.get("applied", 0))),
-                    "last_at": max(0.0, float(value.get("last_at", 0.0))),
-                }
-                for key, value in evidence.items() if isinstance(value, dict)
-            }
-            state["last_initiative"] = max(0.0, float(raw.get("last_initiative", 0.0) or 0.0))
-            state["last_initiative_memory_id"] = str(raw.get("last_initiative_memory_id") or "")[:64]
-            state["schema"] = 3
-            return state
         except (OSError, ValueError, TypeError):
             return self._fresh()
+        if not isinstance(raw, dict):
+            return self._fresh()
+
+        state = self._fresh()
+        now = max(0.0, _finite_float(self.clock(), 0.0))
+
+        emotions = _as_mapping(raw.get("emotions"))
+        state["emotions"] = {
+            key: _clamp(value)
+            for key, value in emotions.items()
+            if key in EMOTIONS
+        }
+        behaviors = _as_mapping(raw.get("behaviors"))
+        state["behaviors"] = {
+            key: _clamp(value)
+            for key, value in behaviors.items()
+            if key in BEHAVIORS
+        }
+
+        relationship = _as_mapping(raw.get("relationship"))
+        state["relationship"] = {
+            key: _clamp(relationship.get(key, DEFAULTS["relationship"][key]))
+            for key in RELATIONSHIP_KEYS
+        }
+        state["energy"] = _clamp(raw.get("energy", self.config.get("energy_start", 76)))
+
+        memory_limit = _safe_int(
+            self.config.get("memory_limit", MAX_MEMORIES),
+            MAX_MEMORIES,
+            minimum=1,
+            maximum=MAX_MEMORIES,
+        )
+        memories = []
+        for saved in _as_list(raw.get("memories"))[-memory_limit:]:
+            if not isinstance(saved, dict) or not str(saved.get("text") or "").strip():
+                continue
+            item = dict(saved)
+            kind = str(item.get("kind") or "interaction")
+            if kind not in ("interaction", "kira_emotion"):
+                continue
+            item["kind"] = kind
+            item["text"] = str(item["text"]).strip()[:280]
+            item["impact"] = _clamp(_finite_float(item.get("impact", 0.0)))
+            item["created"] = min(now, max(0.0, _finite_float(item.get("created", 0.0))))
+            item["reinforced_at"] = min(
+                now,
+                max(
+                    item["created"],
+                    _finite_float(item.get("reinforced_at", item["created"]), item["created"]),
+                ),
+            )
+            item["last_recalled"] = min(now, max(0.0, _finite_float(item.get("last_recalled", 0.0))))
+            item["recall_count"] = _safe_int(item.get("recall_count", 0))
+            item["reinforcements"] = _safe_int(item.get("reinforcements", 0))
+            item["speaker"] = "assistant" if kind == "kira_emotion" else "user"
+            memories.append(item)
+        state["memories"] = memories
+
+        event_limit = _safe_int(
+            self.config.get("event_limit", MAX_EVENTS),
+            MAX_EVENTS,
+            minimum=1,
+            maximum=MAX_EVENTS,
+        )
+        recent_events = []
+        for saved in _as_list(raw.get("recent_events"))[-event_limit:]:
+            if not isinstance(saved, dict) or not str(saved.get("name") or "").strip():
+                continue
+            recent_events.append({
+                "name": str(saved["name"])[:80],
+                "at": min(now, max(0.0, _finite_float(saved.get("at", now), now))),
+                "detail": str(saved.get("detail") or "")[:180],
+            })
+        state["recent_events"] = recent_events
+
+        valid_signals = set(USER_EFFECTS)
+        state["last_user_signals"] = [
+            str(signal) for signal in _as_list(raw.get("last_user_signals"))
+            if str(signal) in valid_signals
+        ][-len(valid_signals):]
+
+        stored_traits = _as_mapping(raw.get("personality_traits"))
+        state["personality_traits"] = {
+            key: max(0.0, min(1.0, _finite_float(stored_traits.get(key, baseline), baseline)))
+            for key, baseline in self.base_traits.items()
+        }
+
+        raw_evidence = _as_mapping(raw.get("feedback_evidence"))
+        evidence = {}
+        for key, value in raw_evidence.items():
+            if not isinstance(value, dict):
+                continue
+            evidence[str(key)[:80]] = {
+                "count": _safe_int(value.get("count", 0)),
+                "applied": _safe_int(value.get("applied", 0)),
+                "last_at": min(now, max(0.0, _finite_float(value.get("last_at", 0.0)))),
+            }
+        state["feedback_evidence"] = evidence
+        state["updated"] = min(now, max(0.0, _finite_float(raw.get("updated", 0.0))))
+        state["last_interaction"] = min(now, max(0.0, _finite_float(raw.get("last_interaction", 0.0))))
+        state["last_initiative"] = min(now, max(0.0, _finite_float(raw.get("last_initiative", 0.0))))
+        state["last_initiative_memory_id"] = str(raw.get("last_initiative_memory_id") or "")[:64]
+        state["schema"] = 3
+        return state
+
 
     def _save(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -183,6 +290,7 @@ class EmotionalRuntime:
             os.replace(tmp, self.path)
         except OSError:
             # Emotional continuity must never make chat unavailable.
+            _log.warning("Unable to persist emotional state", exc_info=True)
             try:
                 tmp.unlink(missing_ok=True)
             except OSError:
@@ -228,7 +336,8 @@ class EmotionalRuntime:
 
     def _event(self, name, now, detail=None):
         self._state["recent_events"].append({"name": str(name), "at": now, "detail": str(detail or "")[:180]})
-        self._state["recent_events"] = self._state["recent_events"][-int(self.config.get("event_limit", MAX_EVENTS)):]
+        event_limit = _safe_int(self.config.get("event_limit", MAX_EVENTS), MAX_EVENTS, minimum=1, maximum=MAX_EVENTS)
+        self._state["recent_events"] = self._state["recent_events"][-event_limit:]
 
     def _memory(self, kind, text, impact, now, signal=None):
         text = str(text or "").strip()[:280]
@@ -243,10 +352,11 @@ class EmotionalRuntime:
             existing["reinforcements"] = int(existing.get("reinforcements", 0)) + 1
             return
         # Only high-signal events become long-lived memories; ordinary chat stays in short event history.
-        self._state["memories"].append({"kind": kind, "signal": signal, "text": text, "impact": _clamp(impact),
+        self._state["memories"].append({"kind": kind, "signal": signal, "speaker": "assistant" if kind == "kira_emotion" else "user", "text": text, "impact": _clamp(impact),
                                         "created": now, "reinforced_at": now, "last_recalled": 0.0,
                                         "recall_count": 0, "reinforcements": 0})
-        self._state["memories"] = self._state["memories"][-int(self.config.get("memory_limit", MAX_MEMORIES)):]
+        memory_limit = _safe_int(self.config.get("memory_limit", MAX_MEMORIES), MAX_MEMORIES, minimum=1, maximum=MAX_MEMORIES)
+        self._state["memories"] = self._state["memories"][-memory_limit:]
 
     def observe_feedback(self, category, text="", now=None):
         """Learn from repeated, explicit feedback without letting one message rewrite Kira's identity."""
@@ -295,36 +405,69 @@ class EmotionalRuntime:
     @staticmethod
     def _memory_tokens(text):
         import re
-        value = str(text or "").replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ").lower()
-        tokens = set(re.findall(r"[a-z0-9آ-ی]{2,}", value))
+        value = str(text or "").translate(str.maketrans({
+            "ي": "ی", "ك": "ک", "ۀ": "ه", "ة": "ه", "أ": "ا", "إ": "ا",
+            "ؤ": "و", "ئ": "ی", "۰": "0", "۱": "1", "۲": "2", "۳": "3",
+            "۴": "4", "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9",
+        })).replace("\u200c", " ").lower()
+        value = re.sub(r"[ً-ٰٟـ\u200d\u200e\u200f]", "", value)
+        words = re.findall(r"[a-z0-9آ-ی]{2,}", value)
         stop = {
             "این", "اون", "برای", "من", "تو", "که", "از", "به", "با", "رو", "را", "در", "و",
             "the", "and", "for", "with", "that", "this", "you", "your", "was", "are", "have",
         }
-        return tokens - stop
+        synonyms = {
+            "امتحان": {"آزمون"}, "آزمون": {"امتحان"},
+            "سفر": {"مسافرت"}, "مسافرت": {"سفر"},
+            "دکتر": {"پزشک"}, "پزشک": {"دکتر"},
+            "نگرانی": {"اضطراب"}, "اضطراب": {"نگرانی", "استرس"},
+            "استرس": {"اضطراب", "نگرانی"},
+            "گرافیک": {"gpu"}, "gpu": {"گرافیک"},
+        }
+        expanded_words = set(words)
+        for word in words:
+            expanded_words.update(synonyms.get(word, ()))
+        tokens = {word for word in expanded_words if word not in stop}
+        # Trigrams allow lexical recall across common Persian inflections.
+        for word in expanded_words:
+            if word not in stop and len(word) >= 4:
+                tokens.update("#" + word[i:i + 3] for i in range(len(word) - 2))
+        return tokens
 
     def recall_memories(self, query=None, limit=4, now=None):
-        """Retrieve high-signal memories relevant to the current message, with recency and impact weighting."""
-        now = self.clock() if now is None else float(now)
-        query_tokens = self._memory_tokens(query)
+        """Retrieve topic-relevant emotional memories with bounded retention and recency weighting."""
+        now = self.clock() if now is None else _finite_float(now, self.clock())
+        query_tokens = self._memory_tokens(query) if query is not None else set()
+        if query is not None and not query_tokens:
+            return []
+        with self._lock:
+            memories = [
+                dict(memory) for memory in self._state["memories"]
+                if isinstance(memory, dict)
+            ]
         ranked = []
-        for memory in self._state["memories"]:
-            text = str(memory.get("text", ""))
+        for memory in memories:
+            if not isinstance(memory, dict):
+                continue
+            text = str(memory.get("text") or "")
+            if not text:
+                continue
             overlap = len(query_tokens & self._memory_tokens(text)) if query_tokens else 0
-            age_days = max(0.0, now - float(memory.get("reinforced_at") or memory.get("created") or now)) / 86400.0
-            recency = max(0.0, 12.0 - age_days * 0.45)
-            impact = _clamp(memory.get("impact", 0))
+            if query is not None and overlap == 0:
+                continue
+            reinforced = _finite_float(memory.get("reinforced_at") or memory.get("created"), now)
+            age_days = max(0.0, now - reinforced) / 86400.0
+            retention_days = MEMORY_RETENTION_DAYS.get(str(memory.get("kind") or ""), 45.0)
+            if age_days > retention_days:
+                continue
+            recency = 12.0 * (0.5 ** (age_days / MEMORY_RECENCY_HALF_LIFE_DAYS))
+            impact = _clamp(_finite_float(memory.get("impact", 0.0)))
             signal_bonus = 5.0 if memory.get("signal") in ("down", "stressed", "excited", "apology") else 0.0
             score = impact * 0.22 + recency + signal_bonus + overlap * (24.0 if query_tokens else 0.0)
-            if query_tokens and overlap == 0 and age_days > 3:
-                score -= 10.0
             if score > 8.0:
-                ranked.append((score, memory))
-        ranked.sort(key=lambda item: (item[0], float(item[1].get("reinforced_at") or item[1].get("created") or 0)), reverse=True)
-        selected = []
-        for _score, memory in ranked[:max(1, int(limit))]:
-            selected.append(dict(memory))
-        return selected
+                ranked.append((score, reinforced, memory))
+        ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return [dict(memory) for _score, _time, memory in ranked[:max(0, int(limit))]]
 
     def on_user_message(self, text, signals=(), now=None):
         now = self.clock() if now is None else float(now)
@@ -375,8 +518,10 @@ class EmotionalRuntime:
             self.relationship_engine.on_reply(
                 self._state["relationship"], valid, self.config.get("relationship_deltas", {})
             )
-            if text and any(e in valid for e in ("sad", "angry", "fearful", "disappointed")):
-                self._memory("kira_emotion", str(text)[:120], level * 0.25, now)
+            if text and level >= EMOTIONAL_MEMORY_MIN_INTENSITY and any(
+                e in valid for e in ("sad", "angry", "fearful", "disappointed")
+            ):
+                self._memory("kira_emotion", str(text), level * 0.25, now)
             self._save()
         return self.snapshot(now)
 
@@ -454,8 +599,15 @@ class EmotionalRuntime:
             "Keep continuity with prior turns. Do not announce internal state or fabricate memories.",
         ]
         if state["recalled_memories"]:
-            lines.append("Relevant recalled emotional continuity (use only when naturally relevant; do not assume an old event is still current): " +
-                         "; ".join(m["text"] for m in state["recalled_memories"][:3]))
+            recalled_lines = []
+            for memory in state["recalled_memories"][:3]:
+                speaker = memory.get("speaker") or ("assistant" if memory.get("kind") == "kira_emotion" else "user")
+                source = "Kira's prior response" if speaker == "assistant" else "User's prior experience"
+                recalled_lines.append(f"{source}: {memory['text']}")
+            lines.append(
+                "Relevant recalled emotional continuity (use only when naturally relevant; do not assume an old event is current): "
+                + "; ".join(recalled_lines)
+            )
         trait_changes = []
         for key, value in state["personality_traits"].items():
             baseline = self.base_traits[key]

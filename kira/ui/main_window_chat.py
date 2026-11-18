@@ -282,6 +282,7 @@ class ChatController(WindowFeatureController):
         try:
             self.start_worker(plain=False)
         except Exception as exc:                                  # noqa: BLE001 - never leave the window stuck in 'busy'
+            self.context.adapters.director.event("response_failed")
             self.context.services.chat_application_service.fail_request(
                 self.context.state.cur.application_request_id, f"{type(exc).__name__}: {exc}"
             )
@@ -433,6 +434,7 @@ class ChatController(WindowFeatureController):
             )
         else:
             # no usable web result: do not let the model improvise from memory; Kira says she does not know
+            self.context.adapters.director.event("response_failed")
             self.feature_controller("session").add_chat("system", f"🌐 جست‌وجوی وب انجام نشد: {result}")
             self.context.session._turn_extra = None
             self.feature_controller("runtime").reply_local(self.context.services.web_search_service.failure_reply(result), "sad")
@@ -458,7 +460,7 @@ class ChatController(WindowFeatureController):
                 character_id,
                 older,
                 voice_samples=(mode is None or mode.name == modes.CHAT),
-                query=evidence_memory.query_from_context(history) if character_id == "kira" else None,
+                query=evidence_memory.query_from_context(history),
                 budget=evidence_memory.budget_for(self.context.services.settings, self.context.session.client),
             )
             total = self.context.services.chat_application_service.message_count(

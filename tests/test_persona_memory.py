@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -106,6 +107,61 @@ class PersonaMemoryTests(unittest.TestCase):
         self.assertLess(prompt.index("Kira's own memory"), prompt.index("FORMAT"))
         self.assertIn("You are Kira", prompt)
 
+    def test_non_kira_memory_recall_uses_current_topic_and_keeps_identity(self):
+        with pm.character_scope("ren"):
+            pm.add_fact("name", "نام کاربر علی است", now=1000)
+            pm.add_fact("job", "شغل کاربر مهندس نرم‌افزار است", now=1001)
+            pm.add_fact("note", "کاربر به موسیقی راک علاقه دارد", now=1002)
+
+            block = pm.build_block(query="آلبوم‌های موسیقی راک", now=1003)
+
+            self.assertIn("نام کاربر علی است", block)
+            self.assertIn("موسیقی راک", block)
+            self.assertNotIn("مهندس نرم‌افزار", block)
+
+        with pm.character_scope("mika"):
+            self.assertEqual(pm.build_block(query="آلبوم‌های موسیقی راک", now=1003), "")
+
+    def test_moments_and_summaries_are_recalled_by_topic(self):
+        with pm.character_scope("mika"):
+            pm.add_moment("event", "فردا امتحان زبان دارم", now=1000)
+            pm.add_moment("event", "هفته بعد سفر شیراز دارم", now=1001)
+            data = pm._load()
+            data["summaries"] = [
+                {"kind": "summary", "text": "درباره امتحان زبان و منابعش صحبت کردیم", "ts": 1000, "id": "exam"},
+                {"kind": "summary", "text": "درباره سفر شیراز و هتل صحبت کردیم", "ts": 1001, "id": "trip"},
+            ]
+            pm._save(data)
+
+            block = pm.build_block(query="برای سفر شیراز چه برنامه‌ای گفته بودم؟", now=1002)
+
+        self.assertIn("سفر شیراز", block)
+        self.assertIn("هتل", block)
+        self.assertNotIn("امتحان زبان", block)
+
+    def test_kira_uses_persona_relevance_fallback_when_evidence_index_is_unavailable(self):
+        with pm.character_scope("kira"):
+            pm.add_fact("job", "شغل کاربر مهندس نرم‌افزار است", now=1000)
+            with mock.patch.object(pm._evidence, "build_block", return_value=None):
+                block = pm.build_block(query="درباره کار مهندس نرم‌افزار بگو", now=1001)
+
+        self.assertIn("مهندس نرم‌افزار", block)
+
+    def test_memory_budget_keeps_complete_lines(self):
+        header = "Header"
+        first = "Section:\n- complete fact"
+        second = "- this second line must not be cut"
+        budget = len(header) + 2 + len(first)
+        block = pm._fit_memory_block(header, [first + "\n" + second], budget)
+
+        self.assertEqual(block, header + "\n\n" + first)
+        self.assertLessEqual(len(block), budget)
+
+    def test_current_topic_is_passed_to_memory_for_every_character(self):
+        source = (Path(__file__).resolve().parents[1] / "kira" / "ui" / "main_window_chat.py").read_text(encoding="utf-8")
+        self.assertIn("query=evidence_memory.query_from_context(history),", source)
+        self.assertNotIn("query=evidence_memory.query_from_context(history) if character_id == ", source)
+
     def test_empty_memory_adds_nothing_and_forget(self):
         self.assertEqual(pm.build_block(), "")
         pm.observe("user", "my name is Sara")
@@ -116,6 +172,140 @@ class PersonaMemoryTests(unittest.TestCase):
         pm.forget_facts()
         self.assertEqual(pm.facts(), [])
 
+
+    def test_ready_but_empty_evidence_index_falls_back_to_persona_facts(self):
+        with pm.character_scope("kira"):
+            pm.add_fact("job", "شغل کاربر مهندس نرم‌افزار است", now=1000)
+            with mock.patch.object(pm._evidence, "build_block", return_value=""):
+                block = pm.build_block(query="درباره کار مهندس نرم‌افزار بگو", now=1001)
+        self.assertIn("مهندس نرم‌افزار", block)
+
+    def test_memory_budget_does_not_let_voice_starve_facts(self):
+        header = "Header"
+        oversized_voice = "Voice:\n- " + ("v" * 300)
+        facts = "Facts:\n- مهم‌ترین واقعیت"
+        budget = len(header) + 2 + len(facts)
+        block = pm._fit_memory_block(header, [oversized_voice, facts], budget)
+        self.assertIn("مهم‌ترین واقعیت", block)
+        self.assertNotIn("v" * 100, block)
+        self.assertLessEqual(len(block), budget)
+
+    def test_zero_budget_is_respected(self):
+        self.assertEqual(pm._fit_memory_block("Header", ["Fact"], 0), "")
+        with pm.character_scope("mika"):
+            pm.add_fact("job", "شغل کاربر مهندس نرم‌افزار است", now=1000)
+            self.assertEqual(pm.build_block(query="مهندس نرم‌افزار", budget=0), "")
+
+    def test_missing_identity_ids_do_not_hide_other_facts(self):
+        facts = [
+            {"kind": "name", "text": "نام کاربر علی است", "ts": 1000},
+            {"kind": "job", "text": "شغل کاربر مهندس نرم‌افزار است", "ts": 1001},
+        ]
+        selected = pm._select_persona_facts(facts, "مهندس نرم‌افزار")
+        self.assertEqual(len(selected), 2)
+
+    def test_relevance_fixture_has_useful_top_one_recall(self):
+        # Small deterministic regression corpus spanning preferences, identity,
+        # events, health, work and technology, with unrelated distractors.
+        corpus = [
+            "کاربر موسیقی راک را دوست دارد",
+            "کاربر به موسیقی سنتی علاقه دارد",
+            "کاربر مهندس نرم‌افزار است",
+            "کاربر هفته آینده به شیراز سفر می‌کند",
+            "کاربر فردا امتحان زبان دارد",
+            "کارت گرافیک کامپیوتر کاربر خراب شده است",
+            "کاربر برای آلرژی به پزشک مراجعه می‌کند",
+            "کاربر به آشپزی ایتالیایی علاقه دارد",
+            "کاربر برای مصاحبه شغلی آماده می‌شود",
+            "کاربر قصد خرید لپ‌تاپ دارد",
+            "کاربر مسابقات فوتبال را دنبال می‌کند",
+            "کاربر از فیلم ترسناک خوشش نمی‌آید",
+        ]
+        cases = [
+            ("آلبوم موسیقی راک", 0),
+            ("شغل مهندس نرم‌افزار", 2),
+            ("برنامه مسافرت شیراز", 3),
+            ("آزمون زبان فردا", 4),
+            ("مشکل GPU کامپیوتر", 5),
+            ("پزشک آلرژی", 6),
+            ("غذای ایتالیایی", 7),
+            ("مصاحبه شغلی", 8),
+            ("خرید لپ‌تاپ", 9),
+            ("مسابقات فوتبال", 10),
+            ("فیلم ترسناک", 11),
+        ]
+        hits = 0
+        for query, expected in cases:
+            with self.subTest(query=query):
+                ranking = pm._evidence.rank_texts(corpus, query)
+                self.assertTrue(ranking, f"no result for {query}")
+                hits += int(ranking[0] == expected)
+        self.assertGreaterEqual(hits / len(cases), 0.90)
+
+    def test_evidence_render_skips_oversized_facts_without_truncating_or_starving_later_lines(self):
+        facts = [
+            {"text": "واقعیت بسیار طولانی " * 20, "created_at": 1000, "status": "active", "category": "permanent"},
+            {"text": "واقعیت کوتاه و مهم", "created_at": 1001, "status": "active", "category": "permanent"},
+        ]
+        rendered = pm._evidence.render(facts, budget=80)
+        self.assertIn("واقعیت کوتاه و مهم", rendered)
+        self.assertNotIn("واقعیت بسیار طولانی", rendered)
+
+    def test_synonym_query_recalls_a_matching_persian_fact(self):
+        corpus = ["کاربر فردا امتحان زبان دارد", "کاربر آخر هفته سفر می‌کند"]
+        ranked = pm._evidence.rank_texts(corpus, "آزمون فردا")
+        self.assertTrue(ranked)
+        self.assertEqual(ranked[0], 0)
+
+    def test_short_smalltalk_does_not_pull_previous_topic_into_query(self):
+        context = [
+            {"role": "user", "content": "درباره کارت گرافیک صحبت کردیم"},
+            {"role": "user", "content": "مرسی"},
+        ]
+        self.assertEqual(pm._evidence.query_from_context(context), "مرسی")
+
+    def test_digest_ranks_full_message_and_centers_excerpt_on_matched_topic(self):
+        source = "درباره یک موضوع دیگر صحبت کردیم. " + ("متن نامرتبط " * 18) + "در پایان درباره سفر شیراز و هتل صحبت کردیم"
+        lines = pm.digest([{"role": "user", "content": source}], query="مسافرت شیراز هتل")
+        self.assertEqual(len(lines), 1)
+        self.assertIn("سفر شیراز", lines[0])
+        self.assertIn("هتل", lines[0])
+        self.assertLessEqual(len(lines[0]), 242)
+
+
+    def test_corrupt_habits_do_not_erase_valid_persona_facts(self):
+        payload = {
+            "voice": [],
+            "facts": [{"kind": "job", "text": "شغل کاربر مهندس نرم‌افزار است", "ts": 1000}],
+            "moments": [],
+            "summaries": [],
+            "habits": {"hours": ["bad"] * 24, "messages": "broken", "chars": 0},
+            "summarized": "broken",
+        }
+        pm._path().write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+        loaded = pm._load()
+
+        self.assertEqual(loaded["facts"][0]["text"], "شغل کاربر مهندس نرم‌افزار است")
+        self.assertEqual(loaded["habits"]["messages"], 0)
+        self.assertEqual(loaded["habits"]["hours"], [0] * 24)
+        self.assertEqual(loaded["summarized"], 0)
+
+    def test_observation_failures_are_logged_without_escaping(self):
+        with mock.patch.object(pm, "extract_facts_detailed", side_effect=RuntimeError("synthetic failure")):
+            with self.assertLogs("kira.persona_memory", level="WARNING") as captured:
+                pm.observe("user", "این یک پیام معتبر برای تست است")
+
+        self.assertTrue(any("Persona-memory observation failed" in line for line in captured.output))
+
+
+    def test_malformed_character_voice_container_does_not_become_single_character_samples(self):
+        with pm.character_scope("ren"):
+            voice_path = pm._voice_path()
+            voice_path.parent.mkdir(parents=True, exist_ok=True)
+            voice_path.write_text('{"voice":"not-a-list"}', encoding="utf-8")
+
+            self.assertEqual(pm._load()["voice"], [])
 
 if __name__ == "__main__":
     unittest.main()
