@@ -144,7 +144,7 @@ The Chat core modules should depend on Python data contracts and narrow Protocol
 - Organization writes use `ChatPersistence.mutate_conversations` and `mutate_all_conversations`: callbacks receive the latest row under a SQLite write transaction; bulk character-scoped updates commit or roll back as one unit.
 - These transaction APIs preserve the complete metadata document and only persist the returned title/metadata fields; lifecycle status remains owned by the lifecycle transaction API.
 - Search reads message pages and, when needed, conversation status through the injected Core repository ports. The DTOs live in Domain and the query/ranking/pagination use case lives in Application.
-- Transfer Domain owns schema/value invariants and secret filtering; the Transfer Application use case owns parsing/export orchestration, while Persistence owns durable import transactions.
+- Transfer Domain owns schema/value invariants and secret filtering; the Transfer Application use case owns parsing/export orchestration, while Persistence owns durable import transactions. Path-based reads and atomic export-file writes remain a known Flow 3 Infrastructure extraction point.
 - AttachmentManager owns attachment processing/storage contracts and must not become a second Chat history store.
 
 ## 5. Application and non-Chat capability ownership
