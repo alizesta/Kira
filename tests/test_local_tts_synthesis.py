@@ -41,7 +41,7 @@ class _FakePiperVoice:
         wav_file.setnchannels(1)
         wav_file.setsampwidth(2)
         wav_file.setframerate(24000)
-        wav_file.writeframes(b"\\x00\\x00" * 240)
+        wav_file.writeframes(b"\x00\x00" * 240)
 
 
 def _fake_piper_module():
@@ -185,8 +185,8 @@ class LocalPiperSynthesisTests(unittest.TestCase):
         self.assertEqual(path, model)
         self.assertEqual(label, "bundled")
         self.assertEqual(hub.snapshot_download.call_count, 2)
-        self.assertFalse(hub.snapshot_download.call_args_list[0].kwargs["local_files_only"])
-        self.assertTrue(hub.snapshot_download.call_args_list[1].kwargs["local_files_only"])
+        self.assertTrue(hub.snapshot_download.call_args_list[0].kwargs["local_files_only"])
+        self.assertFalse(hub.snapshot_download.call_args_list[1].kwargs["local_files_only"])
 
     def test_custom_model_must_have_its_piper_sidecar_configuration(self):
         with tempfile.TemporaryDirectory() as temp:
