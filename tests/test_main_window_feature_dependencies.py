@@ -27,7 +27,7 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
         "CharacterSettingsController", "VoiceSettingsController", "SessionController",
     )
 
-    def test_each_feature_mixin_uses_its_scoped_dependency_module(self):
+    def test_each_feature_controller_uses_its_scoped_dependency_module(self):
         for filename, feature in self.FEATURES.items():
             source = (UI / filename).read_text(encoding="utf-8")
             self.assertIn(
