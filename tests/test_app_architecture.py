@@ -94,7 +94,7 @@ class ChatHistoryServiceBoundaryTests(unittest.TestCase):
         ) as recent:
             self.assertEqual(service.recent_messages(8, "mika"), expected)
 
-        recent.assert_called_once_with(8, "mika")
+        recent.assert_called_once_with(8, "mika", None)
 
     def test_history_service_translates_storage_errors_to_core_exception(self):
         from unittest.mock import patch
