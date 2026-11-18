@@ -940,7 +940,7 @@ def render(facts, budget) -> str:
         fact_text = " ".join(str(fact.get("text") or "").split())
         if not fact_text:
             continue
-        line = f"- {fact_text} [{day}]{mark}
+        line = f"- {fact_text} [{day}]{mark}"
         if used + len(line) + (1 if lines else 0) > max(0, int(budget)):
             continue
         lines.append(line)
