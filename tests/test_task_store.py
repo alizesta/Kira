@@ -52,6 +52,17 @@ class TaskStorePersistenceTests(unittest.TestCase):
             self.assertFalse(reader.save())
             self.assertEqual(path.read_bytes(), original)
 
+    def test_session_clear_does_not_delete_shared_file_with_unreadable_records(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "kira_tasks.json"
+            original = b'{"version":1,"plans":["malformed"]}'
+            path.write_bytes(original)
+
+            store = TaskStore(Path(temp))
+            store.clear(session_id="kira")
+
+            self.assertEqual(path.read_bytes(), original)
+
     def test_task_store_saves_valid_json_through_atomic_temp_file(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
