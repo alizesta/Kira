@@ -1,4 +1,4 @@
-"""Voice settings behavior mixin for the desktop window."""
+"""Voice settings feature controller."""
 from .main_window_voice_settings_support import (
     AssistantPage,
     ChatComposer,
