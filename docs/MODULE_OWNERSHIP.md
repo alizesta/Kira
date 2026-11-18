@@ -292,3 +292,16 @@ this environment.
 - Required peer dependencies must use `WindowFeatureController.feature_controller()` and fail with `LookupError` when the feature is not registered.
 - Optional lookup is reserved for composition/dispatch paths that explicitly support an absent controller.
 - This registry contract does not yet replace the legacy window-backed attribute proxy; that migration remains tracked in the architecture roadmap.
+
+
+### Explicit presentation context ownership — 2026-11-18
+
+WindowPresentationContext is now the only shared presentation contract provided to the window-scoped feature controllers. Its strict buckets own window-level UI state, injected application services, platform/presentation adapters, and shared widget references. Each bucket rejects undeclared fields; there is no fallback to arbitrary MainWindow attributes.
+
+Per-session state is stored on the active ChatSession and exposed through context.session. This includes Vision worker/session handles and the pending voice-input flag. Context front-only buckets preserve the existing Kira/Ren/Mika presentation isolation by returning NOOP or Muted resources when a background session is processing an event.
+
+The eight feature controllers use explicit context.state, context.services, context.adapters and context.views references. Peer workflow calls use feature_controller(owner), which resolves a required dependency through the immutable FeatureControllerRegistry. Chat/Voice application callback adapters receive the context and retrieve callbacks from their owning controllers.
+
+WindowFeatureController no longer forwards arbitrary attribute reads or writes to the host, and MainWindow no longer forwards feature methods or session/front-only properties. The host reference remains available only as the explicit Qt parent and native-window API boundary. The shell owns no feature policy or shared presentation state.
+
+Source-level contracts are documented and regression tests were updated, but Python tests have not been executed. Windows/GUI and GitHub Actions validation remain outside this development stream.
