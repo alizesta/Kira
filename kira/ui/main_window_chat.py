@@ -53,7 +53,7 @@ class ChatController(WindowFeatureController):
     def _cancel_application_provider(self, request, _worker):
         session = self.session_manager.get_session(request.session_id)
         if session is not None and session.client is not None:
-            with self._as(session):
+            with self.feature_controller("session")._as(session):
                 session.client.cancel()
 
     def _dispatch_application_request(self, request):
@@ -61,7 +61,7 @@ class ChatController(WindowFeatureController):
         if self._closing or session is None:
             self.chat_application_service.complete_local_request(request.request_id)
             return
-        with self._as(session):
+        with self.feature_controller("session")._as(session):
             session.application_request_id = request.request_id
             self._process_chat_request(request.text, list(request.attachments), request.voice)
 
@@ -76,7 +76,7 @@ class ChatController(WindowFeatureController):
                 session.application_request_id = event.request_id
             else:
                 return
-        with self._as(session):
+        with self.feature_controller("session")._as(session):
             if (event.persistence_ok is False
                     and event.kind in (
                         ApplicationEventKind.REQUEST_COMPLETED,
@@ -85,13 +85,13 @@ class ChatController(WindowFeatureController):
                     )
                     and not self._save_warned):
                 self._save_warned = True
-                self.add_chat(
+                self.feature_controller("session").add_chat(
                     "error",
                     "ذخیره‌ی پاسخ روی دیسک ناموفق بود. پاسخ تا اولین ذخیره‌ی موفق در حافظه نگه داشته می‌شود."
                     + (f"\nعلت: {event.error}" if event.error else ""),
                 )
             if event.kind is ApplicationEventKind.PROVIDER_CHUNK:
-                self.on_stream_chunk(event.chunk, event.content)
+                self.feature_controller("runtime").on_stream_chunk(event.chunk, event.content)
             elif event.kind is ApplicationEventKind.PROVIDER_FINAL and event.result is not None:
                 result = event.result
                 response = dict(result.metadata)
@@ -101,9 +101,9 @@ class ChatController(WindowFeatureController):
                     "request_id": event.request_id,
                     "session_id": event.session_id,
                 })
-                self.on_stream_done(response)
+                self.feature_controller("runtime").on_stream_done(response)
             elif event.kind is ApplicationEventKind.REQUEST_CANCELLED:
-                self.on_stream_done({
+                self.feature_controller("runtime").on_stream_done({
                     "text": event.content,
                     "stopped": True,
                     "request_id": event.request_id,
@@ -111,14 +111,14 @@ class ChatController(WindowFeatureController):
                 })
             elif event.kind is ApplicationEventKind.REQUEST_FAILED:
                 if event.metadata.get("interrupted"):
-                    self.on_stream_done({
+                    self.feature_controller("runtime").on_stream_done({
                         "text": event.content,
                         "interrupted": event.error or "Provider stream interrupted",
                         "request_id": event.request_id,
                         "session_id": event.session_id,
                     })
                 else:
-                    self.on_error(event.error or "Chat request failed")
+                    self.feature_controller("runtime").on_error(event.error or "Chat request failed")
 
     def submit(self, text, attachments=None, _voice=None):
         if self.cur.status in ("closing", "closed", "failed"):
@@ -143,9 +143,9 @@ class ChatController(WindowFeatureController):
                 control_dispatch = None
             if control_dispatch is not None and control_dispatch.handled:
                 if control_dispatch.reply_text:
-                    self.add_chat("system", control_dispatch.reply_text)
+                    self.feature_controller("session").add_chat("system", control_dispatch.reply_text)
                 return
-        self._ensure_session_conversation(self.cur)
+        self.feature_controller("session")._ensure_session_conversation(self.cur)
         result = self.chat_application_service.submit_message(
             self.cur.session_id, text, attachments, voice,
             busy=self.busy, force_queue=wait_for_vision,
@@ -162,7 +162,7 @@ class ChatController(WindowFeatureController):
                 )
                 vision_worker.cancel_request()
                 if not vision_worker.isRunning():
-                    QTimer.singleShot(0, lambda owner=self.cur: self._send_pending_for_session(owner))
+                    QTimer.singleShot(0, lambda owner=self.cur: self.feature_controller("attachments_vision")._send_pending_for_session(owner))
             else:
                 self.status.setText(f"پیام در صف است ({count}) — بعد از پایان پاسخ فعلی ارسال می‌شود.")
             return
@@ -179,7 +179,7 @@ class ChatController(WindowFeatureController):
         ):
             return  # Coding Agent owns this separate execution lifecycle.
         if self._game_mode_enabled and len(attachments or []) < self.chat_application_service.max_attachments:
-            frame = self._game_vision_attachment()
+            frame = self.feature_controller("attachments_vision")._game_vision_attachment()
             if frame is not None:
                 attachments = list(attachments or []) + [frame]
                 try:
@@ -192,7 +192,7 @@ class ChatController(WindowFeatureController):
         self._turn_voice = voice
         if self.voice_application_service.is_speaking():
             self.director.event("user_interrupt")
-        self.safe_stop_speaker()
+        self.feature_controller("runtime").safe_stop_speaker()
         self.animator.touch()
         self._body_done = []
         original_text = str(text or "")
@@ -241,7 +241,7 @@ class ChatController(WindowFeatureController):
             packed["stored"] = presentation["stored"]
         self._turn_extra = packed
         self._turn_attach_kinds = [str(item.get("kind")) for item in (attachments or [])]
-        self.add_chat(
+        self.feature_controller("session").add_chat(
             "user",
             packed["display"] if packed else original_text,
             images=attachments if packed else None,
@@ -251,15 +251,15 @@ class ChatController(WindowFeatureController):
             if command_dispatch.handled and not command_dispatch.continue_chat
             else self.tool_agent.plan(text, session_id=self.cur.cid)
         )
-        self.save_message("user", packed["stored"] if packed else original_text)
+        self.feature_controller("runtime").save_message("user", packed["stored"] if packed else original_text)
         if command_dispatch.handled and not command_dispatch.continue_chat:
-            self.reply_local(command_dispatch.reply_text or "فرمان اجرا شد.")
+            self.feature_controller("runtime").reply_local(command_dispatch.reply_text or "فرمان اجرا شد.")
             return
         self.busy = True
         self.gen_stop_btn.show()
-        self.set_status("st_thinking")
-        self.set_badge("connecting", self.client.preview_route())
-        self.show_upload_tiles(attachments)
+        self.feature_controller("session").set_status("st_thinking")
+        self.feature_controller("runtime").set_badge("connecting", self.client.preview_route())
+        self.feature_controller("attachments_vision").show_upload_tiles(attachments)
         self.director.event("user_message")
         self.director.event("response_started")
         self._plain_retry = False
@@ -342,13 +342,13 @@ class ChatController(WindowFeatureController):
 
     def begin_web_search(self, query, base_text, images):
         if not self.web_search_service.can_search(self.settings):
-            self.add_chat("system", self.web_search_service.MISSING_KEY_MESSAGE)
+            self.feature_controller("session").add_chat("system", self.web_search_service.MISSING_KEY_MESSAGE)
             self.begin_reply()
             return
         self._search_token += 1
         self._search_base = (base_text, images)
         self.status.setText(f"🌐 در حال جست‌وجوی وب: «{query[:60]}»…")
-        conversation_id = self._ensure_session_conversation(self.cur)
+        conversation_id = self.feature_controller("session")._ensure_session_conversation(self.cur)
         history = self.chat_application_service.conversation_context(
             8, session_id=self.cur.cid, conversation_id=conversation_id
         )
@@ -414,7 +414,7 @@ class ChatController(WindowFeatureController):
             base, images = self._search_base
             self._web_found = result
             if result.get("note"):
-                self.add_chat("system", "🌐 " + result["note"])
+                self.feature_controller("session").add_chat("system", "🌐 " + result["note"])
             self._turn_extra = self.web_search_service.merge_search_content(
                 base, images, self.web_search_service.format_evidence(result),
                 image_search=bool(getattr(self, "_image_search_turn", False)),
@@ -422,7 +422,7 @@ class ChatController(WindowFeatureController):
             self.status.setText(f"{'🔎 Google' if result.get('engine') == 'google' else ('🦆 DuckDuckGo' if result.get('engine') == 'ddg' else '🌐 Tavily')}: {len(result['results'])} منبع پیدا شد؛ در حال پاسخ دادن…")
         elif getattr(self, "_image_search_turn", False):
             # the picture itself is still in the request: she answers from what she sees and says what is unconfirmed
-            self.add_chat("system", f"🔎 جست‌وجوی تصویری انجام نشد: {result}")
+            self.feature_controller("session").add_chat("system", f"🔎 جست‌وجوی تصویری انجام نشد: {result}")
             base, images = self._search_base
             self._turn_extra = self.web_search_service.merge_search_content(
                 base, images,
@@ -432,17 +432,17 @@ class ChatController(WindowFeatureController):
             )
         else:
             # no usable web result: do not let the model improvise from memory; Kira says she does not know
-            self.add_chat("system", f"🌐 جست‌وجوی وب انجام نشد: {result}")
+            self.feature_controller("session").add_chat("system", f"🌐 جست‌وجوی وب انجام نشد: {result}")
             self._turn_extra = None
-            self.reply_local(self.web_search_service.failure_reply(result), "sad")
-            self.finish_request(None)
-            self._send_next_pending()
+            self.feature_controller("runtime").reply_local(self.web_search_service.failure_reply(result), "sad")
+            self.feature_controller("runtime").finish_request(None)
+            self.feature_controller("runtime")._send_next_pending()
             return
         self.begin_reply()
 
     def start_worker(self, plain):
         window = int(self.settings.get("memory_context_limit", 12))
-        conversation_id = self._ensure_session_conversation(self.cur)
+        conversation_id = self.feature_controller("session")._ensure_session_conversation(self.cur)
         history = self.chat_application_service.conversation_context(
             window, character_id=self.cur.cid, conversation_id=conversation_id
         )
@@ -492,13 +492,13 @@ class ChatController(WindowFeatureController):
 
         character_layer = self.character_service.prompt_for(self.settings)
         body_context = ""
-        if self.body_active():                                    # preserve existing 3D body instruction and completed-action note
+        if self.feature_controller("runtime").body_active():                                    # preserve existing 3D body instruction and completed-action note
             body_context = ("" if plain else body_ctl.format_hint()) + body_ctl.done_note(self._body_done)
 
         context = {
             "messages": history,
             "character_id": self.cur.cid,
-            "character_profile": self.active_character(),
+            "character_profile": self.feature_controller("session").active_character(),
             "settings": self.settings,
             "memory": memory_block,
             "mood": mood_block,
@@ -512,7 +512,7 @@ class ChatController(WindowFeatureController):
             "max_context_chars": self.settings.get("chat_context_char_limit", 0),
         }
 
-        self._stream_begin()
+        self.feature_controller("runtime")._stream_begin()
         temperature = modes.temperature_for(mode, self.settings["temperature"]) if mode else self.settings["temperature"]
         relay = self.cur.relay
         request_id = self.cur.application_request_id
@@ -526,7 +526,7 @@ class ChatController(WindowFeatureController):
             retry_index=1 if plain else 0, agent=self.tool_agent, plan=self._tool_plan,
             role=self._brain.stage, route_id=self._brain.route_id,
         )
-        self.refresh_tab_buttons()
+        self.feature_controller("session").refresh_tab_buttons()
 
     MODE_LABELS = {"chat": "گپ", "task": "کار / کمک", "strict": "فقط جواب"}
 
@@ -564,7 +564,7 @@ class ChatController(WindowFeatureController):
             return                                                # the Coding Agent owns its separate task lifecycle
         if self._search_worker is not None and self._search_worker.isRunning():
             self._search_token += 1                                   # the late search result is ignored
-            self.add_chat("system", "جست‌وجو متوقف شد.")
+            self.feature_controller("session").add_chat("system", "جست‌وجو متوقف شد.")
             self.chat_application_service.cancel_request(self.cur.application_request_id)
             return
         self.tool_agent.request_cancel(self.cur.cid)
