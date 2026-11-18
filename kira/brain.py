@@ -184,6 +184,23 @@ def _safe_state_time(value, *, now=None):
     return stamp if stamp <= current + 60 else 0.0
 
 
+def _safe_state_deadline(value, *, now=None, max_future_seconds=30 * 86400):
+    """Validate a persisted retry deadline; unlike event timestamps, it is meant to be in the future."""
+    if isinstance(value, bool):
+        return 0.0
+    try:
+        stamp = float(value)
+        current = time.time() if now is None else float(now)
+        horizon = float(max_future_seconds)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    if not math.isfinite(stamp) or not math.isfinite(current) or not math.isfinite(horizon):
+        return 0.0
+    if stamp < 0 or stamp > current + max(0.0, horizon):
+        return 0.0
+    return stamp
+
+
 def _load(character_id: str | None = None) -> dict:
     """Load and schema-normalize persisted state; corrupted optional fields never disable reflection."""
     try:
@@ -235,7 +252,7 @@ def _load(character_id: str | None = None) -> dict:
     if isinstance(raw_writer, dict):
         state["writer"] = {
             "last_run": _safe_state_time(raw_writer.get("last_run", 0), now=now),
-            "next_try": _safe_state_time(raw_writer.get("next_try", 0), now=now),
+            "next_try": _safe_state_deadline(raw_writer.get("next_try", 0), now=now),
         }
     return state
 
@@ -427,7 +444,9 @@ def _allowed(role) -> bool:
     try:
         return bool(hook(role))
     except Exception:                                                  # noqa: BLE001
-        return True
+        # A broken budget hook must not authorize optional background model usage.
+        _log.exception("Brain budget check failed for role %s; skipping optional call", role)
+        return False
 
 
 REFLECT_PROMPT = """You review ONE reply written by Kira, a companion assistant. Answer with JSON only:
@@ -533,9 +552,14 @@ def _memory_writer(router, settings) -> None:
         return
     try:
         _accepted, rejected = em.ingest_model_facts(raw, events)
-        storage_failure = any(str(reason).lower().startswith("store error:") for reason in (rejected or []))
-        if storage_failure:
-            raise RuntimeError("Evidence-memory storage failed; writer cursor was not advanced")
+        failures = [str(reason).lower() for reason in (rejected or [])]
+        storage_failure = any(reason.startswith("store error:") for reason in failures)
+        invalid_response = any(
+            reason.startswith(("unreadable json:", "response has no facts list"))
+            for reason in failures
+        )
+        if storage_failure or invalid_response:
+            raise RuntimeError("Evidence-memory ingest did not complete; writer cursor was not advanced")
         latest_id = max(int(row[0]) for row in rows)
         em.set_writer_cursor(latest_id)
         if int(em.writer_cursor()) < latest_id:

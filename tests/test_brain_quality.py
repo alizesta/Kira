@@ -127,6 +127,11 @@ class BrainStateRecoveryTests(unittest.TestCase):
                 self.assertEqual(state["sigs"], [["valid", 3]])
                 self.assertEqual(state["reflect"], {"last": 0.0, "hour": []})
                 self.assertEqual(state["writer"], {"last_run": 0.0, "next_try": 0.0})
+                retry_at = time.time() + 3600
+                self.assertTrue(brain._save({"turn": 0, "hint": None, "sigs": [], "reflect": {"last": 0, "hour": []},
+                                             "writer": {"last_run": time.time(), "next_try": retry_at}}, "test-state"))
+                reloaded = brain._load("test-state")
+                self.assertGreater(reloaded["writer"]["next_try"], time.time() + 3500)
                 self.assertTrue(brain._store_hint("fresh", "new reminder", "test-state"))
                 self.assertEqual(brain.status("test-state")["hint_pending"], True)
 
@@ -142,6 +147,29 @@ class BrainStateRecoveryTests(unittest.TestCase):
 
 
 class BrainMemoryWriterTests(unittest.TestCase):
+    def test_budget_hook_failure_disables_optional_background_usage(self):
+        with patch.object(brain, "budget_check", side_effect=RuntimeError("usage service unavailable")):
+            self.assertFalse(brain._allowed(brain.MEMORY))
+
+    def test_writer_does_not_advance_cursor_when_model_response_is_invalid(self):
+        import kira.evidence_memory as evidence_memory
+        import kira.memory as memory_store
+        rows = [(index, "user", f"message {index}", "") for index in range(1, 11)]
+        with tempfile.TemporaryDirectory() as tmp:
+            with (
+                patch.object(brain, "DATA_DIR", Path(tmp)),
+                patch.object(memory_store, "rows_with_ids", return_value=rows),
+                patch.object(evidence_memory, "enabled", return_value=True),
+                patch.object(evidence_memory, "writer_cursor", return_value=0),
+                patch.object(evidence_memory, "ingest_model_facts", return_value=(0, ["unreadable JSON: invalid"])),
+                patch.object(evidence_memory, "set_writer_cursor") as set_cursor,
+                patch.object(brain, "make_aux_router", return_value=object()),
+                patch.object(brain, "_ask", return_value="not-json"),
+            ):
+                brain._memory_writer(object(), {"brain_memory_writer": "idle"})
+                set_cursor.assert_not_called()
+                self.assertGreater(brain._load()["writer"]["next_try"], time.time())
+
     def test_writer_does_not_advance_cursor_when_fact_storage_failed(self):
         import kira.evidence_memory as evidence_memory
         import kira.memory as memory_store
