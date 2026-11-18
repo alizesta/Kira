@@ -55,5 +55,26 @@ class UsageLedgerCacheTests(unittest.TestCase):
         self.assertEqual(usage.limit_state("provider", "test-provider"), "")
 
 
+    def test_non_finite_provider_metrics_do_not_disable_daily_limits(self):
+        parsed = usage.parse_usage({
+            "usage": {
+                "prompt_tokens": float("inf"),
+                "completion_tokens": 5,
+            }
+        })
+        self.assertEqual(parsed, {"tokens_out": 5})
+
+        usage.record({
+            "request_id": "request-infinite",
+            "provider": "test-provider",
+            "model": "test-model",
+            "status": "success",
+            "tokens_in": float("inf"),
+            "tokens_out": 5,
+            "tokens_source": "provider",
+        })
+        self.assertEqual(usage._today("provider", "test-provider"), (1, 5))
+
+
 if __name__ == "__main__":
     unittest.main()
