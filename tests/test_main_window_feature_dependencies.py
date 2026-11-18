@@ -98,8 +98,8 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
             _ = controller.undeclared_window_attribute
         with self.assertRaises(AttributeError):
             controller.context.state.undeclared = True
-        self.assertFalse(hasattr(WindowFeatureController, "__getattr__"))
-        self.assertFalse(hasattr(WindowFeatureController, "__setattr__"))
+        self.assertNotIn("__getattr__", WindowFeatureController.__dict__)
+        self.assertNotIn("__setattr__", WindowFeatureController.__dict__)
         self.assertIs(controller.window, window)
         self.assertIs(controller.parent(), window)
 
@@ -158,6 +158,15 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
         self.assertIn("class SessionRelay", source)
         self.assertIn("def front_only", source)
         self.assertIn("def load_reactions", source)
+
+    def test_session_relay_uses_explicit_context_and_controller_owners(self):
+        source = (UI / "main_window_support.py").read_text(encoding="utf-8")
+        self.assertIn("super().__init__(context.host)", source)
+        self.assertIn("self.context.controllers.require(owner)", source)
+        self.assertIn("self.context.services.chat_application_service.handle_provider_event", source)
+        self.assertIn("context.is_background_session", source)
+        self.assertNotIn("getattr(self.w", source)
+        self.assertNotIn("self.cur is not self.front", source)
 
     def test_feature_support_modules_do_not_import_other_feature_controllers(self):
         for path in UI.glob("main_window_*_support.py"):
