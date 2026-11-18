@@ -127,6 +127,11 @@ jobs:
           tests.test_coding_agent_application
           tests.test_runtime_settings_application
           tests.test_character_profile_service
+          tests.test_character
+          tests.test_characters
+          tests.test_character_decision
+          tests.test_character_profiles
+          tests.test_character_scenarios
           tests.test_application_policy_wiring
           tests.test_domain_conversation_rules
           tests.test_domain_organization
@@ -223,6 +228,11 @@ jobs:
           kira/ui/main_window_attachments_vision.py
           kira/ui/main_window_chat.py
           kira/ui/main_window_runtime.py
+          kira/personas.py
+          kira/character/decision.py
+          kira/mood.py
+          tests/test_characters.py
+          tests/test_character_decision.py
           tests/test_main_window_syntax.py
           tests/test_main_entrypoint.py
           tests/test_main_window_feature_dependencies.py
