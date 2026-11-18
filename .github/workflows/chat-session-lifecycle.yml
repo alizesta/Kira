@@ -23,6 +23,10 @@ on:
       - "kira/core/interfaces/voice_service.py"
       - "tests/test_voice_application.py"
       - "tests/test_voice_application_wiring.py"
+      - "kira/app/game_mode_application.py"
+      - "kira/game_audio_policy.py"
+      - "tests/test_game_mode_application.py"
+      - "tests/test_game_audio_policy.py"
       - "tests/test_web_search_application.py"
       - "tests/test_web_search_wiring.py"
       - "tests/test_main_window_syntax.py"
@@ -61,6 +65,8 @@ jobs:
           tests.test_web_search_wiring
           tests.test_voice_application
           tests.test_voice_application_wiring
+          tests.test_game_mode_application
+          tests.test_game_audio_policy
           tests.test_chat_application_wiring
           tests.test_chat_session_manager
           tests.test_chat_events
@@ -101,6 +107,11 @@ jobs:
           kira/app/voice_application.py
           kira/app/voice_composition.py
           kira/core/interfaces/voice_service.py
+          kira/game_audio.py
+          kira/game_audio_policy.py
+          kira/app/game_mode_application.py
+          tests/test_game_mode_application.py
+          tests/test_game_audio_policy.py
           tests/test_voice_application.py
           tests/test_voice_application_wiring.py
           tests/test_web_search_application.py
