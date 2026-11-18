@@ -1,8 +1,10 @@
 """T5-A File System Agent: real files in a temp folder, through the same registry the chat uses (path policy, intent guard, confirmation)."""
+import json
 import os
 import shutil
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import mock
 
@@ -224,6 +226,20 @@ class FileAgentTests(unittest.TestCase):
         for bad in ("", "..", "a/b", "a*b", "nul", "x.exe", "a|b"):
             with self.assertRaises(ToolError):
                 valid_name(bad)
+
+    def test_journal_concurrent_adds_keep_valid_atomic_history(self):
+        journal = Journal(self.data)
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(
+                lambda index: journal.add("create", path=f"file-{index}.txt"),
+                range(80),
+            ))
+
+        persisted = json.loads((self.data / "kira_file_ops.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(persisted), 30)
+        self.assertEqual(len({item["journal_id"] for item in persisted}), 30)
+        self.assertEqual(len(journal.items), 30)
+        self.assertFalse(list(self.data.glob(".kira_file_ops.json.*.tmp")))
 
     def test_catalog_gate_and_journal_persists(self):
         from kira.tools import protocol
