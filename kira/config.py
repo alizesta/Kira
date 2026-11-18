@@ -63,6 +63,9 @@ DEFAULTS = {
     "character_voice": {},
     "character_notes": {},
     "character_resources": {},
+    "character_initiative": {},        # per-character, explicit opt-in; defaults off
+    "character_initiative_history": {},  # bounded per-character sent timestamps and memory IDs
+
     "character_initiative": {},       # per-character proactive check-in opt-in; absent/false stays disabled
 
     "whisper_model": "small",
