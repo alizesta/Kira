@@ -24,7 +24,7 @@ from .main_window_chat_support import (
 from .window_feature_controller import WindowFeatureController
 
 
-class ChatMixin(WindowFeatureController):
+class ChatController(WindowFeatureController):
     def send_message(self):
         if self.attach_loading():
             self.status.setText("ضمیمه‌ها هنوز در حال بارگذاری‌اند؛ چند لحظه صبر کن.")
@@ -578,3 +578,7 @@ class ChatMixin(WindowFeatureController):
         )
         self.chat_application_service.set_command_registry(registry)
         self.command_registry = registry
+
+
+# Backward-compatible import name for callers migrating from mixin composition.
+ChatMixin = ChatController
