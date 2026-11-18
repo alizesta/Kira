@@ -100,5 +100,17 @@ class EvidenceMemoryRecallTests(unittest.TestCase):
         self.assertEqual([entry["id"] for entry in remaining], [item["id"]])
 
 
+    def test_forget_all_does_not_clear_when_history_watermark_is_unavailable(self):
+        with mock.patch.object(em, "_chat_max_id", side_effect=RuntimeError("history unavailable")), mock.patch.object(
+            em, "_db"
+        ) as database:
+            with self.assertLogs("kira.evidence_memory", level="ERROR") as captured:
+                with self.assertRaisesRegex(RuntimeError, "history unavailable"):
+                    em.forget_all()
+
+        database.assert_not_called()
+        self.assertTrue(any("Could not clear evidence memory" in line for line in captured.output))
+
+
 if __name__ == "__main__":
     unittest.main()
