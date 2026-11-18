@@ -35,7 +35,7 @@ def _json_bytes(source: Any, file_port: ChatTransferFilePort | None = None) -> b
         raw = bytes(source)
     elif isinstance(source, Path):
         if file_port is not None:
-            raw = file_port.read_bytes(source)
+            raw = file_port.read_bytes(source, max_bytes=MAX_FILE_BYTES)
         else:
             if not source.is_file(): raise TransferError("Import source is not a regular file")
             if source.stat().st_size > MAX_FILE_BYTES: raise TransferError("Import file exceeds 20 MiB")
@@ -46,7 +46,7 @@ def _json_bytes(source: Any, file_port: ChatTransferFilePort | None = None) -> b
         else:
             path = Path(source)
             if file_port is not None:
-                raw = file_port.read_bytes(path)
+                raw = file_port.read_bytes(path, max_bytes=MAX_FILE_BYTES)
             else:
                 if not path.is_file(): raise TransferError("Import source must be JSON text or an existing file")
                 if path.stat().st_size > MAX_FILE_BYTES: raise TransferError("Import file exceeds 20 MiB")
