@@ -46,7 +46,7 @@ from .main_window_voice_settings_support import (
 from .window_feature_controller import WindowFeatureController
 
 
-class VoiceSettingsMixin(WindowFeatureController):
+class VoiceSettingsController(WindowFeatureController):
     def build_chat_tab(self):
         page = QWidget()
         self.chat_page = page
@@ -761,3 +761,7 @@ class VoiceSettingsMixin(WindowFeatureController):
             last[message] = now
             self._voice_note_at = last
             self.add_chat("system", "🎙️ " + message)
+
+
+# Backward-compatible import name for callers migrating from mixin composition.
+VoiceSettingsMixin = VoiceSettingsController
