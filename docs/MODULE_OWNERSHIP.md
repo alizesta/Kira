@@ -31,10 +31,10 @@
 | 008 | Events & Notifications — `kira/app/event_bus.py`, `kira/chat/events.py`, `kira/core/interfaces/application_module.py` | `EventBus`, Core `PublishedEvent` / `EventPublicationReport` / `ModuleEventBus`, `ChatEvent`, `ChatEventPublisher` | Feature-neutral Core event envelope and in-process notification bus | Business API routing, persistence ownership, request/session state transitions, direct dependency from the shared EventBus to Chat | None | **Sole shared notification transport**; Chat publisher owns typed event construction and terminal de-duplication |
 | 009 | Attachments & Content Processing — `kira/chat/attachments.py`, `attachment_content.py` | `AttachmentManager` records, validation, managed storage, bounded extraction and legacy payload composition | Injected storage/path adapters, parser adapters and immutable content data; ChatApplicationService exposes preparation, per-message limits and fallback composition to UI callers | Qt widgets, Chat request queue, prompt policy, durable Conversation lifecycle | Owns attachment records/content processing boundary; not Chat history database | ChatApplicationService is the UI-facing application boundary for attachment composition and preparation |
 | 010 | Commands & Actions — `kira/chat/commands.py`, `command_adapters.py` | `CommandRegistry`, `CommandDefinition`, `CommandRequest`, `CommandResult`, adapters | Injected handlers, permission checker, immutable request/session context | Hard-coded Kira persona policy, persistence, UI rendering, unrestricted direct system execution | None | Command results/events are relayed by application layer |
-| 011 | Search & Retrieval — `kira/chat/search.py` | `ChatSearchRequest`, `ChatSearchHit`, `ChatSearchPage`, `ChatSearchService.search()` | Injected `messages_after` repository reader; optional conversation listing for status filter | SQL ownership, writing/deleting records, conversation organization policy, UI widgets | Read-only through Persistence | None |
-| 012 | Export & Import — `kira/chat/transfer.py` | Versioned transfer service, preview/validation/import/export contracts | Injected persistence transaction boundary, JSON data contracts | Direct SQL, search ranking, lifecycle transition policy, UI widgets | Persistence owns import transactions and durable writes; Transfer owns transfer format/validation | Outcomes returned to caller; notifications via application layer |
+| 011 | Search & Retrieval — `kira/domain/search.py`, `kira/app/chat_search_application.py`, `kira/core/interfaces/search.py` | Domain `ChatSearchRequest`, `ChatSearchHit`, `ChatSearchPage`; Application `ChatSearchService.search()` | Read-only `ChatSearchRepositoryPort`; optional `ConversationStatusReaderPort` | SQL ownership, persistence writes, conversation organization policy, UI widgets | Read-only through Persistence | None |
+| 012 | Export & Import — `kira/domain/transfer.py`, `kira/app/chat_transfer_application.py`, `kira/core/interfaces/transfer.py` | Domain transfer schema/value contracts; Application `ChatTransfer.export_data/preview_import/import_data` | `ChatTransferRepositoryPort`, bounded JSON data contracts | Direct SQL, search ranking, lifecycle transition policy, UI widgets | Persistence owns import transactions and durable writes; Domain owns transfer invariants | Outcomes returned to caller; notifications via application layer |
 | 013 | Conversation Lifecycle — `kira/chat/conversation_lifecycle.py` | `ConversationLifecycleService`: list/archive/archive_many/restore/trash/trash_many/restore_trashed/permanent_delete | Shared `ChatPersistence`, shared `ChatEventPublisher`, clock/authorization provider | Runtime Session state, message search, organization metadata, direct SQL, automatic purge | Persistence performs atomic status writes and guarded deletion; Lifecycle owns transition policy | Five lifecycle notifications published after durable commit |
-| 014 | Metadata & Organization — `kira/chat/organization.py` | `ChatOrganizationService`: rename/tag/folder/favorite/metadata/filter APIs | Injected organization repository (ChatPersistence facade), optional shared event publisher | Session lifecycle, Conversation archive/trash/delete, message search, SQL, UI widgets | Persistence stores namespaced `metadata.organization`; Organization owns metadata rules | `conversation_metadata_updated` through shared publisher |
+| 014 | Metadata & Organization — `kira/domain/organization.py`, `kira/app/organization_application.py`, `kira/core/interfaces/organization.py` | Domain organization values/validation; Application `ChatOrganizationService`: rename/tag/folder/favorite/metadata/filter APIs | `ConversationOrganizationRepositoryPort`, `ConversationMetadataEventPublisherPort` | Session lifecycle, Conversation archive/trash/delete, message search, SQL, UI widgets | Persistence stores namespaced `metadata.organization`; Domain owns metadata rules | `conversation_metadata_updated` through shared publisher |
 
 ### 2.1 Status on current `new-main`
 
@@ -104,10 +104,10 @@ These services are directly injected by Bootstrap/Composition; they are not auto
 - Bootstrap constructs the graph and injects the shared services and Session/Provider/Vision/Coding Agent/Runtime Settings application services.
 - MainWindow calls ChatApplicationService for Chat submission, SessionApplicationService for Session lifecycle, ProviderApplicationService for provider/route/API policy, VisionApplicationService for capture policy, CodingAgentApplicationService for Coding Agent handoff, RuntimeSettingsApplicationService for shared settings propagation, SharedSkillsApplicationService for Skill use cases, CharacterProfileService for profile mutations, WebSearchApplicationService for search planning, VoiceApplicationService for voice lifecycle and GameModeApplicationService for permission/audio policy.
 - ChatApplicationService calls its injected Coordinator, ContextBuilder, ResponseHandler, AttachmentManager, command port and persistence/history contract.
-- Search receives a read-only persistence reader and returns immutable result/page contracts.
+- ChatSearchService (now `kira/app/chat_search_application.py`) receives a read-only Persistence reader and returns Domain request/result/page contracts.
 - Transfer validates and maps the transfer format, then delegates durable import to Persistence.
 - ConversationLifecycleService delegates atomic durable writes to Persistence and publishes lifecycle notifications after commit.
-- ChatOrganizationService delegates metadata reads/writes to Persistence and publishes metadata notifications.
+- ChatOrganizationService (now `kira/app/organization_application.py`) delegates metadata reads/writes through Core ports to Persistence and publishes metadata notifications after committed mutations.
 - Observers subscribe to EventBus/ChatEventPublisher; they do not use events to synchronously request domain operations.
 
 ### 3.2 Forbidden ownership overlap
@@ -140,11 +140,11 @@ The Chat core modules should depend on Python data contracts and narrow Protocol
 - ChatPersistence/SqliteChatRepository owns Chat storage and transactions.
 - SessionManager owns no durable rows and must remain independent of SQLite.
 - Lifecycle policy is separate from repository transaction mechanics: Lifecycle validates transitions; Persistence atomically commits them.
-- Organization owns the `organization` metadata namespace but not the metadata document storage mechanism.
+- Organization Domain owns the `organization` metadata namespace and its pure validation rules; the Application use case coordinates updates but does not own metadata document storage.
 - Organization writes use `ChatPersistence.mutate_conversations` and `mutate_all_conversations`: callbacks receive the latest row under a SQLite write transaction; bulk character-scoped updates commit or roll back as one unit.
 - These transaction APIs preserve the complete metadata document and only persist the returned title/metadata fields; lifecycle status remains owned by the lifecycle transaction API.
-- Search reads message pages and, when needed, conversation status through the injected repository.
-- Transfer owns serialization and import validation; Persistence owns durable import transactions.
+- Search reads message pages and, when needed, conversation status through the injected Core repository ports. The DTOs live in Domain and the query/ranking/pagination use case lives in Application.
+- Transfer Domain owns schema/value invariants and secret filtering; the Transfer Application use case owns parsing/export orchestration, while Persistence owns durable import transactions.
 - AttachmentManager owns attachment processing/storage contracts and must not become a second Chat history store.
 
 ## 5. Application and non-Chat capability ownership
@@ -178,7 +178,7 @@ Static code supports this design. Runtime isolation across concurrent sessions, 
 - `kira/attachments.py` is a compatibility facade; canonical Chat attachment/content processing is under `kira/chat/`.
 - `kira/memory.py` and `kira/persona_memory.py` remain legacy/compatibility memory paths while service boundaries are adopted.
 
-These compatibility paths should be removed only after static call-site review and an approved migration; TASK 016 does not remove them.
+The legacy imports `kira/chat/organization.py`, `kira/chat/search.py` and `kira/chat/transfer.py` are compatibility facades over the new Application/Domain modules. Remove them only after static call-site review, integration wiring and an approved migration; TASK 016 does not remove them.
 
 
 ## 8. Application feature lifecycle
@@ -202,7 +202,9 @@ module stop. Vision and Game Mode clear transient policy state when stopped.
 The concrete ChatApplicationService, SessionApplicationService and
 VoiceApplicationService instances are constructed with window-scoped callback
 ports implemented by UI adapters and are therefore window-scoped, not
-application singletons. Their contracts (`ProviderWorkerPort`, `SpeakerPort`,
+application singletons. Organization, Search and Transfer are use-case services
+with injected Core ports; their final ModuleManager registration and bootstrap
+wiring is coordinated with Flow 4 rather than duplicated in Flow 2. Their contracts (`ProviderWorkerPort`, `SpeakerPort`,
 and `VoiceListenerPort`) live in Core and contain no Qt types.
 The window owns their two-phase graceful shutdown. It first rejects new Chat work
 and cancels pending/running requests without closing the command registry or
