@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from kira.emotion.lifecycle import should_observe_assistant_message, should_observe_message, stream_speech_action
 
