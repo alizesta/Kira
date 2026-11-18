@@ -399,9 +399,9 @@ class ProviderSettingsController(WindowFeatureController):
             return
         self.api_add_btn.setEnabled(False)
         self.context.views.api_add_status.setText("در حال شناسایی مدل‌های Chat از API…")
-        self._api_worker = TaskWorker(lambda: self._discover_unified_api_key(key))
-        self._api_worker.done.connect(lambda result, k=key: self.on_api_detected(result, k))
-        self._api_worker.start()
+        self.context.state._api_worker = TaskWorker(lambda: self._discover_unified_api_key(key))
+        self.context.state._api_worker.done.connect(lambda result, k=key: self.on_api_detected(result, k))
+        self.context.state._api_worker.start()
 
     def on_api_detected(self, result, key, account=""):
         self.api_add_btn.setEnabled(True)
@@ -414,9 +414,9 @@ class ProviderSettingsController(WindowFeatureController):
             if accepted and account_id.strip():
                 self.api_add_btn.setEnabled(False)
                 self.context.views.api_add_status.setText("در حال تکمیل شناسایی Cloudflare…")
-                self._api_worker = TaskWorker(lambda: self._discover_unified_api_key(key, account_id.strip()))
-                self._api_worker.done.connect(lambda res, k=key, a=account_id.strip(): self.on_api_detected(res, k, a))
-                self._api_worker.start()
+                self.context.state._api_worker = TaskWorker(lambda: self._discover_unified_api_key(key, account_id.strip()))
+                self.context.state._api_worker.done.connect(lambda res, k=key, a=account_id.strip(): self.on_api_detected(res, k, a))
+                self.context.state._api_worker.start()
             return
 
         chat_added = ""
@@ -551,7 +551,7 @@ class ProviderSettingsController(WindowFeatureController):
         note.setWordWrap(True)
         df.addRow(note)
         self._api_loading = False
-        self._api_worker = None
+        self.context.state._api_worker = None
         return add_box, list_box, det_box
 
     def on_model_filter_changed(self, *_):
@@ -664,9 +664,9 @@ class ProviderSettingsController(WindowFeatureController):
             return
         cfg = dict(self.context.services.settings["providers"][pid])
         self.api_status.setText("در حال اعتبارسنجی و دریافت دوباره‌ی مدل‌ها…")
-        self._api_worker = TaskWorker(lambda: self.context.services.provider_application_service.rediscover(pid, cfg))
-        self._api_worker.done.connect(lambda result, p=pid, q=quiet: self.on_api_refreshed(p, result, q))
-        self._api_worker.start()
+        self.context.state._api_worker = TaskWorker(lambda: self.context.services.provider_application_service.rediscover(pid, cfg))
+        self.context.state._api_worker.done.connect(lambda result, p=pid, q=quiet: self.on_api_refreshed(p, result, q))
+        self.context.state._api_worker.start()
 
     def on_api_refreshed(self, pid, result, quiet=False):
         if pid not in self.context.services.settings.get("providers", {}):
@@ -733,9 +733,9 @@ class ProviderSettingsController(WindowFeatureController):
         if fields["account_id"]:
             test_cfg["account_id"] = fields["account_id"].strip()
         self.api_status.setText("در حال اعتبارسنجی کلید جدید…")
-        self._api_worker = TaskWorker(lambda: self.context.services.provider_application_service.rediscover(pid, test_cfg))
-        self._api_worker.done.connect(lambda result, p=pid, f=fields, k=new_key: self.on_api_edit_validated(p, f, k, result))
-        self._api_worker.start()
+        self.context.state._api_worker = TaskWorker(lambda: self.context.services.provider_application_service.rediscover(pid, test_cfg))
+        self.context.state._api_worker.done.connect(lambda result, p=pid, f=fields, k=new_key: self.on_api_edit_validated(p, f, k, result))
+        self.context.state._api_worker.start()
 
     def on_api_edit_validated(self, pid, fields, new_key, result):
         ok, det = result
@@ -1040,9 +1040,9 @@ class ProviderSettingsController(WindowFeatureController):
             return
         self.context.views.route_test_btn.setEnabled(False)
         self.context.views.route_status.setText("در حال تست…")
-        self._route_worker = TaskWorker(lambda: self.context.session.client.test_route(rid))
-        self._route_worker.done.connect(self.on_route_test_done)
-        self._route_worker.start()
+        self.context.state._route_worker = TaskWorker(lambda: self.context.session.client.test_route(rid))
+        self.context.state._route_worker.done.connect(self.on_route_test_done)
+        self.context.state._route_worker.start()
 
     def on_route_test_done(self, result):
         ok, value = result
@@ -1063,9 +1063,9 @@ class ProviderSettingsController(WindowFeatureController):
             if not ok:
                 raise RuntimeError(models)
             return models
-        self._scan_worker = TaskWorker(task)
-        self._scan_worker.done.connect(self.on_scan_done)
-        self._scan_worker.start()
+        self.context.state._scan_worker = TaskWorker(task)
+        self.context.state._scan_worker.done.connect(self.on_scan_done)
+        self.context.state._scan_worker.start()
 
     def on_scan_done(self, result):
         ok, value = result
@@ -1101,10 +1101,10 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.state._bench_busy = True
         self.context.views.bench_out.setPlainText("در حال اجرا…")
         self._bench_lines = []
-        self._bench_worker = BenchWorker(self.context.session.client, ids)
-        self._bench_worker.progress.connect(self.on_bench_progress)
-        self._bench_worker.done.connect(self.on_bench_done)
-        self._bench_worker.start()
+        self.context.state._bench_worker = BenchWorker(self.context.session.client, ids)
+        self.context.state._bench_worker.progress.connect(self.on_bench_progress)
+        self.context.state._bench_worker.done.connect(self.on_bench_done)
+        self.context.state._bench_worker.start()
 
     def on_bench_progress(self, e):
         if e.get("phase") == "running":
