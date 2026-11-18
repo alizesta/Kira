@@ -61,6 +61,24 @@ class FeatureControllerRegistryTests(unittest.TestCase):
         with self.assertRaises(AttributeError):
             self.registry.resolve("not_a_feature_method")
 
+    def test_controller_peer_lookup_uses_the_explicit_registry(self):
+        from PySide6.QtCore import QObject
+
+        from kira.ui.window_feature_controller import WindowFeatureController
+
+        class Registry:
+            def get(self, feature):
+                return self.second if feature == "second" else None
+
+            second = object()
+
+        window = QObject()
+        window._controller_registry = Registry()
+        controller = WindowFeatureController(window)
+        self.assertIs(controller.feature_controller("second"), window._controller_registry.second)
+        with self.assertRaises(LookupError):
+            controller.feature_controller("missing")
+
     def test_chat_controller_uses_injected_attachment_workflow(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / "kira/ui/main_window_chat.py").read_text(encoding="utf-8")
