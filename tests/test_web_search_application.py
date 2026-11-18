@@ -20,6 +20,43 @@ class WebSearchApplicationServiceTests(unittest.TestCase):
     def setUp(self):
         self.service = WebSearchApplicationService()
 
+    def test_ui_adapter_methods_keep_websearch_engine_details_inside_service(self):
+        result = {"query": "test", "results": []}
+        diagnostic = {"engines": {"tavily": {"ok": True}}}
+        with patch("kira.app.web_search.websearch.diagnose", return_value=diagnostic) as diagnose:
+            self.assertIs(
+                self.service.diagnose("key", "basic", "probe", ("gemini-key", "gemini-model")),
+                diagnostic,
+            )
+            diagnose.assert_called_once_with(
+                "key", "basic", "probe", ("gemini-key", "gemini-model")
+            )
+
+        with patch("kira.app.web_search.websearch.format_block", return_value="[evidence]") as format_block:
+            self.assertEqual(self.service.format_evidence(result), "[evidence]")
+            format_block.assert_called_once_with(result)
+
+        with patch("kira.app.web_search.websearch.failure_reply", return_value="no result") as failure_reply:
+            self.assertEqual(self.service.failure_reply("offline"), "no result")
+            failure_reply.assert_called_once_with("offline")
+
+    def test_command_parsers_and_engine_labels_are_exposed_by_service(self):
+        with patch(
+            "kira.app.web_search.websearch.plan",
+            return_value=("web query", True),
+        ) as web_parser:
+            self.assertEqual(self.service.parse_web_command("/web query"), ("web query", True))
+            web_parser.assert_called_once_with("/web query")
+        with patch(
+            "kira.app.web_search.websearch.image_command",
+            return_value=("image hint", True),
+        ) as image_parser:
+            self.assertEqual(self.service.parse_image_command("/img image hint"), ("image hint", True))
+            image_parser.assert_called_once_with("/img image hint")
+
+        self.assertTrue(self.service.engine_label("tavily"))
+        self.assertEqual(self.service.engine_label("unknown"), "وب")
+
     def test_gemini_credentials_resolve_configured_provider_and_model(self):
         settings = {
             "providers": {
