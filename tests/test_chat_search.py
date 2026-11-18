@@ -101,6 +101,20 @@ class ChatSearchServiceTests(unittest.TestCase):
         ))
         self.assertEqual([hit.message_id for hit in active.results], [4, 2])
 
+    def test_status_filter_uses_separate_injected_conversation_reader(self):
+        class StatusReader:
+            def list_conversations(self, character_id=None):
+                return [{"id": "c2", "character_id": "ren", "status": "archived"}]
+
+        service = ChatSearchService(
+            MemoryRepository(self.rows),
+            conversation_reader=StatusReader(),
+        )
+        archived = service.search(ChatSearchRequest(
+            "Search", conversation_statuses=("archived",)
+        ))
+        self.assertEqual([hit.message_id for hit in archived.results], [3])
+
     def test_status_filter_requires_repository_conversation_listing(self):
         class MessageOnlyRepository:
             def messages_after(self, after_id=0, limit=500):
