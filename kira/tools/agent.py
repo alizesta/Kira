@@ -379,6 +379,7 @@ class ToolAgent(AutonomyMixin):
         self._resume_sessions.discard(owner)
         self._pause_requests.discard(owner)
         self._cancel_plan_requests.discard(owner)
+        self._running_plan_sessions.discard(owner)
         self._turn_plan_ids.pop(owner, None)
         with self._session_states_lock:
             self._session_states.pop(owner, None)

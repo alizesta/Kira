@@ -228,6 +228,8 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
 
             owner.set("kira")
             self.assertEqual(restarted.current().topic, "Kira research")
+            self.assertTrue(restarted.release_session("kira"))
+            self.assertEqual(restarted.current().topic, "Kira research")
 
     def test_webintel_cancel_event_is_scoped_to_active_owner(self):
         CANCEL.clear_all()
