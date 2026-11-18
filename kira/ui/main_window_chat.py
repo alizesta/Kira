@@ -127,7 +127,7 @@ class ChatController(WindowFeatureController):
             voice, self.context.session._voice_next = self.context.session._voice_next, False
         else:
             voice, self.context.session._voice_next = bool(_voice), False
-        vision_worker = getattr(self, "_vision_worker", None)
+        vision_worker = getattr(self.context.session, "_vision_worker", None)
         wait_for_vision = (
             not self.context.session.busy and vision_worker is not None and vision_worker.isRunning()
             and getattr(vision_worker, "router", None) is self.context.session.client
@@ -170,7 +170,7 @@ class ChatController(WindowFeatureController):
     def _process_chat_request(self, text, attachments=None, _voice=False):
         voice = bool(_voice)
         if self.context.services.coding_agent_application_service.dispatch(
-            code_chat=getattr(self, "code_chat", None),
+            code_chat=getattr(self.context.views, "code_chat", None),
             text=text,
             voice=voice,
             attachments=attachments,
@@ -301,18 +301,18 @@ class ChatController(WindowFeatureController):
         on = bool(on)
         self.context.services.settings["image_search"] = on
         save_settings(self.context.services.settings)
-        for widget in (getattr(self, "img_search_btn", None),):
+        for widget in (getattr(self.context.views, "img_search_btn", None),):
             if widget is not None and widget.isChecked() != on:
                 widget.blockSignals(True)
                 widget.setChecked(on)
                 widget.blockSignals(False)
-        bubble = getattr(self, "bubble", None)
+        bubble = getattr(self.context.adapters, "bubble", None)
         if bubble is not None and bubble.img_btn.isChecked() != on:
             bubble.set_image_search(on)
         self.update_image_search_tip()
 
     def update_image_search_tip(self):
-        btn = getattr(self, "img_search_btn", None)
+        btn = getattr(self.context.views, "img_search_btn", None)
         if btn is not None:
             btn.setToolTip("جست‌وجوی تصویری: " + ("روشن — عکسی که می‌فرستی در وب جست‌وجو می‌شود تا معلوم شود چیست. "
                                                   "ترتیب: Gemini (با خودِ عکس) ← توصیف عکس و جست‌وجو با Tavily ← DuckDuckGo. "
@@ -417,10 +417,10 @@ class ChatController(WindowFeatureController):
                 self.feature_controller("session").add_chat("system", "🌐 " + result["note"])
             self.context.session._turn_extra = self.context.services.web_search_service.merge_search_content(
                 base, images, self.context.services.web_search_service.format_evidence(result),
-                image_search=bool(getattr(self, "_image_search_turn", False)),
+                image_search=bool(getattr(self.context.session, "_image_search_turn", False)),
             )
             self.context.views.status.setText(f"{'🔎 Google' if result.get('engine') == 'google' else ('🦆 DuckDuckGo' if result.get('engine') == 'ddg' else '🌐 Tavily')}: {len(result['results'])} منبع پیدا شد؛ در حال پاسخ دادن…")
-        elif getattr(self, "_image_search_turn", False):
+        elif getattr(self.context.session, "_image_search_turn", False):
             # the picture itself is still in the request: she answers from what she sees and says what is unconfirmed
             self.feature_controller("session").add_chat("system", f"🔎 جست‌وجوی تصویری انجام نشد: {result}")
             base, images = self.context.session._search_base
@@ -559,7 +559,7 @@ class ChatController(WindowFeatureController):
 
     def stop_generation(self):
         """Stop button: ends the answer now; text received so far is kept."""
-        if self.context.services.coding_agent_application_service.stop_session(getattr(self, "code_chat", None), self.context.state.cur):
+        if self.context.services.coding_agent_application_service.stop_session(getattr(self.context.views, "code_chat", None), self.context.state.cur):
             self.context.services.chat_application_service.complete_local_request(self.context.state.cur.application_request_id)
             return                                                # the Coding Agent owns its separate task lifecycle
         if self.context.session._search_worker is not None and self.context.session._search_worker.isRunning():
