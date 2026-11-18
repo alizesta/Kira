@@ -33,6 +33,7 @@ from .search import (
     ChatSearchRepositoryPort,
     ConversationStatusReaderPort,
 )
+from .transfer import ChatTransferRepositoryPort
 from .voice_service import VoiceService
 from .voice_ports import SpeakerPort, VoiceListenerPort
 
@@ -54,6 +55,7 @@ __all__ = [
     "ConversationOrganizationRepositoryPort",
     "ChatSearchRepositoryPort",
     "ConversationStatusReaderPort",
+    "ChatTransferRepositoryPort",
     "ChatProvider",
     "CharacterService",
     "ChatHistoryService",
