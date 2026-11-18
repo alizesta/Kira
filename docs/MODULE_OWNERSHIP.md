@@ -91,6 +91,7 @@ The Chat core modules should depend on Python data contracts and narrow Protocol
 | Capability | Current source candidates / owners | Current integration boundary |
 |---|---|---|
 | Bootstrap & DI | `kira/app/bootstrap.py`, `dependency_container.py`, `module_manager.py` | Composition is centralized; only four required service modules are registered. |
+| Session application orchestration | `kira/app/session_application.py`, `session_composition.py`, `kira/chat/session_manager.py` | SessionApplicationService owns character/session synchronization, conversation binding, activation, lifecycle event translation, pending-work checks and graceful shutdown delegation. UI retains Qt resource creation, tab presentation and runtime callbacks. |
 | Character profiles | `kira/services`, `kira/character`, `kira/characters`, CharactersPage | Profile service and UI page exist; MainWindow still handles session/UI policy. |
 | Memory | `kira/services`, `persona_memory.py`, `evidence_memory.py`, `memory.py` | Memory service is registered/injected; legacy sources/adapters remain. |
 | Voice | `voice.py`, `listener.py`, `local_voice.py`, VAD/speech modules, VoicePage | Implementation exists; Voice interface is not yet wired through the implementation. |
