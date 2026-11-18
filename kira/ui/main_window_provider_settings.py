@@ -1,4 +1,4 @@
-"""Provider settings behavior mixin for the desktop window."""
+"""Provider settings feature controller."""
 import re
 from .main_window_provider_settings_support import (
     ApiAddPanel,
