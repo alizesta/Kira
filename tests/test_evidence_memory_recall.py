@@ -112,5 +112,20 @@ class EvidenceMemoryRecallTests(unittest.TestCase):
         self.assertTrue(any("Could not clear evidence memory" in line for line in captured.output))
 
 
+    def test_persona_evidence_update_rolls_back_if_replacement_fails(self):
+        self.assertTrue(em.add_manual("original persona fact", persona_id="old-persona-id"))
+        before = em.list_extra_items()
+        self.assertEqual(len(before), 1)
+
+        with mock.patch.object(em, "_ingest", side_effect=RuntimeError("synthetic replacement failure")):
+            with self.assertLogs("kira.evidence_memory", level="ERROR"):
+                with self.assertRaisesRegex(RuntimeError, "synthetic replacement failure"):
+                    em.update_by_persona_id("old-persona-id", "new-persona-id", "replacement persona fact")
+
+        after = em.list_extra_items()
+        self.assertEqual([item["id"] for item in after], [item["id"] for item in before])
+        self.assertEqual(after[0]["text"], before[0]["text"])
+
+
 if __name__ == "__main__":
     unittest.main()
