@@ -91,6 +91,63 @@ class ServiceModuleTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             container.resolve("fragile_service")
 
+    def test_stopped_service_restarts_without_recreating_its_instance(self):
+        container = DependencyContainer()
+        manager = ModuleManager(container, EventBus())
+        events = []
+
+        class RestartableService:
+            def start(self):
+                events.append("start")
+
+            def stop(self):
+                events.append("stop")
+
+            def close(self):
+                events.append("close")
+
+        manager.register(
+            "restartable",
+            lambda: ServiceModule("restartable_service", RestartableService),
+        )
+        manager.start("restartable")
+        first = container.resolve("restartable_service")
+        manager.stop("restartable")
+        manager.start("restartable")
+
+        self.assertIs(container.resolve("restartable_service"), first)
+        self.assertEqual(events, ["start", "stop", "start"])
+        manager.shutdown()
+        self.assertEqual(events, ["start", "stop", "start", "stop", "close"])
+
+    def test_failed_start_stops_and_disposes_partial_service(self):
+        container = DependencyContainer()
+        manager = ModuleManager(container, EventBus())
+        events = []
+
+        class PartialService:
+            def start(self):
+                events.append("start")
+                raise RuntimeError("partial start")
+
+            def stop(self):
+                events.append("stop")
+
+            def close(self):
+                events.append("close")
+
+        manager.register(
+            "partial",
+            lambda: ServiceModule("partial_service", PartialService),
+        )
+        states = manager.start_all()
+
+        self.assertEqual(states["partial"], ModuleState.FAILED)
+        self.assertEqual(events, ["start", "stop", "close"])
+        with self.assertRaises(KeyError):
+            container.resolve("partial_service")
+        self.assertEqual(manager.shutdown(), {})
+
     def test_unrelated_service_modules_start_independently(self):
         container = DependencyContainer()
         manager = ModuleManager(container, EventBus())

@@ -215,7 +215,7 @@ class ModuleManagerTests(unittest.TestCase):
         )
         manager.start("chat")
 
-        with self.assertRaisesRegex(ModuleManagerError, "Stop dependent"):
+        with self.assertRaisesRegex(ModuleManagerError, "dependent modules first"):
             manager.disable("memory")
 
     def test_disable_disposes_and_enable_recreates_module(self):
@@ -273,6 +273,34 @@ class ModuleManagerTests(unittest.TestCase):
         self.assertEqual(states["broken"], ModuleState.FAILED)
         self.assertEqual(states["healthy"], ModuleState.STARTED)
         self.assertIn("intentional start failure", manager.error("broken"))
+
+    def test_enabled_dependents_prevent_disabling_a_registered_dependency(self):
+        from kira.app.module_manager import ModuleManager, ModuleManagerError
+
+        manager = ModuleManager()
+        manager.register("base", lambda: self.FakeModule("base", []), optional=True)
+        manager.register(
+            "dependent",
+            lambda: self.FakeModule("dependent", []),
+            dependencies=("base",),
+            optional=True,
+        )
+
+        with self.assertRaisesRegex(ModuleManagerError, "Disable dependent"):
+            manager.disable("base")
+
+    def test_shutdown_does_not_stop_a_module_twice_after_explicit_stop(self):
+        from kira.app.module_manager import ModuleManager
+
+        events = []
+        manager = ModuleManager()
+        manager.register("feature", lambda: self.FakeModule("feature", events))
+        manager.start("feature")
+        manager.stop("feature")
+
+        self.assertEqual(manager.shutdown(), {})
+        self.assertEqual(events.count(("stop", "feature")), 1)
+        self.assertEqual(events.count(("dispose", "feature")), 1)
 
     def test_dependency_cycles_fail_without_starting_modules(self):
         from kira.app.module_manager import ModuleManager, ModuleManagerError, ModuleState

@@ -273,6 +273,24 @@ class VoiceApplicationServiceTests(unittest.TestCase):
             self.service.start_recording()
         self.assertIsNone(self.service.listener)
 
+    def test_dispose_waits_for_listener_exit_and_is_idempotent(self):
+        self.service.start_recording()
+        listener = self.created[0]
+
+        self.assertFalse(self.service.dispose())
+        self.assertTrue(listener.stop_called)
+        self.assertIs(self.service.stopping_listener, listener)
+
+        listener.finish()
+
+        self.assertTrue(self.service.dispose())
+        self.assertTrue(self.service.dispose())
+        self.assertIsNone(self.service.listener)
+        self.assertIsNone(self.service.stopping_listener)
+        self.assertEqual(self.speaker.stopped, 2)
+        with self.assertRaisesRegex(RuntimeError, "disposed"):
+            self.service.start_recording()
+
     def test_stop_all_stops_both_microphone_and_speaker(self):
         self.service.start_recording()
         listener = self.created[0]

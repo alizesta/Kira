@@ -178,3 +178,31 @@ Static code supports this design. Runtime isolation across concurrent sessions, 
 - `kira/memory.py` and `kira/persona_memory.py` remain legacy/compatibility memory paths while service boundaries are adopted.
 
 These compatibility paths should be removed only after static call-site review and an approved migration; TASK 016 does not remove them.
+
+
+## 8. Application feature lifecycle
+
+The production Composition Root registers the application service/factory graph
+through `kira/app/feature_modules.py` and `ServiceModule`. Managed registrations
+cover Memory, Mood, Character Profile, Chat History, Web Search, Game Mode,
+Provider, Coding Agent, Runtime Settings, Vision, and the Chat/Session/Voice
+composition factories.
+
+The graph declares the dependencies that affect startup and shutdown ordering:
+Chat Application depends on Chat History; Session Application depends on Chat
+Application; Vision depends on Game Mode. The manager starts dependencies first
+and disposes created modules in reverse creation order. A service that is stopped
+can be restarted using the same instance; disable/re-enable creates a fresh one.
+Partial start failures receive stop/dispose cleanup and do not leave a DI key
+registered. Disabling a dependency is rejected while a dependent remains enabled.
+
+Chat History initializes storage at module start and flushes pending writes at
+module stop. Vision and Game Mode clear transient policy state when stopped.
+The concrete ChatApplicationService, SessionApplicationService and
+VoiceApplicationService instances are constructed with window-specific Qt
+callback ports and are therefore window-scoped, not application singletons.
+The window owns their graceful shutdown: it drains provider/search/attachment/
+vision/game-audio workers, stops wake/game/mood/session timers, disposes the
+Voice instance only after the listener thread exits, disposes Session/Chat
+orchestration, and then allows QApplication shutdown to release the global
+module graph.
