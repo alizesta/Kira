@@ -57,7 +57,8 @@ FeatureModule registration and legacy-wide cleanup remain coordinated with Flow 
 ### Chat Request and Response contracts
 
 - `kira/domain/chat.py` owns immutable Chat request, response, provider-event,
-  stream-event, status and application-event values.
+  stream-event, status, application-event and ContextRequest/ContextResult values.
+  Domain data types are shared snapshots, not live UI objects.
 - `ChatRequest` and `SubmissionResult` are shared by the Domain and the FIFO
   Coordinator; the Coordinator's queue/admission behavior remains in
   `kira/chat/coordinator.py`.
@@ -68,9 +69,12 @@ FeatureModule registration and legacy-wide cleanup remain coordinated with Flow 
   `ApplicationEventKind`, `Submission` and `PersistenceOutcome` are consumed
   by `ChatApplicationService`, which remains the request orchestration owner
   in `kira/chat/application_service.py`.
+- `kira/domain/chat.py` also owns ContextRequest/ContextResult; Core defines
+  `SystemPromptBuilderPort` and `PromptEnricherPort`, while `ContextBuilder`
+  keeps prompt assembly and context-window trimming as its existing algorithm.
 - The old modules import/re-export these Domain values for compatibility.
-  This extraction does not move or duplicate queueing, streaming state or
-  request lifecycle algorithms.
+  This extraction does not move or duplicate queueing, streaming state, prompt
+  assembly or request lifecycle algorithms.
 
 ## Core application contracts
 
@@ -124,7 +128,8 @@ and notification ports. No new service imports Qt or a concrete UI controller.
 - `tests/test_domain_search.py`: immutable Search DTOs, time bounds and
   snippet behavior.
 - `tests/test_domain_transfer.py`: secret filtering and bounded metadata.
-- `tests/test_domain_chat_contracts.py`: request/session identity pairing, immutable DTOs, provider events and application/response event contracts.
+- `tests/test_domain_chat_contracts.py`: request/session identity pairing, immutable Chat/context DTOs, provider events and application/response event contracts.
+- Existing `tests/test_chat_context_builder.py` continues to exercise context assembly through the compatibility import.
 - `tests/test_application_service_ports.py`: Session, Chat and Event
   structural-port conformance.
 - Existing `tests/test_chat_organization.py`, `tests/test_chat_search.py`
