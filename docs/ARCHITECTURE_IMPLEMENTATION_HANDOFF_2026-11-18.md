@@ -24,6 +24,8 @@ A follow-up source fix on `new-main` also makes `ServiceModule.dispose()` unregi
 
 The selective ModuleManager audit found no justified additional registrations: policy-only services are stateless, while Voice/Vision worker lifetimes remain tied to UI adapters. The current resource-owning module registrations are retained.
 
+A subsequent multi-character hardening pass moved ToolAgent turn caches, memos, results, cancellation, AccessManager intent/taint/grants and pending confirmations into per-character state. Tool plans carry their owner through the background execution context. WebIntel uses one persisted research store per character and a session-scoped cancellation facade; Web-capable ToolAgent calls are serialized so executor threads cannot observe another character's cancellation. Closing a drained Session releases ephemeral state and cached stores while retaining resumable task/research files. TaskStore retains the last five completed plans plus active plans independently for each character, and the chat brain only checks the current character's task state. Focused regression tests were added in `tests/test_tool_agent_session_isolation.py`; they are source-level additions and are not described as executed.
+
 ## 2. Files and responsibilities added or changed
 
 ### Session application
