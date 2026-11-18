@@ -283,7 +283,18 @@ class FileAgent:
                         out.append(n)
                         skipped.append(n)
                 return out
-            shutil.copytree(src, target, symlinks=False, ignore=ignore)
+            # Claim the destination atomically before copying. If copytree
+            # fails halfway, only this operation's own directory is rolled back.
+            os.mkdir(target)
+            try:
+                shutil.copytree(src, target, symlinks=False, ignore=ignore, dirs_exist_ok=True)
+            except Exception as exc:
+                try:
+                    shutil.rmtree(target)
+                except OSError:
+                    _LOGGER.exception("Could not remove partial folder copy: %s", target)
+                    raise ToolError(f"کپی پوشه ناقص ماند و پاک‌سازی مقصد هم ناموفق بود: {target}") from exc
+                raise ToolError(f"کپی پوشه ناموفق بود؛ مقصد ناقص پاک شد: {type(exc).__name__}: {exc}") from exc
             note = f" ({len(skipped)} مورد حساس/لینک رد شد)" if skipped else ""
         else:
             shutil.copy2(src, target)
