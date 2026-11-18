@@ -60,12 +60,14 @@ The service is injected by Bootstrap into MainWindow. SearchWorker creation, sig
 
 Bootstrap injects the Voice factory into MainWindow. Speaker and Listener remain device/Qt adapters; MainWindow relays Qt signals and renders state. Local STT settings-page test listeners remain a separate, explicitly scoped UI test workflow.
 
+| 019 | Game Mode application — `kira/app/game_mode_application.py`, `kira/game_audio_policy.py` | `GameModeApplicationService`: profile permission decisions, input automation restrictions, game-audio importance/category/cooldown policy | Pure `game_mode_policy` and `game_audio_policy` functions | Qt, capture/device APIs, UI presentation |
+
 ## 3. Cross-module API and dependency policy
 
 ### 3.1 Allowed high-level calls
 
 - Bootstrap constructs the graph and injects the shared services.
-- MainWindow calls ChatApplicationService for Chat submission, request lifecycle and history operations, delegates Web Search policy to WebSearchApplicationService, and delegates Voice lifecycle/transcript policy to VoiceApplicationService.
+- MainWindow calls ChatApplicationService for Chat submission, request lifecycle and history operations, delegates Web Search policy to WebSearchApplicationService, and delegates Voice lifecycle/transcript policy to VoiceApplicationService and Game Mode permission/audio-alert policy to GameModeApplicationService.
 - ChatApplicationService calls its injected Coordinator, ContextBuilder, ResponseHandler, AttachmentManager, command port and persistence/history contract.
 - Search receives a read-only persistence reader and returns immutable result/page contracts.
 - Transfer validates and maps the transfer format, then delegates durable import to Persistence.
