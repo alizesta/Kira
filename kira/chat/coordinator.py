@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Mapping, Sequence
 
+from ..core.interfaces.provider_worker import ProviderWorkerPort
+
 
 @dataclass(frozen=True)
 class ChatRequest:
@@ -48,13 +50,13 @@ class SubmissionResult(str, Enum):
 class ChatProviderDispatcher:
     """Adapt a provider worker factory to explicit response callback ports.
 
-    The worker may be Qt-backed, but this adapter imports no Qt. Worker
-    construction and stream callbacks are injected by the application.
+    Worker construction and stream callbacks are injected through a
+    toolkit-neutral ProviderWorkerPort contract.
     """
 
     _EVENTS = frozenset({"tool_event", "event", "chunk", "complete", "error"})
 
-    def __init__(self, worker_factory: Callable[..., Any]):
+    def __init__(self, worker_factory: Callable[..., ProviderWorkerPort]):
         if not callable(worker_factory):
             raise TypeError("worker_factory must be callable")
         self._worker_factory = worker_factory
@@ -63,7 +65,7 @@ class ChatProviderDispatcher:
         unknown = set(callbacks) - self._EVENTS
         if unknown:
             raise ValueError(f"Unsupported provider callbacks: {', '.join(sorted(unknown))}")
-        worker = self._worker_factory(**request)
+        worker: ProviderWorkerPort = self._worker_factory(**request)
         subscribe = getattr(worker, "subscribe", None)
         start = getattr(worker, "start", None)
         if not callable(subscribe) or not callable(start):
