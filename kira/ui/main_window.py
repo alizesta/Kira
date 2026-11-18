@@ -5,14 +5,14 @@ from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QMainWindow
 
 from ..chat_sessions import session_property, front_only_property
-from .main_window_session import SessionMixin
-from .main_window_voice_settings import VoiceSettingsMixin
-from .main_window_character_settings import CharacterSettingsMixin
-from .main_window_provider_settings import ProviderSettingsMixin
-from .main_window_lifecycle import LifecycleMixin
-from .main_window_attachments_vision import AttachmentsVisionMixin
-from .main_window_chat import ChatMixin
-from .main_window_runtime import RuntimeMixin
+from .main_window_session import SessionController
+from .main_window_voice_settings import VoiceSettingsController
+from .main_window_character_settings import CharacterSettingsController
+from .main_window_provider_settings import ProviderSettingsController
+from .main_window_lifecycle import LifecycleController
+from .main_window_attachments_vision import AttachmentsVisionController
+from .main_window_chat import ChatController
+from .main_window_runtime import RuntimeController
 
 
 class MainWindow(QMainWindow):
@@ -69,14 +69,14 @@ class MainWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._feature_controllers = {
-            "runtime": RuntimeMixin(self),
-            "chat": ChatMixin(self),
-            "attachments_vision": AttachmentsVisionMixin(self),
-            "lifecycle": LifecycleMixin(self),
-            "provider_settings": ProviderSettingsMixin(self),
-            "character_settings": CharacterSettingsMixin(self),
-            "voice_settings": VoiceSettingsMixin(self),
-            "session": SessionMixin(self),
+            "runtime": RuntimeController(self),
+            "chat": ChatController(self),
+            "attachments_vision": AttachmentsVisionController(self),
+            "lifecycle": LifecycleController(self),
+            "provider_settings": ProviderSettingsController(self),
+            "character_settings": CharacterSettingsController(self),
+            "voice_settings": VoiceSettingsController(self),
+            "session": SessionController(self),
         }
 
     def __getattr__(self, name):
