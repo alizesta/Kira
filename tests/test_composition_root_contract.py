@@ -74,7 +74,14 @@ class CompositionRootContractTests(unittest.TestCase):
             node for node in calls if node.func.id == "MainWindow"
         ]
         self.assertEqual(len(main_window_calls), 1)
-        keywords = {item.arg for item in main_window_calls[0].keywords}
+        self.assertEqual(main_window_calls[0].args, [])
+        self.assertEqual(main_window_calls[0].keywords, [])
+
+        initialize_calls = [
+            node for node in calls if node.func.id == "initialize_main_window"
+        ]
+        self.assertEqual(len(initialize_calls), 1)
+        keywords = {item.arg for item in initialize_calls[0].keywords}
         self.assertIn("tool_agent", keywords)
         self.assertIn("session_manager", keywords)
 
