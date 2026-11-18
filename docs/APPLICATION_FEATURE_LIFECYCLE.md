@@ -12,12 +12,16 @@ The application feature registry now manages three extracted use cases through
 
 | Module ID | DI service key | Implementation |
 |---|---|---|
+| `conversation_lifecycle` | `conversation_lifecycle_service` | `kira.chat.conversation_lifecycle.ConversationLifecycleService` |
 | `conversation_organization` | `conversation_organization_application_service` | `kira.app.organization_application.ChatOrganizationService` |
 | `chat_search` | `chat_search_application_service` | `kira.app.chat_search_application.ChatSearchService` |
 | `chat_transfer` | `chat_transfer_application_service` | `kira.app.chat_transfer_application.ChatTransfer` |
 
-All three modules depend on `chat_history`. The dependency graph therefore
-starts and registers Persistence before any of these use cases. ModuleManager
+The Conversation Lifecycle, Organization, Search and Transfer modules all
+depend on `chat_history`. The dependency graph therefore starts and registers
+Persistence before any of these use cases. `chat_application` depends on both
+`chat_history` and `conversation_lifecycle`, so its factory can close over the
+single lifecycle service instance. ModuleManager
 stops/disposes them in reverse creation order, before Chat History is flushed
 and released.
 
@@ -42,6 +46,8 @@ Application or Core.
 
 ## Dependency injection
 
+- Conversation Lifecycle receives the shared Chat History adapter and the
+  `ChatEventPublisher` for post-commit lifecycle notifications.
 - Organization receives the shared Chat History adapter and the shared
   `ChatEventPublisher` for post-commit metadata notifications.
 - Search receives the shared Chat History adapter as its message reader and
@@ -50,8 +56,10 @@ Application or Core.
   `ChatTransferFilePort`.
 - The `register_application_modules` factory override mechanism remains
   available for tests and alternate persistence/file adapters.
-- Bootstrap resolves the three service keys and passes them through
-  `initialize_main_window`. MainWindow stores the references; controllers may
+- Bootstrap resolves the Organization/Search/Transfer service keys and passes
+  them through `initialize_main_window`. It resolves the Conversation Lifecycle
+  dependency when constructing the Chat factory. MainWindow stores the three
+  feature-service references; controllers may
   consume them through their explicit Flow 1 boundaries.
 - Bootstrap exposes `run_application(transfer_file_port=...)` so Flow 3's
   concrete file adapter can be supplied without coupling Application to a
