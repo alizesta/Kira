@@ -455,8 +455,8 @@ class EmotionalRuntime:
             "ي": "ی", "ك": "ک", "ۀ": "ه", "ة": "ه", "أ": "ا", "إ": "ا",
             "ؤ": "و", "ئ": "ی", "۰": "0", "۱": "1", "۲": "2", "۳": "3",
             "۴": "4", "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9",
-        })).replace("\\u200c", " ").lower()
-        value = re.sub(r"[ً-ٰٟـ\\u200d\\u200e\\u200f]", "", value)
+        })).replace("\u200c", " ").lower()
+        value = re.sub(r"[ً-ٰٟـ\u200d\u200e\u200f]", "", value)
         return {
             _MEMORY_RECALL_CANONICAL.get(word, word)
             for word in re.findall(r"[a-z0-9آ-ی]{2,}", value)
