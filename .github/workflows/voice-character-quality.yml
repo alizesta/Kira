@@ -1,0 +1,90 @@
+name: Voice and Character Quality Tests
+
+on:
+  push:
+    branches: [new-main]
+    paths:
+      - "kira/local_voice.py"
+      - "kira/persian_ezafe.py"
+      - "kira/character/decision.py"
+      - "kira/character/text.py"
+      - "kira/personas.py"
+      - "kira/mood.py"
+      - "kira/chat/context_builder.py"
+      - "kira/ui/main_window_chat.py"
+      - "kira/ui/main_window_voice_settings.py"
+      - "tests/test_local_tts_synthesis.py"
+      - "tests/test_persian_ezafe.py"
+      - "tests/test_persian_ezafe_model.py"
+      - "tests/test_character_decision.py"
+      - "tests/test_characters.py"
+      - "tests/test_chat_context_builder.py"
+      - "tests/fixtures/persian_ezafe_gold.json"
+      - "requirements-voice-local.txt"
+      - ".github/workflows/voice-character-quality.yml"
+  pull_request:
+    branches: [new-main]
+    paths:
+      - "kira/local_voice.py"
+      - "kira/persian_ezafe.py"
+      - "kira/character/decision.py"
+      - "kira/character/text.py"
+      - "kira/personas.py"
+      - "kira/mood.py"
+      - "kira/chat/context_builder.py"
+      - "kira/ui/main_window_chat.py"
+      - "kira/ui/main_window_voice_settings.py"
+      - "tests/test_local_tts_synthesis.py"
+      - "tests/test_persian_ezafe.py"
+      - "tests/test_persian_ezafe_model.py"
+      - "tests/test_character_decision.py"
+      - "tests/test_characters.py"
+      - "tests/test_chat_context_builder.py"
+      - "tests/fixtures/persian_ezafe_gold.json"
+      - "requirements-voice-local.txt"
+      - ".github/workflows/voice-character-quality.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  voice-character-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Qt-free test dependencies
+        run: python -m pip install "numpy>=1.26" "psutil>=5.9"
+      - name: Run voice and character regression tests
+        run: >-
+          python -m unittest
+          tests.test_local_tts_synthesis
+          tests.test_persian_ezafe
+          tests.test_persian_ezafe_model
+          tests.test_characters
+          tests.test_character_decision
+          tests.test_chat_context_builder
+          -v
+      - name: Compile changed Python modules
+        run: >-
+          python -m py_compile
+          kira/local_voice.py
+          kira/persian_ezafe.py
+          kira/character/decision.py
+          kira/character/text.py
+          kira/personas.py
+          kira/mood.py
+          kira/chat/context_builder.py
+          kira/ui/main_window_chat.py
+          kira/ui/main_window_voice_settings.py
+          tests/test_local_tts_synthesis.py
+          tests/test_persian_ezafe.py
+          tests/test_persian_ezafe_model.py
+          tests/test_characters.py
+          tests/test_character_decision.py
+          tests/test_chat_context_builder.py
