@@ -61,7 +61,7 @@ class ChatProviderDispatcher:
             raise TypeError("worker_factory must be callable")
         self._worker_factory = worker_factory
 
-    def start(self, *, callbacks: Mapping[str, Callable[..., Any]], **request: Any) -> Any:
+    def start(self, *, callbacks: Mapping[str, Callable[..., Any]], **request: Any) -> ProviderWorkerPort:
         unknown = set(callbacks) - self._EVENTS
         if unknown:
             raise ValueError(f"Unsupported provider callbacks: {', '.join(sorted(unknown))}")
