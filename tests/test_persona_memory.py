@@ -209,18 +209,37 @@ class PersonaMemoryTests(unittest.TestCase):
             "کاربر به موسیقی سنتی علاقه دارد",
             "کاربر مهندس نرم‌افزار است",
             "کاربر هفته آینده به شیراز سفر می‌کند",
+            "کاربر فردا امتحان زبان دارد و نگران است",
+            "کاربر برای تعمیر کارت گرافیک کمک خواست",
+            "کاربر هفته بعد به دکتر مراجعه می‌کند",
+            "کاربر برای گربه غذای مخصوص می‌خرد",
+            "کاربر از فیلم‌های ترسناک خوشش می‌آید",
+            "کاربر به فوتبال علاقه دارد",
         ]
         cases = [
             ("آلبوم موسیقی راک", 0),
+            ("موسیقی سنتی", 1),
             ("شغل مهندس نرم‌افزار", 2),
             ("برنامه سفر شیراز", 3),
+            ("منابع آزمون زبان", 4),
+            ("مشکل کارت گرافیک", 5),
+            ("مراجعه به پزشک", 6),
+            ("غذای گربه", 7),
+            ("فیلم ترسناک", 8),
+            ("بازی فوتبال", 9),
         ]
         hits = 0
         for query, expected in cases:
             ranking = pm._evidence.rank_texts(corpus, query)
             self.assertTrue(ranking, f"no result for {query}")
             hits += int(ranking[0] == expected)
-        self.assertGreaterEqual(hits / len(cases), 0.66)
+        self.assertGreaterEqual(hits / len(cases), 0.90)
+        self.assertEqual(pm._evidence.rank_texts(corpus, "موضوع کاملاً نامرتبط"), [])
+
+    def test_memory_item_timestamp_rejects_non_finite_values(self):
+        for value in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(value=value):
+                self.assertEqual(pm._memory_item_timestamp({"ts": value}), 0.0)
 
     def test_evidence_render_skips_oversized_facts_without_truncating_or_starving_later_lines(self):
         facts = [
