@@ -59,6 +59,42 @@ class JobStoreTests(unittest.TestCase):
         self.assertTrue(response.closed)
         self.assertLess(time.monotonic() - started, 0.5)
 
+    def test_agent_http_does_not_read_response_that_arrives_after_timeout(self):
+        class LateResponse:
+            def __init__(self):
+                self.closed = False
+                self.read_called = False
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                self.close()
+
+            def read(self, size=-1):
+                self.read_called = True
+                return b"{}"
+
+            def close(self):
+                self.closed = True
+
+        response = LateResponse()
+        agent = AgentHttp({"url": "https://agent.example", "name": "worker", "timeout": 0.03})
+
+        def delayed_open(*_args, **_kwargs):
+            time.sleep(0.08)
+            return response
+
+        with mock.patch("kira.mcp.agents.urllib.request.urlopen", side_effect=delayed_open):
+            with self.assertRaisesRegex(ToolError, "مهلت کل"):
+                agent._call("GET", "/health")
+
+        deadline = time.monotonic() + 0.5
+        while not response.closed and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(response.closed)
+        self.assertFalse(response.read_called)
+
     def test_missing_health_ok_field_is_not_treated_as_healthy(self):
         with tempfile.TemporaryDirectory() as temp:
             hub = AgentHub(mock.Mock(), Path(temp), lambda: {})
