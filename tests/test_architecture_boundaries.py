@@ -93,11 +93,11 @@ class ArchitectureBoundaryTests(unittest.TestCase):
         chat_event_imports = _imported_modules(ROOT / "kira" / "chat" / "events.py")
 
         self.assertFalse(
-            _matches_prefix("kira.chat", tuple(event_bus_imports)),
+            any(_matches_prefix(item, ("kira.chat",)) for item in event_bus_imports),
             "The shared EventBus must not import a concrete feature package.",
         )
         self.assertFalse(
-            _matches_prefix("kira.app", tuple(chat_event_imports)),
+            any(_matches_prefix(item, ("kira.app",)) for item in chat_event_imports),
             "Feature event publishers must depend on Core event-bus ports, not app implementations.",
         )
 
