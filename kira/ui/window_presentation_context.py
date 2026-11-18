@@ -103,6 +103,7 @@ VIEW_FIELDS = frozenset({
     "appearance_page",
     "assistant_page",
     "avatar",
+    "avatar_card",
     "bench_out",
     "char_tab_buttons",
     "char_tab_group",
