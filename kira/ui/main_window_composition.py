@@ -38,7 +38,6 @@ from .main_window_root_support import (
     make_icon,
     winfx,
 )
-from ..app.web_search import WebSearchApplicationService
 from .application_adapters import (
     create_chat_application_ports,
     create_voice_application_ports,
@@ -67,68 +66,45 @@ def initialize_main_window(
 ):
     """Build the window's services, pages, signals and runtime adapters."""
     self = window
-    # Direct MainWindow construction remains supported for existing callers;
-    # normal application startup injects these services from app.bootstrap.
-    if memory_service is None:
-        from ..services.memory_service import PersonaMemoryService
-        memory_service = PersonaMemoryService()
-    if mood_service is None:
-        from ..services.mood_service import MoodStateService
-        mood_service = MoodStateService()
+    # Application services are constructed and lifecycle-managed by app.bootstrap.
+    # This module is only the outer Qt/UI adapter composition boundary.
+    required = {
+        "memory_service": memory_service,
+        "mood_service": mood_service,
+        "character_service": character_service,
+        "chat_history_service": chat_history_service,
+        "chat_application_service_factory": chat_application_service_factory,
+        "session_manager": session_manager,
+        "session_application_service_factory": session_application_service_factory,
+        "web_search_service": web_search_service,
+        "voice_application_service_factory": voice_application_service_factory,
+        "game_mode_application_service": game_mode_application_service,
+        "settings": settings,
+        "provider_application_service": provider_application_service,
+        "coding_agent_application_service": coding_agent_application_service,
+        "vision_application_service": vision_application_service,
+        "runtime_settings_application_service": runtime_settings_application_service,
+    }
+    missing = tuple(name for name, value in required.items() if value is None)
+    if missing:
+        raise TypeError("MainWindow composition requires Bootstrap dependencies: " + ", ".join(missing))
     self.memory_service = memory_service
     self.mood_service = mood_service
-    if character_service is None:
-        from ..services.character_service import CharacterProfileService
-        character_service = CharacterProfileService()
     self.character_service = character_service
-    if chat_history_service is None:
-        from ..services.chat_history_service import SqliteChatHistoryService
-        chat_history_service = SqliteChatHistoryService()
-    if chat_application_service_factory is not None:
-        if not callable(chat_application_service_factory):
-            raise TypeError("chat_application_service_factory must be callable")
-        self.chat_application_service = chat_application_service_factory(create_chat_application_ports(self))
-    else:
-        # Compatibility path for callers that instantiate MainWindow directly.
-        from ..app.chat_composition import create_chat_application_service_factory
-        self.chat_application_service = create_chat_application_service_factory(
-            persistence=chat_history_service,
-            event_publisher=chat_event_publisher,
-        )(create_chat_application_ports(self))
-    self.web_search_service = web_search_service or WebSearchApplicationService()
-    if game_mode_application_service is None:
-        from ..app.game_mode_application import GameModeApplicationService
-        game_mode_application_service = GameModeApplicationService()
+    if not callable(chat_application_service_factory):
+        raise TypeError("chat_application_service_factory must be callable")
+    self.chat_application_service = chat_application_service_factory(create_chat_application_ports(self))
+    self.web_search_service = web_search_service
     self.game_mode_application_service = game_mode_application_service
     self.settings = settings if settings is not None else load_settings()
-    if provider_application_service is None:
-        from ..app.provider_application import ProviderApplicationService
-        provider_application_service = ProviderApplicationService()
     self.provider_application_service = provider_application_service
-    if runtime_settings_application_service is None:
-        from ..app.runtime_settings_application import RuntimeSettingsApplicationService
-        runtime_settings_application_service = RuntimeSettingsApplicationService()
     self.runtime_settings_application_service = runtime_settings_application_service
     self.runtime_settings_application_service.configure(self.settings)
-    if coding_agent_application_service is None:
-        from ..app.coding_agent_application import CodingAgentApplicationService
-        coding_agent_application_service = CodingAgentApplicationService()
     self.coding_agent_application_service = coding_agent_application_service
-    if vision_application_service is None:
-        from ..app.vision_application import VisionApplicationService
-        vision_application_service = VisionApplicationService(
-            self.game_mode_application_service,
-            self.settings.get("vision_mode", "economic"),
-        )
     self.vision_application_service = vision_application_service
     self._db_notes = self.chat_application_service.init_history()
-    self.session_manager = session_manager or SessionManager(ChatSession)
+    self.session_manager = session_manager
     self.chat_event_publisher = chat_event_publisher
-    if session_application_service_factory is None:
-        from ..app.session_composition import create_session_application_service_factory
-        session_application_service_factory = create_session_application_service_factory(
-            event_publisher=chat_event_publisher
-        )
     if not callable(session_application_service_factory):
         raise TypeError("session_application_service_factory must be callable")
     self.session_application_service = session_application_service_factory(
@@ -201,9 +177,6 @@ def initialize_main_window(
     self.companion.visibility.connect(lambda _=None: self.update_bubble())
     self.speaker = Speaker(self.settings, self)
     self.voice_listener_finished.connect(self._on_voice_listener_finished)
-    if voice_application_service_factory is None:
-        from ..app.voice_composition import create_voice_application_service_factory
-        voice_application_service_factory = create_voice_application_service_factory()
     if not callable(voice_application_service_factory):
         raise TypeError("voice_application_service_factory must be callable")
     self.voice_application_service = voice_application_service_factory(create_voice_application_ports(self, self.speaker))
