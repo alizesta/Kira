@@ -8,14 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 QT_IMPORT_PREFIXES = ("PySide6", "PySide2", "PyQt5", "PyQt6")
-CORE_FORBIDDEN_PREFIXES = (
-    "kira.app",
-    "kira.ui",
-    "kira.services",
-    "kira.infrastructure",
-    "kira.modules",
-    "kira.memory",
-)
+CORE_ALLOWED_PACKAGE_PREFIXES = ("kira.core", "kira.domain")
 APPLICATION_FORBIDDEN_PREFIXES = ("kira.ui", *QT_IMPORT_PREFIXES)
 
 
@@ -75,7 +68,11 @@ class ArchitectureBoundaryTests(unittest.TestCase):
         violations = []
         for path in files:
             for imported in _imported_modules(path):
-                if _matches_prefix(imported, CORE_FORBIDDEN_PREFIXES) or _matches_prefix(
+                is_kira_package = imported == "kira" or imported.startswith("kira.")
+                is_inner_layer = _matches_prefix(
+                    imported, CORE_ALLOWED_PACKAGE_PREFIXES
+                )
+                if (is_kira_package and not is_inner_layer) or _matches_prefix(
                     imported, QT_IMPORT_PREFIXES
                 ):
                     violations.append(
@@ -84,8 +81,8 @@ class ArchitectureBoundaryTests(unittest.TestCase):
         self.assertEqual(
             violations,
             [],
-            "Core/domain packages may depend on contracts and the standard library, "
-            "not concrete application, presentation or infrastructure modules.",
+            "Core/domain packages may import only Core/Domain packages and the standard library; "
+            "all other kira packages are outer-layer dependencies.",
         )
 
     def test_chat_ui_calls_web_search_application_service_not_engine_module(self):
