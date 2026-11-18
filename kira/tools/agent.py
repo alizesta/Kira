@@ -15,6 +15,7 @@ Safety rules enforced here, in code (not by trusting the model):
 from __future__ import annotations
 
 import json
+import logging
 import re
 import threading
 import time
@@ -30,6 +31,8 @@ from .builtin import build_registry
 from .registry import ToolResult, NEEDS_CONFIRM, BAD_ARGS, DENIED, OK, LEVEL_NAMES, clip
 from ..webintel.session import CANCEL as WEB_CANCEL
 from ..game_mode_policy import tool_categories_allowed
+
+_LOGGER = logging.getLogger(__name__)
 
 CONFIRM_TTL = 300                 # seconds a pending confirmation stays valid
 MEMO_TTL = 1800                   # seconds a "recent tool result" note stays in the prompt (session only, never saved)
@@ -120,7 +123,8 @@ class ToolAgent(AutonomyMixin):
         try:                                              # external MCP servers + independent agents (kira/mcp); optional, in the background
             from .. import mcp as _mcp
             self.mcp = _mcp.install(self.registry, data_dir or self.policy.data_dir, lambda: self.settings)
-        except Exception:                                 # noqa: BLE001
+        except Exception:                                 # noqa: BLE001 - MCP is optional, but startup failure must be visible
+            _LOGGER.exception("Optional MCP integration could not be imported or initialized")
             self.mcp = None
         self._init_session_turn_states()
         self._pending_by_session: dict[str, Pending] = {}
@@ -356,7 +360,8 @@ class ToolAgent(AutonomyMixin):
         if tool and tool.memo and res.ok:
             try:
                 line = tool.memo(res.args, res.text)
-            except Exception:                                # noqa: BLE001
+            except Exception:                                # noqa: BLE001 - memoization must not fail a completed tool operation
+                _LOGGER.debug("Could not create a recent-result memo for tool %s", res.tool, exc_info=True)
                 line = None
             if line:
                 self._memos.append((time.time(), line[:300]))
