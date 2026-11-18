@@ -5,7 +5,6 @@ from .main_window_chat_support import (
     QTimer,
     SearchWorker,
     TaskWorker,
-    att,
     body_ctl,
     brain,
     create_default_command_registry,
@@ -162,7 +161,7 @@ class ChatMixin:
             complete_local_request=self.chat_application_service.complete_local_request,
         ):
             return  # Coding Agent owns this separate execution lifecycle.
-        if self._game_mode_enabled and len(attachments or []) < att.MAX_FILES:
+        if self._game_mode_enabled and len(attachments or []) < self.chat_application_service.max_attachments:
             frame = self._game_vision_attachment()
             if frame is not None:
                 attachments = list(attachments or []) + [frame]
@@ -206,7 +205,7 @@ class ChatMixin:
             except (AttributeError, ValueError):
                 packed = None
         if packed is None and attachments:
-            packed = att.compose(text, attachments, search=img_search)
+            packed = self.chat_application_service.compose_attachments(text, attachments, search=img_search)
         if packed is not None:
             # Search must only run with a successfully prepared image payload.
             img_search = bool(packed.get("images")) and (force_img or self.settings.get("image_search", False))
@@ -220,7 +219,7 @@ class ChatMixin:
                 return
         if packed is not None and force_web:
             # Preserve the user's literal /web command in the visible and durable chat history.
-            presentation = att.compose(original_text, attachments, search=img_search)
+            presentation = self.chat_application_service.compose_attachments(original_text, attachments, search=img_search)
             packed["display"] = presentation["display"]
             packed["stored"] = presentation["stored"]
         self._turn_extra = packed

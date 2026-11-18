@@ -118,6 +118,32 @@ class ChatApplicationServiceTests(unittest.TestCase):
         )
 
 
+    def test_attachment_composition_and_limit_are_owned_by_chat_service(self):
+        self.assertEqual(self.service.max_attachments, 5)
+        prepared = self.service.compose_attachments(
+            "read this",
+            [{"name": "note.txt", "kind": "text", "text": "attachment body"}],
+        )
+        self.assertEqual(prepared["display"], "read this\\n📎 note.txt")
+        self.assertIn("attachment body", prepared["model"])
+        self.assertIn("attachment body", prepared["stored"])
+        self.assertEqual(prepared["images"], [])
+
+        with tempfile.TemporaryDirectory() as temp:
+            manager = AttachmentManager(Path(temp) / "limited", max_files=2)
+            service = ChatApplicationService(
+                persistence=self.persistence,
+                system_prompt_builder=lambda *_args, **_kwargs: "",
+                worker_factory=self._worker_factory,
+                on_dispatch=self.dispatched.append,
+                attachment_manager=manager,
+            )
+            try:
+                self.assertEqual(service.max_attachments, 2)
+            finally:
+                service.dispose()
+                manager.close()
+
     def test_request_attachments_use_managed_storage_and_are_cleaned_at_terminal(self):
         image = base64.b64encode(
             base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==")

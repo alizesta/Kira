@@ -15,7 +15,7 @@ from typing import Any, Callable, Mapping, Sequence
 from uuid import uuid4
 
 from ..core.interfaces.chat_history_service import ChatHistoryService
-from .attachments import Attachment, AttachmentManager
+from .attachments import Attachment, AttachmentManager, compose as compose_attachment_payload
 from .commands import CommandDispatch, CommandRegistry
 from .context_builder import ContextBuilder, ContextRequest
 from .coordinator import ChatCoordinator, ChatProviderDispatcher, ChatRequest, SubmissionResult
@@ -155,6 +155,18 @@ class ChatApplicationService:
         self._active_by_session: dict[str, str] = {}
         self._dispatch_scheduled: set[str] = set()
         self._disposed = False
+
+    @property
+    def max_attachments(self) -> int:
+        """Return the active attachment manager's per-message limit."""
+        return self._attachment_manager.max_files
+
+    @staticmethod
+    def compose_attachments(
+        text: str, attachments: Sequence[Mapping[str, Any]], *, search: bool = False,
+    ) -> dict[str, Any]:
+        """Compose legacy attachment payloads behind the Chat application boundary."""
+        return compose_attachment_payload(text, list(attachments or ()), search=search)
 
     def add_attachment(
         self, source: Any, *, session_id: str, filename: str | None = None,

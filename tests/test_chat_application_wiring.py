@@ -66,6 +66,18 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("self.session_manager.get_session(event.session_id)", self.source)
         self.assertIn("self.chat_application_service.submit_message(\n            self.cur.session_id", self.source)
 
+    def test_attachment_composition_and_limits_do_not_leak_into_chat_ui(self):
+        chat = (ROOT / "kira" / "ui" / "main_window_chat.py").read_text(encoding="utf-8")
+        support = (ROOT / "kira" / "ui" / "main_window_chat_support.py").read_text(encoding="utf-8")
+        service = (ROOT / "kira" / "chat" / "application_service.py").read_text(encoding="utf-8")
+        self.assertIn("self.chat_application_service.max_attachments", chat)
+        self.assertIn("self.chat_application_service.compose_attachments(", chat)
+        self.assertNotIn("att.MAX_FILES", chat)
+        self.assertNotIn("att.compose(", chat)
+        self.assertNotIn("from ..chat import attachments as att", support)
+        self.assertIn("def compose_attachments(", service)
+        self.assertIn("def max_attachments(", service)
+
     def test_shutdown_delegates_partial_response_cleanup_to_application_service(self):
         close_event = self.method("closeEvent")
         close_calls = [node for node in ast.walk(close_event) if isinstance(node, ast.Call)]
