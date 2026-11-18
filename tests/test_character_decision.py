@@ -165,6 +165,15 @@ class CharacterDecisionTests(unittest.TestCase):
                 decision = self.engine.decide("hello", initiative=value)
                 self.assertIn(expected, self.engine.build_prompt(decision))
 
+
+    def test_equal_scores_use_the_documented_stable_behaviour_order(self):
+        traits = {name: 0.5 for name in BASE_TRAITS}
+        engine = DecisionEngine(traits)
+        first = engine.decide("سلام", {"emotion": "neutral", "energy": 76})
+        for _ in range(10):
+            self.assertEqual(engine.decide("سلام", {"emotion": "neutral", "energy": 76}), first)
+        self.assertEqual(first.behaviour, "playful")
+
     def test_decisions_are_stable_for_repeated_and_small_non_boundary_perturbations(self):
         base = {"emotion": "neutral", "energy": 76, "relationship": {"tension": 0}}
         first = self.engine.decide("سلام", base)

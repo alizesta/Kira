@@ -181,21 +181,27 @@ def _resolve_tts_model_path(model_path="") -> tuple[Path, str]:
     return path, "bundled"
 
 
-def _model_file_signature(path: Path):
-    """Invalidate the in-memory voice when its ONNX file is replaced in place."""
+def _file_signature(path: Path):
     try:
         stat = path.stat()
-        return (str(path), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+        return (stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
     except OSError:
         # Tests and some virtual filesystems may not expose stat metadata.
-        return (str(path), None, None, None)
+        return (None, None, None)
+
+
+def _model_file_signature(path: Path):
+    """Invalidate the active voice when the ONNX weights or Piper sidecar change."""
+    sidecar = Path(str(path) + ".json")
+    return (str(path), _file_signature(path), _file_signature(sidecar))
 
 
 def _is_memory_pressure(exc: BaseException) -> bool:
     message = str(exc).casefold()
     return isinstance(exc, MemoryError) or any(
         token in message
-        for token in ("out of memory", "memory allocation", "not enough memory", "failed to allocate")
+        for token in ("out of memory", "memory allocation", "not enough memory", "failed to allocate",
+                      "cannot allocate memory", "bad_alloc", "not enough system resources")
     )
 
 

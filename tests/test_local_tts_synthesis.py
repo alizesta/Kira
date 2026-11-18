@@ -183,6 +183,23 @@ class LocalPiperSynthesisTests(unittest.TestCase):
         self.assertEqual(_FakePiperVoice.loads, [str(model), str(model)])
         self.assertEqual(local_voice._tts_model_path, str(model))
 
+
+    def test_replaced_piper_sidecar_at_same_path_invalidates_voice_cache(self):
+        with tempfile.TemporaryDirectory() as temp:
+            model = Path(temp) / "stable.onnx"
+            sidecar = Path(str(model) + ".json")
+            model.write_bytes(b"same model")
+            sidecar.write_text('{"length_scale": 1}', encoding="utf-8")
+            with mock.patch.object(
+                local_voice, "_resolve_tts_model_path", return_value=(model, str(model))
+            ):
+                local_voice.synthesize_persian("اول", model_path=str(model))
+                sidecar.write_text('{"length_scale": 2, "new_metadata": true}', encoding="utf-8")
+                os.utime(sidecar, None)
+                local_voice.synthesize_persian("دوم", model_path=str(model))
+
+        self.assertEqual(_FakePiperVoice.loads, [str(model), str(model)])
+
     def test_custom_voice_readiness_requires_piper_sidecar(self):
         with tempfile.TemporaryDirectory() as temp:
             model = Path(temp) / "voice.onnx"
