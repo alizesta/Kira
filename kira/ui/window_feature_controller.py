@@ -5,13 +5,15 @@ sharing the existing widget/state surface during the incremental migration.
 """
 from __future__ import annotations
 
+from PySide6.QtCore import QObject
 from PySide6.QtWidgets import QMainWindow
 
 
-class WindowFeatureController:
+class WindowFeatureController(QObject):
     """Bind a feature's behavior to a single owning MainWindow instance."""
 
     def __init__(self, window):
+        QObject.__init__(self, window)
         object.__setattr__(self, "_window", window)
 
     @property
