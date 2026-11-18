@@ -89,7 +89,7 @@ def initialize_main_window(
     self.services.character_service = character_service
     if not callable(chat_application_service_factory):
         raise TypeError("chat_application_service_factory must be callable")
-    self.services.chat_application_service = chat_application_service_factory(create_chat_application_ports(self.host))
+    self.services.chat_application_service = chat_application_service_factory(create_chat_application_ports(self))
     self.services.web_search_service = web_search_service
     self.services.game_mode_application_service = game_mode_application_service
     self.services.settings = settings
@@ -193,11 +193,11 @@ def initialize_main_window(
     self.views.wake_timer = QTimer(self.host)
     self.views.wake_timer.setSingleShot(True)
     self.views.wake_timer.timeout.connect(self.controllers.require("runtime").go_sleep)
-    self.state._game_poll_timer = QTimer(self)
+    self.state._game_poll_timer = QTimer(self.host)
     self.state._game_poll_timer.setInterval(2500)
     self.state._game_poll_timer.timeout.connect(self.adapters.game_mode.poll)
     self.state._game_poll_timer.start()
-    self.state._game_capture_timer = QTimer(self)
+    self.state._game_capture_timer = QTimer(self.host)
     self.state._game_capture_timer.setInterval(int(self.services.vision_application_service.policy.interval_seconds * 1000))
     self.state._game_capture_timer.timeout.connect(self.controllers.require("attachments_vision")._capture_game_frame)
     self.adapters.game_mode.game_detected.connect(self.controllers.require("attachments_vision").on_game_detected)
@@ -297,7 +297,7 @@ def initialize_main_window(
     self.host.setCentralWidget(central)
     self.views.tabs.currentChanged.connect(self.controllers.require("session")._sync_nav)
     self.controllers.require("session")._sync_nav()
-    self.state._mood_ui_timer = QTimer(self)                 # the neon mood chips follow the persisted emotional state
+    self.state._mood_ui_timer = QTimer(self.host)                 # the neon mood chips follow the persisted emotional state
     self.state._mood_ui_timer.setInterval(1500)
     self.state._mood_ui_timer.timeout.connect(self.controllers.require("session").update_mood_indicator)
     self.state._mood_ui_timer.start()
