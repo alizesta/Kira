@@ -3,6 +3,8 @@ import unittest
 
 from kira.chat.session_manager import SessionManager
 from kira.chat_sessions import ChatSession
+from kira.core.interfaces.conversation_lifecycle import ConversationLifecycleApplicationPort
+from kira.chat.conversation_lifecycle import ConversationLifecycleService
 from kira.core.interfaces.application_services import (
     ApplicationEventPublisherPort,
     ChatApplicationPort,
@@ -33,6 +35,27 @@ class ApplicationServicePortTests(unittest.TestCase):
         session = manager.create_session("kira")
         self.assertIsInstance(manager, SessionManagerPort)
         self.assertIsInstance(session, RuntimeSessionPort)
+
+    def test_conversation_lifecycle_service_implements_core_port(self):
+        class Repository:
+            def get_conversation(self, conversation_id):
+                return None
+
+            def list_conversations(self, character_id=None):
+                return []
+
+            def update_conversation_lifecycle(self, changes):
+                return True
+
+            def delete_conversation(self, conversation_id, *, expected_status=None):
+                return 0
+
+        class Publisher:
+            def publish(self, event_type, **payload):
+                return None
+
+        service = ConversationLifecycleService(Repository(), Publisher())
+        self.assertIsInstance(service, ConversationLifecycleApplicationPort)
 
     def test_chat_application_and_event_publisher_implement_core_ports(self):
         self.assertIsInstance(_ChatApplication(), ChatApplicationPort)
