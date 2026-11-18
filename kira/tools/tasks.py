@@ -451,6 +451,13 @@ class TaskStore:
 
     def clear(self, session_id: str | None = None):
         with self.lock:
+            if self._load_failed and session_id is not None:
+                _LOGGER.error(
+                    "Cannot safely clear task history for Session %s because %s contains unreadable records",
+                    session_id,
+                    self.path,
+                )
+                return
             if session_id is None:
                 self.plans = []
             else:
