@@ -1130,7 +1130,7 @@ class SqliteChatRepository:
                 } for row in reversed(rows)]
             except (sqlite3.Error, OSError) as exc:
                 self._note_error(exc)
-                return []
+                raise PersistenceError(f"Could not inspect persisted chat message records: {exc}") from exc
 
     def get_messages(self, limit=1000, character_id=None, conversation_id=None, after_id=0):
         with self._lock:

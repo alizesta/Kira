@@ -35,8 +35,10 @@ def sessions_are_idle(sessions):
     """Fail closed unless every character session has no active request or unsent draft."""
     if sessions is None:
         return False
+    seen = False
     try:
         for session in sessions:
+            seen = True
             if session is None or not hasattr(session, "busy") or not hasattr(session, "draft"):
                 return False
             busy = getattr(session, "busy")
@@ -49,7 +51,7 @@ def sessions_are_idle(sessions):
                 return False
     except Exception:  # noqa: BLE001 - malformed session state must suppress unsolicited contact
         return False
-    return True
+    return seen
 
 
 def _bounded_seconds(value, default, *, allow_zero=False):
@@ -74,7 +76,7 @@ def _after_local_day(created_at, days_after_today):
         return datetime.combine(event_day + timedelta(days=1), datetime_time.min).timestamp()
     except (OverflowError, OSError, TypeError, ValueError):
         # A failed local-calendar conversion must defer, never make the event due early.
-        return float(created_at) + (max(0, int(days_after_today)) + 1) * DAY
+        return float("inf")
 
 
 def _after_current_month(created_at):
@@ -678,6 +680,9 @@ def persisted_checkin_events(records, now=None, retention_seconds=DEFAULT_MEMORY
     recovered = []
     for record in records if isinstance(records, (list, tuple)) else ():
         if not isinstance(record, dict) or record.get("role") != "assistant":
+            continue
+        status = str(record.get("status") or "")
+        if status and status != "complete":
             continue
         metadata = record.get("metadata")
         if isinstance(metadata, str):

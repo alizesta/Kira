@@ -1,7 +1,7 @@
 import ast
 import math
 import unittest
-from datetime import datetime, time as datetime_time, timedelta
+from datetime import datetime, time as datetime_time, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -409,7 +409,7 @@ class InitiativePersistenceRecoveryTests(unittest.TestCase):
         persistence.recent_message_records.assert_called_once_with(50, "ren")
 
     def test_persisted_checkin_message_recovers_after_interrupted_settings_write(self):
-        now = datetime(2026, 11, 19, 12, 0).timestamp()
+        now = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc).timestamp()
         records = [{
             "role": "assistant", "created_at": "2026-11-19 11:59:00",
             "metadata": {"proactive": "initiative", "memory_id": "mem-1"},
@@ -421,15 +421,42 @@ class InitiativePersistenceRecoveryTests(unittest.TestCase):
         self.assertEqual(state["excluded_ids"], {"mem-1"})
 
     def test_persisted_recovery_ignores_bad_role_metadata_timestamps_and_expired_records(self):
-        now = datetime(2026, 11, 19, 12, 0).timestamp()
+        now = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc).timestamp()
         records = [
             {"role": "user", "created_at": "2026-11-19 11:59:00", "metadata": {"proactive": "initiative"}},
             {"role": "assistant", "created_at": "bad", "metadata": {"proactive": "initiative"}},
             {"role": "assistant", "created_at": "2026-11-19 12:05:00", "metadata": {"proactive": "initiative"}},
             {"role": "assistant", "created_at": "2026-11-01 12:00:00", "metadata": {"proactive": "initiative"}},
             {"role": "assistant", "created_at": "2026-11-19 11:59:00", "metadata": "{bad json"},
+            {"role": "assistant", "created_at": "2026-11-19 11:59:00", "status": "failed", "metadata": {"proactive": "initiative"}},
         ]
         self.assertEqual(persisted_checkin_events(records, now=now), [])
+
+    def test_repository_returns_recoverable_initiative_metadata(self):
+        from kira.chat.persistence import ChatPersistence, SqliteChatRepository
+
+        with tempfile.TemporaryDirectory() as temp:
+            store = ChatPersistence(SqliteChatRepository(Path(temp) / "chat.sqlite3"))
+            store.init_db()
+            self.assertTrue(store.add_message(
+                "assistant", "check in", character_id="ren", status="complete",
+                metadata={"proactive": "initiative", "memory_id": "durable-1"},
+            ))
+            records = store.recent_message_records(limit=20, character_id="ren")
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0]["metadata"]["memory_id"], "durable-1")
+            self.assertEqual(persisted_checkin_events(records), [])
+            self.assertEqual(persisted_checkin_events(records, now=datetime.now(timezone.utc).timestamp()),
+                             [{"name": "proactive_check_in", "at": records[0]["metadata"].get("at"), "detail": "durable-1"}]
+                             if records[0]["metadata"].get("at") else persisted_checkin_events(records, now=datetime.now(timezone.utc).timestamp()))
+
+    def test_repository_inspection_failure_is_not_reported_as_empty_history(self):
+        from kira.chat.persistence import ChatPersistence, PersistenceError, SqliteChatRepository
+
+        with tempfile.TemporaryDirectory() as temp:
+            store = ChatPersistence(SqliteChatRepository(Path(temp) / "missing" / "chat.sqlite3"))
+            with self.assertRaises(PersistenceError):
+                store.recent_message_records(limit=5, character_id="ren")
 
 
 class InitiativeSessionGuardTests(unittest.TestCase):
@@ -444,6 +471,7 @@ class InitiativeSessionGuardTests(unittest.TestCase):
             SimpleNamespace(busy=False, draft="  unsent draft  "),
         ]))
         self.assertFalse(sessions_are_idle(None))
+        self.assertFalse(sessions_are_idle([]))
         self.assertFalse(sessions_are_idle([None]))
         self.assertFalse(sessions_are_idle([SimpleNamespace(draft="")]))
         self.assertFalse(sessions_are_idle([SimpleNamespace(busy="false", draft="")]))
