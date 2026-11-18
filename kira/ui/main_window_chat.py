@@ -1,4 +1,7 @@
 """Chat feature controller for the desktop window."""
+import logging
+
+logger = logging.getLogger(__name__)
 from .main_window_chat_support import (
     ApplicationEventKind,
     QMessageBox,
@@ -477,6 +480,7 @@ class ChatController(WindowFeatureController):
             mood_query = next((str(item.get("content") or "") for item in reversed(history) if isinstance(item, dict) and item.get("role") == "user"), "")
             mood_block = mood.build_block(mode.name if mode else modes.CHAT, query=mood_query)
         except Exception:                                         # noqa: BLE001
+            logger.exception("Unable to build mood/character prompt block for the current chat turn")
             mood_block = ""
 
         # Brain planning remains application policy; only its prompt contribution

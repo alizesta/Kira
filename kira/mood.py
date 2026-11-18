@@ -28,6 +28,7 @@ from contextvars import ContextVar
 from .config import DATA_DIR
 from .emotion.runtime import EmotionalRuntime, EMOTIONS as RUNTIME_EMOTIONS, STATE_FILE
 from .character.learning import detect_feedback
+from .character.decision import normalize_serious_text
 
 _emotional_runtime = EmotionalRuntime()
 _runtime_migrated = False
@@ -237,7 +238,8 @@ def set_active_character(character_id, base_traits=None):
 
 
 def _norm(text) -> str:
-    return str(text or "").replace("‌", " ").replace("ي", "ی").replace("ك", "ک").lower()
+    """Use the same Unicode normalization as deterministic serious-context detection."""
+    return normalize_serious_text(text)
 
 
 def _load() -> dict:

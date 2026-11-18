@@ -65,6 +65,10 @@ class CharacterDecisionTests(unittest.TestCase):
         self.assertIn("[CHARACTER DECISION]", prompt)
         self.assertIn("serious-topic override", prompt)
 
+    def test_mood_and_decision_share_arabic_persian_normalization(self):
+        self.assertEqual(mood._norm("كِتاب ي"), "کتاب ی")
+        self.assertEqual(mood._norm("شیمی‌درمانی"), "شیمی درمانی")
+
     def test_runtime_snapshot_failure_preserves_character_baseline(self):
         runtime = mock.Mock()
         runtime.base_traits = {**BASE_TRAITS, "empathy": 0.97}
