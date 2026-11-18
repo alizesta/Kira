@@ -71,8 +71,8 @@ class SessionController(WindowFeatureController):
         self.setWindowTitle(f"Project {self.settings['assistant_name']}  {VERSION}")
         self.title.setText(f"Project {self.settings['assistant_name']}")
         self.set_status(*self._status[:1], **self._status[1])
-        self.update_companion_btn()
-        self.update_engine_label()
+        self.feature_controller("runtime").update_companion_btn()
+        self.feature_controller("runtime").update_engine_label()
         self.refresh_tab_buttons()
         if hasattr(self, "help_page"):
             self.help_page.retranslate()
@@ -337,18 +337,18 @@ class SessionController(WindowFeatureController):
         if sess is None or not self.session_application_service.activate_session(sess.session_id):
             return
         if cid != self.front.cid:
-            self._flush_character_autosave()
+            self.feature_controller("character_settings")._flush_character_autosave()
         old = self.front
         if old is not sess:
             old.draft = self.input.text()
             if old._speech_live:                       # the voice belongs to the chat in front
                 old._speech_live = False
-            self.safe_stop_speaker()
+            self.feature_controller("runtime").safe_stop_speaker()
             try:
                 self.voice_application_service.stream_reset()
             except Exception:                           # noqa: BLE001
                 pass
-            self.clear_upload_tiles()
+            self.feature_controller("attachments_vision").clear_upload_tiles()
         self.front = self.cur = sess
         sess.unread = False
         self.settings["active_character_id"] = cid
@@ -361,7 +361,7 @@ class SessionController(WindowFeatureController):
         if old is not sess:
             self.input.setText(sess.draft)
         self.apply_chat_theme()
-        self.apply_character_art()
+        self.feature_controller("character_settings").apply_character_art()
         self.gen_stop_btn.setVisible(bool(sess.busy))
         self.gen_stop_btn.setEnabled(True)
         if sess.busy:
@@ -369,12 +369,12 @@ class SessionController(WindowFeatureController):
         else:
             self.set_status("st_ready")
         phase, info = sess.badge
-        self.set_badge(phase if sess.busy else "idle", info if sess.busy else self.client.preview_route())
+        self.feature_controller("runtime").set_badge(phase if sess.busy else "idle", info if sess.busy else self.client.preview_route())
         self.refresh_tab_buttons()
         if hasattr(self, "character_page"):
-            self.refresh_character_choices()
-            self.refresh_character_card(cid)
-        self.refresh_personality_controls()
+            self.feature_controller("character_settings").refresh_character_choices()
+            self.feature_controller("character_settings").refresh_character_card(cid)
+        self.feature_controller("character_settings").refresh_personality_controls()
         self.update_mood_indicator()
         bar = sess.view.verticalScrollBar()
         bar.setValue(bar.maximum())
@@ -394,7 +394,7 @@ class SessionController(WindowFeatureController):
             intensity = max(0, min(100, int(appearance.get("glow", 34))))
             glow.setBlurRadius(14 + intensity * 0.38)
             glow.setColor(QColor(r, g, b, round(54 + intensity * 0.92)))
-        self._apply_neon_glow_effects(self.settings.get("appearance", {}))
+        self.feature_controller("character_settings")._apply_neon_glow_effects(self.settings.get("appearance", {}))
 
     def greeting_text(self):
         profile = self.character_service.active(self.settings)
@@ -637,7 +637,7 @@ class SessionController(WindowFeatureController):
             button.setChecked(i == self._nav_icon_map[index][1])
         self.save_btn.setVisible(i != 0)            # the chat page needs no Save button
         if hasattr(self, "voice_page") and i == self.tab_keys.index("tab_voice"):
-            self.refresh_voice_caps()               # Refresh local-only speech status
+            self.feature_controller("voice_settings").refresh_voice_caps()               # Refresh local-only speech status
 
     def resizeEvent(self, event):
         self.qt_super_event("resizeEvent", event)
@@ -733,7 +733,7 @@ class SessionController(WindowFeatureController):
             badge.setIcon(make_icon("chevron_up", normal=palette["second"], hover="#FFFFFF",
                                     checked=palette["main"], disabled="#52617B"))
         if hasattr(self, "_refresh_icon_glow"):
-            self._refresh_icon_glow()
+            self.feature_controller("character_settings")._refresh_icon_glow()
 
 
 # Backward-compatible import name for callers migrating from mixin composition.
