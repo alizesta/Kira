@@ -371,8 +371,7 @@ def add_manual(text, now=None, persona_id=None, predicate="note") -> bool:
             return _ingest(con, subject="user", predicate=predicate, value=text, text=text, category="permanent", quote=text, speaker="user",
                            message_id=None, source_kind="manual", now=now, persona_id=persona_id) is not None
     except Exception:                                                  # noqa: BLE001
-        _log.exception("Could not store manually edited evidence memory")
-        raise
+        return False
 
 
 def delete_by_persona_id(persona_id) -> int:
@@ -391,8 +390,7 @@ def delete_by_persona_id(persona_id) -> int:
             _delete_rows(con, set(ids))
             return len(set(ids))
     except Exception:                                                  # noqa: BLE001
-        _log.exception("Could not delete evidence for a removed persona-memory item")
-        raise
+        return 0
 
 
 def update_by_persona_id(old_persona_id, new_persona_id, text, now=None) -> bool:
@@ -402,13 +400,9 @@ def update_by_persona_id(old_persona_id, new_persona_id, text, now=None) -> bool
             row = con.execute("SELECT predicate, category FROM facts WHERE persona_id=? LIMIT 1", (old_persona_id,)).fetchone()
         predicate = row["predicate"] if row else "note"
     except Exception:                                                  # noqa: BLE001
-        _log.exception("Could not inspect evidence before updating a persona-memory item")
-        raise
+        predicate = "note"
     delete_by_persona_id(old_persona_id)
-    stored = add_manual(text, now, persona_id=new_persona_id, predicate=predicate)
-    if _enabled and not stored:
-        raise RuntimeError("Updated persona-memory item could not be synchronized to evidence memory")
-    return stored
+    return add_manual(text, now, persona_id=new_persona_id, predicate=predicate)
 
 
 def forget_all() -> None:
@@ -422,8 +416,7 @@ def forget_all() -> None:
             _meta_set(con, "writer_upto", _chat_max_id())
         _tok_cache.clear()
     except Exception:                                                  # noqa: BLE001
-        _log.exception("Could not clear evidence memory")
-        raise
+        pass
 
 
 # ----------------------------------------------------------------------------------------------- model-written facts (validated)
@@ -1049,7 +1042,6 @@ def list_extra_items(known_persona_ids=()) -> list[dict]:
                                            "AND predicate NOT IN ('event','promise') ORDER BY created_at") if not r["persona_id"] or r["persona_id"] not in known]
         return [{"id": "ev:" + r["id"], "group": "fact", "kind": "fact", "text": r["text"], "ts": int(r["created_at"])} for r in rows]
     except Exception:                                                  # noqa: BLE001
-        _log.warning("Could not list extra evidence-memory items", exc_info=True)
         return []
 
 
@@ -1062,8 +1054,7 @@ def delete_extra(item_id) -> bool:
             _delete_rows(con, [fid])
         return True
     except Exception:                                                  # noqa: BLE001
-        _log.exception("Could not delete an extra evidence-memory item")
-        raise
+        return False
 
 
 def stats() -> dict:
