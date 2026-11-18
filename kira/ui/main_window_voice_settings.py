@@ -59,7 +59,7 @@ class VoiceSettingsController(WindowFeatureController):
         self.char_tabs_row = QHBoxLayout(self.char_tabs)
         self.char_tabs_row.setContentsMargins(2, 0, 2, 0)
         self.char_tabs_row.setSpacing(8)
-        self.char_tab_group = QButtonGroup(self)
+        self.char_tab_group = QButtonGroup(self.window)
         self.char_tab_group.setExclusive(True)
         self.char_tab_buttons = {}
         outer.addWidget(self.char_tabs)
@@ -137,7 +137,7 @@ class VoiceSettingsController(WindowFeatureController):
             num_ctx=clamp_num_ctx(ollama.get("num_ctx", DEFAULT_NUM_CTX)),
             num_predict=clamp_num_predict(ollama.get("num_predict", DEFAULT_NUM_PREDICT)),
             keep_alive=str(ollama.get("keep_alive", DEFAULT_KEEP_ALIVE)),
-            parent=self,
+            parent=self.window,
         )
         # Compatibility aliases keep existing persistence/controller code stable while
         # the remaining settings orchestration is extracted in later steps.
@@ -156,7 +156,7 @@ class VoiceSettingsController(WindowFeatureController):
 
     def build_voice_tab(self):
         """Compose the independent Voice page and connect its intent signals."""
-        self.voice_page = VoicePage(self.settings, self.t, parent=self)
+        self.voice_page = VoicePage(self.settings, self.t, parent=self.window)
         self.voice_page.voice_enabled_requested.connect(self.set_voice_enabled)
         self.voice_page.choose_whisper_folder_requested.connect(self.choose_local_whisper_folder)
         self.voice_page.download_whisper_requested.connect(self.download_local_whisper_model)
