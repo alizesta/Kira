@@ -22,7 +22,7 @@ from .main_window_attachments_vision_support import (
 from .window_feature_controller import WindowFeatureController
 
 
-class AttachmentsVisionMixin(WindowFeatureController):
+class AttachmentsVisionController(WindowFeatureController):
     def capture_screen_attachment(self):
         """Capture the primary desktop only after an explicit user click; attach it for a normal Vision request."""
         try:
@@ -383,3 +383,7 @@ class AttachmentsVisionMixin(WindowFeatureController):
         except Exception as exc:  # noqa: BLE001 - a failed capture must not block ordinary chat
             self.add_chat("system", f"تصویر بازی آماده نشد: {exc}")
             return None
+
+
+# Backward-compatible import name for callers migrating from mixin composition.
+AttachmentsVisionMixin = AttachmentsVisionController
