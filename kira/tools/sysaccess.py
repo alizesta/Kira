@@ -200,6 +200,11 @@ class AccessManager:
             self._tainted = False
 
     @property
+    def session_id(self) -> str:
+        """Current Session owner; empty outside a ToolAgent session scope."""
+        return str(self._session_context.get() or "")
+
+    @property
     def user_text(self) -> str:
         return self._turn_text
 

@@ -277,10 +277,7 @@ class ToolAgent(AutonomyMixin):
             self.last_results = []
             self._cancel.clear()
             self._turn_reset()
-            with self._runtime_lock:
-                web_active = bool(self._active_web_sessions)
-            if not web_active:
-                WEB_CANCEL.clear()
+            WEB_CANCEL.clear_session(owner)
 
     def plan(self, text: str, *, session_id: str | None = None) -> ToolPlan | None:
         """Plan inside the owning Session so user intent and follow-up state cannot leak across characters."""
@@ -378,9 +375,11 @@ class ToolAgent(AutonomyMixin):
             self._pending_by_session.clear()
             self._pending_new_sessions.clear()
             self.registry.access.revoke_grants()
+            WEB_CANCEL.cancel_all()
             ctx = getattr(self.registry, "web_context", None)
             if ctx is not None:
-                ctx.store.clear()
+                clear_all = getattr(ctx.store, "clear_all", None)
+                (clear_all if callable(clear_all) else ctx.store.clear)()
             return
 
         owner = str(session_id)
@@ -392,6 +391,10 @@ class ToolAgent(AutonomyMixin):
             self._pending_by_session.pop(owner, None)
             self._pending_new_sessions.discard(owner)
             self.registry.access.revoke_grants(owner)
+            WEB_CANCEL.cancel_session(owner)
+            ctx = getattr(self.registry, "web_context", None)
+            if ctx is not None:
+                ctx.store.clear()
 
     # ------------------------------------------------------------ confirmation of level-3 tools
     def has_pending(self, session_id: str | None = None) -> bool:
@@ -445,18 +448,14 @@ class ToolAgent(AutonomyMixin):
             for state in states:
                 state.cancel.set()
             self.registry.access.revoke_grants()
-            WEB_CANCEL.set()
+            WEB_CANCEL.cancel_all()
             return
 
         owner = str(session_id or "")
         with self._use_session(owner):
             self._cancel.set()
             self.registry.access.revoke_grants(owner)
-        with self._runtime_lock:
-            # WebIntel still uses one process-wide cancel event, so only the
-            # serialized active research owner may set it for a scoped Stop.
-            if owner in self._active_web_sessions:
-                WEB_CANCEL.set()
+            WEB_CANCEL.cancel_session(owner)
 
     # ------------------------------------------------------------ running tools
     def _run_calls(self, calls, errors, on_tool):
@@ -507,10 +506,16 @@ class ToolAgent(AutonomyMixin):
         owner = str(getattr(plan, "session_id", "") or self._current_turn_state().session_id)
         with self._use_session(owner):
             web_locked = False
-            if getattr(plan, "web", False):
+            uses_web_tools = "web" in (getattr(plan, "categories", set()) or set())
+            if uses_web_tools:
                 while not self._web_research_lock.acquire(timeout=0.1):
                     if self._cancel.is_set():
                         return self._final({}, "جست‌وجوی وب متوقف شد.", [], stopped=True)
+                try:
+                    WEB_CANCEL.activate(owner)
+                except Exception:
+                    self._web_research_lock.release()
+                    raise
                 web_locked = True
 
             with self._runtime_lock:
@@ -528,9 +533,8 @@ class ToolAgent(AutonomyMixin):
                         self._active_web_sessions.discard(owner)
                     no_web_active = not self._active_web_sessions
                 if web_locked:
+                    WEB_CANCEL.deactivate(owner)
                     self._web_research_lock.release()
-                if no_web_active:
-                    WEB_CANCEL.clear()
 
     def _run_simple(self, router, messages, system_prompt, temp, plan, retry_index, emit, on_event, on_tool):
         rounds = self.max_rounds()

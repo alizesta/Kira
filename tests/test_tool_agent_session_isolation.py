@@ -1,16 +1,19 @@
 """Regression tests for per-character ToolAgent and system-access state."""
-from contextlib import contextmanager
+from contextvars import ContextVar
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
 
 from kira.tools.agent import Pending, ToolAgent, ToolPlan
 from kira.tools.sysaccess import AccessManager
+from kira.webintel.session import CANCEL, DEFAULT_BUDGET, SessionScopedResearchStore
 
 
 class ToolAgentSessionIsolationTests(unittest.TestCase):
     def setUp(self):
         self.access = AccessManager(SimpleNamespace())
         self.agent = ToolAgent.__new__(ToolAgent)
+        self.agent.settings = {"agent_planning": True, "agent_mode": "on"}
         self.agent.registry = SimpleNamespace(access=self.access)
         self.agent._init_session_turn_states()
         self.agent._pending_by_session = {}
@@ -114,6 +117,54 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
             self.assertNotIn("kira", self.agent._pending_new_sessions)
             self.assertIn("ren", self.agent._pending_by_session)
             self.assertIn("ren", self.agent._pending_new_sessions)
+
+    def test_webintel_research_storage_is_independent_and_persistent_per_character(self):
+        owner = ContextVar("test_webintel_owner", default="")
+        with TemporaryDirectory() as temp:
+            store = SessionScopedResearchStore(temp, owner.get)
+
+            owner.set("kira")
+            kira_session = store.start("Kira research", dict(DEFAULT_BUDGET))
+            kira_session.status = "paused"
+            store.save()
+
+            owner.set("ren")
+            self.assertIsNone(store.current())
+            store.start("Ren research", dict(DEFAULT_BUDGET))
+            store.save()
+
+            owner.set("kira")
+            self.assertEqual(store.current().topic, "Kira research")
+            restarted = SessionScopedResearchStore(temp, owner.get)
+            self.assertEqual(restarted.current().topic, "Kira research")
+
+            owner.set("ren")
+            self.assertEqual(restarted.current().topic, "Ren research")
+            restarted.clear()
+            self.assertIsNone(restarted.current())
+
+            owner.set("kira")
+            self.assertEqual(restarted.current().topic, "Kira research")
+
+    def test_webintel_cancel_event_is_scoped_to_active_owner(self):
+        CANCEL.clear_all()
+        try:
+            CANCEL.cancel_session("kira")
+            CANCEL.activate("ren")
+            self.assertFalse(CANCEL.is_set())
+            CANCEL.set()
+            self.assertTrue(CANCEL.is_set())
+            CANCEL.deactivate("ren")
+
+            CANCEL.activate("kira")
+            self.assertTrue(CANCEL.is_set())
+            CANCEL.clear()
+            self.assertFalse(CANCEL.is_set())
+            CANCEL.deactivate("kira")
+        finally:
+            CANCEL.deactivate("ren")
+            CANCEL.deactivate("kira")
+            CANCEL.clear_all()
 
     def test_plan_carries_its_character_identity(self):
         plan = ToolPlan({"files"}, session_id="mika")

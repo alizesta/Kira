@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -16,7 +17,79 @@ import time
 import uuid
 from pathlib import Path
 
-CANCEL = threading.Event()                 # set by the Stop button (ToolAgent.request_cancel); every research loop checks it
+
+class SessionScopedCancel:
+    """Event-compatible cancellation facade scoped to the one active WebIntel owner.
+
+    WebIntel uses ThreadPoolExecutor workers that do not inherit ContextVars.
+    ToolAgent serializes WebIntel calls and activates one owner here, so all
+    executor threads observe that owner's Event while UI Stop targets one
+    character without cancelling another character's research.
+    """
+
+    def __init__(self):
+        self._lock = threading.RLock()
+        self._fallback = threading.Event()
+        self._events: dict[str, threading.Event] = {}
+        self._active_owner: str | None = None
+
+    def _event_for(self, owner: str | None = None) -> threading.Event:
+        key = str(owner or "")
+        if not key:
+            return self._fallback
+        with self._lock:
+            return self._events.setdefault(key, threading.Event())
+
+    def activate(self, owner: str) -> None:
+        key = str(owner or "")
+        with self._lock:
+            if self._active_owner is not None and self._active_owner != key:
+                raise RuntimeError("A different WebIntel session is already active")
+            self._active_owner = key
+
+    def deactivate(self, owner: str) -> None:
+        with self._lock:
+            if self._active_owner == str(owner or ""):
+                self._active_owner = None
+
+    def set(self) -> None:
+        with self._lock:
+            owner = self._active_owner
+            event = self._events.get(owner) if owner else self._fallback
+        event.set()
+
+    def clear(self) -> None:
+        with self._lock:
+            owner = self._active_owner
+            event = self._events.get(owner) if owner else self._fallback
+        event.clear()
+
+    def is_set(self) -> bool:
+        with self._lock:
+            owner = self._active_owner
+            event = self._events.get(owner) if owner else self._fallback
+        return event.is_set()
+
+    def cancel_session(self, owner: str) -> None:
+        self._event_for(owner).set()
+
+    def clear_session(self, owner: str) -> None:
+        self._event_for(owner).clear()
+
+    def cancel_all(self) -> None:
+        with self._lock:
+            events = [self._fallback, *self._events.values()]
+        for event in events:
+            event.set()
+
+    def clear_all(self) -> None:
+        with self._lock:
+            events = [self._fallback, *self._events.values()]
+        for event in events:
+            event.clear()
+
+
+CANCEL = SessionScopedCancel()
 SESSION_TTL = 24 * 3600
 TTL_SEARCH_FRESH = 10 * 60                 # time-sensitive searches are repeated after 10 minutes ...
 TTL_SEARCH_STABLE = 6 * 3600               # ... other searches after 6 hours
@@ -202,3 +275,43 @@ class ResearchStore:
                     f.unlink(missing_ok=True)
                 except OSError:
                     pass
+
+
+class SessionScopedResearchStore:
+    """Select an independent ResearchStore and JSON file for each character Session."""
+
+    def __init__(self, data_dir=None, session_id_fn=None):
+        self._data_dir = data_dir
+        self._session_id_fn = session_id_fn or (lambda: "")
+        self._lock = threading.RLock()
+        self._stores: dict[str, ResearchStore] = {}
+
+    def _current_store(self) -> ResearchStore:
+        owner = str(self._session_id_fn() or "")
+        with self._lock:
+            store = self._stores.get(owner)
+            if store is None:
+                store = ResearchStore(self._data_dir)
+                if owner and store._dir is not None:
+                    key = hashlib.sha256(owner.encode("utf-8")).hexdigest()[:24]
+                    store._dir = store._dir / "sessions" / key
+                self._stores[owner] = store
+            return store
+
+    def current(self) -> Session | None:
+        return self._current_store().current()
+
+    def start(self, topic: str, budget: dict) -> Session:
+        return self._current_store().start(topic, budget)
+
+    def save(self) -> None:
+        self._current_store().save()
+
+    def clear(self) -> None:
+        self._current_store().clear()
+
+    def clear_all(self) -> None:
+        with self._lock:
+            stores = tuple(self._stores.values())
+        for store in stores:
+            store.clear()

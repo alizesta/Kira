@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 
 from ..webintel import engine
-from ..webintel.session import CANCEL, ResearchStore
+from ..webintel.session import CANCEL, ResearchStore, SessionScopedResearchStore
 from .registry import Tool, Param, ToolError, READ, DENIED
 
 # the user's CURRENT message must be about the web / research (a page can not make Kira search by itself)
@@ -44,8 +44,12 @@ def _clip_int(value, lo, hi, default):
         return default
 
 
-def web_tools(settings_fn, data_dir, user_text_fn) -> tuple[engine.Context, list[Tool]]:
-    ctx = engine.Context(settings_fn, ResearchStore(data_dir), user_text_fn)
+def web_tools(settings_fn, data_dir, user_text_fn, session_id_fn=None) -> tuple[engine.Context, list[Tool]]:
+    store = (
+        SessionScopedResearchStore(data_dir, session_id_fn)
+        if session_id_fn is not None else ResearchStore(data_dir)
+    )
+    ctx = engine.Context(settings_fn, store, user_text_fn)
 
     def _ensure_session():
         sess = ctx.store.current()
@@ -147,7 +151,12 @@ def web_tools(settings_fn, data_dir, user_text_fn) -> tuple[engine.Context, list
 
 
 def register_web_tools(reg, settings_fn, data_dir):
-    ctx, tools = web_tools(settings_fn, data_dir, lambda: reg.user_text)
+    ctx, tools = web_tools(
+        settings_fn,
+        data_dir,
+        lambda: reg.user_text,
+        session_id_fn=lambda: reg.access.session_id,
+    )
     for t in tools:
         reg.register(t)
     reg.web_context = ctx
