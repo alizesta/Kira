@@ -15,6 +15,7 @@ from typing import Any, Callable, Mapping, Sequence
 from uuid import uuid4
 
 from ..core.interfaces.chat_history_service import ChatHistoryService
+from ..core.interfaces.provider_worker import ProviderWorkerPort
 from .attachments import Attachment, AttachmentManager, compose as compose_attachment_payload
 from .commands import CommandDispatch, CommandRegistry
 from .context_builder import ContextBuilder, ContextRequest
@@ -91,7 +92,7 @@ class PersistenceOutcome:
 class _RequestState:
     request: ChatApplicationRequest
     status: RequestStatus = RequestStatus.PENDING
-    worker: Any = None
+    worker: ProviderWorkerPort | None = None
     attempt: int = 0
     last_content: str = ""
 
@@ -110,13 +111,13 @@ class ChatApplicationService:
         *,
         persistence: ChatHistoryService,
         system_prompt_builder: Callable[..., str],
-        worker_factory: Callable[..., Any],
+        worker_factory: Callable[..., ProviderWorkerPort],
         on_dispatch: Callable[[ChatApplicationRequest], Any],
         on_event: Callable[[ChatApplicationEvent], Any] | None = None,
         event_publisher: Any | None = None,
         prompt_enricher: Callable[[str], str] | None = None,
         schedule: Callable[[Callable[[], Any]], Any] | None = None,
-        cancel_provider: Callable[[ChatApplicationRequest, Any], Any] | None = None,
+        cancel_provider: Callable[[ChatApplicationRequest, ProviderWorkerPort | None], Any] | None = None,
         max_pending: int = 3,
         request_history_limit: int = 512,
         attachment_manager: AttachmentManager | None = None,
