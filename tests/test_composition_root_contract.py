@@ -38,6 +38,7 @@ class CompositionRootContractTests(unittest.TestCase):
             "game_mode_application_service", "settings", "tool_agent",
             "provider_application_service", "coding_agent_application_service",
             "vision_application_service", "runtime_settings_application_service",
+            "shared_skills_application_service",
         }.issubset(keys))
 
     def test_ui_composition_does_not_construct_application_services(self):
