@@ -9,6 +9,7 @@ import hashlib
 import math
 import re
 import time
+from datetime import datetime, time as datetime_time, timedelta
 
 
 DAY = 86400
@@ -39,22 +40,101 @@ def _bounded_seconds(value, default, *, allow_zero=False):
 
 def _normalise(text):
     value = str(text or "").lower()
+    value = value.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789"))
     return value.replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ").replace("\u200f", " ")
 
 
+def _after_local_day(created_at, days_after_today):
+    """Local midnight after the full date on which the remembered event is expected."""
+    try:
+        local_created = datetime.fromtimestamp(float(created_at))
+        event_day = local_created.date() + timedelta(days=max(0, int(days_after_today)))
+        return datetime.combine(event_day + timedelta(days=1), datetime_time.min).timestamp()
+    except (OverflowError, OSError, TypeError, ValueError):
+        # A failed local-calendar conversion must defer, never make the event due early.
+        return float(created_at) + (max(0, int(days_after_today)) + 1) * DAY
+
+
+def _after_next_month(created_at):
+    """First local midnight after the next calendar month has fully elapsed."""
+    try:
+        local_created = datetime.fromtimestamp(float(created_at))
+        if local_created.month == 12:
+            following_year, following_month = local_created.year + 1, 2
+        else:
+            following_year, following_month = local_created.year, local_created.month + 2
+        return datetime(following_year, following_month, 1).timestamp()
+    except (OverflowError, OSError, TypeError, ValueError):
+        return float(created_at) + 32 * DAY
+
+
+_NUMBER_WORDS = {
+    "one": 1, "a": 1, "یک": 1, "یه": 1,
+    "two": 2, "دو": 2, "three": 3, "سه": 3,
+    "four": 4, "چهار": 4, "five": 5, "پنج": 5,
+    "six": 6, "شش": 6, "seven": 7, "هفت": 7,
+    "eight": 8, "هشت": 8, "nine": 9, "نه": 9,
+    "ten": 10, "ده": 10, "چند": 7,
+}
+_NUMBER_TOKEN = r"(?:\d{1,3}|one|a|two|three|four|five|six|seven|eight|nine|ten|یک|یه|دو|سه|چهار|پنج|شش|هفت|هشت|نه|ده|چند)"
+_DURATION_UNIT = r"(روز|day|days|هفته|week|weeks|ماه|month|months)"
+
+
+def _duration_days(amount, unit):
+    try:
+        count = int(amount) if str(amount).isdigit() else _NUMBER_WORDS[str(amount).lower()]
+    except (KeyError, TypeError, ValueError):
+        return None
+    unit = str(unit).lower()
+    multiplier = 7 if unit in ("هفته", "week", "weeks") else 30 if unit in ("ماه", "month", "months") else 1
+    return max(1, min(365, count * multiplier))
+
+
 def _event_not_before(text, created_at):
-    """Do not ask about an event before an explicit relative future date has arrived."""
+    """Return the first safe local time to ask, after the entire mentioned date has passed.
+
+    The check-in is deliberately deferred to the next local midnight after the stated
+    event day. This prevents a morning message about an evening/tomorrow appointment
+    from triggering a premature "how did it go?" check-in.
+    """
     value = _normalise(text)
-    offsets = []
+    day_offsets = []
+
     if re.search(r"پس\s*فردا|day\s+after\s+tomorrow", value):
-        offsets.append(2 * DAY)
+        day_offsets.append(2)
     elif re.search(r"فردا|\btomorrow\b", value):
-        offsets.append(DAY)
+        day_offsets.append(1)
+
+    # Events later today (or "tonight") are not due until the date is over.
+    if re.search(r"امروز|امشب|امروز\s*(?:عصر|بعدازظهر)|\btoday\b|\btonight\b|\bthis\s+(?:afternoon|evening)\b", value):
+        day_offsets.append(0)
+
     if re.search(r"هفته(?:\s+ی)?\s*(?:بعد|آینده)|\bnext\s+week\b", value):
-        offsets.append(7 * DAY)
+        day_offsets.append(7)
+    if re.search(r"آخر\s*هفته|\bthis\s+weekend\b", value):
+        day_offsets.append(7)
+    if re.search(r"\bnext\s+weekend\b", value):
+        day_offsets.append(14)
+
+    # Parse explicit relative durations such as "in two weeks", "3 days from now",
+    # "سه روز دیگه", and "دو هفته بعد". A vague count ("چند") is interpreted
+    # conservatively; distant dates naturally age out under the 10-day memory window.
+    patterns = (
+        rf"\b(?:in|after)\s+({_NUMBER_TOKEN})\s*({_DURATION_UNIT})\b",
+        rf"({_NUMBER_TOKEN})\s*({_DURATION_UNIT})\s*(?:from\s+now|later|away|دیگه|دیگر|بعد|آینده)",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, value, re.I):
+            days = _duration_days(match.group(1), match.group(2))
+            if days is not None:
+                day_offsets.append(days)
+
+    due_times = [_after_local_day(created_at, days) for days in day_offsets]
+
     if re.search(r"ماه(?:\s+ی)?\s*(?:بعد|آینده)|\bnext\s+month\b", value):
-        offsets.append(30 * DAY)
-    return float(created_at) + max(offsets, default=0)
+        due_times.append(_after_next_month(created_at))
+
+    return max(due_times, default=float(created_at))
 
 
 def _clean_memory_text(value):
