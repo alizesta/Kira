@@ -212,6 +212,26 @@ class SessionApplicationServiceTests(unittest.TestCase):
         other = self.manager.create_session("ren")
         self.assertFalse(self.service.has_pending_work(other))
 
+    def test_deleted_character_session_is_retained_while_its_vision_worker_is_running(self):
+        session = self.manager.create_session("deleted")
+        session._vision_session = session
+        session._vision_worker = SimpleNamespace(isRunning=lambda: True)
+
+        self.service.sync_sessions(
+            {"kira": {}},
+            ensure_resources=lambda _session, _profile: None,
+            restore_history=lambda _session: None,
+        )
+        self.assertIs(self.manager.get_session(session.session_id), session)
+
+        session._vision_worker = SimpleNamespace(isRunning=lambda: False)
+        self.service.sync_sessions(
+            {"kira": {}},
+            ensure_resources=lambda _session, _profile: None,
+            restore_history=lambda _session: None,
+        )
+        self.assertIsNone(self.manager.get_session(session.session_id))
+
     def test_active_application_request_prevents_session_drain(self):
         session = self.manager.create_session("kira")
         self.chat.active.add(session.session_id)
