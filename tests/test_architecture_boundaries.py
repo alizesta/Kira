@@ -59,12 +59,14 @@ def _matches_prefix(module_name: str, prefixes: tuple[str, ...]) -> bool:
 class ArchitectureBoundaryTests(unittest.TestCase):
     def test_core_contracts_do_not_depend_on_outer_application_layers(self):
         core_roots = [ROOT / "kira" / name for name in ("core", "domain")]
+        self.assertTrue((ROOT / "kira" / "domain").is_dir(), "The pure Domain package must exist.")
         files = sorted(
             path
             for package_root in core_roots
             if package_root.is_dir()
             for path in package_root.rglob("*.py")
         )
+        self.assertTrue(files, "Core and Domain must contain explicit source contracts.")
         violations = []
         for path in files:
             for imported in _imported_modules(path):
