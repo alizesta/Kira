@@ -8,10 +8,18 @@ from .agents import AgentHub, register_agent_tools
 from .hub import McpHub
 
 _LOGGER = logging.getLogger(__name__)
+_OPTIONAL_TOOL_NAMES = frozenset({
+    "agent_ask", "agent_status", "agent_answer", "agent_stop", "agent_health", "mcp_info",
+})
 
 
 def install(registry, data_dir, settings_fn):
     """Register the MCP + agent tools and start connecting in the background. Never raises; returns the McpHub (or None)."""
+    existing_names = set(registry.names())
+    existing_mcp_names = {
+        tool.name for tool in registry.all() if getattr(tool, "mcp_server", "")
+    }
+    hub = None
     try:
         hub = McpHub(registry, data_dir, settings_fn)
         agents = AgentHub(registry, data_dir, lambda: hub.config().get("agents", {}))
@@ -23,8 +31,19 @@ def install(registry, data_dir, settings_fn):
     except Exception:                                                 # noqa: BLE001 - the chat works without this feature
         _LOGGER.exception("Could not initialize the optional MCP and agent integrations")
         try:
-            if "hub" in locals():
+            if hub is not None:
                 hub.shutdown()
         except Exception:
             _LOGGER.exception("Could not clean up a partially initialized MCP hub")
+        try:
+            registry.unregister_where(
+                lambda tool: (
+                    tool.name in _OPTIONAL_TOOL_NAMES and tool.name not in existing_names
+                ) or (
+                    bool(getattr(tool, "mcp_server", ""))
+                    and tool.name not in existing_mcp_names
+                )
+            )
+        except Exception:
+            _LOGGER.exception("Could not roll back partially registered optional tools")
         return None
