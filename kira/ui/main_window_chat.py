@@ -153,9 +153,15 @@ class ChatMixin:
 
     def _process_chat_request(self, text, attachments=None, _voice=False):
         voice = bool(_voice)
-        if not attachments and getattr(self, "code_chat", None) is not None and self.code_chat.handle(text, voice):
-            self.chat_application_service.complete_local_request(self.cur.application_request_id)
-            return                                              # Coding Agent owns this separate execution lifecycle
+        if self.coding_agent_application_service.dispatch(
+            code_chat=getattr(self, "code_chat", None),
+            text=text,
+            voice=voice,
+            attachments=attachments,
+            request_id=self.cur.application_request_id,
+            complete_local_request=self.chat_application_service.complete_local_request,
+        ):
+            return  # Coding Agent owns this separate execution lifecycle.
         if self._game_mode_enabled and len(attachments or []) < att.MAX_FILES:
             frame = self._game_vision_attachment()
             if frame is not None:
@@ -537,7 +543,7 @@ class ChatMixin:
 
     def stop_generation(self):
         """Stop button: ends the answer now; text received so far is kept."""
-        if getattr(self, "code_chat", None) is not None and self.code_chat.stop(self.cur):
+        if self.coding_agent_application_service.stop_session(getattr(self, "code_chat", None), self.cur):
             self.chat_application_service.complete_local_request(self.cur.application_request_id)
             return                                                # the Coding Agent owns its separate task lifecycle
         if self._search_worker is not None and self._search_worker.isRunning():
