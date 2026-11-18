@@ -465,6 +465,9 @@ class SessionController(WindowFeatureController):
 
             if not self.window.isVisible() or not self.window.isActiveWindow():
                 return False
+            tabs = getattr(self.context.views, "tabs", None)
+            if tabs is not None and tabs.currentIndex() != 0:
+                return False
             if QApplication.activeModalWidget() is not None:
                 return False
             if bool(getattr(session, "busy", False)) or str(getattr(session, "draft", "") or "").strip():
@@ -502,14 +505,30 @@ class SessionController(WindowFeatureController):
                     return False
 
             now = time.time()
-            profile = self.context.services.character_service.all_profiles(settings).get(character_id) or {}
+            profiles = self.context.services.character_service.all_profiles(settings)
+            profile = profiles.get(character_id)
+            if not isinstance(profile, dict):
+                return False
             traits = self.character_traits(character_id, profile)
-            with mood.character_scope(character_id, traits):
-                emotional = mood.current(now=now)
-            age = float(emotional.get("age", 0.0))
-            # mood.current() uses 1e9 as its "no recorded user chat yet" sentinel.
-            # It is not a real idle duration and must never trigger unsolicited contact.
-            if not math.isfinite(age) or age < 0 or age >= 1e8:
+            emotional = None
+            latest_user_age = None
+            # Inactivity is app-wide, not just per tab: a recent message to Kira must
+            # suppress a check-in from Ren immediately after the user switches tabs.
+            for profile_id, profile_data in profiles.items():
+                profile_id = str(profile_id)
+                profile_traits = self.character_traits(profile_id, profile_data)
+                with mood.character_scope(profile_id, profile_traits):
+                    profile_mood = mood.current(now=now)
+                profile_age = float(profile_mood.get("age", 0.0))
+                # mood.current() uses 1e9 as its "no recorded user chat yet" sentinel.
+                # It is not a real idle duration and must never trigger unsolicited contact.
+                if not math.isfinite(profile_age) or profile_age < 0:
+                    return False
+                if profile_age < 1e8:
+                    latest_user_age = profile_age if latest_user_age is None else min(latest_user_age, profile_age)
+                if profile_id == character_id:
+                    emotional = profile_mood
+            if emotional is None or latest_user_age is None:
                 return False
 
             with persona_memory.character_scope(character_id):
@@ -535,7 +554,7 @@ class SessionController(WindowFeatureController):
             )
             decision = engine.evaluate(
                 now=now,
-                last_interaction=now - age,
+                last_interaction=now - latest_user_age,
                 enabled=True,
                 app_active=True,
                 quiet_hours=engine.is_quiet_hour(now=now),
