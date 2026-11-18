@@ -120,6 +120,23 @@ class FileAgentTests(unittest.TestCase):
         self.assertEqual(backups[0].read_text(), "one\ntwo")
         self.assertEqual(self.run_tool("write_file", {"path": str(self.root / "x.bat"), "content": "x"}).status, DENIED)
 
+    def test_write_file_keeps_unique_backups_for_same_second_overwrites(self):
+        target = self.root / "concurrent.txt"
+        target.write_text("original", encoding="utf-8")
+
+        with mock.patch("kira.tools.fileagent.time.strftime", return_value="20261119-120000"):
+            first = self.sensitive("write_file", {"path": str(target), "content": "first"})
+            self.assertEqual(first.status, OK, first.text)
+            second = self.sensitive("write_file", {"path": str(target), "content": "second"})
+            self.assertEqual(second.status, OK, second.text)
+
+        backups = sorted(self.root.glob("concurrent.txt.bak-20261119-120000-*"))
+        self.assertEqual(len(backups), 2)
+        self.assertEqual({item.read_text(encoding="utf-8") for item in backups}, {"original", "first"})
+        self.assertEqual(target.read_text(encoding="utf-8"), "second")
+        self.assertFalse((self.root / "concurrent.txt.kira-tmp").exists())
+        self.assertFalse(list(self.root.glob(".concurrent.txt.kira-*.tmp")))
+
     def test_batch_is_all_or_nothing_on_conflicts_and_needs_confirmation(self):
         a, b = self.root / "a.txt", self.root / "b.txt"
         a.write_text("1")
