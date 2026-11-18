@@ -11,19 +11,16 @@ from ..companion import CompanionWindow, CompanionBubble
 from ..emotion.backend_png import EmotionFaceAnimator
 from ..emotion.director import EmotionDirector
 from ..voice import Speaker
-from ..personality import build_system_prompt
 from .. import evidence_memory
-from .. import brain
 from .. import usage
 from .. import mood
 from ..ui_icons import make_icon
 from ..ui_widgets import AttachmentTile
 from ..chat_sessions import ChatSession, session_property, front_only_property
-from ..chat.application_service import ChatApplicationService
 from ..chat.session_manager import SessionManager
 from .. import winfx
 from ..game_mode import GameModeMonitor
 from ..vision_pipeline import FrameGate, policy_for
 from .controllers import ChatAttachmentController
-from .workers import AttachWorker, StreamWorker
+from .workers import AttachWorker
 from .main_window_support import load_reactions
