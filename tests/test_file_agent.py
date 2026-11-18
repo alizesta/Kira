@@ -266,6 +266,17 @@ class FileAgentTests(unittest.TestCase):
         self.assertTrue(all((self.root / n).exists() for n in ("a.jpg", "b.pdf", "c.mp3", "d.xyz")))               # the WHOLE operation went back
         self.assertFalse((self.root / "Other" / "d.xyz").exists())
 
+    def test_undo_write_restores_backup_when_target_was_deleted(self):
+        target = self.root / "restore-after-delete.txt"
+        target.write_text("original", encoding="utf-8")
+        result = self.sensitive("write_file", {"path": str(target), "content": "replacement"})
+        self.assertEqual(result.status, OK, result.text)
+        target.unlink()
+
+        undo = self.sensitive("undo_file_operation", {})
+        self.assertEqual(undo.status, OK, undo.text)
+        self.assertEqual(target.read_text(encoding="utf-8"), "original")
+
     def test_undo_write_rejects_backup_outside_allowed_roots(self):
         target = self.root / "important.txt"
         target.write_text("current", encoding="utf-8")
