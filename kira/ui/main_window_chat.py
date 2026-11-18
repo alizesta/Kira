@@ -374,9 +374,9 @@ class ChatController(WindowFeatureController):
         gem = self.context.services.web_search_service.gemini_credentials(self.context.services.settings)
         self.context.views.web_test_btn.setEnabled(False)
         self.context.views.web_test_btn.setText("در حال آزمایش (چند ثانیه)…")
-        self._web_test_worker = TaskWorker(lambda: self.context.services.web_search_service.diagnose(key, depth, self.context.services.web_search_service.WEB_TEST_QUERY, gem))
-        self._web_test_worker.done.connect(self.on_web_test_done)
-        self._web_test_worker.start()
+        self.context.state._web_test_worker = TaskWorker(lambda: self.context.services.web_search_service.diagnose(key, depth, self.context.services.web_search_service.WEB_TEST_QUERY, gem))
+        self.context.state._web_test_worker.done.connect(self.on_web_test_done)
+        self.context.state._web_test_worker.start()
 
     def on_web_test_done(self, res):
         self.context.views.web_test_btn.setEnabled(True)
