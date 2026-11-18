@@ -195,8 +195,9 @@ The graph declares the dependencies that affect startup and shutdown ordering:
 Conversation Lifecycle, Conversation Organization, Chat Search and Chat Transfer
 depend on Chat History; Chat Application depends on both Chat History and
 Conversation Lifecycle; Session Application depends on Chat Application;
-Vision depends on Game Mode. Chat Transfer additionally accepts the optional
-Core-owned `ChatTransferFilePort` supplied by the outer composition root. The manager starts dependencies first
+Vision depends on Game Mode. Chat Transfer receives the Core-owned
+`ChatTransferFilePort`; Bootstrap creates `LocalChatTransferFileAdapter` by
+default and accepts an explicit adapter override. The manager starts dependencies first
 and disposes created modules in reverse creation order. A service that is stopped
 can be restarted using the same instance; disable/re-enable creates a fresh one.
 Partial start failures receive stop/dispose cleanup and do not leave a DI key
@@ -213,7 +214,7 @@ and notification boundary. Organization, Search and Transfer are now application
 services registered by `feature_modules.py` and resolved by Bootstrap. Each
 shares the Chat History persistence adapter; Organization also receives the
 shared Chat event publisher, and Search receives the explicit Conversation
-status reader. Transfer receives the optional file adapter through the
+status reader. Transfer receives the concrete file adapter through the
 `transfer_file_port` registration argument. The original Chat modules remain
 compatibility facades. The concrete Chat/Session/Voice instances still use
 window-scoped callback ports. Their contracts (`ProviderWorkerPort`,
