@@ -144,6 +144,12 @@ class EmotionalRuntimeTests(unittest.TestCase):
         state = self.runtime.snapshot(now=1000 + 46 * 86400, query="امتحان فردا")
         self.assertEqual(state["recalled_memories"], [])
 
+    def test_emotional_recall_matches_common_persian_synonyms(self):
+        self.runtime.on_user_message("فردا امتحان مهم دارم و نگرانم", ["stressed"], now=1000)
+        state = self.runtime.snapshot(now=1001, query="آزمون فردا")
+        self.assertTrue(state["recalled_memories"])
+        self.assertIn("امتحان", state["recalled_memories"][0]["text"])
+
     def test_recalled_emotional_memory_preserves_speaker(self):
         self.runtime.on_reply(["sad"], 70, now=1000, text="از اینکه تنها ماندی ناراحتم")
         state = self.runtime.snapshot(now=1001, query="تنها ماندی")

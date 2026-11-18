@@ -682,6 +682,37 @@ def _doc_tokens(row, evidence_quote) -> list[str]:
     return toks
 
 
+
+_QUERY_SYNONYMS = {
+    "امتحان": ("آزمون",),
+    "آزمون": ("امتحان",),
+    "سفر": ("مسافرت",),
+    "مسافرت": ("سفر",),
+    "دکتر": ("پزشک",),
+    "پزشک": ("دکتر",),
+    "نگرانی": ("اضطراب",),
+    "اضطراب": ("نگرانی", "استرس"),
+    "استرس": ("اضطراب", "نگرانی"),
+    "گرافیک": ("gpu",),
+    "gpu": ("گرافیک",),
+}
+
+
+def _query_tokens(text) -> list[str]:
+    """Expand only the query with a small, conservative Persian synonym set."""
+    base = tokens(text)
+    words = _WORD.findall(norm(text))
+    expanded = list(base)
+    seen = set(base)
+    for word in words:
+        for synonym in _QUERY_SYNONYMS.get(word, ()):
+            for feature in tokens(synonym):
+                if feature not in seen:
+                    seen.add(feature)
+                    expanded.append(feature)
+    return expanded
+
+
 def _bm25(docs: dict[str, list[str]], query: list[str]) -> dict[str, float]:
     n = len(docs)
     if not n or not query:
@@ -708,7 +739,7 @@ def rank_texts(texts, query, min_ratio=MIN_BM25_RATIO):
     """Return indices ranked by Persian-aware BM25 relevance to one query."""
     if not needs_recall(query):
         return []
-    query_tokens = tokens(query)
+    query_tokens = _query_tokens(query)
     if not query_tokens:
         return []
     docs = {str(index): tokens(text) for index, text in enumerate(texts or [])}
@@ -787,7 +818,7 @@ def retrieve(query, limit=None, now=None) -> list[dict]:
         if needs_recall(query):                                         # 2) rank (an embedding request may happen here, without any lock)
             by_id = {r["id"]: r for r in rows}
             docs = {r["id"]: _doc_tokens(r, quotes.get(r["id"], "")) for r in rows}
-            lex = _bm25(docs, tokens(query))
+            lex = _bm25(docs, _query_tokens(query))
             lex_rank = sorted(lex, key=lex.get, reverse=True)
             best = lex[lex_rank[0]] if lex_rank else 0.0
             lex_rank = [i for i in lex_rank if lex[i] >= MIN_BM25_RATIO * best][:limit * 2]
@@ -876,19 +907,28 @@ def interest_line(max_chars=140, query=None) -> str:
 
 def render(facts, budget) -> str:
     lines, used = [], 0
-    for f in facts:
-        day = time.strftime("%Y-%m-%d", time.localtime(f["created_at"]))
-        mark = " (he sounded unsure)" if f["status"] == "uncertain" else ""
-        if f.get("earlier"):
-            mark += f" (he changed this; earlier: {f['earlier'][:60]})"
-        if f["category"] in ("event", "temporary"):
+    for fact in facts:
+        created_at = _finite_timestamp(fact.get("created_at"))
+        day = time.strftime("%Y-%m-%d", time.localtime(created_at))
+        mark = " (he sounded unsure)" if fact["status"] == "uncertain" else ""
+        if fact.get("earlier"):
+            mark += f" (he changed this; earlier: {fact['earlier'][:60]})"
+        if fact["category"] in ("event", "temporary"):
             mark += " (may be over by now)"
-        line = f"- {f['text'][:200]} [{day}]{mark}"
-        if used + len(line) > budget:
-            break
+        line = f"- {fact['text']} [{day}]{mark}"
+        if used + len(line) + (1 if lines else 0) > max(0, int(budget)):
+            continue
         lines.append(line)
-        used += len(line) + 1
+        used += len(line) + (1 if len(lines) > 1 else 0)
     return "\n".join(lines)
+
+
+def _finite_timestamp(value) -> float:
+    try:
+        stamp = float(value)
+        return stamp if math.isfinite(stamp) and stamp >= 0 else 0.0
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
 
 
 def build_block(query, budget=1500):

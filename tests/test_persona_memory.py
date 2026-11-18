@@ -222,6 +222,12 @@ class PersonaMemoryTests(unittest.TestCase):
             hits += int(ranking[0] == expected)
         self.assertGreaterEqual(hits / len(cases), 0.66)
 
+    def test_synonym_query_recalls_a_matching_persian_fact(self):
+        corpus = ["کاربر فردا امتحان زبان دارد", "کاربر آخر هفته سفر می‌کند"]
+        ranked = pm._evidence.rank_texts(corpus, "آزمون فردا")
+        self.assertTrue(ranked)
+        self.assertEqual(ranked[0], 0)
+
     def test_short_smalltalk_does_not_pull_previous_topic_into_query(self):
         context = [
             {"role": "user", "content": "درباره کارت گرافیک صحبت کردیم"},

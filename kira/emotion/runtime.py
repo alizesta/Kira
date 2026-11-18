@@ -414,9 +414,20 @@ class EmotionalRuntime:
             "این", "اون", "برای", "من", "تو", "که", "از", "به", "با", "رو", "را", "در", "و",
             "the", "and", "for", "with", "that", "this", "you", "your", "was", "are", "have",
         }
-        tokens = {word for word in words if word not in stop}
-        # Trigrams allow lexical recall across common Persian inflections.
+        synonyms = {
+            "امتحان": {"آزمون"}, "آزمون": {"امتحان"},
+            "سفر": {"مسافرت"}, "مسافرت": {"سفر"},
+            "دکتر": {"پزشک"}, "پزشک": {"دکتر"},
+            "نگرانی": {"اضطراب"}, "اضطراب": {"نگرانی", "استرس"},
+            "استرس": {"اضطراب", "نگرانی"},
+            "گرافیک": {"gpu"}, "gpu": {"گرافیک"},
+        }
+        expanded_words = set(words)
         for word in words:
+            expanded_words.update(synonyms.get(word, ()))
+        tokens = {word for word in expanded_words if word not in stop}
+        # Trigrams allow lexical recall across common Persian inflections.
+        for word in expanded_words:
             if word not in stop and len(word) >= 4:
                 tokens.update("#" + word[i:i + 3] for i in range(len(word) - 2))
         return tokens
