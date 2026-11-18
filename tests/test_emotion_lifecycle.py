@@ -36,5 +36,22 @@ class StreamSpeechLifecycleTests(unittest.TestCase):
         self.assertEqual(stream_speech_action("failed", False), "none")
 
 
+class RuntimeControllerLifecycleWiringTests(unittest.TestCase):
+    def test_stream_audio_state_is_captured_before_request_cleanup(self):
+        source = (Path(__file__).resolve().parents[1] / "kira" / "ui" / "main_window_runtime.py").read_text(encoding="utf-8")
+        body = source.split("    def on_stream_done(self, res):", 1)[1].split("    def on_error(self, error):", 1)[0]
+        self.assertLess(body.index("speech_live = bool(self.context.session._speech_live)"), body.index("self.finish_request(res)"))
+        self.assertIn('stream_speech_action("complete", speech_live)', body)
+        self.assertIn('stream_speech_action("cancelled", speech_live)', body)
+        self.assertIn('stream_speech_action("interrupted", speech_live)', body)
+
+    def test_cancelled_and_interrupted_partial_replies_bypass_observation(self):
+        source = (Path(__file__).resolve().parents[1] / "kira" / "ui" / "main_window_runtime.py").read_text(encoding="utf-8")
+        body = source.split("    def on_stream_done(self, res):", 1)[1].split("    def on_error(self, error):", 1)[0]
+        self.assertIn('status="cancelled", metadata={"stream": "stopped"}, persist=False, observe=False', body)
+        self.assertIn('status="interrupted", metadata={"stream": "provider_interrupted"}, persist=False, observe=False', body)
+
+
+
 if __name__ == "__main__":
     unittest.main()
