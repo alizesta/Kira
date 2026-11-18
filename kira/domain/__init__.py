@@ -1,5 +1,22 @@
 """Pure business rules and value contracts for Kira's domain layer."""
 
+from .chat import (
+    ApplicationEventKind,
+    ChatApplicationEvent,
+    ChatApplicationRequest,
+    ChatRequest,
+    ChatResponseResult,
+    PersistenceOutcome,
+    ProviderEvent,
+    ProviderEventKind,
+    RequestStatus,
+    ResponseError,
+    ResponseEventKind,
+    ResponseStatus,
+    ResponseStreamEvent,
+    Submission,
+    SubmissionResult,
+)
 from .transfer import (
     ALLOWED_ROLES,
     ALLOWED_STATUSES,
@@ -56,6 +73,21 @@ from .conversations import (
 )
 
 __all__ = [
+    "ApplicationEventKind",
+    "ChatApplicationEvent",
+    "ChatApplicationRequest",
+    "ChatRequest",
+    "ChatResponseResult",
+    "PersistenceOutcome",
+    "ProviderEvent",
+    "ProviderEventKind",
+    "RequestStatus",
+    "ResponseError",
+    "ResponseEventKind",
+    "ResponseStatus",
+    "ResponseStreamEvent",
+    "Submission",
+    "SubmissionResult",
     "ALLOWED_ROLES",
     "ALLOWED_STATUSES",
     "EXPORT_VERSION",
