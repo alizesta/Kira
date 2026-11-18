@@ -1,4 +1,5 @@
 """Session and presentation feature controller."""
+import logging
 import math
 
 from .main_window_session_support import (
@@ -47,6 +48,9 @@ from .main_window_session_support import (
 
 
 from .window_feature_controller import WindowFeatureController
+
+
+_log = logging.getLogger(__name__)
 
 
 class SessionController(WindowFeatureController):
@@ -543,9 +547,19 @@ class SessionController(WindowFeatureController):
             history_by_character = settings.get("character_initiative_history")
             if not isinstance(history_by_character, dict):
                 history_by_character = {}
+            try:
+                persisted_records = self.context.services.chat_application_service.recent_message_records(
+                    limit=2000, character_id=character_id
+                )
+            except Exception:
+                # If durable history cannot be inspected, fail closed rather than
+                # risk a duplicate after a crash between the state writes.
+                _log.exception("Could not inspect persisted Initiative check-in history")
+                return False
+            recovered_events = persisted_checkin_events(persisted_records, now=now)
             history_state = initiative_history_state(
                 history_by_character.get(character_id, []),
-                recent_events=emotional.get("recent_events", []),
+                recent_events=[*(emotional.get("recent_events", []) or []), *recovered_events],
                 last_memory_id=emotional.get("last_initiative_memory_id", ""),
                 last_sent_at=emotional.get("last_initiative", 0.0),
                 now=now,
@@ -609,6 +623,7 @@ class SessionController(WindowFeatureController):
             self.add_chat("assistant", message)
             return True
         except Exception:  # noqa: BLE001 - this optional feature must never interrupt chat
+            _log.exception("Optional proactive Initiative check-in failed")
             return False
 
     def update_mood_indicator(self):

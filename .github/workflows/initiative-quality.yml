@@ -5,6 +5,12 @@ on:
     branches: [new-main]
     paths:
       - "kira/character/initiative.py"
+      - "kira/chat/persistence.py"
+      - "kira/chat/application_service.py"
+      - "kira/core/interfaces/chat_history_service.py"
+      - "kira/chat/persistence.py"
+      - "kira/chat/application_service.py"
+      - "kira/core/interfaces/chat_history_service.py"
       - "kira/emotion/runtime.py"
       - "kira/mood.py"
       - "kira/persona_memory.py"
@@ -58,6 +64,9 @@ jobs:
         run: >-
           python -m py_compile
           kira/character/initiative.py
+          kira/chat/persistence.py
+          kira/chat/application_service.py
+          kira/core/interfaces/chat_history_service.py
           kira/config.py
           kira/strings.py
           kira/ui/main_window_session.py

@@ -6,10 +6,11 @@ helper. Scheduling, persistence and presentation remain owned by the desktop run
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import re
 import time
-from datetime import datetime, time as datetime_time, timedelta
+from datetime import datetime, time as datetime_time, timedelta, timezone
 
 
 DAY = 86400
@@ -36,7 +37,15 @@ def sessions_are_idle(sessions):
         return False
     try:
         for session in sessions:
-            if bool(getattr(session, "busy", False)) or str(getattr(session, "draft", "") or "").strip():
+            if session is None or not hasattr(session, "busy") or not hasattr(session, "draft"):
+                return False
+            busy = getattr(session, "busy")
+            draft = getattr(session, "draft")
+            if not isinstance(busy, bool):
+                return False
+            if draft is not None and not isinstance(draft, str):
+                return False
+            if busy or str(draft or "").strip():
                 return False
     except Exception:  # noqa: BLE001 - malformed session state must suppress unsolicited contact
         return False
@@ -485,7 +494,11 @@ class InitiativeEngine:
             excluded.add(str(exclude_id))
         candidates_by_id = {}
 
-        for item in items or ():
+        try:
+            source_items = iter(items if items is not None else ())
+        except TypeError:
+            return None
+        for item in source_items:
             if not isinstance(item, dict) or item.get("group") != "moment":
                 continue
             kind = str(item.get("kind") or "")
@@ -558,7 +571,12 @@ class InitiativeEngine:
             return {"eligible": False, "reason": "cooldown", "idle_seconds": idle}
 
         try:
-            sent_count = max(0, int(sent_today))
+            if isinstance(sent_today, bool):
+                raise ValueError("boolean is not a daily count")
+            numeric_count = float(sent_today)
+            if not math.isfinite(numeric_count) or numeric_count < 0 or not numeric_count.is_integer():
+                raise ValueError("daily count must be a finite non-negative integer")
+            sent_count = int(numeric_count)
         except (TypeError, ValueError, OverflowError):
             return {"eligible": False, "reason": "invalid_daily_count", "idle_seconds": idle}
         if sent_count >= MAX_CHECKINS_PER_DAY:
@@ -585,16 +603,10 @@ def initiative_history_state(
     now=None,
     retention_seconds=DEFAULT_MEMORY_MAX_AGE_SECONDS,
 ):
-    """Return validated sent history, recently used IDs, and a local-calendar daily count.
-
-    The settings record is authoritative; EmotionalRuntime's recent event ring and last
-    sent marker are independent recovery evidence. Mirrored copies of one send are deduplicated
-    by memory ID plus timestamp, while separate sends of the same memory still count separately.
-    """
+    """Reconcile mirrored send records by memory identity and near-identical send time."""
     current = _finite_number(time.time() if now is None else now)
     if current is None or current < 0:
         return {"history": [], "excluded_ids": set(), "sent_today": 0}
-
     retention = _bounded_seconds(retention_seconds, DEFAULT_MEMORY_MAX_AGE_SECONDS)
     now_local = time.localtime(current)
     today_key = (now_local.tm_year, now_local.tm_yday)
@@ -613,7 +625,16 @@ def initiative_history_state(
 
     valid_history = []
     excluded = set()
-    today_ids = set()
+    today_records: list[tuple[str, float]] = []
+
+    def add_daily_record(memory_id, stamp):
+        if day_key(stamp) != today_key:
+            return
+        identity = str(memory_id or "").strip()[:64]
+        # Mirrored persistence layers may timestamp one send a fraction apart.
+        if any(old_id == identity and abs(old_stamp - stamp) <= 2.0 for old_id, old_stamp in today_records):
+            return
+        today_records.append((identity, stamp))
 
     for entry in history if isinstance(history, list) else ():
         if not isinstance(entry, dict):
@@ -625,8 +646,7 @@ def initiative_history_state(
         valid_history.append({"at": stamp, "memory_id": memory_id})
         if memory_id:
             excluded.add(memory_id)
-        if day_key(stamp) == today_key:
-            today_ids.add(f"{memory_id}@{stamp:.3f}" if memory_id else f"at:{int(stamp)}")
+        add_daily_record(memory_id, stamp)
 
     for event in recent_events or ():
         if not isinstance(event, dict) or event.get("name") != "proactive_check_in":
@@ -637,23 +657,53 @@ def initiative_history_state(
         memory_id = str(event.get("detail") or "").strip()[:64]
         if memory_id:
             excluded.add(memory_id)
-        if day_key(stamp) == today_key:
-            today_ids.add(memory_id or f"at:{int(stamp)}")
+        add_daily_record(memory_id, stamp)
 
     last_stamp = accepted_stamp(last_sent_at)
     last_id = str(last_memory_id or "").strip()[:64]
     if last_stamp is not None:
         if last_id:
             excluded.add(last_id)
-        if day_key(last_stamp) == today_key:
-            today_ids.add(last_id or f"at:{int(last_stamp)}")
+        add_daily_record(last_id, last_stamp)
 
-    return {
-        "history": valid_history,
-        "excluded_ids": excluded,
-        "sent_today": len(today_ids),
-    }
+    return {"history": valid_history, "excluded_ids": excluded, "sent_today": len(today_records)}
 
+
+def persisted_checkin_events(records, now=None, retention_seconds=DEFAULT_MEMORY_MAX_AGE_SECONDS):
+    """Recover Initiative sends from durable chat-message metadata after interrupted state writes."""
+    current = _finite_number(time.time() if now is None else now)
+    if current is None or current < 0:
+        return []
+    retention = _bounded_seconds(retention_seconds, DEFAULT_MEMORY_MAX_AGE_SECONDS)
+    recovered = []
+    for record in records if isinstance(records, (list, tuple)) else ():
+        if not isinstance(record, dict) or record.get("role") != "assistant":
+            continue
+        metadata = record.get("metadata")
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except (TypeError, ValueError):
+                continue
+        if not isinstance(metadata, dict) or metadata.get("proactive") != "initiative":
+            continue
+        raw_stamp = record.get("created_at") or record.get("timestamp") or record.get("at")
+        stamp = _finite_number(raw_stamp)
+        if stamp is None and isinstance(raw_stamp, str):
+            try:
+                parsed = datetime.fromisoformat(raw_stamp.strip().replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=timezone.utc)
+                stamp = parsed.timestamp()
+            except (OverflowError, OSError, TypeError, ValueError):
+                continue
+        stamp = _finite_number(stamp)
+        if stamp is None or stamp <= 0 or stamp > current + FUTURE_CLOCK_SKEW_SECONDS:
+            continue
+        if current - stamp > retention:
+            continue
+        recovered.append({"name": "proactive_check_in", "at": stamp, "detail": str(metadata.get("memory_id") or "")[:64]})
+    return recovered
 
 def build_checkin_message(candidate, language="auto", max_topic_chars=130):
     """Create a brief, no-pressure check-in from the exact remembered quote; never invent details."""

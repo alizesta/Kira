@@ -11,6 +11,7 @@ from kira.character.initiative import (
     InitiativeEngine,
     build_checkin_message,
     initiative_history_state,
+    persisted_checkin_events,
     sessions_are_idle,
     _event_not_before,
 )
@@ -258,6 +259,17 @@ class InitiativeEligibilityTests(unittest.TestCase):
             )["eligible"]
         )
 
+    def test_invalid_daily_counts_fail_closed(self):
+        for value in (True, -1, 1.5, float("nan"), float("inf"), "bad"):
+            result = self.engine.evaluate(
+                now=self.now, last_interaction=self.last_interaction,
+                enabled=True, has_relevant_memory=True, sent_today=value,
+            )
+            self.assertEqual(result["reason"], "invalid_daily_count")
+
+    def test_non_iterable_candidate_input_fails_closed(self):
+        self.assertIsNone(self.engine.select_candidate(object(), now=self.now))
+
     def test_daily_limit_is_enforced(self):
         result = self.engine.evaluate(
             now=self.now,
@@ -304,6 +316,23 @@ class InitiativeHistoryTests(unittest.TestCase):
         )
         self.assertEqual(state["sent_today"], 1)
         self.assertEqual(state["excluded_ids"], {"event-1"})
+
+    def test_mirrored_history_with_small_timestamp_drift_counts_once(self):
+        now = 20 * DAY
+        state = initiative_history_state(
+            [{"at": now - 10, "memory_id": "same"}],
+            [{"name": "proactive_check_in", "at": now - 9.2, "detail": "same"}],
+            last_memory_id="same", last_sent_at=now - 9.7, now=now,
+        )
+        self.assertEqual(state["sent_today"], 1)
+
+    def test_distinct_sends_of_the_same_memory_still_count_separately(self):
+        now = 20 * DAY
+        state = initiative_history_state(
+            [{"at": now - 100, "memory_id": "same"}, {"at": now - 50, "memory_id": "same"}],
+            now=now,
+        )
+        self.assertEqual(state["sent_today"], 2)
 
     def test_recent_history_and_runtime_marker_enforce_daily_cap(self):
         now = 20 * DAY
@@ -366,6 +395,31 @@ class InitiativeHistoryTests(unittest.TestCase):
         self.assertEqual(state["excluded_ids"], {"same-memory"})
 
 
+class InitiativePersistenceRecoveryTests(unittest.TestCase):
+    def test_persisted_checkin_message_recovers_after_interrupted_settings_write(self):
+        now = datetime(2026, 11, 19, 12, 0).timestamp()
+        records = [{
+            "role": "assistant", "created_at": "2026-11-19 11:59:00",
+            "metadata": {"proactive": "initiative", "memory_id": "mem-1"},
+        }]
+        events = persisted_checkin_events(records, now=now)
+        state = initiative_history_state([], recent_events=events, now=now)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(state["sent_today"], 1)
+        self.assertEqual(state["excluded_ids"], {"mem-1"})
+
+    def test_persisted_recovery_ignores_bad_role_metadata_timestamps_and_expired_records(self):
+        now = datetime(2026, 11, 19, 12, 0).timestamp()
+        records = [
+            {"role": "user", "created_at": "2026-11-19 11:59:00", "metadata": {"proactive": "initiative"}},
+            {"role": "assistant", "created_at": "bad", "metadata": {"proactive": "initiative"}},
+            {"role": "assistant", "created_at": "2026-11-19 12:05:00", "metadata": {"proactive": "initiative"}},
+            {"role": "assistant", "created_at": "2026-11-01 12:00:00", "metadata": {"proactive": "initiative"}},
+            {"role": "assistant", "created_at": "2026-11-19 11:59:00", "metadata": "{bad json"},
+        ]
+        self.assertEqual(persisted_checkin_events(records, now=now), [])
+
+
 class InitiativeSessionGuardTests(unittest.TestCase):
     def test_every_character_session_must_be_idle_and_have_no_draft(self):
         self.assertTrue(sessions_are_idle([SimpleNamespace(busy=False, draft="")]))
@@ -378,6 +432,10 @@ class InitiativeSessionGuardTests(unittest.TestCase):
             SimpleNamespace(busy=False, draft="  unsent draft  "),
         ]))
         self.assertFalse(sessions_are_idle(None))
+        self.assertFalse(sessions_are_idle([None]))
+        self.assertFalse(sessions_are_idle([SimpleNamespace(draft="")]))
+        self.assertFalse(sessions_are_idle([SimpleNamespace(busy="false", draft="")]))
+        self.assertFalse(sessions_are_idle([SimpleNamespace(busy=False, draft=[]) ]))
 
     def test_session_controller_imports_math_used_by_idle_guard(self):
         source = Path(__file__).resolve().parents[1] / "kira" / "ui" / "main_window_session.py"
