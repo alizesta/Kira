@@ -354,7 +354,7 @@ class SessionMixin:
         self.settings["active_character_id"] = cid
         self.refresh_navigation_icons()
         try:
-            mood.set_active_character(cid, self.character_traits(cid, self.character_service.all_profiles(self.settings).get(cid)))
+            self.mood_service.set_active_character(cid, self.character_traits(cid, self.character_service.all_profiles(self.settings).get(cid)))
         except Exception:                               # noqa: BLE001 - never block switching tabs
             pass
         self.chat_stack.setCurrentWidget(sess.view)
