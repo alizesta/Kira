@@ -72,23 +72,34 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
         self.assertEqual(methods, {
-            "__init__", "__getattr__", "_dispatch_qt_event",
+            "__init__", "_dispatch_qt_event",
             "showEvent", "hideEvent", "changeEvent", "resizeEvent",
             "closeEvent", "dragEnterEvent", "dropEvent",
-            "listener", "_stopping_listener",
         })
+        self.assertNotIn("__getattr__", methods)
 
-    def test_feature_controller_state_is_owned_by_the_window(self):
+    def test_feature_controller_uses_only_the_explicit_presentation_context(self):
         from PySide6.QtCore import QObject
 
+        from kira.ui.feature_controller_registry import FeatureControllerRegistry
         from kira.ui.window_feature_controller import WindowFeatureController
+        from kira.ui.window_presentation_context import WindowPresentationContext
 
         window = QObject()
-        window.counter = 1
+        window.presentation_context = WindowPresentationContext(window, FeatureControllerRegistry({}))
         controller = WindowFeatureController(window)
-        self.assertEqual(controller.counter, 1)
+
+        window.presentation_context.state._closing = False
+        self.assertFalse(controller.context.state._closing)
         controller.counter = 2
-        self.assertEqual(window.counter, 2)
+        self.assertEqual(controller.counter, 2)
+        self.assertFalse(hasattr(window, "counter"))
+        with self.assertRaises(AttributeError):
+            _ = controller.undeclared_window_attribute
+        with self.assertRaises(AttributeError):
+            controller.context.state.undeclared = True
+        self.assertFalse(hasattr(WindowFeatureController, "__getattr__"))
+        self.assertFalse(hasattr(WindowFeatureController, "__setattr__"))
         self.assertIs(controller.window, window)
         self.assertIs(controller.parent(), window)
 
