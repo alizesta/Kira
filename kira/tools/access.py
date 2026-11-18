@@ -153,7 +153,7 @@ class PathPolicy:
         below = Path(real).parts
         if root:
             below = below[len(Path(root).parts):]
-        if any(SENSITIVE_NAME_RX.search(part) for part in below[-8:]):
+        if any(SENSITIVE_NAME_RX.search(part) for part in below):
             return "نام این فایل/پوشه (یا پوشه‌ی بالاسری‌اش) شبیه اطلاعات محرمانه است (کلید، رمز، .env ...) و برای حفظ حریم خصوصی باز نمی‌شود."
         return None
 
