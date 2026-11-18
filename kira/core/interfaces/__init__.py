@@ -17,6 +17,11 @@ from .application_services import (
 from .chat_provider import ChatProvider
 from .character_service import CharacterService
 from .chat_history_service import ChatHistoryService
+from .conversation_lifecycle import (
+    ConversationEventPublisherPort,
+    ConversationLifecycleRepositoryPort,
+    PermanentDeleteAuthorizationPort,
+)
 from .memory_service import MemoryService
 from .mood_service import MoodService
 from .provider_worker import ProviderWorkerPort
@@ -34,6 +39,9 @@ __all__ = [
     "RuntimeSessionPort",
     "SessionManagerPort",
     "SessionStateEventPort",
+    "ConversationEventPublisherPort",
+    "ConversationLifecycleRepositoryPort",
+    "PermanentDeleteAuthorizationPort",
     "ChatProvider",
     "CharacterService",
     "ChatHistoryService",
