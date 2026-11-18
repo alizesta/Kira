@@ -67,6 +67,7 @@ def initialize_main_window(
         "mood_service": mood_service,
         "character_service": character_service,
         "chat_history_service": chat_history_service,
+        "chat_event_publisher": chat_event_publisher,
         "chat_application_service_factory": chat_application_service_factory,
         "session_manager": session_manager,
         "session_application_service_factory": session_application_service_factory,
