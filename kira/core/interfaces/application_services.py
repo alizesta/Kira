@@ -13,7 +13,9 @@ from typing import Any, Protocol, runtime_checkable
 class RuntimeSessionPort(Protocol):
     """Minimal runtime Session data consumed by application orchestration."""
 
-    session_id: str
+    @property
+    def session_id(self) -> str: ...
+
     cid: str
     status: str
     conversation_id: str | None
