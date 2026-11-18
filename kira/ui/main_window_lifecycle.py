@@ -1,6 +1,5 @@
 """Lifecycle behavior mixin for the desktop window."""
 from .main_window_lifecycle_support import (
-    HybridRouter,
     OllamaClient,
     OllamaTaskWorker,
     QApplication,
@@ -17,12 +16,9 @@ from .main_window_lifecycle_support import (
     build_style,
     clamp_num_ctx,
     clamp_num_predict,
-    evidence_memory,
     model_installed,
     parse_keep_alive,
-    route_model,
     save_settings,
-    usage,
     winfx,
 )
 
@@ -253,8 +249,13 @@ class LifecycleMixin:
 
     def _form_client(self):
         keep, _ = parse_keep_alive(self.keep_alive.currentText())
-        return OllamaClient(self.url.text().strip(), self.model.text().strip(), self.num_ctx.value(), keep,
-                            num_predict=self.num_predict.value())
+        return self.provider_application_service.create_ollama_client_from_values(
+            self.url.text().strip(),
+            self.model.text().strip(),
+            num_ctx=self.num_ctx.value(),
+            keep_alive=keep,
+            num_predict=self.num_predict.value(),
+        )
 
     def _run_ollama_task(self, fn, busy_text):
         for b in (self.conn_btn, self.load_btn, self.unload_btn, self.speed_btn):
