@@ -48,6 +48,11 @@ class EvidenceMemoryRecallTests(unittest.TestCase):
         self.assertTrue(any("Evidence-memory retrieval failed" in line for line in captured.output))
         self.assertTrue(any("Evidence-memory interest recall failed" in line for line in captured.output))
 
+        with mock.patch.object(em, "rank_texts", side_effect=RuntimeError("ranking failed")):
+            with self.assertLogs("kira.evidence_memory", level="WARNING") as ranking_logs:
+                self.assertEqual(em.interest_line(query="موضوع مشخص"), "")
+        self.assertTrue(any("Evidence-memory interest ranking failed" in line for line in ranking_logs.output))
+
 
 if __name__ == "__main__":
     unittest.main()
