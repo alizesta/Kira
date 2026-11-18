@@ -1,6 +1,6 @@
 import unittest
 
-from kira.chat.context_builder import ContextBuilder, ContextRequest
+from kira.chat.context_builder import ContextBuilder, ContextRequest, latest_user_text
 
 
 class ContextBuilderTests(unittest.TestCase):
@@ -192,6 +192,16 @@ class ContextBuilderTests(unittest.TestCase):
         self.assertEqual([item["role"] for item in result.messages], ["system", "user"])
         self.assertEqual(result.messages[0]["content"], "system rule")
         self.assertEqual(result.messages[-1]["content"], "latest")
+
+    def test_latest_user_text_ignores_assistant_messages_and_returns_newest_user(self):
+        history = [
+            {"role": "user", "content": "first"},
+            {"role": "assistant", "content": "assistant text"},
+            {"role": "user", "content": "latest"},
+        ]
+        self.assertEqual(latest_user_text(history), "latest")
+        self.assertEqual(latest_user_text([{"role": "assistant", "content": "no user"}]), "")
+        self.assertEqual(latest_user_text([]), "")
 
     def test_missing_prompt_builder_is_rejected(self):
         with self.assertRaises(TypeError):

@@ -533,10 +533,22 @@ class VoiceSettingsController(WindowFeatureController):
             tts += " · همین صدا بارگذاری شده" if tts_loaded else " · صدای انتخابی هنوز بارگذاری نشده"
             if state.get("tts_error"):
                 tts += " · " + state["tts_error"]
+            ezafe = state.get("tts_ezafe") or {}
+            if not ezafe.get("enabled", True):
+                ezafe_text = "پیش‌پردازش اضافه فارسی: غیرفعال"
+            elif ezafe.get("loaded"):
+                ezafe_text = "پیش‌پردازش اضافه فارسی: مدل ALBERT بارگذاری شده"
+            else:
+                ezafe_text = "پیش‌پردازش اضافه فارسی: مدل اختیاری هنوز بارگذاری نشده؛ Piper با متن اصلی کار می‌کند"
+            if ezafe.get("error"):
+                ezafe_text += " · " + str(ezafe["error"])
+            if ezafe.get("retry_in_seconds"):
+                ezafe_text += f" · تلاش دوباره پس از {ezafe['retry_in_seconds']} ثانیه"
             selected_tts = tts_model or "Mana Persian Piper · صدای فارسی پیش‌فرض"
             self.context.views.local_voice_status.setText(
                 f"STT · Qwen3-ASR: {asr}\nمدل STT: {asr_model}\n"
                 f"TTS · Piper: {tts}\nمدل TTS: {selected_tts}\n"
+                f"{ezafe_text}\n"
                 f"مدل‌های Piper مستقل: {len(discovered.get('tts', []))}\n"
                 f"کش مدل‌ها: {local_voice.cache_directory()}"
             )
