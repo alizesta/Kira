@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Mapping
+from typing import Any, Mapping
 
 
 class ConversationStatus(str, Enum):
@@ -58,7 +58,7 @@ class ConversationLifecycleResult:
     operation: ConversationOperation
     success: bool
     event_published: bool = False
-    details: Mapping[str, object] | None = None
+    details: Mapping[str, Any] | None = None
 
 
 _ALLOWED_SOURCES: Mapping[ConversationOperation, tuple[ConversationStatus, ...]] = {
