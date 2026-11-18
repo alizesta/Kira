@@ -398,7 +398,7 @@ class RuntimeController(WindowFeatureController):
             elif role == "assistant":
                 meta = self.context.adapters.director.parse_reply(content)
                 if meta is not None:
-                    mood.on_reply(meta.emotions, meta.intensity)
+                    mood.on_reply(meta.emotions, meta.intensity, text=meta.text)
         except Exception:                                         # noqa: BLE001 - mood is a bonus, never block the chat
             pass
         if persist and ok:
