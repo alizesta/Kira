@@ -341,14 +341,16 @@ def _event_not_before(text, created_at):
     except (OverflowError, OSError, TypeError, ValueError):
         return float("inf")
     # A whole-week reference is only due after that calendar week has ended.
-    if re.search(r"هفته(?:\s+ی)?\s*(?:بعد|آینده)", value):
-        day_offsets.append((4 - local_weekday) % 7 + 7)  # next Persian week ends Friday
-    if re.search(r"\bnext\s+week\b", value):
-        day_offsets.append((6 - local_weekday) % 7 + 7)  # next English week ends Sunday
-    if re.search(r"این\s*هفته", value):
-        day_offsets.append((4 - local_weekday) % 7)
-    if re.search(r"\bthis\s+week\b", value):
-        day_offsets.append((6 - local_weekday) % 7)
+    weekday_offsets = _weekday_offsets(value, created_at)
+    if not weekday_offsets:
+        if re.search(r"هفته(?:\s+ی)?\s*(?:بعد|آینده)", value):
+            day_offsets.append((4 - local_weekday) % 7 + 7)  # next Persian week ends Friday
+        if re.search(r"\bnext\s+week\b", value):
+            day_offsets.append((6 - local_weekday) % 7 + 7)  # next English week ends Sunday
+        if re.search(r"این\s*هفته", value):
+            day_offsets.append((4 - local_weekday) % 7)
+        if re.search(r"\bthis\s+week\b", value):
+            day_offsets.append((6 - local_weekday) % 7)
     # The Persian weekend is Friday; English weekend check-ins wait until Sunday ends.
     if re.search(r"آخر\s*هفته", value):
         day_offsets.append((4 - local_weekday) % 7)
@@ -356,7 +358,7 @@ def _event_not_before(text, created_at):
         day_offsets.append((6 - local_weekday) % 7)
     if re.search(r"\bnext\s+weekend\b", value):
         day_offsets.append((6 - local_weekday) % 7 + 7)
-    day_offsets.extend(_weekday_offsets(value, created_at))
+    day_offsets.extend(weekday_offsets)
 
     # Parse explicit relative durations such as "in two weeks", "3 days from now",
     # "سه روز دیگه", and "دو هفته بعد". A vague count ("چند") is interpreted
