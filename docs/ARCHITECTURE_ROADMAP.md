@@ -2,7 +2,7 @@
 
 **Snapshot:** 2026-11-18  
 **Base branch:** `new-main`  
-**Base SHA:** `7caa6a3ee8cb2a68d80a3015a9134d42cf89d6e3`  
+**Base SHA:** `8919547982c97bce8759aca1ddddb779e1c5f0a0`  
 **Input:** TASK 015 audit plus post-audit merged TASK 013+014 integration PR #48.  
 **Execution policy:** Architecture implementation delta on `new-main`. Source tests were added; runtime execution remains unverified in this environment.
 
@@ -29,7 +29,7 @@ Severity reflects architectural impact and evidence, not an assertion that a run
 
 | ID | Severity | Problem / evidence | Location | Owner | Impact | Dependency / proposed resolution |
 |---|---|---|---|---|---|---|
-| AD-01 | **High** | The former 5,634-line `oldmain.py` and its 322 MainWindow methods have been removed from the runtime path and split into eight feature-oriented UI mixins. Web Search query/provider/request/evidence policy is now extracted to `WebSearchApplicationService`; MainWindow still coordinates other application policy across capabilities. | `kira/ui/main_window.py`, `kira/ui/main_window_*.py` | Application/UI architecture | The file-level monolith is removed and Web Search policy now has an injected application-service owner, but feature policy is not yet fully owned by independent application services/controllers. | Continue moving policy from the mixins into existing domain/application services and inject narrow contracts through bootstrap. Keep MainWindow as UI composition and intent translation only. |
+| AD-01 | **High** | The former 5,634-line `oldmain.py` and its 322 MainWindow methods have been removed from the runtime path and split into feature-oriented UI mixins. Web Search now owns eligibility and query planning (`plan_request`) in addition to provider/request/evidence policy; Chat UI calls the service instead of parsing automatic/forced search decisions itself. MainWindow still coordinates Coding Agent, command, attachment, tool and response-presentation flows. | `kira/ui/main_window.py`, `kira/ui/main_window_*.py`, `kira/app/web_search.py` | Application/UI architecture | The file-level monolith is removed and Web Search policy has an injected application-service owner, but additional cross-feature orchestration remains in transitional UI mixins. | Continue extracting one existing, coherent policy boundary at a time. Keep widgets, worker lifecycle and rendering in UI adapters; inject narrow service contracts through bootstrap. |
 | AD-02 | **Medium** | ModuleManager lifecycle engine exists, but bootstrap currently registers only Memory, Mood, Character Profile and Chat History service modules. WebSearchApplicationService is injected directly but is not independently lifecycle-managed; Chat/Voice/Avatar/Coding Agent/Provider are also not independently registered. | `kira/app/bootstrap.py`, `module_manager.py`, `service_module.py` | Bootstrap / capability owners | The lifecycle manager does not yet govern the wider capability set; enable/disable and shutdown ownership are uneven. | Register a feature only when it has a stable lifecycle contract and real need for optional lifecycle control. Do not add empty wrapper modules merely to populate the manager. |
 | AD-03 | **Addressed in source** | Organization mutations now execute against the latest conversation record inside a SQLite `BEGIN IMMEDIATE` transaction. The mutation changes only the organization namespace and preserves unrelated metadata keys. | `kira/chat/organization.py`, `kira/chat/persistence.py` | Organization + Persistence | Stale read-modify-write overwrites within Organization are prevented by the repository transaction boundary. | Runtime concurrency acceptance is still pending; tests cover two repository instances writing distinct tags concurrently. |
 | AD-04 | **Addressed in source** | Tag/folder bulk cleanup selects the character-scoped rows and mutates them within one repository transaction. | `kira/chat/organization.py`, `kira/chat/persistence.py` | Persistence (transaction) + Organization (policy) | A failure in any callback rolls the complete batch back instead of partially clearing assignments. | Runtime rollback acceptance is still pending; tests cover an injected mid-batch failure. |
@@ -42,7 +42,8 @@ These are not classified as implementation failures because the audit was static
 - Kira/Ren/Mika isolation across simultaneous sessions, history, search, transfer, memory and restart.
 - Conversation archive/restore/trash/permanent-delete behavior, authorization and transaction guarantees.
 - Export/import round trips preserving status and the complete metadata namespace.
-- Typed event delivery, ordering and terminal de-duplication under concurrency.
+- Typed event delivery, ordering and terminal de-duplication under concurrency; the shared EventBus now consumes a feature-neutral Core event contract, with generic-event tests added but not executed.
+- Web Search automatic/forced query planning and precedence against tool plans; focused Qt-free tests have been added but not executed.
 - Provider stream handling, cancellation and partial-response persistence.
 - MainWindow GUI behavior and Windows device integrations.
 - Search performance for large histories; current search scans repository pages and ranks in process.
@@ -57,7 +58,7 @@ These belong in the later explicitly authorized testing phase, not in TASK 016.
 
 1. Keep `kira/main.py` as the thin entry point and `kira/app/bootstrap.py` as the single production Composition Root.
 2. Continue replacing direct construction/compatibility fallback paths with injected services where a real call site needs it.
-3. Continue moving MainWindow policy/controller responsibilities into existing application and capability owners; keep the window as an adapter.
+3. Continue moving MainWindow policy/controller responsibilities into existing application and capability owners; Web Search eligibility and query planning have now moved into `WebSearchApplicationService`, while Coding Agent/command/attachment orchestration and response presentation remain in transitional UI mixins.
 4. Register additional ModuleManager-managed features only when their lifecycle and shutdown contracts are concrete.
 5. AD-03/AD-04 source-level fixes are now present: atomic latest-row mutations and transactional character-scoped bulk metadata updates. Runtime acceptance remains pending.
 
