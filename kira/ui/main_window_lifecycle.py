@@ -115,7 +115,7 @@ class LifecycleController(WindowFeatureController):
         self.tray = tray                                             # always defined (no system tray = None)
         if wanted and tray is None:
             icon = QIcon(str(ROOT / "assets" / "kira_character.png"))
-            tray = QSystemTrayIcon(icon, self)
+            tray = QSystemTrayIcon(icon, self.window)
             tray.setToolTip("Kira")
             menu = QMenu()
             menu.aboutToShow.connect(self.refresh_tray_menu)          # filled when it opens, so states are current
