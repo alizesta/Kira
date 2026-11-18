@@ -59,10 +59,11 @@ def _after_next_month(created_at):
     """First local midnight after the next calendar month has fully elapsed."""
     try:
         local_created = datetime.fromtimestamp(float(created_at))
-        if local_created.month == 12:
-            following_year, following_month = local_created.year + 1, 2
-        else:
-            following_year, following_month = local_created.year, local_created.month + 2
+        following_year = local_created.year
+        following_month = local_created.month + 2
+        if following_month > 12:
+            following_year += (following_month - 1) // 12
+            following_month = ((following_month - 1) % 12) + 1
         return datetime(following_year, following_month, 1).timestamp()
     except (OverflowError, OSError, TypeError, ValueError):
         return float(created_at) + 32 * DAY
@@ -121,7 +122,7 @@ def _event_not_before(text, created_at):
     # conservatively; distant dates naturally age out under the 10-day memory window.
     patterns = (
         rf"\b(?:in|after)\s+({_NUMBER_TOKEN})\s*({_DURATION_UNIT})\b",
-        rf"({_NUMBER_TOKEN})\s*({_DURATION_UNIT})\s*(?:from\s+now|later|away|دیگه|دیگر|بعد|آینده)",
+        rf"({_NUMBER_TOKEN})\s*({_DURATION_UNIT})(?:\s+ی)?\s*(?:from\s+now|later|away|دیگه|دیگر|بعد|آینده)",
     )
     for pattern in patterns:
         for match in re.finditer(pattern, value, re.I):
