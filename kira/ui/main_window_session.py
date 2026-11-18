@@ -74,11 +74,11 @@ class SessionController(WindowFeatureController):
         self.feature_controller("runtime").update_companion_btn()
         self.feature_controller("runtime").update_engine_label()
         self.refresh_tab_buttons()
-        if hasattr(self, "help_page"):
+        if hasattr(self.context.views, "help_page"):
             self.context.views.help_page.retranslate()
-        if hasattr(self, "assistant_page"):
+        if hasattr(self.context.views, "assistant_page"):
             self.context.views.assistant_page.retranslate()
-        if hasattr(self, "preferences_page"):
+        if hasattr(self.context.views, "preferences_page"):
             self.context.views.preferences_page.retranslate()
         if hasattr(self.context.views, "voice_page"):
             self.context.views.voice_page.retranslate()
@@ -627,7 +627,7 @@ class SessionController(WindowFeatureController):
 
     def _sync_nav(self, _index=None):
         i = self.context.views.tabs.currentIndex()
-        for index, button in enumerate(getattr(self, "nav_buttons", [])):
+        for index, button in enumerate(getattr(self.context.views, "nav_buttons", [])):
             button.setChecked(i == self.context.state._nav_icon_map[index][1])
         self.context.views.save_btn.setVisible(i != 0)            # the chat page needs no Save button
         if hasattr(self.context.views, "voice_page") and i == self.context.views.tab_keys.index("tab_voice"):
@@ -712,14 +712,14 @@ class SessionController(WindowFeatureController):
         cid = self.context.services.character_service.active_id(self.context.services.settings)
         profile = self.context.services.character_service.all_profiles(self.context.services.settings).get(cid, {})
         palette = self.theme_for_character(cid, profile)
-        for button, (name, _tab_index) in zip(getattr(self, "nav_buttons", []), getattr(self, "_nav_icon_map", [])):
+        for button, (name, _tab_index) in zip(getattr(self.context.views, "nav_buttons", []), getattr(self.context.state, "_nav_icon_map", [])):
             button.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
                                      checked=palette["main"], disabled="#52617B"))
         menu_button = getattr(self.context.views, "menu_btn", None)
         if menu_button is not None:
             menu_button.setIcon(make_icon("menu", normal=palette["second"], hover="#FFFFFF",
                                           checked=palette["main"], disabled="#52617B"))
-        for action, (name, _tab_index) in zip(getattr(self, "_menu_actions", []), getattr(self, "_nav_icon_map", [])):
+        for action, (name, _tab_index) in zip(getattr(self.context.state, "_menu_actions", []), getattr(self.context.state, "_nav_icon_map", [])):
             action.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
                                      checked=palette["main"], disabled="#52617B"))
         badge = getattr(self.context.views, "route_badge", None)
