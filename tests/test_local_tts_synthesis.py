@@ -73,6 +73,12 @@ class LocalPiperSynthesisTests(unittest.TestCase):
         self.addCleanup(self.piper_patch.stop)
         self.addCleanup(self._restore_state)
 
+    def _model_path(self, name):
+        path = Path(tempfile.gettempdir()) / name
+        path.write_bytes(b"fake onnx")
+        Path(str(path) + ".json").write_text("{}", encoding="utf-8")
+        return path
+
     def _restore_state(self):
         (
             local_voice._tts,
@@ -83,7 +89,7 @@ class LocalPiperSynthesisTests(unittest.TestCase):
         ) = self.previous
 
     def test_native_rate_control_preserves_wav_sample_rate_and_pitch_parameter(self):
-        path = Path(tempfile.gettempdir()) / "mana-test.onnx"
+        path = self._model_path("mana-test.onnx")
         with mock.patch.object(
             local_voice, "_resolve_tts_model_path", return_value=(path, "bundled")
         ):
@@ -102,7 +108,7 @@ class LocalPiperSynthesisTests(unittest.TestCase):
                 self.assertEqual(wav_file.getsampwidth(), 2)
 
     def test_zero_rate_uses_native_default_length_scale(self):
-        path = Path(tempfile.gettempdir()) / "mana-default.onnx"
+        path = self._model_path("mana-default.onnx")
         with mock.patch.object(
             local_voice, "_resolve_tts_model_path", return_value=(path, "bundled")
         ):
@@ -113,8 +119,8 @@ class LocalPiperSynthesisTests(unittest.TestCase):
         self.assertEqual(voice.configs[0][1].length_scale, 1.0)
 
     def test_switching_models_replaces_only_active_cached_voice(self):
-        first = Path(tempfile.gettempdir()) / "voice-a.onnx"
-        second = Path(tempfile.gettempdir()) / "voice-b.onnx"
+        first = self._model_path("voice-a.onnx")
+        second = self._model_path("voice-b.onnx")
         with mock.patch.object(
             local_voice,
             "_resolve_tts_model_path",
@@ -129,8 +135,8 @@ class LocalPiperSynthesisTests(unittest.TestCase):
         self.assertEqual(state["tts_model"], str(second))
 
     def test_failed_model_switch_keeps_previous_voice_loaded(self):
-        first = Path(tempfile.gettempdir()) / "voice-ok.onnx"
-        broken = Path(tempfile.gettempdir()) / "voice-broken.onnx"
+        first = self._model_path("voice-ok.onnx")
+        broken = self._model_path("voice-broken.onnx")
         _FakePiperVoice.fail_paths.add(str(broken))
         with mock.patch.object(
             local_voice,

@@ -1,6 +1,9 @@
 import unittest
 from unittest import mock
 
+from kira import mood
+from unittest import mock
+
 from kira.character.decision import BASE_TRAITS, BEHAVIOUR_GUIDES, DecisionEngine, decide as decide_character
 from kira.character.initiative import InitiativeEngine
 from kira.character.learning import detect_feedback
@@ -47,6 +50,42 @@ class CharacterDecisionTests(unittest.TestCase):
         b=self.engine.decide("hello",{},initiative="check_in")
         self.assertEqual(a.behaviour,b.behaviour)
         self.assertEqual(b.initiative,"check_in")
+
+    def test_mood_prompt_uses_latest_message_and_active_profile_traits(self):
+        snapshot = {
+            "emotion": "happy", "intensity": 80, "user_states": [], "away_hours": 0,
+            "age": 0, "energy": 80, "energy_label": "normal", "behaviors": [],
+            "secondary_emotions": [], "emotional_components": [], "personality_traits": {
+                **BASE_TRAITS, "empathy": 1.0, "warmth": 0.95,
+            }, "relationship": {}, "emotional_memories": [],
+        }
+        runtime = mock.Mock()
+        runtime.build_prompt.return_value = "runtime mood"
+        with mock.patch.object(mood, "current", return_value=snapshot), \
+             mock.patch.object(mood, "_runtime_for", return_value=runtime):
+            prompt = mood.build_block("task", query="من فردا جراحی دارم")
+        self.assertIn("runtime mood", prompt)
+        self.assertIn("[CHARACTER DECISION]", prompt)
+        self.assertIn("serious-topic override", prompt)
+
+    def test_runtime_snapshot_failure_preserves_character_baseline(self):
+        runtime = mock.Mock()
+        runtime.base_traits = {**BASE_TRAITS, "empathy": 0.97}
+        with mock.patch.object(mood, "_runtime_for", side_effect=[RuntimeError("snapshot failed"), runtime]):
+            snapshot = mood._runtime_snapshot()
+        self.assertEqual(snapshot["personality_traits"]["empathy"], 0.97)
+
+    def test_decision_is_stable_under_repeated_and_small_input_perturbations(self):
+        base = self.engine.decide("hello", {"emotion": "neutral", "energy": 70})
+        repeated = [self.engine.decide("hello", {"emotion": "neutral", "energy": 70}) for _ in range(5)]
+        self.assertTrue(all(item == base for item in repeated))
+        nearby = self.engine.decide("hello", {"emotion": "neutral", "energy": 72})
+        self.assertEqual(nearby.behaviour, base.behaviour)
+
+    def test_colloquial_persian_distress_phrases_are_serious(self):
+        for phrase in ("دیگه تحمل ندارم", "نمی‌تونم ادامه بدم", "از کتک‌هاش خسته شدم"):
+            with self.subTest(phrase=phrase):
+                self.assertTrue(self.engine.decide(phrase, {}).serious_context)
 
     def test_task_mode_prefers_focus(self):
         decision = self.engine.decide("یک فایل بساز", {"emotion": "happy"}, "task")

@@ -64,12 +64,12 @@ def _insert_marks(text: str, spans, offsets, predictions) -> str:
     insertions = []
     for word in spans:
         start, end = word.span()
-        indices = [i for i,(a,b) in enumerate(offsets) if b>a and a<end and b>start]
-        # Skip an incomplete word at the tokenizer's truncation boundary.
-        if not indices or max(offsets[i][1] for i in indices) < end: continue
-        if int(predictions[indices[0]]) != 1: continue
         mark_at=end
         while mark_at>start and text[mark_at-1] in _TRAILING_PUNCTUATION: mark_at-=1
+        indices = [i for i,(a,b) in enumerate(offsets) if b>a and a<mark_at and b>start]
+        # Require complete lexical coverage, but punctuation need not be tokenized.
+        if not indices or max(offsets[i][1] for i in indices) < mark_at: continue
+        if int(predictions[indices[0]]) != 1: continue
         if mark_at<=start or _EZAFE in text[start:mark_at]: continue
         insertions.append(mark_at)
     result=text

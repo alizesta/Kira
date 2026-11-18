@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import gc
 import io
+import logging
 import os
 import threading
 import wave
@@ -15,6 +16,8 @@ from pathlib import Path
 # Keep model/runtime caches beside Kira's persistent data, not on C: or
 # inside the replaceable application folder.
 from .storage import configure_cache_environment, default_data_dir
+
+logger = logging.getLogger(__name__)
 
 _DATA_ROOT = default_data_dir(Path(__file__).resolve().parents[1])
 configure_cache_environment(_DATA_ROOT)
@@ -229,9 +232,12 @@ def warmup_tts(model_path="") -> bool:
     # unavailable network must never disable the working TTS engine.
     try:
         from . import persian_ezafe
-        persian_ezafe.warmup()
+        if not persian_ezafe.warmup():
+            state = persian_ezafe.status()
+            if state.get("enabled") and state.get("error"):
+                logger.warning("Optional Persian ezafe warmup unavailable: %s", state["error"])
     except Exception:
-        pass
+        logger.exception("Optional Persian ezafe warmup failed; Piper remains available")
     return ready
 
 
