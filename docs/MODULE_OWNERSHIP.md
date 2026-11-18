@@ -14,7 +14,7 @@
 6. Search owns message matching/ranking/pagination; Organization owns conversation metadata/filtering; Transfer owns serialization/import/export.
 7. UI may adapt inputs, signals and rendering, but must not become a second owner of domain rules.
 8. `kira/core` and `kira/domain` are inner layers: they must not import concrete application, UI, service, infrastructure or Qt modules.
-9. Application services and lifecycle adapters must depend on structural contracts from Core. `kira/app/bootstrap.py` is the only application-layer composition point permitted to connect services to UI/Qt.
+9. Application services and lifecycle adapters must depend on structural contracts from Core. `kira/ui/bootstrap.py` is the only application-layer composition point permitted to connect services to UI/Qt.
 10. `ApplicationModule` receives the `DependencyRegistry` and `ModuleEventBus` ports; concrete `DependencyContainer` and `EventBus` implementations remain in the outer application layer.
 
 ## 2. TASK 001–014 module register
@@ -182,7 +182,7 @@ These compatibility paths should be removed only after static call-site review a
 
 ## 8. Application feature lifecycle
 
-The production Composition Root registers the application service/factory graph
+The desktop Composition Root registers the application service/factory graph
 through `kira/app/feature_modules.py` and `ServiceModule`. Managed registrations
 cover Memory, Mood, Character Profile, Chat History, Web Search, Game Mode,
 Provider, Coding Agent, Runtime Settings, Vision, and the Chat/Session/Voice
@@ -214,7 +214,7 @@ QApplication shutdown signal then releases the global module graph.
 
 ## 9. Composition Root boundary
 
-`kira/app/bootstrap.py` is the production Composition Root. It loads settings,
+`kira/ui/bootstrap.py` is the desktop Composition Root and the only outer layer that binds Application to Qt. It loads settings,
 creates the shared container/EventBus/ModuleManager, registers and starts the
 application feature graph, constructs the SessionManager and ToolAgent, resolves
 the registered services/factories, and injects them into MainWindow.
