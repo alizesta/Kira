@@ -263,9 +263,9 @@ class LifecycleController(WindowFeatureController):
         for b in (self.context.views.conn_btn, self.context.views.load_btn, self.context.views.unload_btn, self.context.views.speed_btn):
             b.setEnabled(False)
         self.context.views.conn_lbl.setText(busy_text)
-        self._ollama_worker = OllamaTaskWorker(fn)
-        self._ollama_worker.done.connect(self.on_ollama_task_done)
-        self._ollama_worker.start()
+        self.context.state._ollama_worker = OllamaTaskWorker(fn)
+        self.context.state._ollama_worker.done.connect(self.on_ollama_task_done)
+        self.context.state._ollama_worker.start()
 
     def on_ollama_task_done(self, ok, text):
         models = getattr(self, "_found_models", None)
