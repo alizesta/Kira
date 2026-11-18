@@ -10,7 +10,7 @@ from kira.tools import fileops
 from kira.tools.access import PathPolicy
 from kira.tools.builtin import build_registry
 from kira.tools.fileagent import valid_name
-from kira.tools.registry import OK, NEEDS_CONFIRM, DENIED, ERROR, BAD_ARGS
+from kira.tools.registry import OK, NEEDS_CONFIRM, DENIED, ERROR, BAD_ARGS, ToolError
 
 
 class FileAgentTests(unittest.TestCase):
@@ -71,6 +71,18 @@ class FileAgentTests(unittest.TestCase):
         outside = str(Path(self.tmp.name) / "outside.txt")
         self.assertEqual(self.run_tool("create_file", {"path": outside}, text="create it").status, DENIED)
         self.assertEqual(self.run_tool("create_file", {"path": str(self.root / ".." / "x.txt")}, text="create it").status, DENIED)
+
+    def test_sensitive_ancestor_names_are_blocked_at_any_depth(self):
+        sensitive_root = self.root / "password-archive"
+        nested = sensitive_root
+        for index in range(10):
+            nested = nested / f"level-{index}"
+        nested.mkdir(parents=True)
+        target = nested / "notes.txt"
+        target.write_text("private", encoding="utf-8")
+
+        with self.assertRaises(ToolError):
+            self.policy.check(str(target))
 
     def test_copy_file_and_folder_rename_and_no_overwrite(self):
         src = self.root / "src"
