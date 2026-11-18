@@ -30,6 +30,8 @@ class FakeToolAgent:
         return session_id == "character-kira"
 
     def handle_confirmation_reply(self, text, *, session_id):
+        if text.strip() not in ("تأیید", "confirm"):
+            return None
         self.calls.append(("confirm", session_id, text))
         return "confirmed"
 
@@ -60,7 +62,7 @@ class ChatCommandAdapterTests(unittest.TestCase):
                 (text.split(maxsplit=1)[1], True)
                 if text.startswith("/web ") else (None, False)
             ),
-            image_parser=lambda text: (text, True),
+            image_parser=lambda text: (text.removeprefix("/img ").strip(), text.startswith("/img")),
             task_control_parser=lambda text: (
                 ("pause", "") if "pause" in text else
                 ("status", "") if "status" in text else
@@ -104,6 +106,7 @@ class ChatCommandAdapterTests(unittest.TestCase):
         self.assertTrue(with_image.metadata["force_image_search"])
 
     def test_allowed_desktop_shortcut_delegates_to_existing_safe_action(self):
+        self.agent.is_enabled = False
         self.registry._permission_checker = lambda _command, _request: True
         result = self.registry.dispatch_text(
             "open notepad", session_id="runtime-kira", request_id="desktop-allowed",

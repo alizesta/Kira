@@ -49,7 +49,8 @@ class GameModePolicyTests(unittest.TestCase):
         agent = object.__new__(ToolAgent)
         agent._competitive_safe_mode = False
         agent.registry = SimpleNamespace(access=SimpleNamespace(revoke_grants=mock.Mock()))
-        agent._pending = None
+        agent._pending_by_session = {}
+        agent._pending_new_sessions = set()
         agent.request_cancel = mock.Mock()
         agent.set_competitive_safe_mode(True)
         self.assertTrue(agent._competitive_safe_mode)
