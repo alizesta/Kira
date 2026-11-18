@@ -879,30 +879,42 @@ def set_writer_cursor(message_id) -> None:
 
 
 def interest_line(max_chars=140, query=None) -> str:
-    """Compact likes/dislikes; topic recall only exposes interests matching this turn."""
+    """Compact likes/dislikes line; never cut a stored interest mid-value."""
     if not _enabled or max_chars < 40:
         return ""
     try:
         with _lock, _db() as con:
             likes = [r["value"] for r in con.execute(
-                "SELECT value FROM facts WHERE predicate='like' AND status='active' ORDER BY updated_at DESC LIMIT 12"
+                "SELECT value FROM facts WHERE predicate='like' AND status='active' ORDER BY updated_at DESC"
             )]
             dislikes = [r["value"] for r in con.execute(
-                "SELECT value FROM facts WHERE predicate='dislike' AND status='active' ORDER BY updated_at DESC LIMIT 12"
+                "SELECT value FROM facts WHERE predicate='dislike' AND status='active' ORDER BY updated_at DESC"
             )]
     except Exception:
         return ""
     if query is not None:
         if not needs_recall(query):
             return ""
-        likes = [likes[i] for i in rank_texts(likes, query)[:4]]
-        dislikes = [dislikes[i] for i in rank_texts(dislikes, query)[:3]]
-    parts = []
-    if likes:
-        parts.append("He likes: " + "; ".join(value[:40] for value in likes))
-    if dislikes:
-        parts.append("He dislikes: " + "; ".join(value[:40] for value in dislikes))
-    return (" | ".join(parts))[:max_chars]
+        likes = [likes[index] for index in rank_texts(likes, query)[:4]]
+        dislikes = [dislikes[index] for index in rank_texts(dislikes, query)[:3]]
+
+    sections = []
+    used = 0
+    for label, values in (("He likes:", likes), ("He dislikes:", dislikes)):
+        selected = []
+        for value in values:
+            value = " ".join(str(value or "").split())
+            if not value:
+                continue
+            candidate = label + " " + "; ".join(selected + [value])
+            extra = len(candidate) + (3 if sections else 0)
+            if used + extra <= max_chars:
+                selected.append(value)
+        if selected:
+            section = label + " " + "; ".join(selected)
+            sections.append(section)
+            used += len(section) + (3 if len(sections) > 1 else 0)
+    return " | ".join(sections)
 
 
 def render(facts, budget) -> str:
