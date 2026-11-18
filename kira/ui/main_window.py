@@ -1,4 +1,6 @@
-"""Main desktop window composed from feature-oriented UI behavior mixins."""
+"""Thin Qt shell; feature behavior is composed from window-scoped controllers."""
+from __future__ import annotations
+
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QMainWindow
 
@@ -13,20 +15,13 @@ from .main_window_chat import ChatMixin
 from .main_window_runtime import RuntimeMixin
 
 
-class MainWindow(
-    RuntimeMixin,
-    ChatMixin,
-    AttachmentsVisionMixin,
-    LifecycleMixin,
-    ProviderSettingsMixin,
-    CharacterSettingsMixin,
-    VoiceSettingsMixin,
-    SessionMixin,
-    QMainWindow,
-):
+class MainWindow(QMainWindow):
+    """Qt host and feature-controller registry; no feature mixin inheritance."""
+
     voice_listener_finished = Signal(object, bool, bool)
 
-    # Per-chat state: one ChatSession per character; these names read/write the session that is current (see chat_sessions.py).
+    # Session-bound state remains on the shell because it is shared by the
+    # window-scoped feature controllers and the active ChatSession.
     busy = session_property("busy")
     worker = session_property("worker")
     _stream_text = session_property("_stream_text")
@@ -54,10 +49,12 @@ class MainWindow(
     _search_base = session_property("_search_base")
     _route_info = session_property("_route_info")
     _badge_phase = session_property("_badge_phase")
-    client = session_property("client")                 # every chat has its own router (own Stop flag); health/cooldowns are shared
+    client = session_property("client")
     chat = property(lambda self: self.cur.view)
     _stream_timer = property(lambda self: self.cur.timer)
-    # One-per-computer things belong to the chat in front; a background chat gets silent stand-ins.
+
+    # Device/presentation objects are front-window resources; controllers
+    # access them through this explicit shell-owned compatibility surface.
     speaker = front_only_property("speaker")
     voice_application_service = front_only_property("voice_application_service")
     director = front_only_property("director", ("parse_reply", "format_hint", "library"))
@@ -69,6 +66,60 @@ class MainWindow(
     input = front_only_property("input")
     voice_btn = front_only_property("voice_btn")
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._feature_controllers = {
+            "runtime": RuntimeMixin(self),
+            "chat": ChatMixin(self),
+            "attachments_vision": AttachmentsVisionMixin(self),
+            "lifecycle": LifecycleMixin(self),
+            "provider_settings": ProviderSettingsMixin(self),
+            "character_settings": CharacterSettingsMixin(self),
+            "voice_settings": VoiceSettingsMixin(self),
+            "session": SessionMixin(self),
+        }
+
+    def __getattr__(self, name):
+        controllers = self.__dict__.get("_feature_controllers", {})
+        for controller in controllers.values():
+            try:
+                return getattr(controller, name)
+            except AttributeError:
+                continue
+        raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
+
+    def _dispatch_qt_event(self, controller_name, event_name, event):
+        controller = self.__dict__.get("_feature_controllers", {}).get(controller_name)
+        if controller is not None:
+            return getattr(controller, event_name)(event)
+        base_handler = getattr(QMainWindow, event_name, None)
+        if base_handler is not None:
+            return base_handler(self, event)
+        return None
+
+    # Qt virtual events are explicit shell responsibilities and are forwarded
+    # to the relevant feature controller.
+    def showEvent(self, event):
+        return self._dispatch_qt_event("lifecycle", "showEvent", event)
+
+    def hideEvent(self, event):
+        return self._dispatch_qt_event("lifecycle", "hideEvent", event)
+
+    def changeEvent(self, event):
+        return self._dispatch_qt_event("lifecycle", "changeEvent", event)
+
+    def resizeEvent(self, event):
+        return self._dispatch_qt_event("session", "resizeEvent", event)
+
+    def closeEvent(self, event):
+        return self._dispatch_qt_event("runtime", "closeEvent", event)
+
+    def dragEnterEvent(self, event):
+        return self._dispatch_qt_event("attachments_vision", "dragEnterEvent", event)
+
+    def dropEvent(self, event):
+        return self._dispatch_qt_event("attachments_vision", "dropEvent", event)
+
     @property
     def listener(self):
         service = getattr(self, "voice_application_service", None)
@@ -78,34 +129,3 @@ class MainWindow(
     def _stopping_listener(self):
         service = getattr(self, "voice_application_service", None)
         return service.stopping_listener if service is not None else None
-
-    def __init__(self, memory_service=None, mood_service=None, character_service=None,
-                 session_manager=None, chat_event_publisher=None, chat_application_service_factory=None,
-                 session_application_service_factory=None, web_search_service=None,
-                 voice_application_service_factory=None, game_mode_application_service=None,
-                 settings=None, tool_agent=None, provider_application_service=None,
-                 coding_agent_application_service=None, vision_application_service=None,
-                 runtime_settings_application_service=None):
-        super().__init__()
-        from .main_window_composition import initialize_main_window
-
-        initialize_main_window(
-            self,
-            memory_service=memory_service,
-            mood_service=mood_service,
-            character_service=character_service,
-            session_manager=session_manager,
-            chat_event_publisher=chat_event_publisher,
-            chat_application_service_factory=chat_application_service_factory,
-            session_application_service_factory=session_application_service_factory,
-            web_search_service=web_search_service,
-            voice_application_service_factory=voice_application_service_factory,
-            game_mode_application_service=game_mode_application_service,
-            settings=settings,
-            tool_agent=tool_agent,
-            provider_application_service=provider_application_service,
-            coding_agent_application_service=coding_agent_application_service,
-            vision_application_service=vision_application_service,
-            runtime_settings_application_service=runtime_settings_application_service,
-        )
-
