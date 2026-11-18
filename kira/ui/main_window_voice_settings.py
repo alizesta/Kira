@@ -80,7 +80,7 @@ class VoiceSettingsController(WindowFeatureController):
         self.tagline = QLabel()
         self.tagline.setObjectName("hint")
         self.tagline.setAlignment(Qt.AlignCenter)
-        self.reg(self.tagline.setText, "tagline")
+        self.feature_controller("session").reg(self.tagline.setText, "tagline")
         self.status = QLabel()
         self.status.setObjectName("status")
         self.status.setAlignment(Qt.AlignCenter)
@@ -95,7 +95,7 @@ class VoiceSettingsController(WindowFeatureController):
         cv = QVBoxLayout(chat_card)
         cv.setContentsMargins(12, 8, 12, 10)
         cv.setSpacing(6)
-        self.chat_header = ChatHeader(self.icon_button("user", True), parent=chat_card)
+        self.chat_header = ChatHeader(self.feature_controller("session").icon_button("user", True), parent=chat_card)
         self.title = self.chat_header.title
         self.mood_emotion_icon = self.chat_header.mood_emotion_icon
         self.mood_indicator = self.chat_header.mood_indicator
@@ -168,7 +168,7 @@ class VoiceSettingsController(WindowFeatureController):
 
     def set_local_voice_option(self, key, enabled):
         self.settings[key] = bool(enabled)
-        self.save_now()
+        self.feature_controller("runtime").save_now()
 
     def choose_local_asr_folder(self):
         folder = QFileDialog.getExistingDirectory(self.window, "پوشه‌ی مدل STT را انتخاب کن", str(Path.home()))
@@ -176,7 +176,7 @@ class VoiceSettingsController(WindowFeatureController):
             return
         self.local_asr_path_edit.setText(folder)
         self.settings["local_voice_asr_model"] = folder
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_local_voice_status()
 
     def download_local_qwen_model(self):
@@ -201,7 +201,7 @@ class VoiceSettingsController(WindowFeatureController):
         model_id = str(self.local_asr_path_edit.text() or "").strip() or "Qwen/Qwen3-ASR-0.6B"
         self.settings["local_voice_asr_model"] = model_id
         self.local_asr_path_edit.setText(model_id)
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_local_voice_status()
         from .. import local_voice
         self.local_voice_status.setText(
@@ -214,7 +214,7 @@ class VoiceSettingsController(WindowFeatureController):
             return
         self.voice_page.whisper.setCurrentText(folder)
         self.settings["whisper_model"] = folder
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.local_voice_status.setText(f"مدل Whisper از سیستم انتخاب شد: {folder}")
 
     def download_local_whisper_model(self):
@@ -255,7 +255,7 @@ class VoiceSettingsController(WindowFeatureController):
             return
         self.settings["whisper_model"] = str(value)
         self.voice_page.whisper.setCurrentText(str(value))
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         from .. import local_voice
         self.local_voice_status.setText(
             f"Whisper نصب و فعال شد.\nمسیر مدل: {value}\nمحل ذخیره مدل‌ها: {local_voice.cache_directory()}"
@@ -296,8 +296,8 @@ class VoiceSettingsController(WindowFeatureController):
             if self.voice_page.whisper.findText(value) < 0:
                 self.voice_page.whisper.addItem(value)
             self.voice_page.whisper.setCurrentText(value)
-        self.save_now()
-        self.add_chat("system", "مدل STT محلی به‌روزرسانی شد.")
+        self.feature_controller("runtime").save_now()
+        self.feature_controller("session").add_chat("system", "مدل STT محلی به‌روزرسانی شد.")
 
     def choose_local_tts_model(self):
         path, _ = QFileDialog.getOpenFileName(self.window, "مدل Piper ONNX", str(Path.home()), "Piper ONNX (*.onnx)")
@@ -327,7 +327,7 @@ class VoiceSettingsController(WindowFeatureController):
                 shutil.copy2(metadata, target_meta)
             self.settings["local_voice_tts_model"] = str(target)
             self.local_tts_model_path.setText(str(target))
-            self.save_now()
+            self.feature_controller("runtime").save_now()
             self.refresh_local_voice_status()
             self.api_add_status.setText("مدل Piper به پوشه‌ی داده‌ی Kira کپی شد و برای TTS انتخاب شد.")
         except OSError as exc:
@@ -373,7 +373,7 @@ class VoiceSettingsController(WindowFeatureController):
                 if any(token in signature for token in ("whisper", "qwen3asr", "qwen_asr", "speechrecognition", "speech_to_text", "audioencoderdecoder")):
                     self.local_asr_path_edit.setText(str(source))
                     self.settings["local_voice_asr_model"] = str(source)
-                    self.save_now()
+                    self.feature_controller("runtime").save_now()
                     self.refresh_local_voice_status()
                     return
                 if any(token in signature for token in ("causallm", "forcausallm", "textgeneration", "llama", "qwen3for")):
@@ -388,7 +388,7 @@ class VoiceSettingsController(WindowFeatureController):
                 if category.startswith("STT · Qwen"):
                     self.local_asr_path_edit.setText(str(source))
                     self.settings["local_voice_asr_model"] = str(source)
-                    self.save_now()
+                    self.feature_controller("runtime").save_now()
                     self.refresh_local_voice_status()
                     return
                 if category.startswith("STT · Whisper"):
@@ -457,9 +457,9 @@ class VoiceSettingsController(WindowFeatureController):
         self.settings.setdefault("providers", {}).setdefault("ollama", {})["model"] = model
         self.provider_application_service.ensure_routes(self.settings)
         self.provider_application_service.add_ollama_models(self.settings, [model])
-        self.save_now()
-        self.refresh_route_list()
-        self.refresh_unified_models()
+        self.feature_controller("runtime").save_now()
+        self.feature_controller("provider_settings").refresh_route_list()
+        self.feature_controller("provider_settings").refresh_unified_models()
         self.api_add_status.setText(f"✓ مدل «{model}» به Ollama اضافه شد.")
 
     def select_local_asr_model(self, index):
@@ -471,7 +471,7 @@ class VoiceSettingsController(WindowFeatureController):
             return
         self.local_asr_path_edit.setText(value)
         self.settings["local_voice_asr_model"] = value
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_local_voice_status()
 
     def select_local_tts_model(self, index):
@@ -481,7 +481,7 @@ class VoiceSettingsController(WindowFeatureController):
         value = str(combo.itemData(index) or "").strip()
         self.local_tts_model_path.setText(value)
         self.settings["local_voice_tts_model"] = value
-        self.save_now()
+        self.feature_controller("runtime").save_now()
         self.refresh_local_voice_status()
 
     def refresh_local_voice_status(self):
@@ -697,7 +697,7 @@ class VoiceSettingsController(WindowFeatureController):
 
     def fill_output_devices(self, current):
         self.voice_page.out_device.clear()
-        self.voice_page.out_device.addItem(self.t("dev_default"), "")
+        self.voice_page.out_device.addItem(self.feature_controller("session").t("dev_default"), "")
         try:
             from PySide6.QtMultimedia import QMediaDevices
             seen = set()
@@ -713,7 +713,7 @@ class VoiceSettingsController(WindowFeatureController):
 
     def fill_mic_devices(self, current):
         self.voice_page.mic_device.clear()
-        self.voice_page.mic_device.addItem(self.t("dev_default"), "")
+        self.voice_page.mic_device.addItem(self.feature_controller("session").t("dev_default"), "")
         try:
             import sounddevice as sd
             seen = set()
@@ -740,12 +740,12 @@ class VoiceSettingsController(WindowFeatureController):
     def autosave_voice(self):
         """Voice sliders / devices are saved as soon as they are changed (the Save button is not needed for them)."""
         self.collect_voice_settings()
-        self.apply_character_voice_settings()
-        self.save_now()
+        self.feature_controller("character_settings").apply_character_voice_settings()
+        self.feature_controller("runtime").save_now()
 
     def show_voice_routes(self):
         """Open the local STT model controls in Connections."""
-        self.go_tab(self.tab_keys.index("tab_ai"))
+        self.feature_controller("session").go_tab(self.tab_keys.index("tab_ai"))
         if hasattr(self, "local_model_tabs"):
             self.local_model_tabs.setCurrentIndex(1)
 
@@ -760,7 +760,7 @@ class VoiceSettingsController(WindowFeatureController):
         if now - last.get(message, -999) > 60:
             last[message] = now
             self._voice_note_at = last
-            self.add_chat("system", "🎙️ " + message)
+            self.feature_controller("session").add_chat("system", "🎙️ " + message)
 
 
 # Backward-compatible import name for callers migrating from mixin composition.
