@@ -253,7 +253,7 @@ class AttachmentsVisionController(WindowFeatureController):
 
     def _start_game_audio_listener(self):
         self._stop_game_audio_listener()
-        self.game_audio_listener = GameAudioListener(self.settings, self)
+        self.game_audio_listener = GameAudioListener(self.settings, self.window)
         self.game_audio_listener.transcript.connect(self.on_game_audio_transcript)
         self.game_audio_listener.error.connect(self.on_game_audio_error)
         self.game_audio_listener.start()
