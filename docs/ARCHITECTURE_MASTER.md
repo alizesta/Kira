@@ -3,7 +3,7 @@
 **Snapshot date:** 2026-11-18  
 **Repository:** `alizesta/Kira`  
 **Base branch:** `new-main`  
-**Base SHA:** `101361f60bb19a45484cbcdb7b52584eb3da0111`  
+**Base SHA:** `516765f0ceca9b674f32bec2d6491bf82b2e434f`  
 **Evidence:** TASK 015 static audit (`docs/TASK_015_FINAL_ARCHITECTURE_AUDIT.md`, Draft PR #47), current `new-main` source and documentation, and merged TASK 013+014 integration PR #48 (merge commit `b54d092a330b6383ca4244320ffaeec9267db561`).  
 **Verification boundary:** static inspection only. No tests, compile/import checks, application execution, Windows checks or GUI checks were run for TASK 016.
 
