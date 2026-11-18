@@ -41,7 +41,9 @@ FeatureModule registration and legacy-wide cleanup remain coordinated with Flow 
   role/character/session/date/status filtering, matching, ranking and
   pagination.
 - `kira/core/interfaces/search.py` defines a read-only message page port and
-  an optional durable-Conversation status reader port.
+  an optional durable-Conversation status reader port. The Application use case
+  accepts the status reader separately; it defaults to the repository only when
+  that object implements the optional reader contract.
 - `kira/chat/search.py` remains a compatibility facade.
 
 ### Chat Transfer
@@ -147,6 +149,11 @@ The next bounded target is reviewing remaining broad collaborator annotations
 in application services and defining ports only where a stable cross-layer
 capability exists. Avoid inventing contracts for transient implementation
 details merely to remove every `Any`.
+
+Two explicit cross-flow follow-ups remain: Flow 3 should move path-based import
+reads and atomic export-file writes behind an Infrastructure file port; Flow 4
+must inject that adapter and register Organization/Search/Transfer use cases in
+the central application lifecycle. Flow 2 has not claimed those integrations.
 
 Central application-service registration, Bootstrap injection, FeatureModule
 lifecycle and UI-controller consumption are coordinated through Flows 1 and 4,
