@@ -7,6 +7,7 @@ rather than inferred independently by the shell.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from types import MappingProxyType
 
 
 QT_EVENT_OWNERS = {
@@ -21,19 +22,29 @@ QT_EVENT_OWNERS = {
 
 
 class FeatureControllerRegistry:
-    """Own controller lookup and deterministic legacy method delegation."""
+    """Own immutable controller membership and deterministic feature lookup."""
 
     def __init__(self, controllers: Mapping[str, object]):
-        self._controllers = dict(controllers)
+        # Copy before wrapping so callers cannot mutate registry membership by
+        # retaining and changing the dictionary passed to the constructor.
+        self._controllers = MappingProxyType(dict(controllers))
 
     def get(self, feature: str):
+        """Return a controller when present, otherwise None."""
         return self._controllers.get(feature)
+
+    def require(self, feature: str):
+        """Return a registered controller or fail at the dependency boundary."""
+        controller = self.get(feature)
+        if controller is None:
+            raise LookupError(f"Feature controller {feature!r} is not registered")
+        return controller
 
     def resolve(self, attribute: str):
         """Resolve a method declared by exactly one feature controller.
 
         During migration, duplicate names retain the historical first-owner
-        behavior. The owner can be inspected with `owners_for` and migrated
+        behavior. The owner can be inspected with owners_for and migrated
         explicitly without changing the shell's public compatibility surface.
         """
         for controller in self._controllers.values():
