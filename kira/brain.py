@@ -346,14 +346,18 @@ def extend_prompt(prompt, decision, settings=None, router=None, *, character_id:
         extras = []
         if decision.stage == DEEP and not _small_context(settings, router, decision):
             extras.append(DEEP_BLOCK)
-        with _lock:
-            state = _load(character_id)
-            hint = _pending_hint(state, time.time())
-            if state.get("hint") and not hint:
-                state["hint"] = None                                   # expired
-                _save(state, character_id)
-        if hint:
-            extras.append(HINT_BLOCK.format(hint=hint))
+        # Turning reflection off must suppress both new reviews and any stale
+        # review note left by an earlier setting. Never leak an old hint into
+        # a prompt when the feature is disabled.
+        if decision.reflection != "off":
+            with _lock:
+                state = _load(character_id)
+                hint = _pending_hint(state, time.time())
+                if state.get("hint") and not hint:
+                    state["hint"] = None                               # expired
+                    _save(state, character_id)
+            if hint:
+                extras.append(HINT_BLOCK.format(hint=hint))
         return prompt + ("\n\n" + "\n\n".join(extras) if extras else "")
     except Exception:                                                  # noqa: BLE001
         return prompt
@@ -368,7 +372,7 @@ _FAIL_WORDS_RX = re.compile(r"خطا|نشد|نتونستم|نتوانستم|نا
 _NAME_CLAIM_RX = re.compile(r"(?:اسمت|اسم\s*تو|your\s+name\s+is)\s+([^\s.,!؟?،]{2,20})", re.I)
 
 
-def check_reply(reply, tools=None, mode_name=None, tool_expected=False) -> list[tuple[str, str]]:
+def check_reply(reply, tools=None, mode_name=None, tool_expected=False, *, character_id: str | None = None) -> list[tuple[str, str]]:
     """[(signature, hint)] for problems that can be seen without a model. `tools` = the turn's tool summaries ({'tool','status',...})."""
     from . import evidence_memory as em
     found = []
@@ -382,7 +386,9 @@ def check_reply(reply, tools=None, mode_name=None, tool_expected=False) -> list[
     # A successful tool does not erase failures from other tools in the same turn.
     if failed and not _FAIL_WORDS_RX.search(text):
         found.append(("hidden_failure", "A tool failed in your previous turn and your reply did not say so. Be open about it if it comes up."))
-    if "؟" not in str(reply) and "?" not in str(reply):
+    # evidence_memory is the legacy Kira evidence store. It is not a shared
+    # source of truth for Ren, Mika, or custom characters.
+    if _character_key(character_id) == "kira" and "؟" not in str(reply) and "?" not in str(reply):
         m = _NAME_CLAIM_RX.search(text)
         if m:
             current = em.current_value("name")
@@ -483,7 +489,11 @@ def _model_reflect(router, settings, user_text, reply, character_id: str | None 
         r["last"] = now
         r["hour"].append(now)
         _save(state, character_id)                                    # counted BEFORE the call: a failure is never retried in a loop
-    facts = "\n".join("- " + f["text"][:160] for f in em.retrieve(user_text, limit=4))
+    # The evidence index currently belongs to Kira only. A different
+    # character must never receive Kira's personal facts as reflection context.
+    facts = ""
+    if _character_key(character_id) == "kira":
+        facts = "\n".join("- " + f["text"][:160] for f in em.retrieve(user_text, limit=4))
     body = f"-----\nUSER MESSAGE:\n{user_text[:900]}\n\nKIRA REPLY:\n{reply[:1500]}\n\nKNOWN FACTS ABOUT THE USER:\n{facts or '(none)'}"
     data = _parse_json(_ask(make_aux_router(router), REFLECTION, REFLECT_PROMPT, body, settings))
     if isinstance(data, dict) and data.get("issue") is True:
@@ -518,8 +528,10 @@ def _store_hint(signature, hint, character_id: str | None = None) -> bool:
 WRITER_SYSTEM = None                  # filled lazily from evidence_memory.WRITER_PROMPT
 
 
-def _memory_writer(router, settings) -> None:
-    """One optional background pass: the model proposes facts for the messages not yet looked at; code keeps only quoted, verified ones."""
+def _memory_writer(router, settings, character_id: str | None = None) -> None:
+    """One optional background pass for Kira's legacy evidence index only."""
+    if _character_key(character_id) != "kira":
+        return
     from . import evidence_memory as em
     from .memory import rows_with_ids
     from .tools.registry import redact_secrets
@@ -591,14 +603,16 @@ def after_turn(
                 state["hint"] = None                                   # it was part of this turn's prompt: used once
             _save(state, character_id)
         if decision.reflection != "off":
-            for signature, hint in check_reply(reply, tools, mode_name, tool_expected):
+            for signature, hint in check_reply(reply, tools, mode_name, tool_expected, character_id=character_id):
                 if _store_hint(signature, hint, character_id):
                     info["hint"] = signature
                     break                                              # at most one remark per turn
             if (decision.reflection == "model" and decision.stage == DEEP and info["hint"] is None and len(str(reply)) >= 80
                     and _spawn("reflect", _model_reflect, router, settings, str(user_text), str(reply), character_id)):
                 info["background"].append("reflection")
-        if str(_setting(settings, "brain_memory_writer", "off")).lower() == "idle" and _spawn("writer", _memory_writer, router, settings):
+        if (_character_key(character_id) == "kira"
+                and str(_setting(settings, "brain_memory_writer", "off")).lower() == "idle"
+                and _spawn("writer", _memory_writer, router, settings, character_id)):
             info["background"].append("memory")
         try:
             from .hybrid_ai import HybridRouter
