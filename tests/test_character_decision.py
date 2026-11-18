@@ -26,7 +26,7 @@ class CharacterDecisionTests(unittest.TestCase):
     def test_indirect_sensitive_context_and_persian_normalization(self):
         for phrase in ("فردا باید جراحی کنم","دکتر گفته سرطان دارم","از خشونت خانگی می‌ترسم",
                        "بعد از طلاق در بحران مالی افتادم","مورد آزار جنسی قرار گرفتم",
-                       "I am going through chemotherapy"):
+                       "از بيمارستان می‌ترسم", "I am going through chemotherapy"):
             with self.subTest(phrase=phrase):
                 result=self.engine.decide(phrase,{"emotion":"happy"})
                 self.assertTrue(result.serious_context)
@@ -58,7 +58,8 @@ class CharacterDecisionTests(unittest.TestCase):
         }
         runtime = mock.Mock()
         runtime.build_prompt.return_value = "runtime mood"
-        with mock.patch.object(mood, "current", return_value=snapshot), \
+        with mock.patch.object(mood, "_ensure_runtime_migration"), \
+             mock.patch.object(mood, "current", return_value=snapshot), \
              mock.patch.object(mood, "_runtime_for", return_value=runtime):
             prompt = mood.build_block("task", query="من فردا جراحی دارم")
         self.assertIn("runtime mood", prompt)
