@@ -19,6 +19,7 @@ from .character_service import CharacterService
 from .chat_history_service import ChatHistoryService
 from .context import PromptEnricherPort, SystemPromptBuilderPort
 from .conversation_lifecycle import (
+    ConversationLifecycleApplicationPort,
     ConversationEventPublisherPort,
     ConversationLifecycleRepositoryPort,
     PermanentDeleteAuthorizationPort,
@@ -52,6 +53,7 @@ __all__ = [
     "PromptEnricherPort",
     "SystemPromptBuilderPort",
     "ConversationEventPublisherPort",
+    "ConversationLifecycleApplicationPort",
     "ConversationLifecycleRepositoryPort",
     "PermanentDeleteAuthorizationPort",
     "ConversationMetadataEventPublisherPort",
