@@ -105,6 +105,24 @@ class MemoryChatHistory:
             },
         }
 
+    def update_conversation_lifecycle(self, changes):
+        for change in changes:
+            record = self.records.get(change["id"])
+            if record is None:
+                return False
+            record["status"] = change["status"]
+            record["metadata"] = change["metadata"]
+        return True
+
+    def delete_conversation(self, conversation_id, *, expected_status=None):
+        record = self.records.get(conversation_id)
+        if record is None:
+            return 0
+        if expected_status is not None and record["status"] != expected_status:
+            return 0
+        del self.records[conversation_id]
+        return 1
+
 
 class EventPublisher:
     def __init__(self):
@@ -192,6 +210,21 @@ class FeatureModuleRegistrationTests(unittest.TestCase):
         self.assertIs(transfer._repository, self.repository)
         self.assertIs(transfer._file_port, self.file_port)
         self.assertEqual(self.repository.lifecycle, ["start"])
+
+    def test_registered_lifecycle_service_commits_and_publishes_transitions(self):
+        self.manager.start("conversation_lifecycle")
+        lifecycle = self.container.resolve("conversation_lifecycle_service")
+
+        result = lifecycle.archive("conversation-1")
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.new_status, "archived")
+        self.assertEqual(
+            self.repository.records["conversation-1"]["status"], "archived"
+        )
+        self.assertTrue(
+            any(name == "conversation_archived" for name, _ in self.publisher.events)
+        )
 
     def test_registered_services_execute_against_the_shared_history_adapter(self):
         self.manager.start("conversation_organization")
