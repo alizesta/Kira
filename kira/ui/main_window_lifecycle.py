@@ -111,7 +111,7 @@ class LifecycleController(WindowFeatureController):
         """Create / remove the tray icon to match the two tray settings. Safe to call repeatedly."""
         s = self.context.services.settings
         wanted = bool(s.get("minimize_to_tray") or s.get("close_to_tray")) and QSystemTrayIcon.isSystemTrayAvailable()
-        tray = getattr(self, "tray", None)
+        tray = getattr(self.context.views, "tray", None)
         self.context.views.tray = tray                                             # always defined (no system tray = None)
         if wanted and tray is None:
             icon = QIcon(str(ROOT / "assets" / "kira_character.png"))
@@ -177,10 +177,10 @@ class LifecycleController(WindowFeatureController):
 
     def update_bubble(self):
         """The chat bubble is shown beside Kira only while the main window is out of the way (in the tray)."""
-        bubble = getattr(self, "bubble", None)
+        bubble = getattr(self.context.adapters, "bubble", None)
         if bubble is None:
             return
-        away = getattr(self, "tray", None) is not None and (not self.window.isVisible() or self.window.isMinimized())
+        away = getattr(self.context.views, "tray", None) is not None and (not self.window.isVisible() or self.window.isMinimized())
         if away and self.context.adapters.companion.isVisible() and not self.context.state._closing:
             bubble.place_beside(self.context.adapters.companion)
             if not bubble.isVisible():
@@ -197,7 +197,7 @@ class LifecycleController(WindowFeatureController):
         if not self.context.adapters.companion.isVisible():
             self.context.adapters.companion.show()                                    # she stays on the desktop while the window is hidden
         self.update_bubble()
-        if getattr(self, "tray", None) is not None and not getattr(self, "_tray_hinted", False):
+        if getattr(self.context.views, "tray", None) is not None and not getattr(self, "_tray_hinted", False):
             self._tray_hinted = True
             self.context.views.tray.showMessage("Kira", "Kira هنوز در System Tray فعال است. برای باز کردن روی آیکون کلیک کن.",
                                   QSystemTrayIcon.Information, 3500)
@@ -220,7 +220,7 @@ class LifecycleController(WindowFeatureController):
     def changeEvent(self, event):
         self.qt_super_event("changeEvent", event)
         if (event.type() == event.Type.WindowStateChange and self.window.isMinimized()
-                and getattr(self, "tray", None) is not None and self.context.services.settings.get("minimize_to_tray")):
+                and getattr(self.context.views, "tray", None) is not None and self.context.services.settings.get("minimize_to_tray")):
             QTimer.singleShot(0, self.hide_to_tray)
 
     def apply_runtime(self):
