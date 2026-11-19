@@ -339,7 +339,7 @@ CONTROLLER_ACCESS = {
   "services": frozenset({"brain_application_service","character_service","chat_application_service","coding_agent_application_service","memory_service","mood_service","session_manager","settings","tool_agent","voice_application_service","web_search_service","vision_application_service"}),
   "adapters": frozenset({"animator","director","bubble"}),
   "views": frozenset({"gen_stop_btn","img_search_btn","input","status","tavily_key","web_btn","web_depth","web_test_btn","code_chat"}),
-  "peers": frozenset({"session","runtime","attachments_vision"}),
+  "peers": frozenset({"session","runtime","attachments_vision","chat"}),
   "resources": frozenset(),
   "extras": frozenset({"session","is_background_session"}),
  },
