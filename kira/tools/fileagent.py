@@ -394,7 +394,15 @@ class FileAgent:
         name = a.get("new_name") or os.path.basename(src)
         target = self._new_target(a["destination_folder"], name)
         if os.path.isdir(src):
-            if target == src or target.startswith(src + os.sep):
+            normalized_source = os.path.normcase(os.path.abspath(src))
+            normalized_target = os.path.normcase(os.path.abspath(target))
+            try:
+                target_inside_source = os.path.commonpath(
+                    [normalized_source, normalized_target]
+                ) == normalized_source
+            except ValueError:
+                target_inside_source = False
+            if target_inside_source:
                 raise ToolError("پوشه را نمی‌شود داخل خودش کپی کرد.")
             files, size, _ = _count_tree(src)
             if files > COPY_MAX_FILES or size > COPY_MAX_BYTES:
