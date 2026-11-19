@@ -203,6 +203,10 @@ def expand_persian_numbers(text):
     )
 
     def number_replacement(match):
+        prefix = value[:match.start()]
+        suffix = value[match.end():]
+        if re.search(r"[A-Za-z0-9]\s*$", prefix) or re.match(r"\s*[A-Za-z]", suffix):
+            return match.group(0)
         token = match.group(0).replace(",", "")
         if "." in token:
             whole, fraction = token.split(".", 1)
