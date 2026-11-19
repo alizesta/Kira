@@ -111,22 +111,7 @@ class VoicePage(QScrollArea):
         self.voice_engine.setCurrentIndex(max(0, self.voice_engine.findData(str(settings.get("voice_engine") or "gemini_live"))))
         live_form.addRow("موتور مکالمه", self.voice_engine)
         self.gemini_provider = QComboBox()
-        google_providers = []
-        for provider_id, provider_cfg in (settings.get("providers") or {}).items():
-            if not isinstance(provider_cfg, dict):
-                continue
-            is_google = provider_cfg.get("service") == "google" or "generativelanguage.googleapis.com" in str(provider_cfg.get("base_url") or "")
-            if is_google and str(provider_cfg.get("api_key") or "").strip():
-                label = str(provider_cfg.get("label") or provider_id)
-                google_providers.append((label, provider_id))
-        for label, provider_id in google_providers:
-            self.gemini_provider.addItem(label, provider_id)
-        if not google_providers:
-            self.gemini_provider.addItem("ابتدا Google AI Studio را در بخش اتصالات ثبت کن", "")
-        saved_provider = str(settings.get("gemini_live_provider") or "")
-        provider_index = self.gemini_provider.findData(saved_provider)
-        if provider_index >= 0:
-            self.gemini_provider.setCurrentIndex(provider_index)
+        self.refresh_gemini_providers(settings)
         live_form.addRow("کلید Google API", self.gemini_provider)
         self.gemini_model = QComboBox()
         self.gemini_model.setEditable(True)
@@ -198,6 +183,40 @@ class VoicePage(QScrollArea):
         self.stream_chk.toggled.connect(lambda *_: self.save_timer.start())
         self.local_fallback_chk.toggled.connect(lambda *_: self.save_timer.start())
         self.retranslate()
+
+    def refresh_gemini_providers(self, settings: dict) -> None:
+        """Refresh Google credentials from Connections without silently changing a saved provider."""
+        combo = self.gemini_provider
+        settings = settings or {}
+        providers = []
+        for provider_id, provider_cfg in (settings.get("providers") or {}).items():
+            if not isinstance(provider_cfg, dict):
+                continue
+            is_google = (
+                provider_cfg.get("service") == "google"
+                or "generativelanguage.googleapis.com" in str(provider_cfg.get("base_url") or "")
+            )
+            if is_google and str(provider_cfg.get("api_key") or "").strip():
+                providers.append((str(provider_cfg.get("label") or provider_id), provider_id))
+
+        selected = str(combo.currentData() or settings.get("gemini_live_provider") or "")
+        combo.blockSignals(True)
+        try:
+            combo.clear()
+            provider_ids = {provider_id for _label, provider_id in providers}
+            if selected and selected not in provider_ids:
+                combo.addItem("Provider ذخیره‌شده در Connections پیدا نشد", selected)
+            for label, provider_id in providers:
+                combo.addItem(label, provider_id)
+            if not providers and not selected:
+                combo.addItem("ابتدا Google AI Studio را در بخش اتصالات ثبت کن", "")
+            index = combo.findData(selected)
+            if index < 0 and combo.count():
+                index = 0
+            if index >= 0:
+                combo.setCurrentIndex(index)
+        finally:
+            combo.blockSignals(False)
 
     def _register(self, setter: Callable[[str], None], key: str) -> None:
         self._translations.append((setter, key))

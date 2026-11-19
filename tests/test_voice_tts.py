@@ -11,6 +11,62 @@ from kira.ui.main_window import MainWindow
 
 
 class LocalTtsPlaybackTests(unittest.TestCase):
+    def test_new_speaker_starts_with_neutral_prosody(self):
+        from PySide6.QtWidgets import QApplication
+        from kira.voice_prosody import resolve_prosody
+
+        app = QApplication.instance() or QApplication([])
+        speaker = Speaker({"local_voice_tts": False})
+        try:
+            self.assertEqual(speaker._prosody, resolve_prosody())
+        finally:
+            speaker._timer.stop()
+            speaker.deleteLater()
+            app.processEvents()
+
+    def test_live_provider_selector_refreshes_after_connections_addition(self):
+        from PySide6.QtWidgets import QApplication
+        from kira.ui.pages.voice_page import VoicePage
+
+        app = QApplication.instance() or QApplication([])
+        page = VoicePage({"providers": {}}, lambda key: key)
+        try:
+            page.refresh_gemini_providers({
+                "providers": {
+                    "google-main": {
+                        "service": "google",
+                        "label": "Google AI Studio",
+                        "api_key": "AIza-test-key",
+                    }
+                }
+            })
+            self.assertEqual(page.gemini_provider.currentData(), "google-main")
+        finally:
+            page.deleteLater()
+            app.processEvents()
+
+    def test_live_provider_selector_preserves_missing_saved_provider(self):
+        from PySide6.QtWidgets import QApplication
+        from kira.ui.pages.voice_page import VoicePage
+
+        app = QApplication.instance() or QApplication([])
+        page = VoicePage({
+            "gemini_live_provider": "google-removed",
+            "providers": {
+                "google-current": {
+                    "service": "google",
+                    "label": "Current Google",
+                    "api_key": "AIza-test-key",
+                }
+            },
+        }, lambda key: key)
+        try:
+            self.assertEqual(page.gemini_provider.currentData(), "google-removed")
+            self.assertIn("پیدا نشد", page.gemini_provider.currentText())
+        finally:
+            page.deleteLater()
+            app.processEvents()
+
     def test_emotion_profile_updates_active_stream_synthesis(self):
         from kira.voice_prosody import resolve_prosody
 

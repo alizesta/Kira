@@ -59,7 +59,7 @@ def _load_cached_audio(wav_path, meta_path):
             and _valid_cached_envelope(envelope, frames, sample_rate)
         ):
             return envelope
-    except (OSError, ValueError, TypeError, wave.Error, json.JSONDecodeError):
+    except (OSError, ValueError, TypeError, EOFError, wave.Error, json.JSONDecodeError):
         return None
     return None
 
@@ -169,6 +169,7 @@ class Speaker(QObject):
         self._item_began = False            # the current sentence is audible
         self._wav = None
         self._keep = False
+        self._prosody = resolve_prosody()  # direct/non-streaming speech must start with a defined neutral profile
         self._clock = QElapsedTimer()
         self._timer = QTimer(self)
         self._timer.setInterval(HOP_MS)
