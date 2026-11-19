@@ -9,6 +9,8 @@ import ai.kira.mobile.data.remote.SearchCredentialStore
 import ai.kira.mobile.data.remote.TavilySearchRepository
 import ai.kira.mobile.data.image.ImageGenerationSettingsStore
 import ai.kira.mobile.data.image.OpenAiCompatibleImageRepository
+import ai.kira.mobile.data.voice.GeminiLiveCredentialStore
+import ai.kira.mobile.data.voice.GeminiLiveVoiceSession
 
 class KiraContainer(context: Context) {
     private val app = context.applicationContext
@@ -18,19 +20,23 @@ class KiraContainer(context: Context) {
         ChatInteractor(LocalChatRepository(localCore))
     }
 
-    val searchCredentials: SearchCredentialStore by lazy {
-        SearchCredentialStore(app)
-    }
+    val searchCredentials: SearchCredentialStore by lazy { SearchCredentialStore(app) }
 
     val search: InternetSearchInteractor by lazy {
         InternetSearchInteractor(TavilySearchRepository(searchCredentials))
     }
 
-    val imageSettings: ImageGenerationSettingsStore by lazy {
-        ImageGenerationSettingsStore(app)
-    }
+    val imageSettings: ImageGenerationSettingsStore by lazy { ImageGenerationSettingsStore(app) }
 
     val images: ImageGenerationInteractor by lazy {
         ImageGenerationInteractor(OpenAiCompatibleImageRepository(app, imageSettings))
     }
+
+    val voiceCredentials: GeminiLiveCredentialStore by lazy { GeminiLiveCredentialStore(app) }
+
+    fun createGeminiLiveSession(
+        apiKey: String,
+        onStatus: (String) -> Unit,
+        onTranscript: (speaker: String, text: String) -> Unit
+    ): GeminiLiveVoiceSession = GeminiLiveVoiceSession(app, apiKey, onStatus, onTranscript)
 }

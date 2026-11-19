@@ -39,7 +39,7 @@ private enum class KiraTab(val label:String,val glyph:String) {
     CHAT("چت","✦"), SEARCH("جستجو","⌕"), IMAGE("تصویر","▧"), CHARACTERS("شخصیت‌ها","♧"), SETTINGS("تنظیمات","⚙")
 }
 
-private enum class SettingsPage { HOME, ROUTE, MEMORY, SKILLS, ASSISTANT }
+private enum class SettingsPage { HOME, ROUTE, MEMORY, SKILLS, ASSISTANT, VOICE }
 
 @Composable
 private fun KiraApp() {
@@ -81,6 +81,7 @@ private fun KiraApp() {
                         SettingsPage.ROUTE -> SettingsSubpage("اتصال API و مدل‌ها",{settingsPage=SettingsPage.HOME}) { KiraRouteScreen() }
                         SettingsPage.MEMORY -> SettingsSubpage("حافظه بلندمدت",{settingsPage=SettingsPage.HOME}) { KiraMemoryScreen() }
                         SettingsPage.SKILLS -> SettingsSubpage("مهارت‌ها و اتصال API",{settingsPage=SettingsPage.HOME}) { KiraSkillsScreen() }
+                        SettingsPage.VOICE -> SettingsSubpage("تماس صوتی زنده",{settingsPage=SettingsPage.HOME}) { KiraVoiceScreen() }
                         SettingsPage.ASSISTANT -> SettingsSubpage("دستیار و ویس",{settingsPage=SettingsPage.HOME}) {
                             AssistantScreen(
                                 hasOverlayPermission=hasOverlayPermission,
@@ -103,7 +104,8 @@ private fun KiraApp() {
                             onRoute={settingsPage=SettingsPage.ROUTE},
                             onMemory={settingsPage=SettingsPage.MEMORY},
                             onAssistant={settingsPage=SettingsPage.ASSISTANT},
-                            onSkills={settingsPage=SettingsPage.SKILLS}
+                            onSkills={settingsPage=SettingsPage.SKILLS},
+                            onVoice={settingsPage=SettingsPage.VOICE}
                         )
                     }
                 }
@@ -124,7 +126,7 @@ private fun SettingsSubpage(title:String,onBack:()->Unit,content:@Composable ()-
 }
 
 @Composable
-private fun KiraSettingsHome(onRoute:()->Unit,onMemory:()->Unit,onAssistant:()->Unit,onSkills:()->Unit) {
+private fun KiraSettingsHome(onRoute:()->Unit,onMemory:()->Unit,onAssistant:()->Unit,onSkills:()->Unit,onVoice:()->Unit) {
     val context=LocalContext.current
     val core=remember { ai.kira.mobile.core.LocalKiraCore(context) }
     val skills=remember { core.installedSkills() }
@@ -133,7 +135,8 @@ private fun KiraSettingsHome(onRoute:()->Unit,onMemory:()->Unit,onAssistant:()->
         Text("هسته و داده‌ها روی همین دستگاه نگهداری می‌شوند.",color=Color(0xFF9BA5B8),fontSize=12.sp)
         SettingsCard("اتصال API و مدل‌ها","افزودن کلید، دریافت خودکار مدل‌ها و مدیریت اولویت و جایگزینی",onRoute)
         SettingsCard("حافظه بلندمدت","مدیریت یادداشت‌هایی که Kira، Ren و Mika به خاطر می‌سپارند",onMemory)
-        SettingsCard("ویس و دستیار شناور","تنظیم دسترسی صوتی و حباب دستیار",onAssistant)
+        SettingsCard("تماس صوتی زنده","مکالمه دوطرفه و کم‌تأخیر با Gemini Live",onVoice)
+        SettingsCard("دستیار شناور","دسترسی سریع Kira روی برنامه‌های دیگر",onAssistant)
         SettingsCard("مهارت‌ها و APIها","نصب، فعال‌سازی جداگانه برای شخصیت‌ها و اتصال APIهای واقعی",onSkills)
         SettingsCard("هسته محلی","SQLite محلی و رمزنگاری کلیدها",{})
         Text("کتابخانه: "+core.libraryDirectory(),color=Color(0xFF7F8A9E),fontSize=10.sp)
@@ -197,7 +200,7 @@ private fun AssistantScreen(
             else if(!overlayStarted) Button(onClick=onStartOverlay,modifier=Modifier.fillMaxWidth()) { Text("فعال‌کردن حباب") }
             else OutlinedButton(onClick=onStopOverlay,modifier=Modifier.fillMaxWidth()) { Text("خاموش‌کردن حباب") }
         }
-        InfoPanel("تعامل صوتی","مجوز میکروفون برای قابلیت‌های صوتی آینده در نظر گرفته شده است. موتور گفتار به متن و تبدیل متن به گفتار هنوز به Providerها متصل نشده.","در حال توسعه") {}
+        InfoPanel("تعامل صوتی","تماس صوتی Real-time با Gemini Live از بخش مستقل «تماس صوتی زنده» در تنظیمات در دسترس است.","فعال") {}
         InfoPanel("درک محتوای صفحه","تحلیل صفحه فقط با اجازه صریح کاربر و پس از پیاده‌سازی نشست امن فعال می‌شود.","فعلاً غیرفعال") {}
     }
 }
