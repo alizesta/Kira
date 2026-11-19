@@ -180,5 +180,22 @@ class CompositionRootContractTests(unittest.TestCase):
         )
 
 
+class BrainReflectionCompositionTests(unittest.TestCase):
+    def test_brain_and_reflection_services_are_required_and_injected(self):
+        bootstrap = parse("kira/ui/bootstrap.py")
+        composition = parse("kira/ui/main_window_composition.py")
+        context = parse("kira/ui/window_presentation_context.py")
+        bootstrap_keywords = {node.arg for node in ast.walk(bootstrap) if isinstance(node, ast.keyword)}
+        composition_args = {node.arg for node in ast.walk(composition) if isinstance(node, ast.arg)}
+        service_fields = {
+            node.value for node in ast.walk(context)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
+        self.assertTrue({"brain_application_service", "reflection_application_service"}.issubset(bootstrap_keywords))
+        self.assertTrue({"brain_application_service", "reflection_application_service"}.issubset(composition_args))
+        self.assertTrue({"brain_application_service", "reflection_application_service"}.issubset(service_fields))
+
+
+
 if __name__ == "__main__":
     unittest.main()

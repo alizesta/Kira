@@ -106,7 +106,7 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.chat_stack = QStackedWidget()                 # one read-only chat view per character (created in make_session_view)
         cv.addWidget(self.context.views.chat_stack, 1)
         self.context.views.chat_composer = ChatComposer(
-            ComposerOwner(self.context),
+            ComposerOwner(self.feature_controller("chat").context, self.window),
             chat_input_factory=ChatInput,
             route_chip_factory=RouteChip,
             code_chat_factory=CodeChat,

@@ -61,6 +61,8 @@ def initialize_main_window(
     chat_search_application_service=None,
     chat_transfer_application_service=None,
     initiative_application_service_factory=None,
+    brain_application_service=None,
+    reflection_application_service=None,
 ):
     """Build UI widgets and bind injected services to typed Qt callback adapters."""
     self = window.presentation_context
@@ -87,6 +89,8 @@ def initialize_main_window(
         "chat_search_application_service": chat_search_application_service,
         "chat_transfer_application_service": chat_transfer_application_service,
         "initiative_application_service_factory": initiative_application_service_factory,
+        "brain_application_service": brain_application_service,
+        "reflection_application_service": reflection_application_service,
         "tool_agent": tool_agent,
     }
     missing = tuple(name for name, value in required.items() if value is None)
@@ -110,6 +114,8 @@ def initialize_main_window(
     self.services.initiative_application_service = initiative_application_service_factory(
         self.services.chat_application_service
     )
+    self.services.brain_application_service = brain_application_service
+    self.services.reflection_application_service = reflection_application_service
     self.services.web_search_service = web_search_service
     self.services.game_mode_application_service = game_mode_application_service
     self.services.settings = settings

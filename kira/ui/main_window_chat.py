@@ -8,7 +8,6 @@ from .main_window_chat_support import (
     SearchWorker,
     TaskWorker,
     body_ctl,
-    brain,
     create_default_command_registry,
     evidence_memory,
     match_safe_action,
@@ -495,9 +494,16 @@ class ChatController(WindowFeatureController):
             last_user = latest_user_text(history)
             self.context.session._brain_user_text = str(last_user)
             self.context.session._brain_mode_name = mode.name if mode else None
-            self.context.session._brain = brain.decide(last_user, mode, self.context.session._tool_plan, has_att, self.context.services.tool_agent.tasks.active(self.context.state.cur.cid) is not None, self.context.services.settings)
+            self.context.session._brain = self.context.services.brain_application_service.decide(
+                last_user,
+                mode,
+                self.context.session._tool_plan,
+                has_att,
+                self.context.services.tool_agent.tasks.active(self.context.state.cur.cid) is not None,
+                self.context.services.settings,
+            )
         except Exception:                                         # noqa: BLE001
-            self.context.session._brain = brain.Decision()
+            self.context.session._brain = self.context.services.brain_application_service.default_decision()
 
         character_layer = self.context.services.character_service.prompt_for(self.context.services.settings)
         body_context = ""

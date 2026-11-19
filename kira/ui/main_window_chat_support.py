@@ -8,7 +8,6 @@ from ..actions import match_safe_action, run_safe_action
 from ..chat_render import sources_html, message_html
 from .. import modes
 from .. import evidence_memory
-from .. import brain
 from .. import usage
 from .. import body as body_ctl
 from ..chat.application_service import ApplicationEventKind

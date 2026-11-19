@@ -346,3 +346,38 @@ The application service writes the assistant message before marking the Mood ini
 | Mood backend | `kira/mood.py` — compatibility implementation for emotion scoring, character runtime context, persistence and prompt construction | EmotionalRuntime and character-domain helpers | Direct imports from feature controllers or other production consumers |
 
 `MoodStateService` is the sole production import boundary for `kira.mood`. Chat, Runtime and Character/Session UI controllers receive the service through the window presentation context. Every stateful facade operation accepts an optional character ID and executes inside that character's ContextVar scope when supplied; background Session observations, prompts and avatar hints therefore cannot read or mutate the visible character's Mood state. The service forwards the existing backend behavior without changing its persistence format, timestamp handling or avatar output. `tests/test_mood_service.py` guards API forwarding, character scoping and the repository-wide prohibition on direct production imports of the legacy module.
+
+
+### Brain and Reflection — application ownership boundary
+
+| Element | Owner / contract | Allowed dependencies | Must not own |
+|---|---|---|---|
+| Brain application | `kira/app/brain_application.py` — `BrainApplicationService`: turn-depth decision, role/route selection, prompt extension, per-character hint-state reset and diagnostics | The private legacy Brain engine adapter; immutable turn inputs and settings snapshots | Qt, widgets, controller/session objects, provider execution, UI lifecycle or direct persistence ownership |
+| Reflection application | `kira/app/reflection_application.py` — `ReflectionApplicationService.after_turn()`: post-response review, bounded hint creation and optional background reflection/memory passes | The private legacy Brain engine adapter, active router/settings and immutable completed-turn data | Rewriting an already displayed response, initiating another user-facing turn, Qt, UI/controller state or owning the Chat request lifecycle |
+| Brain engine backend | `kira/brain.py` — compatibility implementation of deterministic decisions, hint-state mechanics and reflection algorithms | Standard library, existing mode normalization, configured data directory and provider-neutral router contracts | Direct production imports from UI controllers; owning Chat request completion or presentation |
+| Chat presentation | `kira/ui/main_window_chat.py` — calls `BrainApplicationService.decide()` and supplies the returned stage/route to ChatApplicationService | WindowPresentationContext, immutable turn data, Chat/Tool services | Importing `kira.brain`, deciding reflection policy, reading/writing Brain state directly |
+| Runtime presentation | `kira/ui/main_window_runtime.py` — calls `ReflectionApplicationService.after_turn()` only after a normally completed non-empty reply; delegates character reset to BrainApplicationService | WindowPresentationContext and completed response metadata | Importing `kira.brain`, reflection algorithms, Brain state-file operations or reflection worker management |
+
+Brain and Reflection are separate application capabilities with distinct entry points and lifecycle triggers. The current `kira.brain` implementation remains a private compatibility backend during this boundary migration; only the two application adapters may import it. Brain owns turn planning and prompt contribution. Reflection owns the post-response second-look and optional background passes. A cancelled, interrupted, failed or empty response must never enter Reflection. The already displayed assistant response is immutable: reflection can only produce a bounded hint for a later turn.
+
+Both services are lifecycle-registered by `ModuleManager` and injected through Bootstrap into `WindowPresentationContext`. UI controllers do not import the backend. The service contracts live in `kira/core/interfaces/brain.py`; focused regression coverage verifies delegation, registration, injection and the UI import boundary. Runtime and full-suite acceptance remain pending.
+
+
+### Presentation Context — per-controller capability ownership
+
+`WindowPresentationContext` is the composition-root context. Bootstrap/MainWindow composition may use its complete declared buckets to assemble the UI, but feature controllers must receive only the cached `for_controller(controller)` view. The context resolves controller identity through the immutable `FeatureControllerRegistry`; an unregistered controller or a controller without an explicit policy fails closed.
+
+| Controller | Capability boundary |
+|---|---|
+| `chat` | Chat/session submission state, Chat/Brain/Mood/Memory/Tool/Vision/Voice services, chat composer widgets and explicitly listed Session/Runtime/Attachments peers |
+| `runtime` | Stream/runtime state, response/Brain/Reflection/Voice and runtime services, animation/audio adapters, runtime views and explicitly listed peers/resources |
+| `session` | Active-session lifecycle, history/session/character/mood/initiative services, session views and explicitly listed peers |
+| `lifecycle` | Window lifecycle state, settings/provider/runtime-settings services, configuration views and only Session/Provider/Runtime/Character peers |
+| `attachments_vision` | Attachment/upload/game-capture state, Vision/Game Mode/Voice services, attachment/game adapters, related controls and only Session/Chat/Runtime peers |
+| `provider_settings` | Provider worker state, Provider service and provider/local-model settings views; only its declared worker resources and peers |
+| `character_settings` | Character/Mood/Shared Skills/Voice services, avatar/speaker adapters, character/settings views and its declared MCP worker resource |
+| `voice_settings` | Voice/Provider/Game Mode services, animator adapter, voice/model/chat-composer views and only its declared local-STT listener resource and peers |
+
+Each scoped namespace is a live write-through bucket: reads observe current root values, and permitted assignments update the shared composition state rather than a detached snapshot. Undeclared field reads/writes raise `AttributeError`; peer-controller access outside the allowlist and resource access outside the controller's explicit resource list raise `PermissionError`. The scope does not expose the root `host` or global `controllers` registry.
+
+The ChatComposer/CodeChat compatibility facades receive the Chat controller's scoped context and an explicit Qt widget parent. They resolve callbacks only through the Chat scope's peer allowlist; they no longer require a global registry or the root host from Presentation Context. New controller fields, peer calls and resource access must be added deliberately to the owning controller's `CONTROLLER_ACCESS` policy and covered by the AST capability-matrix regression test. Root bucket additions alone never widen controller access.

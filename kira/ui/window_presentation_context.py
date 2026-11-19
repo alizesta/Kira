@@ -72,6 +72,7 @@ STATE_FIELDS = frozenset({
 })
 
 SERVICE_FIELDS = frozenset({
+    "brain_application_service",
     "character_service",
     "chat_application_service",
     "chat_event_publisher",
@@ -85,6 +86,7 @@ SERVICE_FIELDS = frozenset({
     "mood_service",
     "ollama_client",
     "provider_application_service",
+    "reflection_application_service",
     "runtime_settings_application_service",
     "session_application_service",
     "session_manager",
@@ -265,7 +267,7 @@ VIEW_FRONT_ONLY = frozenset({"status", "gen_stop_btn", "send_btn", "input", "voi
 class _FieldBucket:
     """A strict, mutable namespace with a declared field contract."""
 
-    __slots__ = ("_context", "_name", "_allowed", "_values", "_front_only", "_pure")
+    __slots__ = ("_context", "_name", "_allowed", "_values", "_front_only", "_pure", "_source")
 
     def __init__(
         self,
@@ -275,6 +277,7 @@ class _FieldBucket:
         *,
         front_only: frozenset[str] = frozenset(),
         pure: Mapping[str, frozenset[str]] | None = None,
+        source: "_FieldBucket | None" = None,
     ) -> None:
         object.__setattr__(self, "_context", context)
         object.__setattr__(self, "_name", name)
@@ -282,14 +285,19 @@ class _FieldBucket:
         object.__setattr__(self, "_values", {})
         object.__setattr__(self, "_front_only", front_only)
         object.__setattr__(self, "_pure", dict(pure or {}))
+        object.__setattr__(self, "_source", source)
 
     def __getattr__(self, name: str):
         if name not in self._allowed:
             raise AttributeError(f"{self._name} has no declared field {name!r}")
         values = object.__getattribute__(self, "_values")
-        if name not in values:
+        source = object.__getattribute__(self, "_source")
+        if source is not None:
+            value = getattr(source, name)
+        elif name in values:
+            value = values[name]
+        else:
             raise AttributeError(f"{self._name}.{name} has not been initialized")
-        value = values[name]
         if name in self._front_only and self._context.is_background_session:
             if value is None:
                 return None
@@ -300,10 +308,148 @@ class _FieldBucket:
     def __setattr__(self, name: str, value) -> None:
         if name not in self._allowed:
             raise AttributeError(f"{self._name} has no declared field {name!r}")
-        self._values[name] = value
+        source = object.__getattribute__(self, "_source")
+        if source is not None:
+            setattr(source, name, value)
+        else:
+            self._values[name] = value
 
     def __contains__(self, name: str) -> bool:
-        return name in self._allowed and name in self._values
+        if name not in self._allowed:
+            return False
+        source = object.__getattribute__(self, "_source")
+        return (name in source) if source is not None else name in self._values
+
+
+
+# Per-controller least-privilege capability matrix. Root allowlists above are
+# composition-only; adding a root field never grants it to feature controllers.
+CONTROLLER_ACCESS = {
+ "runtime": {
+  "state": frozenset({"_clicks","_close_after_local_voice","_closing","_quitting","_game_mode_profile","_last_variant","_provider_workers","_save_warned","awake","cur","front","reactions","sessions"}),
+  "services": frozenset({"brain_application_service","character_service","chat_application_service","vision_application_service","game_mode_application_service","memory_service","mood_service","provider_application_service","reflection_application_service","session_application_service","settings","tool_agent","voice_application_service"}),
+  "adapters": frozenset({"animator","bubble","companion","director","game_mode"}),
+  "views": frozenset({"code_chat","companion_btn","gen_stop_btn","input","mic_btn","route_badge","route_menu","route_status","send_btn","status","tab_keys","tray","voice_btn","voice_page","wake_btn","wake_timer"}),
+  "peers": frozenset({"session","provider_settings","attachments_vision","chat","lifecycle","voice_settings"}),
+  "resources": frozenset({"_model_import_worker","_local_voice_worker"}),
+  "extras": frozenset({"session","listener","resource","is_background_session"}),
+ },
+ "chat": {
+  "state": frozenset({"_closing","_game_mode_enabled","_save_warned","_web_test_worker","cur","sessions","front"}),
+  "services": frozenset({"brain_application_service","character_service","chat_application_service","coding_agent_application_service","memory_service","mood_service","session_manager","settings","tool_agent","voice_application_service","web_search_service","vision_application_service"}),
+  "adapters": frozenset({"animator","director","bubble"}),
+  "views": frozenset({"gen_stop_btn","img_search_btn","input","status","tavily_key","web_btn","web_depth","web_test_btn","code_chat"}),
+  "peers": frozenset({"session","runtime","attachments_vision","chat"}),
+  "resources": frozenset(),
+  "extras": frozenset({"session","is_background_session"}),
+ },
+ "session": {
+  "state": frozenset({"_att_seq","_chat_action_seq","_chat_action_texts","_menu_actions","_nav_icon_map","_status","_tr","cur","front","sessions","_closing","_effect","_mood_emotion_glow"}),
+  "services": frozenset({"character_service","chat_application_service","initiative_application_service","mood_service","provider_application_service","session_application_service","session_manager","settings","tool_agent","voice_application_service"}),
+  "adapters": frozenset({"bubble","director","chat_attachment_controller"}),
+  "views": frozenset({"code_chat","appearance_page","assistant_page","char_tab_buttons","char_tab_group","char_tabs_row","character_page","chat_page","chat_stack","gen_stop_btn","glow_effects","help_page","input","mic_btn","mood_indicator","mood_emotion_icon","nav_buttons","avatar_card","menu_btn","route_badge","preferences_page","save_btn","status","tab_keys","tabs","title","voice_page"}),
+  "peers": frozenset({"session","runtime","chat","character_settings","attachments_vision","voice_settings"}),
+  "resources": frozenset(),
+  "extras": frozenset({"session","is_background_session"}),
+ },
+ "lifecycle": {
+  "state": frozenset({"_closing","_effect","_ollama_models","_ollama_worker","_quitting","sessions"}),
+  "services": frozenset({"ollama_client","provider_application_service","runtime_settings_application_service","settings","tool_agent"}),
+  "adapters": frozenset({"animator","companion","bubble"}),
+  "views": frozenset({"appearance_page","avatar","character_page","conn_btn","conn_lbl","keep_alive","load_btn","mic_btn","model","modes_chk","name","num_ctx","num_predict","persona","route_ollama_enabled","speed_btn","tavily_key","temp","tray","ui_lang","unload_btn","url","voice_page","web_btn","web_depth","web_fallback_chk"}),
+  "peers": frozenset({"session","provider_settings","runtime","character_settings"}),
+  "resources": frozenset(),
+  "extras": frozenset({"session"}),
+ },
+ "attachments_vision": {
+  "state": frozenset({"_closing","_game_audio_restart_pending","_game_capture_timer","_game_mode_enabled","_game_mode_profile","_game_poll_timer","_game_prev_mic","_game_prev_wake","_latest_game_frame","_stopping_game_audio_listener","_upload_done","_upload_tiles","_upload_token","cur","sessions"}),
+  "services": frozenset({"coding_agent_application_service","game_mode_application_service","settings","tool_agent","vision_application_service","voice_application_service"}),
+  "adapters": frozenset({"game_audio_listener","game_mode"}),
+  "views": frozenset({"game_mode_btn","game_mode_safe_action","game_mode_story_action","mic_btn","send_strip","vision_rate_actions","wake_btn","code_chat","tray"}),
+  "peers": frozenset({"session","chat","runtime"}),
+  "resources": frozenset({"_stopping_game_audio_listener"}),
+  "extras": frozenset({"session","resource","is_background_session"}),
+ },
+ "provider_settings": {
+  "state": frozenset({"_api_worker","_bench_busy","_bench_worker","_closing","_loading_route","_model_catalog_worker","_ollama_models","_route_worker","_scan_worker"}),
+  "services": frozenset({"provider_application_service","settings"}),
+  "adapters": frozenset(),
+  "views": frozenset({"api_add_status","bench_out","cloud_model_lists","import_model_btn","local_asr_download_btn","local_asr_load_btn","local_asr_model_list","local_asr_path_edit","local_model_list","local_model_tabs","local_stt_test_btn","local_tts_download_btn","local_tts_model_list","local_tts_model_path","local_voice_box","local_voice_progress","local_voice_status","local_whisper_path","mcp_registry_panel","model","route_bench_btn","route_cooldown","route_ctx","route_default_btn","route_del_btn","route_down_btn","route_enabled_chk","route_list","route_manual_lbl","route_model_edit","route_ollama_enabled","route_predict","route_provider_lbl","route_status","route_test_btn","route_timeout","route_up_btn","route_use_btn","tabs","url","local_tts_test_btn"}),
+  "peers": frozenset({"voice_settings","runtime","character_settings","session"}),
+  "resources": frozenset({"_model_catalog_worker","_route_worker","_scan_worker"}),
+  "extras": frozenset({"resource","session","is_background_session"}),
+ },
+ "character_settings": {
+  "state": frozenset({"_closing","_effect","_mcp_registry_worker","front","sessions"}),
+  "services": frozenset({"character_service","mood_service","settings","shared_skills_application_service","tool_agent","voice_application_service"}),
+  "adapters": frozenset({"animator","speaker"}),
+  "views": frozenset({"appearance_page","character_page","help_page","mcp_registry_panel","preferences_page","save_btn","glow_effects","tabs"}),
+  "peers": frozenset({"session","lifecycle","runtime","chat","provider_settings"}),
+  "resources": frozenset({"_mcp_registry_worker"}),
+  "extras": frozenset({"resource","is_background_session"}),
+ },
+ "voice_settings": {
+  "state": frozenset({"_close_after_local_voice","_closing","_local_stt_test_listener","_local_tts_test_active","_local_voice_worker","_model_import_worker"}),
+  "services": frozenset({"game_mode_application_service","provider_application_service","settings","voice_application_service"}),
+  "adapters": frozenset({"animator"}),
+  "views": frozenset({"api_add_status","assistant_page","avatar","avatar_card","char_tab_buttons","char_tab_group","char_tabs_row","chat_composer","chat_page","chat_stack","companion_btn","glow_effects","import_model_btn","local_asr_download_btn","local_asr_load_btn","local_asr_model_list","local_asr_path_edit","local_model_tabs","local_stt_test_btn","local_tts_download_btn","local_tts_model_list","local_tts_model_path","local_tts_test_btn","local_voice_progress","local_voice_status","local_whisper_path","model","mood_emotion_icon","mood_indicator","status","tab_keys","tabs","title","voice_page"}),
+  "peers": frozenset({"session","runtime","lifecycle","provider_settings","character_settings","chat"}),
+  "resources": frozenset({"_local_stt_test_listener"}),
+  "extras": frozenset({"resource","is_background_session"}),
+ },
+}
+
+class _ControllerPresentationContext:
+    """Capability-limited view of the root context for one registered controller."""
+    __slots__ = ("_root", "_feature", "_access", "state", "services", "adapters", "views")
+
+    def __init__(self, root: "WindowPresentationContext", feature: str) -> None:
+        access = CONTROLLER_ACCESS.get(feature)
+        if access is None:
+            raise LookupError(f"No Presentation Context access policy for controller {feature!r}")
+        object.__setattr__(self, "_root", root)
+        object.__setattr__(self, "_feature", feature)
+        object.__setattr__(self, "_access", access)
+        for namespace in ("state", "services", "adapters", "views"):
+            source = getattr(root, namespace)
+            bucket = _FieldBucket(
+                self,
+                f"{feature}.{namespace}",
+                access.get(namespace, frozenset()),
+                source=source,
+            )
+            object.__setattr__(self, namespace, bucket)
+
+    def require_peer(self, feature: str):
+        if feature not in self._access["peers"]:
+            raise PermissionError(f"Controller {self._feature!r} cannot access peer controller {feature!r}")
+        return self._root.controllers.require(feature)
+
+    @property
+    def session(self):
+        if "session" not in self._access["extras"]:
+            raise PermissionError(f"Controller {self._feature!r} has no session capability")
+        return self._root.session
+
+    @property
+    def listener(self):
+        if "listener" not in self._access["extras"]:
+            raise PermissionError(f"Controller {self._feature!r} has no listener capability")
+        return self._root.listener
+
+    @property
+    def is_background_session(self):
+        if "is_background_session" not in self._access["extras"]:
+            raise PermissionError(f"Controller {self._feature!r} has no background-session capability")
+        return self._root.is_background_session
+
+    def resource(self, name: str, default=None):
+        if "resource" not in self._access["extras"] or name not in self._access["resources"]:
+            raise PermissionError(f"Controller {self._feature!r} cannot access resource {name!r}")
+        return self._root.resource(name, default)
+
+    def __getattr__(self, name: str):
+        raise AttributeError(f"Controller {self._feature!r} has no Presentation Context capability {name!r}")
 
 
 class WindowPresentationContext:
@@ -324,6 +470,11 @@ class WindowPresentationContext:
         self.views = _FieldBucket(
             self, "views", VIEW_FIELDS, front_only=VIEW_FRONT_ONLY
         )
+
+    def for_controller(self, controller):
+        """Return the least-privilege context assigned to a registered controller."""
+        feature = self.controllers.name_for(controller)
+        return _ControllerPresentationContext(self, feature)
 
     def resource(self, name: str, default=None):
         """Read one explicitly owned worker/timer resource for lifecycle cleanup."""
