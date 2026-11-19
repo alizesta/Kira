@@ -29,6 +29,8 @@ class VoiceApplicationWiringTests(unittest.TestCase):
             "create_voice_application_ports(self, self.adapters.speaker)",
             composition,
         )
+        self.assertIn("echo_reference_block", adapters)
+        self.assertIn("set_echo_reference_provider", adapters)
 
     def test_tray_exit_delegates_to_close_event_shutdown(self):
         lifecycle = self.read("kira/ui/main_window_lifecycle.py")
