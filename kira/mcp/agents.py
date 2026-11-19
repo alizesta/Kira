@@ -296,6 +296,14 @@ class AgentHub:
             raise ToolError(why or f"ایجنت «{name}» آماده نیست؛ کاری به آن سپرده نشد.", ERROR)
 
     def _ensure_poller(self):
+        # Do not resurrect background network polling after mcp_mode=off (or
+        # when no independent agents are configured).
+        try:
+            if not self.agents_fn():
+                return
+        except Exception:
+            _LOGGER.exception("Could not read independent-agent configuration; poller remains stopped")
+            return
         with self._lock:
             if self._poller is None or not self._poller.is_alive():
                 self._stop.clear()
