@@ -48,6 +48,10 @@ class AdaptiveEchoCanceller:
             return mic.copy()
         ref_power = float(np.mean(ref * ref))
         if ref_power < 1e-9:
+            # Advance the reference timeline through silence so stale samples
+            # from the previous sentence cannot leak into the next one.
+            joined = np.concatenate((self.history, ref))
+            self.history = joined[-(self.filter_length - 1):].copy()
             return mic.copy()
 
         joined = np.concatenate((self.history, ref))
