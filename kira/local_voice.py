@@ -65,6 +65,10 @@ _PERSIAN_TTS_TRANSLATION = str.maketrans({
 
 _PERSIAN_TTS_TERMS = {
     "chatgpt": "چت‌جی‌پی‌تی",
+    "kira": "کیرا",
+    "gemini": "جِمِنای",
+    "ollama": "اُلاما",
+    "elevenlabs": "اِلِوِن‌لَبز",
     "openai": "اوپن‌ای‌آی",
     "deepseek": "دیپ‌سیک",
     "qwen": "کوئن",
@@ -281,7 +285,10 @@ def _model_file_signature(path: Path):
 
 def tts_cache_identity(model_path=""):
     """Return a stable cache identity that changes with model weights or voice metadata."""
-    path, _label = _resolve_tts_model_path(model_path)
+    if not model_path and _tts is not None and _tts_model_path:
+        path = Path(_tts_model_path)
+    else:
+        path, _label = _resolve_tts_model_path(model_path)
     return _model_file_signature(path)
 
 
@@ -400,12 +407,15 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
     # Insert context-predicted Persian ezafe marks before Piper phonemization.
     # The detector has its own lazy ONNX cache and safely returns the source
     # text unchanged whenever it is disabled or unavailable.
-    try:
-        from .persian_ezafe import add_persian_ezafe
-        clean = add_persian_ezafe(clean)
-    except Exception:
-        import logging
-        logging.getLogger(__name__).exception("Optional Persian ezafe preprocessing failed; using original text")
+    if re.search(r"[\u0600-\u06ff]", clean):
+        try:
+            from .persian_ezafe import add_persian_ezafe
+            clean = add_persian_ezafe(clean)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "Optional Persian ezafe preprocessing failed; using normalized source text"
+            )
 
     selected = str(model_path or "").strip()
     speed = max(0.5, min(1.5, 1.0 + float(rate or 0) / 100.0))
