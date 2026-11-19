@@ -19,6 +19,7 @@ from pathlib import Path
 # Keep model/runtime caches beside Kira's persistent data, not on C: or
 # inside the replaceable application folder.
 from .storage import configure_cache_environment, default_data_dir
+from .voice_prosody import apply_audio_effects, expand_persian_numbers, resolve_prosody
 
 _DATA_ROOT = default_data_dir(Path(__file__).resolve().parents[1])
 configure_cache_environment(_DATA_ROOT)
@@ -392,7 +393,7 @@ def warmup_tts(model_path="") -> bool:
     return ready
 
 
-def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
+def synthesize_persian(text: str, model_path="", rate=0, prosody=None) -> bytes:
     """Synthesize Persian speech with Piper's native timing controls.
 
     Piper's length_scale changes phoneme duration directly. Altering only the WAV
@@ -400,7 +401,7 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
     the same native synthesis path for Mana and user-selected ONNX models.
     """
     global _tts_error
-    clean = normalize_persian_tts_text(text)
+    clean = expand_persian_numbers(normalize_persian_tts_text(text))
     if not clean:
         return b""
 
@@ -419,6 +420,10 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
 
     selected = str(model_path or "").strip()
     speed = max(0.5, min(1.5, 1.0 + float(rate or 0) / 100.0))
+    profile = resolve_prosody() if prosody is None else dict(prosody)
+    length_scale = max(0.5, min(1.5, float(profile.get("length_scale", 1.0)) / speed))
+    noise_scale = max(0.5, min(0.9, float(profile.get("noise_scale", 0.667))))
+    noise_w = max(0.6, min(0.95, float(profile.get("noise_w", 0.8))))
 
     try:
         with _tts_lock:
@@ -426,7 +431,11 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
             from piper import SynthesisConfig
 
             output = io.BytesIO()
-            config = SynthesisConfig(length_scale=1.0 / speed)
+            config = SynthesisConfig(
+                length_scale=length_scale,
+                noise_scale=noise_scale,
+                noise_w=noise_w,
+            )
             with wave.open(output, "wb") as wav_file:
                 voice.synthesize_wav(clean, wav_file, syn_config=config)
             payload = output.getvalue()
@@ -440,7 +449,12 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
 
     if not isinstance(payload, (bytes, bytearray)) or not payload.startswith(b"RIFF"):
         raise RuntimeError("Persian Piper returned invalid WAV data")
-    return bytes(payload)
+    try:
+        return apply_audio_effects(bytes(payload), profile)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Optional emotional audio post-processing failed; using native Piper audio")
+        return bytes(payload)
 
 
 def _terminate_process_tree(process) -> None:
