@@ -101,7 +101,11 @@ class RuntimeController(WindowFeatureController):
         meta = self.context.adapters.director.parse_reply(self.context.session._stream_text)         # pure parse: no side effects
         self.run_body(meta.body)                                    # [body:...] tags written by the model
         text = self.display_text(self.context.session._stream_text)
-        if meta.source == "tag" and not self.context.session._emotion_applied:     # the model's own tag arrived: react right away
+        # Explicit model tags are applied immediately; keyword-inferred emotions are
+        # applied only once the reply is complete, so partial text cannot keep changing
+        # the voice profile while the stream is still arriving.
+        apply_emotion = meta.source == "tag" or (final and meta.source == "keywords")
+        if apply_emotion and not self.context.session._emotion_applied:
             self.context.session._emotion_applied = True
             self.context.services.voice_application_service.set_emotion(meta.emotions, meta.intensity)
             self.context.adapters.director.on_reply(meta)
