@@ -76,6 +76,9 @@ class VoiceApplicationService(VoiceService):
         self.stop_all()
         if self._is_running(self.listener) or self._is_running(self.stopping_listener):
             return False
+        speaker_idle = getattr(self.speaker, "is_idle", None)
+        if callable(speaker_idle) and not speaker_idle():
+            return False
         self.listener = None
         self.stopping_listener = None
         self.restart_after_stop = False
