@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import os
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -214,6 +215,7 @@ class FacadeRegressionTests(unittest.TestCase):
 
 
 try:
+    from PySide6.QtCore import QEventLoop, QObject, QTimer, Signal
     from PySide6.QtWidgets import QApplication, QLineEdit, QMessageBox, QInputDialog
     HAVE_QT = True
 except Exception:  # pragma: no cover - optional GUI dependency
@@ -225,6 +227,38 @@ class WidgetRegressionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
+
+    def test_voice_listener_adapter_marshals_events_to_gui_thread(self):
+        from kira.ui.application_adapters import QtVoiceListenerAdapter
+
+        class FakeListener(QObject):
+            heard = Signal(str)
+
+        listener = FakeListener()
+        adapter = QtVoiceListenerAdapter(listener)
+        loop = QEventLoop()
+        callback_threads = []
+
+        def on_heard(value):
+            self.assertEqual(value, "heard from worker")
+            callback_threads.append(threading.get_ident())
+            loop.quit()
+
+        unsubscribe = adapter.subscribe("heard", on_heard)
+        emitter = threading.Thread(target=lambda: listener.heard.emit("heard from worker"))
+        emitter.start()
+        emitter.join()
+        QTimer.singleShot(1000, loop.quit)
+        loop.exec()
+
+        self.assertEqual(callback_threads, [threading.get_ident()])
+        self.assertTrue(unsubscribe())
+        listener.deleteLater()
+
+    def test_speaker_background_results_target_qobject_slots(self):
+        source = (ROOT / "kira/voice.py").read_text(encoding="utf-8")
+        self.assertIn("@Slot(int, str)\n    def _on_failed", source)
+        self.assertIn("@Slot(int, int, str, list)\n    def _on_ready", source)
 
     def test_attachment_controller_is_a_gui_thread_qobject(self):
         from PySide6.QtCore import QObject
