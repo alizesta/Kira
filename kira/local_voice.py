@@ -485,6 +485,13 @@ def install_and_download_qwen_asr(repo_id: str = "Qwen/Qwen3-ASR-0.6B", *, cance
     return _download_voice_repo(repo_id or "Qwen/Qwen3-ASR-0.6B")
 
 
+def install_and_download_whisper_cpp(*, cancel_event=None) -> str:
+    """Install checksum-pinned whisper.cpp Vulkan binaries and the multilingual GGML model."""
+    from . import whisper_cpp
+    return whisper_cpp.install(cancel_event=cancel_event)
+
+
+
 def install_and_download_whisper(repo_id: str, *, cancel_event=None) -> str:
     """Install faster-whisper and download a CTranslate2 Whisper model."""
     _ensure_pillow_compatible(cancel_event)
@@ -530,10 +537,19 @@ def status(model_path="") -> dict:
         "tts_loaded": _tts is not None,
         "tts_model": _tts_model_label if _tts is not None else "",
         "asr_error": str(_asr_error)[:240] if _asr_error else "",
+        "whisper_cpp": _whisper_cpp_status(),
         "tts_error": str(_tts_error)[:240] if _tts_error else "",
         "tts_model_signature": _tts_model_signature,
         "tts_ezafe": _ezafe_status(),
     }
+
+
+def _whisper_cpp_status() -> dict:
+    try:
+        from . import whisper_cpp
+        return whisper_cpp.status()
+    except Exception as exc:
+        return {"ready": False, "error": f"{type(exc).__name__}: {exc}"[:240]}
 
 
 def _ezafe_status() -> dict:
