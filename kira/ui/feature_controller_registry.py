@@ -28,6 +28,13 @@ class FeatureControllerRegistry:
         """Return a controller when present, otherwise None."""
         return self._controllers.get(feature)
 
+    def name_for(self, controller: object) -> str:
+        """Resolve the stable registry key for a registered controller instance."""
+        for feature, registered in self._controllers.items():
+            if registered is controller:
+                return feature
+        raise LookupError("Controller instance is not registered in this presentation graph")
+
     def require(self, feature: str):
         """Return a registered controller or fail at the dependency boundary."""
         controller = self.get(feature)
