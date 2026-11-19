@@ -34,8 +34,13 @@ _CALLBACK_OWNERS = {
 
 
 class ComposerOwner:
-    def __init__(self, context, widget_parent) -> None:
+    def __init__(self, context, widget_parent, *, view_context=None) -> None:
+        # Callbacks stay bound to the feature controller's restricted context.
+        # Legacy window-view aliases are composition-owned, so they must be
+        # published through the root presentation context rather than the
+        # chat controller's narrower view capability set.
         object.__setattr__(self, "_context", context)
+        object.__setattr__(self, "_view_context", view_context or context)
         object.__setattr__(self, "_widget_parent", widget_parent)
 
     @property
@@ -62,7 +67,7 @@ class ComposerOwner:
         return getattr(self._context.require_peer(feature), name)
 
     def __setattr__(self, name: str, value) -> None:
-        views = self._context.views
+        views = self._view_context.views
         if name not in views._allowed:
             raise AttributeError(
                 f"ChatComposer owner cannot expose undeclared window view {name!r}"
