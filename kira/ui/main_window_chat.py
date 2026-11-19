@@ -1,4 +1,5 @@
 """Chat feature controller for the desktop window."""
+from PySide6.QtCore import Slot
 from ..chat.context_builder import latest_user_text
 from .main_window_chat_support import (
     ApplicationEventKind,
@@ -380,6 +381,7 @@ class ChatController(WindowFeatureController):
         self.context.state._web_test_worker.done.connect(self.on_web_test_done)
         self.context.state._web_test_worker.start()
 
+    @Slot(object)
     def on_web_test_done(self, res):
         self.context.views.web_test_btn.setEnabled(True)
         self.context.views.web_test_btn.setText("آزمایش جست‌وجوی وب")
