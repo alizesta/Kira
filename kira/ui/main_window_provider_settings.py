@@ -1,4 +1,5 @@
 """Provider settings feature controller."""
+import copy
 import re
 
 from PySide6.QtCore import Slot
@@ -49,8 +50,8 @@ class ProviderSettingsController(WindowFeatureController):
         worker = self.context.resource("_model_catalog_worker")
         if worker is not None and worker.isRunning():
             return
-        self.context.views.mcp_registry_panel.set_refreshing(True)
-        self.context.views.mcp_registry_panel.set_status("در حال بررسی APIها و دریافت مدل‌های تازه…")
+        self.context.views.cloud_model_refresh_btn.setEnabled(False)
+        self.context.views.cloud_model_status.setText("در حال بررسی APIها و دریافت مدل‌های تازه…")
         try:
             providers = [
                 (pid, dict(self.context.services.settings.get("providers", {}).get(pid, {})))
@@ -72,7 +73,7 @@ class ProviderSettingsController(WindowFeatureController):
             self.scan_ollama()
             self.feature_controller("voice_settings").refresh_local_voice_status()
         except Exception as exc:
-            self.context.views.mcp_registry_panel.set_refreshing(False)
+            self.context.views.cloud_model_refresh_btn.setEnabled(True)
             self.context.views.mcp_registry_panel.set_status("تازه‌سازی کامل نشد: " + str(exc)[:200])
 
     @Slot()
@@ -133,10 +134,33 @@ class ProviderSettingsController(WindowFeatureController):
 
         self.feature_controller("character_settings").build_mcp_registry_group(layout)
         cloud_box, cloud_form = self.feature_controller("session").group("مدل‌های Chat Cloud")
+        model_toolbar = QHBoxLayout()
+        self.context.views.cloud_model_search = QLineEdit()
+        self.context.views.cloud_model_search.setPlaceholderText("جستجو در نام Provider یا شناسه مدل…")
+        self.context.views.cloud_model_search.textChanged.connect(self.filter_cloud_models)
+        model_toolbar.addWidget(self.context.views.cloud_model_search, 1)
+        self.context.views.cloud_model_refresh_btn = QPushButton("تازه‌سازی مدل‌ها")
+        self.context.views.cloud_model_refresh_btn.clicked.connect(self.refresh_model_catalogs)
+        model_toolbar.addWidget(self.context.views.cloud_model_refresh_btn)
+        cloud_form.addRow(model_toolbar)
+        model_actions = QHBoxLayout()
+        self.context.views.cloud_model_select_all_btn = QPushButton("انتخاب همه")
+        self.context.views.cloud_model_select_free_btn = QPushButton("انتخاب رایگان‌ها")
+        self.context.views.cloud_model_deselect_btn = QPushButton("لغو انتخاب همه")
+        self.context.views.cloud_model_test_all_btn = QPushButton("تست همه مدل‌ها")
+        self.context.views.cloud_model_select_all_btn.clicked.connect(lambda: self.set_cloud_models_selected("all"))
+        self.context.views.cloud_model_select_free_btn.clicked.connect(lambda: self.set_cloud_models_selected("free"))
+        self.context.views.cloud_model_deselect_btn.clicked.connect(lambda: self.set_cloud_models_selected("none"))
+        self.context.views.cloud_model_test_all_btn.clicked.connect(self.run_catalog_model_tests)
+        for button in (self.context.views.cloud_model_select_all_btn, self.context.views.cloud_model_select_free_btn, self.context.views.cloud_model_deselect_btn, self.context.views.cloud_model_test_all_btn): model_actions.addWidget(button)
+        cloud_form.addRow(model_actions)
+        self.context.views.cloud_model_status = QLabel("فهرست مدل‌های Chat")
+        self.context.views.cloud_model_status.setObjectName("hint")
+        cloud_form.addRow(self.context.views.cloud_model_status)
         model_list = QListWidget()
         model_list.setAlternatingRowColors(True)
-        model_list.setMinimumHeight(105)
-        model_list.setMaximumHeight(170)
+        model_list.setMinimumHeight(150)
+        model_list.setMaximumHeight(260)
         model_list.itemChanged.connect(lambda item: self.on_cloud_model_item_changed("chat", item))
         self.context.views.cloud_model_lists = {"chat": model_list}
         cloud_form.addRow(model_list)
