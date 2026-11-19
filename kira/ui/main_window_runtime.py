@@ -103,6 +103,7 @@ class RuntimeController(WindowFeatureController):
         text = self.display_text(self.context.session._stream_text)
         if meta.source == "tag" and not self.context.session._emotion_applied:     # the model's own tag arrived: react right away
             self.context.session._emotion_applied = True
+            self.context.services.voice_application_service.set_emotion(meta.emotions, meta.intensity)
             self.context.adapters.director.on_reply(meta)
         if not text.strip():
             return
@@ -302,6 +303,7 @@ class RuntimeController(WindowFeatureController):
                 pass
             if not self.context.session._emotion_applied:                          # no tag from the model: tag-less fallback (keywords / neutral)
                 self.context.adapters.director.on_reply(meta)
+                self.context.services.voice_application_service.set_emotion(meta.emotions, meta.intensity)
             if self.context.session._speech_live:
                 self.context.services.voice_application_service.stream_end()                          # the sentences were spoken while it was written: say the tail
             else:
