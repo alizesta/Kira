@@ -1,8 +1,8 @@
 """Consumer-facing contract for the shared companion mood state."""
 from __future__ import annotations
 
-from collections.abc import ContextManager, Sequence
-from typing import Any, Protocol
+from collections.abc import Sequence
+from typing import Any, ContextManager, Protocol
 
 
 class MoodService(Protocol):
