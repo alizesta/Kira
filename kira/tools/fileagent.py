@@ -230,8 +230,22 @@ class FileAgent:
         data = content.encode("utf-8")
         if len(data) > MAX_TEXT_BYTES:
             raise ToolError("متن خیلی بزرگ است (حداکثر ۲۰۰ کیلوبایت در یک بار).")
-        with open(target, "xb") as fh:                                   # "x": fails instead of overwriting, even in a race
-            fh.write(data)
+        try:
+            created = open(target, "xb")                               # "x": fails instead of overwriting, even in a race
+        except OSError:
+            raise
+        try:
+            with created as fh:
+                fh.write(data)
+        except Exception as exc:
+            try:
+                os.unlink(target)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                _LOGGER.exception("Could not remove partial created file: %s", target)
+                raise ToolError(f"نوشتن ناقص ماند و فایل ناقص هم پاک نشد: {target}") from exc
+            raise ToolError(f"ساخت فایل ناموفق بود؛ فایل ناقص پاک شد: {type(exc).__name__}: {exc}") from exc
         if not os.path.isfile(target) or os.path.getsize(target) != len(data):
             raise ToolError("فایل ساخته نشد یا اندازه‌اش درست نیست.")
         persisted = self.journal.add("create", path=target)
@@ -274,6 +288,28 @@ class FileAgent:
         persisted = self.journal.add("copy", source=src, path=target)
         return f"کپی شد: {src} ← {target}{note}" + self._journal_note(persisted)
 
+    def _copy_file_exclusive(self, src: str, target: str) -> None:
+        """Copy one file without overwriting a raced destination or leaving partial output."""
+        try:
+            destination = open(target, "xb")
+        except OSError as exc:
+            raise ToolError(f"مقصد کپی ایجاد نشد: {exc}") from exc
+        try:
+            with destination as out, open(src, "rb") as source:
+                shutil.copyfileobj(source, out)
+            shutil.copystat(src, target)
+            if os.path.getsize(target) != os.path.getsize(src):
+                raise OSError("copied file size does not match source")
+        except Exception as exc:
+            try:
+                os.unlink(target)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                _LOGGER.exception("Could not remove partial copied file: %s", target)
+                raise ToolError(f"کپی ناقص ماند و پاک‌سازی مقصد هم ناموفق بود: {target}") from exc
+            raise ToolError(f"کپی فایل ناموفق بود؛ مقصد ناقص پاک شد: {type(exc).__name__}: {exc}") from exc
+
     def _copy(self, a: dict):
         src = self.policy.check(a["source"])
         name = a.get("new_name") or os.path.basename(src)
@@ -311,10 +347,8 @@ class FileAgent:
         else:
             if os.path.splitext(src)[1].lower() in EXECUTABLE_EXT:
                 raise ToolError("کپی فایل اجرایی یا اسکریپت مجاز نیست.", DENIED)
-            shutil.copy2(src, target)
+            self._copy_file_exclusive(src, target)
             note = ""
-            if os.path.getsize(target) != os.path.getsize(src):
-                raise ToolError("اندازه‌ی نسخه‌ی کپی‌شده با اصل برابر نیست.")
         if not os.path.exists(target):
             raise ToolError("کپی انجام نشد.")
         return src, target, note
