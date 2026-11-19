@@ -54,7 +54,7 @@ internal fun KiraChatScreen(character:String,onCharacterChange:(String)->Unit) {
         executor.execute {
             try {
                 val reply=chat.sendMessage(who,text)
-                val history=core.history(who)
+                val history=chat.history(who)
                 handler.post {
                     messages.clear(); messages.addAll(history)
                     status="پاسخ از "+reply.provider+" · "+reply.model
