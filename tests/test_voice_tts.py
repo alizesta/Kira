@@ -34,7 +34,7 @@ class LocalTtsPlaybackTests(unittest.TestCase):
             audio.setnchannels(1)
             audio.setsampwidth(2)
             audio.setframerate(1000)
-            audio.writeframes(b"\\x01\\x00" * 10)
+            audio.writeframes(b"\x01\x00" * 10)
 
         session = SimpleNamespace(
             rate=0,
@@ -60,7 +60,7 @@ class LocalTtsPlaybackTests(unittest.TestCase):
         with wave.open(io.BytesIO(assembled), "rb") as audio:
             samples = audio.readframes(audio.getnframes())
             self.assertEqual(audio.getnframes(), 275)
-        self.assertEqual(samples[:265 * 2], b"\\0" * 265 * 2)
+        self.assertEqual(samples[:265 * 2], b"\0" * 265 * 2)
         self.assertEqual(samples[265 * 2:], b"\\x01\\x00" * 10)
 
 
