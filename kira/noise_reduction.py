@@ -33,6 +33,8 @@ class SpectralNoiseReducer:
         self.window = np.hanning(self.frame_size).astype(np.float32)
         self.noise_profile = None
         self._calibration = []
+        self._calibration_attempts = 0
+        self._calibration_done = False
 
     def _magnitude(self, block):
         np = self.np
@@ -45,16 +47,22 @@ class SpectralNoiseReducer:
         values = values - float(np.mean(values))
         return np.abs(np.fft.rfft(values * self.window)).astype(np.float32)
 
-    def calibrate_block(self, block) -> bool:
-        """Collect room-noise spectra; return True once a robust median profile exists."""
-        if self.noise_profile is not None:
+    def calibrate_block(self, block, *, quiet=True) -> bool:
+        """Collect only quiet room-noise frames during the fixed startup calibration window."""
+        if self._calibration_done:
             return True
-        self._calibration.append(self._magnitude(block))
-        if len(self._calibration) < self.calibration_blocks:
+        self._calibration_attempts += 1
+        if quiet:
+            self._calibration.append(self._magnitude(block))
+        if self._calibration_attempts < self.calibration_blocks:
             return False
-        self.noise_profile = self.np.median(
-            self.np.stack(self._calibration, axis=0), axis=0
-        ).astype(self.np.float32)
+        self._calibration_done = True
+        # If the user was speaking during startup, prefer disabling suppression to
+        # learning speech as noise. Four clean frames are the minimum useful profile.
+        if len(self._calibration) >= min(4, self.calibration_blocks):
+            self.noise_profile = self.np.median(
+                self.np.stack(self._calibration, axis=0), axis=0
+            ).astype(self.np.float32)
         self._calibration.clear()
         return True
 
