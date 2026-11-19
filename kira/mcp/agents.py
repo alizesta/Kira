@@ -306,7 +306,8 @@ class AgentHub:
                 return                                                   # restarted by the next agent_ask / status
             for job in jobs:
                 if time.time() - job.get("created", 0) > POLL_MAX_AGE:
-                    self.store.update(job["id"], state="error", text="ایجنت خیلی طول کشید و پیگیری متوقف شد.")
+                    if not self.store.update(job["id"], state="error", text="ایجنت خیلی طول کشید و پیگیری متوقف شد."):
+                        _LOGGER.warning("Could not persist timeout state for delegated job %s", job.get("id"))
                     continue
                 try:
                     self._refresh(job)
@@ -325,7 +326,8 @@ class AgentHub:
                 "state": "error",
                 "text": "ایجنت وضعیت نامعتبر برگرداند؛ نتیجه قابل تأیید نیست.",
             }
-            self.store.update(job["id"], **fields)
+            if not self.store.update(job["id"], **fields):
+                _LOGGER.warning("Could not persist invalid delegated-job state for %s", job.get("id"))
             return self.store.get(job["id"]) or {**job, **fields}
         fields = {"state": state, "text": clean_text(data.get("text"), 1800)}
         if state in ("question", "approval"):
@@ -365,7 +367,7 @@ class AgentHub:
                "state": "progress", "text": "", "question": "", "created": time.time(), "updated": time.time()}
         persisted = self.store.add(job)
         self._ensure_poller()
-        warning = "" if persisted else " هشدار: وضعیت این کار در فایل محلی ذخیره نشد؛ شناسه‌ی job را نگه دار، چون پس از بسته‌شدن برنامه بازیابی آن تضمین‌شده نیست."
+        warning = "" if persisted else " هشدار: وضعیت این کار در فایل محلی ذخیره نشد؛ پس از بسته‌شدن برنامه ممکن است Kira نتواند آن را بازیابی کند. همین حالا با agent_status پیگیری کن."
         return f"کار به ایجنت «{agent.cfg['name']}» سپرده شد. job_id={job['id']}. به کاربر بگو کار در پس‌زمینه انجام می‌شود و بعداً با agent_status نتیجه را می‌خوانی؛ نگو که تمام شده." + warning
 
     def _format(self, job: dict) -> str:
