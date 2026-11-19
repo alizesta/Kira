@@ -371,7 +371,7 @@ class ProviderSettingsController(WindowFeatureController):
             cfg = self.context.services.settings.get("providers", {}).get(pid, {})
             label = self.context.services.provider_application_service.provider_label(pid, cfg)
             for mid, meta in (entry.get("models") or {}).items():
-                if meta.get("status") == "unavailable" or meta.get("text") == "No":
+                if meta.get("status") != "available" or meta.get("text") == "No":
                     continue
                 low = str(mid).lower()
                 if any(token in low for token in ("tts", "text-to-speech", "embedding", "whisper", "speech-to-text",
@@ -382,8 +382,8 @@ class ProviderSettingsController(WindowFeatureController):
                 item = QListWidgetItem(f"{label}  ·  {mid}" + ("  · رایگان" if meta.get("free") is True else ""))
                 item.setData(Qt.UserRole, {"provider": pid, "model": mid, "free": meta.get("free") is True})
                 item.setToolTip(
-                    f"Provider: {label}\\nModel: {mid}\\nFree: {'Yes' if meta.get('free') is True else 'No/Unknown'}"
-                    f"\\nText: {meta.get('text') or 'Unknown'} | Vision: {meta.get('vision') or 'Unknown'} | Tools: {meta.get('tools') or 'Unknown'}"
+                    f"Provider: {label}\nModel: {mid}\nFree: {'Yes' if meta.get('free') is True else 'No/Unknown'}"
+                    f"\nText: {meta.get('text') or 'Unknown'} | Vision: {meta.get('vision') or 'Unknown'} | Tools: {meta.get('tools') or 'Unknown'}"
                 )
                 item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
                 enabled = any(r.get("provider") == pid and r.get("model") == mid and r.get("enabled")
@@ -483,7 +483,7 @@ class ProviderSettingsController(WindowFeatureController):
             self.context.views.cloud_model_status.setText("مدل قابل تستی در کاتالوگ پیدا نشد؛ ابتدا فهرست مدل‌ها را تازه‌سازی کن.")
             return
         if QMessageBox.question(self.window, "تست همه مدل‌ها",
-            f"برای {len(route_ids)} مدل، درخواست واقعی کوتاه ارسال می‌شود و ممکن است از سهمیه API مصرف کند.\\n"
+            f"برای {len(route_ids)} مدل، درخواست واقعی کوتاه ارسال می‌شود و ممکن است از سهمیه API مصرف کند.\n"
             "تست‌ها یکی‌یکی اجرا می‌شوند و وضعیت فعال/غیرفعال مدل‌های اصلی تغییر نمی‌کند. ادامه بدهم؟") != QMessageBox.Yes:
             return
         try:
@@ -1365,7 +1365,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.refresh_route_list()
         if getattr(self, "_catalog_bench_active", False):
             self._catalog_bench_active = False
-            self.context.views.cloud_model_status.setText("\\n".join(self.format_bench_row(row) for row in value) if ok else "تست ناموفق: " + str(value))
+            self.context.views.cloud_model_status.setText("\n".join(self.format_bench_row(row) for row in value) if ok else "تست ناموفق: " + str(value))
         if "cloud_model_test_all_btn" in self.context.views:
             self.context.views.cloud_model_test_all_btn.setEnabled(True)
         self.feature_controller("runtime")._send_next_pending()
