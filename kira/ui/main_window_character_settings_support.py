@@ -10,7 +10,6 @@ from PySide6.QtWidgets import QApplication, QLabel, QLineEdit, QMessageBox, QTab
 from ..config import save_settings, ROOT, VERSION, DATA_DIR, APP_NAME, PROJECT_URL, RELEASES_URL
 from .. import about
 from .. import websearch
-from .. import mood
 from ..character.traits import BASE_TRAITS
 from .. import avatar_art
 from ..rig import MOODS
