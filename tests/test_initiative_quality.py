@@ -506,31 +506,33 @@ class InitiativeSessionGuardTests(unittest.TestCase):
         self.assertFalse(sessions_are_idle([SimpleNamespace(busy="false", draft="")]))
         self.assertFalse(sessions_are_idle([SimpleNamespace(busy=False, draft=[]) ]))
 
-    def test_session_controller_imports_math_used_by_idle_guard(self):
+    def test_session_controller_does_not_import_initiative_policy_or_legacy_mood_modules(self):
         source = Path(__file__).resolve().parents[1] / "kira" / "ui" / "main_window_session.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
-        self.assertTrue(any(
-            isinstance(node, ast.Import) and any(alias.name == "math" for alias in node.names)
-            for node in tree.body
-        ))
+        imports = [
+            (node.module, {alias.name for alias in node.names})
+            for node in tree.body if isinstance(node, ast.ImportFrom)
+        ]
+        self.assertNotIn("mood", [module for module, _names in imports])
+        self.assertNotIn("persona_memory", [module for module, _names in imports])
+        self.assertNotIn("character.initiative", [module for module, _names in imports])
 
 
 class InitiativeIntegrationImportTests(unittest.TestCase):
-    def test_session_controller_imports_every_initiative_dependency_it_uses(self):
-        source = Path(__file__).resolve().parents[1] / "kira" / "ui" / "main_window_session.py"
+    def test_initiative_policy_dependencies_live_in_application_service(self):
+        source = Path(__file__).resolve().parents[1] / "kira" / "app" / "initiative_application.py"
         tree = ast.parse(source.read_text(encoding="utf-8"))
         imported = set()
         for node in tree.body:
-            if isinstance(node, ast.ImportFrom) and node.module == "main_window_session_support":
+            if isinstance(node, ast.ImportFrom) and node.module == "..character.initiative":
                 imported.update(alias.asname or alias.name for alias in node.names)
-
-        required = {
+        self.assertTrue({
             "InitiativeEngine",
             "build_checkin_message",
             "initiative_history_state",
-            "persona_memory",
-        }
-        self.assertTrue(required.issubset(imported), sorted(required - imported))
+            "persisted_checkin_events",
+            "sessions_are_idle",
+        }.issubset(imported))
 
 
 class InitiativeMessageTests(unittest.TestCase):
