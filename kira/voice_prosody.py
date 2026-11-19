@@ -205,7 +205,12 @@ def expand_persian_numbers(text):
     def number_replacement(match):
         prefix = value[:match.start()]
         suffix = value[match.end():]
-        if re.search(r"[A-Za-z0-9]\s*$", prefix) and re.match(r"\s*[A-Za-z]", suffix):
+        # Preserve technical identifiers such as "RX 6600 XT" and version
+        # strings such as "Version 3.5", including when Persian text surrounds them.
+        if (
+            re.search(r"[A-Z][A-Za-z0-9_.+-]*\s*$", prefix)
+            and (not suffix.strip() or re.match(r"\s*[A-Za-z]", suffix))
+        ):
             return match.group(0)
         token = match.group(0).replace(",", "")
         if "." in token:
