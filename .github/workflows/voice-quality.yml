@@ -14,6 +14,7 @@ on:
       - "docs/ECHO_CANCELLATION_FA.md"
       - "tests/test_echo_cancellation.py"
       - "tests/test_voice_input.py"
+      - "tests/test_voice_application_wiring.py"
       - "kira/vad.py"
       - "kira/app/voice_application.py"
       - "kira/core/interfaces/voice_service.py"
@@ -43,6 +44,7 @@ on:
       - "docs/ECHO_CANCELLATION_FA.md"
       - "tests/test_echo_cancellation.py"
       - "tests/test_voice_input.py"
+      - "tests/test_voice_application_wiring.py"
       - "kira/vad.py"
       - "kira/app/voice_application.py"
       - "kira/core/interfaces/voice_service.py"
@@ -93,6 +95,7 @@ jobs:
           tests.test_noise_reduction
           tests.test_echo_cancellation
           tests.test_voice_input
+          tests.test_voice_application_wiring
           -v
       - name: Lint changed speech modules and tests
         run: >-
@@ -118,6 +121,7 @@ jobs:
           tests/test_noise_reduction.py
           tests/test_echo_cancellation.py
           tests/test_voice_input.py
+          tests/test_voice_application_wiring.py
       - name: Compile changed speech modules and tests
         run: >-
           python -m py_compile
@@ -142,4 +146,5 @@ jobs:
           tests/test_noise_reduction.py
           tests/test_echo_cancellation.py
           tests/test_voice_input.py
+          tests/test_voice_application_wiring.py
 
