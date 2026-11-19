@@ -10,7 +10,6 @@ from .. import modes
 from .. import evidence_memory
 from .. import brain
 from .. import usage
-from .. import mood
 from .. import body as body_ctl
 from ..chat.application_service import ApplicationEventKind
 from ..chat.command_adapters import create_default_command_registry
