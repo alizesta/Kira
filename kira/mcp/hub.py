@@ -155,6 +155,8 @@ class McpHub:
                 _LOGGER.exception("MCP refresh worker failed")
             with self._lock:
                 if not self._refresh_requested or self._shutdown.is_set():
+                    if self._thread is threading.current_thread():
+                        self._thread = None
                     return
                 self._refresh_requested = False
 
