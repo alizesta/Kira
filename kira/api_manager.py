@@ -337,6 +337,8 @@ def register(settings, detection, key, now=None) -> str:
                 pid = p
                 break
     cfg_new = {"api_key": key, "enabled": True, "service": service}
+    if service == "openrouter":
+        cfg_new["base_url"] = SERVICES[service]["base_url"]
     if service == "cloudflare":
         cfg_new["account_id"] = detection.account_id
     if pid:
