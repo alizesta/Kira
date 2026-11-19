@@ -535,6 +535,22 @@ class FileAgentTests(unittest.TestCase):
 
         self.assertEqual(target.read_text(encoding="utf-8"), "current")
 
+    def test_undo_append_refuses_same_content_file_replacement(self):
+        target = self.root / "append-replaced.txt"
+        moved_original = self.root / "append-original-inode.txt"
+        target.write_text("base", encoding="utf-8")
+        appended = self.run_tool("append_text", {"path": str(target), "content": "tail"})
+        self.assertEqual(appended.status, OK, appended.text)
+        expected_content = target.read_text(encoding="utf-8")
+
+        os.replace(target, moved_original)
+        target.write_text(expected_content, encoding="utf-8")
+        result = self.sensitive("undo_file_operation", {})
+
+        self.assertEqual(result.status, ERROR)
+        self.assertEqual(target.read_text(encoding="utf-8"), expected_content)
+        self.assertTrue(moved_original.exists())
+
     def test_undo_append_refuses_same_size_intervening_edits(self):
         target = self.root / "append-guard.txt"
         target.write_text("base", encoding="utf-8")
