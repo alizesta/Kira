@@ -133,7 +133,7 @@ class WidgetRegressionTests(unittest.TestCase):
         self.assertEqual(page.temp.currentText(), "0.35")
         page.deleteLater()
 
-        for invalid in ("nan", "inf", "not-a-number"):
+        for invalid in ("nan", "inf", "not-a-number", True):
             page = build(invalid)
             self.assertEqual(page.temp.currentText(), "0.7")
             page.deleteLater()
