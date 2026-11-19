@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from collections import deque
 
+from .noise_reduction import SpectralNoiseReducer
+
 RATE = 16000
 BLOCK = 512
 CALIBRATION_BLOCKS = 12          # ~0.38 s of room noise measured at start
@@ -42,6 +44,7 @@ class Segmenter:
         self._windows = {}
         freqs = np.fft.rfftfreq(block, 1.0 / rate)
         self._band = (freqs >= 100) & (freqs <= 4000)
+        self._denoiser = SpectralNoiseReducer(rate, block)
         self.reset()
 
     # ---- state ----
@@ -89,6 +92,7 @@ class Segmenter:
         """Feed room-noise blocks first; returns True while still calibrating."""
         if self.calibrating:
             self._calib.append(self.level(blk))
+            self._denoiser.calibrate_block(blk)
             if not self.calibrating:
                 ordered = sorted(self._calib)
                 self.noise = max(0.001, min(0.05, ordered[len(ordered) // 2]))      # median: a single bump cannot skew it
@@ -106,6 +110,7 @@ class Segmenter:
                 return events
             self._reset_barge_watch()
             if lvl < self.start_thr:
+                self._denoiser.update_noise(blk)
                 a = 0.1 if lvl < self.noise else 0.005          # follow the room: down fast, up slowly
                 self.noise = max(0.001, min(0.05, (1 - a) * self.noise + a * lvl))
                 self.onset = 0
@@ -147,6 +152,8 @@ class Segmenter:
         np = self.np
         end = min(len(self.buf), self.last_voiced + TAIL_BLOCKS)
         audio = np.concatenate(self.buf[:end]) if end else np.zeros(0, dtype=np.float32)
+        if audio.size:
+            audio = self._denoiser.process(audio)
         voiced_s = self.voiced * self.block / self.rate
         self.reset()
         events.append(("segment", audio) if voiced_s >= MIN_VOICED_S and len(audio) else ("noise",))
