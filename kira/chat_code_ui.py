@@ -48,7 +48,7 @@ class CodeChat(QObject):
     """Owns the code mode of Kira's chat: project folder, pending patches, the running job / command."""
 
     def __init__(self, win):
-        super().__init__(win)
+        super().__init__(getattr(win, "widget", win))
         self.win = win
         self.patches = cc.PatchStore()
         self.root = None
@@ -86,10 +86,10 @@ class CodeChat(QObject):
     # ------------------------------------------------------------ project / mode
     def pick_folder(self):
         start = str(self.root or Path.home())
-        return QFileDialog.getExistingDirectory(self.win, "پوشه‌ی پروژه برای Ai1 Code", start)
+        return QFileDialog.getExistingDirectory(getattr(self.win, "widget", self.win), "پوشه‌ی پروژه برای Ai1 Code", start)
 
     def confirm(self, title, text, default_no=True):
-        answer = QMessageBox.warning(self.win, title, text, QMessageBox.Yes | QMessageBox.No,
+        answer = QMessageBox.warning(getattr(self.win, "widget", self.win), title, text, QMessageBox.Yes | QMessageBox.No,
                                      QMessageBox.No if default_no else QMessageBox.Yes)
         return answer == QMessageBox.Yes
 

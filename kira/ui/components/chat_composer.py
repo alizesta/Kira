@@ -114,7 +114,7 @@ class ChatComposer(QFrame):
         self.route_badge.setCursor(Qt.PointingHandCursor)
         self.route_badge.setFocusPolicy(Qt.NoFocus)
         self.route_badge.setPopupMode(QToolButton.InstantPopup)
-        self.route_menu = QMenu(owner)
+        self.route_menu = QMenu(owner.widget)
         self.route_menu.setStyleSheet("QMenu { menu-scrollable: 1; }")
         self.route_menu.aboutToShow.connect(owner.build_badge_menu)
         self.route_badge.setMenu(self.route_menu)
@@ -170,7 +170,7 @@ class ChatComposer(QFrame):
         owner.update_image_search_tip()
         bar.addWidget(self.img_search_btn)
 
-        self.code_chat = code_chat_factory(owner)
+        self.code_chat = code_chat_factory(owner.code_chat_host)
         bar.addStretch(1)
 
         self.mic_btn = owner.icon_button("mic", True)

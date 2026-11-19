@@ -1,4 +1,5 @@
 """Voice settings feature controller."""
+from .components.composer_owner import ComposerOwner
 from .main_window_voice_settings_support import (
     AssistantPage,
     ChatComposer,
@@ -104,7 +105,7 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.chat_stack = QStackedWidget()                 # one read-only chat view per character (created in make_session_view)
         cv.addWidget(self.context.views.chat_stack, 1)
         self.context.views.chat_composer = ChatComposer(
-            self.window,
+            ComposerOwner(self.context),
             chat_input_factory=ChatInput,
             route_chip_factory=RouteChip,
             code_chat_factory=CodeChat,
