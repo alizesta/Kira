@@ -305,6 +305,14 @@ class AgentHub:
             _LOGGER.exception("Could not read independent-agent configuration; poller remains stopped")
             return
         with self._lock:
+            # Recheck under the same lock used by shutdown; otherwise a mode
+            # switch between the first check and thread creation can resurrect it.
+            try:
+                if not self.agents_fn():
+                    return
+            except Exception:
+                _LOGGER.exception("Agent configuration changed while starting poller")
+                return
             if self._poller is None or not self._poller.is_alive():
                 self._stop.clear()
                 self._poller = threading.Thread(target=self._poll_loop, daemon=True, name="kira-agent-poller")
@@ -312,8 +320,9 @@ class AgentHub:
 
     def shutdown(self) -> None:
         """Stop background polling; a later explicit request may start it again."""
-        self._stop.set()
-        poller = self._poller
+        with self._lock:
+            self._stop.set()
+            poller = self._poller
         if poller is not None and poller.is_alive() and poller is not threading.current_thread():
             poller.join(timeout=1.0)
 
