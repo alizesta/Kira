@@ -1123,6 +1123,7 @@ class HybridRouter:
         emit = on_event or (lambda event: None)
         try:
             for route in self._candidates():
+                provider = None
                 if self._cancel.is_set():
                     return {"text": "", "tool_calls": [], "stopped": True, "interrupted": None}
                 ok, reason = self.eligibility(route)
@@ -1131,8 +1132,6 @@ class HybridRouter:
                 info = self.route_info(route)
                 try:
                     provider = self._make_provider(route)
-                    last_provider = provider
-                    last_route_info = {**self.route_info(route), "route": route}
                     native = getattr(provider, "chat_with_tools", None)
                     if not callable(native):
                         continue
@@ -1191,6 +1190,8 @@ class HybridRouter:
                 except Exception as exc:                              # noqa: BLE001
                     if self._cancel.is_set():
                         return {"text": "", "tool_calls": [], "stopped": True, "interrupted": None}
+                    last_provider = provider
+                    last_route_info = {**self.route_info(route), "route": route}
                     secrets = (self._provider_cfg(route).get("api_key"),)
                     kind, status, _cooldown = self._mark_failure(route, exc, secrets)
                     failures.append(f"{route['id']}: {redact(exc, *secrets)}")
@@ -1216,7 +1217,9 @@ class HybridRouter:
                     "role": _ROLE.get() or None,
                 }
                 self.last_provider = metrics["provider"]
-                self.last_model = self.last_route_id = self.last_kind = None
+                self.last_model = metrics["model"]
+                self.last_route_id = metrics["route_id"]
+                self.last_kind = metrics["kind"]
                 self.last_error = "\\n".join(failures)
                 self.last_duration_ms = elapsed
                 self.last_metrics = metrics
