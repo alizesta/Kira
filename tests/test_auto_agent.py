@@ -514,6 +514,31 @@ class ReliabilityTests(AgentBase):
         self.assertIn("calc.py:2", found)
         self.assertNotIn("large.py:", found)
 
+    def test_project_copy_enforces_total_size_limit_before_copy(self):
+        source = Path(self.tmp.name) / "source"
+        destination = Path(self.tmp.name) / "copy"
+        source.mkdir()
+        (source / "large.bin").write_bytes(b"123")
+        with mock.patch.object(aa, "MAX_COPY_BYTES", 2):
+            with self.assertRaisesRegex(ValueError, "۴۰۰ مگابایت"):
+                aa.copy_project(source, destination)
+        self.assertFalse((destination / "large.bin").exists())
+
+    def test_project_copy_removes_partial_file_and_reports_path_on_copy_error(self):
+        source = Path(self.tmp.name) / "source"
+        destination = Path(self.tmp.name) / "copy"
+        source.mkdir()
+        (source / "broken.txt").write_text("content", encoding="utf-8")
+
+        def partial_copy(_source, target):
+            Path(target).write_bytes(b"partial")
+            raise OSError("disk full")
+
+        with mock.patch.object(aa.shutil, "copy2", side_effect=partial_copy):
+            with self.assertRaisesRegex(ValueError, "broken.txt"):
+                aa.copy_project(source, destination)
+        self.assertFalse((destination / "broken.txt").exists())
+
     def test_mutation_requires_complete_source_read_and_independent_plan(self):
         agent = self.agent(Script({"action": "write", "path": "calc.py", "content": "bad"}))
         agent.work = self.proj
