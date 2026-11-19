@@ -500,6 +500,20 @@ class ReliabilityTests(AgentBase):
         self.assertEqual(target.read_text(encoding="utf-8"), "original content")
         self.assertFalse(list(self.proj.glob(".important.txt.*.tmp")))
 
+    def test_large_project_files_are_bounded_and_skipped_by_map_and_search(self):
+        large = self.proj / "large.py"
+        large.write_bytes(b"x" * (aa.MAX_FILE_BYTES + 1))
+        agent = self.agent(Script({"action": "finish", "summary": "unused"}))
+        agent.work = self.proj
+        with self.assertRaisesRegex(ValueError, "سقف مجاز"):
+            aa._read_bounded_text(large)
+        mapped = agent.tool_map({})
+        self.assertIn("calc.py", mapped)
+        self.assertNotIn("large.py", mapped)
+        found = agent.tool_search({"pattern": "return a - b", "glob": "*.py"})
+        self.assertIn("calc.py:2", found)
+        self.assertNotIn("large.py:", found)
+
     def test_mutation_requires_complete_source_read_and_independent_plan(self):
         agent = self.agent(Script({"action": "write", "path": "calc.py", "content": "bad"}))
         agent.work = self.proj
