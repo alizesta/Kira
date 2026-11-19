@@ -33,6 +33,11 @@ class CodeChatHost:
     def settings(self):
         return self._context.services.settings
 
+    @property
+    def tool_agent(self):
+        # CodeChat must use the same command guard as the regular chat path.
+        return self._context.services.tool_agent
+
     def __getattr__(self, name: str):
         ctx = self._context
         if name in _STATE:
