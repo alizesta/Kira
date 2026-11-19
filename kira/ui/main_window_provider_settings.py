@@ -144,18 +144,19 @@ class ProviderSettingsController(WindowFeatureController):
         model_toolbar.addWidget(self.context.views.cloud_model_refresh_btn)
         cloud_form.addRow(model_toolbar)
         model_actions = QHBoxLayout()
-        self.context.views.cloud_model_select_all_btn = QPushButton("انتخاب همه")
-        self.context.views.cloud_model_select_free_btn = QPushButton("انتخاب رایگان‌ها")
+        self.context.views.cloud_model_select_all_chk = QCheckBox("انتخاب همه")
+        self.context.views.cloud_model_select_free_chk = QCheckBox("انتخاب رایگان‌ها")
         self.context.views.cloud_model_deselect_btn = QPushButton("لغو انتخاب همه")
         self.context.views.cloud_model_test_all_btn = QPushButton("تست همه مدل‌ها")
-        self.context.views.cloud_model_select_all_btn.clicked.connect(lambda: self.set_cloud_models_selected("all"))
-        self.context.views.cloud_model_select_free_btn.clicked.connect(lambda: self.set_cloud_models_selected("free"))
+        self.context.views.cloud_model_select_all_chk.toggled.connect(lambda checked: self.set_cloud_models_selected("all" if checked else "none"))
+        self.context.views.cloud_model_select_free_chk.toggled.connect(lambda checked: self.set_cloud_models_selected("free" if checked else "none"))
         self.context.views.cloud_model_deselect_btn.clicked.connect(lambda: self.set_cloud_models_selected("none"))
         self.context.views.cloud_model_test_all_btn.clicked.connect(self.run_catalog_model_tests)
-        for button in (self.context.views.cloud_model_select_all_btn, self.context.views.cloud_model_select_free_btn, self.context.views.cloud_model_deselect_btn, self.context.views.cloud_model_test_all_btn): model_actions.addWidget(button)
+        for control in (self.context.views.cloud_model_select_all_chk, self.context.views.cloud_model_select_free_chk, self.context.views.cloud_model_deselect_btn, self.context.views.cloud_model_test_all_btn): model_actions.addWidget(control)
         cloud_form.addRow(model_actions)
         self.context.views.cloud_model_status = QLabel("فهرست مدل‌های Chat")
         self.context.views.cloud_model_status.setObjectName("hint")
+        self.context.views.cloud_model_status.setWordWrap(True)
         cloud_form.addRow(self.context.views.cloud_model_status)
         model_list = QListWidget()
         model_list.setAlternatingRowColors(True)
@@ -445,6 +446,11 @@ class ProviderSettingsController(WindowFeatureController):
             widget.blockSignals(False)
         self._api_changed()
         labels = {"all": "همه انتخاب شدند.", "free": "مدل‌های رایگان انتخاب شدند.", "none": "انتخاب همه مدل‌ها لغو شد."}
+        for checkbox, checked in ((self.context.views.cloud_model_select_all_chk, mode == "all"),
+                                  (self.context.views.cloud_model_select_free_chk, mode == "free")):
+            checkbox.blockSignals(True)
+            checkbox.setChecked(checked)
+            checkbox.blockSignals(False)
         self.context.views.cloud_model_status.setText(f"{changed} مدل پردازش شد؛ {labels[mode]}")
 
     def run_catalog_model_tests(self):
@@ -488,6 +494,8 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.session.busy = True
         self.context.state._bench_busy = True
         self.context.views.cloud_model_test_all_btn.setEnabled(False)
+        self._catalog_bench_active = True
+        self.context.views.cloud_model_status.setText("در حال تست تمام مدل‌های کاتالوگ…")
         self.context.views.bench_out.setPlainText("در حال تست تمام مدل‌های کاتالوگ…")
         self._bench_lines = []
         worker = BenchWorker(test_router, route_ids)
@@ -1355,6 +1363,9 @@ class ProviderSettingsController(WindowFeatureController):
                 lines.append(f"\nسریع‌ترین اولین Token: {ranked[0]['label']} / {ranked[0]['model']} ({ranked[0]['first_token_ms']} ms)")
             self.context.views.bench_out.setPlainText("\n".join(lines))
         self.refresh_route_list()
+        if getattr(self, "_catalog_bench_active", False):
+            self._catalog_bench_active = False
+            self.context.views.cloud_model_status.setText("\\n".join(self.format_bench_row(row) for row in value) if ok else "تست ناموفق: " + str(value))
         if "cloud_model_test_all_btn" in self.context.views:
             self.context.views.cloud_model_test_all_btn.setEnabled(True)
         self.feature_controller("runtime")._send_next_pending()
