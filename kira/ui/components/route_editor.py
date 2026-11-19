@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QTextEdit,
     QToolButton,
@@ -102,10 +103,7 @@ class RouteEditor(QWidget):
         self.route_provider_lbl.setToolTip("Provider انتخاب‌شده")
         self.route_model_edit = model_combo_factory("")
         self.route_model_edit.setMinimumWidth(260)
-        self.route_model_edit.setSizePolicy(
-            self.route_model_edit.sizePolicy().horizontalPolicy(),
-            self.route_model_edit.sizePolicy().verticalPolicy(),
-        )
+        self.route_model_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         model_row.addWidget(self.route_provider_lbl)
         model_row.addWidget(self.route_model_edit, 1)
         self.route_enabled_chk = QCheckBox("فعال")
