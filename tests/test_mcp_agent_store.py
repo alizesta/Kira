@@ -152,6 +152,13 @@ class JobStoreTests(unittest.TestCase):
             hub.shutdown()
             self.assertFalse(second.is_alive())
 
+    def test_agent_poller_rechecks_configuration_before_thread_creation(self):
+        with tempfile.TemporaryDirectory() as temp:
+            config = mock.Mock(side_effect=[{"worker": {"name": "worker"}}, {}])
+            hub = AgentHub(mock.Mock(), Path(temp), config)
+            hub._ensure_poller()
+            self.assertIsNone(hub._poller)
+
     def test_agent_poller_does_not_start_without_enabled_agent_config(self):
         with tempfile.TemporaryDirectory() as temp:
             hub = AgentHub(mock.Mock(), Path(temp), lambda: {})
