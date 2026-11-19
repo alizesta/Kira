@@ -156,6 +156,17 @@ class Journal:
             return self._save()
 
 
+def _unlink_created_if_same(path: str, expected_stat) -> None:
+    """Remove only the inode this operation created; never unlink a raced replacement."""
+    try:
+        current_stat = os.lstat(path)
+    except FileNotFoundError:
+        return
+    if not os.path.samestat(expected_stat, current_stat):
+        raise OSError("destination was replaced by another process; refusing to remove it")
+    os.unlink(path)
+
+
 def _is_link_or_reparse(path: str) -> bool:
     """Treat symlinks and Windows junction/reparse points as links; fail closed on unreadable metadata."""
     isjunction = getattr(os.path, "isjunction", None)
@@ -251,16 +262,19 @@ class FileAgent:
             created = open(target, "xb")                               # "x": fails instead of overwriting, even in a race
         except OSError:
             raise
+        created_stat = os.fstat(created.fileno())
         try:
             with created as fh:
                 written = fh.write(data)
                 if written != len(data):
                     raise OSError("short write while creating file")
-            if not os.path.isfile(target) or os.path.getsize(target) != len(data):
-                raise OSError("created file size does not match content")
+            current_stat = os.lstat(target)
+            if (not os.path.samestat(created_stat, current_stat)
+                    or not os.path.isfile(target) or os.path.getsize(target) != len(data)):
+                raise OSError("created file was replaced or its size does not match content")
         except Exception as exc:
             try:
-                os.unlink(target)
+                _unlink_created_if_same(target, created_stat)
             except FileNotFoundError:
                 pass
             except OSError:
@@ -356,15 +370,18 @@ class FileAgent:
             destination = open(target, "xb")
         except OSError as exc:
             raise ToolError(f"مقصد کپی ایجاد نشد: {exc}") from exc
+        created_stat = os.fstat(destination.fileno())
         try:
             with destination as out, open(src, "rb") as source:
                 shutil.copyfileobj(source, out)
             shutil.copystat(src, target)
-            if os.path.getsize(target) != os.path.getsize(src):
-                raise OSError("copied file size does not match source")
+            current_stat = os.lstat(target)
+            if (not os.path.samestat(created_stat, current_stat)
+                    or os.path.getsize(target) != os.path.getsize(src)):
+                raise OSError("copied file was replaced or its size does not match source")
         except Exception as exc:
             try:
-                os.unlink(target)
+                _unlink_created_if_same(target, created_stat)
             except FileNotFoundError:
                 pass
             except OSError:
