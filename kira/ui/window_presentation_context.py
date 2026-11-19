@@ -326,8 +326,8 @@ class _FieldBucket:
 # composition-only; adding a root field never grants it to feature controllers.
 CONTROLLER_ACCESS = {
  "runtime": {
-  "state": frozenset({"_clicks","_close_after_local_voice","_closing","_game_mode_profile","_last_variant","_provider_workers","_save_warned","awake","cur","front","reactions","sessions"}),
-  "services": frozenset({"brain_application_service","character_service","chat_application_service","game_mode_application_service","memory_service","mood_service","provider_application_service","reflection_application_service","session_application_service","settings","tool_agent","voice_application_service"}),
+  "state": frozenset({"_clicks","_close_after_local_voice","_closing","_quitting","_game_mode_profile","_last_variant","_provider_workers","_save_warned","awake","cur","front","reactions","sessions"}),
+  "services": frozenset({"brain_application_service","character_service","chat_application_service","vision_application_service","game_mode_application_service","memory_service","mood_service","provider_application_service","reflection_application_service","session_application_service","settings","tool_agent","voice_application_service"}),
   "adapters": frozenset({"animator","bubble","companion","director","game_mode"}),
   "views": frozenset({"code_chat","companion_btn","gen_stop_btn","input","mic_btn","route_badge","route_menu","route_status","send_btn","status","tab_keys","tray","voice_btn","voice_page","wake_btn","wake_timer"}),
   "peers": frozenset({"session","provider_settings","attachments_vision","chat","lifecycle","voice_settings"}),
@@ -347,7 +347,7 @@ CONTROLLER_ACCESS = {
   "state": frozenset({"_att_seq","_chat_action_seq","_chat_action_texts","_menu_actions","_nav_icon_map","_status","_tr","cur","front","sessions","_closing","_effect","_mood_emotion_glow"}),
   "services": frozenset({"character_service","chat_application_service","initiative_application_service","mood_service","provider_application_service","session_application_service","session_manager","settings","tool_agent","voice_application_service"}),
   "adapters": frozenset({"bubble","director","chat_attachment_controller"}),
-  "views": frozenset({"appearance_page","assistant_page","char_tab_buttons","char_tab_group","char_tabs_row","character_page","chat_page","chat_stack","gen_stop_btn","glow_effects","help_page","input","mic_btn","mood_indicator","mood_emotion_icon","nav_buttons","avatar_card","menu_btn","route_badge","preferences_page","save_btn","status","tab_keys","tabs","title","voice_page"}),
+  "views": frozenset({"code_chat","appearance_page","assistant_page","char_tab_buttons","char_tab_group","char_tabs_row","character_page","chat_page","chat_stack","gen_stop_btn","glow_effects","help_page","input","mic_btn","mood_indicator","mood_emotion_icon","nav_buttons","avatar_card","menu_btn","route_badge","preferences_page","save_btn","status","tab_keys","tabs","title","voice_page"}),
   "peers": frozenset({"runtime","character_settings","attachments_vision","voice_settings"}),
   "resources": frozenset(),
   "extras": frozenset({"session","is_background_session"}),
@@ -392,7 +392,7 @@ CONTROLLER_ACCESS = {
   "state": frozenset({"_close_after_local_voice","_closing","_local_stt_test_listener","_local_tts_test_active","_local_voice_worker","_model_import_worker"}),
   "services": frozenset({"game_mode_application_service","provider_application_service","settings","voice_application_service"}),
   "adapters": frozenset({"animator"}),
-  "views": frozenset({"api_add_status","assistant_page","avatar","avatar_card","char_tab_buttons","char_tab_group","char_tabs_row","chat_composer","chat_page","chat_stack","companion_btn","glow_effects","import_model_btn","local_asr_download_btn","local_asr_load_btn","local_asr_path_edit","local_model_tabs","local_stt_test_btn","local_tts_download_btn","local_tts_model_path","local_tts_test_btn","local_voice_progress","local_voice_status","local_whisper_path","model","mood_emotion_icon","mood_indicator","status","tab_keys","tabs","title","voice_page"}),
+  "views": frozenset({"api_add_status","assistant_page","avatar","avatar_card","char_tab_buttons","char_tab_group","char_tabs_row","chat_composer","chat_page","chat_stack","companion_btn","glow_effects","import_model_btn","local_asr_download_btn","local_asr_load_btn","local_asr_model_list","local_asr_path_edit","local_model_tabs","local_stt_test_btn","local_tts_download_btn","local_tts_model_list","local_tts_model_path","local_tts_test_btn","local_voice_progress","local_voice_status","local_whisper_path","model","mood_emotion_icon","mood_indicator","status","tab_keys","tabs","title","voice_page"}),
   "peers": frozenset({"session","runtime","lifecycle","provider_settings","character_settings","chat"}),
   "resources": frozenset({"_local_stt_test_listener"}),
   "extras": frozenset({"resource","is_background_session"}),
