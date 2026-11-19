@@ -221,6 +221,18 @@ class VoiceSettingsController(WindowFeatureController):
 
     def download_local_whisper_model(self):
         value = str(self.context.views.voice_page.whisper.currentText() or "").strip()
+        if value.casefold().startswith("whisper.cpp vulkan"):
+            from .. import local_voice
+            self.context.views.local_voice_status.setText(
+                "در حال دریافت موتور Vulkan و مدل چندزبانه Whisper؛ حجم مدل حدود ۵۷۴ مگابایت است…"
+            )
+            self._run_local_voice_task(
+                lambda cancel: local_voice.install_and_download_whisper_cpp(cancel_event=cancel),
+                self.context.views.voice_page.whisper_download_btn,
+                self._on_whisper_cpp_downloaded,
+                cancellable=True,
+            )
+            return
         if value.casefold() == "qwen/qwen3-asr-0.6b":
             self.context.views.local_asr_path_edit.setText(value)
             self.context.views.local_voice_status.setText("در حال نصب موتور Qwen ASR و دانلود مدل محلی…")
