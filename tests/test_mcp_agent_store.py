@@ -38,7 +38,8 @@ class JobStoreTests(unittest.TestCase):
             path.write_text(
                 '{"jobs": {'
                 '"bad-time": {"id": "bad-time", "agent": "worker", "remote_id": "r1", "state": "progress", "created": NaN},'
-                '"bad-state": {"id": "bad-state", "agent": "worker", "remote_id": "r2", "state": "mystery", "created": 1}'
+                '"bad-state": {"id": "bad-state", "agent": "worker", "remote_id": "r2", "state": "mystery", "created": 1},'
+                '"bad-text": {"id": "bad-text", "agent": "worker", "remote_id": "r3", "state": "progress", "created": 1, "text": []}'
                 '}}',
                 encoding="utf-8",
             )
