@@ -230,12 +230,21 @@ class McpHub:
         client = None
         try:
             client = make_client(cfg)
+            if self._shutdown.is_set():
+                client.close()
+                return False
             # Publish immediately so shutdown can always find a process even
             # while initialize/list_tools are still waiting for the server.
             with self._lock:
                 self._clients[name] = client
+            if self._shutdown.is_set():
+                raise McpError("MCP hub is shutting down")
             client.start()
+            if self._shutdown.is_set():
+                raise McpError("MCP hub is shutting down")
             client.initialize(cfg["timeout"])
+            if self._shutdown.is_set():
+                raise McpError("MCP hub is shutting down")
             tools = client.list_tools(cfg["timeout"])
             if self._shutdown.is_set():
                 raise McpError("MCP hub is shutting down")
@@ -345,9 +354,18 @@ class McpHub:
     def shutdown(self) -> None:
         self._shutdown.set()
         with self._lock:
+            clients = tuple(self._clients.items())
             names = set(self._clients) | set(self._cfg.get("servers", {}))
         with self._state_lock:
             names.update(name for name in self.state if not name.startswith("_"))
+        # Close published stdio clients before waiting for their per-server
+        # locks: this interrupts an in-flight initialize/RPC instead of making
+        # application shutdown wait for the full server timeout.
+        for name, client in clients:
+            try:
+                client.close()
+            except Exception:
+                _LOGGER.exception("Could not interrupt MCP server %s during shutdown", name)
         for name in sorted(names):
             self._drop(name)
 
