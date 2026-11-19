@@ -30,6 +30,15 @@ class VoiceApplicationWiringTests(unittest.TestCase):
             composition,
         )
 
+    def test_tray_exit_delegates_to_close_event_shutdown(self):
+        lifecycle = self.read("kira/ui/main_window_lifecycle.py")
+        start = lifecycle.index("    def quit_app(self):")
+        end = lifecycle.find("\n    def ", start + 5)
+        method = lifecycle[start:end if end >= 0 else len(lifecycle)]
+        self.assertIn("self.window.close()", method)
+        self.assertNotIn("app.quit()", method)
+        self.assertIn("closeEvent", self.read("kira/ui/main_window_runtime.py"))
+
     def test_chat_ports_use_context_and_preserve_shared_skill_enrichment(self):
         adapters = self.read("kira/ui/application_adapters.py")
         composition = self.read("kira/ui/main_window_composition.py")
