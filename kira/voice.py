@@ -89,6 +89,8 @@ class Speaker(QObject):
         self._tmp = tempfile.mkdtemp(prefix="kira_tts_")
         self._gen = 0
         self._session = None
+        self._worker_lock = threading.Lock()
+        self._worker_threads = set()
         self._fx = None
         self._out = None
         self._env = []
@@ -291,9 +293,35 @@ class Speaker(QObject):
         self._start_worker(s)
 
     def _start_worker(self, s):
-        if s.worker is None or not s.worker.is_alive():
-            s.worker = threading.Thread(target=self._run_session, args=(s,), daemon=True)
-            s.worker.start()
+        with self._worker_lock:
+            self._worker_threads = {
+                worker for worker in self._worker_threads if worker.is_alive()
+            }
+            if s.worker is not None and s.worker.is_alive():
+                return
+
+            worker = threading.Thread(
+                target=self._run_session,
+                args=(s,),
+                daemon=True,
+                name=f"kira-tts-{s.gen}",
+            )
+            s.worker = worker
+            self._worker_threads.add(worker)
+            try:
+                worker.start()
+            except Exception:
+                self._worker_threads.discard(worker)
+                s.worker = None
+                raise
+
+    def is_idle(self):
+        """Return True only after every synthesis thread has actually exited."""
+        with self._worker_lock:
+            self._worker_threads = {
+                worker for worker in self._worker_threads if worker.is_alive()
+            }
+            return not self._worker_threads
 
     def _remove_temp(self, path):
         try:
@@ -321,7 +349,10 @@ class Speaker(QObject):
                     result = (s.paths[idx], []) if idx in s.paths else self._synth(s, idx, text)
                 except Exception as e:                         # noqa: BLE001 - one bad sentence must not stop the rest
                     result = None
-                    self._failed.emit(s.gen, f"ساخت صدا ناموفق بود: {type(e).__name__}: {e}")
+                    # A stopped generation must never emit through a Speaker
+                    # QObject that may be in deferred application shutdown.
+                    if s.gen == self._gen:
+                        self._failed.emit(s.gen, f"ساخت صدا ناموفق بود: {type(e).__name__}: {e}")
                 if s.gen != self._gen:
                     if result:
                         self._remove_temp(result[0])
