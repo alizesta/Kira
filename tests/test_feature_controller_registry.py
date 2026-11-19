@@ -191,6 +191,19 @@ class FeatureControllerRegistryTests(unittest.TestCase):
                         violations.append(
                             f"{feature}:{node.lineno}:{node.args[0].attr}.{node.args[1].value}"
                         )
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id in {"getattr", "hasattr"} and len(node.args) > 1
+                        and isinstance(node.args[1], ast.Constant)
+                        and isinstance(node.args[0], ast.Attribute)
+                        and isinstance(node.args[0].value, ast.Attribute)
+                        and isinstance(node.args[0].value.value, ast.Name)
+                        and node.args[0].value.value.id == "self"
+                        and node.args[0].value.attr == "context"
+                        and node.args[0].attr in {"state", "services", "adapters", "views"}
+                        and node.args[1].value not in access[node.args[0].attr]):
+                    violations.append(
+                        f"{feature}:{node.lineno}:{node.args[0].attr}.{node.args[1].value}"
+                    )
                 if (isinstance(node, ast.Attribute) and node.attr == "presentation_context"
                         and isinstance(node.value, ast.Attribute)
                         and isinstance(node.value.value, ast.Name)
