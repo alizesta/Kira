@@ -76,11 +76,15 @@ class _Speaker:
         self.played = []
         self.reset_count = 0
         self.end_count = 0
+        self.emotions = []
         self.settings = {"voice_volume": 70}
         self.idle = True
 
     def is_idle(self):
         return self.idle
+
+    def set_emotion(self, emotions=(), intensity=None):
+        self.emotions.append((list(emotions or ()), intensity))
 
     def speak(self, text, rate=None, pitch=None, cache=False):
         self.spoken.append((text, rate, pitch, cache))
@@ -172,6 +176,25 @@ class VoiceApplicationServiceTests(unittest.TestCase):
             "سلام", wake_enabled=False, awake=False
         )
         self.assertEqual((normal.action, normal.text), ("submit", "سلام"))
+
+
+    def test_emotion_metadata_is_forwarded_to_optional_speaker_capability(self):
+        self.service.set_emotion(["sad"], 82)
+        self.assertEqual(self.speaker.emotions, [(["sad"], 82)])
+
+    def test_emotion_forwarding_remains_compatible_with_legacy_speakers(self):
+        service = VoiceApplicationService(
+            speaker=object(),
+            listener_factory=lambda: None,
+            on_heard=lambda _text: None,
+            on_interrupted=lambda: None,
+            on_state=lambda _state: None,
+            on_error=lambda _message: None,
+            on_note=lambda _message: None,
+            on_finished=lambda *_args: None,
+            on_waiting=lambda: None,
+        )
+        service.set_emotion(["happy"], 60)
 
     def test_voice_service_implements_speech_and_recording_ports(self):
         self.service.start_recording()

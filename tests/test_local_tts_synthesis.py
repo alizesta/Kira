@@ -14,8 +14,10 @@ from kira import local_voice
 
 
 class _FakeSynthesisConfig:
-    def __init__(self, length_scale=None):
+    def __init__(self, length_scale=None, noise_scale=None, noise_w_scale=None):
         self.length_scale = length_scale
+        self.noise_scale = noise_scale
+        self.noise_w_scale = noise_w_scale
 
 
 class _FakePiperVoice:
@@ -105,6 +107,25 @@ class LocalPiperSynthesisTests(unittest.TestCase):
                 self.assertEqual(wav_file.getframerate(), 24000)
                 self.assertEqual(wav_file.getnchannels(), 1)
                 self.assertEqual(wav_file.getsampwidth(), 2)
+
+
+    def test_emotion_profile_controls_native_piper_parameters(self):
+        from kira.voice_prosody import resolve_prosody
+
+        profile = resolve_prosody(["sad"], 100)
+        with tempfile.TemporaryDirectory() as temp:
+            model = Path(temp) / "voice.onnx"
+            model.write_bytes(b"fake model")
+            Path(str(model) + ".json").write_text("{}", encoding="utf-8")
+            with mock.patch.object(
+                local_voice, "_resolve_tts_model_path", return_value=(model, str(model))
+            ):
+                local_voice.synthesize_persian("ناراحتم", model_path=str(model), prosody=profile)
+
+        config = _FakePiperVoice.instances[str(model)].configs[0][1]
+        self.assertAlmostEqual(config.length_scale, profile["length_scale"])
+        self.assertAlmostEqual(config.noise_scale, profile["noise_scale"])
+        self.assertAlmostEqual(config.noise_w_scale, profile["noise_w"])
 
     def test_zero_rate_uses_native_default_length_scale(self):
         path = Path(tempfile.gettempdir()) / "mana-default.onnx"
@@ -281,6 +302,27 @@ class LocalPiperSynthesisTests(unittest.TestCase):
             model.write_bytes(b"fake model")
             with self.assertRaisesRegex(RuntimeError, "configuration is missing"):
                 local_voice._resolve_tts_model_path(str(model))
+
+
+    def test_tts_cache_identity_changes_when_model_or_sidecar_changes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            model = Path(temp) / "cache-identity.onnx"
+            sidecar = Path(str(model) + ".json")
+            model.write_bytes(b"model-v1")
+            sidecar.write_text('{"length_scale": 1}', encoding="utf-8")
+            with mock.patch.object(
+                local_voice, "_resolve_tts_model_path", return_value=(model, str(model))
+            ):
+                original = local_voice.tts_cache_identity(str(model))
+                sidecar.write_text('{"length_scale": 2}', encoding="utf-8")
+                os.utime(sidecar, None)
+                metadata_changed = local_voice.tts_cache_identity(str(model))
+                model.write_bytes(b"model-v2-with-new-weights")
+                os.utime(model, None)
+                weights_changed = local_voice.tts_cache_identity(str(model))
+
+        self.assertNotEqual(original, metadata_changed)
+        self.assertNotEqual(metadata_changed, weights_changed)
 
 
 if __name__ == "__main__":

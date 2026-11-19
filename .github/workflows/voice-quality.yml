@@ -1,0 +1,108 @@
+name: Voice Quality Tests
+
+on:
+  push:
+    branches: [new-main]
+    paths:
+      - "kira/local_voice.py"
+      - "kira/voice.py"
+      - "kira/voice_prosody.py"
+      - "kira/app/voice_application.py"
+      - "kira/core/interfaces/voice_service.py"
+      - "kira/ui/main_window_runtime.py"
+      - "scripts/benchmark_piper_voices.py"
+      - "docs/EMOTION_DRIVEN_TTS_FA.md"
+      - "kira/persian_ezafe.py"
+      - "tests/test_local_tts_synthesis.py"
+      - "tests/test_persian_tts_text.py"
+      - "tests/test_voice_audio_cache.py"
+      - "tests/test_voice_prosody.py"
+      - "tests/test_voice_application.py"
+      - "tests/test_voice_tts.py"
+      - ".github/workflows/voice-quality.yml"
+      - "requirements.txt"
+  pull_request:
+    branches: [new-main]
+    paths:
+      - "kira/local_voice.py"
+      - "kira/voice.py"
+      - "kira/voice_prosody.py"
+      - "kira/app/voice_application.py"
+      - "kira/core/interfaces/voice_service.py"
+      - "kira/ui/main_window_runtime.py"
+      - "scripts/benchmark_piper_voices.py"
+      - "docs/EMOTION_DRIVEN_TTS_FA.md"
+      - "kira/persian_ezafe.py"
+      - "tests/test_local_tts_synthesis.py"
+      - "tests/test_persian_tts_text.py"
+      - "tests/test_voice_audio_cache.py"
+      - "tests/test_voice_prosody.py"
+      - "tests/test_voice_application.py"
+      - "tests/test_voice_tts.py"
+      - ".github/workflows/voice-quality.yml"
+      - "requirements.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  voice-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      QT_QPA_PLATFORM: offscreen
+      KIRA_TTS_EZAFE: "0"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+      - name: Install project test dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run focused local TTS regression tests
+        run: >-
+          python -m unittest
+          tests.test_local_tts_synthesis
+          tests.test_persian_tts_text
+          tests.test_voice_audio_cache
+          tests.test_voice_prosody
+          tests.test_voice_application
+          tests.test_voice_tts
+          -v
+      - name: Lint changed speech modules and tests
+        run: >-
+          ruff check
+          kira/local_voice.py
+          kira/voice.py
+          kira/voice_prosody.py
+          kira/app/voice_application.py
+          kira/core/interfaces/voice_service.py
+          kira/ui/main_window_runtime.py
+          scripts/benchmark_piper_voices.py
+          tests/test_voice_prosody.py
+          tests/test_voice_application.py
+          tests/test_voice_tts.py
+          tests/test_local_tts_synthesis.py
+          tests/test_persian_tts_text.py
+          tests/test_voice_audio_cache.py
+      - name: Compile changed speech modules and tests
+        run: >-
+          python -m py_compile
+          kira/local_voice.py
+          kira/voice.py
+          kira/voice_prosody.py
+          kira/app/voice_application.py
+          kira/core/interfaces/voice_service.py
+          kira/ui/main_window_runtime.py
+          scripts/benchmark_piper_voices.py
+          tests/test_voice_prosody.py
+          tests/test_voice_application.py
+          tests/test_voice_tts.py
+          tests/test_local_tts_synthesis.py
+          tests/test_persian_tts_text.py
+          tests/test_voice_audio_cache.py
+
