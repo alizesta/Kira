@@ -11,43 +11,122 @@ from ..core.interfaces.application_ports import (
 from .workers import StreamWorker
 
 
-class QtProviderWorkerAdapter:
-    """Translate Qt worker signals into the toolkit-neutral provider worker port."""
+class _QtProviderEventRelay(QObject):
+    """Deliver provider callbacks on the GUI thread, including service lambdas."""
+
+    def __init__(self, callback, parent=None):
+        super().__init__(parent)
+        self._callback = callback
+
+    @Slot(str)
+    def text(self, value):
+        self._callback(value)
+
+    @Slot(dict)
+    def payload(self, value):
+        self._callback(value)
+
+
+class QtProviderWorkerAdapter(QObject):
+    """Translate provider QThread signals and retain them through true thread exit."""
 
     _SIGNALS = {
-        "tool_event": "tool_event",
-        "event": "event",
-        "chunk": "chunk",
-        "complete": "finished_ok",
-        "error": "failed",
+        "tool_event": ("tool_event", "payload"),
+        "event": ("event", "payload"),
+        "chunk": ("chunk", "text"),
+        "complete": ("finished_ok", "payload"),
+        "error": ("failed", "text"),
     }
 
-    def __init__(self, worker):
+    def __init__(self, worker, *, parent=None, registry=None):
+        super().__init__(parent)
         self._worker = worker
+        self._registry = registry
+        self._subscriptions = {}
+        self._released = False
+        # The QThread QObject has GUI-thread affinity. Parenting it to this
+        # adapter guarantees it cannot outlive its owner during window teardown.
+        worker.setParent(self)
+        if registry is not None:
+            registry.add(self)
+        worker.finished.connect(self._on_worker_finished, Qt.QueuedConnection)
 
     def subscribe(self, event, callback):
         try:
-            signal_name = self._SIGNALS[event]
+            signal_name, relay_name = self._SIGNALS[event]
         except KeyError as exc:
             raise ValueError(f"Unsupported provider event: {event}") from exc
         signal = getattr(self._worker, signal_name)
-        signal.connect(callback)
+        relay = _QtProviderEventRelay(callback, parent=self)
+        slot = getattr(relay, relay_name)
+        signal.connect(slot, Qt.QueuedConnection)
+        self._subscriptions.setdefault(event, []).append((signal, slot, relay))
 
         def unsubscribe():
-            try:
-                signal.disconnect(callback)
-                return True
-            except (RuntimeError, TypeError):
+            subscriptions = self._subscriptions.get(event, [])
+            match = next(
+                (item for item in subscriptions if item[2] is relay), None
+            )
+            if match is None:
                 return False
+            subscriptions.remove(match)
+            if not subscriptions:
+                self._subscriptions.pop(event, None)
+            source, target, receiver = match
+            try:
+                source.disconnect(target)
+            except (RuntimeError, TypeError):
+                pass
+            receiver.deleteLater()
+            return True
 
         return unsubscribe
 
     def start(self):
-        return self._worker.start()
+        try:
+            return self._worker.start()
+        except Exception:
+            self._release()
+            raise
+
+    @Slot()
+    def _on_worker_finished(self):
+        self._release()
+
+    def _release(self):
+        if self._released:
+            return
+        self._released = True
+        subscriptions, self._subscriptions = self._subscriptions, {}
+        for entries in subscriptions.values():
+            for signal, slot, relay in entries:
+                try:
+                    signal.disconnect(slot)
+                except (RuntimeError, TypeError):
+                    pass
+                relay.deleteLater()
+        if self._registry is not None:
+            self._registry.discard(self)
+        worker, self._worker = self._worker, None
+        if worker is not None:
+            worker.deleteLater()
+        self.deleteLater()
+
+    def isRunning(self):
+        worker = self._worker
+        if worker is None:
+            return False
+        try:
+            return bool(worker.isRunning())
+        except RuntimeError:
+            return False
 
     def __getattr__(self, name):
         # Preserve worker cancellation/diagnostic hooks for existing UI adapters.
-        return getattr(self._worker, name)
+        worker = object.__getattribute__(self, "_worker")
+        if worker is None:
+            raise AttributeError(name)
+        return getattr(worker, name)
 
 
 class _QtVoiceEventRelay(QObject):
@@ -202,9 +281,16 @@ class QtSpeakerAdapter:
 
 def create_chat_application_ports(context) -> ChatApplicationPorts:
     """Expose the minimum UI/provider boundary required by Chat application logic."""
+    def create_worker(**request):
+        return QtProviderWorkerAdapter(
+            StreamWorker(**request),
+            parent=context.host,
+            registry=context.state._provider_workers,
+        )
+
     return ChatApplicationPorts(
         prompt_enricher=lambda value: _enrich_chat_prompt(context, value),
-        worker_factory=lambda **request: QtProviderWorkerAdapter(StreamWorker(**request)),
+        worker_factory=create_worker,
         on_dispatch=context.controllers.require("chat")._dispatch_application_request,
         on_event=context.controllers.require("chat")._on_chat_application_event,
         schedule=lambda callback: QTimer.singleShot(0, callback),
