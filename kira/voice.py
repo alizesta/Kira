@@ -12,7 +12,7 @@ import wave
 from .config import DATA_DIR
 from .speech_split import StreamSplitter, split_sentences, strip_think
 from .leak_guard import strip_blocks, scrub_lines
-from .voice_prosody import resolve_prosody, split_comma_clauses, join_wavs_with_pauses
+from .voice_prosody import apply_audio_effects, resolve_prosody, split_comma_clauses, join_wavs_with_pauses
 from PySide6.QtCore import QObject, Signal, Slot, QUrl, QTimer, QElapsedTimer
 from PySide6.QtMultimedia import QSoundEffect, QMediaPlayer, QAudioOutput, QMediaDevices
 
@@ -488,7 +488,9 @@ class Speaker(QObject):
             audio_parts = []
             has_following_sentence = idx + 1 < len(s.sentences) or not s.input_done
             for clause_index, clause in enumerate(clauses):
-                audio = local_voice.synthesize_persian(clause, model_path, rate, prosody=prosody)
+                audio = local_voice.synthesize_persian(
+                    clause, model_path, rate, prosody=prosody, postprocess=False
+                )
                 if clause_index < len(clauses) - 1:
                     pause = prosody["pause_comma_ms"]
                 elif has_following_sentence:
@@ -497,6 +499,10 @@ class Speaker(QObject):
                     pause = 0
                 audio_parts.append((audio, pause))
             audio = join_wavs_with_pauses(audio_parts)
+            try:
+                audio = apply_audio_effects(audio, prosody)
+            except Exception:
+                self._report("پس‌پردازش اختیاری صدای احساسی انجام نشد؛ خروجی اصلی Piper حفظ شد.")
             return self._save_local_wav(tag, audio, s.cache, wav_path, meta_path)
 
     def _save_local_wav(self, tag, audio, cache, wav_path, meta_path):
