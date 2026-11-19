@@ -257,7 +257,24 @@ class BaseProvider(ChatProvider):
             raise self._fail("سهمیه یا محدودیت درخواست تمام شده (429).", True, 429, "rate", retry_after)
         if code >= 500:
             raise self._fail(f"خطای سرور سرویس ({code}).", True, code, "server")
-        if code in (401, 403):
+        if code == 403:
+            detail = _api_message(response)
+            low = detail.casefold()
+            # Several providers use 403 for model/plan gates, not invalid credentials.
+            model_access_terms = (
+                "not available on the workers free plan", "not available for free",
+                "model agreement", "submit the prompt 'agree'", "submit 'agree'",
+                "paid version is available", "requires a paid plan", "requires payment",
+                "model is not available", "model access is denied",
+            )
+            if any(term in low for term in model_access_terms):
+                raise self._fail(f"مدل «{self.model}» در پلن یا سطح دسترسی فعلی قابل استفاده نیست ({code}). {detail}",
+                                 False, code, "model")
+            if "network settings" in low or "ip address" in low or "geo restriction" in low:
+                raise self._fail(f"دسترسی شبکه به {self.name} رد شد ({code}). تنظیمات شبکه، VPN یا محدودیت IP را بررسی کن. {detail}",
+                                 True, code, "network")
+            raise self._fail(f"{self.auth_hint} ({code}). {detail}", False, code, "auth")
+        if code == 401:
             raise self._fail(f"{self.auth_hint} ({code}). {_api_message(response)}", False, code, "auth")
         if code >= 400:
             detail = _api_message(response)
@@ -756,9 +773,24 @@ class HybridRouter:
         if _VISION_ONLY.get():
             base = [r for r in base if self._route_supports_vision(r, self._provider_cfg(r))]
         preferred = next((r for r in routes if r["id"] == prefer and r in base), None) if prefer else None
-        if preferred is None:
-            return base
-        return [preferred] + [r for r in base if r["id"] != preferred["id"]]
+        # Explicit role/manual selections remain pinned unless they are currently rate-limited.
+        pinned = preferred or chosen
+        now = time.monotonic()
+        if pinned is not None and self.cooldowns.get(pinned["id"], 0) > now:
+            pinned = None
+
+        def queue_key(route):
+            rid = route["id"]
+            state = self._state(rid)
+            rate_limited = self.cooldowns.get(rid, 0) > now and state.get("last_kind") == "rate"
+            latency = state.get("latency_ms")
+            known_latency = isinstance(latency, (int, float)) and latency >= 0
+            return (1 if rate_limited else 0, 0 if known_latency else 1,
+                    float(latency) if known_latency else float("inf"))
+
+        tail = [route for route in base if pinned is None or route["id"] != pinned["id"]]
+        tail = sorted(tail, key=queue_key)       # stable: unknown pings retain their configured order
+        return ([pinned] if pinned is not None else []) + tail
 
     def vision_route_id(self):
         """Return the first eligible route explicitly marked or recognizably capable of image input.
@@ -877,13 +909,15 @@ class HybridRouter:
 
     # ---------- health / cooldown bookkeeping ----------
     def _state(self, rid):
-        return self.states.setdefault(rid, {"health": "unknown", "last_error": None, "last_ms": None, "last_ok_at": None,
+        return self.states.setdefault(rid, {"health": "unknown", "last_error": None, "last_ms": None,
+                                            "latency_ms": None, "last_ok_at": None,
                                             "last_attempt_at": None, "failures": 0, "last_kind": None})
 
-    def _mark_success(self, route, ms):
+    def _mark_success(self, route, ms, latency_ms=None):
         st = self._state(route["id"])
-        st.update(health="healthy", last_error=None, last_ms=ms, last_ok_at=time.time(), last_attempt_at=time.time(),
-                  failures=0, last_kind=None)
+        measured = latency_ms if isinstance(latency_ms, (int, float)) and latency_ms >= 0 else ms
+        st.update(health="healthy", last_error=None, last_ms=ms, latency_ms=measured,
+                  last_ok_at=time.time(), last_attempt_at=time.time(), failures=0, last_kind=None)
         self.cooldowns.pop(route["id"], None)
 
     def _mark_failure(self, route, exc, secrets=()):
@@ -1079,7 +1113,9 @@ class HybridRouter:
         if isinstance(active, str) and active:
             model = active
         if parts and not interrupted:
-            self._mark_success(route, int((now - attempt_started) * 1000))
+            ping_ms = ((connect_at - attempt_started) * 1000 if connect_at else
+                       (first_at - attempt_started) * 1000 if first_at else (now - attempt_started) * 1000)
+            self._mark_success(route, int((now - attempt_started) * 1000), max(0, int(ping_ms)))
         self.last_provider, self.last_model = route["provider"], model
         self.last_route_id, self.last_kind = route["id"], info["kind"]
         self.last_error = "; ".join(failures) or None
@@ -1363,7 +1399,10 @@ class HybridRouter:
                 if not text:
                     row["error"] = "پاسخ خالی"
                 if row["ok"]:
-                    self._mark_success(route, row["total_ms"])
+                    ping = row.get("connect_ms")
+                    if ping is None:
+                        ping = row.get("first_token_ms")
+                    self._mark_success(route, row["total_ms"], ping)
             except Exception as exc:                                              # noqa: BLE001
                 row["error"] = redact(exc, *secrets)[:200]
                 self._mark_failure(route, exc, secrets)
