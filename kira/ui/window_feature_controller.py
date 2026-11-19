@@ -16,6 +16,7 @@ class WindowFeatureController(QObject):
     def __init__(self, window):
         QObject.__init__(self, window)
         object.__setattr__(self, "_window", window)
+        object.__setattr__(self, "_presentation_context", None)
 
     @property
     def window(self):
@@ -23,10 +24,15 @@ class WindowFeatureController(QObject):
 
     @property
     def context(self):
+        scoped = object.__getattribute__(self, "_presentation_context")
+        if scoped is not None:
+            return scoped
         root = getattr(self.window, "presentation_context", None)
         if root is None:
             raise RuntimeError("WindowPresentationContext is not initialized")
-        return root.for_controller(self)
+        scoped = root.for_controller(self)
+        object.__setattr__(self, "_presentation_context", scoped)
+        return scoped
 
     def feature_controller(self, feature: str):
         """Resolve only a peer explicitly granted by this controller's capability policy."""
