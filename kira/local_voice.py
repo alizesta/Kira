@@ -434,7 +434,7 @@ def synthesize_persian(text: str, model_path="", rate=0, prosody=None) -> bytes:
             config = SynthesisConfig(
                 length_scale=length_scale,
                 noise_scale=noise_scale,
-                noise_w=noise_w,
+                noise_w_scale=noise_w,
             )
             with wave.open(output, "wb") as wav_file:
                 voice.synthesize_wav(clean, wav_file, syn_config=config)
