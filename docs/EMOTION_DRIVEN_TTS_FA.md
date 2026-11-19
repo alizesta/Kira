@@ -7,7 +7,7 @@ Kira's emotional engine already resolves the active reply emotion and intensity.
 1. The reply parser removes the private emotion tag and keeps its emotion IDs/intensity.
 2. The runtime forwards that metadata to Speaker before the first eligible streamed sentence is synthesized.
 3. A bounded prosody profile is resolved for each emotion. A secondary emotion contributes a small blend; intensity interpolates from neutral.
-4. Piper receives native length_scale, noise_scale and noise_w parameters.
+4. Piper receives native length_scale, noise_scale and noise_w_scale parameters.
 5. Comma/semicolon clauses are synthesized separately and joined with real, emotion-scaled silence. Sentence endings receive a longer pause.
 6. PCM gain is adjusted subtly. A small pitch shift is attempted through ffmpeg when available; if ffmpeg is absent or fails, synthesis remains valid and only pitch adjustment is skipped.
 7. The finished WAV is validated and cached. Cache identity includes model/sidecar signature, text, emotion profile and speed so a neutral clip cannot be reused for a sad or excited reply.
