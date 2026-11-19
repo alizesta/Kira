@@ -626,6 +626,8 @@ class CharacterSettingsController(WindowFeatureController):
         worker = self.sender()
         if self.context.state._mcp_registry_worker is worker:
             self.context.state._mcp_registry_worker = None
+        if worker is not None:
+            worker.deleteLater()
 
     @Slot(object, str)
     def _on_mcp_registry_results(self, records, error):
