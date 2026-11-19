@@ -238,9 +238,10 @@ class WidgetRegressionTests(unittest.TestCase):
         adapter = QtVoiceListenerAdapter(listener)
         loop = QEventLoop()
         callback_threads = []
+        callback_values = []
 
         def on_heard(value):
-            self.assertEqual(value, "heard from worker")
+            callback_values.append(value)
             callback_threads.append(threading.get_ident())
             loop.quit()
 
@@ -251,6 +252,7 @@ class WidgetRegressionTests(unittest.TestCase):
         QTimer.singleShot(1000, loop.quit)
         loop.exec()
 
+        self.assertEqual(callback_values, ["heard from worker"])
         self.assertEqual(callback_threads, [threading.get_ident()])
         self.assertTrue(unsubscribe())
         listener.deleteLater()
