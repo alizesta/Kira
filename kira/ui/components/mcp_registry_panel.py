@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import base64
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QSize, Qt, Signal
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -37,7 +37,7 @@ class McpRegistryPanel(QGroupBox):
 
         self.results = QListWidget()
         self.results.setMaximumHeight(150)
-        self.results.setIconSize(self.results.iconSize())
+        self.results.setIconSize(QSize(36, 36))
         self.results.setSelectionMode(QAbstractItemView.SingleSelection)
         form.addRow(self.results)
 
