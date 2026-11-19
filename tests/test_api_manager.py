@@ -182,6 +182,24 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(det.state, "needs_account")
         self.assertIn("Account ID", det.message)
 
+    def test_cloudflare_account_scoped_token_requests_account_id_after_user_verify_rejects_it(self):
+        net = Net({"/user/tokens/verify": R(401, {"success": False}), "api.mistral.ai": R(401, {})})
+        with mock.patch.object(discovery.requests, "get", net):
+            det = am.detect(CF_KEY)
+        self.assertEqual((det.state, det.service), ("needs_account", "cloudflare"))
+        self.assertIn("Account ID", det.message)
+
+    def test_cloudflare_account_id_is_used_to_verify_account_scoped_token(self):
+        search = R(200, {"success": True, "result": [
+            {"name": "@cf/meta/llama-3.1-8b-instruct", "task": {"name": "Text Generation"}}],
+            "result_info": {"total_pages": 1}})
+        net = Net({"/accounts/acc1/tokens/verify": R(200, {"success": True, "result": {"status": "active"}}),
+                   "/ai/models/search": search})
+        with mock.patch.object(discovery.requests, "get", net):
+            det = am.detect(CF_KEY, account_id="acc1")
+        self.assertEqual((det.state, det.service, det.account_id), ("ok", "cloudflare", "acc1"))
+        self.assertTrue(any("/accounts/acc1/tokens/verify" in call[0] for call in net.calls))
+
     def test_two_services_accepting_one_key_is_ambiguous_and_not_registered(self):
         net = Net({"api.mistral.ai": R(200, {"data": [{"id": "m1"}]}), "/user/tokens/verify": R(200, {"success": True, "result": {"status": "active"}}),
                    "/client/v4/accounts": R(200, {"result": [{"id": "acc1", "name": "x"}]}),
