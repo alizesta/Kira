@@ -1,13 +1,13 @@
 # KIRA ARCHITECTURE MASTER ROADMAP
 
-**Snapshot date:** 2026-11-18  
+**Snapshot date:** 2026-11-19  
 **Repository:** `alizesta/Kira`  
 **Base branch:** `new-main`  
-**Source baseline SHA:** `999d514343da572651ae9d57a0133e5675e225d4`  
-**Evidence:** TASK 015 static audit (`docs/TASK_015_FINAL_ARCHITECTURE_AUDIT.md`, Draft PR #47), current `new-main` source and documentation, and merged TASK 013+014 integration PR #48 (merge commit `b54d092a330b6383ca4244320ffaeec9267db561`).  
-**Verification boundary:** Source and static wiring checks were reviewed. Focused tests and compile checks were added to GitHub Actions, but inspected jobs completed with `runner_id=0`, no steps and unavailable logs. No Python test, import, compile or desktop runtime pass is claimed.
+**Source baseline SHA:** `0a84bbdc3d47afb1728ff314a056b49e6e56848b`  
+**Evidence:** TASK 015 historical static audit; merged TASK 013+014 integration PR #48; TASK 017–020 source work and handoff; current `new-main` source at the baseline SHA; and merged PR #98 (merge commit `0a84bbdc3d47afb1728ff314a056b49e6e56848b`) correcting stale Chat event test contracts and CI path filters.  
+**Verification boundary:** Source and documentation were statically inspected. PR #98 merged the stale Chat event test-path/assertion fixes and added the test file to the lifecycle workflow path filter. Its GitHub Actions jobs still completed without an assigned runner (`runner_id=0`, `steps=[]`) and logs were unavailable (`BlobNotFound`). No Python test, import, compile or desktop runtime pass is claimed from those jobs.
 
-> This document is the current architecture entry point. It distinguishes the repository state observed at this snapshot from the desired migration direction. A planned boundary is not evidence that the boundary is already implemented.
+> This is the canonical detailed architecture reference, linked from the root `ARCHITECTURE.md` index. It distinguishes the repository state observed at this snapshot from the desired migration direction. A planned boundary is not evidence that the boundary is already implemented.
 
 ## 1. Executive architecture summary
 
@@ -30,6 +30,13 @@ Status labels in this document:
 - **Partial:** an implementation exists, but a stated integration or architecture boundary is incomplete.
 - **Not established:** no implementation was confirmed in the inspected source; do not infer it from a roadmap item.
 - **Runtime unverified:** static evidence is insufficient to claim behavior under real execution.
+
+### 2.1 Current synchronization delta — 2026-11-19
+
+- The current `new-main` baseline for this document is `0a84bbdc3d47afb1728ff314a056b49e6e56848b`.
+- PR #98 is merged. It updates `tests/test_chat_events.py` to inspect the current `ChatApplicationService.submit_message()` event publication contract and points the composition-root source assertion at `kira/ui/bootstrap.py`. It also includes that test file in the Chat Session Lifecycle workflow path filter.
+- The PR's follow-up workflow executions still produced failed jobs with empty step lists and no retrievable logs. This is an infrastructure/runner execution failure signal, not evidence that the test assertions passed or failed at runtime.
+- `kira/ui/bootstrap.py` is the only production Qt Composition Root. Older statements in historical documents that name `kira/app/bootstrap.py` are superseded and must not be used as current architecture facts.
 
 ## 3. High-level architecture
 

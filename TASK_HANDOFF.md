@@ -1,5 +1,14 @@
 # Task Handoff
 
+## Current architecture/documentation handoff — 2026-11-19
+
+- PR #98 was merged into `new-main` as `0a84bbdc3d47afb1728ff314a056b49e6e56848b`. It corrected the stale Chat event test path and event-publication assertion, and added `tests/test_chat_events.py` to the Chat Session Lifecycle workflow path filter.
+- The root `ARCHITECTURE.md` is now only an index. Canonical architecture status lives in `docs/ARCHITECTURE_MASTER.md`, `docs/MODULE_OWNERSHIP.md` and `docs/ARCHITECTURE_ROADMAP.md`.
+- Production Qt Composition Root: `kira/ui/bootstrap.py`. References to `kira/app/bootstrap.py` in older snapshots are historical and superseded.
+- CI is still **not verified**: the PR workflow jobs failed before executing steps (`steps=[]`), and logs were unavailable (`BlobNotFound`). Do not report the tests as passing or failing at test assertion level until a runner actually executes them.
+- The documentation synchronization is tracked in PR #99 and targets `new-main`; after merge, the canonical documents and their snapshot metadata are the source of truth.
+
+
 ## Architecture implementation update (2026-11-18) — TASK 017–020 source work
 
 - The principal outstanding application-policy boundaries have now been implemented on `new-main`: Session orchestration (`SessionApplicationService`), Provider/routes (`ProviderApplicationService`), Vision (`VisionApplicationService`), Coding Agent handoff (`CodingAgentApplicationService`), shared Runtime Settings (`RuntimeSettingsApplicationService`), and Character profile/preferences/personality ownership (`CharacterProfileService`).
