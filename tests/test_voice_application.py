@@ -76,11 +76,15 @@ class _Speaker:
         self.played = []
         self.reset_count = 0
         self.end_count = 0
+        self.emotions = []
         self.settings = {"voice_volume": 70}
         self.idle = True
 
     def is_idle(self):
         return self.idle
+
+    def set_emotion(self, emotions=(), intensity=None):
+        self.emotions.append((list(emotions or ()), intensity))
 
     def speak(self, text, rate=None, pitch=None, cache=False):
         self.spoken.append((text, rate, pitch, cache))
