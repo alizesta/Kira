@@ -1,7 +1,7 @@
 # KIRA MODULE OWNERSHIP
 
-**Snapshot:** 2026-11-18  
-**Source baseline:** `new-main` at `999d514343da572651ae9d57a0133e5675e225d4`  
+**Snapshot:** 2026-11-19  
+**Source baseline:** `new-main` at `0a84bbdc3d47afb1728ff314a056b49e6e56848b`  
 **Scope:** TASK 001–020 and adjacent application capabilities. This register describes observed ownership, not desired ownership where implementation is absent.
 
 ## 1. Ownership rules
@@ -45,6 +45,10 @@
 | 014 | PARTIAL at audit time | Integrated by merged PR #48; source and docs are present on current `new-main` |
 
 The historical audit counts remain 12 DONE / 2 PARTIAL. The post-audit merge is recorded separately; no runtime status is inferred.
+
+### 2.1.1 Current synchronization note — 2026-11-19
+
+PR #98 is merged into `new-main`. It updates the Chat event regression test to assert the current `ChatApplicationService.submit_message()` publication contract and the actual production composition-root path, and adds the test file to the Chat Session Lifecycle workflow path filter. This is a test/CI ownership correction; it does not change runtime module ownership or establish test execution. The workflow jobs still reported empty step lists and unavailable logs, so execution remains unverified.
 
 ### 2.2 TASK 017 — Session application orchestration
 
