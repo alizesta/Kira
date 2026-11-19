@@ -151,7 +151,14 @@ class McpHub:
         if agents is not None:
             agents.shutdown()
         with self._lock:
+            clients = tuple(self._clients.items())
             names = tuple(self._clients)
+        # Interrupt an in-flight initialize/RPC before waiting on its lifecycle lock.
+        for name, client in clients:
+            try:
+                client.close()
+            except Exception:
+                _LOGGER.exception("Could not interrupt MCP server %s while disabling", name)
         for name in names:
             self._drop(name)
         self.registry.unregister_where(lambda tool: bool(getattr(tool, "mcp_server", "")))
@@ -188,6 +195,9 @@ class McpHub:
                     self._disable()
                     return
                 self._connect(name, cfg)
+                if not self.enabled():
+                    self._disable()
+                    return
         except Exception as exc:                                       # noqa: BLE001 - a broken server never affects the app
             _LOGGER.exception("MCP hub refresh failed")
             with self._state_lock:
