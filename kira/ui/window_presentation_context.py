@@ -51,6 +51,7 @@ STATE_FIELDS = frozenset({
     "_ollama_worker",
     "_provider_editing",
     "_provider_test_worker",
+    "_provider_workers",
     "_route_worker",
     "_save_warned",
     "_scan_worker",
