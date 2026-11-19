@@ -9,6 +9,7 @@ import re
 import shutil
 import tempfile
 import threading
+import time
 import wave
 
 from .config import DATA_DIR
@@ -169,6 +170,9 @@ class Speaker(QObject):
         self._item_began = False            # the current sentence is audible
         self._wav = None
         self._keep = False
+        self._reference_lock = threading.RLock()
+        self._reference_pcm = None
+        self._reference_started_at = None
         self._clock = QElapsedTimer()
         self._timer = QTimer(self)
         self._timer.setInterval(HOP_MS)
@@ -347,6 +351,9 @@ class Speaker(QObject):
             self.cancelled.emit()
         if sess is not None and sess.streaming and not sess.input_done:
             self._stream_dead = True                            # do not restart the same reply from the middle
+        with self._reference_lock:
+            self._reference_started_at = None
+            self._reference_pcm = None
         if sess is not None:
             with sess.cond:
                 sess.cond.notify_all()                          # wakes the worker: it sees the new generation and exits
@@ -598,9 +605,75 @@ class Speaker(QObject):
             self.stop()
             self._report(f"پخش صدا ناموفق بود: {type(e).__name__}: {e}")
 
+    def _prepare_echo_reference(self, wav_path):
+        """Decode the exact local WAV playback into a 16 kHz far-end AEC reference."""
+        with self._reference_lock:
+            self._reference_pcm = None
+            self._reference_started_at = None
+        if not str(wav_path).lower().endswith(".wav"):
+            return
+        try:
+            import numpy as np
+
+            with wave.open(str(wav_path), "rb") as source:
+                channels = int(source.getnchannels())
+                sample_width = int(source.getsampwidth())
+                source_rate = int(source.getframerate())
+                frames = int(source.getnframes())
+                raw = source.readframes(frames)
+            if channels < 1 or source_rate < 1 or sample_width != 2 or frames < 1:
+                return
+            samples = np.frombuffer(raw, dtype="<i2")
+            if samples.size != frames * channels:
+                return
+            if channels > 1:
+                samples = samples.reshape(-1, channels).astype(np.float32).mean(axis=1)
+            else:
+                samples = samples.astype(np.float32)
+            samples = samples / 32768.0
+            if source_rate != 16000:
+                target_size = max(1, int(round(samples.size * 16000.0 / source_rate)))
+                source_axis = np.arange(samples.size, dtype=np.float64)
+                target_axis = np.arange(target_size, dtype=np.float64) * source_rate / 16000.0
+                samples = np.interp(target_axis, source_axis, samples).astype(np.float32)
+            else:
+                samples = samples.astype(np.float32, copy=False)
+            volume = max(0.0, min(1.0, float(self.settings.get("voice_volume", 0.9))))
+            samples = np.clip(samples * volume, -1.0, 1.0).astype(np.float32, copy=False)
+            with self._reference_lock:
+                self._reference_pcm = samples
+        except (OSError, ValueError, TypeError, wave.Error):
+            # Echo cancellation is optional: unsupported/corrupt WAV files still play normally.
+            return
+
+    def echo_reference_block(self, frames):
+        """Return the time-aligned speaker PCM block for the microphone callback."""
+        import numpy as np
+
+        count = max(0, int(frames))
+        if count == 0:
+            return np.zeros(0, dtype=np.float32)
+        with self._reference_lock:
+            pcm = self._reference_pcm
+            started = self._reference_started_at
+            if pcm is None or started is None:
+                return None
+            # PortAudio invokes the input callback after its block has been captured.
+            # Compensate for that block duration and a small Windows device-buffer delay;
+            # the adaptive FIR handles the remaining acoustic path.
+            elapsed = max(0.0, time.monotonic() - started - count / 16000.0 - 0.025)
+            start = int(elapsed * 16000.0)
+            result = np.zeros(count, dtype=np.float32)
+            if start < pcm.size:
+                available = min(count, pcm.size - start)
+                if available > 0:
+                    result[:available] = pcm[start:start + available]
+            return result
+
     def _start_playback(self, s, wav, env):
         self._wav, self._env, self._item_began = wav, env, False
         self._keep = s.keep or not wav.startswith(self._tmp)
+        self._prepare_echo_reference(wav)
         vol = float(self.settings.get("voice_volume", 0.9))
         if not wav.endswith(".wav"):
             self._watch_devices()
@@ -640,6 +713,9 @@ class Speaker(QObject):
 
     def _item_started(self):
         self._item_began = True
+        with self._reference_lock:
+            if self._reference_pcm is not None:
+                self._reference_started_at = time.monotonic()
         self._clock.start()
         self._timer.start()
         if not self._began:
@@ -653,6 +729,9 @@ class Speaker(QObject):
         self._fx = None
         self._out = None
         self._item_began = False
+        with self._reference_lock:
+            self._reference_started_at = None
+            self._reference_pcm = None
         try:
             self._timer.stop()
         except Exception:
@@ -701,6 +780,9 @@ class Speaker(QObject):
             self.level.emit(self._env[i] if i < len(self._env) else 0.0)
 
     def _end(self):
+        with self._reference_lock:
+            self._reference_started_at = None
+            self._reference_pcm = None
         self._prosody = resolve_prosody()
         if self._began:
             self._began = False
