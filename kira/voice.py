@@ -1,6 +1,7 @@
 """Kira local-only speech output: Piper synthesis and Qt audio playback."""
 import atexit
 import hashlib
+import io
 import json
 import math
 import os
@@ -13,6 +14,7 @@ import wave
 from .config import DATA_DIR
 from .speech_split import StreamSplitter, split_sentences, strip_think
 from .leak_guard import strip_blocks, scrub_lines
+from .voice_prosody import apply_audio_effects, resolve_prosody, split_comma_clauses, join_wavs_with_pauses, prepend_wav_silence
 from PySide6.QtCore import QObject, Signal, Slot, QUrl, QTimer, QElapsedTimer
 from PySide6.QtMultimedia import QSoundEffect, QMediaPlayer, QAudioOutput, QMediaDevices
 
@@ -21,6 +23,70 @@ PIPER_FA = "Mana Persian Piper"
 CACHE_DIR = DATA_DIR / "voice_cache"
 CACHE_DIR.mkdir(exist_ok=True)
 HOP_MS = 40
+_CACHE_LOCK = threading.RLock()
+_CACHE_VERSION = "local-persian-piper-emotion-v6"
+
+
+def _valid_cached_envelope(envelope, frames, sample_rate):
+    """Reject truncated, malformed, non-finite, or out-of-range lip-sync metadata."""
+    if not isinstance(envelope, list) or frames <= 0 or sample_rate <= 0:
+        return False
+    hop = max(1, sample_rate * HOP_MS // 1000)
+    expected = (frames + hop - 1) // hop
+    return len(envelope) == expected and all(
+        isinstance(value, (int, float)) and math.isfinite(value) and 0.0 <= value <= 1.0
+        for value in envelope
+    )
+
+
+def _load_cached_audio(wav_path, meta_path):
+    """Load a cache entry only when the envelope matches the exact WAV payload."""
+    try:
+        with open(wav_path, "rb") as stream:
+            payload = stream.read()
+        with wave.open(io.BytesIO(payload), "rb") as existing:
+            frames = existing.getnframes()
+            sample_rate = existing.getframerate()
+        with open(meta_path, encoding="utf-8") as stream:
+            metadata = json.load(stream)
+        envelope = metadata.get("envelope") if isinstance(metadata, dict) else None
+        if (
+            isinstance(metadata, dict)
+            and metadata.get("version") == 1
+            and metadata.get("wav_sha256") == hashlib.sha256(payload).hexdigest()
+            and metadata.get("frames") == frames
+            and metadata.get("sample_rate") == sample_rate
+            and _valid_cached_envelope(envelope, frames, sample_rate)
+        ):
+            return envelope
+    except (OSError, ValueError, TypeError, wave.Error, json.JSONDecodeError):
+        return None
+    return None
+
+
+def _atomic_write(path, payload):
+    """Publish a completed cache file atomically so readers never see partial output."""
+    parent = os.path.dirname(path) or "."
+    os.makedirs(parent, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".kira-tts-", suffix=".tmp", dir=parent)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except Exception:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        try:
+            os.remove(temporary)
+        except OSError:
+            pass
+        raise
+
+
 PLAYBACK_START_TIMEOUT_MS = 8000   # a sentence that has not become audible by then is skipped
 
 
@@ -57,8 +123,9 @@ STREAM_MARGIN = 40              # (reserved) characters kept back; the splitter 
 class _Session:
     """One spoken reply: its sentences in order, what is already synthesized, and how far playback is."""
 
-    def __init__(self, gen, rate=0, pitch=0, cache=False, keep=False):
+    def __init__(self, gen, rate=0, pitch=0, cache=False, keep=False, prosody=None):
         self.gen, self.rate, self.pitch, self.cache, self.keep = gen, rate, pitch, cache, keep
+        self.prosody = dict(prosody or resolve_prosody())
         self.splitter = StreamSplitter()
         self.consumed = ""              # cleaned reply text already handed to the splitter (streaming mode)
         self.sentences = []             # texts, in speaking order
@@ -167,7 +234,9 @@ class Speaker(QObject):
             pieces = [c for c in (clean_for_speech(x) for x in split_sentences(text)) if c]
             if not pieces:
                 return
+            prosody = dict(self._prosody)
             self.stop()
+            self._prosody = prosody
             sess = self._new_session(rate, pitch, cache)
             sess.sentences = pieces
             sess.input_done = True
@@ -187,7 +256,9 @@ class Speaker(QObject):
                 return
             s = self._session
             if s is None or s.input_done:
+                prosody = dict(self._prosody)
                 self.stop()
+                self._prosody = prosody
                 s = self._new_session(None, None, False)
                 s.streaming = True
             full_text = strip_think(full_text or "")
@@ -206,8 +277,19 @@ class Speaker(QObject):
             self._report(f"شروع صدا ناموفق بود: {type(e).__name__}: {e}")
 
     def stream_reset(self):
-        """A new reply starts: speech of the previous live reply may begin again."""
+        """A new reply starts with neutral prosody until its emotion tag is parsed."""
         self._stream_dead = False
+        self.set_emotion((), 0)
+
+    def set_emotion(self, emotions=(), intensity=None):
+        """Bind parsed reply emotion to the current and upcoming sentence synthesis."""
+        self._prosody = resolve_prosody(emotions, intensity)
+        session = self._session
+        if session is not None and session.streaming:
+            # Share the lock used by synthesis when it snapshots a sentence profile.
+            # Running synthesis remains consistent; queued sentences get the new emotion.
+            with session.cond:
+                session.prosody = dict(self._prosody)
 
     def stream_end(self):
         """The reply is complete: speak what is left, then finish."""
@@ -283,7 +365,7 @@ class Speaker(QObject):
     # ---- sessions ----
     def _new_session(self, rate, pitch, cache, keep=False):
         self._gen += 1
-        s = _Session(self._gen, int(rate or 0), int(pitch or 0), bool(cache), keep)
+        s = _Session(self._gen, int(rate or 0), int(pitch or 0), bool(cache), keep, self._prosody)
         self._session = s
         return s
 
@@ -351,76 +433,127 @@ class Speaker(QObject):
                     text = s.sentences[idx]
                 try:
                     result = (s.paths[idx], []) if idx in s.paths else self._synth(s, idx, text)
-                except Exception as e:                         # noqa: BLE001 - one bad sentence must not stop the rest
+                except Exception as exc:
                     result = None
-                    # A stopped generation must never emit through a Speaker
-                    # QObject that may be in deferred application shutdown.
                     if s.gen == self._gen:
-                        self._failed.emit(s.gen, f"ساخت صدا ناموفق بود: {type(e).__name__}: {e}")
+                        self._failed.emit(
+                            s.gen, f"ساخت صدا ناموفق بود: {type(exc).__name__}: {exc}"
+                        )
                 if s.gen != self._gen:
                     if result:
                         self._remove_temp(result[0])
                     return
-                self._ready.emit(s.gen, idx, (result[0] if result else ""), (result[1] if result else []))
+                self._ready.emit(
+                    s.gen, idx, result[0] if result else "", result[1] if result else []
+                )
                 idx += 1
         finally:
             pass
 
     def _synth(self, s, idx, text):
-        """Synthesize one sentence using the configured local Piper voice only."""
+        """Synthesize one sentence with emotion prosody, clause pauses and cache isolation."""
         from . import local_voice
+        from .voice_prosody import expand_persian_numbers
+
         model_path = str(self.settings.get("local_voice_tts_model") or "").strip()
         if not bool(self.settings.get("local_voice_tts", True)):
             raise RuntimeError("استفاده از TTS محلی غیرفعال است؛ از بخش مدل‌های Local آن را فعال کن.")
         if not local_voice.tts_ready(model_path):
             raise RuntimeError("موتور TTS محلی Piper آماده نیست؛ مدل محلی را از بخش Local نصب یا انتخاب کن.")
+
+        spoken_text = expand_persian_numbers(local_voice.normalize_persian_tts_text(text))
+        if not spoken_text:
+            raise RuntimeError("متن قابل‌خواندن برای تولید صدا باقی نمانده است.")
         rate = max(-50, min(50, int(self.settings.get("voice_rate", 0)) + s.rate))
-        cache_key = hashlib.sha1(f"local-piper-v4|{model_path}|{rate}|{text}".encode("utf-8")).hexdigest()[:20]
+        with s.cond:
+            prosody = dict(s.prosody or resolve_prosody())
+        prosody["pitch_semitones"] = max(
+            -0.55,
+            min(0.55, float(prosody.get("pitch_semitones", 0.0)) + float(s.pitch or 0) * 0.03),
+        )
+        identity = local_voice.tts_cache_identity(model_path) if s.cache else model_path
+        prosody_key = json.dumps(prosody, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        cache_key = hashlib.sha1(
+            f"{_CACHE_VERSION}|{identity!r}|{rate}|{prosody_key}|leading-pause={int(idx > 0)}|{spoken_text}".encode("utf-8")
+        ).hexdigest()[:20]
         tag = f"kira_{s.gen}_{idx}"
         base = str(CACHE_DIR) if s.cache else self._tmp
-        wav_path, meta_path = os.path.join(base, cache_key + ".wav"), os.path.join(base, cache_key + ".json")
-        if s.cache and os.path.isfile(wav_path) and os.path.isfile(meta_path):
-            try:
-                with wave.open(wav_path, "rb") as existing:
-                    if existing.getnframes() > 0:
-                        with open(meta_path, encoding="utf-8") as stream:
-                            envelope = json.load(stream)
-                        if isinstance(envelope, list):
-                            return wav_path, envelope
-            except (OSError, ValueError, wave.Error, json.JSONDecodeError):
+        wav_path = os.path.join(base, cache_key + ".wav")
+        meta_path = os.path.join(base, cache_key + ".json")
+
+        with _CACHE_LOCK:
+            if s.cache and os.path.isfile(wav_path) and os.path.isfile(meta_path):
+                envelope = _load_cached_audio(wav_path, meta_path)
+                if envelope is not None:
+                    return wav_path, envelope
                 for stale in (wav_path, meta_path):
-                    try: os.remove(stale)
-                    except OSError: pass
-        audio = local_voice.synthesize_persian(text, model_path, rate)
-        return self._save_local_wav(tag, audio, s.cache, wav_path, meta_path)
+                    try:
+                        os.remove(stale)
+                    except OSError:
+                        pass
+
+            clauses = split_comma_clauses(spoken_text)
+            audio_parts = []
+            for clause_index, clause in enumerate(clauses):
+                audio = local_voice.synthesize_persian(
+                    clause, model_path, rate, prosody=prosody, postprocess=False
+                )
+                pause = prosody["pause_comma_ms"] if clause_index < len(clauses) - 1 else 0
+                audio_parts.append((audio, pause))
+            audio = join_wavs_with_pauses(audio_parts)
+            # Put inter-sentence silence at the START of each subsequent sentence.
+            # This avoids an unremovable trailing pause when a live stream ends
+            # before another sentence arrives.
+            if idx > 0:
+                audio = prepend_wav_silence(audio, prosody["pause_sentence_ms"])
+            try:
+                audio = apply_audio_effects(audio, prosody)
+            except Exception:
+                self._report("پس‌پردازش اختیاری صدای احساسی انجام نشد؛ خروجی اصلی Piper حفظ شد.")
+            return self._save_local_wav(tag, audio, s.cache, wav_path, meta_path)
 
     def _save_local_wav(self, tag, audio, cache, wav_path, meta_path):
-        """Validate Piper's WAV output, calculate the lip-sync envelope and cache it."""
+        """Validate Piper WAV output, calculate lip-sync data, and publish cache atomically."""
         import numpy as np
+
         if not isinstance(audio, (bytes, bytearray)) or not bytes(audio).startswith(b"RIFF"):
             raise RuntimeError("مدل Piper خروجی WAV معتبر تولید نکرد.")
-        path = wav_path if cache else os.path.join(self._tmp, f"{tag}.wav")
-        with open(path, "wb") as stream:
-            stream.write(audio)
+        payload = bytes(audio)
         try:
-            with wave.open(path, "rb") as wav:
-                channels, rate = max(1, int(wav.getnchannels())), int(wav.getframerate())
-                pcm = np.frombuffer(wav.readframes(wav.getnframes()), dtype=np.int16)
+            with wave.open(io.BytesIO(payload), "rb") as wav:
+                channels = max(1, int(wav.getnchannels()))
+                sample_rate = int(wav.getframerate())
+                frames = int(wav.getnframes())
+                pcm = np.frombuffer(wav.readframes(frames), dtype=np.int16)
                 if channels > 1:
                     pcm = pcm[::channels]
-                if pcm.size == 0 or rate <= 0:
+                if pcm.size == 0 or sample_rate <= 0 or frames <= 0:
                     raise RuntimeError("مدل Piper فایل صوتی خالی یا نامعتبر تولید کرد.")
-                envelope = _envelope(pcm, rate)
+                if pcm.size != frames:
+                    raise RuntimeError("ساختار کانال‌های WAV با تعداد فریم‌ها سازگار نیست.")
+                envelope = _envelope(pcm, sample_rate)
         except (OSError, wave.Error) as exc:
-            try:
-                os.remove(path)
-            except OSError:
-                pass
             raise RuntimeError(f"خواندن خروجی WAV ناموفق بود: {exc}") from exc
+
+        path = wav_path if cache else os.path.join(self._tmp, f"{tag}.wav")
         if cache:
-            with open(meta_path, "w", encoding="utf-8") as stream:
-                json.dump(envelope, stream)
+            _atomic_write(path, payload)
+            metadata = {
+                "version": 1,
+                "wav_sha256": hashlib.sha256(payload).hexdigest(),
+                "frames": frames,
+                "sample_rate": sample_rate,
+                "envelope": envelope,
+            }
+            _atomic_write(
+                meta_path,
+                json.dumps(metadata, separators=(",", ":"), allow_nan=False).encode("utf-8"),
+            )
+        else:
+            with open(path, "wb") as stream:
+                stream.write(payload)
         return path, envelope
+
 
     # ---- GUI thread ----
     @Slot(int, str)
@@ -568,6 +701,7 @@ class Speaker(QObject):
             self.level.emit(self._env[i] if i < len(self._env) else 0.0)
 
     def _end(self):
+        self._prosody = resolve_prosody()
         if self._began:
             self._began = False
             self.level.emit(0.0)
