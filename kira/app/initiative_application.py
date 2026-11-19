@@ -94,7 +94,7 @@ class InitiativeApplicationService:
         if emotional is None or latest_user_age is None:
             return None
 
-        memories = self.memory_service.list_items(character_id)
+        memories = self.memory_service.list_items(character_id, now=current)
         history_by_character = settings.get("character_initiative_history")
         if not isinstance(history_by_character, dict):
             history_by_character = {}
