@@ -66,6 +66,24 @@ class FileAgentTests(unittest.TestCase):
         self.assertEqual(target.read_text(encoding="utf-8"), "other process file")
         self.assertEqual(original.read_text(encoding="utf-8"), "our file")
 
+    def test_batch_move_rejects_cross_device_directory_move(self):
+        source = str(self.root / "source-folder")
+        destination = str(self.root / "destination")
+        def fake_stat(path, *args, **kwargs):
+            return SimpleNamespace(st_dev=1 if str(path) == source else 2)
+
+        with mock.patch.object(self.policy, "check", side_effect=lambda path, **_kw: str(path)), mock.patch(
+            "kira.tools.fileagent.os.path.isdir", return_value=True
+        ), mock.patch("kira.tools.fileagent.os.path.lexists", return_value=False), mock.patch(
+            "kira.tools.fileagent.os.stat", side_effect=fake_stat
+        ):
+            with self.assertRaisesRegex(ToolError, "فایل‌سیستم‌های متفاوت"):
+                self.fa.precheck_batch({
+                    "operation": "move",
+                    "paths": [source],
+                    "destination_folder": destination,
+                })
+
     def test_batch_copy_rejects_case_variant_destination_inside_source(self):
         source = self.root / "Folder"
         destination = self.root / "folder" / "nested"
