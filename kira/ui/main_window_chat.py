@@ -29,12 +29,12 @@ class ChatController(WindowFeatureController):
         """Inject the independent attachment workflow after UI composition."""
         if controller is None:
             raise TypeError("attachment controller is required")
-        object.__setattr__(self, "_attachment_controller", controller)
+        self._attachment_controller = controller
 
     @property
     def attachment_controller(self):
         try:
-            return object.__getattribute__(self, "_attachment_controller")
+            return self._attachment_controller
         except AttributeError as exc:
             raise RuntimeError("ChatController attachment dependency is not composed") from exc
 
