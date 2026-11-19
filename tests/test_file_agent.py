@@ -291,6 +291,22 @@ class FileAgentTests(unittest.TestCase):
         self.assertFalse(d.exists())
         self.assertEqual(self.run_tool("delete_folder", {"path": str(self.root)}).status, DENIED)
 
+    def test_organise_refuses_symlink_destination_outside_allowed_root(self):
+        outside = Path(self.tmp.name, "outside")
+        outside.mkdir()
+        external_target = outside / "photo.jpg"
+        (self.root / "photo.jpg").write_text("photo", encoding="utf-8")
+        link = self.root / "Images"
+        try:
+            os.symlink(outside, link, target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest(f"directory symlinks unavailable: {exc}")
+
+        result = self.run_tool("organise_folder", {"folder": str(self.root)})
+        self.assertNotEqual(result.status, OK)
+        self.assertTrue((self.root / "photo.jpg").exists())
+        self.assertFalse(external_target.exists())
+
     def test_organise_by_type_and_undo(self):
         for n in ("a.jpg", "b.pdf", "c.mp3", "d.xyz"):
             (self.root / n).write_text("x")
