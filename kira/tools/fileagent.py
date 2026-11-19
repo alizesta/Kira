@@ -167,6 +167,19 @@ def _remove_tree_if_same(path: str, expected_stat) -> None:
     shutil.rmtree(path)
 
 
+def _verify_journal_identity(path: str, item: dict):
+    """Reject an undo target that no longer names the inode recorded by the operation."""
+    expected_dev = item.get("file_dev")
+    expected_ino = item.get("file_ino")
+    current = os.lstat(path)
+    if not os.path.samestat(current, os.stat(path)):
+        raise ToolError("مسیر Undo اکنون لینک است؛ برای جلوگیری از تغییر فایل دیگری عملیات رد شد.")
+    if (expected_dev is not None and expected_ino is not None
+            and (current.st_dev, current.st_ino) != (expected_dev, expected_ino)):
+        raise ToolError("فایل مقصد بعد از عملیات با فایل دیگری جایگزین شده؛ Undo انجام نشد.")
+    return current
+
+
 def _unlink_created_if_same(path: str, expected_stat) -> None:
     """Remove only the inode this operation created; never unlink a raced replacement."""
     try:
@@ -292,7 +305,11 @@ class FileAgent:
                 _LOGGER.exception("Could not remove partial created file: %s", target)
                 raise ToolError(f"نوشتن ناقص ماند و فایل ناقص هم پاک نشد: {target}") from exc
             raise ToolError(f"ساخت فایل ناموفق بود؛ فایل ناقص پاک شد: {type(exc).__name__}: {exc}") from exc
-        persisted = self.journal.add("create", path=target)
+        persisted = self.journal.add(
+            "create", path=target, created_size=len(data),
+            created_sha256=hashlib.sha256(data).hexdigest(),
+            file_dev=created_stat.st_dev, file_ino=created_stat.st_ino,
+        )
         return f"فایل ساخته شد: {target} ({_fmt_size(len(data))})" + self._journal_note(persisted)
 
     def append_text(self, a: dict) -> str:
@@ -374,7 +391,12 @@ class FileAgent:
 
     def copy_item(self, a: dict) -> str:
         src, target, note = self._copy(a)
-        persisted = self.journal.add("copy", source=src, path=target)
+        target_stat = os.lstat(target)
+        persisted = self.journal.add(
+            "copy", source=src, path=target,
+            file_dev=target_stat.st_dev, file_ino=target_stat.st_ino,
+            is_directory=os.path.isdir(target),
+        )
         return f"کپی شد: {src} ← {target}{note}" + self._journal_note(persisted)
 
     def _copy_file_exclusive(self, src: str, target: str) -> None:
@@ -469,7 +491,11 @@ class FileAgent:
         os.rename(src, target)
         if os.path.exists(src) or not os.path.exists(target):
             raise ToolError("تغییر نام انجام نشد.")
-        persisted = self.journal.add("rename", source=src, path=target)
+        target_stat = os.stat(target)
+        persisted = self.journal.add(
+            "rename", source=src, path=target,
+            file_dev=target_stat.st_dev, file_ino=target_stat.st_ino,
+        )
         return f"نام تغییر کرد: {os.path.basename(src)} ← {os.path.basename(target)} (در {os.path.dirname(target)})" + self._journal_note(persisted)
 
     # ---------------------------------------------------------------- level 3: replace / delete folder
@@ -537,6 +563,7 @@ class FileAgent:
                 os.unlink(tmp)
             except FileNotFoundError:
                 pass
+        written_stat = os.stat(path)
         persisted = self.journal.add(
             "write",
             path=path,
@@ -544,6 +571,8 @@ class FileAgent:
             created=not existed_before,
             written_size=len(data),
             written_sha256=hashlib.sha256(data).hexdigest(),
+            file_dev=written_stat.st_dev,
+            file_ino=written_stat.st_ino,
         )
         return f"فایل نوشته شد: {path}" + (f" (پشتیبان: {backup})" if backup else "") + self._journal_note(persisted)
 
