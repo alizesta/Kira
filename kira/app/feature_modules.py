@@ -69,6 +69,8 @@ def register_application_modules(
     from .chat_composition import create_chat_application_service_factory
     from .session_composition import create_session_application_service_factory
     from .initiative_composition import create_initiative_application_service_factory
+    from .brain_application import BrainApplicationService
+    from .reflection_application import ReflectionApplicationService
     from .voice_composition import create_voice_application_service_factory
 
     def selected(key: str, default: Callable[[], Any]) -> Callable[[], Any]:

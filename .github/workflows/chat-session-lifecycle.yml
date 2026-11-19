@@ -94,6 +94,10 @@ on:
       - "tests/test_application_policy_wiring.py"
       - "tests/test_tool_agent_session_isolation.py"
       - "tests/test_service_module.py"
+      - "tests/test_brain_reflection_ownership.py"
+      - "kira/app/brain_application.py"
+      - "kira/app/reflection_application.py"
+      - "kira/core/interfaces/brain.py"
       - ".github/workflows/chat-session-lifecycle.yml"
 
 permissions:
@@ -138,6 +142,7 @@ jobs:
           tests.test_domain_chat_contracts
           tests.test_chat_transfer
           tests.test_chat_search
+          tests.test_brain_reflection_ownership
           tests.test_application_service_ports
           tests.test_feature_module_registration
           tests.test_chat_history_service_capabilities
@@ -265,6 +270,10 @@ jobs:
           tests/test_application_service_ports.py
           kira/app/session_composition.py
           kira/app/initiative_application.py
+          kira/app/brain_application.py
+          kira/app/reflection_application.py
+          kira/core/interfaces/brain.py
+          tests/test_brain_reflection_ownership.py
           kira/app/initiative_composition.py
           kira/core/interfaces/mood_service.py
           kira/services/mood_service.py

@@ -72,6 +72,7 @@ STATE_FIELDS = frozenset({
 })
 
 SERVICE_FIELDS = frozenset({
+    "brain_application_service",
     "character_service",
     "chat_application_service",
     "chat_event_publisher",
@@ -85,6 +86,7 @@ SERVICE_FIELDS = frozenset({
     "mood_service",
     "ollama_client",
     "provider_application_service",
+    "reflection_application_service",
     "runtime_settings_application_service",
     "session_application_service",
     "session_manager",

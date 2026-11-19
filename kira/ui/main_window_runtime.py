@@ -16,7 +16,6 @@ from .main_window_runtime_support import (
     ROOT,
     SOUNDS_DIR,
     body_ctl,
-    brain,
     message_html,
     random,
     save_settings,
@@ -294,9 +293,17 @@ class RuntimeController(WindowFeatureController):
             self.context.adapters.director.event("response_finished")
             self.save_message("assistant", raw, persist=False)
             try:                                                   # quiet second look (rules; optional background model call)
-                brain.after_turn(self.context.session.client, self.context.services.settings, getattr(self.context.session, "_brain", brain.Decision()), getattr(self.context.session, "_brain_user_text", ""),
-                                 text, res.get("tools"), getattr(self.context.session, "_brain_mode_name", None), bool(self.context.session._tool_plan),
-                                 character_id=self.context.state.cur.cid)
+                self.context.services.reflection_application_service.after_turn(
+                    self.context.session.client,
+                    self.context.services.settings,
+                    getattr(self.context.session, "_brain", self.context.services.brain_application_service.default_decision()),
+                    getattr(self.context.session, "_brain_user_text", ""),
+                    text,
+                    res.get("tools"),
+                    getattr(self.context.session, "_brain_mode_name", None),
+                    bool(self.context.session._tool_plan),
+                    character_id=self.context.state.cur.cid,
+                )
             except Exception:                                      # noqa: BLE001
                 pass
             if not self.context.session._emotion_applied:                          # no tag from the model: tag-less fallback (keywords / neutral)
@@ -884,7 +891,7 @@ class RuntimeController(WindowFeatureController):
                 # Facts, moments and habits remain in the character's own memory file.
                 self.context.services.memory_service.forget_conversation(self.context.state.cur.cid)
                 self.context.services.tool_agent.clear_session(self.context.state.cur.cid) # clear only this character's tasks, tool context, grants and temporary research
-                brain.reset_state(self.context.state.cur.cid)
+                self.context.services.brain_application_service.reset_state(self.context.state.cur.cid)
             except ChatHistoryError as exc:
                 QMessageBox.warning(self.window, self.feature_controller("session").t("clear_t"), str(exc))
                 return
