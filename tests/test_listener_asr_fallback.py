@@ -25,7 +25,6 @@ class ListenerAsrFallbackTests(unittest.TestCase):
 
     def test_faster_whisper_is_used_when_vulkan_runtime_is_missing(self):
         listener = self.make_listener()
-        sentinel = object()
         fake_module = types.ModuleType("faster_whisper")
 
         class FakeWhisperModel:
