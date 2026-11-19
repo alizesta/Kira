@@ -13,6 +13,7 @@ on:
       - "kira/ui/application_adapters.py"
       - "docs/ECHO_CANCELLATION_FA.md"
       - "tests/test_echo_cancellation.py"
+      - "tests/test_voice_input.py"
       - "kira/vad.py"
       - "kira/app/voice_application.py"
       - "kira/core/interfaces/voice_service.py"
@@ -41,6 +42,7 @@ on:
       - "kira/ui/application_adapters.py"
       - "docs/ECHO_CANCELLATION_FA.md"
       - "tests/test_echo_cancellation.py"
+      - "tests/test_voice_input.py"
       - "kira/vad.py"
       - "kira/app/voice_application.py"
       - "kira/core/interfaces/voice_service.py"
@@ -90,6 +92,7 @@ jobs:
           tests.test_voice_tts
           tests.test_noise_reduction
           tests.test_echo_cancellation
+          tests.test_voice_input
           -v
       - name: Lint changed speech modules and tests
         run: >-
@@ -122,6 +125,9 @@ jobs:
           kira/voice.py
           kira/voice_prosody.py
           kira/noise_reduction.py
+          kira/echo_cancellation.py
+          kira/listener.py
+          kira/ui/application_adapters.py
           kira/vad.py
           kira/app/voice_application.py
           kira/core/interfaces/voice_service.py
@@ -134,4 +140,6 @@ jobs:
           tests/test_persian_tts_text.py
           tests/test_voice_audio_cache.py
           tests/test_noise_reduction.py
+          tests/test_echo_cancellation.py
+          tests/test_voice_input.py
 
