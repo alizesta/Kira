@@ -129,7 +129,7 @@ class McpHttpTransportTests(unittest.TestCase):
     def test_sse_stream_cannot_keep_rpc_alive_past_total_deadline(self):
         response = SlowSseResponse()
         started = time.monotonic()
-        with mock.patch("kira.mcp.client.urllib.request.urlopen", return_value=response):
+        with mock.patch("kira.mcp.client.open_no_redirect", return_value=response):
             with self.assertRaisesRegex(McpError, "total deadline"):
                 self.client._post({"jsonrpc": "2.0", "id": 1}, timeout=0.07, want_id=1)
 
@@ -138,7 +138,7 @@ class McpHttpTransportTests(unittest.TestCase):
 
     def test_json_response_size_is_bounded(self):
         response = OversizedJsonResponse()
-        with mock.patch("kira.mcp.client.urllib.request.urlopen", return_value=response):
+        with mock.patch("kira.mcp.client.open_no_redirect", return_value=response):
             with self.assertRaisesRegex(McpError, "size limit"):
                 self.client._post({"jsonrpc": "2.0", "id": 1}, timeout=1, want_id=1)
         self.assertTrue(response.closed)
