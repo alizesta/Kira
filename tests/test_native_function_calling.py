@@ -155,6 +155,8 @@ class NativeFunctionCallingTests(unittest.TestCase):
         provider.chat_with_tools.assert_called_once()
         self.assertEqual(router.last_metrics["result"], "failed")
         self.assertEqual(router.last_metrics["provider"], "custom")
+        self.assertEqual(router.last_metrics["eval_tokens"], 0)
+        self.assertEqual(router.last_attempts[-1]["result"], "error")
         ledger.assert_called_once_with(router.last_metrics, "failed", provider, provider.last_stats)
         telemetry.assert_called_once()
 
