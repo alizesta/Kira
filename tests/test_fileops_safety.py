@@ -64,12 +64,8 @@ class FileMoveSafetyTests(unittest.TestCase):
         target = destination_folder / source.name
         source.write_text("payload", encoding="utf-8")
 
-        def partial_copy(src, dst, length=0):
-            dst.write(b"partial")
-            raise OSError("simulated disk full")
-
         with mock.patch("kira.tools.fileops.os.link", side_effect=OSError(errno.EXDEV, "cross-device")), mock.patch(
-            "kira.tools.fileops.shutil.copyfileobj", side_effect=partial_copy
+            "kira.tools.fileops.os.fsync", side_effect=OSError("simulated disk full")
         ):
             with self.assertRaises(OSError):
                 _move_file_no_overwrite(str(source), str(target))
@@ -77,6 +73,25 @@ class FileMoveSafetyTests(unittest.TestCase):
         self.assertTrue(source.exists())
         self.assertFalse(target.exists())
         self.assertEqual(list(destination_folder.glob(".kira-move-*.tmp")), [])
+
+    def test_hardlink_move_refuses_to_delete_a_replaced_source(self):
+        source = self.root / "source.txt"
+        destination = self.root / "destination.txt"
+        replacement = self.root / "replacement.txt"
+        source.write_text("original", encoding="utf-8")
+        replacement.write_text("replacement", encoding="utf-8")
+        real_link = os.link
+
+        def replace_after_link(src, dst):
+            real_link(src, dst)
+            os.replace(replacement, src)
+
+        with mock.patch("kira.tools.fileops.os.link", side_effect=replace_after_link):
+            with self.assertRaisesRegex(OSError, "source changed"):
+                _move_file_no_overwrite(str(source), str(destination))
+
+        self.assertEqual(source.read_text(encoding="utf-8"), "replacement")
+        self.assertFalse(destination.exists())
 
     def test_move_never_overwrites_existing_destination(self):
         source = self.root / "source.txt"
