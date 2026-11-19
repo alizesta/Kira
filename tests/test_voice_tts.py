@@ -14,7 +14,7 @@ class LocalTtsPlaybackTests(unittest.TestCase):
     def test_emotion_profile_updates_active_stream_synthesis(self):
         from kira.voice_prosody import resolve_prosody
 
-        session = SimpleNamespace(streaming=True, prosody={})
+        session = SimpleNamespace(streaming=True, prosody={}, cond=threading.Condition())
         speaker = SimpleNamespace(_session=session, _prosody={})
         Speaker.set_emotion(speaker, ["sad"], 100)
 
