@@ -4,6 +4,7 @@ import android.os.Handler
 import android.os.Looper
 import ai.kira.mobile.core.KiraContainer
 import ai.kira.mobile.domain.model.ChatMessage
+import ai.kira.mobile.ui.theme.KiraPalette
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -71,11 +72,11 @@ internal fun KiraChatScreen(character:String,onCharacterChange:(String)->Unit) {
         }
     }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFF0B0E15)).padding(14.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxSize().background(KiraPalette.background).padding(14.dp),verticalArrangement=Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.SpaceBetween) {
             Column {
-                Text("KIRA LOCAL CORE",color=Color(0xFFB9A5FF),fontSize=10.sp,fontWeight=FontWeight.Bold,letterSpacing=2.sp)
-                Text("گفت‌وگو با "+character.replaceFirstChar { it.uppercase() },color=Color(0xFFF4F2FA),fontSize=21.sp,fontWeight=FontWeight.Bold)
+                Text("KIRA LOCAL CORE",color=KiraPalette.primary,fontSize=10.sp,fontWeight=FontWeight.Bold,letterSpacing=2.sp)
+                Text("گفت‌وگو با "+character.replaceFirstChar { it.uppercase() },color=KiraPalette.onBackground,fontSize=21.sp,fontWeight=FontWeight.Bold)
             }
             OutlinedButton(onClick={load()},enabled=!busy) { Text("بازیابی") }
         }
@@ -86,9 +87,9 @@ internal fun KiraChatScreen(character:String,onCharacterChange:(String)->Unit) {
             items(messages,key={it.id}) { message ->
                 val user=message.role=="user"
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=if(user) Arrangement.End else Arrangement.Start) {
-                    Surface(color=if(user) Color(0xFF493D79) else Color(0xFF151C2B),shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth(0.88f)) {
+                    Surface(color=if(user) Color(0xFF493D79) else KiraPalette.surface,shape=RoundedCornerShape(16.dp),modifier=Modifier.fillMaxWidth(0.88f)) {
                         Column(Modifier.padding(13.dp),verticalArrangement=Arrangement.spacedBy(5.dp)) {
-                            Text(if(user) "تو" else character.uppercase(),color=if(user) Color(0xFFE5DCFF) else Color(0xFFB9A5FF),fontSize=10.sp,fontWeight=FontWeight.Bold)
+                            Text(if(user) "تو" else character.uppercase(),color=if(user) Color(0xFFE5DCFF) else KiraPalette.primary,fontSize=10.sp,fontWeight=FontWeight.Bold)
                             Text(message.content,color=Color(0xFFF0EFF6),fontSize=14.sp,lineHeight=21.sp)
                             if(!user && message.route.isNotBlank()) Text(message.route,color=Color(0xFF8290A7),fontSize=9.sp)
                         }
@@ -96,16 +97,16 @@ internal fun KiraChatScreen(character:String,onCharacterChange:(String)->Unit) {
                 }
             }
             if(busy) item { Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                CircularProgressIndicator(Modifier.size(18.dp),color=Color(0xFFB9A5FF),strokeWidth=2.dp)
-                Text("Kira در حال فکرکردن است…",color=Color(0xFF9BA5B8),fontSize=11.sp)
+                CircularProgressIndicator(Modifier.size(18.dp),color=KiraPalette.primary,strokeWidth=2.dp)
+                Text("Kira در حال فکرکردن است…",color=KiraPalette.muted,fontSize=11.sp)
             } }
         }
-        Text(status,color=Color(0xFF9BA5B8),fontSize=10.sp,lineHeight=15.sp)
+        Text(status,color=KiraPalette.muted,fontSize=10.sp,lineHeight=15.sp)
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.Bottom,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(value=input,onValueChange={input=it},modifier=Modifier.weight(1f),placeholder={Text("پیامت را بنویس…",color=Color(0xFFD7D1E8))},maxLines=4,
                 keyboardOptions=KeyboardOptions(imeAction=ImeAction.Send),keyboardActions=KeyboardActions(onSend={send()}),shape=RoundedCornerShape(18.dp),
                 colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,disabledTextColor=Color.White,cursorColor=Color.White,focusedPlaceholderColor=Color(0xFFD7D1E8),unfocusedPlaceholderColor=Color(0xFFD7D1E8)))
-            Button(onClick={send()},enabled=!busy && input.isNotBlank(),modifier=Modifier.height(54.dp),colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF7661D8))) { Text("ارسال") }
+            Button(onClick={send()},enabled=!busy && input.isNotBlank(),modifier=Modifier.height(54.dp),colors=ButtonDefaults.buttonColors(containerColor=KiraPalette.primaryContainer)) { Text("ارسال") }
         }
     }
 }

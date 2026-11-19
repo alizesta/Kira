@@ -23,6 +23,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ai.kira.mobile.assistant.AiAssistantOverlayService
+import ai.kira.mobile.ui.theme.KiraTheme
+import ai.kira.mobile.ui.theme.KiraPalette
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,14 +49,14 @@ private fun KiraApp() {
         hasOverlayPermission=Settings.canDrawOverlays(context)
     }
 
-    MaterialTheme {
+    KiraTheme {
         Scaffold(
-            containerColor=Color(0xFF0B0E15),
+            containerColor=KiraPalette.background,
             bottomBar={
-                NavigationBar(containerColor=Color(0xFF111725)) {
+                NavigationBar(containerColor=KiraPalette.surface) {
                     KiraTab.entries.forEach { tab ->
                         NavigationBarItem(selected=selectedTab==tab,onClick={selectedTab=tab},
-                            icon={Text(tab.glyph,fontSize=18.sp)},label={Text(tab.label,fontSize=11.sp)})
+                            icon={Text(tab.glyph,fontSize=18.sp,color=if(selectedTab==tab) KiraPalette.primary else KiraPalette.muted)},label={Text(tab.label,fontSize=11.sp)})
                     }
                 }
             }
