@@ -49,6 +49,11 @@ on:
       - "kira/ui/main_window.py"
       - "kira/ui/main_window_*.py"
       - "kira/ui/window_feature_controller.py"
+      - "kira/ui/window_presentation_context.py"
+      - "kira/ui/feature_controller_registry.py"
+      - "kira/ui/components/composer_owner.py"
+      - "kira/ui/components/code_chat_host.py"
+      - "tests/test_feature_controller_registry.py"
       - "kira/app/session_application.py"
       - "kira/app/service_module.py"
       - "kira/app/session_composition.py"
@@ -143,6 +148,7 @@ jobs:
           tests.test_chat_transfer
           tests.test_chat_search
           tests.test_brain_reflection_ownership
+          tests.test_feature_controller_registry
           tests.test_application_service_ports
           tests.test_feature_module_registration
           tests.test_chat_history_service_capabilities
@@ -212,6 +218,11 @@ jobs:
           kira/chat_sessions.py
           kira/ui/main_window.py
           kira/ui/window_feature_controller.py
+          kira/ui/window_presentation_context.py
+          kira/ui/feature_controller_registry.py
+          kira/ui/components/composer_owner.py
+          kira/ui/components/code_chat_host.py
+          tests/test_feature_controller_registry.py
           kira/ui/main_window_composition.py
           kira/ui/main_window_support.py
           kira/ui/main_window_root_support.py
