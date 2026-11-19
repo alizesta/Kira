@@ -36,6 +36,31 @@ def _valid_cached_envelope(envelope, frames, sample_rate):
     )
 
 
+def _load_cached_audio(wav_path, meta_path):
+    """Load a cache entry only when the envelope matches the exact WAV payload."""
+    try:
+        with open(wav_path, "rb") as stream:
+            payload = stream.read()
+        with wave.open(io.BytesIO(payload), "rb") as existing:
+            frames = existing.getnframes()
+            sample_rate = existing.getframerate()
+        with open(meta_path, encoding="utf-8") as stream:
+            metadata = json.load(stream)
+        envelope = metadata.get("envelope") if isinstance(metadata, dict) else None
+        if (
+            isinstance(metadata, dict)
+            and metadata.get("version") == 1
+            and metadata.get("wav_sha256") == hashlib.sha256(payload).hexdigest()
+            and metadata.get("frames") == frames
+            and metadata.get("sample_rate") == sample_rate
+            and _valid_cached_envelope(envelope, frames, sample_rate)
+        ):
+            return envelope
+    except (OSError, ValueError, TypeError, wave.Error, json.JSONDecodeError):
+        return None
+    return None
+
+
 def _atomic_write(path, payload):
     """Publish a completed cache file atomically so readers never see partial output."""
     parent = os.path.dirname(path) or "."
@@ -402,26 +427,9 @@ class Speaker(QObject):
         # and writers. Atomic publication also protects the files after a crash.
         with _CACHE_LOCK:
             if s.cache and os.path.isfile(wav_path) and os.path.isfile(meta_path):
-                try:
-                    with open(wav_path, "rb") as stream:
-                        payload = stream.read()
-                    with wave.open(io.BytesIO(payload), "rb") as existing:
-                        frames = existing.getnframes()
-                        sample_rate = existing.getframerate()
-                    with open(meta_path, encoding="utf-8") as stream:
-                        metadata = json.load(stream)
-                    envelope = metadata.get("envelope") if isinstance(metadata, dict) else None
-                    if (
-                        isinstance(metadata, dict)
-                        and metadata.get("version") == 1
-                        and metadata.get("wav_sha256") == hashlib.sha256(payload).hexdigest()
-                        and metadata.get("frames") == frames
-                        and metadata.get("sample_rate") == sample_rate
-                        and _valid_cached_envelope(envelope, frames, sample_rate)
-                    ):
-                        return wav_path, envelope
-                except (OSError, ValueError, TypeError, wave.Error, json.JSONDecodeError):
-                    pass
+                envelope = _load_cached_audio(wav_path, meta_path)
+                if envelope is not None:
+                    return wav_path, envelope
                 for stale in (wav_path, meta_path):
                     try:
                         os.remove(stale)
