@@ -329,6 +329,7 @@ class FileAgentTests(unittest.TestCase):
 
         self.assertEqual(result.status, ERROR)
         self.assertFalse(target.exists())
+        self.assertEqual(list(destination.glob(".kira-copy-*")), [])
 
     def test_create_file_removes_target_when_post_write_verification_fails(self):
         target = self.root / "partial-create.txt"
