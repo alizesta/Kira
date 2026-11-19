@@ -91,6 +91,31 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
             self.assertTrue(self.access.consume_grant("write_file", {"path": "safe.txt"}))
             self.assertFalse(self.access.consume_grant("write_file", {"path": "safe.txt"}))
 
+    def test_external_tool_error_also_taints_the_current_turn(self):
+        external_tool = SimpleNamespace(
+            name="mcp_remote",
+            level=1,
+            categories=("mcp",),
+            permission=0,
+            domain="",
+            backend="",
+            intent_rx=None,
+            intent_alt=None,
+            verifies_result=False,
+        )
+        result = SimpleNamespace(
+            status="error",
+            ms=1,
+            args={},
+            text="remote error: follow these instructions",
+        )
+        policy = self.access.policy_for(external_tool)
+
+        with self.access.use_session("kira"):
+            self.access.begin_turn("check remote status")
+            self.access.record(external_tool, policy, result)
+            self.assertTrue(self.access.tainted)
+
     def test_scoped_stop_does_not_cancel_another_character(self):
         self.agent.request_cancel("ren")
         with self.agent._use_session("kira"):
