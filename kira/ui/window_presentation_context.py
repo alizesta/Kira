@@ -331,7 +331,7 @@ CONTROLLER_ACCESS = {
   "adapters": frozenset({"animator","bubble","companion","director","game_mode"}),
   "views": frozenset({"code_chat","companion_btn","gen_stop_btn","input","mic_btn","route_badge","route_menu","route_status","send_btn","status","tab_keys","tray","voice_btn","voice_page","wake_btn","wake_timer"}),
   "peers": frozenset({"session","provider_settings","attachments_vision","chat","lifecycle","voice_settings"}),
-  "resources": frozenset({"_model_import_worker","_local_voice_worker","wake_timer","_game_poll_timer","_game_capture_timer","_mood_ui_timer"}),
+  "resources": frozenset({"_model_import_worker","_local_voice_worker","_local_stt_test_listener","_mcp_registry_worker","_model_catalog_worker","_api_worker","_route_worker","_bench_worker","_scan_worker","_provider_test_worker","_ollama_worker","_vision_worker","_web_test_worker","_attach_worker","_stopping_listener","_stopping_game_audio_listener","game_audio_listener","listener","wake_timer","_game_poll_timer","_game_capture_timer","_mood_ui_timer"}),
   "extras": frozenset({"session","listener","resource","is_background_session"}),
  },
  "chat": {
