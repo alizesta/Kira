@@ -45,6 +45,10 @@ DEFAULTS = {
     "web_read_max_mb": 2.5,              # biggest page / PDF read (MB); the rest is cut
     "web_max_redirects": 4,              # redirects followed per page (each hop is re-checked against SSRF rules)
     "speak_replies": True,
+    "voice_engine": "gemini_live",       # gemini_live = primary bidirectional voice; local = existing Qwen/Whisper + Piper
+    "gemini_live_provider": "",          # provider id from the existing Google API Manager; never stores a second API key
+    "gemini_live_model": "gemini-3.8-live",
+    "voice_local_fallback": True,        # retain existing local STT/TTS as the fallback path
     "active_modes": True,                # per-message Active Mode (chat / task / plain answer): the request outranks the personality
     "stream_speech": True,               # speech starts from the first finished sentence while the reply is still being written
     "voice_rate": 0,                      # local Piper speech speed adjustment

@@ -826,14 +826,32 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.voice_page.mic_device.setCurrentIndex(i if i >= 0 else 0)
 
     def refresh_voice_caps(self):
-        """State the local-only speech policy in the Voice page."""
-        self.context.views.voice_page.voice_caps_note.setText("میکروفن و بلندگو با STT/TTS محلی کار می‌کنند؛ هیچ صدای ابری یا آنلاین استفاده نمی‌شود.")
+        """Describe the selected realtime/local voice policy without implying the Live transport is already active."""
+        page = self.context.views.voice_page
+        page.voice_caps_note.setText("ورودی/خروجی محلی: Qwen3-ASR یا Whisper به‌همراه Piper؛ بدون سرویس Cloud STT/TTS.")
+        page.live_config_note.setText(
+            "کلید Google از بخش اتصالات خوانده می‌شود و کلید جداگانه‌ای اینجا ذخیره نمی‌شود. "
+            "پشتیبان محلی از همان مدل‌های STT/TTS فعلی استفاده می‌کند. اتصال اجرایی نشست Live در مرحله‌ی بعدی Voice runtime انجام می‌شود."
+        )
 
     def collect_voice_settings(self):
         s = self.context.services.settings
-        s.update({"voice_rate": self.context.views.voice_page.rate.value(), "voice_volume": self.context.views.voice_page.volume.value() / 100.0,
-                  "output_device": self.context.views.voice_page.out_device.currentData() or "", "mic_device": self.context.views.voice_page.mic_device.currentData() or "",
-                  "mic_gain": self.context.views.voice_page.mic_gain.value(), "mic_sensitivity": self.context.views.voice_page.mic_sens.value()})
+        page = self.context.views.voice_page
+        s.update({
+            "voice_rate": page.rate.value(),
+            "voice_volume": page.volume.value() / 100.0,
+            "output_device": page.out_device.currentData() or "",
+            "mic_device": page.mic_device.currentData() or "",
+            "mic_gain": page.mic_gain.value(),
+            "mic_sensitivity": page.mic_sens.value(),
+            "stt_language": page.stt_lang.currentText(),
+            "whisper_model": page.whisper.currentText().strip(),
+            "stream_speech": page.stream_chk.isChecked(),
+            "voice_engine": page.voice_engine.currentData() or "local",
+            "gemini_live_provider": page.gemini_provider.currentData() or "",
+            "gemini_live_model": page.gemini_model.currentText().strip() or "gemini-3.8-live",
+            "voice_local_fallback": page.local_fallback_chk.isChecked(),
+        })
 
     def autosave_voice(self):
         """Voice sliders / devices are saved as soon as they are changed (the Save button is not needed for them)."""

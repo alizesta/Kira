@@ -100,6 +100,50 @@ class VoicePage(QScrollArea):
         stt_actions.addWidget(self.whisper_browse_btn)
         stt_form.addRow(stt_actions)
 
+        live_box = QGroupBox("مکالمه‌ی زنده (Gemini Realtime)")
+        live_form = QFormLayout(live_box)
+        live_form.setContentsMargins(8, 6, 8, 6)
+        live_form.setHorizontalSpacing(8)
+        live_form.setVerticalSpacing(4)
+        self.voice_engine = QComboBox()
+        self.voice_engine.addItem("Gemini Realtime (مسیر اصلی)", "gemini_live")
+        self.voice_engine.addItem("STT/TTS محلی", "local")
+        self.voice_engine.setCurrentIndex(max(0, self.voice_engine.findData(str(settings.get("voice_engine") or "gemini_live"))))
+        live_form.addRow("موتور مکالمه", self.voice_engine)
+        self.gemini_provider = QComboBox()
+        google_providers = []
+        for provider_id, provider_cfg in (settings.get("providers") or {}).items():
+            if not isinstance(provider_cfg, dict):
+                continue
+            is_google = provider_cfg.get("service") == "google" or "generativelanguage.googleapis.com" in str(provider_cfg.get("base_url") or "")
+            if is_google and str(provider_cfg.get("api_key") or "").strip():
+                label = str(provider_cfg.get("label") or provider_id)
+                google_providers.append((label, provider_id))
+        for label, provider_id in google_providers:
+            self.gemini_provider.addItem(label, provider_id)
+        if not google_providers:
+            self.gemini_provider.addItem("ابتدا Google AI Studio را در بخش اتصالات ثبت کن", "")
+        saved_provider = str(settings.get("gemini_live_provider") or "")
+        provider_index = self.gemini_provider.findData(saved_provider)
+        if provider_index >= 0:
+            self.gemini_provider.setCurrentIndex(provider_index)
+        live_form.addRow("کلید Google API", self.gemini_provider)
+        self.gemini_model = QComboBox()
+        self.gemini_model.setEditable(True)
+        self.gemini_model.addItems([
+            "gemini-3.8-live",
+            "gemini-3.8-live-extended-thinking",
+            "gemini-3.1-flash-live-preview",
+        ])
+        self.gemini_model.setCurrentText(str(settings.get("gemini_live_model") or "gemini-3.8-live"))
+        live_form.addRow("مدل Live", self.gemini_model)
+        self.local_fallback_chk = QCheckBox("در صورت خطای Realtime، به STT/TTS محلی برگرد")
+        self.local_fallback_chk.setChecked(bool(settings.get("voice_local_fallback", True)))
+        live_form.addRow(self.local_fallback_chk)
+        self.live_config_note = QLabel()
+        self.live_config_note.setWordWrap(True)
+        live_form.addRow(self.live_config_note)
+
         tts_box = QGroupBox("تولید گفتار (TTS)")
         tts_form = QFormLayout(tts_box)
         tts_form.setContentsMargins(8, 6, 8, 6)
@@ -128,13 +172,14 @@ class VoicePage(QScrollArea):
         grid.setContentsMargins(6, 6, 6, 6)
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(8)
-        for box in (mic_box, output_box, stt_box, tts_box):
+        for box in (mic_box, output_box, stt_box, tts_box, live_box):
             box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             box.setMinimumWidth(0)
         grid.addWidget(mic_box, 0, 0)
         grid.addWidget(output_box, 0, 1)
         grid.addWidget(stt_box, 1, 0)
         grid.addWidget(tts_box, 1, 1)
+        grid.addWidget(live_box, 2, 0, 1, 2)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
         grid.setRowStretch(0, 1)
@@ -147,8 +192,11 @@ class VoicePage(QScrollArea):
         self.save_timer.timeout.connect(self.autosave_requested.emit)
         for widget in (self.volume, self.mic_gain, self.mic_sens, self.rate):
             widget.valueChanged.connect(lambda *_: self.save_timer.start())
-        for widget in (self.out_device, self.mic_device):
+        for widget in (self.out_device, self.mic_device, self.stt_lang, self.whisper, self.voice_engine, self.gemini_provider):
             widget.currentIndexChanged.connect(lambda *_: self.save_timer.start())
+        self.gemini_model.currentTextChanged.connect(lambda *_: self.save_timer.start())
+        self.stream_chk.toggled.connect(lambda *_: self.save_timer.start())
+        self.local_fallback_chk.toggled.connect(lambda *_: self.save_timer.start())
         self.retranslate()
 
     def _register(self, setter: Callable[[str], None], key: str) -> None:
