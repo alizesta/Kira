@@ -595,11 +595,9 @@ class CharacterSettingsController(WindowFeatureController):
         self.mcp_registry_search_btn = self.context.views.mcp_registry_panel.search_btn
         self.mcp_registry_list = self.context.views.mcp_registry_panel.results
         self.mcp_registry_add_btn = self.context.views.mcp_registry_panel.add_btn
-        self.mcp_registry_refresh_btn = self.context.views.mcp_registry_panel.refresh_btn
         self.mcp_registry_status = self.context.views.mcp_registry_panel.status
         self.context.views.mcp_registry_panel.search_requested.connect(self.search_mcp_registry)
         self.context.views.mcp_registry_panel.add_requested.connect(self.add_mcp_registry_server)
-        self.context.views.mcp_registry_panel.refresh_models_requested.connect(self.feature_controller("provider_settings").refresh_model_catalogs)
         parent_layout.addWidget(self.context.views.mcp_registry_panel)
         QTimer.singleShot(1200, self.search_mcp_registry)
 
