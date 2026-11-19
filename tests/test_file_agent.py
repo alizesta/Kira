@@ -50,6 +50,20 @@ class FileAgentTests(unittest.TestCase):
         self.reg.user_text = "تأیید"
         return self.reg.execute(name, first.args, confirmed=True)
 
+    def test_reparse_points_are_treated_as_links(self):
+        from types import SimpleNamespace
+        from kira.tools.fileagent import _is_link_or_reparse
+
+        with mock.patch("kira.tools.fileagent.os.path.islink", return_value=False), mock.patch(
+            "kira.tools.fileagent.os.lstat", return_value=SimpleNamespace(st_file_attributes=0x400)
+        ):
+            self.assertTrue(_is_link_or_reparse(str(self.root / "junction")))
+
+        with mock.patch("kira.tools.fileagent.os.path.islink", return_value=False), mock.patch(
+            "kira.tools.fileagent.os.lstat", side_effect=PermissionError("metadata denied")
+        ):
+            self.assertTrue(_is_link_or_reparse(str(self.root / "unreadable")))
+
     def test_delete_folder_confirmation_discloses_incomplete_count(self):
         def partial_walk(root, followlinks=False, onerror=None):
             if onerror is not None:
