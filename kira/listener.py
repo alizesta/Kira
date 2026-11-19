@@ -367,7 +367,14 @@ class Listener(QThread):
                 self.engine = None
                 self._model = None
             if self.engine == "whisper_cpp":
-                # An empty or rejected transcript is not a successful recognition.
+                # A VAD-confirmed segment that Vulkan cannot decode gets one CPU retry.
+                self._whisper_cpp_failed = True
+                try:
+                    from . import whisper_cpp
+                    whisper_cpp.stop()
+                except Exception:
+                    pass
+                self.note.emit("خروجی Vulkan خالی یا نامعتبر بود؛ این نشست به faster-whisper روی CPU منتقل می‌شود.")
                 self.engine = None
                 self._model = None
         if self.engine is None and not self._load_local():
