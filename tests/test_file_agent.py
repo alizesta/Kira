@@ -77,6 +77,27 @@ class FileAgentTests(unittest.TestCase):
             with self.assertRaises(ToolError):
                 self.fa._copy({"source": source, "destination_folder": str(self.root / "folder")})
 
+    def test_batch_file_move_uses_safe_mover_and_remains_undoable(self):
+        source = self.root / "move-source.txt"
+        destination = self.root / "move-destination"
+        destination.mkdir()
+        source.write_text("payload", encoding="utf-8")
+
+        moved = self.sensitive("batch_files", {
+            "operation": "move",
+            "paths": [str(source)],
+            "destination_folder": str(destination),
+        })
+        self.assertEqual(moved.status, OK, moved.text)
+        target = destination / source.name
+        self.assertFalse(source.exists())
+        self.assertEqual(target.read_text(encoding="utf-8"), "payload")
+
+        undone = self.sensitive("undo_file_operation", {})
+        self.assertEqual(undone.status, OK, undone.text)
+        self.assertTrue(source.exists())
+        self.assertFalse(target.exists())
+
     def test_batch_paths_preserve_case_distinct_files_on_case_sensitive_platforms(self):
         if os.path.normcase("A.txt") == os.path.normcase("a.txt"):
             self.skipTest("platform filesystem semantics are case-insensitive")
