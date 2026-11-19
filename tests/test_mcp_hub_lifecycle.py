@@ -117,6 +117,51 @@ class McpHubLifecycleTests(unittest.TestCase):
 
             hub.shutdown()
 
+    def test_shutdown_interrupts_client_during_startup_before_waiting_for_server_lock(self):
+        entered_initialize = threading.Event()
+        release_initialize = threading.Event()
+        closed = threading.Event()
+
+        class BlockingClient:
+            def start(self):
+                return None
+            def initialize(self, _timeout):
+                entered_initialize.set()
+                release_initialize.wait(timeout=2)
+            def list_tools(self, _timeout):
+                return []
+            def stderr_tail(self):
+                return ""
+            def close(self):
+                closed.set()
+                release_initialize.set()
+
+        client = BlockingClient()
+        config = {
+            "name": "slow",
+            "timeout": 3,
+            "allow": [],
+            "deny": [],
+            "levels": {},
+            "default_level": 3,
+            "max_tools": 10,
+            "keywords": [],
+        }
+        with mock.patch("kira.mcp.hub.make_client", return_value=client):
+            connect_thread = threading.Thread(target=lambda: self.hub._connect("slow", config))
+            connect_thread.start()
+            self.assertTrue(entered_initialize.wait(timeout=1))
+
+            shutdown_thread = threading.Thread(target=self.hub.shutdown)
+            shutdown_thread.start()
+            self.assertTrue(closed.wait(timeout=1))
+            shutdown_thread.join(timeout=2)
+            connect_thread.join(timeout=2)
+
+        self.assertFalse(shutdown_thread.is_alive())
+        self.assertFalse(connect_thread.is_alive())
+        self.assertNotIn("slow", self.hub._clients)
+
     def test_disabling_mcp_disconnects_clients_and_unregisters_tools(self):
         class Client:
             closed = False
