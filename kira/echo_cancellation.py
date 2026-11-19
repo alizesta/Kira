@@ -57,7 +57,6 @@ class AdaptiveEchoCanceller:
         # Each row contains the current and preceding far-end samples.
         estimate = windows @ self.weights
         error = mic - estimate
-        mic_power = float(np.mean(mic * mic))
         estimate_power = float(np.mean(estimate * estimate))
         error_power = float(np.mean(error * error))
 
