@@ -33,6 +33,14 @@ class PersianTtsTextTests(unittest.TestCase):
             "مدل چت‌جی‌پی‌تی روی جی‌پی‌یو و رَم اجرا می‌شود؟",
         )
 
+    def test_voice_engine_and_provider_names_get_readable_pronunciation(self):
+        self.assertEqual(
+            normalize_persian_tts_text(
+                "Whisper.cpp Vulkan با Qwen3-ASR و OpenRouter و FFmpeg"
+            ),
+            "ویسپر دات سی‌پلاس‌پلاس وولکان با کوئن سه اِی‌اِس‌آر و اوپن‌روتر و اِف‌اِف‌اِم‌پِگ",
+        )
+
     def test_english_only_text_is_not_rewritten(self):
         source = "Use ChatGPT, GPU and RAM."
         self.assertEqual(normalize_persian_tts_text(source), source)
