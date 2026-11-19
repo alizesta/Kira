@@ -318,9 +318,17 @@ def create_chat_application_ports(context) -> ChatApplicationPorts:
 
 def create_voice_application_ports(context, speaker) -> VoiceApplicationPorts:
     """Expose device and presentation callbacks without leaking MainWindow to app code."""
+    def create_listener():
+        raw_listener = context.controllers.require("runtime")._create_voice_listener()
+        reference_provider = getattr(speaker, "echo_reference_block", None)
+        attach_reference = getattr(raw_listener, "set_echo_reference_provider", None)
+        if callable(reference_provider) and callable(attach_reference):
+            attach_reference(reference_provider)
+        return QtVoiceListenerAdapter(raw_listener)
+
     return VoiceApplicationPorts(
         speaker=QtSpeakerAdapter(speaker),
-        listener_factory=lambda: QtVoiceListenerAdapter(context.controllers.require("runtime")._create_voice_listener()),
+        listener_factory=create_listener,
         on_heard=context.controllers.require("runtime").on_heard,
         on_interrupted=context.controllers.require("runtime").on_user_barge_in,
         on_state=context.controllers.require("runtime").on_listener_state,
