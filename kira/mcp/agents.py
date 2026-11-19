@@ -22,12 +22,14 @@ import hashlib
 import json
 import logging
 import os
+import queue
 import re
 import tempfile
 import threading
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import quote
 import uuid
 from pathlib import Path
 
@@ -141,16 +143,16 @@ class AgentHttp:
         return self._retry_get("/health")
 
     def status(self, remote_id):
-        return self._retry_get("/status/" + urllib.request.quote(str(remote_id), safe=""))
+        return self._retry_get("/status/" + quote(str(remote_id), safe=""))
 
     def ask(self, task, key):                                           # never retried
         return self._call("POST", "/ask", {"task": task, "job_key": key})
 
     def answer(self, remote_id, answer, approve):                       # never retried
-        return self._call("POST", "/answer/" + urllib.request.quote(str(remote_id), safe=""), {"answer": answer, "approve": approve})
+        return self._call("POST", "/answer/" + quote(str(remote_id), safe=""), {"answer": answer, "approve": approve})
 
     def stop(self, remote_id):                                          # never retried
-        return self._call("POST", "/stop/" + urllib.request.quote(str(remote_id), safe=""), {})
+        return self._call("POST", "/stop/" + quote(str(remote_id), safe=""), {})
 
 
 class JobStore:
