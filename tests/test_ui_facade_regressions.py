@@ -228,6 +228,66 @@ class WidgetRegressionTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_provider_worker_adapter_queues_callbacks_and_tracks_lifetime(self):
+        from kira.ui.application_adapters import QtProviderWorkerAdapter
+
+        class FakeProviderWorker(QObject):
+            tool_event = Signal(dict)
+            event = Signal(dict)
+            chunk = Signal(str)
+            finished_ok = Signal(dict)
+            failed = Signal(str)
+            finished = Signal()
+
+            def isRunning(self):
+                return False
+
+            def start(self):
+                return None
+
+        host = QObject()
+        registry = set()
+        raw_worker = FakeProviderWorker()
+        adapter = QtProviderWorkerAdapter(
+            raw_worker, parent=host, registry=registry
+        )
+        self.assertIn(adapter, registry)
+        loop = QEventLoop()
+        callback_threads = []
+        callback_values = []
+
+        def on_chunk(value):
+            callback_values.append(value)
+            callback_threads.append(threading.get_ident())
+            loop.quit()
+
+        adapter.subscribe("chunk", on_chunk)
+        emitter = threading.Thread(
+            target=lambda: raw_worker.chunk.emit("provider chunk")
+        )
+        emitter.start()
+        emitter.join()
+        QTimer.singleShot(1000, loop.quit)
+        loop.exec()
+
+        self.assertEqual(callback_values, ["provider chunk"])
+        self.assertEqual(callback_threads, [threading.get_ident()])
+
+        finished_loop = QEventLoop()
+        QTimer.singleShot(0, raw_worker.finished.emit)
+        QTimer.singleShot(1000, finished_loop.quit)
+        # The adapter removes itself and schedules both QObjects for deletion
+        # from its GUI-thread finished slot.
+        def poll_release():
+            if not registry:
+                finished_loop.quit()
+            else:
+                QTimer.singleShot(1, poll_release)
+        QTimer.singleShot(0, poll_release)
+        finished_loop.exec()
+        self.assertNotIn(adapter, registry)
+        host.deleteLater()
+
     def test_voice_listener_adapter_marshals_events_to_gui_thread(self):
         from kira.ui.application_adapters import QtVoiceListenerAdapter
 
