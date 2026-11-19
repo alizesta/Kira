@@ -1,9 +1,11 @@
 """Provider settings feature controller."""
 import copy
 import re
+import time
 
 from PySide6.QtCore import Slot
 
+from .. import api_manager
 from .. import routes as route_model
 from .main_window_provider_settings_support import (
     ApiAddPanel,
@@ -102,13 +104,18 @@ class ProviderSettingsController(WindowFeatureController):
             return
         updated = 0
         removed_routes = 0
+        disabled_routes = 0
         failed = []
         settings = self.context.services.settings
         for pid, detection in value:
             if detection.ok and detection.models:
                 self.context.services.provider_application_service.apply_models(settings, pid, detection.models, detection.rate_limit)
-                model_ids = detection.models.keys() if isinstance(detection.models, dict) else detection.models
-                removed_routes += len(route_model.reconcile_provider_models(settings, pid, model_ids))
+                service = self.context.services.provider_application_service
+                free = route_model.catalog_free(detection.models)
+                prefer = api_manager.SERVICES.get(service.service_of(pid, settings.get("providers", {}).get(pid)), {}).get("default_models", ())
+                removed_routes += len(route_model.reconcile_provider_models(
+                    settings, pid, route_model.catalog_ids(detection.models), free=free, prefer=prefer))
+                disabled_routes += len(route_model.disable_non_free_routes(settings, pid, free))
                 updated += len(detection.models)
             elif detection.ok:
                 # An empty discovery response is not reliable evidence that every old model was deleted.
@@ -116,12 +123,28 @@ class ProviderSettingsController(WindowFeatureController):
             else:
                 self.context.services.provider_application_service.apply_failure(settings, pid, detection)
                 failed.append(pid)
+        if updated:
+            settings["model_catalog_refreshed_at"] = int(time.time())
         self.feature_controller("runtime").save_now()
         self.refresh_unified_models()
         self.refresh_api_table()
+        self.refresh_route_list()
         suffix = ("؛ خطا در " + "، ".join(failed)) if failed else ""
         removed_suffix = f"؛ {removed_routes} مسیر مدل منسوخ حذف/جایگزین شد" if removed_routes else ""
-        self.context.views.cloud_model_status.setText(f"مدل‌های API تازه‌سازی شد: {updated} مدل از {len(value)} اتصال{removed_suffix}{suffix}.")
+        disabled_suffix = f"؛ {disabled_routes} مسیر غیررایگان غیرفعال شد" if disabled_routes else ""
+        self.context.views.cloud_model_status.setText(
+            f"مدل‌های API تازه‌سازی شد: {updated} مدل از {len(value)} اتصال{removed_suffix}{disabled_suffix}{suffix}.")
+
+    CATALOG_MAX_AGE_SECONDS = 12 * 3600
+
+    def auto_refresh_model_catalogs(self):
+        """Startup hook: refresh the model catalogs in the background when the last refresh is older than 12 hours."""
+        if self.context.state._closing:
+            return
+        settings = self.context.services.settings
+        if time.time() - float(settings.get("model_catalog_refreshed_at") or 0) < self.CATALOG_MAX_AGE_SECONDS:
+            return
+        self.refresh_model_catalogs()
 
     def build_ai_tab(self):
         """Unified cloud/local model catalogue with advanced route and provider controls."""
@@ -156,13 +179,11 @@ class ProviderSettingsController(WindowFeatureController):
         model_actions = QHBoxLayout()
         self.context.views.cloud_model_select_all_chk = QCheckBox("انتخاب همه")
         self.context.views.cloud_model_select_free_chk = QCheckBox("انتخاب رایگان‌ها")
-        self.context.views.cloud_model_deselect_btn = QPushButton("لغو انتخاب همه")
         self.context.views.cloud_model_test_all_btn = QPushButton("تست همه مدل‌ها")
         self.context.views.cloud_model_select_all_chk.toggled.connect(lambda checked: self.set_cloud_models_selected("all" if checked else "none"))
         self.context.views.cloud_model_select_free_chk.toggled.connect(lambda checked: self.set_cloud_models_selected("free" if checked else "none"))
-        self.context.views.cloud_model_deselect_btn.clicked.connect(lambda: self.set_cloud_models_selected("none"))
         self.context.views.cloud_model_test_all_btn.clicked.connect(self.run_catalog_model_tests)
-        for control in (self.context.views.cloud_model_select_all_chk, self.context.views.cloud_model_select_free_chk, self.context.views.cloud_model_deselect_btn, self.context.views.cloud_model_test_all_btn): model_actions.addWidget(control)
+        for control in (self.context.views.cloud_model_select_all_chk, self.context.views.cloud_model_select_free_chk, self.context.views.cloud_model_test_all_btn): model_actions.addWidget(control)
         cloud_form.addRow(model_actions)
         self.context.views.cloud_model_status = QLabel("فهرست مدل‌های Chat")
         self.context.views.cloud_model_status.setObjectName("hint")
@@ -313,22 +334,20 @@ class ProviderSettingsController(WindowFeatureController):
             parent=self.window,
         )
         for name in (
-            "route_list", "route_manual_lbl", "failover_chk", "route_up_btn",
-            "route_down_btn", "route_add_btn", "route_del_btn", "route_default_btn",
+            "route_list", "route_manual_lbl", "failover_chk",
+            "route_add_btn", "route_del_btn",
             "route_use_btn", "route_auto_btn", "route_provider_lbl", "route_model_edit",
             "route_enabled_chk", "route_timeout", "route_cooldown", "route_ctx",
             "route_predict", "route_status", "route_test_btn", "route_bench_btn",
-            "route_bench_all_btn", "bench_out",
+            "bench_out",
         ):
             setattr(self.context.views, name, getattr(self.route_editor, name))
 
         self.route_editor.selection_changed.connect(self.on_route_selected)
         self.route_editor.order_changed.connect(self.on_routes_reordered)
         self.route_editor.failover_changed.connect(self.on_failover_toggled)
-        self.route_editor.move_requested.connect(self.move_selected)
         self.route_editor.add_requested.connect(self.add_route_dialog)
         self.route_editor.delete_requested.connect(self.delete_selected_route)
-        self.route_editor.default_requested.connect(self.default_selected_route)
         self.route_editor.select_manual_requested.connect(
             lambda: self.feature_controller("runtime").select_route(self._selected_route_id() or "")
         )
@@ -971,7 +990,7 @@ class ProviderSettingsController(WindowFeatureController):
         self._api_changed(pid)
 
     # ---------- Route Manager ----------
-    HEALTH_TXT = {"unknown": "— بدون تست", "healthy": "● سالم", "degraded": "◐ مشکل موقت", "down": "✕ خراب"}
+    HEALTH_TXT = {"unknown": "— بدون تست", "healthy": "● سالم", "degraded": "◐ مشکل موقت", "down": "✕ خراب", "disabled": "⏸ خاموش‌شده"}
 
     def _selected_route_id(self):
         item = self.context.views.route_list.currentItem()
@@ -1020,8 +1039,8 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.state._loading_route = True
         try:
             for w in (self.context.views.route_model_edit, self.context.views.route_enabled_chk, self.context.views.route_timeout, self.context.views.route_cooldown, self.context.views.route_ctx,
-                      self.context.views.route_predict, self.context.views.route_test_btn, self.context.views.route_del_btn, self.context.views.route_default_btn, self.context.views.route_use_btn,
-                      self.context.views.route_up_btn, self.context.views.route_down_btn, self.context.views.route_bench_btn):
+                      self.context.views.route_predict, self.context.views.route_test_btn, self.context.views.route_del_btn, self.context.views.route_use_btn,
+                      self.context.views.route_bench_btn):
                 w.setEnabled(route is not None)
             if not route:
                 self.context.views.route_provider_lbl.setText("-")
@@ -1049,6 +1068,9 @@ class ProviderSettingsController(WindowFeatureController):
                 parts.append(f"آخرین پاسخ {st['last_ms']} ms")
             if st.get("cooldown"):
                 parts.append(f"استراحت {st['cooldown']}s")
+            note = route_model.route_note(self.context.services.settings, rid)
+            if note:
+                parts.append("خاموش‌شده خودکار: " + note)
             if st.get("last_error"):
                 parts.append("آخرین خطا: " + st["last_error"])
             self.context.views.route_status.setText("  ·  ".join(p for p in parts if p))
@@ -1099,20 +1121,6 @@ class ProviderSettingsController(WindowFeatureController):
         self.feature_controller("runtime").save_now()
         QTimer.singleShot(0, self.refresh_route_list)           # renumber labels after the drop has fully finished
         QTimer.singleShot(0, lambda: None if self.context.session.busy else self.feature_controller("runtime").set_badge("idle", self.context.session.client.preview_route()))
-
-    def move_selected(self, delta):
-        rid = self._selected_route_id()
-        if not rid:
-            return
-        ids = [r["id"] for r in self.context.services.provider_application_service.get_routes(self.context.services.settings)]
-        self.context.services.provider_application_service.move_route(self.context.services.settings, rid, ids.index(rid) + delta)
-        self.after_route_change(select=rid)
-
-    def default_selected_route(self):
-        rid = self._selected_route_id()
-        if rid:
-            self.context.services.provider_application_service.set_default_route(self.context.services.settings, rid)
-            self.after_route_change(select=rid)
 
     def delete_selected_route(self):
         rid = self._selected_route_id()

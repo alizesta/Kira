@@ -974,7 +974,7 @@ class HybridRouter:
         st = self._state(route["id"])
         measured = latency_ms if isinstance(latency_ms, (int, float)) and latency_ms >= 0 else ms
         st.update(health="healthy", last_error=None, last_ms=ms, latency_ms=measured,
-                  last_ok_at=time.time(), last_attempt_at=time.time(), failures=0, last_kind=None)
+                  last_ok_at=time.time(), last_attempt_at=time.time(), failures=0, last_kind=None, model_failures=0)
         self.cooldowns.pop(route["id"], None)
 
     def _mark_failure(self, route, exc, secrets=()):
@@ -996,6 +996,16 @@ class HybridRouter:
         st["last_attempt_at"] = time.time()
         st["last_error"] = redact(str(exc), *secrets)[:300]
         st["health"] = "down" if kind in ("auth", "model", "request", "missing", "offline") else "degraded"
+        if kind == "model":
+            st["model_failures"] = st.get("model_failures", 0) + 1
+            if st["model_failures"] >= route_model.AUTO_DISABLE_AFTER:
+                try:                                      # a model the service keeps refusing is dead: switch the route off
+                    if route_model.disable_route(self.settings, route["id"], "سرویس این مدل را نمی‌پذیرد: " + str(st["last_error"])[:120]):
+                        st["health"] = "disabled"
+                except Exception:                         # noqa: BLE001 - bookkeeping must never break a failover
+                    pass
+        else:
+            st["model_failures"] = 0
         return kind, status, cooldown
 
     # ---------- cancellation ----------

@@ -114,6 +114,8 @@ DEFAULTS = {
     "manual_route_id": "",          # "" = automatic by priority; otherwise the route chosen by hand
     "failover_enabled": True,       # a manual choice may still fall back to the next route
     "default_route_id": "",
+    "route_free_only": True,        # catalog refresh switches off routes whose model is explicitly no longer free
+    "model_catalog_refreshed_at": 0,  # epoch seconds of the last successful automatic/manual model catalog refresh
     "api_registry": {},             # API Manager: what each registered API reported (status, models, time). Never contains keys.
     "providers": {
         "groq": {"enabled": False, "api_key": "", "model": "openai/gpt-oss-120b", "timeout": 18},

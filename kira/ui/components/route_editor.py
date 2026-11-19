@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QListWidget,
+    QMenu,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -24,10 +25,8 @@ class RouteEditor(QWidget):
     selection_changed = Signal()
     order_changed = Signal()
     failover_changed = Signal(bool)
-    move_requested = Signal(int)
     add_requested = Signal()
     delete_requested = Signal()
-    default_requested = Signal()
     select_manual_requested = Signal()
     select_auto_requested = Signal()
     test_requested = Signal()
@@ -58,29 +57,18 @@ class RouteEditor(QWidget):
         self.route_list.model().rowsMoved.connect(lambda *_: self.order_changed.emit())
         body.addWidget(self.route_list)
 
+        # Reordering is drag-and-drop in the list; the first enabled route is the default, so there are no up/down/default buttons.
         toolbar = QHBoxLayout()
         toolbar.setSpacing(4)
         self.route_add_btn = QPushButton("＋ افزودن")
         self.route_del_btn = QPushButton("حذف")
-        self.route_up_btn = QPushButton("▲")
-        self.route_down_btn = QPushButton("▼")
-        self.route_default_btn = QPushButton("پیش‌فرض")
         self.route_use_btn = QPushButton("انتخاب دستی")
         self.route_auto_btn = QPushButton("خودکار")
-        self.route_up_btn.setToolTip("افزایش اولویت Route")
-        self.route_down_btn.setToolTip("کاهش اولویت Route")
         self.route_add_btn.clicked.connect(self.add_requested.emit)
         self.route_del_btn.clicked.connect(self.delete_requested.emit)
-        self.route_up_btn.clicked.connect(lambda: self.move_requested.emit(-1))
-        self.route_down_btn.clicked.connect(lambda: self.move_requested.emit(1))
-        self.route_default_btn.clicked.connect(self.default_requested.emit)
         self.route_use_btn.clicked.connect(self.select_manual_requested.emit)
         self.route_auto_btn.clicked.connect(self.select_auto_requested.emit)
-        for button in (
-            self.route_add_btn, self.route_del_btn, self.route_up_btn,
-            self.route_down_btn, self.route_default_btn, self.route_use_btn,
-            self.route_auto_btn,
-        ):
+        for button in (self.route_add_btn, self.route_del_btn, self.route_use_btn, self.route_auto_btn):
             toolbar.addWidget(button)
         toolbar.addStretch(1)
         self.failover_chk = QCheckBox("ادامه با مدل بعدی هنگام خطا")
@@ -161,13 +149,14 @@ class RouteEditor(QWidget):
         actions = QHBoxLayout()
         actions.setSpacing(4)
         self.route_test_btn = QPushButton("تست اتصال")
-        self.route_bench_btn = QPushButton("Benchmark این Route")
-        self.route_bench_all_btn = QPushButton("Benchmark همه")
         self.route_test_btn.clicked.connect(self.test_requested.emit)
-        self.route_bench_btn.clicked.connect(lambda: self.benchmark_requested.emit(False))
-        self.route_bench_all_btn.clicked.connect(lambda: self.benchmark_requested.emit(True))
-        for button in (self.route_test_btn, self.route_bench_btn, self.route_bench_all_btn):
-            actions.addWidget(button)
+        self.route_bench_btn = QPushButton("Benchmark ▾")
+        bench_menu = QMenu(self.route_bench_btn)
+        bench_menu.addAction("فقط این Route", lambda: self.benchmark_requested.emit(False))
+        bench_menu.addAction("همه Routeها", lambda: self.benchmark_requested.emit(True))
+        self.route_bench_btn.setMenu(bench_menu)
+        actions.addWidget(self.route_test_btn)
+        actions.addWidget(self.route_bench_btn)
         actions.addStretch(1)
         body.addLayout(actions)
 

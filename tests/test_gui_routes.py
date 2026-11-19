@@ -362,16 +362,14 @@ class RouteGuiTests(unittest.TestCase):
         w2.companion.close()
         w2.close()
 
-    def test_move_buttons_default_and_failover_toggle(self):
+    def test_failover_toggle(self):
+        # Reordering is drag-and-drop only (up/down/default buttons were removed); move/default logic lives in routes.py.
         w = self.win
         self.row("openrouter")
-        w.move_selected(-1)
-        self.assertEqual([r["id"] for r in route_model.get_routes(w.settings)][2:4], ["openrouter", "mistral"])
-        w.default_selected_route()
-        self.assertEqual(w.settings["default_route_id"], "openrouter")
-        self.assertEqual(route_model.get_routes(w.settings)[0]["id"], "openrouter")
         w.failover_chk.setChecked(False)
         self.assertFalse(config.load_settings()["failover_enabled"])
+        for removed in ("route_up_btn", "route_down_btn", "route_default_btn", "route_bench_all_btn"):
+            self.assertFalse(hasattr(w.presentation_context.views, removed) and getattr(w.presentation_context.views, removed, None) is not None)
 
     def test_ollama_scan_adds_installed_models_disabled(self):
         w = self.win

@@ -367,4 +367,5 @@ def initialize_main_window(
         self.controllers.require("session").add_chat("system", warning)
     self.controllers.require("lifecycle").check_status()
     self.adapters.director.event("app_startup")
+    QTimer.singleShot(15000, self.controllers.require("provider_settings").auto_refresh_model_catalogs)   # keep the model catalogs fresh without a button
 

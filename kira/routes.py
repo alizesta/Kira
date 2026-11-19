@@ -430,16 +430,79 @@ def add_ollama_models(settings, installed_names, enabled=False):
     return added
 
 
-def reconcile_provider_models(settings, provider, available_models):
+def catalog_entries(models):
+    """Discovery results as a list of dicts with an 'id'. Accepts the list of dicts discovery returns, a dict keyed by id,
+    or plain id strings, so callers never have to guess the shape."""
+    entries = []
+    items = models.items() if isinstance(models, dict) else ((None, m) for m in (models or ()))
+    for key, item in items:
+        if isinstance(item, dict):
+            entry = dict(item)
+            if key is not None:
+                entry.setdefault("id", key)
+        else:
+            entry = {"id": key if key is not None else item}
+        mid = str(entry.get("id") or "").strip()
+        if mid:
+            entry["id"] = mid
+            entries.append(entry)
+    return entries
+
+
+def catalog_ids(models):
+    return [e["id"] for e in catalog_entries(models)]
+
+
+def catalog_free(models):
+    """{model id: True | False | None} - the 'free' flag discovery reported (None = unknown)."""
+    return {e["id"]: e.get("free") for e in catalog_entries(models)}
+
+
+AUTO_DISABLE_AFTER = 2          # consecutive "model not available" answers before a route is switched off by itself
+
+
+def disable_route(settings, route_id, reason):
+    """Switch a route OFF (never deletes it) and remember why in settings["route_notes"].
+
+    The last enabled route is never switched off: an app with no usable route cannot chat at all.
+    Returns True when the route was actually disabled."""
+    route = find_route(settings, route_id)
+    if route is None or not route.get("enabled", True):
+        return False
+    if sum(1 for r in _mutable(settings) if r.get("enabled", True)) <= 1:
+        return False
+    update_route(settings, route_id, enabled=False)
+    settings.setdefault("route_notes", {})[route_id] = str(reason)[:200]
+    return True
+
+
+def route_note(settings, route_id):
+    """Why a route was switched off automatically ('' once the user turned it back on)."""
+    route = find_route(settings, route_id)
+    if route is None or route.get("enabled", True):
+        return ""
+    return str((settings.get("route_notes") or {}).get(route_id) or "")
+
+
+def _pick_replacement(available, prefer, free):
+    for model in prefer or ():
+        if model in available:
+            return model
+    for model in sorted(available):
+        if (free or {}).get(model) is True:
+            return model
+    return sorted(available)[0]
+
+
+def reconcile_provider_models(settings, provider, available_models, *, free=None, prefer=()):
     """Remove stale routes after a successful, non-empty provider catalog refresh.
 
     If every route for a built-in provider points at a removed model, retain the
-    first route identity and retarget it to a currently advertised model. This
-    preserves default/manual references and avoids recreating a stale built-in
-    fallback on the next settings migration.
+    first route identity and retarget it to a currently advertised model (one of
+    ``prefer`` first, then a free one). This preserves default/manual references
+    and avoids recreating a stale built-in fallback on the next settings migration.
     """
-    available = {str(model or "").strip() for model in (available_models or ())}
-    available.discard("")
+    available = set(catalog_ids(available_models))
     if not available:
         return []                         # an empty/partial discovery is not proof that every model was deleted
     routes = _mutable(settings)
@@ -451,12 +514,27 @@ def reconcile_provider_models(settings, provider, available_models):
     removed = []
     if not survivors:
         keeper = stale.pop(0)
-        update_route(settings, keeper["id"], model=sorted(available)[0])
+        update_route(settings, keeper["id"], model=_pick_replacement(available, prefer, free))
     for route in stale:
         remove_route(settings, route["id"])
         removed.append(route["id"])
     sync_legacy(settings)
     return removed
+
+
+def disable_non_free_routes(settings, provider, free):
+    """Switch off enabled routes of ``provider`` whose model the catalog now marks as NOT free (``free[model] is False``).
+
+    Unknown (None) is left alone: only an explicit "paid" answer disables a route, and only while
+    settings["route_free_only"] is on (default). Returns the ids that were disabled."""
+    if not settings.get("route_free_only", True) or not free:
+        return []
+    disabled = []
+    for route in list(_mutable(settings)):
+        if route.get("provider") == provider and route.get("enabled", True) and free.get(route.get("model")) is False:
+            if disable_route(settings, route["id"], "این مدل دیگر رایگان نیست"):
+                disabled.append(route["id"])
+    return disabled
 
 
 def snapshot(settings):

@@ -163,7 +163,7 @@ class FeatureControllerRegistryTests(unittest.TestCase):
         catalog_views = {
             "cloud_model_search", "cloud_model_refresh_btn", "cloud_model_status",
             "cloud_model_select_all_chk", "cloud_model_select_free_chk",
-            "cloud_model_deselect_btn", "cloud_model_test_all_btn",
+            "cloud_model_test_all_btn",
         }
         self.assertTrue(
             catalog_views.issubset(VIEW_FIELDS),
