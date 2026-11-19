@@ -75,8 +75,17 @@ def _get(url, headers, secret, timeout, params=None, unsupported_on_404=False, m
         meta["rate_limit"] = _rate_headers(resp)
     if code == 400 and ("api key not valid" in str(getattr(resp, "text", "")).lower() or "api_key_invalid" in str(getattr(resp, "text", "")).lower()):
         raise DiscoveryError("auth", "API Key نامعتبر است (400).")           # Google answers a wrong key with 400, not 401
-    if code in (401, 403):
-        raise DiscoveryError("auth", f"API Key نامعتبر است یا اجازه‌ی دیدن فهرست مدل‌ها را ندارد ({code}).")
+    if code == 403:
+        detail_text = str(getattr(resp, "text", "") or "").lower()
+        try:
+            detail_text += " " + str(resp.json()).lower()
+        except (ValueError, AttributeError):
+            pass
+        if any(marker in detail_text for marker in ("network access denied", "ip address", "not available in your region", "geo restriction")):
+            raise DiscoveryError("network", "سرویس درخواست را به‌دلیل محدودیت IP، منطقه یا شبکه رد کرد (403). کلید لزوماً نامعتبر نیست؛ VPN، IP خروجی و دسترسی شبکه را بررسی کن.")
+        raise DiscoveryError("auth", "API Key نامعتبر است یا اجازه‌ی دیدن فهرست مدل‌ها را ندارد (403).")
+    if code == 401:
+        raise DiscoveryError("auth", "API Key نامعتبر است یا اجازه‌ی دیدن فهرست مدل‌ها را ندارد (401).")
     if code == 429:
         raise DiscoveryError("rate", "محدودیت درخواست سرویس (429)؛ کمی بعد دوباره امتحان کن.")
     if code in (404, 405) and unsupported_on_404:
