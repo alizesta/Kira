@@ -267,6 +267,7 @@ jobs:
           kira/app/initiative_composition.py
           kira/core/interfaces/mood_service.py
           kira/services/mood_service.py
+          kira/services/memory_service.py
           kira/ui/window_presentation_context.py
           tests/test_initiative_application.py
           kira/app/provider_application.py
