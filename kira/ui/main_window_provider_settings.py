@@ -3,6 +3,8 @@ import copy
 import re
 
 from PySide6.QtCore import Slot
+
+from .. import routes as route_model
 from .main_window_provider_settings_support import (
     ApiAddPanel,
     BenchWorker,
@@ -99,19 +101,27 @@ class ProviderSettingsController(WindowFeatureController):
             self.context.views.cloud_model_status.setText("دریافت مدل‌های API ناموفق بود: " + str(value)[:200])
             return
         updated = 0
+        removed_routes = 0
         failed = []
+        settings = self.context.services.settings
         for pid, detection in value:
-            if detection.ok:
-                self.context.services.provider_application_service.apply_models(self.context.services.settings, pid, detection.models, detection.rate_limit)
+            if detection.ok and detection.models:
+                self.context.services.provider_application_service.apply_models(settings, pid, detection.models, detection.rate_limit)
+                model_ids = detection.models.keys() if isinstance(detection.models, dict) else detection.models
+                removed_routes += len(route_model.reconcile_provider_models(settings, pid, model_ids))
                 updated += len(detection.models)
+            elif detection.ok:
+                # An empty discovery response is not reliable evidence that every old model was deleted.
+                failed.append(pid + " (فهرست خالی؛ اطلاعات قبلی حفظ شد)")
             else:
-                self.context.services.provider_application_service.apply_failure(self.context.services.settings, pid, detection)
+                self.context.services.provider_application_service.apply_failure(settings, pid, detection)
                 failed.append(pid)
         self.feature_controller("runtime").save_now()
         self.refresh_unified_models()
         self.refresh_api_table()
         suffix = ("؛ خطا در " + "، ".join(failed)) if failed else ""
-        self.context.views.cloud_model_status.setText(f"مدل‌های API تازه‌سازی شد: {updated} مدل از {len(value)} اتصال{suffix}.")
+        removed_suffix = f"؛ {removed_routes} مسیر مدل منسوخ حذف/جایگزین شد" if removed_routes else ""
+        self.context.views.cloud_model_status.setText(f"مدل‌های API تازه‌سازی شد: {updated} مدل از {len(value)} اتصال{removed_suffix}{suffix}.")
 
     def build_ai_tab(self):
         """Unified cloud/local model catalogue with advanced route and provider controls."""
