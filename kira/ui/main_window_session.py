@@ -523,7 +523,10 @@ class SessionController(WindowFeatureController):
             if result is None:
                 return False
 
-            updated_by_character = dict(settings.get("character_initiative_history") or {})
+            history_by_character = settings.get("character_initiative_history")
+            updated_by_character = (
+                dict(history_by_character) if isinstance(history_by_character, dict) else {}
+            )
             updated_by_character[result.character_id] = list(result.history)
             settings["character_initiative_history"] = updated_by_character
             state._save_warned = False
