@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import QObject, Qt, QTimer, Signal, Slot
 
-from .. import brain
 from ..core.interfaces.application_ports import (
     ChatApplicationPorts,
     VoiceApplicationPorts,
@@ -336,8 +335,11 @@ def create_voice_application_ports(context, speaker) -> VoiceApplicationPorts:
 
 def _enrich_chat_prompt(context, prompt):
     """Compose the shared Skill instructions for the active character session."""
-    result = brain.extend_prompt(
-        prompt, context.session._brain, context.services.settings, context.session.client,
+    result = context.services.brain_application_service.extend_prompt(
+        prompt,
+        context.session._brain,
+        context.services.settings,
+        context.session.client,
         character_id=context.session.cid,
     )
     skills = context.services.shared_skills_application_service.prompt_for(context.session.cid)
