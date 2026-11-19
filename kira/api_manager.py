@@ -60,7 +60,9 @@ def candidate_services(key) -> list[str]:
         return ["groq"]
     if key.startswith(("sk-or-v1-", "sk-or-")):
         return ["openrouter"]
-    if key.startswith("AIza"):
+    # Google AI Studio now issues AQ.-prefixed authorization keys as well as
+    # legacy AIza traffic keys. Route both formats only to Google's validator.
+    if key.startswith(("AIza", "AQ.")):
         return ["google"]
     return ["mistral", "cloudflare"]
 
