@@ -117,7 +117,10 @@ def _probe_cloudflare(key, account_id, timeout):
     except DiscoveryError as exc:
         msg = discovery.redact(str(exc), key)
         if exc.kind == "auth" and not account_id:
-            msg += " اگر توکن از نوع «Account API Token» است، Account ID را هم وارد کن."
+            # Account-scoped tokens cannot be verified through /user/tokens/verify.
+            # Ask for the Account ID and retry against the account-scoped endpoint.
+            return Detection("needs_account", "cloudflare",
+                             "برای بررسی این توکن Cloudflare، Account ID را وارد کن (توکن ممکن است Account-scoped باشد).")
         return Detection(_FAIL_STATE.get(exc.kind, "error"), "cloudflare", msg)
     if not account_id:
         try:
