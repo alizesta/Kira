@@ -83,7 +83,12 @@ class ProviderSettingsController(WindowFeatureController):
 
     @Slot(object)
     def _on_model_catalog_refresh(self, result):
-        if self.context.state._closing:
+        worker = self.sender()
+        if (
+            worker is None
+            or self.context.state._model_catalog_worker is not worker
+            or self.context.state._closing
+        ):
             return
         self.context.views.mcp_registry_panel.set_refreshing(False)
         ok, value = result
@@ -593,7 +598,11 @@ class ProviderSettingsController(WindowFeatureController):
     def _relay_api_worker_done(self, result):
         worker = self.sender()
         callback = getattr(worker, "_ui_done_callback", None) if worker is not None else None
-        if callback is not None and not self.context.state._closing:
+        if (
+            callback is not None
+            and self.context.state._api_worker is worker
+            and not self.context.state._closing
+        ):
             callback(result)
 
     @Slot()
@@ -1084,6 +1093,9 @@ class ProviderSettingsController(WindowFeatureController):
 
     @Slot(object)
     def on_route_test_done(self, result):
+        worker = self.sender()
+        if worker is None or self.context.state._route_worker is not worker or self.context.state._closing:
+            return
         ok, value = result
         self.context.views.route_test_btn.setEnabled(True)
         self.refresh_route_list()
@@ -1123,7 +1135,8 @@ class ProviderSettingsController(WindowFeatureController):
 
     @Slot(object)
     def on_scan_done(self, result):
-        if self.context.state._closing:
+        worker = self.sender()
+        if worker is None or self.context.state._scan_worker is not worker or self.context.state._closing:
             return
         ok, value = result
         self.route_scan_btn.setEnabled(True)
@@ -1165,6 +1178,9 @@ class ProviderSettingsController(WindowFeatureController):
 
     @Slot(dict)
     def on_bench_progress(self, e):
+        worker = self.sender()
+        if worker is None or self.context.state._bench_worker is not worker or self.context.state._closing:
+            return
         if e.get("phase") == "running":
             self.context.views.bench_out.setPlainText("\n".join(self._bench_lines + [f"… {e['label']} / {e['model']}"]))
         else:
@@ -1183,6 +1199,9 @@ class ProviderSettingsController(WindowFeatureController):
 
     @Slot(object)
     def on_bench_done(self, result):
+        worker = self.sender()
+        if worker is None or self.context.state._bench_worker is not worker or self.context.state._closing:
+            return
         self.context.session.busy = False
         self.context.session._speech_live = False
         self.context.state._bench_busy = False
