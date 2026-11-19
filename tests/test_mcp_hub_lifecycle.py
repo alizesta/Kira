@@ -98,6 +98,25 @@ class McpHubLifecycleTests(unittest.TestCase):
         self.assertIsNone(registry.get("agent_ask"))
         self.assertIsNone(registry.get("mcp_info"))
 
+    def test_mcp_mode_off_disables_independent_agent_endpoints_too(self):
+        settings = {"mcp_mode": "auto"}
+        registry = ToolRegistry()
+        with tempfile.TemporaryDirectory() as temp:
+            with mock.patch("kira.mcp.McpHub.refresh_async"):
+                hub = install(registry, Path(temp), lambda: settings)
+            hub._cfg = {
+                "servers": {},
+                "agents": {"worker": {"name": "worker", "url": "https://agent.example", "timeout": 1}},
+                "error": "",
+            }
+            self.assertIsNotNone(hub.agents._agent("worker"))
+            settings["mcp_mode"] = "off"
+
+            with self.assertRaises(ToolError):
+                hub.agents._agent("worker")
+
+            hub.shutdown()
+
     def test_disabling_mcp_disconnects_clients_and_unregisters_tools(self):
         class Client:
             closed = False
