@@ -270,6 +270,9 @@ class BaseProvider(ChatProvider):
             if any(term in low for term in model_access_terms):
                 raise self._fail(f"مدل «{self.model}» در پلن یا سطح دسترسی فعلی قابل استفاده نیست ({code}). {detail}",
                                  False, code, "model")
+            if "network settings" in low or "ip address" in low or "geo restriction" in low:
+                raise self._fail(f"دسترسی شبکه به {self.name} رد شد ({code}). تنظیمات شبکه، VPN یا محدودیت IP را بررسی کن. {detail}",
+                                 True, code, "network")
             raise self._fail(f"{self.auth_hint} ({code}). {detail}", False, code, "auth")
         if code == 401:
             raise self._fail(f"{self.auth_hint} ({code}). {_api_message(response)}", False, code, "auth")
