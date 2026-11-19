@@ -5,6 +5,7 @@ All of them go through PathPolicy: only the allowed folders, never secrets, neve
 from __future__ import annotations
 
 import errno
+import hashlib
 import os
 import shutil
 import sys
@@ -56,6 +57,9 @@ def _move_file_no_overwrite(src: str, dst: str) -> None:
     else:
         target_stat = os.lstat(dst)
         try:
+            current_source = os.stat(src)
+            if not os.path.samestat(source_stat, target_stat) or not os.path.samestat(source_stat, current_source):
+                raise OSError("source changed while creating the destination link")
             os.unlink(src)
         except Exception:
             _unlink_if_same(dst, target_stat)
@@ -64,16 +68,32 @@ def _move_file_no_overwrite(src: str, dst: str) -> None:
 
     fd, temporary = tempfile.mkstemp(prefix=".kira-move-", suffix=".tmp", dir=os.path.dirname(dst))
     try:
+        source_digest = hashlib.sha256()
         with os.fdopen(fd, "wb") as out, open(src, "rb") as source:
-            shutil.copyfileobj(source, out)
+            opened_stat = os.fstat(source.fileno())
+            if not os.path.samestat(source_stat, opened_stat):
+                raise OSError("source was replaced before copying")
+            while True:
+                chunk = source.read(1024 * 1024)
+                if not chunk:
+                    break
+                source_digest.update(chunk)
+                written = out.write(chunk)
+                if written != len(chunk):
+                    raise OSError("short write while moving")
             out.flush()
             os.fsync(out.fileno())
         shutil.copystat(src, temporary)
         current_source = os.stat(src)
-        if ((current_source.st_dev, current_source.st_ino, current_source.st_size, current_source.st_mtime_ns)
-                != (source_stat.st_dev, source_stat.st_ino, source_stat.st_size, source_stat.st_mtime_ns)
+        temporary_digest = hashlib.sha256()
+        with open(temporary, "rb") as copied:
+            for chunk in iter(lambda: copied.read(1024 * 1024), b""):
+                temporary_digest.update(chunk)
+        if (not os.path.samestat(source_stat, current_source)
+                or (current_source.st_size, current_source.st_mtime_ns) != (source_stat.st_size, source_stat.st_mtime_ns)
+                or temporary_digest.digest() != source_digest.digest()
                 or os.path.getsize(temporary) != source_stat.st_size):
-            raise OSError("source changed while moving")
+            raise OSError("source changed or destination copy was incomplete")
         os.link(temporary, dst)                                    # exclusive destination creation
         target_stat = os.lstat(dst)
         os.unlink(temporary)
