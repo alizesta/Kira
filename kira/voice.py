@@ -415,7 +415,35 @@ class Speaker(QObject):
         try:
             while True:
                 with s.cond:
-                   def _synth(self, s, idx, text):
+                    while True:
+                        if s.gen != self._gen:
+                            return
+                        if idx < len(s.sentences) and idx <= s.next_play + PREFETCH:
+                            break
+                        if s.input_done and idx >= len(s.sentences):
+                            return
+                        s.cond.wait(0.25)
+                    text = s.sentences[idx]
+                try:
+                    result = (s.paths[idx], []) if idx in s.paths else self._synth(s, idx, text)
+                except Exception as exc:
+                    result = None
+                    if s.gen == self._gen:
+                        self._failed.emit(
+                            s.gen, f"ساخت صدا ناموفق بود: {type(exc).__name__}: {exc}"
+                        )
+                if s.gen != self._gen:
+                    if result:
+                        self._remove_temp(result[0])
+                    return
+                self._ready.emit(
+                    s.gen, idx, result[0] if result else "", result[1] if result else []
+                )
+                idx += 1
+        finally:
+            pass
+
+    def _synth(self, s, idx, text):
         """Synthesize one sentence with emotion prosody, clause pauses and cache isolation."""
         from . import local_voice
         from .voice_prosody import expand_persian_numbers
@@ -432,7 +460,8 @@ class Speaker(QObject):
         rate = max(-50, min(50, int(self.settings.get("voice_rate", 0)) + s.rate))
         prosody = dict(s.prosody or resolve_prosody())
         prosody["pitch_semitones"] = max(
-            -0.55, min(0.55, float(prosody.get("pitch_semitones", 0.0)) + float(s.pitch or 0) * 0.03)
+            -0.55,
+            min(0.55, float(prosody.get("pitch_semitones", 0.0)) + float(s.pitch or 0) * 0.03),
         )
         identity = local_voice.tts_cache_identity(model_path) if s.cache else model_path
         prosody_key = json.dumps(prosody, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -457,13 +486,15 @@ class Speaker(QObject):
 
             clauses = split_comma_clauses(spoken_text)
             audio_parts = []
-            for clause in clauses:
+            has_following_sentence = idx + 1 < len(s.sentences) or not s.input_done
+            for clause_index, clause in enumerate(clauses):
                 audio = local_voice.synthesize_persian(clause, model_path, rate, prosody=prosody)
-                pause = (
-                    prosody["pause_comma_ms"]
-                    if clause.rstrip().endswith(("،", ",", "؛", ";"))
-                    else prosody["pause_sentence_ms"]
-                )
+                if clause_index < len(clauses) - 1:
+                    pause = prosody["pause_comma_ms"]
+                elif has_following_sentence:
+                    pause = prosody["pause_sentence_ms"]
+                else:
+                    pause = 0
                 audio_parts.append((audio, pause))
             audio = join_wavs_with_pauses(audio_parts)
             return self._save_local_wav(tag, audio, s.cache, wav_path, meta_path)
