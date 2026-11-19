@@ -1,6 +1,7 @@
 """Persistence regressions for independent MCP agent jobs."""
 import json
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -135,6 +136,21 @@ class JobStoreTests(unittest.TestCase):
             agent.stop("job/a b")
         self.assertEqual(calls[0][1], "/answer/job%2Fa%20b")
         self.assertEqual(calls[1][1], "/stop/job%2Fa%20b")
+
+    def test_agent_hub_shutdown_stops_background_poller_and_can_restart(self):
+        with tempfile.TemporaryDirectory() as temp:
+            hub = AgentHub(mock.Mock(), Path(temp), lambda: {})
+            hub._ensure_poller()
+            first = hub._poller
+            self.assertTrue(first.is_alive())
+            hub.shutdown()
+            self.assertFalse(first.is_alive())
+
+            hub._ensure_poller()
+            second = hub._poller
+            self.assertTrue(second.is_alive())
+            hub.shutdown()
+            self.assertFalse(second.is_alive())
 
     def test_missing_health_ok_field_is_not_treated_as_healthy(self):
         with tempfile.TemporaryDirectory() as temp:
