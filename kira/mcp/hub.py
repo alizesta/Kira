@@ -94,7 +94,9 @@ def _params_from_schema(schema) -> tuple:
                 if ptype == "integer":
                     return isinstance(value, int) and not isinstance(value, bool)
                 if ptype == "number":
-                    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+                    if isinstance(value, bool) or not isinstance(value, (int, float)):
+                        return False
+                    return not isinstance(value, float) or math.isfinite(value)
                 if ptype == "boolean":
                     return isinstance(value, bool)
                 if ptype == "array":
