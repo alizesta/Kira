@@ -422,7 +422,6 @@ class CodeChat(QObject):
             self._class_job = None
         job.deleteLater()
 
-    @Slot()
     def _progress(self, sess, piece):
         self._streamed += len(piece)
         w = self.win
