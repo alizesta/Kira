@@ -139,7 +139,7 @@ class JobStoreTests(unittest.TestCase):
 
     def test_agent_hub_shutdown_stops_background_poller_and_can_restart(self):
         with tempfile.TemporaryDirectory() as temp:
-            hub = AgentHub(mock.Mock(), Path(temp), lambda: {})
+            hub = AgentHub(mock.Mock(), Path(temp), lambda: {"worker": {"name": "worker"}})
             hub._ensure_poller()
             first = hub._poller
             self.assertTrue(first.is_alive())
@@ -151,6 +151,12 @@ class JobStoreTests(unittest.TestCase):
             self.assertTrue(second.is_alive())
             hub.shutdown()
             self.assertFalse(second.is_alive())
+
+    def test_agent_poller_does_not_start_without_enabled_agent_config(self):
+        with tempfile.TemporaryDirectory() as temp:
+            hub = AgentHub(mock.Mock(), Path(temp), lambda: {})
+            hub._ensure_poller()
+            self.assertIsNone(hub._poller)
 
     def test_missing_health_ok_field_is_not_treated_as_healthy(self):
         with tempfile.TemporaryDirectory() as temp:
