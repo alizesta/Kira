@@ -50,6 +50,17 @@ class FileAgentTests(unittest.TestCase):
         self.reg.user_text = "تأیید"
         return self.reg.execute(name, first.args, confirmed=True)
 
+    def test_program_installation_root_is_blocked_even_inside_allowed_folder(self):
+        program_root = self.root / "Kira"
+        program_root.mkdir()
+        user_file = self.root / "notes.txt"
+        user_file.write_text("notes", encoding="utf-8")
+        policy = PathPolicy({"tools_allowed_paths": [str(self.root)]}, self.data, program_root)
+
+        self.assertEqual(policy.check(str(user_file)), str(user_file.resolve()))
+        with self.assertRaises(ToolError):
+            policy.check(str(program_root / "main.py"), must_exist=False)
+
     def test_reparse_points_are_treated_as_links(self):
         from types import SimpleNamespace
         from kira.tools.fileagent import _is_link_or_reparse
