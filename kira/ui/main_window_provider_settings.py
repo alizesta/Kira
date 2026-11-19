@@ -541,7 +541,7 @@ class ProviderSettingsController(WindowFeatureController):
 
     def _discover_unified_api_key(self, key, account=""):
         """Detect chat-model capability only; audio never uses remote APIs."""
-        return self.context.services.provider_application_service.detect(key, account)
+        return self.context.services.provider_application_service.detect(key, account=account)
 
     def api_add(self):
         if self._api_busy():
