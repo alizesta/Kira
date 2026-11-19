@@ -22,12 +22,13 @@ _CONTROLLERS = {
 
 
 class CodeChatHost:
-    def __init__(self, context) -> None:
+    def __init__(self, context, widget_parent) -> None:
         object.__setattr__(self, "_context", context)
+        object.__setattr__(self, "_widget_parent", widget_parent)
 
     @property
     def widget(self):
-        return self._context.host
+        return self._widget_parent
 
     @property
     def settings(self):
@@ -50,7 +51,7 @@ class CodeChatHost:
             return ctx.session.view
         feature = _CONTROLLERS.get(name)
         if feature is not None:
-            return getattr(ctx.controllers.require(feature), name)
+            return getattr(ctx.require_peer(feature), name)
         raise AttributeError(f"CodeChat host has no member {name!r}")
 
     def __setattr__(self, name: str, value) -> None:
