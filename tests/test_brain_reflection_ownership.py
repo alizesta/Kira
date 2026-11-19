@@ -42,9 +42,11 @@ class BrainReflectionServiceTests(unittest.TestCase):
         for path in sorted((ROOT / "kira" / "ui").glob("*.py")):
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom) and node.module in {"brain", "..brain"}:
+                if isinstance(node, ast.ImportFrom) and any(alias.name == "brain" for alias in node.names):
                     offenders.append(f"{path.name}:{node.lineno}")
-                elif isinstance(node, ast.Import) and any(alias.name in {"kira.brain", "brain"} for alias in node.names):
+                elif isinstance(node, ast.Import) and any(
+                    alias.name == "brain" or alias.name.endswith(".brain") for alias in node.names
+                ):
                     offenders.append(f"{path.name}:{node.lineno}")
         self.assertEqual(offenders, [])
 
