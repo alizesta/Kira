@@ -46,6 +46,30 @@ class McpHubLifecycleTests(unittest.TestCase):
             with self.subTest(schema=schema), self.assertRaises(ValueError):
                 _params_from_schema(schema)
 
+    def test_invalid_tool_schema_does_not_disable_valid_sibling_tools(self):
+        registry = ToolRegistry()
+        hub = McpHub(registry, None, lambda: {})
+        config = {
+            "allow": [],
+            "deny": [],
+            "levels": {},
+            "default_level": 3,
+            "max_tools": 10,
+            "keywords": [],
+        }
+        tools = [
+            {"name": "broken", "inputSchema": {"type": "array"}},
+            {"name": "healthy", "inputSchema": {"type": "object", "properties": {}}},
+        ]
+
+        try:
+            registered = hub._register("example", config, tools)
+            self.assertEqual(registered, 1)
+            self.assertIsNone(registry.get("example__broken"))
+            self.assertIsNotNone(registry.get("example__healthy"))
+        finally:
+            hub.shutdown()
+
     def test_unexpected_startup_failure_closes_client_and_records_error(self):
         class BrokenClient:
             closed = False
