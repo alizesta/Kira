@@ -618,11 +618,11 @@ class VoiceSettingsController(WindowFeatureController):
         )
 
     def test_local_stt(self):
-        listener = getattr(self, "_local_stt_test_listener", None)
+        listener = self.context.resource("_local_stt_test_listener")
         if listener is not None and listener.isRunning():
-            listener.stop()
-            self.context.views.local_stt_test_btn.setText("تست STT")
-            self.context.views.local_voice_status.setText("آزمایش STT متوقف شد.")
+            self.stop_local_stt_test()
+            return
+        if self.context.state._closing:
             return
 
         from ..listener import Listener
@@ -633,7 +633,7 @@ class VoiceSettingsController(WindowFeatureController):
             sensitivity=int(self.context.services.settings.get("mic_sensitivity", 100)),
             barge_in=False, settings=self.context.services.settings,
         )
-        self._local_stt_test_listener = listener
+        self.context.state._local_stt_test_listener = listener
         listener.heard.connect(self._on_local_stt_test_heard)
         listener.error.connect(self._on_local_stt_test_error)
         listener.state.connect(self._on_local_stt_test_state)
@@ -642,7 +642,20 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.local_voice_status.setText("در حال آماده‌سازی میکروفن؛ صحبت کن تا متن تشخیص‌داده‌شده نمایش داده شود.")
         listener.start()
 
+    def stop_local_stt_test(self, *, update_ui=True):
+        """Stop the standalone STT test and retain its QThread until it has exited."""
+        listener = self.context.resource("_local_stt_test_listener")
+        if listener is None:
+            return
+        if listener.isRunning():
+            listener.stop()
+        if update_ui and not self.context.state._closing:
+            self.context.views.local_stt_test_btn.setText("در حال توقف تست STT…")
+            self.context.views.local_voice_status.setText("در حال توقف آزمایش STT…")
+
     def _on_local_stt_test_state(self, state):
+        if self.context.state._closing:
+            return
         labels = {
             "loading": "در حال آماده‌سازی موتور STT…",
             "listening": "میکروفن آماده است؛ صحبت کن…",
@@ -653,21 +666,23 @@ class VoiceSettingsController(WindowFeatureController):
             self.context.views.local_voice_status.setText(labels[state])
 
     def _on_local_stt_test_heard(self, text):
-        listener = getattr(self, "_local_stt_test_listener", None)
+        listener = self.context.resource("_local_stt_test_listener")
         if listener is not None:
             listener.stop()
-        self.context.views.local_voice_status.setText(f"نتیجه تست STT: {text}")
+        if not self.context.state._closing:
+            self.context.views.local_voice_status.setText(f"نتیجه تست STT: {text}")
 
     def _on_local_stt_test_error(self, message):
-        self.context.views.local_voice_status.setText(f"تست STT ناموفق بود: {message}")
-        listener = getattr(self, "_local_stt_test_listener", None)
+        if not self.context.state._closing:
+            self.context.views.local_voice_status.setText(f"تست STT ناموفق بود: {message}")
+        listener = self.context.resource("_local_stt_test_listener")
         if listener is not None:
             listener.stop()
 
     def _on_local_stt_test_finished(self, listener):
-        if getattr(self, "_local_stt_test_listener", None) is listener:
-            self._local_stt_test_listener = None
-        if hasattr(self.context.views, "local_stt_test_btn"):
+        if self.context.state._local_stt_test_listener is listener:
+            self.context.state._local_stt_test_listener = None
+        if not self.context.state._closing and hasattr(self.context.views, "local_stt_test_btn"):
             self.context.views.local_stt_test_btn.setText("تست STT")
 
     def _on_local_tts_tested(self, result):
