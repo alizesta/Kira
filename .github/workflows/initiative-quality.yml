@@ -15,6 +15,7 @@ on:
       - "kira/ui/main_window_composition.py"
       - "kira/ui/bootstrap.py"
       - "tests/test_initiative_application.py"
+      - "tests/test_mood_service.py"
       - "tests/test_feature_module_registration.py"
       - "tests/test_composition_root_contract.py"
       - "kira/chat/persistence.py"
@@ -50,6 +51,7 @@ on:
       - "kira/ui/main_window_composition.py"
       - "kira/ui/bootstrap.py"
       - "tests/test_initiative_application.py"
+      - "tests/test_mood_service.py"
       - "tests/test_feature_module_registration.py"
       - "tests/test_composition_root_contract.py"
       - "kira/chat/persistence.py"
@@ -91,6 +93,7 @@ jobs:
           python -m unittest
           tests.test_initiative_quality
           tests.test_initiative_application
+          tests.test_mood_service
           tests.test_character_decision
           tests.test_character_profile_service
           tests.test_feature_module_registration
@@ -110,6 +113,7 @@ jobs:
           kira/ui/main_window_composition.py
           kira/ui/bootstrap.py
           tests/test_initiative_application.py
+          tests/test_mood_service.py
           tests/test_feature_module_registration.py
           tests/test_composition_root_contract.py
           kira/chat/persistence.py
