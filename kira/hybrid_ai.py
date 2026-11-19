@@ -362,7 +362,18 @@ class OpenAICompatibleProvider(BaseProvider):
     endpoint = ""
 
     def _base(self):
-        return str(self.config.get("base_url") or self.endpoint).rstrip("/")
+        base = str(self.config.get("base_url") or self.endpoint).rstrip("/")
+        # Google exposes its OpenAI-compatible Chat Completions API under
+        # /v1beta/openai. Accept the common host-only and /v1beta base URLs
+        # entered in API Manager, while preserving an already-correct path.
+        if "://" in base:
+            authority, _, path = base.split("://", 1)[1].partition("/")
+            hostname = authority.rsplit("@", 1)[-1].split(":", 1)[0].lower()
+            if hostname == "generativelanguage.googleapis.com":
+                clean_path = "/" + path.rstrip("/") if path else ""
+                if clean_path in ("", "/v1beta"):
+                    base += "/v1beta/openai" if not clean_path else "/openai"
+        return base
 
     def _prepare(self, messages, system_prompt, temperature, stream, max_tokens=None):
         if (self.needs_key and not self.secret) or not self.model:
