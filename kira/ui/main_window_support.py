@@ -55,8 +55,8 @@ class SessionRelay(QObject):
         "_send_next_pending": "runtime",
     }
 
-    def __init__(self, context, session):
-        super().__init__(context.host)
+    def __init__(self, context, session, widget_parent):
+        super().__init__(widget_parent)
         self.context, self.session = context, session
         self.provider_event.connect(self._handle_provider_event)
 
@@ -68,8 +68,8 @@ class SessionRelay(QObject):
         owner = self._HANDLER_OWNERS.get(name)
         if owner is None:
             raise LookupError(f"No feature owner is registered for SessionRelay handler {name!r}")
-        session_controller = self.context.controllers.require("session")
-        controller = self.context.controllers.require(owner)
+        session_controller = self.context.require_peer("session")
+        controller = self.context.require_peer(owner)
         with session_controller._as(self.session):
             getattr(controller, name)(*args)
 
