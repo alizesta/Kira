@@ -11,6 +11,18 @@ from kira.ui.main_window import MainWindow
 
 
 class LocalTtsPlaybackTests(unittest.TestCase):
+    def test_emotion_profile_updates_active_stream_synthesis(self):
+        from kira.voice_prosody import resolve_prosody
+
+        session = SimpleNamespace(streaming=True, prosody={})
+        speaker = SimpleNamespace(_session=session, _prosody={})
+        Speaker.set_emotion(speaker, ["sad"], 100)
+
+        self.assertEqual(session.prosody, resolve_prosody(["sad"], 100))
+        self.assertGreater(session.prosody["length_scale"], 1.0)
+        self.assertLess(session.prosody["gain_db"], 0.0)
+
+
     def test_speaker_idle_state_waits_for_real_thread_exit(self):
         class FakeThread:
             def __init__(self):
