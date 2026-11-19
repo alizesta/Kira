@@ -131,29 +131,50 @@ class McpHub:
         return str(self.settings_fn().get("mcp_mode", "auto")).lower() != "off"
 
     def refresh_async(self) -> None:
-        """(Re)read kira_mcp.json and (re)connect, off the calling thread."""
-        if not self.enabled():
-            return
+        """(Re)read kira_mcp.json and (re)connect/disable, off the calling thread."""
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 return
-            self._thread = threading.Thread(target=self._refresh, daemon=True, name="kira-mcp-refresh")
+            target = self._refresh if self.enabled() else self._disable
+            self._thread = threading.Thread(target=target, daemon=True, name="kira-mcp-refresh")
             self._thread.start()
 
     def config(self) -> dict:
         return self._cfg
 
+    def _disable(self) -> None:
+        """Disconnect every server and unregister its tools when MCP mode is switched off."""
+        with self._lock:
+            names = tuple(self._clients)
+        for name in names:
+            self._drop(name)
+        self.registry.unregister_where(lambda tool: bool(getattr(tool, "mcp_server", "")))
+        protocol.set_gate_words("mcp", [])
+        protocol.set_gate_words("agents", [])
+        with self._state_lock:
+            self.state.clear()
+            self.state["_hub"] = {"status": "disabled", "error": "", "tools": 0}
+
     def _refresh(self) -> None:
         try:
+            if not self.enabled():
+                self._disable()
+                return
             self._cfg = cfgmod.load(self.data_dir)
             protocol.set_gate_words("mcp", [w for s in self._cfg["servers"].values() for w in [s["name"], *s["keywords"]]])
             protocol.set_gate_words("agents", [w for g in self._cfg["agents"].values() for w in [g["name"], *g["keywords"]]])
             with self._state_lock:
                 existing_servers = tuple(self.state)
             for name in existing_servers:
+                if not self.enabled():
+                    self._disable()
+                    return
                 if name not in self._cfg["servers"]:
                     self._drop(name)
             for name, cfg in self._cfg["servers"].items():
+                if not self.enabled():
+                    self._disable()
+                    return
                 self._connect(name, cfg)
         except Exception as exc:                                       # noqa: BLE001 - a broken server never affects the app
             _LOGGER.exception("MCP hub refresh failed")
@@ -174,10 +195,16 @@ class McpHub:
                 self.state.pop(name, None)
 
     def _connect(self, name: str, cfg: dict) -> bool:
+        if not self.enabled():
+            return False
         with self._server_lock(name):
+            if not self.enabled():
+                return False
             return self._connect_locked(name, cfg)
 
     def _connect_locked(self, name: str, cfg: dict) -> bool:
+        if not self.enabled():
+            return False
         with self._state_lock:
             st = self.state.setdefault(name, {"status": "starting", "error": "", "tools": 0, "next_try": 0.0})
             next_try = st.get("next_try", 0.0)
@@ -197,6 +224,8 @@ class McpHub:
             client.start()
             client.initialize(cfg["timeout"])
             tools = client.list_tools(cfg["timeout"])
+            if not self.enabled():
+                raise McpError("MCP mode was disabled during connection")
             # Publish the client before the tools become callable. Calls take
             # the same per-server lock and therefore wait until registration
             # has either completed or rolled back.
@@ -267,6 +296,8 @@ class McpHub:
             return self._call_locked(server, tool, args)
 
     def _call_locked(self, server: str, tool: str, args: dict) -> str:
+        if not self.enabled():
+            raise ToolError("سرورهای MCP غیرفعال هستند؛ ابزار اجرا نشد.", DENIED)
         cfg = self._cfg["servers"].get(server)
         if cfg is None:
             raise ToolError("این سرور دیگر در kira_mcp.json نیست.", ERROR)
