@@ -50,6 +50,29 @@ class _Chat:
         return SimpleNamespace(ok=self.persisted)
 
 
+class PersonaMemoryServiceTimestampTests(unittest.TestCase):
+    def test_list_items_forwards_the_application_timestamp_inside_character_scope(self):
+        from contextlib import nullcontext
+        from unittest.mock import patch
+
+        from kira.services.memory_service import PersonaMemoryService
+
+        expected = [{"id": "memory-1"}]
+        service = PersonaMemoryService()
+        with patch(
+            "kira.services.memory_service.persona_memory.character_scope",
+            return_value=nullcontext(),
+        ) as scope, patch(
+            "kira.services.memory_service.persona_memory.list_items",
+            return_value=expected,
+        ) as list_items:
+            result = service.list_items("ren", now=1234.5)
+
+        scope.assert_called_once_with("ren")
+        list_items.assert_called_once_with(now=1234.5)
+        self.assertEqual(result, expected)
+
+
 class InitiativeApplicationServiceTests(unittest.TestCase):
     def setUp(self):
         self.now = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0).timestamp()
