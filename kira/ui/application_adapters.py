@@ -1,7 +1,7 @@
 """UI-side adapters that translate MainWindow callbacks into app ports."""
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QObject, Qt, QTimer, Slot
 
 from .. import brain
 from ..core.interfaces.application_ports import (
@@ -50,40 +50,93 @@ class QtProviderWorkerAdapter:
         return getattr(self._worker, name)
 
 
+class _QtVoiceEventRelay(QObject):
+    """Deliver toolkit-neutral callbacks on the QObject's owning thread."""
+
+    def __init__(self, callback, *, on_finished=None, parent=None):
+        super().__init__(parent)
+        self._callback = callback
+        self._on_finished = on_finished
+
+    @Slot(str)
+    def text(self, value):
+        self._callback(value)
+
+    @Slot()
+    def no_args(self):
+        try:
+            self._callback()
+        finally:
+            if self._on_finished is not None:
+                self._on_finished()
+
+
 class QtVoiceListenerAdapter:
     """Translate a Qt microphone worker into the toolkit-neutral listener port."""
 
     _SIGNALS = {
-        "heard": "heard",
-        "interrupted": "interrupted",
-        "state": "state",
-        "error": "error",
-        "note": "note",
-        "finished": "finished",
+        "heard": ("heard", "text"),
+        "interrupted": ("interrupted", "no_args"),
+        "state": ("state", "text"),
+        "error": ("error", "text"),
+        "note": ("note", "text"),
+        "finished": ("finished", "no_args"),
     }
 
     def __init__(self, listener):
         self.raw_listener = listener
+        self._subscriptions = {}
 
     def subscribe(self, event, callback):
         try:
-            signal_name = self._SIGNALS[event]
+            signal_name, relay_name = self._SIGNALS[event]
         except KeyError as exc:
             raise ValueError(f"Unsupported voice event: {event}") from exc
+        if event in self._subscriptions:
+            raise ValueError(f"Voice event is already subscribed: {event}")
+
         signal = getattr(self.raw_listener, signal_name)
-        signal.connect(callback)
+        relay = _QtVoiceEventRelay(
+            callback,
+            on_finished=self._release_after_finished if event == "finished" else None,
+            parent=self.raw_listener,
+        )
+        slot = getattr(relay, relay_name)
+        signal.connect(slot, Qt.QueuedConnection)
+        self._subscriptions[event] = (signal, slot, relay)
 
         def unsubscribe():
-            try:
-                signal.disconnect(callback)
-                return True
-            except (RuntimeError, TypeError):
+            subscription = self._subscriptions.pop(event, None)
+            if subscription is None:
                 return False
+            source, target, receiver = subscription
+            try:
+                source.disconnect(target)
+            except (RuntimeError, TypeError):
+                pass
+            receiver.deleteLater()
+            return True
 
         return unsubscribe
 
+    def _release_after_finished(self):
+        # QThread.finished is delivered after all listener events. Detach every
+        # relay and release the QThread QObject only after the app callback ran.
+        subscriptions, self._subscriptions = self._subscriptions, {}
+        for signal, slot, relay in subscriptions.values():
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
+            relay.deleteLater()
+        self.raw_listener.deleteLater()
+
     def start(self):
-        return self.raw_listener.start()
+        try:
+            return self.raw_listener.start()
+        except Exception:
+            self._release_after_finished()
+            raise
 
     def stop(self):
         return self.raw_listener.stop()
