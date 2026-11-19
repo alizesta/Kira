@@ -121,6 +121,31 @@ class FacadeRegressionTests(unittest.TestCase):
         self.assertIn("@Slot(int, str)\n    def on_failed", source)
         self.assertIn("self.worker.finished.connect(self._on_worker_finished)", source)
 
+    def test_window_shutdown_does_not_block_waiting_for_workers(self):
+        source = (ROOT / "kira/ui/main_window_runtime.py").read_text(encoding="utf-8")
+        codechat = (ROOT / "kira/chat_code_ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(codechat)
+        code_chat_class = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "CodeChat"
+        )
+        shutdown = next(
+            node for node in code_chat_class.body
+            if isinstance(node, ast.FunctionDef) and node.name == "shutdown"
+        )
+        called_methods = {
+            node.func.attr for node in ast.walk(shutdown)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+        self.assertNotIn("wait", called_methods)
+        self.assertNotIn("waitForFinished", called_methods)
+        self.assertNotIn("terminate", called_methods)
+        self.assertIn("def background_workers(self)", codechat)
+        self.assertIn("workers.extend(code_chat.background_workers())", source)
+        self.assertIn("worker.finished.connect(self._resume_close_after_workers)", source)
+        self.assertNotIn("w.wait(3000)", source)
+        self.assertNotIn("w.wait(5000)", source)
+
     def test_codechat_job_signals_are_relayed_to_qobject_slots(self):
         source = (ROOT / "kira/chat_code_ui.py").read_text(encoding="utf-8")
         self.assertIn("job.chunk.connect(self._relay_job_chunk)", source)
