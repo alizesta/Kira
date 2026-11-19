@@ -74,7 +74,7 @@ class ProviderSettingsController(WindowFeatureController):
             self.feature_controller("voice_settings").refresh_local_voice_status()
         except Exception as exc:
             self.context.views.cloud_model_refresh_btn.setEnabled(True)
-            self.context.views.mcp_registry_panel.set_status("تازه‌سازی کامل نشد: " + str(exc)[:200])
+            self.context.views.cloud_model_status.setText("تازه‌سازی کامل نشد: " + str(exc)[:200])
 
     @Slot()
     def _clear_model_catalog_worker(self):
@@ -93,10 +93,10 @@ class ProviderSettingsController(WindowFeatureController):
             or self.context.state._closing
         ):
             return
-        self.context.views.mcp_registry_panel.set_refreshing(False)
+        self.context.views.cloud_model_refresh_btn.setEnabled(True)
         ok, value = result
         if not ok:
-            self.context.views.mcp_registry_panel.set_status("دریافت مدل‌های API ناموفق بود: " + str(value)[:200])
+            self.context.views.cloud_model_status.setText("دریافت مدل‌های API ناموفق بود: " + str(value)[:200])
             return
         updated = 0
         failed = []
@@ -111,7 +111,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.refresh_unified_models()
         self.refresh_api_table()
         suffix = ("؛ خطا در " + "، ".join(failed)) if failed else ""
-        self.context.views.mcp_registry_panel.set_status(f"مدل‌های API تازه‌سازی شد: {updated} مدل از {len(value)} اتصال{suffix}.")
+        self.context.views.cloud_model_status.setText(f"مدل‌های API تازه‌سازی شد: {updated} مدل از {len(value)} اتصال{suffix}.")
 
     def build_ai_tab(self):
         """Unified cloud/local model catalogue with advanced route and provider controls."""
