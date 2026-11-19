@@ -10,8 +10,10 @@ from kira.app.initiative_application import InitiativeApplicationService
 class _Memory:
     def __init__(self, items):
         self.items = items
+        self.calls = []
 
-    def list_items(self, character_id):
+    def list_items(self, character_id, now=None):
+        self.calls.append((character_id, now))
         return list(self.items)
 
 
@@ -83,6 +85,7 @@ class InitiativeApplicationServiceTests(unittest.TestCase):
         self.assertEqual(result.character_id, "ren")
         self.assertTrue(result.message)
         self.assertEqual(len(self.chat.messages), 1)
+        self.assertEqual(self.memory.calls, [("ren", self.now)])
         self.assertEqual(self.chat.messages[0][1]["metadata"]["proactive"], "initiative")
         self.assertEqual(self.chat.messages[0][1]["metadata"]["memory_id"], "memory-1")
         self.assertEqual(self.mood.marked, [("memory-1", self.now)])
