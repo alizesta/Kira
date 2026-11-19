@@ -400,15 +400,25 @@ class Speaker(QObject):
 
         # The lock protects the pair (WAV + envelope) from concurrent cache readers
         # and writers. Atomic publication also protects the files after a crash.
-        with _CACHE_LOCK if s.cache else _NullLock():
+        with _CACHE_LOCK:
             if s.cache and os.path.isfile(wav_path) and os.path.isfile(meta_path):
                 try:
-                    with wave.open(wav_path, "rb") as existing:
+                    with open(wav_path, "rb") as stream:
+                        payload = stream.read()
+                    with wave.open(io.BytesIO(payload), "rb") as existing:
                         frames = existing.getnframes()
                         sample_rate = existing.getframerate()
                     with open(meta_path, encoding="utf-8") as stream:
-                        envelope = json.load(stream)
-                    if _valid_cached_envelope(envelope, frames, sample_rate):
+                        metadata = json.load(stream)
+                    envelope = metadata.get("envelope") if isinstance(metadata, dict) else None
+                    if (
+                        isinstance(metadata, dict)
+                        and metadata.get("version") == 1
+                        and metadata.get("wav_sha256") == hashlib.sha256(payload).hexdigest()
+                        and metadata.get("frames") == frames
+                        and metadata.get("sample_rate") == sample_rate
+                        and _valid_cached_envelope(envelope, frames, sample_rate)
+                    ):
                         return wav_path, envelope
                 except (OSError, ValueError, TypeError, wave.Error, json.JSONDecodeError):
                     pass
@@ -447,41 +457,22 @@ class Speaker(QObject):
         path = wav_path if cache else os.path.join(self._tmp, f"{tag}.wav")
         if cache:
             _atomic_write(path, payload)
+            metadata = {
+                "version": 1,
+                "wav_sha256": hashlib.sha256(payload).hexdigest(),
+                "frames": frames,
+                "sample_rate": sample_rate,
+                "envelope": envelope,
+            }
             _atomic_write(
                 meta_path,
-                json.dumps(envelope, separators=(",", ":"), allow_nan=False).encode("utf-8"),
+                json.dumps(metadata, separators=(",", ":"), allow_nan=False).encode("utf-8"),
             )
         else:
             with open(path, "wb") as stream:
                 stream.write(payload)
         return path, envelope
 
-te Piper's WAV output, calculate the lip-sync envelope and cache it."""
-        import numpy as np
-        if not isinstance(audio, (bytes, bytearray)) or not bytes(audio).startswith(b"RIFF"):
-            raise RuntimeError("مدل Piper خروجی WAV معتبر تولید نکرد.")
-        path = wav_path if cache else os.path.join(self._tmp, f"{tag}.wav")
-        with open(path, "wb") as stream:
-            stream.write(audio)
-        try:
-            with wave.open(path, "rb") as wav:
-                channels, rate = max(1, int(wav.getnchannels())), int(wav.getframerate())
-                pcm = np.frombuffer(wav.readframes(wav.getnframes()), dtype=np.int16)
-                if channels > 1:
-                    pcm = pcm[::channels]
-                if pcm.size == 0 or rate <= 0:
-                    raise RuntimeError("مدل Piper فایل صوتی خالی یا نامعتبر تولید کرد.")
-                envelope = _envelope(pcm, rate)
-        except (OSError, wave.Error) as exc:
-            try:
-                os.remove(path)
-            except OSError:
-                pass
-            raise RuntimeError(f"خواندن خروجی WAV ناموفق بود: {exc}") from exc
-        if cache:
-            with open(meta_path, "w", encoding="utf-8") as stream:
-                json.dump(envelope, stream)
-        return path, envelope
 
     # ---- GUI thread ----
     @Slot(int, str)
