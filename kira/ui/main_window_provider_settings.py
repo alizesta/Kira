@@ -81,6 +81,7 @@ class ProviderSettingsController(WindowFeatureController):
         if self.context.state._model_catalog_worker is worker:
             self.context.state._model_catalog_worker = None
 
+    @Slot(object)
     def _on_model_catalog_refresh(self, result):
         if self.context.state._closing:
             return
@@ -1081,6 +1082,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.state._route_worker.done.connect(self.on_route_test_done)
         self.context.state._route_worker.start()
 
+    @Slot(object)
     def on_route_test_done(self, result):
         ok, value = result
         self.context.views.route_test_btn.setEnabled(True)
@@ -1119,6 +1121,7 @@ class ProviderSettingsController(WindowFeatureController):
         if self.context.state._scan_worker is worker:
             self.context.state._scan_worker = None
 
+    @Slot(object)
     def on_scan_done(self, result):
         if self.context.state._closing:
             return
@@ -1160,6 +1163,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.state._bench_worker.done.connect(self.on_bench_done)
         self.context.state._bench_worker.start()
 
+    @Slot(dict)
     def on_bench_progress(self, e):
         if e.get("phase") == "running":
             self.context.views.bench_out.setPlainText("\n".join(self._bench_lines + [f"… {e['label']} / {e['model']}"]))
@@ -1177,6 +1181,7 @@ class ProviderSettingsController(WindowFeatureController):
                 + (f" · load {r['load_ms']} ms" if r.get("load_ms") else "")
                 + (f" · {r['model_gb']}GB, GPU {r['gpu_pct']}%" if r.get("gpu_pct") is not None else ""))
 
+    @Slot(object)
     def on_bench_done(self, result):
         self.context.session.busy = False
         self.context.session._speech_live = False
