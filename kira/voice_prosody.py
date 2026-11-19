@@ -156,8 +156,11 @@ def persian_number_words(value):
 
 def expand_persian_numbers(text):
     """Spell out Persian-context numbers and common Jalali dates; leave Latin-only text untouched."""
-    value = str(text or "").translate(_DIGITS)
-    if not re.search(r"[آ-ی]", value) or not re.search(r"\d", value):
+    original = str(text or "")
+    if not re.search(r"[آ-ی]", original):
+        return original
+    value = original.translate(_DIGITS)
+    if not re.search(r"\d", value):
         return value
 
     def date_replacement(match):
