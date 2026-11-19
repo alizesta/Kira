@@ -37,7 +37,7 @@ class BrainReflectionServiceTests(unittest.TestCase):
         engine.after_turn.assert_called_once_with("router", {"brain_reflection": "rules"}, "decision", "question",
                                                   "answer", [{"name": "tool"}], "task", True, character_id="mika")
 
-    def test_ui_controllers_do_not_import_legacy_brain_backend(self):
+    def test_ui_modules_do_not_import_legacy_brain_backend(self):
         offenders = []
         for path in sorted((ROOT / "kira" / "ui").glob("*.py")):
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
