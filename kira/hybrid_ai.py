@@ -904,7 +904,16 @@ class HybridRouter:
         cls = provider_class(route["provider"], cfg)
         if cls is None:
             raise ProviderError(route["provider"], "نوع Provider پشتیبانی نمی‌شود.", False, kind="request")
-        merged = {**cfg, "model": route["model"], "timeout": route.get("timeout") or cfg.get("timeout", 18)}
+        timeout = route.get("timeout") or cfg.get("timeout", 18)
+        # Google Gemini can legitimately take longer before its first streamed token.
+        # The generic 18s cloud default cuts these requests off prematurely; raise
+        # only Google's default to the existing cloud maximum, preserving explicit
+        # per-route values above the generic default.
+        base_url = str(cfg.get("base_url") or "").lower()
+        is_google = route["provider"] == "google" or "generativelanguage.googleapis.com" in base_url
+        if is_google and int(timeout or 18) <= route_model.DEFAULT_CLOUD_TIMEOUT:
+            timeout = route_model.CLOUD_TIMEOUT[1]
+        merged = {**cfg, "model": route["model"], "timeout": timeout}
         return cls(merged, name=route["provider"])
 
     # ---------- health / cooldown bookkeeping ----------
