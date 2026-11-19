@@ -12,7 +12,7 @@ import wave
 from .config import DATA_DIR
 from .speech_split import StreamSplitter, split_sentences, strip_think
 from .leak_guard import strip_blocks, scrub_lines
-from .voice_prosody import apply_audio_effects, resolve_prosody, split_comma_clauses, join_wavs_with_pauses
+from .voice_prosody import apply_audio_effects, resolve_prosody, split_comma_clauses, join_wavs_with_pauses, prepend_wav_silence
 from PySide6.QtCore import QObject, Signal, Slot, QUrl, QTimer, QElapsedTimer
 from PySide6.QtMultimedia import QSoundEffect, QMediaPlayer, QAudioOutput, QMediaDevices
 
@@ -495,14 +495,14 @@ class Speaker(QObject):
                 audio = local_voice.synthesize_persian(
                     clause, model_path, rate, prosody=prosody, postprocess=False
                 )
-                if clause_index < len(clauses) - 1:
-                    pause = prosody["pause_comma_ms"]
-                elif has_following_sentence:
-                    pause = prosody["pause_sentence_ms"]
-                else:
-                    pause = 0
+                pause = prosody["pause_comma_ms"] if clause_index < len(clauses) - 1 else 0
                 audio_parts.append((audio, pause))
             audio = join_wavs_with_pauses(audio_parts)
+            # Put inter-sentence silence at the START of each subsequent sentence.
+            # This avoids an unremovable trailing pause when a live stream ends
+            # before another sentence arrives.
+            if idx > 0:
+                audio = prepend_wav_silence(audio, prosody["pause_sentence_ms"])
             try:
                 audio = apply_audio_effects(audio, prosody)
             except Exception:
