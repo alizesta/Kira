@@ -12,7 +12,7 @@ import wave
 from .config import DATA_DIR
 from .speech_split import StreamSplitter, split_sentences, strip_think
 from .leak_guard import strip_blocks, scrub_lines
-from .voice_prosody import apply_audio_effects, resolve_prosody, split_comma_clauses, join_wavs_with_pauses, prepend_wav_silence, prepend_wav_silence
+from .voice_prosody import apply_audio_effects, resolve_prosody, split_comma_clauses, join_wavs_with_pauses, prepend_wav_silence
 from PySide6.QtCore import QObject, Signal, Slot, QUrl, QTimer, QElapsedTimer
 from PySide6.QtMultimedia import QSoundEffect, QMediaPlayer, QAudioOutput, QMediaDevices
 
