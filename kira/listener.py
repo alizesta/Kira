@@ -183,8 +183,8 @@ class Listener(QThread):
                 first = self._next_block(q)
                 if first is None:
                     break
-                first_block = first[0] if isinstance(first, tuple) else first
-                if not seg.calibrate(first_block):
+                first_block, first_reference = first if isinstance(first, tuple) else (first, None)
+                if not seg.calibrate(first_block, echo_reference=first_reference):
                     break
             if not self._run:
                 return
