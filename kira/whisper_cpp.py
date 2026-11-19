@@ -31,7 +31,6 @@ MODEL_URL = (
 )
 MODEL_SHA256 = "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2"
 MODEL_FILENAME = "ggml-large-v3-turbo-q5_0.bin"
-MODEL_SIZE = 574 * 1024 * 1024
 RUNTIME_FILES = ("whisper-server.exe", "whisper-server-cpu.exe", "vcomp140.dll")
 DEFAULT_THREADS = 4
 _STARTUP_TIMEOUT = 90.0
@@ -166,7 +165,7 @@ def install(*, cancel_event=None) -> str:
         _extract_runtime(archive, root, cancel_event)
     if _cancelled(cancel_event):
         raise RuntimeError("نصب موتور تشخیص گفتار لغو شد.")
-    if not model.is_file() or model.stat().st_size != MODEL_SIZE:
+    if not model.is_file() or _sha256_file(model) != MODEL_SHA256:
         _download_verified(MODEL_URL, model, MODEL_SHA256, cancel_event)
     if not is_ready():
         raise RuntimeError("نصب Whisper.cpp کامل نشد؛ فایل‌های runtime یا مدل ناقص‌اند.")
@@ -198,6 +197,19 @@ def _wav_bytes(audio, sample_rate: int) -> bytes:
         wav.setframerate(int(sample_rate))
         wav.writeframes(pcm.tobytes())
     return output.getvalue()
+
+
+def parse_transcription_response(result: Any) -> str:
+    """Extract text from whisper.cpp JSON responses without trusting response shape."""
+    if not isinstance(result, dict):
+        return ""
+    text = result.get("text", "")
+    if not text and isinstance(result.get("segments"), list):
+        text = " ".join(
+            str(segment.get("text") or "").strip()
+            for segment in result["segments"] if isinstance(segment, dict)
+        )
+    return " ".join(str(text or "").split()).strip()
 
 
 def _free_loopback_port() -> int:
@@ -309,16 +321,7 @@ def transcribe(audio, sample_rate=16000, language="fa", prompt="", *, threads=DE
         result = response.json()
     except (requests.RequestException, ValueError) as exc:
         raise RuntimeError(f"whisper.cpp transcription failed: {type(exc).__name__}: {exc}") from exc
-    if isinstance(result, dict):
-        text = result.get("text", "")
-        if not text and isinstance(result.get("segments"), list):
-            text = " ".join(
-                str(segment.get("text") or "").strip()
-                for segment in result["segments"] if isinstance(segment, dict)
-            )
-    else:
-        text = ""
-    return " ".join(str(text or "").split()).strip()
+    return parse_transcription_response(result)
 
 
 def stop() -> None:
