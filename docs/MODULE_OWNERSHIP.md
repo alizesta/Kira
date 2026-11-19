@@ -322,3 +322,15 @@ The eight feature controllers use explicit context.state, context.services, cont
 WindowFeatureController no longer forwards arbitrary attribute reads or writes to the host, and MainWindow no longer forwards feature methods or session/front-only properties. The host reference remains available only as the explicit Qt parent and native-window API boundary. The shell owns no feature policy or shared presentation state.
 
 Source-level contracts are documented and regression tests were updated, but Python tests have not been executed. Windows/GUI and GitHub Actions validation remain outside this development stream.
+
+
+### Initiative — proactive check-in application boundary
+
+| Element | Owner / contract | Allowed dependencies | Must not own |
+|---|---|---|---|
+| Initiative policy | `kira/character/initiative.py` — deterministic `InitiativeEngine`, candidate eligibility, history normalization and message construction | Standard library and immutable memory/history values | Qt, settings persistence, provider calls, UI visibility or worker lifecycle |
+| Initiative application | `kira/app/initiative_application.py` — `InitiativeApplicationService.run_checkin()` | Injected Memory, Mood and Chat application services; Initiative policy values | Qt widgets, MainWindow, microphone/device state, UI rendering |
+| Initiative composition | `kira/app/initiative_composition.py` and `feature_modules.py` — factory registered after Memory and Mood | DependencyContainer-resolved Memory/Mood services and a window-scoped Chat service instance | Constructing or retaining Qt resources |
+| Session presentation | `kira/ui/main_window_session.py` — desktop eligibility gates, settings save and rendering of a successfully persisted check-in | WindowPresentationContext, injected Initiative service and UI/voice adapters | Memory selection, history recovery, duplicate policy or direct imports of `kira.mood` / `kira.persona_memory` |
+
+The application service writes the assistant message before marking the Mood initiative timestamp. A failed durable write returns no result and does not advance the Mood marker or settings history. The Initiative service is window-scoped because it uses the corresponding ChatApplicationService instance; Memory and Mood remain application-wide services.

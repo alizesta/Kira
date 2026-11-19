@@ -33,6 +33,7 @@ APPLICATION_FEATURE_DEPENDENCIES = {
     "vision": ("game_mode",),
     "chat_application": ("chat_history", "conversation_lifecycle"),
     "session_application": ("chat_application",),
+    "initiative_application": ("memory", "mood"),
     "voice_application": (),
 }
 
@@ -67,6 +68,7 @@ def register_application_modules(
     from ..config import DATA_DIR, save_settings
     from .chat_composition import create_chat_application_service_factory
     from .session_composition import create_session_application_service_factory
+    from .initiative_composition import create_initiative_application_service_factory
     from .voice_composition import create_voice_application_service_factory
 
     def selected(key: str, default: Callable[[], Any]) -> Callable[[], Any]:
@@ -96,6 +98,12 @@ def register_application_modules(
 
     def create_session_factory() -> Any:
         return create_session_application_service_factory(event_publisher=event_publisher)
+
+    def create_initiative_factory() -> Any:
+        return create_initiative_application_service_factory(
+            memory_service=container.resolve("memory_service"),
+            mood_service=container.resolve("mood_service"),
+        )
 
     def create_organization_service() -> Any:
         from .organization_application import ChatOrganizationService
@@ -157,6 +165,9 @@ def register_application_modules(
         "vision_application_service": selected("vision_application_service", create_vision),
         "chat_application_service_factory": selected("chat_application_service_factory", create_chat_factory),
         "session_application_service_factory": selected("session_application_service_factory", create_session_factory),
+        "initiative_application_service_factory": selected(
+            "initiative_application_service_factory", create_initiative_factory
+        ),
         "voice_application_service_factory": selected("voice_application_service_factory", create_voice_application_service_factory),
     }
     modules = (
@@ -177,6 +188,7 @@ def register_application_modules(
         ("vision", "vision_application_service"),
         ("chat_application", "chat_application_service_factory"),
         ("session_application", "session_application_service_factory"),
+        ("initiative_application", "initiative_application_service_factory"),
         ("voice_application", "voice_application_service_factory"),
     )
     for module_id, service_key in modules:

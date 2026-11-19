@@ -42,6 +42,7 @@ class CompositionRootContractTests(unittest.TestCase):
             "conversation_organization_application_service",
             "chat_search_application_service",
             "chat_transfer_application_service",
+            "initiative_application_service_factory",
         }.issubset(keys))
 
     def test_organization_search_and_transfer_are_registered_and_injected(self):

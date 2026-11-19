@@ -21,9 +21,9 @@ class ChatApplicationServiceArchitectureTests(unittest.TestCase):
         self.assertIn('persistence=container.resolve("chat_history_service")', feature_modules)
         self.assertIn('"chat_application_service_factory": selected("chat_application_service_factory", create_chat_factory)', feature_modules)
         self.assertNotIn("persistence=self.chat_history_service", source)
-        self.assertIn("self.chat_application_service.submit_message", source)
-        self.assertIn("self.chat_application_service.start_provider_request", source)
-        self.assertIn("self.chat_application_service.persist_message", source)
+        self.assertIn("self.context.services.chat_application_service.submit_message", source)
+        self.assertIn("self.context.services.chat_application_service.start_provider_request", source)
+        self.assertIn("self.context.services.chat_application_service.persist_message", source)
 
 
 class EventBusTests(unittest.TestCase):

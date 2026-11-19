@@ -189,6 +189,11 @@ class FeatureModuleRegistrationTests(unittest.TestCase):
             APPLICATION_FEATURE_DEPENDENCIES["chat_application"],
             ("chat_history", "conversation_lifecycle"),
         )
+        self.assertIn("initiative_application", self.module_ids)
+        self.assertEqual(
+            APPLICATION_FEATURE_DEPENDENCIES["initiative_application"],
+            ("memory", "mood"),
+        )
 
     def test_each_use_case_resolves_the_same_lifecycle_managed_repository(self):
         self.manager.start("conversation_organization")
@@ -210,6 +215,13 @@ class FeatureModuleRegistrationTests(unittest.TestCase):
         self.assertIs(transfer._repository, self.repository)
         self.assertIs(transfer._file_port, self.file_port)
         self.assertEqual(self.repository.lifecycle, ["start"])
+
+    def test_initiative_factory_is_lifecycle_registered_after_memory_and_mood(self):
+        self.manager.start("initiative_application")
+        factory = self.container.resolve("initiative_application_service_factory")
+        self.assertTrue(callable(factory))
+        self.assertEqual(self.manager.state("memory"), ModuleState.STARTED)
+        self.assertEqual(self.manager.state("mood"), ModuleState.STARTED)
 
     def test_registered_lifecycle_service_commits_and_publishes_transitions(self):
         self.manager.start("conversation_lifecycle")

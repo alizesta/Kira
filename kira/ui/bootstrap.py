@@ -64,6 +64,7 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
             character_service=container.resolve("character_service"),
             chat_application_service_factory=container.resolve("chat_application_service_factory"),
             session_application_service_factory=container.resolve("session_application_service_factory"),
+            initiative_application_service_factory=container.resolve("initiative_application_service_factory"),
             web_search_service=container.resolve("web_search_service"),
             shared_skills_application_service=container.resolve("shared_skills_application_service"),
             conversation_organization_application_service=container.resolve(

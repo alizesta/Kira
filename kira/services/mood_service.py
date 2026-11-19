@@ -7,8 +7,8 @@ from .. import mood
 
 
 class MoodStateService:
-    def current(self) -> dict[str, Any]:
-        return mood.current()
+    def current(self, now: float | None = None) -> dict[str, Any]:
+        return mood.current(now=now)
 
     def set_active_character(self, character_id: str, traits: dict[str, Any]) -> None:
         mood.set_active_character(character_id, traits)
@@ -18,6 +18,9 @@ class MoodStateService:
 
     def character_scope(self, character_id: str, traits: dict[str, Any] | None = None):
         return mood.character_scope(character_id, traits)
+
+    def mark_initiative_sent(self, memory_id: str | None = None, now: float | None = None) -> None:
+        mood.mark_initiative_sent(memory_id=memory_id, now=now)
 
     def reset(self) -> None:
         mood.reset()

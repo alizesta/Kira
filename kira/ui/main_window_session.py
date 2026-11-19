@@ -1,15 +1,9 @@
 """Session and presentation feature controller."""
 import logging
-import math
 
 from .main_window_session_support import (
     KIRA_PROFILE,
-    InitiativeEngine,
-    build_checkin_message,
-    initiative_history_state,
-    persona_memory,
     QApplication,
-    sessions_are_idle,
     QColor,
     QComboBox,
     QDesktopServices,
@@ -44,8 +38,6 @@ from .main_window_session_support import (
     front_only,
     make_icon,
     message_html,
-    persisted_checkin_events,
-    mood,
     save_settings,
     theme_mod,
     time,
@@ -457,7 +449,7 @@ class SessionController(WindowFeatureController):
         bar.setValue(bar.maximum())
 
     def maybe_proactive_checkin(self):
-        """Run the existing Initiative policy as a silent, per-character local check-in."""
+        """Apply desktop-only safety gates, then delegate Initiative policy to its application service."""
         monotonic_now = time.monotonic()
         if monotonic_now - getattr(self, "_initiative_checked_at", -1e9) < 30:
             return False
@@ -483,11 +475,7 @@ class SessionController(WindowFeatureController):
                 return False
             if QApplication.activeModalWidget() is not None:
                 return False
-            # A background character may still be generating a reply or hold an unsent draft.
-            # Initiative is suppressed until every character session is genuinely idle.
             sessions = tuple(state.sessions.values())
-            if not sessions_are_idle(sessions):
-                return False
             if any(self._session_has_pending_chat_work(item) for item in sessions):
                 return False
             if self._worker_is_running(getattr(session, "_vision_worker", None)):
@@ -520,113 +508,29 @@ class SessionController(WindowFeatureController):
                 if not callable(running) or running():
                     return False
 
-            now = time.time()
             profiles = self.context.services.character_service.all_profiles(settings)
-            profile = profiles.get(character_id)
-            if not isinstance(profile, dict):
-                return False
-            traits = self.character_traits(character_id, profile)
-            emotional = None
-            latest_user_age = None
-            # Inactivity is app-wide, not just per tab: a recent message to Kira must
-            # suppress a check-in from Ren immediately after the user switches tabs.
-            for profile_id, profile_data in profiles.items():
-                profile_id = str(profile_id)
-                profile_traits = self.character_traits(profile_id, profile_data)
-                with mood.character_scope(profile_id, profile_traits):
-                    profile_mood = mood.current(now=now)
-                profile_age = float(profile_mood.get("age", 0.0))
-                # mood.current() uses 1e9 as its "no recorded user chat yet" sentinel.
-                # It is not a real idle duration and must never trigger unsolicited contact.
-                if not math.isfinite(profile_age) or profile_age < 0:
-                    return False
-                if profile_age < 1e8:
-                    latest_user_age = profile_age if latest_user_age is None else min(latest_user_age, profile_age)
-                if profile_id == character_id:
-                    emotional = profile_mood
-            if emotional is None or latest_user_age is None:
-                return False
-
-            with persona_memory.character_scope(character_id):
-                memories = persona_memory.list_items(now=now)
-
-            history_by_character = settings.get("character_initiative_history")
-            if not isinstance(history_by_character, dict):
-                history_by_character = {}
-            try:
-                persisted_records = self.context.services.chat_application_service.recent_message_records(
-                    limit=5000, character_id=character_id
-                )
-            except Exception:
-                # If durable history cannot be inspected, fail closed rather than
-                # risk a duplicate after a crash between the state writes.
-                _log.exception("Could not inspect persisted Initiative check-in history")
-                return False
-            recovered_events = persisted_checkin_events(persisted_records, now=now)
-            history_state = initiative_history_state(
-                history_by_character.get(character_id, []),
-                recent_events=[*(emotional.get("recent_events", []) or []), *recovered_events],
-                last_memory_id=emotional.get("last_initiative_memory_id", ""),
-                last_sent_at=emotional.get("last_initiative", 0.0),
-                now=now,
+            traits_by_character = {
+                str(profile_id): self.character_traits(str(profile_id), profile_data)
+                for profile_id, profile_data in profiles.items()
+            }
+            result = self.context.services.initiative_application_service.run_checkin(
+                session,
+                profiles,
+                traits_by_character,
+                settings,
+                sessions,
             )
-
-            engine = InitiativeEngine()
-            engine.last_initiative = emotional.get("last_initiative", 0.0)
-            candidate = engine.select_candidate(
-                memories,
-                now=now,
-                exclude_ids=history_state["excluded_ids"],
-            )
-            decision = engine.evaluate(
-                now=now,
-                last_interaction=now - latest_user_age,
-                enabled=True,
-                app_active=True,
-                quiet_hours=engine.is_quiet_hour(now=now),
-                busy=False,
-                has_relevant_memory=bool(candidate),
-                sent_today=history_state["sent_today"],
-            )
-            if not decision.get("eligible") or candidate is None:
+            if result is None:
                 return False
 
-            message = build_checkin_message(candidate, language="auto")
-            if not message:
-                return False
-
-            # Persist as an assistant message only. Do not feed this system-generated
-            # prompt back into persona voice samples, mood learning, or provider chat.
-            outcome = self.context.services.chat_application_service.persist_message(
-                session.session_id,
-                "assistant",
-                message,
-                request_id=getattr(session, "application_request_id", None),
-                conversation_id=getattr(session, "conversation_id", None),
-                status="complete",
-                character_id=character_id,
-                metadata={
-                    "proactive": "initiative",
-                    "memory_id": str(candidate.get("id") or "")[:64],
-                },
+            settings["character_initiative_history"] = (
+                self.context.services.initiative_application_service
+                .merge_settings_history(settings, result)
             )
-            if not outcome.ok:
-                return False
-
             state._save_warned = False
-            with mood.character_scope(character_id, traits):
-                mood.mark_initiative_sent(memory_id=candidate["id"], now=now)
-
-            updated_history = history_state["history"] + [
-                {"at": now, "memory_id": str(candidate["id"])[:64]}
-            ]
-            updated_by_character = dict(history_by_character)
-            updated_by_character[character_id] = updated_history[-64:]
-            settings["character_initiative_history"] = updated_by_character
             self.feature_controller("runtime").save_now()
-
             # add_chat only paints the stored assistant message; there is no TTS or worker.
-            self.add_chat("assistant", message)
+            self.add_chat("assistant", result.message)
             return True
         except Exception:  # noqa: BLE001 - this optional feature must never interrupt chat
             _log.exception("Optional proactive Initiative check-in failed")
@@ -676,7 +580,7 @@ class SessionController(WindowFeatureController):
         }
 
         try:
-            state = mood.current()
+            state = self.context.services.mood_service.current()
             emotion = str(state.get("emotion", "neutral") or "neutral").lower()
             icon_name = face_map.get(emotion, "neutral")
             neon = emotion_colors.get(emotion, "#69E5FF")

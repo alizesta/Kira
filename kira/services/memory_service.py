@@ -9,9 +9,9 @@ from .. import persona_memory
 class PersonaMemoryService:
     """Wrap the legacy persona-memory store behind a character-explicit API."""
 
-    def list_items(self, character_id: str) -> list[dict[str, Any]]:
+    def list_items(self, character_id: str, now: float | None = None) -> list[dict[str, Any]]:
         with persona_memory.character_scope(character_id):
-            return persona_memory.list_items()
+            return persona_memory.list_items(now=now)
 
     def add_note(self, character_id: str, text: str) -> bool:
         with persona_memory.character_scope(character_id):

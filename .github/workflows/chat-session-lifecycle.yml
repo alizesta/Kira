@@ -123,6 +123,8 @@ jobs:
           tests.test_chat_coordinator
           tests.test_voice_application
           tests.test_session_application
+          tests.test_initiative_application
+          tests.test_mood_service
           tests.test_provider_application
           tests.test_vision_application
           tests.test_coding_agent_application
@@ -262,6 +264,14 @@ jobs:
           tests/test_domain_conversation_rules.py
           tests/test_application_service_ports.py
           kira/app/session_composition.py
+          kira/app/initiative_application.py
+          kira/app/initiative_composition.py
+          kira/core/interfaces/mood_service.py
+          kira/services/mood_service.py
+          kira/services/memory_service.py
+          kira/ui/window_presentation_context.py
+          tests/test_initiative_application.py
+          tests/test_mood_service.py
           kira/app/provider_application.py
           kira/app/vision_application.py
           kira/app/coding_agent_application.py

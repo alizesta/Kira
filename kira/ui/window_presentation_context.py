@@ -80,6 +80,7 @@ SERVICE_FIELDS = frozenset({
     "chat_transfer_application_service",
     "coding_agent_application_service",
     "game_mode_application_service",
+    "initiative_application_service",
     "memory_service",
     "mood_service",
     "ollama_client",
