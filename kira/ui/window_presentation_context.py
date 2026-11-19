@@ -377,7 +377,7 @@ CONTROLLER_ACCESS = {
   "views": frozenset({"api_add_status","bench_out","cloud_model_lists","import_model_btn","local_asr_download_btn","local_asr_load_btn","local_asr_model_list","local_asr_path_edit","local_model_list","local_model_tabs","local_stt_test_btn","local_tts_download_btn","local_tts_model_list","local_tts_model_path","local_voice_box","local_voice_progress","local_voice_status","local_whisper_path","mcp_registry_panel","model","route_bench_btn","route_cooldown","route_ctx","route_default_btn","route_del_btn","route_down_btn","route_enabled_chk","route_list","route_manual_lbl","route_model_edit","route_ollama_enabled","route_predict","route_provider_lbl","route_status","route_test_btn","route_timeout","route_up_btn","route_use_btn","tabs","url","local_tts_test_btn"}),
   "peers": frozenset({"voice_settings","runtime","character_settings","session"}),
   "resources": frozenset({"_model_catalog_worker","_route_worker","_scan_worker"}),
-  "extras": frozenset({"resource","session"}),
+  "extras": frozenset({"resource","session","is_background_session"}),
  },
  "character_settings": {
   "state": frozenset({"_closing","_effect","_mcp_registry_worker","front","sessions"}),
