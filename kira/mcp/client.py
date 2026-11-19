@@ -57,6 +57,7 @@ class _Base:
         if not isinstance(result.get("capabilities"), dict) or not isinstance(result.get("serverInfo"), dict):
             raise McpError("initialize returned malformed capabilities or serverInfo")
         self.server_info = result["serverInfo"]
+        self.initialized = True
         self.notify("notifications/initialized", {}, required=True)
 
     def list_tools(self, timeout: float) -> list:
@@ -271,6 +272,8 @@ class HttpClient(_Base):
                 h[header] = value
         if self.session_id:
             h["Mcp-Session-Id"] = self.session_id
+        if getattr(self, "initialized", False):
+            h["MCP-Protocol-Version"] = PROTOCOL
         return h
 
     def _post(self, payload: dict, timeout: float, want_id=None):
