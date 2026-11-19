@@ -142,6 +142,21 @@ class FeatureControllerRegistryTests(unittest.TestCase):
                     f"{feature}.{namespace} contains fields outside the root contract",
                 )
 
+    def test_runtime_can_access_wake_timer_for_shutdown_cleanup(self):
+        from PySide6.QtCore import QObject
+        from kira.ui.window_feature_controller import WindowFeatureController
+        from kira.ui.window_presentation_context import WindowPresentationContext
+
+        window = QObject()
+        runtime = WindowFeatureController(window)
+        registry = FeatureControllerRegistry({"runtime": runtime})
+        root = WindowPresentationContext(window, registry)
+        window.presentation_context = root
+        timer = object()
+        root.views.wake_timer = timer
+
+        self.assertIs(runtime.context.resource("wake_timer"), timer)
+
     def test_unregistered_controllers_fail_closed(self):
         from PySide6.QtCore import QObject
         from kira.ui.window_presentation_context import WindowPresentationContext
