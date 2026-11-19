@@ -580,7 +580,9 @@ class SessionController(WindowFeatureController):
         }
 
         try:
-            state = self.context.services.mood_service.current()
+            state = self.context.services.mood_service.current(
+                character_id=self.context.state.cur.cid
+            )
             emotion = str(state.get("emotion", "neutral") or "neutral").lower()
             icon_name = face_map.get(emotion, "neutral")
             neon = emotion_colors.get(emotion, "#69E5FF")
