@@ -132,6 +132,7 @@ def initialize_main_window(
     for resource_name in (
         "_local_voice_worker",
         "_local_stt_test_listener",
+        "_mcp_registry_worker",
         "_model_catalog_worker",
         "_model_import_worker",
         "_api_worker",
