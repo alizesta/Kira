@@ -128,10 +128,12 @@ class AgentHttp:
             raise value
         raw = value
         try:
-            data = json.loads(raw) if raw.strip() else {}
+            data = json.loads(raw) if raw.strip() else None
         except ValueError as exc:
             raise ToolError(f"پاسخ ایجنت «{self.cfg['name']}» JSON معتبر نبود.", ERROR) from exc
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            raise ToolError(f"پاسخ ایجنت «{self.cfg['name']}» باید یک شیء JSON باشد.", ERROR)
+        return data
 
     def _retry_get(self, path):
         try:
@@ -150,10 +152,16 @@ class AgentHttp:
         return self._call("POST", "/ask", {"task": task, "job_key": key})
 
     def answer(self, remote_id, answer, approve):                       # never retried
-        return self._call("POST", "/answer/" + quote(str(remote_id), safe=""), {"answer": answer, "approve": approve})
+        result = self._call("POST", "/answer/" + quote(str(remote_id), safe=""), {"answer": answer, "approve": approve})
+        if result.get("ok") is not True:
+            raise ToolError("ایجنت دریافت پاسخ را تأیید نکرد؛ وضعیت کار نامشخص است.", ERROR)
+        return result
 
     def stop(self, remote_id):                                          # never retried
-        return self._call("POST", "/stop/" + quote(str(remote_id), safe=""), {})
+        result = self._call("POST", "/stop/" + quote(str(remote_id), safe=""), {})
+        if result.get("ok") is not True:
+            raise ToolError("ایجنت دریافت درخواست توقف را تأیید نکرد؛ وضعیت کار نامشخص است.", ERROR)
+        return result
 
 
 class JobStore:
