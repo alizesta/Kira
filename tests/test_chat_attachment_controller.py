@@ -161,6 +161,13 @@ class ChatAttachmentControllerTests(unittest.TestCase):
         self.assertEqual(self.controller.attachments, [payload])
         self.assertEqual(self.controller.tiles[0].progress, 100)
 
+    def test_worker_completion_restores_send_button_and_clears_loading_notice(self):
+        self.controller.add_paths(["one.txt"])
+        self.workers[0].finish()
+        self.assertTrue(self.send_button.enabled)
+        self.assertNotIn(self.controller.LOADING_TEXT, self.error_label.value)
+        self.assertFalse(self.error_widget.visible)
+
     def test_file_limit_is_enforced_before_worker_creation(self):
         self.controller.add_paths(["one.txt", "two.txt", "three.txt"])
         self.assertEqual(self.workers[0].paths, ["one.txt", "two.txt"])
