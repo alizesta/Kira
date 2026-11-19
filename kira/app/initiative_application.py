@@ -7,6 +7,7 @@ durable message write, and duplicate/rate-limit history calculation.
 from __future__ import annotations
 
 import logging
+import math
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -62,7 +63,7 @@ class InitiativeApplicationService:
 
         emotional = None
         latest_user_age = None
-        for profile_id, profile_data in profiles.items():
+        for profile_id in profiles:
             cid = str(profile_id)
             traits = traits_by_character.get(cid, {})
             with self.mood_service.character_scope(cid, dict(traits)):
@@ -72,7 +73,7 @@ class InitiativeApplicationService:
             except (TypeError, ValueError, OverflowError):
                 return None
             # 1e9 means no user message has ever been recorded; it is not inactivity.
-            if not age >= 0 or age != age or age == float("inf"):
+            if not math.isfinite(age) or age < 0:
                 return None
             if age < 1e8:
                 latest_user_age = age if latest_user_age is None else min(latest_user_age, age)
