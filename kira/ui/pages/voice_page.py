@@ -88,6 +88,7 @@ class VoicePage(QScrollArea):
             "large-v3-turbo",
             "large-v3",
             "parseh/whisper-fa-accuracy-ct2",
+            "whisper.cpp Vulkan · large-v3-turbo-q5_0 (AMD GPU)",
         ])
         self.whisper.setCurrentText(str(settings.get("whisper_model") or "base"))
         self._register(self.whisper.setToolTip, "whisper_tip")
