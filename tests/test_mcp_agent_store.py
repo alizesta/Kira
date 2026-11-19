@@ -31,6 +31,21 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), original)
             self.assertIn("job-1", store.jobs)
 
+    def test_job_store_rejects_non_finite_timestamps_and_unknown_states(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / JOBS_FILE
+            path.write_text(
+                '{"jobs": {'
+                '"bad-time": {"id": "bad-time", "agent": "worker", "remote_id": "r1", "state": "progress", "created": NaN},'
+                '"bad-state": {"id": "bad-state", "agent": "worker", "remote_id": "r2", "state": "mystery", "created": 1}'
+                '}}',
+                encoding="utf-8",
+            )
+            store = JobStore(Path(temp))
+
+        self.assertTrue(store._load_failed)
+        self.assertEqual(store.jobs, {})
+
     def test_agent_http_cannot_be_kept_alive_by_a_slow_response_body(self):
         class SlowResponse:
             def __init__(self):
