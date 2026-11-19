@@ -14,10 +14,10 @@ from kira import local_voice
 
 
 class _FakeSynthesisConfig:
-    def __init__(self, length_scale=None, noise_scale=None, noise_w=None):
+    def __init__(self, length_scale=None, noise_scale=None, noise_w_scale=None):
         self.length_scale = length_scale
         self.noise_scale = noise_scale
-        self.noise_w = noise_w
+        self.noise_w_scale = noise_w_scale
 
 
 class _FakePiperVoice:
@@ -125,7 +125,7 @@ class LocalPiperSynthesisTests(unittest.TestCase):
         config = _FakePiperVoice.instances[str(model)].configs[0][1]
         self.assertAlmostEqual(config.length_scale, profile["length_scale"])
         self.assertAlmostEqual(config.noise_scale, profile["noise_scale"])
-        self.assertAlmostEqual(config.noise_w, profile["noise_w"])
+        self.assertAlmostEqual(config.noise_w_scale, profile["noise_w"])
 
     def test_zero_rate_uses_native_default_length_scale(self):
         path = Path(tempfile.gettempdir()) / "mana-default.onnx"
