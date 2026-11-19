@@ -156,6 +156,22 @@ def remove_provider(settings, pid):
 
 
 # ---------------- route construction / normalisation ----------------
+def is_google(provider, cfg=None):
+    """True for Google AI Studio / Gemini providers (built in by id, or any provider pointing at its API)."""
+    return provider == "google" or "generativelanguage.googleapis.com" in str((cfg or {}).get("base_url") or "").lower()
+
+
+def effective_timeout(route, cfg):
+    """Seconds a request on this route may take. Single rule shared by real chat and the connection test.
+
+    Gemini can legitimately take longer than the generic 18 s cloud default before its first token (thinking models),
+    so a Google route left at that default gets the cloud maximum; any value the user raised explicitly is kept."""
+    timeout = route.get("timeout") or (cfg or {}).get("timeout", DEFAULT_CLOUD_TIMEOUT)
+    if is_google(route.get("provider"), cfg) and int(timeout or DEFAULT_CLOUD_TIMEOUT) <= DEFAULT_CLOUD_TIMEOUT:
+        return CLOUD_TIMEOUT[1]
+    return timeout
+
+
 def clamp_timeout(value, kind):
     lo, hi = LOCAL_TIMEOUT if kind == "local" else CLOUD_TIMEOUT
     default = DEFAULT_LOCAL_TIMEOUT if kind == "local" else DEFAULT_CLOUD_TIMEOUT

@@ -113,3 +113,32 @@ class RouterAutoDisableTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GoogleTimeoutTests(unittest.TestCase):
+    """The connection test must use the same Gemini timeout as real chat (it used to cut off at the 18 s default)."""
+
+    def make(self, timeout=None):
+        s = helpers.fresh_settings()
+        pid = routes.add_provider(s, "Google AI Studio", "https://generativelanguage.googleapis.com/v1beta/openai",
+                                  api_key="k-" + "x" * 20)
+        route = routes.add_route(s, pid, "gemini-3.8-flash", timeout=timeout)
+        return s, route, s["providers"][pid]
+
+    def test_default_google_route_gets_the_cloud_maximum(self):
+        _, route, cfg = self.make()
+        self.assertEqual(routes.effective_timeout(route, cfg), routes.CLOUD_TIMEOUT[1])
+
+    def test_explicit_longer_value_is_kept_and_other_providers_untouched(self):
+        _, route, cfg = self.make(timeout=40)
+        self.assertEqual(routes.effective_timeout(route, cfg), 40)
+        other = {"provider": "groq", "timeout": 18}
+        self.assertEqual(routes.effective_timeout(other, {}), 18)
+
+    def test_route_test_passes_the_extended_timeout_to_the_probe(self):
+        from unittest import mock
+        s, route, _ = self.make()
+        router = hybrid_ai.HybridRouter(s)
+        with mock.patch.object(hybrid_ai, "probe_provider", return_value=(True, "ok")) as probe:
+            router.test_route(route["id"])
+        self.assertEqual(probe.call_args.args[1]["timeout"], routes.CLOUD_TIMEOUT[1])

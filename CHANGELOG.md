@@ -6,6 +6,7 @@
 - Model catalogs refresh automatically 15 s after start when `model_catalog_refreshed_at` is older than 12 h.
 - Refresh switches off (never deletes) routes whose model is explicitly no longer free (`route_free_only`, default on), removes routes whose model is gone, and retargets to the provider's recommended model when every route of a provider is dead.
 - The router switches a route off after 2 consecutive "model not available" answers (`routes.AUTO_DISABLE_AFTER`) and records the reason in `route_notes`; the last enabled route is never switched off.
+- Fixed: the Route "connection test" cut Gemini off at the route's 18 s default while real chat used 60 s. `routes.effective_timeout` is now the single rule for both (Google routes left at the default get the cloud maximum; explicit values are kept).
 - 404 errors now show the replacement model the provider names (e.g. `gemini-2.5-flash` -> `gemini-3.8-flash`).
 - Route editor: removed up/down/default buttons (drag and drop remains), merged the two Benchmark buttons into one menu, removed the redundant "deselect all" button.
 - Tests: `test_route_hygiene.py`, `test_route_editor_widget.py`, `test_model_replacement_hint.py`, `tests/window_factory.py` (GUI tests build a fully composed window like bootstrap).

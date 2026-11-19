@@ -952,15 +952,7 @@ class HybridRouter:
         cls = provider_class(route["provider"], cfg)
         if cls is None:
             raise ProviderError(route["provider"], "نوع Provider پشتیبانی نمی‌شود.", False, kind="request")
-        timeout = route.get("timeout") or cfg.get("timeout", 18)
-        # Google Gemini can legitimately take longer before its first streamed token.
-        # The generic 18s cloud default cuts these requests off prematurely; raise
-        # only Google's default to the existing cloud maximum, preserving explicit
-        # per-route values above the generic default.
-        base_url = str(cfg.get("base_url") or "").lower()
-        is_google = route["provider"] == "google" or "generativelanguage.googleapis.com" in base_url
-        if is_google and int(timeout or 18) <= route_model.DEFAULT_CLOUD_TIMEOUT:
-            timeout = route_model.CLOUD_TIMEOUT[1]
+        timeout = route_model.effective_timeout(route, cfg)
         merged = {**cfg, "model": route["model"], "timeout": timeout}
         return cls(merged, name=route["provider"])
 
@@ -1385,7 +1377,8 @@ class HybridRouter:
                 client.chat([{"role": "user", "content": "OK"}], "Reply with only: OK", 0.1)
                 ok, msg = True, "اتصال و دریافت پاسخ موفق بود."
             else:
-                merged = {**cfg, "model": route["model"], "timeout": min(int(route.get("timeout") or 15), 30)}
+                cap = route_model.CLOUD_TIMEOUT[1] if route_model.is_google(route["provider"], cfg) else 30
+                merged = {**cfg, "model": route["model"], "timeout": min(int(route_model.effective_timeout(route, cfg) or 15), cap)}
                 ok, msg = probe_provider(route["provider"], merged)
         except Exception as exc:                                                    # noqa: BLE001
             ok, msg = False, redact(exc, cfg.get("api_key"))[:400]
