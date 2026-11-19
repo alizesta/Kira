@@ -243,21 +243,21 @@ class McpHub:
         client = None
         try:
             client = make_client(cfg)
-            if self._shutdown.is_set():
+            if self._shutdown.is_set() or not self.enabled():
                 client.close()
                 return False
             # Publish immediately so shutdown can always find a process even
             # while initialize/list_tools are still waiting for the server.
             with self._lock:
                 self._clients[name] = client
-            if self._shutdown.is_set():
-                raise McpError("MCP hub is shutting down")
+            if self._shutdown.is_set() or not self.enabled():
+                raise McpError("MCP hub is shutting down or disabled")
             client.start()
-            if self._shutdown.is_set():
-                raise McpError("MCP hub is shutting down")
+            if self._shutdown.is_set() or not self.enabled():
+                raise McpError("MCP hub is shutting down or disabled")
             client.initialize(cfg["timeout"])
-            if self._shutdown.is_set():
-                raise McpError("MCP hub is shutting down")
+            if self._shutdown.is_set() or not self.enabled():
+                raise McpError("MCP hub is shutting down or disabled")
             tools = client.list_tools(cfg["timeout"])
             if self._shutdown.is_set():
                 raise McpError("MCP hub is shutting down")
