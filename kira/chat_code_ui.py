@@ -11,7 +11,7 @@ import threading
 from pathlib import Path
 
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtCore import QObject, QProcess, QThread, QTimer, QUrl, Qt, Signal
+from PySide6.QtCore import QObject, QProcess, QThread, QTimer, QUrl, Qt, Signal, Slot
 from PySide6.QtWidgets import QFileDialog, QMessageBox
 
 from . import characters
@@ -73,6 +73,7 @@ class CodeChat(QObject):
         self._classifying = False
         self._class_queue = []
         self._class_job = None
+        self._class_jobs = []
         self._class_token = None
         self._vocab_root, self._vocab = None, frozenset()
 
@@ -276,10 +277,13 @@ class CodeChat(QObject):
             prompt = cc.classifier_prompt(Path(root).name, top, self._history(), text)
             job = _Job(lambda chunk: router.chat_stream([{"role": "user", "content": prompt}], cc.CLASSIFY_SYSTEM,
                                                         temperature=0.0, on_chunk=None).get("text", ""), self)
-            job.done.connect(lambda answer: self._classified(token, text, voice, answer, session))
-            job.failed.connect(lambda err: self._classified(token, text, voice, None, session))
-            job.finished.connect(job.deleteLater)
+            job._ui_done_callback = lambda answer: self._classified(token, text, voice, answer, session)
+            job._ui_failed_callback = lambda _err: self._classified(token, text, voice, None, session)
+            job.done.connect(self._relay_job_done)
+            job.failed.connect(self._relay_job_failed)
+            job.finished.connect(self._on_class_job_finished)
             self._class_job = job
+            self._class_jobs.append(job)
             QTimer.singleShot(25_000, lambda: self._classified(token, text, voice, None, session))   # never leave it hanging
             w.status.setText("کیرا در حال فهمیدن درخواستت است…")
             job.start()
@@ -291,7 +295,8 @@ class CodeChat(QObject):
             return                                              # already decided (the timeout and the answer may both arrive)
         self._class_token = None
         self._classifying = False
-        self._class_job = None
+        # The classifier may still be running after its 25-second UI timeout.
+        # Keep its QThread tracked until its actual finished signal arrives.
         w = self.win
         intent = cc.parse_classification(answer)
         queued, self._class_queue = self._class_queue, []
@@ -375,19 +380,56 @@ class CodeChat(QObject):
         sess = self.session
         job = _Job(fn, self)
         self._streamed = 0
-        job.chunk.connect(lambda piece: self._progress(sess, piece))
-        job.done.connect(lambda result: self._finished(sess, done, result))
-        job.failed.connect(lambda err: self._failed(sess, err))
+        job._ui_chunk_callback = lambda piece: self._progress(sess, piece)
+        job._ui_done_callback = lambda result: self._finished(sess, done, result)
+        job._ui_failed_callback = lambda error: self._failed(sess, error)
+        job.chunk.connect(self._relay_job_chunk)
+        job.done.connect(self._relay_job_done)
+        job.failed.connect(self._relay_job_failed)
         job.finished.connect(self._job_cleanup)
         self.job = job
         job.start()
 
+    @Slot(str)
+    def _relay_job_chunk(self, piece):
+        job = self.sender()
+        callback = getattr(job, "_ui_chunk_callback", None) if job is not None else None
+        if callback is not None:
+            callback(piece)
+
+    @Slot(object)
+    def _relay_job_done(self, result):
+        job = self.sender()
+        callback = getattr(job, "_ui_done_callback", None) if job is not None else None
+        if callback is not None:
+            callback(result)
+
+    @Slot(str)
+    def _relay_job_failed(self, error):
+        job = self.sender()
+        callback = getattr(job, "_ui_failed_callback", None) if job is not None else None
+        if callback is not None:
+            callback(error)
+
+    @Slot()
+    def _on_class_job_finished(self):
+        job = self.sender()
+        if job is None:
+            return
+        if job in self._class_jobs:
+            self._class_jobs.remove(job)
+        if self._class_job is job:
+            self._class_job = None
+        job.deleteLater()
+
+    @Slot()
     def _progress(self, sess, piece):
         self._streamed += len(piece)
         w = self.win
         if sess is w.front:
             w.status.setText(f"کیرا در حال بررسی کد است… ({self._streamed:,} نویسه)")
 
+    @Slot()
     def _job_cleanup(self):
         job = self.sender()
         if job is self.job or job is None:
@@ -484,6 +526,7 @@ class CodeChat(QObject):
         self._say("system", "پیشنهاد رد شد؛ هیچ فایلی تغییر نکرد.")
 
     # ------------------------------------------------------------ /auto
+    @Slot(str, object)
     def _ask_approval(self, command, holder):
         """Runs in the UI thread (queued from the agent thread): one question per dangerous command, default = No."""
         holder["ok"] = bool(self.confirm("تأیید دستور کیرا",
@@ -536,10 +579,15 @@ class CodeChat(QObject):
         sess = self.session
         job = _Job(lambda chunk: (setattr(agent, "emit", chunk), agent.run())[1], self)
         job_box["job"] = job
-        job.chunk.connect(lambda line: self._auto_event(sess, line))
+        job._ui_chunk_callback = lambda line: self._auto_event(sess, line)
+        job._ui_done_callback = lambda result: self._finished(
+            sess, lambda r: self._auto_done(goal, r), result
+        )
+        job._ui_failed_callback = lambda error: self._failed(sess, error)
+        job.chunk.connect(self._relay_job_chunk)
         job.approval.connect(self._ask_approval)
-        job.done.connect(lambda result: self._finished(sess, lambda r: self._auto_done(goal, r), result))
-        job.failed.connect(lambda err: self._failed(sess, err))
+        job.done.connect(self._relay_job_done)
+        job.failed.connect(self._relay_job_failed)
         job.finished.connect(self._job_cleanup)
         self.job = job
         w.status.setText("کیرا در حال بررسی پروژه است…" if readonly else "کیرا در حال کار خودکار روی پروژه است…")
@@ -688,12 +736,15 @@ class CodeChat(QObject):
             self.proc.kill()
             self.proc.waitForFinished(1000)
         self.proc = None
-        class_job, self._class_job = getattr(self, "_class_job", None), None
-        if class_job is not None and class_job.isRunning():
-            class_job.requestInterruption()
-            if not class_job.wait(1000):
-                class_job.terminate()
-                class_job.wait(500)
+        class_jobs, self._class_jobs = list(self._class_jobs), []
+        self._class_job = None
+        for class_job in class_jobs:
+            if class_job.isRunning():
+                class_job.requestInterruption()
+                if not class_job.wait(1000):
+                    class_job.terminate()
+                    class_job.wait(500)
+            class_job.deleteLater()
         job, self.job = self.job, None
         if job is not None and job.isRunning():
             job.requestInterruption()                       # AutoAgent checks should_stop between steps
