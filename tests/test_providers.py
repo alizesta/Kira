@@ -45,7 +45,8 @@ class ProviderTests(unittest.TestCase):
             "model": "gemini-3.8-flash",
             "timeout": 60,
         }, name="custom-gemini")
-        responses = [Resp(503, text="overloaded"), Resp(503, text="overloaded"), StreamResp([])]
+        success_response = StreamResp([])
+        responses = [Resp(503, text="overloaded"), Resp(503, text="overloaded"), success_response]
         calls = []
 
         def post(url, **kwargs):
@@ -60,7 +61,7 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(len(calls), 3)
         self.assertTrue(all(call[1]["stream"] is True for call in calls))
         self.assertEqual(sleep.call_count, 2)
-        self.assertIs(response, responses[0] if responses else response)
+        self.assertIs(response, success_response)
 
     def test_non_google_provider_does_not_retry_503(self):
         provider = hybrid_ai.OpenAICompatibleProvider({
