@@ -190,8 +190,9 @@ class VoiceSettingsController(WindowFeatureController):
             return
         self.context.views.local_voice_status.setText("در حال آماده‌سازی موتور Qwen و دانلود مدل از Hugging Face؛ ممکن است چند گیگابایت باشد…")
         from .. import local_voice
-        self._run_local_voice_task(lambda: local_voice.install_and_download_qwen_asr(model_id),
-                                   self.context.views.local_asr_download_btn, self._on_local_qwen_downloaded)
+        self._run_local_voice_task(lambda cancel: local_voice.install_and_download_qwen_asr(model_id, cancel_event=cancel),
+                                   self.context.views.local_asr_download_btn, self._on_local_qwen_downloaded,
+                                   cancellable=True)
 
     def _on_local_qwen_downloaded(self, result):
         ok, value = result
@@ -224,8 +225,9 @@ class VoiceSettingsController(WindowFeatureController):
             self.context.views.local_voice_status.setText("در حال نصب موتور Qwen ASR و دانلود مدل محلی…")
             from .. import local_voice
             self._run_local_voice_task(
-                lambda: local_voice.install_and_download_qwen_asr(value),
-                self.context.views.voice_page.whisper_download_btn, self._on_local_qwen_downloaded
+                lambda cancel: local_voice.install_and_download_qwen_asr(value, cancel_event=cancel),
+                self.context.views.voice_page.whisper_download_btn, self._on_local_qwen_downloaded,
+                cancellable=True,
             )
             return
         if Path(value).expanduser().is_dir():
@@ -245,8 +247,9 @@ class VoiceSettingsController(WindowFeatureController):
             return
         from .. import local_voice
         self.context.views.local_voice_status.setText("در حال نصب موتور faster-whisper و دانلود مدل…")
-        self._run_local_voice_task(lambda: local_voice.install_and_download_whisper(repo_id),
-                                   self.context.views.voice_page.whisper_download_btn, self._on_whisper_downloaded)
+        self._run_local_voice_task(lambda cancel: local_voice.install_and_download_whisper(repo_id, cancel_event=cancel),
+                                   self.context.views.voice_page.whisper_download_btn, self._on_whisper_downloaded,
+                                   cancellable=True)
 
     def _on_whisper_downloaded(self, result):
         ok, value = result
@@ -268,8 +271,9 @@ class VoiceSettingsController(WindowFeatureController):
             return
         from .. import local_voice
         self.context.views.local_voice_status.setText("در حال نصب Piper و دانلود صدای انتخاب‌شده…")
-        self._run_local_voice_task(lambda: local_voice.install_and_download_piper_voice(repo_id),
-                                   self.context.views.local_tts_download_btn, self._on_local_tts_downloaded)
+        self._run_local_voice_task(lambda cancel: local_voice.install_and_download_piper_voice(repo_id, cancel_event=cancel),
+                                   self.context.views.local_tts_download_btn, self._on_local_tts_downloaded,
+                                   cancellable=True)
 
     def _on_local_tts_downloaded(self, result):
         ok, value = result
@@ -555,14 +559,14 @@ class VoiceSettingsController(WindowFeatureController):
         except Exception as exc:
             self.context.views.local_voice_status.setText(f"بررسی موتورهای صوتی ناموفق بود: {type(exc).__name__}: {exc}")
 
-    def _run_local_voice_task(self, fn, button, callback):
+    def _run_local_voice_task(self, fn, button, callback, *, cancellable=False):
         worker = getattr(self.context.state, "_local_voice_worker", None)
         if worker is not None and worker.isRunning():
             return
         button.setEnabled(False)
         if hasattr(self.context.views, "local_voice_progress"):
             self.context.views.local_voice_progress.show()
-        worker = TaskWorker(fn)
+        worker = TaskWorker(fn, cancellable=cancellable)
         self.context.state._local_voice_worker = worker
         def completed(result):
             button.setEnabled(True)
