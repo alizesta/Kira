@@ -356,6 +356,17 @@ def register(settings, detection, key, now=None) -> str:
         for r in route_model.get_routes(settings):                              # reused built-in: its default route is switched on
             if r["provider"] == pid and r["model"] == start:
                 route_model.update_route(settings, r["id"], enabled=True)
+
+    # Google is the explicitly preferred Chat provider: newly registered Gemini
+    # routes must not be appended behind Cloudflare/Groq and silently lose to
+    # their successful fallback. Keep each Google API's model order intact.
+    if service == "google":
+        current = route_model.get_routes(settings)
+        google_ids = [r["id"] for r in current if r["provider"] == pid]
+        if google_ids:
+            other_ids = [r["id"] for r in current if r["provider"] != pid]
+            route_model.reorder(settings, google_ids + other_ids)
+            settings["default_route_id"] = google_ids[0]
     return pid
 
 
