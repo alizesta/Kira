@@ -125,6 +125,35 @@ class JobStoreTests(unittest.TestCase):
         with mock.patch("kira.mcp.agents.urllib.request.urlopen", return_value=Response()):
             self.assertEqual(agent._call("GET", "/health"), {"ok": True})
 
+    def test_agent_http_rejects_non_object_and_empty_json_responses(self):
+        class Response:
+            def __init__(self, body):
+                self.body = body
+            def __enter__(self):
+                return self
+            def __exit__(self, *_args):
+                return None
+            def read(self, _size=-1):
+                return self.body
+
+        agent = AgentHttp({"url": "https://agent.example", "name": "worker", "timeout": 1})
+        for body in (b"[]", b"", b"null"):
+            with self.subTest(body=body), mock.patch(
+                "kira.mcp.agents.urllib.request.urlopen", return_value=Response(body)
+            ), self.assertRaisesRegex(ToolError, "شیء JSON"):
+                agent._call("GET", "/health")
+
+    def test_agent_answer_and_stop_require_positive_acknowledgement(self):
+        agent = AgentHttp({"url": "https://agent.example", "name": "worker", "timeout": 1})
+        with mock.patch.object(agent, "_call", return_value={"ok": False}):
+            with self.assertRaisesRegex(ToolError, "تأیید نکرد"):
+                agent.answer("remote-1", "answer", True)
+            with self.assertRaisesRegex(ToolError, "تأیید نکرد"):
+                agent.stop("remote-1")
+        with mock.patch.object(agent, "_call", return_value={"ok": True}):
+            self.assertEqual(agent.answer("remote-1", "answer", True), {"ok": True})
+            self.assertEqual(agent.stop("remote-1"), {"ok": True})
+
     def test_agent_job_ids_are_url_encoded_with_parse_quote(self):
         agent = AgentHttp({"url": "https://agent.example", "name": "worker", "timeout": 1})
         with mock.patch.object(agent, "_retry_get", side_effect=lambda path: path):
