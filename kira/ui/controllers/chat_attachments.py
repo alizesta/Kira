@@ -130,8 +130,16 @@ class ChatAttachmentController(QObject):
         if worker is not None:
             worker.deleteLater()
 
+    def _is_current_worker_signal(self):
+        # sender() is None only for direct unit-test/manual invocation. Real Qt
+        # worker emissions must belong to the currently tracked read batch.
+        sender = self.sender()
+        return sender is None or sender is self.worker
+
     @Slot(int, int)
     def on_progress(self, index, percent):
+        if not self._is_current_worker_signal():
+            return
         tile = self.loading_tiles[index] if index < len(self.loading_tiles) else None
         if tile is not None and not tile.deleted:
             tile.set_progress(percent)
@@ -144,6 +152,8 @@ class ChatAttachmentController(QObject):
 
     @Slot(int, dict)
     def on_loaded(self, index, attachment):
+        if not self._is_current_worker_signal():
+            return
         tile = self.loading_tiles[index] if index < len(self.loading_tiles) else None
         if tile is not None and not tile.deleted:
             tile.set_attachment(attachment)
@@ -151,6 +161,8 @@ class ChatAttachmentController(QObject):
 
     @Slot(int, str)
     def on_failed(self, index, message):
+        if not self._is_current_worker_signal():
+            return
         tile = self.loading_tiles[index] if index < len(self.loading_tiles) else None
         if tile is not None and not tile.deleted:
             self.remove_tile(tile)
