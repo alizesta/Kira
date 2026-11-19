@@ -1226,6 +1226,12 @@ class HybridRouter:
                 self.metrics.append(metrics)
                 stats = getattr(last_provider, "last_stats", None)
                 stats = stats if isinstance(stats, dict) else None
+                if stats:
+                    metrics.update(
+                        load_ms=stats.get("load_ms"),
+                        eval_tokens=stats.get("eval_tokens"),
+                        eval_ms=stats.get("eval_ms"),
+                    )
                 self._ledger(metrics, "failed", last_provider, stats)
                 self._write_telemetry({
                     "provider": metrics["provider"],
@@ -1240,6 +1246,9 @@ class HybridRouter:
                     "failovers": metrics["failovers"],
                     "retries": 0,
                     "role": metrics["role"],
+                    "load_ms": metrics.get("load_ms"),
+                    "eval_tokens": metrics.get("eval_tokens"),
+                    "eval_ms": metrics.get("eval_ms"),
                 })
                 raise RuntimeError("همه‌ی Routeهای سازگار با Native Function Calling ناموفق بودند:\n" + "\n".join(failures))
             return None
