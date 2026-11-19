@@ -12,6 +12,7 @@ import wave
 from .config import DATA_DIR
 from .speech_split import StreamSplitter, split_sentences, strip_think
 from .leak_guard import strip_blocks, scrub_lines
+from .voice_prosody import resolve_prosody, split_comma_clauses, join_wavs_with_pauses
 from PySide6.QtCore import QObject, Signal, Slot, QUrl, QTimer, QElapsedTimer
 from PySide6.QtMultimedia import QSoundEffect, QMediaPlayer, QAudioOutput, QMediaDevices
 
@@ -21,7 +22,7 @@ CACHE_DIR = DATA_DIR / "voice_cache"
 CACHE_DIR.mkdir(exist_ok=True)
 HOP_MS = 40
 _CACHE_LOCK = threading.RLock()
-_CACHE_VERSION = "local-persian-piper-v5"
+_CACHE_VERSION = "local-persian-piper-emotion-v6"
 
 
 def _valid_cached_envelope(envelope, frames, sample_rate):
@@ -118,8 +119,9 @@ STREAM_MARGIN = 40              # (reserved) characters kept back; the splitter 
 class _Session:
     """One spoken reply: its sentences in order, what is already synthesized, and how far playback is."""
 
-    def __init__(self, gen, rate=0, pitch=0, cache=False, keep=False):
+    def __init__(self, gen, rate=0, pitch=0, cache=False, keep=False, prosody=None):
         self.gen, self.rate, self.pitch, self.cache, self.keep = gen, rate, pitch, cache, keep
+        self.prosody = dict(prosody or resolve_prosody())
         self.splitter = StreamSplitter()
         self.consumed = ""              # cleaned reply text already handed to the splitter (streaming mode)
         self.sentences = []             # texts, in speaking order
@@ -153,6 +155,7 @@ class Speaker(QObject):
         self._tmp = tempfile.mkdtemp(prefix="kira_tts_")
         self._gen = 0
         self._session = None
+        self._prosody = resolve_prosody()
         self._worker_lock = threading.Lock()
         self._worker_threads = set()
         self._fx = None
@@ -227,7 +230,9 @@ class Speaker(QObject):
             pieces = [c for c in (clean_for_speech(x) for x in split_sentences(text)) if c]
             if not pieces:
                 return
+            prosody = dict(self._prosody)
             self.stop()
+            self._prosody = prosody
             sess = self._new_session(rate, pitch, cache)
             sess.sentences = pieces
             sess.input_done = True
@@ -247,7 +252,9 @@ class Speaker(QObject):
                 return
             s = self._session
             if s is None or s.input_done:
+                prosody = dict(self._prosody)
                 self.stop()
+                self._prosody = prosody
                 s = self._new_session(None, None, False)
                 s.streaming = True
             full_text = strip_think(full_text or "")
@@ -266,8 +273,16 @@ class Speaker(QObject):
             self._report(f"شروع صدا ناموفق بود: {type(e).__name__}: {e}")
 
     def stream_reset(self):
-        """A new reply starts: speech of the previous live reply may begin again."""
+        """A new reply starts with neutral prosody until its emotion tag is parsed."""
         self._stream_dead = False
+        self.set_emotion((), 0)
+
+    def set_emotion(self, emotions=(), intensity=None):
+        """Bind parsed reply emotion to the current and upcoming sentence synthesis."""
+        self._prosody = resolve_prosody(emotions, intensity)
+        session = self._session
+        if session is not None and session.streaming:
+            session.prosody = dict(self._prosody)
 
     def stream_end(self):
         """The reply is complete: speak what is left, then finish."""
@@ -343,7 +358,7 @@ class Speaker(QObject):
     # ---- sessions ----
     def _new_session(self, rate, pitch, cache, keep=False):
         self._gen += 1
-        s = _Session(self._gen, int(rate or 0), int(pitch or 0), bool(cache), keep)
+        s = _Session(self._gen, int(rate or 0), int(pitch or 0), bool(cache), keep, self._prosody)
         self._session = s
         return s
 
@@ -401,8 +416,9 @@ class Speaker(QObject):
             while True:
                 with s.cond:
                    def _synth(self, s, idx, text):
-        """Synthesize normalized Persian text with model-aware, corruption-safe caching."""
+        """Synthesize one sentence with emotion prosody, clause pauses and cache isolation."""
         from . import local_voice
+        from .voice_prosody import expand_persian_numbers
 
         model_path = str(self.settings.get("local_voice_tts_model") or "").strip()
         if not bool(self.settings.get("local_voice_tts", True)):
@@ -410,21 +426,24 @@ class Speaker(QObject):
         if not local_voice.tts_ready(model_path):
             raise RuntimeError("موتور TTS محلی Piper آماده نیست؛ مدل محلی را از بخش Local نصب یا انتخاب کن.")
 
-        spoken_text = local_voice.normalize_persian_tts_text(text)
+        spoken_text = expand_persian_numbers(local_voice.normalize_persian_tts_text(text))
         if not spoken_text:
             raise RuntimeError("متن قابل‌خواندن برای تولید صدا باقی نمانده است.")
         rate = max(-50, min(50, int(self.settings.get("voice_rate", 0)) + s.rate))
+        prosody = dict(s.prosody or resolve_prosody())
+        prosody["pitch_semitones"] = max(
+            -0.55, min(0.55, float(prosody.get("pitch_semitones", 0.0)) + float(s.pitch or 0) * 0.03)
+        )
         identity = local_voice.tts_cache_identity(model_path) if s.cache else model_path
+        prosody_key = json.dumps(prosody, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         cache_key = hashlib.sha1(
-            f"{_CACHE_VERSION}|{identity!r}|{rate}|{spoken_text}".encode("utf-8")
+            f"{_CACHE_VERSION}|{identity!r}|{rate}|{prosody_key}|{spoken_text}".encode("utf-8")
         ).hexdigest()[:20]
         tag = f"kira_{s.gen}_{idx}"
         base = str(CACHE_DIR) if s.cache else self._tmp
         wav_path = os.path.join(base, cache_key + ".wav")
         meta_path = os.path.join(base, cache_key + ".json")
 
-        # The lock protects the pair (WAV + envelope) from concurrent cache readers
-        # and writers. Atomic publication also protects the files after a crash.
         with _CACHE_LOCK:
             if s.cache and os.path.isfile(wav_path) and os.path.isfile(meta_path):
                 envelope = _load_cached_audio(wav_path, meta_path)
@@ -436,7 +455,17 @@ class Speaker(QObject):
                     except OSError:
                         pass
 
-            audio = local_voice.synthesize_persian(spoken_text, model_path, rate)
+            clauses = split_comma_clauses(spoken_text)
+            audio_parts = []
+            for clause in clauses:
+                audio = local_voice.synthesize_persian(clause, model_path, rate, prosody=prosody)
+                pause = (
+                    prosody["pause_comma_ms"]
+                    if clause.rstrip().endswith(("،", ",", "؛", ";"))
+                    else prosody["pause_sentence_ms"]
+                )
+                audio_parts.append((audio, pause))
+            audio = join_wavs_with_pauses(audio_parts)
             return self._save_local_wav(tag, audio, s.cache, wav_path, meta_path)
 
     def _save_local_wav(self, tag, audio, cache, wav_path, meta_path):
@@ -617,6 +646,7 @@ class Speaker(QObject):
             self.level.emit(self._env[i] if i < len(self._env) else 0.0)
 
     def _end(self):
+        self._prosody = resolve_prosody()
         if self._began:
             self._began = False
             self.level.emit(0.0)
