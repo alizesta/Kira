@@ -42,7 +42,10 @@ from .window_feature_controller import WindowFeatureController
 
 class ProviderSettingsController(WindowFeatureController):
     def refresh_model_catalogs(self):
-        if getattr(self, "_model_catalog_worker", None) is not None and self._model_catalog_worker.isRunning():
+        if self.context.state._closing:
+            return
+        worker = self.context.resource("_model_catalog_worker")
+        if worker is not None and worker.isRunning():
             return
         self.context.views.mcp_registry_panel.set_refreshing(True)
         self.context.views.mcp_registry_panel.set_status("در حال بررسی APIها و دریافت مدل‌های تازه…")
@@ -52,21 +55,31 @@ class ProviderSettingsController(WindowFeatureController):
                 for pid in self.context.services.provider_application_service.api_ids(self.context.services.settings)
                 if self.context.services.settings.get("providers", {}).get(pid, {}).get("enabled", True)
             ]
+
             def refresh():
                 results = []
                 for pid, cfg in providers:
                     results.append((pid, self.context.services.provider_application_service.rediscover(pid, cfg, timeout=15)))
                 return results
-            self._model_catalog_worker = TaskWorker(refresh)
-            self._model_catalog_worker.done.connect(self._on_model_catalog_refresh)
-            self._model_catalog_worker.start()
+
+            worker = TaskWorker(refresh)
+            self.context.state._model_catalog_worker = worker
+            worker.done.connect(self._on_model_catalog_refresh)
+            worker.finished.connect(lambda current=worker: self._clear_model_catalog_worker(current))
+            worker.start()
             self.scan_ollama()
             self.feature_controller("voice_settings").refresh_local_voice_status()
         except Exception as exc:
             self.context.views.mcp_registry_panel.set_refreshing(False)
             self.context.views.mcp_registry_panel.set_status("تازه‌سازی کامل نشد: " + str(exc)[:200])
 
+    def _clear_model_catalog_worker(self, worker):
+        if self.context.state._model_catalog_worker is worker:
+            self.context.state._model_catalog_worker = None
+
     def _on_model_catalog_refresh(self, result):
+        if self.context.state._closing:
+            return
         self.context.views.mcp_registry_panel.set_refreshing(False)
         ok, value = result
         if not ok:
@@ -1055,19 +1068,34 @@ class ProviderSettingsController(WindowFeatureController):
             self.context.views.route_status.setText("✕ " + value)
 
     def scan_ollama(self):
+        if self.context.state._closing:
+            return
+        current = self.context.resource("_scan_worker")
+        if current is not None and current.isRunning():
+            return
         self.route_scan_btn.setEnabled(False)
         self.context.views.route_status.setText("در حال جست‌وجوی مدل‌های نصب‌شده‌ی Ollama…")
         client = self.context.services.provider_application_service.create_ollama_client(self.context.services.settings)
+
         def task():
             ok, models = client.status()
             if not ok:
                 raise RuntimeError(models)
             return models
-        self.context.state._scan_worker = TaskWorker(task)
-        self.context.state._scan_worker.done.connect(self.on_scan_done)
-        self.context.state._scan_worker.start()
+
+        worker = TaskWorker(task)
+        self.context.state._scan_worker = worker
+        worker.done.connect(self.on_scan_done)
+        worker.finished.connect(lambda current=worker: self._clear_scan_worker(current))
+        worker.start()
+
+    def _clear_scan_worker(self, worker):
+        if self.context.state._scan_worker is worker:
+            self.context.state._scan_worker = None
 
     def on_scan_done(self, result):
+        if self.context.state._closing:
+            return
         ok, value = result
         self.route_scan_btn.setEnabled(True)
         if not ok:
