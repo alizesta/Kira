@@ -1,10 +1,10 @@
 # KIRA ARCHITECTURE ROADMAP
 
-**Snapshot:** 2026-11-18  
+**Snapshot:** 2026-11-19  
 **Base branch:** `new-main`  
-**Source baseline SHA:** `999d514343da572651ae9d57a0133e5675e225d4`  
-**Input:** TASK 015 audit, merged TASK 013+014 integration PR #48, and the TASK 017–020 implementation delta on `new-main`.  
-**Execution / verification:** Source implementation and focused tests were committed on `new-main`. GitHub Actions jobs completed with `runner_id=0`, empty step lists and unavailable logs (`BlobNotFound`); tests and runtime acceptance are therefore unverified.
+**Source baseline SHA:** `0a84bbdc3d47afb1728ff314a056b49e6e56848b`  
+**Input:** TASK 015 historical audit, merged TASK 013+014 integration PR #48, TASK 017–020 implementation delta, and merged Chat event test/CI correction PR #98.  
+**Execution / verification:** Source and static contracts are recorded at the baseline SHA. PR #98 merged corrections to the Chat event test contract and its workflow path filter. The corresponding GitHub Actions jobs still completed without a runner (`runner_id=0`, `steps=[]`) and logs were unavailable (`BlobNotFound`). No Python test or Windows runtime acceptance is claimed.
 
 ## 1. Roadmap principles
 
@@ -24,6 +24,13 @@ TASK 015 recorded **12 DONE / 2 PARTIAL / 0 NOT DONE / 0 BLOCKED / 0 UNVERIFIED*
 PR #48 subsequently merged both modules into `new-main` at `b54d092a330b6383ca4244320ffaeec9267db561`. Static inspection confirms `conversation_lifecycle.py`, `organization.py`, their public exports and shared event contract are present in the current tree. Therefore, the integration blocker identified in the audit has been resolved at source-control level. This does not revise the historical audit counts and does not establish runtime correctness.
 
 PR #55 removed the legacy `oldmain.py` runtime module and moved its 322 MainWindow methods into eight feature-oriented mixins. The subsequent implementation delta added and wired `SessionApplicationService`, `ProviderApplicationService`, `VisionApplicationService`, `CodingAgentApplicationService` and `RuntimeSettingsApplicationService`; Character Profile mutations and per-character voice overrides now pass through their service owners. Web Search, Voice and Game Mode application boundaries were retained and strengthened. ToolAgent request state, external-content taint, one-shot grants, pending confirmations, cancellation and task control are now character-session scoped; WebIntel research storage and cancellation are isolated per character. Closing a Session releases ephemeral ToolAgent/access state while retaining durable task and research files for a later reopen. Task history retention is also per character. MainWindow is now a thin Qt shell; window-scoped feature controllers own UI workflows, widgets, signal/worker adapters, dialogs and result presentation.
+
+## 2.1 Synchronization update — 2026-11-19
+
+- Root `ARCHITECTURE.md` is now a short index; `docs/ARCHITECTURE_MASTER.md`, this roadmap and `docs/MODULE_OWNERSHIP.md` are the canonical architecture records.
+- PR #98 is merged to `new-main` (merge commit `0a84bbdc3d47afb1728ff314a056b49e6e56848b`). It corrects stale path/event assertions in `tests/test_chat_events.py` and adds that test file to the Chat Session Lifecycle workflow path filter.
+- The PR workflows still produced failed jobs with `steps=[]`; logs could not be retrieved. This is not a test pass and does not establish a source regression. Runner/CI execution remains an open infrastructure blocker.
+- The production Qt Composition Root is `kira/ui/bootstrap.py`. Any older snapshot or handoff text that calls `kira/app/bootstrap.py` the production root is historical and superseded.
 
 ## 3. Technical debt register
 
