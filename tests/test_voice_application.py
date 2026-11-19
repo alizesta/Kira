@@ -77,6 +77,10 @@ class _Speaker:
         self.reset_count = 0
         self.end_count = 0
         self.settings = {"voice_volume": 70}
+        self.idle = True
+
+    def is_idle(self):
+        return self.idle
 
     def speak(self, text, rate=None, pitch=None, cache=False):
         self.spoken.append((text, rate, pitch, cache))
@@ -309,6 +313,17 @@ class VoiceApplicationServiceTests(unittest.TestCase):
         self.assertEqual(self.speaker.stopped, 2)
         with self.assertRaisesRegex(RuntimeError, "disposed"):
             self.service.start_recording()
+
+    def test_dispose_waits_until_synthesis_threads_are_idle(self):
+        self.speaker.idle = False
+
+        self.assertFalse(self.service.dispose())
+        self.assertFalse(self.service._disposed)
+        self.assertEqual(self.speaker.stopped, 1)
+
+        self.speaker.idle = True
+        self.assertTrue(self.service.dispose())
+        self.assertTrue(self.service._disposed)
 
     def test_stop_all_stops_both_microphone_and_speaker(self):
         self.service.start_recording()
