@@ -10,12 +10,14 @@ def chain(settings=None) -> list:
     settings = settings or {}
     try:
         from . import local_voice
-        diagnostics = local_voice.diagnostics(str(settings.get("local_voice_tts_model") or ""))
+        diagnostics = local_voice.status(str(settings.get("local_voice_tts_model") or ""))
         engines = []
         if diagnostics.get("tts_installed"):
             engines.append(("Piper محلی", {"rate"}))
         if diagnostics.get("asr_installed"):
             engines.append(("Qwen3-ASR محلی", set()))
+        if (diagnostics.get("whisper_cpp") or {}).get("ready"):
+            engines.append(("whisper.cpp Vulkan محلی", set()))
         try:
             import faster_whisper  # noqa: F401
             engines.append(("Whisper محلی", set()))
