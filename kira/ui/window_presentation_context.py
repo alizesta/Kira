@@ -331,7 +331,7 @@ CONTROLLER_ACCESS = {
   "adapters": frozenset({"animator","bubble","companion","director","game_mode"}),
   "views": frozenset({"code_chat","companion_btn","gen_stop_btn","input","mic_btn","route_badge","route_menu","route_status","send_btn","status","tab_keys","tray","voice_btn","voice_page","wake_btn","wake_timer"}),
   "peers": frozenset({"session","provider_settings","attachments_vision","chat","lifecycle","voice_settings"}),
-  "resources": frozenset({"_model_import_worker","_local_voice_worker"}),
+  "resources": frozenset({"_model_import_worker","_local_voice_worker","wake_timer"}),
   "extras": frozenset({"session","listener","resource","is_background_session"}),
  },
  "chat": {
