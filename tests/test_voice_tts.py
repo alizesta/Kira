@@ -1,4 +1,5 @@
 """Regression tests for local Piper playback and Qt audio handling."""
+import threading
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -10,6 +11,25 @@ from kira.ui.main_window import MainWindow
 
 
 class LocalTtsPlaybackTests(unittest.TestCase):
+    def test_speaker_idle_state_waits_for_real_thread_exit(self):
+        class FakeThread:
+            def __init__(self):
+                self.alive = True
+
+            def is_alive(self):
+                return self.alive
+
+        worker = FakeThread()
+        speaker = SimpleNamespace(
+            _worker_lock=threading.Lock(),
+            _worker_threads={worker},
+        )
+
+        self.assertFalse(Speaker.is_idle(speaker))
+        worker.alive = False
+        self.assertTrue(Speaker.is_idle(speaker))
+        self.assertEqual(speaker._worker_threads, set())
+
     def test_qsound_playing_callback_uses_signal_boolean(self):
         started = mock.Mock()
         finished = mock.Mock()
