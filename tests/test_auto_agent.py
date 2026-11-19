@@ -474,6 +474,32 @@ class HelperTests(unittest.TestCase):
 
 
 class ReliabilityTests(AgentBase):
+    def test_replace_rejects_result_larger_than_readable_file_limit(self):
+        target = self.proj / "large.txt"
+        target.write_text("needle", encoding="utf-8")
+        agent = self.agent(Script({"action": "finish", "summary": "unused"}))
+        agent.work = self.proj
+        agent._planned = True
+        agent._read_paths.add("large.txt")
+        agent._before_hashes = aa.snapshot(self.proj)
+        with self.assertRaisesRegex(ValueError, "سقف مجاز"):
+            agent.tool_replace({
+                "path": "large.txt",
+                "old": "needle",
+                "new": "x" * (aa.MAX_FILE_BYTES + 1),
+            })
+        self.assertEqual(target.read_text(encoding="utf-8"), "needle")
+        self.assertFalse(list(self.proj.glob(".large.txt.*.tmp")))
+
+    def test_atomic_write_failure_preserves_existing_file_and_cleans_temp(self):
+        target = self.proj / "important.txt"
+        target.write_text("original content", encoding="utf-8")
+        with mock.patch.object(aa.os, "replace", side_effect=OSError("disk full")):
+            with self.assertRaisesRegex(OSError, "disk full"):
+                aa._atomic_write_text(target, "replacement content")
+        self.assertEqual(target.read_text(encoding="utf-8"), "original content")
+        self.assertFalse(list(self.proj.glob(".important.txt.*.tmp")))
+
     def test_mutation_requires_complete_source_read_and_independent_plan(self):
         agent = self.agent(Script({"action": "write", "path": "calc.py", "content": "bad"}))
         agent.work = self.proj
