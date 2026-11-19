@@ -70,7 +70,9 @@ class AdaptiveEchoCanceller:
             )
         )
         if not double_talk:
-            energy = float(np.sum(windows * windows)) + 1e-8
+            # Normalize by average tap energy, not the full window matrix energy;
+            # this keeps convergence independent of FIR length and block size.
+            energy = float(np.sum(windows * windows) / self.filter_length) + 1e-8
             gradient = windows.T @ error
             update = (self.step_size / energy) * gradient
             self.weights += update.astype(np.float32, copy=False)
