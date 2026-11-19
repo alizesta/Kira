@@ -283,6 +283,10 @@ class WidgetRegressionTests(unittest.TestCase):
         self.assertEqual(callback_threads, [threading.get_ident()])
 
         finished_loop = QEventLoop()
+        finished_events = []
+        adapter.finished.connect(
+            lambda: (finished_events.append(True), finished_loop.quit())
+        )
         QTimer.singleShot(0, raw_worker.finished.emit)
         QTimer.singleShot(1000, finished_loop.quit)
         # The adapter removes itself and schedules both QObjects for deletion
@@ -294,6 +298,7 @@ class WidgetRegressionTests(unittest.TestCase):
                 QTimer.singleShot(1, poll_release)
         QTimer.singleShot(0, poll_release)
         finished_loop.exec()
+        self.assertEqual(finished_events, [True])
         self.assertNotIn(adapter, registry)
         host.deleteLater()
 
