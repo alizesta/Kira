@@ -282,7 +282,10 @@ class Speaker(QObject):
         self._prosody = resolve_prosody(emotions, intensity)
         session = self._session
         if session is not None and session.streaming:
-            session.prosody = dict(self._prosody)
+            # Share the lock used by synthesis when it snapshots a sentence profile.
+            # Running synthesis remains consistent; queued sentences get the new emotion.
+            with session.cond:
+                session.prosody = dict(self._prosody)
 
     def stream_end(self):
         """The reply is complete: speak what is left, then finish."""
@@ -458,7 +461,8 @@ class Speaker(QObject):
         if not spoken_text:
             raise RuntimeError("متن قابل‌خواندن برای تولید صدا باقی نمانده است.")
         rate = max(-50, min(50, int(self.settings.get("voice_rate", 0)) + s.rate))
-        prosody = dict(s.prosody or resolve_prosody())
+        with s.cond:
+            prosody = dict(s.prosody or resolve_prosody())
         prosody["pitch_semitones"] = max(
             -0.55,
             min(0.55, float(prosody.get("pitch_semitones", 0.0)) + float(s.pitch or 0) * 0.03),
