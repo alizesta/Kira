@@ -1,4 +1,5 @@
 """Window lifecycle feature controller."""
+from PySide6.QtCore import Slot
 from .main_window_lifecycle_support import (
     OllamaTaskWorker,
     QApplication,
@@ -266,6 +267,7 @@ class LifecycleController(WindowFeatureController):
         self.context.state._ollama_worker.done.connect(self.on_ollama_task_done)
         self.context.state._ollama_worker.start()
 
+    @Slot(bool, str)
     def on_ollama_task_done(self, ok, text):
         models = getattr(self, "_found_models", None)
         if models:
