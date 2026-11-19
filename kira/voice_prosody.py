@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import re
+from datetime import date
 import shutil
 import subprocess
 import wave
@@ -115,6 +116,8 @@ _HUNDREDS = {100: "صد", 200: "دویست", 300: "سیصد", 400: "چهارصد
 _SCALES = ((10**9, "میلیارد"), (10**6, "میلیون"), (10**3, "هزار"))
 _JALALI_MONTHS = ("فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
                   "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند")
+_GREGORIAN_MONTHS = ("ژانویه", "فوریه", "مارس", "آوریل", "مه", "ژوئن",
+                     "ژوئیه", "اوت", "سپتامبر", "اکتبر", "نوامبر", "دسامبر")
 _ORDINALS = {
     1: "اول", 2: "دوم", 3: "سوم", 4: "چهارم", 5: "پنجم", 6: "ششم", 7: "هفتم",
     8: "هشتم", 9: "نهم", 10: "دهم", 11: "یازدهم", 12: "دوازدهم", 13: "سیزدهم",
@@ -161,14 +164,40 @@ def expand_persian_numbers(text):
         first, second, third = (int(part) for part in match.groups())
         if 1300 <= first <= 1499 and 1 <= second <= 12 and 1 <= third <= 31:
             year, month, day = first, second, third
+            if day > (31 if month <= 6 else 30):
+                return match.group(0)
+            month_name = _JALALI_MONTHS[month - 1]
         elif 1300 <= third <= 1499 and 1 <= second <= 12 and 1 <= first <= 31:
             day, month, year = first, second, third
+            if day > (31 if month <= 6 else 30):
+                return match.group(0)
+            month_name = _JALALI_MONTHS[month - 1]
+        elif 1600 <= first <= 9999 and 1 <= second <= 12 and 1 <= third <= 31:
+            year, month, day = first, second, third
+            try:
+                date(year, month, day)
+            except ValueError:
+                return match.group(0)
+            month_name = _GREGORIAN_MONTHS[month - 1]
+        elif 1600 <= third <= 9999 and 1 <= second <= 12 and 1 <= first <= 31:
+            day, month, year = first, second, third
+            try:
+                date(year, month, day)
+            except ValueError:
+                return match.group(0)
+            month_name = _GREGORIAN_MONTHS[month - 1]
         else:
             return match.group(0)
-        return f"{_ORDINALS[day]} {_JALALI_MONTHS[month - 1]} {persian_number_words(year)}"
+        return f"{_ORDINALS[day]} {month_name} {persian_number_words(year)}"
 
     value = re.sub(r"(?<!\d)(\d{4})[/-](\d{1,2})[/-](\d{1,2})(?!\d)", date_replacement, value)
     value = re.sub(r"(?<!\d)(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?!\d)", date_replacement, value)
+    value = re.sub(
+        r"(?<!\d)(\d{1,2}):([0-5]\d)(?!\d)",
+        lambda match: f"{persian_number_words(int(match.group(1)))} و "
+                      f"{persian_number_words(int(match.group(2)))} دقیقه",
+        value,
+    )
 
     def number_replacement(match):
         token = match.group(0).replace(",", "")
