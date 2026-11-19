@@ -10,7 +10,7 @@ def chain(settings=None) -> list:
     settings = settings or {}
     try:
         from . import local_voice
-        diagnostics = local_voice.diagnostics(str(settings.get("local_voice_tts_model") or ""))
+        diagnostics = local_voice.status(str(settings.get("local_voice_tts_model") or ""))
         engines = []
         if diagnostics.get("tts_installed"):
             engines.append(("Piper محلی", {"rate"}))
