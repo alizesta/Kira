@@ -115,6 +115,30 @@ class RouterRouteTests(unittest.TestCase):
         self.assertEqual(f.calls[1]["timeout"], 18)
         self.assertNotIn("groq", r.cooldowns)                      # cooldown=0 -> may be retried immediately
 
+    def test_google_gemini_default_timeout_uses_cloud_maximum(self):
+        s = helpers.fresh_settings()
+        pid = routes.add_provider(
+            s, "Google AI Studio",
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key=f"{CANARY}-google",
+        )
+        route = routes.add_route(s, pid, "gemini-3.8-flash")
+        router = HybridRouter(s)
+        provider = router._make_provider(route)
+        self.assertEqual(route["timeout"], routes.DEFAULT_CLOUD_TIMEOUT)
+        self.assertEqual(provider.timeout, routes.CLOUD_TIMEOUT[1])
+
+    def test_google_gemini_explicit_extended_timeout_is_preserved(self):
+        s = helpers.fresh_settings()
+        pid = routes.add_provider(
+            s, "Google AI Studio",
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key=f"{CANARY}-google",
+        )
+        route = routes.add_route(s, pid, "gemini-3.8-flash", timeout=35)
+        provider = HybridRouter(s)._make_provider(route)
+        self.assertEqual(provider.timeout, 35)
+
     def test_custom_local_provider_works_without_key(self):
         s, r = make()
         pid = routes.add_provider(s, "LM Studio", "http://localhost:1234/v1", local=True)
