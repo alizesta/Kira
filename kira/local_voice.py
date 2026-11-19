@@ -8,6 +8,7 @@ from __future__ import annotations
 import gc
 import io
 import os
+import subprocess
 import threading
 import time
 import wave
@@ -456,7 +457,7 @@ def _install_voice_package(package: str, cancel_event=None) -> None:
 
     # Some voice packages pull Pillow 13 as a dependency. Repair it after
     # their installation, and fail clearly if Gradio compatibility is not restored.
-    _ensure_pillow_compatible()
+    _ensure_pillow_compatible(cancel_event)
 
 
 def _download_voice_repo(repo_id: str) -> str:
@@ -478,7 +479,9 @@ def install_and_download_qwen_asr(repo_id: str = "Qwen/Qwen3-ASR-0.6B", *, cance
     try:
         import qwen_asr  # noqa: F401
     except ImportError:
-        _install_voice_package("qwen-asr")
+        _install_voice_package("qwen-asr", cancel_event)
+    if cancel_event is not None and cancel_event.is_set():
+        raise RuntimeError("دانلود مدل به‌دلیل خروج برنامه لغو شد.")
     return _download_voice_repo(repo_id or "Qwen/Qwen3-ASR-0.6B")
 
 
@@ -488,7 +491,9 @@ def install_and_download_whisper(repo_id: str, *, cancel_event=None) -> str:
     try:
         import faster_whisper  # noqa: F401
     except ImportError:
-        _install_voice_package("faster-whisper")
+        _install_voice_package("faster-whisper", cancel_event)
+    if cancel_event is not None and cancel_event.is_set():
+        raise RuntimeError("دانلود مدل به‌دلیل خروج برنامه لغو شد.")
     return _download_voice_repo(repo_id)
 
 
@@ -498,7 +503,9 @@ def install_and_download_piper_voice(repo_id: str, *, cancel_event=None) -> str:
     try:
         import piper  # noqa: F401
     except ImportError:
-        _install_voice_package("piper-tts>=1.3.0,<2")
+        _install_voice_package("piper-tts>=1.3.0,<2", cancel_event)
+    if cancel_event is not None and cancel_event.is_set():
+        raise RuntimeError("دانلود مدل به‌دلیل خروج برنامه لغو شد.")
     return _download_voice_repo(repo_id)
 
 
