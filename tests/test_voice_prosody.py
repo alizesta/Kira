@@ -113,6 +113,10 @@ class EmotionProsodyTests(unittest.TestCase):
         self.assertEqual(expand_persian_numbers("Version 3.5"), "Version 3.5")
         self.assertEqual(expand_persian_numbers("Version ۳.۵"), "Version ۳.۵")
         self.assertEqual(expand_persian_numbers("کارت RX 6600 XT"), "کارت RX 6600 XT")
+        self.assertEqual(expand_persian_numbers("نسخه Version 3.5 منتشر شد"),
+                         "نسخه Version 3.5 منتشر شد")
+        self.assertEqual(expand_persian_numbers("نسخه Version 3.5"),
+                         "نسخه Version 3.5")
         self.assertEqual(expand_persian_numbers("قیمت 12.5"), "قیمت دوازده ممیز پنج")
         self.assertEqual(expand_persian_numbers("تاریخ 2026-11-19"),
                          "تاریخ نوزدهم نوامبر دو هزار و بیست و شش")
