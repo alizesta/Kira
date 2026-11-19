@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -15,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -37,14 +39,19 @@ private enum class KiraTab(val label:String,val glyph:String) {
     CHAT("چت","✦"), CHARACTERS("شخصیت‌ها","♧"), SETTINGS("تنظیمات","⚙")
 }
 
+private enum class SettingsPage { HOME, ROUTE, MEMORY, SKILLS, ASSISTANT }
+
 @Composable
 private fun KiraApp() {
     val context=LocalContext.current
-    var selectedTab by remember { mutableStateOf(KiraTab.CHAT) }
-    var selectedCharacter by remember { mutableStateOf("kira") }
-    var settingsPage by remember { mutableStateOf("home") }
+    var selectedTab by rememberSaveable { mutableStateOf(KiraTab.CHAT) }
+    var selectedCharacter by rememberSaveable { mutableStateOf("kira") }
+    var settingsPage by rememberSaveable { mutableStateOf(SettingsPage.HOME) }
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     var overlayStarted by remember { mutableStateOf(false) }
+    BackHandler(enabled=selectedTab==KiraTab.SETTINGS && settingsPage!=SettingsPage.HOME) {
+        settingsPage=SettingsPage.HOME
+    }
     val overlaySettingsLauncher=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         hasOverlayPermission=Settings.canDrawOverlays(context)
     }
@@ -53,23 +60,25 @@ private fun KiraApp() {
         Scaffold(
             containerColor=KiraPalette.background,
             bottomBar={
-                NavigationBar(containerColor=KiraPalette.surface) {
+                if(selectedTab!=KiraTab.SETTINGS || settingsPage==SettingsPage.HOME) {
+                    NavigationBar(containerColor=KiraPalette.surface) {
                     KiraTab.entries.forEach { tab ->
                         NavigationBarItem(selected=selectedTab==tab,onClick={selectedTab=tab},
                             icon={Text(tab.glyph,fontSize=18.sp,color=if(selectedTab==tab) KiraPalette.primary else KiraPalette.muted)},label={Text(tab.label,fontSize=11.sp)})
+                    }
                     }
                 }
             }
         ) { padding ->
             Surface(Modifier.fillMaxSize().padding(padding),color=Color(0xFF0B0E15)) {
                 when(selectedTab) {
-                    KiraTab.CHAT -> KiraChatScreen(character=selectedCharacter,onCharacterChange={selectedCharacter=it})
+                    KiraTab.CHAT -> KiraChatScreen(character=selectedCharacter)
                     KiraTab.CHARACTERS -> KiraCharactersScreen(selectedCharacter) { selectedCharacter=it }
                     KiraTab.SETTINGS -> when(settingsPage) {
-                        "route" -> SettingsSubpage("اتصال API و مدل‌ها",{settingsPage="home"}) { KiraRouteScreen() }
-                        "memory" -> SettingsSubpage("حافظه بلندمدت",{settingsPage="home"}) { KiraMemoryScreen() }
-                        "skills" -> SettingsSubpage("مهارت‌ها و اتصال API",{settingsPage="home"}) { KiraSkillsScreen() }
-                        "assistant" -> SettingsSubpage("دستیار و ویس",{settingsPage="home"}) {
+                        SettingsPage.ROUTE -> SettingsSubpage("اتصال API و مدل‌ها",{settingsPage=SettingsPage.HOME}) { KiraRouteScreen() }
+                        SettingsPage.MEMORY -> SettingsSubpage("حافظه بلندمدت",{settingsPage=SettingsPage.HOME}) { KiraMemoryScreen() }
+                        SettingsPage.SKILLS -> SettingsSubpage("مهارت‌ها و اتصال API",{settingsPage=SettingsPage.HOME}) { KiraSkillsScreen() }
+                        SettingsPage.ASSISTANT -> SettingsSubpage("دستیار و ویس",{settingsPage=SettingsPage.HOME}) {
                             AssistantScreen(
                                 hasOverlayPermission=hasOverlayPermission,
                                 overlayStarted=overlayStarted,
@@ -87,11 +96,11 @@ private fun KiraApp() {
                                 }
                             )
                         }
-                        else -> KiraSettingsHome(
-                            onRoute={settingsPage="route"},
-                            onMemory={settingsPage="memory"},
-                            onAssistant={settingsPage="assistant"},
-                            onSkills={settingsPage="skills"}
+                        SettingsPage.HOME -> KiraSettingsHome(
+                            onRoute={settingsPage=SettingsPage.ROUTE},
+                            onMemory={settingsPage=SettingsPage.MEMORY},
+                            onAssistant={settingsPage=SettingsPage.ASSISTANT},
+                            onSkills={settingsPage=SettingsPage.SKILLS}
                         )
                     }
                 }

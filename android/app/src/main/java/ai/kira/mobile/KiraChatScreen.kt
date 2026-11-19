@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,7 +26,7 @@ import androidx.compose.ui.unit.sp
 import java.util.concurrent.Executors
 
 @Composable
-internal fun KiraChatScreen(character:String,onCharacterChange:(String)->Unit) {
+internal fun KiraChatScreen(character:String) {
     val context=androidx.compose.ui.platform.LocalContext.current
     val chat=remember { KiraContainer(context).chat }
     val executor=remember { Executors.newSingleThreadExecutor() }
