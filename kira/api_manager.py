@@ -24,7 +24,7 @@ SERVICES = {
     "groq": {"label": "Groq", "base_url": "https://api.groq.com/openai/v1", "default_models": ("openai/gpt-oss-120b",)},
     "mistral": {"label": "Mistral", "base_url": "https://api.mistral.ai/v1", "default_models": ("mistral-small-latest",)},
     "google": {"label": "Google AI Studio", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-               "default_models": ("gemini-flash-latest", "gemini-2.5-flash")},
+               "default_models": ("gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash")},
     "cloudflare": {"label": "Cloudflare Workers AI", "base_url": "", "default_models": ("@cf/meta/llama-3.1-8b-instruct",)},
 }
 BUILTIN_FOR = {"groq": "groq", "mistral": "mistral", "cloudflare": "cloudflare"}      # google has no built-in id: it is a registered provider
