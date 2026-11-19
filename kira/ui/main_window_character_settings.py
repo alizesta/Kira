@@ -1,4 +1,5 @@
 """Character and appearance feature controller."""
+from PySide6.QtCore import Slot
 from .main_window_character_settings_support import (
     APP_NAME,
     AppearancePage,
@@ -617,15 +618,16 @@ class CharacterSettingsController(WindowFeatureController):
         )
         self.context.state._mcp_registry_worker = worker
         worker.completed.connect(self._on_mcp_registry_results)
-        worker.finished.connect(
-            lambda current=worker: self._clear_mcp_registry_worker(current)
-        )
+        worker.finished.connect(self._clear_mcp_registry_worker)
         worker.start()
 
-    def _clear_mcp_registry_worker(self, worker):
+    @Slot()
+    def _clear_mcp_registry_worker(self):
+        worker = self.sender()
         if self.context.state._mcp_registry_worker is worker:
             self.context.state._mcp_registry_worker = None
 
+    @Slot(object, str)
     def _on_mcp_registry_results(self, records, error):
         if self.context.state._closing:
             return
