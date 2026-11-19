@@ -293,6 +293,10 @@ class QtSpeakerAdapter:
     def is_speaking(self):
         return bool(getattr(self._speaker, "_began", False))
 
+    def is_idle(self):
+        checker = getattr(self._speaker, "is_idle", None)
+        return bool(checker()) if callable(checker) else True
+
 
 def create_chat_application_ports(context) -> ChatApplicationPorts:
     """Expose the minimum UI/provider boundary required by Chat application logic."""
