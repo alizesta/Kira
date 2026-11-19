@@ -57,7 +57,7 @@ class _Base:
         if not isinstance(result.get("capabilities"), dict) or not isinstance(result.get("serverInfo"), dict):
             raise McpError("initialize returned malformed capabilities or serverInfo")
         self.server_info = result["serverInfo"]
-        self.notify("notifications/initialized", {})
+        self.notify("notifications/initialized", {}, required=True)
 
     def list_tools(self, timeout: float) -> list:
         tools, cursor = [], None
@@ -381,11 +381,12 @@ class HttpClient(_Base):
             raise McpError("JSON-RPC response has neither result nor error")
         return msg["result"]
 
-    def notify(self, method, params):
+    def notify(self, method, params, *, required=False):
         try:
             self._post({"jsonrpc": "2.0", "method": method, "params": params}, 10)
         except McpError:
-            pass
+            if required:
+                raise
 
 
 def make_client(cfg: dict):
