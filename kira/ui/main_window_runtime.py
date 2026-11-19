@@ -673,8 +673,8 @@ class RuntimeController(WindowFeatureController):
                 getattr(session, "_vision_worker", None),
             ))
         for name in (
-            "_local_voice_worker", "_local_stt_test_listener", "_model_catalog_worker",
-            "_api_worker", "_route_worker", "_bench_worker", "_scan_worker",
+            "_local_voice_worker", "_local_stt_test_listener", "_mcp_registry_worker",
+            "_model_catalog_worker", "_api_worker", "_route_worker", "_bench_worker", "_scan_worker",
             "_provider_test_worker", "_ollama_worker", "_vision_worker", "_web_test_worker",
             "_attach_worker", "_model_import_worker", "_stopping_listener",
             "_stopping_game_audio_listener", "game_audio_listener", "listener",
