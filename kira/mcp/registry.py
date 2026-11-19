@@ -10,6 +10,7 @@ import re
 import urllib.parse
 import urllib.request
 import json
+import base64
 
 from PySide6.QtCore import QThread, Signal
 
@@ -40,6 +41,28 @@ def search_servers(query: str = "", limit: int = MAX_RESULTS) -> list[dict]:
         if isinstance(meta, dict) and meta.get("status") not in (None, "active"):
             continue
         active.append(record)
+    # Download only small HTTPS raster logos while already off the UI thread.
+    for record in active:
+        server = record.get("server", record)
+        icons = server.get("icons") if isinstance(server, dict) else None
+        for icon in icons or []:
+            if not isinstance(icon, dict):
+                continue
+            src = str(icon.get("src") or "").strip()
+            if not src.startswith("https://"):
+                continue
+            try:
+                request = urllib.request.Request(src, headers={"Accept": "image/png,image/jpeg,image/webp", "User-Agent": "Kira-MCP-Registry/1.0"})
+                with urllib.request.urlopen(request, timeout=3) as response:
+                    mime = str(response.headers.get("Content-Type") or "").split(";", 1)[0].lower()
+                    if mime not in ("image/png", "image/jpeg", "image/webp"):
+                        continue
+                    raw = response.read(96 * 1024 + 1)
+                if len(raw) <= 96 * 1024:
+                    record["_kira_icon_data"] = base64.b64encode(raw).decode("ascii")
+                    break
+            except Exception:
+                continue
     return active[:MAX_RESULTS]
 
 
