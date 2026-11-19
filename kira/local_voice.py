@@ -9,6 +9,7 @@ import gc
 import io
 import os
 import threading
+import time
 import wave
 from pathlib import Path
 
@@ -344,7 +345,59 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
     return bytes(payload)
 
 
-def _ensure_pillow_compatible() -> None:
+def _terminate_process_tree(process) -> None:
+    """Stop an installer and its descendants without opening a Windows console."""
+    if process.poll() is None and os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                capture_output=True, text=True, timeout=5, check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
+    if process.poll() is None:
+        try:
+            process.terminate()
+            process.wait(timeout=2)
+        except (OSError, subprocess.SubprocessError):
+            try:
+                process.kill()
+                process.wait(timeout=3)
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+
+def _run_install_command(command, *, timeout: float, cancel_event=None):
+    """Run pip invisibly on Windows and terminate it promptly when UI shutdown requests cancellation."""
+    import subprocess
+
+    if cancel_event is not None and cancel_event.is_set():
+        raise RuntimeError("عملیات نصب موتور صوتی لغو شد.")
+    options = {}
+    if os.name == "nt":
+        options["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    process = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, encoding="utf-8", errors="replace", **options,
+    )
+    deadline = time.monotonic() + float(timeout)
+    while True:
+        if cancel_event is not None and cancel_event.is_set():
+            _terminate_process_tree(process)
+            raise RuntimeError("عملیات نصب موتور صوتی به‌دلیل خروج برنامه لغو شد.")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            _terminate_process_tree(process)
+            raise subprocess.TimeoutExpired(command, timeout)
+        try:
+            stdout, stderr = process.communicate(timeout=min(0.25, remaining))
+            return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+        except subprocess.TimeoutExpired:
+            continue
+
+
+def _ensure_pillow_compatible(cancel_event=None) -> None:
     """Force Gradio-compatible Pillow into Kira's active Python and verify it."""
     from importlib.metadata import PackageNotFoundError, version
     import subprocess
@@ -364,10 +417,10 @@ def _ensure_pillow_compatible() -> None:
     # --upgrade alone can leave an incompatible preinstalled Pillow untouched.
     # Force-reinstall the compatible version, without allowing pip to alter
     # unrelated packages while repairing this specific conflict.
-    result = subprocess.run(
+    result = _run_install_command(
         [sys.executable, "-m", "pip", "install", "--force-reinstall", "--no-deps",
          "--retries", "5", "--timeout", "60", "Pillow>=8,<13"],
-        capture_output=True, text=True, timeout=1800, check=False,
+        timeout=1800, cancel_event=cancel_event,
     )
     if result.returncode:
         detail = (result.stderr or result.stdout or "Pillow compatibility fix failed")[-2500:]
@@ -381,7 +434,7 @@ def _ensure_pillow_compatible() -> None:
         raise RuntimeError("پس از نصب، Pillow در محیط پایتون Kira پیدا نشد.") from exc
 
 
-def _install_voice_package(package: str) -> None:
+def _install_voice_package(package: str, cancel_event=None) -> None:
     """Install a voice runtime, then enforce Gradio's Pillow<13 requirement."""
     import subprocess
     import sys
@@ -392,10 +445,10 @@ def _install_voice_package(package: str) -> None:
     constraints = Path(__file__).resolve().parents[1] / "constraints-voice.txt"
     if not constraints.is_file():
         raise RuntimeError(f"فایل محدودیت وابستگی‌های صوتی پیدا نشد: {constraints}")
-    result = subprocess.run(
+    result = _run_install_command(
         [sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "5",
          "--timeout", "60", "--constraint", str(constraints), package],
-        capture_output=True, text=True, timeout=3600, check=False,
+        timeout=3600, cancel_event=cancel_event,
     )
     if result.returncode:
         detail = (result.stderr or result.stdout or f"pip install {package} failed")[-3500:]
@@ -419,9 +472,9 @@ def _download_voice_repo(repo_id: str) -> str:
     )).resolve())
 
 
-def install_and_download_qwen_asr(repo_id: str = "Qwen/Qwen3-ASR-0.6B") -> str:
+def install_and_download_qwen_asr(repo_id: str = "Qwen/Qwen3-ASR-0.6B", *, cancel_event=None) -> str:
     """Install Qwen runtime and download the selected model into Kira's data folder."""
-    _ensure_pillow_compatible()
+    _ensure_pillow_compatible(cancel_event)
     try:
         import qwen_asr  # noqa: F401
     except ImportError:
@@ -429,9 +482,9 @@ def install_and_download_qwen_asr(repo_id: str = "Qwen/Qwen3-ASR-0.6B") -> str:
     return _download_voice_repo(repo_id or "Qwen/Qwen3-ASR-0.6B")
 
 
-def install_and_download_whisper(repo_id: str) -> str:
+def install_and_download_whisper(repo_id: str, *, cancel_event=None) -> str:
     """Install faster-whisper and download a CTranslate2 Whisper model."""
-    _ensure_pillow_compatible()
+    _ensure_pillow_compatible(cancel_event)
     try:
         import faster_whisper  # noqa: F401
     except ImportError:
@@ -439,9 +492,9 @@ def install_and_download_whisper(repo_id: str) -> str:
     return _download_voice_repo(repo_id)
 
 
-def install_and_download_piper_voice(repo_id: str) -> str:
+def install_and_download_piper_voice(repo_id: str, *, cancel_event=None) -> str:
     """Install Piper runtime and download a Piper ONNX voice."""
-    _ensure_pillow_compatible()
+    _ensure_pillow_compatible(cancel_event)
     try:
         import piper  # noqa: F401
     except ImportError:
