@@ -630,6 +630,7 @@ class ProviderSettingsController(WindowFeatureController):
         if "cloud_model_lists" in self.context.views:
             self.refresh_unified_models()
         self.refresh_route_list()
+        self.feature_controller("voice_settings").refresh_gemini_providers()
         if not self.context.session.busy:
             self.feature_controller("runtime").set_badge("idle", self.context.session.client.preview_route())
 
