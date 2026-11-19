@@ -696,15 +696,15 @@ class RuntimeController(WindowFeatureController):
                     running = is_running()
                 else:
                     process_state = getattr(worker, "state", None)
-                    not_running = getattr(worker, "NotRunning", None)
-                    running = bool(
-                        callable(process_state)
-                        and (
-                            process_state() != not_running
-                            if not_running is not None
-                            else process_state()
-                        )
-                    )
+                    running = False
+                    if callable(process_state):
+                        state = process_state()
+                        state_name = getattr(state, "name", None)
+                        if state_name is not None:
+                            running = state_name != "NotRunning"
+                        else:
+                            not_running = getattr(worker, "NotRunning", None)
+                            running = state != not_running if not_running is not None else bool(state)
                 if running:
                     unique.append(worker)
             except RuntimeError:
