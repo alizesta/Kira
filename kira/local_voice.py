@@ -9,6 +9,8 @@ import gc
 import io
 import os
 import subprocess
+import re
+import unicodedata
 import threading
 import time
 import wave
@@ -17,6 +19,7 @@ from pathlib import Path
 # Keep model/runtime caches beside Kira's persistent data, not on C: or
 # inside the replaceable application folder.
 from .storage import configure_cache_environment, default_data_dir
+from .voice_prosody import apply_audio_effects, expand_persian_numbers, resolve_prosody
 
 _DATA_ROOT = default_data_dir(Path(__file__).resolve().parents[1])
 configure_cache_environment(_DATA_ROOT)
@@ -39,6 +42,106 @@ def asr_ready() -> bool:
         return True
     except ImportError:
         return False
+
+
+_PERSIAN_TTS_TRANSLATION = str.maketrans({
+    "ي": "ی",
+    "ى": "ی",
+    "ك": "ک",
+    "ـ": None,
+    "\u200b": None,
+    "\u200d": None,
+    "\u200e": None,
+    "\u200f": None,
+    "\u202a": None,
+    "\u202b": None,
+    "\u202c": None,
+    "\u202d": None,
+    "\u202e": None,
+    "\u2066": None,
+    "\u2067": None,
+    "\u2068": None,
+    "\u2069": None,
+})
+
+_PERSIAN_TTS_TERMS = {
+    "chatgpt": "چت‌جی‌پی‌تی",
+    "kira": "کیرا",
+    "gemini": "جِمِنای",
+    "ollama": "اُلاما",
+    "elevenlabs": "اِلِوِن‌لَبز",
+    "openai": "اوپن‌ای‌آی",
+    "deepseek": "دیپ‌سیک",
+    "qwen3-asr": "کوئن سه اِی‌اِس‌آر",
+    "qwen3": "کوئن سه",
+    "whisper.cpp": "ویسپر دات سی‌پلاس‌پلاس",
+    "whisper": "ویسپر",
+    "vulkan": "وولکان",
+    "openrouter": "اوپن‌روتر",
+    "cloudflare": "کلادفلر",
+    "mistral": "میسترال",
+    "grok": "گراک",
+    "claude": "کلود",
+    "codex": "کُدِکس",
+    "opencode": "اوپن‌کُد",
+    "ffmpeg": "اِف‌اِف‌اِم‌پِگ",
+    "onnx": "اُن‌اِن‌اِکس",
+    "wav": "وَو",
+    "mp3": "اِم‌پی‌تری",
+    "fps": "اِف‌پی‌اِس",
+    "qwen": "کوئن",
+    "piper": "پایپر",
+    "python": "پایتون",
+    "windows": "ویندوز",
+    "linux": "لینوکس",
+    "wi-fi": "وای‌فای",
+    "gpu": "جی‌پی‌یو",
+    "cpu": "سی‌پی‌یو",
+    "ram": "رَم",
+    "vram": "وی‌رَم",
+    "api": "اِی‌پی‌آی",
+    "asr": "اِی‌اِس‌آر",
+    "stt": "اِس‌تی‌تی",
+    "tts": "تی‌تی‌اِس",
+    "llm": "اِل‌اِل‌اِم",
+    "json": "جِی‌سان",
+    "gui": "جی‌یو‌آی",
+    "ui": "یو‌آی",
+    "usb": "یو‌اِس‌بی",
+    "ssd": "اِس‌اِس‌دی",
+    "amd": "اِی‌اِم‌دی",
+}
+
+_PERSIAN_TTS_TERM_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9])(" + "|".join(
+        re.escape(term) for term in sorted(_PERSIAN_TTS_TERMS, key=len, reverse=True)
+    ) + r")(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
+
+
+def normalize_persian_tts_text(text: str) -> str:
+    """Normalize Persian text and pronounce common technical names before local synthesis."""
+    value = unicodedata.normalize("NFC", str(text or "")).translate(_PERSIAN_TTS_TRANSLATION)
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
+    value = re.sub(r"[ \t\u00a0\u2009]+", " ", value)
+    value = re.sub(r"\s*\u200c\s*", "\u200c", value)
+    value = re.sub(r"(?<!\S)(ن?می)\s+([آ-ی])", r"\1‌\2", value)
+    value = re.sub(
+        r"(?<=[آ-ی])\s+(ها|های|هایی|تر|ترین)(?=$|[\s،؛؟.!,:;])",
+        r"‌\1",
+        value,
+    )
+    if re.search(r"[\u0600-\u06ff]", value):
+        value = _PERSIAN_TTS_TERM_PATTERN.sub(
+            lambda match: _PERSIAN_TTS_TERMS[match.group(0).casefold()],
+            value,
+        )
+        value = re.sub(r"(?<!\d),(?!\d)", "،", value)
+        value = value.replace(";", "؛").replace("?", "؟")
+    value = re.sub(r"\s+([،؛؟!,:;])", r"\1", value)
+    value = re.sub(r"([،؛؟!])(?=\S)", r"\1 ", value)
+    return re.sub(r" {2,}", " ", value).strip()
 
 
 def tts_ready(model_path="") -> bool:
@@ -198,6 +301,15 @@ def _model_file_signature(path: Path):
     return (str(path), _file_signature(path), _file_signature(sidecar))
 
 
+def tts_cache_identity(model_path=""):
+    """Return a stable cache identity that changes with model weights or voice metadata."""
+    if not model_path and _tts is not None and _tts_model_path:
+        path = Path(_tts_model_path)
+    else:
+        path, _label = _resolve_tts_model_path(model_path)
+    return _model_file_signature(path)
+
+
 def _is_memory_pressure(exc: BaseException) -> bool:
     message = str(exc).casefold()
     return isinstance(exc, MemoryError) or any(
@@ -298,7 +410,7 @@ def warmup_tts(model_path="") -> bool:
     return ready
 
 
-def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
+def synthesize_persian(text: str, model_path="", rate=0, prosody=None, postprocess=True) -> bytes:
     """Synthesize Persian speech with Piper's native timing controls.
 
     Piper's length_scale changes phoneme duration directly. Altering only the WAV
@@ -306,22 +418,29 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
     the same native synthesis path for Mana and user-selected ONNX models.
     """
     global _tts_error
-    clean = str(text or "").strip()
+    clean = expand_persian_numbers(normalize_persian_tts_text(text))
     if not clean:
         return b""
 
     # Insert context-predicted Persian ezafe marks before Piper phonemization.
     # The detector has its own lazy ONNX cache and safely returns the source
     # text unchanged whenever it is disabled or unavailable.
-    try:
-        from .persian_ezafe import add_persian_ezafe
-        clean = add_persian_ezafe(clean)
-    except Exception:
-        import logging
-        logging.getLogger(__name__).exception("Optional Persian ezafe preprocessing failed; using original text")
+    if re.search(r"[\u0600-\u06ff]", clean):
+        try:
+            from .persian_ezafe import add_persian_ezafe
+            clean = add_persian_ezafe(clean)
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception(
+                "Optional Persian ezafe preprocessing failed; using normalized source text"
+            )
 
     selected = str(model_path or "").strip()
     speed = max(0.5, min(1.5, 1.0 + float(rate or 0) / 100.0))
+    profile = resolve_prosody() if prosody is None else dict(prosody)
+    length_scale = max(0.5, min(1.5, float(profile.get("length_scale", 1.0)) / speed))
+    noise_scale = max(0.5, min(0.9, float(profile.get("noise_scale", 0.667))))
+    noise_w = max(0.6, min(0.95, float(profile.get("noise_w", 0.8))))
 
     try:
         with _tts_lock:
@@ -329,7 +448,11 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
             from piper import SynthesisConfig
 
             output = io.BytesIO()
-            config = SynthesisConfig(length_scale=1.0 / speed)
+            config = SynthesisConfig(
+                length_scale=length_scale,
+                noise_scale=noise_scale,
+                noise_w_scale=noise_w,
+            )
             with wave.open(output, "wb") as wav_file:
                 voice.synthesize_wav(clean, wav_file, syn_config=config)
             payload = output.getvalue()
@@ -343,7 +466,14 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
 
     if not isinstance(payload, (bytes, bytearray)) or not payload.startswith(b"RIFF"):
         raise RuntimeError("Persian Piper returned invalid WAV data")
-    return bytes(payload)
+    if not postprocess:
+        return bytes(payload)
+    try:
+        return apply_audio_effects(bytes(payload), profile)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Optional emotional audio post-processing failed; using native Piper audio")
+        return bytes(payload)
 
 
 def _terminate_process_tree(process) -> None:
