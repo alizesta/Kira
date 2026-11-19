@@ -2,8 +2,8 @@ package ai.kira.mobile
 
 import android.os.Handler
 import android.os.Looper
-import ai.kira.mobile.core.LocalKiraCore
-import ai.kira.mobile.core.LocalChatMessage
+import ai.kira.mobile.core.KiraContainer
+import ai.kira.mobile.domain.model.ChatMessage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,10 +26,10 @@ import java.util.concurrent.Executors
 @Composable
 internal fun KiraChatScreen(character:String,onCharacterChange:(String)->Unit) {
     val context=androidx.compose.ui.platform.LocalContext.current
-    val core=remember { LocalKiraCore(context) }
+    val chat=remember { KiraContainer(context).chat }
     val executor=remember { Executors.newSingleThreadExecutor() }
     val handler=remember { Handler(Looper.getMainLooper()) }
-    val messages=remember { mutableStateListOf<LocalChatMessage>() }
+    val messages=remember { mutableStateListOf<ChatMessage>() }
     val listState=rememberLazyListState()
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -38,7 +38,7 @@ internal fun KiraChatScreen(character:String,onCharacterChange:(String)->Unit) {
     DisposableEffect(executor) { onDispose { executor.shutdownNow() } }
     fun load() {
         messages.clear()
-        messages.addAll(core.history(character))
+        messages.addAll(chat.history(character))
         status="تاریخچه از حافظه همین دستگاه بارگذاری شد."
     }
     LaunchedEffect(character) { load() }
@@ -53,7 +53,7 @@ internal fun KiraChatScreen(character:String,onCharacterChange:(String)->Unit) {
         status="در حال دریافت پاسخ…"
         executor.execute {
             try {
-                val reply=core.sendMessage(who,text)
+                val reply=chat.sendMessage(who,text)
                 val history=core.history(who)
                 handler.post {
                     messages.clear(); messages.addAll(history)
