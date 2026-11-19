@@ -97,6 +97,60 @@ class InitiativeApplicationServiceTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertEqual(self.mood.marked, [])
 
+    def test_merge_settings_history_preserves_other_characters_and_recovers_corrupt_value(self):
+        from kira.app.initiative_application import InitiativeCheckIn
+
+        result = InitiativeCheckIn(
+            character_id="ren",
+            message="check-in",
+            history=({"at": self.now, "memory_id": "memory-1"},),
+        )
+        merged = self.service.merge_settings_history(
+            {"character_initiative_history": {"kira": [{"at": self.now, "memory_id": "k"}]}},
+            result,
+        )
+        self.assertIn("kira", merged)
+        self.assertEqual(merged["ren"], [{"at": self.now, "memory_id": "memory-1"}])
+
+        recovered = self.service.merge_settings_history(
+            {"character_initiative_history": "corrupt legacy value"}, result
+        )
+        self.assertEqual(recovered, {"ren": [{"at": self.now, "memory_id": "memory-1"}]})
+
+    def test_recent_activity_in_another_character_suppresses_checkin(self):
+        class RecentMood(_Mood):
+            def current(self, now=None):
+                return {
+                    "age": 90,
+                    "last_initiative": 0,
+                    "last_initiative_memory_id": "",
+                    "recent_events": [],
+                }
+
+        service = InitiativeApplicationService(self.memory, RecentMood(), self.chat)
+        result = service.run_checkin(
+            self.session,
+            {"ren": {"name": "Ren"}, "kira": {"name": "Kira"}},
+            {"ren": {}, "kira": {}},
+            {},
+            (self.session,),
+            now=self.now,
+        )
+        self.assertIsNone(result)
+        self.assertEqual(self.chat.messages, [])
+
+    def test_history_lookup_failure_suppresses_checkin_before_persisting(self):
+        self.chat.recent_message_records = lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("history unavailable")
+        )
+        result = self.service.run_checkin(
+            self.session, self.profiles, self.traits, self.settings,
+            (self.session,), now=self.now,
+        )
+        self.assertIsNone(result)
+        self.assertEqual(self.chat.messages, [])
+        self.assertEqual(self.mood.marked, [])
+
     def test_any_busy_or_malformed_session_suppresses_checkin(self):
         busy = SimpleNamespace(busy=True, draft="")
         result = self.service.run_checkin(
