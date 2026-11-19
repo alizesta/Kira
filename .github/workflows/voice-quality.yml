@@ -6,10 +6,19 @@ on:
     paths:
       - "kira/local_voice.py"
       - "kira/voice.py"
+      - "kira/voice_prosody.py"
+      - "kira/app/voice_application.py"
+      - "kira/core/interfaces/voice_service.py"
+      - "kira/ui/main_window_runtime.py"
+      - "scripts/benchmark_piper_voices.py"
+      - "docs/EMOTION_DRIVEN_TTS_FA.md"
       - "kira/persian_ezafe.py"
       - "tests/test_local_tts_synthesis.py"
       - "tests/test_persian_tts_text.py"
       - "tests/test_voice_audio_cache.py"
+      - "tests/test_voice_prosody.py"
+      - "tests/test_voice_application.py"
+      - "tests/test_voice_tts.py"
       - ".github/workflows/voice-quality.yml"
       - "requirements.txt"
   pull_request:
@@ -51,12 +60,23 @@ jobs:
           tests.test_local_tts_synthesis
           tests.test_persian_tts_text
           tests.test_voice_audio_cache
+          tests.test_voice_prosody
+          tests.test_voice_application
+          tests.test_voice_tts
           -v
       - name: Lint changed speech modules and tests
         run: >-
           ruff check
           kira/local_voice.py
           kira/voice.py
+          kira/voice_prosody.py
+          kira/app/voice_application.py
+          kira/core/interfaces/voice_service.py
+          kira/ui/main_window_runtime.py
+          scripts/benchmark_piper_voices.py
+          tests/test_voice_prosody.py
+          tests/test_voice_application.py
+          tests/test_voice_tts.py
           tests/test_local_tts_synthesis.py
           tests/test_persian_tts_text.py
           tests/test_voice_audio_cache.py
@@ -65,6 +85,14 @@ jobs:
           python -m py_compile
           kira/local_voice.py
           kira/voice.py
+          kira/voice_prosody.py
+          kira/app/voice_application.py
+          kira/core/interfaces/voice_service.py
+          kira/ui/main_window_runtime.py
+          scripts/benchmark_piper_voices.py
+          tests/test_voice_prosody.py
+          tests/test_voice_application.py
+          tests/test_voice_tts.py
           tests/test_local_tts_synthesis.py
           tests/test_persian_tts_text.py
           tests/test_voice_audio_cache.py
