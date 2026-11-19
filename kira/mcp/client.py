@@ -52,7 +52,11 @@ class _Base:
         result = self.request("initialize", {"protocolVersion": PROTOCOL, "capabilities": {}, "clientInfo": {"name": "kira", "version": "1"}}, timeout)
         if not isinstance(result, dict):
             raise McpError("initialize returned a malformed result")
-        self.server_info = result.get("serverInfo") if isinstance(result.get("serverInfo"), dict) else {}
+        if result.get("protocolVersion") != PROTOCOL:
+            raise McpError("server selected an unsupported MCP protocol version")
+        if not isinstance(result.get("capabilities"), dict) or not isinstance(result.get("serverInfo"), dict):
+            raise McpError("initialize returned malformed capabilities or serverInfo")
+        self.server_info = result["serverInfo"]
         self.notify("notifications/initialized", {})
 
     def list_tools(self, timeout: float) -> list:
