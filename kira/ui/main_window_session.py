@@ -3,9 +3,7 @@ import logging
 
 from .main_window_session_support import (
     KIRA_PROFILE,
-    persona_memory,
     QApplication,
-    sessions_are_idle,
     QColor,
     QComboBox,
     QDesktopServices,
