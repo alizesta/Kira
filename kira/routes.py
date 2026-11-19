@@ -9,6 +9,7 @@ one route per old provider, in the old provider_order.  Pure logic, no Qt, fully
 """
 from __future__ import annotations
 
+import ast
 import re
 from copy import deepcopy
 
@@ -171,9 +172,32 @@ def clamp_cooldown(value):
         return DEFAULT_COOLDOWN
 
 
+def normalize_model_id(value):
+    """Extract a provider model ID from catalog objects and legacy stringified dictionaries."""
+    if isinstance(value, dict):
+        for key in ("id", "model", "name"):
+            candidate = value.get(key)
+            if candidate is not None and candidate != "":
+                return normalize_model_id(candidate)
+        return ""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("{") and text.endswith("}"):
+            try:
+                parsed = ast.literal_eval(text)
+            except (SyntaxError, ValueError):
+                parsed = None
+            if isinstance(parsed, dict):
+                return normalize_model_id(parsed)
+        return text
+    return str(value).strip()
+
+
 def make_route(route_id, provider, model, enabled=True, timeout=None, cooldown=None, kind=None, **extra):
     kind = kind or provider_kind(provider)
-    route = {"id": str(route_id), "provider": str(provider), "model": str(model or "").strip(), "enabled": bool(enabled),
+    route = {"id": str(route_id), "provider": str(provider), "model": normalize_model_id(model), "enabled": bool(enabled),
              "timeout": clamp_timeout(timeout, kind), "cooldown": clamp_cooldown(cooldown if cooldown is not None else DEFAULT_COOLDOWN)}
     for key in ("num_ctx", "num_predict"):                       # optional per-route Ollama overrides (0/absent = inherit)
         if extra.get(key):
@@ -316,7 +340,7 @@ def update_route(settings, route_id, **changes):
         raise KeyError(route_id)
     kind = provider_kind(route["provider"], settings.get("providers", {}).get(route["provider"]))
     if "model" in changes:
-        model = str(changes["model"] or "").strip()
+        model = normalize_model_id(changes["model"])
         if not model:
             raise ValueError("شناسه‌ی مدل (Model ID) خالی است.")
         route["model"] = model
