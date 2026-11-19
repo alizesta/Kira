@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [new-main, architecture/domain-application-contracts]
     paths:
+      - "kira/routes.py"
+      - "kira/hybrid_ai.py"
+      - "tests/test_routes.py"
+      - "tests/test_providers.py"
       - "kira/chat/persistence.py"
       - "kira/chat/organization.py"
       - "kira/chat/coordinator.py"
