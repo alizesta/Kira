@@ -141,6 +141,13 @@ class FacadeRegressionTests(unittest.TestCase):
         self.assertIn("@Slot(int, str)\n    def on_failed", source)
         self.assertIn("self.worker.finished.connect(self._on_worker_finished)", source)
 
+    def test_codechat_rejects_new_requests_and_late_classifier_results_on_close(self):
+        source = (ROOT / "kira/chat_code_ui.py").read_text(encoding="utf-8")
+        self.assertIn("if w._closing:\n            return True", source)
+        self.assertIn("if self.win._closing:\n            self._class_token = None", source)
+        self.assertIn("if w._closing:\n            return\n        self._classifying = True", source)
+        self.assertIn("if w._closing:\n            return\n        try:", source)
+
     def test_codechat_rejects_pending_approval_during_shutdown(self):
         source = (ROOT / "kira/chat_code_ui.py").read_text(encoding="utf-8")
         self.assertIn("if self.win._closing or self.auto_stop:", source)
