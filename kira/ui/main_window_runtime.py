@@ -1,4 +1,5 @@
 """Runtime feature controller for the desktop window."""
+from PySide6.QtCore import Slot
 import logging
 
 from .main_window_runtime_support import (
@@ -693,6 +694,7 @@ class RuntimeController(WindowFeatureController):
                 continue
         return unique
 
+    @Slot()
     def _resume_close_after_workers(self):
         if getattr(self.context.state, "_closing", False):
             QTimer.singleShot(0, self.window.close)
