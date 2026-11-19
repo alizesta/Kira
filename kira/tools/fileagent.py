@@ -533,6 +533,15 @@ class FileAgent:
         return text
 
     # ---------------------------------------------------------------- level 3: organise a folder
+    def _organise_subfolder(self, folder: str, key: str) -> str:
+        candidate = os.path.join(folder, key)
+        checked = self.policy.check(candidate, must_exist=False)
+        if os.path.normcase(checked) != os.path.normcase(candidate):
+            raise ToolError("پوشه‌ی مقصد مرتب‌سازی یک لینک/مسیر غیرمستقیم است؛ برای جلوگیری از خروج فایل از مسیر مجاز رد شد.", DENIED)
+        if os.path.lexists(candidate) and not os.path.isdir(candidate):
+            raise ToolError(f"مقصد مرتب‌سازی پوشه نیست: {candidate}")
+        return candidate
+
     def _plan_organise(self, folder: str, by: str):
         plan: dict[str, list] = {}
         for entry in os.scandir(folder):
@@ -546,6 +555,8 @@ class FileAgent:
             plan.setdefault(key, []).append(entry.name)
             if sum(len(v) for v in plan.values()) > ORGANISE_MAX:
                 raise ToolError(f"بیش از {ORGANISE_MAX} فایل در این پوشه است؛ پوشه‌ی کوچک‌تری انتخاب کن.")
+        for key in plan:
+            self._organise_subfolder(folder, key)
         return plan
 
     def precheck_organise(self, a: dict) -> dict:
@@ -567,11 +578,10 @@ class FileAgent:
         a = self.precheck_organise(a)
         moved, skipped, moves = 0, 0, []
         for key, names in self._plan_organise(a["folder"], a["by"]).items():
-            sub = os.path.join(a["folder"], key)
-            if os.path.exists(sub) and not os.path.isdir(sub):
-                skipped += len(names)
-                continue
-            os.makedirs(sub, exist_ok=True)
+            sub = self._organise_subfolder(a["folder"], key)
+            if not os.path.lexists(sub):
+                os.mkdir(sub)
+            sub = self._organise_subfolder(a["folder"], key)
             for n in names:
                 src, dst = os.path.join(a["folder"], n), os.path.join(sub, n)
                 if os.path.lexists(dst):
