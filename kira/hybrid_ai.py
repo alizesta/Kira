@@ -1115,7 +1115,11 @@ class HybridRouter:
         self._cancel.clear()
         self.last_attempts = []
         started = time.monotonic()
+        started_at = datetime.now(timezone.utc).isoformat()
+        request_id = uuid.uuid4().hex[:8]
         failures = []
+        last_provider = None
+        last_route_info = None
         emit = on_event or (lambda event: None)
         try:
             for route in self._candidates():
@@ -1127,6 +1131,8 @@ class HybridRouter:
                 info = self.route_info(route)
                 try:
                     provider = self._make_provider(route)
+                    last_provider = provider
+                    last_route_info = {**self.route_info(route), "route": route}
                     native = getattr(provider, "chat_with_tools", None)
                     if not callable(native):
                         continue
@@ -1142,7 +1148,7 @@ class HybridRouter:
                     model = active_model if isinstance(active_model, str) and active_model else route["model"]
                     self.last_provider, self.last_model, self.last_route_id = route["provider"], model, route["id"]
                     self.last_kind, self.last_error, self.last_duration_ms = info["kind"], None, elapsed
-                    metrics = {"request_id": uuid.uuid4().hex[:8], "started_at": datetime.now(timezone.utc).isoformat(),
+                    metrics = {"request_id": request_id, "started_at": started_at,
                                "stream": False, "retries": 0, "failovers": len(failures), "provider": route["provider"],
                                "model": model, "route_id": route["id"], "kind": info["kind"],
                                "total_ms": elapsed, "result": "tool_call" if result.get("tool_calls") else "success",
@@ -1191,7 +1197,48 @@ class HybridRouter:
                     self.last_attempts.append({"provider": route["provider"], "route_id": route["id"],
                                                "result": "error", "error_kind": kind, "status_code": status})
             if failures:
-                raise RuntimeError("همه‌ی Routeهای سازگار با Native Function Calling ناموفق بودند:\n" + "\n".join(failures))
+                elapsed = int((time.monotonic() - started) * 1000)
+                route_info = last_route_info or {}
+                route = route_info.get("route") or {}
+                metrics = {
+                    "request_id": request_id,
+                    "started_at": started_at,
+                    "stream": False,
+                    "retries": 0,
+                    "failovers": max(0, len(failures) - 1),
+                    "provider": route.get("provider"),
+                    "model": route.get("model"),
+                    "route_id": route.get("id"),
+                    "kind": route_info.get("kind"),
+                    "total_ms": elapsed,
+                    "result": "failed",
+                    "chars": 0,
+                    "role": _ROLE.get() or None,
+                }
+                self.last_provider = metrics["provider"]
+                self.last_model = self.last_route_id = self.last_kind = None
+                self.last_error = "\\n".join(failures)
+                self.last_duration_ms = elapsed
+                self.last_metrics = metrics
+                self.metrics.append(metrics)
+                stats = getattr(last_provider, "last_stats", None)
+                stats = stats if isinstance(stats, dict) else None
+                self._ledger(metrics, "failed", last_provider, stats)
+                self._write_telemetry({
+                    "provider": metrics["provider"],
+                    "model": metrics["model"],
+                    "result": "failed",
+                    "duration_ms": elapsed,
+                    "attempts": self.last_attempts,
+                    "request_id": request_id,
+                    "route_id": metrics["route_id"],
+                    "kind": metrics["kind"],
+                    "stream": False,
+                    "failovers": metrics["failovers"],
+                    "retries": 0,
+                    "role": metrics["role"],
+                })
+                raise RuntimeError("همه‌ی Routeهای سازگار با Native Function Calling ناموفق بودند:\\n" + "\\n".join(failures))
             return None
         finally:
             self._active = None
