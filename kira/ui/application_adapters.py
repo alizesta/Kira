@@ -1,7 +1,7 @@
 """UI-side adapters that translate MainWindow callbacks into app ports."""
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, Qt, QTimer, Slot
+from PySide6.QtCore import QObject, Qt, QTimer, Signal, Slot
 
 from .. import brain
 from ..core.interfaces.application_ports import (
@@ -29,6 +29,8 @@ class _QtProviderEventRelay(QObject):
 
 class QtProviderWorkerAdapter(QObject):
     """Translate provider QThread signals and retain them through true thread exit."""
+
+    finished = Signal()
 
     _SIGNALS = {
         "tool_event": ("tool_event", "payload"),
@@ -91,6 +93,16 @@ class QtProviderWorkerAdapter(QObject):
 
     @Slot()
     def _on_worker_finished(self):
+        worker = self._worker
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    # QThread.finished may precede completion of thread-local
+                    # cleanup. Keep ownership until isRunning() is truly false.
+                    QTimer.singleShot(1, self._on_worker_finished)
+                    return
+            except RuntimeError:
+                pass
         self._release()
 
     def _release(self):
@@ -110,6 +122,9 @@ class QtProviderWorkerAdapter(QObject):
         worker, self._worker = self._worker, None
         if worker is not None:
             worker.deleteLater()
+        # Consumers (notably MainWindow.closeEvent) observe completion only
+        # after the wrapped QThread has fully stopped and left the registry.
+        self.finished.emit()
         self.deleteLater()
 
     def isRunning(self):
