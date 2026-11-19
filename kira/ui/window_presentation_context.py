@@ -267,7 +267,7 @@ VIEW_FRONT_ONLY = frozenset({"status", "gen_stop_btn", "send_btn", "input", "voi
 class _FieldBucket:
     """A strict, mutable namespace with a declared field contract."""
 
-    __slots__ = ("_context", "_name", "_allowed", "_values", "_front_only", "_pure")
+    __slots__ = ("_context", "_name", "_allowed", "_values", "_front_only", "_pure", "_source")
 
     def __init__(
         self,
@@ -277,6 +277,7 @@ class _FieldBucket:
         *,
         front_only: frozenset[str] = frozenset(),
         pure: Mapping[str, frozenset[str]] | None = None,
+        source: "_FieldBucket | None" = None,
     ) -> None:
         object.__setattr__(self, "_context", context)
         object.__setattr__(self, "_name", name)
@@ -284,14 +285,19 @@ class _FieldBucket:
         object.__setattr__(self, "_values", {})
         object.__setattr__(self, "_front_only", front_only)
         object.__setattr__(self, "_pure", dict(pure or {}))
+        object.__setattr__(self, "_source", source)
 
     def __getattr__(self, name: str):
         if name not in self._allowed:
             raise AttributeError(f"{self._name} has no declared field {name!r}")
         values = object.__getattribute__(self, "_values")
-        if name not in values:
+        source = object.__getattribute__(self, "_source")
+        if source is not None:
+            value = getattr(source, name)
+        elif name in values:
+            value = values[name]
+        else:
             raise AttributeError(f"{self._name}.{name} has not been initialized")
-        value = values[name]
         if name in self._front_only and self._context.is_background_session:
             if value is None:
                 return None
@@ -302,10 +308,17 @@ class _FieldBucket:
     def __setattr__(self, name: str, value) -> None:
         if name not in self._allowed:
             raise AttributeError(f"{self._name} has no declared field {name!r}")
-        self._values[name] = value
+        source = object.__getattribute__(self, "_source")
+        if source is not None:
+            setattr(source, name, value)
+        else:
+            self._values[name] = value
 
     def __contains__(self, name: str) -> bool:
-        return name in self._allowed and name in self._values
+        if name not in self._allowed:
+            return False
+        source = object.__getattribute__(self, "_source")
+        return (name in source) if source is not None else name in self._values
 
 
 
@@ -398,17 +411,13 @@ class _ControllerPresentationContext:
         object.__setattr__(self, "_feature", feature)
         object.__setattr__(self, "_access", access)
         for namespace in ("state", "services", "adapters", "views"):
-            bucket = _FieldBucket(
-                self, f"{feature}.{namespace}", access.get(namespace, frozenset()),
-                front_only=(SERVICE_FRONT_ONLY if namespace == "services" else
-                            frozenset(ADAPTER_FRONT_ONLY) if namespace == "adapters" else
-                            VIEW_FRONT_ONLY if namespace == "views" else frozenset()),
-                pure=(ADAPTER_FRONT_ONLY if namespace == "adapters" else None),
-            )
             source = getattr(root, namespace)
-            for field in access.get(namespace, frozenset()):
-                if field in source:
-                    setattr(bucket, field, getattr(source, field))
+            bucket = _FieldBucket(
+                self,
+                f"{feature}.{namespace}",
+                access.get(namespace, frozenset()),
+                source=source,
+            )
             object.__setattr__(self, namespace, bucket)
 
     def require_peer(self, feature: str):
