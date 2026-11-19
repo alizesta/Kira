@@ -13,7 +13,6 @@ from ..leak_guard import scrub_lines
 from ..chat_render import message_html
 from ..listener import Listener
 from .. import brain
-from .. import mood
 from .. import body as body_ctl
 from ..chat.application_service import ChatApplicationService
 from ..chat.commands import PermissionDecision
