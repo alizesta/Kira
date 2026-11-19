@@ -22,6 +22,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -45,6 +46,33 @@ MAX_COPY_BYTES = 400 * 1024 * 1024
 MAX_FINISH_GATE_RETRIES = 3          # blocked finish attempts before the agent stops with an honest report
 MAX_GATE_STEPS = 6                   # hard stop for a model that only repeats a blocked finish
 MAX_REVIEW_CHUNK_CHARS = 7000         # bounded chunks; every changed text file is reviewed
+
+def _atomic_write_text(path: Path, content: str) -> int:
+    """Write UTF-8 text atomically; a failed write must leave the previous file intact."""
+    target = Path(path)
+    data = str(content).encode("utf-8")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        previous_mode = stat.S_IMODE(target.stat().st_mode)
+    except FileNotFoundError:
+        previous_mode = None
+    fd, temporary = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=".tmp", dir=str(target.parent)
+    )
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if previous_mode is not None:
+            os.chmod(temporary, previous_mode)
+        os.replace(temporary, target)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+    return len(data)
 IRAN = timezone(timedelta(hours=3, minutes=30), "IRST")      # Iran has no daylight saving time since 2022
 ALLOWED_MODULES = {"unittest", "pytest", "compileall", "py_compile", "ruff", "pyflakes"}
 SAFE_SCRIPTS = {"test", "tests", "lint", "build", "check", "typecheck", "type-check", "fmt", "format"}
@@ -574,8 +602,7 @@ class AutoAgent:
             old = target.read_bytes()
             if b"\r\n" in old and b"\n" not in old.replace(b"\r\n", b""):
                 content = content.replace("\r\n", "\n").replace("\n", "\r\n")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8", newline="")
+        _atomic_write_text(target, content)
         self._dirty, self._checked, self._reviewed = True, False, False
         self._checked_fingerprint = self._reviewed_fingerprint = None
         self._observed_snapshot = snapshot(self.work)
@@ -600,7 +627,10 @@ class AutoAgent:
         if work.count(old) != 1:
             raise ValueError(f"old باید دقیقاً یک بار در فایل باشد (الان {work.count(old)} بار).")
         work = work.replace(old, new, 1)
-        target.write_text(work.replace("\n", "\r\n") if crlf else work, encoding="utf-8", newline="")
+        final_text = work.replace("\n", "\r\n") if crlf else work
+        if len(final_text.encode("utf-8")) > MAX_FILE_BYTES:
+            raise ValueError(f"فایل پس از جایگزینی از سقف مجاز {MAX_FILE_BYTES // 1024} کیلوبایت بزرگ‌تر می‌شود.")
+        _atomic_write_text(target, final_text)
         self._dirty, self._checked, self._reviewed = True, False, False
         self._checked_fingerprint = self._reviewed_fingerprint = None
         self._observed_snapshot = snapshot(self.work)
