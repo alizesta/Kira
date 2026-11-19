@@ -62,17 +62,33 @@ def content_text(result: dict) -> str:
 
 
 def _params_from_schema(schema) -> tuple:
-    if not isinstance(schema, dict):
-        return ()
-    props = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
-    required = set(schema.get("required") or []) if isinstance(schema.get("required"), list) else set()
+    """Convert only a well-formed, representable object schema; never invent parameter types."""
+    if not isinstance(schema, dict) or schema.get("type", "object") != "object":
+        raise ValueError("MCP tool inputSchema must be an object schema")
+    raw_props = schema.get("properties", {})
+    if not isinstance(raw_props, dict):
+        raise ValueError("MCP tool inputSchema.properties must be an object")
+    raw_required = schema.get("required", [])
+    if not isinstance(raw_required, list) or any(not isinstance(key, str) for key in raw_required):
+        raise ValueError("MCP tool inputSchema.required must be a list of property names")
+    if any(key not in raw_props for key in raw_required):
+        raise ValueError("MCP tool inputSchema.required references an unknown property")
+    if len(raw_props) > 24:
+        raise ValueError("MCP tool inputSchema has too many properties")
     out = []
-    for key, spec in list(props.items())[:24]:
-        if not isinstance(spec, dict) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,48}", str(key)):
-            continue
-        ptype = spec.get("type") if spec.get("type") in _PARAM_TYPES else "object"
-        enum = tuple(spec["enum"]) if ptype == "string" and isinstance(spec.get("enum"), list) and all(isinstance(e, str) for e in spec["enum"]) else ()
-        out.append(Param(str(key), ptype, clean_text(spec.get("description"), 80), key in required, None, enum))
+    for key, spec in raw_props.items():
+        if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,48}", key):
+            raise ValueError("MCP tool inputSchema contains an invalid property name")
+        if not isinstance(spec, dict) or spec.get("type") not in _PARAM_TYPES:
+            raise ValueError(f"MCP tool inputSchema has an unsupported type for {key}")
+        ptype = spec["type"]
+        raw_enum = spec.get("enum")
+        enum = ()
+        if raw_enum is not None:
+            if not isinstance(raw_enum, list) or len(raw_enum) > 100:
+                raise ValueError(f"MCP tool inputSchema has an invalid enum for {key}")
+            enum = tuple(raw_enum)
+        out.append(Param(key, ptype, clean_text(spec.get("description"), 80), key in raw_required, None, enum))
     return tuple(out)
 
 
