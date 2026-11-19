@@ -588,6 +588,8 @@ class FileAgent:
                         destination_inside_source = False
                     if destination_inside_source:
                         raise ToolError("پوشه را نمی‌شود داخل خودش برد/کپی کرد.")
+                    if op == "move" and os.stat(p).st_dev != os.stat(dest).st_dev:
+                        raise ToolError("انتقال پوشه بین فایل‌سیستم‌های متفاوت مجاز نیست؛ برای جلوگیری از دنبال‌کردن لینک‌های داخل پوشه، عملیات متوقف شد.")
         elif op == "delete":
             roots = {os.path.normcase(r) for r in self.policy.roots()}
             if any(os.path.normcase(p) in roots for p in paths):
@@ -608,7 +610,10 @@ class FileAgent:
                     copies.append(self._copy({"source": p, "destination_folder": a["destination_folder"]})[1])
                 elif a["operation"] == "move":
                     target = os.path.join(a["destination_folder"], os.path.basename(p))
-                    shutil.move(p, target)
+                    if os.path.isdir(p):
+                        os.rename(p, target)                           # same-device only; never let shutil.move follow nested links
+                    else:
+                        shutil.move(p, target)
                     if not os.path.exists(target) or os.path.exists(p):
                         raise ToolError("انتقال کامل نشد.")
                     moves.append([p, target])
