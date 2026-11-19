@@ -6,6 +6,7 @@ application settings persistence remain in the application controller.
 from __future__ import annotations
 
 from collections.abc import Callable
+import math
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -66,7 +67,17 @@ class AssistantPage(QScrollArea):
         assistant_form.addRow(self.modes_chk)
         self.temp = self._row(assistant_form, "temp", QComboBox())
         self.temp.addItems(["0.2", "0.4", "0.7", "0.9", "1.0"])
-        self.temp.setCurrentText(str(settings.get("temperature", 0.7)))
+        raw_temperature = settings.get("temperature", 0.7)
+        try:
+            temperature = float(raw_temperature)
+            if not math.isfinite(temperature):
+                raise ValueError("temperature must be finite")
+            temperature_text = str(raw_temperature).strip()
+        except (TypeError, ValueError):
+            temperature_text = "0.7"
+        if self.temp.findText(temperature_text) < 0:
+            self.temp.addItem(temperature_text)
+        self.temp.setCurrentText(temperature_text)
 
         model_box, model_form = self._group("g_model")
         ollama = (settings.get("providers") or {}).get("ollama", {})
