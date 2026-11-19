@@ -179,6 +179,23 @@ class FeatureControllerRegistryTests(unittest.TestCase):
                             and isinstance(node.args[0], ast.Constant)
                             and node.args[0].value not in access["resources"]):
                         violations.append(f"{feature}:{node.lineno}:resource.{node.args[0].value}")
+                    if (node.func.attr in {"getattr", "hasattr"} and node.args
+                            and len(node.args) > 1 and isinstance(node.args[1], ast.Constant)
+                            and isinstance(node.args[0], ast.Attribute)
+                            and isinstance(node.args[0].value, ast.Attribute)
+                            and isinstance(node.args[0].value.value, ast.Name)
+                            and node.args[0].value.value.id == "self"
+                            and node.args[0].value.attr == "context"
+                            and node.args[0].attr in {"state", "services", "adapters", "views"}
+                            and node.args[1].value not in access[node.args[0].attr]):
+                        violations.append(
+                            f"{feature}:{node.lineno}:{node.args[0].attr}.{node.args[1].value}"
+                        )
+                if (isinstance(node, ast.Attribute) and node.attr == "presentation_context"
+                        and isinstance(node.value, ast.Attribute)
+                        and isinstance(node.value.value, ast.Name)
+                        and node.value.value.id == "self" and node.value.attr == "window"):
+                    violations.append(f"{feature}:{node.lineno}:root-context-bypass")
         self.assertEqual(violations, [])
 
     def test_chat_controller_uses_injected_attachment_workflow(self):
