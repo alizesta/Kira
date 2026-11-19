@@ -195,4 +195,7 @@ class BrainReflectionCompositionTests(unittest.TestCase):
         self.assertTrue({"brain_application_service", "reflection_application_service"}.issubset(composition_args))
         self.assertTrue({"brain_application_service", "reflection_application_service"}.issubset(service_fields))
 
+
+
+if __name__ == "__main__":
     unittest.main()
