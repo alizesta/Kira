@@ -65,6 +65,15 @@ class VoiceAudioCacheTests(unittest.TestCase):
             meta_path.write_text(json.dumps(record), encoding="utf-8")
             self.assertIsNone(_load_cached_audio(wav_path, meta_path))
 
+    def test_truncated_wav_cache_is_treated_as_a_miss(self):
+        with tempfile.TemporaryDirectory() as temp:
+            wav_path = Path(temp) / "truncated.wav"
+            meta_path = Path(temp) / "truncated.json"
+            wav_path.write_bytes(_wav_payload()[:20])
+            meta_path.write_text(json.dumps(_metadata(b"stale")), encoding="utf-8")
+
+            self.assertIsNone(_load_cached_audio(wav_path, meta_path))
+
     def test_atomic_write_replaces_complete_payload_without_temp_leaks(self):
         with tempfile.TemporaryDirectory() as temp:
             target = Path(temp) / "speech.wav"
