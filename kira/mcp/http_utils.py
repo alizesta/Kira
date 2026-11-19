@@ -10,8 +10,13 @@ class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Do not forward credentials or session headers to a redirect destination."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if fp is not None:
+            try:
+                fp.close()
+            except OSError:
+                pass
         raise urllib.error.HTTPError(
-            req.full_url, code, "HTTP redirects are disabled for credential safety", headers, fp
+            req.full_url, code, "HTTP redirects are disabled for credential safety", headers, None
         )
 
 
