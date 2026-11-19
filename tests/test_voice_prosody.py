@@ -1,12 +1,14 @@
 """Pure regression tests for emotion-aware Persian speech prosody."""
 
 import io
+import threading
 import unittest
 import wave
 from unittest import mock
 
 import numpy as np
 
+from kira.voice import Speaker
 from kira.voice_prosody import (
     EMOTION_PROFILES, NEUTRAL, apply_audio_effects, expand_persian_numbers,
     join_wavs_with_pauses, resolve_prosody, split_comma_clauses,
@@ -54,6 +56,23 @@ class EmotionProsodyTests(unittest.TestCase):
         self.assertEqual(profile["emotion_ids"], ("happy", "sad"))
         self.assertGreaterEqual(profile["length_scale"], 0.82)
         self.assertLessEqual(profile["length_scale"], 1.22)
+
+    def test_live_emotion_updates_the_active_stream_session_under_its_lock(self):
+        from types import SimpleNamespace
+
+        class SpeakerHarness:
+            _prosody = resolve_prosody()
+            _session = SimpleNamespace(
+                streaming=True,
+                cond=threading.Condition(),
+                prosody=resolve_prosody(),
+            )
+
+        harness = SpeakerHarness()
+        Speaker.set_emotion(harness, ["sad"], 100)
+        self.assertEqual(harness._prosody["emotion_ids"], ("sad",))
+        self.assertEqual(harness._session.prosody["emotion_ids"], ("sad",))
+        self.assertGreater(harness._session.prosody["length_scale"], 1.0)
 
     def test_comma_clause_split_preserves_punctuation_and_text(self):
         self.assertEqual(split_comma_clauses("سلام، خوبی؟ بعداً می‌بینمت؛ فعلاً"),
