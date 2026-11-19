@@ -309,5 +309,84 @@ class WidgetRegressionTests(unittest.TestCase):
         dialog.close()
 
 
+class FacadeContractTests(unittest.TestCase):
+    """Keep the extracted widget/feature facades in sync with their consumers."""
+
+    def test_composer_owner_covers_every_chat_composer_access(self):
+        import ast
+        from kira.ui.components.composer_owner import _CALLBACK_OWNERS
+        from kira.ui.window_presentation_context import VIEW_FIELDS
+
+        composer_path = ROOT / "kira/ui/components/chat_composer.py"
+        composer_tree = ast.parse(composer_path.read_text(encoding="utf-8"))
+        owner_refs = {
+            node.attr
+            for node in ast.walk(composer_tree)
+            if isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "owner"
+        }
+        aliases_node = next(
+            node for node in ast.walk(composer_tree)
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "_OWNER_ALIASES"
+                for target in node.targets
+            )
+        )
+        aliases = set(ast.literal_eval(aliases_node.value))
+        declared_properties = {"widget", "code_chat_host", "settings", "_vision_gate"}
+        declared = set(_CALLBACK_OWNERS) | aliases | declared_properties
+
+        self.assertEqual(owner_refs - declared, set())
+        self.assertTrue(aliases.issubset(VIEW_FIELDS))
+
+    def test_code_chat_host_covers_every_legacy_window_access(self):
+        import ast
+
+        code_tree = ast.parse(
+            (ROOT / "kira/chat_code_ui.py").read_text(encoding="utf-8")
+        )
+        code_class = next(
+            node for node in code_tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "CodeChat"
+        )
+        window_refs = set()
+        for node in ast.walk(code_class):
+            if not isinstance(node, ast.Attribute):
+                continue
+            if isinstance(node.value, ast.Name) and node.value.id == "w":
+                window_refs.add(node.attr)
+            elif (
+                isinstance(node.value, ast.Attribute)
+                and isinstance(node.value.value, ast.Name)
+                and node.value.value.id == "self"
+                and node.value.attr == "win"
+            ):
+                window_refs.add(node.attr)
+
+        host_tree = ast.parse(
+            (ROOT / "kira/ui/components/code_chat_host.py").read_text(encoding="utf-8")
+        )
+        declarations = {}
+        for node in host_tree.body:
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id in {
+                    "_STATE", "_VIEWS", "_SESSION", "_CONTROLLERS"
+                }:
+                    value = node.value.args[0] if isinstance(node.value, ast.Call) else node.value
+                    declarations[target.id] = ast.literal_eval(value)
+        exposed = (
+            set(declarations.get("_STATE", ()))
+            | set(declarations.get("_VIEWS", ()))
+            | set(declarations.get("_SESSION", ()))
+            | set(declarations.get("_CONTROLLERS", ()))
+            | {"chat", "settings", "widget", "tool_agent"}
+        )
+        self.assertEqual(window_refs - exposed, set())
+
+
 if __name__ == "__main__":
     unittest.main()
