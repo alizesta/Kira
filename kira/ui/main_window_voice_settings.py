@@ -38,7 +38,6 @@ from .main_window_voice_settings_support import (
     make_icon,
     re,
     shutil,
-    subprocess,
     time,
 )
 
