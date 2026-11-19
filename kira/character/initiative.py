@@ -298,9 +298,11 @@ def _absolute_date_due(text):
     if not matches:
         # Unsupported named-month and short numeric formats are explicit date
         # intent. Defer them rather than guessing their locale or calendar.
+        # Persian month names are short ("دی", "مه") and occur inside ordinary words
+        # ("دیگر" = more/other, "همه" = all), so they must match as whole words only.
         named_month = re.search(
-            r"فروردین|اردیبهشت|خرداد|تیر|مرداد|شهریور|مهر|آبان|آذر|دی|بهمن|اسفند|"
-            r"ژانویه|فوریه|مارس|آوریل|مه|ژوئن|ژوئیه|اوت|سپتامبر|اکتبر|نوامبر|دسامبر|"
+            r"(?<!\w)(?:فروردین|اردیبهشت|خرداد|تیر|مرداد|شهریور|مهر|آبان|آذر|دی|بهمن|اسفند|"
+            r"ژانویه|فوریه|مارس|آوریل|مه|ژوئن|ژوئیه|اوت|سپتامبر|اکتبر|نوامبر|دسامبر)(?!\w)|"
             r"\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|jun(?:e)?|jul(?:y)?|"
             r"aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b",
             content,
@@ -521,12 +523,18 @@ class InitiativeEngine:
             stamp = _finite_number(item.get("ts"))
             if stamp is None or stamp <= 0 or stamp > current + FUTURE_CLOCK_SKEW_SECONDS:
                 continue
-            age = max(0.0, current - stamp)
-            if age > self.memory_max_age_seconds:
-                continue
-
             text = _clean_memory_text(item.get("text"))
-            if not text or current < _event_not_before(text, stamp):
+            if not text:
+                continue
+            # A row stamped slightly in the future (tolerated clock skew) counts as created now,
+            # otherwise its own timestamp would defer it past the current time and the tolerance would be dead.
+            due = _event_not_before(text, min(stamp, current))
+            if current < due:
+                continue
+            # Freshness runs from the moment the event became askable, not from when it was said:
+            # "next week" is deferred longer than the max age and would otherwise expire before it is due.
+            age = max(0.0, current - max(stamp, due))
+            if age > self.memory_max_age_seconds:
                 continue
 
             selected = dict(item)

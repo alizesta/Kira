@@ -19,6 +19,8 @@ import time
 import urllib.error
 import urllib.request
 
+from .http_utils import open_no_redirect
+
 PROTOCOL = "2025-03-26"
 MAX_LINE = 4_000_000
 MAX_TOOLS = 200

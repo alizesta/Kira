@@ -15,7 +15,14 @@ from kira.character.initiative import (
     persisted_checkin_events,
     sessions_are_idle,
     _event_not_before,
+    _finite_number,
 )
+
+
+def stamped(text, ts):
+    """Memory text prefixed with the local date of its own timestamp, as the memory store writes it."""
+    from datetime import datetime
+    return f"{datetime.fromtimestamp(ts).strftime('%Y-%m-%d')}: {text}"
 
 
 def moment(memory_id, kind="event", text='2026-11-01: he said "I have an exam"', ts=0, group="moment"):
@@ -73,8 +80,8 @@ class InitiativeCandidateTests(unittest.TestCase):
 
     def test_small_clock_skew_is_tolerated_but_far_future_rows_are_not(self):
         rows = [
-            moment("skew", ts=self.now + 30),
-            moment("far", ts=self.now + 120),
+            moment("skew", text=stamped('he said "I have an exam"', self.now + 30), ts=self.now + 30),
+            moment("far", text=stamped('he said "I have an exam"', self.now + 120), ts=self.now + 120),
         ]
         self.assertEqual(self.engine.select_candidate(rows, now=self.now)["id"], "skew")
 
@@ -100,12 +107,11 @@ class InitiativeCandidateTests(unittest.TestCase):
         )
 
     def test_future_next_week_event_is_deferred(self):
-        row = moment("next-week", text='2026-11-01: he said "The interview is next week"', ts=self.now - 10)
-        self.assertIsNone(self.engine.select_candidate([row], now=self.now + 6 * DAY))
-        self.assertEqual(
-            self.engine.select_candidate([row], now=self.now + 8 * DAY + 1)["id"],
-            "next-week",
-        )
+        row = moment("next-week", text=stamped('he said "The interview is next week"', self.now - 10), ts=self.now - 10)
+        due = _event_not_before(row["text"], row["ts"])
+        self.assertGreater(due, self.now + 6 * DAY)
+        self.assertIsNone(self.engine.select_candidate([row], now=due - 1))
+        self.assertEqual(self.engine.select_candidate([row], now=due + 1)["id"], "next-week")
 
     def test_today_and_tonight_events_wait_until_the_local_day_has_ended(self):
         created = datetime(2026, 11, 19, 10, 30).timestamp()

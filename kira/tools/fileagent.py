@@ -25,7 +25,7 @@ import uuid
 from pathlib import Path
 
 from .access import PathPolicy, EXECUTABLE_EXT
-from .fileops import TEXT_EXT, _fmt_size, _recycle
+from .fileops import TEXT_EXT, _fmt_size, _move_file_no_overwrite, _recycle
 from .registry import Tool, Param, ToolError, ACTION, SENSITIVE, DENIED
 
 _LOGGER = logging.getLogger(__name__)
