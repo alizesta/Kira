@@ -203,6 +203,26 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual(updated["state"], "error")
             self.assertIn("وضعیت نامعتبر", updated["text"])
 
+    def test_agent_answer_sends_the_literal_user_quote_not_normalized_text(self):
+        with tempfile.TemporaryDirectory() as temp:
+            hub = AgentHub(mock.Mock(), Path(temp), lambda: {"worker": {"name": "worker"}})
+            hub.store.add({
+                "id": "job-1",
+                "agent": "worker",
+                "remote_id": "remote-1",
+                "state": "approval",
+                "created": time.time(),
+            })
+            agent = mock.Mock()
+            raw_quote = "Yes,   I APPROVE this."
+            with mock.patch.object(hub, "_agent", return_value=agent), mock.patch.object(hub, "_ensure_poller"):
+                hub.answer(
+                    {"job_id": "job-1", "user_quote": raw_quote},
+                    lambda: "Please proceed: " + raw_quote,
+                )
+
+            agent.answer.assert_called_once_with("remote-1", raw_quote, True)
+
     def test_agent_ask_discloses_when_new_job_cannot_be_persisted(self):
         with tempfile.TemporaryDirectory() as temp:
             hub = AgentHub(mock.Mock(), Path(temp), lambda: {"worker": {"name": "worker"}})
