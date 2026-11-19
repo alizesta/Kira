@@ -156,6 +156,18 @@ class Journal:
             return self._save()
 
 
+def _is_link_or_reparse(path: str) -> bool:
+    """Treat symlinks and Windows junction/reparse points as links; fail closed on unreadable metadata."""
+    isjunction = getattr(os.path, "isjunction", None)
+    try:
+        if os.path.islink(path) or (callable(isjunction) and isjunction(path)):
+            return True
+        attributes = getattr(os.lstat(path), "st_file_attributes", 0)
+        return bool(attributes & 0x400)  # FILE_ATTRIBUTE_REPARSE_POINT
+    except OSError:
+        return True
+
+
 def _count_tree(root: str):
     files = size = skipped = 0
 
@@ -167,14 +179,14 @@ def _count_tree(root: str):
         retained_dirs = []
         for directory in dirs:
             directory_path = os.path.join(base, directory)
-            if os.path.islink(directory_path):
+            if _is_link_or_reparse(directory_path):
                 skipped += 1
             else:
                 retained_dirs.append(directory)
         dirs[:] = retained_dirs
         for name in names:
             path = os.path.join(base, name)
-            if os.path.islink(path):
+            if _is_link_or_reparse(path):
                 skipped += 1
                 continue
             files += 1
@@ -331,7 +343,7 @@ class FileAgent:
                 out = []
                 for n in names:
                     p = os.path.join(folder, n)
-                    if (os.path.islink(p) or self.policy.sensitive_name(p)
+                    if (_is_link_or_reparse(p) or self.policy.sensitive_name(p)
                             or os.path.splitext(n)[1].lower() in EXECUTABLE_EXT):
                         out.append(n)
                         skipped.append(n)
