@@ -23,14 +23,14 @@ class WindowFeatureController(QObject):
 
     @property
     def context(self):
-        context = getattr(self.window, "presentation_context", None)
-        if context is None:
+        root = getattr(self.window, "presentation_context", None)
+        if root is None:
             raise RuntimeError("WindowPresentationContext is not initialized")
-        return context
+        return root.for_controller(self)
 
     def feature_controller(self, feature: str):
-        """Resolve a required peer controller through the composition registry."""
-        return self.context.controllers.require(feature)
+        """Resolve only a peer explicitly granted by this controller's capability policy."""
+        return self.context.require_peer(feature)
 
     def qt_super_event(self, event_name, event):
         """Invoke the QMainWindow implementation for a forwarded Qt event."""
