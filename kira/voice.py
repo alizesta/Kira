@@ -470,7 +470,7 @@ class Speaker(QObject):
         identity = local_voice.tts_cache_identity(model_path) if s.cache else model_path
         prosody_key = json.dumps(prosody, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         cache_key = hashlib.sha1(
-            f"{_CACHE_VERSION}|{identity!r}|{rate}|{prosody_key}|{spoken_text}".encode("utf-8")
+            f"{_CACHE_VERSION}|{identity!r}|{rate}|{prosody_key}|leading-pause={int(idx > 0)}|{spoken_text}".encode("utf-8")
         ).hexdigest()[:20]
         tag = f"kira_{s.gen}_{idx}"
         base = str(CACHE_DIR) if s.cache else self._tmp
@@ -490,7 +490,6 @@ class Speaker(QObject):
 
             clauses = split_comma_clauses(spoken_text)
             audio_parts = []
-            has_following_sentence = idx + 1 < len(s.sentences) or not s.input_done
             for clause_index, clause in enumerate(clauses):
                 audio = local_voice.synthesize_persian(
                     clause, model_path, rate, prosody=prosody, postprocess=False
