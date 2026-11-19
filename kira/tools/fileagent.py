@@ -187,6 +187,7 @@ def _count_tree(root: str):
 
 class FileAgent:
     JOURNAL_WARNING = " هشدار: سابقه‌ی این عملیات روی دیسک ذخیره نشد؛ Undo پس از بسته‌شدن برنامه تضمین‌شده نیست."
+    JOURNAL_UNDO_WARNING = " هشدار: عملیات برگردانده شد، اما وضعیت Undo روی دیسک ذخیره نشد؛ پس از راه‌اندازی مجدد ممکن است سابقه آن را انجام‌نشده نشان دهد."
 
     def __init__(self, policy: PathPolicy, journal: Journal):
         self.policy, self.journal = policy, journal
@@ -194,6 +195,10 @@ class FileAgent:
     @classmethod
     def _journal_note(cls, persisted: bool) -> str:
         return "" if persisted else cls.JOURNAL_WARNING
+
+    @classmethod
+    def _journal_undo_note(cls, persisted: bool) -> str:
+        return "" if persisted else cls.JOURNAL_UNDO_WARNING
 
     # ---------------------------------------------------------------- helpers
     def _new_target(self, folder: str, name: str, *, allow_exec=False) -> str:
@@ -621,7 +626,7 @@ class FileAgent:
             if not back_ok:
                 raise ToolError("هیچ موردی برنگشت (جای قبلی‌ها پر است یا فایل‌ها جابه‌جا شده‌اند).")
             persisted = self.journal.mark_undone(item)
-            return f"{back_ok} از {len(item['moves'])} مورد به جای قبلی برگشت." + self._journal_note(persisted)
+            return f"{back_ok} از {len(item['moves'])} مورد به جای قبلی برگشت." + self._journal_undo_note(persisted)
         elif op == "copy_many":
             if sys.platform != "win32":
                 raise ToolError("انتقال به سطل بازیافت فقط روی ویندوز ممکن است.")
@@ -636,7 +641,7 @@ class FileAgent:
             if not gone:
                 raise ToolError("هیچ نسخه‌ای برداشته نشد.")
             persisted = self.journal.mark_undone(item)
-            return f"{gone} نسخه‌ی کپی‌شده به سطل بازیافت رفت." + self._journal_note(persisted)
+            return f"{gone} نسخه‌ی کپی‌شده به سطل بازیافت رفت." + self._journal_undo_note(persisted)
         elif op == "mkdir":
             real = self.policy.check(path)
             os.rmdir(real)                                               # only an empty folder can go
@@ -678,7 +683,7 @@ class FileAgent:
         else:
             raise ToolError("این نوع عملیات قابل برگرداندن نیست.")
         persisted = self.journal.mark_undone(item)
-        return f"برگردانده شد ({op}): {path}" + self._journal_note(persisted)
+        return f"برگردانده شد ({op}): {path}" + self._journal_undo_note(persisted)
 
 
 def register_file_agent(reg, policy: PathPolicy, data_dir=None) -> FileAgent:
