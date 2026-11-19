@@ -110,6 +110,12 @@ class FacadeRegressionTests(unittest.TestCase):
         self.assertIn("return sender is None or sender is self.worker", attachments)
         self.assertIn("self.sender() is not self.context.adapters.game_audio_listener", game_audio)
 
+    def test_voice_tasks_are_not_restarted_after_close_is_requested(self):
+        source = (ROOT / "kira/ui/main_window_voice_settings.py").read_text(encoding="utf-8")
+        self.assertIn('getattr(self.context.state, "_close_after_local_voice", False)', source)
+        self.assertIn("self.context.state._local_voice_worker is None", source)
+        self.assertIn("worker.deleteLater()", source)
+
     def test_taskworker_results_use_gui_thread_slots(self):
         provider = (ROOT / "kira/ui/main_window_provider_settings.py").read_text(encoding="utf-8")
         voice = (ROOT / "kira/ui/main_window_voice_settings.py").read_text(encoding="utf-8")
