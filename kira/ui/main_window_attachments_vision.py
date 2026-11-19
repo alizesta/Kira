@@ -299,6 +299,7 @@ class AttachmentsVisionController(WindowFeatureController):
             self.context.adapters.game_audio_listener = None
         if self.context.state._stopping_game_audio_listener is listener:
             self.context.state._stopping_game_audio_listener = None
+        listener.deleteLater()
         if self.context.state._closing or not self.context.state._game_audio_restart_pending:
             return
         self.context.state._game_audio_restart_pending = False
