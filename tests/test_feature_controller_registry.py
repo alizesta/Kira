@@ -151,6 +151,37 @@ class FeatureControllerRegistryTests(unittest.TestCase):
         with self.assertRaises(LookupError):
             root.for_controller(object())
 
+    def test_front_only_controllers_receive_background_session_capability(self):
+        root = Path(__file__).resolve().parents[1]
+        filenames = {
+            "runtime": "main_window_runtime.py",
+            "chat": "main_window_chat.py",
+            "session": "main_window_session.py",
+            "lifecycle": "main_window_lifecycle.py",
+            "attachments_vision": "main_window_attachments_vision.py",
+            "provider_settings": "main_window_provider_settings.py",
+            "character_settings": "main_window_character_settings.py",
+            "voice_settings": "main_window_voice_settings.py",
+        }
+        from kira.ui.window_presentation_context import CONTROLLER_ACCESS
+        for feature, filename in filenames.items():
+            source = (root / "kira/ui" / filename).read_text(encoding="utf-8")
+            if "@front_only" in source:
+                self.assertIn(
+                    "is_background_session",
+                    CONTROLLER_ACCESS[feature]["extras"],
+                    f"{feature} uses @front_only without the matching context capability",
+                )
+
+    def test_session_relay_peer_owners_are_allowed_by_session_scope(self):
+        from kira.ui.main_window_support import SessionRelay
+        from kira.ui.window_presentation_context import CONTROLLER_ACCESS
+        self.assertTrue(
+            set(SessionRelay._HANDLER_OWNERS.values()).issubset(
+                CONTROLLER_ACCESS["session"]["peers"]
+            )
+        )
+
     def test_controller_source_access_matches_capability_matrix(self):
         from kira.ui.window_presentation_context import CONTROLLER_ACCESS
         root = Path(__file__).resolve().parents[1]
