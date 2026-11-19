@@ -97,6 +97,30 @@ class FacadeRegressionTests(unittest.TestCase):
         self.assertIn("self.context.state._local_stt_test_listener is not listener", source)
         self.assertIn('"توقف تست STT" if current is not None and current.isRunning() else "تست STT"', source)
 
+    def test_taskworker_results_use_gui_thread_slots(self):
+        provider = (ROOT / "kira/ui/main_window_provider_settings.py").read_text(encoding="utf-8")
+        voice = (ROOT / "kira/ui/main_window_voice_settings.py").read_text(encoding="utf-8")
+        chat = (ROOT / "kira/ui/main_window_chat.py").read_text(encoding="utf-8")
+        lifecycle = (ROOT / "kira/ui/main_window_lifecycle.py").read_text(encoding="utf-8")
+
+        self.assertIn("worker.done.connect(self._relay_api_worker_done)", provider)
+        self.assertIn("@Slot(object)\n    def _relay_api_worker_done", provider)
+        self.assertNotIn("_api_worker.done.connect(lambda", provider)
+        self.assertIn("worker.done.connect(self._on_local_voice_worker_done)", voice)
+        self.assertIn("worker.finished.connect(self._on_local_voice_worker_finished)", voice)
+        self.assertIn("@Slot(object)\n    def _on_local_voice_worker_done", voice)
+        self.assertIn("@Slot(object)\n    def on_web_test_done", chat)
+        self.assertIn("@Slot(bool, str)\n    def on_ollama_task_done", lifecycle)
+
+    def test_attachment_worker_signals_use_qobject_slots(self):
+        source = (ROOT / "kira/ui/controllers/chat_attachments.py").read_text(encoding="utf-8")
+        self.assertIn("class ChatAttachmentController(QObject)", source)
+        self.assertIn("self.worker.progress.connect(self.on_progress)", source)
+        self.assertIn("@Slot(int, int)\n    def on_progress", source)
+        self.assertIn("@Slot(int, dict)\n    def on_loaded", source)
+        self.assertIn("@Slot(int, str)\n    def on_failed", source)
+        self.assertIn("self.worker.finished.connect(self._on_worker_finished)", source)
+
     def test_codechat_job_signals_are_relayed_to_qobject_slots(self):
         source = (ROOT / "kira/chat_code_ui.py").read_text(encoding="utf-8")
         self.assertIn("job.chunk.connect(self._relay_job_chunk)", source)
