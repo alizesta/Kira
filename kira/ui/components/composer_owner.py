@@ -34,17 +34,18 @@ _CALLBACK_OWNERS = {
 
 
 class ComposerOwner:
-    def __init__(self, context) -> None:
+    def __init__(self, context, widget_parent) -> None:
         object.__setattr__(self, "_context", context)
+        object.__setattr__(self, "_widget_parent", widget_parent)
 
     @property
     def widget(self):
-        return self._context.host
+        return self._widget_parent
 
     @property
     def code_chat_host(self):
         from .code_chat_host import CodeChatHost
-        return CodeChatHost(self._context)
+        return CodeChatHost(self._context, self._widget_parent)
 
     @property
     def settings(self):
@@ -58,7 +59,7 @@ class ComposerOwner:
         feature = _CALLBACK_OWNERS.get(name)
         if feature is None:
             raise AttributeError(f"ChatComposer owner has no callback {name!r}")
-        return getattr(self._context.controllers.require(feature), name)
+        return getattr(self._context.require_peer(feature), name)
 
     def __setattr__(self, name: str, value) -> None:
         views = self._context.views
