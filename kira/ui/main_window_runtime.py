@@ -681,6 +681,9 @@ class RuntimeController(WindowFeatureController):
             "_stopping_game_audio_listener", "game_audio_listener", "listener",
         ):
             workers.append(self.context.resource(name))
+        code_chat = getattr(self.context.views, "code_chat", None)
+        if code_chat is not None:
+            workers.extend(code_chat.background_workers())
         unique = []
         seen = set()
         for worker in workers:
@@ -688,7 +691,13 @@ class RuntimeController(WindowFeatureController):
                 continue
             seen.add(id(worker))
             try:
-                if worker.isRunning():
+                is_running = getattr(worker, "isRunning", None)
+                if callable(is_running):
+                    running = is_running()
+                else:
+                    process_state = getattr(worker, "state", None)
+                    running = bool(callable(process_state) and process_state() != 0)
+                if running:
                     unique.append(worker)
             except RuntimeError:
                 continue
