@@ -189,6 +189,12 @@ class VoiceApplicationService(VoiceService):
     def settings(self, value):
         self.speaker.settings = value
 
+    def set_emotion(self, emotions=(), intensity=None) -> None:
+        """Forward reply emotion metadata when the injected speaker supports prosody."""
+        setter = getattr(self.speaker, "set_emotion", None)
+        if callable(setter):
+            setter(emotions, intensity)
+
     def speak(self, text: str, rate=None, pitch=None, cache=False) -> None:
         self.speaker.speak(text, rate, pitch, cache=cache)
 
