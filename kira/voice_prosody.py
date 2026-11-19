@@ -315,6 +315,7 @@ def apply_audio_effects(payload, profile):
         channels = source.getnchannels()
         width = source.getsampwidth()
         rate = source.getframerate()
+        frames = source.getnframes()
         raw = source.readframes(frames)
         comptype = source.getcomptype()
     if comptype != "NONE" or width != 2 or not raw:
