@@ -97,6 +97,21 @@ class FacadeRegressionTests(unittest.TestCase):
         self.assertIn("self.context.state._local_stt_test_listener is not listener", source)
         self.assertIn('"توقف تست STT" if current is not None and current.isRunning() else "تست STT"', source)
 
+    def test_codechat_job_signals_are_relayed_to_qobject_slots(self):
+        source = (ROOT / "kira/chat_code_ui.py").read_text(encoding="utf-8")
+        self.assertIn("job.chunk.connect(self._relay_job_chunk)", source)
+        self.assertIn("job.done.connect(self._relay_job_done)", source)
+        self.assertIn("job.failed.connect(self._relay_job_failed)", source)
+        self.assertNotIn("job.chunk.connect(lambda", source)
+        self.assertNotIn("job.done.connect(lambda", source)
+        self.assertNotIn("job.failed.connect(lambda", source)
+        self.assertIn("@Slot(str)\n    def _relay_job_chunk", source)
+        self.assertIn("@Slot(object)\n    def _relay_job_done", source)
+        self.assertIn("@Slot(str)\n    def _relay_job_failed", source)
+        self.assertIn("@Slot(str, object)\n    def _ask_approval", source)
+        self.assertIn("self._class_jobs.append(job)", source)
+        self.assertIn("class_jobs, self._class_jobs = list(self._class_jobs), []", source)
+
     def test_mcp_registry_search_worker_is_drained_on_window_close(self):
         context_source = (ROOT / "kira/ui/window_presentation_context.py").read_text(encoding="utf-8")
         controller_source = (ROOT / "kira/ui/main_window_character_settings.py").read_text(encoding="utf-8")
