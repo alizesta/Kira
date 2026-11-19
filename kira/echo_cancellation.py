@@ -64,7 +64,7 @@ class AdaptiveEchoCanceller:
         # Freeze adaptation during likely double-talk. Cancellation remains active
         # with the last stable filter so the user's voice is not learned as echo.
         double_talk = (
-            estimate_power > max(1e-8, mic_power * 0.015)
+            estimate_power > max(1e-8, ref_power * 0.01)
             and error_power > estimate_power * self.double_talk_ratio
         )
         if not double_talk:
