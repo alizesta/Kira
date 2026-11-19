@@ -27,6 +27,7 @@ from .main_window_voice_settings_support import (
     QSizePolicy,
     QStackedWidget,
     QTimer,
+    Slot,
     QVBoxLayout,
     QWidget,
     Qt,
@@ -634,16 +635,12 @@ class VoiceSettingsController(WindowFeatureController):
             barge_in=False, settings=self.context.services.settings,
         )
         self.context.state._local_stt_test_listener = listener
-        listener.heard.connect(
-            lambda text, current=listener: self._on_local_stt_test_heard(text, current)
-        )
-        listener.error.connect(
-            lambda message, current=listener: self._on_local_stt_test_error(message, current)
-        )
-        listener.state.connect(
-            lambda state, current=listener: self._on_local_stt_test_state(state, current)
-        )
-        listener.finished.connect(lambda current=listener: self._on_local_stt_test_finished(current))
+        # QObject-bound slots ensure worker-thread signals are marshalled back
+        # to this controller's GUI thread before updating widgets.
+        listener.heard.connect(self._on_local_stt_test_heard)
+        listener.error.connect(self._on_local_stt_test_error)
+        listener.state.connect(self._on_local_stt_test_state)
+        listener.finished.connect(self._on_local_stt_test_finished)
         self.context.views.local_stt_test_btn.setText("توقف تست STT")
         self.context.views.local_voice_status.setText("در حال آماده‌سازی میکروفن؛ صحبت کن تا متن تشخیص‌داده‌شده نمایش داده شود.")
         listener.start()
@@ -659,9 +656,12 @@ class VoiceSettingsController(WindowFeatureController):
             self.context.views.local_stt_test_btn.setText("در حال توقف تست STT…")
             self.context.views.local_voice_status.setText("در حال توقف آزمایش STT…")
 
-    def _on_local_stt_test_state(self, state, listener):
+    @Slot(str)
+    def _on_local_stt_test_state(self, state):
+        listener = self.sender()
         if (
-            self.context.state._closing
+            listener is None
+            or self.context.state._closing
             or self.context.state._local_stt_test_listener is not listener
         ):
             return
@@ -674,21 +674,29 @@ class VoiceSettingsController(WindowFeatureController):
         if state in labels:
             self.context.views.local_voice_status.setText(labels[state])
 
-    def _on_local_stt_test_heard(self, text, listener):
-        if self.context.state._local_stt_test_listener is not listener:
+    @Slot(str)
+    def _on_local_stt_test_heard(self, text):
+        listener = self.sender()
+        if listener is None or self.context.state._local_stt_test_listener is not listener:
             return
         listener.stop()
         if not self.context.state._closing:
             self.context.views.local_voice_status.setText(f"نتیجه تست STT: {text}")
 
-    def _on_local_stt_test_error(self, message, listener):
-        if self.context.state._local_stt_test_listener is not listener:
+    @Slot(str)
+    def _on_local_stt_test_error(self, message):
+        listener = self.sender()
+        if listener is None or self.context.state._local_stt_test_listener is not listener:
             return
         if not self.context.state._closing:
             self.context.views.local_voice_status.setText(f"تست STT ناموفق بود: {message}")
         listener.stop()
 
-    def _on_local_stt_test_finished(self, listener):
+    @Slot()
+    def _on_local_stt_test_finished(self):
+        listener = self.sender()
+        if listener is None:
+            return
         if self.context.state._local_stt_test_listener is listener:
             self.context.state._local_stt_test_listener = None
         current = self.context.resource("_local_stt_test_listener")
