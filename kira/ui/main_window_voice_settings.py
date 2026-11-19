@@ -577,7 +577,10 @@ class VoiceSettingsController(WindowFeatureController):
             self.context.views.local_voice_status.setText(f"بررسی موتورهای صوتی ناموفق بود: {type(exc).__name__}: {exc}")
 
     def _run_local_voice_task(self, fn, button, callback, *, cancellable=False):
-        if self.context.state._closing or self.context.state._close_after_local_voice:
+        if (
+            self.context.state._closing
+            or getattr(self.context.state, "_close_after_local_voice", False)
+        ):
             return
         worker = getattr(self.context.state, "_local_voice_worker", None)
         if worker is not None and worker.isRunning():
@@ -599,7 +602,7 @@ class VoiceSettingsController(WindowFeatureController):
         if (
             worker is None
             or self.context.state._closing
-            or self.context.state._close_after_local_voice
+            or getattr(self.context.state, "_close_after_local_voice", False)
             or self.context.state._local_voice_worker is not worker
         ):
             return
@@ -659,7 +662,10 @@ class VoiceSettingsController(WindowFeatureController):
         if listener is not None and listener.isRunning():
             self.stop_local_stt_test()
             return
-        if self.context.state._closing or self.context.state._close_after_local_voice:
+        if (
+            self.context.state._closing
+            or getattr(self.context.state, "_close_after_local_voice", False)
+        ):
             return
 
         from ..listener import Listener
