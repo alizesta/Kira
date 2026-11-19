@@ -137,6 +137,7 @@ class NativeFunctionCallingTests(unittest.TestCase):
         route = {"id": "custom-route", "provider": "custom", "model": "test-model"}
         provider = mock.Mock()
         provider.chat_with_tools.side_effect = RuntimeError("provider network failure")
+        provider.last_stats = {"prompt_tokens": 3, "eval_tokens": 0}
         router._candidates = lambda: [route]
         router.eligibility = lambda _route: (True, "ok")
         router.route_info = lambda _route: {"kind": "cloud", "label": "Test"}
@@ -144,13 +145,20 @@ class NativeFunctionCallingTests(unittest.TestCase):
         router._provider_cfg = lambda _route: {"api_key": "test-secret"}
         router._mark_failure = lambda _route, _exc, _secrets: ("network", None, 45)
 
-        with self.assertRaisesRegex(RuntimeError, "Native Function Calling"):
-            router.chat_with_tools(
-                [{"role": "user", "content": "Use a tool"}],
-                "system",
-                tools=[{"name": "get_datetime", "parameters": {"type": "object"}}],
-            )
+        with mock.patch.object(router, "_ledger") as ledger, mock.patch.object(router, "_write_telemetry") as telemetry:
+            with self.assertRaisesRegex(RuntimeError, "Native Function Calling"):
+                router.chat_with_tools(
+                    [{"role": "user", "content": "Use a tool"}],
+                    "system",
+                    tools=[{"name": "get_datetime", "parameters": {"type": "object"}}],
+                )
         provider.chat_with_tools.assert_called_once()
+        self.assertEqual(router.last_metrics["result"], "failed")
+        self.assertEqual(router.last_metrics["provider"], "custom")
+        self.assertEqual(router.last_metrics["eval_tokens"], 0)
+        self.assertEqual(router.last_attempts[-1]["result"], "error")
+        ledger.assert_called_once_with(router.last_metrics, "failed", provider, provider.last_stats)
+        telemetry.assert_called_once()
 
     def test_router_accounts_for_native_function_calling_requests(self):
         router = HybridRouter({})

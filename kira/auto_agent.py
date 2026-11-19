@@ -22,6 +22,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -45,6 +46,50 @@ MAX_COPY_BYTES = 400 * 1024 * 1024
 MAX_FINISH_GATE_RETRIES = 3          # blocked finish attempts before the agent stops with an honest report
 MAX_GATE_STEPS = 6                   # hard stop for a model that only repeats a blocked finish
 MAX_REVIEW_CHUNK_CHARS = 7000         # bounded chunks; every changed text file is reviewed
+
+def _atomic_write_text(path: Path, content: str) -> int:
+    """Write UTF-8 text atomically; a failed write must leave the previous file intact."""
+    target = Path(path)
+    data = str(content).encode("utf-8")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        previous_mode = stat.S_IMODE(target.stat().st_mode)
+    except FileNotFoundError:
+        previous_mode = None
+    fd, temporary = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=".tmp", dir=str(target.parent)
+    )
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if previous_mode is not None:
+            os.chmod(temporary, previous_mode)
+        os.replace(temporary, target)
+    finally:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+    return len(data)
+
+
+def _read_bounded_text(path: Path) -> str:
+    """Read at most the configured project-file limit and return strict UTF-8 text."""
+    try:
+        with Path(path).open("rb") as stream:
+            data = stream.read(MAX_FILE_BYTES + 1)
+    except OSError as exc:
+        raise ValueError(f"خواندن فایل ممکن نشد: {exc}") from exc
+    if len(data) > MAX_FILE_BYTES:
+        raise ValueError(f"فایل از سقف مجاز {MAX_FILE_BYTES // 1024} کیلوبایت بزرگ‌تر است.")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("فایل متن UTF-8 نیست.") from exc
+
+
 IRAN = timezone(timedelta(hours=3, minutes=30), "IRST")      # Iran has no daylight saving time since 2022
 ALLOWED_MODULES = {"unittest", "pytest", "compileall", "py_compile", "ruff", "pyflakes"}
 SAFE_SCRIPTS = {"test", "tests", "lint", "build", "check", "typecheck", "type-check", "fmt", "format"}
@@ -125,23 +170,55 @@ def unique_zip_path(output_dir: Path, project_name: str, now=None) -> Path:
 
 
 def copy_project(src: Path, dst: Path) -> dict:
-    """Copy everything except secret files and runtime folders. Returns counts so the report can say what was left out."""
+    """Copy a bounded project snapshot; fail with the exact path instead of leaving a partial file."""
+    try:
+        source = Path(src).resolve(strict=True)
+    except OSError as exc:
+        raise ValueError(f"پوشه پروژه قابل دسترسی نیست: {exc}") from exc
+    if not source.is_dir():
+        raise ValueError("مسیر پروژه یک پوشه معتبر نیست.")
+
+    destination = Path(dst)
     copied = skipped = total = 0
-    for current, dirs, files in os.walk(src, followlinks=False):
+
+    def walk_error(exc):
+        raise ValueError(f"خواندن پوشه پروژه «{getattr(exc, 'filename', '')}» ناموفق بود: {exc}") from exc
+
+    for current, dirs, files in os.walk(source, followlinks=False, onerror=walk_error):
         cur = Path(current)
         dirs[:] = [d for d in dirs if d.lower() not in SKIP_DIRS and not (cur / d).is_symlink()]
-        rel_dir = cur.relative_to(src)
-        (dst / rel_dir).mkdir(parents=True, exist_ok=True)
+        rel_dir = cur.relative_to(source)
+        (destination / rel_dir).mkdir(parents=True, exist_ok=True)
         for name in files:
             f = cur / name
-            if f.is_symlink() or _is_sensitive(f.relative_to(src)):
+            if f.is_symlink() or _is_sensitive(f.relative_to(source)):
                 skipped += 1
                 continue
-            size = f.stat().st_size
+            try:
+                size = f.stat().st_size
+            except OSError as exc:
+                raise ValueError(f"اندازه فایل «{f.relative_to(source).as_posix()}» خوانده نشد: {exc}") from exc
             total += size
             if total > MAX_COPY_BYTES:
                 raise ValueError("پروژه از سقف ۴۰۰ مگابایت بزرگ‌تر است؛ پوشه‌ی کوچک‌تری انتخاب کن.")
-            shutil.copy2(f, dst / rel_dir / name)
+            target = destination / rel_dir / name
+            try:
+                shutil.copy2(f, target)
+                copied_size = target.stat().st_size
+            except OSError as exc:
+                try:
+                    target.unlink()
+                except OSError:
+                    pass
+                raise ValueError(f"کپی فایل «{f.relative_to(source).as_posix()}» ناموفق بود: {exc}") from exc
+            if copied_size != size:
+                try:
+                    target.unlink()
+                except OSError:
+                    pass
+                raise ValueError(
+                    f"فایل «{f.relative_to(source).as_posix()}» هنگام کپی تغییر کرد؛ نسخه ناقص پذیرفته نشد."
+                )
             copied += 1
     return {"copied": copied, "skipped": skipped}
 
@@ -339,8 +416,8 @@ class AutoAgent:
             return
         try:
             if target.stat().st_size <= MAX_FILE_BYTES:
-                self._baseline_texts[rel] = target.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+                self._baseline_texts[rel] = _read_bounded_text(target)
+        except (OSError, ValueError):
             pass
 
     def _save_checkpoint(self, messages, before, stats):
@@ -487,11 +564,11 @@ class AutoAgent:
                     continue
                 path = Path(current) / name
                 rel = path.relative_to(self.work).as_posix()
-                if path.is_symlink() or _is_sensitive(Path(rel)) or path.stat().st_size > MAX_FILE_BYTES:
+                if path.is_symlink() or _is_sensitive(Path(rel)):
                     continue
                 try:
-                    tree = ast.parse(path.read_text(encoding="utf-8"))
-                except (OSError, UnicodeDecodeError, SyntaxError):
+                    tree = ast.parse(_read_bounded_text(path))
+                except (OSError, ValueError, SyntaxError):
                     continue
                 imports, symbols = [], []
                 for node in ast.walk(tree):
@@ -509,10 +586,7 @@ class AutoAgent:
 
     def tool_read(self, a):
         f = self._path(a.get("path"))
-        try:
-            lines = f.read_text(encoding="utf-8").splitlines()
-        except UnicodeDecodeError:
-            raise ValueError("فایل متن UTF-8 نیست.")
+        lines = _read_bounded_text(f).splitlines()
         start = max(1, int(a.get("start") or 1))
         end = min(len(lines), int(a.get("end") or start + 399))
         body = "\n".join(f"{i}: {lines[i - 1]}" for i in range(start, end + 1))
@@ -547,15 +621,14 @@ class AutoAgent:
                 f = Path(current) / name
                 if f.is_symlink() or _is_sensitive(f.relative_to(self.work)) or not f.match(glob):
                     continue
-                if f.stat().st_size > MAX_FILE_BYTES:
-                    continue
                 try:
-                    for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+                    content = _read_bounded_text(f)
+                    for n, line in enumerate(content.splitlines(), 1):
                         if rx.search(line):
                             hits.append(f"{f.relative_to(self.work).as_posix()}:{n}: {redact_secrets(line.strip())[:200]}")
                             if len(hits) >= 60:
                                 return "\n".join(hits) + "\n… (نتایج بیشتر نمایش داده نشد)"
-                except (UnicodeDecodeError, OSError):
+                except (OSError, ValueError):
                     continue
         return "\n".join(hits) or "(چیزی پیدا نشد)"
 
@@ -574,8 +647,7 @@ class AutoAgent:
             old = target.read_bytes()
             if b"\r\n" in old and b"\n" not in old.replace(b"\r\n", b""):
                 content = content.replace("\r\n", "\n").replace("\n", "\r\n")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8", newline="")
+        _atomic_write_text(target, content)
         self._dirty, self._checked, self._reviewed = True, False, False
         self._checked_fingerprint = self._reviewed_fingerprint = None
         self._observed_snapshot = snapshot(self.work)
@@ -594,13 +666,18 @@ class AutoAgent:
         old, new = str(a.get("old", "")), str(a.get("new", ""))
         if not old:
             raise ValueError("old خالی است.")
-        text = target.read_text(encoding="utf-8")
+        if len(new.encode("utf-8")) > MAX_FILE_BYTES:
+            raise ValueError(f"متن جایگزین از سقف مجاز {MAX_FILE_BYTES // 1024} کیلوبایت بزرگ‌تر است.")
+        text = _read_bounded_text(target)
         crlf = "\r\n" in text and "\n" not in text.replace("\r\n", "")
         work = text.replace("\r\n", "\n") if crlf else text
         if work.count(old) != 1:
             raise ValueError(f"old باید دقیقاً یک بار در فایل باشد (الان {work.count(old)} بار).")
         work = work.replace(old, new, 1)
-        target.write_text(work.replace("\n", "\r\n") if crlf else work, encoding="utf-8", newline="")
+        final_text = work.replace("\n", "\r\n") if crlf else work
+        if len(final_text.encode("utf-8")) > MAX_FILE_BYTES:
+            raise ValueError(f"فایل پس از جایگزینی از سقف مجاز {MAX_FILE_BYTES // 1024} کیلوبایت بزرگ‌تر می‌شود.")
+        _atomic_write_text(target, final_text)
         self._dirty, self._checked, self._reviewed = True, False, False
         self._checked_fingerprint = self._reviewed_fingerprint = None
         self._observed_snapshot = snapshot(self.work)
@@ -1207,7 +1284,12 @@ class AutoAgent:
                     shutil.rmtree(self.session_dir, ignore_errors=True)
                 self.session_dir.mkdir(parents=True, exist_ok=True)
                 self.work = self.session_dir / self.project.name
-                stats = copy_project(self.project, self.work)
+                try:
+                    stats = copy_project(self.project, self.work)
+                except Exception:
+                    shutil.rmtree(self.session_dir, ignore_errors=True)
+                    self.work = None
+                    raise
                 self.work = self.work.resolve()
                 before = snapshot(self.work)
                 self._before_hashes = before
