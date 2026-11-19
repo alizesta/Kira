@@ -319,16 +319,16 @@ CONTROLLER_ACCESS = {
   "views": frozenset({"code_chat","companion_btn","gen_stop_btn","input","mic_btn","route_badge","route_menu","route_status","send_btn","status","tab_keys","tray","voice_btn","voice_page","wake_btn","wake_timer"}),
   "peers": frozenset({"session","provider_settings","attachments_vision","chat","lifecycle","voice_settings"}),
   "resources": frozenset({"_model_import_worker","_local_voice_worker"}),
-  "extras": frozenset({"session","listener","resource"}),
+  "extras": frozenset({"session","listener","resource","is_background_session"}),
  },
  "chat": {
-  "state": frozenset({"_closing","_game_mode_enabled","_save_warned","_web_test_worker","cur"}),
-  "services": frozenset({"brain_application_service","character_service","chat_application_service","coding_agent_application_service","memory_service","mood_service","session_manager","settings","tool_agent","voice_application_service","web_search_service"}),
+  "state": frozenset({"_closing","_game_mode_enabled","_save_warned","_web_test_worker","cur","sessions","front"}),
+  "services": frozenset({"brain_application_service","character_service","chat_application_service","coding_agent_application_service","memory_service","mood_service","session_manager","settings","tool_agent","voice_application_service","web_search_service","vision_application_service"}),
   "adapters": frozenset({"animator","director","bubble"}),
   "views": frozenset({"gen_stop_btn","img_search_btn","input","status","tavily_key","web_btn","web_depth","web_test_btn","code_chat"}),
   "peers": frozenset({"session","runtime","attachments_vision"}),
   "resources": frozenset(),
-  "extras": frozenset({"session"}),
+  "extras": frozenset({"session","is_background_session"}),
  },
  "session": {
   "state": frozenset({"_att_seq","_chat_action_seq","_chat_action_texts","_menu_actions","_nav_icon_map","_status","_tr","cur","front","sessions","_closing","_effect","_mood_emotion_glow"}),
@@ -337,7 +337,7 @@ CONTROLLER_ACCESS = {
   "views": frozenset({"appearance_page","assistant_page","char_tab_buttons","char_tab_group","char_tabs_row","character_page","chat_page","chat_stack","gen_stop_btn","glow_effects","help_page","input","mic_btn","mood_indicator","mood_emotion_icon","nav_buttons","avatar_card","menu_btn","route_badge","preferences_page","save_btn","status","tab_keys","tabs","title","voice_page"}),
   "peers": frozenset({"runtime","character_settings","attachments_vision","voice_settings"}),
   "resources": frozenset(),
-  "extras": frozenset({"session"}),
+  "extras": frozenset({"session","is_background_session"}),
  },
  "lifecycle": {
   "state": frozenset({"_closing","_effect","_ollama_models","_ollama_worker","_quitting","sessions"}),
@@ -355,7 +355,7 @@ CONTROLLER_ACCESS = {
   "views": frozenset({"game_mode_btn","game_mode_safe_action","game_mode_story_action","mic_btn","send_strip","vision_rate_actions","wake_btn","code_chat","tray"}),
   "peers": frozenset({"session","chat","runtime"}),
   "resources": frozenset({"_stopping_game_audio_listener"}),
-  "extras": frozenset({"session","resource"}),
+  "extras": frozenset({"session","resource","is_background_session"}),
  },
  "provider_settings": {
   "state": frozenset({"_api_worker","_bench_busy","_bench_worker","_closing","_loading_route","_model_catalog_worker","_ollama_models","_route_worker","_scan_worker"}),
@@ -373,14 +373,14 @@ CONTROLLER_ACCESS = {
   "views": frozenset({"appearance_page","character_page","help_page","mcp_registry_panel","preferences_page","save_btn","glow_effects"}),
   "peers": frozenset({"session","lifecycle","runtime","chat","provider_settings"}),
   "resources": frozenset({"_mcp_registry_worker"}),
-  "extras": frozenset({"resource"}),
+  "extras": frozenset({"resource","is_background_session"}),
  },
  "voice_settings": {
   "state": frozenset({"_close_after_local_voice","_closing","_local_stt_test_listener","_local_tts_test_active","_local_voice_worker","_model_import_worker"}),
   "services": frozenset({"game_mode_application_service","provider_application_service","settings","voice_application_service"}),
   "adapters": frozenset({"animator"}),
   "views": frozenset({"api_add_status","assistant_page","avatar","avatar_card","char_tab_buttons","char_tab_group","char_tabs_row","chat_composer","chat_page","chat_stack","companion_btn","glow_effects","import_model_btn","local_asr_download_btn","local_asr_load_btn","local_asr_path_edit","local_model_tabs","local_stt_test_btn","local_tts_download_btn","local_tts_model_path","local_tts_test_btn","local_voice_progress","local_voice_status","local_whisper_path","model","mood_emotion_icon","mood_indicator","status","tab_keys","tabs","title","voice_page"}),
-  "peers": frozenset({"session","runtime","lifecycle","provider_settings","character_settings"}),
+  "peers": frozenset({"session","runtime","lifecycle","provider_settings","character_settings","chat"}),
   "resources": frozenset({"_local_stt_test_listener"}),
   "extras": frozenset({"resource"}),
  },
@@ -427,6 +427,12 @@ class _ControllerPresentationContext:
         if "listener" not in self._access["extras"]:
             raise PermissionError(f"Controller {self._feature!r} has no listener capability")
         return self._root.listener
+
+    @property
+    def is_background_session(self):
+        if "is_background_session" not in self._access["extras"]:
+            raise PermissionError(f"Controller {self._feature!r} has no background-session capability")
+        return self._root.is_background_session
 
     def resource(self, name: str, default=None):
         if "resource" not in self._access["extras"] or name not in self._access["resources"]:
