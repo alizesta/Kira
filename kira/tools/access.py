@@ -128,7 +128,7 @@ class PathPolicy:
 
     def _blocked_roots(self) -> list[str]:
         blocked = []
-        for cand in (self.data_dir, os.environ.get("APPDATA"), os.environ.get("LOCALAPPDATA"), os.environ.get("WINDIR"),
+        for cand in (self.data_dir, self.program_root, os.environ.get("APPDATA"), os.environ.get("LOCALAPPDATA"), os.environ.get("WINDIR"),
                      os.environ.get("PROGRAMFILES"), os.environ.get("PROGRAMFILES(X86)"), os.environ.get("PROGRAMDATA")):
             if cand:
                 try:
