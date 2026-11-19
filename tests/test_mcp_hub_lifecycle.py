@@ -40,6 +40,7 @@ class McpHubLifecycleTests(unittest.TestCase):
             {"type": "object", "properties": {"x": {"type": "unsupported"}}},
             {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["missing"]},
             {"type": "object", "properties": {"x": {"type": "string", "enum": [1]}}},
+            {"type": "object", "properties": {"x": {"type": "string", "enum": []}}},
         )
         for schema in invalid_schemas:
             with self.subTest(schema=schema), self.assertRaises(ValueError):
