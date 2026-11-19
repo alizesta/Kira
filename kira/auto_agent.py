@@ -1284,7 +1284,12 @@ class AutoAgent:
                     shutil.rmtree(self.session_dir, ignore_errors=True)
                 self.session_dir.mkdir(parents=True, exist_ok=True)
                 self.work = self.session_dir / self.project.name
-                stats = copy_project(self.project, self.work)
+                try:
+                    stats = copy_project(self.project, self.work)
+                except Exception:
+                    shutil.rmtree(self.session_dir, ignore_errors=True)
+                    self.work = None
+                    raise
                 self.work = self.work.resolve()
                 before = snapshot(self.work)
                 self._before_hashes = before
