@@ -306,7 +306,7 @@ class OpenAiCompatibleImageRepository(
     private companion object {
         const val HISTORY = "generated_images"
         const val HISTORY_LIMIT = 50
-        const val MAX_JSON_BYTES = 2 * 1024 * 1024
+        const val MAX_JSON_BYTES = 28 * 1024 * 1024
         const val MAX_IMAGE_BYTES = 20 * 1024 * 1024
         const val MAX_BASE64_CHARS = 28 * 1024 * 1024
     }
