@@ -413,16 +413,17 @@ class AgentHub:
             raise ToolError(f"این کار الان سؤال یا درخواست تأییدی ندارد (state={job['state']}).", BAD_ARGS)
         user_text = user_text_fn()
         self._verify(a, user_text, "agent_answer")
-        quote = norm(a["user_quote"]).strip(" \"'«»")
+        raw_quote = str(a["user_quote"]).strip(" \"'«»")
+        normalized_quote = norm(raw_quote)
         approve = None
         if job["state"] == "approval":
-            if _DENY_RX.search(quote):
+            if _DENY_RX.search(normalized_quote):
                 approve = False
-            elif _APPROVE_RX.search(quote):
+            elif _APPROVE_RX.search(normalized_quote):
                 approve = True
             else:
                 raise ToolError("برای تأیید/رد کار ایجنت، کاربر باید صریح بگوید (مثلاً «تأیید» یا «لغو»).", DENIED)
-        self._agent(job["agent"]).answer(job["remote_id"], quote[:1000], approve)          # the user's own words, not the model's
+        self._agent(job["agent"]).answer(job["remote_id"], raw_quote[:1000], approve)          # preserve the user's literal words
         persisted = self.store.update(job["id"], state="progress", question="")
         self._ensure_poller()
         warning = "" if persisted else " هشدار: وضعیت جدید در فایل محلی ذخیره نشد."
