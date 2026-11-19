@@ -393,7 +393,7 @@ def warmup_tts(model_path="") -> bool:
     return ready
 
 
-def synthesize_persian(text: str, model_path="", rate=0, prosody=None) -> bytes:
+def synthesize_persian(text: str, model_path="", rate=0, prosody=None, postprocess=True) -> bytes:
     """Synthesize Persian speech with Piper's native timing controls.
 
     Piper's length_scale changes phoneme duration directly. Altering only the WAV
@@ -449,6 +449,8 @@ def synthesize_persian(text: str, model_path="", rate=0, prosody=None) -> bytes:
 
     if not isinstance(payload, (bytes, bytearray)) or not payload.startswith(b"RIFF"):
         raise RuntimeError("Persian Piper returned invalid WAV data")
+    if not postprocess:
+        return bytes(payload)
     try:
         return apply_audio_effects(bytes(payload), profile)
     except Exception:
