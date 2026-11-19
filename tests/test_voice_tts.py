@@ -11,6 +11,19 @@ from kira.ui.main_window import MainWindow
 
 
 class LocalTtsPlaybackTests(unittest.TestCase):
+    def test_new_speaker_starts_with_neutral_prosody(self):
+        from PySide6.QtWidgets import QApplication
+        from kira.voice_prosody import resolve_prosody
+
+        app = QApplication.instance() or QApplication([])
+        speaker = Speaker({"local_voice_tts": False})
+        try:
+            self.assertEqual(speaker._prosody, resolve_prosody())
+        finally:
+            speaker._timer.stop()
+            speaker.deleteLater()
+            app.processEvents()
+
     def test_emotion_profile_updates_active_stream_synthesis(self):
         from kira.voice_prosody import resolve_prosody
 
