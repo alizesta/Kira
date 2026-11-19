@@ -249,10 +249,16 @@ class FileAgentTests(unittest.TestCase):
         source.mkdir()
         (source / "safe.txt").write_text("safe", encoding="utf-8")
         (source / "payload.bat").write_text("dangerous", encoding="utf-8")
+        (source / ".env").write_text("API_KEY=secret", encoding="utf-8")
+        ssh = source / ".ssh"
+        ssh.mkdir()
+        (ssh / "id_rsa").write_text("private key", encoding="utf-8")
         copied = self.run_tool("copy_item", {"source": str(source), "destination_folder": str(destination)})
         self.assertEqual(copied.status, OK, copied.text)
         self.assertTrue((destination / "mixed" / "safe.txt").exists())
         self.assertFalse((destination / "mixed" / "payload.bat").exists())
+        self.assertFalse((destination / "mixed" / ".env").exists())
+        self.assertFalse((destination / "mixed" / ".ssh").exists())
         self.assertIn("اجرایی رد شد", copied.text)
 
     def test_append_only_plain_text_and_write_replaces_with_backup(self):
