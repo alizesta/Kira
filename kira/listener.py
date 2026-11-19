@@ -49,6 +49,7 @@ class Listener(QThread):
         self._model = None              # faster-whisper model, loaded only when the local fallback is needed
         self.via = ""                   # local:qwen3-asr or local:whisper
         self._local_asr_failed = False  # avoid retrying a broken local model for every segment
+        self._whisper_cpp_failed = False  # keep a broken Vulkan runtime from retrying on every segment
         self._hotwords_ok = True        # becomes False if the installed faster-whisper does not know `hotwords`
         self._pending, self._pending_until, self._pending_since = "", 0.0, 0.0
 
@@ -184,15 +185,40 @@ class Listener(QThread):
         finally:
             self._close_stream(stream)
             self._seg = None
+            if self.engine == "whisper_cpp":
+                try:
+                    from . import whisper_cpp
+                    whisper_cpp.stop()
+                except Exception as exc:
+                    self.note.emit(f"توقف موتور whisper.cpp: {type(exc).__name__}")
+
+    def _load_whisper_cpp(self):
+        """Select the managed Vulkan engine when installed; process startup is lazy."""
+        if self._whisper_cpp_failed or not bool(self.settings.get("whisper_cpp_enabled", True)):
+            return False
+        try:
+            from . import whisper_cpp
+            if not whisper_cpp.is_ready():
+                return False
+            self.engine = "whisper_cpp"
+            self._model = None
+            return True
+        except Exception as exc:
+            self.note.emit(f"بررسی موتور whisper.cpp Vulkan ناموفق بود؛ مسیر CPU امتحان می‌شود. ({type(exc).__name__})")
+            return False
 
     def _load_local(self):
-        """Load faster-whisper as the local fallback when Qwen3-ASR is unavailable."""
+        """Prefer whisper.cpp Vulkan, then use faster-whisper as the final CPU fallback."""
+        if self.engine == "whisper_cpp":
+            return True
         if self.engine == "whisper" and self._model is not None:
+            return True
+        if self._load_whisper_cpp():
             return True
         try:
             from faster_whisper import WhisperModel
         except ImportError:
-            self.error.emit("هیچ موتور STT محلی نصب نیست. از بخش مدل‌های Local، Qwen3-ASR یا Whisper را نصب کن.")
+            self.error.emit("هیچ موتور STT محلی نصب نیست. از تنظیمات صدا، Qwen3-ASR یا whisper.cpp Vulkan را نصب کن.")
             return False
         try:
             self._model = WhisperModel(self.model_name, device="cpu", compute_type="int8")
@@ -201,6 +227,19 @@ class Listener(QThread):
         except Exception as exc:
             self.error.emit(f"بارگذاری Whisper محلی ناموفق بود: {type(exc).__name__}: {exc}")
             return False
+
+    def _transcribe_whisper_cpp(self, audio):
+        """Run local whisper.cpp on Vulkan, with the same Persian prompt/hotword context."""
+        from . import whisper_cpp
+
+        self.fixes.refresh()
+        return whisper_cpp.transcribe(
+            audio,
+            RATE,
+            self.language or "fa",
+            initial_prompt(self.language, self.fixes.hotwords_text()),
+            threads=int(self.settings.get("asr_threads", 4) or 4),
+        )
 
     def _next_block(self, q):
         while self._run:
@@ -300,14 +339,40 @@ class Listener(QThread):
         return " ".join(part for part in parts if part).strip()
 
     def _transcribe(self, model, audio):
-        """Use Qwen3-ASR first, then faster-whisper. Never send microphone audio online."""
+        """Use Qwen3-ASR, then Vulkan whisper.cpp, then CPU faster-whisper. Audio stays local."""
         text = self._transcribe_local_qwen(audio)
-        if text is not None:
+        if text is not None and not is_hallucination(text):
             self.via = "local:qwen3-asr"
             return text
+        if text is not None:
+            self.note.emit("خروجی Qwen شبیه متن ساختگی بود؛ موتور پشتیبان امتحان می‌شود.")
+        if self.engine is None and not self._load_local():
+            return ""
+        if self.engine == "whisper_cpp":
+            try:
+                text = self._transcribe_whisper_cpp(audio)
+                if text and not is_hallucination(text):
+                    self.via = "local:whisper.cpp-vulkan"
+                    return text
+            except Exception as exc:
+                self._whisper_cpp_failed = True
+                try:
+                    from . import whisper_cpp
+                    whisper_cpp.stop()
+                except Exception:
+                    pass
+                self.note.emit(
+                    f"whisper.cpp Vulkan در دسترس نبود؛ faster-whisper روی CPU امتحان می‌شود. ({type(exc).__name__})"
+                )
+                self.engine = None
+                self._model = None
+            if self.engine == "whisper_cpp":
+                # An empty or rejected transcript is not a successful recognition.
+                self.engine = None
+                self._model = None
         if self.engine is None and not self._load_local():
             return ""
         if self.engine == "whisper":
-            self.via = "local:whisper"
+            self.via = "local:faster-whisper-cpu"
             return self._transcribe_whisper(audio)
         return ""
