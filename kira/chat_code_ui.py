@@ -728,27 +728,23 @@ class CodeChat(QObject):
             return True
         return False
 
+    def background_workers(self):
+        """Return every classifier/job/process that must exit before the window is destroyed."""
+        workers = [*self._class_jobs]
+        if self.job is not None:
+            workers.append(self.job)
+        if self.proc is not None:
+            workers.append(self.proc)
+        return workers
+
     def shutdown(self):
+        """Request cancellation without waiting on the GUI thread."""
         self.auto_stop = True
         self._stop_timer()
         if self.proc is not None and self.proc.state() != QProcess.NotRunning:
             self.proc.kill()
-            self.proc.waitForFinished(1000)
-        self.proc = None
-        class_jobs, self._class_jobs = list(self._class_jobs), []
-        self._class_job = None
-        for class_job in class_jobs:
+        for class_job in list(self._class_jobs):
             if class_job.isRunning():
                 class_job.requestInterruption()
-                if not class_job.wait(1000):
-                    class_job.terminate()
-                    class_job.wait(500)
-            class_job.deleteLater()
-        job, self.job = self.job, None
-        if job is not None and job.isRunning():
-            job.requestInterruption()                       # AutoAgent checks should_stop between steps
-            if not job.wait(5000):
-                job.terminate()                             # last resort during window shutdown
-                job.wait(1000)
-        if job is not None:
-            job.deleteLater()
+        if self.job is not None and self.job.isRunning():
+            self.job.requestInterruption()                   # AutoAgent checks should_stop between steps
