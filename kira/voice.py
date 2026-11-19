@@ -1,5 +1,6 @@
 """Kira local-only speech output: Piper synthesis and Qt audio playback."""
 import hashlib
+import io
 import json
 import math
 import os
@@ -19,6 +20,44 @@ PIPER_FA = "Mana Persian Piper"
 CACHE_DIR = DATA_DIR / "voice_cache"
 CACHE_DIR.mkdir(exist_ok=True)
 HOP_MS = 40
+_CACHE_LOCK = threading.RLock()
+_CACHE_VERSION = "local-persian-piper-v5"
+
+
+def _valid_cached_envelope(envelope, frames, sample_rate):
+    """Reject truncated, malformed, non-finite, or out-of-range lip-sync metadata."""
+    if not isinstance(envelope, list) or frames <= 0 or sample_rate <= 0:
+        return False
+    hop = max(1, sample_rate * HOP_MS // 1000)
+    expected = (frames + hop - 1) // hop
+    return len(envelope) == expected and all(
+        isinstance(value, (int, float)) and math.isfinite(value) and 0.0 <= value <= 1.0
+        for value in envelope
+    )
+
+
+def _atomic_write(path, payload):
+    """Publish a completed cache file atomically so readers never see partial output."""
+    parent = os.path.dirname(path) or "."
+    os.makedirs(parent, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(prefix=".kira-tts-", suffix=".tmp", dir=parent)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except Exception:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        try:
+            os.remove(temporary)
+        except OSError:
+            pass
+        raise
+
 
 
 def _envelope(pcm, rate):
@@ -336,62 +375,88 @@ class Speaker(QObject):
         try:
             while True:
                 with s.cond:
-                    while True:
-                        if s.gen != self._gen:
-                            return
-                        if idx < len(s.sentences) and idx <= s.next_play + PREFETCH:
-                            break
-                        if s.input_done and idx >= len(s.sentences):
-                            return
-                        s.cond.wait(0.25)
-                    text = s.sentences[idx]
-                try:
-                    result = (s.paths[idx], []) if idx in s.paths else self._synth(s, idx, text)
-                except Exception as e:                         # noqa: BLE001 - one bad sentence must not stop the rest
-                    result = None
-                    # A stopped generation must never emit through a Speaker
-                    # QObject that may be in deferred application shutdown.
-                    if s.gen == self._gen:
-                        self._failed.emit(s.gen, f"ساخت صدا ناموفق بود: {type(e).__name__}: {e}")
-                if s.gen != self._gen:
-                    if result:
-                        self._remove_temp(result[0])
-                    return
-                self._ready.emit(s.gen, idx, (result[0] if result else ""), (result[1] if result else []))
-                idx += 1
-        finally:
-            pass
-
-    def _synth(self, s, idx, text):
-        """Synthesize one sentence using the configured local Piper voice only."""
+                   def _synth(self, s, idx, text):
+        """Synthesize normalized Persian text with model-aware, corruption-safe caching."""
         from . import local_voice
+
         model_path = str(self.settings.get("local_voice_tts_model") or "").strip()
         if not bool(self.settings.get("local_voice_tts", True)):
             raise RuntimeError("استفاده از TTS محلی غیرفعال است؛ از بخش مدل‌های Local آن را فعال کن.")
         if not local_voice.tts_ready(model_path):
             raise RuntimeError("موتور TTS محلی Piper آماده نیست؛ مدل محلی را از بخش Local نصب یا انتخاب کن.")
+
+        spoken_text = local_voice.normalize_persian_tts_text(text)
+        if not spoken_text:
+            raise RuntimeError("متن قابل‌خواندن برای تولید صدا باقی نمانده است.")
         rate = max(-50, min(50, int(self.settings.get("voice_rate", 0)) + s.rate))
-        cache_key = hashlib.sha1(f"local-piper-v4|{model_path}|{rate}|{text}".encode("utf-8")).hexdigest()[:20]
+        identity = local_voice.tts_cache_identity(model_path) if s.cache else model_path
+        cache_key = hashlib.sha1(
+            f"{_CACHE_VERSION}|{identity!r}|{rate}|{spoken_text}".encode("utf-8")
+        ).hexdigest()[:20]
         tag = f"kira_{s.gen}_{idx}"
         base = str(CACHE_DIR) if s.cache else self._tmp
-        wav_path, meta_path = os.path.join(base, cache_key + ".wav"), os.path.join(base, cache_key + ".json")
-        if s.cache and os.path.isfile(wav_path) and os.path.isfile(meta_path):
-            try:
-                with wave.open(wav_path, "rb") as existing:
-                    if existing.getnframes() > 0:
-                        with open(meta_path, encoding="utf-8") as stream:
-                            envelope = json.load(stream)
-                        if isinstance(envelope, list):
-                            return wav_path, envelope
-            except (OSError, ValueError, wave.Error, json.JSONDecodeError):
+        wav_path = os.path.join(base, cache_key + ".wav")
+        meta_path = os.path.join(base, cache_key + ".json")
+
+        # The lock protects the pair (WAV + envelope) from concurrent cache readers
+        # and writers. Atomic publication also protects the files after a crash.
+        with _CACHE_LOCK if s.cache else _NullLock():
+            if s.cache and os.path.isfile(wav_path) and os.path.isfile(meta_path):
+                try:
+                    with wave.open(wav_path, "rb") as existing:
+                        frames = existing.getnframes()
+                        sample_rate = existing.getframerate()
+                    with open(meta_path, encoding="utf-8") as stream:
+                        envelope = json.load(stream)
+                    if _valid_cached_envelope(envelope, frames, sample_rate):
+                        return wav_path, envelope
+                except (OSError, ValueError, TypeError, wave.Error, json.JSONDecodeError):
+                    pass
                 for stale in (wav_path, meta_path):
-                    try: os.remove(stale)
-                    except OSError: pass
-        audio = local_voice.synthesize_persian(text, model_path, rate)
-        return self._save_local_wav(tag, audio, s.cache, wav_path, meta_path)
+                    try:
+                        os.remove(stale)
+                    except OSError:
+                        pass
+
+            audio = local_voice.synthesize_persian(spoken_text, model_path, rate)
+            return self._save_local_wav(tag, audio, s.cache, wav_path, meta_path)
 
     def _save_local_wav(self, tag, audio, cache, wav_path, meta_path):
-        """Validate Piper's WAV output, calculate the lip-sync envelope and cache it."""
+        """Validate Piper WAV output, calculate lip-sync data, and publish cache atomically."""
+        import numpy as np
+
+        if not isinstance(audio, (bytes, bytearray)) or not bytes(audio).startswith(b"RIFF"):
+            raise RuntimeError("مدل Piper خروجی WAV معتبر تولید نکرد.")
+        payload = bytes(audio)
+        try:
+            with wave.open(io.BytesIO(payload), "rb") as wav:
+                channels = max(1, int(wav.getnchannels()))
+                sample_rate = int(wav.getframerate())
+                frames = int(wav.getnframes())
+                pcm = np.frombuffer(wav.readframes(frames), dtype=np.int16)
+                if channels > 1:
+                    pcm = pcm[::channels]
+                if pcm.size == 0 or sample_rate <= 0 or frames <= 0:
+                    raise RuntimeError("مدل Piper فایل صوتی خالی یا نامعتبر تولید کرد.")
+                if pcm.size != frames:
+                    raise RuntimeError("ساختار کانال‌های WAV با تعداد فریم‌ها سازگار نیست.")
+                envelope = _envelope(pcm, sample_rate)
+        except (OSError, wave.Error) as exc:
+            raise RuntimeError(f"خواندن خروجی WAV ناموفق بود: {exc}") from exc
+
+        path = wav_path if cache else os.path.join(self._tmp, f"{tag}.wav")
+        if cache:
+            _atomic_write(path, payload)
+            _atomic_write(
+                meta_path,
+                json.dumps(envelope, separators=(",", ":"), allow_nan=False).encode("utf-8"),
+            )
+        else:
+            with open(path, "wb") as stream:
+                stream.write(payload)
+        return path, envelope
+
+te Piper's WAV output, calculate the lip-sync envelope and cache it."""
         import numpy as np
         if not isinstance(audio, (bytes, bytearray)) or not bytes(audio).startswith(b"RIFF"):
             raise RuntimeError("مدل Piper خروجی WAV معتبر تولید نکرد.")
