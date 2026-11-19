@@ -524,7 +524,7 @@ class InitiativeIntegrationImportTests(unittest.TestCase):
         tree = ast.parse(source.read_text(encoding="utf-8"))
         imported = set()
         for node in tree.body:
-            if isinstance(node, ast.ImportFrom) and node.module == "..character.initiative":
+            if isinstance(node, ast.ImportFrom) and node.level == 2 and node.module == "character.initiative":
                 imported.update(alias.asname or alias.name for alias in node.names)
         self.assertTrue({
             "InitiativeEngine",
