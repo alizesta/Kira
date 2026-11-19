@@ -34,6 +34,8 @@ APPLICATION_FEATURE_DEPENDENCIES = {
     "chat_application": ("chat_history", "conversation_lifecycle"),
     "session_application": ("chat_application",),
     "initiative_application": ("memory", "mood"),
+    "brain_application": (),
+    "reflection_application": ("brain_application",),
     "voice_application": (),
 }
 
@@ -170,6 +172,8 @@ def register_application_modules(
         "initiative_application_service_factory": selected(
             "initiative_application_service_factory", create_initiative_factory
         ),
+        "brain_application_service": selected("brain_application_service", BrainApplicationService),
+        "reflection_application_service": selected("reflection_application_service", ReflectionApplicationService),
         "voice_application_service_factory": selected("voice_application_service_factory", create_voice_application_service_factory),
     }
     modules = (
@@ -191,6 +195,8 @@ def register_application_modules(
         ("chat_application", "chat_application_service_factory"),
         ("session_application", "session_application_service_factory"),
         ("initiative_application", "initiative_application_service_factory"),
+        ("brain_application", "brain_application_service"),
+        ("reflection_application", "reflection_application_service"),
         ("voice_application", "voice_application_service_factory"),
     )
     for module_id, service_key in modules:
