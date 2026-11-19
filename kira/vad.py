@@ -90,9 +90,11 @@ class Segmenter:
         frac = float(power[band].sum() / max(float(power.sum()), 1e-12))
         return rms * frac ** 0.5
 
-    def calibrate(self, blk):
+    def calibrate(self, blk, echo_reference=None):
         """Feed room-noise blocks first; returns True while still calibrating."""
         if self.calibrating:
+            reference = self.np.zeros_like(blk) if echo_reference is None else echo_reference
+            blk = self._echo_canceller.process(blk, reference)
             level = self.level(blk)
             self._calib.append(level)
             self._denoiser.calibrate_block(
