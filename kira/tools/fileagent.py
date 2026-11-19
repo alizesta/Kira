@@ -577,8 +577,17 @@ class FileAgent:
                 target = os.path.join(dest, os.path.basename(p))
                 if os.path.lexists(target):
                     raise ToolError(f"در مقصد از قبل «{os.path.basename(p)}» هست و رونویسی نمی‌شود؛ چیزی انجام نشد.")
-                if os.path.isdir(p) and (dest == p or dest.startswith(p + os.sep)):
-                    raise ToolError("پوشه را نمی‌شود داخل خودش برد/کپی کرد.")
+                if os.path.isdir(p):
+                    normalized_source = os.path.normcase(os.path.abspath(p))
+                    normalized_dest = os.path.normcase(os.path.abspath(dest))
+                    try:
+                        destination_inside_source = os.path.commonpath(
+                            [normalized_source, normalized_dest]
+                        ) == normalized_source
+                    except ValueError:                              # different drives
+                        destination_inside_source = False
+                    if destination_inside_source:
+                        raise ToolError("پوشه را نمی‌شود داخل خودش برد/کپی کرد.")
         elif op == "delete":
             roots = {os.path.normcase(r) for r in self.policy.roots()}
             if any(os.path.normcase(p) in roots for p in paths):
