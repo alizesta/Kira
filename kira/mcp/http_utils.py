@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import urllib.error
 import urllib.request
 
 
@@ -9,7 +10,9 @@ class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Do not forward credentials or session headers to a redirect destination."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
+        raise urllib.error.HTTPError(
+            req.full_url, code, "HTTP redirects are disabled for credential safety", headers, fp
+        )
 
 
 def open_no_redirect(req, timeout: float):
