@@ -429,19 +429,23 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.import_model_btn.setEnabled(False)
         self.context.views.api_add_status.setText(f"در حال وارد کردن {source.name} به Ollama…")
 
-        def work():
+        def work(cancel_event):
+            from .. import local_voice
+
             target = DATA_DIR / "ollama_import"
             target.mkdir(parents=True, exist_ok=True)
             modelfile = target / f"{name}.Modelfile"
             escaped = source.as_posix().replace('"', '\\"')
             modelfile.write_text(f'FROM "{escaped}"\n', encoding="utf-8")
-            result = subprocess.run(["ollama", "create", name, "-f", str(modelfile)],
-                                    capture_output=True, text=True, timeout=1800, check=False)
+            result = local_voice._run_install_command(
+                ["ollama", "create", name, "-f", str(modelfile)],
+                timeout=1800, cancel_event=cancel_event,
+            )
             if result.returncode:
                 raise RuntimeError((result.stderr or result.stdout or "ollama create failed")[-3000:])
             return name
 
-        self.context.state._model_import_worker = TaskWorker(work)
+        self.context.state._model_import_worker = TaskWorker(work, cancellable=True)
         self.context.state._model_import_worker.done.connect(self.on_local_model_imported)
         self.context.state._model_import_worker.finished.connect(lambda: setattr(self.context.state, "_model_import_worker", None))
         self.context.state._model_import_worker.start()
