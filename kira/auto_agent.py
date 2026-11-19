@@ -170,23 +170,55 @@ def unique_zip_path(output_dir: Path, project_name: str, now=None) -> Path:
 
 
 def copy_project(src: Path, dst: Path) -> dict:
-    """Copy everything except secret files and runtime folders. Returns counts so the report can say what was left out."""
+    """Copy a bounded project snapshot; fail with the exact path instead of leaving a partial file."""
+    try:
+        source = Path(src).resolve(strict=True)
+    except OSError as exc:
+        raise ValueError(f"پوشه پروژه قابل دسترسی نیست: {exc}") from exc
+    if not source.is_dir():
+        raise ValueError("مسیر پروژه یک پوشه معتبر نیست.")
+
+    destination = Path(dst)
     copied = skipped = total = 0
-    for current, dirs, files in os.walk(src, followlinks=False):
+
+    def walk_error(exc):
+        raise ValueError(f"خواندن پوشه پروژه «{getattr(exc, 'filename', '')}» ناموفق بود: {exc}") from exc
+
+    for current, dirs, files in os.walk(source, followlinks=False, onerror=walk_error):
         cur = Path(current)
         dirs[:] = [d for d in dirs if d.lower() not in SKIP_DIRS and not (cur / d).is_symlink()]
-        rel_dir = cur.relative_to(src)
-        (dst / rel_dir).mkdir(parents=True, exist_ok=True)
+        rel_dir = cur.relative_to(source)
+        (destination / rel_dir).mkdir(parents=True, exist_ok=True)
         for name in files:
             f = cur / name
-            if f.is_symlink() or _is_sensitive(f.relative_to(src)):
+            if f.is_symlink() or _is_sensitive(f.relative_to(source)):
                 skipped += 1
                 continue
-            size = f.stat().st_size
+            try:
+                size = f.stat().st_size
+            except OSError as exc:
+                raise ValueError(f"اندازه فایل «{f.relative_to(source).as_posix()}» خوانده نشد: {exc}") from exc
             total += size
             if total > MAX_COPY_BYTES:
                 raise ValueError("پروژه از سقف ۴۰۰ مگابایت بزرگ‌تر است؛ پوشه‌ی کوچک‌تری انتخاب کن.")
-            shutil.copy2(f, dst / rel_dir / name)
+            target = destination / rel_dir / name
+            try:
+                shutil.copy2(f, target)
+                copied_size = target.stat().st_size
+            except OSError as exc:
+                try:
+                    target.unlink()
+                except OSError:
+                    pass
+                raise ValueError(f"کپی فایل «{f.relative_to(source).as_posix()}» ناموفق بود: {exc}") from exc
+            if copied_size != size:
+                try:
+                    target.unlink()
+                except OSError:
+                    pass
+                raise ValueError(
+                    f"فایل «{f.relative_to(source).as_posix()}» هنگام کپی تغییر کرد؛ نسخه ناقص پذیرفته نشد."
+                )
             copied += 1
     return {"copied": copied, "skipped": skipped}
 
