@@ -277,9 +277,9 @@ class AttachmentsVisionController(WindowFeatureController):
         self.context.adapters.game_audio_listener = listener
         listener.transcript.connect(self.on_game_audio_transcript)
         listener.error.connect(self.on_game_audio_error)
-        listener.finished.connect(
-            lambda current=listener: self._on_game_audio_listener_finished(current)
-        )
+        # Connect to a QObject slot so Qt queues this callback onto the
+        # controller's GUI thread before it touches widgets or starts a timer.
+        listener.finished.connect(self._on_game_audio_listener_finished)
         listener.start()
 
     def _stop_game_audio_listener(self):
@@ -294,7 +294,11 @@ class AttachmentsVisionController(WindowFeatureController):
         else:
             listener.deleteLater()
 
-    def _on_game_audio_listener_finished(self, listener):
+    @Slot()
+    def _on_game_audio_listener_finished(self):
+        listener = self.sender()
+        if listener is None:
+            return
         if self.context.adapters.game_audio_listener is listener:
             self.context.adapters.game_audio_listener = None
         if self.context.state._stopping_game_audio_listener is listener:
