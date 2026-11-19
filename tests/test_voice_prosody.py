@@ -82,6 +82,25 @@ class EmotionProsodyTests(unittest.TestCase):
         self.assertGreater(float(np.mean(np.abs(samples))), 10000)
         self.assertEqual(len(samples), 100)
 
+    def test_pitch_postprocessing_uses_subtle_duration_compensated_ffmpeg_filter(self):
+        from types import SimpleNamespace
+
+        source = _wav([1000] * 100, 24000)
+        with mock.patch("kira.voice_prosody.shutil.which", return_value="ffmpeg"):
+            with mock.patch(
+                "kira.voice_prosody.subprocess.run",
+                return_value=SimpleNamespace(returncode=0, stdout=source),
+            ) as run:
+                result = apply_audio_effects(
+                    source, {"gain_db": 0, "pitch_semitones": 0.4}
+                )
+        self.assertEqual(result, source)
+        command = run.call_args.args[0]
+        audio_filter = command[command.index("-af") + 1]
+        self.assertIn("asetrate=", audio_filter)
+        self.assertIn("atempo=", audio_filter)
+        self.assertEqual(run.call_args.kwargs["timeout"], 8)
+
     def test_pitch_postprocessing_gracefully_skips_when_ffmpeg_is_missing(self):
         source = _wav([1000] * 100, 24000)
         with mock.patch("kira.voice_prosody.shutil.which", return_value=None):
