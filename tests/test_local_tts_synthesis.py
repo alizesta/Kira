@@ -283,5 +283,26 @@ class LocalPiperSynthesisTests(unittest.TestCase):
                 local_voice._resolve_tts_model_path(str(model))
 
 
+    def test_tts_cache_identity_changes_when_model_or_sidecar_changes(self):
+        with tempfile.TemporaryDirectory() as temp:
+            model = Path(temp) / "cache-identity.onnx"
+            sidecar = Path(str(model) + ".json")
+            model.write_bytes(b"model-v1")
+            sidecar.write_text('{"length_scale": 1}', encoding="utf-8")
+            with mock.patch.object(
+                local_voice, "_resolve_tts_model_path", return_value=(model, str(model))
+            ):
+                original = local_voice.tts_cache_identity(str(model))
+                sidecar.write_text('{"length_scale": 2}', encoding="utf-8")
+                os.utime(sidecar, None)
+                metadata_changed = local_voice.tts_cache_identity(str(model))
+                model.write_bytes(b"model-v2-with-new-weights")
+                os.utime(model, None)
+                weights_changed = local_voice.tts_cache_identity(str(model))
+
+        self.assertNotEqual(original, metadata_changed)
+        self.assertNotEqual(metadata_changed, weights_changed)
+
+
 if __name__ == "__main__":
     unittest.main()
