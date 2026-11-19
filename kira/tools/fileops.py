@@ -275,6 +275,8 @@ class FileTools:
 
     def precheck_move(self, a: dict) -> dict:
         src = self.policy.check(a["source"])
+        if not os.path.isfile(src):
+            raise ToolError("این ابزار فقط یک فایل را جابه‌جا می‌کند؛ برای پوشه از عملیات پوشه‌ای استفاده کن.")
         dest = self.policy.check(a["destination_folder"])
         if not os.path.isdir(dest):
             raise ToolError("destination_folder باید یک پوشه‌ی موجود باشد.")
@@ -290,8 +292,8 @@ class FileTools:
         a = self.precheck_move(a)
         target = os.path.join(a["destination_folder"], os.path.basename(a["source"]))
         shutil.move(a["source"], target)
-        if not os.path.exists(target):
-            raise ToolError("انتقال انجام نشد (فایل در مقصد دیده نشد).")
+        if not os.path.isfile(target) or os.path.exists(a["source"]):
+            raise ToolError("انتقال کامل نشد؛ فایل مبدأ و مقصد را بررسی کن.")
         return f"منتقل شد: {a['source']} ← {target}"
 
 
