@@ -382,7 +382,7 @@ CONTROLLER_ACCESS = {
   "views": frozenset({"api_add_status","assistant_page","avatar","avatar_card","char_tab_buttons","char_tab_group","char_tabs_row","chat_composer","chat_page","chat_stack","companion_btn","glow_effects","import_model_btn","local_asr_download_btn","local_asr_load_btn","local_asr_path_edit","local_model_tabs","local_stt_test_btn","local_tts_download_btn","local_tts_model_path","local_tts_test_btn","local_voice_progress","local_voice_status","local_whisper_path","model","mood_emotion_icon","mood_indicator","status","tab_keys","tabs","title","voice_page"}),
   "peers": frozenset({"session","runtime","lifecycle","provider_settings","character_settings","chat"}),
   "resources": frozenset({"_local_stt_test_listener"}),
-  "extras": frozenset({"resource"}),
+  "extras": frozenset({"resource","is_background_session"}),
  },
 }
 
