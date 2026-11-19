@@ -9,6 +9,8 @@ import gc
 import io
 import os
 import subprocess
+import re
+import unicodedata
 import threading
 import time
 import wave
@@ -39,6 +41,85 @@ def asr_ready() -> bool:
         return True
     except ImportError:
         return False
+
+
+_PERSIAN_TTS_TRANSLATION = str.maketrans({
+    "ي": "ی",
+    "ى": "ی",
+    "ك": "ک",
+    "ـ": None,
+    "\u200b": None,
+    "\u200d": None,
+    "\u200e": None,
+    "\u200f": None,
+    "\u202a": None,
+    "\u202b": None,
+    "\u202c": None,
+    "\u202d": None,
+    "\u202e": None,
+    "\u2066": None,
+    "\u2067": None,
+    "\u2068": None,
+    "\u2069": None,
+})
+
+_PERSIAN_TTS_TERMS = {
+    "chatgpt": "چت‌جی‌پی‌تی",
+    "openai": "اوپن‌ای‌آی",
+    "deepseek": "دیپ‌سیک",
+    "qwen": "کوئن",
+    "piper": "پایپر",
+    "python": "پایتون",
+    "windows": "ویندوز",
+    "linux": "لینوکس",
+    "wi-fi": "وای‌فای",
+    "gpu": "جی‌پی‌یو",
+    "cpu": "سی‌پی‌یو",
+    "ram": "رَم",
+    "vram": "وی‌رَم",
+    "api": "اِی‌پی‌آی",
+    "asr": "اِی‌اِس‌آر",
+    "stt": "اِس‌تی‌تی",
+    "tts": "تی‌تی‌اِس",
+    "llm": "اِل‌اِل‌اِم",
+    "json": "جِی‌سان",
+    "gui": "جی‌یو‌آی",
+    "ui": "یو‌آی",
+    "usb": "یو‌اِس‌بی",
+    "ssd": "اِس‌اِس‌دی",
+    "amd": "اِی‌اِم‌دی",
+}
+
+_PERSIAN_TTS_TERM_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9])(" + "|".join(
+        re.escape(term) for term in sorted(_PERSIAN_TTS_TERMS, key=len, reverse=True)
+    ) + r")(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
+
+
+def normalize_persian_tts_text(text: str) -> str:
+    """Normalize Persian text and pronounce common technical names before local synthesis."""
+    value = unicodedata.normalize("NFC", str(text or "")).translate(_PERSIAN_TTS_TRANSLATION)
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
+    value = re.sub(r"[ \t\u00a0\u2009]+", " ", value)
+    value = re.sub(r"\s*\u200c\s*", "\u200c", value)
+    value = re.sub(r"(?<!\S)(ن?می)\s+([آ-ی])", r"\1‌\2", value)
+    value = re.sub(
+        r"(?<=[آ-ی])\s+(ها|های|هایی|تر|ترین)(?=$|[\s،؛؟.!,:;])",
+        r"‌\1",
+        value,
+    )
+    if re.search(r"[\u0600-\u06ff]", value):
+        value = _PERSIAN_TTS_TERM_PATTERN.sub(
+            lambda match: _PERSIAN_TTS_TERMS[match.group(0).casefold()],
+            value,
+        )
+        value = re.sub(r"(?<!\d),(?!\d)", "،", value)
+        value = value.replace(";", "؛").replace("?", "؟")
+    value = re.sub(r"\s+([،؛؟!,:;])", r"\1", value)
+    value = re.sub(r"([،؛؟!])(?=\S)", r"\1 ", value)
+    return re.sub(r" {2,}", " ", value).strip()
 
 
 def tts_ready(model_path="") -> bool:
@@ -198,6 +279,12 @@ def _model_file_signature(path: Path):
     return (str(path), _file_signature(path), _file_signature(sidecar))
 
 
+def tts_cache_identity(model_path=""):
+    """Return a stable cache identity that changes with model weights or voice metadata."""
+    path, _label = _resolve_tts_model_path(model_path)
+    return _model_file_signature(path)
+
+
 def _is_memory_pressure(exc: BaseException) -> bool:
     message = str(exc).casefold()
     return isinstance(exc, MemoryError) or any(
@@ -306,7 +393,7 @@ def synthesize_persian(text: str, model_path="", rate=0) -> bytes:
     the same native synthesis path for Mana and user-selected ONNX models.
     """
     global _tts_error
-    clean = str(text or "").strip()
+    clean = normalize_persian_tts_text(text)
     if not clean:
         return b""
 
