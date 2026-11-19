@@ -1,0 +1,82 @@
+name: Local ASR Vulkan Tests
+
+on:
+  push:
+    branches: [new-main]
+    paths:
+      - "kira/whisper_cpp.py"
+      - "kira/listener.py"
+      - "kira/local_voice.py"
+      - "kira/config.py"
+      - "kira/voice_caps.py"
+      - "kira/ui/pages/voice_page.py"
+      - "kira/ui/main_window_voice_settings.py"
+      - "tests/test_whisper_cpp.py"
+      - "tests/test_listener_asr_fallback.py"
+      - ".github/workflows/local-asr-vulkan.yml"
+      - "requirements.txt"
+  pull_request:
+    branches: [new-main]
+    paths:
+      - "kira/whisper_cpp.py"
+      - "kira/listener.py"
+      - "kira/local_voice.py"
+      - "kira/config.py"
+      - "kira/voice_caps.py"
+      - "kira/ui/pages/voice_page.py"
+      - "kira/ui/main_window_voice_settings.py"
+      - "tests/test_whisper_cpp.py"
+      - "tests/test_listener_asr_fallback.py"
+      - ".github/workflows/local-asr-vulkan.yml"
+      - "requirements.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  local-asr:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+      - name: Install project test dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run Vulkan backend and listener fallback tests
+        run: >-
+          python -m unittest
+          tests.test_whisper_cpp
+          tests.test_listener_asr_fallback
+          -v
+      - name: Ruff changed ASR modules and tests
+        run: >-
+          ruff check
+          kira/whisper_cpp.py
+          kira/listener.py
+          kira/local_voice.py
+          kira/config.py
+          kira/voice_caps.py
+          kira/ui/pages/voice_page.py
+          kira/ui/main_window_voice_settings.py
+          tests/test_whisper_cpp.py
+          tests/test_listener_asr_fallback.py
+      - name: Compile changed ASR modules and tests
+        run: >-
+          python -m py_compile
+          kira/whisper_cpp.py
+          kira/listener.py
+          kira/local_voice.py
+          kira/config.py
+          kira/voice_caps.py
+          kira/ui/pages/voice_page.py
+          kira/ui/main_window_voice_settings.py
+          tests/test_whisper_cpp.py
+          tests/test_listener_asr_fallback.py
