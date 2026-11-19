@@ -51,8 +51,24 @@ class Listener(QThread):
         self._local_asr_failed = False  # avoid retrying a broken local model for every segment
         self._hotwords_ok = True        # becomes False if the installed faster-whisper does not know `hotwords`
         self._pending, self._pending_until, self._pending_since = "", 0.0, 0.0
+        self._echo_reference_provider = None
 
     # ---- called by the window ----
+    def set_echo_reference_provider(self, provider):
+        """Attach the local speaker's PCM reference source for acoustic echo cancellation."""
+        self._echo_reference_provider = provider if callable(provider) else None
+
+    def _read_echo_reference(self, frames):
+        provider = self._echo_reference_provider
+        if provider is None:
+            return None
+        try:
+            reference = provider(int(frames))
+            return reference
+        except Exception as exc:
+            self.note.emit(f"مرجع حذف اکو در دسترس نبود: {type(exc).__name__}")
+            return None
+
     def begin_kira_speech(self):
         """Kira starts talking: keep listening for an interruption, or mute completely when barge-in is off."""
         self.kira_level = 0.0
@@ -141,7 +157,7 @@ class Listener(QThread):
             block = indata[:, 0].copy()
             if gain != 1.0:                                  # microphone gain is independent of the speaker volume
                 block = np.clip(block * gain, -1.0, 1.0)
-            q.put(block)
+            q.put((block, self._read_echo_reference(frames)))
 
         stream = None
         try:
@@ -165,24 +181,28 @@ class Listener(QThread):
         try:
             while self._run:                                             # ~0.38 s: measure room noise first
                 first = self._next_block(q)
-                if first is None or not seg.calibrate(first):
+                if first is None:
+                    break
+                first_block = first[0] if isinstance(first, tuple) else first
+                if not seg.calibrate(first_block):
                     break
             if not self._run:
                 return
             self.state.emit("listening")
             while self._run:
                 try:
-                    blk = q.get(timeout=0.2)
+                    item = q.get(timeout=0.2)
                 except queue.Empty:
                     self._flush_pending()
                     continue
+                blk, echo_reference = item if isinstance(item, tuple) else (item, None)
                 self._flush_pending()
                 if self.muted:
                     seg.reset()
                     self.barge_capturing = False
                     self._flush_pending(force=True)             # never lose text that was waiting when Kira started to talk
                     continue
-                for ev in seg.feed(blk, self.kira_speaking, self.kira_level):
+                for ev in seg.feed(blk, self.kira_speaking, self.kira_level, echo_reference=echo_reference):
                     self._on_event(ev, model)
         finally:
             self._close_stream(stream)
