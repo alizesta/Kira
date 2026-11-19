@@ -2,6 +2,7 @@
 import threading
 import time
 import unittest
+import urllib.error
 import urllib.request
 from unittest import mock
 
@@ -57,11 +58,10 @@ class ExternalHttpRedirectTests(unittest.TestCase):
         )
         for code in (301, 302, 303, 307, 308):
             with self.subTest(code=code):
-                self.assertIsNone(
+                with self.assertRaises(urllib.error.HTTPError):
                     handler.redirect_request(
                         request, None, code, "redirect", {}, "https://attacker.example/collect"
                     )
-                )
 
 class McpJsonRpcEnvelopeTests(unittest.TestCase):
     def test_http_transport_rejects_wrong_id_version_and_missing_result(self):
