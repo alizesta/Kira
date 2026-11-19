@@ -6,7 +6,7 @@
 - The root `ARCHITECTURE.md` is now only an index. Canonical architecture status lives in `docs/ARCHITECTURE_MASTER.md`, `docs/MODULE_OWNERSHIP.md` and `docs/ARCHITECTURE_ROADMAP.md`.
 - Production Qt Composition Root: `kira/ui/bootstrap.py`. References to `kira/app/bootstrap.py` in older snapshots are historical and superseded.
 - CI is still **not verified**: the PR workflow jobs failed before executing steps (`steps=[]`), and logs were unavailable (`BlobNotFound`). Do not report the tests as passing or failing at test assertion level until a runner actually executes them.
-- Current documentation synchronization is in progress on `codex/integrate-current-architecture-docs`; it is not yet merged to `new-main`.
+- The documentation synchronization is tracked in PR #99 and targets `new-main`; after merge, the canonical documents and their snapshot metadata are the source of truth.
 
 
 ## Architecture implementation update (2026-11-18) — TASK 017–020 source work
