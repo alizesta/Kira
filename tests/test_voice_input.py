@@ -118,6 +118,19 @@ class WhisperVADTests(unittest.TestCase):
 
 
 class SegmenterTests(unittest.TestCase):
+    def test_echo_reference_is_cancelled_before_vad_and_calibration(self):
+        segmenter = Segmenter()
+        microphone = np.ones(BLOCK, dtype=np.float32) * 0.05
+        reference = np.ones(BLOCK, dtype=np.float32) * 0.03
+        with mock.patch.object(
+            segmenter._echo_canceller,
+            "process",
+            side_effect=lambda mic, ref: np.zeros_like(mic),
+        ) as cancel:
+            segmenter.calibrate(microphone, echo_reference=reference)
+            segmenter.feed(microphone, echo_reference=reference)
+        self.assertEqual(cancel.call_count, 2)
+
     def test_hum_and_a_click_are_not_speech(self):
         click = np.zeros(4000, dtype=np.float32)
         click[1000:1300] = 0.3
