@@ -1,4 +1,5 @@
 """Attachment and vision feature controller for the desktop window."""
+from PySide6.QtCore import Slot
 from .main_window_attachments_vision_support import (
     AttachmentTile,
     CAPTURE_JPEG_QUALITY,
@@ -314,11 +315,13 @@ class AttachmentsVisionController(WindowFeatureController):
             if permissions["game_audio_loopback"]:
                 QTimer.singleShot(0, self._start_game_audio_listener)
 
+    @Slot(str)
     def on_game_audio_error(self, message):
         if (self.context.state._game_mode_enabled
                 and self.context.services.game_mode_application_service.permissions(self.context.state._game_mode_profile)["game_audio_loopback"]):
             self.feature_controller("session").add_chat("system", "🎧 " + message)
 
+    @Slot(str)
     def on_game_audio_transcript(self, text):
         alert = self.context.services.game_mode_application_service.classify_game_audio(
             text,
