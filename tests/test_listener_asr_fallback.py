@@ -55,6 +55,24 @@ class ListenerAsrFallbackTests(unittest.TestCase):
                 self.assertEqual(listener._transcribe(None, [0.0]), "سلام دنیا")
         self.assertEqual(listener.via, "local:whisper.cpp-vulkan")
 
+    def test_empty_vulkan_transcript_falls_through_to_cpu_whisper(self):
+        listener = self.make_listener()
+        listener.engine = "whisper_cpp"
+
+        def load_cpu():
+            listener.engine = "whisper"
+            listener._model = object()
+            return True
+
+        with patch.object(listener, "_transcribe_local_qwen", return_value=None):
+            with patch.object(listener, "_transcribe_whisper_cpp", return_value=""):
+                with patch("kira.whisper_cpp.stop"):
+                    with patch.object(listener, "_load_local", side_effect=load_cpu):
+                        with patch.object(listener, "_transcribe_whisper", return_value="متن از CPU"):
+                            self.assertEqual(listener._transcribe(None, [0.0]), "متن از CPU")
+        self.assertEqual(listener.via, "local:faster-whisper-cpu")
+        self.assertTrue(listener._whisper_cpp_failed)
+
     def test_vulkan_failure_falls_through_to_faster_whisper(self):
         listener = self.make_listener()
         listener.engine = "whisper_cpp"
