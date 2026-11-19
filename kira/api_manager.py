@@ -1,6 +1,6 @@
 """API Manager: one place to register, validate and manage API keys (the logic behind the Route page; no Qt).
 
-The user only types a key. ``detect()`` works out which of the four supported services it belongs to by asking the
+The user only types a key. ``detect()`` works out which supported service it belongs to by asking the
 service's OFFICIAL, light "list models" endpoint (the same request gives validation AND the model list, so nothing is asked twice).
 ``register()`` stores it in the existing settings layout, so the Route Engine / Hybrid Brain are untouched:
 
@@ -22,12 +22,13 @@ from .discovery import DiscoveryError
 
 SERVICES = {
     "groq": {"label": "Groq", "base_url": "https://api.groq.com/openai/v1", "default_models": ("openai/gpt-oss-120b",)},
+    "openrouter": {"label": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "default_models": ()},
     "mistral": {"label": "Mistral", "base_url": "https://api.mistral.ai/v1", "default_models": ("mistral-small-latest",)},
     "google": {"label": "Google AI Studio", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
                "default_models": ("gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash")},
     "cloudflare": {"label": "Cloudflare Workers AI", "base_url": "", "default_models": ("@cf/meta/llama-3.1-8b-instruct",)},
 }
-BUILTIN_FOR = {"groq": "groq", "mistral": "mistral", "cloudflare": "cloudflare"}      # google has no built-in id: it is a registered provider
+BUILTIN_FOR = {"groq": "groq", "mistral": "mistral", "cloudflare": "cloudflare", "openrouter": "openrouter"}      # google has no built-in id: it is a registered provider
 KEY_MIN, KEY_MAX = 16, 300
 NEVER = 0
 
@@ -57,6 +58,8 @@ def candidate_services(key) -> list[str]:
     key = str(key or "").strip()
     if key.startswith("gsk_"):
         return ["groq"]
+    if key.startswith(("sk-or-v1-", "sk-or-")):
+        return ["openrouter"]
     if key.startswith("AIza"):
         return ["google"]
     return ["mistral", "cloudflare"]
@@ -159,7 +162,7 @@ def detect(key, account_id="", hint="", timeout=12) -> Detection:
             return hit
     if len(services) == 1:
         return results[0] if results else Detection("unknown", "", "Provider شناسایی نشد.")
-    return Detection("unknown", "", "این کلید برای هیچ‌کدام از سرویس‌های پشتیبانی‌شده (Groq، Mistral، Google AI Studio، Cloudflare) تأیید نشد؛ "
+    return Detection("unknown", "", "این کلید برای هیچ‌کدام از سرویس‌های پشتیبانی‌شده (Groq، Mistral، Google AI Studio، Cloudflare، OpenRouter) تأیید نشد؛ "
                                     "کلید را بررسی کن. ثبت نشد.")
 
 
@@ -334,6 +337,8 @@ def register(settings, detection, key, now=None) -> str:
                 pid = p
                 break
     cfg_new = {"api_key": key, "enabled": True, "service": service}
+    if service == "openrouter":
+        cfg_new["base_url"] = SERVICES[service]["base_url"]
     if service == "cloudflare":
         cfg_new["account_id"] = detection.account_id
     if pid:

@@ -70,6 +70,7 @@ class DetectionTests(unittest.TestCase):
         det, net = run_detect({"generativelanguage": R(200, {"models": []})}, GOOGLE_KEY)
         self.assertEqual(net.hosts(), {"generativelanguage.googleapis.com"})
         self.assertEqual(am.candidate_services(MISTRAL_KEY), ["mistral", "cloudflare"])
+        self.assertEqual(am.candidate_services("sk-or-v1-" + "x" * 32), ["openrouter"])
 
     def test_groq_models_carry_only_real_data_and_rate_headers(self):
         det, _ = run_detect({"api.groq.com": groq_models()}, GROQ_KEY)
@@ -130,6 +131,27 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(net.hosts(), {"api.mistral.ai", "api.cloudflare.com"})         # only the two prefix-less services were asked
         with self.assertRaises(ValueError):
             am.register(fresh(), det, "z" * 30)
+
+    def test_openrouter_key_is_detected_and_registered_on_builtin(self):
+        key = "sk-or-v1-" + "x" * 32
+        body = R(200, {"data": [{"id": "meta-llama/llama-3.3-70b-instruct:free",
+                                  "architecture": {"input_modalities": ["text"]},
+                                  "pricing": {"prompt": "0", "completion": "0"}}]})
+        det, net = run_detect({"openrouter.ai": body}, key)
+        self.assertEqual((det.state, det.service), ("ok", "openrouter"))
+        self.assertEqual(net.hosts(), {"openrouter.ai"})
+        self.assertTrue(det.models[0]["free"])
+        settings = fresh()
+        pid = am.register(settings, det, key)
+        self.assertEqual(pid, "openrouter")
+        self.assertEqual(settings["providers"][pid]["api_key"], key)
+        self.assertEqual(settings["providers"][pid]["base_url"], "https://openrouter.ai/api/v1")
+
+    def test_groq_network_access_denied_is_not_reported_as_invalid_key(self):
+        response = R(403, {"error": {"message": "Network access denied"}}, text="Network access denied")
+        det, _ = run_detect({"api.groq.com": response}, GROQ_KEY)
+        self.assertEqual(det.state, "error")
+        self.assertIn("IP", det.message)
 
     def test_mistral_detected(self):
         body = {"data": [{"id": "mistral-small-latest", "max_context_length": 32768, "capabilities": {"completion_chat": True, "vision": False, "function_calling": True}},

@@ -16,7 +16,7 @@ class ApiAddPanel(QGroupBox):
         settings = settings or {}
         form = QFormLayout(self)
         hint = QLabel(
-            "فقط API Key را وارد کن؛ Kira خودش سرویس را (Groq، Mistral، Google AI Studio یا Cloudflare) از روی پاسخ رسمی آن تشخیص می‌دهد، "
+            "فقط API Key را وارد کن؛ Kira خودش سرویس را (Groq، Mistral، Google AI Studio، Cloudflare یا OpenRouter) از روی پاسخ رسمی آن تشخیص می‌دهد، "
             "کلید را اعتبارسنجی می‌کند و مدل‌های قابل‌دسترسی را می‌گیرد. اگر سرویس با قطعیت شناسایی نشود، چیزی ثبت نمی‌شود."
         )
         hint.setObjectName("hint")
