@@ -1,9 +1,10 @@
 """Transport boundary tests for the optional HTTP MCP client."""
+import threading
 import time
 import unittest
 from unittest import mock
 
-from kira.mcp.client import HttpClient, McpError
+from kira.mcp.client import HttpClient, McpError, StdioClient
 
 
 class SlowSseResponse:
@@ -43,6 +44,37 @@ class OversizedJsonResponse:
 
     def close(self):
         self.closed = True
+
+
+class McpJsonRpcEnvelopeTests(unittest.TestCase):
+    def test_http_transport_rejects_wrong_id_version_and_missing_result(self):
+        client = HttpClient({"url": "https://mcp.example/rpc"})
+        responses = (
+            {"jsonrpc": "2.0", "id": 99, "result": {}},
+            {"jsonrpc": "1.0", "id": 1, "result": {}},
+            {"jsonrpc": "2.0", "id": 1},
+        )
+        for response in responses:
+            client._id = 0
+            with self.subTest(response=response), mock.patch.object(client, "_post", return_value=response):
+                with self.assertRaises(McpError):
+                    client.request("tools/list", {}, 1)
+
+    def test_stdio_transport_rejects_wrong_version_for_pending_request(self):
+        client = StdioClient({"name": "probe"})
+        slot = {"event": threading.Event()}
+        client._pending[7] = slot
+        client._on_message({"jsonrpc": "1.0", "id": 7, "result": {"tools": []}})
+        self.assertTrue(slot["event"].is_set())
+        self.assertIn("invalid JSON-RPC", slot["error"]["message"])
+
+    def test_stdio_transport_rejects_response_with_both_result_and_error(self):
+        client = StdioClient({"name": "probe"})
+        slot = {"event": threading.Event()}
+        client._pending[7] = slot
+        client._on_message({"jsonrpc": "2.0", "id": 7, "result": {}, "error": {"message": "bad"}})
+        self.assertTrue(slot["event"].is_set())
+        self.assertIn("malformed", slot["error"]["message"])
 
 
 class McpProtocolResultValidationTests(unittest.TestCase):
