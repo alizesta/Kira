@@ -45,7 +45,7 @@ class _CancelAfterStart:
 class LocalVoiceProcessTests(unittest.TestCase):
     def test_windows_installer_does_not_create_a_console_window(self):
         process = _FinishedProcess()
-        with mock.patch.object(local_voice.os, "name", "nt"), \\
+        with mock.patch.object(local_voice.os, "name", "nt"), \
              mock.patch("kira.local_voice.subprocess.Popen", return_value=process) as popen:
             result = local_voice._run_install_command(["python", "-m", "pip"], timeout=5)
 
