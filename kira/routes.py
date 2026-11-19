@@ -406,5 +406,34 @@ def add_ollama_models(settings, installed_names, enabled=False):
     return added
 
 
+def reconcile_provider_models(settings, provider, available_models):
+    """Remove stale routes after a successful, non-empty provider catalog refresh.
+
+    If every route for a built-in provider points at a removed model, retain the
+    first route identity and retarget it to a currently advertised model. This
+    preserves default/manual references and avoids recreating a stale built-in
+    fallback on the next settings migration.
+    """
+    available = {str(model or "").strip() for model in (available_models or ())}
+    available.discard("")
+    if not available:
+        return []                         # an empty/partial discovery is not proof that every model was deleted
+    routes = _mutable(settings)
+    owned = [route for route in routes if route.get("provider") == provider]
+    stale = [route for route in owned if str(route.get("model") or "").strip() not in available]
+    if not stale:
+        return []
+    survivors = [route for route in owned if route not in stale]
+    removed = []
+    if not survivors:
+        keeper = stale.pop(0)
+        update_route(settings, keeper["id"], model=sorted(available)[0])
+    for route in stale:
+        remove_route(settings, route["id"])
+        removed.append(route["id"])
+    sync_legacy(settings)
+    return removed
+
+
 def snapshot(settings):
     return deepcopy(get_routes(settings))
