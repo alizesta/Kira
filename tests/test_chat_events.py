@@ -367,7 +367,7 @@ class ChatEventWiringTests(unittest.TestCase):
     def test_bootstrap_injects_the_same_shared_bus_into_module_and_chat_notifications(self):
         from pathlib import Path
 
-        source = (Path(__file__).resolve().parents[1] / "kira" / "app" / "bootstrap.py").read_text(encoding="utf-8")
+        source = (Path(__file__).resolve().parents[1] / "kira" / "ui" / "bootstrap.py").read_text(encoding="utf-8")
         self.assertIn("event_bus = EventBus()", source)
         self.assertIn("module_manager = ModuleManager(container, event_bus)", source)
         self.assertIn("chat_event_publisher = ChatEventPublisher(event_bus)", source)
@@ -405,12 +405,32 @@ class ChatEventWiringTests(unittest.TestCase):
         }.issubset(main_strings))
 
     def test_queued_request_keeps_logical_identity_across_provider_attempts(self):
+        import ast
         from pathlib import Path
 
         source = (Path(__file__).resolve().parents[1] / "kira" / "chat" / "application_service.py").read_text(encoding="utf-8")
         self.assertIn("self._attempt_to_request[attempt_id] = state.request.request_id", source)
         self.assertIn("provider_request_id", source)
-        self.assertIn("self._publish_request_submitted", source)
+        service_tree = ast.parse(source)
+        service_class = next(
+            node for node in service_tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "ChatApplicationService"
+        )
+        submit_message = next(
+            node for node in service_class.body
+            if isinstance(node, ast.FunctionDef) and node.name == "submit_message"
+        )
+        submitted_events = {
+            call.args[0].value
+            for call in ast.walk(submit_message)
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "_publish_event"
+            and call.args
+            and isinstance(call.args[0], ast.Constant)
+            and isinstance(call.args[0].value, str)
+        }
+        self.assertIn("request_submitted", submitted_events)
 
         from tests.ui_helpers import window_method_source
         send_next = window_method_source("_send_next_pending")
