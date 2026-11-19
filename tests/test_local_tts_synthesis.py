@@ -14,8 +14,10 @@ from kira import local_voice
 
 
 class _FakeSynthesisConfig:
-    def __init__(self, length_scale=None):
+    def __init__(self, length_scale=None, noise_scale=None, noise_w=None):
         self.length_scale = length_scale
+        self.noise_scale = noise_scale
+        self.noise_w = noise_w
 
 
 class _FakePiperVoice:
@@ -105,6 +107,25 @@ class LocalPiperSynthesisTests(unittest.TestCase):
                 self.assertEqual(wav_file.getframerate(), 24000)
                 self.assertEqual(wav_file.getnchannels(), 1)
                 self.assertEqual(wav_file.getsampwidth(), 2)
+
+
+    def test_emotion_profile_controls_native_piper_parameters(self):
+        from kira.voice_prosody import resolve_prosody
+
+        profile = resolve_prosody(["sad"], 100)
+        with tempfile.TemporaryDirectory() as temp:
+            model = Path(temp) / "voice.onnx"
+            model.write_bytes(b"fake model")
+            Path(str(model) + ".json").write_text("{}", encoding="utf-8")
+            with mock.patch.object(
+                local_voice, "_resolve_tts_model_path", return_value=(model, str(model))
+            ):
+                local_voice.synthesize_persian("ناراحتم", model_path=str(model), prosody=profile)
+
+        config = _FakePiperVoice.instances[str(model)].configs[0][1]
+        self.assertAlmostEqual(config.length_scale, profile["length_scale"])
+        self.assertAlmostEqual(config.noise_scale, profile["noise_scale"])
+        self.assertAlmostEqual(config.noise_w, profile["noise_w"])
 
     def test_zero_rate_uses_native_default_length_scale(self):
         path = Path(tempfile.gettempdir()) / "mana-default.onnx"
