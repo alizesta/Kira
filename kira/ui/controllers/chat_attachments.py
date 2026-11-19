@@ -8,10 +8,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QBuffer, QIODevice
+from PySide6.QtCore import QObject, QBuffer, QIODevice, Slot
 
 
-class ChatAttachmentController:
+class ChatAttachmentController(QObject):
     """Manage pre-send attachment selection, loading, cancellation and tiles."""
 
     def __init__(
@@ -27,7 +27,9 @@ class ChatAttachmentController:
         worker_factory,
         attachment_api,
         max_files: int,
+        parent=None,
     ):
+        super().__init__(parent)
         self.attach_strip = attach_strip
         self.error_label = error_label
         self.error_widget = error_widget
@@ -110,10 +112,7 @@ class ChatAttachmentController:
         self.worker.progress.connect(self.on_progress)
         self.worker.loaded.connect(self.on_loaded)
         self.worker.failed.connect(self.on_failed)
-        self.worker.finished.connect(
-            lambda: self.send_button.setEnabled(not self.is_chat_busy())
-        )
-        self.worker.finished.connect(self.on_finished)
+        self.worker.finished.connect(self._on_worker_finished)
         self.send_button.setEnabled(False)
         self._limit_errors = list(errors)
         self.error_label.setText("\n".join([*errors, self.LOADING_TEXT]))
@@ -121,22 +120,31 @@ class ChatAttachmentController:
         self.error_widget.show()
         self.worker.start()
 
+    @Slot()
+    def _on_worker_finished(self):
+        self.send_button.setEnabled(not self.is_chat_busy())
+        self.on_finished()
+
+    @Slot(int, int)
     def on_progress(self, index, percent):
         tile = self.loading_tiles[index] if index < len(self.loading_tiles) else None
         if tile is not None and not tile.deleted:
             tile.set_progress(percent)
 
+    @Slot()
     def on_finished(self):
         if self.LOADING_TEXT in self.error_label.text():
             # keep any "limit reached" notice; only drop the transient loading line
             self.show_error(getattr(self, "_limit_errors", []))
 
+    @Slot(int, dict)
     def on_loaded(self, index, attachment):
         tile = self.loading_tiles[index] if index < len(self.loading_tiles) else None
         if tile is not None and not tile.deleted:
             tile.set_attachment(attachment)
             tile.set_progress(100)
 
+    @Slot(int, str)
     def on_failed(self, index, message):
         tile = self.loading_tiles[index] if index < len(self.loading_tiles) else None
         if tile is not None and not tile.deleted:
