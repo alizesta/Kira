@@ -290,7 +290,7 @@ class HttpClient(_Base):
         def perform_request():
             outcome = None
             try:
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                with open_no_redirect(req, timeout=timeout) as resp:
                     with response_lock:
                         active["response"] = resp
                     if stop.is_set():
