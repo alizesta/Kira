@@ -156,6 +156,17 @@ class Journal:
             return self._save()
 
 
+def _remove_tree_if_same(path: str, expected_stat) -> None:
+    """Remove only the staging directory this operation created."""
+    try:
+        current_stat = os.lstat(path)
+    except FileNotFoundError:
+        return
+    if not os.path.samestat(expected_stat, current_stat):
+        raise OSError("staging directory was replaced; refusing recursive cleanup")
+    shutil.rmtree(path)
+
+
 def _unlink_created_if_same(path: str, expected_stat) -> None:
     """Remove only the inode this operation created; never unlink a raced replacement."""
     try:
@@ -418,18 +429,26 @@ class FileAgent:
                         out.append(n)
                         skipped.append(n)
                 return out
-            # Claim the destination atomically before copying. If copytree
-            # fails halfway, only this operation's own directory is rolled back.
-            os.mkdir(target)
+            # Build the tree under a private staging name and publish it only
+            # after the complete copy succeeds; never copy through a raced symlink.
+            staging = tempfile.mkdtemp(prefix=".kira-copy-", dir=os.path.dirname(target))
+            staging_stat = os.lstat(staging)
             try:
-                shutil.copytree(src, target, symlinks=False, ignore=ignore, dirs_exist_ok=True)
+                shutil.copytree(src, staging, symlinks=False, ignore=ignore, dirs_exist_ok=True)
+                if not os.path.samestat(staging_stat, os.lstat(staging)):
+                    raise OSError("copy staging directory was replaced")
+                if os.path.lexists(target):
+                    raise FileExistsError(target)
+                os.rename(staging, target)
+                staging = ""
             except Exception as exc:
-                try:
-                    shutil.rmtree(target)
-                except OSError:
-                    _LOGGER.exception("Could not remove partial folder copy: %s", target)
-                    raise ToolError(f"کپی پوشه ناقص ماند و پاک‌سازی مقصد هم ناموفق بود: {target}") from exc
-                raise ToolError(f"کپی پوشه ناموفق بود؛ مقصد ناقص پاک شد: {type(exc).__name__}: {exc}") from exc
+                if staging:
+                    try:
+                        _remove_tree_if_same(staging, staging_stat)
+                    except OSError:
+                        _LOGGER.exception("Could not remove partial folder copy staging: %s", staging)
+                        raise ToolError(f"کپی پوشه ناقص ماند و پاک‌سازی هم ناموفق بود: {staging}") from exc
+                raise ToolError(f"کپی پوشه ناموفق بود؛ مقصد ناقص منتشر نشد: {type(exc).__name__}: {exc}") from exc
             note = f" ({len(skipped)} مورد حساس/لینک/اجرایی رد شد)" if skipped else ""
         else:
             if os.path.splitext(src)[1].lower() in EXECUTABLE_EXT:
