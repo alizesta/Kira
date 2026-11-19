@@ -67,6 +67,8 @@ class FileAgentTests(unittest.TestCase):
         self.assertEqual(original.read_text(encoding="utf-8"), "our file")
 
     def test_batch_move_rejects_cross_device_directory_move(self):
+        from types import SimpleNamespace
+
         source = str(self.root / "source-folder")
         destination = str(self.root / "destination")
         def fake_stat(path, *args, **kwargs):
