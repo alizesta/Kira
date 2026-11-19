@@ -9,12 +9,10 @@ from ..core.interfaces.transfer import ChatTransferFilePort
 def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -> None:
     from PySide6.QtWidgets import QApplication
 
-    from .. import winfx
     from ..chat.events import ChatEventPublisher
     from ..chat.session_manager import SessionManager
     from ..chat_sessions import ChatSession
     from ..config import DATA_DIR, ROOT, load_settings
-    from ..theme import build_style
     from ..tools import ToolAgent
     from .main_window import MainWindow
     from .main_window_composition import initialize_main_window
@@ -54,7 +52,8 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
 
     try:
         app = QApplication(sys.argv)
-        app.setStyleSheet(build_style(winfx.active_effect(settings.get("window_effect"))))
+        # The stylesheet is applied once by apply_appearance() while the window is composed; setting a base
+        # one here as well parsed it twice and made every widget polish against it while being built.
         session_manager = SessionManager(ChatSession)
         tool_agent = ToolAgent(settings, DATA_DIR, ROOT)
         window = MainWindow()

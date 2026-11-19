@@ -348,11 +348,13 @@ def make_icon(name, normal="#4FD8FF", hover="#FFFFFF", checked="#8F6BFF", disabl
     icon = _CACHE.get(key)
     if icon is None:
         icon = QIcon()
-        icon.addPixmap(_pixmap(name, normal), QIcon.Normal, QIcon.Off)
-        icon.addPixmap(_pixmap(name, hover), QIcon.Active, QIcon.Off)
-        icon.addPixmap(_pixmap(name, checked), QIcon.Normal, QIcon.On)
-        icon.addPixmap(_pixmap(name, hover), QIcon.Active, QIcon.On)
-        icon.addPixmap(_pixmap(name, disabled), QIcon.Disabled, QIcon.Off)
-        icon.addPixmap(_pixmap(name, disabled), QIcon.Disabled, QIcon.On)
+        normal_pm, hover_pm = _pixmap(name, normal), _pixmap(name, hover)
+        checked_pm, disabled_pm = _pixmap(name, checked), _pixmap(name, disabled)
+        icon.addPixmap(normal_pm, QIcon.Normal, QIcon.Off)
+        icon.addPixmap(hover_pm, QIcon.Active, QIcon.Off)
+        icon.addPixmap(checked_pm, QIcon.Normal, QIcon.On)
+        icon.addPixmap(hover_pm, QIcon.Active, QIcon.On)
+        icon.addPixmap(disabled_pm, QIcon.Disabled, QIcon.Off)
+        icon.addPixmap(disabled_pm, QIcon.Disabled, QIcon.On)
         _CACHE[key] = icon
     return icon

@@ -138,7 +138,7 @@ class ProviderSettingsController(WindowFeatureController):
         model_list.setMinimumHeight(105)
         model_list.setMaximumHeight(170)
         model_list.itemChanged.connect(lambda item: self.on_cloud_model_item_changed("chat", item))
-        self.cloud_model_lists = {"chat": model_list}
+        self.context.views.cloud_model_lists = {"chat": model_list}
         cloud_form.addRow(model_list)
         layout.addWidget(cloud_box)
 
@@ -154,13 +154,13 @@ class ProviderSettingsController(WindowFeatureController):
         local_chat_layout = QVBoxLayout(local_chat)
         local_chat_layout.setContentsMargins(3, 3, 3, 3)
         local_chat_layout.addWidget(self.build_ollama_group())
-        self.local_model_list = QListWidget()
-        self.local_model_list.setAlternatingRowColors(True)
-        self.local_model_list.setMinimumHeight(90)
-        self.local_model_list.setMaximumHeight(150)
-        self.local_model_list.itemChanged.connect(self.on_local_chat_item_changed)
+        self.context.views.local_model_list = QListWidget()
+        self.context.views.local_model_list.setAlternatingRowColors(True)
+        self.context.views.local_model_list.setMinimumHeight(90)
+        self.context.views.local_model_list.setMaximumHeight(150)
+        self.context.views.local_model_list.itemChanged.connect(self.on_local_chat_item_changed)
         local_chat_layout.addWidget(QLabel("مدل‌های چت نصب‌شده‌ی Ollama"))
-        local_chat_layout.addWidget(self.local_model_list)
+        local_chat_layout.addWidget(self.context.views.local_model_list)
         self.route_scan_btn = QPushButton("یافتن مدل‌های نصب‌شده")
         self.route_scan_btn.clicked.connect(self.scan_ollama)
         local_chat_layout.addWidget(self.route_scan_btn)
@@ -175,12 +175,12 @@ class ProviderSettingsController(WindowFeatureController):
         self.local_asr_chk.setChecked(bool(self.context.services.settings.get("local_voice_asr", True)))
         self.local_asr_chk.toggled.connect(lambda on: self.feature_controller("voice_settings").set_local_voice_option("local_voice_asr", on))
         local_stt_layout.addWidget(self.local_asr_chk)
-        self.local_asr_model_list = QComboBox()
-        self.local_asr_model_list.setToolTip("مدل‌های STT موجود در کش Hugging Face")
-        self.local_asr_model_list.setMaximumHeight(30)
-        self.local_asr_model_list.currentIndexChanged.connect(self.feature_controller("voice_settings").select_local_asr_model)
+        self.context.views.local_asr_model_list = QComboBox()
+        self.context.views.local_asr_model_list.setToolTip("مدل‌های STT موجود در کش Hugging Face")
+        self.context.views.local_asr_model_list.setMaximumHeight(30)
+        self.context.views.local_asr_model_list.currentIndexChanged.connect(self.feature_controller("voice_settings").select_local_asr_model)
         local_stt_layout.addWidget(QLabel("مدل‌های دانلودشده‌ی STT"))
-        local_stt_layout.addWidget(self.local_asr_model_list)
+        local_stt_layout.addWidget(self.context.views.local_asr_model_list)
         # Keep the optional custom path internally; the normal flow needs no manual path entry.
         self.context.views.local_asr_path_edit = QLineEdit(str(self.context.services.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B"))
         self.context.views.local_asr_path_edit.setVisible(False)
@@ -208,12 +208,12 @@ class ProviderSettingsController(WindowFeatureController):
         self.local_tts_chk.setChecked(bool(self.context.services.settings.get("local_voice_tts", True)))
         self.local_tts_chk.toggled.connect(lambda on: self.feature_controller("voice_settings").set_local_voice_option("local_voice_tts", on))
         local_tts_layout.addWidget(self.local_tts_chk)
-        self.local_tts_model_list = QComboBox()
-        self.local_tts_model_list.setToolTip("صداهای Piper دانلودشده و صدای فارسی پیش‌فرض")
-        self.local_tts_model_list.setMaximumHeight(30)
-        self.local_tts_model_list.currentIndexChanged.connect(self.feature_controller("voice_settings").select_local_tts_model)
+        self.context.views.local_tts_model_list = QComboBox()
+        self.context.views.local_tts_model_list.setToolTip("صداهای Piper دانلودشده و صدای فارسی پیش‌فرض")
+        self.context.views.local_tts_model_list.setMaximumHeight(30)
+        self.context.views.local_tts_model_list.currentIndexChanged.connect(self.feature_controller("voice_settings").select_local_tts_model)
         local_tts_layout.addWidget(QLabel("مدل‌های دانلودشده‌ی TTS"))
-        local_tts_layout.addWidget(self.local_tts_model_list)
+        local_tts_layout.addWidget(self.context.views.local_tts_model_list)
         self.context.views.local_tts_model_path = QLineEdit(str(self.context.services.settings.get("local_voice_tts_model") or ""))
         self.context.views.local_tts_model_path.setPlaceholderText("مسیر فایل Piper ONNX یا شناسه مخزن Hugging Face؛ خالی = صدای پیش‌فرض")
         self.context.views.local_tts_model_path.setLayoutDirection(Qt.LeftToRight)
@@ -335,9 +335,9 @@ class ProviderSettingsController(WindowFeatureController):
 
     def refresh_unified_models(self):
         """Populate the three cloud capability lists and the three local model lists."""
-        if not hasattr(self, "cloud_model_lists"):
+        if not "cloud_model_lists" in self.context.views:
             return
-        for widget in self.cloud_model_lists.values():
+        for widget in self.context.views.cloud_model_lists.values():
             widget.blockSignals(True)
             widget.clear()
         self.context.services.provider_application_service.ensure_registry(self.context.services.settings)
@@ -361,8 +361,8 @@ class ProviderSettingsController(WindowFeatureController):
                 enabled = any(r.get("provider") == pid and r.get("model") == mid and r.get("enabled")
                               for r in self.context.services.provider_application_service.get_routes(self.context.services.settings))
                 item.setCheckState(Qt.Checked if enabled else Qt.Unchecked)
-                self.cloud_model_lists["chat"].addItem(item)
-        for kind, widget in self.cloud_model_lists.items():
+                self.context.views.cloud_model_lists["chat"].addItem(item)
+        for kind, widget in self.context.views.cloud_model_lists.items():
             if widget.count() == 0:
                 if free_only:
                     message = "مدل رایگانِ تأییدشده‌ای پیدا نشد."
@@ -373,9 +373,9 @@ class ProviderSettingsController(WindowFeatureController):
                 widget.addItem(empty)
             widget.blockSignals(False)
 
-        if hasattr(self, "local_model_list"):
-            self.local_model_list.blockSignals(True)
-            self.local_model_list.clear()
+        if "local_model_list" in self.context.views:
+            self.context.views.local_model_list.blockSignals(True)
+            self.context.views.local_model_list.clear()
             for route in self.context.services.provider_application_service.get_routes(self.context.services.settings):
                 if route.get("provider") != "ollama" or not route.get("model"):
                     continue
@@ -383,8 +383,8 @@ class ProviderSettingsController(WindowFeatureController):
                 item.setData(Qt.UserRole, route.get("id"))
                 item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
                 item.setCheckState(Qt.Checked if route.get("enabled") else Qt.Unchecked)
-                self.local_model_list.addItem(item)
-            self.local_model_list.blockSignals(False)
+                self.context.views.local_model_list.addItem(item)
+            self.context.views.local_model_list.blockSignals(False)
 
     def on_cloud_model_item_changed(self, kind, item):
         if kind != "chat":
@@ -627,7 +627,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.session.client.reset_cooldowns()
         self.feature_controller("runtime").save_now()
         self.refresh_api_table(select)
-        if hasattr(self, "cloud_model_lists"):
+        if "cloud_model_lists" in self.context.views:
             self.refresh_unified_models()
         self.refresh_route_list()
         if not self.context.session.busy:

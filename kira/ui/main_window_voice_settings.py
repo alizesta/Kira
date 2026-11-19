@@ -69,9 +69,9 @@ class VoiceSettingsController(WindowFeatureController):
         outer.addLayout(body, 1)
         root = body
         # --- dedicated avatar area (same PNG and loader; the view keeps the image's aspect ratio)
-        self.avatar_card = QFrame()
-        self.avatar_card.setObjectName("avatarCard")
-        av = QVBoxLayout(self.avatar_card)
+        self.context.views.avatar_card = QFrame()
+        self.context.views.avatar_card.setObjectName("avatarCard")
+        av = QVBoxLayout(self.context.views.avatar_card)
         av.setContentsMargins(8, 8, 8, 10)
         av.setSpacing(4)
         self.context.views.avatar = KiraAvatar(self.context.adapters.animator, view="card")
@@ -88,8 +88,8 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.status.setWordWrap(True)
         av.addWidget(self.tagline)
         av.addWidget(self.context.views.status)
-        self.avatar_card.setFixedWidth(250)
-        root.addWidget(self.avatar_card)
+        self.context.views.avatar_card.setFixedWidth(250)
+        root.addWidget(self.context.views.avatar_card)
         # --- chat card: compact header, conversation, composer
         chat_card = QFrame()
         chat_card.setObjectName("chatCard")
@@ -98,8 +98,8 @@ class VoiceSettingsController(WindowFeatureController):
         cv.setSpacing(6)
         self.chat_header = ChatHeader(self.feature_controller("session").icon_button("user", True), parent=chat_card)
         self.context.views.title = self.chat_header.title
-        self.mood_emotion_icon = self.chat_header.mood_emotion_icon
-        self.mood_indicator = self.chat_header.mood_indicator
+        self.context.views.mood_emotion_icon = self.chat_header.mood_emotion_icon
+        self.context.views.mood_indicator = self.chat_header.mood_indicator
         self.context.views.companion_btn = self.chat_header.companion_btn
         self.context.views.companion_btn.clicked.connect(self.feature_controller("runtime").toggle_companion)
         cv.addWidget(self.chat_header)

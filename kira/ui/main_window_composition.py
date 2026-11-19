@@ -90,6 +90,13 @@ def initialize_main_window(
     missing = tuple(name for name, value in required.items() if value is None)
     if missing:
         raise TypeError("MainWindow composition requires Bootstrap dependencies: " + ", ".join(missing))
+    # Icons are cached per glow level: use the saved level before the first widget is built, otherwise every icon
+    # is painted once at the default level and a second time when apply_appearance() sets the real one.
+    try:
+        from ..ui_icons import set_glow_intensity
+        set_glow_intensity(float((settings.get("appearance") or {}).get("glow", 58)) / 100.0)
+    except (TypeError, ValueError, AttributeError):
+        pass
     self.services.memory_service = memory_service
     self.services.mood_service = mood_service
     self.services.character_service = character_service
