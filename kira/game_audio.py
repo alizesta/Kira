@@ -26,8 +26,9 @@ class GameAudioListener(QThread):
         self._run = True
 
     def stop(self):
+        # Request shutdown without freezing the GUI thread. The window retains
+        # this QThread and defers close until its finished signal is delivered.
         self._run = False
-        self.wait(4000)
 
     def run(self):
         try:
