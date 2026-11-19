@@ -158,13 +158,17 @@ class FeatureControllerRegistryTests(unittest.TestCase):
         )
 
     def test_provider_settings_cloud_catalog_views_are_declared(self):
-        from kira.ui.window_presentation_context import CONTROLLER_ACCESS
+        from kira.ui.window_presentation_context import CONTROLLER_ACCESS, VIEW_FIELDS
 
         catalog_views = {
             "cloud_model_search", "cloud_model_refresh_btn", "cloud_model_status",
             "cloud_model_select_all_chk", "cloud_model_select_free_chk",
             "cloud_model_deselect_btn", "cloud_model_test_all_btn",
         }
+        self.assertTrue(
+            catalog_views.issubset(VIEW_FIELDS),
+            sorted(catalog_views - VIEW_FIELDS),
+        )
         self.assertTrue(
             catalog_views.issubset(CONTROLLER_ACCESS["provider_settings"]["views"]),
             sorted(catalog_views - CONTROLLER_ACCESS["provider_settings"]["views"]),
