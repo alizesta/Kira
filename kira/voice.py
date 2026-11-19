@@ -1,9 +1,11 @@
 """Kira local-only speech output: Piper synthesis and Qt audio playback."""
+import atexit
 import hashlib
 import json
 import math
 import os
 import re
+import shutil
 import tempfile
 import threading
 import wave
@@ -19,6 +21,7 @@ PIPER_FA = "Mana Persian Piper"
 CACHE_DIR = DATA_DIR / "voice_cache"
 CACHE_DIR.mkdir(exist_ok=True)
 HOP_MS = 40
+PLAYBACK_START_TIMEOUT_MS = 8000   # a sentence that has not become audible by then is skipped
 
 
 def _envelope(pcm, rate):
@@ -87,6 +90,7 @@ class Speaker(QObject):
         super().__init__(parent)
         self.settings = settings            # shared dict, read on every call
         self._tmp = tempfile.mkdtemp(prefix="kira_tts_")
+        atexit.register(shutil.rmtree, self._tmp, True)      # do not leave kira_tts_* folders in %TEMP% after every launch
         self._gen = 0
         self._session = None
         self._worker_lock = threading.Lock()
@@ -476,6 +480,9 @@ class Speaker(QObject):
             fx.setAudioOutput(out)
             fx.setSource(QUrl.fromLocalFile(wav))
             fx.playbackStateChanged.connect(self._on_pstate)
+            # An unreadable / unsupported file stops the player without ever "playing": without this the
+            # reply would hang as "speaking" forever (no finished signal, microphone stays muted).
+            fx.errorOccurred.connect(lambda _err=None, msg="", p=fx: self._on_player_failed(p, msg))
             self._out = out
         else:
             self._watch_devices()
@@ -489,6 +496,14 @@ class Speaker(QObject):
             fx.statusChanged.connect(self._on_sound_status)
         self._fx = fx
         fx.play()
+        QTimer.singleShot(PLAYBACK_START_TIMEOUT_MS, lambda p=fx: self._on_player_failed(p, "پخش صدا شروع نشد."))
+
+    def _on_player_failed(self, player, message=""):
+        """The sentence that should be playing never started (or failed): report it and go on with the next one."""
+        if player is not self._fx or self._item_began:
+            return
+        self._report(f"پخش صدا ناموفق بود: {message or 'خطای پخش'}")
+        self._item_finished()
 
     def _item_started(self):
         self._item_began = True

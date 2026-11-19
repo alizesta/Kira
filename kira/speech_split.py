@@ -21,13 +21,19 @@ MAX_CHARS = 200
 SOFT_FIRST = 90
 ABBREVIATIONS = {"mr", "mrs", "ms", "dr", "prof", "sr", "jr", "vs", "etc", "st", "no", "fig", "inc", "ltd", "co", "approx", "e.g", "i.e", "u.s", "a.m", "p.m"}
 _THINK = re.compile(r"<think>.*?</think>", re.S)
+# "<", "<t", ... "<think" at the very end: the opening tag is still being streamed.
+_PARTIAL_THINK_TAG = re.compile(r"<(?:t(?:h(?:i(?:n(?:k)?)?)?)?)?$")
 
 
 def strip_think(text: str) -> str:
     """Remove <think>…</think> blocks (and an unclosed <think> at the end) before splitting."""
     from .leak_guard import strip_blocks, scrub_lines
     text = _THINK.sub("", text or "")
-    return scrub_lines(strip_blocks(text.split("<think>", 1)[0]))
+    text = text.split("<think>", 1)[0]
+    # Without this a streamed "<thi" is spoken and later disappears, which shifts the already-consumed prefix and
+    # makes the speaker drop the first letters of the real answer.
+    text = _PARTIAL_THINK_TAG.sub("", text)
+    return scrub_lines(strip_blocks(text))
 
 
 class StreamSplitter:

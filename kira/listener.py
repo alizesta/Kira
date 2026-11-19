@@ -101,6 +101,9 @@ class Listener(QThread):
         except ImportError as e:
             self.error.emit(f"بسته‌ی لازم نصب نیست: {e.name}. دوباره install.bat را اجرا کن.")
             return
+        except OSError as e:                                 # sounddevice raises OSError when PortAudio is missing
+            self.error.emit(f"کتابخانه‌ی صوتی PortAudio پیدا نشد: {e}")
+            return
         self.state.emit("loading")
         self.engine = None
         if not self._run:
