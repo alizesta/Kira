@@ -9,7 +9,7 @@ import numpy as np
 
 from kira.voice_prosody import (
     EMOTION_PROFILES, NEUTRAL, apply_audio_effects, expand_persian_numbers,
-    join_wavs_with_pauses, resolve_prosody, split_comma_clauses,
+    join_wavs_with_pauses, prepend_wav_silence, resolve_prosody, split_comma_clauses,
 )
 
 
@@ -69,6 +69,16 @@ class EmotionProsodyTests(unittest.TestCase):
         self.assertTrue(np.all(samples[:10] == 1000))
         self.assertTrue(np.all(samples[10:110] == 0))
         self.assertTrue(np.all(samples[110:] == 2000))
+
+    def test_sentence_pause_is_prepended_without_trailing_silence(self):
+        source = _wav([2000] * 10, 1000)
+        result = prepend_wav_silence(source, 100)
+        with wave.open(io.BytesIO(result), "rb") as audio:
+            samples = np.frombuffer(audio.readframes(audio.getnframes()), dtype="<i2")
+        self.assertEqual(len(samples), 110)
+        self.assertTrue(np.all(samples[:100] == 0))
+        self.assertTrue(np.all(samples[100:] == 2000))
+        self.assertEqual(prepend_wav_silence(source, 0), source)
 
     def test_wav_join_rejects_inconsistent_sample_rates(self):
         with self.assertRaises(ValueError):
