@@ -120,6 +120,14 @@ class McpProtocolResultValidationTests(unittest.TestCase):
             self.client.initialize(1)
         self.assertEqual(self.client.server_info["name"], "server")
 
+    def test_initialize_notification_failure_aborts_handshake(self):
+        valid = {"protocolVersion": PROTOCOL, "capabilities": {}, "serverInfo": {"name": "server", "version": "1"}}
+        with mock.patch.object(self.client, "request", return_value=valid), mock.patch.object(
+            self.client, "_post", side_effect=McpError("initialized notification failed")
+        ):
+            with self.assertRaisesRegex(McpError, "initialized notification failed"):
+                self.client.initialize(1)
+
     def test_tools_list_rejects_missing_or_malformed_tools(self):
         for result in ({}, {"tools": "not-a-list"}, {"tools": [None]}, {"tools": [{"name": ""}]}):
             with self.subTest(result=result), mock.patch.object(self.client, "request", return_value=result):
