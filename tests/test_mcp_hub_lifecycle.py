@@ -9,7 +9,7 @@ from unittest import mock
 
 from kira.mcp.hub import McpHub, _params_from_schema
 from kira.mcp import install
-from kira.tools.registry import Tool, ToolRegistry
+from kira.tools.registry import Tool, ToolRegistry, ToolError
 
 
 class McpHubLifecycleTests(unittest.TestCase):
@@ -97,6 +97,44 @@ class McpHubLifecycleTests(unittest.TestCase):
         self.assertIs(registry.get("agent_status"), existing)
         self.assertIsNone(registry.get("agent_ask"))
         self.assertIsNone(registry.get("mcp_info"))
+
+    def test_disabling_mcp_disconnects_clients_and_unregisters_tools(self):
+        class Client:
+            closed = False
+            def close(self):
+                self.closed = True
+
+        client = Client()
+        self.hub.settings_fn = lambda: {"mcp_mode": "off"}
+        self.hub._clients["notes"] = client
+        self.hub.state["notes"] = {"status": "ready", "tools": 1}
+
+        self.hub.refresh_async()
+        self.hub._thread.join(timeout=2)
+
+        self.assertFalse(self.hub._thread.is_alive())
+        self.assertTrue(client.closed)
+        self.assertEqual(self.hub.state["_hub"]["status"], "disabled")
+        self.registry.unregister_where.assert_called()
+
+    def test_disabled_mcp_cannot_execute_an_already_registered_tool(self):
+        class Client:
+            calls = 0
+            def alive(self):
+                return True
+            def call_tool(self, *_args):
+                self.calls += 1
+                return {"content": []}
+
+        client = Client()
+        self.hub.settings_fn = lambda: {"mcp_mode": "off"}
+        self.hub._cfg = {"servers": {"notes": {"timeout": 3}}, "agents": {}, "error": ""}
+        self.hub._clients["notes"] = client
+
+        with self.assertRaises(ToolError):
+            self.hub.call("notes", "lookup", {})
+
+        self.assertEqual(client.calls, 0)
 
     def test_calls_to_one_server_are_serialized_across_threads(self):
         class ConcurrentClient:
