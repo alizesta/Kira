@@ -122,8 +122,13 @@ class ChatAttachmentController(QObject):
 
     @Slot()
     def _on_worker_finished(self):
+        worker = self.sender()
+        if worker is not None and self.worker is worker:
+            self.worker = None
         self.send_button.setEnabled(not self.is_chat_busy())
         self.on_finished()
+        if worker is not None:
+            worker.deleteLater()
 
     @Slot(int, int)
     def on_progress(self, index, percent):
