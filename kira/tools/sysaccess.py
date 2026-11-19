@@ -283,9 +283,9 @@ class AccessManager:
                          confirmed=bool(confirmed and res.status == "ok" and (pol.always_confirm or reason == "tainted")),
                          verified=bool(pol.verifies and res.status == "ok"), args=_args_brief(res.args),
                          summary=redact_secrets(" ".join(str(res.text).split()))[:220])
-        if pol.external and res.status == "ok":
+        if pol.external and res.status in ("ok", "error"):
             with self._lock:
-                self._tainted = True                         # what came back may carry instructions written by someone else
+                self._tainted = True                         # even an external error message may contain attacker-controlled instructions
 
     # ------------------------------------------------------------ report (READ tool windows_control_info)
     def info_text(self, recent: int = 8) -> str:
