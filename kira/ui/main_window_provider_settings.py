@@ -67,7 +67,7 @@ class ProviderSettingsController(WindowFeatureController):
             worker = TaskWorker(refresh)
             self.context.state._model_catalog_worker = worker
             worker.done.connect(self._on_model_catalog_refresh)
-            worker.finished.connect(lambda current=worker: self._clear_model_catalog_worker(current))
+            worker.finished.connect(self._clear_model_catalog_worker)
             worker.start()
             self.scan_ollama()
             self.feature_controller("voice_settings").refresh_local_voice_status()
@@ -75,7 +75,9 @@ class ProviderSettingsController(WindowFeatureController):
             self.context.views.mcp_registry_panel.set_refreshing(False)
             self.context.views.mcp_registry_panel.set_status("تازه‌سازی کامل نشد: " + str(exc)[:200])
 
-    def _clear_model_catalog_worker(self, worker):
+    @Slot()
+    def _clear_model_catalog_worker(self):
+        worker = self.sender()
         if self.context.state._model_catalog_worker is worker:
             self.context.state._model_catalog_worker = None
 
@@ -1108,10 +1110,12 @@ class ProviderSettingsController(WindowFeatureController):
         worker = TaskWorker(task)
         self.context.state._scan_worker = worker
         worker.done.connect(self.on_scan_done)
-        worker.finished.connect(lambda current=worker: self._clear_scan_worker(current))
+        worker.finished.connect(self._clear_scan_worker)
         worker.start()
 
-    def _clear_scan_worker(self, worker):
+    @Slot()
+    def _clear_scan_worker(self):
+        worker = self.sender()
         if self.context.state._scan_worker is worker:
             self.context.state._scan_worker = None
 
