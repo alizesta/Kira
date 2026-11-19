@@ -253,7 +253,11 @@ class FileAgent:
             raise
         try:
             with created as fh:
-                fh.write(data)
+                written = fh.write(data)
+                if written != len(data):
+                    raise OSError("short write while creating file")
+            if not os.path.isfile(target) or os.path.getsize(target) != len(data):
+                raise OSError("created file size does not match content")
         except Exception as exc:
             try:
                 os.unlink(target)
@@ -263,8 +267,6 @@ class FileAgent:
                 _LOGGER.exception("Could not remove partial created file: %s", target)
                 raise ToolError(f"نوشتن ناقص ماند و فایل ناقص هم پاک نشد: {target}") from exc
             raise ToolError(f"ساخت فایل ناموفق بود؛ فایل ناقص پاک شد: {type(exc).__name__}: {exc}") from exc
-        if not os.path.isfile(target) or os.path.getsize(target) != len(data):
-            raise ToolError("فایل ساخته نشد یا اندازه‌اش درست نیست.")
         persisted = self.journal.add("create", path=target)
         return f"فایل ساخته شد: {target} ({_fmt_size(len(data))})" + self._journal_note(persisted)
 
@@ -277,20 +279,49 @@ class FileAgent:
         data = str(a.get("content") or "").encode("utf-8")
         if not data or len(data) > MAX_TEXT_BYTES:
             raise ToolError("متن خالی است یا بیش از ۲۰۰ کیلوبایت است.")
-        before = os.path.getsize(path)
+        before_stat = os.stat(path)
+        before = before_stat.st_size
         if before:
             with open(path, "rb") as fh:
+                current_stat = os.fstat(fh.fileno())
+                if (current_stat.st_dev, current_stat.st_ino, current_stat.st_size, current_stat.st_mtime_ns) != (
+                    before_stat.st_dev, before_stat.st_ino, before_stat.st_size, before_stat.st_mtime_ns
+                ):
+                    raise ToolError("فایل هم‌زمان تغییر کرده؛ append انجام نشد.")
                 fh.seek(-1, os.SEEK_END)
                 if fh.read(1) not in (b"\n", b"\r"):
                     data = b"\n" + data                                   # a new paragraph starts on its own line (tool arguments are stripped)
-        with open(path, "ab") as fh:
-            fh.write(data)
-        if os.path.getsize(path) != before + len(data):
-            raise ToolError("اندازه‌ی فایل بعد از نوشتن درست نیست.")
-        digest = hashlib.sha256()
-        with open(path, "rb") as fh:
-            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
-                digest.update(chunk)
+        try:
+            with open(path, "ab") as fh:
+                current_stat = os.fstat(fh.fileno())
+                if (current_stat.st_dev, current_stat.st_ino, current_stat.st_size, current_stat.st_mtime_ns) != (
+                    before_stat.st_dev, before_stat.st_ino, before_stat.st_size, before_stat.st_mtime_ns
+                ):
+                    raise OSError("file changed before append")
+                written = fh.write(data)
+                fh.flush()
+                os.fsync(fh.fileno())
+            if written != len(data) or os.path.getsize(path) != before + len(data):
+                raise OSError("append size does not match requested bytes")
+            digest = hashlib.sha256()
+            with open(path, "rb") as fh:
+                for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        except Exception as exc:
+            try:
+                current_stat = os.stat(path)
+                if ((current_stat.st_dev, current_stat.st_ino) != (before_stat.st_dev, before_stat.st_ino)
+                        or not before <= current_stat.st_size <= before + len(data)):
+                    raise OSError("file identity or size changed; safe rollback is not possible")
+                with open(path, "r+b") as fh:
+                    fh.truncate(before)
+                    fh.flush()
+                    os.fsync(fh.fileno())
+            except Exception as rollback_exc:
+                raise ToolError(
+                    f"افزودن متن شکست خورد و بازگردانی امن هم ممکن نشد؛ فایل را بررسی کن: {path}"
+                ) from rollback_exc
+            raise ToolError(f"افزودن متن شکست خورد؛ فایل به اندازه‌ی قبلی بازگردانده شد: {type(exc).__name__}") from exc
         persisted = self.journal.add(
             "append",
             path=path,
@@ -424,18 +455,28 @@ class FileAgent:
             dir=os.path.dirname(path),
         )
         try:
-            with os.fdopen(fd, "wb") as fh:
-                fh.write(data)
-                fh.flush()
-                os.fsync(fh.fileno())
-            os.replace(tmp, path)
+            try:
+                with os.fdopen(fd, "wb") as fh:
+                    written = fh.write(data)
+                    if written != len(data):
+                        raise OSError("short write while preparing replacement")
+                    fh.flush()
+                    os.fsync(fh.fileno())
+                    if os.fstat(fh.fileno()).st_size != len(data):
+                        raise OSError("temporary replacement size does not match content")
+                os.replace(tmp, path)
+            except Exception:
+                if backup:
+                    try:
+                        os.unlink(backup)
+                    except OSError:
+                        _LOGGER.exception("Could not remove unused write backup after failed replacement: %s", backup)
+                raise
         finally:
             try:
                 os.unlink(tmp)
             except FileNotFoundError:
                 pass
-        if not os.path.isfile(path) or os.path.getsize(path) != len(data):
-            raise ToolError("اندازه‌ی فایل بعد از نوشتن درست نیست.")
         persisted = self.journal.add(
             "write",
             path=path,
