@@ -314,18 +314,20 @@ class McpHub:
             raw = spec["name"]
             if (allow and raw not in allow) or raw in deny or count >= cfg["max_tools"]:
                 continue
-            level = cfg["levels"].get(raw, cfg["default_level"])
-            name = tool_name(server, raw)
-            desc = f"(MCP {server}) " + clean_text(spec.get("description") or raw, DESC_MAX)
-            tool = Tool(name, desc, self._handler(server, raw), _params_from_schema(spec.get("inputSchema")), level, ("mcp",),
-                        confirm_summary=self._summary(server, raw), max_chars=OUT_MAX,
-                        intent_rx=intent if level < SENSITIVE else None)
-            tool.mcp_server = server                                   # type: ignore[attr-defined]
             try:
+                level = cfg["levels"].get(raw, cfg["default_level"])
+                name = tool_name(server, raw)
+                desc = f"(MCP {server}) " + clean_text(spec.get("description") or raw, DESC_MAX)
+                params = _params_from_schema(spec.get("inputSchema"))
+                tool = Tool(name, desc, self._handler(server, raw), params, level, ("mcp",),
+                            confirm_summary=self._summary(server, raw), max_chars=OUT_MAX,
+                            intent_rx=intent if level < SENSITIVE else None)
+                tool.mcp_server = server                                   # type: ignore[attr-defined]
                 self.registry.register(tool)
                 count += 1
-            except ValueError:
-                continue                                               # a name that already exists is never replaced
+            except ValueError as exc:
+                _LOGGER.warning("Skipping invalid or conflicting MCP tool %s from %s: %s", raw, server, clean_text(exc, 160))
+                continue                                               # one bad tool must not disable its healthy siblings
         return count
 
     @staticmethod
