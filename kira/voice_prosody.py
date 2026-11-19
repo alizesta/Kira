@@ -6,7 +6,6 @@ can be tested independently. Emotion intensity blends gently from neutral.
 from __future__ import annotations
 
 import io
-import math
 import re
 import shutil
 import subprocess
@@ -146,7 +145,8 @@ def persian_number_words(value):
     for scale, label in _SCALES:
         if number >= scale:
             quotient, remainder = divmod(number, scale)
-            head = persian_number_words(quotient) + " " + label
+            head = (label if quotient == 1 and scale == 1000
+                    else persian_number_words(quotient) + " " + label)
             return head + ((" و " + persian_number_words(remainder)) if remainder else "")
     return str(number)
 
