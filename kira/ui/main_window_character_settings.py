@@ -631,7 +631,12 @@ class CharacterSettingsController(WindowFeatureController):
 
     @Slot(object, str)
     def _on_mcp_registry_results(self, records, error):
-        if self.context.state._closing:
+        worker = self.sender()
+        if (
+            worker is None
+            or self.context.state._mcp_registry_worker is not worker
+            or self.context.state._closing
+        ):
             return
         self.context.views.mcp_registry_panel.show_results(records, error)
 
