@@ -66,6 +66,21 @@ class FileAgentTests(unittest.TestCase):
         self.assertEqual(target.read_text(encoding="utf-8"), "other process file")
         self.assertEqual(original.read_text(encoding="utf-8"), "our file")
 
+    def test_batch_copy_rejects_case_variant_destination_inside_source(self):
+        source = self.root / "Folder"
+        destination = self.root / "folder" / "nested"
+        with mock.patch.object(self.policy, "check", side_effect=lambda path, **_kw: str(path)), mock.patch(
+            "kira.tools.fileagent.os.path.isdir", return_value=True
+        ), mock.patch("kira.tools.fileagent.os.path.lexists", return_value=False), mock.patch(
+            "kira.tools.fileagent.os.path.normcase", side_effect=lambda path: path.lower()
+        ):
+            with self.assertRaises(ToolError):
+                self.fa.precheck_batch({
+                    "operation": "copy",
+                    "paths": [str(source)],
+                    "destination_folder": str(destination),
+                })
+
     def test_program_installation_root_is_blocked_even_inside_allowed_folder(self):
         program_root = self.root / "Kira"
         program_root.mkdir()
