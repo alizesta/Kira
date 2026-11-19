@@ -70,7 +70,7 @@ class JobStoreTests(unittest.TestCase):
         response = SlowResponse()
         agent = AgentHttp({"url": "https://agent.example", "name": "worker", "timeout": 0.07})
         started = time.monotonic()
-        with mock.patch("kira.mcp.agents.urllib.request.urlopen", return_value=response):
+        with mock.patch("kira.mcp.agents.open_no_redirect", return_value=response):
             with self.assertRaisesRegex(ToolError, "مهلت کل"):
                 agent._call("GET", "/health")
 
@@ -103,7 +103,7 @@ class JobStoreTests(unittest.TestCase):
             time.sleep(0.08)
             return response
 
-        with mock.patch("kira.mcp.agents.urllib.request.urlopen", side_effect=delayed_open):
+        with mock.patch("kira.mcp.agents.open_no_redirect", side_effect=delayed_open):
             with self.assertRaisesRegex(ToolError, "مهلت کل"):
                 agent._call("GET", "/health")
 
@@ -123,7 +123,7 @@ class JobStoreTests(unittest.TestCase):
                 return b'{"ok": true}'
 
         agent = AgentHttp({"url": "https://agent.example", "name": "worker", "timeout": 1})
-        with mock.patch("kira.mcp.agents.urllib.request.urlopen", return_value=Response()):
+        with mock.patch("kira.mcp.agents.open_no_redirect", return_value=Response()):
             self.assertEqual(agent._call("GET", "/health"), {"ok": True})
 
     def test_agent_http_rejects_non_object_and_empty_json_responses(self):
@@ -140,7 +140,7 @@ class JobStoreTests(unittest.TestCase):
         agent = AgentHttp({"url": "https://agent.example", "name": "worker", "timeout": 1})
         for body in (b"[]", b"", b"null"):
             with self.subTest(body=body), mock.patch(
-                "kira.mcp.agents.urllib.request.urlopen", return_value=Response(body)
+                "kira.mcp.agents.open_no_redirect", return_value=Response(body)
             ), self.assertRaisesRegex(ToolError, "شیء JSON"):
                 agent._call("GET", "/health")
 
