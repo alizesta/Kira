@@ -184,10 +184,7 @@ class FeatureControllerRegistryTests(unittest.TestCase):
                         and isinstance(node.value.value, ast.Name)
                         and node.value.value.id == "self"
                         and node.value.attr == "context"
-                        and node.attr not in {
-                            "state", "services", "adapters", "views", "session",
-                            "listener", "is_background_session", "resource",
-                        }
+                        and node.attr not in {"state", "services", "adapters", "views"}
                         and node.attr not in access["extras"]):
                     violations.append(f"{feature}:{node.lineno}:context.{node.attr}")
                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
