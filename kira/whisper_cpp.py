@@ -16,6 +16,7 @@ import threading
 import time
 import wave
 import zipfile
+from functools import lru_cache
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -42,6 +43,7 @@ _server_log_handle = None
 _server_backend = ""
 
 
+@lru_cache(maxsize=1)
 def _data_root() -> Path:
     from .storage import default_data_dir
     return Path(default_data_dir(Path(__file__).resolve().parents[1])).expanduser().resolve()
