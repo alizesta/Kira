@@ -752,6 +752,10 @@ class RuntimeController(WindowFeatureController):
             event.accept()
             QTimer.singleShot(0, QApplication.quit)
             return
+        model_import_worker = self.context.resource("_model_import_worker")
+        if model_import_worker is not None and model_import_worker.isRunning():
+            if getattr(model_import_worker, "cancellable", False):
+                model_import_worker.cancel()
         local_worker = self.context.resource("_local_voice_worker")
         if local_worker is not None and local_worker.isRunning():
             if getattr(local_worker, "cancellable", False):
