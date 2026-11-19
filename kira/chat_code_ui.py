@@ -528,6 +528,10 @@ class CodeChat(QObject):
     @Slot(str, object)
     def _ask_approval(self, command, holder):
         """Runs in the UI thread (queued from the agent thread): one question per dangerous command, default = No."""
+        if self.win._closing or self.auto_stop:
+            holder["ok"] = False
+            holder["event"].set()
+            return
         holder["ok"] = bool(self.confirm("تأیید دستور کیرا",
                                          "کیرا می‌خواهد این را اجرا کند (روی نسخه‌ی کاری، ولی PowerShell می‌تواند بیرون از آن هم اثر بگذارد):\n\n"
                                          + str(command)[:1200] + "\n\nفقط در صورت اطمینان تأیید کن."))
