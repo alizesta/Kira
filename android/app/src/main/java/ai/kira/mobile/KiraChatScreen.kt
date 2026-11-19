@@ -61,7 +61,7 @@ internal fun KiraChatScreen(character:String,onCharacterChange:(String)->Unit) {
                     busy=false
                 }
             } catch(e:Exception) {
-                val history=core.history(who)
+                val history=chat.history(who)
                 handler.post {
                     messages.clear(); messages.addAll(history)
                     status=e.message ?: "ارسال پیام ناموفق بود."
