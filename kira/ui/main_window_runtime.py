@@ -18,7 +18,6 @@ from .main_window_runtime_support import (
     body_ctl,
     brain,
     message_html,
-    mood,
     random,
     save_settings,
     scrub_lines,
@@ -404,13 +403,13 @@ class RuntimeController(WindowFeatureController):
             try:
                 self.feature_controller("session")._sync_mood_character()
                 if role == "user":
-                    mood.on_user_message(content)
+                    self.context.services.mood_service.on_user_message(content)
                     if self.context.state.cur is self.context.state.front:
                         self.apply_mood_to_avatar()
                 elif role == "assistant":
                     meta = self.context.adapters.director.parse_reply(content)
                     if meta is not None:
-                        mood.on_reply(meta.emotions, meta.intensity, text=meta.text)
+                        self.context.services.mood_service.on_reply(meta.emotions, meta.intensity, text=meta.text)
             except Exception:                                     # noqa: BLE001 - mood is a bonus, never block the chat
                 _log.warning("Unable to update conversation memory/emotion state", exc_info=True)
         if persist and ok:
@@ -892,7 +891,7 @@ class RuntimeController(WindowFeatureController):
         if self.context.state.cur is not self.context.state.front:
             return
         try:
-            hint = mood.avatar_hint()
+            hint = self.context.services.mood_service.avatar_hint()
             eid = self.context.adapters.director.library.resolve_name(hint[0]) if hint else None
             if eid:
                 self.context.adapters.director.engine.request([eid], hint[1], 3.0, "event", self.context.adapters.director.clock(), tag="mood")
