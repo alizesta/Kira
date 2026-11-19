@@ -674,7 +674,7 @@ class RuntimeController(WindowFeatureController):
 
     def _running_background_workers(self):
         """Return owned threads and processes that must finish before Qt destroys the window."""
-        workers = []
+        workers = list(self.context.state._provider_workers)
         for session in getattr(self.context.state, "sessions", {}).values():
             workers.extend((
                 getattr(session, "worker", None),
