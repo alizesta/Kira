@@ -66,6 +66,17 @@ class FileAgentTests(unittest.TestCase):
         self.assertEqual(target.read_text(encoding="utf-8"), "other process file")
         self.assertEqual(original.read_text(encoding="utf-8"), "our file")
 
+    def test_single_folder_copy_rejects_case_variant_recursive_destination(self):
+        source = str(self.root / "Folder")
+        target = str(self.root / "folder" / "Folder")
+        with mock.patch.object(self.policy, "check", return_value=source), mock.patch.object(
+            self.fa, "_new_target", return_value=target
+        ), mock.patch("kira.tools.fileagent.os.path.isdir", return_value=True), mock.patch(
+            "kira.tools.fileagent.os.path.normcase", side_effect=lambda path: path.lower()
+        ):
+            with self.assertRaises(ToolError):
+                self.fa._copy({"source": source, "destination_folder": str(self.root / "folder")})
+
     def test_batch_paths_preserve_case_distinct_files_on_case_sensitive_platforms(self):
         if os.path.normcase("A.txt") == os.path.normcase("a.txt"):
             self.skipTest("platform filesystem semantics are case-insensitive")
