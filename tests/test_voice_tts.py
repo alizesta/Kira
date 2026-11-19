@@ -24,6 +24,49 @@ class LocalTtsPlaybackTests(unittest.TestCase):
             speaker.deleteLater()
             app.processEvents()
 
+    def test_live_provider_selector_refreshes_after_connections_addition(self):
+        from PySide6.QtWidgets import QApplication
+        from kira.ui.pages.voice_page import VoicePage
+
+        app = QApplication.instance() or QApplication([])
+        page = VoicePage({"providers": {}}, lambda key: key)
+        try:
+            page.refresh_gemini_providers({
+                "providers": {
+                    "google-main": {
+                        "service": "google",
+                        "label": "Google AI Studio",
+                        "api_key": "AIza-test-key",
+                    }
+                }
+            })
+            self.assertEqual(page.gemini_provider.currentData(), "google-main")
+        finally:
+            page.deleteLater()
+            app.processEvents()
+
+    def test_live_provider_selector_preserves_missing_saved_provider(self):
+        from PySide6.QtWidgets import QApplication
+        from kira.ui.pages.voice_page import VoicePage
+
+        app = QApplication.instance() or QApplication([])
+        page = VoicePage({
+            "gemini_live_provider": "google-removed",
+            "providers": {
+                "google-current": {
+                    "service": "google",
+                    "label": "Current Google",
+                    "api_key": "AIza-test-key",
+                }
+            },
+        }, lambda key: key)
+        try:
+            self.assertEqual(page.gemini_provider.currentData(), "google-removed")
+            self.assertIn("پیدا نشد", page.gemini_provider.currentText())
+        finally:
+            page.deleteLater()
+            app.processEvents()
+
     def test_emotion_profile_updates_active_stream_synthesis(self):
         from kira.voice_prosody import resolve_prosody
 
