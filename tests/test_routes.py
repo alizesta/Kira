@@ -57,6 +57,31 @@ class RouteModelTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             routes.add_route(s, "groq", "  ")
 
+    def test_model_catalog_objects_are_normalized_to_provider_ids(self):
+        model = {"id": "codestral-2508", "name": "Codestral", "context": 256000}
+        route = routes.make_route("mistral-2", "mistral", model)
+        self.assertEqual(route["model"], "codestral-2508")
+        self.assertEqual(routes.normalize_model_id(str(model)), "codestral-2508")
+
+    def test_ensure_routes_repairs_legacy_stringified_model_objects(self):
+        s = legacy_settings()
+        s["routes"] = [
+            {"id": "mistral-object", "provider": "mistral",
+             "model": "{'id': 'codestral-2508', 'name': 'Codestral'}", "enabled": True},
+            {"id": "openrouter-object", "provider": "openrouter",
+             "model": {"id": "aion-labs/aion-2.0", "name": "Aion-2.0"}, "enabled": True},
+        ]
+        routes.ensure_routes(s)
+        by_id = {route["id"]: route["model"] for route in s["routes"]}
+        self.assertEqual(by_id["mistral-object"], "codestral-2508")
+        self.assertEqual(by_id["openrouter-object"], "aion-labs/aion-2.0")
+
+    def test_update_route_normalizes_model_object(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        routes.update_route(s, "mistral", model={"id": "mistral-small-latest", "name": "Mistral Small"})
+        self.assertEqual(routes.find_route(s, "mistral")["model"], "mistral-small-latest")
+
     def test_delete_route_keeps_provider_and_key(self):
         s = legacy_settings()
         routes.ensure_routes(s)

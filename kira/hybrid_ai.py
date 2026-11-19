@@ -212,7 +212,10 @@ class BaseProvider(ChatProvider):
         self.config = config or {}
         if name:
             self.name = name
-        self.model = str(self.config.get("model", "")).strip()
+        self.model = route_model.normalize_model_id(self.config.get("model", ""))
+        base_url = str(self.config.get("base_url") or "").lower()
+        if "generativelanguage.googleapis.com" in base_url and self.model.startswith("models/"):
+            self.model = self.model[7:]
         kind = "local" if self.config.get("local") else "cloud"
         self.timeout = route_model.clamp_timeout(self.config.get("timeout", 18), kind)
         self._resp = None

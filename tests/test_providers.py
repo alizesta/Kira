@@ -80,6 +80,26 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(cm.exception.status_code, 503)
         sleep.assert_not_called()
 
+    def test_provider_extracts_model_id_from_catalog_object(self):
+        provider = hybrid_ai.MistralProvider({
+            "api_key": "mistral-test-key",
+            "model": {"id": "codestral-2508", "name": "Codestral", "context": 256000},
+        })
+        url, headers, payload = provider._prepare(MSGS, SYS, 0.7, False)
+        self.assertEqual(provider.model, "codestral-2508")
+        self.assertEqual(payload["model"], "codestral-2508")
+
+    def test_google_model_resource_prefix_is_removed_before_chat_request(self):
+        provider = hybrid_ai.OpenAICompatibleProvider({
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_key": "google-test-key",
+            "model": "models/gemini-3.8-flash",
+        }, name="custom-google-ai-studio")
+        url, headers, payload = provider._prepare(MSGS, SYS, 0.7, False)
+        self.assertEqual(provider.model, "gemini-3.8-flash")
+        self.assertEqual(payload["model"], "gemini-3.8-flash")
+        self.assertTrue(url.endswith("/chat/completions"))
+
     def test_telemetry_records_provider_model_and_duration_without_chat_content(self):
         r = router("groq")
         r.settings["providers"]["groq"]["model"] = "test-model"

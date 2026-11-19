@@ -1,0 +1,36 @@
+name: Model ID Normalization Tests
+
+on:
+  pull_request:
+    branches: [new-main]
+    paths:
+      - "kira/routes.py"
+      - "kira/hybrid_ai.py"
+      - "tests/test_routes.py"
+      - "tests/test_providers.py"
+      - ".github/workflows/model-id-normalization.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  model-id-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Compile changed modules and tests
+        run: |
+          python -m py_compile kira/routes.py kira/hybrid_ai.py tests/test_routes.py tests/test_providers.py
+      - name: Run route and provider regression tests
+        run: |
+          python -m unittest tests.test_routes tests.test_providers -v
