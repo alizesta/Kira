@@ -246,6 +246,7 @@ def initialize_main_window(
         worker_factory=AttachWorker,
         attachment_api=att,
         max_files=att.MAX_FILES,
+        parent=self.host,
     )
     # Chat receives the independent attachment workflow explicitly; it no
     # longer reaches into the AttachmentsVision feature controller for it.
