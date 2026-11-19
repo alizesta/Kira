@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-20 (Route hygiene: auto model sync, dead/non-free routes, slimmer Route editor)
+
+- Fixed: the model-catalog refresh passed discovery's list of dicts to `reconcile_provider_models`, so valid routes looked stale and were retargeted to another model. New `routes.catalog_entries/catalog_ids/catalog_free` accept every discovery shape.
+- Model catalogs refresh automatically 15 s after start when `model_catalog_refreshed_at` is older than 12 h.
+- Refresh switches off (never deletes) routes whose model is explicitly no longer free (`route_free_only`, default on), removes routes whose model is gone, and retargets to the provider's recommended model when every route of a provider is dead.
+- The router switches a route off after 2 consecutive "model not available" answers (`routes.AUTO_DISABLE_AFTER`) and records the reason in `route_notes`; the last enabled route is never switched off.
+- 404 errors now show the replacement model the provider names (e.g. `gemini-2.5-flash` -> `gemini-3.8-flash`).
+- Route editor: removed up/down/default buttons (drag and drop remains), merged the two Benchmark buttons into one menu, removed the redundant "deselect all" button.
+- Tests: `test_route_hygiene.py`, `test_route_editor_widget.py`, `test_model_replacement_hint.py`, `tests/window_factory.py` (GUI tests build a fully composed window like bootstrap).
+
 ## 2026-11-15 (desktop attachment, project path and neon icon fixes)
 
 - Added a non-destructive Ollama model-storage setup script that copies existing model blobs to the shared A: data folder and sets the user-level `OLLAMA_MODELS` location.

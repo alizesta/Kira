@@ -1,5 +1,12 @@
 # Task Handoff
 
+## Latest task: Route hygiene (2026-11-20)
+
+- Logic lives in `kira/routes.py` (`disable_route`, `disable_non_free_routes`, `reconcile_provider_models(free=, prefer=)`, `catalog_*` helpers) and `HybridRouter._mark_failure` (auto-disable after repeated "model" errors). UI wiring: `ProviderSettingsController._on_model_catalog_refresh` / `auto_refresh_model_catalogs`; startup hook in `main_window_composition.py`.
+- Not verified on Windows: the full GUI suite could not finish in the Linux sandbox (Qt Multimedia has no audio server). Run `python -m unittest discover -s tests -t .` on Windows.
+- Known failing before this task (also on the remote head): `test_api_manager` (unprefixed key, cooldown reset), `test_feature_controller_registry` (`voice_settings:112 root-context-bypass`), tests that still look for `kira/app/bootstrap.py` (real file: `kira/ui/bootstrap.py`).
+- Not done on purpose: new free models are not auto-added as routes (would clutter the list); free detection is exact only for OpenRouter, heuristic for Google.
+
 ## Current architecture/documentation handoff — 2026-11-19
 
 - PR #98 was merged into `new-main` as `0a84bbdc3d47afb1728ff314a056b49e6e56848b`. It corrected the stale Chat event test path and event-publication assertion, and added `tests/test_chat_events.py` to the Chat Session Lifecycle workflow path filter.
