@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.sp
 import java.util.concurrent.Executors
 
 @Composable
-internal fun KiraChatScreen(character:String) {
+internal fun KiraChatScreen(character:String,prefillText:String="",onPrefillConsumed:()->Unit={}) {
     val context=androidx.compose.ui.platform.LocalContext.current
     val chat=remember { KiraContainer(context).chat }
     val executor=remember { Executors.newSingleThreadExecutor() }
@@ -36,6 +36,12 @@ internal fun KiraChatScreen(character:String) {
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("هسته محلی آماده است. کلید API را در Route وارد کن.") }
+    LaunchedEffect(prefillText) {
+        if(prefillText.isNotBlank()) {
+            input=prefillText
+            onPrefillConsumed()
+        }
+    }
 
     DisposableEffect(executor) { onDispose { executor.shutdownNow() } }
     fun load() {
