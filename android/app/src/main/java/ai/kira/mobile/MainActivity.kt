@@ -25,13 +25,42 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ai.kira.mobile.assistant.AiAssistantOverlayService
+import ai.kira.mobile.application.assistant.OverlayDestination
+import ai.kira.mobile.application.assistant.OverlayRouteParser
 import ai.kira.mobile.ui.theme.KiraTheme
 import ai.kira.mobile.ui.theme.KiraPalette
 
+private data class OverlayLaunchRequest(val route: String, val text: String, val sequence: Long)
+
 class MainActivity : ComponentActivity() {
+    private var overlayRequest by mutableStateOf<OverlayLaunchRequest?>(null)
+    private var overlaySequence = 0L
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { KiraApp() }
+        submitOverlayIntent(intent)
+        setContent { KiraApp(overlayRequest) }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        submitOverlayIntent(intent)
+    }
+
+    private fun submitOverlayIntent(intent: Intent?) {
+        val route = intent?.getStringExtra(EXTRA_OPEN_ROUTE) ?: return
+        overlaySequence += 1
+        overlayRequest = OverlayLaunchRequest(
+            route = route,
+            text = intent.getStringExtra(EXTRA_CHAT_TEXT).orEmpty(),
+            sequence = overlaySequence
+        )
+    }
+
+    companion object {
+        const val EXTRA_OPEN_ROUTE = "ai.kira.mobile.extra.OPEN_ROUTE"
+        const val EXTRA_CHAT_TEXT = "ai.kira.mobile.extra.CHAT_TEXT"
     }
 }
 
@@ -42,7 +71,7 @@ private enum class KiraTab(val label:String,val glyph:String) {
 private enum class SettingsPage { HOME, ROUTE, MEMORY, SKILLS, ASSISTANT, VOICE }
 
 @Composable
-private fun KiraApp() {
+private fun KiraApp(routeRequest: OverlayLaunchRequest? = null) {
     val context=LocalContext.current
     var selectedTab by rememberSaveable { mutableStateOf(KiraTab.CHAT) }
     var selectedCharacter by rememberSaveable { mutableStateOf("kira") }
@@ -50,6 +79,25 @@ private fun KiraApp() {
     var settingsPage by rememberSaveable { mutableStateOf(SettingsPage.HOME) }
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     var overlayStarted by remember { mutableStateOf(false) }
+
+    LaunchedEffect(routeRequest?.sequence) {
+        routeRequest?.let { request ->
+            when (OverlayRouteParser.parse(request.route)) {
+                OverlayDestination.CHAT -> selectedTab = KiraTab.CHAT
+                OverlayDestination.SEARCH -> selectedTab = KiraTab.SEARCH
+                OverlayDestination.IMAGE -> selectedTab = KiraTab.IMAGE
+                OverlayDestination.VOICE -> {
+                    selectedTab = KiraTab.SETTINGS
+                    settingsPage = SettingsPage.VOICE
+                }
+            }
+            if (request.text.isNotBlank()) {
+                pendingChatContext = request.text
+                selectedTab = KiraTab.CHAT
+            }
+        }
+    }
+
     BackHandler(enabled=selectedTab==KiraTab.SETTINGS && settingsPage!=SettingsPage.HOME) {
         settingsPage=SettingsPage.HOME
     }
