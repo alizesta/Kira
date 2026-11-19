@@ -80,6 +80,8 @@ class ProviderSettingsController(WindowFeatureController):
         worker = self.sender()
         if self.context.state._model_catalog_worker is worker:
             self.context.state._model_catalog_worker = None
+        if worker is not None:
+            worker.deleteLater()
 
     @Slot(object)
     def _on_model_catalog_refresh(self, result):
@@ -610,6 +612,8 @@ class ProviderSettingsController(WindowFeatureController):
         worker = self.sender()
         if self.context.state._api_worker is worker:
             self.context.state._api_worker = None
+        if worker is not None:
+            worker.deleteLater()
 
     def _api_busy(self):
         worker = getattr(self.context.state, "_api_worker", None)
@@ -1083,13 +1087,26 @@ class ProviderSettingsController(WindowFeatureController):
 
     def test_selected_route(self):
         rid = self._selected_route_id()
-        if not rid:
+        if not rid or self.context.state._closing:
+            return
+        current = self.context.resource("_route_worker")
+        if current is not None and current.isRunning():
             return
         self.context.views.route_test_btn.setEnabled(False)
         self.context.views.route_status.setText("در حال تست…")
-        self.context.state._route_worker = TaskWorker(lambda: self.context.session.client.test_route(rid))
-        self.context.state._route_worker.done.connect(self.on_route_test_done)
-        self.context.state._route_worker.start()
+        worker = TaskWorker(lambda: self.context.session.client.test_route(rid))
+        self.context.state._route_worker = worker
+        worker.done.connect(self.on_route_test_done)
+        worker.finished.connect(self._clear_route_worker)
+        worker.start()
+
+    @Slot()
+    def _clear_route_worker(self):
+        worker = self.sender()
+        if self.context.state._route_worker is worker:
+            self.context.state._route_worker = None
+        if worker is not None:
+            worker.deleteLater()
 
     @Slot(object)
     def on_route_test_done(self, result):
@@ -1132,6 +1149,8 @@ class ProviderSettingsController(WindowFeatureController):
         worker = self.sender()
         if self.context.state._scan_worker is worker:
             self.context.state._scan_worker = None
+        if worker is not None:
+            worker.deleteLater()
 
     @Slot(object)
     def on_scan_done(self, result):
@@ -1174,7 +1193,16 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.state._bench_worker = BenchWorker(self.context.session.client, ids)
         self.context.state._bench_worker.progress.connect(self.on_bench_progress)
         self.context.state._bench_worker.done.connect(self.on_bench_done)
+        self.context.state._bench_worker.finished.connect(self._clear_bench_worker)
         self.context.state._bench_worker.start()
+
+    @Slot()
+    def _clear_bench_worker(self):
+        worker = self.sender()
+        if self.context.state._bench_worker is worker:
+            self.context.state._bench_worker = None
+        if worker is not None:
+            worker.deleteLater()
 
     @Slot(dict)
     def on_bench_progress(self, e):
