@@ -781,7 +781,10 @@ class FileAgent:
             back = self.policy.check(src, must_exist=False)
             if os.path.lexists(back):
                 raise ToolError("جای قبلی الان پر است؛ برنگرداندم.")
-            shutil.move(real, back)
+            if os.path.isdir(real):
+                os.rename(real, back)
+            else:
+                _move_file_no_overwrite(real, back)
         elif op == "append":
             real = self.policy.check(path)
             size_before = item["size_before"]
