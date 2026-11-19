@@ -825,6 +825,11 @@ class VoiceSettingsController(WindowFeatureController):
         i = self.context.views.voice_page.mic_device.findData(current)
         self.context.views.voice_page.mic_device.setCurrentIndex(i if i >= 0 else 0)
 
+    def refresh_gemini_providers(self):
+        """Keep the Live provider selector synchronized with Connections changes."""
+        page = self.context.views.voice_page
+        page.refresh_gemini_providers(self.context.services.settings)
+
     def refresh_voice_caps(self):
         """Describe the selected realtime/local voice policy without implying the Live transport is already active."""
         page = self.context.views.voice_page
