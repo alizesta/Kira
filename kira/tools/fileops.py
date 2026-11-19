@@ -4,9 +4,11 @@ All of them go through PathPolicy: only the allowed folders, never secrets, neve
 """
 from __future__ import annotations
 
+import errno
 import os
 import shutil
 import sys
+import tempfile
 import time
 from datetime import datetime, timedelta
 
@@ -27,6 +29,67 @@ READ_DEFAULT, READ_MAX = 6000, 12000
 def _fa(text: str) -> str:
     """Search-friendly form: Arabic yeh/kaf -> Persian, no ZWNJ, lower case."""
     return (str(text or "").lower().replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ").replace("\u200f", " ")).strip()
+
+
+def _unlink_if_same(path: str, expected_stat) -> None:
+    try:
+        current = os.lstat(path)
+    except FileNotFoundError:
+        return
+    if not os.path.samestat(expected_stat, current):
+        raise OSError("destination was replaced; refusing to remove it")
+    os.unlink(path)
+
+
+def _move_file_no_overwrite(src: str, dst: str) -> None:
+    """Move a regular file without overwriting or leaving partial destination data."""
+    source_stat = os.stat(src)
+    try:
+        os.link(src, dst)
+    except OSError as exc:
+        if exc.errno not in {
+            errno.EXDEV, errno.EPERM, errno.EACCES,
+            getattr(errno, "EOPNOTSUPP", errno.EPERM),
+            getattr(errno, "ENOTSUP", errno.EPERM),
+        }:
+            raise
+    else:
+        target_stat = os.lstat(dst)
+        try:
+            os.unlink(src)
+        except Exception:
+            _unlink_if_same(dst, target_stat)
+            raise
+        return
+
+    fd, temporary = tempfile.mkstemp(prefix=".kira-move-", suffix=".tmp", dir=os.path.dirname(dst))
+    temp_stat = os.fstat(fd)
+    try:
+        with os.fdopen(fd, "wb") as out, open(src, "rb") as source:
+            shutil.copyfileobj(source, out)
+            out.flush()
+            os.fsync(out.fileno())
+        shutil.copystat(src, temporary)
+        current_source = os.stat(src)
+        if ((current_source.st_dev, current_source.st_ino, current_source.st_size, current_source.st_mtime_ns)
+                != (source_stat.st_dev, source_stat.st_ino, source_stat.st_size, source_stat.st_mtime_ns)
+                or os.path.getsize(temporary) != source_stat.st_size):
+            raise OSError("source changed while moving")
+        os.link(temporary, dst)                                    # exclusive destination creation
+        target_stat = os.lstat(dst)
+        os.unlink(temporary)
+        temporary = ""
+        try:
+            os.unlink(src)
+        except Exception:
+            _unlink_if_same(dst, target_stat)
+            raise
+    finally:
+        if temporary:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
 
 
 def _fmt_size(n: int) -> str:
@@ -291,7 +354,7 @@ class FileTools:
     def move_file(self, a: dict) -> str:
         a = self.precheck_move(a)
         target = os.path.join(a["destination_folder"], os.path.basename(a["source"]))
-        shutil.move(a["source"], target)
+        _move_file_no_overwrite(a["source"], target)
         if not os.path.isfile(target) or os.path.exists(a["source"]):
             raise ToolError("انتقال کامل نشد؛ فایل مبدأ و مقصد را بررسی کن.")
         return f"منتقل شد: {a['source']} ← {target}"
