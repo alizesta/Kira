@@ -535,6 +535,28 @@ class InitiativeIntegrationImportTests(unittest.TestCase):
         }.issubset(imported))
 
 
+class InitiativeControllerBoundaryTests(unittest.TestCase):
+    def test_session_controller_delegates_non_visual_policy_to_application_service(self):
+        source = Path(__file__).resolve().parents[1] / "kira" / "ui" / "main_window_session.py"
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        controller = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "SessionController"
+        )
+        method = next(
+            node for node in controller.body
+            if isinstance(node, ast.FunctionDef) and node.name == "maybe_proactive_checkin"
+        )
+        calls = [
+            node.func.attr for node in ast.walk(method)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        ]
+        self.assertIn("run_checkin", calls)
+        self.assertNotIn("persist_message", calls)
+        self.assertNotIn("list_items", calls)
+        self.assertNotIn("select_candidate", calls)
+
+
 class InitiativeMessageTests(unittest.TestCase):
     def test_persian_event_message_uses_the_remembered_quote_not_storage_label(self):
         text = build_checkin_message(
