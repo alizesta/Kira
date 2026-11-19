@@ -95,6 +95,31 @@ class JobStoreTests(unittest.TestCase):
         self.assertTrue(response.closed)
         self.assertFalse(response.read_called)
 
+    def test_agent_http_call_has_queue_import_and_parses_json(self):
+        class Response:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_args):
+                return None
+            def read(self, _size=-1):
+                return b'{"ok": true}'
+
+        agent = AgentHttp({"url": "https://agent.example", "name": "worker", "timeout": 1})
+        with mock.patch("kira.mcp.agents.urllib.request.urlopen", return_value=Response()):
+            self.assertEqual(agent._call("GET", "/health"), {"ok": True})
+
+    def test_agent_job_ids_are_url_encoded_with_parse_quote(self):
+        agent = AgentHttp({"url": "https://agent.example", "name": "worker", "timeout": 1})
+        with mock.patch.object(agent, "_retry_get", side_effect=lambda path: path):
+            self.assertEqual(agent.status("job/a b"), "/status/job%2Fa%20b")
+
+        calls = []
+        with mock.patch.object(agent, "_call", side_effect=lambda method, path, body=None: calls.append((method, path, body))):
+            agent.answer("job/a b", "answer", True)
+            agent.stop("job/a b")
+        self.assertEqual(calls[0][1], "/answer/job%2Fa%20b")
+        self.assertEqual(calls[1][1], "/stop/job%2Fa%20b")
+
     def test_missing_health_ok_field_is_not_treated_as_healthy(self):
         with tempfile.TemporaryDirectory() as temp:
             hub = AgentHub(mock.Mock(), Path(temp), lambda: {})
