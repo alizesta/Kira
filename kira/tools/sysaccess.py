@@ -238,7 +238,10 @@ class AccessManager:
         """'' when no confirmation is needed, else why one is (shown to the user)."""
         if pol.always_confirm:
             return "elevated" if pol.permission == ELEVATED else "protected"
-        if self._tainted and pol.permission in (CONTROL, FILE) and pol.intent_rx is None:
+        if self._tainted and pol.permission in (CONTROL, FILE):
+            # A keyword intent guard is not an argument-level authorization:
+            # external content can steer a broad "create/open" request toward a
+            # different target, so every state-changing action needs confirmation.
             return "tainted"
         return ""
 
