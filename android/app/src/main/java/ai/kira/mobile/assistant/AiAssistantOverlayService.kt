@@ -1,9 +1,15 @@
 package ai.kira.mobile.assistant
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
@@ -23,19 +29,74 @@ class AiAssistantOverlayService : Service() {
     private var panel: LinearLayout? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_STOP -> stopSelf()
-            else -> showBubbleIfAllowed()
+        if (intent?.action == ACTION_STOP) {
+            hideQuickPanel()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
         }
+        if (!Settings.canDrawOverlays(this)) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        startAsForegroundService()
+        showBubbleIfAllowed()
         return START_STICKY
     }
 
-    private fun showBubbleIfAllowed() {
-        if (!Settings.canDrawOverlays(this)) {
-            stopSelf()
-            return
+    private fun startAsForegroundService() {
+        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            notificationManager.createNotificationChannel(
+                NotificationChannel(
+                    NOTIFICATION_CHANNEL,
+                    "Kira floating assistant",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "Keeps the user-enabled Kira floating assistant available."
+                    setShowBadge(false)
+                }
+            )
         }
-        if (bubble != null) return
+
+        val openIntent = PendingIntent.getActivity(
+            this,
+            REQUEST_OPEN,
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val stopIntent = PendingIntent.getService(
+            this,
+            REQUEST_STOP,
+            Intent(this, AiAssistantOverlayService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = Notification.Builder(this, NOTIFICATION_CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Kira is active")
+            .setContentText("Floating assistant is available. Tap to open Kira.")
+            .setContentIntent(openIntent)
+            .setOngoing(true)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .addAction(0, "خاموش کردن", stopIntent)
+            .build()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun showBubbleIfAllowed() {
+        if (!Settings.canDrawOverlays(this) || bubble != null) return
 
         val manager = getSystemService(WINDOW_SERVICE) as WindowManager
         val view = TextView(this).apply {
@@ -157,7 +218,6 @@ class AiAssistantOverlayService : Service() {
             setPadding(0, 0, 0, dp(8))
         }
         root.addView(description)
-
         addActionRow(root, listOf("چت" to ROUTE_CHAT, "جستجو" to ROUTE_SEARCH))
         addActionRow(root, listOf("ساخت تصویر" to ROUTE_IMAGE, "تماس صوتی" to ROUTE_VOICE))
 
@@ -277,6 +337,7 @@ class AiAssistantOverlayService : Service() {
         bubble = null
         bubbleParams = null
         windowManager = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
 
@@ -289,5 +350,9 @@ class AiAssistantOverlayService : Service() {
         const val ROUTE_SEARCH = "search"
         const val ROUTE_IMAGE = "image"
         const val ROUTE_VOICE = "voice"
+        private const val NOTIFICATION_CHANNEL = "kira_overlay"
+        private const val NOTIFICATION_ID = 8301
+        private const val REQUEST_OPEN = 8302
+        private const val REQUEST_STOP = 8303
     }
 }
