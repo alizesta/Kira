@@ -622,7 +622,7 @@ class FileAgent:
                     if os.path.isdir(p):
                         os.rename(p, target)                           # same-device only; never let shutil.move follow nested links
                     else:
-                        shutil.move(p, target)
+                        _move_file_no_overwrite(p, target)
                     if not os.path.exists(target) or os.path.exists(p):
                         raise ToolError("انتقال کامل نشد.")
                     moves.append([p, target])
