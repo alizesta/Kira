@@ -1,5 +1,7 @@
 """Provider settings feature controller."""
 import re
+
+from PySide6.QtCore import Slot
 from .main_window_provider_settings_support import (
     ApiAddPanel,
     BenchWorker,
@@ -412,9 +414,8 @@ class ProviderSettingsController(WindowFeatureController):
             return
         self.api_add_btn.setEnabled(False)
         self.context.views.api_add_status.setText("در حال شناسایی مدل‌های Chat از API…")
-        self.context.state._api_worker = TaskWorker(lambda: self._discover_unified_api_key(key))
-        self.context.state._api_worker.done.connect(lambda result, k=key: self.on_api_detected(result, k))
-        self.context.state._api_worker.start()
+        worker = TaskWorker(lambda: self._discover_unified_api_key(key))
+        self._start_api_worker(worker, lambda result: self.on_api_detected(result, key))
 
     def on_api_detected(self, result, key, account=""):
         self.api_add_btn.setEnabled(True)
@@ -427,9 +428,9 @@ class ProviderSettingsController(WindowFeatureController):
             if accepted and account_id.strip():
                 self.api_add_btn.setEnabled(False)
                 self.context.views.api_add_status.setText("در حال تکمیل شناسایی Cloudflare…")
-                self.context.state._api_worker = TaskWorker(lambda: self._discover_unified_api_key(key, account_id.strip()))
-                self.context.state._api_worker.done.connect(lambda res, k=key, a=account_id.strip(): self.on_api_detected(res, k, a))
-                self.context.state._api_worker.start()
+                account = account_id.strip()
+                worker = TaskWorker(lambda: self._discover_unified_api_key(key, account))
+                self._start_api_worker(worker, lambda res: self.on_api_detected(res, key, account))
             return
 
         chat_added = ""
@@ -577,6 +578,27 @@ class ProviderSettingsController(WindowFeatureController):
         item = self.api_table.item(row, 0) if row >= 0 else None
         return item.data(Qt.UserRole) if item else None
 
+    def _start_api_worker(self, worker, callback):
+        """Deliver TaskWorker results through a QObject slot on the GUI thread."""
+        self.context.state._api_worker = worker
+        worker._ui_done_callback = callback
+        worker.done.connect(self._relay_api_worker_done)
+        worker.finished.connect(self._clear_api_worker)
+        worker.start()
+
+    @Slot(object)
+    def _relay_api_worker_done(self, result):
+        worker = self.sender()
+        callback = getattr(worker, "_ui_done_callback", None) if worker is not None else None
+        if callback is not None and not self.context.state._closing:
+            callback(result)
+
+    @Slot()
+    def _clear_api_worker(self):
+        worker = self.sender()
+        if self.context.state._api_worker is worker:
+            self.context.state._api_worker = None
+
     def _api_busy(self):
         worker = getattr(self.context.state, "_api_worker", None)
         if worker is not None and worker.isRunning():
@@ -677,9 +699,8 @@ class ProviderSettingsController(WindowFeatureController):
             return
         cfg = dict(self.context.services.settings["providers"][pid])
         self.api_status.setText("در حال اعتبارسنجی و دریافت دوباره‌ی مدل‌ها…")
-        self.context.state._api_worker = TaskWorker(lambda: self.context.services.provider_application_service.rediscover(pid, cfg))
-        self.context.state._api_worker.done.connect(lambda result, p=pid, q=quiet: self.on_api_refreshed(p, result, q))
-        self.context.state._api_worker.start()
+        worker = TaskWorker(lambda: self.context.services.provider_application_service.rediscover(pid, cfg))
+        self._start_api_worker(worker, lambda result: self.on_api_refreshed(pid, result, quiet))
 
     def on_api_refreshed(self, pid, result, quiet=False):
         if pid not in self.context.services.settings.get("providers", {}):
@@ -746,9 +767,10 @@ class ProviderSettingsController(WindowFeatureController):
         if fields["account_id"]:
             test_cfg["account_id"] = fields["account_id"].strip()
         self.api_status.setText("در حال اعتبارسنجی کلید جدید…")
-        self.context.state._api_worker = TaskWorker(lambda: self.context.services.provider_application_service.rediscover(pid, test_cfg))
-        self.context.state._api_worker.done.connect(lambda result, p=pid, f=fields, k=new_key: self.on_api_edit_validated(p, f, k, result))
-        self.context.state._api_worker.start()
+        worker = TaskWorker(lambda: self.context.services.provider_application_service.rediscover(pid, test_cfg))
+        self._start_api_worker(
+            worker, lambda result: self.on_api_edit_validated(pid, fields, new_key, result)
+        )
 
     def on_api_edit_validated(self, pid, fields, new_key, result):
         ok, det = result
