@@ -4,6 +4,7 @@ from tempfile import TemporaryDirectory
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
+import re
 
 from kira.tools.agent import Pending, ToolAgent, ToolPlan
 from kira.tools.sysaccess import AccessManager
@@ -90,6 +91,29 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
             self.assertTrue(self.access.tainted)
             self.assertTrue(self.access.consume_grant("write_file", {"path": "safe.txt"}))
             self.assertFalse(self.access.consume_grant("write_file", {"path": "safe.txt"}))
+
+    def test_tainted_external_content_requires_confirmation_even_with_intent_regex(self):
+        action_tool = SimpleNamespace(
+            name="create_file",
+            level=2,
+            categories=("files",),
+            permission=0,
+            domain="",
+            backend="",
+            intent_rx=re.compile(r"create"),
+            intent_alt=None,
+            verifies_result=False,
+        )
+        policy = self.access.policy_for(action_tool)
+
+        with self.access.use_session("kira"):
+            self.access.begin_turn("create a report")
+            self.access._tainted = True
+            self.assertEqual(self.access.confirmation_reason(action_tool, policy), "tainted")
+
+        with self.access.use_session("ren"):
+            self.access.begin_turn("create a report")
+            self.assertEqual(self.access.confirmation_reason(action_tool, policy), "")
 
     def test_external_tool_error_also_taints_the_current_turn(self):
         external_tool = SimpleNamespace(
