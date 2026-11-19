@@ -147,6 +147,9 @@ class McpHub:
 
     def _disable(self) -> None:
         """Disconnect every server and unregister its tools when MCP mode is switched off."""
+        agents = getattr(self, "agents", None)
+        if agents is not None:
+            agents.shutdown()
         with self._lock:
             names = tuple(self._clients)
         for name in names:
@@ -353,6 +356,9 @@ class McpHub:
 
     def shutdown(self) -> None:
         self._shutdown.set()
+        agents = getattr(self, "agents", None)
+        if agents is not None:
+            agents.shutdown()
         with self._lock:
             clients = tuple(self._clients.items())
             names = set(self._clients) | set(self._cfg.get("servers", {}))
