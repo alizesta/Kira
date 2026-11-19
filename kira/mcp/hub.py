@@ -86,7 +86,7 @@ def _params_from_schema(schema) -> tuple:
         raw_enum = spec.get("enum")
         enum = ()
         if raw_enum is not None:
-            if not isinstance(raw_enum, list) or len(raw_enum) > 100:
+            if not isinstance(raw_enum, list) or not raw_enum or len(raw_enum) > 100:
                 raise ValueError(f"MCP tool inputSchema has an invalid enum for {key}")
             def enum_matches(value):
                 if ptype == "string":
