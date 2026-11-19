@@ -177,6 +177,11 @@ class VoiceApplicationServiceTests(unittest.TestCase):
         )
         self.assertEqual((normal.action, normal.text), ("submit", "سلام"))
 
+
+    def test_emotion_metadata_is_forwarded_to_optional_speaker_capability(self):
+        self.service.set_emotion(["sad"], 82)
+        self.assertEqual(self.speaker.emotions, [(["sad"], 82)])
+
     def test_voice_service_implements_speech_and_recording_ports(self):
         self.service.start_recording()
         listener = self.service.listener
