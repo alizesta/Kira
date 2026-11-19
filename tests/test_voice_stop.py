@@ -176,10 +176,10 @@ class VoiceNeverBlocksChatTests(unittest.TestCase):
             p.start()
         memory.init_db()
         memory.clear_memory()
-        from kira.ui.main_window import MainWindow
+        from tests.window_factory import make_window
         from kira.theme import STYLE
         APP.setStyleSheet(STYLE)
-        self.win = MainWindow()
+        self.win = make_window()
         self.win.show()
         APP.processEvents()
         w = self.win

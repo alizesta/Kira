@@ -71,10 +71,10 @@ class RouteGuiTests(unittest.TestCase):
             p.start()
         memory.init_db()
         memory.clear_memory()
-        from kira.ui.main_window import MainWindow
+        from tests.window_factory import make_window
         from kira.theme import STYLE
         APP.setStyleSheet(STYLE)
-        self.win = MainWindow()
+        self.win = make_window()
         self.win.show()
         self.win.set_voice_enabled(False)
         APP.processEvents()
@@ -355,8 +355,8 @@ class RouteGuiTests(unittest.TestCase):
         APP.processEvents()
         self.assertEqual([r["id"] for r in route_model.get_routes(w.settings)][0], "mistral")
         self.assertEqual(config.load_settings()["provider_order"][0], "mistral")
-        from kira.ui.main_window import MainWindow
-        w2 = MainWindow()
+        from tests.window_factory import make_window
+        w2 = make_window()
         self.assertEqual(w2.route_list.item(0).data(Qt.UserRole), "mistral")
         self.assertTrue(w2.route_list.item(0).text().startswith("1."))
         w2.companion.close()

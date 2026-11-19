@@ -305,10 +305,10 @@ class WindowPersistenceTests(IsolatedDb):
         self.win = self.open_window()
 
     def open_window(self):
-        from kira.ui.main_window import MainWindow
+        from tests.window_factory import make_window
         from kira.theme import STYLE
         APP.setStyleSheet(STYLE)
-        w = MainWindow()
+        w = make_window()
         w.show()
         w.set_voice_enabled(False)
         helpers.enable(w.settings, "groq")

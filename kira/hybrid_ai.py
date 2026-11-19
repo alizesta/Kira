@@ -8,6 +8,7 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import json
+import re
 import threading
 import time
 import uuid
@@ -122,6 +123,22 @@ def _api_message(response):
     except ValueError:
         pass
     return (response.text or "")[:300].replace("\n", " ").strip()
+
+
+_REPLACEMENT_MODEL = re.compile(r"(?:use|switch to|migrate to)\s+models/([A-Za-z0-9._\-]+)", re.IGNORECASE)
+
+
+def _suggested_model(response, current=""):
+    """Replacement model named by the provider itself in a 404 body ('... please use models/gemini-3.8-flash ...').
+
+    Reads the whole body: _api_message() is truncated and the suggestion sits at the end of Google's sentence."""
+    try:
+        text = response.text or ""
+    except Exception:
+        return ""
+    found = _REPLACEMENT_MODEL.search(text)
+    suggestion = found.group(1) if found else ""
+    return suggestion if suggestion and suggestion != _bare_model_id(current) else ""
 
 
 class ThinkFilter:
@@ -285,7 +302,10 @@ class BaseProvider(ChatProvider):
             if code == 404 or "model" in low and ("not found" in low or "does not exist" in low or "not_found" in low
                                                     or "decommissioned" in low or "no longer supported" in low
                                                     or "invalid model" in low or "unknown model" in low):
-                raise self._fail(f"شناسه مدل «{self.model}» معتبر نیست یا حساب به آن دسترسی ندارد ({code}). {detail}",
+                suggestion = _suggested_model(response, self.model)
+                hint = (f" — سرویس خودش مدل «{suggestion}» را پیشنهاد می‌دهد؛ Model ID همین Route را به آن تغییر بده."
+                        if suggestion else "")
+                raise self._fail(f"شناسه مدل «{self.model}» معتبر نیست یا حساب به آن دسترسی ندارد ({code}). {detail}{hint}",
                                  False, code, "model")
             hint = (" — تصویر ضمیمه شده بود؛ شاید این مدل بینایی (Vision) ندارد. یک مدل بینایی مثل Gemini انتخاب کن."
                     if getattr(self, "_sent_images", False) and code in (400, 415, 422) else "")

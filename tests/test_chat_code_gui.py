@@ -57,10 +57,10 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.proj = Path(self.tmp.name)
         (self.proj / "app.py").write_text("def save():\n    return 1\n", encoding="utf-8")
-        from kira.ui.main_window import MainWindow
+        from tests.window_factory import make_window
         from kira.theme import STYLE
         APP.setStyleSheet(STYLE)
-        self.win = MainWindow()
+        self.win = make_window()
         self.win.show()
         APP.processEvents()
         self.cc = self.win.code_chat

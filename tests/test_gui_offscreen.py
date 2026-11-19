@@ -53,10 +53,10 @@ class GuiTests(unittest.TestCase):
             p.start()
         memory.init_db()
         memory.clear_memory()
-        from kira.ui.main_window import MainWindow
+        from tests.window_factory import make_window
         from kira.theme import STYLE
         APP.setStyleSheet(STYLE)
-        self.win = MainWindow()
+        self.win = make_window()
         self.win.show()
         APP.processEvents()
 
@@ -208,8 +208,8 @@ class GuiTests(unittest.TestCase):
         w.route_list.model().moveRow(QModelIndex(), ids().index("groq"), QModelIndex(), 1)            # then groq to second place
         APP.processEvents()
         w.apply_settings()
-        from kira.ui.main_window import MainWindow
-        w2 = MainWindow()
+        from tests.window_factory import make_window
+        w2 = make_window()
         self.assertEqual(w2.settings["providers"]["cloudflare"]["account_id"], "acc999")
         self.assertEqual(w2.settings["provider_order"][:2], ["cloudflare", "groq"])
         self.assertEqual(w2.settings["provider_order"][-1], "ollama")
@@ -342,8 +342,8 @@ class GuiTests(unittest.TestCase):
         w = self.win
         memory.add_message("user", "اسم من علی است")
         memory.add_message("assistant", "[happy]\nسلام علی، خوشحالم!")
-        from kira.ui.main_window import MainWindow
-        w2 = MainWindow()
+        from tests.window_factory import make_window
+        w2 = make_window()
         text = w2.chat.toPlainText()
         self.assertIn("اسم من علی است", text)
         self.assertIn("سلام علی، خوشحالم!", text)
@@ -353,7 +353,7 @@ class GuiTests(unittest.TestCase):
         w2.companion.close()
         w2.close()
         memory.clear_memory()
-        w3 = MainWindow()
+        w3 = make_window()
         self.assertIn(w3.t("greeting"), w3.chat.toPlainText())
         w3.companion.close()
         w3.close()
