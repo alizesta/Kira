@@ -162,6 +162,32 @@ class McpHubLifecycleTests(unittest.TestCase):
         self.assertFalse(connect_thread.is_alive())
         self.assertNotIn("slow", self.hub._clients)
 
+    def test_refresh_request_during_disable_is_not_lost(self):
+        settings = {"mcp_mode": "off"}
+        disable_started = threading.Event()
+        release_disable = threading.Event()
+        refresh_ran = threading.Event()
+        self.hub.settings_fn = lambda: settings
+
+        def blocking_disable():
+            disable_started.set()
+            release_disable.wait(timeout=2)
+
+        with mock.patch.object(self.hub, "_disable", side_effect=blocking_disable), mock.patch.object(
+            self.hub, "_refresh", side_effect=lambda: refresh_ran.set()
+        ):
+            self.hub.refresh_async()
+            self.assertTrue(disable_started.wait(timeout=1))
+            settings["mcp_mode"] = "auto"
+            self.hub.refresh_async()
+            release_disable.set()
+            worker = self.hub._thread
+            worker.join(timeout=2)
+
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(refresh_ran.is_set())
+        self.assertIsNone(self.hub._thread)
+
     def test_disabling_mcp_disconnects_clients_and_unregisters_tools(self):
         class Client:
             closed = False
