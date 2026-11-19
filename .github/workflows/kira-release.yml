@@ -62,6 +62,7 @@ on:
       - "tests/test_runtime_settings_application.py"
       - "tests/test_character_profile_service.py"
       - "tests/test_voice_application.py"
+      - "tests/test_mood_service.py"
       - "tests/test_web_search_application.py"
       - "tests/test_persian_quality.py"
       - "scripts/build_release.py"
@@ -146,6 +147,7 @@ jobs:
           tests.test_runtime_settings_application
           tests.test_character_profile_service
           tests.test_voice_application
+          tests.test_mood_service
           tests.test_application_policy_wiring
           tests.test_service_module
           tests.test_tool_agent_session_isolation
@@ -231,6 +233,7 @@ jobs:
           tests.test_runtime_settings_application
           tests.test_character_profile_service
           tests.test_voice_application
+          tests.test_mood_service
           tests.test_application_policy_wiring
           tests.test_service_module
           tests.test_tool_agent_session_isolation

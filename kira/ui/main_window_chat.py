@@ -14,7 +14,6 @@ from .main_window_chat_support import (
     match_safe_action,
     message_html,
     modes,
-    mood,
     parse_tool_task_control,
     run_safe_action,
     save_settings,
@@ -480,7 +479,11 @@ class ChatController(WindowFeatureController):
             memory_block = ""
         try:                                                      # her persisted mood + how he seems right now (same text for every provider)
             mood_query = latest_user_text(history)
-            mood_block = mood.build_block(mode.name if mode else modes.CHAT, query=mood_query)
+            mood_block = self.context.services.mood_service.build_block(
+                mode.name if mode else modes.CHAT,
+                query=mood_query,
+                character_id=self.context.state.cur.cid,
+            )
         except Exception:                                         # noqa: BLE001
             mood_block = ""
 

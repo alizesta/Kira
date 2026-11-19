@@ -159,7 +159,8 @@ The Chat core modules should depend on Python data contracts and narrow Protocol
 | Character profiles | `kira/services/character_service.py`, `kira/characters`, CharactersPage | CharacterProfileService owns profile create/update/delete, preference/resource normalization and personality mutation; UI owns forms and Qt page coordination. |
 | Memory | `kira/services`, `persona_memory.py`, `evidence_memory.py`, `memory.py` | Memory service is registered/injected; legacy sources/adapters remain. |
 | Voice | `kira/core/interfaces/voice_service.py`, `kira/app/voice_application.py`, `voice_composition.py`, `voice.py`, `listener.py`, `local_voice.py` | VoiceApplicationService implements VoiceService and owns microphone lifecycle, speech/stream/file delegation and wake/sleep/stop transcript policy; Speaker/Listener remain injected adapters. |
-| Avatar/emotion | `face.py`, `vrm_avatar.py`, `companion.py`, `emotion/*`, `body.py`, `rig.py` | Capability code exists; no independent lifecycle-managed feature module confirmed. |
+| Mood / emotional state | `kira/core/interfaces/mood_service.py`, `kira/services/mood_service.py`, legacy backend `kira/mood.py` | The lifecycle-managed `MoodStateService` exposes the complete character-scoped Mood API. It is the only production adapter allowed to import the legacy backend; UI consumers resolve it through `WindowPresentationContext.services`. |
+| Avatar presentation | `face.py`, `vrm_avatar.py`, `companion.py`, `emotion/*`, `body.py`, `rig.py` | Avatar rendering and animation remain presentation capabilities; they consume mood/avatar hints and do not own persistent emotional state. |
 | Tools/coding agent | `kira/app/coding_agent_application.py`, `tools/*`, `auto_agent.py`, `code_agent.py`, `chat_code.py` | CodingAgentApplicationService owns eligible handoff, attachment bypass and stop delegation; the current execution engine and UI worker adapters remain separate. |
 | Web Research | `kira/app/web_search.py`, `webintel/*`, `websearch.py`, discovery adapters | WebSearchApplicationService owns credential/query/request/evidence policy; SearchWorker and result presentation remain UI adapters. |
 | Vision | `kira/app/vision_application.py`, `vision_pipeline.py`, `vision_ocr.py` | VisionApplicationService owns capture eligibility, cadence/frame gating and duplicate-result suppression; Qt capture/timers/workers remain UI adapters. |
@@ -334,3 +335,14 @@ Source-level contracts are documented and regression tests were updated, but Pyt
 | Session presentation | `kira/ui/main_window_session.py` — desktop eligibility gates, settings save and rendering of a successfully persisted check-in | WindowPresentationContext, injected Initiative service and UI/voice adapters | Memory selection, history recovery, duplicate policy or direct imports of `kira.mood` / `kira.persona_memory` |
 
 The application service writes the assistant message before marking the Mood initiative timestamp. A failed durable write returns no result and does not advance the Mood marker or settings history. The Initiative service is window-scoped because it uses the corresponding ChatApplicationService instance; Memory and Mood remain application-wide services.
+
+
+### Mood — character-scoped emotional state boundary
+
+| Element | Owner / contract | Allowed dependencies | Must not own |
+|---|---|---|---|
+| Mood contract | `kira/core/interfaces/mood_service.py` — complete `MoodService` Protocol for snapshots, prompt contribution, user/reply/event observation, avatar hints and character-scoped state operations | Core typing contracts and immutable input values | Legacy module imports, Qt, UI/controller references or persistence details |
+| Mood application adapter | `kira/services/mood_service.py` — `MoodStateService` | The legacy pure-Python Mood backend; injected by the feature graph | Qt, widgets, UI state or duplicated emotion/behavior rules |
+| Mood backend | `kira/mood.py` — compatibility implementation for emotion scoring, character runtime context, persistence and prompt construction | EmotionalRuntime and character-domain helpers | Direct imports from feature controllers or other production consumers |
+
+`MoodStateService` is the sole production import boundary for `kira.mood`. Chat, Runtime and Character/Session UI controllers receive the service through the window presentation context. Every stateful facade operation accepts an optional character ID and executes inside that character's ContextVar scope when supplied; background Session observations, prompts and avatar hints therefore cannot read or mutate the visible character's Mood state. The service forwards the existing backend behavior without changing its persistence format, timestamp handling or avatar output. `tests/test_mood_service.py` guards API forwarding, character scoping and the repository-wide prohibition on direct production imports of the legacy module.

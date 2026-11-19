@@ -32,7 +32,6 @@ from .main_window_character_settings_support import (
     build_style,
     json,
     make_icon,
-    mood,
     re,
     save_settings,
     set_glow_intensity,
