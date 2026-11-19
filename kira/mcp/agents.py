@@ -302,6 +302,13 @@ class AgentHub:
                 self._poller = threading.Thread(target=self._poll_loop, daemon=True, name="kira-agent-poller")
                 self._poller.start()
 
+    def shutdown(self) -> None:
+        """Stop background polling; a later explicit request may start it again."""
+        self._stop.set()
+        poller = self._poller
+        if poller is not None and poller.is_alive() and poller is not threading.current_thread():
+            poller.join(timeout=1.0)
+
     def _poll_loop(self):
         while not self._stop.wait(POLL_EVERY):
             jobs = self.store.open_jobs()
