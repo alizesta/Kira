@@ -71,6 +71,7 @@ class DetectionTests(unittest.TestCase):
         self.assertEqual(net.hosts(), {"generativelanguage.googleapis.com"})
         self.assertEqual(am.candidate_services(MISTRAL_KEY), ["mistral", "cloudflare"])
         self.assertEqual(am.candidate_services("sk-or-v1-" + "x" * 32), ["openrouter"])
+        self.assertEqual(am.candidate_services("AQ." + "x" * 50), ["google"])
 
     def test_groq_models_carry_only_real_data_and_rate_headers(self):
         det, _ = run_detect({"api.groq.com": groq_models()}, GROQ_KEY)
