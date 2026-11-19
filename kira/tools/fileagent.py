@@ -281,6 +281,7 @@ class FileAgent:
             raise ToolError("متن خالی است یا بیش از ۲۰۰ کیلوبایت است.")
         before_stat = os.stat(path)
         before = before_stat.st_size
+        original_digest = hashlib.sha256()
         if before:
             with open(path, "rb") as fh:
                 current_stat = os.fstat(fh.fileno())
@@ -288,8 +289,11 @@ class FileAgent:
                     before_stat.st_dev, before_stat.st_ino, before_stat.st_size, before_stat.st_mtime_ns
                 ):
                     raise ToolError("فایل هم‌زمان تغییر کرده؛ append انجام نشد.")
-                fh.seek(-1, os.SEEK_END)
-                if fh.read(1) not in (b"\n", b"\r"):
+                last_byte = None
+                for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                    original_digest.update(chunk)
+                    last_byte = chunk[-1]
+                if last_byte not in (b"\n", b"\r"):
                     data = b"\n" + data                                   # a new paragraph starts on its own line (tool arguments are stripped)
         try:
             with open(path, "ab") as fh:
@@ -314,6 +318,16 @@ class FileAgent:
                         or not before <= current_stat.st_size <= before + len(data)):
                     raise OSError("file identity or size changed; safe rollback is not possible")
                 with open(path, "r+b") as fh:
+                    prefix_digest = hashlib.sha256()
+                    remaining = before
+                    while remaining:
+                        chunk = fh.read(min(1024 * 1024, remaining))
+                        if not chunk:
+                            raise OSError("original file prefix is incomplete")
+                        prefix_digest.update(chunk)
+                        remaining -= len(chunk)
+                    if prefix_digest.digest() != original_digest.digest():
+                        raise OSError("original file content changed; safe rollback is not possible")
                     fh.truncate(before)
                     fh.flush()
                     os.fsync(fh.fileno())
