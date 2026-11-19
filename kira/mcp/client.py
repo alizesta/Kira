@@ -157,6 +157,13 @@ class StdioClient(_Base):
                     slot["event"].set()
 
     def _on_message(self, msg: dict):
+        if msg.get("jsonrpc") != "2.0":
+            with self._plock:
+                slot = self._pending.get(msg.get("id"))
+            if slot is not None:
+                slot["error"] = {"message": "invalid JSON-RPC version"}
+                slot["event"].set()
+            return
         if "method" in msg:                                               # a request or notification FROM the server
             if "id" in msg:
                 if msg["method"] == "ping":
@@ -167,10 +174,13 @@ class StdioClient(_Base):
         with self._plock:
             slot = self._pending.get(msg.get("id"))
         if slot is not None:
-            if "error" in msg:
+            has_error, has_result = "error" in msg, "result" in msg
+            if has_error == has_result:
+                slot["error"] = {"message": "malformed JSON-RPC response"}
+            elif has_error:
                 slot["error"] = msg["error"] if isinstance(msg["error"], dict) else {"message": str(msg["error"])}
             else:
-                slot["result"] = msg.get("result")
+                slot["result"] = msg["result"]
             slot["event"].set()
 
     def _send(self, obj: dict):
@@ -221,6 +231,10 @@ class StdioClient(_Base):
             try:
                 proc.kill()
             except OSError:
+                pass
+            try:
+                proc.wait(timeout=3)
+            except (OSError, subprocess.TimeoutExpired):
                 pass
         for pipe in (proc.stdout, proc.stderr):                          # release the handles (the reader threads end on EOF)
             try:
@@ -354,12 +368,14 @@ class HttpClient(_Base):
     def request(self, method, params, timeout):
         rid = self._next_id()
         msg = self._post({"jsonrpc": "2.0", "id": rid, "method": method, "params": params}, timeout, rid)
-        if not isinstance(msg, dict):
-            raise McpError("invalid answer")
+        if not isinstance(msg, dict) or msg.get("jsonrpc") != "2.0" or msg.get("id") != rid:
+            raise McpError("invalid JSON-RPC response envelope")
         if "error" in msg:
             err = msg["error"]
             raise McpError(str(err.get("message", "error") if isinstance(err, dict) else err)[:300])
-        return msg.get("result")
+        if "result" not in msg:
+            raise McpError("JSON-RPC response has neither result nor error")
+        return msg["result"]
 
     def notify(self, method, params):
         try:
