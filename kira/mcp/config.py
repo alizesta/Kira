@@ -93,11 +93,17 @@ def load(data_dir) -> dict:
             key = safe_name(name)
             cfg = _server(key, raw) if key else None
             if cfg:
+                if key in out["servers"]:
+                    out["error"] = (out["error"] + "; " if out["error"] else "") + f"duplicate server name after normalization: {key}"
+                    continue
                 out["servers"][key] = cfg
         for name, raw in list((data.get("agents") or {}).items())[:MAX_AGENTS]:
             key = safe_name(name)
             cfg = _agent(key, raw) if key else None
             if cfg:
+                if key in out["agents"]:
+                    out["error"] = (out["error"] + "; " if out["error"] else "") + f"duplicate agent name after normalization: {key}"
+                    continue
                 out["agents"][key] = cfg
     except (OSError, ValueError, AttributeError) as exc:
         out["error"] = f"{FILE_NAME}: {exc}"
