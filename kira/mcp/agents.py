@@ -178,7 +178,7 @@ class JobStore:
                     and job.get("state") in ("progress", "question", "approval", "result", "error", "stopped")
                     and isinstance(created, (int, float))
                     and not isinstance(created, bool)
-                    and math.isfinite(created)
+                    and (isinstance(created, int) or math.isfinite(created))
                 )
                 if valid:
                     self.jobs[key] = job
