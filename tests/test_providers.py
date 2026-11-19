@@ -5,7 +5,7 @@ from unittest import mock
 import requests
 
 from tests import helpers
-from tests.helpers import Resp, CANARY, ok_openai, ok_cloudflare, ok_ollama
+from tests.helpers import Resp, StreamResp, CANARY, ok_openai, ok_cloudflare, ok_ollama
 from kira import hybrid_ai
 from kira.hybrid_ai import HybridRouter, ProviderError, normalize_messages, probe_provider
 
@@ -38,6 +38,48 @@ def dispatch(table):
 
 
 class ProviderTests(unittest.TestCase):
+    def test_google_stream_retries_transient_503_before_route_failover(self):
+        provider = hybrid_ai.OpenAICompatibleProvider({
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_key": "google-test-key",
+            "model": "gemini-3.8-flash",
+            "timeout": 60,
+        }, name="custom-gemini")
+        success_response = StreamResp([])
+        responses = [Resp(503, text="overloaded"), Resp(503, text="overloaded"), success_response]
+        calls = []
+
+        def post(url, **kwargs):
+            calls.append((url, kwargs))
+            return responses.pop(0)
+
+        with mock.patch("requests.post", side_effect=post), mock.patch("kira.hybrid_ai.time.sleep") as sleep:
+            response = provider._open_stream(
+                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                {"Authorization": "Bearer google-test-key"}, {"model": "gemini-3.8-flash"},
+            )
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(all(call[1]["stream"] is True for call in calls))
+        self.assertEqual(sleep.call_count, 2)
+        self.assertIs(response, success_response)
+
+    def test_non_google_provider_does_not_retry_503(self):
+        provider = hybrid_ai.OpenAICompatibleProvider({
+            "base_url": "https://example.com/v1", "api_key": "custom-test-key", "model": "test-model",
+        }, name="custom")
+        calls = []
+
+        def post(url, **kwargs):
+            calls.append(url)
+            return Resp(503, text="unavailable")
+
+        with mock.patch("requests.post", side_effect=post), mock.patch("kira.hybrid_ai.time.sleep") as sleep:
+            with self.assertRaises(ProviderError) as cm:
+                provider._post_json("https://example.com/v1/chat/completions", {}, {"model": "test-model"})
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(cm.exception.status_code, 503)
+        sleep.assert_not_called()
+
     def test_telemetry_records_provider_model_and_duration_without_chat_content(self):
         r = router("groq")
         r.settings["providers"]["groq"]["model"] = "test-model"
