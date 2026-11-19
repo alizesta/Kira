@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import queue
 import re
@@ -167,15 +168,17 @@ class JobStore:
                 raise ValueError("job store must contain an object with a jobs mapping")
             malformed = False
             for key, job in data["jobs"].items():
+                created = job.get("created") if isinstance(job, dict) else None
                 valid = (
-                    isinstance(key, str)
+                    isinstance(key, str) and bool(key)
                     and isinstance(job, dict)
                     and job.get("id") == key
-                    and isinstance(job.get("agent"), str)
-                    and isinstance(job.get("remote_id"), str)
-                    and isinstance(job.get("state"), str)
-                    and isinstance(job.get("created"), (int, float))
-                    and not isinstance(job.get("created"), bool)
+                    and isinstance(job.get("agent"), str) and bool(job.get("agent"))
+                    and isinstance(job.get("remote_id"), str) and bool(job.get("remote_id"))
+                    and job.get("state") in ("progress", "question", "approval", "result", "error", "stopped")
+                    and isinstance(created, (int, float))
+                    and not isinstance(created, bool)
+                    and math.isfinite(created)
                 )
                 if valid:
                     self.jobs[key] = job
