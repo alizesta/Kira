@@ -86,6 +86,7 @@ class MoodStateServiceTests(unittest.TestCase):
                 elif isinstance(node, ast.ImportFrom):
                     imports_legacy_module = (
                         node.module == "kira.mood"
+                        or (node.module == "kira" and any(alias.name == "mood" for alias in node.names))
                         or (node.module is None and node.level > 0 and any(alias.name == "mood" for alias in node.names))
                         or (node.level > 0 and node.module == "mood")
                     )
