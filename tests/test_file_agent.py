@@ -346,6 +346,29 @@ class FileAgentTests(unittest.TestCase):
 
         self.assertEqual(target.read_text(encoding="utf-8"), "current")
 
+    def test_undo_write_removes_file_created_by_write(self):
+        target = self.root / "write-created.txt"
+        result = self.sensitive("write_file", {"path": str(target), "content": "created"})
+        self.assertEqual(result.status, OK, result.text)
+        self.assertTrue(target.exists())
+
+        undo = self.sensitive("undo_file_operation", {})
+        self.assertEqual(undo.status, OK, undo.text)
+        self.assertFalse(target.exists())
+
+    def test_undo_write_refuses_to_discard_later_same_size_edits(self):
+        target = self.root / "write-edited.txt"
+        target.write_text("original", encoding="utf-8")
+        result = self.sensitive("write_file", {"path": str(target), "content": "replaced"})
+        self.assertEqual(result.status, OK, result.text)
+        target.write_text("modified", encoding="utf-8")
+        modified = target.read_text(encoding="utf-8")
+
+        undo = self.sensitive("undo_file_operation", {})
+        self.assertEqual(undo.status, ERROR)
+        self.assertEqual(target.read_text(encoding="utf-8"), modified)
+        self.assertIn("محتوای فایل بعد از write تغییر کرده", undo.text)
+
     def test_undo_write_restores_backup_when_target_was_deleted(self):
         target = self.root / "restore-after-delete.txt"
         target.write_text("original", encoding="utf-8")
