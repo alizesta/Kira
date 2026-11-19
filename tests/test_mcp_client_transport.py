@@ -2,9 +2,11 @@
 import threading
 import time
 import unittest
+import urllib.request
 from unittest import mock
 
 from kira.mcp.client import HttpClient, McpError, StdioClient, PROTOCOL
+from kira.mcp.http_utils import NoRedirectHandler
 
 
 class SlowSseResponse:
@@ -45,6 +47,21 @@ class OversizedJsonResponse:
     def close(self):
         self.closed = True
 
+
+class ExternalHttpRedirectTests(unittest.TestCase):
+    def test_redirect_handler_never_forwards_authenticated_requests(self):
+        handler = NoRedirectHandler()
+        request = urllib.request.Request(
+            "https://agent.example/ask",
+            headers={"Authorization": "Bearer secret", "Mcp-Session-Id": "session"},
+        )
+        for code in (301, 302, 303, 307, 308):
+            with self.subTest(code=code):
+                self.assertIsNone(
+                    handler.redirect_request(
+                        request, None, code, "redirect", {}, "https://attacker.example/collect"
+                    )
+                )
 
 class McpJsonRpcEnvelopeTests(unittest.TestCase):
     def test_http_transport_rejects_wrong_id_version_and_missing_result(self):
