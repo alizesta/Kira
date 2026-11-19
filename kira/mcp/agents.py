@@ -36,6 +36,7 @@ from pathlib import Path
 
 from ..tools.registry import Tool, Param, ToolError, READ, ACTION, SENSITIVE, ERROR, DENIED, BAD_ARGS
 from .hub import clean_text
+from .http_utils import open_no_redirect
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ class AgentHttp:
         def perform():
             outcome = None
             try:
-                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                with open_no_redirect(req, timeout=timeout) as resp:
                     with response_lock:
                         active["response"] = resp
                     if stop.is_set():
