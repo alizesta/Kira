@@ -43,6 +43,18 @@ class InitiativeApplicationService:
         self.mood_service = mood_service
         self.chat_application_service = chat_application_service
 
+    @staticmethod
+    def merge_settings_history(settings: Mapping[str, Any], result: InitiativeCheckIn) -> dict[str, Any]:
+        """Merge a successful check-in into persisted per-character history.
+
+        Malformed legacy settings are treated as an empty history rather than
+        raising after the assistant message has already been durably written.
+        """
+        existing = settings.get("character_initiative_history")
+        updated = dict(existing) if isinstance(existing, dict) else {}
+        updated[result.character_id] = list(result.history)
+        return updated
+
     def run_checkin(
         self,
         session: Any,
