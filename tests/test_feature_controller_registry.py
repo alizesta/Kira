@@ -103,6 +103,12 @@ class FeatureControllerRegistryTests(unittest.TestCase):
         self.assertNotIn("host", dir(scoped))
         self.assertNotIn("controllers", dir(scoped))
         self.assertIs(scoped.require_peer("session"), session)
+        original = object()
+        updated = object()
+        root.state.cur = original
+        self.assertIs(scoped.state.cur, original)
+        scoped.state.cur = updated
+        self.assertIs(root.state.cur, updated)
         with self.assertRaises(AttributeError):
             _ = scoped.services.ollama_client
         with self.assertRaises(AttributeError):
