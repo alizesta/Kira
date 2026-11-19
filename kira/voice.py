@@ -661,13 +661,13 @@ class Speaker(QObject):
             # PortAudio invokes the input callback after its block has been captured.
             # Compensate for that block duration and a small Windows device-buffer delay;
             # the adaptive FIR handles the remaining acoustic path.
-            elapsed = max(0.0, time.monotonic() - started - count / 16000.0 - 0.025)
-            start = int(elapsed * 16000.0)
+            offset = int((time.monotonic() - started - count / 16000.0 - 0.025) * 16000.0)
             result = np.zeros(count, dtype=np.float32)
-            if start < pcm.size:
-                available = min(count, pcm.size - start)
-                if available > 0:
-                    result[:available] = pcm[start:start + available]
+            source_start = max(0, offset)
+            target_start = max(0, -offset)
+            available = min(count - target_start, pcm.size - source_start)
+            if available > 0:
+                result[target_start:target_start + available] = pcm[source_start:source_start + available]
             return result
 
     def _start_playback(self, s, wav, env):
