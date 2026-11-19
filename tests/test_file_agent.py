@@ -302,6 +302,20 @@ class FileAgentTests(unittest.TestCase):
         self.assertTrue(all((self.root / n).exists() for n in ("a.jpg", "b.pdf", "c.mp3", "d.xyz")))               # the WHOLE operation went back
         self.assertFalse((self.root / "Other" / "d.xyz").exists())
 
+    def test_undo_write_rejects_unrelated_file_inside_allowed_root_as_backup(self):
+        target = self.root / "target.txt"
+        unrelated = self.root / "unrelated.txt"
+        target.write_text("current", encoding="utf-8")
+        unrelated.write_text("unrelated content", encoding="utf-8")
+        journal = Journal(self.data)
+        journal.add("write", path=str(target), backup=str(unrelated))
+        agent = FileAgent(self.policy, journal)
+
+        with self.assertRaises(ToolError):
+            agent.undo_last({})
+
+        self.assertEqual(target.read_text(encoding="utf-8"), "current")
+
     def test_undo_write_restores_backup_when_target_was_deleted(self):
         target = self.root / "restore-after-delete.txt"
         target.write_text("original", encoding="utf-8")
