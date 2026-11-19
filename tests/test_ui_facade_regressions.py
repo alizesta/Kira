@@ -231,6 +231,15 @@ class WidgetRegressionTests(unittest.TestCase):
     def test_provider_worker_adapter_queues_callbacks_and_tracks_lifetime(self):
         from kira.ui.application_adapters import QtProviderWorkerAdapter
 
+        adapter_source = (ROOT / "kira/ui/application_adapters.py").read_text(encoding="utf-8")
+        context_source = (ROOT / "kira/ui/window_presentation_context.py").read_text(encoding="utf-8")
+        composition_source = (ROOT / "kira/ui/main_window_composition.py").read_text(encoding="utf-8")
+        runtime_source = (ROOT / "kira/ui/main_window_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("signal.connect(slot, Qt.QueuedConnection)", adapter_source)
+        self.assertIn('"_provider_workers"', context_source)
+        self.assertIn("self.state._provider_workers = set()", composition_source)
+        self.assertIn("workers = list(self.context.state._provider_workers)", runtime_source)
+
         class FakeProviderWorker(QObject):
             tool_event = Signal(dict)
             event = Signal(dict)
