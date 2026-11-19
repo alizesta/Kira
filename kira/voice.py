@@ -11,7 +11,7 @@ import wave
 from .config import DATA_DIR
 from .speech_split import StreamSplitter, split_sentences, strip_think
 from .leak_guard import strip_blocks, scrub_lines
-from PySide6.QtCore import QObject, Signal, QUrl, QTimer, QElapsedTimer
+from PySide6.QtCore import QObject, Signal, Slot, QUrl, QTimer, QElapsedTimer
 from PySide6.QtMultimedia import QSoundEffect, QMediaPlayer, QAudioOutput, QMediaDevices
 
 SR = 24000
@@ -388,10 +388,12 @@ class Speaker(QObject):
         return path, envelope
 
     # ---- GUI thread ----
+    @Slot(int, str)
     def _on_failed(self, gen, msg):
         if gen == self._gen:
             self.error.emit(msg)
 
+    @Slot(int, int, str, list)
     def _on_ready(self, gen, idx, path, env):
         s = self._session
         if s is None or gen != self._gen or s.gen != gen:
