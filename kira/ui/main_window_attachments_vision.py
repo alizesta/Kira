@@ -317,12 +317,16 @@ class AttachmentsVisionController(WindowFeatureController):
 
     @Slot(str)
     def on_game_audio_error(self, message):
+        if self.sender() is not self.context.adapters.game_audio_listener:
+            return
         if (self.context.state._game_mode_enabled
                 and self.context.services.game_mode_application_service.permissions(self.context.state._game_mode_profile)["game_audio_loopback"]):
             self.feature_controller("session").add_chat("system", "🎧 " + message)
 
     @Slot(str)
     def on_game_audio_transcript(self, text):
+        if self.sender() is not self.context.adapters.game_audio_listener:
+            return
         alert = self.context.services.game_mode_application_service.classify_game_audio(
             text,
             now=time.monotonic(),
