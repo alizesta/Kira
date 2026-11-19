@@ -10,6 +10,7 @@ on:
       - "kira/app/feature_modules.py"
       - "kira/core/interfaces/mood_service.py"
       - "kira/services/mood_service.py"
+      - "kira/services/memory_service.py"
       - "kira/ui/window_presentation_context.py"
       - "kira/ui/main_window_composition.py"
       - "kira/ui/bootstrap.py"
@@ -44,6 +45,7 @@ on:
       - "kira/app/feature_modules.py"
       - "kira/core/interfaces/mood_service.py"
       - "kira/services/mood_service.py"
+      - "kira/services/memory_service.py"
       - "kira/ui/window_presentation_context.py"
       - "kira/ui/main_window_composition.py"
       - "kira/ui/bootstrap.py"
@@ -103,6 +105,7 @@ jobs:
           kira/app/feature_modules.py
           kira/core/interfaces/mood_service.py
           kira/services/mood_service.py
+          kira/services/memory_service.py
           kira/ui/window_presentation_context.py
           kira/ui/main_window_composition.py
           kira/ui/bootstrap.py
