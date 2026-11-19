@@ -18,7 +18,7 @@ class JobStoreTests(unittest.TestCase):
             path.write_bytes(original)
 
             store = JobStore(Path(temp))
-            store.add({
+            persisted = store.add({
                 "id": "job-1",
                 "agent": "worker",
                 "remote_id": "remote-1",
@@ -26,6 +26,7 @@ class JobStoreTests(unittest.TestCase):
                 "created": 1.0,
             })
 
+            self.assertFalse(persisted)
             self.assertTrue(store._load_failed)
             self.assertEqual(path.read_bytes(), original)
             self.assertIn("job-1", store.jobs)
@@ -170,6 +171,20 @@ class JobStoreTests(unittest.TestCase):
 
             self.assertEqual(updated["state"], "error")
             self.assertIn("وضعیت نامعتبر", updated["text"])
+
+    def test_agent_ask_discloses_when_new_job_cannot_be_persisted(self):
+        with tempfile.TemporaryDirectory() as temp:
+            hub = AgentHub(mock.Mock(), Path(temp), lambda: {"worker": {"name": "worker"}})
+            agent = mock.Mock()
+            agent.cfg = {"name": "worker"}
+            agent.ask.return_value = {"job_id": "remote-1"}
+            with mock.patch.object(hub, "_agent", return_value=agent), mock.patch.object(hub, "_probe"), mock.patch.object(
+                hub.store, "find_open", return_value=None
+            ), mock.patch.object(hub.store, "add", return_value=False), mock.patch.object(hub, "_ensure_poller"):
+                result = hub.ask({"agent": "worker", "task": "run a task"})
+
+            self.assertIn("job_id=", result)
+            self.assertIn("پس از بسته‌شدن برنامه بازیابی آن تضمین‌شده نیست", result)
 
     def test_job_store_writes_valid_json_and_unique_atomic_temp_files(self):
         with tempfile.TemporaryDirectory() as temp:
