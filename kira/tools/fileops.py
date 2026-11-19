@@ -63,7 +63,6 @@ def _move_file_no_overwrite(src: str, dst: str) -> None:
         return
 
     fd, temporary = tempfile.mkstemp(prefix=".kira-move-", suffix=".tmp", dir=os.path.dirname(dst))
-    temp_stat = os.fstat(fd)
     try:
         with os.fdopen(fd, "wb") as out, open(src, "rb") as source:
             shutil.copyfileobj(source, out)
