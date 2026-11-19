@@ -142,6 +142,21 @@ class FeatureControllerRegistryTests(unittest.TestCase):
                     f"{feature}.{namespace} contains fields outside the root contract",
                 )
 
+    def test_runtime_shutdown_resources_are_all_declared_capabilities(self):
+        from kira.ui.window_presentation_context import CONTROLLER_ACCESS
+        shutdown_resources = {
+            "_local_voice_worker", "_local_stt_test_listener", "_mcp_registry_worker",
+            "_model_catalog_worker", "_api_worker", "_route_worker", "_bench_worker",
+            "_scan_worker", "_provider_test_worker", "_ollama_worker", "_vision_worker",
+            "_web_test_worker", "_attach_worker", "_model_import_worker",
+            "_stopping_listener", "_stopping_game_audio_listener",
+            "game_audio_listener", "listener",
+        }
+        self.assertTrue(
+            shutdown_resources.issubset(CONTROLLER_ACCESS["runtime"]["resources"]),
+            sorted(shutdown_resources - CONTROLLER_ACCESS["runtime"]["resources"]),
+        )
+
     def test_unregistered_controllers_fail_closed(self):
         from PySide6.QtCore import QObject
         from kira.ui.window_presentation_context import WindowPresentationContext
