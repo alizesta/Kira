@@ -324,7 +324,7 @@ def prepend_wav_silence(payload, pause_ms):
             raise ValueError("Compressed WAV is not supported for speech assembly")
         frames = source.readframes(source.getnframes())
     silence_frames = round(rate * max(0, int(pause_ms)) / 1000)
-    silence = b"\\0" * width * channels * silence_frames
+    silence = b"\0" * width * channels * silence_frames
     output = io.BytesIO()
     with wave.open(output, "wb") as target:
         target.setnchannels(channels)
