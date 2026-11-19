@@ -62,7 +62,8 @@ class ComposerOwner:
 
     def __setattr__(self, name: str, value) -> None:
         views = self._context.views
-        if name in views._allowed:
-            setattr(views, name, value)
-        # Names the presentation context does not declare stay reachable
-        # through views.chat_composer.<name>.
+        if name not in views._allowed:
+            raise AttributeError(
+                f"ChatComposer owner cannot expose undeclared window view {name!r}"
+            )
+        setattr(views, name, value)
