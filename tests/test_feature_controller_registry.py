@@ -71,14 +71,109 @@ class FeatureControllerRegistryTests(unittest.TestCase):
 
         from kira.ui.window_presentation_context import WindowPresentationContext
 
-        second = object()
-        registry = FeatureControllerRegistry({"second": second})
         window = QObject()
-        window.presentation_context = WindowPresentationContext(window, registry)
         controller = WindowFeatureController(window)
-        self.assertIs(controller.feature_controller("second"), second)
-        with self.assertRaises(LookupError):
+        second = object()
+        registry = FeatureControllerRegistry({"chat": controller, "session": second})
+        window.presentation_context = WindowPresentationContext(window, registry)
+        self.assertIs(controller.feature_controller("session"), second)
+        with self.assertRaises(PermissionError):
             controller.feature_controller("missing")
+        with self.assertRaises(PermissionError):
+            controller.feature_controller("lifecycle")
+
+
+    def test_controller_context_is_scoped_to_its_declared_capabilities(self):
+        from PySide6.QtCore import QObject
+        from kira.ui.window_feature_controller import WindowFeatureController
+        from kira.ui.window_presentation_context import WindowPresentationContext
+
+        window = QObject()
+        chat = WindowFeatureController(window)
+        session = object()
+        registry = FeatureControllerRegistry({"chat": chat, "session": session})
+        root = WindowPresentationContext(window, registry)
+        window.presentation_context = root
+        scoped = chat.context
+
+        self.assertIn("chat_application_service", scoped.services._allowed)
+        self.assertNotIn("ollama_client", scoped.services._allowed)
+        self.assertIn("input", scoped.views._allowed)
+        self.assertNotIn("route_list", scoped.views._allowed)
+        self.assertNotIn("host", dir(scoped))
+        self.assertNotIn("controllers", dir(scoped))
+        self.assertIs(scoped.require_peer("session"), session)
+        with self.assertRaises(AttributeError):
+            _ = scoped.services.ollama_client
+        with self.assertRaises(AttributeError):
+            _ = scoped.views.route_list
+        with self.assertRaises(AttributeError):
+            _ = scoped.host
+        with self.assertRaises(PermissionError):
+            scoped.require_peer("lifecycle")
+        with self.assertRaises(PermissionError):
+            scoped.resource("_route_worker")
+
+    def test_every_controller_scope_is_a_subset_of_root_context_contracts(self):
+        from kira.ui.window_presentation_context import (
+            ADAPTER_FIELDS, CONTROLLER_ACCESS, SERVICE_FIELDS, STATE_FIELDS, VIEW_FIELDS,
+        )
+        roots = {
+            "state": STATE_FIELDS,
+            "services": SERVICE_FIELDS,
+            "adapters": ADAPTER_FIELDS,
+            "views": VIEW_FIELDS,
+        }
+        self.assertEqual(
+            set(CONTROLLER_ACCESS),
+            {"runtime", "chat", "session", "lifecycle", "attachments_vision",
+             "provider_settings", "character_settings", "voice_settings"},
+        )
+        for feature, access in CONTROLLER_ACCESS.items():
+            for namespace, root_fields in roots.items():
+                self.assertTrue(
+                    access[namespace].issubset(root_fields),
+                    f"{feature}.{namespace} contains fields outside the root contract",
+                )
+
+    def test_controller_source_access_matches_capability_matrix(self):
+        from kira.ui.window_presentation_context import CONTROLLER_ACCESS
+        root = Path(__file__).resolve().parents[1]
+        filenames = {
+            "runtime": "main_window_runtime.py",
+            "chat": "main_window_chat.py",
+            "session": "main_window_session.py",
+            "lifecycle": "main_window_lifecycle.py",
+            "attachments_vision": "main_window_attachments_vision.py",
+            "provider_settings": "main_window_provider_settings.py",
+            "character_settings": "main_window_character_settings.py",
+            "voice_settings": "main_window_voice_settings.py",
+        }
+        violations = []
+        for feature, filename in filenames.items():
+            source = (root / "kira/ui" / filename).read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=filename)
+            access = CONTROLLER_ACCESS[feature]
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Attribute):
+                    base = node.value
+                    if (isinstance(base.value, ast.Attribute)
+                            and isinstance(base.value.value, ast.Name)
+                            and base.value.value.id == "self"
+                            and base.value.attr == "context"
+                            and base.attr in {"state", "services", "adapters", "views"}
+                            and node.attr not in access[base.attr]):
+                        violations.append(f"{feature}:{node.lineno}:{base.attr}.{node.attr}")
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                    if (node.func.attr == "feature_controller" and node.args
+                            and isinstance(node.args[0], ast.Constant)
+                            and node.args[0].value not in access["peers"]):
+                        violations.append(f"{feature}:{node.lineno}:peer.{node.args[0].value}")
+                    if (node.func.attr == "resource" and node.args
+                            and isinstance(node.args[0], ast.Constant)
+                            and node.args[0].value not in access["resources"]):
+                        violations.append(f"{feature}:{node.lineno}:resource.{node.args[0].value}")
+        self.assertEqual(violations, [])
 
     def test_chat_controller_uses_injected_attachment_workflow(self):
         root = Path(__file__).resolve().parents[1]
