@@ -236,6 +236,35 @@ class FileAgentTests(unittest.TestCase):
         self.assertEqual(result.status, ERROR)
         self.assertFalse(target.exists())
 
+    def test_create_file_removes_target_when_post_write_verification_fails(self):
+        target = self.root / "partial-create.txt"
+        with mock.patch("kira.tools.fileagent.os.path.getsize", return_value=0):
+            result = self.run_tool("create_file", {"path": str(target), "content": "payload"})
+
+        self.assertEqual(result.status, ERROR)
+        self.assertFalse(target.exists())
+
+    def test_append_failure_rolls_back_to_original_content(self):
+        target = self.root / "append-rollback.txt"
+        target.write_text("original", encoding="utf-8")
+        with mock.patch("kira.tools.fileagent.os.fsync", side_effect=[OSError("simulated disk failure"), None]):
+            result = self.run_tool("append_text", {"path": str(target), "content": " appended"})
+
+        self.assertEqual(result.status, ERROR)
+        self.assertEqual(target.read_text(encoding="utf-8"), "original")
+        self.assertIn("فایل به اندازه‌ی قبلی بازگردانده شد", result.text)
+
+    def test_write_failure_keeps_original_and_removes_unused_backup(self):
+        target = self.root / "write-rollback.txt"
+        target.write_text("original", encoding="utf-8")
+        with mock.patch("kira.tools.fileagent.os.fsync", side_effect=OSError("simulated disk failure")):
+            result = self.sensitive("write_file", {"path": str(target), "content": "replacement"})
+
+        self.assertEqual(result.status, ERROR)
+        self.assertEqual(target.read_text(encoding="utf-8"), "original")
+        self.assertFalse(list(self.root.glob("write-rollback.txt.bak-*")))
+        self.assertFalse(list(self.root.glob(".write-rollback.txt.kira-*.tmp")))
+
     def test_copy_rejects_executable_files_and_skips_them_in_folders(self):
         executable = self.root / "payload.exe"
         executable.write_bytes(b"MZ")
