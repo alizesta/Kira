@@ -44,8 +44,8 @@ _server_backend = ""
 
 
 def _data_root() -> Path:
-    from .local_voice import cache_directory
-    return Path(cache_directory()).expanduser().resolve().parent.parent
+    from .storage import default_data_dir
+    return Path(default_data_dir(Path(__file__).resolve().parents[1])).expanduser().resolve()
 
 
 def runtime_dir() -> Path:
@@ -282,6 +282,12 @@ def _start_server(language: str, threads: int) -> None:
             try:
                 response = requests.get(url, timeout=1.5)
                 if response.ok and "whisper.cpp" in response.text.casefold():
+                    startup_log = _read_log_tail()
+                    if backend == "vulkan" and "Found 0 Vulkan devices" in startup_log:
+                        stop()
+                        raise RuntimeError(
+                            "درایور Vulkan هیچ GPU سازگاری گزارش نکرد؛ faster-whisper روی CPU استفاده می‌شود."
+                        )
                     return
             except requests.RequestException:
                 pass
