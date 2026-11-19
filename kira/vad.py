@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections import deque
 
 from .noise_reduction import SpectralNoiseReducer
+from .echo_cancellation import AdaptiveEchoCanceller
 
 RATE = 16000
 BLOCK = 512
@@ -45,6 +46,7 @@ class Segmenter:
         freqs = np.fft.rfftfreq(block, 1.0 / rate)
         self._band = (freqs >= 100) & (freqs <= 4000)
         self._denoiser = SpectralNoiseReducer(rate, block)
+        self._echo_canceller = AdaptiveEchoCanceller(rate, block)
         self.reset()
 
     # ---- state ----
@@ -102,7 +104,12 @@ class Segmenter:
         return self.calibrating
 
     # ---- main entry ----
-    def feed(self, blk, kira_speaking=False, kira_level=0.0):
+    def feed(self, blk, kira_speaking=False, kira_level=0.0, echo_reference=None):
+        # Cancel Kira's own speaker signal before VAD and barge-in detection.
+        # The reference is absent for unsupported/external audio paths, in which
+        # case the original microphone samples pass through unchanged.
+        if echo_reference is not None:
+            blk = self._echo_canceller.process(blk, echo_reference)
         lvl = self.level(blk)
         events = []
         if not self.speaking:
