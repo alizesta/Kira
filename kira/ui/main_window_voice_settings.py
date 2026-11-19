@@ -221,6 +221,18 @@ class VoiceSettingsController(WindowFeatureController):
 
     def download_local_whisper_model(self):
         value = str(self.context.views.voice_page.whisper.currentText() or "").strip()
+        if value.casefold().startswith("whisper.cpp vulkan"):
+            from .. import local_voice
+            self.context.views.local_voice_status.setText(
+                "در حال دریافت موتور Vulkan و مدل چندزبانه Whisper؛ حجم مدل حدود ۵۷۴ مگابایت است…"
+            )
+            self._run_local_voice_task(
+                lambda cancel: local_voice.install_and_download_whisper_cpp(cancel_event=cancel),
+                self.context.views.voice_page.whisper_download_btn,
+                self._on_whisper_cpp_downloaded,
+                cancellable=True,
+            )
+            return
         if value.casefold() == "qwen/qwen3-asr-0.6b":
             self.context.views.local_asr_path_edit.setText(value)
             self.context.views.local_voice_status.setText("در حال نصب موتور Qwen ASR و دانلود مدل محلی…")
@@ -251,6 +263,24 @@ class VoiceSettingsController(WindowFeatureController):
         self._run_local_voice_task(lambda cancel: local_voice.install_and_download_whisper(repo_id, cancel_event=cancel),
                                    self.context.views.voice_page.whisper_download_btn, self._on_whisper_downloaded,
                                    cancellable=True)
+
+    def _on_whisper_cpp_downloaded(self, result):
+        ok, value = result
+        if not ok:
+            self.context.views.local_voice_status.setText(f"نصب whisper.cpp Vulkan ناموفق بود: {value}")
+            return
+        self.context.services.settings["whisper_cpp_enabled"] = True
+        self.context.services.settings["whisper_cpp_model"] = str(value)
+        self.feature_controller("runtime").save_now()
+        from .. import whisper_cpp
+        state = whisper_cpp.status()
+        self.context.views.local_voice_status.setText(
+            "whisper.cpp Vulkan نصب شد و برای مسیر پشتیبان فعال است.\n"
+            f"مدل: {value}\n"
+            f"حجم: {state['model_size'] / (1024 * 1024):.0f} MiB\n"
+            "اول Qwen3-ASR استفاده می‌شود؛ در صورت خطا یا خروجی نامعتبر، تشخیص به Vulkan می‌رود."
+        )
+        self.refresh_local_voice_status()
 
     def _on_whisper_downloaded(self, result):
         ok, value = result
@@ -550,6 +580,15 @@ class VoiceSettingsController(WindowFeatureController):
             asr += " · همین مدل در حافظه است" if asr_loaded else " · مدل هنوز بارگذاری نشده"
             if state.get("asr_error"):
                 asr += " · " + state["asr_error"]
+            whisper_cpp = state.get("whisper_cpp") or {}
+            whisper_cpp_text = (
+                "whisper.cpp Vulkan نصب و آماده است" if whisper_cpp.get("ready")
+                else "whisper.cpp Vulkan نصب نیست"
+            )
+            if whisper_cpp.get("running"):
+                whisper_cpp_text += f" · در حال اجرا روی پورت محلی {whisper_cpp.get('port')}"
+            if whisper_cpp.get("error"):
+                whisper_cpp_text += " · " + str(whisper_cpp["error"])
             tts = "Piper در دسترس است" if state["tts_installed"] else "Piper نصب نیست"
             tts += " · همین صدا بارگذاری شده" if tts_loaded else " · صدای انتخابی هنوز بارگذاری نشده"
             if state.get("tts_error"):
@@ -568,6 +607,7 @@ class VoiceSettingsController(WindowFeatureController):
             selected_tts = tts_model or "Mana Persian Piper · صدای فارسی پیش‌فرض"
             self.context.views.local_voice_status.setText(
                 f"STT · Qwen3-ASR: {asr}\nمدل STT: {asr_model}\n"
+                f"STT · Vulkan: {whisper_cpp_text}\n"
                 f"TTS · Piper: {tts}\nمدل TTS: {selected_tts}\n"
                 f"{ezafe_text}\n"
                 f"مدل‌های Piper مستقل: {len(discovered.get('tts', []))}\n"
