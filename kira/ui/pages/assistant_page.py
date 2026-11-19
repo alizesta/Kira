@@ -69,6 +69,8 @@ class AssistantPage(QScrollArea):
         self.temp.addItems(["0.2", "0.4", "0.7", "0.9", "1.0"])
         raw_temperature = settings.get("temperature", 0.7)
         try:
+            if isinstance(raw_temperature, bool):
+                raise ValueError("temperature cannot be a boolean")
             temperature = float(raw_temperature)
             if not math.isfinite(temperature):
                 raise ValueError("temperature must be finite")
