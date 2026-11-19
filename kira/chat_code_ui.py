@@ -174,6 +174,8 @@ class CodeChat(QObject):
         """True when Kira's code side took the message. Kira decides from the wording (and, when unsure, asks the model)
         whether the person wants work on the project; ordinary talk returns False and goes the normal way."""
         w = self.win
+        if w._closing:
+            return True
         if w.cur.cid != "kira":
             return False
         if self._bypass:
@@ -262,6 +264,8 @@ class CodeChat(QObject):
     # ---- ambiguous wording: one short model call decides (TASK / QUESTION / CHAT)
     def _classify_async(self, text, voice):
         w = self.win
+        if w._closing:
+            return
         self._classifying = True
         token = object()
         self._class_token = token
@@ -293,6 +297,11 @@ class CodeChat(QObject):
     def _classified(self, token, text, voice, answer, session=None):
         if getattr(self, "_class_token", None) is not token:
             return                                              # already decided (the timeout and the answer may both arrive)
+        if self.win._closing:
+            self._class_token = None
+            self._classifying = False
+            self._class_queue.clear()
+            return
         self._class_token = None
         self._classifying = False
         # The classifier may still be running after its 25-second UI timeout.
@@ -334,6 +343,8 @@ class CodeChat(QObject):
 
     def start_request(self, req, raw):
         w = self.win
+        if w._closing:
+            return
         try:
             files, problems = cc.resolve_files(self.root, req.mentions, cc.explicit_mentions(raw))
         except Exception as exc:  # noqa: BLE001
