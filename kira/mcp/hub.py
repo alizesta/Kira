@@ -120,6 +120,7 @@ class McpHub:
         self._server_locks: dict[str, threading.RLock] = {}
         self._server_locks_lock = threading.Lock()
         self._thread: threading.Thread | None = None
+        self._shutdown = threading.Event()
         atexit.register(self.shutdown)
 
     def _server_lock(self, name: str) -> threading.RLock:
@@ -132,6 +133,8 @@ class McpHub:
 
     def refresh_async(self) -> None:
         """(Re)read kira_mcp.json and (re)connect/disable, off the calling thread."""
+        if self._shutdown.is_set():
+            return
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 return
@@ -157,6 +160,8 @@ class McpHub:
 
     def _refresh(self) -> None:
         try:
+            if self._shutdown.is_set():
+                return
             if not self.enabled():
                 self._disable()
                 return
@@ -166,12 +171,16 @@ class McpHub:
             with self._state_lock:
                 existing_servers = tuple(self.state)
             for name in existing_servers:
+                if self._shutdown.is_set():
+                    return
                 if not self.enabled():
                     self._disable()
                     return
                 if name not in self._cfg["servers"]:
                     self._drop(name)
             for name, cfg in self._cfg["servers"].items():
+                if self._shutdown.is_set():
+                    return
                 if not self.enabled():
                     self._disable()
                     return
@@ -195,15 +204,15 @@ class McpHub:
                 self.state.pop(name, None)
 
     def _connect(self, name: str, cfg: dict) -> bool:
-        if not self.enabled():
+        if self._shutdown.is_set() or not self.enabled():
             return False
         with self._server_lock(name):
-            if not self.enabled():
+            if self._shutdown.is_set() or not self.enabled():
                 return False
             return self._connect_locked(name, cfg)
 
     def _connect_locked(self, name: str, cfg: dict) -> bool:
-        if not self.enabled():
+        if self._shutdown.is_set() or not self.enabled():
             return False
         with self._state_lock:
             st = self.state.setdefault(name, {"status": "starting", "error": "", "tools": 0, "next_try": 0.0})
@@ -221,16 +230,17 @@ class McpHub:
         client = None
         try:
             client = make_client(cfg)
+            # Publish immediately so shutdown can always find a process even
+            # while initialize/list_tools are still waiting for the server.
+            with self._lock:
+                self._clients[name] = client
             client.start()
             client.initialize(cfg["timeout"])
             tools = client.list_tools(cfg["timeout"])
+            if self._shutdown.is_set():
+                raise McpError("MCP hub is shutting down")
             if not self.enabled():
                 raise McpError("MCP mode was disabled during connection")
-            # Publish the client before the tools become callable. Calls take
-            # the same per-server lock and therefore wait until registration
-            # has either completed or rolled back.
-            with self._lock:
-                self._clients[name] = client
             registered = self._register(name, cfg, tools)
         except Exception as exc:
             try:
@@ -296,6 +306,8 @@ class McpHub:
             return self._call_locked(server, tool, args)
 
     def _call_locked(self, server: str, tool: str, args: dict) -> str:
+        if self._shutdown.is_set():
+            raise ToolError("MCP hub در حال خاموش‌شدن است؛ ابزار اجرا نشد.", DENIED)
         if not self.enabled():
             raise ToolError("سرورهای MCP غیرفعال هستند؛ ابزار اجرا نشد.", DENIED)
         cfg = self._cfg["servers"].get(server)
@@ -331,17 +343,13 @@ class McpHub:
         return "\n".join(lines) or "هیچ سرور MCP‌ای در kira_mcp.json تعریف نشده است."
 
     def shutdown(self) -> None:
+        self._shutdown.set()
         with self._lock:
-            names = tuple(self._clients)
-        for name in names:
-            with self._server_lock(name):
-                with self._lock:
-                    client = self._clients.pop(name, None)
-                if client is not None:
-                    try:
-                        client.close()
-                    except Exception:
-                        _LOGGER.exception("Could not close MCP server %s during shutdown", name)
+            names = set(self._clients) | set(self._cfg.get("servers", {}))
+        with self._state_lock:
+            names.update(name for name in self.state if not name.startswith("_"))
+        for name in sorted(names):
+            self._drop(name)
 
 
 __all__ = ["McpHub", "clean_text", "READ", "ACTION", "SENSITIVE", "DENIED"]
