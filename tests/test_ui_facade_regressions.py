@@ -86,10 +86,14 @@ class FacadeRegressionTests(unittest.TestCase):
             self.assertIn(f'"{name}"', composition_source)
         self.assertIn('stop_local_stt_test(update_ui=False)', runtime_source)
 
-    def test_stt_callbacks_are_bound_to_their_originating_listener(self):
+    def test_stt_callbacks_are_queued_to_the_gui_thread_and_check_sender_identity(self):
         source = (ROOT / "kira/ui/main_window_voice_settings.py").read_text(encoding="utf-8")
-        self.assertIn("lambda text, current=listener: self._on_local_stt_test_heard(text, current)", source)
-        self.assertIn("lambda message, current=listener: self._on_local_stt_test_error(message, current)", source)
+        self.assertIn("listener.heard.connect(self._on_local_stt_test_heard)", source)
+        self.assertIn("listener.error.connect(self._on_local_stt_test_error)", source)
+        self.assertIn("listener.state.connect(self._on_local_stt_test_state)", source)
+        self.assertIn("listener.finished.connect(self._on_local_stt_test_finished)", source)
+        self.assertIn("@Slot(str)\n    def _on_local_stt_test_heard", source)
+        self.assertIn("@Slot()\n    def _on_local_stt_test_finished", source)
         self.assertIn("self.context.state._local_stt_test_listener is not listener", source)
         self.assertIn('"توقف تست STT" if current is not None and current.isRunning() else "تست STT"', source)
 
@@ -115,7 +119,8 @@ class FacadeRegressionTests(unittest.TestCase):
 
         controller = (ROOT / "kira/ui/main_window_attachments_vision.py").read_text(encoding="utf-8")
         self.assertIn("_game_audio_restart_pending = True", controller)
-        self.assertIn("def _on_game_audio_listener_finished", controller)
+        self.assertIn("listener.finished.connect(self._on_game_audio_listener_finished)", controller)
+        self.assertIn("@Slot()\n    def _on_game_audio_listener_finished", controller)
         self.assertIn("QTimer.singleShot(0, self._start_game_audio_listener)", controller)
 
 
@@ -131,6 +136,12 @@ class WidgetRegressionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
+
+    def test_attachment_controller_is_a_gui_thread_qobject(self):
+        from PySide6.QtCore import QObject
+        from kira.ui.controllers import ChatAttachmentController
+
+        self.assertTrue(issubclass(ChatAttachmentController, QObject))
 
     def test_assistant_page_preserves_custom_finite_temperature(self):
         from kira.ui.pages.assistant_page import AssistantPage
