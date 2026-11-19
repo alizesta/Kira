@@ -108,8 +108,8 @@ class Segmenter:
         # Cancel Kira's own speaker signal before VAD and barge-in detection.
         # The reference is absent for unsupported/external audio paths, in which
         # case the original microphone samples pass through unchanged.
-        if echo_reference is not None:
-            blk = self._echo_canceller.process(blk, echo_reference)
+        reference = self.np.zeros_like(blk) if echo_reference is None else echo_reference
+        blk = self._echo_canceller.process(blk, reference)
         lvl = self.level(blk)
         events = []
         if not self.speaking:
