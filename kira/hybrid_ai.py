@@ -1220,7 +1220,7 @@ class HybridRouter:
                 self.last_model = metrics["model"]
                 self.last_route_id = metrics["route_id"]
                 self.last_kind = metrics["kind"]
-                self.last_error = "\\n".join(failures)
+                self.last_error = "\n".join(failures)
                 self.last_duration_ms = elapsed
                 self.last_metrics = metrics
                 self.metrics.append(metrics)
@@ -1241,7 +1241,7 @@ class HybridRouter:
                     "retries": 0,
                     "role": metrics["role"],
                 })
-                raise RuntimeError("همه‌ی Routeهای سازگار با Native Function Calling ناموفق بودند:\\n" + "\\n".join(failures))
+                raise RuntimeError("همه‌ی Routeهای سازگار با Native Function Calling ناموفق بودند:\n" + "\n".join(failures))
             return None
         finally:
             self._active = None
