@@ -162,7 +162,7 @@ def detect(key, account_id="", hint="", timeout=12) -> Detection:
             return hit
     if len(services) == 1:
         return results[0] if results else Detection("unknown", "", "Provider شناسایی نشد.")
-    return Detection("unknown", "", "این کلید برای هیچ‌کدام از سرویس‌های پشتیبانی‌شده (Groq، Mistral، Google AI Studio، Cloudflare) تأیید نشد؛ "
+    return Detection("unknown", "", "این کلید برای هیچ‌کدام از سرویس‌های پشتیبانی‌شده (Groq، Mistral، Google AI Studio، Cloudflare، OpenRouter) تأیید نشد؛ "
                                     "کلید را بررسی کن. ثبت نشد.")
 
 
