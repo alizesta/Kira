@@ -62,12 +62,13 @@ class AdaptiveEchoCanceller:
 
         # Freeze adaptation during likely double-talk. Cancellation remains active
         # with the last stable filter so the user's voice is not learned as echo.
+        coherence = abs(float(np.mean(error * estimate))) / (
+            (error_power * estimate_power) ** 0.5 + 1e-8
+        )
         double_talk = (
             estimate_power > max(1e-8, ref_power * 0.01)
-            and error_power > max(
-                estimate_power * self.double_talk_ratio,
-                ref_power * 1.5,
-            )
+            and error_power > estimate_power * self.double_talk_ratio
+            and coherence < 0.35
         )
         if not double_talk:
             # Normalize by average tap energy, not the full window matrix energy;
