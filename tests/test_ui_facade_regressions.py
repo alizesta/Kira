@@ -177,7 +177,8 @@ class FacadeRegressionTests(unittest.TestCase):
         self.assertIn("@Slot(str)\n    def _relay_job_failed", source)
         self.assertIn("@Slot(str, object)\n    def _ask_approval", source)
         self.assertIn("self._class_jobs.append(job)", source)
-        self.assertIn("class_jobs, self._class_jobs = list(self._class_jobs), []", source)
+        self.assertIn("workers = [*self._class_jobs]", source)
+        self.assertIn("for class_job in list(self._class_jobs):", source)
 
     def test_mcp_registry_search_worker_is_drained_on_window_close(self):
         context_source = (ROOT / "kira/ui/window_presentation_context.py").read_text(encoding="utf-8")
