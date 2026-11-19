@@ -305,6 +305,30 @@ def join_wavs_with_pauses(items):
     return output.getvalue()
 
 
+
+def prepend_wav_silence(payload, pause_ms):
+    """Prepend timed PCM silence to a WAV without adding silence after the utterance."""
+    if not payload or int(pause_ms) <= 0:
+        return bytes(payload or b"")
+    source_stream = io.BytesIO(bytes(payload))
+    with wave.open(source_stream, "rb") as source:
+        channels = source.getnchannels()
+        width = source.getsampwidth()
+        rate = source.getframerate()
+        if source.getcomptype() != "NONE":
+            raise ValueError("Compressed WAV is not supported for speech assembly")
+        frames = source.readframes(source.getnframes())
+    silence_frames = round(rate * max(0, int(pause_ms)) / 1000)
+    silence = b"\\0" * width * channels * silence_frames
+    output = io.BytesIO()
+    with wave.open(output, "wb") as target:
+        target.setnchannels(channels)
+        target.setsampwidth(width)
+        target.setframerate(rate)
+        target.writeframes(silence + frames)
+    return output.getvalue()
+
+
 def apply_audio_effects(payload, profile):
     """Apply subtle loudness and optional ffmpeg pitch shift; gracefully skip pitch if unavailable."""
     if not payload:
