@@ -44,12 +44,14 @@ class AdaptiveEchoCancellerTests(unittest.TestCase):
             ref = rng.normal(0.0, 0.1, 256).astype(np.float32)
             canceller.process(0.5 * ref, ref)
         before = canceller.weights.copy()
+        before_blocks = canceller.adaptation_blocks
         ref = rng.normal(0.0, 0.1, 256).astype(np.float32)
         near_end = rng.normal(0.0, 0.8, 256).astype(np.float32)
         canceller.process(0.5 * ref + near_end, ref)
         self.assertTrue(np.all(np.isfinite(canceller.weights)))
         self.assertTrue(np.all(np.abs(canceller.weights) <= 2.0))
-        self.assertFalse(np.array_equal(before, canceller.weights) is False and canceller.adaptation_blocks == 0)
+        self.assertEqual(canceller.adaptation_blocks, before_blocks)
+        np.testing.assert_array_equal(canceller.weights, before)
 
     def test_reset_clears_learned_path(self):
         canceller = AdaptiveEchoCanceller(block_size=128, filter_length=64)
