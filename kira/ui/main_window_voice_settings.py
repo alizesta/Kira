@@ -446,12 +446,22 @@ class VoiceSettingsController(WindowFeatureController):
                 raise RuntimeError((result.stderr or result.stdout or "ollama create failed")[-3000:])
             return name
 
-        self.context.state._model_import_worker = TaskWorker(work, cancellable=True)
-        self.context.state._model_import_worker.done.connect(self.on_local_model_imported)
-        self.context.state._model_import_worker.finished.connect(lambda: setattr(self.context.state, "_model_import_worker", None))
-        self.context.state._model_import_worker.start()
+        worker = TaskWorker(work, cancellable=True)
+        self.context.state._model_import_worker = worker
+        worker.done.connect(self.on_local_model_imported)
+        worker.finished.connect(self._clear_model_import_worker)
+        worker.start()
 
+    @Slot()
+    def _clear_model_import_worker(self):
+        worker = self.sender()
+        if self.context.state._model_import_worker is worker:
+            self.context.state._model_import_worker = None
+
+    @Slot(object)
     def on_local_model_imported(self, result):
+        if self.context.state._closing:
+            return
         self.context.views.import_model_btn.setEnabled(True)
         ok, value = result
         if not ok:
@@ -573,22 +583,38 @@ class VoiceSettingsController(WindowFeatureController):
             self.context.views.local_voice_progress.show()
         worker = TaskWorker(fn, cancellable=cancellable)
         self.context.state._local_voice_worker = worker
-        def completed(result):
+        worker._ui_button = button
+        worker._ui_completion_callback = callback
+        worker.done.connect(self._on_local_voice_worker_done)
+        worker.finished.connect(self._on_local_voice_worker_finished)
+        worker.start()
+
+    @Slot(object)
+    def _on_local_voice_worker_done(self, result):
+        worker = self.sender()
+        if (
+            worker is None
+            or self.context.state._closing
+            or self.context.state._local_voice_worker is not worker
+        ):
+            return
+        button = getattr(worker, "_ui_button", None)
+        if button is not None:
             button.setEnabled(True)
-            if hasattr(self.context.views, "local_voice_progress"):
-                self.context.views.local_voice_progress.hide()
+        if hasattr(self.context.views, "local_voice_progress"):
+            self.context.views.local_voice_progress.hide()
+        callback = getattr(worker, "_ui_completion_callback", None)
+        if callback is not None:
             callback(result)
 
-        def worker_finished():
-            if self.context.state._local_voice_worker is worker:
-                self.context.state._local_voice_worker = None
-            if getattr(self.context.state, "_close_after_local_voice", False):
-                self.context.state._close_after_local_voice = False
-                QTimer.singleShot(0, self.window.close)
-
-        worker.done.connect(completed)
-        worker.finished.connect(worker_finished)
-        worker.start()
+    @Slot()
+    def _on_local_voice_worker_finished(self):
+        worker = self.sender()
+        if worker is not None and self.context.state._local_voice_worker is worker:
+            self.context.state._local_voice_worker = None
+        if getattr(self.context.state, "_close_after_local_voice", False):
+            self.context.state._close_after_local_voice = False
+            QTimer.singleShot(0, self.window.close)
 
     def load_local_asr(self):
         from .. import local_voice
