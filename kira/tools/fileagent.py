@@ -746,7 +746,11 @@ class FileAgent:
                 try:
                     back = self.policy.check(src, must_exist=False)
                     if os.path.exists(dst) and not os.path.lexists(back):
-                        shutil.move(self.policy.check(dst), back)
+                        real_dst = self.policy.check(dst)
+                        if os.path.isdir(real_dst):
+                            os.rename(real_dst, back)                   # directory moves never cross filesystems
+                        else:
+                            _move_file_no_overwrite(real_dst, back)
                         back_ok += 1
                 except (ToolError, OSError, shutil.Error):
                     continue
