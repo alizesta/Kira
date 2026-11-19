@@ -15,6 +15,11 @@ on:
       - "kira/services/mood_service.py"
       - "kira/services/memory_service.py"
       - "kira/ui/window_presentation_context.py"
+      - "kira/ui/feature_controller_registry.py"
+      - "kira/ui/window_feature_controller.py"
+      - "kira/ui/components/composer_owner.py"
+      - "kira/ui/components/code_chat_host.py"
+      - "tests/test_feature_controller_registry.py"
       - "kira/ui/main_window_composition.py"
       - "kira/ui/bootstrap.py"
       - "tests/test_initiative_application.py"
@@ -103,6 +108,7 @@ jobs:
           tests.test_feature_module_registration
           tests.test_composition_root_contract
           tests.test_brain_reflection_ownership
+          tests.test_feature_controller_registry
           -v
       - name: Compile changed Python modules
         run: >-
@@ -119,6 +125,11 @@ jobs:
           kira/services/mood_service.py
           kira/services/memory_service.py
           kira/ui/window_presentation_context.py
+          kira/ui/feature_controller_registry.py
+          kira/ui/window_feature_controller.py
+          kira/ui/components/composer_owner.py
+          kira/ui/components/code_chat_host.py
+          tests/test_feature_controller_registry.py
           kira/ui/main_window_composition.py
           kira/ui/bootstrap.py
           tests/test_initiative_application.py
