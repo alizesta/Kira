@@ -554,8 +554,9 @@ class FileAgent:
         out, seen = [], set()
         for p in value:
             p = str(p).strip().strip('"')
-            if p and p.lower() not in seen:
-                seen.add(p.lower())
+            key = os.path.normcase(os.path.abspath(os.path.normpath(p))) if p else ""
+            if p and key not in seen:
+                seen.add(key)
                 out.append(p)
         if not out:
             raise ToolError("هیچ مسیری داده نشده است.")
