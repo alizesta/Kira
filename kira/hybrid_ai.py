@@ -45,6 +45,7 @@ class ProviderError(RuntimeError):
         self.status_code = status_code
         self.kind = kind                # auth | model | request | rate | server | network | timeout | response | empty
         self.retry_after = retry_after
+        self.quota = ""                 # 429 only: "no_free" | "daily" | "" (see quota_kind)
 
 
 def normalize_messages(messages, preserve_tool_messages=False):
@@ -139,6 +140,26 @@ def _suggested_model(response, current=""):
     found = _REPLACEMENT_MODEL.search(text)
     suggestion = found.group(1) if found else ""
     return suggestion if suggestion and suggestion != _bare_model_id(current) else ""
+
+
+def quota_kind(response):
+    """Why a 429 happened, from the provider's own body: 'no_free' (limit 0: this model has no free quota),
+    'daily' (per-day quota used up) or '' (ordinary per-minute rate limit / unknown)."""
+    try:
+        text = (response.text or "").lower()
+    except Exception:
+        return ""
+    if re.search(r"limit:\s*0\b", text) or '"limit": 0' in text:
+        return "no_free"
+    if "perday" in text.replace("_", "").replace(" ", "") or "per day" in text or "daily" in text:
+        return "daily"
+    return ""
+
+
+_QUOTA_TEXT = {
+    "no_free": "این مدل در پلن رایگان سهمیه‌ای ندارد (limit: 0)؛ مدل Flash یا Flash-Lite دیگری را انتخاب کن.",
+    "daily": "سهمیه‌ی روزانه‌ی این مدل تمام شده؛ تا بازنشانی (حدود نیمه‌شب وقت آمریکا) صبر کن یا مدل دیگری را امتحان کن.",
+}
 
 
 class ThinkFilter:
@@ -274,7 +295,11 @@ class BaseProvider(ChatProvider):
                 retry_after = float(response.headers.get("Retry-After", ""))
             except (TypeError, ValueError, AttributeError):
                 retry_after = None
-            raise self._fail("سهمیه یا محدودیت درخواست تمام شده (429).", True, 429, "rate", retry_after)
+            quota = quota_kind(response)
+            err = self._fail("سهمیه یا محدودیت درخواست تمام شده (429)." + (" " + _QUOTA_TEXT[quota] if quota else ""),
+                             True, 429, "rate", retry_after)
+            err.quota = quota
+            raise err
         if code >= 500:
             raise self._fail(f"خطای سرور سرویس ({code}).", True, code, "server")
         if code == 403:
@@ -685,6 +710,8 @@ def probe_provider(name, config, provider_cls=None):
                     raise
                 if attempt < 2:
                     time.sleep(2 * (attempt + 1))
+        if getattr(last, "quota", ""):                       # the message already says exactly what to do
+            return False, str(last)[:400]
         hint = (" — این خطا از سمت سرویس است (شلوغی یا محدودیت موقت)، نه کلید یا مدل. چند دقیقه بعد دوباره تست کن "
                 "یا مدل دیگری (مثلاً Flash-Lite) را امتحان کن.")
         return False, (str(last)[:400] + hint)
@@ -988,6 +1015,12 @@ class HybridRouter:
         st["last_attempt_at"] = time.time()
         st["last_error"] = redact(str(exc), *secrets)[:300]
         st["health"] = "down" if kind in ("auth", "model", "request", "missing", "offline") else "degraded"
+        if getattr(exc, "quota", "") == "no_free":
+            try:
+                if route_model.disable_route(self.settings, route["id"], "بدون سهمیه‌ی رایگان (limit: 0)"):
+                    st["health"] = "disabled"
+            except Exception:                             # noqa: BLE001
+                pass
         if kind == "model":
             st["model_failures"] = st.get("model_failures", 0) + 1
             if st["model_failures"] >= route_model.AUTO_DISABLE_AFTER:
