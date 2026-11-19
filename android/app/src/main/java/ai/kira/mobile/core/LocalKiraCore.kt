@@ -1,5 +1,9 @@
 package ai.kira.mobile.core
 
+import ai.kira.mobile.domain.model.ProviderRoute
+import ai.kira.mobile.domain.policy.FreeModelPolicy
+import ai.kira.mobile.application.routing.FreeRouteSelector
+
 import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
@@ -103,17 +107,10 @@ class LocalKiraCore(context:Context) {
     }
 
 
-    private fun isKnownFreeChatModel(providerId:String,modelId:String):Boolean = when(providerId) {
-        "gemini" -> modelId in setOf("gemini-3.8-flash","gemini-2.5-flash","gemini-2.5-flash-lite")
-        "openrouter" -> modelId.endsWith(":free")
-        "mistral" -> modelId=="labs-leanstral-2603"
-        else -> false
-    }
-
     @Synchronized fun discoveredModels(providerId:String):List<String> {
         val out=mutableListOf<String>()
         db.rawQuery("SELECT model_id FROM provider_models WHERE provider_id=? ORDER BY model_id",arrayOf(providerId)).use { c -> while(c.moveToNext()) out+=c.getString(0) }
-        return out.filter { isKnownFreeChatModel(providerId,it) }
+        return out.filter { FreeModelPolicy.isVerifiedFreeChatModel(providerId,it) }
     }
 
     fun recommendedFreeModel(providerId:String,models:List<String>):String {
@@ -195,7 +192,7 @@ class LocalKiraCore(context:Context) {
                     pricing.optString("prompt").toDoubleOrNull()==0.0 &&
                     pricing.optString("completion").toDoubleOrNull()==0.0
                 val isFree=when(id) {
-                    "gemini","mistral" -> isKnownFreeChatModel(id,name)
+                    "gemini","mistral" -> FreeModelPolicy.isVerifiedFreeChatModel(id,name)
                     "openrouter" -> name.endsWith(":free") && openRouterIsFree
                     else -> false
                 }
@@ -239,13 +236,13 @@ class LocalKiraCore(context:Context) {
     }
 
     @Synchronized fun freeProviders():List<LocalProvider> =
-        providers().filter { it.hasKey && isKnownFreeChatModel(it.id,it.model) }
+        providers().filter { it.hasKey && FreeModelPolicy.isVerifiedFreeChatModel(it.id,it.model) }
 
     @Synchronized fun saveProvider(id:String,model:String,baseUrl:String,apiKey:String,enabled:Boolean=true) {
         val pid=id.trim().lowercase()
         require(pid.matches(Regex("[a-z0-9][a-z0-9_-]{1,39}"))) { "شناسه Provider معتبر نیست." }
         require(model.isNotBlank()) { "Model ID را وارد کن." }
-        require(isKnownFreeChatModel(pid,model.trim())) { "این مدل در فهرست رایگان تأییدشده Kira نیست؛ برای جلوگیری از هزینه ذخیره نشد." }
+        require(FreeModelPolicy.isVerifiedFreeChatModel(pid,model.trim())) { "این مدل در فهرست رایگان تأییدشده Kira نیست؛ برای جلوگیری از هزینه ذخیره نشد." }
         require(baseUrl.startsWith("https://")) { "آدرس Provider باید HTTPS باشد." }
         val old=db.rawQuery("SELECT encrypted_key FROM providers WHERE id=?",arrayOf(pid)).use { if(it.moveToFirst()) vault.decrypt(it.getString(0)) else "" }
         val priority=providers().indexOfFirst { it.id==pid }.let { if(it<0) providers().size else it }
@@ -522,8 +519,19 @@ class LocalKiraCore(context:Context) {
     @Synchronized fun sendMessage(characterId:String,text:String):LocalChatReply {
         require(text.isNotBlank()) { "پیام خالی است." }
         db.execSQL("INSERT INTO messages(character_id,role,content,route,created_at) VALUES(?,?,?,?,?)",arrayOf<Any>(characterId,"user",text.trim(),"",System.currentTimeMillis()))
-        val active=providers().filter { it.enabled && it.hasKey && isKnownFreeChatModel(it.id,it.model) }
-        if(active.isEmpty()) throw IllegalStateException("هیچ Provider فعالی با API Key ذخیره‌شده وجود ندارد. از بخش Route یک کلید اضافه کن.")
+        val configured=providers()
+        val activeRoutes=FreeRouteSelector.select(configured.map { provider ->
+            ProviderRoute(
+                providerId=provider.id,
+                modelId=provider.model,
+                baseUrl=provider.baseUrl,
+                enabled=provider.enabled,
+                priority=provider.priority,
+                hasKey=provider.hasKey
+            )
+        })
+        val active=activeRoutes.mapNotNull { route -> configured.firstOrNull { it.id==route.providerId } }
+        if(active.isEmpty()) throw IllegalStateException("هیچ Provider فعال با کلید ذخیره‌شده و مدل رایگان تأییدشده وجود ندارد. از بخش Route یک کلید اضافه کن.")
         val errors=mutableListOf<String>()
         for(p in active) {
             try {
