@@ -97,6 +97,19 @@ class FacadeRegressionTests(unittest.TestCase):
         self.assertIn("self.context.state._local_stt_test_listener is not listener", source)
         self.assertIn('"توقف تست STT" if current is not None and current.isRunning() else "تست STT"', source)
 
+    def test_worker_results_reject_superseded_workers(self):
+        provider = (ROOT / "kira/ui/main_window_provider_settings.py").read_text(encoding="utf-8")
+        character = (ROOT / "kira/ui/main_window_character_settings.py").read_text(encoding="utf-8")
+        attachments = (ROOT / "kira/ui/controllers/chat_attachments.py").read_text(encoding="utf-8")
+        game_audio = (ROOT / "kira/ui/main_window_attachments_vision.py").read_text(encoding="utf-8")
+
+        self.assertIn("self.context.state._api_worker is worker", provider)
+        self.assertIn("self.context.state._model_catalog_worker is not worker", provider)
+        self.assertIn("self.context.state._scan_worker is not worker", provider)
+        self.assertIn("self.context.state._mcp_registry_worker is not worker", character)
+        self.assertIn("return sender is None or sender is self.worker", attachments)
+        self.assertIn("self.sender() is not self.context.adapters.game_audio_listener", game_audio)
+
     def test_taskworker_results_use_gui_thread_slots(self):
         provider = (ROOT / "kira/ui/main_window_provider_settings.py").read_text(encoding="utf-8")
         voice = (ROOT / "kira/ui/main_window_voice_settings.py").read_text(encoding="utf-8")
