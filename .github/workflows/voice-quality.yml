@@ -88,8 +88,6 @@ jobs:
           kira/voice_prosody.py
           kira/noise_reduction.py
           kira/vad.py
-          kira/noise_reduction.py
-          kira/vad.py
           kira/app/voice_application.py
           kira/core/interfaces/voice_service.py
           kira/ui/main_window_runtime.py
@@ -100,7 +98,6 @@ jobs:
           tests/test_local_tts_synthesis.py
           tests/test_persian_tts_text.py
           tests/test_voice_audio_cache.py
-          tests/test_noise_reduction.py
           tests/test_noise_reduction.py
       - name: Compile changed speech modules and tests
         run: >-
