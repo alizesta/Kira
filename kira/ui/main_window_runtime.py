@@ -754,11 +754,16 @@ class RuntimeController(WindowFeatureController):
             return
         local_worker = self.context.resource("_local_voice_worker")
         if local_worker is not None and local_worker.isRunning():
-            if not getattr(self.context.state, "_close_after_local_voice", False):
-                self.context.state._close_after_local_voice = True
-                self.feature_controller("session").add_chat("system", "بارگذاری یا آزمایش موتور صوتی هنوز در حال اجراست؛ Kira پس از پایان امن آن بسته می‌شود.")
-            event.ignore()
-            return
+            if getattr(local_worker, "cancellable", False):
+                # Installer subprocesses are stopped as part of shutdown instead of
+                # forcing the user to close their console window or wait for pip.
+                local_worker.cancel()
+            else:
+                if not getattr(self.context.state, "_close_after_local_voice", False):
+                    self.context.state._close_after_local_voice = True
+                    self.feature_controller("session").add_chat("system", "بارگذاری یا آزمایش موتور صوتی هنوز در حال اجراست؛ Kira پس از پایان امن آن بسته می‌شود.")
+                event.ignore()
+                return
         # ChatApplicationService owns cancellation and persists partial output once.
         self.context.state._closing = True
         self._clear_chat_coordinator_queues()
