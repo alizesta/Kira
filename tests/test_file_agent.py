@@ -176,6 +176,23 @@ class FileAgentTests(unittest.TestCase):
         self.assertNotEqual(self.run_tool("rename_item", {"path": str(self.root / "r2.txt"), "new_name": "r2.bat"}).status, OK)
         self.assertNotEqual(self.run_tool("rename_item", {"path": str(self.root / "r2.txt"), "new_name": "sub/x.txt"}).status, OK)
 
+    def test_failed_file_copy_removes_partial_destination(self):
+        source = self.root / "source.txt"
+        source.write_text("source contents", encoding="utf-8")
+        destination = self.root / "destination"
+        destination.mkdir()
+        target = destination / source.name
+
+        def partial_copy(src, dst, length=0):
+            dst.write(b"partial")
+            raise OSError("simulated disk full")
+
+        with mock.patch("kira.tools.fileagent.shutil.copyfileobj", side_effect=partial_copy):
+            result = self.run_tool("copy_item", {"source": str(source), "destination_folder": str(destination)})
+
+        self.assertEqual(result.status, ERROR)
+        self.assertFalse(target.exists())
+
     def test_failed_folder_copy_removes_partial_destination(self):
         source = self.root / "source-folder"
         source.mkdir()
