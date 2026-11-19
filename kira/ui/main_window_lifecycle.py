@@ -214,7 +214,7 @@ class LifecycleController(WindowFeatureController):
     def quit_app(self):
         # closeEvent owns the shutdown protocol. Calling QApplication.quit()
         # here would bypass it when active workers cause closeEvent to ignore.
-        self._quitting = True
+        self.context.state._quitting = True
         self.window.close()
 
     def changeEvent(self, event):

@@ -223,7 +223,7 @@ class CharacterSettingsController(WindowFeatureController):
     def choose_character_theme_color(self):
         cid = self.context.services.character_service.active_id(self.context.services.settings)
         current = QColor(self.feature_controller("session").theme_for_character(cid)["main"])
-        selected = QColorDialog.getColor(current, self, "رنگ تم شخصیت")
+        selected = QColorDialog.getColor(current, self.window, "رنگ تم شخصیت")
         if not selected.isValid():
             return
         self.context.services.settings.setdefault("character_theme_colors", {})[cid] = selected.name()
@@ -363,7 +363,7 @@ class CharacterSettingsController(WindowFeatureController):
 
     def choose_appearance_color(self):
         current = QColor(self.context.views.appearance_page.background_color)
-        selected = QColorDialog.getColor(current, self, "رنگ پس‌زمینه")
+        selected = QColorDialog.getColor(current, self.window, "رنگ پس‌زمینه")
         if selected.isValid():
             self.context.views.appearance_page.set_background_color(selected.name())
             self.schedule_appearance()

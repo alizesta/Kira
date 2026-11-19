@@ -755,7 +755,7 @@ class RuntimeController(WindowFeatureController):
 
     def closeEvent(self, event):
         if (getattr(self.context.views, "tray", None) is not None and self.context.services.settings.get("close_to_tray")
-                and not getattr(self, "_quitting", False)):
+                and not getattr(self.context.state, "_quitting", False)):
             event.ignore()                                           # X only hides; "Exit" in the tray menu really quits
             self.feature_controller("lifecycle").hide_to_tray()
             return

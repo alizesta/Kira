@@ -23,6 +23,7 @@ STATE_FIELDS = frozenset({
     "_clicks",
     "_close_after_local_voice",
     "_closing",
+    "_quitting",
     "_db_notes",
     "_effect",
     "_game_capture_timer",
