@@ -53,6 +53,18 @@ class AdaptiveEchoCancellerTests(unittest.TestCase):
         self.assertEqual(canceller.adaptation_blocks, before_blocks)
         np.testing.assert_array_equal(canceller.weights, before)
 
+    def test_silent_reference_advances_history_without_changing_microphone(self):
+        canceller = AdaptiveEchoCanceller(block_size=128, filter_length=64)
+        rng = np.random.default_rng(11)
+        reference = rng.normal(0.0, 0.1, 128).astype(np.float32)
+        microphone = 0.4 * reference
+        canceller.process(microphone, reference)
+        self.assertGreater(float(np.max(np.abs(canceller.history))), 0.0)
+        silence = np.zeros(128, dtype=np.float32)
+        result = canceller.process(microphone, silence)
+        np.testing.assert_array_equal(result, microphone)
+        self.assertEqual(float(np.max(np.abs(canceller.history))), 0.0)
+
     def test_reset_clears_learned_path(self):
         canceller = AdaptiveEchoCanceller(block_size=128, filter_length=64)
         rng = np.random.default_rng(7)
