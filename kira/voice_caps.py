@@ -16,6 +16,8 @@ def chain(settings=None) -> list:
             engines.append(("Piper محلی", {"rate"}))
         if diagnostics.get("asr_installed"):
             engines.append(("Qwen3-ASR محلی", set()))
+        if (diagnostics.get("whisper_cpp") or {}).get("ready"):
+            engines.append(("whisper.cpp Vulkan محلی", set()))
         try:
             import faster_whisper  # noqa: F401
             engines.append(("Whisper محلی", set()))
