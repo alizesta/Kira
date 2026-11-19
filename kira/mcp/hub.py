@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import math
 import logging
 import re
 import threading
@@ -87,6 +88,20 @@ def _params_from_schema(schema) -> tuple:
         if raw_enum is not None:
             if not isinstance(raw_enum, list) or len(raw_enum) > 100:
                 raise ValueError(f"MCP tool inputSchema has an invalid enum for {key}")
+            def enum_matches(value):
+                if ptype == "string":
+                    return isinstance(value, str)
+                if ptype == "integer":
+                    return isinstance(value, int) and not isinstance(value, bool)
+                if ptype == "number":
+                    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+                if ptype == "boolean":
+                    return isinstance(value, bool)
+                if ptype == "array":
+                    return isinstance(value, list)
+                return isinstance(value, dict)
+            if not all(enum_matches(value) for value in raw_enum):
+                raise ValueError(f"MCP tool inputSchema enum does not match the declared type for {key}")
             enum = tuple(raw_enum)
         out.append(Param(key, ptype, clean_text(spec.get("description"), 80), key in raw_required, None, enum))
     return tuple(out)
