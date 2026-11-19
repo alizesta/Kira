@@ -523,12 +523,10 @@ class SessionController(WindowFeatureController):
             if result is None:
                 return False
 
-            history_by_character = settings.get("character_initiative_history")
-            updated_by_character = (
-                dict(history_by_character) if isinstance(history_by_character, dict) else {}
+            settings["character_initiative_history"] = (
+                self.context.services.initiative_application_service
+                .merge_settings_history(settings, result)
             )
-            updated_by_character[result.character_id] = list(result.history)
-            settings["character_initiative_history"] = updated_by_character
             state._save_warned = False
             self.feature_controller("runtime").save_now()
             # add_chat only paints the stored assistant message; there is no TTS or worker.
