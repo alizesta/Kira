@@ -7,7 +7,7 @@
 **Evidence:** TASK 015 historical static audit; merged TASK 013+014 integration PR #48; TASK 017–020 source work and handoff; current `new-main` source at the baseline SHA; and merged PR #98 (merge commit `0a84bbdc3d47afb1728ff314a056b49e6e56848b`) correcting stale Chat event test contracts and CI path filters.  
 **Verification boundary:** Source and documentation were statically inspected. PR #98 merged the stale Chat event test-path/assertion fixes and added the test file to the lifecycle workflow path filter. Its GitHub Actions jobs still completed without an assigned runner (`runner_id=0`, `steps=[]`) and logs were unavailable (`BlobNotFound`). No Python test, import, compile or desktop runtime pass is claimed from those jobs.
 
-> This document is the current architecture entry point. It distinguishes the repository state observed at this snapshot from the desired migration direction. A planned boundary is not evidence that the boundary is already implemented.
+> This is the canonical detailed architecture reference, linked from the root `ARCHITECTURE.md` index. It distinguishes the repository state observed at this snapshot from the desired migration direction. A planned boundary is not evidence that the boundary is already implemented.
 
 ## 1. Executive architecture summary
 
