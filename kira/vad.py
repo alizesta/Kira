@@ -91,8 +91,11 @@ class Segmenter:
     def calibrate(self, blk):
         """Feed room-noise blocks first; returns True while still calibrating."""
         if self.calibrating:
-            self._calib.append(self.level(blk))
-            self._denoiser.calibrate_block(blk)
+            level = self.level(blk)
+            self._calib.append(level)
+            self._denoiser.calibrate_block(
+                blk, quiet=level < max(self.min_start * 2.0, self.noise * 4.0)
+            )
             if not self.calibrating:
                 ordered = sorted(self._calib)
                 self.noise = max(0.001, min(0.05, ordered[len(ordered) // 2]))      # median: a single bump cannot skew it
