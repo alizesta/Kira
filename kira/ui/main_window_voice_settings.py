@@ -457,6 +457,8 @@ class VoiceSettingsController(WindowFeatureController):
         worker = self.sender()
         if self.context.state._model_import_worker is worker:
             self.context.state._model_import_worker = None
+        if worker is not None:
+            worker.deleteLater()
 
     @Slot(object)
     def on_local_model_imported(self, result):
@@ -612,6 +614,8 @@ class VoiceSettingsController(WindowFeatureController):
         worker = self.sender()
         if worker is not None and self.context.state._local_voice_worker is worker:
             self.context.state._local_voice_worker = None
+        if worker is not None:
+            worker.deleteLater()
         if getattr(self.context.state, "_close_after_local_voice", False):
             self.context.state._close_after_local_voice = False
             QTimer.singleShot(0, self.window.close)
@@ -725,6 +729,7 @@ class VoiceSettingsController(WindowFeatureController):
             return
         if self.context.state._local_stt_test_listener is listener:
             self.context.state._local_stt_test_listener = None
+        listener.deleteLater()
         current = self.context.resource("_local_stt_test_listener")
         if not self.context.state._closing and hasattr(self.context.views, "local_stt_test_btn"):
             self.context.views.local_stt_test_btn.setText(
