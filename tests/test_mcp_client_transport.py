@@ -4,7 +4,7 @@ import time
 import unittest
 from unittest import mock
 
-from kira.mcp.client import HttpClient, McpError, StdioClient
+from kira.mcp.client import HttpClient, McpError, StdioClient, PROTOCOL
 
 
 class SlowSseResponse:
@@ -86,6 +86,22 @@ class McpProtocolResultValidationTests(unittest.TestCase):
         with mock.patch.object(self.client, "request", return_value=[]):
             with self.assertRaisesRegex(McpError, "initialize"):
                 self.client.initialize(1)
+
+    def test_initialize_rejects_unsupported_protocol_and_missing_fields(self):
+        invalid = (
+            {"protocolVersion": "2024-11-05", "capabilities": {}, "serverInfo": {}},
+            {"protocolVersion": PROTOCOL, "serverInfo": {}},
+            {"protocolVersion": PROTOCOL, "capabilities": [] , "serverInfo": {}},
+        )
+        for result in invalid:
+            with self.subTest(result=result), mock.patch.object(self.client, "request", return_value=result):
+                with self.assertRaises(McpError):
+                    self.client.initialize(1)
+
+        valid = {"protocolVersion": PROTOCOL, "capabilities": {}, "serverInfo": {"name": "server", "version": "1"}}
+        with mock.patch.object(self.client, "request", return_value=valid), mock.patch.object(self.client, "notify"):
+            self.client.initialize(1)
+        self.assertEqual(self.client.server_info["name"], "server")
 
     def test_tools_list_rejects_missing_or_malformed_tools(self):
         for result in ({}, {"tools": "not-a-list"}, {"tools": [None]}, {"tools": [{"name": ""}]}):
