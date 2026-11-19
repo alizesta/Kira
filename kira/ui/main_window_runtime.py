@@ -497,11 +497,13 @@ class RuntimeController(WindowFeatureController):
             self.context.adapters.director.event("user_interrupt")
         self.safe_stop_speaker()
 
+    @Slot()
     def on_speech_started(self):
         self.context.adapters.director.event("tts_started")           # real audio playback has begun
         self.context.services.voice_application_service.begin_speaking()
         self.feature_controller("session").set_status("st_speaking")
 
+    @Slot()
     def on_speech_finished(self):
         self.context.adapters.director.event("tts_stopped")           # playback ended or was stopped
         self.context.services.voice_application_service.end_speaking()
@@ -511,10 +513,12 @@ class RuntimeController(WindowFeatureController):
         else:
             self.feature_controller("session").set_status("st_ready")
 
+    @Slot(float)
     def _on_kira_level(self, level):
         if self.context.listener:
             self.context.listener.kira_level = float(level)
 
+    @Slot()
     def on_user_barge_in(self):
         """The person started talking over Kira: she stops at once, and what they say is still heard as the next message."""
         if self.context.services.voice_application_service.is_speaking():
@@ -551,6 +555,7 @@ class RuntimeController(WindowFeatureController):
         self.feature_controller("session").set_status("st_ready")
         self.update_engine_label()
 
+    @Slot(object, bool, bool)
     def _on_voice_listener_finished(self, listener, was_current, restart_requested):
         if was_current:
             self.context.views.mic_btn.setChecked(False)
@@ -562,6 +567,7 @@ class RuntimeController(WindowFeatureController):
         elif was_current:
             self.feature_controller("session").set_status("st_ready")
 
+    @Slot(str)
     def on_listener_error(self, msg):
         self.feature_controller("session").add_chat("error", msg)
         self.context.views.mic_btn.setChecked(False)
@@ -572,6 +578,7 @@ class RuntimeController(WindowFeatureController):
         # Keep the worker owned until its stream has closed; stop() is non-blocking.
         self.stop_listener()
 
+    @Slot(str)
     def on_listener_state(self, state):
         if state == "listening":
             self.update_engine_label()
@@ -616,6 +623,7 @@ class RuntimeController(WindowFeatureController):
         self.context.adapters.animator.set_expression("happy", hold=2)
         self.context.views.wake_timer.start(int(self.context.services.settings["wake_timeout"]) * 1000)
 
+    @Slot(str)
     def on_heard(self, text):
         self.context.adapters.animator.touch()
         decision = self.context.services.voice_application_service.interpret_transcript(
