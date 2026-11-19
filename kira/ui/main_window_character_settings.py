@@ -604,16 +604,31 @@ class CharacterSettingsController(WindowFeatureController):
         QTimer.singleShot(1200, self.search_mcp_registry)
 
     def search_mcp_registry(self):
+        if self.context.state._closing:
+            return
         from ..mcp.registry import RegistrySearchWorker
-        worker = getattr(self, "_mcp_registry_worker", None)
+
+        worker = self.context.resource("_mcp_registry_worker")
         if worker is not None and worker.isRunning():
             return
         self.context.views.mcp_registry_panel.set_searching(True)
-        self._mcp_registry_worker = RegistrySearchWorker(self.context.views.mcp_registry_panel.query(), self.window)
-        self._mcp_registry_worker.completed.connect(self._on_mcp_registry_results)
-        self._mcp_registry_worker.start()
+        worker = RegistrySearchWorker(
+            self.context.views.mcp_registry_panel.query(), self.window
+        )
+        self.context.state._mcp_registry_worker = worker
+        worker.completed.connect(self._on_mcp_registry_results)
+        worker.finished.connect(
+            lambda current=worker: self._clear_mcp_registry_worker(current)
+        )
+        worker.start()
+
+    def _clear_mcp_registry_worker(self, worker):
+        if self.context.state._mcp_registry_worker is worker:
+            self.context.state._mcp_registry_worker = None
 
     def _on_mcp_registry_results(self, records, error):
+        if self.context.state._closing:
+            return
         self.context.views.mcp_registry_panel.show_results(records, error)
 
     def add_mcp_registry_server(self):
