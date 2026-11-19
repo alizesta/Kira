@@ -39,7 +39,7 @@ class BrainReflectionServiceTests(unittest.TestCase):
 
     def test_ui_controllers_do_not_import_legacy_brain_backend(self):
         offenders = []
-        for path in sorted((ROOT / "kira" / "ui").glob("main_window*.py")):
+        for path in sorted((ROOT / "kira" / "ui").glob("*.py")):
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             for node in ast.walk(tree):
                 if isinstance(node, ast.ImportFrom) and node.module in {"brain", "..brain"}:
