@@ -72,14 +72,19 @@ class MemoryDialog(QDialog):
         self.refresh()
 
     def refresh(self):
-        current = self.mood_service.current()
+        self.items.clear()
+        try:
+            current = self.mood_service.current()
+            saved_items = self.memory_service.list_items(self.character_id)
+        except Exception as exc:
+            _log.exception("Could not refresh the character memory dialog")
+            self.info.setText(f"بارگذاری حافظه ناموفق بود: {type(exc).__name__}: {exc}")
+            return
         self.info.setText(
             f"حال‌وهوای فعلی همراه: {current['emotion']} ({current['intensity']}/100). "
             f"حافظه‌ی بلندمدت {self.character_name} جداست؛ هرچه اینجا نباشد در حافظه‌ی او ثبت نشده است. "
             "تاریخچه‌ی کوتاه‌مدت گفتگو همچنان مشترک است."
         )
-        self.items.clear()
-        saved_items = self.memory_service.list_items(self.character_id)
         for memory_item in saved_items:
             row = QListWidgetItem(
                 f"[{self.GROUPS.get(memory_item['group'], memory_item['group'])}] {memory_item['text']}"
@@ -106,12 +111,19 @@ class MemoryDialog(QDialog):
     def add_note(self):
         text, ok = QInputDialog.getText(self, "یادداشت جدید", f"چه چیزی را {self.character_name} یادش بماند؟")
         if ok:
+            text = str(text or "").strip()
+            if not text:
+                QMessageBox.warning(self, "یادداشت خالی است", "متن یادداشت نمی‌تواند خالی باشد.")
+                return
             try:
                 added = self.memory_service.add_note(self.character_id, text)
             except Exception:
                 self._report_partial_memory_operation()
                 return
             if added:
+                self.refresh()
+            else:
+                QMessageBox.warning(self, "ثبت یادداشت انجام نشد", "یادداشت ذخیره نشد و تغییری در حافظه ایجاد نشد.")
                 self.refresh()
 
     def edit_item(self):
@@ -129,6 +141,10 @@ class MemoryDialog(QDialog):
             return
         text, ok = QInputDialog.getText(self, "ویرایش", "متن:", QLineEdit.Normal, current)
         if ok:
+            text = str(text or "").strip()
+            if not text:
+                QMessageBox.warning(self, "یادداشت خالی است", "متن یادداشت نمی‌تواند خالی باشد.")
+                return
             try:
                 updated = self.memory_service.update_item(self.character_id, item_id, text)
             except Exception:
@@ -136,29 +152,49 @@ class MemoryDialog(QDialog):
                 return
             if updated:
                 self.refresh()
+            else:
+                QMessageBox.warning(self, "ویرایش انجام نشد", "یادداشت تغییر نکرد؛ ممکن است مورد انتخاب‌شده دیگر وجود نداشته باشد.")
+                self.refresh()
 
     def delete_item(self):
         item_id = self._selected()
-        if item_id:
-            try:
-                deleted = self.memory_service.delete_item(self.character_id, item_id)
-            except Exception:
-                self._report_partial_memory_operation()
-                return
-            if deleted:
-                self.refresh()
+        selected = self.items.currentItem()
+        if not item_id or selected is None:
+            return
+        question = (
+            f"یادداشت انتخاب‌شده از حافظه‌ی بلندمدت {self.character_name} حذف شود؟\n\n"
+            + selected.text()[:500]
+        )
+        if QMessageBox.question(
+            self, "تأیید حذف یادداشت", question,
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        ) != QMessageBox.Yes:
+            return
+        try:
+            deleted = self.memory_service.delete_item(self.character_id, item_id)
+        except Exception:
+            self._report_partial_memory_operation()
+            return
+        if deleted:
+            self.refresh()
+        else:
+            QMessageBox.warning(self, "حذف انجام نشد", "یادداشت حذف نشد؛ ممکن است مورد انتخاب‌شده دیگر وجود نداشته باشد.")
+            self.refresh()
 
     def forget_all(self):
         question = (
             f"همه‌ی چیزهایی که {self.character_name} در حافظه‌ی بلندمدتش درباره‌ی تو نگه داشته پاک شود؟ "
             "تاریخچه‌ی کوتاه‌مدت گفتگو و حافظه‌ی شخصیت‌های دیگر دست‌نخورده می‌ماند."
         )
-        if QMessageBox.question(self, "فراموش‌کردن همه", question) == QMessageBox.Yes:
+        if QMessageBox.question(
+            self, "فراموش‌کردن همه", question,
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+        ) == QMessageBox.Yes:
             try:
                 self.memory_service.forget_all(self.character_id)
+                if self.character_id == "kira":
+                    self.mood_service.reset()
             except Exception:
                 self._report_partial_memory_operation()
                 return
-            if self.character_id == "kira":
-                self.mood_service.reset()
             self.refresh()
