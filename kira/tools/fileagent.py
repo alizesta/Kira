@@ -343,7 +343,7 @@ class FileAgent:
                 out = []
                 for n in names:
                     p = os.path.join(folder, n)
-                    if (_is_link_or_reparse(p) or self.policy.sensitive_name(p)
+                    if (_is_link_or_reparse(p) or not self.policy.is_allowed(p)
                             or os.path.splitext(n)[1].lower() in EXECUTABLE_EXT):
                         out.append(n)
                         skipped.append(n)
