@@ -102,11 +102,11 @@ class ProviderErrorClassificationTests(unittest.TestCase):
         self.assertEqual(caught.exception.kind, "model")
         self.assertEqual(caught.exception.status_code, 403)
 
-    def test_generic_groq_403_remains_an_auth_or_access_error(self):
+    def test_groq_network_block_403_is_not_misreported_as_bad_credentials(self):
         provider = GroqProvider({"model": "openai/gpt-oss-120b", "api_key": "secret"})
         with self.assertRaises(ProviderError) as caught:
             provider._check_status(_Response(403, "Access denied. Please check your network settings."))
-        self.assertEqual(caught.exception.kind, "auth")
+        self.assertEqual(caught.exception.kind, "network")
 
 
 if __name__ == "__main__":
