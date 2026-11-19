@@ -7,7 +7,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
 
-from kira.mcp.hub import McpHub
+from kira.mcp.hub import McpHub, _params_from_schema
 from kira.mcp import install
 from kira.tools.registry import Tool, ToolRegistry
 
@@ -20,6 +20,30 @@ class McpHubLifecycleTests(unittest.TestCase):
 
     def tearDown(self):
         self.hub.shutdown()
+
+    def test_mcp_tool_schema_must_be_well_formed_and_representable(self):
+        valid = _params_from_schema({
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "query", "enum": ["a", "b"]},
+                "limit": {"type": "integer"},
+            },
+            "required": ["query"],
+        })
+        self.assertEqual([param.name for param in valid], ["query", "limit"])
+        self.assertTrue(valid[0].required)
+
+        invalid_schemas = (
+            None,
+            {"type": "array"},
+            {"type": "object", "properties": []},
+            {"type": "object", "properties": {"x": {"type": "unsupported"}}},
+            {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["missing"]},
+            {"type": "object", "properties": {"x": {"type": "string", "enum": [1]}}},
+        )
+        for schema in invalid_schemas:
+            with self.subTest(schema=schema), self.assertRaises(ValueError):
+                _params_from_schema(schema)
 
     def test_unexpected_startup_failure_closes_client_and_records_error(self):
         class BrokenClient:
