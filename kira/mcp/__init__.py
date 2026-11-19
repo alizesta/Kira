@@ -22,7 +22,9 @@ def install(registry, data_dir, settings_fn):
     hub = None
     try:
         hub = McpHub(registry, data_dir, settings_fn)
-        agents = AgentHub(registry, data_dir, lambda: hub.config().get("agents", {}))
+        # mcp_mode=off disables the complete external integration, including
+        # independent agents, while keeping local job history readable.
+        agents = AgentHub(registry, data_dir, lambda: hub.config().get("agents", {}) if hub.enabled() else {})
         register_agent_tools(registry, agents)
         registry.register(Tool("mcp_info", "state of the configured external tool servers (MCP) and any error", lambda a: hub.info_text(), (), READ, ("mcp", "agents")))
         hub.agents = agents
