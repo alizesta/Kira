@@ -798,15 +798,8 @@ class RuntimeController(WindowFeatureController):
         self.feature_controller("attachments_vision")._set_game_vision_capture(False)
         self.feature_controller("attachments_vision")._stop_game_audio_listener()
         self.context.adapters.game_mode.set_enabled(False)
-        for sess in self.context.state.sessions.values():
-            for w in (sess.worker, sess._search_worker, sess._vision_worker):
-                if w is not None and w.isRunning():
-                    w.wait(3000)
-        for name in ("_api_worker", "_route_worker", "_bench_worker", "_scan_worker", "_provider_test_worker",
-                     "_ollama_worker", "_vision_worker", "_web_test_worker", "_attach_worker"):
-            w = self.context.resource(name)
-            if w is not None and w.isRunning():
-                w.wait(5000)
+        # Never wait() on a worker from the GUI thread. All owned QThreads are
+        # collected below and the close is resumed by their finished signals.
         self.feature_controller("voice_settings").stop_local_stt_test(update_ui=False)
         self.stop_listener()
         self.safe_stop_speaker()
