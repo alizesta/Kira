@@ -229,6 +229,24 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual({m["id"] for m in details["models"]}, {"gemini-2.5-flash", "gemini-2.5-pro"})
         self.assertEqual(sum(r["provider"] == pid and r["enabled"] for r in rm.get_routes(s)), 1)
 
+    def test_google_registration_moves_gemini_to_first_chat_priority(self):
+        s = fresh()
+        # Simulate a working Cloudflare route already ahead of Google.
+        s["providers"]["cloudflare"].update({"enabled": True, "api_key": CF_KEY, "account_id": "account"})
+        rm.update_route(s, "cloudflare", enabled=True)
+        pid = am.register(
+            s,
+            self.ok("google", [{"id": "gemini-3.8-flash"}, {"id": "gemini-3.8-pro"}], GOOGLE_KEY),
+            GOOGLE_KEY,
+        )
+        routes = rm.get_routes(s)
+        google_routes = [r for r in routes if r["provider"] == pid]
+        self.assertTrue(google_routes)
+        self.assertEqual(routes[0]["provider"], pid)
+        self.assertEqual(routes[0]["model"], "gemini-3.8-flash")
+        self.assertEqual(s["default_route_id"], routes[0]["id"])
+        self.assertEqual([r["model"] for r in google_routes], ["gemini-3.8-flash"])
+
     def test_existing_unkeyed_gemini_provider_is_reused(self):
         s = fresh()
         old = rm.add_provider(s, "Gemini", "https://generativelanguage.googleapis.com/v1beta/openai", "", False, True)
@@ -236,6 +254,7 @@ class RegistrationTests(unittest.TestCase):
         pid = am.register(s, self.ok("google", [{"id": "gemini-flash-latest"}], GOOGLE_KEY), GOOGLE_KEY)
         self.assertEqual(pid, old)
         self.assertEqual(s["providers"][old]["api_key"], GOOGLE_KEY)
+        self.assertEqual(rm.get_routes(s)[0]["provider"], old)
 
     def test_second_cloudflare_account_is_a_cloudflare_type_provider_the_engine_can_run(self):
         from kira.hybrid_ai import provider_class, CloudflareProvider
