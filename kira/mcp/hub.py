@@ -120,6 +120,7 @@ class McpHub:
         self._server_locks: dict[str, threading.RLock] = {}
         self._server_locks_lock = threading.Lock()
         self._thread: threading.Thread | None = None
+        self._refresh_requested = False
         self._shutdown = threading.Event()
         atexit.register(self.shutdown)
 
@@ -132,15 +133,30 @@ class McpHub:
         return str(self.settings_fn().get("mcp_mode", "auto")).lower() != "off"
 
     def refresh_async(self) -> None:
-        """(Re)read kira_mcp.json and (re)connect/disable, off the calling thread."""
+        """(Re)read config and apply the latest enabled/disabled state asynchronously."""
         if self._shutdown.is_set():
             return
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
+                self._refresh_requested = True
                 return
-            target = self._refresh if self.enabled() else self._disable
-            self._thread = threading.Thread(target=target, daemon=True, name="kira-mcp-refresh")
+            self._refresh_requested = False
+            self._thread = threading.Thread(target=self._refresh_worker, daemon=True, name="kira-mcp-refresh")
             self._thread.start()
+
+    def _refresh_worker(self) -> None:
+        while not self._shutdown.is_set():
+            try:
+                if self.enabled():
+                    self._refresh()
+                else:
+                    self._disable()
+            except Exception:
+                _LOGGER.exception("MCP refresh worker failed")
+            with self._lock:
+                if not self._refresh_requested or self._shutdown.is_set():
+                    return
+                self._refresh_requested = False
 
     def config(self) -> dict:
         return self._cfg
