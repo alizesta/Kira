@@ -1,6 +1,7 @@
 """Contract and architecture tests for the complete MoodStateService boundary."""
 import ast
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
@@ -67,6 +68,41 @@ class MoodStateServiceTests(unittest.TestCase):
             memory_id="memory-1", now=1234.5
         )
         backend.reset.assert_called_once_with()
+
+
+    def test_stateful_operations_are_bound_to_the_requested_character(self):
+        from kira.services import mood_service as adapter
+
+        entered = []
+
+        @contextmanager
+        def character_scope(character_id, traits=None):
+            entered.append((character_id, traits))
+            yield None
+
+        with patch.object(adapter.mood, "character_scope", side_effect=character_scope), \
+             patch.object(adapter.mood, "current", return_value={}), \
+             patch.object(adapter.mood, "build_block", return_value=""), \
+             patch.object(adapter.mood, "on_user_message", return_value=[]), \
+             patch.object(adapter.mood, "on_reply"), \
+             patch.object(adapter.mood, "on_event"), \
+             patch.object(adapter.mood, "avatar_hint", return_value=None), \
+             patch.object(adapter.mood, "mark_initiative_sent"), \
+             patch.object(adapter.mood, "reset"):
+            self.service.current(character_id="ren", traits={"warmth": 2})
+            self.service.build_block(character_id="ren", traits={"warmth": 2})
+            self.service.on_user_message("hello", character_id="ren", traits={"warmth": 2})
+            self.service.on_reply(["happy"], character_id="ren", traits={"warmth": 2})
+            self.service.on_event("notification", character_id="ren", traits={"warmth": 2})
+            self.service.avatar_hint(character_id="ren", traits={"warmth": 2})
+            self.service.mark_initiative_sent("memory-1", character_id="ren", traits={"warmth": 2})
+            self.service.reset(character_id="ren", traits={"warmth": 2})
+
+        self.assertEqual(
+            entered,
+            [("ren", {"warmth": 2})] * 8,
+            "every stateful Mood operation must run inside the requested character scope",
+        )
 
     def test_production_modules_do_not_import_the_legacy_mood_module_directly(self):
         package_root = Path(__file__).resolve().parents[1] / "kira"
