@@ -596,7 +596,7 @@ class AutoAgent:
                             hits.append(f"{f.relative_to(self.work).as_posix()}:{n}: {redact_secrets(line.strip())[:200]}")
                             if len(hits) >= 60:
                                 return "\n".join(hits) + "\n… (نتایج بیشتر نمایش داده نشد)"
-                except (UnicodeDecodeError, OSError):
+                except (OSError, ValueError):
                     continue
         return "\n".join(hits) or "(چیزی پیدا نشد)"
 
