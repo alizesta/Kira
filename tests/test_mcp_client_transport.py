@@ -120,6 +120,20 @@ class McpProtocolResultValidationTests(unittest.TestCase):
             self.client.initialize(1)
         self.assertEqual(self.client.server_info["name"], "server")
 
+    def test_http_transport_sends_protocol_version_after_initialize(self):
+        client = HttpClient({"url": "https://mcp.example/rpc"})
+        client.session_id = "session-1"
+        self.assertNotIn("MCP-Protocol-Version", client._headers())
+        valid = {"protocolVersion": PROTOCOL, "capabilities": {}, "serverInfo": {"name": "server", "version": "1"}}
+        captured = []
+        with mock.patch.object(client, "request", return_value=valid), mock.patch.object(
+            client, "_post", side_effect=lambda *_args, **_kwargs: captured.append(client._headers())
+        ):
+            client.initialize(1)
+
+        self.assertEqual(captured[0]["MCP-Protocol-Version"], PROTOCOL)
+        self.assertEqual(captured[0]["Mcp-Session-Id"], "session-1")
+
     def test_initialize_notification_failure_aborts_handshake(self):
         valid = {"protocolVersion": PROTOCOL, "capabilities": {}, "serverInfo": {"name": "server", "version": "1"}}
         with mock.patch.object(self.client, "request", return_value=valid), mock.patch.object(
