@@ -50,6 +50,22 @@ class FileAgentTests(unittest.TestCase):
         self.reg.user_text = "تأیید"
         return self.reg.execute(name, first.args, confirmed=True)
 
+    def test_rollback_never_unlinks_a_replacement_created_by_another_process(self):
+        from kira.tools.fileagent import _unlink_created_if_same
+
+        target = self.root / "raced.txt"
+        original = self.root / "raced-original.txt"
+        target.write_text("our file", encoding="utf-8")
+        expected = os.stat(target)
+        os.replace(target, original)
+        target.write_text("other process file", encoding="utf-8")
+
+        with self.assertRaises(OSError):
+            _unlink_created_if_same(str(target), expected)
+
+        self.assertEqual(target.read_text(encoding="utf-8"), "other process file")
+        self.assertEqual(original.read_text(encoding="utf-8"), "our file")
+
     def test_program_installation_root_is_blocked_even_inside_allowed_folder(self):
         program_root = self.root / "Kira"
         program_root.mkdir()
