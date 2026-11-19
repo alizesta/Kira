@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 from kira.ui.controllers import ChatAttachmentController
 
@@ -153,6 +154,18 @@ class ChatAttachmentControllerTests(unittest.TestCase):
         self.assertEqual(self.workers[0].paths, ["one.txt", "two.txt"])
         self.assertTrue(self.workers[0].started)
         self.assertFalse(self.send_button.enabled)
+
+    def test_superseded_worker_callbacks_are_ignored(self):
+        self.controller.add_paths(["current.txt"])
+        tile = self.controller.tiles[0]
+        with mock.patch.object(self.controller, "_is_current_worker_signal", return_value=False):
+            self.controller.on_progress(0, 90)
+            self.controller.on_loaded(0, {"name": "stale.txt"})
+            self.controller.on_failed(0, "stale failure")
+        self.assertIsNone(tile.att)
+        self.assertEqual(tile.progress, 0)
+        self.assertIn(tile, self.controller.tiles)
+        self.assertEqual(self.error_label.value, self.controller.LOADING_TEXT)
 
     def test_loaded_payload_is_exposed_without_window_state(self):
         self.controller.add_paths(["one.txt"])
