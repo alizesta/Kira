@@ -665,7 +665,7 @@ class RuntimeController(WindowFeatureController):
         self.context.views.companion_btn.setChecked(shown)
 
     def _running_background_workers(self):
-        """Return every owned QThread that must finish before Qt destroys the window."""
+        """Return owned threads and processes that must finish before Qt destroys the window."""
         workers = []
         for session in getattr(self.context.state, "sessions", {}).values():
             workers.extend((
@@ -696,7 +696,15 @@ class RuntimeController(WindowFeatureController):
                     running = is_running()
                 else:
                     process_state = getattr(worker, "state", None)
-                    running = bool(callable(process_state) and process_state() != 0)
+                    not_running = getattr(worker, "NotRunning", None)
+                    running = bool(
+                        callable(process_state)
+                        and (
+                            process_state() != not_running
+                            if not_running is not None
+                            else process_state()
+                        )
+                    )
                 if running:
                     unique.append(worker)
             except RuntimeError:
