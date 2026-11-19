@@ -142,6 +142,15 @@ class FeatureControllerRegistryTests(unittest.TestCase):
                     f"{feature}.{namespace} contains fields outside the root contract",
                 )
 
+    def test_unregistered_controllers_fail_closed(self):
+        from PySide6.QtCore import QObject
+        from kira.ui.window_presentation_context import WindowPresentationContext
+
+        registry = FeatureControllerRegistry({})
+        root = WindowPresentationContext(QObject(), registry)
+        with self.assertRaises(LookupError):
+            root.for_controller(object())
+
     def test_controller_source_access_matches_capability_matrix(self):
         from kira.ui.window_presentation_context import CONTROLLER_ACCESS
         root = Path(__file__).resolve().parents[1]
@@ -170,6 +179,17 @@ class FeatureControllerRegistryTests(unittest.TestCase):
                             and base.attr in {"state", "services", "adapters", "views"}
                             and node.attr not in access[base.attr]):
                         violations.append(f"{feature}:{node.lineno}:{base.attr}.{node.attr}")
+                if (isinstance(node, ast.Attribute)
+                        and isinstance(node.value, ast.Attribute)
+                        and isinstance(node.value.value, ast.Name)
+                        and node.value.value.id == "self"
+                        and node.value.attr == "context"
+                        and node.attr not in {
+                            "state", "services", "adapters", "views", "session",
+                            "listener", "is_background_session", "resource",
+                        }
+                        and node.attr not in access["extras"]):
+                    violations.append(f"{feature}:{node.lineno}:context.{node.attr}")
                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
                     if (node.func.attr == "feature_controller" and node.args
                             and isinstance(node.args[0], ast.Constant)
