@@ -403,7 +403,8 @@ class FileAgent:
         a = self.precheck_write(a)
         path, data = a["path"], str(a.get("content") or "").encode("utf-8")
         backup = ""
-        if os.path.exists(path):
+        existed_before = os.path.exists(path)
+        if existed_before:
             # Multiple characters can request writes concurrently. A timestamp
             # alone is not unique enough: never let a later write overwrite an
             # earlier recovery copy.
@@ -435,7 +436,14 @@ class FileAgent:
                 pass
         if not os.path.isfile(path) or os.path.getsize(path) != len(data):
             raise ToolError("اندازه‌ی فایل بعد از نوشتن درست نیست.")
-        persisted = self.journal.add("write", path=path, backup=backup)
+        persisted = self.journal.add(
+            "write",
+            path=path,
+            backup=backup,
+            created=not existed_before,
+            written_size=len(data),
+            written_sha256=hashlib.sha256(data).hexdigest(),
+        )
         return f"فایل نوشته شد: {path}" + (f" (پشتیبان: {backup})" if backup else "") + self._journal_note(persisted)
 
     def precheck_delete_folder(self, a: dict) -> dict:
@@ -693,19 +701,50 @@ class FileAgent:
                 fh.truncate(size_before)
         elif op == "write":
             real = self.policy.check(path, must_exist=False)
-            backup_path = item.get("backup")
-            if not backup_path:
-                raise ToolError("پشتیبانی برای برگرداندن نیست.")
-            # The journal is local data and can be edited or corrupted. Never
-            # let an undo record copy an arbitrary file into an allowed target.
-            backup = self.policy.check(backup_path)
-            expected_name = os.path.basename(real) + ".bak-"
-            if (os.path.dirname(os.path.normcase(backup)) != os.path.dirname(os.path.normcase(real))
-                    or not os.path.basename(backup).startswith(expected_name)
-                    or not os.path.isfile(backup)
-                    or (os.path.exists(real) and os.path.samefile(backup, real))):
-                raise ToolError("پشتیبان معتبر و مستقل برای برگرداندن پیدا نشد.")
-            shutil.copy2(backup, real)
+            if item.get("created"):
+                if not os.path.isfile(real):
+                    raise ToolError("فایل ساخته‌شده دیگر وجود ندارد؛ چیزی برای برگرداندن نیست.")
+                expected_digest = item.get("written_sha256")
+                expected_size = item.get("written_size")
+                if expected_digest:
+                    if expected_size is not None and os.path.getsize(real) != expected_size:
+                        raise ToolError("فایل بعد از write تغییر کرده؛ برای جلوگیری از حذف تغییرات جدید برنگرداندم.")
+                    digest = hashlib.sha256()
+                    with open(real, "rb") as fh:
+                        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                            digest.update(chunk)
+                    if digest.hexdigest() != expected_digest:
+                        raise ToolError("محتوای فایل بعد از write تغییر کرده؛ برنگرداندم.")
+                if sys.platform != "win32":
+                    raise ToolError("انتقال فایل به سطل بازیافت فقط روی ویندوز ممکن است.")
+                _recycle(real)
+                if os.path.exists(real):
+                    raise ToolError("فایل ساخته‌شده به سطل بازیافت منتقل نشد.")
+            else:
+                backup_path = item.get("backup")
+                if not backup_path:
+                    raise ToolError("پشتیبانی برای برگرداندن نیست.")
+                # The journal is local data and can be edited or corrupted. Never
+                # let an undo record copy an arbitrary file into an allowed target.
+                backup = self.policy.check(backup_path)
+                expected_name = os.path.basename(real) + ".bak-"
+                if (os.path.dirname(os.path.normcase(backup)) != os.path.dirname(os.path.normcase(real))
+                        or not os.path.basename(backup).startswith(expected_name)
+                        or not os.path.isfile(backup)
+                        or (os.path.exists(real) and os.path.samefile(backup, real))):
+                    raise ToolError("پشتیبان معتبر و مستقل برای برگرداندن پیدا نشد.")
+                expected_digest = item.get("written_sha256")
+                expected_size = item.get("written_size")
+                if os.path.exists(real) and expected_digest:
+                    if expected_size is not None and os.path.getsize(real) != expected_size:
+                        raise ToolError("فایل بعد از write تغییر کرده؛ برای جلوگیری از حذف تغییرات جدید برنگرداندم.")
+                    digest = hashlib.sha256()
+                    with open(real, "rb") as fh:
+                        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                            digest.update(chunk)
+                    if digest.hexdigest() != expected_digest:
+                        raise ToolError("محتوای فایل بعد از write تغییر کرده؛ برنگرداندم.")
+                shutil.copy2(backup, real)
         else:
             raise ToolError("این نوع عملیات قابل برگرداندن نیست.")
         persisted = self.journal.mark_undone(item)
