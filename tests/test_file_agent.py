@@ -66,6 +66,17 @@ class FileAgentTests(unittest.TestCase):
         self.assertEqual(target.read_text(encoding="utf-8"), "other process file")
         self.assertEqual(original.read_text(encoding="utf-8"), "our file")
 
+    def test_batch_paths_preserve_case_distinct_files_on_case_sensitive_platforms(self):
+        if os.path.normcase("A.txt") == os.path.normcase("a.txt"):
+            self.skipTest("platform filesystem semantics are case-insensitive")
+        upper = self.root / "Case.txt"
+        lower = self.root / "case.txt"
+        upper.write_text("upper", encoding="utf-8")
+        lower.write_text("lower", encoding="utf-8")
+
+        paths = self.fa._paths([str(upper), str(lower), str(upper)])
+        self.assertEqual(paths, [str(upper), str(lower)])
+
     def test_batch_move_rejects_cross_device_directory_move(self):
         from types import SimpleNamespace
 
