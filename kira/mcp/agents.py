@@ -233,17 +233,18 @@ class JobStore:
                     return dict(job)
         return None
 
-    def add(self, job: dict):
+    def add(self, job: dict) -> bool:
         with self._lock:
             self.jobs[job["id"]] = job
-            self._save()
+            return self._save()
 
-    def update(self, job_id: str, **fields):
+    def update(self, job_id: str, **fields) -> bool:
         with self._lock:
             job = self.jobs.get(job_id)
-            if job is not None:
-                job.update(fields, updated=time.time())
-                self._save()
+            if job is None:
+                return False
+            job.update(fields, updated=time.time())
+            return self._save()
 
     def get(self, job_id: str):
         with self._lock:
@@ -329,7 +330,8 @@ class AgentHub:
         fields = {"state": state, "text": clean_text(data.get("text"), 1800)}
         if state in ("question", "approval"):
             fields["question"] = clean_text(data.get("question") or data.get("text"), 500)
-        self.store.update(job["id"], **fields)
+        if not self.store.update(job["id"], **fields):
+            _LOGGER.warning("Delegated job %s updated in memory but could not be persisted", job.get("id"))
         return self.store.get(job["id"]) or job
 
     # ---- tool handlers ----
@@ -361,9 +363,10 @@ class AgentHub:
             raise ToolError("ایجنت شناسه‌ی کار برنگرداند؛ مطمئن نیستم کار شروع شده باشد.", ERROR)
         job = {"id": uuid.uuid4().hex[:10], "agent": agent.cfg["name"], "goal": clean_text(task, 300), "idem": idem, "remote_id": remote[:120],
                "state": "progress", "text": "", "question": "", "created": time.time(), "updated": time.time()}
-        self.store.add(job)
+        persisted = self.store.add(job)
         self._ensure_poller()
-        return f"کار به ایجنت «{agent.cfg['name']}» سپرده شد. job_id={job['id']}. به کاربر بگو کار در پس‌زمینه انجام می‌شود و بعداً با agent_status نتیجه را می‌خوانی؛ نگو که تمام شده."
+        warning = "" if persisted else " هشدار: وضعیت این کار در فایل محلی ذخیره نشد؛ شناسه‌ی job را نگه دار، چون پس از بسته‌شدن برنامه بازیابی آن تضمین‌شده نیست."
+        return f"کار به ایجنت «{agent.cfg['name']}» سپرده شد. job_id={job['id']}. به کاربر بگو کار در پس‌زمینه انجام می‌شود و بعداً با agent_status نتیجه را می‌خوانی؛ نگو که تمام شده." + warning
 
     def _format(self, job: dict) -> str:
         head = f"job_id={job['id']} agent={job['agent']} state={job['state']} goal={job.get('goal', '')}"
@@ -408,9 +411,10 @@ class AgentHub:
             else:
                 raise ToolError("برای تأیید/رد کار ایجنت، کاربر باید صریح بگوید (مثلاً «تأیید» یا «لغو»).", DENIED)
         self._agent(job["agent"]).answer(job["remote_id"], quote[:1000], approve)          # the user's own words, not the model's
-        self.store.update(job["id"], state="progress", question="")
+        persisted = self.store.update(job["id"], state="progress", question="")
         self._ensure_poller()
-        return "جواب خود کاربر برای ایجنت فرستاده شد."
+        warning = "" if persisted else " هشدار: وضعیت جدید در فایل محلی ذخیره نشد."
+        return "جواب خود کاربر برای ایجنت فرستاده شد." + warning
 
     def stop(self, a: dict) -> str:
         job = self.store.get(str(a.get("job_id") or "").strip())
@@ -419,8 +423,9 @@ class AgentHub:
         if job["state"] in FINAL:
             return f"این کار از قبل تمام شده است (state={job['state']})."
         self._agent(job["agent"]).stop(job["remote_id"])
-        self.store.update(job["id"], state="stopped", text="به درخواست کاربر متوقف شد.")
-        return "درخواست توقف برای ایجنت فرستاده شد."
+        persisted = self.store.update(job["id"], state="stopped", text="به درخواست کاربر متوقف شد.")
+        warning = "" if persisted else " هشدار: وضعیت توقف در فایل محلی ذخیره نشد."
+        return "درخواست توقف برای ایجنت فرستاده شد." + warning
 
     def health_text(self, a: dict) -> str:
         names = [str(a["agent"]).lower()] if a.get("agent") else list(self.agents_fn())
