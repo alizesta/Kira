@@ -296,7 +296,7 @@ def join_wavs_with_pauses(items):
             raise ValueError("Piper sentence WAV formats do not match")
         decoded.append((frames, max(0, int(pause_ms))))
     channels, sample_width, sample_rate = spec
-    silence = b"\0" * width * channels * silence_frames
+    silence_frame = b"\0" * sample_width * channels
     output = io.BytesIO()
     with wave.open(output, "wb") as target:
         target.setnchannels(channels)
@@ -306,7 +306,7 @@ def join_wavs_with_pauses(items):
             target.writeframesraw(frames)
             silence_frames = round(sample_rate * pause_ms / 1000)
             if silence_frames:
-                target.writeframesraw(silence * silence_frames)
+                target.writeframesraw(silence_frame * silence_frames)
     return output.getvalue()
 
 
