@@ -53,7 +53,7 @@ class AdaptiveEchoCanceller:
         joined = np.concatenate((self.history, ref))
         windows = np.lib.stride_tricks.sliding_window_view(
             joined, self.filter_length
-        )[::-1, ::-1]
+        )[:, ::-1]
         # Each row contains the current and preceding far-end samples.
         estimate = windows @ self.weights
         error = mic - estimate
@@ -65,7 +65,10 @@ class AdaptiveEchoCanceller:
         # with the last stable filter so the user's voice is not learned as echo.
         double_talk = (
             estimate_power > max(1e-8, ref_power * 0.01)
-            and error_power > estimate_power * self.double_talk_ratio
+            and error_power > max(
+                estimate_power * self.double_talk_ratio,
+                ref_power * 1.5,
+            )
         )
         if not double_talk:
             energy = float(np.sum(windows * windows)) + 1e-8
