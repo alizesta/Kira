@@ -131,6 +131,8 @@ def initialize_main_window(
     self.state._closing = False
     for resource_name in (
         "_local_voice_worker",
+        "_local_stt_test_listener",
+        "_model_catalog_worker",
         "_model_import_worker",
         "_api_worker",
         "_route_worker",
@@ -172,6 +174,7 @@ def initialize_main_window(
     self.session.client = self.services.provider_application_service.create_router(self.services.settings)
     self.adapters.game_mode = GameModeMonitor(self.host)
     self.state._game_mode_enabled = False
+    self.state._game_audio_restart_pending = False
     self.state._game_mode_profile = self.services.game_mode_application_service.COMPETITIVE_SAFE_MODE
     self.state._latest_game_frame = None
     # Vision cadence, safety gating and deduplication are owned by the application service.
