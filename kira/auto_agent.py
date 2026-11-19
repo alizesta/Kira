@@ -70,9 +70,26 @@ def _atomic_write_text(path: Path, content: str) -> int:
     finally:
         try:
             os.unlink(temporary)
-        except FileNotFoundError:
+        except OSError:
             pass
     return len(data)
+
+
+def _read_bounded_text(path: Path) -> str:
+    """Read at most the configured project-file limit and return strict UTF-8 text."""
+    try:
+        with Path(path).open("rb") as stream:
+            data = stream.read(MAX_FILE_BYTES + 1)
+    except OSError as exc:
+        raise ValueError(f"خواندن فایل ممکن نشد: {exc}") from exc
+    if len(data) > MAX_FILE_BYTES:
+        raise ValueError(f"فایل از سقف مجاز {MAX_FILE_BYTES // 1024} کیلوبایت بزرگ‌تر است.")
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("فایل متن UTF-8 نیست.") from exc
+
+
 IRAN = timezone(timedelta(hours=3, minutes=30), "IRST")      # Iran has no daylight saving time since 2022
 ALLOWED_MODULES = {"unittest", "pytest", "compileall", "py_compile", "ruff", "pyflakes"}
 SAFE_SCRIPTS = {"test", "tests", "lint", "build", "check", "typecheck", "type-check", "fmt", "format"}
@@ -367,8 +384,8 @@ class AutoAgent:
             return
         try:
             if target.stat().st_size <= MAX_FILE_BYTES:
-                self._baseline_texts[rel] = target.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+                self._baseline_texts[rel] = _read_bounded_text(target)
+        except (OSError, ValueError):
             pass
 
     def _save_checkpoint(self, messages, before, stats):
@@ -515,11 +532,11 @@ class AutoAgent:
                     continue
                 path = Path(current) / name
                 rel = path.relative_to(self.work).as_posix()
-                if path.is_symlink() or _is_sensitive(Path(rel)) or path.stat().st_size > MAX_FILE_BYTES:
+                if path.is_symlink() or _is_sensitive(Path(rel)):
                     continue
                 try:
-                    tree = ast.parse(path.read_text(encoding="utf-8"))
-                except (OSError, UnicodeDecodeError, SyntaxError):
+                    tree = ast.parse(_read_bounded_text(path))
+                except (OSError, ValueError, SyntaxError):
                     continue
                 imports, symbols = [], []
                 for node in ast.walk(tree):
@@ -537,10 +554,7 @@ class AutoAgent:
 
     def tool_read(self, a):
         f = self._path(a.get("path"))
-        try:
-            lines = f.read_text(encoding="utf-8").splitlines()
-        except UnicodeDecodeError:
-            raise ValueError("فایل متن UTF-8 نیست.")
+        lines = _read_bounded_text(f).splitlines()
         start = max(1, int(a.get("start") or 1))
         end = min(len(lines), int(a.get("end") or start + 399))
         body = "\n".join(f"{i}: {lines[i - 1]}" for i in range(start, end + 1))
@@ -575,10 +589,9 @@ class AutoAgent:
                 f = Path(current) / name
                 if f.is_symlink() or _is_sensitive(f.relative_to(self.work)) or not f.match(glob):
                     continue
-                if f.stat().st_size > MAX_FILE_BYTES:
-                    continue
                 try:
-                    for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+                    content = _read_bounded_text(f)
+                    for n, line in enumerate(content.splitlines(), 1):
                         if rx.search(line):
                             hits.append(f"{f.relative_to(self.work).as_posix()}:{n}: {redact_secrets(line.strip())[:200]}")
                             if len(hits) >= 60:
@@ -621,7 +634,9 @@ class AutoAgent:
         old, new = str(a.get("old", "")), str(a.get("new", ""))
         if not old:
             raise ValueError("old خالی است.")
-        text = target.read_text(encoding="utf-8")
+        if len(new.encode("utf-8")) > MAX_FILE_BYTES:
+            raise ValueError(f"متن جایگزین از سقف مجاز {MAX_FILE_BYTES // 1024} کیلوبایت بزرگ‌تر است.")
+        text = _read_bounded_text(target)
         crlf = "\r\n" in text and "\n" not in text.replace("\r\n", "")
         work = text.replace("\r\n", "\n") if crlf else text
         if work.count(old) != 1:
