@@ -21,18 +21,14 @@ class ChatComposer(QFrame):
     incrementally.
     """
 
+    # Only widgets declared in WindowPresentationContext are mirrored to the
+    # legacy window-view namespace. Every other child remains available through
+    # views.chat_composer.<name> and is deliberately not a window-level alias.
     _OWNER_ALIASES = (
         "send_strip",
-        "attach_strip",
-        "attach_err",
-        "attach_err_close",
-        "attach_err_row",
-        "attach_err_widget",
         "input",
         "route_badge",
         "route_menu",
-        "attach_btn",
-        "screen_capture_btn",
         "web_btn",
         "img_search_btn",
         "code_chat",
@@ -40,11 +36,8 @@ class ChatComposer(QFrame):
         "wake_btn",
         "voice_btn",
         "game_mode_btn",
-        "game_mode_menu",
         "game_mode_story_action",
         "game_mode_safe_action",
-        "game_mode_off_action",
-        "vision_rate_menu",
         "vision_rate_actions",
         "stop_btn",
         "gen_stop_btn",
