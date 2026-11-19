@@ -22,6 +22,47 @@ class LocalTtsPlaybackTests(unittest.TestCase):
         self.assertGreater(session.prosody["length_scale"], 1.0)
         self.assertLess(session.prosody["gain_db"], 0.0)
 
+    def test_second_sentence_synthesis_prepends_real_silence(self):
+        import io
+        import wave
+
+        from kira import local_voice
+        from kira.voice_prosody import resolve_prosody
+
+        payload = io.BytesIO()
+        with wave.open(payload, "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(1000)
+            audio.writeframes(b"\\x01\\x00" * 10)
+
+        session = SimpleNamespace(
+            rate=0,
+            pitch=0,
+            cache=False,
+            gen=1,
+            prosody=resolve_prosody(),
+            cond=threading.Condition(),
+        )
+        speaker = SimpleNamespace(
+            settings={"local_voice_tts": True, "voice_rate": 0},
+            _tmp="/tmp",
+            _save_local_wav=mock.Mock(return_value=("cached.wav", [])),
+            _report=mock.Mock(),
+        )
+        with mock.patch.object(local_voice, "tts_ready", return_value=True), \
+             mock.patch.object(local_voice, "normalize_persian_tts_text", return_value="سلام"), \
+             mock.patch.object(local_voice, "synthesize_persian", return_value=payload.getvalue()):
+            result = Speaker._synth(speaker, session, 1, "سلام")
+
+        self.assertEqual(result, ("cached.wav", []))
+        assembled = speaker._save_local_wav.call_args.args[1]
+        with wave.open(io.BytesIO(assembled), "rb") as audio:
+            samples = audio.readframes(audio.getnframes())
+            self.assertEqual(audio.getnframes(), 275)
+        self.assertEqual(samples[:265 * 2], b"\\0" * 265 * 2)
+        self.assertEqual(samples[265 * 2:], b"\\x01\\x00" * 10)
+
 
     def test_speaker_idle_state_waits_for_real_thread_exit(self):
         class FakeThread:
