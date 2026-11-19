@@ -52,7 +52,7 @@ class LocalVoiceProcessTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(
             popen.call_args.kwargs["creationflags"],
-            subprocess.CREATE_NO_WINDOW,
+            getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
 
     def test_cancelled_installer_terminates_the_running_process(self):
