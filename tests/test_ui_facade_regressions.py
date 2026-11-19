@@ -134,6 +134,11 @@ class FacadeRegressionTests(unittest.TestCase):
         self.assertIn("@Slot(int, str)\n    def on_failed", source)
         self.assertIn("self.worker.finished.connect(self._on_worker_finished)", source)
 
+    def test_codechat_rejects_pending_approval_during_shutdown(self):
+        source = (ROOT / "kira/chat_code_ui.py").read_text(encoding="utf-8")
+        self.assertIn("if self.win._closing or self.auto_stop:", source)
+        self.assertIn('holder["ok"] = False\n            holder["event"].set()\n            return', source)
+
     def test_window_shutdown_does_not_block_waiting_for_workers(self):
         source = (ROOT / "kira/ui/main_window_runtime.py").read_text(encoding="utf-8")
         codechat = (ROOT / "kira/chat_code_ui.py").read_text(encoding="utf-8")
