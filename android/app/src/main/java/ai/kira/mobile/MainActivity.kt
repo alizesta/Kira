@@ -36,7 +36,7 @@ class MainActivity : ComponentActivity() {
 }
 
 private enum class KiraTab(val label:String,val glyph:String) {
-    CHAT("چت","✦"), SEARCH("جستجو","⌕"), CHARACTERS("شخصیت‌ها","♧"), SETTINGS("تنظیمات","⚙")
+    CHAT("چت","✦"), SEARCH("جستجو","⌕"), IMAGE("تصویر","▧"), CHARACTERS("شخصیت‌ها","♧"), SETTINGS("تنظیمات","⚙")
 }
 
 private enum class SettingsPage { HOME, ROUTE, MEMORY, SKILLS, ASSISTANT }
@@ -75,6 +75,7 @@ private fun KiraApp() {
                 when(selectedTab) {
                     KiraTab.CHAT -> KiraChatScreen(character=selectedCharacter,prefillText=pendingChatContext,onPrefillConsumed={pendingChatContext=""})
                     KiraTab.SEARCH -> KiraSearchScreen(onUseInChat={ text -> pendingChatContext=text; selectedTab=KiraTab.CHAT })
+                    KiraTab.IMAGE -> KiraImageScreen()
                     KiraTab.CHARACTERS -> KiraCharactersScreen(selectedCharacter) { selectedCharacter=it }
                     KiraTab.SETTINGS -> when(settingsPage) {
                         SettingsPage.ROUTE -> SettingsSubpage("اتصال API و مدل‌ها",{settingsPage=SettingsPage.HOME}) { KiraRouteScreen() }
