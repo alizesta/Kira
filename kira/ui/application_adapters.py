@@ -137,7 +137,7 @@ class QtProviderWorkerAdapter(QObject):
 
     def __getattr__(self, name):
         # Preserve worker cancellation/diagnostic hooks for existing UI adapters.
-        worker = object.__getattribute__(self, "_worker")
+        worker = self._worker
         if worker is None:
             raise AttributeError(name)
         return getattr(worker, name)
