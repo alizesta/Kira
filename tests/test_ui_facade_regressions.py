@@ -78,12 +78,28 @@ class FacadeRegressionTests(unittest.TestCase):
     def test_worker_resources_are_registered_for_shutdown(self):
         context_source = (ROOT / "kira/ui/window_presentation_context.py").read_text(encoding="utf-8")
         runtime_source = (ROOT / "kira/ui/main_window_runtime.py").read_text(encoding="utf-8")
+        composition_source = (ROOT / "kira/ui/main_window_composition.py").read_text(encoding="utf-8")
 
-        self.assertIn('"_model_catalog_worker": ("state", "_model_catalog_worker")', context_source)
-        self.assertIn('"_local_stt_test_listener": ("state", "_local_stt_test_listener")', context_source)
-        self.assertIn('"_model_catalog_worker"', runtime_source)
-        self.assertIn('"_local_stt_test_listener"', runtime_source)
+        for name in ("_model_catalog_worker", "_local_stt_test_listener", "_mcp_registry_worker"):
+            self.assertIn(f'"{name}": ("state", "{name}")', context_source)
+            self.assertIn(f'"{name}"', runtime_source)
+            self.assertIn(f'"{name}"', composition_source)
         self.assertIn('stop_local_stt_test(update_ui=False)', runtime_source)
+
+    def test_stt_callbacks_are_bound_to_their_originating_listener(self):
+        source = (ROOT / "kira/ui/main_window_voice_settings.py").read_text(encoding="utf-8")
+        self.assertIn("lambda text, current=listener: self._on_local_stt_test_heard(text, current)", source)
+        self.assertIn("lambda message, current=listener: self._on_local_stt_test_error(message, current)", source)
+        self.assertIn("self.context.state._local_stt_test_listener is not listener", source)
+        self.assertIn('"توقف تست STT" if current is not None and current.isRunning() else "تست STT"', source)
+
+    def test_mcp_registry_search_worker_is_drained_on_window_close(self):
+        context_source = (ROOT / "kira/ui/window_presentation_context.py").read_text(encoding="utf-8")
+        controller_source = (ROOT / "kira/ui/main_window_character_settings.py").read_text(encoding="utf-8")
+        self.assertIn('"_mcp_registry_worker": ("state", "_mcp_registry_worker")', context_source)
+        self.assertIn("self.context.state._mcp_registry_worker = worker", controller_source)
+        self.assertIn("def _clear_mcp_registry_worker", controller_source)
+        self.assertIn("if self.context.state._closing:", controller_source)
 
     def test_game_audio_stop_is_nonblocking_and_restart_is_serialized(self):
         source = (ROOT / "kira/game_audio.py").read_text(encoding="utf-8")
