@@ -129,6 +129,7 @@ def initialize_main_window(
     self.state._save_warned = False
     self.session._emotion_applied = False
     self.state._closing = False
+    self.state._provider_workers = set()
     for resource_name in (
         "_local_voice_worker",
         "_local_stt_test_listener",
