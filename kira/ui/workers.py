@@ -129,18 +129,29 @@ class SearchWorker(QThread):
 
 
 class TaskWorker(QThread):
-    """One blocking call (route test, Ollama scan) off the GUI thread. done -> (ok, value-or-error-text)."""
+    """One blocking call off the GUI thread, optionally cooperatively cancellable."""
     done = Signal(object)
 
-    def __init__(self, fn):
+    def __init__(self, fn, *, cancellable=False):
         super().__init__()
         self.fn = fn
+        self.cancellable = bool(cancellable)
+        self._cancel_event = threading.Event()
+
+    def cancel(self):
+        """Request cancellation; cancellable callables receive the event."""
+        if self.cancellable:
+            self._cancel_event.set()
 
     def run(self):
         try:
-            self.done.emit((True, self.fn()))
+            result = self.fn(self._cancel_event) if self.cancellable else self.fn()
         except Exception as exc:                                  # noqa: BLE001
-            self.done.emit((False, str(exc)[:400]))
+            if not self._cancel_event.is_set():
+                self.done.emit((False, str(exc)[:400]))
+        else:
+            if not self._cancel_event.is_set():
+                self.done.emit((True, result))
 
 
 
