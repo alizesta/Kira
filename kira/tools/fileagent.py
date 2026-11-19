@@ -367,6 +367,8 @@ class FileAgent:
             size_before=before,
             size_after=os.path.getsize(path),
             sha256_after=digest.hexdigest(),
+            file_dev=before_stat.st_dev,
+            file_ino=before_stat.st_ino,
         )
         return f"{_fmt_size(len(data))} به انتهای فایل اضافه شد: {path}" + self._journal_note(persisted)
 
@@ -809,7 +811,16 @@ class FileAgent:
             size_before = item["size_before"]
             expected_size = item.get("size_after")
             expected_digest = item.get("sha256_after")
-            with open(real, "r+b") as fh:
+            flags = os.O_RDWR | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+            fd = os.open(real, flags)
+            with os.fdopen(fd, "r+b") as fh:
+                opened_stat = os.fstat(fh.fileno())
+                path_stat = os.lstat(real)
+                if not os.path.samestat(opened_stat, path_stat):
+                    raise ToolError("فایل هنگام Undo با لینک/فایل دیگری جایگزین شده؛ برنگرداندم.")
+                if (item.get("file_dev") is not None and item.get("file_ino") is not None
+                        and (opened_stat.st_dev, opened_stat.st_ino) != (item["file_dev"], item["file_ino"])):
+                    raise ToolError("فایل بعد از append با فایل دیگری جایگزین شده؛ برنگرداندم.")
                 if expected_size is not None and fh.seek(0, os.SEEK_END) != expected_size:
                     raise ToolError("فایل بعد از عملیات append تغییر کرده؛ برنگرداندم.")
                 if expected_digest:
