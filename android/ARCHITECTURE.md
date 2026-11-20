@@ -1,6 +1,8 @@
 # Kira Android application architecture
 
-Kira Android is a native modular monolith that mirrors the Windows architecture's responsibilities while using platform-native adapters.
+Kira Android is a native modular monolith aligned with the Windows application's
+architectural responsibilities, using platform-native adapters rather than sharing
+Python/Qt implementations.
 
 | Windows responsibility | Android counterpart |
 | --- | --- |
@@ -13,36 +15,52 @@ Kira Android is a native modular monolith that mirrors the Windows architecture'
 
 ## Runtime composition
 
-`MainActivity` is an Android entry point only: lifecycle and overlay intents.
-`KiraMobileApplication` owns the one process-scoped `KiraContainer`, which wires
-repositories, application services and transport adapters. All Compose screens receive
-the root container or their use case; they do not construct databases, cores, providers,
-HTTP clients or credential stores.
+`MainActivity` handles Android lifecycle and incoming overlay intents only.
+`KiraMobileApplication` owns the process-scoped `KiraContainer`. The container wires
+application interactors, local repositories and remote gateways once. Compose screens
+receive the root container or a use case; they do not construct cores, databases,
+credential stores, HTTP clients or provider transports.
 
-## Layers and dependency direction
+## Layer responsibilities
 
-- Domain: platform-independent chat/provider/memory/skill/search models, repository
-  ports and pure policies. It imports no Android, Compose, HTTP or SQLite APIs.
-- Application: chat orchestration, context building, provider eligibility/failover,
-  bounded connector rounds, navigation policy, image/search/voice use cases.
-- Data: local SQLite/Android Keystore adapters and remote provider/search/image/voice
-  HTTP or WebSocket adapters.
-- UI: Compose screens, Android Activity/service lifecycle and user interactions.
-- Composition: `KiraContainer` is the only application composition root.
+- **Domain:** platform-independent chat/provider/memory/skill/search models, repository
+  ports and pure eligibility/navigation policies. No Android, Compose, SQLite, JSON
+  transport or HTTP dependencies.
+- **Application:** chat turn orchestration, prompt/context construction, model eligibility,
+  provider failover, bounded connector rounds and feature use cases.
+- **Data/local:** SQLite, Android Keystore, local provider/skill configuration and
+  connector credential lookup.
+- **Data/remote:** OpenAI-compatible/Gemini chat transport, provider model discovery,
+  approved HTTPS Connector calls, Tavily search, image generation and Gemini Live.
+- **UI:** Compose screens and Android Activity/service lifecycle.
+- **Composition:** `KiraContainer` is the sole app-level dependency composition root.
 
-Chat now follows `KiraChatScreen → ChatInteractor/ChatContextBuilder →
-ChatRepository + ChatCompletionGateway → LocalChatRepository + HttpChatCompletionGateway`.
-Application owns user-turn persistence, free-route selection, provider failover and
-connector round limits. The HTTP adapter performs exactly one provider turn. Local
-SQLite stores messages/provider configuration, the encrypted credential adapter
-decrypts a key only immediately before a request, and the connector adapter validates
-and executes an approved read-only connector.
+## Chat flow
 
-`LocalKiraCore` remains a compatibility data source for existing SQLite, Android
-Keystore, provider catalog and skill/connector persistence. It no longer owns chat
-turn orchestration, prompt composition or provider Chat HTTP. New code must use
-Domain ports and Application interactors; Android-only types must not leak upward.
+`KiraChatScreen → ChatInteractor + ChatContextBuilder → ChatRepository +
+ChatCompletionGateway + ConnectorExecutionGateway → LocalChatRepository +
+HttpChatCompletionGateway + HttpApiConnectorGateway`.
 
-The Windows `kira/main.py` remains a thin entry point; desktop composition stays in
-`kira/ui/bootstrap.py`, matching Android's split between MainActivity and the
+Application owns message persistence decisions, free-route selection, failover and
+connector round limits. A provider gateway performs one model turn. The Connector
+gateway validates the model-requested call, checks the locally enabled configuration,
+restricts requests to HTTPS/public destinations, disables redirects, and caps response
+size. Decrypted credentials are short-lived in memory and are never written back in
+plaintext. The local adapter only reads configuration and persists conversation data.
+
+Provider discovery follows the same boundary:
+`ProviderApplicationService → ProviderRepository + ProviderDiscoveryRemoteDataSource`.
+The local core caches verified catalogs; the remote adapter performs all discovery
+HTTP and free-model filtering.
+
+## Composition and migration boundary
+
+`LocalKiraCore` is retained as a compatibility data source for existing SQLite,
+Android Keystore, provider settings, and skill/connector configuration. It contains no
+provider Chat, provider discovery, or Connector HTTP transport and no chat turn
+orchestration/prompt composition. New feature rules belong in Domain/Application;
+platform and network details stay in Data.
+
+The Windows `kira/main.py` remains a thin entry point and delegates desktop composition
+to `kira/ui/bootstrap.py`, matching Android's split between MainActivity and the
 application composition root.

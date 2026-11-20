@@ -1,6 +1,7 @@
 package ai.kira.mobile.domain.repository
 
 import ai.kira.mobile.domain.model.ChatMessage
+import ai.kira.mobile.domain.model.ConnectorDefinition
 import ai.kira.mobile.domain.model.ProviderRoute
 
 /** Ports for local Chat persistence, provider credentials and capability execution. */

@@ -7,8 +7,7 @@ import ai.kira.mobile.domain.model.ConnectorExecutionConfig
 import ai.kira.mobile.domain.model.ProviderRoute
 import ai.kira.mobile.domain.repository.ChatRepository
 import ai.kira.mobile.domain.repository.ConnectorConfigurationRepository
-import ai.kira.mobile.domain.model.ConnectorExecutionConfig
-import ai.kira.mobile.domain.repository.ConnectorConfigurationRepository
+
 
 /** SQLite/Android Keystore adapter for the Chat repository port. */
 class LocalChatRepository(private val core:LocalKiraCore):ChatRepository, ConnectorConfigurationRepository {
