@@ -623,7 +623,7 @@ def add_note(text: str, now=None) -> bool:
 # ---------------- summaries of old conversations ----------------
 def summarize(chunk: list[dict]) -> str:
     """Compact, extractive summary of old messages (no model call): the most informative distinct lines he wrote + counts of how he felt."""
-    from . import mood
+    from .services import mood_service
     users = []
     for item in chunk:
         if item.get("role") != "user":
@@ -644,7 +644,7 @@ def summarize(chunk: list[dict]) -> str:
     picked.sort(key=users.index)
     feelings = {}
     for t in users:
-        for name in mood.detect_user_states(t):
+        for name in mood_service.detect_user_states(t):
             if name in ("down", "stressed", "frustrated", "excited", "praise", "flirt"):
                 feelings[name] = feelings.get(name, 0) + 1
     text = f"{len(users)} of his messages. Things he brought up: " + "; ".join(x[:90] + ("…" if len(x) > 90 else "") for x in picked)
