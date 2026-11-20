@@ -196,7 +196,7 @@ if exist voice_failed.txt (
   echo Some optional audio packages failed:
   type voice_failed.txt
 )
-echo Start Kira with start_kira.bat.
+echo Start Kira with start_kira.vbs (no CMD window).
 pause
 exit
 
