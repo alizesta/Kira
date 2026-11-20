@@ -30,17 +30,20 @@ class AiAssistantOverlayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            isRunning = false
             hideQuickPanel()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
         if (!Settings.canDrawOverlays(this)) {
+            isRunning = false
             stopSelf()
             return START_NOT_STICKY
         }
         startAsForegroundService()
         showBubbleIfAllowed()
+        isRunning = bubble != null
         return START_STICKY
     }
 
@@ -337,6 +340,7 @@ class AiAssistantOverlayService : Service() {
         bubble = null
         bubbleParams = null
         windowManager = null
+        isRunning = false
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
@@ -344,6 +348,10 @@ class AiAssistantOverlayService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     companion object {
+        @Volatile
+        var isRunning: Boolean = false
+            private set
+
         const val ACTION_START = "ai.kira.mobile.action.START_ASSISTANT_OVERLAY"
         const val ACTION_STOP = "ai.kira.mobile.action.STOP_ASSISTANT_OVERLAY"
         const val ROUTE_CHAT = "chat"
