@@ -32,6 +32,7 @@ class VoicePage(QScrollArea):
     choose_whisper_folder_requested = Signal()
     download_whisper_requested = Signal()
     autosave_requested = Signal()
+    live_requested = Signal(bool)
 
     def __init__(self, settings: dict, translate: Callable[[str], str], parent=None) -> None:
         super().__init__(parent)
@@ -106,14 +107,27 @@ class VoicePage(QScrollArea):
         live_form.setContentsMargins(8, 6, 8, 6)
         live_form.setHorizontalSpacing(8)
         live_form.setVerticalSpacing(4)
+        # The local live loop is implemented end-to-end through the existing
+        # Listener -> chat -> Piper path. Do not advertise the unfinished Gemini
+        # transport as selectable: choosing it previously saved a setting that
+        # no runtime consumed.
+        self.live_toggle = QPushButton("شروع مکالمه زنده")
+        self.live_toggle.setCheckable(True)
+        self.live_toggle.toggled.connect(
+            lambda enabled: (
+                self.live_toggle.setText("توقف مکالمه زنده" if enabled else "شروع مکالمه زنده"),
+                self.live_requested.emit(bool(enabled)),
+            )
+        )
+        live_form.addRow(self.live_toggle)
         self.voice_engine = QComboBox()
-        self.voice_engine.addItem("Gemini Realtime (مسیر اصلی)", "gemini_live")
-        self.voice_engine.addItem("STT/TTS محلی", "local")
-        self.voice_engine.setCurrentIndex(max(0, self.voice_engine.findData(str(settings.get("voice_engine") or "gemini_live"))))
+        self.voice_engine.addItem("مکالمه زنده محلی · Qwen3-ASR / Whisper + Piper", "local")
+        self.voice_engine.setCurrentIndex(0)
         live_form.addRow("موتور مکالمه", self.voice_engine)
         self.gemini_provider = QComboBox()
         self.refresh_gemini_providers(settings)
-        live_form.addRow("کلید Google API", self.gemini_provider)
+        self.gemini_provider.setEnabled(False)
+        live_form.addRow("Google Realtime (در حال توسعه)", self.gemini_provider)
         self.gemini_model = QComboBox()
         self.gemini_model.setEditable(True)
         self.gemini_model.addItems([
@@ -122,12 +136,18 @@ class VoicePage(QScrollArea):
             "gemini-3.1-flash-live-preview",
         ])
         self.gemini_model.setCurrentText(str(settings.get("gemini_live_model") or "gemini-3.8-live"))
-        live_form.addRow("مدل Live", self.gemini_model)
+        self.gemini_model.setEnabled(False)
+        live_form.addRow("مدل Google Live (غیرفعال)", self.gemini_model)
         self.local_fallback_chk = SwitchCheckBox("در صورت خطای Realtime، به STT/TTS محلی برگرد")
         self.local_fallback_chk.setChecked(bool(settings.get("voice_local_fallback", True)))
         live_form.addRow(self.local_fallback_chk)
         self.live_config_note = QLabel()
         self.live_config_note.setWordWrap(True)
+        self.live_config_note.setText(
+            "مکالمه زنده محلی با دکمه بالا فعال می‌شود: میکروفن دائماً گوش می‌دهد، "
+            "متن با موتور STT محلی تشخیص داده می‌شود و پاسخ با Piper پخش می‌شود. "
+            "اتصال Gemini Realtime هنوز پیاده‌سازی نشده و عمداً غیرفعال است."
+        )
         live_form.addRow(self.live_config_note)
 
         tts_box = QGroupBox("تولید گفتار (TTS)")
