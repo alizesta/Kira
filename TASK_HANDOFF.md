@@ -1,6 +1,12 @@
 # Task Handoff
 
-## Latest task: Route hygiene (2026-11-20)
+## Latest task: AI tab redesign (2026-11-20)
+
+- `ProviderSettingsController` now builds `ApiPanel` (`self.api_panel`) and `ModelsPanel` (`self.models_panel`); data comes from `api_manager.api_rows` and `model_catalog.model_rows`. Handlers: `on_model_toggle`, `on_model_archive`, `on_model_restore`, `test_catalog_model`.
+- Not run here: full GUI tests (Qt Multimedia crashes in the sandbox). Run `python -m unittest discover -s tests -t .` on Windows and look at the AI tab by eye.
+- Known unrelated failures remain (window-factory based tests, `test_api_manager` x3, voice_settings root-context bypass).
+
+## Previous task: Route hygiene (2026-11-20)
 
 - Logic lives in `kira/routes.py` (`disable_route`, `disable_non_free_routes`, `reconcile_provider_models(free=, prefer=)`, `catalog_*` helpers) and `HybridRouter._mark_failure` (auto-disable after repeated "model" errors). UI wiring: `ProviderSettingsController._on_model_catalog_refresh` / `auto_refresh_model_catalogs`; startup hook in `main_window_composition.py`.
 - Not verified on Windows: the full GUI suite could not finish in the Linux sandbox (Qt Multimedia has no audio server). Run `python -m unittest discover -s tests -t .` on Windows.

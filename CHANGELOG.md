@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-20 (AI tab redesign: "API" box + tabbed "مدل‌ها" box)
+
+- New "API" box (`components/api_panel.py`): key entry, then the registered APIs with per-row refresh and delete (double-click edits the key). Replaces the old add panel, "Registered APIs" and "API Details" boxes.
+- New "مدل‌ها" box (`components/models_panel.py`) with tabs فعال / رایگان / غیررایگان-نامشخص / منسوخ-غیرفعال (counts in titles), search, full model names (never elided), toggle switch, price pill (price unknown is never shown as free), status dot with last-test tooltip, a per-model "تست" button (one tiny real request via `HybridRouter.test_route`, on a throw-away settings copy) and "منسوخ"/"بازگردانی" buttons.
+- `kira/model_catalog.py` (Qt-free): tab rules, archive/restore (`settings["model_archive"]`), saved test results (`settings["model_tests"]`). Archiving switches the Route off, never deletes it; restored models come back OFF.
+- Removed: "test all models", select-all/select-free check boxes, the free-only filter combo (the free tab replaces it), `cloud_model_*` view fields. The old Route editor stays in the collapsed advanced section.
+- Tests: `test_model_catalog.py`, `test_api_models_panels.py`; GUI tests updated (`api_panel`, `models_panel`).
+
 ## 2026-11-20 (Route hygiene: auto model sync, dead/non-free routes, slimmer Route editor)
 
 - Fixed: the model-catalog refresh passed discovery's list of dicts to `reconcile_provider_models`, so valid routes looked stale and were retargeted to another model. New `routes.catalog_entries/catalog_ids/catalog_free` accept every discovery shape.

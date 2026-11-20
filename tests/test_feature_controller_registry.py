@@ -157,22 +157,13 @@ class FeatureControllerRegistryTests(unittest.TestCase):
             sorted(shutdown_resources - CONTROLLER_ACCESS["runtime"]["resources"]),
         )
 
-    def test_provider_settings_cloud_catalog_views_are_declared(self):
+    def test_provider_settings_views_are_declared(self):
         from kira.ui.window_presentation_context import CONTROLLER_ACCESS, VIEW_FIELDS
 
-        catalog_views = {
-            "cloud_model_search", "cloud_model_refresh_btn", "cloud_model_status",
-            "cloud_model_select_all_chk", "cloud_model_select_free_chk",
-            "cloud_model_test_all_btn",
-        }
-        self.assertTrue(
-            catalog_views.issubset(VIEW_FIELDS),
-            sorted(catalog_views - VIEW_FIELDS),
-        )
-        self.assertTrue(
-            catalog_views.issubset(CONTROLLER_ACCESS["provider_settings"]["views"]),
-            sorted(catalog_views - CONTROLLER_ACCESS["provider_settings"]["views"]),
-        )
+        self.assertIn("api_add_status", VIEW_FIELDS)
+        self.assertIn("api_add_status", CONTROLLER_ACCESS["provider_settings"]["views"])
+        for gone in ("cloud_model_lists", "cloud_model_search", "cloud_model_select_all_chk", "cloud_model_test_all_btn"):
+            self.assertNotIn(gone, VIEW_FIELDS)
 
     def test_unregistered_controllers_fail_closed(self):
         from PySide6.QtCore import QObject

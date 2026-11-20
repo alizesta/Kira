@@ -6,9 +6,11 @@ import time
 from PySide6.QtCore import Slot
 
 from .. import api_manager
+from .. import model_catalog
 from .. import routes as route_model
 from .main_window_provider_settings_support import (
-    ApiAddPanel,
+    ApiPanel,
+    ModelsPanel,
     BenchWorker,
     ModelCombo,
     OllamaProviderPanel,
@@ -54,8 +56,8 @@ class ProviderSettingsController(WindowFeatureController):
         worker = self.context.resource("_model_catalog_worker")
         if worker is not None and worker.isRunning():
             return
-        self.context.views.cloud_model_refresh_btn.setEnabled(False)
-        self.context.views.cloud_model_status.setText("در حال بررسی APIها و دریافت مدل‌های تازه…")
+        self.models_panel.refresh_btn.setEnabled(False)
+        self.models_panel.status.setText("در حال بررسی APIها و دریافت مدل‌های تازه…")
         try:
             providers = [
                 (pid, dict(self.context.services.settings.get("providers", {}).get(pid, {})))
@@ -77,8 +79,8 @@ class ProviderSettingsController(WindowFeatureController):
             self.scan_ollama()
             self.feature_controller("voice_settings").refresh_local_voice_status()
         except Exception as exc:
-            self.context.views.cloud_model_refresh_btn.setEnabled(True)
-            self.context.views.cloud_model_status.setText("تازه‌سازی کامل نشد: " + str(exc)[:200])
+            self.models_panel.refresh_btn.setEnabled(True)
+            self.models_panel.status.setText("تازه‌سازی کامل نشد: " + str(exc)[:200])
 
     @Slot()
     def _clear_model_catalog_worker(self):
@@ -97,10 +99,10 @@ class ProviderSettingsController(WindowFeatureController):
             or self.context.state._closing
         ):
             return
-        self.context.views.cloud_model_refresh_btn.setEnabled(True)
+        self.models_panel.refresh_btn.setEnabled(True)
         ok, value = result
         if not ok:
-            self.context.views.cloud_model_status.setText("دریافت مدل‌های API ناموفق بود: " + str(value)[:200])
+            self.models_panel.status.setText("دریافت مدل‌های API ناموفق بود: " + str(value)[:200])
             return
         updated = 0
         removed_routes = 0
@@ -132,7 +134,7 @@ class ProviderSettingsController(WindowFeatureController):
         suffix = ("؛ خطا در " + "، ".join(failed)) if failed else ""
         removed_suffix = f"؛ {removed_routes} مسیر مدل منسوخ حذف/جایگزین شد" if removed_routes else ""
         disabled_suffix = f"؛ {disabled_routes} مسیر غیررایگان غیرفعال شد" if disabled_routes else ""
-        self.context.views.cloud_model_status.setText(
+        self.models_panel.status.setText(
             f"مدل‌های API تازه‌سازی شد: {updated} مدل از {len(value)} اتصال{removed_suffix}{disabled_suffix}{suffix}.")
 
     CATALOG_MAX_AGE_SECONDS = 12 * 3600
@@ -154,8 +156,7 @@ class ProviderSettingsController(WindowFeatureController):
         layout.setSpacing(7)
 
         # API keys in this section are checked for Chat capability only.
-        add_box, list_box, det_box = self.build_api_boxes()
-        layout.addWidget(add_box)
+        layout.addWidget(self.build_api_boxes())
 
         import_row = QHBoxLayout()
         self.context.views.import_model_btn = QPushButton("＋ معرفی مدل از فایل یا پوشه‌ی سیستم")
@@ -166,37 +167,13 @@ class ProviderSettingsController(WindowFeatureController):
         layout.addLayout(import_row)
 
         self.feature_controller("character_settings").build_mcp_registry_group(layout)
-        cloud_box, cloud_form = self.feature_controller("session").group("مدل‌های Chat Cloud")
-        model_toolbar = QHBoxLayout()
-        self.context.views.cloud_model_search = QLineEdit()
-        self.context.views.cloud_model_search.setPlaceholderText("جستجو در نام Provider یا شناسه مدل…")
-        self.context.views.cloud_model_search.textChanged.connect(self.filter_cloud_models)
-        model_toolbar.addWidget(self.context.views.cloud_model_search, 1)
-        self.context.views.cloud_model_refresh_btn = QPushButton("تازه‌سازی مدل‌ها")
-        self.context.views.cloud_model_refresh_btn.clicked.connect(self.refresh_model_catalogs)
-        model_toolbar.addWidget(self.context.views.cloud_model_refresh_btn)
-        cloud_form.addRow(model_toolbar)
-        model_actions = QHBoxLayout()
-        self.context.views.cloud_model_select_all_chk = QCheckBox("انتخاب همه")
-        self.context.views.cloud_model_select_free_chk = QCheckBox("انتخاب رایگان‌ها")
-        self.context.views.cloud_model_test_all_btn = QPushButton("تست همه مدل‌ها")
-        self.context.views.cloud_model_select_all_chk.toggled.connect(lambda checked: self.set_cloud_models_selected("all" if checked else "none"))
-        self.context.views.cloud_model_select_free_chk.toggled.connect(lambda checked: self.set_cloud_models_selected("free" if checked else "none"))
-        self.context.views.cloud_model_test_all_btn.clicked.connect(self.run_catalog_model_tests)
-        for control in (self.context.views.cloud_model_select_all_chk, self.context.views.cloud_model_select_free_chk, self.context.views.cloud_model_test_all_btn): model_actions.addWidget(control)
-        cloud_form.addRow(model_actions)
-        self.context.views.cloud_model_status = QLabel("فهرست مدل‌های Chat")
-        self.context.views.cloud_model_status.setObjectName("hint")
-        self.context.views.cloud_model_status.setWordWrap(True)
-        cloud_form.addRow(self.context.views.cloud_model_status)
-        model_list = QListWidget()
-        model_list.setAlternatingRowColors(True)
-        model_list.setMinimumHeight(150)
-        model_list.setMaximumHeight(260)
-        model_list.itemChanged.connect(lambda item: self.on_cloud_model_item_changed("chat", item))
-        self.context.views.cloud_model_lists = {"chat": model_list}
-        cloud_form.addRow(model_list)
-        layout.addWidget(cloud_box)
+        self.models_panel = ModelsPanel(self.window)
+        self.models_panel.refresh_requested.connect(self.refresh_model_catalogs)
+        self.models_panel.toggle_requested.connect(self.on_model_toggle)
+        self.models_panel.test_requested.connect(self.test_catalog_model)
+        self.models_panel.archive_requested.connect(self.on_model_archive)
+        self.models_panel.restore_requested.connect(self.on_model_restore)
+        layout.addWidget(self.models_panel)
 
         local_box, local_form = self.feature_controller("session").group("مدل‌های Local")
         local_form.setContentsMargins(8, 6, 8, 6)
@@ -324,8 +301,6 @@ class ProviderSettingsController(WindowFeatureController):
         self.connections_advanced_body = QWidget()
         advanced_layout = QVBoxLayout(self.connections_advanced_body)
         advanced_layout.setContentsMargins(0, 0, 0, 0)
-        advanced_layout.addWidget(list_box)
-        advanced_layout.addWidget(det_box)
 
         # RouteEditor owns route/failover controls; MainWindow only handles intents.
         self.route_editor = RouteEditor(
@@ -375,61 +350,14 @@ class ProviderSettingsController(WindowFeatureController):
         self.refresh_unified_models()
         self.feature_controller("voice_settings").refresh_local_voice_status()
 
-    def _make_model_list(self, kind, cloud=True):
-        model_list = QListWidget()
-        model_list.setAlternatingRowColors(True)
-        model_list.setMinimumHeight(105)
-        model_list.setMaximumHeight(170)
-        model_list.setSelectionMode(QAbstractItemView.SingleSelection)
-        if cloud:
-            model_list.itemChanged.connect(lambda item, category=kind: self.on_cloud_model_item_changed(category, item))
-        else:
-            model_list.itemChanged.connect(self.on_local_chat_item_changed)
-        return model_list
-
     def refresh_unified_models(self):
         """Populate the three cloud capability lists and the three local model lists."""
-        if not "cloud_model_lists" in self.context.views:
-            return
-        for widget in self.context.views.cloud_model_lists.values():
-            widget.blockSignals(True)
-            widget.clear()
-        self.context.services.provider_application_service.ensure_registry(self.context.services.settings)
-        free_only = str(self.context.services.settings.get("model_filter_mode") or "all") == "free"
-        for pid, entry in self.context.services.provider_application_service.registry(self.context.services.settings).items():
-            cfg = self.context.services.settings.get("providers", {}).get(pid, {})
-            label = self.context.services.provider_application_service.provider_label(pid, cfg)
-            for mid, meta in (entry.get("models") or {}).items():
-                if meta.get("status") != "available" or meta.get("text") == "No":
-                    continue
-                low = str(mid).lower()
-                if any(token in low for token in ("tts", "text-to-speech", "embedding", "whisper", "speech-to-text",
-                                                   "speech", "transcription", "audio", "asr")):
-                    continue
-                if free_only and meta.get("free") is not True:
-                    continue
-                item = QListWidgetItem(f"{label}  ·  {mid}" + ("  · رایگان" if meta.get("free") is True else ""))
-                item.setData(Qt.UserRole, {"provider": pid, "model": mid, "free": meta.get("free") is True})
-                item.setToolTip(
-                    f"Provider: {label}\nModel: {mid}\nFree: {'Yes' if meta.get('free') is True else 'No/Unknown'}"
-                    f"\nText: {meta.get('text') or 'Unknown'} | Vision: {meta.get('vision') or 'Unknown'} | Tools: {meta.get('tools') or 'Unknown'}"
-                )
-                item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-                enabled = any(r.get("provider") == pid and r.get("model") == mid and r.get("enabled")
-                              for r in self.context.services.provider_application_service.get_routes(self.context.services.settings))
-                item.setCheckState(Qt.Checked if enabled else Qt.Unchecked)
-                self.context.views.cloud_model_lists["chat"].addItem(item)
-        for kind, widget in self.context.views.cloud_model_lists.items():
-            if widget.count() == 0:
-                if free_only:
-                    message = "مدل رایگانِ تأییدشده‌ای پیدا نشد."
-                else:
-                    message = "برای نمایش مدل‌ها ابتدا API مربوط را اضافه و شناسایی کن."
-                empty = QListWidgetItem(message)
-                empty.setFlags(Qt.NoItemFlags)
-                widget.addItem(empty)
-            widget.blockSignals(False)
-        self.filter_cloud_models(self.context.views.cloud_model_search.text())
+        if hasattr(self, "models_panel"):
+            self.context.services.provider_application_service.ensure_registry(self.context.services.settings)
+            rows = model_catalog.model_rows(self.context.services.settings)
+            self.models_panel.set_rows(rows, model_catalog.tab_counts(rows))
+            for key in getattr(self, "_model_test_workers", {}):
+                self.models_panel.set_testing(*key, True)
 
         if "local_model_list" in self.context.views:
             self.context.views.local_model_list.blockSignals(True)
@@ -444,110 +372,78 @@ class ProviderSettingsController(WindowFeatureController):
                 self.context.views.local_model_list.addItem(item)
             self.context.views.local_model_list.blockSignals(False)
 
-    def filter_cloud_models(self, query):
-        query = str(query or "").strip().casefold()
-        for widget in self.context.views.cloud_model_lists.values():
-            for index in range(widget.count()):
-                item = widget.item(index)
-                data = item.data(Qt.UserRole) or {}
-                haystack = (item.text() + " " + str(data.get("provider", "")) + " " + str(data.get("model", ""))).casefold()
-                item.setHidden(bool(data) and query not in haystack)
+    # ---------- models box ----------
+    def _after_model_change(self, provider=None):
+        QTimer.singleShot(0, lambda: self._api_changed(provider))          # redraw after the emitting widget's signal has finished
 
-    def set_cloud_models_selected(self, mode):
-        changed = 0
-        settings = self.context.services.settings
-        service = self.context.services.provider_application_service
-        widget = self.context.views.cloud_model_lists.get("chat")
-        if widget is None:
-            return
-        widget.blockSignals(True)
+    def on_model_toggle(self, provider, model, on):
         try:
-            for index in range(widget.count()):
-                item = widget.item(index)
-                data = item.data(Qt.UserRole) or {}
-                if not data.get("provider") or not data.get("model"):
-                    continue
-                enabled = mode == "all" or (mode == "free" and data.get("free"))
-                service.set_model_enabled(settings, data["provider"], data["model"], enabled)
-                item.setCheckState(Qt.Checked if enabled else Qt.Unchecked)
-                changed += 1
-        finally:
-            widget.blockSignals(False)
-        self._api_changed()
-        labels = {"all": "همه انتخاب شدند.", "free": "مدل‌های رایگان انتخاب شدند.", "none": "انتخاب همه مدل‌ها لغو شد."}
-        for checkbox, checked in ((self.context.views.cloud_model_select_all_chk, mode == "all"),
-                                  (self.context.views.cloud_model_select_free_chk, mode == "free")):
-            checkbox.blockSignals(True)
-            checkbox.setChecked(checked)
-            checkbox.blockSignals(False)
-        self.context.views.cloud_model_status.setText(f"{changed} مدل پردازش شد؛ {labels[mode]}")
+            self.context.services.provider_application_service.set_model_enabled(self.context.services.settings, provider, model, bool(on))
+        except Exception as exc:                                            # noqa: BLE001
+            self.models_panel.status.setText("✕ " + str(exc))
+        self._after_model_change(provider)
 
-    def run_catalog_model_tests(self):
-        if self.context.session.busy or self.context.state._closing:
-            self.context.views.cloud_model_status.setText("در حال حاضر امکان اجرای تست مدل‌ها وجود ندارد.")
+    def on_model_archive(self, provider, model):
+        model_catalog.archive_model(self.context.services.settings, provider, model)
+        self.models_panel.status.setText(f"{model} به «منسوخ / غیرفعال» منتقل و خاموش شد.")
+        self._after_model_change(provider)
+
+    def on_model_restore(self, provider, model):
+        model_catalog.restore_model(self.context.services.settings, provider, model)
+        self.models_panel.status.setText(f"{model} بازگردانده شد؛ برای استفاده، کلید روشن/خاموش آن را روشن کن.")
+        self._after_model_change(provider)
+
+    def test_catalog_model(self, provider, model):
+        """One tiny real request to ONE model (the same probe as the Route test). Uses a throw-away copy of the settings."""
+        key = (provider, model)
+        workers = self.__dict__.setdefault("_model_test_workers", {})
+        if key in workers or self.context.state._closing:
             return
         settings = copy.deepcopy(self.context.services.settings)
         service = self.context.services.provider_application_service
         service.ensure_registry(settings)
-        route_ids = []
-        seen = set()
-        for pid, entry in service.registry(settings).items():
-            cfg = settings.get("providers", {}).get(pid, {})
-            if not cfg.get("enabled", True):
-                continue
-            for mid, meta in (entry.get("models") or {}).items():
-                if meta.get("status") == "unavailable" or meta.get("text") == "No":
-                    continue
-                low = str(mid).lower()
-                if any(token in low for token in ("tts", "text-to-speech", "embedding", "whisper", "speech-to-text", "speech", "transcription", "audio", "asr")):
-                    continue
-                key = (pid, mid)
-                if key in seen:
-                    continue
-                seen.add(key)
-                existing = next((r for r in service.get_routes(settings) if r.get("provider") == pid and r.get("model") == mid), None)
-                route = existing or service.add_route(settings, pid, mid, enabled=False)
-                route_ids.append(route["id"])
-        if not route_ids:
-            self.context.views.cloud_model_status.setText("مدل قابل تستی در کاتالوگ پیدا نشد؛ ابتدا فهرست مدل‌ها را تازه‌سازی کن.")
-            return
-        if QMessageBox.question(self.window, "تست همه مدل‌ها",
-            f"برای {len(route_ids)} مدل، درخواست واقعی کوتاه ارسال می‌شود و ممکن است از سهمیه API مصرف کند.\n"
-            "تست‌ها یکی‌یکی اجرا می‌شوند و وضعیت فعال/غیرفعال مدل‌های اصلی تغییر نمی‌کند. ادامه بدهم؟") != QMessageBox.Yes:
-            return
+        existing = next((r for r in service.get_routes(settings) if r.get("provider") == provider and r.get("model") == model), None)
+        route = existing or service.add_route(settings, provider, model, enabled=False)
         try:
-            test_router = service.create_router(settings)
-        except Exception as exc:
-            self.context.views.cloud_model_status.setText("ساخت موتور تست ناموفق بود: " + str(exc)[:240])
+            router = service.create_router(settings)
+        except Exception as exc:                                            # noqa: BLE001
+            self.models_panel.status.setText("ساخت موتور تست ناموفق بود: " + str(exc)[:240])
             return
-        self.context.session.busy = True
-        self.context.state._bench_busy = True
-        self.context.views.cloud_model_test_all_btn.setEnabled(False)
-        self._catalog_bench_active = True
-        self.context.views.cloud_model_status.setText("در حال تست تمام مدل‌های کاتالوگ…")
-        self.context.views.bench_out.setPlainText("در حال تست تمام مدل‌های کاتالوگ…")
-        self._bench_lines = []
-        worker = BenchWorker(test_router, route_ids)
-        self.context.state._bench_worker = worker
-        worker.progress.connect(self.on_bench_progress)
-        worker.done.connect(self.on_bench_done)
-        worker.finished.connect(self._clear_bench_worker)
+        rid = route["id"]
+        worker = TaskWorker(lambda: router.test_route(rid))
+        worker._model_key = key
+        workers[key] = worker
+        worker.done.connect(self._on_model_test_done)
+        worker.finished.connect(self._clear_model_test_worker)
+        self.models_panel.set_testing(provider, model, True)
+        self.models_panel.status.setText(f"در حال تست {model} (یک درخواست خیلی کوتاه)…")
         worker.start()
 
-    def on_cloud_model_item_changed(self, kind, item):
-        if kind != "chat":
+    @Slot(object)
+    def _on_model_test_done(self, result):
+        worker = self.sender()
+        key = getattr(worker, "_model_key", None)
+        if key is None or self.context.state._closing:
             return
-        data = item.data(Qt.UserRole) or {}
-        provider, model = data.get("provider"), data.get("model")
-        if not provider or not model:
-            return
-        checked = item.checkState() == Qt.Checked
-        try:
-            self.context.services.provider_application_service.set_model_enabled(self.context.services.settings, provider, model, checked)
-        except Exception as exc:
-            self.context.views.api_add_status.setText("✕ " + str(exc))
-        self._api_changed(provider)
+        ok, value = result
+        if ok:
+            good, message, ms = value
+        else:
+            good, message, ms = False, str(value), None
+        model_catalog.record_test(self.context.services.settings, key[0], key[1], good, ms, message)
+        self.feature_controller("runtime").save_now()
+        self.models_panel.status.setText((f"✓ {key[1]}: سالم ({ms} ms)" if good else f"✕ {key[1]}: {message[:240]}"))
+        self.__dict__.get("_model_test_workers", {}).pop(key, None)
+        self.models_panel.set_testing(key[0], key[1], False)
         self.refresh_unified_models()
+
+    @Slot()
+    def _clear_model_test_worker(self):
+        worker = self.sender()
+        key = getattr(worker, "_model_key", None)
+        self.__dict__.get("_model_test_workers", {}).pop(key, None)
+        if worker is not None:
+            worker.deleteLater()
 
     def on_local_chat_item_changed(self, item):
         route_id = item.data(Qt.UserRole)
@@ -656,85 +552,25 @@ class ProviderSettingsController(WindowFeatureController):
                  "no key": "بدون کلید", "not validated yet": "هنوز اعتبارسنجی نشده"}
 
     def build_api_boxes(self):
-        """Compose independent API credential form with the registered API/detail tables."""
-        self.api_add_panel = ApiAddPanel(
-            self.context.services.settings,
-            filter_options=(
-                ("all", "همه‌ی مدل‌ها"),
-                ("free", "فقط مدل‌های رایگانِ تأییدشده"),
-            ),
-            parent=self.window,
-        )
-        self.api_key_edit = self.api_add_panel.key_edit
-        self.api_account_edit = self.api_add_panel.account_edit
-        self.api_add_btn = self.api_add_panel.add_btn
-        self.model_filter = self.api_add_panel.model_filter
-        self.context.views.api_add_status = self.api_add_panel.status
-        self.api_add_panel.add_requested.connect(self.api_add)
-        self.api_add_panel.filter_changed.connect(self.on_model_filter_changed)
-        add_box = self.api_add_panel
-        list_box, lf = self.feature_controller("session").group("Registered APIs")
-        self.api_table = QTableWidget(0, len(self.API_COLUMNS))
-        self.api_table.setHorizontalHeaderLabels(self.API_COLUMNS)
-        self.api_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.api_table.setSelectionMode(QAbstractItemView.SingleSelection)
-        self.api_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.api_table.verticalHeader().setVisible(False)
-        self.api_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.api_table.setMinimumHeight(150)
-        self.api_table.itemSelectionChanged.connect(self.show_api_details)
-        lf.addRow(self.api_table)
-        buttons = QHBoxLayout()
-        self.api_btns = {}
-        for key, text, fn in (("details", "View Details", self.show_api_details), ("refresh", "Refresh / Rediscover Models", lambda: self.api_refresh(self._api_selected())),
-                              ("edit", "Edit", lambda: self.api_edit(self._api_selected())), ("toggle", "Enable / Disable", lambda: self.api_toggle(self._api_selected())),
-                              ("delete", "Delete", lambda: self.api_delete(self._api_selected())), ("up", "▲", lambda: self.api_move(self._api_selected(), -1)),
-                              ("down", "▼", lambda: self.api_move(self._api_selected(), 1))):
-            btn = QPushButton(text)
-            btn.clicked.connect(lambda checked=False, f=fn: f())
-            self.api_btns[key] = btn
-            buttons.addWidget(btn)
-        lf.addRow(buttons)
-        adv = QPushButton("افزودن Provider سفارشی / سرور محلی سازگار با OpenAI (پیشرفته)")
-        adv.clicked.connect(self.add_provider_dialog)
-        lf.addRow(adv)
-        self.api_status = QLabel("")
-        self.api_status.setWordWrap(True)
-        lf.addRow(self.api_status)
-
-        det_box, df = self.feature_controller("session").group("API Details")
-        self.api_det_info = QLabel("یک API را از فهرست بالا انتخاب کن.")
-        self.api_det_info.setWordWrap(True)
-        self.api_det_info.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        df.addRow(self.api_det_info)
-        self.api_models = QTableWidget(0, len(self.MODEL_COLUMNS))
-        self.api_models.setHorizontalHeaderLabels(self.MODEL_COLUMNS)
-        self.api_models.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.api_models.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.api_models.verticalHeader().setVisible(False)
-        self.api_models.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
-        self.api_models.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.api_models.setMinimumHeight(200)
-        self.api_models.itemChanged.connect(self.on_api_model_toggled)
-        df.addRow(self.api_models)
-        note = QLabel("هر چیزی که Provider گزارش نکرده «Unknown» یا «Not Available» نمایش داده می‌شود؛ هیچ عدد یا قابلیتی حدس زده نمی‌شود. "
-                      "اولویت مدل‌ها همان ترتیب فهرست Route پایین صفحه است. بودن مدل در فهرست به معنی تضمین سهمیه نیست.")
-        note.setObjectName("hint")
-        note.setWordWrap(True)
-        df.addRow(note)
+        """The "API" box: key entry + registered APIs (refresh / delete per row)."""
+        self.api_panel = ApiPanel(self.window)
+        self.api_key_edit = self.api_panel.key_edit
+        self.api_account_edit = self.api_panel.account_edit
+        self.api_add_btn = self.api_panel.add_btn
+        self.api_table = self.api_panel.table
+        self.api_status = self.api_panel.status
+        self.context.views.api_add_status = self.api_panel.status
+        self.api_panel.add_requested.connect(self.api_add)
+        self.api_panel.refresh_requested.connect(lambda pid: self.api_refresh(pid))
+        self.api_panel.delete_requested.connect(lambda pid: QTimer.singleShot(0, lambda: self.api_delete(pid)))
+        self.api_panel.edit_requested.connect(lambda pid: self.api_edit(pid))
+        self.api_panel.custom_requested.connect(self.add_provider_dialog)
         self._api_loading = False
         self.context.state._api_worker = None
-        return add_box, list_box, det_box
-
-    def on_model_filter_changed(self, *_):
-        self.context.services.settings["model_filter_mode"] = self.model_filter.currentData() or "all"
-        self.feature_controller("runtime").save_now()
-        self.refresh_unified_models()
+        return self.api_panel
 
     def _api_selected(self):
-        row = self.api_table.currentRow()
-        item = self.api_table.item(row, 0) if row >= 0 else None
-        return item.data(Qt.UserRole) if item else None
+        return self.api_panel.selected_id() or None
 
     def _start_api_worker(self, worker, callback):
         """Deliver TaskWorker results through a QObject slot on the GUI thread."""
@@ -775,86 +611,18 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.session.client.reset_cooldowns()
         self.feature_controller("runtime").save_now()
         self.refresh_api_table(select)
-        if "cloud_model_lists" in self.context.views:
-            self.refresh_unified_models()
+        self.refresh_unified_models()
         self.refresh_route_list()
         self.feature_controller("voice_settings").refresh_gemini_providers()
         if not self.context.session.busy:
             self.feature_controller("runtime").set_badge("idle", self.context.session.client.preview_route())
 
     def refresh_api_table(self, select=None):
-        self.context.services.provider_application_service.ensure_registry(self.context.services.settings)
-        keep = select or self._api_selected()
-        rows = self.context.services.provider_application_service.api_rows(self.context.services.settings)
-        self._api_loading = True
-        self.api_table.blockSignals(True)
-        self.api_table.setRowCount(len(rows))
-        for i, r in enumerate(rows):
-            service = "" if r["service"] in ("custom",) else f" · {r['service']}"
-            cells = [f"{r['label']}  ({r['key']})" if r["key"] else r["label"], self.STATUS_FA.get(r["status"], r["status"]),
-                     "Unknown" if r["accessible"] is None else str(r["accessible"]), str(r["active"]), self.context.services.provider_application_service.fmt_time(r["checked_at"]),
-                     str(r["priority"]), "✓" if r["enabled"] else "—"]
-            for c, text in enumerate(cells):
-                item = QTableWidgetItem(text)
-                item.setData(Qt.UserRole, r["id"])
-                if c == 1 and r["error"]:
-                    item.setToolTip(r["error"])
-                self.api_table.setItem(i, c, item)
-        self.api_table.blockSignals(False)
-        self._api_loading = False
-        target = next((i for i, r in enumerate(rows) if r["id"] == keep), 0 if rows else -1)
-        if target >= 0:
-            self.api_table.selectRow(target)
-        self.show_api_details()
-
-    def show_api_details(self):
-        pid = self._api_selected()
-        self._api_loading = True
-        self.api_models.blockSignals(True)
-        self.api_models.setRowCount(0)
-        have = bool(pid) and pid in self.context.services.settings.get("providers", {})
-        for key, btn in self.api_btns.items():
-            btn.setEnabled(have or key == "details")
-        if not have:
-            self.api_det_info.setText("یک API را از فهرست بالا انتخاب کن.")
-            self.api_models.blockSignals(False)
-            self._api_loading = False
-            return
-        d = self.context.services.provider_application_service.api_details(self.context.services.settings, pid)
-        rl = d["rate_limit"]
-        rl_text = ("\n    " + "\n    ".join(f"{k}: {v}" for k, v in sorted(rl.items())) + f"\n    (زمان گزارش: {self.context.services.provider_application_service.fmt_time(d['rate_limit_as_of'])})") if rl else "Not Available"
-        self.api_det_info.setText(
-            f"Provider: {d['label']}  ·  سرویس: {d['service']}  ·  کلید: {d['key'] or '—'}\n"
-            f"Status: {self.STATUS_FA.get(d['status'], d['status'])}  ·  آخرین بررسی: {self.context.services.provider_application_service.fmt_time(d['checked_at'])}"
-            + (f"\nآخرین خطا: {d['error']}" if d["error"] else "") +
-            f"\nToken Usage: Not Available  ·  Remaining Quota: Not Available\nRate Limit: {rl_text}")
-        self.api_models.setRowCount(len(d["models"]))
-        for i, m in enumerate(d["models"]):
-            check = QTableWidgetItem()
-            check.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled)
-            check.setCheckState(Qt.Checked if m["enabled"] else Qt.Unchecked)
-            check.setData(Qt.UserRole, m["id"])
-            self.api_models.setItem(i, 0, check)
-            status = {"available": "✓ در دسترس", "unavailable": "✕ دیگر در دسترس نیست", "unknown": "Unknown (هنوز بررسی نشده)"}.get(m["status"], m["status"])
-            cells = [m["id"], status, "Not Available" if m["context"] is None else f"{m['context']:,}",
-                     "Not Available" if m["max_output"] is None else f"{m['max_output']:,}", m["text"], m["vision"], m["tools"],
-                     "، ".join(m["also_on"]) if m["also_on"] else "—"]
-            for c, text in enumerate(cells, start=1):
-                self.api_models.setItem(i, c, QTableWidgetItem(text))
-        self.api_models.blockSignals(False)
-        self._api_loading = False
-
-    def on_api_model_toggled(self, item):
-        if self._api_loading or item.column() != 0:
-            return
-        pid = self._api_selected()
-        if not pid:
-            return
-        try:
-            self.context.services.provider_application_service.set_model_enabled(self.context.services.settings, pid, item.data(Qt.UserRole), item.checkState() == Qt.Checked)
-        except ValueError as exc:
-            self.api_status.setText("✕ " + str(exc))
-        QTimer.singleShot(0, lambda p=pid: self._api_changed(p))          # redraw after this signal has finished (the table is rebuilt)
+        service = self.context.services.provider_application_service
+        service.ensure_registry(self.context.services.settings)
+        rows = service.api_rows(self.context.services.settings)
+        self.api_panel.set_rows(rows, status_text=lambda code: self.STATUS_FA.get(code, code),
+                                time_text=service.fmt_time, select=select or "")
 
     # ---- Add ----
     # ---- Refresh / Rediscover ----
@@ -976,6 +744,7 @@ class ProviderSettingsController(WindowFeatureController):
         if QMessageBox.question(self.window, "حذف API", f"«{self.context.services.provider_application_service.provider_label(pid, cfg)}» حذف شود؟{builtin_note}") != QMessageBox.Yes:
             return
         self.context.services.provider_application_service.delete_api(self.context.services.settings, pid)
+        model_catalog.forget_provider(self.context.services.settings, pid)
         self.api_status.setText("✓ API حذف شد.")
         self._api_changed()
 
@@ -1381,11 +1150,6 @@ class ProviderSettingsController(WindowFeatureController):
                 lines.append(f"\nسریع‌ترین اولین Token: {ranked[0]['label']} / {ranked[0]['model']} ({ranked[0]['first_token_ms']} ms)")
             self.context.views.bench_out.setPlainText("\n".join(lines))
         self.refresh_route_list()
-        if getattr(self, "_catalog_bench_active", False):
-            self._catalog_bench_active = False
-            self.context.views.cloud_model_status.setText("\n".join(self.format_bench_row(row) for row in value) if ok else "تست ناموفق: " + str(value))
-        if "cloud_model_test_all_btn" in self.context.views:
-            self.context.views.cloud_model_test_all_btn.setEnabled(True)
         self.feature_controller("runtime")._send_next_pending()
 
     # ---------- settings ----------

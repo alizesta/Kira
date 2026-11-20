@@ -84,13 +84,14 @@ class GuiTests(unittest.TestCase):
         self.assertTrue(self.win.isVisible())
 
     def test_extracted_settings_pages_own_their_widgets(self):
-        from kira.ui.components import ApiAddPanel, McpRegistryPanel, OllamaProviderPanel, RouteEditor
+        from kira.ui.components import ApiPanel, ModelsPanel, McpRegistryPanel, OllamaProviderPanel, RouteEditor
         from kira.ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
 
         window = self.win
-        self.assertIsInstance(window.api_add_panel, ApiAddPanel)
-        self.assertTrue(window.api_add_panel.isAncestorOf(window.api_key_edit))
-        self.assertTrue(window.api_add_panel.isAncestorOf(window.model_filter))
+        self.assertIsInstance(window.api_panel, ApiPanel)
+        self.assertTrue(window.api_panel.isAncestorOf(window.api_key_edit))
+        self.assertTrue(window.api_panel.isAncestorOf(window.api_table))
+        self.assertIsInstance(window.models_panel, ModelsPanel)
         from kira.ui.components import ChatHeader
         self.assertIsInstance(window.chat_header, ChatHeader)
         self.assertTrue(window.chat_header.isAncestorOf(window.title))
@@ -176,7 +177,7 @@ class GuiTests(unittest.TestCase):
     def test_16_api_panel_structure(self):
         w = self.win
         self.assertEqual(w.api_table.rowCount(), 0)                         # no key saved yet -> nothing registered
-        self.assertTrue(hasattr(w, "api_key_edit") and hasattr(w, "api_add_btn") and hasattr(w, "api_models"))
+        self.assertTrue(hasattr(w, "api_key_edit") and hasattr(w, "api_add_btn") and hasattr(w, "models_panel"))
         self.assertFalse(hasattr(w, "provider_widgets"))                    # the per-provider boxes are gone
         self.assertEqual(route_model.find_route(w.settings, "groq")["model"], "openai/gpt-oss-120b")   # model lives in the Route
 
@@ -235,7 +236,7 @@ class GuiTests(unittest.TestCase):
         self.assertEqual(w.api_table.rowCount(), 1)
         self.assertEqual(w.api_key_edit.text(), "")
         self.assertEqual(w.settings["providers"]["groq"]["api_key"], key)
-        self.assertNotIn(key, w.api_det_info.text() + w.api_add_status.text() + w.api_table.item(0, 0).text())   # never shown in full
+        self.assertNotIn(key, w.api_add_status.text() + w.api_table.item(0, 0).text())   # never shown in full
         w.api_key_edit.setText("short")
         w.api_add()
         self.assertIn("✕", w.api_add_status.text())                                                              # rejected before any request
