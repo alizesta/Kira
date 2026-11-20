@@ -626,7 +626,10 @@ class Speaker(QObject):
         fx.setSource(QUrl.fromLocalFile(wav))
         fx.playbackStateChanged.connect(self._on_pstate)
         fx.errorOccurred.connect(
-            lambda _error=None, message="", player=fx: self._on_player_failed(player, message)
+            lambda error=None, message="", player=fx: self._on_player_error(player, error, message)
+        )
+        fx.mediaStatusChanged.connect(
+            lambda status, player=fx: self._on_media_status(player, status)
         )
         self._out = out
         self._fx = fx
@@ -635,6 +638,30 @@ class Speaker(QObject):
             PLAYBACK_START_TIMEOUT_MS,
             lambda player=fx: self._on_player_failed(player, "پخش صدا شروع نشد."),
         )
+
+    def _on_player_error(self, player, error=None, message=""):
+        """Preserve Qt's actual backend error instead of reducing silent playback to a timeout."""
+        if player is not self._fx or self._item_began:
+            return
+        try:
+            backend_message = str(message or player.errorString() or "").strip()
+            status = player.mediaStatus()
+            code = player.error() if error is None else error
+            detail = backend_message or "Qt خطای پخش را بدون توضیح برگرداند."
+            self._on_player_failed(player, f"{detail} (Qt error={code}, media status={status})")
+        except Exception as exc:
+            self._on_player_failed(player, f"{message or 'خطای backend صدا'} ({type(exc).__name__})")
+
+    def _on_media_status(self, player, status):
+        """Fail promptly on invalid media; otherwise let playback-state/error signals decide."""
+        try:
+            if player is self._fx and status == QMediaPlayer.InvalidMedia:
+                self._on_player_failed(
+                    player,
+                    f"فایل صوتی توسط Qt نامعتبر شناخته شد: {player.errorString() or 'بدون جزئیات'}",
+                )
+        except Exception:
+            pass
 
     def _on_player_failed(self, player, message=""):
         """The sentence that should be playing never started (or failed): report it and go on with the next one."""
