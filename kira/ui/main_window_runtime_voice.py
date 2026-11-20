@@ -79,9 +79,13 @@ class RuntimeVoiceMixin:
                 text = "در حال آماده‌سازی STT محلی…"
             else:
                 text = "در حال گوش‌دادن · STT محلی"
-            tip = ("اتصال Gemini Live قطع شد؛ مسیر محلی Qwen3-ASR/Whisper → مدل چت → Piper فعال است."
+            local_asr_name = (
+                "Shenava" if str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3") == "shenava"
+                else "Qwen3-ASR"
+            )
+            tip = (f"اتصال Gemini Live قطع شد؛ مسیر محلی {local_asr_name}/Whisper → مدل چت → Piper فعال است."
                    if mode == "local_fallback" else
-                   "میکروفن → Qwen3-ASR/Whisper → مدل چت → Piper.")
+                   f"میکروفن → {local_asr_name}/Whisper → مدل چت → Piper.")
         elif mode == "local_stt":
             if state == "transcribing":
                 text = "در حال تبدیل گفتار · STT محلی"
@@ -91,7 +95,11 @@ class RuntimeVoiceMixin:
                 text = "آماده‌سازی STT محلی…"
             else:
                 text = "در حال گوش‌دادن · STT محلی"
-            tip = "مسیر فعال: میکروفن → Qwen3-ASR/Whisper → مدل چت → Piper."
+            local_asr_name = (
+                "Shenava" if str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3") == "shenava"
+                else "Qwen3-ASR"
+            )
+            tip = f"مسیر فعال: میکروفن → {local_asr_name}/Whisper → مدل چت → Piper."
         elif self.context.views.mic_btn.isChecked():
             text = "میکروفن فعال · STT محلی"
             tip = "ورودی گفتار از مسیر محلی STT استفاده می‌کند."
