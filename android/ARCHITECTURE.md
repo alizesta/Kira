@@ -29,9 +29,9 @@ credential stores, HTTP clients or provider transports.
 - **Application:** chat turn orchestration, prompt/context construction, model eligibility,
   provider failover, bounded connector rounds and feature use cases.
 - **Data/local:** `SqliteKiraStore` owns SQLite, Android Keystore, local provider/skill configuration,
-  encrypted attachments and connector credential lookup. Repository adapters expose narrow Domain ports.
+  encrypted attachments, and Kira Core session credentials. Repository adapters expose narrow Domain ports.
 - **Data/remote:** OpenAI-compatible/Gemini chat transport, provider model discovery,
-  approved HTTPS Connector calls, Tavily search, image generation and Gemini Live.
+  approved HTTPS Connector calls, Kira Core API client, Tavily search, image generation and Gemini Live.
 - **UI:** Compose screens and Android Activity/service lifecycle.
 - **Composition:** `application.KiraContainer` is the sole app-level dependency composition root.
 
@@ -50,8 +50,9 @@ plaintext. The local adapter only reads configuration and persists conversation 
 
 Provider discovery follows the same boundary:
 `ProviderApplicationService → ProviderRepository + ProviderDiscoveryRemoteDataSource`.
-The local core caches verified catalogs; the remote adapter performs all discovery
-HTTP and free-model filtering.
+The local store caches verified catalogs; the remote adapter performs all discovery
+HTTP and free-model filtering. Kira Core access tokens are encrypted by `KiraCoreSessionStore`
+in `data/local`; authenticated HTTP calls are isolated in `data/remote/KiraCoreClient`.
 
 ## Composition and migration boundary
 
