@@ -52,7 +52,7 @@ class ShenavaOfflineSpeechFeatureTest {
     fun stopTranscribesAndTrimsResultAndCancelIsForwarded() {
         val repository = FakeShenavaRepository()
         val interactor = ShenavaOfflineSpeechInteractor(repository)
-        repository.downloaded = true
+        interactor.downloadModel(ShenavaModelVariant.INT8) {}
         interactor.startRecording(ShenavaModelVariant.INT8)
 
         assertEquals("سلام کیرا", interactor.stopRecordingAndTranscribe(ShenavaModelVariant.INT8))
@@ -66,13 +66,12 @@ class ShenavaOfflineSpeechFeatureTest {
     }
 
     private class FakeShenavaRepository : ShenavaOfflineSpeechRepository {
-        var downloaded = false
         var downloadedVariant: ShenavaModelVariant? = null
         var recording = false
         var transcriptionCalls = 0
         var cancelCalls = 0
 
-        override fun isModelDownloaded(variant: ShenavaModelVariant): Boolean = downloaded
+        override fun isModelDownloaded(variant: ShenavaModelVariant): Boolean = downloadedVariant == variant
 
         override fun downloadModel(
             variant: ShenavaModelVariant,
@@ -82,7 +81,7 @@ class ShenavaOfflineSpeechFeatureTest {
             onProgress(0)
             onProgress(40)
             onProgress(100)
-            downloaded = true
+
         }
 
         override fun startRecording() {
