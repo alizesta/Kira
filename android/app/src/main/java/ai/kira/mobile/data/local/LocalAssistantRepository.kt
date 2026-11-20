@@ -1,12 +1,11 @@
 package ai.kira.mobile.data.local
 
-import ai.kira.mobile.core.LocalKiraCore
 import ai.kira.mobile.domain.model.MemoryNote
 import ai.kira.mobile.domain.model.SkillEntry
 import ai.kira.mobile.domain.repository.AssistantRepository
 
 /** Android/SQLite adapter for the assistant library repository. */
-class LocalAssistantRepository(private val core: LocalKiraCore) : AssistantRepository {
+class LocalAssistantRepository(private val core: SqliteKiraStore) : AssistantRepository {
     override fun memories(characterId: String): List<MemoryNote> =
         core.memories(characterId).map { MemoryNote(it.first, it.second) }
 

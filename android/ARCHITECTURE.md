@@ -16,7 +16,7 @@ Python/Qt implementations.
 ## Runtime composition
 
 `MainActivity` handles Android lifecycle and incoming overlay intents only.
-`KiraMobileApplication` owns the process-scoped `KiraContainer`. The container wires
+`KiraMobileApplication` owns the process-scoped `application.KiraContainer`. The container wires
 application interactors, local repositories and remote gateways once. Compose screens
 receive the root container or a use case; they do not construct cores, databases,
 credential stores, HTTP clients or provider transports.
@@ -28,12 +28,12 @@ credential stores, HTTP clients or provider transports.
   transport or HTTP dependencies.
 - **Application:** chat turn orchestration, prompt/context construction, model eligibility,
   provider failover, bounded connector rounds and feature use cases.
-- **Data/local:** SQLite, Android Keystore, local provider/skill configuration and
-  connector credential lookup.
+- **Data/local:** `SqliteKiraStore` owns SQLite, Android Keystore, local provider/skill configuration,
+  encrypted attachments and connector credential lookup. Repository adapters expose narrow Domain ports.
 - **Data/remote:** OpenAI-compatible/Gemini chat transport, provider model discovery,
   approved HTTPS Connector calls, Tavily search, image generation and Gemini Live.
 - **UI:** Compose screens and Android Activity/service lifecycle.
-- **Composition:** `KiraContainer` is the sole app-level dependency composition root.
+- **Composition:** `application.KiraContainer` is the sole app-level dependency composition root. `core.KiraContainer` remains a typealias for source compatibility only; no composition logic lives in Core.
 
 ## Chat flow
 
@@ -55,8 +55,8 @@ HTTP and free-model filtering.
 
 ## Composition and migration boundary
 
-`LocalKiraCore` is retained as a compatibility data source for existing SQLite,
-Android Keystore, provider settings, and skill/connector configuration. It contains no
+`SqliteKiraStore` is the Android infrastructure implementation for SQLite, Android Keystore,
+provider settings, encrypted attachments, and skill/connector configuration. It contains no
 provider Chat, provider discovery, or Connector HTTP transport and no chat turn
 orchestration/prompt composition. New feature rules belong in Domain/Application;
 platform and network details stay in Data.

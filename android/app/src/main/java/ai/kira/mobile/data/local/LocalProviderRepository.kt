@@ -1,6 +1,5 @@
 package ai.kira.mobile.data.local
 
-import ai.kira.mobile.core.LocalKiraCore
 import ai.kira.mobile.domain.model.ProviderConnection
 import ai.kira.mobile.domain.model.ProviderDiscovery
 import ai.kira.mobile.domain.repository.ProviderRepository
@@ -8,7 +7,7 @@ import ai.kira.mobile.data.remote.ProviderDiscoveryRemoteDataSource
 
 /** SQLite/Android adapter for the provider repository port. */
 class LocalProviderRepository(
-    private val core: LocalKiraCore,
+    private val core: SqliteKiraStore,
     private val discovery: ProviderDiscoveryRemoteDataSource
 ) : ProviderRepository {
     override fun providers(): List<ProviderConnection> =

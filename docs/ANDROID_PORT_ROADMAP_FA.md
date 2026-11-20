@@ -111,7 +111,7 @@ Routeهای Cloud و تنظیماتشان حساب‌محورند. Route محل�
 - [ ] تکمیل جریان کامل چت Windows روی Core شامل Streaming، ابزارها و پیوست‌ها
 - [x] مهاجرت پیش‌نمایش‌دار و غیرمخرب تاریخچه، شخصیت‌ها و حافظه‌ی محلی Windows به حساب
 - [ ] تکمیل Sync دوطرفه‌ی تاریخچه، شخصیت‌ها، Skills و تنظیمات
-- [ ] تست دستگاهی Voice و Attachment و اتصال AI Assistant/Screen Context در Android
+- [ ] اتصال کامل Voice، Attachment و AI Assistant/Screen Context در Android
 - [ ] اتصال Google Sign-In به حساب موجود
 
 ## قانون توسعه‌ی موازی

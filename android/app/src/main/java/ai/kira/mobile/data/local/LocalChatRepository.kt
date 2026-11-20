@@ -1,6 +1,5 @@
 package ai.kira.mobile.data.local
 
-import ai.kira.mobile.core.LocalKiraCore
 import ai.kira.mobile.domain.model.ChatAttachmentInfo
 import ai.kira.mobile.domain.model.ChatAttachmentInput
 import ai.kira.mobile.domain.model.ChatMessage
@@ -12,7 +11,7 @@ import ai.kira.mobile.domain.repository.ConnectorConfigurationRepository
 
 
 /** SQLite/Android Keystore adapter for the Chat repository port. */
-class LocalChatRepository(private val core:LocalKiraCore):ChatRepository, ConnectorConfigurationRepository {
+class LocalChatRepository(private val core:SqliteKiraStore):ChatRepository, ConnectorConfigurationRepository {
     override fun history(characterId:String,limit:Int):List<ChatMessage> =
         core.history(characterId,limit).map { m -> ChatMessage(m.id,m.role,m.content,m.route,m.createdAt,m.attachments.map { a -> ChatAttachmentInfo(a.id,a.name,a.mimeType,a.sizeBytes) }) }
 

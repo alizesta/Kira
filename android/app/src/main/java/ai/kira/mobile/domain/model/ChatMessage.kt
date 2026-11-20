@@ -5,6 +5,5 @@ data class ChatMessage(
     val role: String,
     val content: String,
     val route: String,
-    val createdAt: Long,
-    val attachments: List<ChatAttachmentInfo> = emptyList()
+    val createdAt: Long
 )
