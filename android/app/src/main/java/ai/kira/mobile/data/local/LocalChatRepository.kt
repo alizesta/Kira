@@ -3,8 +3,10 @@ package ai.kira.mobile.data.local
 import ai.kira.mobile.core.LocalKiraCore
 import ai.kira.mobile.domain.model.ChatMessage
 import ai.kira.mobile.domain.model.ConnectorDefinition
+import ai.kira.mobile.domain.model.ConnectorExecutionConfig
 import ai.kira.mobile.domain.model.ProviderRoute
 import ai.kira.mobile.domain.repository.ChatRepository
+import ai.kira.mobile.domain.repository.ConnectorConfigurationRepository
 import ai.kira.mobile.domain.model.ConnectorExecutionConfig
 import ai.kira.mobile.domain.repository.ConnectorConfigurationRepository
 
@@ -29,9 +31,6 @@ class LocalChatRepository(private val core:LocalKiraCore):ChatRepository, Connec
         core.connectorExecutionConfig(characterId,connectorId)?.let {
             ConnectorExecutionConfig(it.id,it.baseUrl,it.pathTemplate,it.allowedParameters,it.authType,it.apiKey)
         }
-
-    override fun executeConnectorResponse(characterId:String,assistantContent:String):String? =
-        core.executeConnectorResponse(characterId,assistantContent)
 
     override fun clearHistory(characterId:String) = core.clearHistory(characterId)
 }

@@ -44,7 +44,6 @@ class ChatContextBuilderTest {
         override fun providerApiKey(providerId:String)=""
         override fun appendMessage(characterId:String,role:String,content:String,route:String)=Unit
         override fun connectorsFor(characterId:String)=listOf(ConnectorDefinition("weather-read","weather",listOf("city")))
-        override fun executeConnectorResponse(characterId:String,assistantContent:String):String?=null
         override fun clearHistory(characterId:String)=Unit
     }
 }

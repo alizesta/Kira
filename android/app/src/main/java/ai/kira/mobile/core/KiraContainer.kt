@@ -14,6 +14,7 @@ import ai.kira.mobile.data.local.LocalAssistantRepository
 import ai.kira.mobile.data.local.LocalChatRepository
 import ai.kira.mobile.data.local.LocalProviderRepository
 import ai.kira.mobile.data.remote.HttpChatCompletionGateway
+import ai.kira.mobile.data.remote.HttpApiConnectorGateway
 import ai.kira.mobile.data.remote.ProviderDiscoveryRemoteDataSource
 import ai.kira.mobile.data.remote.SearchCredentialStore
 import ai.kira.mobile.data.remote.TavilySearchRepository
@@ -27,8 +28,9 @@ class KiraContainer(context: Context) {
 
     private val chatRepository: LocalChatRepository by lazy { LocalChatRepository(localCore) }
     private val chatCompletionGateway: HttpChatCompletionGateway by lazy { HttpChatCompletionGateway() }
+    private val connectorExecutionGateway: HttpApiConnectorGateway by lazy { HttpApiConnectorGateway(chatRepository) }
     val chat: ChatInteractor by lazy {
-        ChatInteractor(chatRepository, chatCompletionGateway, ChatContextBuilder(assistant, chatRepository))
+        ChatInteractor(chatRepository, chatCompletionGateway, connectorExecutionGateway, ChatContextBuilder(assistant, chatRepository))
     }
 
     val assistant: AssistantInteractor by lazy {

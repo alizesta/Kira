@@ -4,12 +4,14 @@ import ai.kira.mobile.domain.model.ChatMessage
 import ai.kira.mobile.domain.model.ChatResult
 import ai.kira.mobile.domain.policy.FreeModelPolicy
 import ai.kira.mobile.domain.repository.ChatCompletionGateway
+import ai.kira.mobile.domain.repository.ConnectorExecutionGateway
 import ai.kira.mobile.domain.repository.ChatRepository
 
 /** Owns Chat use-case orchestration, bounded connector rounds and provider failover. */
 class ChatInteractor(
     private val repository:ChatRepository,
     private val gateway:ChatCompletionGateway,
+    private val connectorGateway:ConnectorExecutionGateway,
     private val contextBuilder:ChatContextBuilder
 ) {
     fun history(characterId:String,limit:Int=100):List<ChatMessage> {
@@ -37,7 +39,7 @@ class ChatInteractor(
                 var turnHistory=repository.history(character,CHAT_HISTORY_LIMIT)
                 repeat(MAX_CONNECTOR_ROUNDS) { round ->
                     val answer=gateway.complete(route,apiKey,prompt,turnHistory)
-                    val connectorResult=repository.executeConnectorResponse(character,answer)
+                    val connectorResult=connectorGateway.executeIfRequested(character,answer)
                     if(connectorResult==null) {
                         repository.appendMessage(character,"assistant",answer,route.providerId+" · "+route.modelId)
                         return ChatResult(answer,route.providerId,route.modelId)

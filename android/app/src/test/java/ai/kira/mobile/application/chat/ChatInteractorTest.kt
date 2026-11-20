@@ -8,6 +8,7 @@ import ai.kira.mobile.domain.model.ProviderRoute
 import ai.kira.mobile.domain.model.SkillEntry
 import ai.kira.mobile.domain.repository.AssistantRepository
 import ai.kira.mobile.domain.repository.ChatCompletionGateway
+import ai.kira.mobile.domain.repository.ConnectorExecutionGateway
 import ai.kira.mobile.domain.repository.ChatRepository
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -44,12 +45,14 @@ class ChatInteractorTest {
     @Test
     fun connectorExecutionIsBoundedAndReturnedAsUntrustedContext() {
         val repository=FakeChatRepository(listOf(route("gemini")))
-        repository.connectorResults["<kira_connector>{...}</kira_connector>"]="real connector data"
+        val connector=FakeConnectorGateway().apply {
+            responses["<kira_connector>{...}</kira_connector>"]="real connector data"
+        }
         val gateway=FakeGateway("unused").apply {
             queuedResponses.add("<kira_connector>{...}</kira_connector>")
             queuedResponses.add("final answer")
         }
-        val result=interactor(repository,gateway).sendMessage("kira","what is current weather?")
+        val result=interactor(repository,gateway,connector).sendMessage("kira","what is current weather?")
         assertEquals("final answer",result.content)
         assertEquals(2,gateway.calls)
         assertEquals("assistant",repository.appended.last().role)
@@ -72,8 +75,8 @@ class ChatInteractorTest {
         interactor(FakeChatRepository(),FakeGateway("unused")).sendMessage("kira","hello")
     }
 
-    private fun interactor(repository:FakeChatRepository,gateway:FakeGateway)=
-        ChatInteractor(repository,gateway,ChatContextBuilder(AssistantInteractor(FakeAssistantRepository()),repository))
+    private fun interactor(repository:FakeChatRepository,gateway:FakeGateway,connector:FakeConnectorGateway=FakeConnectorGateway())=
+        ChatInteractor(repository,gateway,connector,ChatContextBuilder(AssistantInteractor(FakeAssistantRepository()),repository))
 
     private fun route(provider:String,priority:Int=0)=ProviderRoute(
         providerId=provider,modelId=if(provider=="openrouter") "model:free" else "gemini-3.8-flash",
@@ -96,7 +99,6 @@ class ChatInteractorTest {
 
     private class FakeChatRepository(private val routes:List<ProviderRoute> = emptyList()):ChatRepository {
         val appended=mutableListOf<ChatMessage>()
-        val connectorResults=mutableMapOf<String,String>()
         override fun history(characterId:String,limit:Int)=appended.takeLast(limit)
         override fun providerRoutes()=routes
         override fun providerApiKey(providerId:String)="secret-test-key"
@@ -104,8 +106,12 @@ class ChatInteractorTest {
             appended += ChatMessage(appended.size.toLong()+1L,role,content,route,0L)
         }
         override fun connectorsFor(characterId:String)=emptyList<ConnectorDefinition>()
-        override fun executeConnectorResponse(characterId:String,assistantContent:String):String?=connectorResults[assistantContent]
         override fun clearHistory(characterId:String)=Unit
+    }
+
+    private class FakeConnectorGateway:ConnectorExecutionGateway {
+        val responses=mutableMapOf<String,String>()
+        override fun executeIfRequested(characterId:String,assistantContent:String):String? = responses[assistantContent]
     }
 
     private class FakeAssistantRepository:AssistantRepository {
