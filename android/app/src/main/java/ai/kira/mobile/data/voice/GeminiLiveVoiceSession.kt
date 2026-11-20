@@ -113,6 +113,7 @@ class GeminiLiveVoiceSession(
 ) : RealtimeVoiceSession {
     private val app = context.applicationContext
     private val active = AtomicBoolean(false)
+    private val disposed = AtomicBoolean(false)
     private val muted = AtomicBoolean(false)
     private val setupComplete = AtomicBoolean(false)
     private val captureExecutor = Executors.newSingleThreadExecutor()
@@ -129,8 +130,10 @@ class GeminiLiveVoiceSession(
     @Volatile private var noiseSuppressor: NoiseSuppressor? = null
     private val audioManager = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var previousAudioMode = AudioManager.MODE_NORMAL
+    @Volatile private var audioModeChanged = false
     
     override fun start() {
+        check(!disposed.get()) { "Voice session has already ended." }
         check(apiKey.isNotBlank()) { "Gemini Live API key is empty." }
         check(active.compareAndSet(false, true)) { "Voice session is already active." }
         setupComplete.set(false)
@@ -139,6 +142,7 @@ class GeminiLiveVoiceSession(
             preparePlayer()
             previousAudioMode = audioManager.mode
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            audioModeChanged = true
             onStatus("در حال اتصال به Gemini Live…")
 
             val url = HttpUrl.Builder()
@@ -215,7 +219,8 @@ class GeminiLiveVoiceSession(
     override fun isMuted(): Boolean = muted.get()
 
     override fun stop() {
-        if (!active.getAndSet(false)) return
+        if (!disposed.compareAndSet(false, true)) return
+        active.set(false)
         setupComplete.set(false)
         runCatching { socket?.close(1000, "client ended call") }
         socket = null
@@ -232,7 +237,10 @@ class GeminiLiveVoiceSession(
         runCatching { player?.flush() }
         runCatching { player?.release() }
         player = null
-        runCatching { audioManager.mode = previousAudioMode }
+        if (audioModeChanged) {
+            runCatching { audioManager.mode = previousAudioMode }
+            audioModeChanged = false
+        }
         runCatching { captureExecutor.shutdownNow() }
         runCatching { client.dispatcher.executorService.shutdown() }
         runCatching { client.connectionPool.evictAll() }
@@ -384,6 +392,7 @@ class GeminiLiveVoiceSession(
 
     private fun fail(message: String) {
         if (!active.getAndSet(false)) return
+        if (!disposed.compareAndSet(false, true)) return
         setupComplete.set(false)
         synchronized(audioLock) {
             runCatching { recorder?.stop() }
@@ -398,7 +407,10 @@ class GeminiLiveVoiceSession(
         player = null
         runCatching { socket?.close(1011, "voice session failed") }
         socket = null
-        runCatching { audioManager.mode = previousAudioMode }
+        if (audioModeChanged) {
+            runCatching { audioManager.mode = previousAudioMode }
+            audioModeChanged = false
+        }
         runCatching { captureExecutor.shutdownNow() }
         runCatching { client.dispatcher.executorService.shutdown() }
         runCatching { client.connectionPool.evictAll() }

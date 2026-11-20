@@ -26,9 +26,8 @@ import androidx.compose.ui.unit.sp
 import java.util.concurrent.Executors
 
 @Composable
-internal fun KiraChatScreen(character:String,prefillText:String="",onPrefillConsumed:()->Unit={}) {
-    val context=androidx.compose.ui.platform.LocalContext.current
-    val chat=remember { KiraContainer(context).chat }
+internal fun KiraChatScreen(container: KiraContainer, character:String,prefillText:String="",onPrefillConsumed:()->Unit={}) {
+    val chat=remember(container) { container.chat }
     val executor=remember { Executors.newSingleThreadExecutor() }
     val handler=remember { Handler(Looper.getMainLooper()) }
     val messages=remember { mutableStateListOf<ChatMessage>() }

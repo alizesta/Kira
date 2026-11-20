@@ -2,6 +2,7 @@ package ai.kira.mobile
 
 import android.content.ClipData
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Handler
 import android.os.Looper
@@ -170,11 +171,26 @@ internal fun KiraImageScreen(container: KiraContainer) {
                     Text("کلید روی دستگاه و با Android Keystore رمزنگاری شده است.", color = KiraPalette.muted, fontSize = 11.sp)
                     Text("برای حذف اتصال و کلید ذخیره‌شده:", color = KiraPalette.muted, fontSize = 11.sp)
                     OutlinedButton(onClick = {
-                        container.images.clearSettings()
-                        configured = false
-                        endpoint = "https://api.openai.com/v1"
-                        model = "dall-e-3"
-                        status = "اتصال تصویر حذف شد."
+                        if (busy) return@OutlinedButton
+                        busy = true
+                        executor.execute {
+                            try {
+                                container.images.clearSettings()
+                                handler.post {
+                                    configured = false
+                                    apiKey = ""
+                                    endpoint = "https://api.openai.com/v1"
+                                    model = "dall-e-3"
+                                    status = "اتصال تصویر حذف شد."
+                                    busy = false
+                                }
+                            } catch (error: Exception) {
+                                handler.post {
+                                    status = error.message ?: "حذف اتصال تصویر ناموفق بود."
+                                    busy = false
+                                }
+                            }
+                        }
                     }, enabled = !busy) { Text("حذف اتصال") }
                 }
             }

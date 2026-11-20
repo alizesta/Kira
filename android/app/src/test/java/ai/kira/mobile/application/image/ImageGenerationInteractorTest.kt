@@ -78,7 +78,7 @@ class ImageGenerationInteractorTest {
         override fun history(limit: Int): List<GeneratedImage> = emptyList()
     }
 
-    private class FakeSettingsRepository(initiallyConfigured: Boolean = false) : ImageGenerationSettingsRepository {
+    private class FakeSettingsRepository(initiallyConfigured: Boolean = true) : ImageGenerationSettingsRepository {
         private var configured = initiallyConfigured
         var savedKey = ""
         private var savedSettings = ImageProviderSettings("https://images.example/v1", "image-model")

@@ -1,66 +1,65 @@
 # Kira Android application architecture
 
-Kira Android is a native client and a modular monolith. Its structure follows the
-same separation used by the Windows application: a thin entry point, one explicit
-composition root, application use cases, domain contracts and replaceable data adapters.
+Kira Android is a native client organized as a modular monolith. It mirrors the
+Windows application's architectural responsibilities without importing its
+Python or Qt implementation:
+
+| Windows responsibility | Android counterpart |
+| --- | --- |
+| `kira/domain` value objects | `domain/model` |
+| `kira/core/interfaces` ports | `domain/repository` |
+| `kira/services` application services | `application` interactors/services |
+| `kira/infrastructure` adapters | `data/local`, `data/remote` |
+| `kira/app/dependency_container.py` and `kira/ui/bootstrap.py` composition | `KiraMobileApplication` + `KiraContainer` |
+| `kira/main.py` entry point | `MainActivity` entry point |
 
 ## Runtime composition
 
-`MainActivity` is an Android entry point only. It handles the Activity lifecycle,
-incoming overlay intents and installs Compose content. It does not construct databases,
-providers, search clients or feature services.
+`MainActivity` is an Android entry point only: it handles lifecycle and incoming
+overlay intents, then installs Compose content. `KiraMobileApplication` owns the
+single process-scoped `KiraContainer`. The container constructs the local runtime,
+repositories and application services once and shares them with all screens and the
+overlay service.
 
-`KiraMobileApplication` owns the process-scoped `KiraContainer`. The container is
-the Android Composition Root and wires shared application services to data adapters.
-It is lazy and synchronized so Activities and screens reuse the same instances.
+Screens receive the container or a use case from the root. They must not construct
+`KiraContainer`, `LocalKiraCore`, databases, HTTP clients or credential stores.
+This keeps one persistence/runtime instance and makes the UI a replaceable adapter.
 
-## Layers
+## Layers and dependency direction
 
-- `domain/model`: platform-independent values such as ProviderConnection,
-  ProviderDiscovery, InternetSearchResponse and InternetSearchSource.
-- `domain/repository`: ports for provider settings/discovery and Internet Search.
-  These contracts do not import Android, Compose, HTTP clients or SQLite.
-- `domain/policy`: pure model eligibility, free-model validation and route ordering.
-- `application`: ProviderApplicationService, InternetSearchInteractor,
-  ImageGenerationInteractor and RealtimeVoiceInteractor. These own input
-  validation, model/image policy, evidence normalization and voice-call lifecycle.
-  They have no Android or UI dependency.
-- `data/local` and `data/remote`: SQLite/Android Keystore adapters, provider
-  endpoint catalog, Tavily HTTP transport, OpenAI-compatible image transport,
-  local image history and Gemini Live audio/WebSocket transport.
-- `KiraApplicationRoot.kt` and feature screens: Compose rendering and user actions.
-  They call application services through the injected KiraContainer; they must not
-  call provider endpoints or persist credentials themselves.
+- `domain/model`: platform-independent values such as chat, provider, memory,
+  skill, search, generated-image and real-time voice lifecycle records.
+- `domain/repository`: ports for chat, provider, assistant-library, search,
+  image generation, image-provider settings and real-time voice sessions.
+  Contracts do not import Android, Compose, HTTP clients or SQLite.
+- `domain/policy`: pure model eligibility and route ordering.
+- `application`: chat, provider, assistant-library, search, image generation,
+  real-time voice lifecycle and navigation policy. Interactors validate inputs and
+  coordinate domain ports; they do not know Android.
+- `data/local` and `data/remote`: SQLite/Android Keystore, provider endpoint
+  catalog, Tavily and image/voice transports.
+- `core/KiraContainer`: the sole composition root. UI calls use cases exposed here.
 
-The current LocalKiraCore remains a compatibility persistence/runtime adapter for
-existing Android functionality. Provider UI and Search UI no longer call it directly.
-Do not move Android Keystore, Context, SQLite, HttpURLConnection or Compose types into
-Domain or Application.
+The current `LocalKiraCore` is retained as a compatibility runtime/storage adapter
+for the existing on-device chat, skills and connector behavior. New UI and use cases
+must access it only through `data/local` adapters; new business rules belong in
+`application` or `domain`, never in this compatibility class. Provider HTTP and
+connector execution still live in that compatibility adapter and remain an explicit
+extraction boundary rather than being misrepresented as fully modularized.
 
-## Provider flow
+## Feature flows
 
-`KiraRouteScreen → ProviderApplicationService → ProviderRepository →
-LocalProviderRepository → LocalKiraCore`
+- Chat: `KiraChatScreen → ChatInteractor → ChatRepository → LocalChatRepository → LocalKiraCore`.
+- Memory/Skills: `feature screen → AssistantInteractor → AssistantRepository → LocalAssistantRepository`.
+- Providers: `KiraRouteScreen → ProviderApplicationService → ProviderRepository → LocalProviderRepository`.
+- Search: `KiraSearchScreen → InternetSearchInteractor → InternetSearchRepository → TavilySearchRepository`.
+- Image: `KiraImageScreen → ImageGenerationInteractor → ImageGenerationRepository → OpenAiCompatibleImageRepository`; settings and secrets use a separate Domain port and encrypted Android Keystore adapter.
+- Voice: `KiraVoiceScreen → RealtimeVoiceInteractor → RealtimeVoiceSessionFactory / VoiceCredentialRepository`; Gemini Live WebSocket, microphone and audio playback remain in Data. Typed session events carry lifecycle transitions to Application.
 
-The adapter uses the existing encrypted local provider-key vault and persisted
-provider/model catalog. Provider discovery verifies the live model endpoint. Only
-models admitted by FreeModelPolicy are available for selection; OpenRouter discovery
-also requires zero prompt and completion pricing. The application service owns
-connection validation, recommended-model selection, explicit selection, enablement
-and failover ordering.
+The composition root is the only layer that wires concrete implementations. Android
+framework classes, Compose, SQLite, Android Keystore and HTTP transport must not leak
+into Domain or Application.
 
-## Internet Search flow
-
-`KiraSearchScreen → InternetSearchInteractor → InternetSearchRepository →
-TavilySearchRepository`
-
-Search credentials are encrypted with AES/GCM using a key held by Android Keystore.
-The remote adapter requests Tavily raw Markdown content, applies response and timeout
-limits, and rejects non-HTTPS or credential-bearing source URLs. The application
-service normalizes titles/excerpts/content, assigns stable citation numbers and creates
-a bounded evidence block explicitly marked as untrusted external material. Chat receives
-that evidence together with inline citation markers such as `[1]`; source URLs remain
-available to open from the result list.
 
 ## Image generation (Task 6)
 
@@ -68,32 +67,25 @@ available to open from the result list.
 OpenAiCompatibleImageRepository`
 
 Provider settings and credentials use a separate Domain port implemented by
-`ImageGenerationSettingsStore`. The adapter encrypts API keys with AES/GCM and
-Android Keystore, uses HTTPS without automatic redirects, bounds response/image
-sizes, validates returned image formats and stores generated bytes in app-private
-storage. The Application use case validates the provider URL, model ID, prompt and
-supported dimensions before dispatch. UI receives only settings metadata and a
-`GeneratedImage` record; it never reads the secret directly. Saving/sharing uses
-Android's Storage Access Framework and FileProvider.
+`ImageGenerationSettingsStore`. Application validates the HTTPS base URL, model ID,
+API key, prompt length and supported dimensions before dispatch. The Data adapter
+encrypts the key with AES/GCM and Android Keystore, bounds response/image sizes,
+validates PNG/JPEG/WebP output, stores generated images in app-private storage and
+keeps a bounded local history. UI receives only provider metadata and
+`GeneratedImage`; it never reads the credential directly. Save/share uses Android
+Storage Access Framework and FileProvider.
 
 ## Real-time voice (Task 7)
 
-`KiraVoiceScreen → RealtimeVoiceInteractor → VoiceCredentialRepository /
-RealtimeVoiceSessionFactory`
+`KiraVoiceScreen → RealtimeVoiceInteractor → RealtimeVoiceSessionFactory /
+VoiceCredentialRepository`
 
-The Application service owns the call-state machine (Idle, Connecting, Connected,
-Muted and Failed), credential policy, session lifecycle and retryability. Domain
-ports use typed events (`Connected`, `Muted`, `Unmuted`, `Failed`, `Ended`)
-instead of parsing localized status text. The Data adapter owns the Gemini Live
-WebSocket, 16 kHz mono PCM capture, 24 kHz PCM playback, echo cancellation and
-noise suppression. The session only emits `Connected` after the microphone is
-successfully recording; microphone initialization failure is propagated as a
-typed failure, never a successful call state. Voice credentials use Android
+Application owns the call-state machine (Idle, Connecting, Connected, Muted and
+Failed), credential policy, session lifecycle, retryability and stale-session event
+filtering. Domain ports carry typed events (`Connected`, `Muted`, `Unmuted`,
+`Failed`, `Ended`) rather than parsing localized status strings. The Data adapter
+owns Gemini Live WebSocket transport, 16 kHz mono PCM capture, 24 kHz PCM playback,
+acoustic echo cancellation and noise suppression. It emits `Connected` only after
+the microphone is initialized and recording; microphone setup failures are typed
+failures, not false successful calls. Gemini Live credentials use Android
 Keystore-backed AES/GCM.
-
-## Dependency direction
-
-UI → Application → Domain contracts ← Data adapters
-
-The Composition Root is the only layer that knows concrete implementations on both
-sides. Domain and Application must not import Android framework classes or UI code.

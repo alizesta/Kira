@@ -46,7 +46,7 @@ class ImageGenerationInteractor(
         require(normalizedPrompt.length >= MIN_PROMPT_LENGTH) { "توصیف تصویر خیلی کوتاه است." }
         require(normalizedPrompt.length <= MAX_PROMPT_LENGTH) { "توصیف تصویر بیش از حد طولانی است." }
         require(size in SUPPORTED_SIZES) { "ابعاد تصویر پشتیبانی نمی‌شود." }
-        require(settingsRepository.hasSettings()) { "ابتدا Provider تصویر را تنظیم کن." }
+        check(settingsRepository.hasSettings()) { "ابتدا Provider تصویر را تنظیم کن." }
         return repository.generate(normalizedPrompt, size)
     }
 
