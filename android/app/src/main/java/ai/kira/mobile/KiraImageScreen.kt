@@ -51,7 +51,7 @@ internal fun KiraImageScreen(container: KiraContainer) {
     val images = remember { mutableStateListOf<GeneratedImage>() }
     var selectedImage by remember { mutableStateOf<GeneratedImage?>(null) }
     var endpoint by remember { mutableStateOf("https://api.openai.com/v1") }
-    var model by remember { mutableStateOf("dall-e-3") }
+    var model by remember { mutableStateOf("gpt-image-2.5-sunburst") }
     var apiKey by remember { mutableStateOf("") }
     var prompt by remember { mutableStateOf("") }
     var size by remember { mutableStateOf("1024x1024") }
@@ -180,7 +180,7 @@ internal fun KiraImageScreen(container: KiraContainer) {
                                     configured = false
                                     apiKey = ""
                                     endpoint = "https://api.openai.com/v1"
-                                    model = "dall-e-3"
+                                    model = "gpt-image-2.5-sunburst"
                                     status = "اتصال تصویر حذف شد."
                                     busy = false
                                 }
