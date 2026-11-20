@@ -49,7 +49,7 @@ extraction boundary rather than being misrepresented as fully modularized.
 
 ## Feature flows
 
-- Chat: `KiraChatScreen → ChatInteractor → ChatRepository → LocalChatRepository → LocalKiraCore`.
+- Chat: `KiraChatScreen → ChatInteractor → ChatRepository → LocalChatRepository → LocalKiraCore`; Application validates files, Data encrypts them locally and converts them to provider-native multimodal content.
 - Memory/Skills: `feature screen → AssistantInteractor → AssistantRepository → LocalAssistantRepository`.
 - Providers: `KiraRouteScreen → ProviderApplicationService → ProviderRepository → LocalProviderRepository`.
 - Search: `KiraSearchScreen → InternetSearchInteractor → InternetSearchRepository → TavilySearchRepository`.
@@ -89,3 +89,18 @@ acoustic echo cancellation and noise suppression. It emits `Connected` only afte
 the microphone is initialized and recording; microphone setup failures are typed
 failures, not false successful calls. Gemini Live credentials use Android
 Keystore-backed AES/GCM.
+
+
+## Chat attachments (Task 8)
+
+The picker accepts up to five files per message. Application permits PNG/JPEG/WebP
+images and bounded text files only; it validates names, MIME types, image signatures,
+per-file size limits and the 12 MiB aggregate limit. Data stores bytes in the app-private
+Kira directory encrypted with Android Keystore AES/GCM. Presentation receives metadata
+only, never file paths or API credentials.
+
+Vision-capable OpenAI-compatible routes receive image data URLs; Gemini receives inline
+image parts. Images are sent only through a route marked with the `vision` capability
+or a recognized Vision model. Text files are included as untrusted reference data.
+Recent attachment context is bounded. Clearing one character's history also removes
+the associated encrypted files.
