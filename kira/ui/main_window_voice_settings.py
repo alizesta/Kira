@@ -299,8 +299,8 @@ class VoiceSettingsController(WindowFeatureController):
         if not path:
             return
         runtime = self.feature_controller("runtime")
-        if getattr(runtime, "_voice_mode", "") in ("local_fallback", "local_primary", "local_stt"):
-            runtime.set_live_listening(False)
+        # A file-based benchmark must not run beside either local mic capture or Gemini Live.
+        runtime.set_live_listening(False)
         self.stop_local_stt_test(update_ui=False)
         page.shenava_result.setText(
             f"در حال خواندن و تبدیل فایل «{Path(path).name}» با شنوا؛ میکروفن استفاده نمی‌شود…"
