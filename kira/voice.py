@@ -209,7 +209,14 @@ class Speaker(QObject):
                     if dev.description() == wanted:
                         return dev
             device = QMediaDevices.defaultAudioOutput()
-            return None if device.isNull() else device
+            if not device.isNull():
+                return device
+            # Some Windows audio backends report a null default briefly while
+            # enumerated endpoints are already available (e.g. after a headset
+            # reconnect). Use a real enumerated endpoint instead of silently
+            # constructing an output with no device.
+            outputs = QMediaDevices.audioOutputs()
+            return outputs[0] if outputs else None
         except Exception:
             return None
 
@@ -615,6 +622,16 @@ class Speaker(QObject):
         device = self._default_output()
         if device is not None:
             out.setDevice(device)
+        else:
+            # QAudioOutput can be constructed even when Windows has no usable
+            # endpoint. Detect that state here instead of letting QMediaPlayer
+            # appear to accept playback while producing silence.
+            try:
+                if out.device().isNull():
+                    raise RuntimeError("هیچ دستگاه خروجی صدایی در ویندوز در دسترس نیست.")
+            except AttributeError:
+                # Keep lightweight test doubles and older Qt wrappers compatible.
+                pass
         try:
             volume = float(self.settings.get("voice_volume", 0.9))
         except (TypeError, ValueError):
@@ -623,7 +640,13 @@ class Speaker(QObject):
 
         fx = QMediaPlayer(self)
         fx.setAudioOutput(out)
-        fx.setSource(QUrl.fromLocalFile(wav))
+
+        # Publish the player and connect every failure signal BEFORE setSource().
+        # Qt backends may synchronously emit InvalidMedia/errorOccurred while
+        # resolving a local WAV. Connecting afterwards loses the real error and
+        # leaves Kira waiting for the generic start timeout with no sound.
+        self._out = out
+        self._fx = fx
         fx.playbackStateChanged.connect(self._on_pstate)
         fx.errorOccurred.connect(
             lambda error=None, message="", player=fx: self._on_player_error(player, error, message)
@@ -631,9 +654,14 @@ class Speaker(QObject):
         fx.mediaStatusChanged.connect(
             lambda status, player=fx: self._on_media_status(player, status)
         )
-        self._out = out
-        self._fx = fx
+        fx.setSource(QUrl.fromLocalFile(wav))
+        # A synchronous source error may already have released this player and
+        # advanced the sentence queue. Never call play() on that released player.
+        if self._fx is not fx:
+            return
         fx.play()
+        if self._fx is not fx:
+            return
         QTimer.singleShot(
             PLAYBACK_START_TIMEOUT_MS,
             lambda player=fx: self._on_player_failed(player, "پخش صدا شروع نشد."),
