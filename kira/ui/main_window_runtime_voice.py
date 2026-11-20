@@ -68,10 +68,17 @@ class RuntimeVoiceMixin:
             text = "در حال اتصال · Gemini Live"
             tip = "در حال برقراری WebSocket صوتی با Gemini Live."
         elif mode == "gemini_live":
-            text = "مکالمه صوتی زنده · Gemini"
-            tip = "صدای میکروفن مستقیماً به Gemini Live می‌رود و صدای پاسخ مستقیم پخش می‌شود؛ بدون STT/TTS محلی."
+            text = "در حال گوش‌دادن · Gemini Live"
+            tip = "میکروفن به‌صورت زنده به Gemini Live متصل است؛ صدای پاسخ نیز مستقیم پخش می‌شود."
         elif mode in ("local_fallback", "local_primary"):
-            text = "حالت پشتیبان · STT + Piper" if mode == "local_fallback" else "مکالمه محلی · STT + Piper"
+            if state == "hearing":
+                text = "در حال شنیدن گفتار · STT محلی"
+            elif state == "transcribing":
+                text = "در حال تبدیل گفتار · STT محلی"
+            elif state == "loading":
+                text = "در حال آماده‌سازی STT محلی…"
+            else:
+                text = "در حال گوش‌دادن · STT محلی"
             tip = ("اتصال Gemini Live قطع شد؛ مسیر محلی Qwen3-ASR/Whisper → مدل چت → Piper فعال است."
                    if mode == "local_fallback" else
                    "میکروفن → Qwen3-ASR/Whisper → مدل چت → Piper.")
@@ -79,11 +86,11 @@ class RuntimeVoiceMixin:
             if state == "transcribing":
                 text = "در حال تبدیل گفتار · STT محلی"
             elif state == "hearing":
-                text = "در حال دریافت صدا · STT محلی"
+                text = "در حال شنیدن گفتار · STT محلی"
             elif state == "loading":
                 text = "آماده‌سازی STT محلی…"
             else:
-                text = "میکروفن فعال · STT محلی"
+                text = "در حال گوش‌دادن · STT محلی"
             tip = "مسیر فعال: میکروفن → Qwen3-ASR/Whisper → مدل چت → Piper."
         elif self.context.views.mic_btn.isChecked():
             text = "میکروفن فعال · STT محلی"
@@ -320,9 +327,11 @@ class RuntimeVoiceMixin:
         self._pending_gemini_start = False
         self._launch_gemini_live_worker()
 
-    def toggle_mic(self):
-        """The home microphone button starts the configured primary voice engine."""
-        self.set_live_listening(bool(self.context.views.mic_btn.isChecked()))
+    def toggle_mic(self, enabled=None):
+        """The home microphone button starts/stops the configured primary voice engine."""
+        if enabled is None:
+            enabled = self.context.views.mic_btn.isChecked()
+        self.set_live_listening(bool(enabled))
 
     def _create_voice_listener(self):
         return Listener(
@@ -345,11 +354,21 @@ class RuntimeVoiceMixin:
     @Slot(object, bool, bool)
     def _on_voice_listener_finished(self, listener, was_current, restart_requested):
         if was_current:
-            if not restart_requested and getattr(self, "_voice_mode", "") in ("local_fallback", "local_primary"):
+            # A local listener may be closing specifically to hand the audio
+            # device to Gemini Live. Do not let its finished signal undo the
+            # user's still-active microphone request or the pending handoff.
+            pending_gemini = bool(
+                getattr(self, "_pending_gemini_start", False)
+                and getattr(self, "_voice_session_requested", False)
+            )
+            keep_listening = pending_gemini or (
+                restart_requested and self.context.views.mic_btn.isChecked()
+            )
+            if not keep_listening and not restart_requested and getattr(self, "_voice_mode", "") in ("local_fallback", "local_primary"):
                 self._voice_session_requested = False
                 self._voice_mode = "idle"
-            self.context.views.mic_btn.setChecked(False)
-            self._sync_live_toggle(False)
+            self._set_mic_checked(keep_listening)
+            self._sync_live_toggle(keep_listening)
             self._sync_voice_mode_badge()
         self.update_engine_label()
         if getattr(self, "_pending_gemini_start", False) and self._voice_session_requested and not self.context.state._closing:

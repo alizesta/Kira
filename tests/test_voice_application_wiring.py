@@ -30,6 +30,26 @@ class VoiceApplicationWiringTests(unittest.TestCase):
             composition,
         )
 
+    def test_microphone_toggle_preserves_handoff_and_reports_listening(self):
+        composer = self.read("kira/ui/components/chat_composer.py")
+        runtime_voice = self.read("kira/ui/main_window_runtime_voice.py")
+        runtime = self.read("kira/ui/main_window_runtime.py")
+
+        self.assertIn("self.mic_btn.toggled.connect(owner.toggle_mic)", composer)
+        self.assertIn("pending_gemini = bool(", runtime_voice)
+        self.assertIn("self._set_mic_checked(keep_listening)", runtime_voice)
+        self.assertIn("در حال گوش‌دادن · Gemini Live", runtime_voice)
+        self.assertIn("در حال گوش‌دادن · STT محلی", runtime_voice)
+
+        completion = runtime.split("    def on_stream_done(self, res):", 1)[1].split(
+            "\n    def on_error(", 1
+        )[0]
+        self.assertLess(
+            completion.index("speech_live = bool(self.context.session._speech_live)"),
+            completion.index("self.finish_request(res)"),
+        )
+        self.assertIn("if speech_live:", completion)
+
     def test_tray_exit_delegates_to_close_event_shutdown(self):
         lifecycle = self.read("kira/ui/main_window_lifecycle.py")
         start = lifecycle.index("    def quit_app(self):")

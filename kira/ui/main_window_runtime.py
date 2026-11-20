@@ -278,19 +278,22 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         self._stream_flush(final=True)
         self.context.session._stream_pos = None
         self.context.adapters.bubble.commit_live()
+        # finish_request resets the session flag for the next turn; retain this
+        # reply's state so its queued final sentence is not abandoned.
+        speech_live = bool(self.context.session._speech_live)
         self.finish_request(res)
         if res.get("stopped"):
             self.context.adapters.director.event("response_cancelled")
             if text.strip():
                 self.save_message("assistant", raw, status="cancelled", metadata={"stream": "stopped"}, persist=False, observe=False)
             self.feature_controller("session").add_chat("system", "تولید پاسخ متوقف شد." + (" متن دریافت‌شده نگه داشته شد." if text.strip() else ""))
-            if self.context.session._speech_live:
+            if speech_live:
                 self.safe_stop_speaker()                           # the Stop button also silences the rest of the spoken reply
             self.context.adapters.animator.set_expression("neutral", hold=2)
         elif res.get("interrupted"):
             self.save_message("assistant", raw, status="interrupted", metadata={"stream": "provider_interrupted"}, persist=False, observe=False)
             self.feature_controller("session").add_chat("error", f"ارتباط وسط پاسخ قطع شد؛ بخش دریافت‌شده نگه داشته شد و تکرار نمی‌شود.\n{res['interrupted']}")
-            if self.context.session._speech_live:
+            if speech_live:
                 self.context.services.voice_application_service.stream_end()                          # what arrived is still spoken to its end
             self.context.adapters.director.event("response_failed")
         elif not text.strip():
@@ -316,7 +319,7 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
             if not self.context.session._emotion_applied:                          # no tag from the model: tag-less fallback (keywords / neutral)
                 self.context.adapters.director.on_reply(meta)
                 self.context.services.voice_application_service.set_emotion(meta.emotions, meta.intensity)
-            if self.context.session._speech_live:
+            if speech_live:
                 self.context.services.voice_application_service.stream_end()                          # the sentences were spoken while it was written: say the tail
             else:
                 self.say(text)
