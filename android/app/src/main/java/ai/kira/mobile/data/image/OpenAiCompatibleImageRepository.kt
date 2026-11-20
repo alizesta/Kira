@@ -140,7 +140,6 @@ class OpenAiCompatibleImageRepository(
                 .put("prompt", prompt)
                 .put("size", size)
                 .put("n", 1)
-                .put("response_format", "b64_json")
             connection.requestMethod = "POST"
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 15_000
