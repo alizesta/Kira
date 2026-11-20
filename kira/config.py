@@ -57,7 +57,9 @@ DEFAULTS = {
     "output_device": "",                  # "" = Windows default speaker; otherwise the device description
     "mic_device": "",                     # "" = Windows default microphone; otherwise the device name
     "mic_gain": 100,                      # 50-300 %: software gain of the microphone (independent of the speaker volume)
-    "local_voice_asr": True,              # Qwen3-ASR first; faster-whisper is the only fallback
+    "local_voice_asr": True,              # selected offline ASR first; faster-whisper is the only fallback
+    "local_voice_asr_backend": "qwen3",    # qwen3 | shenava
+    "realtime_asr_enabled": True,          # local microphone ASR; file-based offline tests still work when disabled
     "local_voice_tts": True,              # Piper local TTS only; no network or Windows voice fallback
     "local_voice_asr_model": "Qwen/Qwen3-ASR-0.6B",
     "local_voice_tts_model": "",
