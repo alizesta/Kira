@@ -434,10 +434,10 @@ class ChatEventWiringTests(unittest.TestCase):
 
         from tests.ui_helpers import window_method_source
         send_next = window_method_source("_send_next_pending")
-        submit_for = window_method_source("_submit_for")
-        self.assertIn("item=request", send_next)
-        self.assertIn("self._dispatch_coordinated_request(session, request)", submit_for)
-        self.assertNotIn("ChatRequest.create", submit_for)
+        dispatch_req = window_method_source("_dispatch_application_request")
+        self.assertIn("chat_application_service.dispatch_next(session.session_id, busy=session.busy)", send_next)
+        self.assertIn("session.application_request_id = request.request_id", dispatch_req)
+        self.assertNotIn("ChatRequest.create", dispatch_req)
 
 
 if __name__ == "__main__":

@@ -137,7 +137,7 @@ class McpProtocolResultValidationTests(unittest.TestCase):
     def test_initialize_notification_failure_aborts_handshake(self):
         valid = {"protocolVersion": PROTOCOL, "capabilities": {}, "serverInfo": {"name": "server", "version": "1"}}
         with mock.patch.object(self.client, "request", return_value=valid), mock.patch.object(
-            self.client, "_post", side_effect=McpError("initialized notification failed")
+            self.client, "notify", side_effect=McpError("initialized notification failed")
         ):
             with self.assertRaisesRegex(McpError, "initialized notification failed"):
                 self.client.initialize(1)

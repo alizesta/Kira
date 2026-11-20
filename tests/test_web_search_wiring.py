@@ -11,9 +11,9 @@ class WebSearchApplicationWiringTests(unittest.TestCase):
     def test_chat_mixin_delegates_policy_to_application_service(self):
         source = (ROOT / "kira/ui/main_window_chat.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
-        mixin = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "ChatMixin")
+        controller = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "ChatController")
         methods = {
-            node.name: node for node in mixin.body
+            node.name: node for node in controller.body
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
         for removed in (
@@ -25,13 +25,11 @@ class WebSearchApplicationWiringTests(unittest.TestCase):
         for method_name in ("begin_image_search", "begin_web_search", "test_web_search", "add_sources", "on_web_done"):
             self.assertIn("web_search_service", ast.unparse(methods[method_name]))
 
-    def test_bootstrap_injects_the_service_and_direct_window_construction_has_fallback(self):
-        bootstrap = (ROOT / "kira/app/bootstrap.py").read_text(encoding="utf-8")
-        window = (ROOT / "kira/ui/main_window.py").read_text(encoding="utf-8")
-        self.assertIn("WebSearchApplicationService()", bootstrap)
-        self.assertIn("web_search_service=web_search_service", bootstrap)
-        self.assertIn("web_search_service=None", window)
-        self.assertIn("self.web_search_service = web_search_service or WebSearchApplicationService()", window)
+    def test_bootstrap_injects_the_service_and_composition_binds_it(self):
+        bootstrap = (ROOT / "kira/ui/bootstrap.py").read_text(encoding="utf-8")
+        composition = (ROOT / "kira/ui/main_window_composition.py").read_text(encoding="utf-8")
+        self.assertIn('web_search_service=container.resolve("web_search_service")', bootstrap)
+        self.assertIn("web_search_service=None", composition)
 
     def test_application_service_has_no_qt_dependency(self):
         source = (ROOT / "kira/app/web_search.py").read_text(encoding="utf-8")

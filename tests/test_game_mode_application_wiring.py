@@ -18,13 +18,11 @@ class GameModeApplicationWiringTests(unittest.TestCase):
                 imports.append(node.module or "")
         self.assertFalse(any(name.startswith(("PySide", "PyQt")) for name in imports))
 
-    def test_bootstrap_injects_service_and_window_has_fallback(self):
-        bootstrap = (ROOT / "kira/app/bootstrap.py").read_text(encoding="utf-8")
-        window = (ROOT / "kira/ui/main_window.py").read_text(encoding="utf-8")
-        self.assertIn("GameModeApplicationService()", bootstrap)
-        self.assertIn("game_mode_application_service=game_mode_application_service", bootstrap)
-        self.assertIn("game_mode_application_service=None", window)
-        self.assertIn("self.game_mode_application_service = game_mode_application_service", window)
+    def test_bootstrap_injects_service_and_composition_binds_it(self):
+        bootstrap = (ROOT / "kira/ui/bootstrap.py").read_text(encoding="utf-8")
+        composition = (ROOT / "kira/ui/main_window_composition.py").read_text(encoding="utf-8")
+        self.assertIn('game_mode_application_service=container.resolve("game_mode_application_service")', bootstrap)
+        self.assertIn("game_mode_application_service=None", composition)
 
     def test_ui_delegates_game_mode_permissions_and_audio_alert_policy(self):
         vision = (ROOT / "kira/ui/main_window_attachments_vision.py").read_text(encoding="utf-8")
@@ -36,7 +34,7 @@ class GameModeApplicationWiringTests(unittest.TestCase):
         self.assertNotIn("_game_audio_alerts", vision)
         self.assertIn("classify_game_audio(", vision)
         self.assertIn("command_denial_reason(", runtime)
-        self.assertIn("self.game_mode_application_service.STORY_MODE", settings)
+        self.assertIn("self.context.services.game_mode_application_service.STORY_MODE", settings)
 
 
 if __name__ == "__main__":

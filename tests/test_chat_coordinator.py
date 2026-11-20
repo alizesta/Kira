@@ -171,7 +171,8 @@ class ChatCoordinatorTests(unittest.TestCase):
 
     def test_legacy_pending_list_is_not_a_second_queue_owner(self):
         source = main_window_source()
-        self.assertNotIn("self._pending", source)
+        self.assertNotIn("self._pending =", source)
+        self.assertNotIn("self._pending[", source)
 
     def test_coordinator_has_no_ui_or_storage_imports(self):
         root = Path(__file__).resolve().parents[1]

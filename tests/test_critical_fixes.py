@@ -61,7 +61,7 @@ class MainAttachmentDetectionTests(unittest.TestCase):
         src = main_window_source()
         self.assertIn("_turn_attach_kinds", src)
         body = src[src.index("def detect_mode"):src.index("def stop_generation")]
-        self.assertIn("self._turn_attach_kinds", body)
+        self.assertIn("self.context.session._turn_attach_kinds", body)
         self.assertIn('extra.get("images")', body)
 
 
