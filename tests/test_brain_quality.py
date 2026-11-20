@@ -29,6 +29,18 @@ class BrainDecisionQualityTests(unittest.TestCase):
         self.assertEqual(decision.stage, brain.DEEP)
         self.assertIn("analysis request", decision.reasons)
 
+    def test_ordinary_persian_rahkarha_does_not_force_local_only(self):
+        text = "لطفاً این مشکل را بررسی کن و راهکارهای ممکن را مقایسه کن."
+        decision = brain.decide(text, mode=modes.Mode(modes.CHAT))
+        self.assertEqual(decision.stage, brain.DEEP)
+        self.assertNotIn("local-only request", decision.reasons)
+
+    def test_explicit_standalone_hacking_keyword_stays_local(self):
+        text = "درباره هک توضیح بده."
+        decision = brain.decide(text, mode=modes.Mode(modes.CHAT))
+        self.assertEqual(decision.stage, brain.SURFACE)
+        self.assertIn("local-only request", decision.reasons)
+
     def test_code_is_deep_even_when_the_delivery_mode_is_casual(self):
         snippet = "\x60\x60\x60python\\nprint('hello')\\n\x60\x60\x60"
         decision = brain.decide(snippet, mode=modes.Mode(modes.CHAT))
