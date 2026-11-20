@@ -103,7 +103,6 @@ class ConsoleLogCapture(QObject):
         for line in self._backlog:
             widget.appendPlainText(line)
         self._backlog.clear()
-        widget.moveCursor(widget.textCursor().MoveOperation.End)
 
     def write_line(self, line: str):
         self.line_ready.emit(str(line))
