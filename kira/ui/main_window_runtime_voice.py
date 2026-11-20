@@ -366,7 +366,6 @@ class RuntimeVoiceMixin:
             self._voice_session_requested = False
             self._pending_gemini_start = False
             self.stop_listener()
-            self.feature_controller("voice_settings").stop_local_stt_test(update_ui=False)
             self._voice_mode = "idle"
             self._set_mic_checked(False)
             self._sync_live_toggle(False)
@@ -379,6 +378,8 @@ class RuntimeVoiceMixin:
                 self.context.state.awake = False
                 self.context.adapters.animator.set_sleeping(False)
             self._sync_voice_mode_badge()
+        self.feature_controller("voice_settings").stop_local_stt_test(update_ui=False)
+        if not value:
             self.feature_controller("session").add_chat(
                 "system",
                 "Real-time ASR محلی خاموش شد؛ تست آفلاین فایل WAV همچنان قابل استفاده است."
