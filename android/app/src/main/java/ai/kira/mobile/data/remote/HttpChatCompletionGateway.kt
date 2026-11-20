@@ -118,5 +118,5 @@ class HttpChatCompletionGateway:ChatCompletionGateway {
         } finally { connection.disconnect() }
     }
 
-    private companion object { const val MAX_RESPONSE_CHARS=2*1024*1024 }
+    private companion object { const val MAX_RESPONSE_CHARS=2*1024*1024; const val MAX_ATTACHMENT_TEXT_CHARS=150_000 }
 }
