@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -38,6 +40,7 @@ import ai.kira.mobile.application.navigation.SettingsPage
 import ai.kira.mobile.application.assistant.OverlayRouteParser
 import ai.kira.mobile.ui.theme.KiraTheme
 import ai.kira.mobile.ui.theme.KiraPalette
+import java.util.concurrent.Executors
 
 internal data class OverlayLaunchRequest(val route: String, val text: String, val sequence: Long)
 
@@ -219,7 +222,21 @@ private fun SettingsSubpage(title:String,onBack:()->Unit,content:@Composable ()-
 
 @Composable
 private fun KiraSettingsHome(container:KiraContainer,onRoute:()->Unit,onMemory:()->Unit,onAssistant:()->Unit,onSkills:()->Unit,onVoice:()->Unit) {
-    val skillCount=remember(container) { container.installedSkillCount() }
+    var skillCount by remember(container) { mutableIntStateOf(0) }
+    var skillCountError by remember(container) { mutableStateOf("") }
+    val executor = remember(container) { Executors.newSingleThreadExecutor() }
+    val handler = remember { Handler(Looper.getMainLooper()) }
+    DisposableEffect(executor) { onDispose { executor.shutdownNow() } }
+    LaunchedEffect(container) {
+        executor.execute {
+            try {
+                val count = container.installedSkillCount()
+                handler.post { skillCount = count; skillCountError = "" }
+            } catch (error: Exception) {
+                handler.post { skillCountError = error.message ?: "بازیابی تعداد مهارت‌ها ناموفق بود." }
+            }
+        }
+    }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Text("تنظیمات Kira",color=Color(0xFFF4F2FA),fontSize=25.sp,fontWeight=FontWeight.Bold)
         Text("هسته و داده‌ها روی همین دستگاه نگهداری می‌شوند.",color=Color(0xFF9BA5B8),fontSize=12.sp)
@@ -231,6 +248,7 @@ private fun KiraSettingsHome(container:KiraContainer,onRoute:()->Unit,onMemory:(
         SettingsCard("هسته محلی","SQLite محلی و رمزنگاری کلیدها",{})
         Text("کتابخانه: "+container.libraryDirectory(),color=Color(0xFF7F8A9E),fontSize=10.sp)
         Text("مهارت‌های نصب‌شده: "+skillCount,color=Color(0xFF7F8A9E),fontSize=11.sp)
+        if (skillCountError.isNotBlank()) Text(skillCountError,color=Color(0xFFFF8A9A),fontSize=10.sp)
         Text("API Keyها با Android Keystore رمزنگاری می‌شوند و مستقیماً از گوشی به Provider ارسال می‌شوند.",color=Color(0xFF7F8A9E),fontSize=11.sp,lineHeight=17.sp)
     }
 }
