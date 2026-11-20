@@ -60,12 +60,20 @@ echo This location is remembered for future updates.
 echo.
 
 rem Python 3.11/3.12 is required by the local speech runtime.
+rem Reuse a compatible existing venv first; otherwise accept only a verified system interpreter.
 set "PY="
-py -3.12 -c "import sys" >nul 2>nul && set "PY=py -3.12"
+if exist .venv\Scripts\python.exe (
+  .venv\Scripts\python.exe -c "import sys; sys.exit(0 if (3,11)<=sys.version_info[:2]<=(3,12) else 1)" >nul 2>nul
+  if not errorlevel 1 set "PY=.venv\Scripts\python.exe"
+)
+if not defined PY py -3.12 -c "import sys" >nul 2>nul && set "PY=py -3.12"
 if not defined PY py -3.11 -c "import sys" >nul 2>nul && set "PY=py -3.11"
 if not defined PY (
   where python >nul 2>nul
-  if not errorlevel 1 set "PY=python"
+  if not errorlevel 1 (
+    python -c "import sys; sys.exit(0 if (3,11)<=sys.version_info[:2]<=(3,12) else 1)" >nul 2>nul
+    if not errorlevel 1 set "PY=python"
+  )
 )
 if not defined PY (
   echo Python was not found. Trying automatic Python 3.12 installation...
@@ -119,7 +127,7 @@ if errorlevel 1 goto netfail
 echo.
 echo [2/4] Installing microphone and speech support...
 if exist voice_failed.txt del voice_failed.txt
-set "PKGS=Pillow sounddevice PyAudioWPatch miniaudio"
+set "PKGS=sounddevice PyAudioWPatch miniaudio"
 for %%P in (%PKGS%) do (
   echo --- %%P
   python -m pip install --upgrade --retries 10 --timeout 60 %%P
