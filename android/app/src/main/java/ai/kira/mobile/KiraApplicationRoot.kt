@@ -150,7 +150,12 @@ internal fun KiraApp(
                         SettingsPage.ROUTE -> SettingsSubpage("اتصال API و مدل‌ها",{settingsPage=SettingsPage.HOME}) { KiraRouteScreen(container.providers) }
                         SettingsPage.MEMORY -> SettingsSubpage("حافظه بلندمدت",{settingsPage=SettingsPage.HOME}) { KiraMemoryScreen(container) }
                         SettingsPage.SKILLS -> SettingsSubpage("مهارت‌ها و اتصال API",{settingsPage=SettingsPage.HOME}) { KiraSkillsScreen(container) }
-                        SettingsPage.VOICE -> SettingsSubpage("تماس صوتی زنده",{settingsPage=SettingsPage.HOME}) { KiraVoiceScreen(container) }
+                        SettingsPage.VOICE -> SettingsSubpage("صدا و تشخیص گفتار",{settingsPage=SettingsPage.HOME}) {
+                            KiraVoiceScreen(container) { recognizedText ->
+                                pendingChatContext = recognizedText
+                                selectedTab = KiraTab.CHAT
+                            }
+                        }
                         SettingsPage.ASSISTANT -> SettingsSubpage("دستیار و ویس",{settingsPage=SettingsPage.HOME}) {
                             AssistantScreen(
                                 hasOverlayPermission=hasOverlayPermission,
