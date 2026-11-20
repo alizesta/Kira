@@ -644,17 +644,27 @@ class VoiceSettingsController(WindowFeatureController):
                 tts_combo.blockSignals(False)
 
             state = local_voice.status(tts_model)
-            asr_loaded = bool(state["asr_loaded"] and state.get("asr_model") == asr_model)
+            backend = str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3")
+            if backend == "shenava":
+                asr_loaded = bool(state.get("shenava_loaded"))
+                asr_installed = bool(state.get("shenava_installed"))
+                asr_error = state.get("shenava_error")
+                asr_label = "Shenava · sherpa-onnx"
+            else:
+                asr_loaded = bool(state["asr_loaded"] and state.get("asr_model") == asr_model)
+                asr_installed = bool(state["asr_installed"])
+                asr_error = state.get("asr_error")
+                asr_label = "Qwen3-ASR"
             tts_loaded = bool(state["tts_loaded"] and (
                 (tts_model and state.get("tts_model") and Path(state["tts_model"]).resolve() == Path(tts_model).expanduser().resolve())
                 or (not tts_model and state.get("tts_model") == "bundled")
             ))
             asr_cached = any(item.get("id") == asr_model for item in discovered.get("asr", []))
-            asr = "پکیج Python نصب است" if state["asr_installed"] else "پکیج Python نصب نیست"
+            asr = f"{asr_label} نصب است" if asr_installed else f"{asr_label} نصب نیست"
             asr += " · فایل‌های مدل در کش موجود است" if asr_cached else " · فایل‌های مدل هنوز دانلود نشده"
             asr += " · همین مدل در حافظه است" if asr_loaded else " · مدل هنوز بارگذاری نشده"
-            if state.get("asr_error"):
-                asr += " · " + state["asr_error"]
+            if asr_error:
+                asr += " · " + str(asr_error)
             tts = "Piper در دسترس است" if state["tts_installed"] else "Piper نصب نیست"
             tts += " · همین صدا بارگذاری شده" if tts_loaded else " · صدای انتخابی هنوز بارگذاری نشده"
             if state.get("tts_error"):
