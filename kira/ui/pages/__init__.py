@@ -11,6 +11,11 @@ from .skills_page import SkillsPage
 from .voice_page import VoicePage
 
 
+def normalize_page(page_widget):
+    """Direct call helper for normalizing any *_page.py widget instance."""
+    return normalize_page_widget(page_widget)
+
+
 def normalize_all_pages(pages_by_key: dict) -> dict:
     """Inject direct normalize_page_widget calls across all registered settings/feature pages."""
     return {key: normalize_page_widget(widget) for key, widget in pages_by_key.items() if widget is not None}
@@ -24,5 +29,6 @@ __all__ = [
     "PreferencesPage",
     "SkillsPage",
     "VoicePage",
+    "normalize_page",
     "normalize_all_pages",
 ]
