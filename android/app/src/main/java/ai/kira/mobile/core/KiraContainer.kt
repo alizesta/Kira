@@ -3,6 +3,7 @@ package ai.kira.mobile.core
 import android.content.Context
 import ai.kira.mobile.application.assistant.AssistantInteractor
 import ai.kira.mobile.application.chat.ChatContextBuilder
+import ai.kira.mobile.application.chat.ChatContextBuilder
 import ai.kira.mobile.application.chat.ChatInteractor
 import ai.kira.mobile.application.image.ImageGenerationInteractor
 import ai.kira.mobile.application.provider.ProviderApplicationService
@@ -12,6 +13,7 @@ import ai.kira.mobile.data.image.ImageGenerationSettingsStore
 import ai.kira.mobile.data.image.OpenAiCompatibleImageRepository
 import ai.kira.mobile.data.local.LocalAssistantRepository
 import ai.kira.mobile.data.local.LocalChatRepository
+import ai.kira.mobile.data.remote.HttpChatCompletionGateway
 import ai.kira.mobile.data.remote.HttpChatCompletionGateway
 import ai.kira.mobile.data.local.LocalProviderRepository
 import ai.kira.mobile.data.remote.SearchCredentialStore
@@ -83,7 +85,11 @@ class KiraContainer(context: Context) {
     private val app = context.applicationContext
     private val localCore = LocalKiraCore(app)
 
-    val chat: ChatInteractor by lazy { ChatInteractor(LocalChatRepository(localCore)) }
+    private val chatRepository: LocalChatRepository by lazy { LocalChatRepository(localCore) }
+    private val chatCompletionGateway: HttpChatCompletionGateway by lazy { HttpChatCompletionGateway() }
+    val chat: ChatInteractor by lazy {
+        ChatInteractor(chatRepository, chatCompletionGateway, ChatContextBuilder(assistant, chatRepository))
+    }
 
     /** Shared local memory and skill use cases; screens never construct persistence adapters. */
     val assistant: AssistantInteractor by lazy {
