@@ -167,11 +167,38 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.voice_page.live_requested.connect(self.feature_controller("runtime").set_live_listening)
         self.context.views.voice_page.choose_whisper_folder_requested.connect(self.choose_local_whisper_folder)
         self.context.views.voice_page.download_whisper_requested.connect(self.download_local_whisper_model)
+        self.context.views.voice_page.download_shenava_requested.connect(self.download_local_shenava_model)
+        self.context.views.voice_page.test_shenava_file_requested.connect(self.test_shenava_file)
+        self.context.views.voice_page.asr_backend.currentIndexChanged.connect(
+            self.select_local_asr_backend
+        )
+        self.context.views.voice_page.realtime_asr_requested.connect(
+            self.feature_controller("runtime").set_realtime_asr
+        )
         self.context.views.voice_page.autosave_requested.connect(self.autosave_voice)
         self.context.views.tabs.addTab(self.context.views.voice_page, "")
         self.fill_mic_devices(str(self.context.services.settings.get("mic_device") or ""))
         self.fill_output_devices(str(self.context.services.settings.get("output_device") or ""))
         self.refresh_voice_caps()
+
+    def select_local_asr_backend(self, index):
+        """Keep the model ID aligned with the selected offline ASR runtime."""
+        page = self.context.views.voice_page
+        backend = str(page.asr_backend.currentData() or "qwen3")
+        settings = self.context.services.settings
+        settings["local_voice_asr_backend"] = backend
+        runtime = self.feature_controller("runtime")
+        if getattr(runtime, "_voice_mode", "") in ("local_fallback", "local_primary", "local_stt"):
+            runtime.set_live_listening(False)
+        self.stop_local_stt_test(update_ui=False)
+        current_model = str(settings.get("local_voice_asr_model") or "")
+        if backend == "shenava":
+            settings["local_voice_asr_model"] = "SajjadMajdi/shenava-koochik-fa-int8"
+        elif current_model.casefold() == "sajjadmajdi/shenava-koochik-fa-int8":
+            settings["local_voice_asr_model"] = "Qwen/Qwen3-ASR-0.6B"
+        self.feature_controller("runtime").save_now()
+        if hasattr(self.context.views, "local_voice_status"):
+            self.refresh_local_voice_status()
 
     def set_local_voice_option(self, key, enabled):
         self.context.services.settings[key] = bool(enabled)
@@ -207,7 +234,11 @@ class VoiceSettingsController(WindowFeatureController):
             self.context.views.local_voice_status.setText(f"دانلود مدل Qwen ناموفق بود: {value}")
             return
         model_id = str(self.context.views.local_asr_path_edit.text() or "").strip() or "Qwen/Qwen3-ASR-0.6B"
+        self.context.services.settings["local_voice_asr_backend"] = "qwen3"
         self.context.services.settings["local_voice_asr_model"] = model_id
+        self.context.views.voice_page.asr_backend.setCurrentIndex(
+            max(0, self.context.views.voice_page.asr_backend.findData("qwen3"))
+        )
         self.context.views.local_asr_path_edit.setText(model_id)
         self.feature_controller("runtime").save_now()
         self.refresh_local_voice_status()
@@ -215,6 +246,93 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.local_voice_status.setText(
             f"Qwen نصب و فعال شد.\nمسیر مدل: {value}\nمحل ذخیره مدل‌ها: {local_voice.cache_directory()}"
         )
+
+
+
+    def download_local_shenava_model(self):
+        """Install the compact Shenava CPU runtime and fetch the quantized Persian model."""
+        from .. import local_voice
+
+        page = self.context.views.voice_page
+        page.shenava_result.setText(
+            "در حال نصب sherpa-onnx و دانلود مدل Shenava INT8 (حدود ۱۳۲ مگابایت)…"
+        )
+        self._run_local_voice_task(
+            lambda cancel: local_voice.install_and_download_shenava_asr(
+                local_voice.SHENAVA_REPO_ID, cancel_event=cancel
+            ),
+            page.shenava_download_btn,
+            self._on_local_shenava_downloaded,
+            cancellable=True,
+        )
+
+    def _on_local_shenava_downloaded(self, result):
+        ok, value = result
+        page = self.context.views.voice_page
+        if not ok:
+            page.shenava_result.setText(
+                f"نصب یا دانلود شنوا ناموفق بود: {value}"
+            )
+            return
+        from .. import local_voice
+
+        self.context.services.settings["local_voice_asr_backend"] = "shenava"
+        self.context.services.settings["local_voice_asr_model"] = local_voice.SHENAVA_REPO_ID
+        page.asr_backend.setCurrentIndex(max(0, page.asr_backend.findData("shenava")))
+        self.feature_controller("runtime").save_now()
+        self.refresh_local_voice_status()
+        page.shenava_result.setText(
+            "✓ شنوا نصب و انتخاب شد. موتور sherpa-onnx آماده است؛ "
+            "برای سنجش دقت، یک فایل WAV انتخاب کن.\n"
+            f"مسیر مدل: {value}"
+        )
+
+    def test_shenava_file(self):
+        """Run a one-shot offline test against a WAV file; no microphone is opened."""
+        page = self.context.views.voice_page
+        path, _ = QFileDialog.getOpenFileName(
+            self.window,
+            "انتخاب فایل صوتی برای آزمایش شنوا",
+            str(Path.home()),
+            "WAV صوتی (*.wav)",
+        )
+        if not path:
+            return
+        runtime = self.feature_controller("runtime")
+        # A file-based benchmark must not run beside either local mic capture or Gemini Live.
+        runtime.set_live_listening(False)
+        self.stop_local_stt_test(update_ui=False)
+        page.shenava_result.setText(
+            f"در حال خواندن و تبدیل فایل «{Path(path).name}» با شنوا؛ میکروفن استفاده نمی‌شود…"
+        )
+        from .. import local_voice
+
+        self._run_local_voice_task(
+            lambda: local_voice.transcribe_shenava_file(
+                path, model_path=local_voice.SHENAVA_REPO_ID
+            ),
+            page.shenava_test_btn,
+            lambda result: self._on_local_shenava_file_tested(result, path),
+        )
+
+    def _on_local_shenava_file_tested(self, result, path):
+        ok, value = result
+        page = self.context.views.voice_page
+        if not ok:
+            page.shenava_result.setText(
+                f"✕ تست شنوا ناموفق بود: {value}"
+            )
+            return
+        transcript = str(value or "").strip()
+        if not transcript:
+            transcript = "متنی تشخیص داده نشد."
+        page.shenava_result.setText(
+            f"فایل: {Path(path).name}\nنتیجه‌ی شنوا:\n{transcript}"
+        )
+        self.context.services.settings["local_voice_asr_backend"] = "shenava"
+        self.context.services.settings["local_voice_asr_model"] = "SajjadMajdi/shenava-koochik-fa-int8"
+        page.asr_backend.setCurrentIndex(max(0, page.asr_backend.findData("shenava")))
+        self.feature_controller("runtime").save_now()
 
     def choose_local_whisper_folder(self):
         folder = QFileDialog.getExistingDirectory(self.window, "پوشه مدل Whisper را انتخاب کن", str(Path.home()))
@@ -497,7 +615,12 @@ class VoiceSettingsController(WindowFeatureController):
         if not value:
             return
         self.context.views.local_asr_path_edit.setText(value)
+        backend = "shenava" if value.casefold() == "sajjadmajdi/shenava-koochik-fa-int8" else "qwen3"
+        self.context.services.settings["local_voice_asr_backend"] = backend
         self.context.services.settings["local_voice_asr_model"] = value
+        self.context.views.voice_page.asr_backend.setCurrentIndex(
+            max(0, self.context.views.voice_page.asr_backend.findData(backend))
+        )
         self.feature_controller("runtime").save_now()
         self.refresh_local_voice_status()
 
@@ -545,17 +668,27 @@ class VoiceSettingsController(WindowFeatureController):
                 tts_combo.blockSignals(False)
 
             state = local_voice.status(tts_model)
-            asr_loaded = bool(state["asr_loaded"] and state.get("asr_model") == asr_model)
+            backend = str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3")
+            if backend == "shenava":
+                asr_loaded = bool(state.get("shenava_loaded"))
+                asr_installed = bool(state.get("shenava_installed"))
+                asr_error = state.get("shenava_error")
+                asr_label = "Shenava · sherpa-onnx"
+            else:
+                asr_loaded = bool(state["asr_loaded"] and state.get("asr_model") == asr_model)
+                asr_installed = bool(state["asr_installed"])
+                asr_error = state.get("asr_error")
+                asr_label = "Qwen3-ASR"
             tts_loaded = bool(state["tts_loaded"] and (
                 (tts_model and state.get("tts_model") and Path(state["tts_model"]).resolve() == Path(tts_model).expanduser().resolve())
                 or (not tts_model and state.get("tts_model") == "bundled")
             ))
             asr_cached = any(item.get("id") == asr_model for item in discovered.get("asr", []))
-            asr = "پکیج Python نصب است" if state["asr_installed"] else "پکیج Python نصب نیست"
+            asr = f"{asr_label} نصب است" if asr_installed else f"{asr_label} نصب نیست"
             asr += " · فایل‌های مدل در کش موجود است" if asr_cached else " · فایل‌های مدل هنوز دانلود نشده"
             asr += " · همین مدل در حافظه است" if asr_loaded else " · مدل هنوز بارگذاری نشده"
-            if state.get("asr_error"):
-                asr += " · " + state["asr_error"]
+            if asr_error:
+                asr += " · " + str(asr_error)
             tts = "Piper در دسترس است" if state["tts_installed"] else "Piper نصب نیست"
             tts += " · همین صدا بارگذاری شده" if tts_loaded else " · صدای انتخابی هنوز بارگذاری نشده"
             if state.get("tts_error"):
@@ -573,7 +706,7 @@ class VoiceSettingsController(WindowFeatureController):
                 ezafe_text += f" · تلاش دوباره پس از {ezafe['retry_in_seconds']} ثانیه"
             selected_tts = tts_model or "Mana Persian Piper · صدای فارسی پیش‌فرض"
             self.context.views.local_voice_status.setText(
-                f"STT · Qwen3-ASR: {asr}\nمدل STT: {asr_model}\n"
+                f"STT · {asr_label}: {asr}\nمدل STT: {asr_model}\n"
                 f"TTS · Piper: {tts}\nمدل TTS: {selected_tts}\n"
                 f"{ezafe_text}\n"
                 f"مدل‌های Piper مستقل: {len(discovered.get('tts', []))}\n"
@@ -638,14 +771,18 @@ class VoiceSettingsController(WindowFeatureController):
     def load_local_asr(self):
         from .. import local_voice
         model_name = str(self.context.services.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B")
-        self._run_local_voice_task(lambda: local_voice.load_asr(model_name), self.context.views.local_asr_load_btn, self._on_local_asr_loaded)
+        backend = str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3")
+        loader = local_voice.load_shenava if backend == "shenava" else local_voice.load_asr
+        self._run_local_voice_task(lambda: loader(model_name), self.context.views.local_asr_load_btn, self._on_local_asr_loaded)
 
     def _on_local_asr_loaded(self, result):
         ok, value = result
+        backend = str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3")
+        label = "شنوا" if backend == "shenava" else "Qwen3-ASR"
         if ok:
-            self.context.views.local_voice_status.setText("Qwen3-ASR با موفقیت بارگذاری شد. تشخیص گفتار محلی آماده است.")
+            self.context.views.local_voice_status.setText(f"{label} با موفقیت بارگذاری شد. تشخیص گفتار محلی آماده است.")
         else:
-            self.context.views.local_voice_status.setText(f"بارگذاری Qwen3-ASR ناموفق بود: {value}")
+            self.context.views.local_voice_status.setText(f"بارگذاری {label} ناموفق بود: {value}")
         self.refresh_local_voice_status()
 
     def copy_local_voice_log(self):
@@ -845,7 +982,7 @@ class VoiceSettingsController(WindowFeatureController):
         )
         page.live_config_note.setText(
             "کلید Google از بخش اتصالات خوانده می‌شود و کلید جداگانه‌ای اینجا ذخیره نمی‌شود. "
-            "صدای زنده با Gemini پردازش می‌شود؛ در صورت قطع اتصال، مسیر محلی Qwen3-ASR/Whisper + مدل چت + Piper فعال می‌شود."
+            "صدای زنده با Gemini پردازش می‌شود؛ در صورت قطع اتصال، مسیر محلی شنوا/Qwen3-ASR/Whisper + مدل چت + Piper فعال می‌شود."
         )
 
     def collect_voice_settings(self):
@@ -865,6 +1002,8 @@ class VoiceSettingsController(WindowFeatureController):
             "gemini_live_provider": page.gemini_provider.currentData() or "",
             "gemini_live_model": page.gemini_model.currentText().strip() or "gemini-3.8-live",
             "voice_local_fallback": page.local_fallback_chk.isChecked(),
+            "local_voice_asr_backend": page.asr_backend.currentData() or "qwen3",
+            "realtime_asr_enabled": page.real_time_asr_chk.isChecked(),
         })
 
     def autosave_voice(self):

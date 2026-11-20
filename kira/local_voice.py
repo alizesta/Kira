@@ -1,6 +1,6 @@
 """Offline speech engines used by Kira. No network recognition or synthesis fallback lives here.
 
-ASR: Qwen3-ASR 0.6B and faster-whisper (managed by Listener).
+ASR: Shenava Koochik INT8, Qwen3-ASR 0.6B and faster-whisper (managed by Listener).
 TTS: Piper ONNX or the bundled Persian Piper runtime.
 """
 from __future__ import annotations
@@ -28,6 +28,12 @@ _asr_lock = threading.RLock()
 _tts_lock = threading.RLock()
 _asr = None
 _asr_model_name = None
+_shenava_recognizer = None
+_shenava_model_path = ""
+_shenava_error = None
+SHENAVA_REPO_ID = "SajjadMajdi/shenava-koochik-fa-int8"
+SHENAVA_MODEL_FILENAME = "model.int8.onnx"
+SHENAVA_SAMPLE_RATE = 16000
 _tts = None  # Keep only the currently selected voice in memory.
 _tts_model_path = ""
 _tts_model_label = ""
@@ -186,12 +192,19 @@ def _sanitize_asr_generation_config(asr) -> None:
 
 def load_asr(model_name="Qwen/Qwen3-ASR-0.6B"):
     """Load the selected Qwen3-ASR model; a changed model id/path replaces the previous instance."""
-    global _asr, _asr_error, _asr_model_name
+    global _asr, _asr_error, _asr_model_name, _shenava_recognizer, _shenava_model_path, _shenava_error
     selected = str(model_name or "Qwen/Qwen3-ASR-0.6B")
     with _asr_lock:
         if _asr is not None and _asr_model_name == selected:
             return True
         try:
+            # Only one local ASR engine is retained in memory at a time.
+            old_shenava, _shenava_recognizer = _shenava_recognizer, None
+            _shenava_model_path = ""
+            _shenava_error = None
+            if old_shenava is not None:
+                del old_shenava
+                gc.collect()
             import torch
             from qwen_asr import Qwen3ASRModel
             try:
@@ -251,6 +264,225 @@ def transcribe(audio, sample_rate=16000, language="fa", prompt="", model_name="Q
         else:
             text = getattr(first, "text", "")
         return str(text or "").strip()
+
+
+def _resolve_shenava_model_files(model_path=""):
+    """Resolve the selected Shenava HF repo, snapshot folder, or direct ONNX file."""
+    selected = str(model_path or SHENAVA_REPO_ID).strip()
+    candidate = Path(selected).expanduser()
+    if candidate.is_file():
+        model_file = candidate
+        snapshot = candidate.parent
+    elif candidate.is_dir():
+        snapshot = candidate
+        model_file = snapshot / SHENAVA_MODEL_FILENAME
+        if not model_file.is_file():
+            model_file = snapshot / "model.onnx"
+    else:
+        repo_dir = selected.replace("/", "--")
+        hub_root = Path(
+            os.environ.get("HF_HUB_CACHE")
+            or (Path(_DATA_ROOT) / "huggingface" / "hub")
+        )
+        snapshots = hub_root / f"models--{repo_dir}" / "snapshots"
+        choices = []
+        try:
+            choices = [item for item in snapshots.iterdir() if item.is_dir()]
+        except OSError:
+            choices = []
+        choices.sort(key=lambda item: item.stat().st_mtime, reverse=True)
+        snapshot = next(
+            (item for item in choices
+             if (item / SHENAVA_MODEL_FILENAME).is_file() and (item / "tokens.txt").is_file()),
+            None,
+        )
+        if snapshot is None:
+            raise RuntimeError(
+                "فایل‌های شنوا در کش پیدا نشد؛ ابتدا دکمه نصب شنوا را اجرا کن."
+            )
+        model_file = snapshot / SHENAVA_MODEL_FILENAME
+
+    tokens_file = snapshot / "tokens.txt"
+    if not model_file.is_file() or not tokens_file.is_file():
+        raise RuntimeError(
+            f"فایل مدل یا tokens.txt شنوا ناقص است: {snapshot}"
+        )
+    return model_file, tokens_file
+
+
+def shenava_ready() -> bool:
+    """Check whether the optional sherpa-onnx runtime is installed."""
+    try:
+        import sherpa_onnx  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+def load_shenava(model_path=""):
+    """Load the quantized Persian Shenava CTC model on CPU with sherpa-onnx."""
+    global _asr, _asr_model_name, _asr_error
+    global _shenava_recognizer, _shenava_model_path, _shenava_error
+    model_file, tokens_file = _resolve_shenava_model_files(model_path)
+    selected = str(model_file)
+    with _asr_lock:
+        if _shenava_recognizer is not None and _shenava_model_path == selected:
+            return True
+        try:
+            import gc
+            import sherpa_onnx
+
+            # Release Qwen first so switching engines does not keep both models in RAM.
+            old_qwen, _asr = _asr, None
+            _asr_model_name = None
+            _asr_error = None
+            if old_qwen is not None:
+                del old_qwen
+                gc.collect()
+
+            try:
+                threads = max(1, min(8, int(os.environ.get("KIRA_ASR_THREADS", "4"))))
+            except (TypeError, ValueError):
+                threads = 4
+            old_recognizer, _shenava_recognizer = _shenava_recognizer, None
+            _shenava_model_path = ""
+            if old_recognizer is not None:
+                del old_recognizer
+                gc.collect()
+
+            _shenava_recognizer = sherpa_onnx.OfflineRecognizer.from_nemo_ctc(
+                model=str(model_file),
+                tokens=str(tokens_file),
+                num_threads=threads,
+                sample_rate=SHENAVA_SAMPLE_RATE,
+                feature_dim=80,
+                provider="cpu",
+                debug=False,
+            )
+            _shenava_model_path = selected
+            _shenava_error = None
+        except Exception as exc:
+            _shenava_recognizer = None
+            _shenava_model_path = ""
+            _shenava_error = exc
+            raise RuntimeError(
+                f"بارگذاری شنوا ناموفق بود: {type(exc).__name__}: {exc}"
+            ) from exc
+    return True
+
+
+def _resample_mono_float32(audio, sample_rate, target_rate=SHENAVA_SAMPLE_RATE):
+    """Normalize mono audio and linearly resample it to Shenava's 16 kHz input."""
+    import numpy as np
+
+    samples = np.asarray(audio, dtype=np.float32).reshape(-1)
+    samples = np.nan_to_num(samples, nan=0.0, posinf=0.0, neginf=0.0)
+    if samples.size == 0:
+        return samples
+    source_rate = int(sample_rate or target_rate)
+    if source_rate <= 0:
+        raise ValueError("نرخ نمونه‌برداری فایل صوتی معتبر نیست.")
+    if source_rate != target_rate:
+        count = max(1, int(round(samples.size * target_rate / source_rate)))
+        old_positions = np.arange(samples.size, dtype=np.float64)
+        new_positions = np.arange(count, dtype=np.float64) * source_rate / target_rate
+        samples = np.interp(new_positions, old_positions, samples).astype(np.float32)
+    return np.clip(samples, -1.0, 1.0)
+
+
+def transcribe_shenava(audio, sample_rate=SHENAVA_SAMPLE_RATE, model_path=""):
+    """Transcribe one mono audio segment locally with Shenava Koochik INT8."""
+    import numpy as np
+
+    samples = _resample_mono_float32(audio, sample_rate)
+    if samples.size == 0:
+        return ""
+    load_shenava(model_path)
+    with _asr_lock:
+        stream = _shenava_recognizer.create_stream()
+        stream.accept_waveform(SHENAVA_SAMPLE_RATE, np.ascontiguousarray(samples))
+        _shenava_recognizer.decode_stream(stream)
+        result = stream.result
+        return str(getattr(result, "text", "") or "").strip()
+
+
+def read_pcm_wav(path, target_rate=SHENAVA_SAMPLE_RATE):
+    """Read an uncompressed PCM WAV, convert channels to mono, and resample it."""
+    import numpy as np
+
+    try:
+        with wave.open(str(path), "rb") as wav_file:
+            if wav_file.getcomptype() != "NONE":
+                raise ValueError("فقط فایل WAV بدون فشرده‌سازی پشتیبانی می‌شود.")
+            channels = int(wav_file.getnchannels())
+            width = int(wav_file.getsampwidth())
+            rate = int(wav_file.getframerate())
+            frames = int(wav_file.getnframes())
+            if channels < 1 or rate < 1 or frames < 1:
+                raise ValueError("فایل WAV خالی یا دارای مشخصات نامعتبر است.")
+            if frames / rate > 600:
+                raise ValueError("برای آزمایش مدل، فایل WAV باید حداکثر ۱۰ دقیقه باشد.")
+            payload = wav_file.readframes(frames)
+    except (OSError, wave.Error) as exc:
+        raise ValueError(f"خواندن فایل WAV ناموفق بود: {exc}") from exc
+
+    if width == 1:
+        pcm = np.frombuffer(payload, dtype=np.uint8).astype(np.float32)
+        samples = (pcm - 128.0) / 128.0
+    elif width == 2:
+        samples = np.frombuffer(payload, dtype="<i2").astype(np.float32) / 32768.0
+    elif width == 3:
+        raw = np.frombuffer(payload, dtype=np.uint8)
+        if raw.size % 3:
+            raise ValueError("داده‌ی WAV بیست‌وچهاربیتی ناقص است.")
+        raw = raw.reshape(-1, 3).astype(np.int32)
+        pcm = raw[:, 0] | (raw[:, 1] << 8) | (raw[:, 2] << 16)
+        pcm = (pcm ^ 0x800000) - 0x800000
+        samples = pcm.astype(np.float32) / 8388608.0
+    elif width == 4:
+        samples = np.frombuffer(payload, dtype="<i4").astype(np.float32) / 2147483648.0
+    else:
+        raise ValueError(f"عمق نمونه‌ی {width * 8} بیتی WAV پشتیبانی نمی‌شود.")
+
+    if samples.size % channels:
+        raise ValueError("تعداد نمونه‌های WAV با تعداد کانال‌ها سازگار نیست.")
+    if channels > 1:
+        samples = samples.reshape(-1, channels).mean(axis=1)
+    return _resample_mono_float32(samples, rate, target_rate)
+
+
+def transcribe_shenava_file(path, model_path=""):
+    """Transcribe a local PCM WAV file for offline model testing (no microphone required)."""
+    samples = read_pcm_wav(path)
+    return transcribe_shenava(samples, SHENAVA_SAMPLE_RATE, model_path=model_path)
+
+
+def install_and_download_shenava_asr(repo_id=SHENAVA_REPO_ID, *, cancel_event=None):
+    """Install the sherpa-onnx CPU runtime and download only the compact Shenava INT8 model."""
+    selected = str(repo_id or SHENAVA_REPO_ID).strip()
+    if selected != SHENAVA_REPO_ID:
+        raise ValueError(f"مخزن شنوا پشتیبانی نمی‌شود: {selected}")
+    if not shenava_ready():
+        _install_voice_package("sherpa-onnx>=2.0.2,<3", cancel_event)
+    if cancel_event is not None and cancel_event.is_set():
+        raise RuntimeError("دانلود شنوا به‌دلیل خروج برنامه لغو شد.")
+    from huggingface_hub import snapshot_download
+
+    cache_dir = os.environ.get("HF_HUB_CACHE") or str(Path(_DATA_ROOT) / "huggingface" / "hub")
+    Path(cache_dir).mkdir(parents=True, exist_ok=True)
+    snapshot = snapshot_download(
+        repo_id=selected,
+        cache_dir=cache_dir,
+        allow_patterns=[
+            SHENAVA_MODEL_FILENAME,
+            "tokens.txt",
+            "README.md",
+            "*.json",
+        ],
+        local_files_only=False,
+    )
+    _resolve_shenava_model_files(snapshot)
+    return str(Path(snapshot).absolute())
 
 
 def _resolve_tts_model_path(model_path="") -> tuple[Path, str]:
@@ -659,6 +891,10 @@ def status(model_path="") -> dict:
     """Small diagnostic snapshot; does not load either model."""
     return {
         "asr_installed": asr_ready(),
+        "shenava_installed": shenava_ready(),
+        "shenava_loaded": _shenava_recognizer is not None,
+        "shenava_model": _shenava_model_path,
+        "shenava_error": str(_shenava_error)[:240] if _shenava_error else "",
         "tts_installed": tts_ready(model_path),
         "asr_loaded": _asr is not None,
         "asr_model": _asr_model_name or "",
@@ -710,10 +946,19 @@ def discover_cached_models() -> dict:
                 ) or (snapshot / "model.safetensors.index.json").is_file()
                 if not has_weights:
                     continue
-                if any(token in signature for token in ("qwen3-asr", "qwen3asr", "qwen_asr")):
-                    if repo_id.casefold() not in seen_asr:
-                        asr_models.append({"id": repo_id, "path": str(snapshot)})
-                        seen_asr.add(repo_id.casefold())
+                is_shenava = (
+                    repo_id.casefold() == SHENAVA_REPO_ID.casefold()
+                    and (snapshot / SHENAVA_MODEL_FILENAME).is_file()
+                    and (snapshot / "tokens.txt").is_file()
+                )
+                is_qwen_asr = any(token in signature for token in ("qwen3-asr", "qwen3asr", "qwen_asr"))
+                if (is_qwen_asr or is_shenava) and repo_id.casefold() not in seen_asr:
+                    asr_models.append({
+                        "id": repo_id,
+                        "path": str(snapshot),
+                        "backend": "shenava" if is_shenava else "qwen3",
+                    })
+                    seen_asr.add(repo_id.casefold())
                 for onnx in snapshot.glob("*.onnx"):
                     key = str(onnx.absolute()).casefold()
                     if key not in seen_tts:

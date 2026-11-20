@@ -79,9 +79,13 @@ class RuntimeVoiceMixin:
                 text = "در حال آماده‌سازی STT محلی…"
             else:
                 text = "در حال گوش‌دادن · STT محلی"
-            tip = ("اتصال Gemini Live قطع شد؛ مسیر محلی Qwen3-ASR/Whisper → مدل چت → Piper فعال است."
+            local_asr_name = (
+                "Shenava" if str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3") == "shenava"
+                else "Qwen3-ASR"
+            )
+            tip = (f"اتصال Gemini Live قطع شد؛ مسیر محلی {local_asr_name}/Whisper → مدل چت → Piper فعال است."
                    if mode == "local_fallback" else
-                   "میکروفن → Qwen3-ASR/Whisper → مدل چت → Piper.")
+                   f"میکروفن → {local_asr_name}/Whisper → مدل چت → Piper.")
         elif mode == "local_stt":
             if state == "transcribing":
                 text = "در حال تبدیل گفتار · STT محلی"
@@ -91,7 +95,11 @@ class RuntimeVoiceMixin:
                 text = "آماده‌سازی STT محلی…"
             else:
                 text = "در حال گوش‌دادن · STT محلی"
-            tip = "مسیر فعال: میکروفن → Qwen3-ASR/Whisper → مدل چت → Piper."
+            local_asr_name = (
+                "Shenava" if str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3") == "shenava"
+                else "Qwen3-ASR"
+            )
+            tip = f"مسیر فعال: میکروفن → {local_asr_name}/Whisper → مدل چت → Piper."
         elif self.context.views.mic_btn.isChecked():
             text = "میکروفن فعال · STT محلی"
             tip = "ورودی گفتار از مسیر محلی STT استفاده می‌کند."
@@ -138,6 +146,15 @@ class RuntimeVoiceMixin:
     def _start_local_voice_fallback(self, reason="", *, fallback=True):
         """Start the existing local STT/chat/Piper path as fallback or selected primary."""
         if not getattr(self, "_voice_session_requested", False):
+            return
+        if not bool(self.context.services.settings.get("realtime_asr_enabled", True)):
+            self._voice_session_requested = False
+            self._voice_mode = "idle"
+            self._set_mic_checked(False)
+            self._sync_live_toggle(False)
+            self.feature_controller("session").on_voice_error(
+                "تشخیص زنده‌ی محلی (Real-time ASR) خاموش است؛ برای تست مدل از گزینه «تست شنوا با فایل WAV» استفاده کن."
+            )
             return
         fallback_enabled = self.context.views.voice_page.local_fallback_chk.isChecked()
         if fallback and not fallback_enabled:
@@ -298,6 +315,17 @@ class RuntimeVoiceMixin:
 
         page = self.context.views.voice_page
         selected_engine = str(page.voice_engine.currentData() or "gemini_live")
+        if selected_engine == "local" and not bool(
+            self.context.services.settings.get("realtime_asr_enabled", True)
+        ):
+            self._voice_session_requested = False
+            self._voice_mode = "idle"
+            self._set_mic_checked(False)
+            self._sync_live_toggle(False)
+            self.feature_controller("session").on_voice_error(
+                "Real-time ASR خاموش است؛ ابتدا آن را در تنظیمات میکروفن روشن کن یا از تست فایل WAV استفاده کن."
+            )
+            return
         if selected_engine == "local":
             self._start_local_voice_fallback(fallback=False)
             return
@@ -327,6 +355,36 @@ class RuntimeVoiceMixin:
         self._pending_gemini_start = False
         self._launch_gemini_live_worker()
 
+    def set_realtime_asr(self, enabled):
+        """Enable/disable only local microphone ASR; Gemini Live and WAV tests are independent."""
+        value = bool(enabled)
+        self.context.services.settings["realtime_asr_enabled"] = value
+        self.save_now()
+        if value:
+            return
+        if getattr(self, "_voice_mode", "") in ("local_fallback", "local_primary", "local_stt"):
+            self._voice_session_requested = False
+            self._pending_gemini_start = False
+            self.stop_listener()
+            self._voice_mode = "idle"
+            self._set_mic_checked(False)
+            self._sync_live_toggle(False)
+            if self.context.views.wake_btn.isChecked():
+                wake = self.context.views.wake_btn
+                previous = wake.blockSignals(True)
+                wake.setChecked(False)
+                wake.blockSignals(previous)
+                self.context.views.wake_timer.stop()
+                self.context.state.awake = False
+                self.context.adapters.animator.set_sleeping(False)
+            self._sync_voice_mode_badge()
+        self.feature_controller("voice_settings").stop_local_stt_test(update_ui=False)
+        if not value:
+            self.feature_controller("session").add_chat(
+                "system",
+                "Real-time ASR محلی خاموش شد؛ تست آفلاین فایل WAV همچنان قابل استفاده است."
+            )
+
     def toggle_mic(self, enabled=None):
         """The home microphone button starts/stops the configured primary voice engine."""
         if enabled is None:
@@ -344,6 +402,8 @@ class RuntimeVoiceMixin:
         )
 
     def start_listener(self):
+        if not bool(self.context.services.settings.get("realtime_asr_enabled", True)):
+            return
         self.context.services.voice_application_service.start_recording()
 
     def stop_listener(self):
@@ -418,7 +478,9 @@ class RuntimeVoiceMixin:
             return
         eng = getattr(self.context.listener, "engine", None) if self.context.listener else None
         via = getattr(self.context.listener, "via", "") if self.context.listener else ""
-        if via == "local:qwen3-asr":
+        if via == "local:shenava":
+            label = "Shenava Koochik INT8 · Local"
+        elif via == "local:qwen3-asr":
             label = "Qwen3-ASR · Local"
         elif via == "local:whisper" or eng == "whisper":
             label = "Whisper · Local"
@@ -429,6 +491,18 @@ class RuntimeVoiceMixin:
         self.context.views.voice_page.engine_lbl.setText(label)
 
     def toggle_wake(self):
+        if (
+            self.context.views.wake_btn.isChecked()
+            and not bool(self.context.services.settings.get("realtime_asr_enabled", True))
+        ):
+            wake = self.context.views.wake_btn
+            previous = wake.blockSignals(True)
+            wake.setChecked(False)
+            wake.blockSignals(previous)
+            self.feature_controller("session").on_voice_error(
+                "برای حالت بیدارباش، Real-time ASR باید روشن باشد."
+            )
+            return
         if self.context.views.wake_btn.isChecked():
             if not self.context.views.mic_btn.isChecked():
                 self.context.views.mic_btn.setChecked(True)

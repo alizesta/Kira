@@ -33,6 +33,9 @@ class VoicePage(QScrollArea):
     download_whisper_requested = Signal()
     autosave_requested = Signal()
     live_requested = Signal(bool)
+    download_shenava_requested = Signal()
+    test_shenava_file_requested = Signal()
+    realtime_asr_requested = Signal(bool)
 
     def __init__(self, settings: dict, translate: Callable[[str], str], parent=None) -> None:
         super().__init__(parent)
@@ -63,6 +66,16 @@ class VoicePage(QScrollArea):
         self.wake_timeout = self._row(mic_form, "wake_timeout", QSpinBox())
         self.wake_timeout.setRange(5, 120)
         self.wake_timeout.setValue(int(settings.get("wake_timeout", 30)))
+        self.real_time_asr_chk = SwitchCheckBox(
+            "تشخیص زنده با میکروفن (Real-time ASR)"
+        )
+        self.real_time_asr_chk.setChecked(bool(settings.get("realtime_asr_enabled", True)))
+        self.real_time_asr_chk.setToolTip(
+            "این گزینه فقط میکروفن STT محلی و حالت بیدارباش را کنترل می‌کند؛ "
+            "آزمایش آفلاین فایل WAV فعال می‌ماند و Gemini Live مستقل است."
+        )
+        self.real_time_asr_chk.toggled.connect(self.realtime_asr_requested.emit)
+        mic_form.addRow(self.real_time_asr_chk)
 
         output_box = QGroupBox("خروجی صدا")
         output_form = QFormLayout(output_box)
@@ -82,6 +95,14 @@ class VoicePage(QScrollArea):
         self.stt_lang = self._row(stt_form, "stt_lang", QComboBox())
         self.stt_lang.addItems(["fa", "en", "auto"])
         self.stt_lang.setCurrentText(str(settings.get("stt_language") or "fa"))
+        self.asr_backend = QComboBox()
+        self.asr_backend.addItem("Qwen3-ASR · 0.6B", "qwen3")
+        self.asr_backend.addItem("Shenava Koochik · INT8 · آفلاین", "shenava")
+        backend_index = self.asr_backend.findData(
+            str(settings.get("local_voice_asr_backend") or "qwen3")
+        )
+        self.asr_backend.setCurrentIndex(max(0, backend_index))
+        stt_form.addRow("موتور ASR محلی", self.asr_backend)
         self.whisper = self._row(stt_form, "whisper", QComboBox())
         self.whisper.setEditable(True)
         self.whisper.addItems([
@@ -102,6 +123,25 @@ class VoicePage(QScrollArea):
         stt_actions.addWidget(self.whisper_download_btn)
         stt_actions.addWidget(self.whisper_browse_btn)
         stt_form.addRow(stt_actions)
+        shenava_actions = QHBoxLayout()
+        self.shenava_download_btn = QPushButton("نصب شنوا INT8 · حدود ۱۳۲ مگابایت")
+        self.shenava_download_btn.clicked.connect(
+            lambda checked=False: self.download_shenava_requested.emit()
+        )
+        self.shenava_test_btn = QPushButton("تست شنوا با فایل WAV")
+        self.shenava_test_btn.clicked.connect(
+            lambda checked=False: self.test_shenava_file_requested.emit()
+        )
+        shenava_actions.addWidget(self.shenava_download_btn)
+        shenava_actions.addWidget(self.shenava_test_btn)
+        stt_form.addRow(shenava_actions)
+        self.shenava_result = QLabel(
+            "شنوا پس از نصب به‌صورت آفلاین روی CPU اجرا می‌شود. "
+            "برای تست مستقل، یک فایل WAV انتخاب کن."
+        )
+        self.shenava_result.setWordWrap(True)
+        self.shenava_result.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        stt_form.addRow(self.shenava_result)
 
         live_box = QGroupBox("مکالمه صوتی زنده · Gemini Live")
         live_form = QFormLayout(live_box)
@@ -149,7 +189,8 @@ class VoicePage(QScrollArea):
         self.live_config_note.setText(
             "حالت اصلی Gemini Live است: صدای میکروفن مستقیم ارسال و پاسخ صوتی مستقیم دریافت می‌شود. "
             "در صورت قطع اتصال، اگر گزینه پشتیبان فعال باشد، Kira به STT محلی "
-            "(Qwen3-ASR/Whisper) + مدل چت + Piper منتقل می‌شود. استفاده از هدفون توصیه می‌شود."
+            "(شنوا / Qwen3-ASR / Whisper) + مدل چت + Piper منتقل می‌شود. "
+            "Real-time ASR فقط میکروفن محلی را کنترل می‌کند و روی Gemini Live اثری ندارد."
         )
         live_form.addRow(self.live_config_note)
 
@@ -201,12 +242,16 @@ class VoicePage(QScrollArea):
         self.save_timer.timeout.connect(self.autosave_requested.emit)
         for widget in (self.volume, self.mic_gain, self.mic_sens, self.rate):
             widget.valueChanged.connect(lambda *_: self.save_timer.start())
-        for widget in (self.out_device, self.mic_device, self.stt_lang, self.whisper, self.voice_engine, self.gemini_provider):
+        for widget in (
+            self.out_device, self.mic_device, self.stt_lang, self.whisper,
+            self.asr_backend, self.voice_engine, self.gemini_provider,
+        ):
             widget.currentIndexChanged.connect(lambda *_: self.save_timer.start())
         self.gemini_model.currentTextChanged.connect(lambda *_: self.save_timer.start())
         self.voice_engine.currentIndexChanged.connect(lambda *_: self._update_live_toggle_text())
         self.stream_chk.toggled.connect(lambda *_: self.save_timer.start())
         self.local_fallback_chk.toggled.connect(lambda *_: self.save_timer.start())
+        self.real_time_asr_chk.toggled.connect(lambda *_: self.save_timer.start())
         self._update_live_toggle_text(False)
         self.retranslate()
 
