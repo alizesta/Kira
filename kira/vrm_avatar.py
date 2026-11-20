@@ -247,6 +247,13 @@ class VrmView(QWidget):
         if self.ready and self.isVisible():
             self.web.page().runJavaScript(f"window.kiraHang&&window.kiraHang({json.dumps({'on': bool(on), 'vx': round(float(vx), 3)})})")
 
+    def refresh_dances(self):
+        """Tell the page which dance files exist (rescanned each time, so new files need no restart)."""
+        if self.ready and self.isVisible():
+            from . import dance_library
+            items = dance_library.scan()
+            self.web.page().runJavaScript(f"window.kiraDances&&window.kiraDances({json.dumps(items)})")
+
     def music(self, state):
         """state: {on, level, bpm, beats} from kira.music_dance (already gated by the pet controller)."""
         if self.ready and self.isVisible():
@@ -306,6 +313,10 @@ class KiraAvatar(QStackedWidget):
     def hang(self, on, vx):
         if self._vrm_active():
             self.vrm.hang(on, vx)
+
+    def refresh_dances(self):
+        if self._vrm_active():
+            self.vrm.refresh_dances()
 
     def music(self, state):
         if self._vrm_active():

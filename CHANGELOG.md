@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-21 (dance library)
+- New: `kira/dance_library.py` + folder `assets/vrm/animations/` (README inside). `.vrma` and Mixamo `.fbx` files are auto-detected; on music start the viewer plays a random clip (75%) or a built-in style, cross-faded, speed follows BPM. Rotations only, so she stays in place.
+- `viewer.html`: `kiraDances`, VRMA/Mixamo retargeting, AnimationMixer evaluated after the procedural body. `vrm_vendor.OPTIONAL` fetches FBXLoader files best-effort (not required by `ready()`).
+- Character tab: buttons "باز کردن پوشه‌ی رقص‌ها" and "دریافت رقص از Mixamo". Untested visually (needs Windows + real files).
+
 ## 2026-11-21 (desktop-pet behaviour, ideas from Mate Engine)
 
 Mate Engine (shinyflvre) is a Unity/C# project under AGPL-3.0 + its own licence, so no code or assets were copied; only the behaviours were re-implemented for Kira's PySide6 + three.js VRM stack.

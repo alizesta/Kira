@@ -255,6 +255,8 @@ class PetController(QObject):
         want = bool(state.get("on")) and self.on("auto_dance") and self.state in ("free", "perched")
         view = self._view()
         if view is not None and hasattr(view, "music"):
+            if want and not self._dancing and hasattr(view, "refresh_dances"):
+                view.refresh_dances()
             view.music({**state, "on": want})
         if want == self._dancing:
             return

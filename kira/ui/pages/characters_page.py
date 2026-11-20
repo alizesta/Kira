@@ -4,7 +4,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -182,6 +183,17 @@ class CharactersPage(QScrollArea):
         form.addRow(self.perch_chk)
         form.addRow(self.hang_chk)
         form.addRow(self.dance_chk)
+        dance_row = QHBoxLayout()
+        self.dance_folder_btn = QPushButton("باز کردن پوشه‌ی رقص‌ها")
+        self.dance_folder_btn.setToolTip("فایل‌های .vrma یا .fbx (Mixamo) را اینجا بریز؛ هنگام آهنگ یکی‌شان تصادفی اجرا می‌شود")
+        self.dance_folder_btn.clicked.connect(self._open_dance_folder)
+        self.dance_mixamo_btn = QPushButton("دریافت رقص از Mixamo")
+        self.dance_mixamo_btn.setToolTip("رایگان با حساب Adobe: Download ← FBX Binary ← Without Skin، سپس فایل را در پوشه‌ی رقص‌ها بگذار")
+        self.dance_mixamo_btn.clicked.connect(self._open_mixamo)
+        dance_row.addWidget(self.dance_folder_btn)
+        dance_row.addWidget(self.dance_mixamo_btn)
+        dance_row.addStretch(1)
+        form.addRow(dance_row)
         form.addRow(self.idle_chk)
         form.addRow(self.initiative_chk)
         form.addRow(self.top_chk)
@@ -266,6 +278,14 @@ class CharactersPage(QScrollArea):
 
         self.character_combo.currentIndexChanged.connect(lambda index: self.character_selected.emit(index))
         self.retranslate()
+
+    def _open_dance_folder(self) -> None:
+        from ... import dance_library
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(dance_library.ensure_folder())))
+
+    def _open_mixamo(self) -> None:
+        from ... import dance_library
+        QDesktopServices.openUrl(QUrl(dance_library.MIXAMO_URL))
 
     def _register(self, setter: Callable[[str], None], key: str) -> None:
         self._translations.append((setter, key))

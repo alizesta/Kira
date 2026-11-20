@@ -341,11 +341,18 @@ Object.assign(POSE, {
   } },
 });
 function startMusicStyle() {
-  const name = DANCE_STYLES[DANCE.styleIdx++ % DANCE_STYLES.length];
-  bodyDo(name);
-  DANCE.nextAt = tAcc + 14 + Math.random() * 8;
+  DANCE.nextAt = tAcc + 3;                                          // retried shortly if a file turns out to be unusable
+  const procedural = () => {
+    stopDanceClip();
+    const name = DANCE_STYLES[DANCE.styleIdx++ % DANCE_STYLES.length];
+    bodyDo(name);
+    DANCE.nextAt = tAcc + 14 + Math.random() * 8;
+  };
+  if (DANCES.some((d) => !d.bad) && Math.random() < 0.75) playDanceClip().then((ok) => { if (!ok && DANCE.music) procedural(); });
+  else procedural();
 }
-function stopMusicDance() { for (const n of DANCE_STYLES) if (bodyState[n]) bodyState[n].active = false; }
+function stopMusicDanceStyles() { for (const n of DANCE_STYLES) if (bodyState[n]) bodyState[n].active = false; }
+function stopMusicDance() { stopMusicDanceStyles(); stopDanceClip(); }
 window.kiraMusic = (arg) => {
   let m = arg;
   if (typeof arg === 'string') { try { m = JSON.parse(arg); } catch (e) { return 'bad'; } }
@@ -358,6 +365,113 @@ window.kiraMusic = (arg) => {
   else if (!m.on && DANCE.music) { DANCE.music = false; stopMusicDance(); }
   return 'ok';
 };
+
+// ---------- dance library: .vrma (VRM Animation) and Mixamo .fbx files from assets/vrm/animations/ ----------
+// python (kira/dance_library.py) lists the files with window.kiraDances([{name, url, kind}]). While music plays she plays one of them
+// (cross-faded, speed nudged by the song's tempo) or one of the built-in procedural styles above. Only rotations are used, so she
+// stays where she is; the clip is evaluated AFTER the idle pose and procedural body so it wins on every bone it animates.
+let DANCES = [], mixer = null, clipAction = null, clipFading = [], clipCache = new Map();
+const MIXAMO_MAP = {
+  Hips: 'hips', Spine: 'spine', Spine1: 'chest', Spine2: 'upperChest', Neck: 'neck', Head: 'head',
+  LeftShoulder: 'leftShoulder', LeftArm: 'leftUpperArm', LeftForeArm: 'leftLowerArm', LeftHand: 'leftHand',
+  RightShoulder: 'rightShoulder', RightArm: 'rightUpperArm', RightForeArm: 'rightLowerArm', RightHand: 'rightHand',
+  LeftUpLeg: 'leftUpperLeg', LeftLeg: 'leftLowerLeg', LeftFoot: 'leftFoot', LeftToeBase: 'leftToes',
+  RightUpLeg: 'rightUpperLeg', RightLeg: 'rightLowerLeg', RightFoot: 'rightFoot', RightToeBase: 'rightToes',
+};
+for (const side of ['Left', 'Right']) {
+  const s = side.toLowerCase();
+  MIXAMO_MAP[side + 'HandThumb1'] = s + 'ThumbMetacarpal'; MIXAMO_MAP[side + 'HandThumb2'] = s + 'ThumbProximal'; MIXAMO_MAP[side + 'HandThumb3'] = s + 'ThumbDistal';
+  for (const [f, n] of [['Index', 'Index'], ['Middle', 'Middle'], ['Ring', 'Ring'], ['Pinky', 'Little']]) {
+    MIXAMO_MAP[side + 'Hand' + f + '1'] = s + n + 'Proximal'; MIXAMO_MAP[side + 'Hand' + f + '2'] = s + n + 'Intermediate'; MIXAMO_MAP[side + 'Hand' + f + '3'] = s + n + 'Distal';
+  }
+}
+window.kiraDances = (list) => { DANCES = (Array.isArray(list) ? list : []).filter((d) => d && d.url); return DANCES.length; };
+
+function retargetMixamo(asset) {
+  const src = THREE.AnimationClip.findByName(asset.animations, 'mixamo.com') || asset.animations[0];
+  if (!src) return null;
+  const tracks = [], restInv = new THREE.Quaternion(), parentRest = new THREE.Quaternion(), q = new THREE.Quaternion();
+  const flip = vrm.meta && vrm.meta.metaVersion === '0';
+  asset.updateMatrixWorld(true);
+  for (const track of src.tracks) {
+    if (!(track instanceof THREE.QuaternionKeyframeTrack)) continue;            // rotations only (no root motion)
+    const [rig, prop] = track.name.split('.');
+    const bone = MIXAMO_MAP[rig.replace(/^mixamorig:?/, '')];
+    const node = bone && vrm.humanoid.getNormalizedBoneNode(bone);
+    const rigNode = asset.getObjectByName(rig);
+    if (!node || !rigNode || !rigNode.parent) continue;
+    rigNode.getWorldQuaternion(restInv).invert();
+    rigNode.parent.getWorldQuaternion(parentRest);
+    const values = Float32Array.from(track.values);
+    for (let i = 0; i < values.length; i += 4) {
+      q.fromArray(values, i).premultiply(parentRest).multiply(restInv).toArray(values, i);
+      if (flip) { values[i] = -values[i]; values[i + 2] = -values[i + 2]; }
+    }
+    tracks.push(new THREE.QuaternionKeyframeTrack(`${node.name}.${prop}`, track.times, values));
+  }
+  return tracks.length ? new THREE.AnimationClip('kira-dance', src.duration, tracks) : null;
+}
+
+function retargetVrma(gltf) {
+  const ext = gltf.parser.json.extensions && gltf.parser.json.extensions.VRMC_vrm_animation;
+  const bones = ext && ext.humanoid && ext.humanoid.humanBones;
+  const src = gltf.animations[0];
+  if (!bones || !src) return null;
+  const nodeToBone = {};
+  for (const [bone, v] of Object.entries(bones)) { const n = gltf.parser.json.nodes[v.node]; if (n && n.name) nodeToBone[n.name] = bone; }
+  const tracks = [], flip = vrm.meta && vrm.meta.metaVersion === '0';
+  for (const track of src.tracks) {
+    if (!(track instanceof THREE.QuaternionKeyframeTrack)) continue;
+    const [nodeName, prop] = track.name.split('.');
+    const node = nodeToBone[nodeName] && vrm.humanoid.getNormalizedBoneNode(nodeToBone[nodeName]);
+    if (!node) continue;
+    const values = flip ? track.values.map((v, i) => (i % 2 === 0 ? -v : v)) : track.values;
+    tracks.push(new THREE.QuaternionKeyframeTrack(`${node.name}.${prop}`, track.times, values));
+  }
+  return tracks.length ? new THREE.AnimationClip('kira-dance', src.duration, tracks) : null;
+}
+
+function loadDanceClip(entry) {
+  if (!clipCache.has(entry.url)) {
+    clipCache.set(entry.url, (async () => {
+      try {
+        if (/\.fbx$/i.test(entry.url)) {
+          const { FBXLoader } = await import('three/addons/loaders/FBXLoader.js');      // optional vendor file, fetched on demand
+          return retargetMixamo(await new FBXLoader().loadAsync(entry.url));
+        }
+        return retargetVrma(await new GLTFLoader().loadAsync(entry.url));
+      } catch (e) { console.warn('dance file failed: ' + entry.url, e); return null; }
+    })());
+  }
+  return clipCache.get(entry.url);
+}
+
+async function playDanceClip() {
+  const pool = DANCES.filter((d) => !d.bad);
+  if (!pool.length || !vrm) return false;
+  const entry = pool[Math.floor(Math.random() * pool.length)];
+  const clip = await loadDanceClip(entry);
+  if (!clip) { entry.bad = true; return false; }
+  if (!DANCE.music) return false;                                  // the song ended while the file was loading
+  if (!mixer) mixer = new THREE.AnimationMixer(vrm.scene);
+  stopMusicDanceStyles();
+  const next = mixer.clipAction(clip);
+  next.reset().setLoop(THREE.LoopRepeat, Infinity).fadeIn(0.6).play();
+  if (clipAction && clipAction !== next) { clipAction.fadeOut(0.6); clipFading.push([clipAction, tAcc + 0.7]); }
+  clipAction = next;
+  DANCE.nextAt = tAcc + Math.max(14, Math.min(30, clip.duration * Math.ceil(14 / Math.max(2, clip.duration))));
+  return true;
+}
+function stopDanceClip() {
+  if (clipAction) { clipAction.fadeOut(0.6); clipFading.push([clipAction, tAcc + 0.7]); clipAction = null; }
+}
+function updateClips(dt) {
+  if (!mixer) return;
+  if (clipAction) clipAction.timeScale = clampf(DANCE.bpm / 110, 0.85, 1.2);       // follow the song's tempo a little
+  mixer.update(dt);
+  clipFading = clipFading.filter(([a, until]) => { if (tAcc >= until) { a.stop(); return false; } return true; });
+  if (!clipAction && !clipFading.length) { mixer.stopAllAction(); mixer.uncacheRoot(vrm.scene); mixer = null; }   // restore the bones to the procedural pose
+}
 
 // ---------- hanging from the mouse while she is dragged (python: kira/companion.py sends {on, vx}) ----------
 // Held by the head like a kitten: arms loose, knees bent, the whole body swings like a pendulum around the grip point
@@ -460,6 +574,7 @@ function loop() {
   applyPose(dt);
   applyGesture();
   applyBody(dt);
+  updateClips(dt);
   applyHang(dt);
   const em = vrm.expressionManager;
   if (em) for (const p of PRESETS) em.setValue(p, W[p]);

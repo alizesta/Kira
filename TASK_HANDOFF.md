@@ -3,7 +3,7 @@
 ## Latest task: desktop-pet behaviour (2026-11-21)
 
 - New: `kira/pet.py` (PetController owned by `CompanionWindow.pet`), `kira/perch.py`, `kira/music_dance.py`, JS `kiraHang` / `kiraMusic` in `assets/vrm/viewer.html`; the music watcher starts in `main_window_composition.py` (Windows only).
-- Ideas not done yet from Mate Engine: touch regions per body part with sounds, chibi mode, FPS limit, sleep/alarm, multi-avatar sync dance, screensaver, MMD/VRMA animation import.
+- Ideas not done yet from Mate Engine: touch regions per body part with sounds, chibi mode, FPS limit, sleep/alarm, multi-avatar sync dance, screensaver, MMD/VMD import. Dance library (VRMA/Mixamo FBX in `assets/vrm/animations/`) is done but unverified with real files.
 - Needs a visual check on Windows: sit height, dance poses, hang swing.
 
 ## Latest task: AI tab redesign (2026-11-20)

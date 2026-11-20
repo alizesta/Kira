@@ -22,6 +22,19 @@ FILES = {
 }
 
 
+# only needed to read Mixamo .fbx dances; the viewer works without them (.vrma dances and built-in styles need none)
+OPTIONAL = {
+    "addons/loaders/FBXLoader.js": f"{CDN}three@{THREE}/examples/jsm/loaders/FBXLoader.js",
+    "addons/curves/NURBSCurve.js": f"{CDN}three@{THREE}/examples/jsm/curves/NURBSCurve.js",
+    "addons/curves/NURBSUtils.js": f"{CDN}three@{THREE}/examples/jsm/curves/NURBSUtils.js",
+    "addons/libs/fflate.module.js": f"{CDN}three@{THREE}/examples/jsm/libs/fflate.module.js",
+}
+
+
+def missing_optional():
+    return [name for name in OPTIONAL if not (VENDOR / name).is_file() or (VENDOR / name).stat().st_size < 1000]
+
+
 def missing():
     return [name for name in FILES if not (VENDOR / name).is_file() or (VENDOR / name).stat().st_size < 2000]
 
@@ -33,11 +46,13 @@ def ready():
 def download(log=print):
     """Fetch every missing file. Returns True when all are present. Never raises."""
     ok = True
-    for name in missing():
+    urls = {**FILES, **OPTIONAL}
+    for name in missing() + missing_optional():
+        required = name in FILES
         target = VENDOR / name
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            req = urllib.request.Request(FILES[name], headers={"User-Agent": "Kira"})
+            req = urllib.request.Request(urls[name], headers={"User-Agent": "Kira"})
             with urllib.request.urlopen(req, timeout=60) as resp:
                 data = resp.read()
             if len(data) < 2000 or b"<html" in data[:200].lower():
@@ -47,7 +62,7 @@ def download(log=print):
             tmp.replace(target)
             log(f"VRM viewer file downloaded: {name}")
         except Exception as exc:                              # noqa: BLE001 - optional feature, never stop the app
-            ok = False
+            ok = ok and not required
             log(f"VRM viewer file NOT downloaded: {name} ({exc})")
     return ok and ready()
 
