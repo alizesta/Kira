@@ -56,6 +56,7 @@ DEFAULTS = {
     "stream_speech": True,               # speech starts from the first finished sentence while the reply is still being written
     "voice_rate": 0,                      # local Piper speech speed adjustment
     "voice_volume": 0.9,
+    "voice_native_wav": True,             # Windows: play wav replies through winsound (Qt player was silent on some PCs)
     "output_device": "",                  # "" = Windows default speaker; otherwise the device description
     "mic_device": "",                     # "" = Windows default microphone; otherwise the device name
     "mic_gain": 100,                      # 50-300 %: software gain of the microphone (independent of the speaker volume)

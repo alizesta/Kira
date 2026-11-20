@@ -7,6 +7,7 @@ import math
 import os
 import re
 import shutil
+import sys
 import tempfile
 import threading
 import wave
@@ -119,6 +120,56 @@ def clean_for_speech(text):
 PREFETCH = 2                    # sentences made ahead of the one that is playing
 STREAM_MARGIN = 40              # (reserved) characters kept back; the splitter itself waits for a safe boundary
 
+
+
+class _NativeWavPlayer(QObject):
+    """Plays a PCM .wav through the Windows mixer (winsound), independent of Qt Multimedia.
+
+    Used on Windows when Qt's player reports success but stays silent. It follows the Windows default speaker and the voice volume
+    (applied by scaling a temporary copy). Exposes stop()/deleteLater() so Voice can treat it like the Qt player."""
+
+    def __init__(self, path, volume, parent=None):
+        super().__init__(parent)
+        import wave
+        self._copy = None
+        with wave.open(path, "rb") as w:
+            params, frames = w.getparams(), w.readframes(w.getnframes())
+            self.duration_ms = int(1000 * params.nframes / max(1, params.framerate))
+            if params.comptype != "NONE":
+                raise ValueError("compressed wav")
+        play = path
+        if volume < 0.99 and params.sampwidth == 2:
+            import array
+            samples = array.array("h")
+            samples.frombytes(frames)
+            samples = array.array("h", (max(-32768, min(32767, int(x * volume))) for x in samples))
+            self._copy = path + ".vol.wav"
+            with wave.open(self._copy, "wb") as o:
+                o.setparams(params)
+                o.writeframes(samples.tobytes())
+            play = self._copy
+        import winsound
+        self._winsound = winsound
+        winsound.PlaySound(play, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
+
+    def stop(self):
+        try:
+            self._winsound.PlaySound(None, self._winsound.SND_PURGE)
+        except Exception:
+            pass
+
+    def deleteLater(self):
+        if self._copy:
+            copy, self._copy = self._copy, None
+            QTimer.singleShot(300, lambda: _silent_remove(copy))
+        super().deleteLater()
+
+
+def _silent_remove(path):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
 
 class _Session:
     """One spoken reply: its sentences in order, what is already synthesized, and how far playback is."""
@@ -618,6 +669,8 @@ class Speaker(QObject):
         self._wav, self._env, self._item_began = wav, env, False
         self._keep = s.keep or not wav.startswith(self._tmp)
         self._watch_devices()
+        if self._start_native(wav):
+            return
         out = QAudioOutput(self)
         device = self._default_output()
         if device is not None:
@@ -666,6 +719,30 @@ class Speaker(QObject):
             PLAYBACK_START_TIMEOUT_MS,
             lambda player=fx: self._on_player_failed(player, "پخش صدا شروع نشد."),
         )
+
+    def _start_native(self, wav):
+        """Windows: play PCM wav files with winsound (the reliable path). Returns False to fall back to Qt's player."""
+        if sys.platform != "win32" or not str(wav).lower().endswith(".wav"):
+            return False
+        if not bool(self.settings.get("voice_native_wav", True)) or str(self.settings.get("output_device") or "").strip():
+            return False
+        try:
+            volume = max(0.0, min(1.0, float(self.settings.get("voice_volume", 0.9))))
+        except (TypeError, ValueError):
+            volume = 0.9
+        try:
+            player = _NativeWavPlayer(wav, volume, self)
+        except Exception:
+            return False
+        self._out = None
+        self._fx = player
+        self._item_started()
+        QTimer.singleShot(player.duration_ms + 150, lambda p=player: self._on_native_done(p))
+        return True
+
+    def _on_native_done(self, player):
+        if player is self._fx and self._item_began:
+            self._item_finished()
 
     def _on_player_error(self, player, error=None, message=""):
         """Preserve Qt's actual backend error instead of reducing silent playback to a timeout."""

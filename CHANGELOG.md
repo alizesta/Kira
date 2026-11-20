@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-21 (silent voice on Windows)
+- `kira/voice.py`: on Windows, PCM `.wav` replies are now played with `winsound` (`_NativeWavPlayer`, volume applied to a temp copy, lip-sync/finish via duration timer) because Qt's QMediaPlayer reported success but stayed silent on the user's PC while Media Player played the same wav. Falls back to Qt for mp3/ogg, when a specific output device is chosen in settings, on any error, or if `voice_native_wav` is false. A chosen output device is ignored by the native path (it uses the Windows default).
+- Not verified on Windows hardware (sandbox is Linux; unit test uses a fake winsound). 15 `test_voice_tts` failures are pre-existing.
+
 ## 2026-11-21 (dance library)
 - New: `kira/dance_library.py` + folder `assets/vrm/animations/` (README inside). `.vrma` and Mixamo `.fbx` files are auto-detected; on music start the viewer plays a random clip (75%) or a built-in style, cross-faded, speed follows BPM. Rotations only, so she stays in place.
 - `viewer.html`: `kiraDances`, VRMA/Mixamo retargeting, AnimationMixer evaluated after the procedural body. `vrm_vendor.OPTIONAL` fetches FBXLoader files best-effort (not required by `ready()`).
