@@ -75,8 +75,8 @@ if not defined PY (
     goto fail
   )
   winget install --id Python.Python.3.12 --exact --silent --accept-package-agreements --accept-source-agreements
-  if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" set "PY="%LOCALAPPDATA%\Programs\Python\Python312\python.exe""
-  if not defined PY if exist "%ProgramFiles%\Python312\python.exe" set "PY="%ProgramFiles%\Python312\python.exe""
+  if exist "%LOCALAPPDATA%\Programs\Python\Python312\python.exe" set "PY=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
+  if not defined PY if exist "%ProgramFiles%\Python312\python.exe" set "PY=%ProgramFiles%\Python312\python.exe"
   if not defined PY py -3.12 -c "import sys" >nul 2>nul && set "PY=py -3.12"
 )
 if not defined PY (
@@ -141,16 +141,16 @@ where ollama >nul 2>nul
 if errorlevel 1 (
   where winget >nul 2>nul
   if errorlevel 1 (
-    echo WARNING: winget is unavailable; automatic Ollama installation was skipped.
-    goto install_done
+    echo ERROR: winget is unavailable; Ollama cannot be installed automatically.
+    goto fail
   )
   winget install --id Ollama.Ollama --exact --silent --accept-package-agreements --accept-source-agreements
   if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Ollama"
   if exist "%ProgramFiles%\Ollama\ollama.exe" set "PATH=%PATH%;%ProgramFiles%\Ollama"
   where ollama >nul 2>nul
   if errorlevel 1 (
-    echo WARNING: Ollama was not found after its installation attempt.
-    goto install_done
+    echo ERROR: Ollama was not found after its installation attempt.
+    goto fail
   )
 )
 
@@ -172,17 +172,12 @@ start "" /b ollama serve
 timeout /t 8 /nobreak >nul
 ollama list >nul 2>nul
 if errorlevel 1 (
-  echo WARNING: Ollama service did not start. Local chat model download skipped.
-  goto install_done
+  echo ERROR: Ollama service did not start.
+  goto fail
 )
-ollama list | findstr /I "qwen3.5:4b" >nul
-if errorlevel 1 (
-  echo Downloading qwen3.5:4b...
-  ollama pull qwen3.5:4b
-  if errorlevel 1 echo WARNING: Local chat model download failed.
-) else (
-  echo qwen3.5:4b is already installed.
-)
+echo Installing the pinned, checksum-verified Qwen3.5-9B Abliterated Q4_K_M model...
+python scripts\setup_local_chat_model.py
+if errorlevel 1 goto fail
 
 :install_done
 echo.
@@ -197,8 +192,8 @@ if exist voice_failed.txt (
   type voice_failed.txt
 )
 echo Start Kira with start_kira.vbs (no CMD window).
-pause
-exit
+if not defined KIRA_NO_PAUSE pause
+exit /b 0
 
 :netfail
 echo.
@@ -209,5 +204,5 @@ goto fail
 :fail
 echo.
 echo SETUP DID NOT COMPLETE. Copy the error text above for troubleshooting.
-pause
-exit
+if not defined KIRA_NO_PAUSE pause
+exit /b 1

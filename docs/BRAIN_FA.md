@@ -14,7 +14,15 @@
 | `brain_mode` | `auto` | `surface_only` = هرگز deep؛ `off` = ماژول کاری نمی‌کند |
 | `brain_reflection` | `rules` | `model` = علاوه بر قواعد، یک تماس پس‌زمینه روی نوبت deep؛ `off` |
 | `brain_memory_writer` | `off` | `idle` = نویسنده‌ی حافظه در پس‌زمینه |
-| `role_routes` | همه `auto` | شناسه‌ی route برای هر نقش؛ اگر قابل‌استفاده نباشد ترتیب عادی ادامه می‌یابد |
+| `role_routes` | همه `auto` | شناسه‌ی route ترجیحی برای هر نقش |
+| `role_provider_allowlist` | `surface=[ollama]`, `deep=[google]`, `reflection=[google]`, `memory=[ollama]` | مرز سخت Provider؛ Failover از مرز نقش عبور نمی‌کند |
+| `role_route_models` | `surface=[kira-qwen3.5-9b-abliterated:q4_k_m]` | مدل مجاز دقیق برای مسیر محلی |
+
+## مسیریابی محلی/ابری
+- نقش surface فقط از Ollama استفاده می‌کند؛ نقش deep فقط از Google Gemini. انتخاب دستی Route و Failover نمی‌توانند این مرز را دور بزنند.
+- درخواست‌های صریح «بدون سانسور/بدون فیلتر»، محتوای بزرگسالان، چند موضوع حساس شناخته‌شده و عبارت‌های معادل انگلیسی به مسیر محلی اولویت می‌دهند؛ پیشوند /local نیز هر پیام را محلی می‌کند، حتی اگر متن عبارت «تحلیل عمیق» داشته باشد.
+- ورودی تصویری به Route بینایی Google منتقل می‌شود، چون GGUF نصب‌شده text-only است.
+- در نبود Gemini، درخواست Deep با خطای روشن متوقف می‌شود و به Ollama یا Provider دیگر فرستاده نمی‌شود.
 
 ## ایمنی
 - تصمیم‌گیری کدِ قطعی است، بدون تماس با مدل.

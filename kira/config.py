@@ -8,6 +8,8 @@ from . import routes as route_model
 from .personality import STOCK_PERSONAS
 
 ROOT = Path(__file__).resolve().parent.parent
+LOCAL_UNCENSORED_MODEL = "kira-qwen3.5-9b-abliterated:q4_k_m"
+LEGACY_LOCAL_CHAT_MODELS = {"qwen3.5:4b"}
 from . import storage
 
 # Persistent user data and AI caches live in A:\\Project KIRA\\Kira Attachments on Windows.
@@ -24,7 +26,7 @@ VERSION = "1.1"
 
 DEFAULTS = {
     "ollama_url": "http://localhost:11434",
-    "model": "qwen3.5:4b",
+    "model": LOCAL_UNCENSORED_MODEL,
     "assistant_name": "Kira",
     "active_character_id": "kira",
     # Extra user notes only. Kira's real character is defined in kira/personality.py and always applied.
@@ -103,6 +105,9 @@ DEFAULTS = {
     "brain_reflection": "rules",    # rules (free) | model (also one small background call on deep turns) | off
     "brain_memory_writer": "off",   # off | idle (background fact writer; every fact must quote the user, verified in code)
     "role_routes": {"surface": "auto", "deep": "auto", "reflection": "auto", "memory": "auto"},   # route id per role, or "auto"
+    # Hard provider boundaries: normal/sensitive turns local, demanding analysis via Gemini only.
+    "role_provider_allowlist": {"surface": ["ollama"], "deep": ["google"], "reflection": ["google"], "memory": ["ollama"]},
+    "role_route_models": {"surface": [LOCAL_UNCENSORED_MODEL]},
     "mcp_mode": "auto",             # auto = use kira_mcp.json when it exists | off (docs/MCP_AGENTS_FA.md)
     # Usage ledger (kira/usage.py, docs/USAGE_FA.md): numbers only; Unknown when the provider does not report.
     "model_prices": {},             # {"provider:model" or "model": {"input_per_million": 0.5, "output_per_million": 1.5, "cache_per_million": 0.1}}
@@ -128,7 +133,7 @@ DEFAULTS = {
         "openrouter": {"enabled": False, "api_key": "", "model": "", "timeout": 18},
         # num_ctx / keep_alive keep the local model light while gaming (8 GB VRAM card).
         # "model" and "base_url" here mirror the top-level "model" / "ollama_url" keys.
-        "ollama": {"enabled": True, "base_url": "http://localhost:11434", "model": "qwen3.5:4b",
+        "ollama": {"enabled": True, "base_url": "http://localhost:11434", "model": LOCAL_UNCENSORED_MODEL,
                    "num_ctx": 4096, "keep_alive": "2m", "timeout": 180, "num_predict": 512}
     }
 }
@@ -259,6 +264,36 @@ def load_settings():
         for stale in ("web_engine", "web_read_pages"):               # removed options (Google-through-Gemini / DuckDuckGo)
             merged.pop(stale, None)
         route_model.ensure_routes(merged)
+        # Migrate only the former bundled default; keep any user-selected model intact.
+        migrated_local_model = False
+        ollama_cfg = merged.get("providers", {}).get("ollama") or {}
+        if str(ollama_cfg.get("model") or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS:
+            ollama_cfg["model"] = LOCAL_UNCENSORED_MODEL
+            migrated_local_model = True
+        if str(merged.get("model") or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS:
+            merged["model"] = LOCAL_UNCENSORED_MODEL
+            migrated_local_model = True
+        for local_route in route_model.get_routes(merged):
+            if local_route.get("provider") == "ollama" and str(local_route.get("model") or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS:
+                route_model.update_route(merged, local_route["id"], model=LOCAL_UNCENSORED_MODEL)
+                migrated_local_model = True
+        allowlist = merged.get("role_provider_allowlist")
+        if not isinstance(allowlist, dict):
+            merged["role_provider_allowlist"] = deepcopy(DEFAULTS["role_provider_allowlist"])
+        else:
+            for role, default_values in DEFAULTS["role_provider_allowlist"].items():
+                value = allowlist.get(role)
+                merged["role_provider_allowlist"][role] = list(value) if isinstance(value, (list, tuple)) else list(default_values)
+        model_allowlist = merged.get("role_route_models")
+        if not isinstance(model_allowlist, dict):
+            merged["role_route_models"] = deepcopy(DEFAULTS["role_route_models"])
+        else:
+            for role, default_values in DEFAULTS["role_route_models"].items():
+                value = model_allowlist.get(role)
+                merged["role_route_models"][role] = list(value) if isinstance(value, (list, tuple)) else list(default_values)
+        if migrated_local_model:
+            LOAD_WARNINGS.append("مدل محلی پیش‌فرض به Qwen3.5-9B Abliterated Q4_K_M مهاجرت کرد.")
+            save_settings(merged)
         return merged
     fresh = deepcopy(DEFAULTS)
     route_model.ensure_routes(fresh)

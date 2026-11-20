@@ -39,6 +39,72 @@ def dispatch(table):
 
 
 class RouterRouteTests(unittest.TestCase):
+    def test_surface_role_ignores_manual_cloud_route_and_never_fails_over_to_it(self):
+        s, r = make("groq")
+        s["role_provider_allowlist"] = {"surface": ["ollama"], "deep": ["google"]}
+        s["role_route_models"] = {"surface": ["kira-qwen3.5-9b-abliterated:q4_k_m"]}
+        extra = routes.add_route(s, "ollama", "other-local-model", enabled=True)
+        routes.move_route(s, extra["id"], 0)
+        routes.set_manual(s, "groq")
+        f = dispatch({"11434": ok_ollama("local-answer"), "groq": AssertionError("surface must never reach cloud")})
+        with r.role_scope("surface"):
+            with mock.patch("requests.post", f):
+                self.assertEqual(r.chat(MSGS, SYS), "local-answer")
+        self.assertIn("11434", f.calls[0]["url"])
+        self.assertEqual(f.calls[0]["json"]["model"], "kira-qwen3.5-9b-abliterated:q4_k_m")
+        self.assertEqual(len(f.calls), 1)
+
+    def test_deep_role_uses_gemini_only_even_when_manual_route_is_other_provider(self):
+        s, r = make("groq")
+        s["role_provider_allowlist"] = {"surface": ["ollama"], "deep": ["google"]}
+        google = routes.add_provider(
+            s, "Google AI Studio", "https://generativelanguage.googleapis.com/v1beta/openai",
+            "test-google-api-key-1234567890", local=False, enabled=True,
+        )
+        routes.add_route(s, google, "gemini-3.8-flash", enabled=True)
+        routes.set_manual(s, "groq")
+        f = dispatch({
+            "generativelanguage.googleapis.com": ok_openai("gemini-answer"),
+            "groq": AssertionError("deep role must not use Groq"),
+            "11434": AssertionError("deep role must not fall back to Ollama"),
+        })
+        with r.role_scope("deep"):
+            with mock.patch("requests.post", f):
+                self.assertEqual(r.chat(MSGS, SYS), "gemini-answer")
+        self.assertIn("generativelanguage.googleapis.com", f.calls[0]["url"])
+        self.assertEqual(len(f.calls), 1)
+
+    def test_deep_role_does_not_fall_back_to_local_when_gemini_fails(self):
+        s, r = make("groq")
+        s["role_provider_allowlist"] = {"surface": ["ollama"], "deep": ["google"]}
+        google = routes.add_provider(
+            s, "Google AI Studio", "https://generativelanguage.googleapis.com/v1beta/openai",
+            "test-google-api-key-1234567890", local=False, enabled=True,
+        )
+        routes.add_route(s, google, "gemini-3.8-flash", enabled=True)
+        f = dispatch({
+            "generativelanguage.googleapis.com": requests.ConnectionError("Gemini offline"),
+            "groq": AssertionError("deep role must not use Groq"),
+            "11434": AssertionError("deep role must not fall back to Ollama"),
+        })
+        with r.role_scope("deep"):
+            with mock.patch("requests.post", f):
+                with self.assertRaises(RuntimeError):
+                    r.chat(MSGS, SYS)
+        self.assertEqual(len(f.calls), 1)
+        self.assertIn("generativelanguage.googleapis.com", f.calls[0]["url"])
+
+    def test_surface_vision_route_uses_gemini_even_with_local_surface_allowlist(self):
+        s, r = make("groq")
+        s["role_provider_allowlist"] = {"surface": ["ollama"], "deep": ["google"]}
+        google = routes.add_provider(
+            s, "Google AI Studio", "https://generativelanguage.googleapis.com/v1beta/openai",
+            "test-google-api-key-1234567890", local=False, enabled=True,
+        )
+        gemini_route = routes.add_route(s, google, "gemini-3.8-flash", enabled=True)
+        with r.role_scope("surface"):
+            self.assertEqual(r.vision_route_id(), gemini_route["id"])
+
     def test_two_models_of_one_provider_are_independent_routes(self):
         s, r = make("groq")
         routes.add_route(s, "groq", "second-model")

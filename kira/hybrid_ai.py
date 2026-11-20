@@ -148,8 +148,32 @@ class HybridRouter:
             _ROLE.reset(role_token)
 
     def _candidates(self):
-        """Routes in the order they will be tried: a role's own route (if any), then the manual choice, then priority order (unless failover is off)."""
+        """Routes in priority order, constrained to the provider class assigned to this brain role."""
         routes = self.routes()
+        role = _ROLE.get()
+        role_allowlist = self.settings.get("role_provider_allowlist")
+        allowed = role_allowlist.get(role) if isinstance(role_allowlist, dict) else None
+        # Images require a vision-capable cloud route; this local GGUF is text-only.
+        if _VISION_ONLY.get() and role in ("surface", "deep"):
+            allowed = ["google"]
+        if isinstance(allowed, (list, tuple)):
+            allowed = {str(value).strip().lower() for value in allowed if str(value).strip()}
+            routes = [
+                route for route in routes
+                if (
+                    ("google" in allowed and route_model.is_google(
+                        route.get("provider"), self._provider_cfg(route)
+                    ))
+                    or str(route.get("provider") or "").lower() in allowed
+                )
+            ]
+        model_allowlist = self.settings.get("role_route_models")
+        allowed_models = model_allowlist.get(role) if isinstance(model_allowlist, dict) else None
+        if _VISION_ONLY.get():
+            allowed_models = None
+        if isinstance(allowed_models, (list, tuple)):
+            model_ids = {str(value).strip().lower() for value in allowed_models if str(value).strip()}
+            routes = [route for route in routes if str(route.get("model") or "").strip().lower() in model_ids]
         manual = self.settings.get("manual_route_id") or ""
         chosen = next((r for r in routes if r["id"] == manual), None) if manual else None
         if chosen is None:
@@ -159,7 +183,6 @@ class HybridRouter:
         else:
             base = [chosen] + [r for r in routes if r["id"] != chosen["id"]]
         prefer = _PREFER.get()
-        role = _ROLE.get()
         try:
             from . import usage as _usage
             if prefer and not _usage.role_allowed(role):
@@ -170,8 +193,8 @@ class HybridRouter:
         if _VISION_ONLY.get():
             base = [r for r in base if self._route_supports_vision(r, self._provider_cfg(r))]
         preferred = next((r for r in routes if r["id"] == prefer and r in base), None) if prefer else None
-        # Explicit role/manual selections remain pinned unless they are currently rate-limited.
-        pinned = preferred or chosen
+        # A manual selection is only honored inside this role's allowed provider class.
+        pinned = preferred or (chosen if chosen in base else None)
         now = time.monotonic()
         if pinned is not None and self.cooldowns.get(pinned["id"], 0) > now:
             pinned = None
@@ -190,16 +213,20 @@ class HybridRouter:
         return ([pinned] if pinned is not None else []) + tail
 
     def vision_route_id(self):
-        """Return the first eligible route explicitly marked or recognizably capable of image input.
+        """Return an eligible vision route, independent of the active text-role allowlist.
 
         Unknown models are deliberately excluded: a text-only route must never receive a screen frame.
         Custom providers can opt in with providers[provider].vision_enabled = true.
         """
-        for route in self._candidates():
-            ok, _ = self.eligibility(route)
-            if ok and self._route_supports_vision(route, self._provider_cfg(route)):
-                return str(route.get("id") or "")
-        return None
+        token = _VISION_ONLY.set(True)
+        try:
+            for route in self._candidates():
+                ok, _ = self.eligibility(route)
+                if ok and self._route_supports_vision(route, self._provider_cfg(route)):
+                    return str(route.get("id") or "")
+            return None
+        finally:
+            _VISION_ONLY.reset(token)
 
     def _route_supports_vision(self, route, cfg):
         model = str(route.get("model") or "").lower()
@@ -479,6 +506,13 @@ class HybridRouter:
                                     stopped=self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()), failures=failures)
             # nothing worked
             self.last_provider = self.last_model = self.last_route_id = self.last_kind = None
+            role = _ROLE.get()
+            allowlist = self.settings.get("role_provider_allowlist")
+            if not failures and isinstance(allowlist, dict) and role in allowlist:
+                if role == "deep":
+                    failures.append("برای استدلال سنگین، Route فعال Google Gemini لازم است؛ هیچ مسیر محلی یا Provider دیگری جایگزین نمی‌شود.")
+                elif role == "surface":
+                    failures.append("برای مکالمه محلی، Ollama باید روشن باشد و مدل Qwen Abliterated نصب شده باشد؛ ارسال به Cloud مجاز نیست.")
             self.last_error = "; ".join(failures) or "هیچ Route فعالی تنظیم نشده است."
             self.last_duration_ms = int((time.monotonic() - started) * 1000)
             if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
