@@ -194,8 +194,8 @@ class GeminiLiveWorker(QThread):
                                 pass
                 input_transcription = getattr(content, "input_transcription", None)
                 output_transcription = getattr(content, "output_transcription", None)
-                input_text = str(getattr(input_transcription, "text", "") or "").strip()
-                output_text = str(getattr(output_transcription, "text", "") or "").strip()
+                input_text = str(getattr(input_transcription, "text", "") or "")
+                output_text = str(getattr(output_transcription, "text", "") or "")
                 if input_text:
                     self._transcript_buffers["user"].append(input_text)
                 if output_text:
