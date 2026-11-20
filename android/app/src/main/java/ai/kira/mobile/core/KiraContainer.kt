@@ -37,6 +37,10 @@ class KiraContainer(context: Context) {
 
     val voiceCredentials: GeminiLiveCredentialStore by lazy { GeminiLiveCredentialStore(app) }
 
+    fun libraryDirectory(): String = localCore.libraryDirectory()
+
+    fun installedSkills(): List<String> = localCore.installedSkills()
+
     fun createGeminiLiveSession(
         apiKey: String,
         onStatus: (String) -> Unit,
