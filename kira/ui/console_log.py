@@ -30,10 +30,10 @@ class _LineStream:
             self._pending += value
             parts = self._pending.splitlines(keepends=True)
             self._pending = ""
-            if parts and not parts[-1].endswith(("\\n", "\\r")):
+            if parts and not parts[-1].endswith(("\n", "\r")):
                 self._pending = parts.pop()
         for part in parts:
-            line = part.rstrip("\\r\\n")
+            line = part.rstrip("\r\n")
             if line:
                 self._capture.write_line(f"{self._label}{line}")
         return written if written is not None else len(value)
@@ -142,13 +142,13 @@ class ConsoleLogCapture(QObject):
         self._installed = False
 
 
-def build_console_log_page(capture: ConsoleLogCapture, parent=None):
+def build_console_log_page(capture: ConsoleLogCapture, parent=None, *, title_text="Runtime log", clear_text="Clear"):
     """Build the in-app console page and attach the capture stream."""
     page = QWidget(parent)
     layout = QVBoxLayout(page)
     toolbar = QHBoxLayout()
-    title = QLabel("Runtime log", page)
-    clear_button = QPushButton("Clear", page)
+    title = QLabel(title_text, page)
+    clear_button = QPushButton(clear_text, page)
     toolbar.addWidget(title)
     toolbar.addStretch(1)
     toolbar.addWidget(clear_button)
