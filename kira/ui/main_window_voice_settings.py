@@ -169,6 +169,9 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.voice_page.download_whisper_requested.connect(self.download_local_whisper_model)
         self.context.views.voice_page.download_shenava_requested.connect(self.download_local_shenava_model)
         self.context.views.voice_page.test_shenava_file_requested.connect(self.test_shenava_file)
+        self.context.views.voice_page.asr_backend.currentIndexChanged.connect(
+            self.select_local_asr_backend
+        )
         self.context.views.voice_page.realtime_asr_requested.connect(
             self.feature_controller("runtime").set_realtime_asr
         )
@@ -177,6 +180,21 @@ class VoiceSettingsController(WindowFeatureController):
         self.fill_mic_devices(str(self.context.services.settings.get("mic_device") or ""))
         self.fill_output_devices(str(self.context.services.settings.get("output_device") or ""))
         self.refresh_voice_caps()
+
+    def select_local_asr_backend(self, index):
+        """Keep the model ID aligned with the selected offline ASR runtime."""
+        page = self.context.views.voice_page
+        backend = str(page.asr_backend.currentData() or "qwen3")
+        settings = self.context.services.settings
+        settings["local_voice_asr_backend"] = backend
+        current_model = str(settings.get("local_voice_asr_model") or "")
+        if backend == "shenava":
+            settings["local_voice_asr_model"] = "SajjadMajdi/shenava-koochik-fa-int8"
+        elif current_model.casefold() == "sajjadmajdi/shenava-koochik-fa-int8":
+            settings["local_voice_asr_model"] = "Qwen/Qwen3-ASR-0.6B"
+        self.feature_controller("runtime").save_now()
+        if hasattr(self.context.views, "local_voice_status"):
+            self.refresh_local_voice_status()
 
     def set_local_voice_option(self, key, enabled):
         self.context.services.settings[key] = bool(enabled)
@@ -957,7 +975,7 @@ class VoiceSettingsController(WindowFeatureController):
         )
         page.live_config_note.setText(
             "کلید Google از بخش اتصالات خوانده می‌شود و کلید جداگانه‌ای اینجا ذخیره نمی‌شود. "
-            "صدای زنده با Gemini پردازش می‌شود؛ در صورت قطع اتصال، مسیر محلی Qwen3-ASR/Whisper + مدل چت + Piper فعال می‌شود."
+            "صدای زنده با Gemini پردازش می‌شود؛ در صورت قطع اتصال، مسیر محلی شنوا/Qwen3-ASR/Whisper + مدل چت + Piper فعال می‌شود."
         )
 
     def collect_voice_settings(self):
