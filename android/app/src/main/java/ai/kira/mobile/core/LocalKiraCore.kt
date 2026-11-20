@@ -69,7 +69,6 @@ private class LocalKeyVault {
         return cipher.doFinal(value.copyOfRange(12,value.size))
     }
 }
-}
 
 private class LocalDb(context:Context):SQLiteOpenHelper(context.applicationContext,"kira_local_core.db",null,4) {
     override fun onCreate(db:SQLiteDatabase) {
