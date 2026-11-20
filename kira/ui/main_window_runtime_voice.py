@@ -366,6 +366,7 @@ class RuntimeVoiceMixin:
             self._voice_session_requested = False
             self._pending_gemini_start = False
             self.stop_listener()
+            self.feature_controller("voice_settings").stop_local_stt_test(update_ui=False)
             self._voice_mode = "idle"
             self._set_mic_checked(False)
             self._sync_live_toggle(False)
