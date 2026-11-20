@@ -58,12 +58,31 @@ private class LocalKeyVault {
             String(cipher.doFinal(raw.copyOfRange(12,raw.size)),StandardCharsets.UTF_8)
         } catch(_:Exception) { "" }
     }
+}
+
+private class LocalAttachmentVault {
+    private val alias="kira.local.chat.attachments.v1"
+    private val key:SecretKey by lazy {
+        val store=KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (store.getKey(alias,null) as? SecretKey) ?: run {
+            val generator=KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore")
+            generator.init(KeyGenParameterSpec.Builder(
+                alias,KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            ).setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setRandomizedEncryptionRequired(true).build())
+            generator.generateKey()
+        }
+    }
+
     fun encryptBytes(value:ByteArray):ByteArray {
-        val cipher=Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE,key)
+        val cipher=Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE,key)
         return cipher.iv+cipher.doFinal(value)
     }
+
     fun decryptBytes(value:ByteArray):ByteArray {
-        require(value.size>28)
+        require(value.size>28) { "Encrypted attachment is truncated." }
         val cipher=Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE,key,GCMParameterSpec(128,value.copyOfRange(0,12)))
         return cipher.doFinal(value.copyOfRange(12,value.size))
@@ -115,6 +134,7 @@ class LocalKiraCore(context:Context) {
     private val app=context.applicationContext
     private val db=LocalDb(app).writableDatabase
     private val vault=LocalKeyVault()
+    private val attachmentVault=LocalAttachmentVault()
     private val attachmentDirectory=java.io.File(app.filesDir,"kira/attachments")
 
     init {
@@ -585,7 +605,7 @@ class LocalKiraCore(context:Context) {
                 val id=UUID.randomUUID().toString()
                 val file=attachmentFile(id); val temp=java.io.File(attachmentDirectory,"."+id+".tmp")
                 try {
-                    temp.writeBytes(vault.encryptBytes(a.bytes))
+                    temp.writeBytes(attachmentVault.encryptBytes(a.bytes))
                     if(!temp.renameTo(file)) throw IllegalStateException("ذخیره امن فایل ناموفق بود: "+a.name)
                 } finally { if(temp.exists()) temp.delete() }
                 stored+=file
@@ -609,7 +629,7 @@ class LocalKiraCore(context:Context) {
         if(!file.isFile) throw IllegalStateException("پیوست پیدا نشد: "+a.name)
         val max=if(a.mimeType.startsWith("image/")) 8*1024*1024 else 512*1024
         if(file.length()>max+64) throw IllegalStateException("حجم پیوست از حد مجاز بیشتر است.")
-        val bytes=vault.decryptBytes(file.readBytes())
+        val bytes=attachmentVault.decryptBytes(file.readBytes())
         if(bytes.size.toLong()!=a.sizeBytes || bytes.size>max) throw IllegalStateException("پیوست ناقص است: "+a.name)
         return bytes
     }
