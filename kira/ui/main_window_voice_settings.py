@@ -187,6 +187,10 @@ class VoiceSettingsController(WindowFeatureController):
         backend = str(page.asr_backend.currentData() or "qwen3")
         settings = self.context.services.settings
         settings["local_voice_asr_backend"] = backend
+        runtime = self.feature_controller("runtime")
+        if getattr(runtime, "_voice_mode", "") in ("local_fallback", "local_primary", "local_stt"):
+            runtime.set_live_listening(False)
+        self.stop_local_stt_test(update_ui=False)
         current_model = str(settings.get("local_voice_asr_model") or "")
         if backend == "shenava":
             settings["local_voice_asr_model"] = "SajjadMajdi/shenava-koochik-fa-int8"
@@ -251,7 +255,7 @@ class VoiceSettingsController(WindowFeatureController):
 
         page = self.context.views.voice_page
         page.shenava_result.setText(
-            "در حال نصب sherpa-onnx و دانلود مدل Shenava INT8 (حدود ۱۲۶ مگابایت)…"
+            "در حال نصب sherpa-onnx و دانلود مدل Shenava INT8 (حدود ۱۳۲ مگابایت)…"
         )
         self._run_local_voice_task(
             lambda cancel: local_voice.install_and_download_shenava_asr(
@@ -294,7 +298,10 @@ class VoiceSettingsController(WindowFeatureController):
         )
         if not path:
             return
-        page.shenava_test_btn.setEnabled(False)
+        runtime = self.feature_controller("runtime")
+        if getattr(runtime, "_voice_mode", "") in ("local_fallback", "local_primary", "local_stt"):
+            runtime.set_live_listening(False)
+        self.stop_local_stt_test(update_ui=False)
         page.shenava_result.setText(
             f"در حال خواندن و تبدیل فایل «{Path(path).name}» با شنوا؛ میکروفن استفاده نمی‌شود…"
         )
