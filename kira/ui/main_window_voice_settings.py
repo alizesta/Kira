@@ -207,6 +207,7 @@ class VoiceSettingsController(WindowFeatureController):
                 max(0, page.shenava_variant.findData(current_model))
             )
             page.shenava_variant.blockSignals(False)
+            page._update_shenava_download_label()
         elif current_model in supported_shenava:
             settings["local_voice_asr_model"] = "Qwen/Qwen3-ASR-0.6B"
         self.feature_controller("runtime").save_now()
@@ -324,6 +325,7 @@ class VoiceSettingsController(WindowFeatureController):
         page.shenava_variant.blockSignals(True)
         page.shenava_variant.setCurrentIndex(max(0, page.shenava_variant.findData(repo_id)))
         page.shenava_variant.blockSignals(False)
+        page._update_shenava_download_label()
         page.asr_backend.blockSignals(True)
         page.asr_backend.setCurrentIndex(max(0, page.asr_backend.findData("shenava")))
         page.asr_backend.blockSignals(False)
