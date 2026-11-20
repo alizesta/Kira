@@ -11,8 +11,9 @@ import ai.kira.mobile.data.local.LocalChatRepository
 import ai.kira.mobile.data.local.LocalProviderRepository
 import ai.kira.mobile.data.remote.SearchCredentialStore
 import ai.kira.mobile.data.remote.TavilySearchRepository
+import ai.kira.mobile.application.voice.RealtimeVoiceInteractor
 import ai.kira.mobile.data.voice.GeminiLiveCredentialStore
-import ai.kira.mobile.data.voice.GeminiLiveVoiceSession
+import ai.kira.mobile.data.voice.GeminiLiveVoiceSessionFactory
 
 /** Single Android composition root for app-wide use cases and data adapters. */
 class KiraContainer(context: Context) {
@@ -30,20 +31,19 @@ class KiraContainer(context: Context) {
         ProviderApplicationService(LocalProviderRepository(localCore))
     }
 
-    val imageSettings: ImageGenerationSettingsStore by lazy { ImageGenerationSettingsStore(app) }
+    private val imageSettings: ImageGenerationSettingsStore by lazy { ImageGenerationSettingsStore(app) }
     val images: ImageGenerationInteractor by lazy {
-        ImageGenerationInteractor(OpenAiCompatibleImageRepository(app, imageSettings))
+        ImageGenerationInteractor(OpenAiCompatibleImageRepository(app, imageSettings), imageSettings)
     }
 
-    val voiceCredentials: GeminiLiveCredentialStore by lazy { GeminiLiveCredentialStore(app) }
+    private val voiceCredentials: GeminiLiveCredentialStore by lazy { GeminiLiveCredentialStore(app) }
+    private val voiceSessionFactory: GeminiLiveVoiceSessionFactory by lazy { GeminiLiveVoiceSessionFactory(app) }
+    val voice: RealtimeVoiceInteractor by lazy {
+        RealtimeVoiceInteractor(voiceCredentials, voiceSessionFactory)
+    }
 
     fun libraryDirectory(): String = localCore.libraryDirectory()
 
     fun installedSkillCount(): Int = localCore.installedSkills().size
 
-    fun createGeminiLiveSession(
-        apiKey: String,
-        onStatus: (String) -> Unit,
-        onTranscript: (speaker: String, text: String) -> Unit
-    ): GeminiLiveVoiceSession = GeminiLiveVoiceSession(app, apiKey, onStatus, onTranscript)
 }

@@ -92,13 +92,13 @@ internal fun KiraApp(container: KiraContainer, routeRequest: OverlayLaunchReques
                 when(selectedTab) {
                     KiraTab.CHAT -> KiraChatScreen(character=selectedCharacter,prefillText=pendingChatContext,onPrefillConsumed={pendingChatContext=""})
                     KiraTab.SEARCH -> KiraSearchScreen(container=container,onUseInChat={ text -> pendingChatContext=text; selectedTab=KiraTab.CHAT })
-                    KiraTab.IMAGE -> KiraImageScreen()
+                    KiraTab.IMAGE -> KiraImageScreen(container)
                     KiraTab.CHARACTERS -> KiraCharactersScreen(selectedCharacter) { selectedCharacter=it }
                     KiraTab.SETTINGS -> when(settingsPage) {
                         SettingsPage.ROUTE -> SettingsSubpage("اتصال API و مدل‌ها",{settingsPage=SettingsPage.HOME}) { KiraRouteScreen(container.providers) }
                         SettingsPage.MEMORY -> SettingsSubpage("حافظه بلندمدت",{settingsPage=SettingsPage.HOME}) { KiraMemoryScreen() }
                         SettingsPage.SKILLS -> SettingsSubpage("مهارت‌ها و اتصال API",{settingsPage=SettingsPage.HOME}) { KiraSkillsScreen() }
-                        SettingsPage.VOICE -> SettingsSubpage("تماس صوتی زنده",{settingsPage=SettingsPage.HOME}) { KiraVoiceScreen() }
+                        SettingsPage.VOICE -> SettingsSubpage("تماس صوتی زنده",{settingsPage=SettingsPage.HOME}) { KiraVoiceScreen(container) }
                         SettingsPage.ASSISTANT -> SettingsSubpage("دستیار و ویس",{settingsPage=SettingsPage.HOME}) {
                             AssistantScreen(
                                 hasOverlayPermission=hasOverlayPermission,

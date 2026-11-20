@@ -1,5 +1,9 @@
 package ai.kira.mobile.application.voice
 
+import ai.kira.mobile.domain.repository.RealtimeVoiceSession
+import ai.kira.mobile.domain.repository.RealtimeVoiceSessionFactory
+import ai.kira.mobile.domain.repository.VoiceCredentialRepository
+
 sealed class VoiceCallState {
     data object Idle : VoiceCallState()
     data object Connecting : VoiceCallState()
@@ -8,6 +12,7 @@ sealed class VoiceCallState {
     data class Failed(val reason: String) : VoiceCallState()
 }
 
+/** Pure lifecycle policy for a real-time voice call. */
 class VoiceCallStateMachine {
     var state: VoiceCallState = VoiceCallState.Idle
         private set
@@ -20,7 +25,9 @@ class VoiceCallStateMachine {
     }
 
     fun connected() {
-        check(state is VoiceCallState.Connecting) { "Voice session is not connecting." }
+        check(state is VoiceCallState.Connecting || state is VoiceCallState.Muted) {
+            "Voice session is not connecting."
+        }
         state = VoiceCallState.Connected
     }
 
@@ -37,5 +44,125 @@ class VoiceCallStateMachine {
 
     fun end() {
         state = VoiceCallState.Idle
+    }
+}
+
+/**
+ * Coordinates credentials, session creation and call-state transitions.
+ * The Android audio/WebSocket implementation is injected through a domain port.
+ */
+class RealtimeVoiceInteractor(
+    private val credentials: VoiceCredentialRepository,
+    private val sessionFactory: RealtimeVoiceSessionFactory
+) {
+    private val stateMachine = VoiceCallStateMachine()
+    private var activeSession: RealtimeVoiceSession? = null
+
+    val state: VoiceCallState
+        @Synchronized get() = stateMachine.state
+
+    @Synchronized
+    fun hasApiKey(): Boolean = credentials.hasApiKey()
+
+    @Synchronized
+    fun saveApiKey(value: String) {
+        check(!isActiveState(stateMachine.state)) { "ابتدا تماس صوتی را پایان بده." }
+        val key = value.trim()
+        require(key.isNotEmpty() && key.length <= MAX_API_KEY_LENGTH) { "کلید Gemini Live معتبر نیست." }
+        require(!key.contains('\n') && !key.contains('\r')) { "کلید Gemini Live معتبر نیست." }
+        credentials.saveApiKey(key)
+    }
+
+    @Synchronized
+    fun clearApiKey() {
+        check(!isActiveState(stateMachine.state)) { "هنگام تماس زنده نمی‌توان کلید را حذف کرد." }
+        credentials.clearApiKey()
+    }
+
+    @Synchronized
+    fun start(
+        onStatus: (String) -> Unit,
+        onTranscript: (speaker: String, text: String) -> Unit
+    ) {
+        check(!isActiveState(stateMachine.state)) { "تماس صوتی از قبل فعال است." }
+        val key = credentials.readApiKey()
+        stateMachine.begin()
+
+        val session = try {
+            sessionFactory.create(
+                apiKey = key,
+                onStatus = { message ->
+                    synchronized(this) { updateStateFromProviderMessage(message) }
+                    onStatus(message)
+                },
+                onTranscript = onTranscript
+            )
+        } catch (error: Exception) {
+            stateMachine.fail(error.message.orEmpty())
+            throw error
+        }
+
+        activeSession = session
+        try {
+            session.start()
+        } catch (error: Exception) {
+            activeSession = null
+            stateMachine.fail(error.message.orEmpty())
+            throw error
+        }
+    }
+
+    @Synchronized
+    fun setMuted(muted: Boolean) {
+        check(stateMachine.state is VoiceCallState.Connected || stateMachine.state is VoiceCallState.Muted) {
+            "تماس صوتی متصل نیست."
+        }
+        val session = activeSession ?: throw IllegalStateException("نشست صوتی در دسترس نیست.")
+        session.setMuted(muted)
+        stateMachine.setMuted(muted)
+    }
+
+    @Synchronized
+    fun isMuted(): Boolean = stateMachine.state is VoiceCallState.Muted
+
+    @Synchronized
+    fun isActive(): Boolean = isActiveState(stateMachine.state)
+
+    @Synchronized
+    fun stop() {
+        val current = activeSession
+        activeSession = null
+        stateMachine.end()
+        current?.stop()
+    }
+
+    private fun updateStateFromProviderMessage(message: String) {
+        val normalized = message.lowercase()
+        when {
+            normalized.contains("بی‌صداست") || normalized.contains("بی صداست") ->
+                if (stateMachine.state is VoiceCallState.Connected || stateMachine.state is VoiceCallState.Muted) {
+                    stateMachine.setMuted(true)
+                }
+            normalized.contains("تماس زنده برقرار شد") ||
+                normalized.contains("تماس زنده است") ||
+                normalized.contains("می‌توانی صحبت کنی") ->
+                if (stateMachine.state is VoiceCallState.Connecting || stateMachine.state is VoiceCallState.Muted) {
+                    stateMachine.connected()
+                }
+            normalized.contains("پایان یافت") || normalized.contains("متوقف شد") ->
+                stateMachine.end()
+            normalized.contains("ناموفق") || normalized.contains("قطع شد") || normalized.contains("بسته شد") ->
+                stateMachine.fail(message)
+        }
+        if (stateMachine.state is VoiceCallState.Idle || stateMachine.state is VoiceCallState.Failed) {
+            activeSession = null
+        }
+    }
+
+    private fun isActiveState(state: VoiceCallState): Boolean =
+        state is VoiceCallState.Connecting || state is VoiceCallState.Connected || state is VoiceCallState.Muted
+
+    private companion object {
+        const val MAX_API_KEY_LENGTH = 512
     }
 }
