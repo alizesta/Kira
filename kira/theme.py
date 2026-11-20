@@ -231,10 +231,11 @@ def build_style(effect="off", appearance=None):
         css = css.replace(opaque, tint)
     glow = max(0, min(100, int(appearance.get("glow", 18))))
     glow_alpha = 0.18 + glow * 0.0048
+    g1, g2 = appearance_tint((36, 27, 75), appearance), appearance_tint((10, 24, 43), appearance)
     override = f"""
 QGroupBox {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(36,27,75,0.34), stop:1 rgba(10,24,43,0.30));
+        stop:0 rgba({g1[0]},{g1[1]},{g1[2]},0.34), stop:1 rgba({g2[0]},{g2[1]},{g2[2]},0.30));
     border-color: rgba(140,99,255,{glow_alpha:.2f});
 }}
 QGroupBox:hover {{ border-color: rgba(111,226,255,{min(0.94, glow_alpha + 0.16):.2f}); }}
@@ -276,10 +277,29 @@ def chat_accent(theme):
     return {"bubble": theme["bubble"], "name": theme["name"]}
 
 
+def appearance_tint(base, appearance, cap=255):
+    """Mix a base glass colour with the user's background colour (35 %) and scale it by the brightness slider (40-150 %).
+    Without this the chat cards ignored the Appearance colour and brightness controls."""
+    appearance = appearance if isinstance(appearance, dict) else {}
+    color = str(appearance.get("background_color") or "#0A0A1C").strip()
+    try:
+        bg = _hex_to_rgb(color) if len(color) == 7 and color.startswith("#") else (10, 10, 28)
+    except (ValueError, TypeError):
+        bg = (10, 10, 28)
+    try:
+        brightness = max(40, min(150, int(appearance.get("brightness", 100)))) / 100.0
+    except (ValueError, TypeError):
+        brightness = 1.0
+    default = (10, 10, 28)
+    # only a colour the user actually chose pulls the tint; the default background leaves the character colours untouched
+    weight = 0.0 if bg == default else 0.35
+    return tuple(max(0, min(cap, round((b * (1 - weight) + c * weight) * brightness))) for b, c in zip(base, bg))
+
+
 def character_style(theme, effect="off", appearance=None):
     """Stylesheet for the active character; its tint follows the art and glow/transparency follow Appearance."""
     appearance = appearance if isinstance(appearance, dict) else {}
-    r, g, b = theme["deep"]
+    r, g, b = appearance_tint(theme["deep"], appearance, cap=200)
     main, second = theme["main"], theme["second"]
     mr, mg, mb = _hex_to_rgb(main)
     sr, sg, sb = _hex_to_rgb(second)

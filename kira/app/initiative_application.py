@@ -15,6 +15,7 @@ from typing import Any
 
 from ..character.initiative import (
     InitiativeEngine,
+    build_casual_message,
     build_checkin_message,
     initiative_history_state,
     persisted_checkin_events,
@@ -114,6 +115,7 @@ class InitiativeApplicationService:
             last_sent_at=emotional.get("last_initiative", 0.0),
             now=current,
         )
+        casual = settings.get("initiative_casual") is True
         engine = InitiativeEngine()
         engine.last_initiative = emotional.get("last_initiative", 0.0)
         candidate = engine.select_candidate(
@@ -126,13 +128,17 @@ class InitiativeApplicationService:
             app_active=True,
             quiet_hours=engine.is_quiet_hour(now=current),
             busy=False,
-            has_relevant_memory=bool(candidate),
+            has_relevant_memory=bool(candidate) or casual,
             sent_today=history_state["sent_today"],
         )
-        if not decision.get("eligible") or candidate is None:
+        if not decision.get("eligible"):
             return None
-
-        message = build_checkin_message(candidate, language="auto")
+        if candidate is None:
+            # Nothing specific to recall: keep the conversation alive with a short, no-pressure nudge (same idle / cooldown / daily limits).
+            candidate = {"id": "casual", "kind": "casual"}
+            message = build_casual_message(str(settings.get("ui_lang", "fa")), seed=int(current // 3600))
+        else:
+            message = build_checkin_message(candidate, language="auto")
         if not message:
             return None
         outcome = self.chat_application_service.persist_message(

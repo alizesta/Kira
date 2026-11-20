@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
 )
 
+from ..shortcuts import delete_key
 from ...model_catalog import TAB_ARCHIVED, TAB_TITLES, TABS
 
 GREEN, ORANGE, GREY, RED = QColor("#3ddc97"), QColor("#ffb454"), QColor("#9aa0a6"), QColor("#ff6b6b")
@@ -121,6 +122,8 @@ class ModelsPanel(QGroupBox):
         header.setStretchLastSection(False)
         table.setMinimumHeight(210)
         table.setMaximumHeight(330)
+        if tab != TAB_ARCHIVED:
+            delete_key(table, lambda t=table: self._archive_selected(t))      # Delete = move the selected model to «منسوخ» (reversible)
         if tab == TAB_ARCHIVED:
             table.setColumnHidden(0, True)                  # nothing can be switched on from here: restore first
         return table
@@ -176,6 +179,12 @@ class ModelsPanel(QGroupBox):
         else:
             table.setCellWidget(i, 6, self._button("منسوخ", lambda k=key: self.archive_requested.emit(*k),
                                                    tip="به تب «منسوخ / غیرفعال» منتقل و خاموش می‌شود"))
+
+    def _archive_selected(self, table: QTableWidget) -> None:
+        item = table.item(table.currentRow(), 1) if table.currentRow() >= 0 else None
+        key = item.data(Qt.UserRole) if item is not None else None
+        if key:
+            self.archive_requested.emit(*key)
 
     @staticmethod
     def _when(ts) -> str:

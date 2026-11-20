@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-20 (shortcuts, Appearance, proactive messages)
+
+- Shortcuts (`ui/shortcuts.py`): Ctrl+L focus the message box, Esc stop the answer, Ctrl+1..7 switch tab, Ctrl+, open Connections & Models. Delete on the focused list: models table = move to «منسوخ» (reversible), API table = delete API (asks), Route list = delete Route (asks), chat view = clear this character's history (asks).
+- Fixed Appearance: brightness and background colour only changed the (mostly transparent) window background, never the chat/avatar cards or group boxes. `theme.appearance_tint` now feeds both `character_style` and `build_style`.
+- Proactive messages: they could practically never fire (window had to be the active one, on the chat tab, input unfocused, and a due memory had to exist). Gates relaxed (window need not be active; taskbar flashes), and when nothing is worth recalling a short friendly nudge (`build_casual_message`) is sent under the same idle/cooldown/2-per-day/quiet-hour limits. Opt-in per character is unchanged; `initiative_casual` (default on) turns the nudge off.
+
 ## 2026-11-20 (Jakob's law pass + chat action fixes)
 
 - Fixed: copy / edit / speak chips were missing on every freshly streamed reply (only history-restored messages had them) - the final streamed render now carries the footer, for every character.

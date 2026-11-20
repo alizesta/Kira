@@ -68,6 +68,7 @@ DEFAULTS = {
     "character_notes": {},
     "character_resources": {},
     "character_initiative": {},        # per-character, explicit opt-in; defaults off
+    "initiative_casual": True,         # when a character's check-ins are allowed and nothing specific is worth recalling, send a short friendly nudge
     "character_initiative_history": {},  # bounded per-character sent timestamps and memory IDs
 
     "whisper_model": "small",

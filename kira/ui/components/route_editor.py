@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
 )
 from .switch_checkbox import SwitchCheckBox
 
+from ..shortcuts import delete_key
+
 
 class RouteEditor(QWidget):
     selection_changed = Signal()
@@ -56,6 +58,7 @@ class RouteEditor(QWidget):
         self.route_list.setAlternatingRowColors(True)
         self.route_list.currentItemChanged.connect(lambda *_: self.selection_changed.emit())
         self.route_list.model().rowsMoved.connect(lambda *_: self.order_changed.emit())
+        delete_key(self.route_list, self.delete_requested.emit)      # the handler asks before deleting
         body.addWidget(self.route_list)
 
         # Reordering is drag-and-drop in the list; the first enabled route is the default, so there are no up/down/default buttons.

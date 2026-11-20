@@ -5,6 +5,7 @@ receive typed ports, never the window.
 """
 from __future__ import annotations
 
+from .shortcuts import install_window_shortcuts
 from .main_window_root_support import (
     AttachWorker,
     AttachmentTile,
@@ -299,6 +300,15 @@ def initialize_main_window(
     self.views.save_btn.clicked.connect(self.controllers.require("lifecycle").apply_settings)
     self.controllers.require("session").reg(self.views.save_btn.setText, "save")
     self.views.tab_keys = ["tab_chat", "tab_assistant", "tab_voice", "tab_char", "tab_appearance", "tab_general", "tab_ai"]
+    install_window_shortcuts(                                            # shortcuts are children of the window, nothing else to keep
+        window,
+        go_tab=lambda i: self.controllers.require("session").go_tab(i),
+        focus_input=lambda: self.views.input.setFocus(),
+        stop_generation=lambda: (self.views.gen_stop_btn.click()
+                                 if self.views.gen_stop_btn.isVisible() and self.views.gen_stop_btn.isEnabled() else None),
+        tab_count=len(self.views.tab_keys),
+        settings_tab=self.views.tab_keys.index("tab_ai"),
+    )
     self.controllers.require("session").tidy_forms()                      # field widths follow their content (done once every page exists)
     for i, key in enumerate(self.views.tab_keys):
         self.controllers.require("session").reg(lambda s, i=i: self.views.tabs.setTabText(i, s), key)

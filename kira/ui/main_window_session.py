@@ -1,6 +1,7 @@
 """Session and presentation feature controller."""
 import logging
 
+from .shortcuts import delete_key
 from .main_window_session_support import (
     KIRA_PROFILE,
     QApplication,
@@ -146,6 +147,7 @@ class SessionController(WindowFeatureController):
         view.anchorClicked.connect(self.on_chat_link)
         view.setReadOnly(True)
         view.setFrameShape(QFrame.NoFrame)
+        delete_key(view, lambda: self.feature_controller("runtime").clear_chat())     # Delete in the chat = clear it (asks first)
         return view
 
     def on_chat_link(self, url):
@@ -468,10 +470,8 @@ class SessionController(WindowFeatureController):
             if not character_id or not isinstance(opt_ins, dict) or opt_ins.get(character_id) is not True:
                 return False
 
-            if not self.window.isVisible() or not self.window.isActiveWindow():
-                return False
-            tabs = getattr(self.context.views, "tabs", None)
-            if tabs is not None and tabs.currentIndex() != 0:
+            # The person is usually away when a check-in is due, so the window need not be the active one (the message waits in the chat).
+            if self.window.isMinimized() and not self.window.isVisible():
                 return False
             if QApplication.activeModalWidget() is not None:
                 return False
@@ -483,9 +483,6 @@ class SessionController(WindowFeatureController):
 
             input_widget = getattr(self.context.views, "input", None)
             if input_widget is not None:
-                has_focus = getattr(input_widget, "hasFocus", None)
-                if callable(has_focus) and has_focus():
-                    return False
                 for accessor_name in ("text", "toPlainText"):
                     accessor = getattr(input_widget, accessor_name, None)
                     if callable(accessor) and str(accessor() or "").strip():
@@ -531,6 +528,8 @@ class SessionController(WindowFeatureController):
             self.feature_controller("runtime").save_now()
             # add_chat only paints the stored assistant message; there is no TTS or worker.
             self.add_chat("assistant", result.message)
+            if not self.window.isActiveWindow():
+                QApplication.alert(self.window, 0)          # flash the taskbar button: she wrote something
             return True
         except Exception:  # noqa: BLE001 - this optional feature must never interrupt chat
             _log.exception("Optional proactive Initiative check-in failed")

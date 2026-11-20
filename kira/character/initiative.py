@@ -766,3 +766,28 @@ def build_checkin_message(candidate, language="auto", max_topic_chars=130):
     if candidate.get("kind") == "promise":
         return f"By the way, any update on “{topic}” that you said you'd let me know about?"
     return f"By the way, how did “{topic}” go?"
+
+CASUAL_CHECKINS = {
+    "fa": (
+        "سلام، یه مدتیه ساکتی. حالت چطوره؟ امروز چطور گذشت؟",
+        "هی، دلم برات تنگ شد! اگه حوصله داشتی بیا یه کم حرف بزنیم.",
+        "راستی، امروز کار جالبی کردی؟ دوست دارم بشنوم.",
+        "اینجام اگه خواستی گپ بزنیم؛ بدون عجله.",
+    ),
+    "en": (
+        "Hey, it's been quiet for a while. How are you doing? How was your day?",
+        "I missed you a little! If you feel like it, let's chat.",
+        "By the way, did you do anything interesting today? I'd love to hear.",
+        "I'm here if you want to talk, no rush.",
+    ),
+}
+
+
+def build_casual_message(language="fa", seed=0):
+    """A short, no-pressure nudge used when nothing specific is worth recalling. Never claims to remember anything."""
+    lang = "en" if str(language or "").lower().startswith("en") else "fa"
+    pool = CASUAL_CHECKINS[lang]
+    try:
+        return pool[int(seed) % len(pool)]
+    except (TypeError, ValueError, OverflowError):
+        return pool[0]

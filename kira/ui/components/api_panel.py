@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QVBoxLayout, QWidget,
 )
 
+from ..shortcuts import delete_key
+
 
 class ApiPanel(QGroupBox):
     add_requested = Signal()
@@ -65,6 +67,7 @@ class ApiPanel(QGroupBox):
         self.table.setMinimumHeight(120)
         self.table.setMaximumHeight(210)
         self.table.cellDoubleClicked.connect(lambda row, _col: self._emit_for_row(row, self.edit_requested))
+        delete_key(self.table, lambda: self._emit_for_row(self.table.currentRow(), self.delete_requested))   # Delete asks before removing
         layout.addWidget(self.table)
 
         self.custom_btn = QPushButton("＋ Provider سفارشی / سرور سازگار با OpenAI (پیشرفته)")
