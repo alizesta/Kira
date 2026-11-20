@@ -106,6 +106,7 @@ ADAPTER_FIELDS = frozenset({
     "director",
     "game_audio_listener",
     "game_mode",
+    "music_watcher",
     "speaker",
 })
 
