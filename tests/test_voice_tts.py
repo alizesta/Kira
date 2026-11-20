@@ -333,10 +333,11 @@ class LocalTtsPlaybackTests(unittest.TestCase):
             settings={"output_device": ""},
             _prefer_default_output=False,
         )
-        with mock.patch.object(voice_module.QMediaDevices, "defaultAudioOutput",
-                               return_value=Device("", null=True)), \
-             mock.patch.object(voice_module.QMediaDevices, "audioOutputs",
-                               return_value=[fallback]):
+        devices = SimpleNamespace(
+            defaultAudioOutput=lambda: Device("", null=True),
+            audioOutputs=lambda: [fallback],
+        )
+        with mock.patch.object(voice_module, "QMediaDevices", devices):
             self.assertIs(Speaker._default_output(speaker), fallback)
 
     def test_player_is_registered_and_signals_connected_before_source_load(self):
@@ -404,7 +405,8 @@ class LocalTtsPlaybackTests(unittest.TestCase):
              mock.patch.object(voice_module, "QMediaPlayer", make_player), \
              mock.patch.object(voice_module, "QUrl",
                                SimpleNamespace(fromLocalFile=lambda path: path)), \
-             mock.patch.object(voice_module.QTimer, "singleShot"):
+             mock.patch.object(voice_module, "QTimer",
+                               SimpleNamespace(singleShot=mock.Mock())):
             Speaker._start_playback(speaker, SimpleNamespace(keep=True), "/tmp/test.wav", [])
 
         self.assertTrue(player_holder[0].asserted)
