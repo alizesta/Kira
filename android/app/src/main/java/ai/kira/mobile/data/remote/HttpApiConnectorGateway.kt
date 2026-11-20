@@ -102,7 +102,7 @@ class HttpApiConnectorGateway(
         // Resolve once, validate every returned address, and give the exact same
         // address set to OkHttp. TLS SNI and certificate checks still use the
         // original URL hostname, while a second DNS lookup cannot rebind it.
-        val pinnedAddresses = resolvePublicAddresses(base.host)
+        val pinnedAddresses = ConnectorAddressPolicy.resolvePublic(base.host, resolveHost)
         val pinnedDns = Dns { hostname ->
             if (hostname.equals(base.host, ignoreCase = true)) {
                 pinnedAddresses
@@ -147,64 +147,6 @@ class HttpApiConnectorGateway(
             client.connectionPool.evictAll()
             client.dispatcher.executorService.shutdown()
         }
-    }
-
-    private fun resolvePublicAddresses(host: String): List<InetAddress> {
-        val addresses = resolveHost(host).distinct()
-        require(addresses.isNotEmpty() && addresses.all(::isPublicAddress)) {
-            "مقصد Connector به IP خصوصی یا رزروشده resolve شد."
-        }
-        return addresses
-    }
-
-    private fun isPublicAddress(address: InetAddress): Boolean {
-        if (
-            address.isAnyLocalAddress || address.isLoopbackAddress ||
-            address.isLinkLocalAddress || address.isSiteLocalAddress ||
-            address.isMulticastAddress
-        ) return false
-
-        val bytes = address.address
-        if (bytes.size == 4) {
-            val a = bytes[0].toInt() and 0xff
-            val b = bytes[1].toInt() and 0xff
-            val c = bytes[2].toInt() and 0xff
-            return when {
-                a == 0 || a == 10 || a == 127 || a >= 224 -> false
-                a == 100 && b in 64..127 -> false // Shared address space (RFC 6598).
-                a == 169 && b == 254 -> false
-                a == 172 && b in 16..31 -> false
-                a == 192 && b == 168 -> false
-                a == 192 && b == 0 -> false // IETF protocol assignments.
-                a == 192 && b == 88 && c == 99 -> false
-                a == 198 && b in 18..19 -> false // Benchmarking.
-                a == 198 && b == 51 && c == 100 -> false // Documentation.
-                a == 203 && b == 0 && c == 113 -> false // Documentation.
-                else -> true
-            }
-        }
-
-        if (bytes.size == 16) {
-            val a = bytes[0].toInt() and 0xff
-            val b = bytes[1].toInt() and 0xff
-            if (a == 0xff) return false // Multicast.
-            if ((a and 0xfe) == 0xfc) return false // Unique-local.
-            if (a == 0xfe && (b and 0xc0) == 0x80) return false // Link-local.
-            if (a == 0x20 && b == 0x01) {
-                val c = bytes[2].toInt() and 0xff
-                val d = bytes[3].toInt() and 0xff
-                if ((c == 0x0d && d == 0xb8) || (c == 0x00 && d == 0x02)) return false
-            }
-            // IPv4-mapped IPv6 addresses must pass the IPv4 public-address policy too.
-            if ((0 until 10).all { bytes[it].toInt() == 0 } &&
-                bytes[10].toInt() == 0xff.toByte().toInt() &&
-                bytes[11].toInt() == 0xff.toByte().toInt()
-            ) {
-                return isPublicAddress(InetAddress.getByAddress(bytes.copyOfRange(12, 16)))
-            }
-            return true
-        }
-        return false
     }
 
     private fun readBounded(input: java.io.InputStream): String {
