@@ -5,6 +5,11 @@ receive typed ports, never the window.
 """
 from __future__ import annotations
 
+import logging
+import sys
+
+from PySide6.QtWidgets import QApplication
+
 from .shortcuts import install_window_shortcuts
 from .console_log import build_console_log_page
 from .main_window_root_support import (
@@ -214,6 +219,19 @@ def initialize_main_window(
     self.adapters.director = EmotionDirector.from_default()        # emotion library + engine (kira/emotion, emotion_library/)
     self.adapters.animator = EmotionFaceAnimator(self.host, director=self.adapters.director)
     self.adapters.companion = CompanionWindow(self.adapters.animator)
+    self.adapters.companion.pet.settings = self.services.settings          # live reference: perch / hang / auto_dance switches
+    self.adapters.music_watcher = None
+    if sys.platform == "win32" and self.services.settings.get("auto_dance", True):
+        try:
+            from ..music_dance import MusicWatcher
+            watcher = MusicWatcher(self.host)
+            watcher.state.connect(self.adapters.companion.pet.on_music)
+            watcher.error.connect(lambda message: logging.getLogger("kira.pet").warning("%s", message))
+            QApplication.instance().aboutToQuit.connect(lambda w=watcher: (w.stop(), w.wait(1500)))
+            watcher.start()
+            self.adapters.music_watcher = watcher
+        except Exception as exc:                                           # noqa: BLE001 - optional animation
+            logging.getLogger("kira.pet").warning("music watcher not started: %s", exc)
     self.controllers.require("character_settings").apply_character_art()
     self.controllers.require("chat")._install_chat_commands()
     self.adapters.bubble = CompanionBubble()

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-11-21 (desktop-pet behaviour, ideas from Mate Engine)
+
+Mate Engine (shinyflvre) is a Unity/C# project under AGPL-3.0 + its own licence, so no code or assets were copied; only the behaviours were re-implemented for Kira's PySide6 + three.js VRM stack.
+
+- **Hang from the cursor** (`kira/pet.py`, `viewer.html` `kiraHang`): while dragged she is held by the head, arms loose, knees bent, body swinging like a damped pendulum with the drag speed.
+- **Fall and sit on windows / taskbar** (`kira/perch.py`, `kira/pet.py`): on release she falls with gravity and throw momentum, lands on the highest visible window title bar (or the taskbar / screen floor) under her feet, sits with her legs hanging, follows that window when it moves, and falls again when it is minimised, closed or covered.
+- **Auto dance to music** (`kira/music_dance.py`, `viewer.html` `kiraMusic`): a Windows loopback listener (PyAudioWPatch, nothing recorded) detects loud + rhythmic audio, estimates BPM and beats; she stands up on her perch and dances in time (one beat = one phase turn), amplitude follows loudness, a harder bounce on each beat, five styles rotating every 14-22 s, and sits again after the song.
+- Three switches in the Character tab: `companion_perch`, `companion_hang`, `auto_dance` (all default on). Settings are read live.
+- Tests: `test_perch.py`, `test_music_dance.py`, `test_pet_controller.py`.
+- Not verified on a real Windows desktop (sandbox): sit/hip height fractions in `perch.py` (`FEET_FRACTION`, `SIT_HIP_FRACTION`), multi-monitor with different DPI, and the look of the new dance poses need a visual pass.
+
 ## 2026-11-20 (Gemini Live primary voice + local fallback)
 
 - Added a dedicated Gemini Live audio worker using the official Google Gen AI SDK. Microphone PCM is streamed directly to the Live session and returned PCM audio is played directly to the selected output device; the primary path does not use local STT or Piper.

@@ -562,25 +562,39 @@ class AvatarView(QWidget):
         ox, oy, s = self._geo
         return region_at((pos.x() - ox) / s, (pos.y() - oy) / s)
 
+    def _pet(self):
+        return getattr(self.window(), "pet", None) if self.draggable else None
+
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
             self._press = e.globalPosition().toPoint()
             self._win0 = self.window().frameGeometry().topLeft()
             self._moved = False
+            if self._pet() is not None:
+                self._pet().press(self._press)
 
     def mouseMoveEvent(self, e):
-        if self._press is not None and self.draggable:
-            d = e.globalPosition().toPoint() - self._press
-            if d.manhattanLength() > 6:
-                self._moved = True
-            if self._moved:
-                self.window().move(self._win0 + d)
+        if self._press is None or not self.draggable:
+            return
+        pet = self._pet()
+        if pet is not None:
+            pet.move(e.globalPosition().toPoint())
+            self._moved = self._moved or pet._moved
+            return
+        d = e.globalPosition().toPoint() - self._press
+        if d.manhattanLength() > 6:
+            self._moved = True
+        if self._moved:
+            self.window().move(self._win0 + d)
 
     def mouseReleaseEvent(self, e):
-        if self._press is not None and not self._moved:
-            r = self.region_at(e.position())
-            if r:
-                self.clicked.emit(r)
+        if self._press is not None:
+            pet = self._pet()
+            moved = pet.release() if pet is not None else self._moved
+            if not moved:
+                r = self.region_at(e.position())
+                if r:
+                    self.clicked.emit(r)
         self._press = None
 
     def contextMenuEvent(self, e):

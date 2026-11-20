@@ -62,6 +62,8 @@ class LifecycleController(WindowFeatureController):
             "follow_strength": self.context.views.character_page.follow_sl.value() / 100.0,
             "motion_strength": self.context.views.character_page.motion_sl.value() / 100.0,
             "click_reactions": self.context.views.character_page.react_chk.isChecked(), "idle_talk": self.context.views.character_page.idle_chk.isChecked(), "always_on_top": self.context.views.character_page.top_chk.isChecked(),
+            "companion_perch": self.context.views.character_page.perch_chk.isChecked(), "companion_hang": self.context.views.character_page.hang_chk.isChecked(),
+            "auto_dance": self.context.views.character_page.dance_chk.isChecked(),
             "minimize_to_tray": self.context.views.character_page.tray_min_chk.isChecked(), "close_to_tray": self.context.views.character_page.tray_close_chk.isChecked(),
             "ui_lang": self.context.views.ui_lang.currentData(),
             "window_effect": self.context.views.appearance_page.window_effect.currentData(),

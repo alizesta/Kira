@@ -1,5 +1,11 @@
 # Task Handoff
 
+## Latest task: desktop-pet behaviour (2026-11-21)
+
+- New: `kira/pet.py` (PetController owned by `CompanionWindow.pet`), `kira/perch.py`, `kira/music_dance.py`, JS `kiraHang` / `kiraMusic` in `assets/vrm/viewer.html`; the music watcher starts in `main_window_composition.py` (Windows only).
+- Ideas not done yet from Mate Engine: touch regions per body part with sounds, chibi mode, FPS limit, sleep/alarm, multi-avatar sync dance, screensaver, MMD/VRMA animation import.
+- Needs a visual check on Windows: sit height, dance poses, hang swing.
+
 ## Latest task: AI tab redesign (2026-11-20)
 
 - `ProviderSettingsController` now builds `ApiPanel` (`self.api_panel`) and `ModelsPanel` (`self.models_panel`); data comes from `api_manager.api_rows` and `model_catalog.model_rows`. Handlers: `on_model_toggle`, `on_model_archive`, `on_model_restore`, `test_catalog_model`.

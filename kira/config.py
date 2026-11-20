@@ -90,6 +90,9 @@ DEFAULTS = {
     "minimize_to_tray": True,            # minimize button hides the window to the system tray
     "close_to_tray": False,              # close (X) hides to the tray instead of quitting
     "idle_talk": True,
+    "companion_perch": True,             # after a drag she falls and sits on the window / taskbar under her (kira/pet.py)
+    "companion_hang": True,              # while dragged she hangs from the cursor and swings
+    "auto_dance": True,                  # dance by herself when music plays on the PC (needs PyAudioWPatch)
     "provider_order": ["groq", "cloudflare", "mistral", "openrouter", "ollama"],
     "memory_context_limit": 12,
     # Evidence memory (kira/evidence_memory.py, docs/MEMORY_EVIDENCE_FA.md): facts with their source quote, recalled by relevance.

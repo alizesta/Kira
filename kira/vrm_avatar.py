@@ -93,23 +93,37 @@ class _Overlay(QWidget):
         self._press = None
         self._moved = False
 
+    def _pet(self):
+        return getattr(self.window(), "pet", None) if self.owner.draggable else None
+
     def mousePressEvent(self, e):
         if e.button() == Qt.LeftButton:
             self._press = e.globalPosition().toPoint()
             self._win0 = self.window().frameGeometry().topLeft()
             self._moved = False
+            if self._pet() is not None:
+                self._pet().press(self._press)
 
     def mouseMoveEvent(self, e):
-        if self._press is not None and self.owner.draggable:
-            d = e.globalPosition().toPoint() - self._press
-            if d.manhattanLength() > 6:
-                self._moved = True
-            if self._moved:
-                self.window().move(self._win0 + d)
+        if self._press is None or not self.owner.draggable:
+            return
+        pet = self._pet()
+        if pet is not None:
+            pet.move(e.globalPosition().toPoint())
+            self._moved = self._moved or pet._moved
+            return
+        d = e.globalPosition().toPoint() - self._press
+        if d.manhattanLength() > 6:
+            self._moved = True
+        if self._moved:
+            self.window().move(self._win0 + d)
 
     def mouseReleaseEvent(self, e):
-        if self._press is not None and not self._moved:
-            self.owner.on_click(e.position())
+        if self._press is not None:
+            pet = self._pet()
+            moved = pet.release() if pet is not None else self._moved
+            if not moved:
+                self.owner.on_click(e.position())
         self._press = None
 
     def contextMenuEvent(self, e):
@@ -228,6 +242,16 @@ class VrmView(QWidget):
         if self.ready and self.isVisible():
             self.web.page().runJavaScript(f"window.kiraBody&&window.kiraBody({json.dumps(str(payload))})")
 
+    def hang(self, on, vx):
+        """Hold her by the head (on) with the given horizontal swing speed in window-heights / s; off lets go."""
+        if self.ready and self.isVisible():
+            self.web.page().runJavaScript(f"window.kiraHang&&window.kiraHang({json.dumps({'on': bool(on), 'vx': round(float(vx), 3)})})")
+
+    def music(self, state):
+        """state: {on, level, bpm, beats} from kira.music_dance (already gated by the pet controller)."""
+        if self.ready and self.isVisible():
+            self.web.page().runJavaScript(f"window.kiraMusic&&window.kiraMusic({json.dumps(state)})")
+
     def on_click(self, pos):
         if not self.ready:
             self.clicked.emit(self.region_at(pos))
@@ -275,6 +299,17 @@ class KiraAvatar(QStackedWidget):
         self.vrm.state_changed.connect(lambda _s: self._sync())
         self.addWidget(self.vrm)
         self.vrm.start()
+
+    def _vrm_active(self):
+        return self.vrm is not None and self.vrm.ready and self.currentWidget() is self.vrm
+
+    def hang(self, on, vx):
+        if self._vrm_active():
+            self.vrm.hang(on, vx)
+
+    def music(self, state):
+        if self._vrm_active():
+            self.vrm.music(state)
 
     def _sync(self):
         use = bool(self.vrm is not None and self.vrm.ready and getattr(self.anim, "kira_art_active", True))

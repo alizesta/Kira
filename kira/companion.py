@@ -8,6 +8,7 @@ from . import attachments as att
 from .vrm_avatar import KiraAvatar
 from .chat_render import message_html
 from .ui_widgets import ChatInput
+from .pet import PetController
 
 RATIO = 1536 / 1024 * 1.02
 
@@ -29,6 +30,7 @@ class CompanionWindow(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.view)
+        self.pet = PetController(self, animator)
         self.set_height(620)
 
     def wheelEvent(self, event):
