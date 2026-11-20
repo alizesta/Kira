@@ -73,10 +73,12 @@ class ImageGenerationSettingsStore(context: Context) : ImageGenerationSettingsRe
             ?: throw IllegalStateException("کلید Provider تصویر ذخیره نشده است.")
         val payload = Base64.decode(encoded, Base64.NO_WRAP)
         require(payload.size > IV_LENGTH) { "کلید تصویر ذخیره‌شده معتبر نیست." }
+        val key = findExistingKey()
+            ?: throw IllegalStateException("کلید امنیتی تصویر در دسترس نیست؛ اتصال را حذف و دوباره ثبت کن.")
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(
             Cipher.DECRYPT_MODE,
-            getOrCreateKey(),
+            key,
             GCMParameterSpec(128, payload.copyOfRange(0, IV_LENGTH))
         )
         return String(cipher.doFinal(payload.copyOfRange(IV_LENGTH, payload.size)), StandardCharsets.UTF_8)
@@ -87,9 +89,13 @@ class ImageGenerationSettingsStore(context: Context) : ImageGenerationSettingsRe
         check(preferences.edit().clear().commit()) { "حذف تنظیمات تصویر ناموفق بود." }
     }
 
-    private fun getOrCreateKey(): SecretKey {
+    private fun findExistingKey(): SecretKey? {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        return store.getKey(KEY_ALIAS, null) as? SecretKey
+    }
+
+    private fun getOrCreateKey(): SecretKey {
+        findExistingKey()?.let { return it }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
         generator.init(
             KeyGenParameterSpec.Builder(

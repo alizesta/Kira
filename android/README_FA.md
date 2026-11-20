@@ -8,7 +8,7 @@
 - `KiraMobileApplication`: مالک Composition Root در سطح Process
 - `KiraContainer`: ساخت و تزریق سرویس‌های Application و آداپتورهای Data
 - `domain/`: مدل‌ها، قرارداد Repositoryها و سیاست خالص انتخاب Route و مدل
-- `application/`: Use Caseهای Provider و Internet Search، بدون وابستگی به Android یا Compose
+- `application/`: Use Caseهای Provider، Internet Search، تولید تصویر و تماس زنده؛ بدون وابستگی به Android یا Compose
 - `data/`: آداپتورهای SQLite، Android Keystore و ارتباط HTTP
 - `:core:designsystem`: تم Material 3، توکن‌ها و کامپوننت‌های مشترک Compose
 
@@ -25,6 +25,21 @@
 - نمایش خلاصه اولیه، محتوا، لینک منبع و ارجاع شماره‌دار
 - انتقال شواهد به Chat با نشانه‌گذاری داده خارجیِ غیرقابل اعتماد و ارجاع‌های `[1]` و `[2]`
 - کلید Tavily با AES/GCM و Android Keystore رمزنگاری می‌شود
+
+## تولید تصویر (تسک ۶)
+- پشتیبانی از Provider سازگار با OpenAI Images API
+- اعتبارسنجی آدرس HTTPS، شناسه مدل، توصیف و ابعاد قبل از درخواست
+- دریافت پاسخ Base64 یا لینک امن تصویر، محدودیت اندازه و اعتبارسنجی فرمت
+- ذخیره تصاویر در پوشه خصوصی برنامه و تاریخچه محلی
+- ذخیره/اشتراک تصویر با Storage Access Framework و FileProvider
+- کلید Provider تصویر با AES/GCM و Android Keystore رمزنگاری می‌شود
+
+## تماس صوتی زنده (تسک ۷)
+- ارتباط دوطرفه Full-duplex با Gemini Live از طریق WebSocket
+- دریافت صدای PCM تک‌کاناله 16 kHz و پخش PCM با 24 kHz
+- کنترل میکروفون، Echo Cancellation و Noise Suppression
+- ماشین وضعیت تماس در Application؛ رویدادهای تایپ‌شده برای اتصال، بی‌صدا، خطا و پایان
+- کلید Gemini Live با AES/GCM و Android Keystore رمزنگاری می‌شود
 
 ## داده‌های محلی
 - SQLite خصوصی برنامه: تاریخچه چت، حافظه بلندمدت، تنظیمات Provider و مهارت‌ها

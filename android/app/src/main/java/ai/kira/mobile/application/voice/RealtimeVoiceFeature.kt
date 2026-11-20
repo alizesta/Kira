@@ -1,5 +1,6 @@
 package ai.kira.mobile.application.voice
 
+import ai.kira.mobile.domain.model.RealtimeVoiceSessionEvent
 import ai.kira.mobile.domain.repository.RealtimeVoiceSession
 import ai.kira.mobile.domain.repository.RealtimeVoiceSessionFactory
 import ai.kira.mobile.domain.repository.VoiceCredentialRepository
@@ -88,13 +89,18 @@ class RealtimeVoiceInteractor(
         val key = credentials.readApiKey()
         stateMachine.begin()
 
+        var createdSession: RealtimeVoiceSession? = null
         val session = try {
             sessionFactory.create(
                 apiKey = key,
-                onStatus = { message ->
-                    synchronized(this) { updateStateFromProviderMessage(message) }
-                    onStatus(message)
+                onEvent = { event ->
+                    synchronized(this) {
+                        if (createdSession != null && activeSession === createdSession) {
+                            updateStateFromSessionEvent(event)
+                        }
+                    }
                 },
+                onStatus = onStatus,
                 onTranscript = onTranscript
             )
         } catch (error: Exception) {
@@ -102,12 +108,14 @@ class RealtimeVoiceInteractor(
             throw error
         }
 
+        createdSession = session
         activeSession = session
         try {
             session.start()
         } catch (error: Exception) {
             activeSession = null
             stateMachine.fail(error.message.orEmpty())
+            runCatching { session.stop() }
             throw error
         }
     }
@@ -136,23 +144,23 @@ class RealtimeVoiceInteractor(
         current?.stop()
     }
 
-    private fun updateStateFromProviderMessage(message: String) {
-        val normalized = message.lowercase()
-        when {
-            normalized.contains("بی‌صداست") || normalized.contains("بی صداست") ->
+    private fun updateStateFromSessionEvent(event: RealtimeVoiceSessionEvent) {
+        when (event) {
+            RealtimeVoiceSessionEvent.Connected -> {
+                if (stateMachine.state is VoiceCallState.Connecting) stateMachine.connected()
+            }
+            RealtimeVoiceSessionEvent.Muted -> {
                 if (stateMachine.state is VoiceCallState.Connected || stateMachine.state is VoiceCallState.Muted) {
                     stateMachine.setMuted(true)
                 }
-            normalized.contains("تماس زنده برقرار شد") ||
-                normalized.contains("تماس زنده است") ||
-                normalized.contains("می‌توانی صحبت کنی") ->
-                if (stateMachine.state is VoiceCallState.Connecting || stateMachine.state is VoiceCallState.Muted) {
-                    stateMachine.connected()
+            }
+            RealtimeVoiceSessionEvent.Unmuted -> {
+                if (stateMachine.state is VoiceCallState.Connected || stateMachine.state is VoiceCallState.Muted) {
+                    stateMachine.setMuted(false)
                 }
-            normalized.contains("پایان یافت") || normalized.contains("متوقف شد") ->
-                stateMachine.end()
-            normalized.contains("ناموفق") || normalized.contains("قطع شد") || normalized.contains("بسته شد") ->
-                stateMachine.fail(message)
+            }
+            RealtimeVoiceSessionEvent.Ended -> stateMachine.end()
+            is RealtimeVoiceSessionEvent.Failed -> stateMachine.fail(event.reason)
         }
         if (stateMachine.state is VoiceCallState.Idle || stateMachine.state is VoiceCallState.Failed) {
             activeSession = null
