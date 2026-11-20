@@ -56,6 +56,7 @@ internal object ConnectorAddressPolicy {
             if (a == 0x20 && b == 0x01 && c == 0x0d && d == 0xb8) return false
             if (a == 0x20 && b == 0x01 && c == 0x00 && d == 0x02) return false
             if (a == 0x20 && b == 0x01 && c == 0x00 && d == 0x00) return false
+            if (a == 0x20 && b == 0x01 && c == 0x00 && d in 0x10..0x20) return false // ORCHID special-use space.
             if (a == 0x20 && b == 0x02) return false
             return true
         }
