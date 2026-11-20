@@ -9,6 +9,8 @@ import ai.kira.mobile.application.image.ImageGenerationInteractor
 import ai.kira.mobile.application.provider.ProviderApplicationService
 import ai.kira.mobile.application.search.InternetSearchInteractor
 import ai.kira.mobile.application.voice.RealtimeVoiceInteractor
+import ai.kira.mobile.application.voice.ShenavaOfflineSpeechInteractor
+import ai.kira.mobile.data.voice.SherpaShenavaOfflineSpeechRepository
 import ai.kira.mobile.data.image.ImageGenerationSettingsStore
 import ai.kira.mobile.data.image.OpenAiCompatibleImageRepository
 import ai.kira.mobile.data.local.LocalAssistantRepository
@@ -57,6 +59,13 @@ class KiraContainer(context: Context) {
     private val voiceSessionFactory: GeminiLiveVoiceSessionFactory by lazy { GeminiLiveVoiceSessionFactory(app) }
     val voice: RealtimeVoiceInteractor by lazy {
         RealtimeVoiceInteractor(voiceCredentials, voiceSessionFactory)
+    }
+
+    private val shenavaOfflineRepository: SherpaShenavaOfflineSpeechRepository by lazy {
+        SherpaShenavaOfflineSpeechRepository(app)
+    }
+    val shenavaAsr: ShenavaOfflineSpeechInteractor by lazy {
+        ShenavaOfflineSpeechInteractor(shenavaOfflineRepository)
     }
 
     fun libraryDirectory(): String = localCore.libraryDirectory()
