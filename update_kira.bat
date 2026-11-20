@@ -99,30 +99,30 @@ echo.
 echo [OK] Kira updated, dependencies installed, local Qwen Abliterated model verified, and focused tests passed.
 git log -1 --oneline
 echo.
-if not defined KIRA_NO_PAUSE pause
+pause
 exit /b 0
 
 :local_ahead
 echo.
 echo [ERROR] Local branch %BRANCH% contains commits not present on GitHub.
 echo No local commits were overwritten. Push or back them up, then run Update again.
-if not defined KIRA_NO_PAUSE pause
+pause
 exit /b 1
 
 :install_fail
 echo.
 echo [ERROR] Full setup failed. Kira was updated, but dependencies/model are not verified.
-if not defined KIRA_NO_PAUSE pause
+pause
 exit /b 1
 
 :verify_fail
 echo.
 echo [ERROR] Compilation or focused regression tests failed. This update is not verified.
-if not defined KIRA_NO_PAUSE pause
+pause
 exit /b 1
 
 :git_fail
 echo.
 echo [ERROR] Update failed. Check your internet connection and GitHub access.
-if not defined KIRA_NO_PAUSE pause
+pause
 exit /b 1
