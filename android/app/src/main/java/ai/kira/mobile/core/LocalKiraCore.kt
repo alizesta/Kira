@@ -11,10 +11,7 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.InetAddress
 import java.net.URL
-import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -26,6 +23,7 @@ data class LocalProvider(val id:String,val model:String,val baseUrl:String,val e
 data class LocalChatMessage(val id:Long,val role:String,val content:String,val route:String,val createdAt:Long)
 data class LocalSkill(val name:String,val description:String,val instructions:String,val source:String,val enabled:Boolean)
 data class LocalConnectorDefinition(val id:String,val description:String,val parameters:List<String>)
+data class LocalConnectorExecutionConfig(val id:String,val baseUrl:String,val pathTemplate:String,val allowedParameters:List<String>,val authType:String,val apiKey:String)
 private data class ConnectorCall(val id:String,val params:JSONObject)
 
 private class LocalKeyVault {
@@ -328,91 +326,24 @@ class LocalKiraCore(context:Context) {
         return out
     }
 
-    private fun isPublicHost(host:String):Boolean = try {
-        val addresses=InetAddress.getAllByName(host)
-        addresses.isNotEmpty() && addresses.all { address ->
-            !address.isAnyLocalAddress && !address.isLoopbackAddress &&
-            !address.isLinkLocalAddress && !address.isSiteLocalAddress &&
-            !address.isMulticastAddress
-        }
-    } catch(_:Exception) { false }
-
-    @Synchronized private fun executeConnector(characterId:String,id:String,params:JSONObject):String {
+    /** Reads the enabled connector's trusted endpoint configuration from local storage. */
+    @Synchronized fun connectorExecutionConfig(characterId:String,id:String):LocalConnectorExecutionConfig? {
         val cid=characterId.lowercase()
         val row=db.rawQuery(
-            "SELECT c.skill_name,c.description,c.base_url,c.path_template,c.allowed_params,c.auth_type,c.encrypted_key FROM skill_connectors c WHERE c.id=? AND c.enabled=1 LIMIT 1",
+            "SELECT c.skill_name,c.base_url,c.path_template,c.allowed_params,c.auth_type,c.encrypted_key FROM skill_connectors c WHERE c.id=? AND c.enabled=1 LIMIT 1",
             arrayOf(id)
-        ).use { c -> if(c.moveToFirst()) arrayOf(c.getString(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5),c.getString(6)) else null }
-            ?: throw IllegalStateException("Connector نصب‌شده پیدا نشد.")
-        val enabled= db.rawQuery(
+        ).use { c -> if(c.moveToFirst()) arrayOf(c.getString(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5)) else null }
+            ?: return null
+        val enabled=db.rawQuery(
             "SELECT 1 FROM skill_assignments a WHERE a.skill_name=? AND a.character_id=? AND a.enabled=1 UNION ALL SELECT 1 FROM skill_assignments g WHERE g.skill_name=? AND g.character_id='global' AND g.enabled=1 AND NOT EXISTS(SELECT 1 FROM skill_assignments x WHERE x.skill_name=? AND x.character_id=?) LIMIT 1",
             arrayOf(row[0],cid,row[0],row[0],cid)
         ).use { it.moveToFirst() }
-        if(!enabled) throw IllegalStateException("این Connector برای شخصیت فعلی فعال نیست.")
-        val allowedArray=JSONArray(row[4])
-        val allowed=(0 until allowedArray.length()).map { allowedArray.optString(it) }.toSet()
-        val supplied=mutableListOf<String>()
-        val keys=params.keys()
-        while(keys.hasNext()) supplied += keys.next()
-        require(supplied.all { it in allowed }) { "Connector پارامتر ناشناخته دریافت کرد." }
-        val pathTemplate=row[3]
-        val placeholders=Regex("\\{([A-Za-z][A-Za-z0-9_]*)}").findAll(pathTemplate).map { it.groupValues[1] }.toSet()
-        val path=Regex("\\{([A-Za-z][A-Za-z0-9_]*)}").replace(pathTemplate) { match ->
-            val key=match.groupValues[1]
-            val value=params.optString(key,"")
-            require(value.isNotBlank() && value.length<=200) { "پارامتر $key الزامی است." }
-            URLEncoder.encode(value,"UTF-8").replace("+","%20")
-        }
-        require(!path.contains("{") && !path.contains("}")) { "پارامتر مسیر ناقص است." }
-        val queryPairs=supplied.filter { it !in placeholders }.sorted().map { key ->
-            val value=params.optString(key,"")
-            require(value.length<=500) { "مقدار پارامتر بیش از حد بزرگ است." }
-            URLEncoder.encode(key,"UTF-8")+"="+URLEncoder.encode(value,"UTF-8")
-        }
-        val fullUrl=row[2]+path+(if(queryPairs.isEmpty()) "" else "?"+queryPairs.joinToString("&"))
-        val url=URL(fullUrl)
-        require(url.protocol=="https" && url.host.equals(URL(row[2]).host,true) &&
-            (url.port==-1 || url.port==443) && isPublicHost(url.host)) { "مقصد Connector معتبر یا عمومی نیست." }
-        val conn=url.openConnection() as HttpURLConnection
-        return try {
-            conn.requestMethod="GET";conn.instanceFollowRedirects=false
-            conn.connectTimeout=10000;conn.readTimeout=20000
-            conn.setRequestProperty("Accept","application/json")
-            if(row[5]=="bearer") {
-                val key=vault.decrypt(row[6])
-                if(key.isBlank()) throw IllegalStateException("کلید API این Connector بازخوانی نشد.")
-                conn.setRequestProperty("Authorization","Bearer "+key)
-            }
-            val code=conn.responseCode
-            val stream=if(code in 200..299) conn.inputStream else conn.errorStream
-            val output=stream?.use { input ->
-                val buffer=ByteArray(4096);val bytes=java.io.ByteArrayOutputStream()
-                while(true) {
-                    val count=input.read(buffer);if(count<0) break
-                    if(bytes.size()+count>65536) throw IllegalStateException("پاسخ Connector از ۶۴ کیلوبایت بیشتر است.")
-                    bytes.write(buffer,0,count)
-                }
-                bytes.toString("UTF-8")
-            }.orEmpty()
-            if(code !in 200..299) throw IllegalStateException("Connector با HTTP $code پاسخ داد: "+output.take(500))
-            if(output.isBlank()) throw IllegalStateException("Connector پاسخ خالی برگرداند.")
-            output
-        } finally { conn.disconnect() }
-    }
-
-    private fun parseConnectorCall(text:String):ConnectorCall? {
-        val match=Regex("<kira_connector>\\s*(\\{.*?\\})\\s*</kira_connector>",setOf(RegexOption.DOT_MATCHES_ALL)).find(text) ?: return null
-        val json=JSONObject(match.groupValues[1])
-        val id=json.optString("id")
-        if(id.isBlank()) throw IllegalArgumentException("شناسه Connector در درخواست مدل خالی است.")
-        return ConnectorCall(id,json.optJSONObject("params") ?: JSONObject())
-    }
-
-    /** null means the model response did not request a connector. */
-    @Synchronized fun executeConnectorResponse(characterId:String,content:String):String? {
-        val call=parseConnectorCall(content) ?: return null
-        return try { executeConnector(characterId,call.id,call.params) }
-        catch(e:Exception) { "Connector error: ${e.message ?: "request failed"}" }
+        if(!enabled) return null
+        val values=JSONArray(row[3])
+        val apiKey=if(row[4]=="bearer") vault.decrypt(row[5]) else ""
+        return LocalConnectorExecutionConfig(
+            id,row[1],row[2],(0 until values.length()).map { values.optString(it) },row[4],apiKey
+        )
     }
 
     /** Persistence-only write; turn orchestration belongs to Application. */
