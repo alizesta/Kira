@@ -85,15 +85,21 @@ internal fun KiraChatScreen(container: KiraContainer, character:String,prefillTe
                 val reply=chat.sendMessage(who,text)
                 val history=chat.history(who)
                 handler.post {
-                    messages.clear(); messages.addAll(history)
-                    status="پاسخ از "+reply.provider+" · "+reply.model
+                    if (character == who) {
+                        messages.clear()
+                        messages.addAll(history)
+                        status="پاسخ از "+reply.provider+" · "+reply.model
+                    }
                     busy=false
                 }
-            } catch(e:Exception) {
-                val history=chat.history(who)
+            } catch(error:Exception) {
+                val history = runCatching { chat.history(who) }.getOrDefault(emptyList())
                 handler.post {
-                    messages.clear(); messages.addAll(history)
-                    status=e.message ?: "ارسال پیام ناموفق بود."
+                    if (character == who) {
+                        messages.clear()
+                        messages.addAll(history)
+                        status=error.message ?: "ارسال پیام ناموفق بود."
+                    }
                     busy=false
                 }
             }
