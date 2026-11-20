@@ -1,6 +1,6 @@
 package ai.kira.mobile
 
-import ai.kira.mobile.core.KiraContainer
+import ai.kira.mobile.application.KiraContainer
 import ai.kira.mobile.domain.model.InternetSearchResponse
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState

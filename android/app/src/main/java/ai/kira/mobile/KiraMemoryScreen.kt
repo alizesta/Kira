@@ -2,7 +2,7 @@ package ai.kira.mobile
 
 import android.os.Handler
 import android.os.Looper
-import ai.kira.mobile.core.KiraContainer
+import ai.kira.mobile.application.KiraContainer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn

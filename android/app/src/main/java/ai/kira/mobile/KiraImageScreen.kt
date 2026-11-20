@@ -38,7 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import ai.kira.mobile.domain.model.GeneratedImage
-import ai.kira.mobile.core.KiraContainer
+import ai.kira.mobile.application.KiraContainer
 import ai.kira.mobile.ui.theme.KiraPalette
 import java.io.File
 import java.util.concurrent.Executors

@@ -29,7 +29,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ai.kira.mobile.application.voice.VoiceCallState
-import ai.kira.mobile.core.KiraContainer
+import ai.kira.mobile.application.KiraContainer
 import ai.kira.mobile.ui.theme.KiraPalette
 import java.util.concurrent.Executors
 

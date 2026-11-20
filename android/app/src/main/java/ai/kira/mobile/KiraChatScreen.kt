@@ -2,7 +2,7 @@ package ai.kira.mobile
 
 import android.os.Handler
 import android.os.Looper
-import ai.kira.mobile.core.KiraContainer
+import ai.kira.mobile.application.KiraContainer
 import ai.kira.mobile.domain.model.ChatMessage
 import ai.kira.mobile.ui.theme.KiraPalette
 import androidx.compose.foundation.background

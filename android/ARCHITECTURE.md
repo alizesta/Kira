@@ -33,7 +33,7 @@ credential stores, HTTP clients or provider transports.
 - **Data/remote:** OpenAI-compatible/Gemini chat transport, provider model discovery,
   approved HTTPS Connector calls, Tavily search, image generation and Gemini Live.
 - **UI:** Compose screens and Android Activity/service lifecycle.
-- **Composition:** `application.KiraContainer` is the sole app-level dependency composition root. `core.KiraContainer` remains a typealias for source compatibility only; no composition logic lives in Core.
+- **Composition:** `application.KiraContainer` is the sole app-level dependency composition root.
 
 ## Chat flow
 
