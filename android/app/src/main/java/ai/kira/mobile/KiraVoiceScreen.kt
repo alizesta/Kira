@@ -35,7 +35,7 @@ import ai.kira.mobile.ui.theme.KiraPalette
 import java.util.concurrent.Executors
 
 @Composable
-internal fun KiraVoiceScreen(container: KiraContainer) {
+internal fun KiraVoiceScreen(container: KiraContainer, onUseInChat: (String) -> Unit = {}) {
     val context = LocalContext.current
     val handler = remember { Handler(Looper.getMainLooper()) }
     val executor = remember { Executors.newSingleThreadExecutor() }
@@ -398,6 +398,13 @@ internal fun KiraVoiceScreen(container: KiraContainer) {
                             fontSize = 13.sp,
                             lineHeight = 20.sp
                         )
+                    }
+                    Button(
+                        onClick = { onUseInChat(shenavaTranscript) },
+                        enabled = !shenavaBusy && !shenavaRecording,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("فرستادن متن به چت")
                     }
                 }
             }
