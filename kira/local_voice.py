@@ -230,6 +230,11 @@ def transcribe(audio, sample_rate=16000, language="fa", prompt="", model_name="Q
         return ""
     load_asr(model_name)
     with _asr_lock:
+        # Some qwen-asr / Transformers combinations rebuild or mutate their
+        # generation config between calls. Re-apply the greedy-decoding cleanup
+        # immediately before inference so unused temperature and inferred
+        # pad_token_id warnings do not recur on every utterance.
+        _sanitize_asr_generation_config(_asr)
         lang = {"fa": "Persian", "en": "English", "ar": "Arabic"}.get(language, None)
         # qwen-asr's public transcribe() API does not accept a prompt
         # keyword in all released versions. Passing it raises TypeError and
