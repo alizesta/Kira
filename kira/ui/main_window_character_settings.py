@@ -496,7 +496,7 @@ class CharacterSettingsController(WindowFeatureController):
 
         subtabs = QTabWidget()
         subtabs.addTab(self.context.views.preferences_page, "")
-        subtabs.addTab(self.build_skills_tab(), "Skills")
+        subtabs.addTab(self.build_skills_tab(), "مهارت‌ها")
         subtabs.addTab(self.build_help_tab(), "")
         self.general_subtabs = subtabs
         self.feature_controller("session").reg(lambda text: subtabs.setTabText(0, text), "tab_preferences")
