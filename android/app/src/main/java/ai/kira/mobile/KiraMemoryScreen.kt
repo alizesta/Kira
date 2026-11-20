@@ -34,7 +34,7 @@ internal fun KiraMemoryScreen(container: KiraContainer) {
 
     fun refresh() {
         rows.clear()
-        rows.addAll(assistant.memories(character).map { LocalMemoryRow(it.first,it.second) })
+        rows.addAll(assistant.memories(character).map { LocalMemoryRow(it.id,it.text) })
         status="حافظه محلی بازیابی شد."
     }
     LaunchedEffect(character) { refresh() }
@@ -54,7 +54,7 @@ internal fun KiraMemoryScreen(container: KiraContainer) {
                 if(value.isNotBlank() && !busy) {
                     busy=true
                     executor.execute {
-                        try { assistant.addMemory(character,value); val loaded=core.memories(character)
+                        try { assistant.addMemory(character,value); val loaded=assistant.memories(character).map { LocalMemoryRow(it.id,it.text) }
                             handler.post { rows.clear();rows.addAll(loaded.map { LocalMemoryRow(it.first,it.second) });note="";status="در حافظه محلی ذخیره شد.";busy=false }
                         } catch(e:Exception) { handler.post { status=e.message ?: "ذخیره ناموفق بود.";busy=false } }
                     }
@@ -73,7 +73,7 @@ internal fun KiraMemoryScreen(container: KiraContainer) {
                         TextButton(onClick={
                             if(!busy) {
                                 busy=true
-                                executor.execute { assistant.deleteMemory(row.id); val loaded=core.memories(character)
+                                executor.execute { assistant.deleteMemory(row.id); val loaded=assistant.memories(character).map { LocalMemoryRow(it.id,it.text) }
                                     handler.post { rows.clear();rows.addAll(loaded.map { LocalMemoryRow(it.first,it.second) });status="یادداشت حذف شد.";busy=false }
                                 }
                             }
