@@ -163,6 +163,7 @@ class VoiceSettingsController(WindowFeatureController):
         """Compose the independent Voice page and connect its intent signals."""
         self.context.views.voice_page = VoicePage(self.context.services.settings, self.feature_controller("session").t, parent=self.window)
         self.context.views.voice_page.voice_enabled_requested.connect(self.feature_controller("runtime").set_voice_enabled)
+        self.context.views.voice_page.live_requested.connect(self.feature_controller("runtime").set_live_listening)
         self.context.views.voice_page.choose_whisper_folder_requested.connect(self.choose_local_whisper_folder)
         self.context.views.voice_page.download_whisper_requested.connect(self.download_local_whisper_model)
         self.context.views.voice_page.autosave_requested.connect(self.autosave_voice)
