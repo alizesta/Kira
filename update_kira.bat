@@ -1,7 +1,6 @@
 @echo off
-rem Run a stable copy: this updater replaces itself when it checks out new-main.
-rem The first (bootstrap) process launches the temporary copy in a separate console,
-rem then exits before Git can overwrite the original .bat file.
+rem Run a stable temporary copy synchronously so the visible window stays open
+rem and the original updater can safely be replaced by the Git update.
 if /I "%KIRA_UPDATER_BOOTSTRAPPED%"=="1" goto :updater_run
 set "KIRA_UPDATER_BOOTSTRAPPED=1"
 set "KIRA_UPDATER_ORIGINAL_DIR=%~dp0"
@@ -12,8 +11,10 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-start "Project Kira Updater" "%ComSpec%" /d /c ""%KIRA_UPDATER_TEMP%" %*"
-exit /b 0
+call "%KIRA_UPDATER_TEMP%" %*
+set "KIRA_UPDATER_EXIT=%ERRORLEVEL%"
+del /q "%KIRA_UPDATER_TEMP%" >nul 2>&1
+exit /b %KIRA_UPDATER_EXIT%
 
 :updater_run
 setlocal EnableExtensions
@@ -43,7 +44,7 @@ echo ============================================
 echo.
 
 if not exist ".git" (
-  echo [1/4] Connecting this folder to GitHub...
+  echo [1/5] Connecting this folder to GitHub...
   git init
   if errorlevel 1 goto :git_fail
   git remote add origin "%REPO_URL%"
@@ -55,9 +56,20 @@ if not exist ".git" (
   )
 )
 
-echo [2/4] Fetching latest updates from origin/%BRANCH%...
-git fetch origin "%BRANCH%"
+echo [2/5] Fetching latest updates from origin/%BRANCH%...
+git fetch origin "+refs/heads/%BRANCH%:refs/remotes/origin/%BRANCH%"
 if errorlevel 1 goto :git_fail
+
+rem Resolve and report the newest commit published on the update branch.
+set "REMOTE_HEAD="
+for /f %%H in ('git rev-parse "origin/%BRANCH%"') do set "REMOTE_HEAD=%%H"
+if not defined REMOTE_HEAD goto :git_fail
+echo.
+echo [LATEST] Newest commit on origin/%BRANCH%:
+git log -1 --format="  %%h  %%cs  %%s" "origin/%BRANCH%"
+echo [LATEST] Files changed by that commit:
+git show --format= --name-status --first-parent "origin/%BRANCH%"
+echo.
 
 rem Preserve local tracked edits, including staged changes, before replacing program files.
 git diff --quiet >nul 2>&1
@@ -70,15 +82,18 @@ if "%WORKTREE_DIRTY%"=="1" (
   if errorlevel 1 goto :git_fail
 )
 
-echo [3/5] Updating files to latest origin/%BRANCH%...
+echo [3/5] Detecting and downloading changed files from the latest merged updates...
 git show-ref --verify --quiet "refs/heads/%BRANCH%"
 if not errorlevel 1 (
   for /f "tokens=1,2" %%A in ('git rev-list --left-right --count "%BRANCH%...origin/%BRANCH%"') do if not "%%A"=="0" goto :local_ahead
+  echo [FILES] Files changed since this installation's current commit:
+  git diff --name-status "%BRANCH%" "origin/%BRANCH%"
   git checkout "%BRANCH%"
   if errorlevel 1 goto :git_fail
   git merge --ff-only "origin/%BRANCH%"
   if errorlevel 1 goto :git_fail
 ) else (
+  echo [FILES] First checkout: downloading the complete current project snapshot.
   git checkout -b "%BRANCH%" "origin/%BRANCH%"
   if errorlevel 1 goto :git_fail
 )
