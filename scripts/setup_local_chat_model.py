@@ -27,7 +27,7 @@ HF_URL = (
 MODEL_SHA256 = "19fadda28b2f4bd939fb4590db978acf8f0d6da274ac7ea8f7f2cdc92f1470a4"
 MODEL_FILE = f"Qwen3.5-9B-abliterated.Q4_K_M-{MODEL_SHA256[:12]}.gguf"
 OLLAMA_MODEL = "kira-qwen3.5-9b-abliterated:q4_k_m"
-OLLAMA_MIN_VERSION = (0, 17, 1)
+OLLAMA_MIN_VERSION = (0, 40, 15)
 _OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "127.0.0.1:11434").strip().rstrip("/")
 OLLAMA_URL = _OLLAMA_HOST if _OLLAMA_HOST.startswith(("http://", "https://")) else "http://" + _OLLAMA_HOST
 
@@ -103,7 +103,7 @@ def _install_or_upgrade_ollama() -> str:
         raise RuntimeError("Ollama installation/upgrade did not expose ollama.exe in the standard Windows locations.")
     version = _parse_ollama_version(exe)
     if not version or version < OLLAMA_MIN_VERSION:
-        raise RuntimeError(f"Ollama 0.17.1 or newer is required for Qwen3.5; found: {version or 'unknown'}")
+        raise RuntimeError(f"Ollama 0.40.15 or newer is required for Qwen3.5; found: {version or 'unknown'}")
     print(f"Ollama {'.'.join(map(str, version))} installed.")
     return exe
 

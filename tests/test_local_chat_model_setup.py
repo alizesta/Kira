@@ -12,7 +12,7 @@ class LocalChatModelSetupTests(unittest.TestCase):
         self.assertRegex(setup.MODEL_SHA256, r"^[0-9a-f]{64}$")
         self.assertTrue(setup.MODEL_FILE.endswith(setup.MODEL_SHA256[:12] + ".gguf"))
         self.assertIn("abliterated", setup.OLLAMA_MODEL)
-        self.assertEqual(setup.OLLAMA_MIN_VERSION, (0, 17, 1))
+        self.assertEqual(setup.OLLAMA_MIN_VERSION, (0, 40, 15))
 
 
 if __name__ == "__main__":
