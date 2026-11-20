@@ -84,7 +84,7 @@ _CODE_RX = re.compile(r"```|\btraceback\b|\bexception\b|\bdef\s+\w+\(|\bfunction
 _LOCAL_ONLY_RX = re.compile(
     r"^\s*/(?:local|uncensored)\b|فقط\s*(?:محلی|لوکال)|بدون\s*سانسور|بدون\s*فیلتر|بدون\s*محدودیت|بدون\s*امتناع|"
     r"محتوای\s*(?:جنسی|بزرگسالان|اروتیک)|صحنه\s*(?:جنسی|خشن)|پورنوگرافی|عریان|برهنه|"
-    r"بمب|مواد\s*منفجره|ساخت\s*سلاح|اسلحه|مواد\s*مخدر|هک|بدافزار|باج\s*افزار|شکنجه|خودکشی|"
+    r"بمب|مواد\s*منفجره|ساخت\s*سلاح|اسلحه|مواد\s*مخدر|(?<!\w)هک(?!\w)|بدافزار|باج\s*افزار|شکنجه|خودکشی|"
     r"\b(?:uncensored|unfiltered|nsfw|nude|nudity|gore|explosive|bomb|weapon|firearm|malware|ransomware|torture|suicide|self-harm|hacking)\b|"
     r"\b(?:explicit|adult|erotic|sexual|violent|drug)\s+(?:content|scene|fiction|synthesis)\b",
     re.I,
@@ -242,8 +242,12 @@ def _load(character_id: str | None = None) -> dict:
         for entry in raw_signatures[-SIG_KEEP:]:
             if not isinstance(entry, (list, tuple)) or len(entry) != 2:
                 continue
-            signature = str(entry[0] or "").strip()[:120]
-            turn = _safe_state_int(entry[1])
+            if not isinstance(entry[0], str):
+                continue
+            turn = _safe_state_int(entry[1], default=None)
+            if turn is None:
+                continue
+            signature = entry[0].strip()[:120]
             if signature and turn <= state["turn"] and state["turn"] - turn <= SIG_REPEAT_TURNS:
                 signatures.append([signature, turn])
     state["sigs"] = signatures
