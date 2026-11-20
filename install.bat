@@ -129,7 +129,7 @@ for %%P in (%PKGS%) do (
 echo.
 echo [3/4] Installing local Persian STT/TTS and downloading their models...
 echo Qwen ASR and its dependencies may require several GB of downloads.
-python scripts\setup_local_voice.py --install --prepare-models
+.venv\Scripts\python.exe scripts\setup_local_voice.py --install --prepare-models
 if errorlevel 1 (
   echo WARNING: Local voice setup reported an error. Kira core installation will continue.
   set "VOICE_SETUP_FAILED=1"
@@ -176,7 +176,7 @@ if errorlevel 1 (
   goto fail
 )
 echo Installing the pinned, checksum-verified Qwen3.5-9B Abliterated Q4_K_M model...
-python scripts\setup_local_chat_model.py
+.venv\Scripts\python.exe scripts\setup_local_chat_model.py
 if errorlevel 1 goto fail
 
 :install_done
