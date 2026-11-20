@@ -27,17 +27,13 @@ import androidx.compose.ui.unit.sp
 import ai.kira.mobile.assistant.AiAssistantOverlayService
 import ai.kira.mobile.core.KiraContainer
 import ai.kira.mobile.application.assistant.OverlayDestination
+import ai.kira.mobile.application.navigation.BackTarget
+import ai.kira.mobile.application.navigation.KiraNavigationPolicy
 import ai.kira.mobile.application.assistant.OverlayRouteParser
 import ai.kira.mobile.ui.theme.KiraTheme
 import ai.kira.mobile.ui.theme.KiraPalette
 
 internal data class OverlayLaunchRequest(val route: String, val text: String, val sequence: Long)
-
-private enum class KiraTab(val label:String,val glyph:String) {
-    CHAT("چت","✦"), SEARCH("جستجو","⌕"), IMAGE("تصویر","▧"), CHARACTERS("شخصیت‌ها","♧"), SETTINGS("تنظیمات","⚙")
-}
-
-private enum class SettingsPage { HOME, ROUTE, MEMORY, SKILLS, ASSISTANT, VOICE }
 
 @Composable
 internal fun KiraApp(container: KiraContainer, routeRequest: OverlayLaunchRequest? = null) {
@@ -52,9 +48,9 @@ internal fun KiraApp(container: KiraContainer, routeRequest: OverlayLaunchReques
     LaunchedEffect(routeRequest?.sequence) {
         routeRequest?.let { request ->
             when (OverlayRouteParser.parse(request.route)) {
-                OverlayDestination.CHAT -> selectedTab = KiraTab.CHAT
-                OverlayDestination.SEARCH -> selectedTab = KiraTab.SEARCH
-                OverlayDestination.IMAGE -> selectedTab = KiraTab.IMAGE
+                OverlayDestination.CHAT -> { selectedTab = KiraTab.CHAT; settingsPage = SettingsPage.HOME }
+                OverlayDestination.SEARCH -> { selectedTab = KiraTab.SEARCH; settingsPage = SettingsPage.HOME }
+                OverlayDestination.IMAGE -> { selectedTab = KiraTab.IMAGE; settingsPage = SettingsPage.HOME }
                 OverlayDestination.VOICE -> {
                     selectedTab = KiraTab.SETTINGS
                     settingsPage = SettingsPage.VOICE
@@ -67,8 +63,13 @@ internal fun KiraApp(container: KiraContainer, routeRequest: OverlayLaunchReques
         }
     }
 
-    BackHandler(enabled=selectedTab==KiraTab.SETTINGS && settingsPage!=SettingsPage.HOME) {
-        settingsPage=SettingsPage.HOME
+    val backTarget = KiraNavigationPolicy.backTarget(selectedTab, settingsPage)
+    BackHandler(enabled=backTarget != null) {
+        when (backTarget) {
+            BackTarget.SETTINGS_HOME -> settingsPage = SettingsPage.HOME
+            BackTarget.CHAT -> selectedTab = KiraTab.CHAT
+            null -> Unit
+        }
     }
     val overlaySettingsLauncher=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         hasOverlayPermission=Settings.canDrawOverlays(context)
@@ -90,15 +91,15 @@ internal fun KiraApp(container: KiraContainer, routeRequest: OverlayLaunchReques
         ) { padding ->
             Surface(Modifier.fillMaxSize().padding(padding),color=Color(0xFF0B0E15)) {
                 when(selectedTab) {
-                    KiraTab.CHAT -> KiraChatScreen(character=selectedCharacter,prefillText=pendingChatContext,onPrefillConsumed={pendingChatContext=""})
+                    KiraTab.CHAT -> KiraChatScreen(container=container,character=selectedCharacter,prefillText=pendingChatContext,onPrefillConsumed={pendingChatContext=""})
                     KiraTab.SEARCH -> KiraSearchScreen(container=container,onUseInChat={ text -> pendingChatContext=text; selectedTab=KiraTab.CHAT })
-                    KiraTab.IMAGE -> KiraImageScreen()
+                    KiraTab.IMAGE -> KiraImageScreen(container)
                     KiraTab.CHARACTERS -> KiraCharactersScreen(selectedCharacter) { selectedCharacter=it }
                     KiraTab.SETTINGS -> when(settingsPage) {
                         SettingsPage.ROUTE -> SettingsSubpage("اتصال API و مدل‌ها",{settingsPage=SettingsPage.HOME}) { KiraRouteScreen(container.providers) }
-                        SettingsPage.MEMORY -> SettingsSubpage("حافظه بلندمدت",{settingsPage=SettingsPage.HOME}) { KiraMemoryScreen() }
-                        SettingsPage.SKILLS -> SettingsSubpage("مهارت‌ها و اتصال API",{settingsPage=SettingsPage.HOME}) { KiraSkillsScreen() }
-                        SettingsPage.VOICE -> SettingsSubpage("تماس صوتی زنده",{settingsPage=SettingsPage.HOME}) { KiraVoiceScreen() }
+                        SettingsPage.MEMORY -> SettingsSubpage("حافظه بلندمدت",{settingsPage=SettingsPage.HOME}) { KiraMemoryScreen(container) }
+                        SettingsPage.SKILLS -> SettingsSubpage("مهارت‌ها و اتصال API",{settingsPage=SettingsPage.HOME}) { KiraSkillsScreen(container) }
+                        SettingsPage.VOICE -> SettingsSubpage("تماس صوتی زنده",{settingsPage=SettingsPage.HOME}) { KiraVoiceScreen(container) }
                         SettingsPage.ASSISTANT -> SettingsSubpage("دستیار و ویس",{settingsPage=SettingsPage.HOME}) {
                             AssistantScreen(
                                 hasOverlayPermission=hasOverlayPermission,

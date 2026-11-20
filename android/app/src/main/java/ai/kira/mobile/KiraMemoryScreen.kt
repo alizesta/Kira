@@ -2,7 +2,7 @@ package ai.kira.mobile
 
 import android.os.Handler
 import android.os.Looper
-import ai.kira.mobile.core.LocalKiraCore
+import ai.kira.mobile.core.KiraContainer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,9 +21,8 @@ import java.util.concurrent.Executors
 private data class LocalMemoryRow(val id:Long,val text:String)
 
 @Composable
-internal fun KiraMemoryScreen() {
-    val context=androidx.compose.ui.platform.LocalContext.current
-    val core=remember { LocalKiraCore(context) }
+internal fun KiraMemoryScreen(container: KiraContainer) {
+    val assistant=remember(container) { container.assistant }
     val executor=remember { Executors.newSingleThreadExecutor() }
     val handler=remember { Handler(Looper.getMainLooper()) }
     val rows=remember { mutableStateListOf<LocalMemoryRow>() }
@@ -35,7 +34,7 @@ internal fun KiraMemoryScreen() {
 
     fun refresh() {
         rows.clear()
-        rows.addAll(core.memories(character).map { LocalMemoryRow(it.first,it.second) })
+        rows.addAll(assistant.memories(character).map { LocalMemoryRow(it.first,it.second) })
         status="حافظه محلی بازیابی شد."
     }
     LaunchedEffect(character) { refresh() }
@@ -55,7 +54,7 @@ internal fun KiraMemoryScreen() {
                 if(value.isNotBlank() && !busy) {
                     busy=true
                     executor.execute {
-                        try { core.addMemory(character,value); val loaded=core.memories(character)
+                        try { assistant.addMemory(character,value); val loaded=core.memories(character)
                             handler.post { rows.clear();rows.addAll(loaded.map { LocalMemoryRow(it.first,it.second) });note="";status="در حافظه محلی ذخیره شد.";busy=false }
                         } catch(e:Exception) { handler.post { status=e.message ?: "ذخیره ناموفق بود.";busy=false } }
                     }
@@ -74,7 +73,7 @@ internal fun KiraMemoryScreen() {
                         TextButton(onClick={
                             if(!busy) {
                                 busy=true
-                                executor.execute { core.deleteMemory(row.id); val loaded=core.memories(character)
+                                executor.execute { assistant.deleteMemory(row.id); val loaded=core.memories(character)
                                     handler.post { rows.clear();rows.addAll(loaded.map { LocalMemoryRow(it.first,it.second) });status="یادداشت حذف شد.";busy=false }
                                 }
                             }

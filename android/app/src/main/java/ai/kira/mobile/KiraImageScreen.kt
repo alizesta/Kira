@@ -44,9 +44,8 @@ import java.io.File
 import java.util.concurrent.Executors
 
 @Composable
-internal fun KiraImageScreen() {
+internal fun KiraImageScreen(container: KiraContainer) {
     val context = LocalContext.current
-    val container = remember { KiraContainer(context) }
     val executor = remember { Executors.newSingleThreadExecutor() }
     val handler = remember { Handler(Looper.getMainLooper()) }
     val images = remember { mutableStateListOf<GeneratedImage>() }

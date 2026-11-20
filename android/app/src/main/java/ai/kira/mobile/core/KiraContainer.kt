@@ -1,12 +1,14 @@
 package ai.kira.mobile.core
 
 import android.content.Context
+import ai.kira.mobile.application.assistant.AssistantInteractor
 import ai.kira.mobile.application.chat.ChatInteractor
 import ai.kira.mobile.application.image.ImageGenerationInteractor
 import ai.kira.mobile.application.provider.ProviderApplicationService
 import ai.kira.mobile.application.search.InternetSearchInteractor
 import ai.kira.mobile.data.image.ImageGenerationSettingsStore
 import ai.kira.mobile.data.image.OpenAiCompatibleImageRepository
+import ai.kira.mobile.data.local.LocalAssistantRepository
 import ai.kira.mobile.data.local.LocalChatRepository
 import ai.kira.mobile.data.local.LocalProviderRepository
 import ai.kira.mobile.data.remote.SearchCredentialStore
@@ -20,6 +22,11 @@ class KiraContainer(context: Context) {
     private val localCore = LocalKiraCore(app)
 
     val chat: ChatInteractor by lazy { ChatInteractor(LocalChatRepository(localCore)) }
+
+    /** Shared local memory and skill use cases; screens never construct persistence adapters. */
+    val assistant: AssistantInteractor by lazy {
+        AssistantInteractor(LocalAssistantRepository(localCore))
+    }
 
     private val searchCredentials: SearchCredentialStore by lazy { SearchCredentialStore(app) }
     val search: InternetSearchInteractor by lazy {

@@ -33,9 +33,8 @@ import ai.kira.mobile.data.voice.GeminiLiveVoiceSession
 import ai.kira.mobile.ui.theme.KiraPalette
 
 @Composable
-internal fun KiraVoiceScreen() {
+internal fun KiraVoiceScreen(container: KiraContainer) {
     val context = LocalContext.current
-    val container = remember { KiraContainer(context) }
     val handler = remember { Handler(Looper.getMainLooper()) }
     var apiKey by remember { mutableStateOf("") }
     var keySaved by remember { mutableStateOf(container.voiceCredentials.hasApiKey()) }

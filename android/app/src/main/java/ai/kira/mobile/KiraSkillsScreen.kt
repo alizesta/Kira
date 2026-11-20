@@ -9,17 +9,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import ai.kira.mobile.core.KiraContainer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import ai.kira.mobile.core.LocalKiraCore
 
 @Composable
-internal fun KiraSkillsScreen() {
-    val context=LocalContext.current
-    val core=remember { LocalKiraCore(context) }
+internal fun KiraSkillsScreen(container: KiraContainer) {
+    val assistant=remember(container) { container.assistant }
     var character by remember { mutableStateOf("global") }
     var refresh by remember { mutableIntStateOf(0) }
     var name by remember { mutableStateOf("") }
@@ -30,7 +28,7 @@ internal fun KiraSkillsScreen() {
     var parameters by remember { mutableStateOf("q") }
     var apiKey by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("سه Connector آماده در کتابخانه نصب شده‌اند.") }
-    val skills=remember(character,refresh) { core.skillsFor(character) }
+    val skills=remember(character,refresh) { assistant.skillsFor(character) }
 
     Column(
         Modifier.fillMaxSize().background(Color(0xFF0B0E15)).verticalScroll(rememberScrollState()).padding(16.dp),
@@ -56,13 +54,13 @@ internal fun KiraSkillsScreen() {
                             Text(if(skill.source=="builtin") "Connector آماده · فقط خواندنی" else "Connector سفارشی · HTTPS GET",color=Color(0xFF8F84D8),fontSize=10.sp)
                         }
                         Switch(checked=skill.enabled,onCheckedChange={
-                            core.setSkillEnabled(skill.name,character,it)
+                            assistant.setSkillEnabled(skill.name,character,it)
                             refresh++
                         })
                     }
                     if(skill.source!="builtin") {
                         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {
-                            TextButton(onClick={ core.removeSkill(skill.name);refresh++ }) { Text("حذف",color=Color(0xFFFF8A9A)) }
+                            TextButton(onClick={ assistant.removeSkill(skill.name);refresh++ }) { Text("حذف",color=Color(0xFFFF8A9A)) }
                         }
                     }
                 }
@@ -88,7 +86,7 @@ internal fun KiraSkillsScreen() {
         Button(
             onClick={
                 try {
-                    core.installApiSkill(name,description,instructions.ifBlank { description },baseUrl,endpoint,parameters.split(",").map { it.trim() },apiKey,character)
+                    assistant.installApiSkill(name,description,instructions.ifBlank { description },baseUrl,endpoint,parameters.split(",").map { it.trim() },apiKey,character)
                     name="";description="";instructions="";apiKey="";status="Connector نصب شد و برای دامنه انتخاب‌شده فعال است.";refresh++
                 } catch(e:Exception) { status=e.message ?: "نصب Connector ناموفق بود." }
             },
