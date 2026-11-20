@@ -417,15 +417,34 @@ class HybridRouter:
                        "result": None, "chars": 0, "role": _ROLE.get() or None}
             failures = []
             emit = on_event or (lambda e: None)
-            for route in self._candidates():
+            candidates = self._candidates()
+            # Record every skipped cooldown route up front. Cooldown routes are
+            # deliberately sorted behind healthy routes, so a successful fallback
+            # could otherwise return before their skip was reflected in telemetry.
+            cooldown_routes = set()
+            for candidate in candidates:
                 if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
                     break
-                ok, reason = self.eligibility(route)
+                _, candidate_reason = self.eligibility(candidate)
+                if candidate_reason == "cooldown":
+                    candidate_id = candidate["id"]
+                    cooldown_routes.add(candidate_id)
+                    remaining = max(0, int(self.cooldowns.get(candidate_id, 0) - time.monotonic()))
+                    failures.append(f"{candidate_id}: در حالت استراحت ({remaining} ثانیه دیگر)")
+                    self.last_attempts.append({"provider": candidate["provider"], "route_id": candidate_id,
+                                               "result": "cooldown", "cooldown_remaining_seconds": remaining})
+            for route in candidates:
+                if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
+                    break
                 rid = route["id"]
+                if rid in cooldown_routes:
+                    continue
+                ok, reason = self.eligibility(route)
                 if reason == "cooldown":
-                    remaining = int(self.cooldowns.get(rid, 0) - time.monotonic())
+                    remaining = max(0, int(self.cooldowns.get(rid, 0) - time.monotonic()))
                     failures.append(f"{rid}: در حالت استراحت ({remaining} ثانیه دیگر)")
-                    self.last_attempts.append({"provider": route["provider"], "route_id": rid, "result": "cooldown"})
+                    self.last_attempts.append({"provider": route["provider"], "route_id": rid, "result": "cooldown",
+                                               "cooldown_remaining_seconds": remaining})
                     continue
                 if not ok:
                     continue
