@@ -1,7 +1,5 @@
 # Changelog
 
-# Changelog
-
 ## 2026-11-20 (voice playback, local live conversation, Initiative)
 
 - Fixed the Session presentation capability matrix: the Session controller can now access the already-declared `_save_warned` state used by proactive Initiative persistence, preventing the optional check-in from failing with `AttributeError`.
