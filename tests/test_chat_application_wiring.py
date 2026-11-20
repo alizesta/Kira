@@ -43,18 +43,18 @@ class ChatApplicationWiringTests(unittest.TestCase):
 
     def test_session_conversation_identity_flows_through_application_service(self):
         session_service = (ROOT / "kira" / "app" / "session_application.py").read_text(encoding="utf-8")
-        self.assertIn("self.session_application_service.bind_conversation(session)", self.source)
+        self.assertIn("self.context.services.session_application_service.bind_conversation(session)", self.source)
         self.assertIn("get_or_create_conversation(session.cid)", session_service)
-        self.assertIn("conversation_id=self.cur.conversation_id", self.source)
-        self.assertIn("self.cur.conversation_id", self.source)
+        self.assertIn("conversation_id=self.context.state.cur.conversation_id", self.source)
+        self.assertIn("self.context.state.cur.conversation_id", self.source)
 
     def test_main_window_does_not_import_chat_internal_components(self):
         self.assertNotIn("from .chat.coordinator import", self.source)
         self.assertNotIn("from .chat.context_builder import", self.source)
         self.assertNotIn("from .chat.response_handler import", self.source)
         self.assertNotIn("self.chat_history_service", self.source)
-        self.assertIn("self.chat_application_service.submit_message", self.source)
-        self.assertIn("self.chat_application_service.start_provider_request", self.source)
+        self.assertIn("self.context.services.chat_application_service.submit_message", self.source)
+        self.assertIn("self.context.services.chat_application_service.start_provider_request", self.source)
 
     def test_session_manager_is_created_at_the_outer_composition_root(self):
         bootstrap = (ROOT / "kira" / "ui" / "bootstrap.py").read_text(encoding="utf-8")
@@ -62,24 +62,24 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("session_manager = SessionManager(ChatSession)", bootstrap)
         self.assertIn("session_manager=session_manager", bootstrap)
         self.assertIn('session_application_service_factory=container.resolve("session_application_service_factory")', bootstrap)
-        self.assertIn("self.session_manager = session_manager", self.source)
+        self.assertIn("self.services.session_manager = session_manager", self.source)
         self.assertNotIn("session_manager or SessionManager(ChatSession)", self.source)
         self.assertIn("session_application_service_factory", modules)
         self.assertIn("session_application_service_factory(", self.source)
-        self.assertIn("self.session_application_service.create_active_session(", self.source)
-        self.assertIn("self.session_application_service.activate_session(sess.session_id)", self.source)
-        self.assertIn("self.session_application_service.dispose()", self.source)
+        self.assertIn("self.services.session_application_service.create_active_session(", self.source)
+        self.assertIn("self.context.services.session_application_service.activate_session(sess.session_id)", self.source)
+        self.assertIn("self.context.services.session_application_service.dispose()", self.source)
         self.assertNotIn("self.session_manager.create_session(", self.source)
         self.assertNotIn("self.session_manager.activate_session(", self.source)
-        self.assertIn("self.session_manager.get_session(event.session_id)", self.source)
-        self.assertIn("self.chat_application_service.submit_message(\n            self.cur.session_id", self.source)
+        self.assertIn("self.context.services.session_manager.get_session(event.session_id)", self.source)
+        self.assertIn("self.context.services.chat_application_service.submit_message(\n            self.context.state.cur.session_id", self.source)
 
     def test_attachment_composition_and_limits_do_not_leak_into_chat_ui(self):
         chat = (ROOT / "kira" / "ui" / "main_window_chat.py").read_text(encoding="utf-8")
         support = (ROOT / "kira" / "ui" / "main_window_chat_support.py").read_text(encoding="utf-8")
         service = (ROOT / "kira" / "chat" / "application_service.py").read_text(encoding="utf-8")
-        self.assertIn("self.chat_application_service.max_attachments", chat)
-        self.assertIn("self.chat_application_service.compose_attachments(", chat)
+        self.assertIn("self.context.services.chat_application_service.max_attachments", chat)
+        self.assertIn("self.context.services.chat_application_service.compose_attachments(", chat)
         self.assertNotIn("att.MAX_FILES", chat)
         self.assertNotIn("att.compose(", chat)
         self.assertNotIn("from ..chat import attachments as att", support)
@@ -87,7 +87,9 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("def max_attachments(", service)
 
     def test_shutdown_uses_two_phase_chat_application_disposal(self):
-        close_event = self.method("closeEvent")
+        runtime_tree = ast.parse((ROOT / "kira" / "ui" / "main_window_runtime.py").read_text(encoding="utf-8"))
+        runtime_methods = {n.name: n for n in ast.walk(runtime_tree) if isinstance(n, ast.FunctionDef)}
+        close_event = runtime_methods["closeEvent"]
         close_calls = [node for node in ast.walk(close_event) if isinstance(node, ast.Call)]
         close_methods = [
             node.func.attr for node in close_calls
@@ -96,7 +98,7 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("_clear_chat_coordinator_queues", close_methods)
         self.assertNotIn("save_message", close_methods)
 
-        begin_shutdown = self.method("_clear_chat_coordinator_queues")
+        begin_shutdown = runtime_methods["_clear_chat_coordinator_queues"]
         begin_calls = [node for node in ast.walk(begin_shutdown) if isinstance(node, ast.Call)]
         self.assertTrue(any(
             isinstance(node.func, ast.Attribute)
@@ -106,7 +108,7 @@ class ChatApplicationWiringTests(unittest.TestCase):
             for node in begin_calls
         ))
 
-        final_dispose = self.method("_dispose_chat_application_service")
+        final_dispose = runtime_methods["_dispose_chat_application_service"]
         dispose_calls = [node for node in ast.walk(final_dispose) if isinstance(node, ast.Call)]
         self.assertTrue(any(
             isinstance(node.func, ast.Attribute)
