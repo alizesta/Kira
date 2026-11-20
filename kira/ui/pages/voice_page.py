@@ -97,12 +97,26 @@ class VoicePage(QScrollArea):
         self.stt_lang.setCurrentText(str(settings.get("stt_language") or "fa"))
         self.asr_backend = QComboBox()
         self.asr_backend.addItem("Qwen3-ASR · 0.6B", "qwen3")
-        self.asr_backend.addItem("Shenava Koochik · INT8 · آفلاین", "shenava")
+        self.asr_backend.addItem("Shenava Koochik · آفلاین", "shenava")
         backend_index = self.asr_backend.findData(
             str(settings.get("local_voice_asr_backend") or "qwen3")
         )
         self.asr_backend.setCurrentIndex(max(0, backend_index))
         stt_form.addRow("موتور ASR محلی", self.asr_backend)
+        self.shenava_variant = QComboBox()
+        self.shenava_variant.addItem(
+            "Shenava INT8 · سبک‌تر · حدود ۱۲۶ مگابایت",
+            "SajjadMajdi/shenava-koochik-fa-int8",
+        )
+        self.shenava_variant.addItem(
+            "Shenava FP32 · نسخه کامل · حدود ۴۵۹ مگابایت",
+            "Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx",
+        )
+        variant_index = self.shenava_variant.findData(
+            str(settings.get("local_voice_asr_model") or "")
+        )
+        self.shenava_variant.setCurrentIndex(max(0, variant_index))
+        stt_form.addRow("نسخه مدل شنوا", self.shenava_variant)
         self.whisper = self._row(stt_form, "whisper", QComboBox())
         self.whisper.setEditable(True)
         self.whisper.addItems([
@@ -124,10 +138,14 @@ class VoicePage(QScrollArea):
         stt_actions.addWidget(self.whisper_browse_btn)
         stt_form.addRow(stt_actions)
         shenava_actions = QHBoxLayout()
-        self.shenava_download_btn = QPushButton("نصب شنوا INT8 · حدود ۱۳۲ مگابایت")
+        self.shenava_download_btn = QPushButton()
         self.shenava_download_btn.clicked.connect(
             lambda checked=False: self.download_shenava_requested.emit()
         )
+        self.shenava_variant.currentIndexChanged.connect(
+            lambda *_: self._update_shenava_download_label()
+        )
+        self._update_shenava_download_label()
         self.shenava_test_btn = QPushButton("تست شنوا با فایل WAV")
         self.shenava_test_btn.clicked.connect(
             lambda checked=False: self.test_shenava_file_requested.emit()
@@ -244,7 +262,7 @@ class VoicePage(QScrollArea):
             widget.valueChanged.connect(lambda *_: self.save_timer.start())
         for widget in (
             self.out_device, self.mic_device, self.stt_lang, self.whisper,
-            self.asr_backend, self.voice_engine, self.gemini_provider,
+            self.asr_backend, self.shenava_variant, self.voice_engine, self.gemini_provider,
         ):
             widget.currentIndexChanged.connect(lambda *_: self.save_timer.start())
         self.gemini_model.currentTextChanged.connect(lambda *_: self.save_timer.start())
@@ -254,6 +272,16 @@ class VoicePage(QScrollArea):
         self.real_time_asr_chk.toggled.connect(lambda *_: self.save_timer.start())
         self._update_live_toggle_text(False)
         self.retranslate()
+
+    def _update_shenava_download_label(self) -> None:
+        """Keep the download action explicit about the selected model size."""
+        is_fp32 = str(self.shenava_variant.currentData() or "").casefold() == (
+            "reza2kn/shenava-koochik-v1.0-sherpa-onnx"
+        )
+        self.shenava_download_btn.setText(
+            "دانلود شنوا FP32 · حدود ۴۵۹ مگابایت"
+            if is_fp32 else "دانلود شنوا INT8 · حدود ۱۲۶ مگابایت"
+        )
 
     def _update_live_toggle_text(self, enabled: bool | None = None) -> None:
         active = self.live_toggle.isChecked() if enabled is None else bool(enabled)
