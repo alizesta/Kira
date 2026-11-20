@@ -1,6 +1,6 @@
 """Offline speech engines used by Kira. No network recognition or synthesis fallback lives here.
 
-ASR: Qwen3-ASR 0.6B and faster-whisper (managed by Listener).
+ASR: Shenava Koochik INT8, Qwen3-ASR 0.6B and faster-whisper (managed by Listener).
 TTS: Piper ONNX or the bundled Persian Piper runtime.
 """
 from __future__ import annotations
