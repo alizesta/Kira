@@ -56,7 +56,8 @@ def _write_startup_metrics(data_dir: Path, phases: dict[str, dict[str, float]]) 
 
 
 def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -> None:
-    from PySide6.QtCore import QTimer
+    from PySide6.QtCore import QTimer, Qt
+    from PySide6.QtGui import QColor
     from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication(sys.argv)
@@ -73,6 +74,19 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
             "since_previous_ms": round((now - previous_mark) * 1000, 2),
         }
         previous_mark = now
+        progress_labels = {
+            "application_imports": "Loading application modules...",
+            "settings_loaded": "Loading your settings...",
+            "modules_registered": "Preparing services...",
+            "modules_started": "Starting services...",
+            "window_composed": "Building your workspace...",
+        }
+        splash.showMessage(
+            progress_labels.get(name, "Starting your workspace..."),
+            Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter,
+            QColor("#A9A7D8"),
+        )
+        app.processEvents()
 
     splash = _show_startup_splash(app)
     mark_phase("qt_ready_and_splash_visible")
@@ -173,6 +187,7 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
     app.aboutToQuit.connect(module_manager.shutdown)
     app.aboutToQuit.connect(event_bus.close)
     window.show()
+    window.repaint()
     splash.finish(window)
     mark_phase("window_shown")
 
