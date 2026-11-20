@@ -226,7 +226,7 @@ class McpHubLifecycleTests(unittest.TestCase):
         self.hub.refresh_async()
         self.hub._thread.join(timeout=2)
 
-        self.assertFalse(self.hub._thread.is_alive())
+        self.assertTrue(self.hub._thread is None or not self.hub._thread.is_alive())
         self.assertTrue(client.closed)
         self.assertEqual(self.hub.state["_hub"]["status"], "disabled")
         self.registry.unregister_where.assert_called()

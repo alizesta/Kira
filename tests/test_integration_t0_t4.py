@@ -123,7 +123,7 @@ class BrainTests(Isolated):
         task = "task"
         info = brain.after_turn(None, {}, d, "x", "فایل را حذف کردم و انجام شد", [], task, True)
         self.assertEqual(info["hint"], "claim_without_tool")
-        self.assertIn("Note to yourself", brain.extend_prompt("P", d, {}, None))
+        self.assertIn("LOW-PRIORITY REVIEW NOTE FROM THE PREVIOUS TURN", brain.extend_prompt("P", d, {}, None))
         brain.after_turn(None, {}, d, "y", "باشه", [], "chat", False)                 # the hint was delivered in the previous prompt
         self.assertEqual(brain.extend_prompt("P", d, {}, None), "P")
         # asking for confirmation after a needs_confirmation result is correct behaviour, not a hidden failure

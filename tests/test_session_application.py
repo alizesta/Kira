@@ -116,7 +116,7 @@ class SessionApplicationServiceTests(unittest.TestCase):
         self.assertEqual(resources.count("kira"), 2)
         self.assertEqual(
             [name for name, _payload in self.publisher.events],
-            ["history_loaded", "history_loaded", "history_loaded"],
+            ["session_created", "history_loaded"] * 3,
         )
 
     def test_history_restore_failure_does_not_mark_session_loaded_and_retries(self):
