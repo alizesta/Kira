@@ -326,6 +326,8 @@ def initialize_main_window(
     # available as an alternate route, but sections are now one tap away.
     self.state._nav_icon_map = [("chat", 0), ("brain", 1), ("mic", 2), ("user", 3),
                           ("palette", 4), ("settings", 5), ("route", ai_index)]
+    if console_log_capture is not None:
+        self.state._nav_icon_map.append(("terminal", self.views.tab_keys.index("tab_logs")))
     # Primary sections are accessed from the hamburger menu only.
     self.views.nav_buttons = []
     self.views.menu_btn = QToolButton()
