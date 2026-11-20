@@ -4,9 +4,13 @@ import ai.kira.mobile.core.LocalKiraCore
 import ai.kira.mobile.domain.model.ProviderConnection
 import ai.kira.mobile.domain.model.ProviderDiscovery
 import ai.kira.mobile.domain.repository.ProviderRepository
+import ai.kira.mobile.data.remote.ProviderDiscoveryRemoteDataSource
 
 /** SQLite/Android adapter for the provider repository port. */
-class LocalProviderRepository(private val core: LocalKiraCore) : ProviderRepository {
+class LocalProviderRepository(
+    private val core: LocalKiraCore,
+    private val discovery: ProviderDiscoveryRemoteDataSource
+) : ProviderRepository {
     override fun providers(): List<ProviderConnection> =
         core.providers().map { local ->
             ProviderConnection(
@@ -22,11 +26,15 @@ class LocalProviderRepository(private val core: LocalKiraCore) : ProviderReposit
     override fun cachedModels(providerId: String): List<String> = core.discoveredModels(providerId)
 
     override fun discoverProvider(apiKey: String): ProviderDiscovery {
-        val (providerId, modelIds) = core.detectProviderAndDiscoverModels(apiKey)
-        return ProviderDiscovery(providerId, modelIds)
+        val discovered = discovery.detectProviderAndDiscoverModels(apiKey)
+        val cached = core.cacheDiscoveredModels(discovered.providerId, discovered.modelIds)
+        return ProviderDiscovery(discovered.providerId, cached)
     }
 
-    override fun refreshModels(providerId: String): List<String> = core.refreshFreeModels(providerId)
+    override fun refreshModels(providerId: String): List<String> {
+        val models = discovery.discoverModels(providerId, core.providerApiKey(providerId))
+        return core.cacheDiscoveredModels(providerId, models)
+    }
 
     override fun saveProvider(providerId: String, modelId: String, apiKey: String?) {
         val existing = core.providers().firstOrNull { it.id == providerId }
