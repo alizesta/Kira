@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-11-20 (voice UX: distinguish continuous STT from true realtime)
+
+- Removed the misleading Gemini Realtime / live-conversation wording from the local listening control. It is now labelled as continuous local STT, with the actual pipeline explained as microphone → Qwen3-ASR/Whisper → chat model → Piper.
+- Added a persistent status badge to the main chat header: microphone off, continuous local STT, wake-word standby, and active capture/transcription states.
+- Kept the unfinished Gemini bidirectional audio transport explicitly marked as unavailable; local STT is not presented as realtime audio streaming.
+- Improved Windows Qt playback diagnostics: QMediaPlayer backend errors now include the backend error code, media status and actual error string; invalid media is reported immediately instead of waiting for the playback timeout.
+- Windows playback still requires a real-device smoke test; the diagnostic changes do not claim that silent playback is fixed without that evidence.
+
+
 ## 2026-11-20 (voice playback, local live conversation, Initiative)
 
 - Fixed the Session presentation capability matrix: the Session controller can now access the already-declared `_save_warned` state used by proactive Initiative persistence, preventing the optional check-in from failing with `AttributeError`.
