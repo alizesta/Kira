@@ -1,6 +1,7 @@
 package ai.kira.mobile.application.chat
 
 import ai.kira.mobile.application.assistant.AssistantInteractor
+import ai.kira.mobile.domain.model.ChatAttachmentInput
 import ai.kira.mobile.domain.model.ChatMessage
 import ai.kira.mobile.domain.model.ConnectorDefinition
 import ai.kira.mobile.domain.model.MemoryNote
@@ -60,6 +61,34 @@ class ChatInteractorTest {
         assertTrue(gateway.observedHistory.any { it.content.contains("real connector data") })
     }
 
+    @Test
+    fun fileAttachmentIsPersistedAndPassedToGateway() {
+        val repository=FakeChatRepository(listOf(route("gemini")))
+        val gateway=FakeGateway("image described")
+        val png=byteArrayOf(0x89.toByte(),0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A)+ByteArray(16)
+        val file=ChatAttachmentInput("screen.png","image/png",png)
+        val result=interactor(repository,gateway).sendMessage("kira","describe this",listOf(file))
+        assertEquals("screen.png",gateway.lastAttachments.single().name)
+        assertEquals("user",repository.appended.first().role)
+        assertEquals("image described",result.content)
+    }
+
+    @Test
+    fun attachmentOnlyMessageUsesDefaultPrompt() {
+        val repository=FakeChatRepository(listOf(route("gemini")))
+        val gateway=FakeGateway("file reviewed")
+        val file=ChatAttachmentInput("notes.txt","text/plain","summary".toByteArray())
+        interactor(repository,gateway).sendMessage("kira","",listOf(file))
+        assertTrue(repository.appended.first().content.contains("فایل‌های پیوست‌شده"))
+        assertEquals(1,gateway.lastAttachments.size)
+    }
+
+    @Test(expected=IllegalArgumentException::class)
+    fun unsupportedBinaryAttachmentIsRejected() {
+        interactor(FakeChatRepository(listOf(route("gemini"))),FakeGateway("unused"))
+            .sendMessage("kira","inspect",listOf(ChatAttachmentInput("app.apk","application/octet-stream",byteArrayOf(1))))
+    }
+
     @Test(expected=IllegalArgumentException::class)
     fun sendMessageRejectsBlankInput() {
         interactor(FakeChatRepository(),FakeGateway("unused")).sendMessage("kira","  \n  ")
@@ -90,8 +119,9 @@ class ChatInteractorTest {
         var calls=0
         var lastSystemPrompt=""
         var observedHistory:List<ChatMessage> = emptyList()
-        override fun complete(route:ProviderRoute,apiKey:String,systemPrompt:String,history:List<ChatMessage>):String {
-            calls++; lastSystemPrompt=systemPrompt; observedHistory=history
+        var lastAttachments:List<ChatAttachmentInput> = emptyList()
+        override fun complete(route:ProviderRoute,apiKey:String,systemPrompt:String,history:List<ChatMessage>,attachments:List<ChatAttachmentInput>):String {
+            calls++; lastSystemPrompt=systemPrompt; observedHistory=history; lastAttachments=attachments
             failures[route.providerId]?.let { throw it }
             return if(queuedResponses.isNotEmpty()) queuedResponses.removeFirst() else responses[route.providerId] ?: fallback
         }
@@ -102,7 +132,7 @@ class ChatInteractorTest {
         override fun history(characterId:String,limit:Int)=appended.takeLast(limit)
         override fun providerRoutes()=routes
         override fun providerApiKey(providerId:String)="secret-test-key"
-        override fun appendMessage(characterId:String,role:String,content:String,route:String) {
+        override fun appendMessage(characterId:String,role:String,content:String,route:String,attachments:List<ChatAttachmentInput>) {
             appended += ChatMessage(appended.size.toLong()+1L,role,content,route,0L)
         }
         override fun connectorsFor(characterId:String)=emptyList<ConnectorDefinition>()

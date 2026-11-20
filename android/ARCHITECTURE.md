@@ -46,3 +46,17 @@ Domain ports and Application interactors; Android-only types must not leak upwar
 The Windows `kira/main.py` remains a thin entry point; desktop composition stays in
 `kira/ui/bootstrap.py`, matching Android's split between MainActivity and the
 application composition root.
+
+
+## Android chat attachments (Task 8)
+
+Android chat accepts up to five user-selected files per turn. Application validates
+safe names, MIME allow-lists, image signatures and byte limits (8 MiB per image,
+512 KiB per text file, 12 MiB total). PNG/JPEG/WebP images and supported text/code
+formats are accepted; arbitrary binary files and HTML are rejected.
+
+The local adapter persists attachment metadata in SQLite and stores bytes in the
+app-private directory encrypted with a dedicated Android Keystore AES/GCM key.
+The HTTP gateway creates OpenAI-compatible image data URLs or Gemini inline image
+parts. Text file contents are bounded and explicitly treated as untrusted reference
+data. Images are routed only to Gemini or recognized Vision model IDs.
