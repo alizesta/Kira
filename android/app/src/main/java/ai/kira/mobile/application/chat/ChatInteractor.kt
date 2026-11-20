@@ -38,7 +38,7 @@ class ChatInteractor(
             else "هیچ Provider فعال با کلید ذخیره‌شده و مدل رایگان تأییدشده وجود ندارد. از بخش Route یک کلید اضافه کن."
         )
 
-        repository.appendMessage(character,"user",message,attachments=normalizedAttachments)
+        repository.appendMessage(character,"user",message,"",normalizedAttachments)
         val prompt=contextBuilder.build(character)
         val failures=mutableListOf<String>()
         for(route in routes) {
