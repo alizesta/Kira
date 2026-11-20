@@ -8,6 +8,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.ByteArrayOutputStream
 import java.net.InetAddress
+import java.net.Proxy
 import java.net.URL
 import java.net.UnknownHostException
 import java.net.URLEncoder
@@ -111,6 +112,7 @@ class HttpApiConnectorGateway(
             }
         }
         val client = OkHttpClient.Builder()
+            .proxy(Proxy.NO_PROXY)
             .dns(pinnedDns)
             .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
