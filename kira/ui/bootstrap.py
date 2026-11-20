@@ -89,6 +89,9 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
         app.processEvents()
 
     splash = _show_startup_splash(app)
+    from .console_log import ConsoleLogCapture
+    console_log_capture = ConsoleLogCapture()
+    console_log_capture.install()
     mark_phase("qt_ready_and_splash_visible")
     data_dir = None
 
@@ -168,6 +171,7 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
             coding_agent_application_service=container.resolve("coding_agent_application_service"),
             vision_application_service=container.resolve("vision_application_service"),
             runtime_settings_application_service=container.resolve("runtime_settings_application_service"),
+            console_log_capture=console_log_capture,
         )
         mark_phase("window_composed")
     except Exception:
@@ -175,6 +179,7 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
             module_manager.shutdown()
         if "event_bus" in locals():
             event_bus.close()
+        console_log_capture.restore()
         splash.close()
         raise
 
@@ -184,6 +189,8 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
     window._session_manager = session_manager
     window._module_manager = module_manager
     window._feature_module_ids = module_ids
+    window._console_log_capture = console_log_capture
+    app.aboutToQuit.connect(console_log_capture.restore)
     app.aboutToQuit.connect(module_manager.shutdown)
     app.aboutToQuit.connect(event_bus.close)
     window.show()

@@ -6,6 +6,7 @@ receive typed ports, never the window.
 from __future__ import annotations
 
 from .shortcuts import install_window_shortcuts
+from .console_log import build_console_log_page
 from .main_window_root_support import (
     AttachWorker,
     AttachmentTile,
@@ -64,6 +65,7 @@ def initialize_main_window(
     initiative_application_service_factory=None,
     brain_application_service=None,
     reflection_application_service=None,
+    console_log_capture=None,
 ):
     """Build UI widgets and bind injected services to typed Qt callback adapters."""
     self = window.presentation_context
@@ -284,6 +286,14 @@ def initialize_main_window(
     self.controllers.require("character_settings").build_appearance_tab()
     self.controllers.require("character_settings").build_general_tab()
     self.controllers.require("provider_settings").build_ai_tab()
+    if console_log_capture is not None:
+        log_page = build_console_log_page(
+            console_log_capture,
+            self.host,
+            title_text=self.controllers.require("session").t("log_title"),
+            clear_text=self.controllers.require("session").t("log_clear"),
+        )
+        self.views.tabs.addTab(log_page, self.controllers.require("session").t("tab_logs"))
     # Keep local STT/TTS model management on the Voice page.
     voice_page = self.views.tabs.widget(self.views.tab_keys.index("tab_voice")) if hasattr(self.views, "tab_keys") else self.views.tabs.widget(2)
     voice_layout = voice_page.widget().layout()
@@ -300,6 +310,8 @@ def initialize_main_window(
     self.views.save_btn.clicked.connect(self.controllers.require("lifecycle").apply_settings)
     self.controllers.require("session").reg(self.views.save_btn.setText, "save")
     self.views.tab_keys = ["tab_chat", "tab_assistant", "tab_voice", "tab_char", "tab_appearance", "tab_general", "tab_ai"]
+    if console_log_capture is not None:
+        self.views.tab_keys.append("tab_logs")
     install_window_shortcuts(                                            # shortcuts are children of the window, nothing else to keep
         window,
         go_tab=lambda i: self.controllers.require("session").go_tab(i),
@@ -319,6 +331,8 @@ def initialize_main_window(
     # available as an alternate route, but sections are now one tap away.
     self.state._nav_icon_map = [("chat", 0), ("brain", 1), ("mic", 2), ("user", 3),
                           ("palette", 4), ("settings", 5), ("route", ai_index)]
+    if console_log_capture is not None:
+        self.state._nav_icon_map.append(("terminal", self.views.tab_keys.index("tab_logs")))
     # Primary sections are accessed from the hamburger menu only.
     self.views.nav_buttons = []
     self.views.menu_btn = QToolButton()

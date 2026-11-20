@@ -233,6 +233,12 @@ def _shapes(name):
             nodes.addEllipse(QPointF(cx, cy), 2.2, 2.2)
         return [(nodes, False), (_poly([(7.2, 6), (12, 6), (12, 12), (16.8, 12)]), False),
                 (_poly([(7.2, 18), (12, 18), (12, 12)]), False)]
+    if name == "terminal":
+        frame = QPainterPath()
+        frame.addRoundedRect(QRectF(2.5, 3.5, 19, 17), 1.8, 1.8)
+        prompt = _poly([(6, 8), (10, 11.5), (6, 15)])
+        cursor = _poly([(12.5, 15), (18, 15)])
+        return [(frame, False), (prompt, False), (cursor, False)]
     if name == "menu":
         return [(_poly([(4, 7), (20, 7)]), False), (_poly([(4, 12), (20, 12)]), False), (_poly([(4, 17), (20, 17)]), False)]
     if name == "check":
