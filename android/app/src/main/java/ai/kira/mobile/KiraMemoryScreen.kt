@@ -74,10 +74,26 @@ internal fun KiraMemoryScreen(container: KiraContainer) {
                 val value=note.trim()
                 if(value.isNotBlank() && !busy) {
                     busy=true
+                    val requestedCharacter = character
                     executor.execute {
-                        try { assistant.addMemory(character,value); val loaded=assistant.memories(character).map { LocalMemoryRow(it.id,it.text) }
-                            handler.post { rows.clear();rows.addAll(loaded);note="";status="در حافظه محلی ذخیره شد.";busy=false }
-                        } catch(e:Exception) { handler.post { status=e.message ?: "ذخیره ناموفق بود.";busy=false } }
+                        try {
+                            assistant.addMemory(requestedCharacter,value)
+                            val loaded=assistant.memories(requestedCharacter).map { LocalMemoryRow(it.id,it.text) }
+                            handler.post {
+                                if (character == requestedCharacter) {
+                                    rows.clear()
+                                    rows.addAll(loaded)
+                                    note=""
+                                    status="در حافظه محلی ذخیره شد."
+                                }
+                                busy=false
+                            }
+                        } catch(error:Exception) {
+                            handler.post {
+                                status=error.message ?: "ذخیره ناموفق بود."
+                                busy=false
+                            }
+                        }
                     }
                 }
             },enabled=!busy && note.isNotBlank(),colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF7661D8))) { Text("ثبت") }
