@@ -72,7 +72,7 @@ internal fun KiraApp(container: KiraContainer, routeRequest: OverlayLaunchReques
         when (backTarget) {
             BackTarget.SETTINGS_HOME -> settingsPage = SettingsPage.HOME
             BackTarget.CHAT -> selectedTab = KiraTab.CHAT
-            BackTarget.PREVIOUS_TAB -> selectedTab = previousTab.takeUnless { it == KiraTab.SETTINGS } ?: KiraTab.CHAT
+            BackTarget.PREVIOUS_TAB -> selectedTab = KiraNavigationPolicy.previousTabOrChat(previousTab)
             null -> Unit
         }
     }

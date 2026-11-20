@@ -11,8 +11,18 @@ class KiraNavigationPolicyTest {
     }
 
     @Test
-    fun backFromSettingsHomeReturnsToChat() {
+    fun backFromSettingsHomeReturnsToPreviousTab() {
         assertEquals(BackTarget.PREVIOUS_TAB, KiraNavigationPolicy.backTarget(KiraTab.SETTINGS, SettingsPage.HOME))
+    }
+
+    @Test
+    fun invalidSettingsPreviousTabFallsBackToChat() {
+        assertEquals(KiraTab.CHAT, KiraNavigationPolicy.previousTabOrChat(KiraTab.SETTINGS))
+    }
+
+    @Test
+    fun validPreviousTabIsRestored() {
+        assertEquals(KiraTab.SEARCH, KiraNavigationPolicy.previousTabOrChat(KiraTab.SEARCH))
     }
 
     @Test
