@@ -16,6 +16,17 @@ class ChatHeader(QWidget):
         self.title = QLabel("Project Kira")
         self.title.setObjectName("title")
         header.addWidget(self.title)
+
+        self.voice_mode_badge = QLabel("میکروفن خاموش")
+        self.voice_mode_badge.setObjectName("voiceModeBadge")
+        self.voice_mode_badge.setAlignment(Qt.AlignCenter)
+        self.voice_mode_badge.setToolTip("وضعیت واقعی ورودی گفتار؛ حالت فعال از STT محلی استفاده می‌کند.")
+        self.voice_mode_badge.setStyleSheet(
+            "QLabel#voiceModeBadge { background: rgba(12, 20, 43, 0.92); "
+            "border: 1px solid rgba(105, 229, 255, 0.55); border-radius: 9px; "
+            "padding: 5px 9px; color: #9FEFFF; font-size: 11px; }"
+        )
+        header.addWidget(self.voice_mode_badge)
         header.addStretch(1)
 
         self.mood_emotion_icon = QLabel()
