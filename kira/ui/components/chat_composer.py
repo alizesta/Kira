@@ -167,7 +167,7 @@ class ChatComposer(QFrame):
         bar.addStretch(1)
 
         self.mic_btn = owner.icon_button("mic", True)
-        self.mic_btn.clicked.connect(owner.toggle_mic)
+        self.mic_btn.toggled.connect(owner.toggle_mic)
         self.wake_btn = owner.icon_button("moon", True)
         self.wake_btn.clicked.connect(owner.toggle_wake)
         self.voice_btn = owner.icon_button("speaker", True)
