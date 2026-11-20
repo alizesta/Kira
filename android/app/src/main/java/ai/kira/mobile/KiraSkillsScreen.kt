@@ -10,6 +10,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import ai.kira.mobile.application.KiraContainer
+import android.os.Handler
+import android.os.Looper
+import java.util.concurrent.Executors
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -28,7 +31,42 @@ internal fun KiraSkillsScreen(container: KiraContainer) {
     var parameters by remember { mutableStateOf("q") }
     var apiKey by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("سه Connector آماده در کتابخانه نصب شده‌اند.") }
-    val skills=remember(character,refresh) { assistant.skillsFor(character) }
+    var busy by remember { mutableStateOf(false) }
+    var skills by remember { mutableStateOf(emptyList<ai.kira.mobile.domain.model.SkillEntry>()) }
+    var loadSequence by remember { mutableIntStateOf(0) }
+    val executor = remember { Executors.newSingleThreadExecutor() }
+    val handler = remember { Handler(Looper.getMainLooper()) }
+
+    DisposableEffect(executor) {
+        onDispose { executor.shutdownNow() }
+    }
+
+    LaunchedEffect(character, refresh) {
+        val requestedCharacter = character
+        val sequence = ++loadSequence
+        busy = true
+        executor.execute {
+            try {
+                val loaded = assistant.skillsFor(requestedCharacter)
+                handler.post {
+                    if (sequence == loadSequence) {
+                        if (character == requestedCharacter) {
+                            skills = loaded
+                            status = "مهارت‌های دامنه انتخاب‌شده بازیابی شدند."
+                        }
+                        busy = false
+                    }
+                }
+            } catch (error: Exception) {
+                handler.post {
+                    if (sequence == loadSequence) {
+                        status = error.message ?: "بازیابی مهارت‌ها ناموفق بود."
+                        busy = false
+                    }
+                }
+            }
+        }
+    }
 
     Column(
         Modifier.fillMaxSize().background(Color(0xFF0B0E15)).verticalScroll(rememberScrollState()).padding(16.dp),
@@ -39,7 +77,7 @@ internal fun KiraSkillsScreen(container: KiraContainer) {
         Text("دامنه فعال‌سازی",color=Color(0xFFB9A5FF),fontWeight=FontWeight.SemiBold)
         Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
             listOf("global" to "همه","kira" to "Kira","ren" to "Ren","mika" to "Mika").forEach { (id,label) ->
-                FilterChip(selected=character==id,onClick={character=id},label={Text(label)})
+                FilterChip(selected=character==id,onClick={character=id},enabled=!busy,label={Text(label)})
             }
         }
         Text("مهارت‌های نصب‌شده",color=Color(0xFFF4F2FA),fontWeight=FontWeight.SemiBold)
@@ -53,14 +91,50 @@ internal fun KiraSkillsScreen(container: KiraContainer) {
                             Text(skill.description,color=Color(0xFF9BA5B8),fontSize=11.sp,lineHeight=16.sp)
                             Text(if(skill.source=="builtin") "Connector آماده · فقط خواندنی" else "Connector سفارشی · HTTPS GET",color=Color(0xFF8F84D8),fontSize=10.sp)
                         }
-                        Switch(checked=skill.enabled,onCheckedChange={
-                            assistant.setSkillEnabled(skill.name,character,it)
-                            refresh++
+                        Switch(checked=skill.enabled,enabled=!busy,onCheckedChange={ enabled ->
+                            if (!busy) {
+                                busy = true
+                                val requestedCharacter = character
+                                executor.execute {
+                                    try {
+                                        assistant.setSkillEnabled(skill.name,requestedCharacter,enabled)
+                                        handler.post {
+                                            status = "وضعیت مهارت ذخیره شد."
+                                            busy = false
+                                            refresh++
+                                        }
+                                    } catch (error: Exception) {
+                                        handler.post {
+                                            status = error.message ?: "تغییر وضعیت مهارت ناموفق بود."
+                                            busy = false
+                                        }
+                                    }
+                                }
+                            }
                         })
                     }
                     if(skill.source!="builtin") {
                         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {
-                            TextButton(onClick={ assistant.removeSkill(skill.name);refresh++ }) { Text("حذف",color=Color(0xFFFF8A9A)) }
+                            TextButton(onClick={
+                                if (!busy) {
+                                    busy = true
+                                    executor.execute {
+                                        try {
+                                            assistant.removeSkill(skill.name)
+                                            handler.post {
+                                                status = "مهارت حذف شد."
+                                                busy = false
+                                                refresh++
+                                            }
+                                        } catch (error: Exception) {
+                                            handler.post {
+                                                status = error.message ?: "حذف مهارت ناموفق بود."
+                                                busy = false
+                                            }
+                                        }
+                                    }
+                                }
+                            },enabled=!busy) { Text("حذف",color=Color(0xFFFF8A9A)) }
                         }
                     }
                 }
@@ -77,22 +151,49 @@ internal fun KiraSkillsScreen(container: KiraContainer) {
             label={Text("دستور استفاده از این API")},
             placeholder={Text("مثلاً: برای تبدیل ارز، کد ارز مبدأ و مقصد را بگیر، نرخ مرجع را دریافت کن و تاریخ داده را اعلام کن.")},
             minLines=3,
-            modifier=Modifier.fillMaxWidth()
+            enabled=!busy,modifier=Modifier.fillMaxWidth()
         )
         OutlinedTextField(value=baseUrl,onValueChange={baseUrl=it},label={Text("Base URL")},singleLine=true,modifier=Modifier.fillMaxWidth())
         OutlinedTextField(value=endpoint,onValueChange={endpoint=it},label={Text("مسیر Endpoint")},singleLine=true,modifier=Modifier.fillMaxWidth())
         OutlinedTextField(value=parameters,onValueChange={parameters=it},label={Text("پارامترهای مجاز با کاما")},singleLine=true,modifier=Modifier.fillMaxWidth())
-        OutlinedTextField(value=apiKey,onValueChange={apiKey=it},label={Text("API Key اختیاری (Bearer)")},singleLine=true,visualTransformation=PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
+        OutlinedTextField(value=apiKey,onValueChange={apiKey=it},label={Text("API Key اختیاری (Bearer)")},singleLine=true,visualTransformation=PasswordVisualTransformation(),enabled=!busy,modifier=Modifier.fillMaxWidth())
         Button(
             onClick={
-                try {
-                    assistant.installApiSkill(name,description,instructions.ifBlank { description },baseUrl,endpoint,parameters.split(",").map { it.trim() },apiKey,character)
-                    name="";description="";instructions="";apiKey="";status="Connector نصب شد و برای دامنه انتخاب‌شده فعال است.";refresh++
-                } catch(e:Exception) { status=e.message ?: "نصب Connector ناموفق بود." }
+                if (!busy) {
+                    busy = true
+                    val installName = name
+                    val installDescription = description
+                    val installInstructions = instructions.ifBlank { description }
+                    val installBaseUrl = baseUrl
+                    val installEndpoint = endpoint
+                    val installParameters = parameters.split(",").map { it.trim() }
+                    val installApiKey = apiKey
+                    val installCharacter = character
+                    executor.execute {
+                        try {
+                            assistant.installApiSkill(
+                                installName,installDescription,installInstructions,installBaseUrl,
+                                installEndpoint,installParameters,installApiKey,installCharacter
+                            )
+                            handler.post {
+                                name="";description="";instructions="";apiKey=""
+                                status="Connector نصب شد و برای دامنه انتخاب‌شده فعال است."
+                                busy=false
+                                refresh++
+                            }
+                        } catch (error: Exception) {
+                            handler.post {
+                                status=error.message ?: "نصب Connector ناموفق بود."
+                                busy=false
+                            }
+                        }
+                    }
+                }
             },
-            enabled=name.isNotBlank() && description.isNotBlank() && endpoint.startsWith("/"),
+            enabled=!busy && name.isNotBlank() && description.isNotBlank() && endpoint.startsWith("/"),
             modifier=Modifier.fillMaxWidth()
-        ) { Text("نصب Connector") }
+        ) { Text(if (busy) "در حال ذخیره…" else "نصب Connector") }
+        if (busy) LinearProgressIndicator(modifier=Modifier.fillMaxWidth())
         Text(status,color=Color(0xFFB9A5FF),fontSize=11.sp,lineHeight=17.sp)
     }
 }
