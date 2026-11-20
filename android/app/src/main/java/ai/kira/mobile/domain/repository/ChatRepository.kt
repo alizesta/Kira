@@ -9,7 +9,11 @@ interface ChatRepository {
     fun history(characterId:String,limit:Int=100):List<ChatMessage>
     fun providerRoutes():List<ProviderRoute>
     fun providerApiKey(providerId:String):String
-    fun appendMessage(characterId:String,role:String,content:String,route:String="",attachments:List<ChatAttachmentInput> = emptyList())
+    fun appendMessage(characterId:String,role:String,content:String,route:String="")
+    fun appendMessage(characterId:String,role:String,content:String,route:String,attachments:List<ChatAttachmentInput>) {
+        require(attachments.isEmpty()) { "This repository does not support chat attachments." }
+        appendMessage(characterId,role,content,route)
+    }
     fun connectorsFor(characterId:String):List<ConnectorDefinition>
     fun clearHistory(characterId:String)
 }

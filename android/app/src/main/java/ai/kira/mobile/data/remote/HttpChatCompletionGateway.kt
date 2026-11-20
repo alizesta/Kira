@@ -14,6 +14,9 @@ import java.nio.charset.StandardCharsets
 
 /** Provider HTTP adapter: OpenAI-compatible chat completions and Gemini generateContent. */
 class HttpChatCompletionGateway:ChatCompletionGateway {
+    override fun complete(route:ProviderRoute,apiKey:String,systemPrompt:String,history:List<ChatMessage>):String =
+        complete(route,apiKey,systemPrompt,history,emptyList())
+
     override fun complete(route:ProviderRoute,apiKey:String,systemPrompt:String,history:List<ChatMessage>,attachments:List<ChatAttachmentInput>):String {
         require(apiKey.isNotBlank()) { "API Key برای ${route.providerId} ذخیره نشده است." }
         if(attachments.any { it.mimeType.startsWith("image/") }) require(route.providerId=="gemini" || Regex("(gpt-4o|gpt-4\\.1|claude-3|pixtral|llava|vision|qwen[^/]*vl)").containsMatchIn(route.modelId.lowercase())) { "مدل انتخاب‌شده تصویر را پشتیبانی نمی‌کند." }

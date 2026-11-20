@@ -23,6 +23,9 @@ class LocalChatRepository(private val core:LocalKiraCore):ChatRepository, Connec
 
     override fun providerApiKey(providerId:String):String = core.providerApiKey(providerId)
 
+    override fun appendMessage(characterId:String,role:String,content:String,route:String) =
+        core.appendChatMessage(characterId,role,content,route)
+
     override fun appendMessage(characterId:String,role:String,content:String,route:String,attachments:List<ChatAttachmentInput>) =
         core.appendChatMessage(characterId,role,content,route,attachments)
 

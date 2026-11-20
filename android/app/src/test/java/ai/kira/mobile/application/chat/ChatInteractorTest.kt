@@ -120,6 +120,9 @@ class ChatInteractorTest {
         var lastSystemPrompt=""
         var observedHistory:List<ChatMessage> = emptyList()
         var lastAttachments:List<ChatAttachmentInput> = emptyList()
+        override fun complete(route:ProviderRoute,apiKey:String,systemPrompt:String,history:List<ChatMessage>):String =
+            complete(route,apiKey,systemPrompt,history,emptyList())
+
         override fun complete(route:ProviderRoute,apiKey:String,systemPrompt:String,history:List<ChatMessage>,attachments:List<ChatAttachmentInput>):String {
             calls++; lastSystemPrompt=systemPrompt; observedHistory=history; lastAttachments=attachments
             failures[route.providerId]?.let { throw it }
@@ -132,6 +135,9 @@ class ChatInteractorTest {
         override fun history(characterId:String,limit:Int)=appended.takeLast(limit)
         override fun providerRoutes()=routes
         override fun providerApiKey(providerId:String)="secret-test-key"
+        override fun appendMessage(characterId:String,role:String,content:String,route:String) =
+            appendMessage(characterId,role,content,route,emptyList())
+
         override fun appendMessage(characterId:String,role:String,content:String,route:String,attachments:List<ChatAttachmentInput>) {
             appended += ChatMessage(appended.size.toLong()+1L,role,content,route,0L)
         }
