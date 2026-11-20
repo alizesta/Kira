@@ -1,5 +1,6 @@
 package ai.kira.mobile.core
 
+import ai.kira.mobile.domain.model.ChatAttachmentInput
 import ai.kira.mobile.domain.policy.FreeModelPolicy
 
 import android.content.ContentValues
@@ -14,13 +15,15 @@ import org.json.JSONObject
 import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
+import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 data class LocalProvider(val id:String,val model:String,val baseUrl:String,val enabled:Boolean,val priority:Int,val hasKey:Boolean)
-data class LocalChatMessage(val id:Long,val role:String,val content:String,val route:String,val createdAt:Long)
+data class LocalChatAttachment(val id:String,val name:String,val mimeType:String,val sizeBytes:Long)
+data class LocalChatMessage(val id:Long,val role:String,val content:String,val route:String,val createdAt:Long,val attachments:List<LocalChatAttachment> = emptyList())
 data class LocalSkill(val name:String,val description:String,val instructions:String,val source:String,val enabled:Boolean)
 data class LocalConnectorDefinition(val id:String,val description:String,val parameters:List<String>)
 data class LocalConnectorExecutionConfig(val id:String,val baseUrl:String,val pathTemplate:String,val allowedParameters:List<String>,val authType:String,val apiKey:String)
@@ -54,11 +57,28 @@ private class LocalKeyVault {
     }
 }
 
-private class LocalDb(context:Context):SQLiteOpenHelper(context.applicationContext,"kira_local_core.db",null,3) {
+private class LocalAttachmentVault {
+ private val alias="kira.local.chat.attachments.v1"
+ private val key:SecretKey by lazy {
+  val store=KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+  (store.getKey(alias,null) as? SecretKey) ?: run {
+   val generator=KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore")
+   generator.init(KeyGenParameterSpec.Builder(alias,KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).setRandomizedEncryptionRequired(true).build())
+   generator.generateKey()
+  }
+ }
+ fun encryptBytes(value:ByteArray):ByteArray {
+  val cipher=Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE,key)
+  return cipher.iv+cipher.doFinal(value)
+ }
+}
+private class LocalDb(context:Context):SQLiteOpenHelper(context.applicationContext,"kira_local_core.db",null,4) {
     override fun onCreate(db:SQLiteDatabase) {
         db.execSQL("CREATE TABLE providers(id TEXT PRIMARY KEY,model TEXT NOT NULL,base_url TEXT NOT NULL,encrypted_key TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 0,priority INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE TABLE messages(id INTEGER PRIMARY KEY AUTOINCREMENT,character_id TEXT NOT NULL,role TEXT NOT NULL,content TEXT NOT NULL,route TEXT NOT NULL DEFAULT '',created_at INTEGER NOT NULL)")
         db.execSQL("CREATE INDEX idx_messages_character ON messages(character_id,id)")
+        db.execSQL("CREATE TABLE message_attachments(id TEXT PRIMARY KEY,message_id INTEGER NOT NULL,name TEXT NOT NULL,mime_type TEXT NOT NULL,size_bytes INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX idx_message_attachments_message ON message_attachments(message_id)")
         db.execSQL("CREATE TABLE memories(id INTEGER PRIMARY KEY AUTOINCREMENT,character_id TEXT NOT NULL,text TEXT NOT NULL,created_at INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE skills(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL UNIQUE,description TEXT NOT NULL DEFAULT '',character_id TEXT NOT NULL DEFAULT 'global',enabled INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL,instructions TEXT NOT NULL DEFAULT '',source TEXT NOT NULL DEFAULT 'local')")
         db.execSQL("CREATE TABLE skill_assignments(skill_name TEXT NOT NULL,character_id TEXT NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,PRIMARY KEY(skill_name,character_id))")
@@ -85,6 +105,10 @@ private class LocalDb(context:Context):SQLiteOpenHelper(context.applicationConte
             db.execSQL("CREATE TABLE IF NOT EXISTS skill_connectors(id TEXT PRIMARY KEY,skill_name TEXT NOT NULL,description TEXT NOT NULL,base_url TEXT NOT NULL,path_template TEXT NOT NULL,allowed_params TEXT NOT NULL,auth_type TEXT NOT NULL DEFAULT 'none',encrypted_key TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,created_at INTEGER NOT NULL)")
             db.execSQL("CREATE INDEX IF NOT EXISTS idx_skill_connectors_skill ON skill_connectors(skill_name)")
         }
+        if(oldVersion<4) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS message_attachments(id TEXT PRIMARY KEY,message_id INTEGER NOT NULL,name TEXT NOT NULL,mime_type TEXT NOT NULL,size_bytes INTEGER NOT NULL)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_message_attachments_message ON message_attachments(message_id)")
+        }
     }
 }
 
@@ -93,10 +117,12 @@ class LocalKiraCore(context:Context) {
     private val app=context.applicationContext
     private val db=LocalDb(app).writableDatabase
     private val vault=LocalKeyVault()
+    private val attachmentVault=LocalAttachmentVault()
+    private val attachmentDirectory=java.io.File(app.filesDir,"kira/attachments")
 
     init {
         val root=java.io.File(app.filesDir,"kira")
-        listOf(root,java.io.File(root,"library"),java.io.File(root,"skills")).forEach {
+        listOf(root,java.io.File(root,"library"),java.io.File(root,"skills"),attachmentDirectory).forEach {
             if(!it.exists() && !it.mkdirs()) throw IllegalStateException("ساخت پوشه محلی Kira ناموفق بود: "+it.name)
         }
         ensureBuiltinSkills()
@@ -179,11 +205,26 @@ class LocalKiraCore(context:Context) {
     @Synchronized fun history(characterId:String,limit:Int=100):List<LocalChatMessage> {
         val out=mutableListOf<LocalChatMessage>()
         db.rawQuery("SELECT id,role,content,route,created_at FROM (SELECT * FROM messages WHERE character_id=? ORDER BY id DESC LIMIT ?) ORDER BY id ASC",arrayOf(characterId,limit.coerceIn(1,500).toString())).use { c ->
-            while(c.moveToNext()) out+=LocalChatMessage(c.getLong(0),c.getString(1),c.getString(2),c.getString(3),c.getLong(4))
+            while(c.moveToNext()) { val id=c.getLong(0); out+=LocalChatMessage(id,c.getString(1),c.getString(2),c.getString(3),c.getLong(4),attachmentsForMessage(id)) }
         }
         return out
     }
-    @Synchronized fun clearHistory(characterId:String) { db.delete("messages","character_id=?",arrayOf(characterId)) }
+    private fun attachmentsForMessage(id:Long):List<LocalChatAttachment> {
+        val out=mutableListOf<LocalChatAttachment>()
+        db.rawQuery("SELECT id,name,mime_type,size_bytes FROM message_attachments WHERE message_id=? ORDER BY rowid",arrayOf(id.toString())).use { c -> while(c.moveToNext()) out+=LocalChatAttachment(c.getString(0),c.getString(1),c.getString(2),c.getLong(3)) }
+        return out
+    }
+    @Synchronized fun clearHistory(characterId:String) {
+        val ids=mutableListOf<String>()
+        db.rawQuery("SELECT a.id FROM message_attachments a JOIN messages m ON m.id=a.message_id WHERE m.character_id=?",arrayOf(characterId)).use { c -> while(c.moveToNext()) ids+=c.getString(0) }
+        db.beginTransaction()
+        try {
+            db.delete("message_attachments","message_id IN (SELECT id FROM messages WHERE character_id=?)",arrayOf(characterId))
+            db.delete("messages","character_id=?",arrayOf(characterId))
+            db.setTransactionSuccessful()
+        } finally { db.endTransaction() }
+        ids.forEach { runCatching { attachmentFile(it).delete() } }
+    }
     @Synchronized fun addMemory(characterId:String,text:String) {
         require(text.isNotBlank())
         db.execSQL("INSERT INTO memories(character_id,text,created_at) VALUES(?,?,?)",arrayOf<Any>(characterId,text.trim(),System.currentTimeMillis()))
@@ -347,12 +388,33 @@ class LocalKiraCore(context:Context) {
     }
 
     /** Persistence-only write; turn orchestration belongs to Application. */
-    @Synchronized fun appendChatMessage(characterId:String,role:String,content:String,route:String="") {
-        require(characterId.isNotBlank()) { "شناسه گفتگو خالی است." }
-        require(role=="user" || role=="assistant") { "نقش پیام معتبر نیست." }
-        require(content.isNotBlank()) { "محتوای پیام خالی است." }
-        db.execSQL("INSERT INTO messages(character_id,role,content,route,created_at) VALUES(?,?,?,?,?)",
-            arrayOf<Any>(characterId,role,content,route,System.currentTimeMillis()))
+    @Synchronized fun appendChatMessage(characterId:String,role:String,content:String,route:String="",attachments:List<ChatAttachmentInput> = emptyList()) {
+        require(characterId.isNotBlank()); require(role=="user" || role=="assistant"); require(content.isNotBlank())
+        require(role=="user" || attachments.isEmpty()); require(attachments.size<=5)
+        val stored=mutableListOf<java.io.File>()
+        db.beginTransaction()
+        try {
+            val messageId=db.insertOrThrow("messages",null,ContentValues().apply {
+                put("character_id",characterId); put("role",role); put("content",content); put("route",route); put("created_at",System.currentTimeMillis())
+            })
+            attachments.forEach { a ->
+                require(a.name.isNotBlank() && a.name.length<=160)
+                val id=UUID.randomUUID().toString(); val dest=attachmentFile(id); val temp=java.io.File(attachmentDirectory,"."+id+".tmp")
+                try { temp.writeBytes(attachmentVault.encryptBytes(a.bytes)); if(!temp.renameTo(dest)) throw IllegalStateException("ذخیره امن پیوست ناموفق بود.") }
+                finally { if(temp.exists()) temp.delete() }
+                stored+=dest
+                db.insertOrThrow("message_attachments",null,ContentValues().apply {
+                    put("id",id); put("message_id",messageId); put("name",a.name.trim()); put("mime_type",a.mimeType.substringBefore(';').trim().lowercase()); put("size_bytes",a.bytes.size.toLong())
+                })
+            }
+            db.setTransactionSuccessful()
+        } catch(e:Exception) { stored.forEach { runCatching { it.delete() } }; throw e }
+        finally { db.endTransaction() }
+    }
+    private fun attachmentFile(id:String):java.io.File {
+        require(id.matches(Regex("[0-9a-fA-F-]{36}")))
+        val root=attachmentDirectory.canonicalFile; val file=java.io.File(attachmentDirectory,id+".bin").canonicalFile
+        require(file.parentFile==root); return file
     }
 
     /** Plaintext exists only in memory for one authenticated outbound request. */
