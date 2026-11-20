@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ai.kira.mobile.application.voice.VoiceCallState
 import ai.kira.mobile.application.KiraContainer
+import ai.kira.mobile.domain.model.ShenavaModelVariant
 import ai.kira.mobile.ui.theme.KiraPalette
 import java.util.concurrent.Executors
 
@@ -39,6 +40,27 @@ internal fun KiraVoiceScreen(container: KiraContainer) {
     val handler = remember { Handler(Looper.getMainLooper()) }
     val executor = remember { Executors.newSingleThreadExecutor() }
     val voice = container.voice
+    val shenavaAsr = container.shenavaAsr
+    val preferences = remember(context) {
+        context.getSharedPreferences("kira_voice_settings", android.content.Context.MODE_PRIVATE)
+    }
+    var selectedShenavaVariant by remember(context) {
+        mutableStateOf(ShenavaModelVariant.fromStorageKey(preferences.getString("shenava_variant", "int8")))
+    }
+    var shenavaDownloaded by remember(selectedShenavaVariant) {
+        mutableStateOf(shenavaAsr.isModelDownloaded(selectedShenavaVariant))
+    }
+    var shenavaDownloadProgress by remember { mutableIntStateOf(0) }
+    var shenavaBusy by remember { mutableStateOf(false) }
+    var shenavaRecording by remember { mutableStateOf(false) }
+    var shenavaStatus by remember {
+        mutableStateOf(
+            if (shenavaAsr.isModelDownloaded(selectedShenavaVariant))
+                "مدل انتخاب‌شده آماده است؛ پردازش گفتار کاملاً آفلاین انجام می‌شود."
+            else "برای استفاده آفلاین، ابتدا مدل شنوا را دانلود کن."
+        )
+    }
+    var shenavaTranscript by remember { mutableStateOf("") }
     var apiKey by remember { mutableStateOf("") }
     var keySaved by remember { mutableStateOf(voice.hasApiKey()) }
     var status by remember { mutableStateOf("Gemini Live از مکالمه صوتی دوطرفه پشتیبانی می‌کند.") }
@@ -47,10 +69,111 @@ internal fun KiraVoiceScreen(container: KiraContainer) {
     var busy by remember { mutableStateOf(false) }
     val transcript = remember { mutableStateListOf<String>() }
 
-    DisposableEffect(executor, voice) {
+    DisposableEffect(executor, voice, shenavaAsr) {
         onDispose {
             runCatching { voice.stop() }
+            runCatching { shenavaAsr.cancelRecording() }
             executor.shutdownNow()
+        }
+    }
+
+    fun selectShenavaVariant(variant: ShenavaModelVariant) {
+        if (shenavaBusy || shenavaRecording || callActive) return
+        selectedShenavaVariant = variant
+        preferences.edit().putString("shenava_variant", variant.storageKey).apply()
+        shenavaDownloaded = shenavaAsr.isModelDownloaded(variant)
+        shenavaDownloadProgress = if (shenavaDownloaded) 100 else 0
+        shenavaTranscript = ""
+        shenavaStatus = if (shenavaDownloaded) {
+            "${variant.displayName} آماده است؛ برای تشخیص گفتار به اینترنت نیاز نیست."
+        } else {
+            "${variant.displayName} هنوز دانلود نشده است."
+        }
+    }
+
+    fun downloadShenavaModel() {
+        if (shenavaBusy || shenavaRecording || callActive || busy) return
+        val variant = selectedShenavaVariant
+        shenavaBusy = true
+        shenavaDownloadProgress = 0
+        shenavaStatus = "در حال دانلود ${variant.displayName} از Hugging Face…"
+        executor.execute {
+            try {
+                shenavaAsr.downloadModel(variant) { progress ->
+                    handler.post {
+                        shenavaDownloadProgress = progress.coerceIn(0, 100)
+                        shenavaStatus = "دانلود ${variant.displayName}: $progress%"
+                    }
+                }
+                val ready = shenavaAsr.isModelDownloaded(variant)
+                handler.post {
+                    shenavaDownloaded = ready
+                    shenavaDownloadProgress = if (ready) 100 else shenavaDownloadProgress
+                    shenavaStatus = if (ready) {
+                        "✓ ${variant.displayName} دانلود و اعتبارسنجی شد. اکنون می‌توانی بدون اینترنت از آن استفاده کنی."
+                    } else {
+                        "دانلود تمام شد اما فایل‌های مدل کامل نیستند؛ دوباره تلاش کن."
+                    }
+                    shenavaBusy = false
+                }
+            } catch (error: Exception) {
+                handler.post {
+                    shenavaDownloaded = shenavaAsr.isModelDownloaded(variant)
+                    shenavaStatus = error.message ?: "دانلود مدل شنوا ناموفق بود."
+                    shenavaBusy = false
+                }
+            }
+        }
+    }
+
+    fun startShenavaRecording() {
+        if (shenavaBusy || shenavaRecording || callActive || busy) return
+        val variant = selectedShenavaVariant
+        if (!shenavaAsr.isModelDownloaded(variant)) {
+            shenavaStatus = "ابتدا نسخه انتخاب‌شده شنوا را دانلود کن."
+            return
+        }
+        shenavaBusy = true
+        shenavaStatus = "در حال آماده‌سازی میکروفون محلی…"
+        executor.execute {
+            try {
+                shenavaAsr.startRecording(variant)
+                handler.post {
+                    shenavaRecording = true
+                    shenavaStatus = "در حال ضبط روی گوشی؛ پس از صحبت، «توقف و تبدیل آفلاین» را بزن."
+                    shenavaBusy = false
+                }
+            } catch (error: Exception) {
+                handler.post {
+                    shenavaStatus = error.message ?: "شروع ضبط محلی ناموفق بود."
+                    shenavaBusy = false
+                    shenavaRecording = false
+                }
+            }
+        }
+    }
+
+    fun stopShenavaRecordingAndTranscribe() {
+        if (!shenavaRecording || shenavaBusy) return
+        val variant = selectedShenavaVariant
+        shenavaBusy = true
+        shenavaStatus = "ضبط متوقف شد؛ شنوا در حال تبدیل گفتار روی CPU گوشی است…"
+        executor.execute {
+            try {
+                val result = shenavaAsr.stopRecordingAndTranscribe(variant)
+                handler.post {
+                    shenavaTranscript = result.ifBlank { "گفتاری تشخیص داده نشد." }
+                    shenavaStatus = "تبدیل آفلاین تمام شد · ${variant.displayName}"
+                    shenavaRecording = false
+                    shenavaBusy = false
+                }
+            } catch (error: Exception) {
+                handler.post {
+                    shenavaStatus = error.message ?: "تبدیل آفلاین شنوا ناموفق بود."
+                    shenavaRecording = false
+                    shenavaBusy = false
+                }
+            }
         }
     }
 
@@ -127,7 +250,7 @@ internal fun KiraVoiceScreen(container: KiraContainer) {
     }
 
     fun startCall() {
-        if (busy || callActive) return
+        if (busy || callActive || shenavaRecording || shenavaBusy) return
         transcript.clear()
         busy = true
         status = "در حال اتصال به Gemini Live…"
@@ -189,6 +312,12 @@ internal fun KiraVoiceScreen(container: KiraContainer) {
         if (granted) startCall()
         else status = "برای تماس زنده باید اجازه دسترسی به میکروفون بدهی."
     }
+    val shenavaPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) startShenavaRecording()
+        else shenavaStatus = "برای ضبط آفلاین شنوا باید اجازه دسترسی به میکروفون بدهی."
+    }
 
     Column(
         Modifier.fillMaxSize().background(KiraPalette.background)
@@ -200,6 +329,79 @@ internal fun KiraVoiceScreen(container: KiraContainer) {
             "مکالمه دوطرفه مستقیم با Gemini Live؛ صدا به‌صورت PCM زنده ارسال و پاسخ صوتی هم‌زمان پخش می‌شود. هزینه و محدودیت حساب Google را پیش از تماس بررسی کن.",
             color = KiraPalette.muted, fontSize = 12.sp, lineHeight = 18.sp
         )
+
+        Surface(color = KiraPalette.surface, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("تشخیص گفتار آفلاین · Shenava", color = KiraPalette.onBackground, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "مدل روی گوشی دانلود می‌شود؛ صدای میکروفون به سرور یا سرویس ابری ارسال نمی‌شود. هر بار تا ۲ دقیقه ضبط می‌کنی و بعد از توقف، فایل در همان گوشی تبدیل می‌شود.",
+                    color = KiraPalette.muted, fontSize = 11.sp, lineHeight = 17.sp
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { selectShenavaVariant(ShenavaModelVariant.INT8) },
+                        enabled = !shenavaBusy && !shenavaRecording && !callActive && !busy,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(if (selectedShenavaVariant == ShenavaModelVariant.INT8) "✓ INT8 · ۱۲۶ MB" else "INT8 · ۱۲۶ MB")
+                    }
+                    OutlinedButton(
+                        onClick = { selectShenavaVariant(ShenavaModelVariant.FP32) },
+                        enabled = !shenavaBusy && !shenavaRecording && !callActive && !busy,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(if (selectedShenavaVariant == ShenavaModelVariant.FP32) "✓ FP32 · ۴۵۹ MB" else "FP32 · ۴۵۹ MB")
+                    }
+                }
+                Text(shenavaStatus, color = KiraPalette.muted, fontSize = 11.sp, lineHeight = 17.sp)
+                if (shenavaBusy && shenavaDownloadProgress > 0) {
+                    Text("پیشرفت دانلود: $shenavaDownloadProgress%", color = KiraPalette.primary, fontSize = 11.sp)
+                }
+                if (!shenavaDownloaded) {
+                    Button(
+                        onClick = { downloadShenavaModel() },
+                        enabled = !shenavaBusy && !shenavaRecording && !callActive && !busy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            if (shenavaBusy) "در حال آماده‌سازی…"
+                            else "دانلود ${selectedShenavaVariant.displayName} · حدود ${selectedShenavaVariant.approximateSizeMb} مگابایت"
+                        )
+                    }
+                }
+                if (!shenavaRecording) {
+                    Button(
+                        onClick = {
+                            if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                startShenavaRecording()
+                            } else {
+                                shenavaPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        },
+                        enabled = shenavaDownloaded && !shenavaBusy && !callActive && !busy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (shenavaBusy) "در حال آماده‌سازی…" else "شروع ضبط آفلاین") }
+                } else {
+                    Button(
+                        onClick = { stopShenavaRecordingAndTranscribe() },
+                        enabled = !shenavaBusy,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (shenavaBusy) "در حال تبدیل گفتار…" else "توقف و تبدیل آفلاین") }
+                }
+                if (shenavaTranscript.isNotBlank()) {
+                    Text("متن تشخیص‌داده‌شده", color = KiraPalette.primary, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                    Surface(color = KiraPalette.background, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            shenavaTranscript,
+                            modifier = Modifier.padding(12.dp),
+                            color = KiraPalette.onBackground,
+                            fontSize = 13.sp,
+                            lineHeight = 20.sp
+                        )
+                    }
+                }
+            }
+        }
 
         Surface(color = KiraPalette.surface, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -237,7 +439,7 @@ internal fun KiraVoiceScreen(container: KiraContainer) {
                                 permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             }
                         },
-                        enabled = keySaved && !busy,
+                        enabled = keySaved && !busy && !shenavaRecording && !shenavaBusy,
                         modifier = Modifier.fillMaxWidth()
                     ) { Text(if (busy) "در حال اتصال…" else "شروع تماس زنده") }
                 } else {
