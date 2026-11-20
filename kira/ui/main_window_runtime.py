@@ -546,15 +546,41 @@ class RuntimeController(WindowFeatureController):
     def unmute(self):
         self.context.services.voice_application_service.unmute_if_idle()
 
+    def _sync_voice_mode_badge(self, state=None):
+        """Show the real microphone pipeline, not a misleading Realtime label."""
+        badge = getattr(self.context.views, "voice_mode_badge", None)
+        if badge is None:
+            return
+        mic_on = bool(self.context.views.mic_btn.isChecked())
+        wake_on = bool(self.context.views.wake_btn.isChecked())
+        if not mic_on:
+            text = "میکروفن خاموش"
+        elif wake_on and not self.context.state.awake:
+            text = "منتظر کلمه بیدارباش · STT"
+        elif state == "transcribing":
+            text = "در حال تبدیل گفتار · STT"
+        elif state == "hearing":
+            text = "در حال دریافت صدا · STT"
+        elif state == "loading":
+            text = "آماده‌سازی STT…"
+        else:
+            text = "شنود پیوسته · STT محلی"
+        badge.setText(text)
+        badge.setProperty("listening", mic_on)
+        badge.setToolTip(
+            "مسیر فعال: میکروفن → Qwen3-ASR/Whisper → مدل چت → Piper"
+            if mic_on else "میکروفن غیرفعال است."
+        )
+
     def _sync_live_toggle(self, enabled):
         page = getattr(self.context.views, "voice_page", None)
         toggle = getattr(page, "live_toggle", None) if page is not None else None
-        if toggle is None or toggle.isChecked() == bool(enabled):
-            return
-        previous = toggle.blockSignals(True)
-        toggle.setChecked(bool(enabled))
-        toggle.blockSignals(previous)
-        toggle.setText("توقف مکالمه زنده" if enabled else "شروع مکالمه زنده")
+        if toggle is not None:
+            previous = toggle.blockSignals(True)
+            toggle.setChecked(bool(enabled))
+            toggle.blockSignals(previous)
+            toggle.setText("توقف شنود پیوسته" if enabled else "شروع شنود پیوسته")
+        self._sync_voice_mode_badge()
 
     def set_live_listening(self, enabled):
         """Start/stop the actual local full-duplex conversation loop from the Voice page."""
@@ -641,6 +667,7 @@ class RuntimeController(WindowFeatureController):
         self.feature_controller("session").add_chat("error", msg)
         self.context.views.mic_btn.setChecked(False)
         self._sync_live_toggle(False)
+        self._sync_voice_mode_badge()
         if self.context.views.wake_btn.isChecked():
             self.context.views.wake_btn.setChecked(False)
             self.context.adapters.animator.set_sleeping(False)
@@ -650,6 +677,7 @@ class RuntimeController(WindowFeatureController):
 
     @Slot(str)
     def on_listener_state(self, state):
+        self._sync_voice_mode_badge(state)
         if state == "listening":
             self.update_engine_label()
             self.feature_controller("session").set_status("st_sleeping" if (self.context.views.wake_btn.isChecked() and not self.context.state.awake) else "st_listening")
