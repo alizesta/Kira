@@ -49,7 +49,7 @@ def _write_startup_metrics(data_dir: Path, phases: dict[str, dict[str, float]]) 
             "total_ms": max((item["elapsed_ms"] for item in phases.values()), default=0.0),
         }
         with (log_dir / "startup-performance.jsonl").open("a", encoding="utf-8") as stream:
-            stream.write(json.dumps(record, ensure_ascii=False) + "\\n")
+            stream.write(json.dumps(record, ensure_ascii=False) + "\n")
     except OSError:
         # Diagnostics must never prevent the desktop application from starting.
         pass
@@ -121,8 +121,6 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
             if state != ModuleState.STARTED
         }
         if failed:
-            module_manager.shutdown()
-            event_bus.close()
             raise RuntimeError(f"Required application modules failed to start: {failed}")
         mark_phase("modules_started")
 
@@ -159,6 +157,10 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
         )
         mark_phase("window_composed")
     except Exception:
+        if "module_manager" in locals():
+            module_manager.shutdown()
+        if "event_bus" in locals():
+            event_bus.close()
         splash.close()
         raise
 
