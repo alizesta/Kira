@@ -24,6 +24,10 @@ This file is the short repository-level entry point. It intentionally contains n
 - Durable Chat persistence is owned by the Chat persistence/repository boundary. Runtime Session state is separate from durable Conversation state.
 - MainWindow is no longer the legacy monolith, but Qt presentation, worker/resource lifecycle and some UI orchestration remain in the UI layer.
 
+## Desktop pet and dance library
+
+`CompanionWindow.pet` (`kira/pet.py`) handles dragging (hang), falling and perching (`kira/perch.py`), and receives beat state from `kira/music_dance.MusicWatcher`. While music plays it calls `view.refresh_dances()` (`kira/dance_library.scan()` of `assets/vrm/animations/`) and `view.music(state)`; `assets/vrm/viewer.html` then plays a VRMA/Mixamo clip through an AnimationMixer evaluated after the procedural body, or a built-in dance style.
+
 ## Verification policy
 
 A source file, test, merged pull request or green workflow status alone does not prove runtime behavior. Report static inspection, test execution, CI runner execution and Windows desktop acceptance separately. A workflow job with no runner/steps is **not executed** and must never be reported as a passing test.
