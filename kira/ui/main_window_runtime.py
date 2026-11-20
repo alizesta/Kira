@@ -239,7 +239,7 @@ class RuntimeController(WindowFeatureController):
             self.context.session._t_first = time.monotonic() - (self.context.session._t_req or time.monotonic())
             mode = getattr(self.context.session, "_turn_mode", None)
             self.context.views.status.setText(f"اولین Token بعد از {int(self.context.session._t_first * 1000)} ms · {e['label']} / {e['model']}"
-                                + (f" · حالت: {self.feature_controller("chat").MODE_LABELS[mode.name]}" if mode else ""))
+                                + (f" · حالت: {self.feature_controller('chat').MODE_LABELS[mode.name]}" if mode else ""))
         elif phase == "failover":
             self.context.views.status.setText(f"Failover → {e['label']} / {e['model']}")
         elif phase in ("connecting", "waiting"):
