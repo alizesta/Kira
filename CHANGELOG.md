@@ -1,5 +1,16 @@
 # Changelog
 
+# Changelog
+
+## 2026-11-20 (voice playback, local live conversation, Initiative)
+
+- Fixed the Session presentation capability matrix: the Session controller can now access the already-declared `_save_warned` state used by proactive Initiative persistence, preventing the optional check-in from failing with `AttributeError`.
+- Added an explicit **Start/Stop live conversation** control to the Voice page. It starts the existing local microphone -> Qwen3-ASR/Whisper -> chat -> Piper speech loop, enables spoken replies, disables wake-word sleep while live mode is active, and synchronizes its state with the chat microphone control and listener failures.
+- Removed the misleading selectable Gemini Realtime runtime option. Its provider/model fields are visibly disabled until the actual Google Live transport is implemented; the working local live mode remains available now.
+- Unified WAV and compressed-file playback through Qt `QMediaPlayer` / `QAudioOutput`. Piper WAV output no longer uses the separate `QSoundEffect` backend, and output volume is clamped to the supported 0..1 range. Playback start failures continue to surface through the existing timeout/error reporting.
+- Re-apply Qwen3-ASR generation-config cleanup immediately before every transcription to handle Transformers wrappers that mutate generation settings between utterances.
+- Verification: source changes committed on a dedicated branch. Windows audio-device playback, microphone capture and full application smoke tests still require execution on the target Windows machine; no claim of hardware playback verification is made.
+
 ## 2026-11-20 (shortcuts, Appearance, proactive messages)
 
 - Shortcuts (`ui/shortcuts.py`): Ctrl+L focus the message box, Esc stop the answer, Ctrl+1..7 switch tab, Ctrl+, open Connections & Models. Delete on the focused list: models table = move to «منسوخ» (reversible), API table = delete API (asks), Route list = delete Route (asks), chat view = clear this character's history (asks).
