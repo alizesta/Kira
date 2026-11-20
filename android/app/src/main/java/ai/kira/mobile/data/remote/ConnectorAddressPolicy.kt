@@ -41,6 +41,13 @@ internal object ConnectorAddressPolicy {
         }
 
         if (bytes.size == 16) {
+            // IPv4-mapped IPv6 addresses must pass the IPv4 policy too.
+            if ((0 until 10).all { bytes[it].toInt() == 0 } &&
+                bytes[10].toInt() == 0xff.toByte().toInt() &&
+                bytes[11].toInt() == 0xff.toByte().toInt()
+            ) {
+                return isPublicAddress(InetAddress.getByAddress(bytes.copyOfRange(12, 16)))
+            }
             val a = bytes[0].toInt() and 0xff
             val b = bytes[1].toInt() and 0xff
             val c = bytes[2].toInt() and 0xff
@@ -50,12 +57,6 @@ internal object ConnectorAddressPolicy {
             if (a == 0x20 && b == 0x01 && c == 0x00 && d == 0x02) return false
             if (a == 0x20 && b == 0x01 && c == 0x00 && d == 0x00) return false
             if (a == 0x20 && b == 0x02) return false
-            if ((0 until 10).all { bytes[it].toInt() == 0 } &&
-                bytes[10].toInt() == 0xff.toByte().toInt() &&
-                bytes[11].toInt() == 0xff.toByte().toInt()
-            ) {
-                return isPublicAddress(InetAddress.getByAddress(bytes.copyOfRange(12, 16)))
-            }
             return true
         }
         return false
