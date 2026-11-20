@@ -115,101 +115,24 @@ class LocalKiraCore(context:Context) {
         FreeModelPolicy.recommendedModel(providerId,models)
 
 
-    /** Detects the provider from a key fingerprint, then verifies it against the live model endpoint. */
-    @Synchronized fun detectProviderAndDiscoverModels(apiKey:String):Pair<String,List<String>> {
-        val key=apiKey.trim()
-        require(key.isNotBlank()) { "API Key خالی است." }
-        val hinted=when {
-            key.startsWith("AIza") -> listOf("gemini")
-            key.startsWith("gsk_") -> listOf("groq")
-            key.startsWith("sk-or-") -> listOf("openrouter")
-            else -> listOf("mistral","deepseek","openrouter","groq","gemini")
-        }
-        val failures=mutableListOf<String>()
-        for(id in hinted) {
-            try { return id to discoverModels(id,key) }
-            catch(e:Exception) { failures += "$id: ${e.message.orEmpty().take(100)}" }
-        }
-        throw IllegalStateException("نوع API Key شناسایی نشد یا دسترسی مدل‌ها رد شد. "+failures.joinToString(" | "))
-    }
-
-    /** Fetches the provider's live model catalog using only its API key. */
-    @Synchronized fun discoverModels(providerId:String,apiKey:String):List<String> {
-        require(apiKey.isNotBlank()) { "API Key خالی است." }
-        val id=providerId.lowercase()
-        val endpoint=when(id) {
-            "gemini" -> "https://generativelanguage.googleapis.com/v1beta/models"
-            "groq" -> "https://api.groq.com/openai/v1/models"
-            "mistral" -> "https://api.mistral.ai/v1/models"
-            "deepseek" -> "https://api.deepseek.com/models"
-            "openrouter" -> "https://openrouter.ai/api/v1/models?sort=most-popular"
-            else -> throw IllegalArgumentException("این Provider هنوز فهرست خودکار مدل‌ها را پشتیبانی نمی‌کند.")
-        }
-        val conn=URL(endpoint).openConnection() as HttpURLConnection
-        val models=try {
-            conn.requestMethod="GET"; conn.connectTimeout=15000; conn.readTimeout=30000
-            conn.setRequestProperty("Accept","application/json")
-            if(id=="gemini") conn.setRequestProperty("x-goog-api-key",apiKey)
-            else conn.setRequestProperty("Authorization","Bearer "+apiKey)
-            val code=conn.responseCode
-            val raw=(if(code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
-            if(code !in 200..299) {
-                val detail=runCatching { JSONObject(raw).optJSONObject("error")?.optString("message") }.getOrNull().orEmpty()
-                throw IllegalStateException("دریافت مدل‌ها ناموفق بود: HTTP $code "+detail.take(220))
-            }
-            val root=JSONObject(raw)
-            val arr=root.optJSONArray(if(id=="gemini") "models" else "data") ?: JSONArray()
-            val found=mutableListOf<String>()
-            for(i in 0 until arr.length()) {
-                val item=arr.optJSONObject(i) ?: continue
-                val name=item.optString("id",item.optString("name")).removePrefix("models/")
-                if(name.isBlank()) continue
-                val isChat=when(id) {
-                    "gemini" -> {
-                        val methods=item.optJSONArray("supportedGenerationMethods") ?: JSONArray()
-                        (0 until methods.length()).any { methods.optString(it)=="generateContent" }
-                    }
-                    "mistral" -> item.optJSONObject("capabilities")?.optBoolean("completion_chat",false)==true
-                    "openrouter" -> {
-                        val output=item.optJSONObject("architecture")?.optJSONArray("output_modalities")
-                        output==null || (0 until output.length()).any { output.optString(it)=="text" }
-                    }
-                    else -> false
-                }
-                if(!isChat) continue
-                val pricing=item.optJSONObject("pricing")
-                val openRouterIsFree=pricing!=null &&
-                    pricing.optString("prompt").toDoubleOrNull()==0.0 &&
-                    pricing.optString("completion").toDoubleOrNull()==0.0
-                val isFree=when(id) {
-                    "gemini","mistral" -> FreeModelPolicy.isVerifiedFreeChatModel(id,name)
-                    "openrouter" -> name.endsWith(":free") && openRouterIsFree
-                    else -> false
-                }
-                if(isFree) found+=name
-            }
-            val distinct=found.distinct()
-            if(id=="openrouter") distinct else distinct.sorted()
-        } finally { conn.disconnect() }
-        if(models.isEmpty()) throw IllegalStateException(
-            when(id) {
-                "deepseek" -> "DeepSeek API مدل رایگان دائمی ندارد؛ کلید آن برای مدل‌های پولی است و در فهرست رایگان Kira نمایش داده نمی‌شود."
-                "groq" -> "فهرست فعلی Groq مدل چت رایگانِ با قیمت صفر مشخص نمی‌کند؛ برای جلوگیری از هزینه، هیچ مدلی اضافه نشد."
-                "mistral" -> "در فهرست فعلی Mistral مدل چت رایگانِ سازگار پیدا نشد. فقط مدل‌های رایگان دارای قابلیت چت پذیرفته می‌شوند."
-                else -> "هیچ مدل چت رایگانی با قیمت صفر برای این Provider پیدا نشد. هیچ مدل پولی اضافه یا انتخاب نشد."
-            }
-        )
+    /** Persist a verified provider model catalog; network access is owned by data/remote. */
+    @Synchronized fun cacheDiscoveredModels(providerId:String,modelIds:List<String>):List<String> {
+        val id=providerId.trim().lowercase()
+        val models=FreeModelPolicy.verifiedModels(id,modelIds)
+        require(models.isNotEmpty()) { "فهرست مدل‌های رایگان معتبر خالی است." }
         db.beginTransaction()
         try {
             db.delete("provider_models","provider_id=?",arrayOf(id))
             models.forEach { modelId ->
-                val caps=when {
+                val capabilities=when {
                     modelId.contains("embedding",true) -> "embedding"
                     modelId.contains("tts",true) || modelId.contains("audio",true) || modelId.contains("speech",true) -> "audio"
                     modelId.contains("vision",true) || modelId.contains("image",true) || modelId.contains("4o",true) || modelId.contains("gemini",true) -> "chat,vision"
                     else -> "chat"
                 }
-                val values=ContentValues().apply { put("provider_id",id);put("model_id",modelId);put("capabilities",caps) }
+                val values=ContentValues().apply {
+                    put("provider_id",id); put("model_id",modelId); put("capabilities",capabilities)
+                }
                 db.insertWithOnConflict("provider_models",null,values,SQLiteDatabase.CONFLICT_REPLACE)
             }
             db.setTransactionSuccessful()
@@ -511,6 +434,5 @@ class LocalKiraCore(context:Context) {
         return key
     }
 
-    @Synchronized fun refreshFreeModels(providerId:String):List<String> = discoverModels(providerId,readKey(providerId))
 
 }

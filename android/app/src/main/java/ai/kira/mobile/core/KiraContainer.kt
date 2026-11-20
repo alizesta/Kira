@@ -14,6 +14,7 @@ import ai.kira.mobile.data.local.LocalAssistantRepository
 import ai.kira.mobile.data.local.LocalChatRepository
 import ai.kira.mobile.data.local.LocalProviderRepository
 import ai.kira.mobile.data.remote.HttpChatCompletionGateway
+import ai.kira.mobile.data.remote.ProviderDiscoveryRemoteDataSource
 import ai.kira.mobile.data.remote.SearchCredentialStore
 import ai.kira.mobile.data.remote.TavilySearchRepository
 import ai.kira.mobile.data.voice.GeminiLiveCredentialStore
@@ -34,8 +35,9 @@ class KiraContainer(context: Context) {
         AssistantInteractor(LocalAssistantRepository(localCore))
     }
 
+    private val providerDiscovery: ProviderDiscoveryRemoteDataSource by lazy { ProviderDiscoveryRemoteDataSource() }
     val providers: ProviderApplicationService by lazy {
-        ProviderApplicationService(LocalProviderRepository(localCore))
+        ProviderApplicationService(LocalProviderRepository(localCore, providerDiscovery))
     }
 
     private val searchCredentials: SearchCredentialStore by lazy { SearchCredentialStore(app) }
