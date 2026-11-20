@@ -25,7 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ai.kira.mobile.assistant.AiAssistantOverlayService
-import ai.kira.mobile.core.KiraContainer
+import ai.kira.mobile.application.KiraContainer
 import ai.kira.mobile.application.assistant.OverlayDestination
 import ai.kira.mobile.application.navigation.BackTarget
 import ai.kira.mobile.application.navigation.KiraNavigationPolicy
@@ -41,6 +41,7 @@ internal data class OverlayLaunchRequest(val route: String, val text: String, va
 internal fun KiraApp(container: KiraContainer, routeRequest: OverlayLaunchRequest? = null) {
     val context=LocalContext.current
     var selectedTab by rememberSaveable { mutableStateOf(KiraTab.CHAT) }
+    var previousTab by rememberSaveable { mutableStateOf(KiraTab.CHAT) }
     var selectedCharacter by rememberSaveable { mutableStateOf("kira") }
     var pendingChatContext by rememberSaveable { mutableStateOf("") }
     var settingsPage by rememberSaveable { mutableStateOf(SettingsPage.HOME) }
@@ -54,6 +55,7 @@ internal fun KiraApp(container: KiraContainer, routeRequest: OverlayLaunchReques
                 OverlayDestination.SEARCH -> { selectedTab = KiraTab.SEARCH; settingsPage = SettingsPage.HOME }
                 OverlayDestination.IMAGE -> { selectedTab = KiraTab.IMAGE; settingsPage = SettingsPage.HOME }
                 OverlayDestination.VOICE -> {
+                    if (selectedTab != KiraTab.SETTINGS) previousTab = selectedTab
                     selectedTab = KiraTab.SETTINGS
                     settingsPage = SettingsPage.VOICE
                 }
@@ -70,6 +72,7 @@ internal fun KiraApp(container: KiraContainer, routeRequest: OverlayLaunchReques
         when (backTarget) {
             BackTarget.SETTINGS_HOME -> settingsPage = SettingsPage.HOME
             BackTarget.CHAT -> selectedTab = KiraTab.CHAT
+            BackTarget.PREVIOUS_TAB -> selectedTab = previousTab.takeUnless { it == KiraTab.SETTINGS } ?: KiraTab.CHAT
             null -> Unit
         }
     }
@@ -84,7 +87,10 @@ internal fun KiraApp(container: KiraContainer, routeRequest: OverlayLaunchReques
                 if(selectedTab!=KiraTab.SETTINGS || settingsPage==SettingsPage.HOME) {
                     NavigationBar(containerColor=KiraPalette.surface) {
                     KiraTab.entries.forEach { tab ->
-                        NavigationBarItem(selected=selectedTab==tab,onClick={selectedTab=tab},
+                        NavigationBarItem(selected=selectedTab==tab,onClick={
+                            if(tab==KiraTab.SETTINGS && selectedTab!=KiraTab.SETTINGS) previousTab=selectedTab
+                            selectedTab=tab
+                        },
                             icon={Text(tab.glyph,fontSize=18.sp,color=if(selectedTab==tab) KiraPalette.primary else KiraPalette.muted)},label={Text(tab.label,fontSize=11.sp)})
                     }
                     }

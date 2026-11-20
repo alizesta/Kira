@@ -12,7 +12,7 @@ class KiraNavigationPolicyTest {
 
     @Test
     fun backFromSettingsHomeReturnsToChat() {
-        assertEquals(BackTarget.CHAT, KiraNavigationPolicy.backTarget(KiraTab.SETTINGS, SettingsPage.HOME))
+        assertEquals(BackTarget.PREVIOUS_TAB, KiraNavigationPolicy.backTarget(KiraTab.SETTINGS, SettingsPage.HOME))
     }
 
     @Test
