@@ -41,6 +41,21 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(s["provider_order"], ["cloudflare", "groq", "mistral", "openrouter", "ollama"])
         self.assertEqual(config.VERSION, "1.1")
 
+    def test_01a_legacy_local_voice_default_migrates_to_gemini_live(self):
+        self.path.write_text(json.dumps({"voice_engine": "local"}), encoding="utf-8")
+        settings = config.load_settings()
+        self.assertEqual(settings["voice_engine"], "gemini_live")
+        self.assertTrue(settings["voice_local_fallback"])
+        self.assertTrue(settings["voice_engine_migrated"])
+
+    def test_01aa_intentional_local_voice_selection_survives_migration(self):
+        self.path.write_text(
+            json.dumps({"voice_engine": "local", "voice_engine_migrated": True}),
+            encoding="utf-8",
+        )
+        settings = config.load_settings()
+        self.assertEqual(settings["voice_engine"], "local")
+
     def test_01b_retired_groq_models_migrate(self):
         for old, new in (("llama-3.3-70b-versatile", "openai/gpt-oss-120b"), ("llama-3.1-8b-instant", "openai/gpt-oss-20b")):
             self.path.write_text(json.dumps({"providers": {"groq": {"model": old}}}), encoding="utf-8")

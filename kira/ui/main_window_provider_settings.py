@@ -156,7 +156,7 @@ class ProviderSettingsController(WindowFeatureController):
         layout.setContentsMargins(8, 8, 8, 8)
         layout.setSpacing(7)
 
-        # API keys in this section are checked for Chat capability only.
+        # This panel validates Chat-model access; a registered Google key is also selectable by the separate Gemini Live audio transport.
         layout.addWidget(self.build_api_boxes())
 
         import_row = QHBoxLayout()
@@ -456,7 +456,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.refresh_unified_models()
 
     def _discover_unified_api_key(self, key, account=""):
-        """Detect chat-model capability only; audio never uses remote APIs."""
+        """Detect Chat model capability; Gemini Live reuses the Google key through its dedicated audio transport."""
         return self.context.services.provider_application_service.detect(key, account=account)
 
     def api_add(self):

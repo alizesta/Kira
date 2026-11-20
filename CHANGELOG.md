@@ -1,12 +1,21 @@
 # Changelog
 
-## 2026-11-20 (voice UX: distinguish continuous STT from true realtime)
+## 2026-11-20 (Gemini Live primary voice + local fallback)
 
-- Removed the misleading Gemini Realtime / live-conversation wording from the local listening control. It is now labelled as continuous local STT, with the actual pipeline explained as microphone → Qwen3-ASR/Whisper → chat model → Piper.
-- Added a persistent status badge to the main chat header: microphone off, continuous local STT, wake-word standby, and active capture/transcription states.
-- Kept the unfinished Gemini bidirectional audio transport explicitly marked as unavailable; local STT is not presented as realtime audio streaming.
+- Added a dedicated Gemini Live audio worker using the official Google Gen AI SDK. Microphone PCM is streamed directly to the Live session and returned PCM audio is played directly to the selected output device; the primary path does not use local STT or Piper.
+- Connected the existing Google provider credentials from Connections without storing a second API key. Added Gemini Live model selection and made Gemini Live the default voice engine.
+- Added automatic fallback after a Gemini Live connection/session failure: the existing local Qwen3-ASR/Whisper → chat model → Piper listener starts after the Live audio streams are released.
+- Added a selectable local-only primary mode, and status reporting for Gemini connection, active Gemini Live, and local fallback.
+- Added unit coverage for Google credential selection, device fallback and migration from the legacy local-only setting. Added `docs/GEMINI_LIVE_FA.md` for setup and operation.
+- Requires the `google-genai` SDK. Automated tests were not run in this environment; hardware-level duplex audio, interruption behaviour and failover still need Windows smoke testing.
+
+
+## 2026-11-20 (voice UX and playback diagnostics; Gemini transport superseded below)
+
+- The local-only listening mode was explicitly labelled as STT so it could not be mistaken for a Gemini Live conversation. The later Gemini Live implementation below supersedes that intermediate UI state.
+- Added a persistent status badge to the main chat header; it is now updated with the actual Gemini Live or local fallback state.
 - Improved Windows Qt playback diagnostics: QMediaPlayer backend errors now include the backend error code, media status and actual error string; invalid media is reported immediately instead of waiting for the playback timeout.
-- Windows playback still requires a real-device smoke test; the diagnostic changes do not claim that silent playback is fixed without that evidence.
+- Windows local Piper playback still requires a real-device smoke test; the diagnostic changes do not claim that silent playback is fixed without that evidence.
 
 
 ## 2026-11-20 (voice playback, local live conversation, Initiative)

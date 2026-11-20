@@ -547,30 +547,41 @@ class RuntimeController(WindowFeatureController):
         self.context.services.voice_application_service.unmute_if_idle()
 
     def _sync_voice_mode_badge(self, state=None):
-        """Show the real microphone pipeline, not a misleading Realtime label."""
+        """Show the active audio transport, not just whether a microphone is open."""
         badge = getattr(self.context.views, "voice_mode_badge", None)
         if badge is None:
             return
-        mic_on = bool(self.context.views.mic_btn.isChecked())
-        wake_on = bool(self.context.views.wake_btn.isChecked())
-        if not mic_on:
-            text = "میکروفن خاموش"
-        elif wake_on and not self.context.state.awake:
-            text = "منتظر کلمه بیدارباش · STT"
-        elif state == "transcribing":
-            text = "در حال تبدیل گفتار · STT"
-        elif state == "hearing":
-            text = "در حال دریافت صدا · STT"
-        elif state == "loading":
-            text = "آماده‌سازی STT…"
+        mode = getattr(self, "_voice_mode", "idle")
+        if mode == "gemini_connecting":
+            text = "در حال اتصال · Gemini Live"
+            tip = "در حال برقراری WebSocket صوتی با Gemini Live."
+        elif mode == "gemini_live":
+            text = "مکالمه صوتی زنده · Gemini"
+            tip = "صدای میکروفن مستقیماً به Gemini Live می‌رود و صدای پاسخ مستقیم پخش می‌شود؛ بدون STT/TTS محلی."
+        elif mode in ("local_fallback", "local_primary"):
+            text = "حالت پشتیبان · STT + Piper" if mode == "local_fallback" else "مکالمه محلی · STT + Piper"
+            tip = ("اتصال Gemini Live قطع شد؛ مسیر محلی Qwen3-ASR/Whisper → مدل چت → Piper فعال است."
+                   if mode == "local_fallback" else
+                   "میکروفن → Qwen3-ASR/Whisper → مدل چت → Piper.")
+        elif mode == "local_stt":
+            if state == "transcribing":
+                text = "در حال تبدیل گفتار · STT محلی"
+            elif state == "hearing":
+                text = "در حال دریافت صدا · STT محلی"
+            elif state == "loading":
+                text = "آماده‌سازی STT محلی…"
+            else:
+                text = "میکروفن فعال · STT محلی"
+            tip = "مسیر فعال: میکروفن → Qwen3-ASR/Whisper → مدل چت → Piper."
+        elif self.context.views.mic_btn.isChecked():
+            text = "میکروفن فعال · STT محلی"
+            tip = "ورودی گفتار از مسیر محلی STT استفاده می‌کند."
         else:
-            text = "شنود پیوسته · STT محلی"
+            text = "میکروفن خاموش"
+            tip = "میکروفن غیرفعال است."
         badge.setText(text)
-        badge.setProperty("listening", mic_on)
-        badge.setToolTip(
-            "مسیر فعال: میکروفن → Qwen3-ASR/Whisper → مدل چت → Piper"
-            if mic_on else "میکروفن غیرفعال است."
-        )
+        badge.setProperty("voiceMode", mode)
+        badge.setToolTip(tip)
 
     def _sync_live_toggle(self, enabled):
         page = getattr(self.context.views, "voice_page", None)
@@ -579,57 +590,234 @@ class RuntimeController(WindowFeatureController):
             previous = toggle.blockSignals(True)
             toggle.setChecked(bool(enabled))
             toggle.blockSignals(previous)
-            toggle.setText("توقف شنود پیوسته" if enabled else "شروع شنود پیوسته")
+            if enabled:
+                toggle.setText("توقف مکالمه صوتی")
+            else:
+                toggle.setText(
+                    "شروع مکالمه محلی"
+                    if page is not None and page.voice_engine.currentData() == "local"
+                    else "شروع مکالمه صوتی Gemini"
+                )
         self._sync_voice_mode_badge()
 
-    def set_live_listening(self, enabled):
-        """Start/stop continuous local STT listening from the Voice page."""
-        if self.context.state._closing:
-            self._sync_live_toggle(False)
-            return
+    def _set_mic_checked(self, enabled):
         mic = self.context.views.mic_btn
-        try:
-            if enabled:
-                # Continuous listening must speak its answers and must not remain in
-                # wake-word sleep mode (which intentionally ignores ordinary speech).
-                wake = self.context.views.wake_btn
-                if wake.isChecked():
-                    previous = wake.blockSignals(True)
-                    wake.setChecked(False)
-                    wake.blockSignals(previous)
-                    self.context.views.wake_timer.stop()
-                    self.context.state.awake = False
-                    self.context.adapters.animator.set_sleeping(False)
-                self.set_voice_enabled(True)
-                if not mic.isChecked():
-                    previous = mic.blockSignals(True)
-                    mic.setChecked(True)
-                    mic.blockSignals(previous)
-                    self.start_listener()
-                self._sync_live_toggle(True)
-            else:
-                if mic.isChecked():
-                    previous = mic.blockSignals(True)
-                    mic.setChecked(False)
-                    mic.blockSignals(previous)
-                    self.stop_listener()
-                self._sync_live_toggle(False)
-        except Exception as exc:
+        previous = mic.blockSignals(True)
+        mic.setChecked(bool(enabled))
+        mic.blockSignals(previous)
+
+    def _selected_gemini_key(self):
+        from ..gemini_live import resolve_google_api_key
+        page = self.context.views.voice_page
+        provider_id = str(page.gemini_provider.currentData() or "").strip()
+        self.context.services.settings["gemini_live_provider"] = provider_id
+        self.save_now()
+        return resolve_google_api_key(self.context.services.settings, provider_id)
+
+    def _start_local_voice_fallback(self, reason="", *, fallback=True):
+        """Start the existing local STT/chat/Piper path as fallback or selected primary."""
+        if not getattr(self, "_voice_session_requested", False):
+            return
+        fallback_enabled = self.context.views.voice_page.local_fallback_chk.isChecked()
+        if fallback and not fallback_enabled:
+            self._voice_session_requested = False
+            self._voice_mode = "idle"
+            self._set_mic_checked(False)
             self._sync_live_toggle(False)
             self.feature_controller("session").on_voice_error(
-                f"شروع/توقف شنود پیوسته ناموفق بود: {type(exc).__name__}: {exc}"
+                "اتصال Gemini Live برقرار نشد و مسیر پشتیبان محلی غیرفعال است."
+                + (f" جزئیات: {reason}" if reason else "")
             )
+            return
+        self._voice_mode = "local_fallback" if fallback else "local_primary"
+        self._set_mic_checked(True)
+        try:
+            self.start_listener()
+            self._sync_live_toggle(True)
+            self._sync_voice_mode_badge()
+            message = ("اتصال Gemini Live قطع شد؛ مکالمه به STT/TTS محلی منتقل شد."
+                       if fallback else "مکالمه صوتی محلی فعال شد.")
+            if reason and fallback:
+                message += f" ({reason})"
+            self.feature_controller("session").add_chat("system", "🎙️ " + message)
+        except Exception as exc:
+            self._voice_session_requested = False
+            self._voice_mode = "idle"
+            self._set_mic_checked(False)
+            self._sync_live_toggle(False)
+            self.feature_controller("session").on_voice_error(
+                f"شروع مسیر پشتیبان محلی ناموفق بود: {type(exc).__name__}: {exc}"
+            )
+
+    def _on_gemini_state(self, state):
+        worker = self.sender()
+        if worker is not None and worker is not getattr(self, "_gemini_worker", None):
+            return
+        if state == "gemini_connecting":
+            self._voice_mode = "gemini_connecting"
+        elif state == "gemini_live":
+            self._voice_mode = "gemini_live"
+        self._sync_voice_mode_badge()
+        self.update_engine_label()
+
+    def _on_gemini_transcript(self, role, text):
+        worker = self.sender()
+        if worker is not None and worker is not getattr(self, "_gemini_worker", None):
+            return
+        value = str(text or "").strip()
+        if value and not self.context.state._closing:
+            self.feature_controller("session").add_chat(
+                "user" if role == "user" else "assistant", value
+            )
+
+    def _on_gemini_failed(self, message):
+        worker = self.sender()
+        if worker is not None and worker is not getattr(self, "_gemini_worker", None):
+            return
+        self._gemini_failure = str(message or "اتصال Gemini Live قطع شد.")
+        self._voice_mode = "gemini_connecting"
+        self._sync_voice_mode_badge()
+
+    def _on_gemini_worker_finished(self):
+        worker = self.sender()
+        if worker is None:
+            return
+        if worker is not getattr(self, "_gemini_worker", None):
+            worker.deleteLater()
+            return
+        self._gemini_worker = None
+        try:
+            worker.deleteLater()
+        except RuntimeError:
+            pass
+        failure, self._gemini_failure = getattr(self, "_gemini_failure", ""), ""
+        if self.context.state._closing:
+            return
+        if self._voice_session_requested and failure:
+            self._start_local_voice_fallback(failure)
+        elif not self._voice_session_requested:
+            self._voice_mode = "idle"
+            self._set_mic_checked(False)
+            self._sync_live_toggle(False)
+        elif self._voice_session_requested and not failure:
+            self._start_local_voice_fallback("نشست Gemini بدون خطای مشخص بسته شد")
+
+    def _launch_gemini_live_worker(self):
+        if not self._voice_session_requested or self.context.state._closing:
+            return
+        page = self.context.views.voice_page
+        try:
+            from ..gemini_live import GeminiLiveWorker
+            api_key = self._selected_gemini_key()
+            if not api_key:
+                self._start_local_voice_fallback("کلید معتبر Google AI در بخش اتصالات انتخاب نشده است")
+                return
+            worker = GeminiLiveWorker(
+                api_key=api_key,
+                model=page.gemini_model.currentText().strip() or "gemini-3.8-live",
+                settings=self.context.services.settings,
+                system_instruction=(
+                    f"You are {self.context.services.character_service.display_name(self.context.services.settings)}. "
+                    "You are a warm, natural voice companion. Speak directly and conversationally in the user's language. "
+                    "Do not describe yourself as a text model or use local text-to-speech."
+                ),
+                parent=self.window,
+            )
+            self._gemini_worker = worker
+            worker.state_changed.connect(self._on_gemini_state)
+            worker.transcript.connect(self._on_gemini_transcript)
+            worker.failed.connect(self._on_gemini_failed)
+            worker.finished.connect(self._on_gemini_worker_finished)
+            worker.start()
+        except Exception as exc:
+            self._gemini_failure = f"{type(exc).__name__}: {exc}"
+            self._start_local_voice_fallback(self._gemini_failure)
+
+    def set_live_listening(self, enabled):
+        """Gemini Live is primary; local STT + Piper is only the configured fallback."""
+        if self.context.state._closing:
+            self._voice_session_requested = False
+            self._pending_gemini_start = False
+            self._sync_live_toggle(False)
+            return
+        if not enabled:
+            self._voice_session_requested = False
+            self._pending_gemini_start = False
+            worker = getattr(self, "_gemini_worker", None)
+            if worker is not None and worker.isRunning():
+                worker.stop()
+            if getattr(self, "_voice_mode", "") in ("local_fallback", "local_primary"):
+                self._set_mic_checked(False)
+                self.stop_listener()
+            self._voice_mode = "idle"
+            self._set_mic_checked(False)
+            self._sync_live_toggle(False)
+            self.update_engine_label()
+            return
+
+        self._voice_session_requested = True
+        wake = self.context.views.wake_btn
+        if wake.isChecked():
+            previous = wake.blockSignals(True)
+            wake.setChecked(False)
+            wake.blockSignals(previous)
+            self.context.views.wake_timer.stop()
+            self.context.state.awake = False
+            self.context.adapters.animator.set_sleeping(False)
+        self.set_voice_enabled(True)
+        self.feature_controller("voice_settings").collect_voice_settings()
+        self.save_now()
+
+        page = self.context.views.voice_page
+        selected_engine = str(page.voice_engine.currentData() or "gemini_live")
+        if selected_engine == "local":
+            self._start_local_voice_fallback(fallback=False)
+            return
+
+        if getattr(self, "_gemini_worker", None) is not None:
+            if self._gemini_worker.isRunning():
+                self._sync_live_toggle(True)
+                return
+            self._gemini_worker = None
+
+        # Stop any local listener first. Its device handle must be released before
+        # the Gemini worker opens its own full-duplex PortAudio streams.
+        service = self.context.services.voice_application_service
+        if service.listener is not None:
+            self.stop_listener()
+        self._set_mic_checked(True)
+        self._voice_mode = "gemini_connecting"
+        self._gemini_failure = ""
+        self._sync_live_toggle(True)
+        self._sync_voice_mode_badge()
+        stopping = service.stopping_listener
+        if stopping is not None and stopping.is_running():
+            # A queued local-listener restart must not race the Gemini audio streams.
+            service.restart_after_stop = False
+            self._pending_gemini_start = True
+            return
+        self._pending_gemini_start = False
+        self._launch_gemini_live_worker()
 
     def toggle_mic(self):
         if self.context.views.mic_btn.isChecked():
-            self._sync_live_toggle(True)
+            self._pending_gemini_start = False
+            self._voice_mode = "local_stt"
+            self._sync_live_toggle(False)
             self.start_listener()
         else:
+            self._voice_session_requested = False
+            self._pending_gemini_start = False
+            worker = getattr(self, "_gemini_worker", None)
+            if worker is not None and worker.isRunning():
+                worker.stop()
+            self._voice_mode = "idle"
             self._sync_live_toggle(False)
             if self.context.views.wake_btn.isChecked():
                 self.context.views.wake_btn.setChecked(False)
                 self.toggle_wake()
             self.stop_listener()
+        self._sync_voice_mode_badge()
 
     def _create_voice_listener(self):
         return Listener(
@@ -652,9 +840,16 @@ class RuntimeController(WindowFeatureController):
     @Slot(object, bool, bool)
     def _on_voice_listener_finished(self, listener, was_current, restart_requested):
         if was_current:
+            if not restart_requested and getattr(self, "_voice_mode", "") in ("local_fallback", "local_primary"):
+                self._voice_session_requested = False
+                self._voice_mode = "idle"
             self.context.views.mic_btn.setChecked(False)
             self._sync_live_toggle(False)
+            self._sync_voice_mode_badge()
         self.update_engine_label()
+        if getattr(self, "_pending_gemini_start", False) and self._voice_session_requested and not self.context.state._closing:
+            self._pending_gemini_start = False
+            QTimer.singleShot(0, self._launch_gemini_live_worker)
         if self.context.state._closing:
             return
         if restart_requested and self.context.views.mic_btn.isChecked():
@@ -664,6 +859,9 @@ class RuntimeController(WindowFeatureController):
 
     @Slot(str)
     def on_listener_error(self, msg):
+        if getattr(self, "_voice_mode", "") in ("local_fallback", "local_primary"):
+            self._voice_session_requested = False
+            self._voice_mode = "idle"
         self.feature_controller("session").add_chat("error", msg)
         self.context.views.mic_btn.setChecked(False)
         self._sync_live_toggle(False)
@@ -677,6 +875,8 @@ class RuntimeController(WindowFeatureController):
 
     @Slot(str)
     def on_listener_state(self, state):
+        if getattr(self, "_voice_mode", "") not in ("local_fallback", "local_primary", "gemini_live", "gemini_connecting"):
+            self._voice_mode = "local_stt"
         self._sync_voice_mode_badge(state)
         if state == "listening":
             self.update_engine_label()
@@ -685,6 +885,13 @@ class RuntimeController(WindowFeatureController):
             self.feature_controller("session").set_status({"loading": "st_loading", "hearing": "st_hearing", "transcribing": "st_transcribing"}.get(state, "st_ready"))
 
     def update_engine_label(self):
+        mode = getattr(self, "_voice_mode", "idle")
+        if mode == "gemini_connecting":
+            self.context.views.voice_page.engine_lbl.setText("Gemini Live · در حال اتصال")
+            return
+        if mode == "gemini_live":
+            self.context.views.voice_page.engine_lbl.setText("Gemini Live · Cloud")
+            return
         eng = getattr(self.context.listener, "engine", None) if self.context.listener else None
         via = getattr(self.context.listener, "via", "") if self.context.listener else ""
         if via == "local:qwen3-asr":
@@ -773,6 +980,7 @@ class RuntimeController(WindowFeatureController):
     def _running_background_workers(self):
         """Return owned threads and processes that must finish before Qt destroys the window."""
         workers = list(self.context.state._provider_workers)
+        workers.append(getattr(self, "_gemini_worker", None))
         for session in getattr(self.context.state, "sessions", {}).values():
             workers.extend((
                 getattr(session, "worker", None),
@@ -896,6 +1104,11 @@ class RuntimeController(WindowFeatureController):
                 return
         # ChatApplicationService owns cancellation and persists partial output once.
         self.context.state._closing = True
+        self._voice_session_requested = False
+        self._pending_gemini_start = False
+        gemini_worker = getattr(self, "_gemini_worker", None)
+        if gemini_worker is not None and gemini_worker.isRunning():
+            gemini_worker.stop()
         self._clear_chat_coordinator_queues()
         if getattr(self.context.views, "code_chat", None) is not None:
             self.context.views.code_chat.shutdown()

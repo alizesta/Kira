@@ -20,7 +20,7 @@ class ChatHeader(QWidget):
         self.voice_mode_badge = QLabel("میکروفن خاموش")
         self.voice_mode_badge.setObjectName("voiceModeBadge")
         self.voice_mode_badge.setAlignment(Qt.AlignCenter)
-        self.voice_mode_badge.setToolTip("وضعیت واقعی ورودی گفتار؛ حالت فعال از STT محلی استفاده می‌کند.")
+        self.voice_mode_badge.setToolTip("وضعیت واقعی مکالمه صوتی: Gemini Live یا مسیر پشتیبان محلی STT/TTS.")
         self.voice_mode_badge.setStyleSheet(
             "QLabel#voiceModeBadge { background: rgba(12, 20, 43, 0.92); "
             "border: 1px solid rgba(105, 229, 255, 0.55); border-radius: 9px; "

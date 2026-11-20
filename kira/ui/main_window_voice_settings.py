@@ -837,12 +837,15 @@ class VoiceSettingsController(WindowFeatureController):
         page.refresh_gemini_providers(self.context.services.settings)
 
     def refresh_voice_caps(self):
-        """Describe the selected realtime/local voice policy without implying the Live transport is already active."""
+        """Refresh Google credentials and describe the actual Gemini-primary/local-fallback pipeline."""
         page = self.context.views.voice_page
-        page.voice_caps_note.setText("ورودی/خروجی محلی: Qwen3-ASR یا Whisper به‌همراه Piper؛ بدون سرویس Cloud STT/TTS.")
+        page.refresh_gemini_providers(self.context.services.settings)
+        page.voice_caps_note.setText(
+            "Gemini Live ورودی و خروجی صوتی مستقیم دارد؛ STT/TTS محلی فقط در حالت محلی یا هنگام قطع Live استفاده می‌شود."
+        )
         page.live_config_note.setText(
             "کلید Google از بخش اتصالات خوانده می‌شود و کلید جداگانه‌ای اینجا ذخیره نمی‌شود. "
-            "پشتیبان محلی از همان مدل‌های STT/TTS فعلی استفاده می‌کند. اتصال اجرایی نشست Live در مرحله‌ی بعدی Voice runtime انجام می‌شود."
+            "صدای زنده با Gemini پردازش می‌شود؛ در صورت قطع اتصال، مسیر محلی Qwen3-ASR/Whisper + مدل چت + Piper فعال می‌شود."
         )
 
     def collect_voice_settings(self):

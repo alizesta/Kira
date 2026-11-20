@@ -46,6 +46,7 @@ DEFAULTS = {
     "web_max_redirects": 4,              # redirects followed per page (each hop is re-checked against SSRF rules)
     "speak_replies": True,
     "voice_engine": "gemini_live",       # gemini_live = primary bidirectional voice; local = existing Qwen/Whisper + Piper
+    "voice_engine_migrated": True,       # one-time migration guard; preserves an intentional local-primary choice
     "gemini_live_provider": "",          # provider id from the existing Google API Manager; never stores a second API key
     "gemini_live_model": "gemini-3.8-live",
     "voice_local_fallback": True,        # retain existing local STT/TTS as the fallback path
@@ -193,7 +194,14 @@ def load_settings():
             LOAD_WARNINGS.append(f"فایل تنظیمات خراب بود و خوانده نشد ({exc}). با تنظیمات پیش‌فرض اجرا شد.{where}")
             return deepcopy(DEFAULTS)
         merged = {**DEFAULTS, **saved}
-        # Remove obsolete remote/edge voice selections; speech is now local Piper/Qwen/Whisper only.
+        # Earlier Voice pages exposed only the local pipeline and wrote "local"
+        # automatically. That legacy value must not silently override the new
+        # Gemini Live primary + local fallback default.
+        if not bool(saved.get("voice_engine_migrated", False)):
+            if str(saved.get("voice_engine") or "").strip().lower() == "local":
+                merged["voice_engine"] = "gemini_live"
+            merged["voice_engine_migrated"] = True
+        # Remove obsolete cloud TTS voice selections; Gemini Live is primary and local Piper remains fallback.
         for stale_voice_key in (
             "voice_fa", "voice_en", "voice_ja", "voice_pitch", "voice_style", "voice_style_degree",
             "cloud_voice_provider", "cloud_voice_id", "cloud_voices",
