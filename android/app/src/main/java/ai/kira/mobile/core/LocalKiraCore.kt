@@ -2,7 +2,6 @@ package ai.kira.mobile.core
 
 import ai.kira.mobile.domain.model.ProviderRoute
 import ai.kira.mobile.domain.policy.FreeModelPolicy
-import ai.kira.mobile.application.routing.FreeRouteSelector
 
 import android.content.ContentValues
 import android.content.Context
@@ -113,16 +112,8 @@ class LocalKiraCore(context:Context) {
         return out.filter { FreeModelPolicy.isVerifiedFreeChatModel(providerId,it) }
     }
 
-    fun recommendedFreeModel(providerId:String,models:List<String>):String {
-        require(models.isNotEmpty()) { "فهرست مدل‌های رایگان خالی است." }
-        val priorities=when(providerId) {
-            "gemini" -> listOf("gemini-3.8-flash","gemini-2.5-flash","gemini-2.5-flash-lite")
-            "mistral" -> listOf("labs-leanstral-2603")
-            "openrouter" -> listOf("nvidia/nemotron-3-ultra:free","minimax/minimax-m3:free","qwen/qwen3.5-32b:free","google/gemma-4-26b-a4b-it:free")
-            else -> emptyList()
-        }
-        return priorities.firstOrNull { it in models } ?: models.first()
-    }
+    fun recommendedFreeModel(providerId:String,models:List<String>):String =
+        FreeModelPolicy.recommendedModel(providerId,models)
 
 
     /** Detects the provider from a key fingerprint, then verifies it against the live model endpoint. */
@@ -520,7 +511,7 @@ class LocalKiraCore(context:Context) {
         require(text.isNotBlank()) { "پیام خالی است." }
         db.execSQL("INSERT INTO messages(character_id,role,content,route,created_at) VALUES(?,?,?,?,?)",arrayOf<Any>(characterId,"user",text.trim(),"",System.currentTimeMillis()))
         val configured=providers()
-        val activeRoutes=FreeRouteSelector.select(configured.map { provider ->
+        val activeRoutes=FreeModelPolicy.selectRoutes(configured.map { provider ->
             ProviderRoute(
                 providerId=provider.id,
                 modelId=provider.model,

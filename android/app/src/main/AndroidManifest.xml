@@ -8,6 +8,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
 
     <application
+        android:name=".KiraMobileApplication"
         android:allowBackup="false"
         android:label="Kira"
         android:supportsRtl="true"
