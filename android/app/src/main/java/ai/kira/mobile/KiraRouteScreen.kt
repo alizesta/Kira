@@ -28,9 +28,18 @@ internal fun KiraRouteScreen(service: ProviderApplicationService) {
 
     DisposableEffect(executor) { onDispose { executor.shutdownNow() } }
 
-    fun refreshRoutes() {
-        routes.clear()
-        routes.addAll(service.providers())
+    fun refreshRoutesAsync() {
+        executor.execute {
+            try {
+                val loaded = service.providers()
+                handler.post {
+                    routes.clear()
+                    routes.addAll(loaded)
+                }
+            } catch (error: Exception) {
+                handler.post { status = error.message ?: "بازیابی Routeها ناموفق بود." }
+            }
+        }
     }
 
     fun applyModelResult(result: ai.kira.mobile.domain.model.ProviderOperationResult, message: String) {
@@ -38,7 +47,7 @@ internal fun KiraRouteScreen(service: ProviderApplicationService) {
         selectedModel = result.provider.modelId
         models.clear()
         models.addAll(result.availableModels)
-        refreshRoutes()
+        refreshRoutesAsync()
         status = message
     }
 
@@ -79,12 +88,24 @@ internal fun KiraRouteScreen(service: ProviderApplicationService) {
     }
 
     LaunchedEffect(service) {
-        refreshRoutes()
-        val selected = routes.firstOrNull { it.enabled } ?: routes.firstOrNull()
-        if (selected != null) {
-            providerId = selected.providerId
-            selectedModel = selected.modelId
-            models.addAll(service.availableModels(selected.providerId))
+        executor.execute {
+            try {
+                val loadedRoutes = service.providers()
+                val selected = loadedRoutes.firstOrNull { it.enabled } ?: loadedRoutes.firstOrNull()
+                val available = selected?.let { service.availableModels(it.providerId) }.orEmpty()
+                handler.post {
+                    routes.clear()
+                    routes.addAll(loadedRoutes)
+                    if (selected != null) {
+                        providerId = selected.providerId
+                        selectedModel = selected.modelId
+                        models.clear()
+                        models.addAll(available)
+                    }
+                }
+            } catch (error: Exception) {
+                handler.post { status = error.message ?: "بازیابی اتصال‌ها ناموفق بود." }
+            }
         }
     }
 

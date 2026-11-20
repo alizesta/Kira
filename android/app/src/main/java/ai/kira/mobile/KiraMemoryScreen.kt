@@ -32,10 +32,31 @@ internal fun KiraMemoryScreen(container: KiraContainer) {
     var status by remember { mutableStateOf("حافظه بلندمدت روی همین دستگاه ذخیره می‌شود.") }
     DisposableEffect(executor) { onDispose { executor.shutdownNow() } }
 
+    var loadSequence by remember { mutableLongStateOf(0L) }
     fun refresh() {
-        rows.clear()
-        rows.addAll(assistant.memories(character).map { LocalMemoryRow(it.id,it.text) })
-        status="حافظه محلی بازیابی شد."
+        val requestedCharacter = character
+        val sequence = ++loadSequence
+        busy = true
+        executor.execute {
+            try {
+                val loaded = assistant.memories(requestedCharacter).map { LocalMemoryRow(it.id,it.text) }
+                handler.post {
+                    if (sequence == loadSequence && character == requestedCharacter) {
+                        rows.clear()
+                        rows.addAll(loaded)
+                        status = "حافظه محلی بازیابی شد."
+                    }
+                    if (sequence == loadSequence) busy = false
+                }
+            } catch (error: Exception) {
+                handler.post {
+                    if (sequence == loadSequence) {
+                        status = error.message ?: "بازیابی حافظه ناموفق بود."
+                        busy = false
+                    }
+                }
+            }
+        }
     }
     LaunchedEffect(character) { refresh() }
 
@@ -53,10 +74,26 @@ internal fun KiraMemoryScreen(container: KiraContainer) {
                 val value=note.trim()
                 if(value.isNotBlank() && !busy) {
                     busy=true
+                    val requestedCharacter = character
                     executor.execute {
-                        try { assistant.addMemory(character,value); val loaded=assistant.memories(character).map { LocalMemoryRow(it.id,it.text) }
-                            handler.post { rows.clear();rows.addAll(loaded);note="";status="در حافظه محلی ذخیره شد.";busy=false }
-                        } catch(e:Exception) { handler.post { status=e.message ?: "ذخیره ناموفق بود.";busy=false } }
+                        try {
+                            assistant.addMemory(requestedCharacter,value)
+                            val loaded=assistant.memories(requestedCharacter).map { LocalMemoryRow(it.id,it.text) }
+                            handler.post {
+                                if (character == requestedCharacter) {
+                                    rows.clear()
+                                    rows.addAll(loaded)
+                                    note=""
+                                    status="در حافظه محلی ذخیره شد."
+                                }
+                                busy=false
+                            }
+                        } catch(error:Exception) {
+                            handler.post {
+                                status=error.message ?: "ذخیره ناموفق بود."
+                                busy=false
+                            }
+                        }
                     }
                 }
             },enabled=!busy && note.isNotBlank(),colors=ButtonDefaults.buttonColors(containerColor=Color(0xFF7661D8))) { Text("ثبت") }
@@ -73,9 +110,26 @@ internal fun KiraMemoryScreen(container: KiraContainer) {
                         TextButton(onClick={
                             if(!busy) {
                                 busy=true
-                                executor.execute { assistant.deleteMemory(row.id); val loaded=assistant.memories(character).map { LocalMemoryRow(it.id,it.text) }
-                                    handler.post { rows.clear();rows.addAll(loaded);status="یادداشت حذف شد.";busy=false }
+                                val requestedCharacter = character
+                        executor.execute {
+                            try {
+                                assistant.deleteMemory(row.id)
+                                val loaded = assistant.memories(requestedCharacter).map { LocalMemoryRow(it.id,it.text) }
+                                handler.post {
+                                    if (character == requestedCharacter) {
+                                        rows.clear()
+                                        rows.addAll(loaded)
+                                        status = "یادداشت حذف شد."
+                                    }
+                                    busy = false
                                 }
+                            } catch (error: Exception) {
+                                handler.post {
+                                    status = error.message ?: "حذف یادداشت ناموفق بود."
+                                    busy = false
+                                }
+                            }
+                        }
                             }
                         },enabled=!busy) { Text("حذف") }
                     }

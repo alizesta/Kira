@@ -1,8 +1,13 @@
 package ai.kira.mobile
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -35,6 +40,7 @@ import ai.kira.mobile.application.navigation.SettingsPage
 import ai.kira.mobile.application.assistant.OverlayRouteParser
 import ai.kira.mobile.ui.theme.KiraTheme
 import ai.kira.mobile.ui.theme.KiraPalette
+import java.util.concurrent.Executors
 
 internal data class OverlayLaunchRequest(val route: String, val text: String, val sequence: Long)
 
@@ -51,7 +57,21 @@ internal fun KiraApp(
     var pendingChatContext by rememberSaveable { mutableStateOf("") }
     var settingsPage by rememberSaveable { mutableStateOf(SettingsPage.HOME) }
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
+    var notificationPermissionGranted by remember {
+        mutableStateOf(
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    var notificationPermissionDenied by remember { mutableStateOf(false) }
     var overlayStarted by remember { mutableStateOf(overlayRunning) }
+
+    fun startOverlayService() {
+        val intent = Intent(context, AiAssistantOverlayService::class.java)
+            .setAction(AiAssistantOverlayService.ACTION_START)
+        ContextCompat.startForegroundService(context, intent)
+        overlayStarted = true
+    }
 
     LaunchedEffect(overlayRunning) {
         overlayStarted = overlayRunning
@@ -88,6 +108,20 @@ internal fun KiraApp(
     val overlaySettingsLauncher=rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         hasOverlayPermission=Settings.canDrawOverlays(context)
     }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationPermissionGranted = granted
+        notificationPermissionDenied = !granted
+    }
+    val notificationSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        notificationPermissionGranted =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        notificationPermissionDenied = !notificationPermissionGranted
+    }
 
     KiraTheme {
         Scaffold(
@@ -120,15 +154,30 @@ internal fun KiraApp(
                         SettingsPage.ASSISTANT -> SettingsSubpage("دستیار و ویس",{settingsPage=SettingsPage.HOME}) {
                             AssistantScreen(
                                 hasOverlayPermission=hasOverlayPermission,
+                                notificationPermissionGranted=notificationPermissionGranted,
+                                notificationPermissionDenied=notificationPermissionDenied,
                                 overlayStarted=overlayStarted,
+                                onRequestNotificationPermission={
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                },
+                                onOpenNotificationSettings={
+                                    val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                        .putExtra("android.provider.extra.APP_PACKAGE", context.packageName)
+                                    notificationSettingsLauncher.launch(intent)
+                                },
                                 onRequestOverlayPermission={
                                     val intent=Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+context.packageName))
                                     overlaySettingsLauncher.launch(intent)
                                 },
                                 onStartOverlay={
-                                    val intent=Intent(context,AiAssistantOverlayService::class.java).setAction(AiAssistantOverlayService.ACTION_START)
-                                    ContextCompat.startForegroundService(context,intent)
-                                    overlayStarted=true
+                                    // Notification permission controls drawer visibility, not the
+                                    // user's ability to start the explicit foreground overlay.
+                                    startOverlayService()
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationPermissionGranted) {
+                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    }
                                 },
                                 onStopOverlay={
                                     context.startService(Intent(context,AiAssistantOverlayService::class.java).setAction(AiAssistantOverlayService.ACTION_STOP))
@@ -164,7 +213,21 @@ private fun SettingsSubpage(title:String,onBack:()->Unit,content:@Composable ()-
 
 @Composable
 private fun KiraSettingsHome(container:KiraContainer,onRoute:()->Unit,onMemory:()->Unit,onAssistant:()->Unit,onSkills:()->Unit,onVoice:()->Unit) {
-    val skillCount=remember(container) { container.installedSkillCount() }
+    var skillCount by remember(container) { mutableIntStateOf(0) }
+    var skillCountError by remember(container) { mutableStateOf("") }
+    val executor = remember(container) { Executors.newSingleThreadExecutor() }
+    val handler = remember { Handler(Looper.getMainLooper()) }
+    DisposableEffect(executor) { onDispose { executor.shutdownNow() } }
+    LaunchedEffect(container) {
+        executor.execute {
+            try {
+                val count = container.installedSkillCount()
+                handler.post { skillCount = count; skillCountError = "" }
+            } catch (error: Exception) {
+                handler.post { skillCountError = error.message ?: "بازیابی تعداد مهارت‌ها ناموفق بود." }
+            }
+        }
+    }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Text("تنظیمات Kira",color=Color(0xFFF4F2FA),fontSize=25.sp,fontWeight=FontWeight.Bold)
         Text("هسته و داده‌ها روی همین دستگاه نگهداری می‌شوند.",color=Color(0xFF9BA5B8),fontSize=12.sp)
@@ -176,6 +239,7 @@ private fun KiraSettingsHome(container:KiraContainer,onRoute:()->Unit,onMemory:(
         SettingsCard("هسته محلی","SQLite محلی و رمزنگاری کلیدها",{})
         Text("کتابخانه: "+container.libraryDirectory(),color=Color(0xFF7F8A9E),fontSize=10.sp)
         Text("مهارت‌های نصب‌شده: "+skillCount,color=Color(0xFF7F8A9E),fontSize=11.sp)
+        if (skillCountError.isNotBlank()) Text(skillCountError,color=Color(0xFFFF8A9A),fontSize=10.sp)
         Text("API Keyها با Android Keystore رمزنگاری می‌شوند و مستقیماً از گوشی به Provider ارسال می‌شوند.",color=Color(0xFF7F8A9E),fontSize=11.sp,lineHeight=17.sp)
     }
 }
@@ -219,7 +283,11 @@ private fun KiraCharactersScreen(selected:String,onSelect:(String)->Unit) {
 @Composable
 private fun AssistantScreen(
     hasOverlayPermission:Boolean,
+    notificationPermissionGranted:Boolean,
+    notificationPermissionDenied:Boolean,
     overlayStarted:Boolean,
+    onRequestNotificationPermission:()->Unit,
+    onOpenNotificationSettings:()->Unit,
     onRequestOverlayPermission:()->Unit,
     onStartOverlay:()->Unit,
     onStopOverlay:()->Unit
@@ -231,9 +299,27 @@ private fun AssistantScreen(
             hasOverlayPermission -> "مجوز آماده است"
             else -> "نیازمند مجوز نمایش روی برنامه‌ها"
         }) {
-            if(!hasOverlayPermission) Button(onClick=onRequestOverlayPermission,modifier=Modifier.fillMaxWidth()) { Text("دادن مجوز") }
-            else if(!overlayStarted) Button(onClick=onStartOverlay,modifier=Modifier.fillMaxWidth()) { Text("فعال‌کردن حباب") }
-            else OutlinedButton(onClick=onStopOverlay,modifier=Modifier.fillMaxWidth()) { Text("خاموش‌کردن حباب") }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationPermissionGranted) {
+                Text(
+                    "برای نمایش اعلان دائمی سرویس و کنترل خاموش‌کردن آن، مجوز اعلان‌ها لازم است.",
+                    color=Color(0xFFFFC477),fontSize=11.sp,lineHeight=17.sp
+                )
+                Button(onClick=onRequestNotificationPermission,modifier=Modifier.fillMaxWidth()) {
+                    Text("درخواست مجوز اعلان‌ها")
+                }
+                if (notificationPermissionDenied) {
+                    OutlinedButton(onClick=onOpenNotificationSettings,modifier=Modifier.fillMaxWidth()) {
+                        Text("بازکردن تنظیمات اعلان‌ها")
+                    }
+                }
+            }
+            if (!hasOverlayPermission) {
+                Button(onClick=onRequestOverlayPermission,modifier=Modifier.fillMaxWidth()) { Text("دادن مجوز نمایش روی برنامه‌ها") }
+            } else if (!overlayStarted) {
+                Button(onClick=onStartOverlay,modifier=Modifier.fillMaxWidth()) { Text("فعال‌کردن حباب") }
+            } else {
+                OutlinedButton(onClick=onStopOverlay,modifier=Modifier.fillMaxWidth()) { Text("خاموش‌کردن حباب") }
+            }
         }
         InfoPanel("تعامل صوتی","تماس صوتی Real-time با Gemini Live از بخش مستقل «تماس صوتی زنده» در تنظیمات در دسترس است.","فعال") {}
         InfoPanel("درک محتوای صفحه","تحلیل صفحه فقط با اجازه صریح کاربر و پس از پیاده‌سازی نشست امن فعال می‌شود.","فعلاً غیرفعال") {}

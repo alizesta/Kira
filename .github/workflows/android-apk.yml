@@ -34,19 +34,43 @@ jobs:
           packages: platform-tools
 
       - name: Install required Android SDK packages
-        run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
+        run: |
+          set -euxo pipefail
+          sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
+          PLATFORM_DIR="$SDK_ROOT/platforms"
+          test -f "$PLATFORM_DIR/android-37.0/android.jar"
+          # SDK Manager publishes API 37 as android-37.0, while AGP 9.5
+          # resolves compileSdk 37 using the android-37 hash directory.
+          if [ ! -e "$PLATFORM_DIR/android-37" ]; then
+            ln -s android-37.0 "$PLATFORM_DIR/android-37"
+          fi
+          test -f "$PLATFORM_DIR/android-37/android.jar"
 
       - name: Run JVM unit tests
         working-directory: android
         run: |
+          set -o pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon :app:testDebugUnitTest
+          ./gradlew --no-daemon --stacktrace :app:testDebugUnitTest 2>&1 | tee ../android-unit-tests.log
 
       - name: Build APK
         working-directory: android
         run: |
+          set -o pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon :app:assembleDebug
+          ./gradlew --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee ../android-apk-build.log
+
+      - name: Upload Android build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kira-Android-build-logs
+          path: |
+            android-unit-tests.log
+            android-apk-build.log
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
