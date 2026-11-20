@@ -22,7 +22,7 @@ class ConsoleLogCaptureTests(unittest.TestCase):
         original_stdout = sys.stdout
         try:
             capture.install()
-            sys.stdout.write("startup console marker\\n")
+            sys.stdout.write("startup console marker\n")
             output = QPlainTextEdit()
             capture.attach(output)
             self.assertIn("startup console marker", output.toPlainText())
