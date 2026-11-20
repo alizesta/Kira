@@ -546,10 +546,60 @@ class RuntimeController(WindowFeatureController):
     def unmute(self):
         self.context.services.voice_application_service.unmute_if_idle()
 
+    def _sync_live_toggle(self, enabled):
+        page = getattr(self.context.views, "voice_page", None)
+        toggle = getattr(page, "live_toggle", None) if page is not None else None
+        if toggle is None or toggle.isChecked() == bool(enabled):
+            return
+        previous = toggle.blockSignals(True)
+        toggle.setChecked(bool(enabled))
+        toggle.blockSignals(previous)
+        toggle.setText("توقف مکالمه زنده" if enabled else "شروع مکالمه زنده")
+
+    def set_live_listening(self, enabled):
+        """Start/stop the actual local full-duplex conversation loop from the Voice page."""
+        if self.context.state._closing:
+            self._sync_live_toggle(False)
+            return
+        mic = self.context.views.mic_btn
+        try:
+            if enabled:
+                # Live conversation must speak its answers and must not remain in
+                # wake-word sleep mode (which intentionally ignores ordinary speech).
+                wake = self.context.views.wake_btn
+                if wake.isChecked():
+                    previous = wake.blockSignals(True)
+                    wake.setChecked(False)
+                    wake.blockSignals(previous)
+                    self.context.views.wake_timer.stop()
+                    self.context.state.awake = False
+                    self.context.adapters.animator.set_sleeping(False)
+                self.set_voice_enabled(True)
+                if not mic.isChecked():
+                    previous = mic.blockSignals(True)
+                    mic.setChecked(True)
+                    mic.blockSignals(previous)
+                    self.start_listener()
+                self._sync_live_toggle(True)
+            else:
+                if mic.isChecked():
+                    previous = mic.blockSignals(True)
+                    mic.setChecked(False)
+                    mic.blockSignals(previous)
+                    self.stop_listener()
+                self._sync_live_toggle(False)
+        except Exception as exc:
+            self._sync_live_toggle(False)
+            self.feature_controller("session").on_voice_error(
+                f"شروع/توقف مکالمه زنده ناموفق بود: {type(exc).__name__}: {exc}"
+            )
+
     def toggle_mic(self):
         if self.context.views.mic_btn.isChecked():
+            self._sync_live_toggle(True)
             self.start_listener()
         else:
+            self._sync_live_toggle(False)
             if self.context.views.wake_btn.isChecked():
                 self.context.views.wake_btn.setChecked(False)
                 self.toggle_wake()
@@ -577,6 +627,7 @@ class RuntimeController(WindowFeatureController):
     def _on_voice_listener_finished(self, listener, was_current, restart_requested):
         if was_current:
             self.context.views.mic_btn.setChecked(False)
+            self._sync_live_toggle(False)
         self.update_engine_label()
         if self.context.state._closing:
             return
@@ -589,6 +640,7 @@ class RuntimeController(WindowFeatureController):
     def on_listener_error(self, msg):
         self.feature_controller("session").add_chat("error", msg)
         self.context.views.mic_btn.setChecked(False)
+        self._sync_live_toggle(False)
         if self.context.views.wake_btn.isChecked():
             self.context.views.wake_btn.setChecked(False)
             self.context.adapters.animator.set_sleeping(False)
