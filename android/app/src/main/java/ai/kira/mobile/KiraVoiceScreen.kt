@@ -324,9 +324,9 @@ internal fun KiraVoiceScreen(container: KiraContainer, onUseInChat: (String) -> 
             .verticalScroll(rememberScrollState()).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("تماس صوتی زنده", color = KiraPalette.onBackground, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+        Text("صدا و تشخیص گفتار", color = KiraPalette.onBackground, fontSize = 25.sp, fontWeight = FontWeight.Bold)
         Text(
-            "مکالمه دوطرفه مستقیم با Gemini Live؛ صدا به‌صورت PCM زنده ارسال و پاسخ صوتی هم‌زمان پخش می‌شود. هزینه و محدودیت حساب Google را پیش از تماس بررسی کن.",
+            "Gemini Live برای مکالمه دوطرفه و شنوا برای تشخیص فارسی کاملاً آفلاین در دسترس است. مسیر شنوا پس از دانلود مدل، صدا را فقط روی خود گوشی پردازش می‌کند.",
             color = KiraPalette.muted, fontSize = 12.sp, lineHeight = 18.sp
         )
 
@@ -404,7 +404,7 @@ internal fun KiraVoiceScreen(container: KiraContainer, onUseInChat: (String) -> 
                         enabled = !shenavaBusy && !shenavaRecording,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("فرستادن متن به چت")
+                        Text("انتقال متن به کادر چت")
                     }
                 }
             }
