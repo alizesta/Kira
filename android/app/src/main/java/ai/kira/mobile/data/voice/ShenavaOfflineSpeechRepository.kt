@@ -266,25 +266,35 @@ class SherpaShenavaOfflineSpeechRepository(context: Context) : ShenavaOfflineSpe
 
         if (audioRecord == null) {
             synchronized(recordedAudioLock) {
-                val emptyOrPending = recordedAudio.toByteArray()
+                val pending = recordedAudio.toByteArray()
                 recordedAudio.reset()
-                return emptyOrPending
+                return pending
             }
         }
 
-        runCatching {
-            if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                audioRecord.stop()
+        var stopFailure: IOException? = null
+        try {
+            runCatching {
+                if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                    audioRecord.stop()
+                }
             }
-        }
-        if (thread != null && thread !== Thread.currentThread()) {
-            thread.join(RECORDING_STOP_TIMEOUT_MS)
-            if (thread.isAlive) {
-                audioRecord.release()
-                throw IOException("توقف ضبط میکروفون کامل نشد.")
+            if (thread != null && thread !== Thread.currentThread()) {
+                try {
+                    thread.join(RECORDING_STOP_TIMEOUT_MS)
+                } catch (interrupted: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    stopFailure = IOException("توقف ضبط میکروفون به‌دلیل لغو عملیات کامل نشد.", interrupted)
+                }
+                if (thread.isAlive && stopFailure == null) {
+                    stopFailure = IOException("توقف ضبط میکروفون کامل نشد.")
+                }
             }
+        } finally {
+            // Release the hardware even if joining the capture thread was interrupted or timed out.
+            runCatching { audioRecord.release() }
         }
-        audioRecord.release()
+        stopFailure?.let { throw it }
 
         return synchronized(recordedAudioLock) {
             val bytes = recordedAudio.toByteArray()
