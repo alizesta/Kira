@@ -145,7 +145,7 @@ private fun SettingsSubpage(title:String,onBack:()->Unit,content:@Composable ()-
 
 @Composable
 private fun KiraSettingsHome(container:KiraContainer,onRoute:()->Unit,onMemory:()->Unit,onAssistant:()->Unit,onSkills:()->Unit,onVoice:()->Unit) {
-    val skills=remember(container) { container.installedSkills() }
+    val skillCount=remember(container) { container.installedSkillCount() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Text("تنظیمات Kira",color=Color(0xFFF4F2FA),fontSize=25.sp,fontWeight=FontWeight.Bold)
         Text("هسته و داده‌ها روی همین دستگاه نگهداری می‌شوند.",color=Color(0xFF9BA5B8),fontSize=12.sp)
@@ -156,7 +156,7 @@ private fun KiraSettingsHome(container:KiraContainer,onRoute:()->Unit,onMemory:(
         SettingsCard("مهارت‌ها و APIها","نصب، فعال‌سازی جداگانه برای شخصیت‌ها و اتصال APIهای واقعی",onSkills)
         SettingsCard("هسته محلی","SQLite محلی و رمزنگاری کلیدها",{})
         Text("کتابخانه: "+container.libraryDirectory(),color=Color(0xFF7F8A9E),fontSize=10.sp)
-        Text("مهارت‌های نصب‌شده: "+skills.size,color=Color(0xFF7F8A9E),fontSize=11.sp)
+        Text("مهارت‌های نصب‌شده: "+skillCount,color=Color(0xFF7F8A9E),fontSize=11.sp)
         Text("API Keyها با Android Keystore رمزنگاری می‌شوند و مستقیماً از گوشی به Provider ارسال می‌شوند.",color=Color(0xFF7F8A9E),fontSize=11.sp,lineHeight=17.sp)
     }
 }

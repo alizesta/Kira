@@ -39,7 +39,7 @@ class KiraContainer(context: Context) {
 
     fun libraryDirectory(): String = localCore.libraryDirectory()
 
-    fun installedSkills(): List<String> = localCore.installedSkills()
+    fun installedSkillCount(): Int = localCore.installedSkills().size
 
     fun createGeminiLiveSession(
         apiKey: String,
