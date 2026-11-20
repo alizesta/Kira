@@ -583,14 +583,14 @@ class RuntimeController(WindowFeatureController):
         self._sync_voice_mode_badge()
 
     def set_live_listening(self, enabled):
-        """Start/stop the actual local full-duplex conversation loop from the Voice page."""
+        """Start/stop continuous local STT listening from the Voice page."""
         if self.context.state._closing:
             self._sync_live_toggle(False)
             return
         mic = self.context.views.mic_btn
         try:
             if enabled:
-                # Live conversation must speak its answers and must not remain in
+                # Continuous listening must speak its answers and must not remain in
                 # wake-word sleep mode (which intentionally ignores ordinary speech).
                 wake = self.context.views.wake_btn
                 if wake.isChecked():
@@ -617,7 +617,7 @@ class RuntimeController(WindowFeatureController):
         except Exception as exc:
             self._sync_live_toggle(False)
             self.feature_controller("session").on_voice_error(
-                f"شروع/توقف مکالمه زنده ناموفق بود: {type(exc).__name__}: {exc}"
+                f"شروع/توقف شنود پیوسته ناموفق بود: {type(exc).__name__}: {exc}"
             )
 
     def toggle_mic(self):
