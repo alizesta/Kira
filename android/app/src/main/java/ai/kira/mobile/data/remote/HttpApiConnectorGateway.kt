@@ -3,109 +3,230 @@ package ai.kira.mobile.data.remote
 import ai.kira.mobile.domain.model.ConnectorExecutionConfig
 import ai.kira.mobile.domain.repository.ConnectorConfigurationRepository
 import ai.kira.mobile.domain.repository.ConnectorExecutionGateway
-import org.json.JSONObject
-import java.net.HttpURLConnection
+import okhttp3.Dns
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 import java.net.URL
+import java.net.UnknownHostException
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.TimeUnit
 
-/** Remote adapter for approved, read-only HTTPS API connectors. Redirects and private hosts are blocked. */
+/** Executes approved, read-only HTTPS API connectors with DNS-pinned public destinations. */
 class HttpApiConnectorGateway(
-    private val configurations:ConnectorConfigurationRepository
-):ConnectorExecutionGateway {
-    override fun executeIfRequested(characterId:String,assistantContent:String):String? {
-        val call=parseCall(assistantContent) ?: return null
+    private val configurations: ConnectorConfigurationRepository,
+    private val resolveHost: (String) -> List<InetAddress> = { InetAddress.getAllByName(it).toList() }
+) : ConnectorExecutionGateway {
+
+    override fun executeIfRequested(characterId: String, assistantContent: String): String? {
+        val call = parseCall(assistantContent) ?: return null
         return try {
-            val config=configurations.executionConfig(characterId,call.id)
+            val config = configurations.executionConfig(characterId, call.id)
                 ?: throw IllegalStateException("Connector نصب‌شده پیدا نشد یا برای این شخصیت فعال نیست.")
-            execute(config,call.params)
-        } catch(error:Exception) {
+            execute(config, call.params)
+        } catch (error: Exception) {
             "Connector error: ${error.message ?: "request failed"}"
         }
     }
 
-    private fun parseCall(content:String):ConnectorCall? {
-        val match=Regex("<kira_connector>\\s*(\\{.*?\\})\\s*</kira_connector>",setOf(RegexOption.DOT_MATCHES_ALL)).find(content)
-            ?: return null
-        val json=JSONObject(match.groupValues[1])
-        val id=json.optString("id")
+    private fun parseCall(content: String): ConnectorCall? {
+        val match = Regex(
+            "<kira_connector>\\s*(\\{.*?\\})\\s*</kira_connector>",
+            setOf(RegexOption.DOT_MATCHES_ALL)
+        ).find(content) ?: return null
+        val json = org.json.JSONObject(match.groupValues[1])
+        val id = json.optString("id")
         require(id.isNotBlank()) { "شناسه Connector در درخواست مدل خالی است." }
-        return ConnectorCall(id,json.optJSONObject("params") ?: JSONObject())
+        return ConnectorCall(id, json.optJSONObject("params") ?: org.json.JSONObject())
     }
 
-    private fun execute(config:ConnectorExecutionConfig,params:JSONObject):String {
-        val base=URL(config.baseUrl)
-        require(base.protocol=="https" && base.host.isNotBlank() && base.userInfo==null &&
-            base.query==null && base.ref==null && (base.port==-1 || base.port==443)) {
-            "آدرس پایه Connector معتبر نیست."
+    private fun execute(config: ConnectorExecutionConfig, params: org.json.JSONObject): String {
+        val base = URL(config.baseUrl)
+        require(
+            base.protocol.equals("https", ignoreCase = true) &&
+                base.host.isNotBlank() && base.userInfo == null &&
+                base.query == null && base.ref == null &&
+                (base.port == -1 || base.port == 443)
+        ) { "آدرس پایه Connector معتبر نیست." }
+
+        val template = config.pathTemplate
+        require(
+            template.startsWith("/") && !template.startsWith("//") &&
+                !template.contains('?') && !template.contains('#') &&
+                !template.contains('\\')
+        ) { "مسیر Connector باید یک مسیر نسبی معتبر باشد." }
+
+        val supplied = mutableListOf<String>()
+        val keys = params.keys()
+        while (keys.hasNext()) supplied += keys.next()
+        require(supplied.all { it in config.allowedParameters }) {
+            "Connector پارامتر ناشناخته دریافت کرد."
         }
-        val supplied=mutableListOf<String>()
-        val keys=params.keys()
-        while(keys.hasNext()) supplied+=keys.next()
-        require(supplied.all { it in config.allowedParameters }) { "Connector پارامتر ناشناخته دریافت کرد." }
-        val placeholders=Regex("\\{([A-Za-z][A-Za-z0-9_]*)}").findAll(config.pathTemplate)
-            .map { it.groupValues[1] }.toSet()
-        require(placeholders.all { it in config.allowedParameters }) { "قالب مسیر Connector معتبر نیست." }
-        val path=Regex("\\{([A-Za-z][A-Za-z0-9_]*)}").replace(config.pathTemplate) { match ->
-            val key=match.groupValues[1]
-            val value=params.optString(key,"")
-            require(value.isNotBlank() && value.length<=200) { "پارامتر $key الزامی است." }
-            URLEncoder.encode(value,StandardCharsets.UTF_8.name()).replace("+","%20")
+
+        val placeholders = Regex("\\{([A-Za-z][A-Za-z0-9_]*)}")
+            .findAll(template)
+            .map { it.groupValues[1] }
+            .toSet()
+        require(placeholders.all { it in config.allowedParameters }) {
+            "قالب مسیر Connector معتبر نیست."
         }
-        require(!path.contains("{") && !path.contains("}")) { "پارامتر مسیر ناقص است." }
-        val query=supplied.filter { it !in placeholders }.sorted().map { key ->
-            val value=params.optString(key,"")
-            require(value.length<=500) { "مقدار پارامتر بیش از حد بزرگ است." }
-            URLEncoder.encode(key,StandardCharsets.UTF_8.name())+"="+
-                URLEncoder.encode(value,StandardCharsets.UTF_8.name())
+
+        val path = Regex("\\{([A-Za-z][A-Za-z0-9_]*)}").replace(template) { match ->
+            val key = match.groupValues[1]
+            val value = params.optString(key, "")
+            require(value.isNotBlank() && value.length <= 200) { "پارامتر $key الزامی است." }
+            URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20")
         }
-        val url=URL(config.baseUrl.trimEnd('/')+path+(if(query.isEmpty()) "" else "?"+query.joinToString("&")))
-        require(url.protocol=="https" && url.host.equals(base.host,true) &&
-            (url.port==-1 || url.port==443) && isPublicHost(url.host)) {
-            "مقصد Connector معتبر یا عمومی نیست."
+        require(!path.contains("{") && !path.contains("}")) {
+            "پارامتر مسیر ناقص است."
         }
-        val connection=(url.openConnection() as HttpURLConnection).apply {
-            requestMethod="GET"
-            instanceFollowRedirects=false
-            connectTimeout=10_000
-            readTimeout=20_000
-            setRequestProperty("Accept","application/json")
+
+        val query = supplied.filter { it !in placeholders }.sorted().map { key ->
+            val value = params.optString(key, "")
+            require(value.length <= 500) { "مقدار پارامتر بیش از حد بزرگ است." }
+            URLEncoder.encode(key, StandardCharsets.UTF_8.name()) + "=" +
+                URLEncoder.encode(value, StandardCharsets.UTF_8.name())
         }
-        try {
-            if(config.authType=="bearer") {
-                require(config.apiKey.isNotBlank()) { "کلید API این Connector بازخوانی نشد." }
-                connection.setRequestProperty("Authorization","Bearer "+config.apiKey)
+        val url = URL(config.baseUrl.trimEnd('/') + path +
+            (if (query.isEmpty()) "" else "?" + query.joinToString("&")))
+
+        require(
+            url.protocol.equals("https", ignoreCase = true) &&
+                url.host.equals(base.host, ignoreCase = true) &&
+                (url.port == -1 || url.port == 443) &&
+                url.userInfo == null && url.ref == null
+        ) { "مقصد Connector معتبر نیست." }
+
+        // Resolve once, validate every returned address, and give the exact same
+        // address set to OkHttp. TLS SNI and certificate checks still use the
+        // original URL hostname, while a second DNS lookup cannot rebind it.
+        val pinnedAddresses = resolvePublicAddresses(base.host)
+        val pinnedDns = Dns { hostname ->
+            if (hostname.equals(base.host, ignoreCase = true)) {
+                pinnedAddresses
+            } else {
+                throw UnknownHostException("Connector attempted to resolve an unexpected host.")
             }
-            val status=connection.responseCode
-            val stream=if(status in 200..299) connection.inputStream else connection.errorStream
-            val body=stream?.use { input ->
-                val bytes=java.io.ByteArrayOutputStream()
-                val buffer=ByteArray(4096)
-                while(true) {
-                    val count=input.read(buffer)
-                    if(count<0) break
-                    if(bytes.size()+count>MAX_RESPONSE_BYTES)
-                        throw IllegalStateException("پاسخ Connector از ۶۴ کیلوبایت بیشتر است.")
-                    bytes.write(buffer,0,count)
+        }
+        val client = OkHttpClient.Builder()
+            .dns(pinnedDns)
+            .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .build()
+
+        try {
+            val requestBuilder = Request.Builder()
+                .url(url.toURI().toString())
+                .header("Accept", "application/json")
+                .get()
+            if (config.authType == "bearer") {
+                require(config.apiKey.isNotBlank()) { "کلید API این Connector بازخوانی نشد." }
+                requestBuilder.header("Authorization", "Bearer " + config.apiKey)
+            }
+
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                val body = response.body
+                if (body != null && body.contentLength() > MAX_RESPONSE_BYTES) {
+                    throw IllegalStateException("پاسخ Connector از ۶۴ کیلوبایت بیشتر است.")
                 }
-                bytes.toString("UTF-8")
-            }.orEmpty()
-            if(status !in 200..299)
-                throw IllegalStateException("Connector با HTTP $status پاسخ داد: "+body.take(500))
-            if(body.isBlank()) throw IllegalStateException("Connector پاسخ خالی برگرداند.")
-            return body
-        } finally { connection.disconnect() }
+                val text = body?.byteStream()?.use { readBounded(it) }.orEmpty()
+                if (!response.isSuccessful) {
+                    throw IllegalStateException(
+                        "Connector با HTTP ${response.code} پاسخ داد: " + text.take(500)
+                    )
+                }
+                if (text.isBlank()) throw IllegalStateException("Connector پاسخ خالی برگرداند.")
+                return text
+            }
+        } finally {
+            client.connectionPool.evictAll()
+            client.dispatcher.executorService.shutdown()
+        }
     }
 
-    private fun isPublicHost(host:String):Boolean = try {
-        val addresses=InetAddress.getAllByName(host)
-        addresses.isNotEmpty() && addresses.all { address ->
-            !address.isAnyLocalAddress && !address.isLoopbackAddress &&
-                !address.isLinkLocalAddress && !address.isSiteLocalAddress && !address.isMulticastAddress
+    private fun resolvePublicAddresses(host: String): List<InetAddress> {
+        val addresses = resolveHost(host).distinct()
+        require(addresses.isNotEmpty() && addresses.all(::isPublicAddress)) {
+            "مقصد Connector به IP خصوصی یا رزروشده resolve شد."
         }
-    } catch(_:Exception) { false }
+        return addresses
+    }
 
-    private data class ConnectorCall(val id:String,val params:JSONObject)
-    private companion object { const val MAX_RESPONSE_BYTES=65_536 }
+    private fun isPublicAddress(address: InetAddress): Boolean {
+        if (
+            address.isAnyLocalAddress || address.isLoopbackAddress ||
+            address.isLinkLocalAddress || address.isSiteLocalAddress ||
+            address.isMulticastAddress
+        ) return false
+
+        val bytes = address.address
+        if (bytes.size == 4) {
+            val a = bytes[0].toInt() and 0xff
+            val b = bytes[1].toInt() and 0xff
+            val c = bytes[2].toInt() and 0xff
+            return when {
+                a == 0 || a == 10 || a == 127 || a >= 224 -> false
+                a == 100 && b in 64..127 -> false // Shared address space (RFC 6598).
+                a == 169 && b == 254 -> false
+                a == 172 && b in 16..31 -> false
+                a == 192 && b == 168 -> false
+                a == 192 && b == 0 -> false // IETF protocol assignments.
+                a == 192 && b == 88 && c == 99 -> false
+                a == 198 && b in 18..19 -> false // Benchmarking.
+                a == 198 && b == 51 && c == 100 -> false // Documentation.
+                a == 203 && b == 0 && c == 113 -> false // Documentation.
+                else -> true
+            }
+        }
+
+        if (bytes.size == 16) {
+            val a = bytes[0].toInt() and 0xff
+            val b = bytes[1].toInt() and 0xff
+            if (a == 0xff) return false // Multicast.
+            if ((a and 0xfe) == 0xfc) return false // Unique-local.
+            if (a == 0xfe && (b and 0xc0) == 0x80) return false // Link-local.
+            if (a == 0x20 && b == 0x01) {
+                val c = bytes[2].toInt() and 0xff
+                val d = bytes[3].toInt() and 0xff
+                if ((c == 0x0d && d == 0xb8) || (c == 0x00 && d == 0x02)) return false
+            }
+            // IPv4-mapped IPv6 addresses must pass the IPv4 public-address policy too.
+            if ((0 until 10).all { bytes[it].toInt() == 0 } &&
+                bytes[10].toInt() == 0xff.toByte().toInt() &&
+                bytes[11].toInt() == 0xff.toByte().toInt()
+            ) {
+                return isPublicAddress(InetAddress.getByAddress(bytes.copyOfRange(12, 16)))
+            }
+            return true
+        }
+        return false
+    }
+
+    private fun readBounded(input: java.io.InputStream): String {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(4_096)
+        while (true) {
+            val count = input.read(buffer)
+            if (count < 0) break
+            if (output.size() + count > MAX_RESPONSE_BYTES) {
+                throw IllegalStateException("پاسخ Connector از ۶۴ کیلوبایت بیشتر است.")
+            }
+            output.write(buffer, 0, count)
+        }
+        return output.toString(StandardCharsets.UTF_8.name())
+    }
+
+    private data class ConnectorCall(val id: String, val params: org.json.JSONObject)
+
+    private companion object {
+        const val MAX_RESPONSE_BYTES = 65_536
+        const val CONNECT_TIMEOUT_SECONDS = 10L
+        const val READ_TIMEOUT_SECONDS = 20L
+        const val CALL_TIMEOUT_SECONDS = 30L
+    }
 }
