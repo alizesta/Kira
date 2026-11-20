@@ -496,9 +496,6 @@ def install_and_download_shenava_asr(repo_id=SHENAVA_REPO_ID, *, cancel_event=No
         "README.md",
         "*.json",
     ]
-    # The FP32 bundle provides Persian spoken-number normalization as an optional asset.
-    if selected == SHENAVA_FP32_REPO_ID:
-        allow_patterns.append("persian_itn.py")
     try:
         snapshot = snapshot_download(
             repo_id=selected,
