@@ -35,6 +35,25 @@ class BrainDecisionQualityTests(unittest.TestCase):
         self.assertEqual(decision.stage, brain.DEEP)
         self.assertIn("code", decision.reasons)
 
+    def test_explicit_uncensored_request_overrides_deep_and_stays_local(self):
+        text = "این موضوع را بدون سانسور و با بررسی عمیق تحلیل کن."
+        decision = brain.decide(text, mode=modes.Mode(modes.CHAT))
+        self.assertEqual(decision.stage, brain.SURFACE)
+        self.assertIn("local-only request", decision.reasons)
+
+    def test_explicit_adult_content_request_uses_local_stage(self):
+        text = "برای داستانم محتوای بزرگسالان و اروتیک بنویس."
+        decision = brain.decide(text, mode=modes.Mode(modes.TASK))
+        self.assertEqual(decision.stage, brain.SURFACE)
+
+    def test_local_prefix_forces_surface_even_for_a_complex_analysis(self):
+        decision = brain.decide(
+            "/local analyze this complex issue step by step",
+            mode=modes.Mode(modes.CHAT),
+        )
+        self.assertEqual(decision.stage, brain.SURFACE)
+        self.assertIn("local-only request", decision.reasons)
+
     def test_long_personal_chat_alone_stays_on_surface(self):
         text = "امروز روز خوبی داشتم و کلی اتفاق افتاد. " * 20
         decision = brain.decide(text, mode=modes.Mode(modes.CHAT))

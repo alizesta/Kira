@@ -81,6 +81,14 @@ _ANALYTIC_RX = re.compile(
     r"analy[sz]e|analysis|compare|comparison|design|architecture|strategy|optimi[sz]e|step[- ]by[- ]step|trade-?offs|pros\s+and\s+cons|"
     r"reason\s+about|root\s+cause|debug|refactor|\bplan\b", re.I)
 _CODE_RX = re.compile(r"```|\btraceback\b|\bexception\b|\bdef\s+\w+\(|\bfunction\s+\w+\(|#include|\bSELECT\b.+\bFROM\b", re.I | re.S)
+_LOCAL_ONLY_RX = re.compile(
+    r"^\s*/(?:local|uncensored)\b|فقط\s*(?:محلی|لوکال)|بدون\s*سانسور|بدون\s*فیلتر|بدون\s*محدودیت|بدون\s*امتناع|"
+    r"محتوای\s*(?:جنسی|بزرگسالان|اروتیک)|صحنه\s*(?:جنسی|خشن)|پورنوگرافی|عریان|برهنه|"
+    r"بمب|مواد\s*منفجره|ساخت\s*سلاح|اسلحه|مواد\s*مخدر|هک|بدافزار|باج\s*افزار|شکنجه|خودکشی|"
+    r"\b(?:uncensored|unfiltered|nsfw|nude|nudity|gore|explosive|bomb|weapon|firearm|malware|ransomware|torture|suicide|self-harm|hacking)\b|"
+    r"\b(?:explicit|adult|erotic|sexual|violent|drug)\s+(?:content|scene|fiction|synthesis)\b",
+    re.I,
+)
 
 
 def _setting(settings, key, default):
@@ -123,6 +131,9 @@ def decide(text, mode=None, plan=None, has_attachment=False, has_task=False, set
             reasons.append("analysis request")
         if _CODE_RX.search(typed):
             reasons.append("code")
+        local_only = bool(_LOCAL_ONLY_RX.search(typed))
+        if local_only:
+            reasons.append("local-only request")
         # Long casual messages alone are not enough: this avoids routing a personal
         # story or free-form chat to an expensive/deeper model unnecessarily.
         if mode_name != modes.CHAT:
@@ -130,7 +141,7 @@ def decide(text, mode=None, plan=None, has_attachment=False, has_task=False, set
                 reasons.append("long request")
             if has_attachment and mode_name == modes.TASK:
                 reasons.append("attached material")
-        stage = DEEP if (reasons and bm != "surface_only") else SURFACE
+        stage = SURFACE if local_only else (DEEP if (reasons and bm != "surface_only") else SURFACE)
         return Decision(stage, tuple(reasons), route_for(stage, settings), reflection, bm)
     except Exception:                                                  # noqa: BLE001 - the old single-request path is always the fallback
         _log.exception("Brain decision failed; falling back to the surface stage")
