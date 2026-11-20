@@ -40,6 +40,20 @@ def configure_fluid_layout(layout: QLayout, margins: tuple[int, int, int, int] =
     layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
 
 
+def make_page_container(content: QWidget, parent: QWidget | None = None) -> QScrollArea:
+    """Standardize any settings/feature page into a fluid, non-clipping scrollable container."""
+    configure_fluid_layout_on_widget(content)
+    return wrap_in_responsive_scroll(content, parent=parent)
+
+
+def configure_fluid_layout_on_widget(widget: QWidget) -> None:
+    """Ensure top-level layout on a widget uses fluid margins/spacing and never clips children."""
+    layout = widget.layout()
+    if layout is not None:
+        configure_fluid_layout(layout)
+    apply_fluid_policy(widget, min_w=0, min_h=0, expand_h=False)
+
+
 class FluidPageContainer(QWidget):
     """Standardized Jakob-familiar page container with fluid resizing."""
 
