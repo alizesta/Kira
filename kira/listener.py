@@ -109,21 +109,30 @@ class Listener(QThread):
         if not self._run:
             return
         local_ready = False
+        asr_backend = str(self.settings.get("local_voice_asr_backend") or "qwen3").strip().lower()
         if bool(self.settings.get("local_voice_asr", True)):
             try:
                 from . import local_voice
-                local_ready = local_voice.asr_ready()
+                local_ready = (
+                    local_voice.shenava_ready()
+                    if asr_backend == "shenava"
+                    else local_voice.asr_ready()
+                )
             except Exception:
                 local_ready = False
         if local_ready:
             try:
                 from . import local_voice
                 selected_asr = str(self.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B")
-                local_voice.load_asr(selected_asr)
+                if asr_backend == "shenava":
+                    local_voice.load_shenava(selected_asr)
+                else:
+                    local_voice.load_asr(selected_asr)
             except Exception as exc:
                 local_ready = False
                 self._local_asr_failed = True
-                self.note.emit(f"بارگذاری Qwen3-ASR ناموفق بود؛ تلاش برای Whisper محلی. ({type(exc).__name__})")
+                engine_label = "شنوا" if asr_backend == "shenava" else "Qwen3-ASR"
+                self.note.emit(f"بارگذاری {engine_label} ناموفق بود؛ تلاش برای Whisper محلی. ({type(exc).__name__})")
         if not self._run:
             return
         if not local_ready and not self._load_local():
@@ -274,6 +283,25 @@ class Listener(QThread):
             self.note.emit(f"STT محلی Qwen3-ASR در دسترس نبود؛ Whisper محلی امتحان می‌شود. ({type(exc).__name__})")
             return None
 
+    def _transcribe_local_shenava(self, audio):
+        """Run the selected Shenava ONNX model; None lets the Whisper fallback run."""
+        if self._local_asr_failed or not bool(self.settings.get("local_voice_asr", True)):
+            return None
+        try:
+            from . import local_voice
+            if not local_voice.shenava_ready():
+                return None
+            text = local_voice.transcribe_shenava(
+                audio,
+                RATE,
+                str(self.settings.get("local_voice_asr_model") or local_voice.SHENAVA_REPO_ID),
+            )
+            return str(text or "").strip() or None
+        except Exception as exc:
+            self._local_asr_failed = True
+            self.note.emit(f"STT محلی شنوا در دسترس نبود؛ Whisper محلی امتحان می‌شود. ({type(exc).__name__}: {exc})")
+            return None
+
     def _transcribe_whisper(self, audio):
         """Offline faster-whisper recognition."""
         model = self._model
@@ -303,11 +331,18 @@ class Listener(QThread):
         return " ".join(part for part in parts if part).strip()
 
     def _transcribe(self, model, audio):
-        """Use Qwen3-ASR first, then faster-whisper. Never send microphone audio online."""
-        text = self._transcribe_local_qwen(audio)
-        if text is not None:
-            self.via = "local:qwen3-asr"
-            return text
+        """Use the selected offline ASR backend first, then faster-whisper as fallback."""
+        backend = str(self.settings.get("local_voice_asr_backend") or "qwen3").strip().lower()
+        if backend == "shenava":
+            text = self._transcribe_local_shenava(audio)
+            if text is not None:
+                self.via = "local:shenava"
+                return text
+        else:
+            text = self._transcribe_local_qwen(audio)
+            if text is not None:
+                self.via = "local:qwen3-asr"
+                return text
         if self.engine is None and not self._load_local():
             return ""
         if self.engine == "whisper":
