@@ -161,7 +161,7 @@ class JobStoreTests(unittest.TestCase):
             self.assertEqual(agent.status("job/a b"), "/status/job%2Fa%20b")
 
         calls = []
-        with mock.patch.object(agent, "_call", side_effect=lambda method, path, body=None: calls.append((method, path, body))):
+        with mock.patch.object(agent, "_call", side_effect=lambda method, path, body=None: (calls.append((method, path, body)), {"ok": True})[1]):
             agent.answer("job/a b", "answer", True)
             agent.stop("job/a b")
         self.assertEqual(calls[0][1], "/answer/job%2Fa%20b")
@@ -278,7 +278,7 @@ class JobStoreTests(unittest.TestCase):
                 result = hub.ask({"agent": "worker", "task": "run a task"})
 
             self.assertIn("job_id=", result)
-            self.assertIn("پس از بسته‌شدن برنامه بازیابی آن تضمین‌شده نیست", result)
+            self.assertIn("پس از بسته‌شدن برنامه ممکن است Kira نتواند آن را بازیابی کند", result)
 
     def test_job_store_writes_valid_json_and_unique_atomic_temp_files(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -24,6 +24,7 @@ class FileAgentTests(unittest.TestCase):
         self.data = Path(self.tmp.name, "data")
         self.data.mkdir()
         self.policy = PathPolicy({"tools_allowed_paths": [str(self.root)]}, self.data, None)
+        self.fa = FileAgent(self.policy, Journal(self.data))
         self.reg = build_registry(self.policy)
         self.reg.user_text = "بساز و کپی کن create"
         trash = Path(self.tmp.name, "trash")
