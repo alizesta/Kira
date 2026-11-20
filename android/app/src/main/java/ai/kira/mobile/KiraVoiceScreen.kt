@@ -28,76 +28,166 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ai.kira.mobile.application.voice.VoiceCallState
 import ai.kira.mobile.core.KiraContainer
-import ai.kira.mobile.data.voice.GeminiLiveVoiceSession
 import ai.kira.mobile.ui.theme.KiraPalette
+import java.util.concurrent.Executors
 
 @Composable
 internal fun KiraVoiceScreen(container: KiraContainer) {
     val context = LocalContext.current
     val handler = remember { Handler(Looper.getMainLooper()) }
+    val executor = remember { Executors.newSingleThreadExecutor() }
+    val voice = container.voice
     var apiKey by remember { mutableStateOf("") }
-    var keySaved by remember { mutableStateOf(container.voiceCredentials.hasApiKey()) }
+    var keySaved by remember { mutableStateOf(voice.hasApiKey()) }
     var status by remember { mutableStateOf("Gemini Live از مکالمه صوتی دوطرفه پشتیبانی می‌کند.") }
-    var callActive by remember { mutableStateOf(false) }
-    var muted by remember { mutableStateOf(false) }
-    var session by remember { mutableStateOf<GeminiLiveVoiceSession?>(null) }
+    var callActive by remember { mutableStateOf(voice.isActive()) }
+    var muted by remember { mutableStateOf(voice.isMuted()) }
+    var busy by remember { mutableStateOf(false) }
     val transcript = remember { mutableStateListOf<String>() }
 
+    DisposableEffect(executor, voice) {
+        onDispose {
+            runCatching { voice.stop() }
+            executor.shutdownNow()
+        }
+    }
+
+    fun applyVoiceState() {
+        val current = voice.state
+        callActive = current is VoiceCallState.Connecting ||
+            current is VoiceCallState.Connected ||
+            current is VoiceCallState.Muted
+        muted = current is VoiceCallState.Muted
+    }
+
+    fun saveKey() {
+        val key = apiKey.trim()
+        if (busy || key.isBlank()) return
+        busy = true
+        executor.execute {
+            try {
+                voice.saveApiKey(key)
+                handler.post {
+                    apiKey = ""
+                    keySaved = true
+                    status = "کلید Gemini Live با Android Keystore رمزنگاری شد."
+                    busy = false
+                }
+            } catch (error: Exception) {
+                handler.post {
+                    status = error.message ?: "ذخیره کلید ناموفق بود."
+                    busy = false
+                }
+            }
+        }
+    }
+
+    fun clearKey() {
+        if (busy || callActive) return
+        busy = true
+        executor.execute {
+            try {
+                voice.clearApiKey()
+                handler.post {
+                    keySaved = false
+                    apiKey = ""
+                    status = "کلید Gemini Live حذف شد."
+                    busy = false
+                }
+            } catch (error: Exception) {
+                handler.post {
+                    status = error.message ?: "حذف کلید ناموفق بود."
+                    busy = false
+                }
+            }
+        }
+    }
+
     fun stopCall() {
-        val current = session
-        session = null
-        callActive = false
-        muted = false
-        current?.stop()
+        if (busy) return
+        busy = true
+        executor.execute {
+            try {
+                voice.stop()
+                handler.post {
+                    applyVoiceState()
+                    status = "تماس صوتی پایان یافت."
+                    busy = false
+                }
+            } catch (error: Exception) {
+                handler.post {
+                    status = error.message ?: "پایان تماس ناموفق بود."
+                    busy = false
+                    applyVoiceState()
+                }
+            }
+        }
     }
 
     fun startCall() {
-        if (callActive) return
-        val key = runCatching { container.voiceCredentials.readApiKey() }.getOrElse {
-            status = it.message ?: "کلید Gemini Live ذخیره نشده است."
-            return
-        }
+        if (busy || callActive) return
         transcript.clear()
-        val live = container.createGeminiLiveSession(
-            apiKey = key,
-            onStatus = { message ->
-                handler.post {
-                    status = message
-                    if (message.contains("قطع شد") || message.contains("ناموفق") || message.contains("بسته شد") || message.contains("متوقف شد")) {
-                        callActive = false
-                        muted = false
-                        session = null
+        busy = true
+        status = "در حال اتصال به Gemini Live…"
+        executor.execute {
+            try {
+                voice.start(
+                    onStatus = { message ->
+                        handler.post {
+                            status = message
+                            applyVoiceState()
+                        }
+                    },
+                    onTranscript = { speaker, text ->
+                        handler.post {
+                            transcript.add(speaker + ": " + text)
+                            if (transcript.size > 100) transcript.removeAt(0)
+                        }
                     }
-                }
-            },
-            onTranscript = { speaker, text ->
+                )
                 handler.post {
-                    transcript.add(speaker + ": " + text)
-                    if (transcript.size > 100) transcript.removeAt(0)
+                    applyVoiceState()
+                    busy = false
+                }
+            } catch (error: Exception) {
+                handler.post {
+                    applyVoiceState()
+                    status = error.message ?: "شروع تماس ناموفق بود."
+                    busy = false
                 }
             }
-        )
-        session = live
-        callActive = true
-        muted = false
-        try {
-            live.start()
-        } catch (error: Exception) {
-            session = null
-            callActive = false
-            status = error.message ?: "شروع تماس ناموفق بود."
+        }
+    }
+
+    fun toggleMute() {
+        if (busy || !callActive) return
+        val next = !muted
+        busy = true
+        executor.execute {
+            try {
+                voice.setMuted(next)
+                handler.post {
+                    applyVoiceState()
+                    status = if (next) "میکروفون بی‌صداست." else "تماس زنده است؛ می‌توانی صحبت کنی."
+                    busy = false
+                }
+            } catch (error: Exception) {
+                handler.post {
+                    status = error.message ?: "تغییر وضعیت میکروفون ناموفق بود."
+                    applyVoiceState()
+                    busy = false
+                }
+            }
         }
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) startCall() else status = "برای تماس زنده باید اجازه دسترسی به میکروفون بدهی."
-    }
-
-    DisposableEffect(session) {
-        onDispose { session?.stop() }
+        if (granted) startCall()
+        else status = "برای تماس زنده باید اجازه دسترسی به میکروفون بدهی."
     }
 
     Column(
@@ -107,7 +197,7 @@ internal fun KiraVoiceScreen(container: KiraContainer) {
     ) {
         Text("تماس صوتی زنده", color = KiraPalette.onBackground, fontSize = 25.sp, fontWeight = FontWeight.Bold)
         Text(
-            "مکالمه دوطرفه مستقیم با Gemini Live؛ صدا به‌صورت PCM زنده ارسال و پاسخ صوتی هم‌زمان پخش می‌شود. هزینه و محدودیت حساب Google را بررسی کن.",
+            "مکالمه دوطرفه مستقیم با Gemini Live؛ صدا به‌صورت PCM زنده ارسال و پاسخ صوتی هم‌زمان پخش می‌شود. هزینه و محدودیت حساب Google را پیش از تماس بررسی کن.",
             color = KiraPalette.muted, fontSize = 12.sp, lineHeight = 18.sp
         )
 
@@ -122,30 +212,14 @@ internal fun KiraVoiceScreen(container: KiraContainer) {
                         label = { Text("Gemini API Key") },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
-                        enabled = !callActive
+                        enabled = !callActive && !busy
                     )
-                    Button(
-                        onClick = {
-                            runCatching { container.voiceCredentials.saveApiKey(apiKey) }
-                                .onSuccess {
-                                    apiKey = ""
-                                    keySaved = true
-                                    status = "کلید Gemini Live با Android Keystore رمزنگاری شد."
-                                }
-                                .onFailure { status = it.message ?: "ذخیره کلید ناموفق بود." }
-                        },
-                        enabled = apiKey.isNotBlank() && !callActive
-                    ) { Text("ذخیره امن کلید") }
+                    Button(onClick = { saveKey() }, enabled = apiKey.isNotBlank() && !callActive && !busy) {
+                        Text(if (busy) "در حال ذخیره…" else "ذخیره امن کلید")
+                    }
                 } else {
                     Text("کلید ذخیره شده است؛ مقدار آن در صفحه نمایش داده نمی‌شود.", color = KiraPalette.muted, fontSize = 12.sp)
-                    OutlinedButton(
-                        onClick = {
-                            container.voiceCredentials.clear()
-                            keySaved = false
-                            status = "کلید Gemini Live حذف شد."
-                        },
-                        enabled = !callActive
-                    ) { Text("حذف کلید") }
+                    OutlinedButton(onClick = { clearKey() }, enabled = !callActive && !busy) { Text("حذف کلید") }
                 }
             }
         }
@@ -163,23 +237,21 @@ internal fun KiraVoiceScreen(container: KiraContainer) {
                                 permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             }
                         },
-                        enabled = keySaved,
+                        enabled = keySaved && !busy,
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("شروع تماس زنده") }
+                    ) { Text(if (busy) "در حال اتصال…" else "شروع تماس زنده") }
                 } else {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
-                            onClick = {
-                                val next = !muted
-                                runCatching { session?.setMuted(next) }
-                                    .onSuccess { muted = next }
-                                    .onFailure { status = it.message ?: "تغییر وضعیت میکروفون ناموفق بود." }
-                            },
+                            onClick = { toggleMute() },
+                            enabled = !busy,
                             modifier = Modifier.weight(1f)
                         ) { Text(if (muted) "فعال‌کردن میکروفون" else "بی‌صداکردن") }
-                        Button(onClick = { stopCall() }, modifier = Modifier.weight(1f)) {
-                            Text("پایان تماس")
-                        }
+                        Button(
+                            onClick = { stopCall() },
+                            enabled = !busy,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("پایان تماس") }
                     }
                 }
             }

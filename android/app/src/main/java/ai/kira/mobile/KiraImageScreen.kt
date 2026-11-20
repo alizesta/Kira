@@ -37,7 +37,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
-import ai.kira.mobile.application.image.GeneratedImage
+import ai.kira.mobile.domain.model.GeneratedImage
 import ai.kira.mobile.core.KiraContainer
 import ai.kira.mobile.ui.theme.KiraPalette
 import java.io.File
@@ -83,8 +83,8 @@ internal fun KiraImageScreen(container: KiraContainer) {
     LaunchedEffect(Unit) {
         images.addAll(container.images.history())
         selectedImage = images.firstOrNull()
-        if (container.imageSettings.hasSettings()) {
-            val saved = container.imageSettings.settings()
+        if (container.images.hasSettings()) {
+            val saved = container.images.settings()
             endpoint = saved.baseUrl
             model = saved.model
             configured = true
@@ -98,16 +98,18 @@ internal fun KiraImageScreen(container: KiraContainer) {
             status = "برای ذخیره یا تغییر تنظیمات، API Key را وارد کن."
             return
         }
+        busy = true
         executor.execute {
             try {
-                container.imageSettings.save(endpoint, model, key)
+                container.images.saveSettings(endpoint, model, key)
                 handler.post {
                     apiKey = ""
                     configured = true
                     status = "تنظیمات Provider و کلید رمزنگاری شدند."
+                    busy = false
                 }
             } catch (error: Exception) {
-                handler.post { status = error.message ?: "ذخیره تنظیمات ناموفق بود." }
+                handler.post { status = error.message ?: "ذخیره تنظیمات ناموفق بود."; busy = false }
             }
         }
     }
@@ -169,11 +171,26 @@ internal fun KiraImageScreen(container: KiraContainer) {
                     Text("کلید روی دستگاه و با Android Keystore رمزنگاری شده است.", color = KiraPalette.muted, fontSize = 11.sp)
                     Text("برای حذف اتصال و کلید ذخیره‌شده:", color = KiraPalette.muted, fontSize = 11.sp)
                     OutlinedButton(onClick = {
-                        container.imageSettings.clear()
-                        configured = false
-                        endpoint = "https://api.openai.com/v1"
-                        model = "dall-e-3"
-                        status = "اتصال تصویر حذف شد."
+                        if (busy) return@OutlinedButton
+                        busy = true
+                        executor.execute {
+                            try {
+                                container.images.clearSettings()
+                                handler.post {
+                                    configured = false
+                                    apiKey = ""
+                                    endpoint = "https://api.openai.com/v1"
+                                    model = "dall-e-3"
+                                    status = "اتصال تصویر حذف شد."
+                                    busy = false
+                                }
+                            } catch (error: Exception) {
+                                handler.post {
+                                    status = error.message ?: "حذف اتصال تصویر ناموفق بود."
+                                    busy = false
+                                }
+                            }
+                        }
                     }, enabled = !busy) { Text("حذف اتصال") }
                 }
             }

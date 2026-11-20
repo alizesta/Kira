@@ -1,5 +1,8 @@
 package ai.kira.mobile.data.voice
 
+import ai.kira.mobile.domain.model.RealtimeVoiceSessionEvent
+import ai.kira.mobile.domain.repository.RealtimeVoiceSession
+import ai.kira.mobile.domain.repository.VoiceCredentialRepository
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
@@ -12,7 +15,6 @@ import android.media.audiofx.NoiseSuppressor
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
-import ai.kira.mobile.application.voice.VoiceCallStateMachine
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -30,44 +32,56 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-class GeminiLiveCredentialStore(context: Context) {
+class GeminiLiveCredentialStore(context: Context) : VoiceCredentialRepository {
     private val preferences = context.applicationContext.getSharedPreferences("kira_gemini_live", Context.MODE_PRIVATE)
 
-    fun hasApiKey(): Boolean = preferences.contains(KEY_ENTRY)
+    override fun hasApiKey(): Boolean = preferences.contains(KEY_ENTRY)
 
     @Synchronized
-    fun saveApiKey(value: String) {
+    override fun saveApiKey(value: String) {
         val normalized = value.trim()
         require(normalized.isNotEmpty() && normalized.length <= 512) { "Gemini Live API key is invalid." }
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val encrypted = cipher.doFinal(normalized.toByteArray(Charsets.UTF_8))
-        preferences.edit().putString(KEY_ENTRY, Base64.encodeToString(cipher.iv + encrypted, Base64.NO_WRAP)).apply()
+        check(preferences.edit().putString(KEY_ENTRY, Base64.encodeToString(cipher.iv + encrypted, Base64.NO_WRAP)).commit()) {
+            "ذخیره کلید Gemini Live ناموفق بود."
+        }
     }
 
     @Synchronized
-    fun readApiKey(): String {
+    override fun readApiKey(): String {
         val encoded = preferences.getString(KEY_ENTRY, null)
             ?: throw IllegalStateException("ابتدا کلید Gemini Live را ذخیره کن.")
-        val payload = Base64.decode(encoded, Base64.NO_WRAP)
+        val payload = try {
+            Base64.decode(encoded, Base64.NO_WRAP)
+        } catch (error: IllegalArgumentException) {
+            throw IllegalStateException("کلید ذخیره‌شده Gemini Live خراب است؛ آن را حذف و دوباره ثبت کن.", error)
+        }
         require(payload.size > IV_LENGTH) { "Gemini Live key payload is invalid." }
+        val key = findExistingKey()
+            ?: throw IllegalStateException("کلید امنیتی Gemini Live در دسترس نیست؛ کلید را حذف و دوباره ثبت کن.")
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(
             Cipher.DECRYPT_MODE,
-            getOrCreateKey(),
+            key,
             GCMParameterSpec(128, payload.copyOfRange(0, IV_LENGTH))
         )
         return String(cipher.doFinal(payload.copyOfRange(IV_LENGTH, payload.size)), Charsets.UTF_8)
     }
 
     @Synchronized
-    fun clear() {
-        preferences.edit().remove(KEY_ENTRY).apply()
+    override fun clearApiKey() {
+        check(preferences.edit().remove(KEY_ENTRY).commit()) { "حذف کلید Gemini Live ناموفق بود." }
+    }
+
+    private fun findExistingKey(): SecretKey? {
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        return store.getKey(KEY_ALIAS, null) as? SecretKey
     }
 
     private fun getOrCreateKey(): SecretKey {
-        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        findExistingKey()?.let { return it }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
         generator.init(
             KeyGenParameterSpec.Builder(
@@ -93,11 +107,13 @@ class GeminiLiveCredentialStore(context: Context) {
 class GeminiLiveVoiceSession(
     context: Context,
     private val apiKey: String,
+    private val onEvent: (RealtimeVoiceSessionEvent) -> Unit,
     private val onStatus: (String) -> Unit,
     private val onTranscript: (speaker: String, text: String) -> Unit
-) {
+) : RealtimeVoiceSession {
     private val app = context.applicationContext
     private val active = AtomicBoolean(false)
+    private val disposed = AtomicBoolean(false)
     private val muted = AtomicBoolean(false)
     private val setupComplete = AtomicBoolean(false)
     private val captureExecutor = Executors.newSingleThreadExecutor()
@@ -114,18 +130,19 @@ class GeminiLiveVoiceSession(
     @Volatile private var noiseSuppressor: NoiseSuppressor? = null
     private val audioManager = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private var previousAudioMode = AudioManager.MODE_NORMAL
-    private val stateMachine = VoiceCallStateMachine()
-
-    fun start() {
+    @Volatile private var audioModeChanged = false
+    
+    override fun start() {
+        check(!disposed.get()) { "Voice session has already ended." }
         check(apiKey.isNotBlank()) { "Gemini Live API key is empty." }
         check(active.compareAndSet(false, true)) { "Voice session is already active." }
-        stateMachine.begin()
         setupComplete.set(false)
         muted.set(false)
         try {
             preparePlayer()
             previousAudioMode = audioManager.mode
             audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+            audioModeChanged = true
             onStatus("در حال اتصال به Gemini Live…")
 
             val url = HttpUrl.Builder()
@@ -180,7 +197,7 @@ class GeminiLiveVoiceSession(
         }
     }
 
-    fun setMuted(value: Boolean) {
+    override fun setMuted(value: Boolean) {
         check(active.get() && setupComplete.get()) { "Voice session is not connected." }
         synchronized(audioLock) {
             if (muted.get() == value) return
@@ -188,21 +205,22 @@ class GeminiLiveVoiceSession(
             if (value) {
                 if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) audioRecord.stop()
                 muted.set(true)
-                stateMachine.setMuted(true)
+                onEvent(RealtimeVoiceSessionEvent.Muted)
                 onStatus("میکروفون بی‌صداست.")
             } else {
                 audioRecord.startRecording()
                 muted.set(false)
-                stateMachine.setMuted(false)
+                onEvent(RealtimeVoiceSessionEvent.Unmuted)
                 onStatus("تماس زنده است؛ می‌توانی صحبت کنی.")
             }
         }
     }
 
-    fun isMuted(): Boolean = muted.get()
+    override fun isMuted(): Boolean = muted.get()
 
-    fun stop() {
-        if (!active.getAndSet(false)) return
+    override fun stop() {
+        if (!disposed.compareAndSet(false, true)) return
+        active.set(false)
         setupComplete.set(false)
         runCatching { socket?.close(1000, "client ended call") }
         socket = null
@@ -219,10 +237,14 @@ class GeminiLiveVoiceSession(
         runCatching { player?.flush() }
         runCatching { player?.release() }
         player = null
-        audioManager.mode = previousAudioMode
+        if (audioModeChanged) {
+            runCatching { audioManager.mode = previousAudioMode }
+            audioModeChanged = false
+        }
         runCatching { captureExecutor.shutdownNow() }
         runCatching { client.dispatcher.executorService.shutdown() }
-        stateMachine.end()
+        runCatching { client.connectionPool.evictAll() }
+        onEvent(RealtimeVoiceSessionEvent.Ended)
         onStatus("تماس صوتی پایان یافت.")
     }
 
@@ -258,9 +280,11 @@ class GeminiLiveVoiceSession(
             val message = JSONObject(raw)
             if (message.has("setupComplete")) {
                 if (setupComplete.compareAndSet(false, true)) {
-                    stateMachine.connected()
                     startMicrophone()
-                    onStatus("تماس زنده برقرار شد؛ صحبت کن.")
+                    if (active.get() && recorder?.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                        onEvent(RealtimeVoiceSessionEvent.Connected)
+                        onStatus("تماس زنده برقرار شد؛ صحبت کن.")
+                    }
                 }
             }
 
@@ -368,8 +392,8 @@ class GeminiLiveVoiceSession(
 
     private fun fail(message: String) {
         if (!active.getAndSet(false)) return
+        if (!disposed.compareAndSet(false, true)) return
         setupComplete.set(false)
-        stateMachine.fail(message)
         synchronized(audioLock) {
             runCatching { recorder?.stop() }
             runCatching { recorder?.release() }
@@ -383,10 +407,14 @@ class GeminiLiveVoiceSession(
         player = null
         runCatching { socket?.close(1011, "voice session failed") }
         socket = null
-        runCatching { audioManager.mode = previousAudioMode }
+        if (audioModeChanged) {
+            runCatching { audioManager.mode = previousAudioMode }
+            audioModeChanged = false
+        }
         runCatching { captureExecutor.shutdownNow() }
         runCatching { client.dispatcher.executorService.shutdown() }
         runCatching { client.connectionPool.evictAll() }
+        onEvent(RealtimeVoiceSessionEvent.Failed(message))
         onStatus(message)
     }
 

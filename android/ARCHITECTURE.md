@@ -28,12 +28,14 @@ This keeps one persistence/runtime instance and makes the UI a replaceable adapt
 ## Layers and dependency direction
 
 - `domain/model`: platform-independent values such as chat, provider, memory,
-  skill and search records.
-- `domain/repository`: ports for chat, provider, assistant-library and search data.
+  skill, search, generated-image and real-time voice lifecycle records.
+- `domain/repository`: ports for chat, provider, assistant-library, search,
+  image generation, image-provider settings and real-time voice sessions.
   Contracts do not import Android, Compose, HTTP clients or SQLite.
 - `domain/policy`: pure model eligibility and route ordering.
-- `application`: chat, provider, assistant-library, search and navigation policy.
-  Interactors validate inputs and coordinate domain ports; they do not know Android.
+- `application`: chat, provider, assistant-library, search, image generation,
+  real-time voice lifecycle and navigation policy. Interactors validate inputs and
+  coordinate domain ports; they do not know Android.
 - `data/local` and `data/remote`: SQLite/Android Keystore, provider endpoint
   catalog, Tavily and image/voice transports.
 - `core/KiraContainer`: the sole composition root. UI calls use cases exposed here.
@@ -51,7 +53,39 @@ extraction boundary rather than being misrepresented as fully modularized.
 - Memory/Skills: `feature screen → AssistantInteractor → AssistantRepository → LocalAssistantRepository`.
 - Providers: `KiraRouteScreen → ProviderApplicationService → ProviderRepository → LocalProviderRepository`.
 - Search: `KiraSearchScreen → InternetSearchInteractor → InternetSearchRepository → TavilySearchRepository`.
+- Image: `KiraImageScreen → ImageGenerationInteractor → ImageGenerationRepository → OpenAiCompatibleImageRepository`; settings and secrets use a separate Domain port and encrypted Android Keystore adapter.
+- Voice: `KiraVoiceScreen → RealtimeVoiceInteractor → RealtimeVoiceSessionFactory / VoiceCredentialRepository`; Gemini Live WebSocket, microphone and audio playback remain in Data. Typed session events carry lifecycle transitions to Application.
 
 The composition root is the only layer that wires concrete implementations. Android
 framework classes, Compose, SQLite, Android Keystore and HTTP transport must not leak
 into Domain or Application.
+
+
+## Image generation (Task 6)
+
+`KiraImageScreen → ImageGenerationInteractor → ImageGenerationRepository →
+OpenAiCompatibleImageRepository`
+
+Provider settings and credentials use a separate Domain port implemented by
+`ImageGenerationSettingsStore`. Application validates the HTTPS base URL, model ID,
+API key, prompt length and supported dimensions before dispatch. The Data adapter
+encrypts the key with AES/GCM and Android Keystore, bounds response/image sizes,
+validates PNG/JPEG/WebP output, stores generated images in app-private storage and
+keeps a bounded local history. UI receives only provider metadata and
+`GeneratedImage`; it never reads the credential directly. Save/share uses Android
+Storage Access Framework and FileProvider.
+
+## Real-time voice (Task 7)
+
+`KiraVoiceScreen → RealtimeVoiceInteractor → RealtimeVoiceSessionFactory /
+VoiceCredentialRepository`
+
+Application owns the call-state machine (Idle, Connecting, Connected, Muted and
+Failed), credential policy, session lifecycle, retryability and stale-session event
+filtering. Domain ports carry typed events (`Connected`, `Muted`, `Unmuted`,
+`Failed`, `Ended`) rather than parsing localized status strings. The Data adapter
+owns Gemini Live WebSocket transport, 16 kHz mono PCM capture, 24 kHz PCM playback,
+acoustic echo cancellation and noise suppression. It emits `Connected` only after
+the microphone is initialized and recording; microphone setup failures are typed
+failures, not false successful calls. Gemini Live credentials use Android
+Keystore-backed AES/GCM.

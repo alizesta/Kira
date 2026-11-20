@@ -1,7 +1,9 @@
 package ai.kira.mobile.data.image
 
-import ai.kira.mobile.application.image.GeneratedImage
-import ai.kira.mobile.application.image.ImageGenerationRepository
+import ai.kira.mobile.domain.model.GeneratedImage
+import ai.kira.mobile.domain.model.ImageProviderSettings
+import ai.kira.mobile.domain.repository.ImageGenerationRepository
+import ai.kira.mobile.domain.repository.ImageGenerationSettingsRepository
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -22,19 +24,17 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-data class ImageGenerationSettings(val baseUrl: String, val model: String)
-
-class ImageGenerationSettingsStore(context: Context) {
+class ImageGenerationSettingsStore(context: Context) : ImageGenerationSettingsRepository {
     private val app = context.applicationContext
     private val preferences = app.getSharedPreferences("kira_image_generation", Context.MODE_PRIVATE)
 
-    fun hasSettings(): Boolean =
+    override fun hasSettings(): Boolean =
         !preferences.getString(BASE_URL, null).isNullOrBlank() &&
             !preferences.getString(MODEL, null).isNullOrBlank() &&
             !preferences.getString(API_KEY, null).isNullOrBlank()
 
     @Synchronized
-    fun save(baseUrl: String, model: String, apiKey: String) {
+    override fun save(baseUrl: String, model: String, apiKey: String) {
         val normalizedUrl = baseUrl.trim().trimEnd('/')
         val parsed = URL(normalizedUrl)
         require(parsed.protocol.equals("https", ignoreCase = true)) { "Image provider URL must use HTTPS." }
@@ -52,44 +52,50 @@ class ImageGenerationSettingsStore(context: Context) {
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val encrypted = cipher.doFinal(normalizedKey.toByteArray(StandardCharsets.UTF_8))
         val encoded = Base64.encodeToString(cipher.iv + encrypted, Base64.NO_WRAP)
-        preferences.edit()
+        check(preferences.edit()
             .putString(BASE_URL, normalizedUrl)
             .putString(MODEL, normalizedModel)
             .putString(API_KEY, encoded)
-            .apply()
+            .commit()) { "ذخیره تنظیمات امن تصویر ناموفق بود." }
     }
 
     @Synchronized
-    fun settings(): ImageGenerationSettings {
+    override fun settings(): ImageProviderSettings {
         val baseUrl = preferences.getString(BASE_URL, null).orEmpty()
         val model = preferences.getString(MODEL, null).orEmpty()
         require(baseUrl.isNotBlank() && model.isNotBlank()) { "تنظیمات Provider تصویر را کامل کن." }
-        return ImageGenerationSettings(baseUrl, model)
+        return ImageProviderSettings(baseUrl, model)
     }
 
     @Synchronized
-    fun readApiKey(): String {
+    override fun readApiKey(): String {
         val encoded = preferences.getString(API_KEY, null)
             ?: throw IllegalStateException("کلید Provider تصویر ذخیره نشده است.")
         val payload = Base64.decode(encoded, Base64.NO_WRAP)
         require(payload.size > IV_LENGTH) { "کلید تصویر ذخیره‌شده معتبر نیست." }
+        val key = findExistingKey()
+            ?: throw IllegalStateException("کلید امنیتی تصویر در دسترس نیست؛ اتصال را حذف و دوباره ثبت کن.")
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(
             Cipher.DECRYPT_MODE,
-            getOrCreateKey(),
+            key,
             GCMParameterSpec(128, payload.copyOfRange(0, IV_LENGTH))
         )
         return String(cipher.doFinal(payload.copyOfRange(IV_LENGTH, payload.size)), StandardCharsets.UTF_8)
     }
 
     @Synchronized
-    fun clear() {
-        preferences.edit().clear().apply()
+    override fun clear() {
+        check(preferences.edit().clear().commit()) { "حذف تنظیمات تصویر ناموفق بود." }
+    }
+
+    private fun findExistingKey(): SecretKey? {
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        return store.getKey(KEY_ALIAS, null) as? SecretKey
     }
 
     private fun getOrCreateKey(): SecretKey {
-        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (store.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        findExistingKey()?.let { return it }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
         generator.init(
             KeyGenParameterSpec.Builder(
@@ -116,7 +122,7 @@ class ImageGenerationSettingsStore(context: Context) {
 
 class OpenAiCompatibleImageRepository(
     context: Context,
-    private val settingsStore: ImageGenerationSettingsStore
+    private val settingsStore: ImageGenerationSettingsRepository
 ) : ImageGenerationRepository {
     private val app = context.applicationContext
     private val historyPreferences = app.getSharedPreferences("kira_image_history", Context.MODE_PRIVATE)
@@ -249,7 +255,7 @@ class OpenAiCompatibleImageRepository(
 
     private fun downloadImage(value: String): ByteArray {
         val url = URL(value)
-        require(url.protocol.equals("https", ignoreCase = true) && url.host.isNotBlank()) {
+        require(url.protocol.equals("https", ignoreCase = true) && url.host.isNotBlank() && url.userInfo == null) {
             "Image provider returned an unsafe image URL."
         }
         val connection = url.openConnection() as HttpURLConnection
