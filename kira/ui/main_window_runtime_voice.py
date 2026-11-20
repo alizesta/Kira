@@ -121,6 +121,8 @@ class RuntimeVoiceMixin:
     def _selected_gemini_key(self):
         from ..gemini_live import resolve_google_api_key
         page = self.context.views.voice_page
+        if not str(page.gemini_provider.currentData() or "").strip():
+            page.refresh_gemini_providers(self.context.services.settings)
         provider_id = str(page.gemini_provider.currentData() or "").strip()
         self.context.services.settings["gemini_live_provider"] = provider_id
         self.save_now()
