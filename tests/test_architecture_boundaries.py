@@ -126,8 +126,8 @@ class ArchitectureBoundaryTests(unittest.TestCase):
         self.assertEqual(violations, [])
         chat_source = ui_paths[0].read_text(encoding="utf-8")
         self.assertNotIn("websearch.", chat_source)
-        self.assertIn("self.web_search_service.plan_request(", chat_source)
-        self.assertIn("self.web_search_service.format_evidence(", chat_source)
+        self.assertIn("self.context.services.web_search_service.plan_request(", chat_source)
+        self.assertIn("self.context.services.web_search_service.format_evidence(", chat_source)
 
     def test_shared_event_bus_and_chat_publisher_depend_on_core_contracts(self):
         event_bus_imports = _imported_modules(ROOT / "kira" / "app" / "event_bus.py")
