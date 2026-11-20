@@ -287,7 +287,12 @@ def initialize_main_window(
     self.controllers.require("character_settings").build_general_tab()
     self.controllers.require("provider_settings").build_ai_tab()
     if console_log_capture is not None:
-        log_page = build_console_log_page(console_log_capture, self.host)
+        log_page = build_console_log_page(
+            console_log_capture,
+            self.host,
+            title_text=self.controllers.require("session").t("log_title"),
+            clear_text=self.controllers.require("session").t("log_clear"),
+        )
         self.views.tabs.addTab(log_page, self.controllers.require("session").t("tab_logs"))
     # Keep local STT/TTS model management on the Voice page.
     voice_page = self.views.tabs.widget(self.views.tab_keys.index("tab_voice")) if hasattr(self.views, "tab_keys") else self.views.tabs.widget(2)
