@@ -33,12 +33,14 @@ import ai.kira.mobile.application.KiraContainer
 import ai.kira.mobile.domain.model.ShenavaModelVariant
 import ai.kira.mobile.ui.theme.KiraPalette
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Composable
 internal fun KiraVoiceScreen(container: KiraContainer, onUseInChat: (String) -> Unit = {}) {
     val context = LocalContext.current
     val handler = remember { Handler(Looper.getMainLooper()) }
     val executor = remember { Executors.newSingleThreadExecutor() }
+    val screenDisposed = remember { AtomicBoolean(false) }
     val voice = container.voice
     val shenavaAsr = container.shenavaAsr
     val preferences = remember(context) {
@@ -71,6 +73,7 @@ internal fun KiraVoiceScreen(container: KiraContainer, onUseInChat: (String) -> 
 
     DisposableEffect(executor, voice, shenavaAsr) {
         onDispose {
+            screenDisposed.set(true)
             runCatching { voice.stop() }
             runCatching { shenavaAsr.cancelRecording() }
             executor.shutdownNow()
@@ -137,8 +140,14 @@ internal fun KiraVoiceScreen(container: KiraContainer, onUseInChat: (String) -> 
         shenavaStatus = "در حال آماده‌سازی میکروفون محلی…"
         executor.execute {
             try {
+                if (screenDisposed.get()) return@execute
                 shenavaAsr.startRecording(variant)
+                if (screenDisposed.get()) {
+                    shenavaAsr.cancelRecording()
+                    return@execute
+                }
                 handler.post {
+                    if (screenDisposed.get()) return@post
                     shenavaRecording = true
                     shenavaStatus = "در حال ضبط روی گوشی؛ پس از صحبت، «توقف و تبدیل آفلاین» را بزن."
                     shenavaBusy = false
