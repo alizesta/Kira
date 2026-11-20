@@ -84,7 +84,12 @@ class ChatSearchService:
             raise ChatSearchValidationError("conversation_statuses may contain active, archived, trashed or closed")
         allowed_conversation_ids = None
         if conversation_statuses:
-            list_conversations = self._conversation_reader
+            reader = self._conversation_reader
+            if reader is None:
+                raise ChatSearchRepositoryError("repository does not support conversation status filtering")
+            list_conversations = getattr(reader, "list_conversations", None)
+            if not callable(list_conversations):
+                list_conversations = reader if callable(reader) else None
             if list_conversations is None:
                 raise ChatSearchRepositoryError("repository does not support conversation status filtering")
             try:

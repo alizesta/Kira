@@ -99,7 +99,7 @@ class _Base:
     def request(self, method, params, timeout):                         # pragma: no cover - implemented by subclasses
         raise NotImplementedError
 
-    def notify(self, method, params):                                    # pragma: no cover
+    def notify(self, method, params, *, required=False):               # pragma: no cover
         raise NotImplementedError
 
     def close(self):
@@ -220,8 +220,12 @@ class StdioClient(_Base):
             with self._plock:
                 self._pending.pop(rid, None)
 
-    def notify(self, method, params):
-        self._send({"jsonrpc": "2.0", "method": method, "params": params})
+    def notify(self, method, params, *, required=False):
+        try:
+            self._send({"jsonrpc": "2.0", "method": method, "params": params})
+        except McpError:
+            if required:
+                raise
 
     def close(self):
         proc = self.proc
