@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.min
 
 /** Android implementation of Shenava Koochik using sherpa-onnx's native CPU runtime. */
-class ShenavaOfflineSpeechRepository(context: Context) : ShenavaOfflineSpeechRepository {
+class SherpaShenavaOfflineSpeechRepository(context: Context) : ShenavaOfflineSpeechRepository {
     private val app = context.applicationContext
     private val modelRoot = File(app.filesDir, "models/shenava")
     private val httpClient = OkHttpClient.Builder()
