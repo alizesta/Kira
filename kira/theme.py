@@ -90,17 +90,17 @@ QTextEdit#chatView:focus, QPlainTextEdit#chatInput:focus { border: none; }
 QLineEdit:read-only { color: #AAB4D2; }
 
 QPushButton {
-    background: rgba(140,99,255,0.42); border: 2px solid #8C63FF; border-radius: 11px; padding: 7px 15px;
-    color: #FFFFFF; font-weight: 800;
+    background: rgba(140,99,255,0.42); border: 1px solid #8C63FF; border-radius: 8px; padding: 3px 11px;
+    color: #FFFFFF; font-weight: 600;
 }
-QPushButton:hover { background: rgba(140,99,255,0.66); border: 2px solid #DCCFFF; }
-QPushButton:pressed { background: rgba(140,99,255,0.88); border: 2px solid #FFFFFF; }
-QPushButton:disabled { background: rgba(255,255,255,0.05); border: 2px solid rgba(255,255,255,0.14); color: #7C88A6; }
-QPushButton:checked { background: rgba(53,217,242,0.42); border: 2px solid #35D9F2; }
+QPushButton:hover { background: rgba(140,99,255,0.66); border: 1px solid #DCCFFF; }
+QPushButton:pressed { background: rgba(140,99,255,0.88); border: 1px solid #FFFFFF; }
+QPushButton:disabled { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.14); color: #7C88A6; }
+QPushButton:checked { background: rgba(53,217,242,0.42); border: 1px solid #35D9F2; }
 QPushButton#save {
-    background: rgba(53,217,242,0.38); border: 2px solid #35D9F2; padding: 5px 16px;
+    background: rgba(53,217,242,0.38); border: 1px solid #35D9F2; padding: 3px 12px;
 }
-QPushButton#save:hover { background: rgba(53,217,242,0.62); border: 2px solid #B4F7FF; }
+QPushButton#save:hover { background: rgba(53,217,242,0.62); border: 1px solid #B4F7FF; }
 
 QToolButton { border: 1px solid transparent; border-radius: 9px; padding: 6px; color: #E2ECFF; }
 QToolButton:hover { background: rgba(140,99,255,0.18); border: 1px solid rgba(140,99,255,0.60); }

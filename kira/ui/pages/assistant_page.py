@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from ..components.switch_checkbox import SwitchCheckBox
 
 
 class AssistantPage(QScrollArea):
@@ -60,7 +61,7 @@ class AssistantPage(QScrollArea):
         self._row(assistant_form, "persona", self.persona)
 
         from PySide6.QtWidgets import QCheckBox, QLineEdit
-        self.modes_chk = QCheckBox()
+        self.modes_chk = SwitchCheckBox()
         self.modes_chk.setChecked(bool(settings.get("active_modes", True)))
         self._register(self.modes_chk.setText, "active_modes")
         self._register(self.modes_chk.setToolTip, "active_modes_tip")

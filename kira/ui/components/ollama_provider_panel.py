@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QCheckBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton
+from .switch_checkbox import SwitchCheckBox
 
 
 class OllamaProviderPanel(QGroupBox):
@@ -14,7 +15,7 @@ class OllamaProviderPanel(QGroupBox):
         super().__init__("Ollama · Local", parent)
         local_cfg = (settings or {}).get("providers", {}).get("ollama", {})
         form = QFormLayout(self)
-        self.enabled = QCheckBox("فعال بودن Provider محلی Ollama")
+        self.enabled = SwitchCheckBox("فعال بودن Provider محلی Ollama")
         self.enabled.setChecked(bool(local_cfg.get("enabled", True)))
         self.enabled.toggled.connect(self.enabled_changed.emit)
         form.addRow(self.enabled)

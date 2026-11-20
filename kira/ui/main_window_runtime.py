@@ -112,7 +112,8 @@ class RuntimeController(WindowFeatureController):
         self._speak_stream(text)
         name = self.context.services.character_service.display_name(self.context.services.settings)
         ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "fa") == "fa" else "ltr"
-        html = message_html("assistant", name, text, ui_dir, accent=self.feature_controller("session").accent())
+        footer = self.feature_controller("session").chat_actions_html("assistant", text) if final else ""     # copy / edit / speak once the reply is complete
+        html = message_html("assistant", name, text, ui_dir, footer_html=footer, accent=self.feature_controller("session").accent())
         doc = self.context.session.view.document()
         cur = QTextCursor(doc)
         if self.context.session._stream_pos is None:

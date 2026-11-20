@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from ..components.switch_checkbox import SwitchCheckBox
 
 
 class PreferencesPage(QScrollArea):
@@ -72,7 +73,7 @@ class PreferencesPage(QScrollArea):
         )
         language_form.addRow("عمق جست‌وجو", self.web_depth)
 
-        self.web_fallback_chk = QCheckBox(
+        self.web_fallback_chk = SwitchCheckBox(
             "اگر Tavily کار نکرد، با Google (Gemini) و بعد DuckDuckGo جست‌وجو کن"
         )
         self.web_fallback_chk.setChecked(bool(settings.get("web_fallback", True)))

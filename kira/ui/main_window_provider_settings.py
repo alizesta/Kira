@@ -47,6 +47,7 @@ from .main_window_provider_settings_support import (
 )
 
 from .window_feature_controller import WindowFeatureController
+from .components.switch_checkbox import SwitchCheckBox
 
 
 class ProviderSettingsController(WindowFeatureController):
@@ -204,7 +205,7 @@ class ProviderSettingsController(WindowFeatureController):
         local_stt_layout = QVBoxLayout(local_stt)
         local_stt_layout.setContentsMargins(2, 2, 2, 2)
         local_stt_layout.setSpacing(4)
-        self.local_asr_chk = QCheckBox("استفاده از Qwen3-ASR محلی")
+        self.local_asr_chk = SwitchCheckBox("استفاده از Qwen3-ASR محلی")
         self.local_asr_chk.setChecked(bool(self.context.services.settings.get("local_voice_asr", True)))
         self.local_asr_chk.toggled.connect(lambda on: self.feature_controller("voice_settings").set_local_voice_option("local_voice_asr", on))
         local_stt_layout.addWidget(self.local_asr_chk)
@@ -237,7 +238,7 @@ class ProviderSettingsController(WindowFeatureController):
         local_tts_layout = QVBoxLayout(local_tts)
         local_tts_layout.setContentsMargins(2, 2, 2, 2)
         local_tts_layout.setSpacing(4)
-        self.local_tts_chk = QCheckBox("استفاده از Piper محلی")
+        self.local_tts_chk = SwitchCheckBox("استفاده از Piper محلی")
         self.local_tts_chk.setChecked(bool(self.context.services.settings.get("local_voice_tts", True)))
         self.local_tts_chk.toggled.connect(lambda on: self.feature_controller("voice_settings").set_local_voice_option("local_voice_tts", on))
         local_tts_layout.addWidget(self.local_tts_chk)
@@ -956,7 +957,7 @@ class ProviderSettingsController(WindowFeatureController):
         form = QFormLayout(dlg)
         name, url, key, model = QLineEdit(), QLineEdit("https://"), QLineEdit(), QLineEdit()
         key.setEchoMode(QLineEdit.Password)
-        local = QCheckBox("سرور محلی (بدون API Key، مثل LM Studio)")
+        local = SwitchCheckBox("سرور محلی (بدون API Key، مثل LM Studio)")
         form.addRow("نام", name)
         form.addRow("Base URL (تا /v1)", url)
         form.addRow("API Key", key)

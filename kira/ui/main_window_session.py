@@ -656,17 +656,18 @@ class SessionController(WindowFeatureController):
             actions.append(("speak", "♫", "#FFC0E9", "#4B2044", "#FF83D0", "خواندن"))
         cells = []
         for action, glyph, colour, background, border, tooltip in actions:
+            # The whole chip is the link (padding sits inside <a>): a click anywhere on the chip works, not only on the glyph.
             cells.append(
-                f'<td bgcolor="{background}" style="border:1px solid {border};border-radius:10px;'
-                f'padding:4px 11px;">'
+                f'<td bgcolor="{background}" style="border:1px solid {border};border-radius:7px;">'
                 f'<a href="kira-action://{action}/{key}" title="{tooltip}" '
-                f'style="color:{colour};text-decoration:none;font-size:13pt;font-weight:700;">{glyph}</a>'
+                f'style="color:{colour};text-decoration:none;font-size:10pt;font-weight:600;">'
+                f'&nbsp;&nbsp;&nbsp;{glyph}&nbsp;&nbsp;&nbsp;</a>'
                 f'</td>'
             )
         links = "".join(cells)
         return (
-            '<table dir="rtl" align="right" border="0" cellspacing="9" cellpadding="0" '
-            'style="margin-top:10px;border-top:1px solid #314968;padding-top:7px;">'
+            '<table dir="rtl" align="right" border="0" cellspacing="5" cellpadding="1" '
+            'style="margin-top:6px;border-top:1px solid #314968;padding-top:4px;">'
             f'<tr>{links}</tr></table>'
         )
 

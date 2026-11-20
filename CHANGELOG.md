@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-20 (Jakob's law pass + chat action fixes)
+
+- Fixed: copy / edit / speak chips were missing on every freshly streamed reply (only history-restored messages had them) - the final streamed render now carries the footer, for every character.
+- Fixed: chips were only clickable on the tiny glyph; the whole chip is now the link. Chips are smaller.
+- Buttons are smaller app-wide (1 px border, 3x11 px padding, weight 600).
+- Settings check boxes are now on/off switches (`components/switch_checkbox.py`, a QCheckBox subclass: same API). Lists of choices (model picker, skills) stay check boxes.
+- Persian labels for Ollama Edit/Cancel and the Skills tab; the Characters sub-tab no longer shares its name with the top tab ("فهرست شخصیت‌ها").
+
 ## 2026-11-20 (AI tab redesign: "API" box + tabbed "مدل‌ها" box)
 
 - New "API" box (`components/api_panel.py`): key entry, then the registered APIs with per-row refresh and delete (double-click edits the key). Replaces the old add panel, "Registered APIs" and "API Details" boxes.

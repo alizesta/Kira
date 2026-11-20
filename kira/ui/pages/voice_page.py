@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QWidget,
 )
+from ..components.switch_checkbox import SwitchCheckBox
 
 
 class VoicePage(QScrollArea):
@@ -53,7 +54,7 @@ class VoicePage(QScrollArea):
         self.mic_sens = self._row(mic_form, "mic_sens", QSlider(Qt.Horizontal))
         self.mic_sens.setRange(50, 200)
         self.mic_sens.setValue(int(settings.get("mic_sensitivity", 100)))
-        self.barge_chk = QCheckBox()
+        self.barge_chk = SwitchCheckBox()
         self.barge_chk.setChecked(bool(settings.get("barge_in", True)))
         self._register(self.barge_chk.setText, "barge_in")
         mic_form.addRow(self.barge_chk)
@@ -122,7 +123,7 @@ class VoicePage(QScrollArea):
         ])
         self.gemini_model.setCurrentText(str(settings.get("gemini_live_model") or "gemini-3.8-live"))
         live_form.addRow("مدل Live", self.gemini_model)
-        self.local_fallback_chk = QCheckBox("در صورت خطای Realtime، به STT/TTS محلی برگرد")
+        self.local_fallback_chk = SwitchCheckBox("در صورت خطای Realtime، به STT/TTS محلی برگرد")
         self.local_fallback_chk.setChecked(bool(settings.get("voice_local_fallback", True)))
         live_form.addRow(self.local_fallback_chk)
         self.live_config_note = QLabel()
@@ -134,12 +135,12 @@ class VoicePage(QScrollArea):
         tts_form.setContentsMargins(8, 6, 8, 6)
         tts_form.setHorizontalSpacing(8)
         tts_form.setVerticalSpacing(4)
-        self.speak_chk = QCheckBox()
+        self.speak_chk = SwitchCheckBox()
         self.speak_chk.setChecked(bool(settings.get("speak_replies", True)))
         self.speak_chk.toggled.connect(self.voice_enabled_requested.emit)
         self._register(self.speak_chk.setText, "speak_on")
         tts_form.addRow(self.speak_chk)
-        self.stream_chk = QCheckBox("خواندن پیوسته‌ی پاسخ")
+        self.stream_chk = SwitchCheckBox("خواندن پیوسته‌ی پاسخ")
         self.stream_chk.setChecked(bool(settings.get("stream_speech", True)))
         tts_form.addRow(self.stream_chk)
         self.rate = QSpinBox()

@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from .switch_checkbox import SwitchCheckBox
 
 
 class RouteEditor(QWidget):
@@ -71,7 +72,7 @@ class RouteEditor(QWidget):
         for button in (self.route_add_btn, self.route_del_btn, self.route_use_btn, self.route_auto_btn):
             toolbar.addWidget(button)
         toolbar.addStretch(1)
-        self.failover_chk = QCheckBox("ادامه با مدل بعدی هنگام خطا")
+        self.failover_chk = SwitchCheckBox("ادامه با مدل بعدی هنگام خطا")
         self.failover_chk.setChecked(bool(settings.get("failover_enabled", True)))
         self.failover_chk.toggled.connect(self.failover_changed.emit)
         toolbar.addWidget(self.failover_chk)
@@ -94,7 +95,7 @@ class RouteEditor(QWidget):
         self.route_model_edit.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         model_row.addWidget(self.route_provider_lbl)
         model_row.addWidget(self.route_model_edit, 1)
-        self.route_enabled_chk = QCheckBox("فعال")
+        self.route_enabled_chk = SwitchCheckBox("فعال")
         model_row.addWidget(self.route_enabled_chk)
         body.addLayout(model_row)
 

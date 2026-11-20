@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from ..components.switch_checkbox import SwitchCheckBox
 
 
 class CharactersPage(QScrollArea):
@@ -153,16 +154,16 @@ class CharactersPage(QScrollArea):
         self.motion_sl.setRange(0, 200)
         self.motion_sl.setValue(int(float(settings["motion_strength"]) * 100))
 
-        self.react_chk = QCheckBox()
+        self.react_chk = SwitchCheckBox()
         self.react_chk.setChecked(bool(settings["click_reactions"]))
         self._register(self.react_chk.setText, "reactions")
-        self.top_chk = QCheckBox()
+        self.top_chk = SwitchCheckBox()
         self.top_chk.setChecked(bool(settings["always_on_top"]))
         self._register(self.top_chk.setText, "on_top")
-        self.idle_chk = QCheckBox()
+        self.idle_chk = SwitchCheckBox()
         self.idle_chk.setChecked(bool(settings.get("idle_talk", True)))
         self._register(self.idle_chk.setText, "idle_talk")
-        self.initiative_chk = QCheckBox()
+        self.initiative_chk = SwitchCheckBox()
         active_character_id = str(settings.get("active_character_id") or "kira")
         initiative_settings = settings.get("character_initiative")
         self.initiative_chk.setChecked(
@@ -176,9 +177,9 @@ class CharactersPage(QScrollArea):
         form.addRow(self.initiative_chk)
         form.addRow(self.top_chk)
 
-        self.tray_min_chk = QCheckBox("با دکمه‌ی Minimize به System Tray برود")
+        self.tray_min_chk = SwitchCheckBox("با دکمه‌ی Minimize به System Tray برود")
         self.tray_min_chk.setChecked(bool(settings.get("minimize_to_tray", True)))
-        self.tray_close_chk = QCheckBox("با دکمه‌ی بستن (X) به System Tray برود و بسته نشود")
+        self.tray_close_chk = SwitchCheckBox("با دکمه‌ی بستن (X) به System Tray برود و بسته نشود")
         self.tray_close_chk.setChecked(bool(settings.get("close_to_tray", False)))
         form.addRow(self.tray_min_chk)
         form.addRow(self.tray_close_chk)
