@@ -34,6 +34,8 @@ internal fun KiraChatScreen(container: KiraContainer, character:String,prefillTe
     val listState=rememberLazyListState()
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var historyLoading by remember { mutableStateOf(false) }
+    var loadSequence by remember { mutableIntStateOf(0) }
     var status by remember { mutableStateOf("هسته محلی آماده است. کلید API را در Route وارد کن.") }
     LaunchedEffect(prefillText) {
         if(prefillText.isNotBlank()) {
@@ -44,16 +46,36 @@ internal fun KiraChatScreen(container: KiraContainer, character:String,prefillTe
 
     DisposableEffect(executor) { onDispose { executor.shutdownNow() } }
     fun load() {
-        messages.clear()
-        messages.addAll(chat.history(character))
-        status="تاریخچه از حافظه همین دستگاه بارگذاری شد."
+        val requestedCharacter = character
+        val sequence = ++loadSequence
+        historyLoading = true
+        executor.execute {
+            try {
+                val loaded = chat.history(requestedCharacter)
+                handler.post {
+                    if (sequence == loadSequence && character == requestedCharacter) {
+                        messages.clear()
+                        messages.addAll(loaded)
+                        status = "تاریخچه از حافظه همین دستگاه بارگذاری شد."
+                    }
+                    if (sequence == loadSequence) historyLoading = false
+                }
+            } catch (error: Exception) {
+                handler.post {
+                    if (sequence == loadSequence) {
+                        status = error.message ?: "بازیابی تاریخچه ناموفق بود."
+                        historyLoading = false
+                    }
+                }
+            }
+        }
     }
     LaunchedEffect(character) { load() }
     LaunchedEffect(messages.size) { if(messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex) }
 
     fun send() {
         val text=input.trim()
-        if(text.isBlank() || busy) return
+        if(text.isBlank() || busy || historyLoading) return
         val who=character
         input=""
         busy=true
@@ -84,7 +106,7 @@ internal fun KiraChatScreen(container: KiraContainer, character:String,prefillTe
                 Text("KIRA LOCAL CORE",color=KiraPalette.primary,fontSize=10.sp,fontWeight=FontWeight.Bold,letterSpacing=2.sp)
                 Text("گفت‌وگو با "+character.replaceFirstChar { it.uppercase() },color=KiraPalette.onBackground,fontSize=21.sp,fontWeight=FontWeight.Bold)
             }
-            OutlinedButton(onClick={load()},enabled=!busy) { Text("بازیابی") }
+            OutlinedButton(onClick={load()},enabled=!busy && !historyLoading) { Text("بازیابی") }
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(),state=listState,verticalArrangement=Arrangement.spacedBy(9.dp)) {
             if(messages.isEmpty()) item {
@@ -102,9 +124,9 @@ internal fun KiraChatScreen(container: KiraContainer, character:String,prefillTe
                     }
                 }
             }
-            if(busy) item { Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            if(busy || historyLoading) item { Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 CircularProgressIndicator(Modifier.size(18.dp),color=KiraPalette.primary,strokeWidth=2.dp)
-                Text("Kira در حال فکرکردن است…",color=KiraPalette.muted,fontSize=11.sp)
+                Text(if (historyLoading) "در حال بازیابی تاریخچه…" else "Kira در حال فکرکردن است…",color=KiraPalette.muted,fontSize=11.sp)
             } }
         }
         Text(status,color=KiraPalette.muted,fontSize=10.sp,lineHeight=15.sp)
@@ -112,7 +134,7 @@ internal fun KiraChatScreen(container: KiraContainer, character:String,prefillTe
             OutlinedTextField(value=input,onValueChange={input=it},modifier=Modifier.weight(1f),placeholder={Text("پیامت را بنویس…",color=Color(0xFFD7D1E8))},maxLines=4,
                 keyboardOptions=KeyboardOptions(imeAction=ImeAction.Send),keyboardActions=KeyboardActions(onSend={send()}),shape=RoundedCornerShape(18.dp),
                 colors=OutlinedTextFieldDefaults.colors(focusedTextColor=Color.White,unfocusedTextColor=Color.White,disabledTextColor=Color.White,cursorColor=Color.White,focusedPlaceholderColor=Color(0xFFD7D1E8),unfocusedPlaceholderColor=Color(0xFFD7D1E8)))
-            Button(onClick={send()},enabled=!busy && input.isNotBlank(),modifier=Modifier.height(54.dp),colors=ButtonDefaults.buttonColors(containerColor=KiraPalette.primaryContainer)) { Text("ارسال") }
+            Button(onClick={send()},enabled=!busy && !historyLoading && input.isNotBlank(),modifier=Modifier.height(54.dp),colors=ButtonDefaults.buttonColors(containerColor=KiraPalette.primaryContainer)) { Text("ارسال") }
         }
     }
 }
