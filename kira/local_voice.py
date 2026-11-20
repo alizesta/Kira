@@ -31,8 +31,19 @@ _asr_model_name = None
 _shenava_recognizer = None
 _shenava_model_path = ""
 _shenava_error = None
-SHENAVA_REPO_ID = "SajjadMajdi/shenava-koochik-fa-int8"
+SHENAVA_INT8_REPO_ID = "SajjadMajdi/shenava-koochik-fa-int8"
+SHENAVA_FP32_REPO_ID = "Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx"
+# Keep the original names as aliases so older settings and integrations remain compatible.
+SHENAVA_REPO_ID = SHENAVA_INT8_REPO_ID
 SHENAVA_MODEL_FILENAME = "model.int8.onnx"
+SHENAVA_MODEL_FILENAMES = {
+    SHENAVA_INT8_REPO_ID: SHENAVA_MODEL_FILENAME,
+    SHENAVA_FP32_REPO_ID: "model.onnx",
+}
+SHENAVA_MODEL_SIZES_MB = {
+    SHENAVA_INT8_REPO_ID: 126,
+    SHENAVA_FP32_REPO_ID: 459,
+}
 SHENAVA_SAMPLE_RATE = 16000
 _tts = None  # Keep only the currently selected voice in memory.
 _tts_model_path = ""
@@ -267,17 +278,24 @@ def transcribe(audio, sample_rate=16000, language="fa", prompt="", model_name="Q
 
 
 def _resolve_shenava_model_files(model_path=""):
-    """Resolve the selected Shenava HF repo, snapshot folder, or direct ONNX file."""
+    """Resolve either supported Shenava HF variant, a snapshot folder, or a direct ONNX file."""
     selected = str(model_path or SHENAVA_REPO_ID).strip()
     candidate = Path(selected).expanduser()
+    expected_filename = SHENAVA_MODEL_FILENAMES.get(selected)
+    if not candidate.exists() and expected_filename is None:
+        raise ValueError(f"مخزن شنوا پشتیبانی نمی‌شود: {selected}")
+
     if candidate.is_file():
         model_file = candidate
         snapshot = candidate.parent
     elif candidate.is_dir():
         snapshot = candidate
-        model_file = snapshot / SHENAVA_MODEL_FILENAME
-        if not model_file.is_file():
-            model_file = snapshot / "model.onnx"
+        names = (expected_filename, SHENAVA_MODEL_FILENAME, "model.onnx")
+        model_file = next(
+            (snapshot / name for name in dict.fromkeys(name for name in names if name)
+             if (snapshot / name).is_file()),
+            snapshot / (expected_filename or SHENAVA_MODEL_FILENAME),
+        )
     else:
         repo_dir = selected.replace("/", "--")
         hub_root = Path(
@@ -293,14 +311,14 @@ def _resolve_shenava_model_files(model_path=""):
         choices.sort(key=lambda item: item.stat().st_mtime, reverse=True)
         snapshot = next(
             (item for item in choices
-             if (item / SHENAVA_MODEL_FILENAME).is_file() and (item / "tokens.txt").is_file()),
+             if (item / expected_filename).is_file() and (item / "tokens.txt").is_file()),
             None,
         )
         if snapshot is None:
             raise RuntimeError(
-                "فایل‌های شنوا در کش پیدا نشد؛ ابتدا دکمه نصب شنوا را اجرا کن."
+                "فایل‌های شنوا در کش پیدا نشد؛ ابتدا نسخهٔ انتخاب‌شده را دانلود کن."
             )
-        model_file = snapshot / SHENAVA_MODEL_FILENAME
+        model_file = snapshot / expected_filename
 
     tokens_file = snapshot / "tokens.txt"
     if not model_file.is_file() or not tokens_file.is_file():
@@ -320,7 +338,8 @@ def shenava_ready() -> bool:
 
 
 def load_shenava(model_path=""):
-    """Load the quantized Persian Shenava CTC model on CPU with sherpa-onnx."""
+    """Load the selected Persian Shenava CTC model (INT8 or FP32) on CPU."""
+
     global _asr, _asr_model_name, _asr_error
     global _shenava_recognizer, _shenava_model_path, _shenava_error
     model_file, tokens_file = _resolve_shenava_model_files(model_path)
@@ -391,7 +410,7 @@ def _resample_mono_float32(audio, sample_rate, target_rate=SHENAVA_SAMPLE_RATE):
 
 
 def transcribe_shenava(audio, sample_rate=SHENAVA_SAMPLE_RATE, model_path=""):
-    """Transcribe one mono audio segment locally with Shenava Koochik INT8."""
+    """Transcribe one mono audio segment locally with the selected Shenava model."""
     import numpy as np
 
     samples = _resample_mono_float32(audio, sample_rate)
@@ -458,9 +477,10 @@ def transcribe_shenava_file(path, model_path=""):
 
 
 def install_and_download_shenava_asr(repo_id=SHENAVA_REPO_ID, *, cancel_event=None):
-    """Install the sherpa-onnx CPU runtime and download only the compact Shenava INT8 model."""
+    """Install sherpa-onnx and download only the selected Shenava model and its required assets."""
     selected = str(repo_id or SHENAVA_REPO_ID).strip()
-    if selected != SHENAVA_REPO_ID:
+    model_filename = SHENAVA_MODEL_FILENAMES.get(selected)
+    if not model_filename:
         raise ValueError(f"مخزن شنوا پشتیبانی نمی‌شود: {selected}")
     if not shenava_ready():
         _install_voice_package("sherpa-onnx>=2.0.2,<3", cancel_event)
@@ -470,17 +490,31 @@ def install_and_download_shenava_asr(repo_id=SHENAVA_REPO_ID, *, cancel_event=No
 
     cache_dir = os.environ.get("HF_HUB_CACHE") or str(Path(_DATA_ROOT) / "huggingface" / "hub")
     Path(cache_dir).mkdir(parents=True, exist_ok=True)
-    snapshot = snapshot_download(
-        repo_id=selected,
-        cache_dir=cache_dir,
-        allow_patterns=[
-            SHENAVA_MODEL_FILENAME,
-            "tokens.txt",
-            "README.md",
-            "*.json",
-        ],
-        local_files_only=False,
-    )
+    allow_patterns = [
+        model_filename,
+        "tokens.txt",
+        "README.md",
+        "*.json",
+    ]
+    # The FP32 bundle provides Persian spoken-number normalization as an optional asset.
+    if selected == SHENAVA_FP32_REPO_ID:
+        allow_patterns.append("persian_itn.py")
+    try:
+        snapshot = snapshot_download(
+            repo_id=selected,
+            cache_dir=cache_dir,
+            allow_patterns=allow_patterns,
+            local_files_only=True,
+        )
+    except Exception:
+        if cancel_event is not None and cancel_event.is_set():
+            raise RuntimeError("دانلود شنوا به‌دلیل خروج برنامه لغو شد.")
+        snapshot = snapshot_download(
+            repo_id=selected,
+            cache_dir=cache_dir,
+            allow_patterns=allow_patterns,
+            local_files_only=False,
+        )
     _resolve_shenava_model_files(snapshot)
     return str(Path(snapshot).absolute())
 
