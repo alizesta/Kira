@@ -1,4 +1,4 @@
-"""Microphone listener: local-only Qwen3-ASR / faster-whisper plus speech segmentation (kira/vad.py).
+"""Microphone listener: local-only Shenava / Qwen3-ASR / faster-whisper plus speech segmentation (kira/vad.py).
 
 Behaviour (see vad.py / speech_text.py for the details):
   * less sensitive to room noise: speech-band level, measured noise floor, onset check, hysteresis;
@@ -30,7 +30,7 @@ class Listener(QThread):
 
     def __init__(self, model_name="small", language="fa", parent=None, sensitivity=100, barge_in=True, settings=None):
         super().__init__(parent)
-        # Qwen is preferred when enabled; faster-whisper is the only fallback.
+        # The selected offline ASR engine is preferred; faster-whisper remains the fallback.
         selected_model = str(model_name or "small").strip()
         self.model_name = "small" if selected_model.casefold().startswith("qwen/") else selected_model
         self.language = None if language in ("", "auto") else language
