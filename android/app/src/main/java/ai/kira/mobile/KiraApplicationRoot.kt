@@ -29,6 +29,8 @@ import ai.kira.mobile.core.KiraContainer
 import ai.kira.mobile.application.assistant.OverlayDestination
 import ai.kira.mobile.application.navigation.BackTarget
 import ai.kira.mobile.application.navigation.KiraNavigationPolicy
+import ai.kira.mobile.application.navigation.KiraTab
+import ai.kira.mobile.application.navigation.SettingsPage
 import ai.kira.mobile.application.assistant.OverlayRouteParser
 import ai.kira.mobile.ui.theme.KiraTheme
 import ai.kira.mobile.ui.theme.KiraPalette
