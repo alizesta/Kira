@@ -124,7 +124,7 @@ class VoicePage(QScrollArea):
         stt_actions.addWidget(self.whisper_browse_btn)
         stt_form.addRow(stt_actions)
         shenava_actions = QHBoxLayout()
-        self.shenava_download_btn = QPushButton("نصب شنوا INT8 · حدود ۱۲۶ مگابایت")
+        self.shenava_download_btn = QPushButton("نصب شنوا INT8 · حدود ۱۳۲ مگابایت")
         self.shenava_download_btn.clicked.connect(
             lambda checked=False: self.download_shenava_requested.emit()
         )
