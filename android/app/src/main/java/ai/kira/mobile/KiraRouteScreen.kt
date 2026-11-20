@@ -142,7 +142,25 @@ internal fun KiraRouteScreen(service: ProviderApplicationService) {
             modifier = Modifier.fillMaxWidth()
         ) { Text("اتصال و انتخاب مدل رایگان") }
 
-        Text("مدل فعال: " + selectedModel, style = MaterialTheme.typography.titleMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("مدل فعال", style = MaterialTheme.typography.labelMedium)
+                Text(selectedModel.ifBlank { "هنوز مدلی انتخاب نشده" }, style = MaterialTheme.typography.titleMedium)
+            }
+            OutlinedButton(
+                onClick = { refreshModels() },
+                enabled = !busy && providerId.isNotBlank()
+            ) {
+                Text("به‌روزرسانی فهرست مدل‌ها")
+            }
+        }
+        if (providerId.isNotBlank() && models.isEmpty()) {
+            Text("فهرست مدل‌ها خالی است؛ برای دریافت دوباره دکمهٔ بالا را بزن.", style = MaterialTheme.typography.bodySmall)
+        }
         if (models.isNotEmpty()) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box {
@@ -185,7 +203,6 @@ internal fun KiraRouteScreen(service: ProviderApplicationService) {
                     },
                     enabled = !busy
                 ) { Text("انتخاب هوشمند") }
-                OutlinedButton(onClick = { refreshModels() }, enabled = !busy) { Text("تازه‌سازی") }
             }
         }
         Text("ترتیب Routeها و Failover", style = MaterialTheme.typography.titleMedium)
