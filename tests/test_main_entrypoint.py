@@ -37,6 +37,15 @@ class MainEntrypointTests(unittest.TestCase):
         )
         self.assertTrue(issubclass(SessionController, WindowFeatureController))
 
+    def test_bootstrap_shows_native_splash_before_loading_application_graph(self):
+        import inspect
+        from kira.ui import bootstrap
+
+        source = inspect.getsource(bootstrap.run_application)
+        self.assertLess(source.index("QApplication.instance()"), source.index("from ..chat.events"))
+        self.assertLess(source.index("splash = _show_startup_splash(app)"), source.index("from ..chat.events"))
+        self.assertIn("QTimer.singleShot(0, record_interactive_startup)", source)
+
     def test_bootstrap_constructs_the_modular_window_directly(self):
         import inspect
         from kira.ui import bootstrap
