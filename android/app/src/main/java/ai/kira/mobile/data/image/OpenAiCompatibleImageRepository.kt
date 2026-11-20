@@ -62,8 +62,15 @@ class ImageGenerationSettingsStore(context: Context) : ImageGenerationSettingsRe
     @Synchronized
     override fun settings(): ImageProviderSettings {
         val baseUrl = preferences.getString(BASE_URL, null).orEmpty()
-        val model = preferences.getString(MODEL, null).orEmpty()
+        var model = preferences.getString(MODEL, null).orEmpty()
         require(baseUrl.isNotBlank() && model.isNotBlank()) { "تنظیمات Provider تصویر را کامل کن." }
+        val isOpenAiEndpoint = baseUrl.trimEnd('/').equals("https://api.openai.com/v1", ignoreCase = true)
+        if (isOpenAiEndpoint && model in RETIRED_OPENAI_MODELS) {
+            model = CURRENT_OPENAI_IMAGE_MODEL
+            check(preferences.edit().putString(MODEL, model).commit()) {
+                "به‌روزرسانی مدل تصویر ناموفق بود."
+            }
+        }
         return ImageProviderSettings(baseUrl, model)
     }
 
@@ -117,6 +124,8 @@ class ImageGenerationSettingsStore(context: Context) : ImageGenerationSettingsRe
         const val API_KEY = "provider_api_key"
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val IV_LENGTH = 12
+        const val CURRENT_OPENAI_IMAGE_MODEL = "gpt-image-2.6-sunburst"
+        val RETIRED_OPENAI_MODELS = setOf("dall-e-2", "dall-e-3", "gpt-image-1")
     }
 }
 
