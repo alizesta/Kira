@@ -2,7 +2,7 @@
 STR = {
  "fa": {
   "app": "Project Kira", "tagline": "دستیار دسکتاپ تو", "save": "ذخیره تنظیمات", "saved": "تنظیمات ذخیره شد.",
-  "tab_chat": "گفتگو", "tab_assistant": "دستیار", "tab_voice": "صدا و میکروفون", "tab_char": "شخصیت", "tab_appearance": "ظاهر", "tab_general": "عمومی", "tab_ai": "اتصال‌ها و مدل‌ها",
+  "tab_chat": "گفتگو", "tab_assistant": "دستیار", "tab_voice": "صدا و میکروفون", "tab_char": "شخصیت", "tab_appearance": "ظاهر", "tab_general": "عمومی", "tab_ai": "اتصال‌ها و مدل‌ها", "tab_logs": "گزارش اجرا",
   "tab_characters": "فهرست شخصیت‌ها", "tab_personality": "شخصیت و رفتار", "tab_preferences": "تنظیمات عمومی", "tab_help": "راهنما",
   "g_personality_traits": "ویژگی‌های پایه‌ی شخصیت", "trait_playfulness": "بازیگوشی", "trait_warmth": "صمیمیت", "trait_curiosity": "کنجکاوی", "trait_confidence": "اعتمادبه‌نفس", "trait_assertiveness": "قاطعیت", "trait_teasing": "شیطنت و سربه‌سر گذاشتن", "trait_empathy": "همدلی", "trait_independence": "استقلال", "trait_patience": "صبوری", "trait_carefulness": "دقت و احتیاط",
   "personality_hint": "این ویژگی‌ها فقط رفتار پایه‌ی شخصیت فعال را شکل می‌دهند؛ احساسات و مود لحظه‌ای جداگانه و با گذر زمان تغییر می‌کنند.", "character_save_traits": "ذخیره‌ی ویژگی‌ها", "character_traits_saved": "ویژگی‌های رفتاری «{name}» ذخیره شد.", "character_error_title": "خطای مدیریت شخصیت",
@@ -44,7 +44,7 @@ STR = {
  },
  "en": {
   "app": "Project Kira", "tagline": "Your desktop assistant", "save": "Save settings", "saved": "Settings saved.",
-  "tab_chat": "Chat", "tab_assistant": "Assistant", "tab_voice": "Voice and Mic", "tab_char": "Character", "tab_appearance": "Appearance", "tab_general": "General", "tab_ai": "Connections & Models",
+  "tab_chat": "Chat", "tab_assistant": "Assistant", "tab_voice": "Voice and Mic", "tab_char": "Character", "tab_appearance": "Appearance", "tab_general": "General", "tab_ai": "Connections & Models", "tab_logs": "Runtime Log",
   "tab_characters": "Character list", "tab_personality": "Personality", "tab_preferences": "Preferences", "tab_help": "Help",
   "g_personality_traits": "Character baseline traits", "trait_playfulness": "Playfulness", "trait_warmth": "Warmth", "trait_curiosity": "Curiosity", "trait_confidence": "Confidence", "trait_assertiveness": "Assertiveness", "trait_teasing": "Teasing", "trait_empathy": "Empathy", "trait_independence": "Independence", "trait_patience": "Patience", "trait_carefulness": "Carefulness",
   "personality_hint": "These traits shape the active character’s baseline behavior. Momentary emotions and mood remain separate and change over time.", "character_save_traits": "Save traits", "character_traits_saved": "Behavioral traits for “{name}” saved.", "character_error_title": "Character management error",
