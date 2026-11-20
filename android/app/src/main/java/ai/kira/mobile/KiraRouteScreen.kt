@@ -33,6 +33,51 @@ internal fun KiraRouteScreen(service: ProviderApplicationService) {
         routes.addAll(service.providers())
     }
 
+    fun applyModelResult(result: ai.kira.mobile.domain.model.ProviderOperationResult, message: String) {
+        providerId = result.provider.providerId
+        selectedModel = result.provider.modelId
+        models.clear()
+        models.addAll(result.availableModels)
+        refreshRoutes()
+        status = message
+    }
+
+    fun refreshModels() {
+        if (busy || providerId.isBlank()) return
+        busy = true
+        status = "در حال دریافت دوباره مدل‌های تأییدشده…"
+        executor.execute {
+            try {
+                val result = service.refresh(providerId)
+                handler.post { applyModelResult(result, "فهرست مدل‌های رایگان تازه شد."); busy = false }
+            } catch (error: Exception) {
+                handler.post { status = error.message ?: "تازه‌سازی مدل‌ها ناموفق بود."; busy = false }
+            }
+        }
+    }
+
+    fun updateRoute(route: ProviderConnection, enabled: Boolean? = null, delta: Int = 0) {
+        if (busy) return
+        busy = true
+        executor.execute {
+            try {
+                val updated = when {
+                    enabled != null -> service.setEnabled(route.providerId, enabled)
+                    delta != 0 -> service.move(route.providerId, delta)
+                    else -> service.providers()
+                }
+                handler.post {
+                    routes.clear()
+                    routes.addAll(updated)
+                    status = "تنظیمات Route ذخیره شد."
+                    busy = false
+                }
+            } catch (error: Exception) {
+                handler.post { status = error.message ?: "تغییر Route ناموفق بود."; busy = false }
+            }
+        }
+    }
+
     LaunchedEffect(service) {
         refreshRoutes()
         val selected = routes.firstOrNull { it.enabled } ?: routes.firstOrNull()
@@ -64,12 +109,7 @@ internal fun KiraRouteScreen(service: ProviderApplicationService) {
                         val result = service.connect(key)
                         handler.post {
                             apiKey = ""
-                            providerId = result.provider.providerId
-                            selectedModel = result.provider.modelId
-                            models.clear()
-                            models.addAll(result.availableModels)
-                            refreshRoutes()
-                            status = "اتصال برقرار شد؛ مدل رایگان انتخاب شد."
+                            applyModelResult(result, "اتصال برقرار شد؛ مدل رایگان انتخاب شد.")
                             busy = false
                         }
                     } catch (error: Exception) {
@@ -83,50 +123,49 @@ internal fun KiraRouteScreen(service: ProviderApplicationService) {
 
         Text("مدل فعال: " + selectedModel, style = MaterialTheme.typography.titleMedium)
         if (models.isNotEmpty()) {
-            OutlinedButton(onClick = { expanded = true }, enabled = !busy) { Text("فهرست مدل‌های رایگان") }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                models.forEach { model ->
-                    DropdownMenuItem(text = { Text(model) }, onClick = {
-                        expanded = false
-                        busy = true
-                        executor.execute {
-                            try {
-                                val result = service.selectModel(providerId, model)
-                                handler.post {
-                                    selectedModel = result.provider.modelId
-                                    models.clear()
-                                    models.addAll(result.availableModels)
-                                    refreshRoutes()
-                                    status = "مدل ذخیره شد."
-                                    busy = false
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box {
+                    OutlinedButton(onClick = { expanded = true }, enabled = !busy) {
+                        Text("مدل‌های رایگان (" + models.size + ")")
+                    }
+                    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        models.forEach { model ->
+                            DropdownMenuItem(text = { Text(model) }, onClick = {
+                                expanded = false
+                                if (!busy) {
+                                    busy = true
+                                    executor.execute {
+                                        try {
+                                            val result = service.selectModel(providerId, model)
+                                            handler.post { applyModelResult(result, "مدل ذخیره شد."); busy = false }
+                                        } catch (error: Exception) {
+                                            handler.post { status = error.message ?: "انتخاب مدل ناموفق بود."; busy = false }
+                                        }
+                                    }
                                 }
-                            } catch (error: Exception) {
-                                handler.post { status = error.message ?: "انتخاب مدل ناموفق بود."; busy = false }
-                            }
-                        }
-                    })
-                }
-            }
-            OutlinedButton(
-                onClick = {
-                    val recommended = FreeModelPolicy.recommendedModel(providerId, models.toList())
-                    busy = true
-                    executor.execute {
-                        try {
-                            val result = service.selectModel(providerId, recommended)
-                            handler.post {
-                                selectedModel = result.provider.modelId
-                                refreshRoutes()
-                                status = "مدل پیشنهادی انتخاب شد."
-                                busy = false
-                            }
-                        } catch (error: Exception) {
-                            handler.post { status = error.message ?: "انتخاب مدل ناموفق بود."; busy = false }
+                            })
                         }
                     }
-                },
-                enabled = !busy
-            ) { Text("انتخاب هوشمند") }
+                }
+                OutlinedButton(
+                    onClick = {
+                        if (!busy) {
+                            val recommended = FreeModelPolicy.recommendedModel(providerId, models.toList())
+                            busy = true
+                            executor.execute {
+                                try {
+                                    val result = service.selectModel(providerId, recommended)
+                                    handler.post { applyModelResult(result, "مدل پیشنهادی انتخاب شد."); busy = false }
+                                } catch (error: Exception) {
+                                    handler.post { status = error.message ?: "انتخاب مدل ناموفق بود."; busy = false }
+                                }
+                            }
+                        }
+                    },
+                    enabled = !busy
+                ) { Text("انتخاب هوشمند") }
+                OutlinedButton(onClick = { refreshModels() }, enabled = !busy) { Text("تازه‌سازی") }
+            }
         }
         Text("ترتیب Routeها و Failover", style = MaterialTheme.typography.titleMedium)
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -138,19 +177,22 @@ internal fun KiraRouteScreen(service: ProviderApplicationService) {
                             Text(route.modelId, style = MaterialTheme.typography.bodySmall)
                             Text("اولویت " + (index + 1), style = MaterialTheme.typography.labelSmall)
                         }
-                        Switch(checked = route.enabled, enabled = !busy, onCheckedChange = { enabled ->
-                            busy = true
-                            executor.execute {
-                                try {
-                                    val updated = service.setEnabled(route.providerId, enabled)
-                                    handler.post { routes.clear(); routes.addAll(updated); busy = false }
-                                } catch (error: Exception) {
-                                    handler.post { status = error.message ?: "تغییر Route ناموفق بود."; busy = false }
-                                }
+                        Column(horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally) {
+                            Switch(
+                                checked = route.enabled,
+                                enabled = !busy,
+                                onCheckedChange = { enabled -> updateRoute(route, enabled = enabled) }
+                            )
+                            Row {
+                                TextButton(onClick = { updateRoute(route, delta = -1) }, enabled = !busy && index > 0) { Text("↑") }
+                                TextButton(onClick = { updateRoute(route, delta = 1) }, enabled = !busy && index < routes.lastIndex) { Text("↓") }
                             }
-                        })
+                        }
                     }
                 }
+            }
+            if (routes.isEmpty()) item {
+                Text("هنوز Provider متصل نشده است.", style = MaterialTheme.typography.bodySmall)
             }
         }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
