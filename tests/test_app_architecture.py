@@ -390,7 +390,7 @@ class ApplicationServiceBoundaryTests(unittest.TestCase):
             self.assertEqual(service.list_items("ren"), expected_items)
 
         scope.assert_called_once_with("ren")
-        list_items.assert_called_once_with()
+        list_items.assert_called_once_with(now=None)
 
     def test_mood_service_delegates_current_and_reset(self):
         from unittest.mock import patch
@@ -404,7 +404,7 @@ class ApplicationServiceBoundaryTests(unittest.TestCase):
         with patch("kira.services.mood_service.mood.reset") as reset:
             service.reset()
 
-        read.assert_called_once_with()
+        read.assert_called_once_with(now=None, query=None)
         reset.assert_called_once_with()
 
 
