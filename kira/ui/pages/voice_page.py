@@ -228,19 +228,22 @@ class VoicePage(QScrollArea):
         for provider_id, provider_cfg in (settings.get("providers") or {}).items():
             if not isinstance(provider_cfg, dict):
                 continue
+            pid = str(provider_id or "").strip().lower()
             is_google = (
-                provider_cfg.get("service") == "google"
-                or "generativelanguage.googleapis.com" in str(provider_cfg.get("base_url") or "")
+                pid == "google"
+                or pid.startswith("google_")
+                or str(provider_cfg.get("service") or "").strip().lower() == "google"
+                or "generativelanguage.googleapis.com" in str(provider_cfg.get("base_url") or "").lower()
             )
             if is_google and str(provider_cfg.get("api_key") or "").strip():
                 providers.append((str(provider_cfg.get("label") or provider_id), provider_id))
 
-        selected = str(combo.currentData() or settings.get("gemini_live_provider") or "")
+        selected = str(combo.currentData() or settings.get("gemini_live_provider") or "").strip()
         combo.blockSignals(True)
         try:
             combo.clear()
             provider_ids = {provider_id for _label, provider_id in providers}
-            if selected and selected not in provider_ids:
+            if selected and selected not in provider_ids and not providers:
                 combo.addItem("Provider ذخیره‌شده در Connections پیدا نشد", selected)
             for label, provider_id in providers:
                 combo.addItem(label, provider_id)

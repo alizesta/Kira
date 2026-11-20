@@ -20,6 +20,16 @@ MAX_INPUT_CHUNKS = 12
 MAX_OUTPUT_CHUNKS = 32
 
 
+def _is_google_provider(provider_id: str, provider: dict) -> bool:
+    pid = str(provider_id or "").strip().lower()
+    return (
+        pid == "google"
+        or pid.startswith("google_")
+        or str(provider.get("service") or "").strip().lower() == "google"
+        or "generativelanguage.googleapis.com" in str(provider.get("base_url") or "").lower()
+    )
+
+
 def resolve_google_api_key(settings: dict, provider_id: str = "") -> str:
     """Read the key from the existing Connections provider; never duplicate secrets."""
     providers = settings.get("providers") or {}
@@ -27,17 +37,14 @@ def resolve_google_api_key(settings: dict, provider_id: str = "") -> str:
     if selected:
         provider = providers.get(selected)
         if isinstance(provider, dict):
-            return str(provider.get("api_key") or "").strip()
-        return ""
-    for provider in providers.values():
+            key = str(provider.get("api_key") or "").strip()
+            if key:
+                return key
+    for pid, provider in providers.items():
         if not isinstance(provider, dict):
             continue
-        is_google = (
-            provider.get("service") == "google"
-            or "generativelanguage.googleapis.com" in str(provider.get("base_url") or "")
-        )
         key = str(provider.get("api_key") or "").strip()
-        if is_google and key:
+        if key and _is_google_provider(pid, provider):
             return key
     return ""
 

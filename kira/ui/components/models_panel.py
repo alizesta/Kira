@@ -56,16 +56,17 @@ def price_pill(price: str) -> QWidget:
     text, color, tip = PRICE[price]
     box = QWidget()
     lay = QHBoxLayout(box)
-    lay.setContentsMargins(4, 4, 4, 4)
+    lay.setContentsMargins(6, 3, 6, 3)
     label = QLabel(text.replace("● ", ""))
     label.setAlignment(Qt.AlignCenter)
     label.setToolTip(tip)
     label.setProperty("price", price)
     label.setStyleSheet(
-        f"QLabel{{color:{color.name()};border:1px solid {color.name()};border-radius:9px;padding:1px 9px;"
+        f"QLabel{{color:{color.name()};border:1px solid {color.name()};border-radius:9px;padding:2px 10px;min-height:22px;"
         f"background:rgba({color.red()},{color.green()},{color.blue()},40);}}")
+    label.setMinimumWidth(label.sizeHint().width() + 6)
     lay.addWidget(label)
-    lay.addStretch(1)
+    box.setMinimumSize(lay.sizeHint())
     return box
 
 
@@ -139,8 +140,9 @@ class ModelsPanel(QGroupBox):
             table.setRowCount(len(selected))
             for i, row in enumerate(selected):
                 self._fill_row(table, i, tab, row)
-                table.setRowHeight(i, 34)
+                table.setRowHeight(i, 42)
             table.blockSignals(False)
+            table.resizeColumnsToContents()
         for index, tab in enumerate(TABS):
             n = (counts or {}).get(tab, sum(1 for r in rows if tab in r["tabs"]))
             self.tabs.setTabText(index, f"{TAB_TITLES[tab]} ({n})")
@@ -221,12 +223,15 @@ class ModelsPanel(QGroupBox):
     def _button(text, slot, *, enabled=True, tip="") -> QWidget:
         box = QWidget()
         lay = QHBoxLayout(box)
-        lay.setContentsMargins(2, 1, 2, 1)
+        lay.setContentsMargins(4, 3, 4, 3)
         button = QPushButton(text)
+        button.setStyleSheet("QPushButton{padding:3px 12px;min-height:24px;}")
+        button.setMinimumWidth(button.sizeHint().width() + 8)
         button.setEnabled(enabled)
         button.setToolTip(tip)
         button.clicked.connect(lambda: slot())
         lay.addWidget(button)
+        box.setMinimumSize(lay.sizeHint())
         return box
 
     # ------------------------------------------------------------------ interaction
