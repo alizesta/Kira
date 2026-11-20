@@ -172,6 +172,9 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.voice_page.asr_backend.currentIndexChanged.connect(
             self.select_local_asr_backend
         )
+        self.context.views.voice_page.shenava_variant.currentIndexChanged.connect(
+            self.select_shenava_variant
+        )
         self.context.views.voice_page.realtime_asr_requested.connect(
             self.feature_controller("runtime").set_realtime_asr
         )
@@ -182,7 +185,9 @@ class VoiceSettingsController(WindowFeatureController):
         self.refresh_voice_caps()
 
     def select_local_asr_backend(self, index):
-        """Keep the model ID aligned with the selected offline ASR runtime."""
+        """Keep the model ID and selected Shenava precision aligned with the ASR runtime."""
+        from .. import local_voice
+
         page = self.context.views.voice_page
         backend = str(page.asr_backend.currentData() or "qwen3")
         settings = self.context.services.settings
@@ -192,13 +197,44 @@ class VoiceSettingsController(WindowFeatureController):
             runtime.set_live_listening(False)
         self.stop_local_stt_test(update_ui=False)
         current_model = str(settings.get("local_voice_asr_model") or "")
+        supported_shenava = set(local_voice.SHENAVA_MODEL_FILENAMES)
         if backend == "shenava":
-            settings["local_voice_asr_model"] = "SajjadMajdi/shenava-koochik-fa-int8"
-        elif current_model.casefold() == "sajjadmajdi/shenava-koochik-fa-int8":
+            if current_model not in supported_shenava:
+                current_model = local_voice.SHENAVA_INT8_REPO_ID
+                settings["local_voice_asr_model"] = current_model
+            page.shenava_variant.blockSignals(True)
+            page.shenava_variant.setCurrentIndex(
+                max(0, page.shenava_variant.findData(current_model))
+            )
+            page.shenava_variant.blockSignals(False)
+        elif current_model in supported_shenava:
             settings["local_voice_asr_model"] = "Qwen/Qwen3-ASR-0.6B"
         self.feature_controller("runtime").save_now()
         if hasattr(self.context.views, "local_voice_status"):
             self.refresh_local_voice_status()
+
+    def select_shenava_variant(self, index):
+        """Select the INT8 or FP32 Shenava download and runtime model."""
+        from .. import local_voice
+
+        page = self.context.views.voice_page
+        repo_id = str(page.shenava_variant.currentData() or local_voice.SHENAVA_INT8_REPO_ID)
+        if repo_id not in local_voice.SHENAVA_MODEL_FILENAMES:
+            repo_id = local_voice.SHENAVA_INT8_REPO_ID
+        settings = self.context.services.settings
+        settings["local_voice_asr_backend"] = "shenava"
+        settings["local_voice_asr_model"] = repo_id
+        page.asr_backend.blockSignals(True)
+        page.asr_backend.setCurrentIndex(max(0, page.asr_backend.findData("shenava")))
+        page.asr_backend.blockSignals(False)
+        runtime = self.feature_controller("runtime")
+        if getattr(runtime, "_voice_mode", "") in ("local_fallback", "local_primary", "local_stt"):
+            runtime.set_live_listening(False)
+        self.stop_local_stt_test(update_ui=False)
+        self.feature_controller("runtime").save_now()
+        if hasattr(self.context.views, "local_voice_status"):
+            self.refresh_local_voice_status()
+
 
     def set_local_voice_option(self, key, enabled):
         self.context.services.settings[key] = bool(enabled)
@@ -250,23 +286,27 @@ class VoiceSettingsController(WindowFeatureController):
 
 
     def download_local_shenava_model(self):
-        """Install the compact Shenava CPU runtime and fetch the quantized Persian model."""
+        """Install sherpa-onnx and download the currently selected Shenava variant."""
         from .. import local_voice
 
         page = self.context.views.voice_page
+        repo_id = str(page.shenava_variant.currentData() or local_voice.SHENAVA_INT8_REPO_ID)
+        size_mb = local_voice.SHENAVA_MODEL_SIZES_MB.get(repo_id, 126)
+        precision = "FP32" if repo_id == local_voice.SHENAVA_FP32_REPO_ID else "INT8"
         page.shenava_result.setText(
-            "در حال نصب sherpa-onnx و دانلود مدل Shenava INT8 (حدود ۱۳۲ مگابایت)…"
+            f"در حال نصب sherpa-onnx و دانلود شنوا {precision} (حدود {size_mb} مگابایت)…"
         )
         self._run_local_voice_task(
             lambda cancel: local_voice.install_and_download_shenava_asr(
-                local_voice.SHENAVA_REPO_ID, cancel_event=cancel
+                repo_id, cancel_event=cancel
             ),
             page.shenava_download_btn,
-            self._on_local_shenava_downloaded,
+            lambda result: self._on_local_shenava_downloaded(result, repo_id),
             cancellable=True,
         )
 
-    def _on_local_shenava_downloaded(self, result):
+
+    def _on_local_shenava_downloaded(self, result, repo_id=None):
         ok, value = result
         page = self.context.views.voice_page
         if not ok:
@@ -276,19 +316,29 @@ class VoiceSettingsController(WindowFeatureController):
             return
         from .. import local_voice
 
+        repo_id = str(repo_id or page.shenava_variant.currentData() or local_voice.SHENAVA_INT8_REPO_ID)
+        if repo_id not in local_voice.SHENAVA_MODEL_FILENAMES:
+            repo_id = local_voice.SHENAVA_INT8_REPO_ID
         self.context.services.settings["local_voice_asr_backend"] = "shenava"
-        self.context.services.settings["local_voice_asr_model"] = local_voice.SHENAVA_REPO_ID
+        self.context.services.settings["local_voice_asr_model"] = repo_id
+        page.shenava_variant.blockSignals(True)
+        page.shenava_variant.setCurrentIndex(max(0, page.shenava_variant.findData(repo_id)))
+        page.shenava_variant.blockSignals(False)
+        page.asr_backend.blockSignals(True)
         page.asr_backend.setCurrentIndex(max(0, page.asr_backend.findData("shenava")))
+        page.asr_backend.blockSignals(False)
         self.feature_controller("runtime").save_now()
         self.refresh_local_voice_status()
+        precision = "FP32" if repo_id == local_voice.SHENAVA_FP32_REPO_ID else "INT8"
         page.shenava_result.setText(
-            "✓ شنوا نصب و انتخاب شد. موتور sherpa-onnx آماده است؛ "
+            f"✓ شنوا {precision} دانلود و انتخاب شد. موتور sherpa-onnx آماده است؛ "
             "برای سنجش دقت، یک فایل WAV انتخاب کن.\n"
             f"مسیر مدل: {value}"
         )
 
+
     def test_shenava_file(self):
-        """Run a one-shot offline test against a WAV file; no microphone is opened."""
+        """Run a one-shot offline test against the selected Shenava model; no microphone is opened."""
         page = self.context.views.voice_page
         path, _ = QFileDialog.getOpenFileName(
             self.window,
@@ -302,20 +352,23 @@ class VoiceSettingsController(WindowFeatureController):
         # A file-based benchmark must not run beside either local mic capture or Gemini Live.
         runtime.set_live_listening(False)
         self.stop_local_stt_test(update_ui=False)
-        page.shenava_result.setText(
-            f"در حال خواندن و تبدیل فایل «{Path(path).name}» با شنوا؛ میکروفن استفاده نمی‌شود…"
-        )
         from .. import local_voice
 
+        repo_id = str(page.shenava_variant.currentData() or local_voice.SHENAVA_INT8_REPO_ID)
+        precision = "FP32" if repo_id == local_voice.SHENAVA_FP32_REPO_ID else "INT8"
+        page.shenava_result.setText(
+            f"در حال خواندن و تبدیل فایل «{Path(path).name}» با شنوا {precision}؛ میکروفن استفاده نمی‌شود…"
+        )
         self._run_local_voice_task(
             lambda: local_voice.transcribe_shenava_file(
-                path, model_path=local_voice.SHENAVA_REPO_ID
+                path, model_path=repo_id
             ),
             page.shenava_test_btn,
-            lambda result: self._on_local_shenava_file_tested(result, path),
+            lambda result: self._on_local_shenava_file_tested(result, path, repo_id),
         )
 
-    def _on_local_shenava_file_tested(self, result, path):
+
+    def _on_local_shenava_file_tested(self, result, path, repo_id=None):
         ok, value = result
         page = self.context.views.voice_page
         if not ok:
@@ -329,10 +382,21 @@ class VoiceSettingsController(WindowFeatureController):
         page.shenava_result.setText(
             f"فایل: {Path(path).name}\nنتیجه‌ی شنوا:\n{transcript}"
         )
+        from .. import local_voice
+
+        repo_id = str(repo_id or page.shenava_variant.currentData() or local_voice.SHENAVA_INT8_REPO_ID)
+        if repo_id not in local_voice.SHENAVA_MODEL_FILENAMES:
+            repo_id = local_voice.SHENAVA_INT8_REPO_ID
         self.context.services.settings["local_voice_asr_backend"] = "shenava"
-        self.context.services.settings["local_voice_asr_model"] = "SajjadMajdi/shenava-koochik-fa-int8"
+        self.context.services.settings["local_voice_asr_model"] = repo_id
+        page.shenava_variant.blockSignals(True)
+        page.shenava_variant.setCurrentIndex(max(0, page.shenava_variant.findData(repo_id)))
+        page.shenava_variant.blockSignals(False)
+        page.asr_backend.blockSignals(True)
         page.asr_backend.setCurrentIndex(max(0, page.asr_backend.findData("shenava")))
+        page.asr_backend.blockSignals(False)
         self.feature_controller("runtime").save_now()
+
 
     def choose_local_whisper_folder(self):
         folder = QFileDialog.getExistingDirectory(self.window, "پوشه مدل Whisper را انتخاب کن", str(Path.home()))
