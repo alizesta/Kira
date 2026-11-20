@@ -325,6 +325,15 @@ class RouterRouteTests(unittest.TestCase):
             self.assertIn("تمام Routeهای فعال ناموفق", str(cm.exception), name)
             self.assertNotIn(CANARY, str(cm.exception), name)
 
+    def test_cooldown_route_is_reported_when_healthy_fallback_returns_first(self):
+        s, r = make("groq", "cloudflare")
+        r.cooldowns["groq"] = time.monotonic() + 100
+        r.states["groq"] = {"last_kind": "rate", "latency_ms": 1}
+        with mock.patch("requests.post", dispatch({"cloudflare": ok_cloudflare("cf")})):
+            self.assertEqual(r.chat(MSGS, SYS), "cf")
+        self.assertTrue(any(a.get("route_id") == "groq" and a.get("result") == "cooldown"
+                            for a in r.last_attempts))
+
     def test_provider_disabled_and_cooldown_active_and_ollama_down(self):
         s, r = make("groq", "cloudflare")
         s["providers"]["groq"]["enabled"] = False
