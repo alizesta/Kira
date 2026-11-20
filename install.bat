@@ -198,7 +198,7 @@ if exist voice_failed.txt (
 )
 echo Start Kira with start_kira.bat.
 pause
-exit /b 0
+exit
 
 :netfail
 echo.
@@ -210,4 +210,4 @@ goto fail
 echo.
 echo SETUP DID NOT COMPLETE. Copy the error text above for troubleshooting.
 pause
-exit /b 1
+exit
