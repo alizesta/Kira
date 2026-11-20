@@ -143,8 +143,8 @@ internal fun KiraSkillsScreen(container: KiraContainer) {
         Divider(color=Color(0xFF273047))
         Text("ساخت Connector جدید",color=Color(0xFFF4F2FA),fontSize=18.sp,fontWeight=FontWeight.Bold)
         Text("فقط درخواست HTTPS GET. هیچ اسکریپت یا کد دانلودشده‌ای اجرا نمی‌شود. کلید اختیاری با Android Keystore رمزنگاری می‌شود.",color=Color(0xFF9BA5B8),fontSize=11.sp,lineHeight=17.sp)
-        OutlinedTextField(value=name,onValueChange={name=it.lowercase().replace(Regex("[^a-z0-9-]"),"-").replace(Regex("-+"),"-").trim('-')},label={Text("شناسه مهارت (انگلیسی)")},singleLine=true,modifier=Modifier.fillMaxWidth())
-        OutlinedTextField(value=description,onValueChange={description=it},label={Text("توضیح کوتاه")},modifier=Modifier.fillMaxWidth())
+        OutlinedTextField(value=name,onValueChange={name=it.lowercase().replace(Regex("[^a-z0-9-]"),"-").replace(Regex("-+"),"-").trim('-')},label={Text("شناسه مهارت (انگلیسی)")},singleLine=true,enabled=!busy,modifier=Modifier.fillMaxWidth())
+        OutlinedTextField(value=description,onValueChange={description=it},label={Text("توضیح کوتاه")},enabled=!busy,modifier=Modifier.fillMaxWidth())
         OutlinedTextField(
             value=instructions,
             onValueChange={instructions=it},
@@ -153,9 +153,9 @@ internal fun KiraSkillsScreen(container: KiraContainer) {
             minLines=3,
             enabled=!busy,modifier=Modifier.fillMaxWidth()
         )
-        OutlinedTextField(value=baseUrl,onValueChange={baseUrl=it},label={Text("Base URL")},singleLine=true,modifier=Modifier.fillMaxWidth())
-        OutlinedTextField(value=endpoint,onValueChange={endpoint=it},label={Text("مسیر Endpoint")},singleLine=true,modifier=Modifier.fillMaxWidth())
-        OutlinedTextField(value=parameters,onValueChange={parameters=it},label={Text("پارامترهای مجاز با کاما")},singleLine=true,modifier=Modifier.fillMaxWidth())
+        OutlinedTextField(value=baseUrl,onValueChange={baseUrl=it},label={Text("Base URL")},singleLine=true,enabled=!busy,modifier=Modifier.fillMaxWidth())
+        OutlinedTextField(value=endpoint,onValueChange={endpoint=it},label={Text("مسیر Endpoint")},singleLine=true,enabled=!busy,modifier=Modifier.fillMaxWidth())
+        OutlinedTextField(value=parameters,onValueChange={parameters=it},label={Text("پارامترهای مجاز با کاما")},singleLine=true,enabled=!busy,modifier=Modifier.fillMaxWidth())
         OutlinedTextField(value=apiKey,onValueChange={apiKey=it},label={Text("API Key اختیاری (Bearer)")},singleLine=true,visualTransformation=PasswordVisualTransformation(),enabled=!busy,modifier=Modifier.fillMaxWidth())
         Button(
             onClick={
