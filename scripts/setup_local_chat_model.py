@@ -30,6 +30,7 @@ OLLAMA_MODEL = "kira-qwen3.5-9b-abliterated:q4_k_m"
 OLLAMA_MIN_VERSION = (0, 40, 15)
 _OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "127.0.0.1:11434").strip().rstrip("/")
 OLLAMA_URL = _OLLAMA_HOST if _OLLAMA_HOST.startswith(("http://", "https://")) else "http://" + _OLLAMA_HOST
+TOOL_CALL_TEST_TIMEOUT = (20, 300)
 
 
 def _data_dir() -> Path:
@@ -287,23 +288,31 @@ def _tool_call_smoke_test() -> None:
             },
         },
     }
+    print("Running native tool-calling smoke test; this may take several minutes on CPU/offloaded GPU...", flush=True)
     response = requests.post(
         OLLAMA_URL + "/api/chat",
         json={
             "model": OLLAMA_MODEL,
-            "messages": [{"role": "user", "content": "Call the ping function now with value 7. Do not answer in plain text."}],
+            "messages": [
+                {"role": "system", "content": "You must call the provided function when the user asks you to. Do not answer in plain text instead of calling it."},
+                {"role": "user", "content": "Call the ping function now with value 7. Do not answer in plain text."},
+            ],
             "tools": [tool],
             "stream": False,
             "think": False,
-            "options": {"num_ctx": 2048, "num_predict": 96, "temperature": 0},
+            "options": {"num_ctx": 2048, "num_predict": 128, "temperature": 0},
         },
-        timeout=180,
+        timeout=TOOL_CALL_TEST_TIMEOUT,
     )
     response.raise_for_status()
     message = response.json().get("message") or {}
     calls = message.get("tool_calls") or []
     if not calls:
-        raise RuntimeError("The local model smoke test did not produce a native tool call.")
+        preview = str(message.get("content") or "").strip().replace("\\n", " ")[:240]
+        raise RuntimeError(
+            "The local model did not return native tool_calls. "
+            f"Plain-text response: {preview or '[empty]'}"
+        )
     function = (calls[0].get("function") or {})
     arguments = function.get("arguments") or {}
     if isinstance(arguments, str):
@@ -311,7 +320,7 @@ def _tool_call_smoke_test() -> None:
         arguments = json.loads(arguments)
     if function.get("name") != "ping" or arguments.get("value") != 7:
         raise RuntimeError("The local model produced an invalid native tool-call payload.")
-    print("Native tool-calling smoke test passed.")
+    print("Native tool-calling smoke test passed.", flush=True)
 
 
 def main() -> int:

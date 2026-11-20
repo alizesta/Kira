@@ -1,6 +1,23 @@
 @echo off
+rem Run a stable copy: this updater replaces itself when it checks out new-main.
+rem The first (bootstrap) process launches the temporary copy in a separate console,
+rem then exits before Git can overwrite the original .bat file.
+if /I "%KIRA_UPDATER_BOOTSTRAPPED%"=="1" goto :updater_run
+set "KIRA_UPDATER_BOOTSTRAPPED=1"
+set "KIRA_UPDATER_ORIGINAL_DIR=%~dp0"
+set "KIRA_UPDATER_TEMP=%TEMP%\KiraUpdater_%RANDOM%_%RANDOM%.bat"
+copy /y "%~f0" "%KIRA_UPDATER_TEMP%" >nul
+if errorlevel 1 (
+  echo [ERROR] Could not create a stable temporary copy of the updater.
+  pause
+  exit /b 1
+)
+start "Project Kira Updater" "%ComSpec%" /d /c ""%KIRA_UPDATER_TEMP%" %*"
+exit /b 0
+
+:updater_run
 setlocal EnableExtensions
-cd /d "%~dp0"
+cd /d "%KIRA_UPDATER_ORIGINAL_DIR%"
 title Project Kira - Auto Updater
 
 set "REPO_URL=https://github.com/alizesta/Kira.git"
@@ -75,7 +92,7 @@ echo.
 echo [5/5] Compiling and running focused regression tests...
 .venv\Scripts\python.exe -m compileall -q kira scripts
 if errorlevel 1 goto :verify_fail
-.venv\Scripts\python.exe -m unittest tests.test_brain_quality tests.test_router_routes tests.test_routes tests.test_local_chat_model_setup
+.venv\Scripts\python.exe -m unittest tests.test_brain_quality tests.test_router_routes tests.test_routes tests.test_local_chat_model_setup tests.test_installer_scripts
 if errorlevel 1 goto :verify_fail
 
 echo.

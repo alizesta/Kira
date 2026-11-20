@@ -13,6 +13,8 @@ class LocalChatModelSetupTests(unittest.TestCase):
         self.assertTrue(setup.MODEL_FILE.endswith(setup.MODEL_SHA256[:12] + ".gguf"))
         self.assertIn("abliterated", setup.OLLAMA_MODEL)
         self.assertEqual(setup.OLLAMA_MIN_VERSION, (0, 40, 15))
+        self.assertEqual(setup.TOOL_CALL_TEST_TIMEOUT, (20, 300))
+        self.assertIn("Running native tool-calling smoke test", __import__("inspect").getsource(setup._tool_call_smoke_test))
 
 
 if __name__ == "__main__":
