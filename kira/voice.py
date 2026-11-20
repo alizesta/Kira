@@ -622,6 +622,16 @@ class Speaker(QObject):
         device = self._default_output()
         if device is not None:
             out.setDevice(device)
+        else:
+            # QAudioOutput can be constructed even when Windows has no usable
+            # endpoint. Detect that state here instead of letting QMediaPlayer
+            # appear to accept playback while producing silence.
+            try:
+                if out.device().isNull():
+                    raise RuntimeError("هیچ دستگاه خروجی صدایی در ویندوز در دسترس نیست.")
+            except AttributeError:
+                # Keep lightweight test doubles and older Qt wrappers compatible.
+                pass
         try:
             volume = float(self.settings.get("voice_volume", 0.9))
         except (TypeError, ValueError):
