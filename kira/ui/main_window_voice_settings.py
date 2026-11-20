@@ -98,6 +98,7 @@ class VoiceSettingsController(WindowFeatureController):
         cv.setSpacing(6)
         self.chat_header = ChatHeader(self.feature_controller("session").icon_button("user", True), parent=chat_card)
         self.context.views.title = self.chat_header.title
+        self.context.views.voice_mode_badge = self.chat_header.voice_mode_badge
         self.context.views.mood_emotion_icon = self.chat_header.mood_emotion_icon
         self.context.views.mood_indicator = self.chat_header.mood_indicator
         self.context.views.companion_btn = self.chat_header.companion_btn
