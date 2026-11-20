@@ -746,9 +746,16 @@ class RuntimeController(WindowFeatureController):
             worker = getattr(self, "_gemini_worker", None)
             if worker is not None and worker.isRunning():
                 worker.stop()
-            if getattr(self, "_voice_mode", "") in ("local_fallback", "local_primary"):
-                self._set_mic_checked(False)
+            if getattr(self, "_voice_mode", "") in ("local_fallback", "local_primary", "local_stt"):
                 self.stop_listener()
+            wake = self.context.views.wake_btn
+            if wake.isChecked():
+                previous = wake.blockSignals(True)
+                wake.setChecked(False)
+                wake.blockSignals(previous)
+                self.context.views.wake_timer.stop()
+                self.context.state.awake = False
+                self.context.adapters.animator.set_sleeping(False)
             self._voice_mode = "idle"
             self._set_mic_checked(False)
             self._sync_live_toggle(False)
@@ -800,24 +807,8 @@ class RuntimeController(WindowFeatureController):
         self._launch_gemini_live_worker()
 
     def toggle_mic(self):
-        if self.context.views.mic_btn.isChecked():
-            self._pending_gemini_start = False
-            self._voice_mode = "local_stt"
-            self._sync_live_toggle(False)
-            self.start_listener()
-        else:
-            self._voice_session_requested = False
-            self._pending_gemini_start = False
-            worker = getattr(self, "_gemini_worker", None)
-            if worker is not None and worker.isRunning():
-                worker.stop()
-            self._voice_mode = "idle"
-            self._sync_live_toggle(False)
-            if self.context.views.wake_btn.isChecked():
-                self.context.views.wake_btn.setChecked(False)
-                self.toggle_wake()
-            self.stop_listener()
-        self._sync_voice_mode_badge()
+        """The home microphone button starts the configured primary voice engine."""
+        self.set_live_listening(bool(self.context.views.mic_btn.isChecked()))
 
     def _create_voice_listener(self):
         return Listener(
