@@ -600,37 +600,41 @@ class Speaker(QObject):
             self._report(f"پخش صدا ناموفق بود: {type(e).__name__}: {e}")
 
     def _start_playback(self, s, wav, env):
+        """Play every format through Qt's media backend with the selected output device.
+
+        QSoundEffect is intended for short UI effects and has a narrower WAV/backend
+        compatibility surface. Piper WAVs previously took that separate path, so a
+        successful synthesis could still be silent on Windows audio configurations
+        where QSoundEffect failed to start. QMediaPlayer is already the supported
+        backend for compressed files and handles both paths consistently.
+        """
         self._wav, self._env, self._item_began = wav, env, False
         self._keep = s.keep or not wav.startswith(self._tmp)
-        vol = float(self.settings.get("voice_volume", 0.9))
-        if not wav.endswith(".wav"):
-            self._watch_devices()
-            out = QAudioOutput(self)
-            device = self._default_output()
-            if device is not None:
-                out.setDevice(device)
-            out.setVolume(vol)
-            fx = QMediaPlayer(self)
-            fx.setAudioOutput(out)
-            fx.setSource(QUrl.fromLocalFile(wav))
-            fx.playbackStateChanged.connect(self._on_pstate)
-            # An unreadable / unsupported file stops the player without ever "playing": without this the
-            # reply would hang as "speaking" forever (no finished signal, microphone stays muted).
-            fx.errorOccurred.connect(lambda _err=None, msg="", p=fx: self._on_player_failed(p, msg))
-            self._out = out
-        else:
-            self._watch_devices()
-            fx = QSoundEffect(self)
-            device = self._default_output()
-            if device is not None:
-                fx.setAudioDevice(device)
-            fx.setSource(QUrl.fromLocalFile(wav))
-            fx.setVolume(vol)
-            fx.playingChanged.connect(self._on_playing)
-            fx.statusChanged.connect(self._on_sound_status)
+        self._watch_devices()
+        out = QAudioOutput(self)
+        device = self._default_output()
+        if device is not None:
+            out.setDevice(device)
+        try:
+            volume = float(self.settings.get("voice_volume", 0.9))
+        except (TypeError, ValueError):
+            volume = 0.9
+        out.setVolume(max(0.0, min(1.0, volume)))
+
+        fx = QMediaPlayer(self)
+        fx.setAudioOutput(out)
+        fx.setSource(QUrl.fromLocalFile(wav))
+        fx.playbackStateChanged.connect(self._on_pstate)
+        fx.errorOccurred.connect(
+            lambda _error=None, message="", player=fx: self._on_player_failed(player, message)
+        )
+        self._out = out
         self._fx = fx
         fx.play()
-        QTimer.singleShot(PLAYBACK_START_TIMEOUT_MS, lambda p=fx: self._on_player_failed(p, "پخش صدا شروع نشد."))
+        QTimer.singleShot(
+            PLAYBACK_START_TIMEOUT_MS,
+            lambda player=fx: self._on_player_failed(player, "پخش صدا شروع نشد."),
+        )
 
     def _on_player_failed(self, player, message=""):
         """The sentence that should be playing never started (or failed): report it and go on with the next one."""
