@@ -232,7 +232,6 @@ class VoiceSettingsController(WindowFeatureController):
         from .. import local_voice
 
         page = self.context.views.voice_page
-        page.shenava_download_btn.setEnabled(False)
         page.shenava_result.setText(
             "در حال نصب sherpa-onnx و دانلود مدل Shenava INT8 (حدود ۱۲۶ مگابایت)…"
         )
@@ -682,7 +681,7 @@ class VoiceSettingsController(WindowFeatureController):
                 ezafe_text += f" · تلاش دوباره پس از {ezafe['retry_in_seconds']} ثانیه"
             selected_tts = tts_model or "Mana Persian Piper · صدای فارسی پیش‌فرض"
             self.context.views.local_voice_status.setText(
-                f"STT · Qwen3-ASR: {asr}\nمدل STT: {asr_model}\n"
+                f"STT · {asr_label}: {asr}\nمدل STT: {asr_model}\n"
                 f"TTS · Piper: {tts}\nمدل TTS: {selected_tts}\n"
                 f"{ezafe_text}\n"
                 f"مدل‌های Piper مستقل: {len(discovered.get('tts', []))}\n"
