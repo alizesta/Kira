@@ -5,7 +5,7 @@
 - Added a dedicated Gemini Live audio worker using the official Google Gen AI SDK. Microphone PCM is streamed directly to the Live session and returned PCM audio is played directly to the selected output device; the primary path does not use local STT or Piper.
 - Connected the existing Google provider credentials from Connections without storing a second API key. Added Gemini Live model selection and made Gemini Live the default voice engine.
 - Added automatic fallback after a Gemini Live connection/session failure: the existing local Qwen3-ASR/Whisper → chat model → Piper listener starts after the Live audio streams are released.
-- Added a selectable local-only primary mode, and status reporting for Gemini connection, active Gemini Live, and local fallback.
+- The home microphone button now starts/stops the configured primary engine (Gemini Live by default); the Voice-page control remains synchronized. Added a selectable local-only primary mode and clear status reporting for connection, active Gemini Live and local fallback.
 - Added unit coverage for Google credential selection, device fallback and migration from the legacy local-only setting. Added `docs/GEMINI_LIVE_FA.md` for setup and operation.
 - Requires the `google-genai` SDK. Automated tests were not run in this environment; hardware-level duplex audio, interruption behaviour and failover still need Windows smoke testing.
 
