@@ -9,6 +9,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -38,7 +39,11 @@ import ai.kira.mobile.ui.theme.KiraPalette
 internal data class OverlayLaunchRequest(val route: String, val text: String, val sequence: Long)
 
 @Composable
-internal fun KiraApp(container: KiraContainer, routeRequest: OverlayLaunchRequest? = null) {
+internal fun KiraApp(
+    container: KiraContainer,
+    routeRequest: OverlayLaunchRequest? = null,
+    overlayRunning: Boolean = false
+) {
     val context=LocalContext.current
     var selectedTab by rememberSaveable { mutableStateOf(KiraTab.CHAT) }
     var previousTab by rememberSaveable { mutableStateOf(KiraTab.CHAT) }
@@ -46,7 +51,11 @@ internal fun KiraApp(container: KiraContainer, routeRequest: OverlayLaunchReques
     var pendingChatContext by rememberSaveable { mutableStateOf("") }
     var settingsPage by rememberSaveable { mutableStateOf(SettingsPage.HOME) }
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
-    var overlayStarted by remember { mutableStateOf(false) }
+    var overlayStarted by remember { mutableStateOf(overlayRunning) }
+
+    LaunchedEffect(overlayRunning) {
+        overlayStarted = overlayRunning
+    }
 
     LaunchedEffect(routeRequest?.sequence) {
         routeRequest?.let { request ->
@@ -118,7 +127,8 @@ internal fun KiraApp(container: KiraContainer, routeRequest: OverlayLaunchReques
                                 },
                                 onStartOverlay={
                                     val intent=Intent(context,AiAssistantOverlayService::class.java).setAction(AiAssistantOverlayService.ACTION_START)
-                                    overlayStarted=context.startService(intent)!=null
+                                    ContextCompat.startForegroundService(context,intent)
+                                    overlayStarted=true
                                 },
                                 onStopOverlay={
                                     context.startService(Intent(context,AiAssistantOverlayService::class.java).setAction(AiAssistantOverlayService.ACTION_STOP))
