@@ -283,7 +283,7 @@ class VoiceSettingsController(WindowFeatureController):
         self.refresh_local_voice_status()
         page.shenava_result.setText(
             "✓ شنوا نصب و انتخاب شد. موتور sherpa-onnx آماده است؛ "
-            "برای سنجش دقت، یک فایل WAV انتخاب کن.\\n"
+            "برای سنجش دقت، یک فایل WAV انتخاب کن.\n"
             f"مسیر مدل: {value}"
         )
 
@@ -327,7 +327,7 @@ class VoiceSettingsController(WindowFeatureController):
         if not transcript:
             transcript = "متنی تشخیص داده نشد."
         page.shenava_result.setText(
-            f"فایل: {Path(path).name}\\nنتیجه‌ی شنوا:\\n{transcript}"
+            f"فایل: {Path(path).name}\nنتیجه‌ی شنوا:\n{transcript}"
         )
         self.context.services.settings["local_voice_asr_backend"] = "shenava"
         self.context.services.settings["local_voice_asr_model"] = "SajjadMajdi/shenava-koochik-fa-int8"
