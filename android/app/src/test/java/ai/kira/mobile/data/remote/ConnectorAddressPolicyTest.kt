@@ -50,6 +50,8 @@ class ConnectorAddressPolicyTest {
             "ff02::1",
             "2001:db8::1",
             "2001:2::1",
+            "2001:10::1",
+            "2001:20::1",
             "2001::1",
             "2002::1"
         ).forEach { address ->
