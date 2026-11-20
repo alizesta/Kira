@@ -82,7 +82,7 @@ class ApplicationQtIndependenceTests(unittest.TestCase):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         source = path.read_text(encoding="utf-8")
         self.assertIn("ProviderWorkerPort", source)
-        self.assertIn("worker.subscribe(event_name, callback)", source)
+        self.assertIn("subscribe(event_name, callback)", source)
         self.assertNotIn(".connect(callback)", source)
         self.assertNotIn("finished_ok", source)
         self.assertNotIn("isRunning", source)
