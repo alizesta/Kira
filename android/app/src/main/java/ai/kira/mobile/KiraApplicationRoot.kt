@@ -64,7 +64,6 @@ internal fun KiraApp(
         )
     }
     var notificationPermissionDenied by remember { mutableStateOf(false) }
-    var pendingOverlayStart by remember { mutableStateOf(false) }
     var overlayStarted by remember { mutableStateOf(overlayRunning) }
 
     fun startOverlayService() {
@@ -114,10 +113,6 @@ internal fun KiraApp(
     ) { granted ->
         notificationPermissionGranted = granted
         notificationPermissionDenied = !granted
-        if (granted && pendingOverlayStart) {
-            pendingOverlayStart = false
-            startOverlayService()
-        }
     }
     val notificationSettingsLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -126,10 +121,6 @@ internal fun KiraApp(
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         notificationPermissionDenied = !notificationPermissionGranted
-        if (notificationPermissionGranted && pendingOverlayStart) {
-            pendingOverlayStart = false
-            startOverlayService()
-        }
     }
 
     KiraTheme {
@@ -181,10 +172,10 @@ internal fun KiraApp(
                                     overlaySettingsLauncher.launch(intent)
                                 },
                                 onStartOverlay={
-                                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || notificationPermissionGranted) {
-                                        startOverlayService()
-                                    } else {
-                                        pendingOverlayStart = true
+                                    // Notification permission controls drawer visibility, not the
+                                    // user's ability to start the explicit foreground overlay.
+                                    startOverlayService()
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationPermissionGranted) {
                                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                                     }
                                 },
