@@ -1,57 +1,49 @@
-"""Reusable chat header presentation owned by the Chat page."""
+from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QWidget,
+)
 
 
-class ChatHeader(QWidget):
-    """Owns the chat title, emotion indicators and companion action button."""
+class ChatHeader(QFrame):
+    """Familiar top chat bar with flexible title and non-clipping controls."""
 
-    def __init__(self, companion_button: QWidget, parent=None) -> None:
+    def __init__(self, title: str = "Kira", parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        header = QHBoxLayout(self)
-        header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(6)
+        self.setObjectName("chatHeader")
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.setMinimumHeight(38)
 
-        self.title = QLabel("Project Kira")
-        self.title.setObjectName("title")
-        header.addWidget(self.title)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(8)
 
-        self.voice_mode_badge = QLabel("میکروفن خاموش")
-        self.voice_mode_badge.setObjectName("voiceModeBadge")
-        self.voice_mode_badge.setAlignment(Qt.AlignCenter)
-        self.voice_mode_badge.setToolTip("وضعیت واقعی مکالمه صوتی: Gemini Live یا مسیر پشتیبان محلی STT/TTS.")
-        self.voice_mode_badge.setStyleSheet(
-            "QLabel#voiceModeBadge { background: rgba(12, 20, 43, 0.92); "
-            "border: 1px solid rgba(105, 229, 255, 0.55); border-radius: 9px; "
-            "padding: 5px 9px; color: #9FEFFF; font-size: 11px; }"
-        )
-        header.addWidget(self.voice_mode_badge)
-        header.addStretch(1)
+        self.title_label = QLabel(title, self)
+        self.title_label.setObjectName("chatHeaderTitle")
+        self.title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self.title_label, 1)
 
-        self.mood_emotion_icon = QLabel()
-        self.mood_emotion_icon.setObjectName("moodEmotionIcon")
-        self.mood_emotion_icon.setAlignment(Qt.AlignCenter)
-        self.mood_emotion_icon.setFixedSize(38, 38)
-        self.mood_emotion_icon.setToolTip("احساس فعلی شخصیت فعال")
-        self.mood_emotion_icon.setStyleSheet(
-            "QLabel#moodEmotionIcon { background: rgba(12, 20, 43, 0.96); "
-            "border: 1px solid rgba(105, 229, 255, 0.85); border-radius: 11px; padding: 2px; }"
-        )
-        header.addWidget(self.mood_emotion_icon)
+        self.mode_badge = QLabel("", self)
+        self.mode_badge.setObjectName("chatModeBadge")
+        self.mode_badge.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Preferred)
+        self.mode_badge.hide()
+        layout.addWidget(self.mode_badge, 0)
 
-        self.mood_indicator = QLabel()
-        self.mood_indicator.setObjectName("moodIndicator")
-        self.mood_indicator.setAlignment(Qt.AlignCenter)
-        self.mood_indicator.hide()
-        self.mood_indicator.setFixedSize(32, 32)
-        self.mood_indicator.setToolTip("رفتار و انرژی فعلی شخصیت فعال")
-        self.mood_indicator.setStyleSheet(
-            "QLabel#moodIndicator { background: rgba(20, 24, 62, 0.92); "
-            "border: 1px solid rgba(137, 112, 255, 0.88); border-radius: 11px; "
-            "padding: 4px 7px; font-size: 16px; color: #F2E9FF; }"
-        )
-        header.addWidget(self.mood_indicator)
+        self.new_chat_btn = QPushButton("New", self)
+        self.new_chat_btn.setObjectName("newChatButton")
+        self.new_chat_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+        self.new_chat_btn.setMinimumSize(36, 28)
+        layout.addWidget(self.new_chat_btn, 0)
 
-        self.companion_btn = companion_button
-        header.addWidget(self.companion_btn)
+        self.settings_btn = QPushButton("Settings", self)
+        self.settings_btn.setObjectName("settingsButton")
+        self.settings_btn.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+        self.settings_btn.setMinimumSize(44, 28)
+        layout.addWidget(self.settings_btn, 0)
