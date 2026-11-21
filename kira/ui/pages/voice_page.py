@@ -105,9 +105,15 @@ class VoicePage(QScrollArea):
             "Shenava FP32 · نسخه کامل · حدود ۴۵۹ مگابایت",
             "Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx",
         )
-        variant_index = self.shenava_variant.findData(
-            str(settings.get("local_voice_asr_model") or "")
-        )
+        selected_asr_model = str(settings.get("local_voice_asr_model") or "")
+        supported_asr_models = {
+            "SajjadMajdi/shenava-koochik-fa-int8",
+            "Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx",
+        }
+        if selected_asr_model not in supported_asr_models:
+            selected_asr_model = "SajjadMajdi/shenava-koochik-fa-int8"
+            settings["local_voice_asr_model"] = selected_asr_model
+        variant_index = self.shenava_variant.findData(selected_asr_model)
         self.shenava_variant.setCurrentIndex(max(0, variant_index))
         stt_form.addRow("موتور تشخیص گفتار محلی", QLabel("شنوا · Sherpa-ONNX"))
         stt_form.addRow("نسخه مدل شنوا", self.shenava_variant)
