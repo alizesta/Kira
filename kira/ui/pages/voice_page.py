@@ -129,7 +129,14 @@ class VoicePage(QScrollArea):
             "large-v3",
             "parseh/whisper-fa-accuracy-ct2",
         ])
-        self.whisper.setCurrentText(str(settings.get("whisper_model") or "base"))
+        # Older builds accidentally persisted the Qwen3-ASR repository ID in
+        # whisper_model, making the Whisper selector look like a duplicate ASR
+        # backend. Qwen3-ASR is selected through asr_backend instead.
+        saved_whisper = str(settings.get("whisper_model") or "base").strip()
+        if saved_whisper.casefold() == "qwen/qwen3-asr-0.6b":
+            saved_whisper = "base"
+            settings["whisper_model"] = saved_whisper
+        self.whisper.setCurrentText(saved_whisper)
         self._register(self.whisper.setToolTip, "whisper_tip")
         self.whisper_browse_btn = QPushButton("انتخاب پوشه مدل")
         self.whisper_browse_btn.clicked.connect(lambda checked=False: self.choose_whisper_folder_requested.emit())
