@@ -2,10 +2,12 @@
 import unittest
 from unittest.mock import Mock
 
-from kira.app.coding_agent_application import CodingAgentApplicationService
+from kira.app.coding_agent_application import KodeApplicationService, CodingAgentApplicationService
 
 
 class CodingAgentApplicationServiceTests(unittest.TestCase):
+    def test_kode_service_is_the_canonical_name_with_legacy_alias(self):
+        self.assertIs(KodeApplicationService, CodingAgentApplicationService)
     def test_attachment_free_turn_is_handed_to_agent_and_chat_request_completed(self):
         agent = Mock()
         agent.handle.return_value = True
