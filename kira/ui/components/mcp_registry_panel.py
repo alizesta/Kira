@@ -18,6 +18,9 @@ from PySide6.QtWidgets import (
 )
 
 
+from .fit_height import fit_height
+
+
 class McpRegistryPanel(QGroupBox):
     search_requested = Signal()
     add_requested = Signal()
@@ -36,7 +39,7 @@ class McpRegistryPanel(QGroupBox):
         form.addRow(row)
 
         self.results = QListWidget()
-        self.results.setMaximumHeight(150)
+        fit_height(self.results, 0, row_height=40, min_rows=1, max_height=150)   # grows once results arrive
         self.results.setIconSize(QSize(36, 36))
         self.results.setSelectionMode(QAbstractItemView.SingleSelection)
         form.addRow(self.results)
@@ -99,6 +102,7 @@ class McpRegistryPanel(QGroupBox):
     def show_results(self, records, error=None) -> None:
         self.set_searching(False)
         self.results.clear()
+        fit_height(self.results, 0, row_height=40, min_rows=1, max_height=150)
         if error:
             self.status.setText("دریافت فهرست ناموفق بود: " + str(error)[:240])
             return
@@ -111,4 +115,5 @@ class McpRegistryPanel(QGroupBox):
             website = str(server.get("websiteUrl") or server.get("repository") or "")
             item.setToolTip(description + (("\\n\\n" + website) if website else ""))
             self.results.addItem(item)
+        fit_height(self.results, len(records), row_height=40, max_height=150)
         self.status.setText(f"{len(records)} سرور از رجیستری رسمی دریافت شد.")

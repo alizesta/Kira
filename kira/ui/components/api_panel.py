@@ -14,6 +14,9 @@ from PySide6.QtWidgets import (
 from ..shortcuts import delete_key
 
 
+from .fit_height import fit_height
+
+
 class ApiPanel(QGroupBox):
     add_requested = Signal()
     refresh_requested = Signal(str)
@@ -64,8 +67,6 @@ class ApiPanel(QGroupBox):
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         header.setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.setMinimumHeight(120)
-        self.table.setMaximumHeight(210)
         self.table.cellDoubleClicked.connect(lambda row, _col: self._emit_for_row(row, self.edit_requested))
         delete_key(self.table, lambda: self._emit_for_row(self.table.currentRow(), self.delete_requested))   # Delete asks before removing
         layout.addWidget(self.table)
@@ -94,6 +95,7 @@ class ApiPanel(QGroupBox):
         keep = select or self.selected_id()
         self.table.blockSignals(True)
         self.table.setRowCount(len(rows))
+        fit_height(self.table, len(rows), row_height=self.table.verticalHeader().defaultSectionSize(), max_height=210)
         for i, r in enumerate(rows):
             name = f"{r['label']}  ({r['key']})" if r["key"] else r["label"]
             status = status_text(r["status"]) + ("" if r["enabled"] else " · خاموش")

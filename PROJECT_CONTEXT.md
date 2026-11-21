@@ -172,3 +172,5 @@ Local-only speech stack: Qwen3-ASR primary STT, faster-whisper local fallback, P
 - Left/right are the character's own sides. Held poses release by `reset`, a pose of the same group, or after `HOLD_S` (150 s).
 
 - 2026-11-21 23:49 Iran: UI icons live in `assets/icons/*.svg` (Lucide, ISC) rendered with glow by `kira/ui_icons.py`; `stop` and mood faces remain code-drawn.
+
+- 2026-11-22 03:03 Iran: UNSLOP leftovers done (self-sizing tables via fit_height, collapsed advanced switches in Character tab, scoped notes labels).

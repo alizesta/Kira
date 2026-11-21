@@ -24,6 +24,9 @@ PRICE = {"free": ("● رایگان", GREEN, "Provider رایگان بودن ا�
 COLUMNS = ("فعال", "مدل", "API", "قیمت", "وضعیت", "", "")
 
 
+from .fit_height import fit_height
+
+
 class ToggleSwitch(QAbstractButton):
     """The on/off switch every settings screen uses (familiar pattern) instead of a plain check box."""
 
@@ -153,8 +156,6 @@ class ModelsPanel(QGroupBox):
         header = table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.Fixed)
         header.setStretchLastSection(False)
-        table.setMinimumHeight(210)
-        table.setMaximumHeight(330)
         if tab != TAB_ARCHIVED:
             delete_key(table, lambda t=table: self._archive_selected(t))      # Delete = move the selected model to «منسوخ» (reversible)
         if tab == TAB_ARCHIVED:
@@ -170,6 +171,7 @@ class ModelsPanel(QGroupBox):
             if tab == "active":
                 selected.sort(key=lambda r: r["order"])             # the order the router tries them
             table.setRowCount(len(selected))
+            fit_height(table, len(selected), max_height=330)
             for i, row in enumerate(selected):
                 self._fill_row(table, i, tab, row)
                 table.setRowHeight(i, 36)

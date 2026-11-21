@@ -112,7 +112,7 @@ class VoiceSettingsController(WindowFeatureController):
             ComposerOwner(
                 self.feature_controller("chat").context,
                 self.window,
-                view_context=self.window.presentation_context,
+                view_context=self.context,
             ),
             chat_input_factory=ChatInput,
             route_chip_factory=RouteChip,
