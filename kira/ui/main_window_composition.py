@@ -270,7 +270,6 @@ def initialize_main_window(
     self.state._game_capture_timer.timeout.connect(self.controllers.require("attachments_vision")._capture_game_frame)
     self.adapters.game_mode.game_detected.connect(self.controllers.require("attachments_vision").on_game_detected)
     self.host.resize(900, 720)
-    self.host.setMinimumSize(520, 540)
     self.host.setAcceptDrops(True)                          # drop images / files anywhere on the window to attach them
     self.state._effect = winfx.active_effect(self.services.settings.get("window_effect"))
     if self.state._effect != "off":
@@ -333,6 +332,7 @@ def initialize_main_window(
         settings_tab=self.views.tab_keys.index("tab_ai"),
     )
     self.controllers.require("session").tidy_forms()                      # field widths follow their content (done once every page exists)
+    self.views.voice_page.refresh_responsive_layout()
     for i, key in enumerate(self.views.tab_keys):
         self.controllers.require("session").reg(lambda s, i=i: self.views.tabs.setTabText(i, s), key)
     # Compact icon navigation. The QTabWidget stays as the page stack (its tab strip is hidden).
@@ -372,7 +372,6 @@ def initialize_main_window(
     toolbar = QHBoxLayout(toolbar_frame)
     toolbar.setContentsMargins(7, 5, 7, 5)
     toolbar.setSpacing(5)
-    self.views.menu_btn.setFixedSize(38, 38)
     toolbar.addWidget(self.views.menu_btn)
     toolbar.addStretch(1)
     toolbar.addWidget(self.views.save_btn)

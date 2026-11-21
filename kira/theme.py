@@ -230,17 +230,99 @@ def build_style(effect="off", appearance=None):
     for opaque, tint in GLASS_TINTS.items():
         css = css.replace(opaque, tint)
     glow = max(0, min(100, int(appearance.get("glow", 18))))
-    glow_alpha = 0.18 + glow * 0.0048
-    g1, g2 = appearance_tint((36, 27, 75), appearance), appearance_tint((10, 24, 43), appearance)
+    cyan_alpha = min(0.98, 0.62 + glow * 0.0034)
+    magenta_alpha = min(0.88, 0.34 + glow * 0.0048)
     override = f"""
 QGroupBox {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba({g1[0]},{g1[1]},{g1[2]},0.34), stop:1 rgba({g2[0]},{g2[1]},{g2[2]},0.30));
-    border-color: rgba(140,99,255,{glow_alpha:.2f});
+        stop:0 rgba(7,39,61,0.54), stop:0.48 rgba(20,24,65,0.48), stop:1 rgba(48,15,59,0.40));
+    border: 1px solid rgba(53,217,242,{cyan_alpha:.2f});
+    border-top: 2px solid rgba(104,245,255,{min(1.0, cyan_alpha + 0.02):.2f});
+    border-bottom: 2px solid rgba(255,77,204,{magenta_alpha:.2f});
+    border-radius: 14px;
 }}
-QGroupBox:hover {{ border-color: rgba(111,226,255,{min(0.94, glow_alpha + 0.16):.2f}); }}
-QToolButton:hover {{ background: rgba(53,217,242,{0.08 + glow * 0.0022:.2f}); border-color: rgba(53,217,242,{0.24 + glow * 0.0048:.2f}); }}
-QPushButton {{ border-color: rgba(140,99,255,{0.30 + glow * 0.0042:.2f}); }}
+QGroupBox::title {{ color: #8AF5FF; font-weight: 800; }}
+QGroupBox:hover {{
+    border-color: rgba(255,77,204,{min(0.96, magenta_alpha + 0.12):.2f});
+}}
+QPushButton {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(25,198,226,0.66), stop:0.48 rgba(68,104,225,0.66), stop:1 rgba(147,73,206,0.68));
+    border: 1px solid rgba(169,249,255,0.94);
+    border-bottom: 2px solid rgba(255,102,220,0.92);
+    border-radius: 10px;
+    color: #FFFFFF;
+    font-weight: 750;
+}}
+QPushButton:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(52,235,255,0.88), stop:0.48 rgba(92,133,255,0.86), stop:1 rgba(205,91,245,0.88));
+    border-color: #FFFFFF;
+}}
+QPushButton:pressed {{
+    background: rgba(37,198,226,0.86);
+    border: 1px solid #FFFFFF;
+}}
+QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {{
+    border: 1px solid rgba(91,226,255,0.72);
+    background: rgba(5,22,43,0.42);
+}}
+QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {{
+    border: 1px solid #FF79DF;
+    background: rgba(43,36,91,0.48);
+}}
+QTabBar::tab {{
+    background: rgba(13,35,61,0.56);
+    border: 1px solid rgba(76,211,245,0.60);
+    color: #DDFBFF;
+    border-radius: 9px;
+    padding: 0.65em 1.1em;
+}}
+QTabBar::tab:selected {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(30,210,237,0.70), stop:0.52 rgba(87,105,235,0.76), stop:1 rgba(177,68,203,0.72));
+    border: 1px solid #B9FBFF;
+    border-bottom: 2px solid #FF79DF;
+    color: #FFFFFF;
+    font-weight: 800;
+}}
+QTabBar::tab:hover:!selected {{
+    background: rgba(53,217,242,0.22);
+    border-color: rgba(255,113,220,0.90);
+}}
+QSlider::groove:horizontal {{
+    height: 6px;
+    background: rgba(76,117,190,0.34);
+    border: 1px solid rgba(53,217,242,0.36);
+    border-radius: 3px;
+}}
+QSlider::sub-page:horizontal {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #22DDF2, stop:0.62 #438DFF, stop:1 #C65BFF);
+    border-radius: 3px;
+}}
+QSlider::handle:horizontal {{
+    background: #7AF4FF;
+    border: 2px solid #FFFFFF;
+    width: 0.9em;
+    margin: -0.45em 0;
+    border-radius: 0.55em;
+}}
+QToolButton#menuBtn {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(31,205,235,0.50), stop:1 rgba(139,79,220,0.54));
+    border: 1px solid rgba(150,247,255,0.92);
+    border-bottom: 2px solid rgba(255,91,216,0.90);
+}}
+QLabel#sectionTitle {{ color: #76F0FF; font-weight: 800; }}
+QLabel#hint {{ color: #C4D8F5; }}
+QToolButton:hover {{
+    background: rgba(53,217,242,{0.14 + glow * 0.0032:.2f});
+    border-color: rgba(255,112,220,{0.30 + glow * 0.0052:.2f});
+}}
+QProgressBar {{ border-color: rgba(53,217,242,0.78); }}
+QProgressBar::chunk {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #24DDF2, stop:0.55 #6488FF, stop:1 #DA62EC);
+}}
 """
     return css + "\n" + GLASS_OPAQUE + "\n" + override
 

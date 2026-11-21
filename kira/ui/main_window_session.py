@@ -18,6 +18,7 @@ from .main_window_session_support import (
     QPushButton,
     QScrollArea,
     QSize,
+    QSizePolicy,
     QSlider,
     QSpinBox,
     QTextBrowser,
@@ -769,27 +770,25 @@ class SessionController(WindowFeatureController):
         sc.setWidget(host)
         return sc
 
-    FIELD_LIMITS = {"spin": 110, "slider": 280, "combo": 240, "combo_edit": 340, "line": 520}
-
     def tidy_forms(self):
-        """Short fields (numbers, choices, sliders) keep a size that fits their content; long text fields keep the room they need.
-        Nothing stretches to the end of the window for no reason."""
-        lim = self.FIELD_LIMITS
-        for i in range(1, self.context.views.tabs.count()):                          # page 0 is the chat: left as it is
+        """Use each page's available width instead of fixed pixel caps on controls."""
+        for i in range(1, self.context.views.tabs.count()):  # page 0 is the chat
             page = self.context.views.tabs.widget(i)
-            for w in page.findChildren(QSpinBox) + page.findChildren(QDoubleSpinBox):
-                w.setMaximumWidth(lim["spin"])
-            for w in page.findChildren(QSlider):
-                w.setMaximumWidth(lim["slider"])
-            for w in page.findChildren(QComboBox):
-                w.setMaximumWidth(lim["combo_edit"] if w.isEditable() else lim["combo"])
+            for widget in page.findChildren(QSpinBox) + page.findChildren(QDoubleSpinBox):
+                widget.setMinimumWidth(0)
+                widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+            for widget in page.findChildren(QSlider):
+                widget.setMinimumWidth(0)
+                widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            for widget in page.findChildren(QComboBox):
+                widget.setMinimumWidth(0)
+                widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            for widget in page.findChildren(QLineEdit):
+                widget.setMinimumWidth(0)
+                widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             for form in page.findChildren(QFormLayout):
                 form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
-                for r in range(form.rowCount()):
-                    item = form.itemAt(r, QFormLayout.FieldRole)
-                    widget = item.widget() if item is not None else None
-                    if isinstance(widget, QLineEdit):
-                        widget.setMaximumWidth(lim["line"])
+                form.setRowWrapPolicy(QFormLayout.WrapLongRows)
 
     def icon_button(self, name, checkable=False):
         """Small neon icon button using the active character's own accent colours."""

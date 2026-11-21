@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGridLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QScrollArea,
@@ -127,7 +126,9 @@ class VoicePage(QScrollArea):
         stt_form.addRow(self.local_asr_chk)
         stt_form.addRow("موتور تشخیص گفتار", QLabel("شنوا · Sherpa-ONNX"))
         stt_form.addRow("نسخه مدل شنوا", self.shenava_variant)
-        shenava_actions = QHBoxLayout()
+        shenava_actions = QGridLayout()
+        shenava_actions.setHorizontalSpacing(8)
+        shenava_actions.setVerticalSpacing(6)
         self.shenava_download_btn = QPushButton()
         self.shenava_download_btn.clicked.connect(
             lambda checked=False: self.download_shenava_requested.emit()
@@ -140,8 +141,11 @@ class VoicePage(QScrollArea):
         self.shenava_test_btn.clicked.connect(
             lambda checked=False: self.test_shenava_file_requested.emit()
         )
-        shenava_actions.addWidget(self.shenava_download_btn)
-        shenava_actions.addWidget(self.shenava_test_btn)
+        self._responsive_action_groups = []
+        self._responsive_action_columns = []
+        self._responsive_action_groups.append(
+            (shenava_actions, (self.shenava_download_btn, self.shenava_test_btn))
+        )
         stt_form.addRow(shenava_actions)
         self.shenava_result = QLabel(
             "شنوا پس از نصب به‌صورت آفلاین روی CPU اجرا می‌شود. "
@@ -226,16 +230,18 @@ class VoicePage(QScrollArea):
             lambda index: self.select_piper_requested.emit(str(self.local_tts_model.itemData(index) or ""))
         )
         tts_form.addRow("صدای Piper", self.local_tts_model)
-        piper_actions = QHBoxLayout()
+        piper_actions = QGridLayout()
+        piper_actions.setHorizontalSpacing(8)
+        piper_actions.setVerticalSpacing(6)
         self.piper_download_btn = QPushButton("دانلود صدای Piper")
         self.piper_download_btn.clicked.connect(lambda checked=False: self.download_piper_requested.emit())
         self.piper_file_btn = QPushButton("انتخاب ONNX")
         self.piper_file_btn.clicked.connect(lambda checked=False: self.choose_piper_file_requested.emit())
         self.piper_test_btn = QPushButton("تست صدا")
         self.piper_test_btn.clicked.connect(lambda checked=False: self.test_piper_requested.emit())
-        piper_actions.addWidget(self.piper_download_btn)
-        piper_actions.addWidget(self.piper_file_btn)
-        piper_actions.addWidget(self.piper_test_btn)
+        self._responsive_action_groups.append(
+            (piper_actions, (self.piper_download_btn, self.piper_file_btn, self.piper_test_btn))
+        )
         tts_form.addRow(piper_actions)
         self.rate = QSpinBox()
         self.rate.setRange(-30, 30)
@@ -260,15 +266,11 @@ class VoicePage(QScrollArea):
         for box in (mic_box, output_box, stt_box, tts_box, live_box):
             box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
             box.setMinimumWidth(0)
-        grid.addWidget(mic_box, 0, 0)
-        grid.addWidget(output_box, 0, 1)
-        grid.addWidget(stt_box, 1, 0)
-        grid.addWidget(tts_box, 1, 1)
-        grid.addWidget(live_box, 2, 0, 1, 2)
+        self._sections_grid = grid
+        self._voice_sections = (mic_box, output_box, stt_box, tts_box, live_box)
+        self._responsive_columns = 0
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
-        grid.setRowStretch(0, 1)
-        grid.setRowStretch(1, 1)
         self.setWidget(host)
 
         self.save_timer = QTimer(self)
@@ -291,6 +293,76 @@ class VoicePage(QScrollArea):
         self.retranslate()
 
         finalize_voice_page(self)
+        QTimer.singleShot(0, self._reflow_sections)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._reflow_sections()
+
+    def refresh_responsive_layout(self) -> None:
+        """Recalculate card and action layouts after controls or forms change."""
+        self._responsive_columns = 0
+        self._reflow_sections()
+
+    def _reflow_sections(self) -> None:
+        grid = getattr(self, "_sections_grid", None)
+        sections = list(getattr(self, "_voice_sections", ()))
+        viewport_width = self.viewport().width()
+        if grid is None or len(sections) != 5 or viewport_width <= 0:
+            return
+
+        # The preferred content width is the breakpoint; no fixed widget width is imposed.
+        column_width = max((section.sizeHint().width() for section in sections[:4]), default=0)
+        margins = grid.contentsMargins()
+        required_width = (column_width * 2) + grid.horizontalSpacing() + margins.left() + margins.right()
+        columns = 2 if viewport_width >= required_width else 1
+
+        if columns != self._responsive_columns:
+            for widget in sections:
+                grid.removeWidget(widget)
+            if columns == 2:
+                grid.addWidget(sections[0], 0, 0)
+                grid.addWidget(sections[1], 0, 1)
+                grid.addWidget(sections[2], 1, 0)
+                grid.addWidget(sections[3], 1, 1)
+                grid.addWidget(sections[4], 2, 0, 1, 2)
+            else:
+                for row, widget in enumerate(sections):
+                    grid.addWidget(widget, row, 0, 1, 1)
+            grid.setColumnStretch(0, 1)
+            grid.setColumnStretch(1, 1 if columns == 2 else 0)
+            grid.setColumnMinimumWidth(0, 0)
+            grid.setColumnMinimumWidth(1, 0)
+            self._responsive_columns = columns
+
+        panel_width = max(1, viewport_width // columns)
+        for index, (layout, buttons) in enumerate(self._responsive_action_groups):
+            preferred = [button.sizeHint().width() for button in buttons]
+            gap = max(0, layout.horizontalSpacing())
+            if sum(preferred) + gap * (len(buttons) - 1) <= panel_width:
+                action_columns = len(buttons)
+            elif len(buttons) > 1 and sum(sorted(preferred, reverse=True)[:2]) + gap <= panel_width:
+                action_columns = 2
+            else:
+                action_columns = 1
+
+            previous = self._responsive_action_columns[index] if index < len(self._responsive_action_columns) else 0
+            if previous == action_columns:
+                continue
+            for button in buttons:
+                layout.removeWidget(button)
+                button.setMinimumWidth(0)
+                button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            for position, button in enumerate(buttons):
+                row, column = divmod(position, action_columns)
+                layout.addWidget(button, row, column)
+            for column in range(len(buttons)):
+                layout.setColumnStretch(column, 1 if column < action_columns else 0)
+            if index < len(self._responsive_action_columns):
+                self._responsive_action_columns[index] = action_columns
+            else:
+                self._responsive_action_columns.append(action_columns)
+
 
     def _update_shenava_download_label(self) -> None:
         """Keep the download action explicit about the selected model size."""
