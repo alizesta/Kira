@@ -183,6 +183,7 @@ class VoiceSettingsController(WindowFeatureController):
         )
         page.download_piper_requested.connect(self.download_local_tts_model)
         page.test_piper_requested.connect(self.test_local_tts)
+        page.choose_piper_file_requested.connect(self.choose_local_tts_model)
         page.select_piper_requested.connect(self.select_piper_model)
         self.context.views.voice_page.realtime_asr_requested.connect(
             self.feature_controller("runtime").set_realtime_asr
