@@ -235,7 +235,3 @@ class Listener(QThread):
         except Exception as exc:
             self.error.emit(f"تشخیص گفتار با شنوا ناموفق بود: {type(exc).__name__}: {exc}")
             return ""
-        if self.engine == "whisper":
-            self.via = "local:whisper"
-            return self._transcribe_whisper(audio)
-        return ""
