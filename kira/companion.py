@@ -5,7 +5,7 @@ from PySide6.QtGui import QGuiApplication, QPixmap, QFontMetrics
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QPushButton, QFrame, QToolButton, QLabel,
                                QFileDialog)
 from . import attachments as att
-from .vrm_avatar import KiraAvatar
+from .face import AvatarView
 from .chat_render import message_html
 from .ui_widgets import ChatInput
 from .pet import PetController
@@ -24,7 +24,7 @@ class CompanionWindow(QWidget):
         self.setWindowTitle("Kira Companion")
         self.setAttribute(Qt.WA_TranslucentBackground, True)   # no background at all
         self.ratio = RATIO
-        self.view = KiraAvatar(animator, draggable=True)
+        self.view = AvatarView(animator, draggable=True)
         animator.art_changed.connect(self.apply_art)
         self.clicked = self.view.clicked
         layout = QVBoxLayout(self)

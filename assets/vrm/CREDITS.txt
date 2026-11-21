@@ -1,5 +1,0 @@
-kira.vrm - "kira sample", model by Maria (VRM 1.0, https://vrm.dev/licenses/1.0/).
-Permissions from the file: personal non-profit use, credit required, redistribution NOT allowed, modification allowed.
-Keep this credit and do not publish the project ZIP with this model inside.
-
-assets/vrm/vendor/ is filled automatically (kira/vrm_vendor.py) with three.js (MIT) and @pixiv/three-vrm (MIT).

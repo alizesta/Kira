@@ -1,13 +1,10 @@
-"""Chat -> 3D body commands (kira/body.py): user phrases, model tags, parser integration, and the page's pose table."""
-import re
+"""Chat -> 3D body commands (kira/body.py): user phrases, model tags and parser integration."""
 import unittest
-from pathlib import Path
 
 from tests import helpers  # noqa: F401  (redirects the data folder)
 from kira import body
 from kira.emotion.director import EmotionDirector
 
-ROOT = Path(__file__).resolve().parents[1]
 
 
 class UserCommandTests(unittest.TestCase):
@@ -87,19 +84,6 @@ class TagTests(unittest.TestCase):
         self.assertEqual(body.done_note([]), "")
         self.assertEqual(body.canonical("Turn Around"), "turn_back")
 
-
-class PageTableTests(unittest.TestCase):
-    """The page (assets/vrm/viewer.html) must implement every name Python can send."""
-    def test_every_name_exists_in_the_page(self):
-        page = (ROOT / "assets" / "vrm" / "viewer.html").read_text(encoding="utf-8")
-        poses = set(re.findall(r"^  ([a-z_]+): \{ g:", page, re.M))
-        self.assertEqual(poses, set(body.POSES))
-        for name in body.CLEARS:
-            self.assertIn(f"'{name}'", page)
-        gdur = re.search(r"const GDUR = \{([^}]*)\}", page).group(1)
-        for name in body.GESTURES:
-            self.assertRegex(gdur, rf"\b{name}:")
-        self.assertIn("window.kiraBody", page)
 
 
 if __name__ == "__main__":

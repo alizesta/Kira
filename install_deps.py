@@ -3,7 +3,6 @@
 Usage:  python install_deps.py requirements.txt
 Exit code 0 = everything installed, 1 = at least one package failed (install.bat then stops and says so).
 """
-import os
 import subprocess
 import sys
 
@@ -66,16 +65,6 @@ def install(path, runner=None, out=print):
     return 1
 
 
-def fetch_vrm_viewer(out=print):
-    """Optional: fetch VRM viewer libraries only when explicitly requested with KIRA_ENABLE_VRM=1."""
-    try:
-        subprocess.run([sys.executable, "-m", "kira.vrm_vendor"], cwd=str(__import__("pathlib").Path(__file__).resolve().parent), check=False)
-    except Exception as exc:  # noqa: BLE001
-        out(f"VRM viewer files were not downloaded ({exc}); Kira will try again on first start.")
-
 
 if __name__ == "__main__":
-    code = install(sys.argv[1] if len(sys.argv) > 1 else "requirements.txt")
-    if code == 0 and os.environ.get("KIRA_ENABLE_VRM", "0") == "1":
-        fetch_vrm_viewer()
-    sys.exit(code)
+    sys.exit(install(sys.argv[1] if len(sys.argv) > 1 else "requirements.txt"))
