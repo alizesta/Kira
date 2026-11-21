@@ -4,6 +4,8 @@ from PySide6.QtCore import QTimer, Slot
 from .main_window_runtime_support import (
     Listener,
     QApplication,
+    QTextCursor,
+    message_html,
     save_settings,
     time,
 )
@@ -416,6 +418,7 @@ class RuntimeVoiceMixin:
         self.context.services.voice_application_service.start_recording()
 
     def stop_listener(self):
+        self._clear_voice_preview()
         self.context.services.voice_application_service.stop_recording()
         self.feature_controller("session").set_status("st_ready")
         self.update_engine_label()
@@ -450,8 +453,52 @@ class RuntimeVoiceMixin:
         elif was_current:
             self.feature_controller("session").set_status("st_ready")
 
+    def _clear_voice_preview(self):
+        """Remove the temporary, revisable user bubble without touching saved chat history."""
+        position = getattr(self.context.session, "_voice_preview_pos", None)
+        view = getattr(self.context.session, "view", None)
+        if position is not None and view is not None:
+            cursor = QTextCursor(view.document())
+            cursor.setPosition(position)
+            cursor.movePosition(QTextCursor.End, QTextCursor.KeepAnchor)
+            cursor.removeSelectedText()
+        self.context.session._voice_preview_pos = None
+
+    @Slot(str)
+    def on_voice_partial(self, text):
+        """Render the newest full Shenava hypothesis; later hypotheses replace, not append to, it."""
+        if self.context.state._closing:
+            return
+        value = str(text or "").strip()
+        if not value:
+            self._clear_voice_preview()
+            return
+        view = self.context.session.view
+        if view is None:
+            return
+        position = getattr(self.context.session, "_voice_preview_pos", None)
+        if position is None:
+            position = max(0, view.document().characterCount() - 1)
+            self.context.session._voice_preview_pos = position
+        cursor = QTextCursor(view.document())
+        cursor.setPosition(position)
+        cursor.movePosition(QTextCursor.End, QTextCursor.KeepAnchor)
+        cursor.removeSelectedText()
+        if position > 0:
+            cursor.insertBlock()
+        name = self.feature_controller("session").t("you")
+        ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "fa") == "fa" else "ltr"
+        html = message_html(
+            "user", name, value, ui_dir,
+            accent=self.feature_controller("session").accent(),
+        )
+        cursor.insertHtml(html)
+        bar = view.verticalScrollBar()
+        bar.setValue(bar.maximum())
+
     @Slot(str)
     def on_listener_error(self, msg):
+        self._clear_voice_preview()
         if getattr(self, "_voice_mode", "") in ("local_fallback", "local_primary"):
             self._voice_session_requested = False
             self._voice_mode = "idle"
@@ -533,6 +580,7 @@ class RuntimeVoiceMixin:
 
     @Slot(str)
     def on_heard(self, text):
+        self._clear_voice_preview()
         self.context.adapters.animator.touch()
         decision = self.context.services.voice_application_service.interpret_transcript(
             text,
