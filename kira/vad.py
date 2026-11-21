@@ -136,6 +136,12 @@ class Segmenter:
             self._finish(events)
         return events
 
+    def snapshot(self):
+        """Copy the audio accumulated for the active utterance without changing VAD state."""
+        if not self.buf:
+            return self.np.zeros(0, dtype=self.np.float32)
+        return self.np.concatenate(self.buf).copy()
+
     # ---- internals ----
     def _begin(self, events, barge):
         self.speaking, self.barged = True, barge
