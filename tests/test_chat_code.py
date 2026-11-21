@@ -1,4 +1,4 @@
-"""Ai1 Code inside Kira's chat: Qt-free logic (parsing, file resolution, safety gates, patch apply, rendering)."""
+"""Kode chat logic: parsing, file resolution, safety gates, reviewed patches and rendering."""
 import tempfile
 import unittest
 from pathlib import Path
@@ -222,8 +222,8 @@ class PatchTests(unittest.TestCase):
     def test_diff_and_card_html(self):
         diff = cc.make_diff("app.py", "a\nb\n", "a\nc\n")
         card = cc.patch_card_html(cc.PendingPatch("7", "app.py", "a\nc\n", b""), diff)
-        self.assertIn("kira-code://apply/7", card)
-        self.assertIn("kira-code://reject/7", card)
+        self.assertIn("kode://apply/7", card)
+        self.assertIn("kode://reject/7", card)
         self.assertIn("+1", card)
         self.assertEqual(cc.make_diff("x", "same\n", "same\n"), "")
 
@@ -240,6 +240,12 @@ class EngineTests(unittest.TestCase):
         self.assertIn("NO tools", system)
         self.assertEqual([m["role"] for m in messages], ["user", "assistant", "user"])
         self.assertIn("q2", messages[-1]["content"])
+
+    def test_kode_is_the_single_named_engine_with_legacy_alias(self):
+        self.assertIs(cc.KiraCodeEngine, cc.KodeEngine)
+        self.assertEqual(cc.LINK_SCHEME, "kode")
+        self.assertIn("Kode آماده است", cc.HELP_TEXT)
+        self.assertNotIn("Ai1 Code", cc.HELP_TEXT)
 
     def test_ui_design_guidance_is_injected_only_for_interface_tasks(self):
         router = _Router("تحلیل")
