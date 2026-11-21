@@ -131,6 +131,41 @@ class Kode(QObject):
         except Exception:  # noqa: BLE001 - a settings write problem must not break the chat
             pass
 
+    def _activity_panel(self):
+        """The activity card belongs to the visible conversation, never a background tab."""
+        w = self.win
+        return w.kode_activity if w.cur is w.front else None
+
+    def _activity_start(self, status):
+        panel = self._activity_panel()
+        if panel is not None:
+            panel.start(status)
+
+    def _activity_update(self, status):
+        panel = self._activity_panel()
+        if panel is not None:
+            panel.update(status)
+
+    def _activity_step(self, status):
+        panel = self._activity_panel()
+        if panel is not None:
+            panel.step(status)
+
+    def _activity_complete(self, status):
+        panel = self._activity_panel()
+        if panel is not None:
+            panel.complete(status)
+
+    def _activity_fail(self, status):
+        panel = self._activity_panel()
+        if panel is not None:
+            panel.fail(status)
+
+    def _activity_reset(self):
+        panel = self._activity_panel()
+        if panel is not None:
+            panel.reset()
+
     # ------------------------------------------------------------ chat output helpers
     def _as_kira(self, fn):
         """Run fn with Kira's session as the current one (menu actions and links may fire from any tab)."""
@@ -267,7 +302,7 @@ class Kode(QObject):
         if w._closing:
             return
         self._classifying = True
-        w.kode_activity.start("در حال تشخیص نوع درخواست…")
+        self._activity_start("در حال تشخیص نوع درخواست…")
         token = object()
         self._class_token = token
         session = w.cur                                            # the chat that asked: results must never land in another tab
@@ -319,7 +354,7 @@ class Kode(QObject):
             if intent in ("task", "question"):
                 self._route(text, intent)
             else:
-                w.kode_activity.reset()
+                self._activity_reset()
                 self._bypass = True
                 w._voice_next = voice
                 try:
@@ -347,14 +382,14 @@ class Kode(QObject):
         w = self.win
         if w._closing:
             return
-        w.kode_activity.start("در حال جست‌وجوی فایل‌های مرتبط…")
+        self._activity_start("در حال جست‌وجوی فایل‌های مرتبط…")
         try:
             files, problems = cc.resolve_files(self.root, req.mentions, cc.explicit_mentions(raw))
         except Exception as exc:  # noqa: BLE001
             self._say("error", f"خواندن پروژه ناموفق بود: {exc}")
             return
         if problems:
-            w.kode_activity.step("برخی فایل‌های درخواستی پیدا نشدند")
+            self._activity_step("برخی فایل‌های درخواستی پیدا نشدند")
             self._say("system", "\n".join(problems))
         if not files and self.current_rel:                      # a follow-up ("fix it", "explain more") keeps the same file
             try:
@@ -363,11 +398,11 @@ class Kode(QObject):
                 self.current_rel = None
         if req.kind == "patch":
             if not files:
-                w.kode_activity.fail("برای پیشنهاد تغییر، فایل مشخصی لازم است")
+                self._activity_fail("برای پیشنهاد تغییر، فایل مشخصی لازم است")
                 self._say("system", "برای تغییر باید فایل را مشخص کنی؛ اسمش را با @ بنویس، مثل @app.py")
                 return
             if len(files) > 1:
-                w.kode_activity.fail("برای پیشنهاد تغییر، هر بار یک فایل را انتخاب کن")
+                self._activity_fail("برای پیشنهاد تغییر، هر بار یک فایل را انتخاب کن")
                 self._say("system", "برای تغییر، هر بار فقط یک فایل؛ فایل را مشخص کن. (برای تحلیل چند فایل می‌شود.)")
                 return
             blocker = cc.patch_blocker(self.root, files[0])
@@ -380,7 +415,7 @@ class Kode(QObject):
             base_bytes = target.read_bytes() if (target is not None and req.kind == "patch") else None
             rel = target.resolve().relative_to(self.root).as_posix() if target is not None else None
         except Exception as exc:  # noqa: BLE001
-            w.kode_activity.fail("خواندن فایل‌های پروژه ناموفق بود")
+            self._activity_fail("خواندن فایل‌های پروژه ناموفق بود")
             self._say("error", str(exc))
             return
         if rel:
@@ -395,7 +430,7 @@ class Kode(QObject):
             fn = lambda chunk: engine.ask(question, context, chunk, history=history)  # noqa: E731
             done = lambda result: self._answer_done(question, result)  # noqa: E731
         self._begin_busy()
-        self.win.kode_activity.update("در حال تحلیل کد…" if req.kind != "patch" else "در حال آماده‌سازی پیشنهاد تغییر…")
+        self._activity_update("در حال تحلیل کد…" if req.kind != "patch" else "در حال آماده‌سازی پیشنهاد تغییر…")
         sess = self.session
         job = _Job(fn, self)
         self._streamed = 0
@@ -446,7 +481,7 @@ class Kode(QObject):
         w = self.win
         if sess is w.front:
             w.status.setText("کیرا در حال بررسی کد است…")
-            w.kode_activity.update("در حال تحلیل کد و آماده‌سازی پاسخ…")
+            self._activity_update("در حال تحلیل کد و آماده‌سازی پاسخ…")
 
     @Slot()
     def _job_cleanup(self):
@@ -465,7 +500,7 @@ class Kode(QObject):
                 done(result)
             except Exception as exc:  # noqa: BLE001
                 w.add_chat("error", f"Kode: {exc}")
-                w.kode_activity.fail("پردازش با خطا متوقف شد")
+                self._activity_fail("پردازش با خطا متوقف شد")
             self._end_busy()
 
     def _failed(self, sess, error):
@@ -474,7 +509,7 @@ class Kode(QObject):
             return
         with w._as(sess):
             w.add_chat("error", f"Kode: {error}")
-            w.kode_activity.fail("پردازش با خطا متوقف شد")
+            self._activity_fail("پردازش با خطا متوقف شد")
             self._end_busy()
 
     def _remember(self, user_text, answer):
@@ -483,7 +518,7 @@ class Kode(QObject):
 
     def _answer_done(self, question, answer):
         self._bubble("assistant", cc.answer_html(answer))
-        self.win.kode_activity.complete("تحلیل تمام شد")
+        self._activity_complete("تحلیل تمام شد")
         self.win.save_message("assistant", answer)
         self._remember(question, answer)
 
@@ -497,11 +532,11 @@ class Kode(QObject):
         diff = cc.make_diff(rel, base_text, replacement)
         if not diff:
             self._say("assistant", "مدل تغییری پیشنهاد نکرد؛ فایل همان است که بود.")
-            self.win.kode_activity.complete("تغییری لازم نبود")
+            self._activity_complete("تغییری لازم نبود")
             return
         patch = self.patches.add(rel, replacement, base_bytes)
         self._bubble("assistant", cc.patch_card_html(patch, diff))
-        self.win.kode_activity.complete("پیشنهاد تغییر آماده است؛ منتظر تأیید تو")
+        self._activity_complete("پیشنهاد تغییر آماده است؛ منتظر تأیید تو")
         note = (f"پیشنهاد تغییر برای {rel} آماده شد (Diff بالا در چت). "
                 "هنوز هیچ فایلی تغییر نکرده؛ تا تأیید تو اعمال نمی‌شود.")
         self.win.save_message("assistant", note)
@@ -604,7 +639,7 @@ class Kode(QObject):
                           review_route_id=route_for("reflection", w.settings),
                           execution_guard=guard)
         self._begin_busy()
-        w.kode_activity.start("در حال بررسی پروژه و ساخت برنامهٔ کار…" if readonly else "در حال تحلیل پروژه و برنامه‌ریزی تغییرات…")
+        self._activity_start("در حال بررسی پروژه و ساخت برنامهٔ کار…" if readonly else "در حال تحلیل پروژه و برنامه‌ریزی تغییرات…")
         sess = self.session
         job = _Job(lambda chunk: (setattr(agent, "emit", chunk), agent.run())[1], self)
         job_box["job"] = job
@@ -637,7 +672,7 @@ class Kode(QObject):
         if w._closing or sess.cid not in w.sessions:
             return
         with w._as(sess):
-            w.kode_activity.step(self._activity_label(line))
+            self._activity_step(self._activity_label(line))
 
     def _store_auto_result(self, zip_path):
         """Register one delivered ZIP under a stable, monotonic id (never len()+1)."""
@@ -651,13 +686,13 @@ class Kode(QObject):
     def _auto_done(self, goal, result):
         w = self.win
         if result.get("readonly"):
-            w.kode_activity.complete("بررسی پروژه تمام شد")
+            self._activity_complete("بررسی پروژه تمام شد")
             self._bubble("assistant", cc.answer_html(result["summary"]))
             w.save_message("assistant", result["summary"])
             self._remember(goal, result["summary"])
             return
         if not result.get("zip"):
-            w.kode_activity.fail("مأموریت به خروجی نهایی نرسید")
+            self._activity_fail("مأموریت به خروجی نهایی نرسید")
             changed = result.get("changed") or []
             lines = ["مأموریت خودکار به تحویل نهایی نرسید.", "", result.get("summary") or "نتیجه تأیید نشده است."]
             if result.get("resume_available"):
@@ -669,7 +704,7 @@ class Kode(QObject):
             w.save_message("assistant", "\\n".join(lines))
             self._remember("/auto " + goal, result.get("summary") or "مأموریت ناتمام")
             return
-        w.kode_activity.complete("تغییرات بررسی و بستهٔ خروجی آماده شد")
+        self._activity_complete("تغییرات بررسی و بستهٔ خروجی آماده شد")
         zip_path = Path(result["zip"])
         rid = self._store_auto_result(zip_path)
         changed = result["changed"]
@@ -726,7 +761,7 @@ class Kode(QObject):
         proc.errorOccurred.connect(lambda error: self._command_error(sess, proc, error))
         self.proc = proc
         self._begin_busy()
-        w.kode_activity.start("در حال اجرای دستور در پوشهٔ پروژه…")
+        self._activity_start("در حال اجرای دستور در پوشهٔ پروژه…")
         self.proc_timer = QTimer(self)
         self.proc_timer.setSingleShot(True)
         self.proc_timer.timeout.connect(proc.kill)
@@ -748,7 +783,7 @@ class Kode(QObject):
             return
         with w._as(sess):
             self._bubble("system", cc.output_html(command, "".join(out).rstrip(), code), name="")
-            w.kode_activity.complete("اجرای دستور تمام شد" if code == 0 else f"دستور با کد خروج {code} تمام شد")
+            self._activity_complete("اجرای دستور تمام شد" if code == 0 else f"دستور با کد خروج {code} تمام شد")
             self._end_busy()
 
     def _command_error(self, sess, proc, error):
@@ -760,7 +795,7 @@ class Kode(QObject):
         if not w._closing and sess.cid in w.sessions:
             with w._as(sess):
                 w.add_chat("error", f"اجرای دستور ناموفق بود: {error}")
-                w.kode_activity.fail("اجرای دستور شروع نشد")
+                self._activity_fail("اجرای دستور شروع نشد")
                 self._end_busy()
         proc.deleteLater()
 
@@ -768,10 +803,10 @@ class Kode(QObject):
     def stop(self, sess):
         """Called by MainWindow.stop_generation. True = a running command was killed (nothing else to cancel)."""
         if self.job is not None and self.session is sess:
-            self.win.kode_activity.update("در حال متوقف‌کردن عملیات…")
+            self._activity_update("در حال متوقف‌کردن عملیات…")
             self.auto_stop = True                              # the auto loop checks this between steps (harmless for other jobs)
         if self.proc is not None and self.session is sess and self.proc.state() != QProcess.NotRunning:
-            self.win.kode_activity.update("در حال متوقف‌کردن دستور…")
+            self._activity_update("در حال متوقف‌کردن دستور…")
             self.proc.kill()
             return True
         return False
