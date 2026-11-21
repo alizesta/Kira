@@ -530,8 +530,12 @@ class ProviderSettingsController(WindowFeatureController):
         return self.ollama_panel
 
     def collect_provider_settings(self):
-        """Only the local Ollama switch lives in the form now; API keys / enabled flags are changed by the API Manager actions directly."""
-        self.context.services.settings.setdefault("providers", {}).setdefault("ollama", {})["enabled"] = self.context.views.route_ollama_enabled.isChecked()
+        """Apply the local Provider master switch through the Route model's consistency rules."""
+        route_model.set_provider_enabled(
+            self.context.services.settings,
+            "ollama",
+            self.context.views.route_ollama_enabled.isChecked(),
+        )
         self.context.services.provider_application_service.ensure_routes(self.context.services.settings)
 
     def ollama_edit_mode(self, on):
@@ -855,6 +859,9 @@ class ProviderSettingsController(WindowFeatureController):
         self.sync_ollama_primary()
         self.feature_controller("runtime").save_now()
         self.refresh_route_list()
+        # The unified model tabs and the chat route menu must reflect changes
+        # made through the advanced Route switch immediately.
+        self.refresh_unified_models()
         if select:
             for i in range(self.context.views.route_list.count()):
                 if self.context.views.route_list.item(i).data(Qt.UserRole) == select:
@@ -994,6 +1001,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.session.client.reset_cooldowns()
         self.feature_controller("runtime").save_now()
         self.refresh_route_list()
+        self.refresh_unified_models()
         if not self.context.session.busy:
             self.feature_controller("runtime").set_badge("idle", self.context.session.client.preview_route())
 

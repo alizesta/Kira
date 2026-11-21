@@ -173,7 +173,17 @@ class HybridRouter:
             allowed_models = None
         if isinstance(allowed_models, (list, tuple)):
             model_ids = {str(value).strip().lower() for value in allowed_models if str(value).strip()}
-            routes = [route for route in routes if str(route.get("model") or "").strip().lower() in model_ids]
+            # The surface role is provider-locked to Ollama. Let the user choose
+            # any enabled local model instead of hard-locking chat to the bundled
+            # default model ID. Cloud routes remain excluded by the provider allowlist.
+            local_surface_routes = role == "surface" and isinstance(allowed, set) and "ollama" in allowed
+            routes = [
+                route for route in routes
+                if (
+                    local_surface_routes
+                    and str(route.get("provider") or "").strip().lower() == "ollama"
+                ) or str(route.get("model") or "").strip().lower() in model_ids
+            ]
         manual = self.settings.get("manual_route_id") or ""
         chosen = next((r for r in routes if r["id"] == manual), None) if manual else None
         if chosen is None:
@@ -527,11 +537,29 @@ class HybridRouter:
             self.last_provider = self.last_model = self.last_route_id = self.last_kind = None
             role = _ROLE.get()
             allowlist = self.settings.get("role_provider_allowlist")
-            if not failures and isinstance(allowlist, dict) and role in allowlist:
-                if role == "deep":
+            if not failures:
+                if role == "deep" and isinstance(allowlist, dict) and role in allowlist:
                     failures.append("برای استدلال سنگین، Route فعال Google Gemini لازم است؛ هیچ مسیر محلی یا Provider دیگری جایگزین نمی‌شود.")
                 elif role == "surface":
-                    failures.append("برای مکالمه محلی، Ollama باید روشن باشد و مدل Qwen Abliterated نصب شده باشد؛ ارسال به Cloud مجاز نیست.")
+                    providers = self.settings.get("providers") or {}
+                    ollama_cfg = providers.get("ollama") or {}
+                    local_routes = [route for route in self.routes() if route.get("provider") == "ollama"]
+                    enabled_local = [route for route in local_routes if route.get("enabled", True)]
+                    surface_allowed = allowlist.get("surface") if isinstance(allowlist, dict) else None
+                    provider_allowed = (
+                        not isinstance(surface_allowed, (list, tuple))
+                        or "ollama" in {str(value).strip().lower() for value in surface_allowed}
+                    )
+                    if not bool(ollama_cfg.get("enabled", True)):
+                        failures.append("Provider محلی Ollama خاموش است؛ آن را از تنظیمات Provider فعال کن.")
+                    elif not local_routes:
+                        failures.append("هیچ مدل Ollama در Routeها ثبت نشده است؛ مدل‌های نصب‌شده را اسکن کن.")
+                    elif not enabled_local:
+                        failures.append("مدل‌های محلی شناسایی شده‌اند، اما همه Routeها خاموش‌اند؛ حداقل یک مدل محلی را فعال کن.")
+                    elif not provider_allowed:
+                        failures.append("سیاست نقش مکالمهٔ عادی Provider محلی Ollama را مجاز نکرده است؛ role_provider_allowlist را بررسی کن.")
+                    else:
+                        failures.append("هیچ Route محلیِ مجاز و آماده‌ای برای مکالمه پیدا نشد؛ وضعیت اتصال Ollama و سلامت مدل را بررسی کن.")
             self.last_error = "; ".join(failures) or "هیچ Route فعالی تنظیم نشده است."
             self.last_duration_ms = int((time.monotonic() - started) * 1000)
             if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):

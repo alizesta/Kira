@@ -114,6 +114,43 @@ class RouteModelTests(unittest.TestCase):
         self.assertNotIn(pid, s["providers"])
         self.assertEqual(s["manual_route_id"], "")
 
+    def test_enabling_ollama_route_also_enables_shared_provider(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        s["providers"]["ollama"]["enabled"] = False
+
+        # Enabling an existing route must not leave its provider-level gate off.
+        routes.set_enabled(s, "ollama", True)
+        self.assertTrue(s["providers"]["ollama"]["enabled"])
+
+        # Creating an explicitly enabled local route follows the same rule.
+        s["providers"]["ollama"]["enabled"] = False
+        routes.add_route(s, "ollama", "llama3.2:3b", enabled=True)
+        self.assertTrue(s["providers"]["ollama"]["enabled"])
+
+        # Auto-discovery creates OFF routes and must not activate the provider.
+        s["providers"]["ollama"]["enabled"] = False
+        added = routes.add_ollama_models(s, ["gemma3:4b"])
+        self.assertFalse(added[0]["enabled"])
+        self.assertFalse(s["providers"]["ollama"]["enabled"])
+
+    def test_disabling_ollama_provider_switches_off_all_local_routes(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        extra = routes.add_route(s, "ollama", "llama3.2:3b", enabled=True)
+        self.assertTrue(s["providers"]["ollama"]["enabled"])
+
+        routes.set_provider_enabled(s, "ollama", False)
+        self.assertFalse(s["providers"]["ollama"]["enabled"])
+        self.assertFalse(any(
+            route["provider"] == "ollama" and route["enabled"]
+            for route in routes.get_routes(s)
+        ))
+
+        routes.set_provider_enabled(s, "ollama", True)
+        self.assertTrue(s["providers"]["ollama"]["enabled"])
+        self.assertFalse(routes.find_route(s, extra["id"])["enabled"])
+
     def test_enable_disable_keeps_all_route_settings(self):
         s = legacy_settings()
         routes.ensure_routes(s)
@@ -211,6 +248,20 @@ class RoutePersistenceTests(unittest.TestCase):
         r = routes.find_route(again, "groq-2")
         self.assertEqual((r["timeout"], r["enabled"]), (33, False))
         self.assertEqual(again["manual_route_id"], "groq-2")
+
+    def test_old_enabled_ollama_route_repairs_disabled_provider_on_load(self):
+        s = config.load_settings()
+        routes.update_route(s, "ollama", enabled=True)
+        # Recreate the exact inconsistent state written by old versions:
+        # route on, but Ollama provider-level switch off.
+        s["providers"]["ollama"]["enabled"] = False
+        config.save_settings(s)
+
+        again = config.load_settings()
+        self.assertTrue(again["providers"]["ollama"]["enabled"])
+        self.assertTrue(routes.find_route(again, "ollama")["enabled"])
+        persisted = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertTrue(persisted["providers"]["ollama"]["enabled"])
 
     def test_orphan_routes_of_missing_provider_are_dropped_on_load(self):
         s = config.load_settings()
