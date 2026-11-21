@@ -45,6 +45,7 @@ class VoiceApplicationService(VoiceService):
         on_note: Callable[[str], None],
         on_finished: Callable[[Any, bool, bool], None],
         on_waiting: Callable[[], None],
+        on_partial: Callable[[str], None] | None = None,
     ) -> None:
         if speaker is None or not callable(listener_factory):
             raise TypeError("speaker and listener_factory are required")
@@ -57,6 +58,7 @@ class VoiceApplicationService(VoiceService):
         self.on_note = on_note
         self.on_finished = on_finished
         self.on_waiting = on_waiting
+        self.on_partial = on_partial
         self.listener: VoiceListenerPort | None = None
         self.stopping_listener: VoiceListenerPort | None = None
         self.restart_after_stop = False
@@ -133,6 +135,8 @@ class VoiceApplicationService(VoiceService):
         self.restart_after_stop = False
         listener = self.listener_factory()
         listener.subscribe("heard", self.on_heard)
+        if callable(self.on_partial):
+            listener.subscribe("partial", self.on_partial)
         listener.subscribe("interrupted", self.on_interrupted)
         listener.subscribe("state", self.on_state)
         listener.subscribe("error", self.on_error)
