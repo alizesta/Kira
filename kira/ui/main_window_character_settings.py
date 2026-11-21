@@ -450,10 +450,10 @@ class CharacterSettingsController(WindowFeatureController):
                      "send_btn", "gen_stop_btn"):
             widget = getattr(self.context.views, name, None)
             if widget is not None:
-                targets.append((widget, palette["second"], 10 + intensity * 0.12, 14 + intensity * 0.38))
+                targets.append((widget, palette["second"], 7 + intensity * 0.06, 5 + intensity * 0.14))
         save_button = getattr(self.context.views, "save_btn", None)
         if save_button is not None:
-            targets.append((save_button, palette["main"], 10 + intensity * 0.12, 14 + intensity * 0.34))
+            targets.append((save_button, palette["main"], 7 + intensity * 0.06, 5 + intensity * 0.12))
 
         for widget, colour, blur, alpha in targets:
             effect = self._neon_widget_effects.get(widget)
