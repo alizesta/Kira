@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-21 23:49 Iran (UI icons are now SVG files)
+- The 23 code-drawn UI icons (chat, paperclip, globe, search, gamepad, brain, palette, settings, help, route, terminal, menu, check, user, bolt, send, mic, moon, speaker, muted speaker, monitor, chevron) are now Lucide SVG files in `assets/icons/<name>.svg` (ISC licence kept in `assets/icons/LICENSE-lucide.txt`). `kira/ui_icons.py` renders them with `QSvgRenderer` and the same neon bloom (3 glow passes + core + white edge); `make_icon` / `set_glow_intensity` API unchanged.
+- Still drawn in code: `stop` (filled square) and the mood faces. A missing SVG falls back to the code path. To change an icon, replace the file.
+- Checked offscreen (icon strip render); not yet seen on Windows.
+
 ## 2026-11-21 00:20 Iran (UNSLOP audit of the Character / Connections screens)
 - Audited the rendered screens (offscreen screenshots) against the six UNSLOP points in `kira/ui_design_guidance.py`. Fixed: the character tabs and the "＋" button now sit together (Connectedness; before, "＋" was at the opposite edge); the optional notes box is capped at ~120 px instead of filling half the page (Parkinson).
 - Not changed, needs a decision: two overlapping notes boxes (global assistant notes under "هویت و شخصیت" vs per-character "پرسونالیتی و یادداشت‌ها"); nine flat toggles in "شخصیت روی دسکتاپ" that could move into a collapsed "advanced" group; large empty tables in the Connections tab.

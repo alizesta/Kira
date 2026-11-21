@@ -170,3 +170,5 @@ Local-only speech stack: Qwen3-ASR primary STT, faster-whisper local fallback, P
 - Desktop pet: `kira/pet.py` (PetController: hang from cursor, fall, perch on windows/taskbar via `kira/perch.py`), `kira/music_dance.py` (loopback beat detection) -> `window.kiraMusic`. Settings `companion_perch`, `companion_hang`, `auto_dance`.
 - Dance library: files `*.vrma` / Mixamo `*.fbx` in `assets/vrm/animations/` (see its README.txt) are listed by `kira/dance_library.py` and sent with `VrmView.refresh_dances` -> `window.kiraDances`. On music start `viewer.html` plays a random clip (75%) or a built-in procedural style (AnimationMixer, rotations only, speed follows BPM). FBX needs the optional `vrm_vendor.OPTIONAL` files. Character tab has buttons to open the folder and Mixamo.
 - Left/right are the character's own sides. Held poses release by `reset`, a pose of the same group, or after `HOLD_S` (150 s).
+
+- 2026-11-21 23:49 Iran: UI icons live in `assets/icons/*.svg` (Lucide, ISC) rendered with glow by `kira/ui_icons.py`; `stop` and mood faces remain code-drawn.

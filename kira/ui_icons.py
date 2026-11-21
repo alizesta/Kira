@@ -1,10 +1,14 @@
-"""Minimal line icons, painted with QPainter (no image files, no extra dependencies).
+"""Line icons for every icon button: Lucide SVG files (assets/icons/<name>.svg, ISC licence) with a neon bloom,
+plus a few glyphs still painted with QPainter (stop, mood faces).
 
 make_icon(name) returns a QIcon with colours for normal / hover / checked / disabled states,
 so every icon button in the application shares one visual style.
 """
-from PySide6.QtCore import Qt, QPointF, QRectF
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QPointF, QRectF, QByteArray
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, QBrush
+from PySide6.QtSvg import QSvgRenderer
 
 _SIZE = 96            # pixmap size; icons are designed on a 24 x 24 grid and shown smaller
 _CACHE = {}
@@ -297,8 +301,51 @@ def _shapes(name):
     return []
 
 
+_SVG_DIR = Path(__file__).resolve().parents[1] / "assets" / "icons"
+_SVG_SOURCE = {}
+
+
+def _svg_text(name):
+    """Source text of assets/icons/<name>.svg, or None when the icon is drawn in code."""
+    if name not in _SVG_SOURCE:
+        path = _SVG_DIR / f"{name}.svg"
+        try:
+            _SVG_SOURCE[name] = path.read_text(encoding="utf-8") if path.is_file() else None
+        except OSError:
+            _SVG_SOURCE[name] = None
+    return _SVG_SOURCE[name]
+
+
+def _svg_pass(painter, source, colour, width, alpha):
+    """Draw the icon once with its stroke recoloured / re-weighted (the bloom is several such passes)."""
+    tint = QColor(colour)
+    svg = (source.replace('stroke="currentColor"', f'stroke="{tint.name()}" stroke-opacity="{max(0.0, min(1.0, alpha / 255.0)):.3f}"')
+                 .replace('stroke-width="2"', f'stroke-width="{width:.2f}"'))
+    renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
+    renderer.render(painter, QRectF(0, 0, _SIZE, _SIZE))
+
+
+def _svg_pixmap(name, colour, source):
+    pm = QPixmap(_SIZE, _SIZE)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    intensity = max(0.0, min(1.0, _GLOW_INTENSITY))
+    for alpha, width in ((14 + 42 * intensity, 6.8 + 1.0 * intensity),
+                         (24 + 62 * intensity, 4.4 + 0.7 * intensity),
+                         (38 + 82 * intensity, 2.8 + 0.4 * intensity)):
+        _svg_pass(p, source, colour, width, alpha)
+    _svg_pass(p, source, colour, 1.75, 242)                         # crisp core
+    _svg_pass(p, source, QColor(232, 250, 255), 0.5, 72 + 72 * intensity)   # white-hot inner edge
+    p.end()
+    return pm
+
+
 def _pixmap(name, colour):
     """Render a crisp neon glyph with a multi-pass bloom and a white-hot inner edge."""
+    source = _svg_text(name)
+    if source is not None:
+        return _svg_pixmap(name, colour, source)
     pm = QPixmap(_SIZE, _SIZE)
     pm.fill(Qt.transparent)
     p = QPainter(pm)

@@ -215,3 +215,5 @@ Character specialization and generated portraits. The implementation is complete
 - The prompt asks Kira to add focused tests for changed behavior where practical; arbitrary PowerShell still needs per-command approval, and project files are still edited on a copy.
 - Automated tests and the interactive Windows UI were not run for this update.
 - Voice silent on Windows: added winsound path for wav (`voice._NativeWavPlayer`, setting `voice_native_wav`). Needs a real-device check; if still silent, ask for the error text Kira shows and check the Windows volume mixer for the app.
+
+- 2026-11-21 23:49 Iran: UI icons live in `assets/icons/*.svg` (Lucide, ISC) rendered with glow by `kira/ui_icons.py`; `stop` and mood faces remain code-drawn.

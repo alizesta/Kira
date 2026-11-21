@@ -33,3 +33,5 @@ This file is the short repository-level entry point. It intentionally contains n
 A source file, test, merged pull request or green workflow status alone does not prove runtime behavior. Report static inspection, test execution, CI runner execution and Windows desktop acceptance separately. A workflow job with no runner/steps is **not executed** and must never be reported as a passing test.
 
 For current status and limitations, use the verification sections in the three canonical documents and the latest entry in [TASK_HANDOFF.md](TASK_HANDOFF.md). Historical migration notes belong in dated records under `docs/`, not in this entry point.
+
+- 2026-11-21 23:49 Iran: UI icons live in `assets/icons/*.svg` (Lucide, ISC) rendered with glow by `kira/ui_icons.py`; `stop` and mood faces remain code-drawn.
