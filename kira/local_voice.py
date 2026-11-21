@@ -241,7 +241,7 @@ def load_shenava(model_path=""):
             import gc
             import sherpa_onnx
 
-            # Release Qwen first so switching engines does not keep both models in RAM.
+            # Release any previously held recognizer before loading Shenava.
             old_qwen, _asr = _asr, None
             _asr_model_name = None
             _asr_error = None
@@ -810,7 +810,7 @@ def _ezafe_status() -> dict:
         return {"enabled": True, "loaded": False, "error": f"{type(exc).__name__}: {exc}"[:240]}
 
 def discover_cached_models() -> dict:
-    """Find cached Qwen ASR snapshots and Piper ONNX voices without downloading anything."""
+    """Find supported Shenava ASR snapshots and Piper ONNX voices without downloading."""
     data_root = Path(_DATA_ROOT)
     hub_root = Path(os.environ.get("HF_HUB_CACHE") or (data_root / "huggingface" / "hub"))
     asr_models, tts_models = [], []
@@ -840,9 +840,10 @@ def discover_cached_models() -> dict:
                 ) or (snapshot / "model.safetensors.index.json").is_file()
                 if not has_weights:
                     continue
-                is_shenava = (
-                    repo_id.casefold() == SHENAVA_REPO_ID.casefold()
-                    and (snapshot / SHENAVA_MODEL_FILENAME).is_file()
+                shenava_filename = SHENAVA_MODEL_FILENAMES.get(repo_id)
+                is_shenava = bool(
+                    shenava_filename
+                    and (snapshot / shenava_filename).is_file()
                     and (snapshot / "tokens.txt").is_file()
                 )
                 if is_shenava and repo_id.casefold() not in seen_asr:
