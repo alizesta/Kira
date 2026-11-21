@@ -7,10 +7,8 @@ from __future__ import annotations
 
 import io
 import os
-import subprocess
 import sys
 import threading
-import wave
 from pathlib import Path
 
 from .storage import configure_cache_environment, default_data_dir
@@ -30,21 +28,14 @@ _TEST_TEXT = "Hello! I am Kira. This is a local Kitten TTS voice test."
 
 
 def _run(command, timeout=3600, cancel_event=None):
-    options = {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0)} if os.name == "nt" else {}
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               text=True, encoding="utf-8", errors="replace", **options)
-    try:
-        stdout, stderr = process.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        stdout, stderr = process.communicate()
-        raise RuntimeError("نصب KittenTTS بیش از زمان مجاز طول کشید.")
-    if process.returncode:
-        detail = (stderr or stdout or "pip failed")[-3000:]
+    """Use Kira's cancellable, hidden-window installer process."""
+    from .local_voice import _run_install_command
+
+    result = _run_install_command(command, timeout=timeout, cancel_event=cancel_event)
+    if result.returncode:
+        detail = (result.stderr or result.stdout or "pip failed")[-3000:]
         raise RuntimeError(f"نصب وابستگی KittenTTS ناموفق بود: {detail}")
-    if cancel_event is not None and cancel_event.is_set():
-        raise RuntimeError("عملیات KittenTTS لغو شد.")
-    return stdout
+    return result.stdout
 
 
 def install_runtime(cancel_event=None):
@@ -56,9 +47,13 @@ def install_runtime(cancel_event=None):
     # Kitten's default extra dependencies include PyTorch. --no-deps keeps this
     # optional CPU feature small; install its documented ONNX/text/audio runtime.
     _run([sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "4",
-          "--timeout", "60", "kittenml", "--no-deps"], cancel_event=cancel_event)
+          "--timeout", "60", "--constraint",
+          str(Path(__file__).resolve().parents[1] / "constraints-voice.txt"),
+          "kittenml", "--no-deps"], cancel_event=cancel_event)
     _run([sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "4",
-          "--timeout", "60", "onnxruntime>=1.20", "numpy>=1.26", "soundfile",
+          "--timeout", "60", "--constraint",
+          str(Path(__file__).resolve().parents[1] / "constraints-voice.txt"),
+          "onnxruntime>=1.20", "numpy>=1.26", "soundfile",
           "huggingface_hub", "phonemizer", "espeakng_loader", "misaki"], cancel_event=cancel_event)
     if not importlib.util.find_spec("kittenml") or not importlib.util.find_spec("onnxruntime"):
         raise RuntimeError("پس از نصب، ماژول‌های KittenTTS و ONNX Runtime پیدا نشدند.")
