@@ -1,7 +1,7 @@
 """The "مدل‌ها" box: one table per tab (active / free / paid-or-unknown / archived).
 
 Row data comes from kira.model_catalog.model_rows; this widget only draws rows and emits intents.
-Model names are never elided: the name column sizes to its content and the table scrolls sideways if it must."""
+Columns fit the viewport without horizontal scrolling; full cell values remain available in tooltips."""
 from __future__ import annotations
 
 import time
@@ -11,7 +11,7 @@ from PySide6.QtCore import QRectF, QSize, Qt, Signal
 from PySide6.QtGui import QBrush, QColor, QPainter
 from PySide6.QtWidgets import (
     QAbstractButton, QAbstractItemView, QGroupBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPushButton, QTableWidget,
-    QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget,
+    QTableWidgetItem, QTabWidget, QVBoxLayout, QWidget, QSizePolicy,
 )
 
 from ..shortcuts import delete_key
@@ -56,7 +56,7 @@ def price_pill(price: str) -> QWidget:
     text, color, tip = PRICE[price]
     box = QWidget()
     lay = QHBoxLayout(box)
-    lay.setContentsMargins(6, 3, 6, 3)
+    lay.setContentsMargins(2, 1, 2, 1)
     label = QLabel(text.replace("● ", ""))
     label.setAlignment(Qt.AlignCenter)
     label.setToolTip(tip)
@@ -64,10 +64,35 @@ def price_pill(price: str) -> QWidget:
     label.setStyleSheet(
         f"QLabel{{color:{color.name()};border:1px solid {color.name()};border-radius:9px;padding:2px 10px;min-height:22px;"
         f"background:rgba({color.red()},{color.green()},{color.blue()},40);}}")
-    label.setMinimumWidth(label.sizeHint().width() + 6)
+    label.setMinimumWidth(0)
+    label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
     lay.addWidget(label)
-    box.setMinimumSize(lay.sizeHint())
+    box.setMinimumWidth(0)
+    box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
     return box
+
+
+class ResponsiveModelsTable(QTableWidget):
+    """Table whose columns always fit the visible viewport; long values remain available in tooltips."""
+
+    NORMAL_RATIOS = (0.055, 0.36, 0.16, 0.10, 0.13, 0.095, 0.10)
+    ARCHIVED_RATIOS = (0.0, 0.39, 0.18, 0.11, 0.15, 0.085, 0.08)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self.fit_columns()
+
+    def fit_columns(self) -> None:
+        width = self.viewport().width()
+        if width <= 0 or self.columnCount() != len(COLUMNS):
+            return
+        ratios = self.ARCHIVED_RATIOS if self.isColumnHidden(0) else self.NORMAL_RATIOS
+        visible = [index for index, ratio in enumerate(ratios) if ratio > 0]
+        widths = {index: int(width * ratios[index]) for index in visible}
+        if visible:
+            widths[visible[-1]] += width - sum(widths.values())
+        for index in range(self.columnCount()):
+            self.setColumnWidth(index, widths.get(index, 0))
 
 
 class ModelsPanel(QGroupBox):
@@ -108,18 +133,23 @@ class ModelsPanel(QGroupBox):
 
     # ------------------------------------------------------------------ build
     def _make_table(self, tab: str) -> QTableWidget:
-        table = QTableWidget(0, len(COLUMNS))
+        table = ResponsiveModelsTable(0, len(COLUMNS))
         table.setHorizontalHeaderLabels(COLUMNS)
         table.setLayoutDirection(Qt.LeftToRight)           # technical names read left-to-right in every column
         table.setSelectionBehavior(QAbstractItemView.SelectRows)
         table.setSelectionMode(QAbstractItemView.SingleSelection)
         table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        table.setTextElideMode(Qt.ElideNone)               # never cut a model name
+        table.setTextElideMode(Qt.ElideMiddle)             # full values remain in the item tooltip
         table.setWordWrap(False)
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        compact_font = table.font()
+        compact_font.setPointSize(9)
+        table.setFont(compact_font)
+        table.verticalHeader().setDefaultSectionSize(36)
         table.verticalHeader().setVisible(False)
         header = table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(QHeaderView.Fixed)
         header.setStretchLastSection(False)
         table.setMinimumHeight(210)
         table.setMaximumHeight(330)
@@ -140,9 +170,9 @@ class ModelsPanel(QGroupBox):
             table.setRowCount(len(selected))
             for i, row in enumerate(selected):
                 self._fill_row(table, i, tab, row)
-                table.setRowHeight(i, 42)
+                table.setRowHeight(i, 36)
             table.blockSignals(False)
-            table.resizeColumnsToContents()
+            table.fit_columns()
         for index, tab in enumerate(TABS):
             n = (counts or {}).get(tab, sum(1 for r in rows if tab in r["tabs"]))
             self.tabs.setTabText(index, f"{TAB_TITLES[tab]} ({n})")
@@ -164,7 +194,9 @@ class ModelsPanel(QGroupBox):
         name.setData(Qt.UserRole, key)
         name.setToolTip(f"{row['provider_label']}\n{row['model']}")
         table.setItem(i, 1, name)
-        table.setItem(i, 2, QTableWidgetItem(row["provider_label"]))
+        provider_item = QTableWidgetItem(row["provider_label"])
+        provider_item.setToolTip(row["provider_label"])
+        table.setItem(i, 2, provider_item)
 
         table.setCellWidget(i, 3, price_pill(row["price"]))
         sort_key = QTableWidgetItem()
@@ -223,15 +255,18 @@ class ModelsPanel(QGroupBox):
     def _button(text, slot, *, enabled=True, tip="") -> QWidget:
         box = QWidget()
         lay = QHBoxLayout(box)
-        lay.setContentsMargins(4, 3, 4, 3)
+        lay.setContentsMargins(1, 1, 1, 1)
+        lay.setSpacing(0)
         button = QPushButton(text)
-        button.setStyleSheet("QPushButton{padding:3px 12px;min-height:24px;}")
-        button.setMinimumWidth(button.sizeHint().width() + 8)
+        button.setStyleSheet("QPushButton{padding:2px 5px;min-height:22px;font-size:9pt;}")
+        button.setMinimumWidth(0)
+        button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         button.setEnabled(enabled)
         button.setToolTip(tip)
         button.clicked.connect(lambda: slot())
         lay.addWidget(button)
-        box.setMinimumSize(lay.sizeHint())
+        box.setMinimumWidth(0)
+        box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         return box
 
     # ------------------------------------------------------------------ interaction
