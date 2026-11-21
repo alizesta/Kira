@@ -554,10 +554,20 @@ class ChatCodeGuiTests(unittest.TestCase):
             self.win.on_chat_link(QUrl("file:///C:/Windows/system32/calc.exe"))
             opened.assert_called_once()                       # anything else is ignored
 
+    def test_legacy_kira_code_links_still_route_to_kode(self):
+        patch = self.cc.patches.add("app.py", "def save(): return 2", b"def save(): return 1")
+        self.win.on_chat_link(QUrl(f"kira-code://reject/{patch.pid}"))
+        APP.processEvents()
+        self.assertIsNone(self.cc.patches.get(patch.pid))
+
     def test_project_folder_survives_a_restart(self):
         self.turn_on()
-        from kira.chat_code_ui import CodeChat
-        again = CodeChat(self.win)
+        from kira.chat_code_ui import CodeChat, Kode
+        from kira.kode import Kode as PublicKode
+        self.assertIs(CodeChat, Kode)
+        self.assertIs(Kode, PublicKode)
+        self.assertIsInstance(self.cc, Kode)
+        again = Kode(self.win)
         self.assertEqual(again.root, self.proj.resolve())
 
     def test_changing_the_folder_in_words(self):
