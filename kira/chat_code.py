@@ -14,6 +14,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .ui_design_guidance import guidance_for_task
 from .code_agent import (
     CodeAgentEngine, MAX_CONTEXT_CHARS, MAX_FILE_BYTES, SKIP_DIRS, _is_sensitive,
     build_project_context, project_tree, redact_secrets, safe_project_file,
@@ -343,7 +344,11 @@ Never request or reproduce API keys, passwords, tokens, private keys or other se
             + "\n\nProvide an evidence-based answer. Do not modify files or claim to have executed tests."
         )
         messages = _history_messages(history) + [{"role": "user", "content": prompt}]
-        result = self.router.chat_stream(messages, self.SYSTEM_PROMPT, temperature=0.2, on_chunk=on_chunk)
+        system_prompt = self.SYSTEM_PROMPT
+        ui_guidance = guidance_for_task(request)
+        if ui_guidance:
+            system_prompt += "\\n\\n" + ui_guidance
+        result = self.router.chat_stream(messages, system_prompt, temperature=0.2, on_chunk=on_chunk)
         answer = str((result or {}).get("text") or "").strip()
         if not answer:
             raise RuntimeError("مدل پاسخ متنی برنگرداند.")
