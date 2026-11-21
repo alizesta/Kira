@@ -637,7 +637,8 @@ class Kode(QObject):
                           plan_route_id=route_for("deep", w.settings),
                           exec_route_id=route_for("surface", w.settings),
                           review_route_id=route_for("reflection", w.settings),
-                          execution_guard=guard)
+                          execution_guard=guard,
+                          ui_design_guidance_enabled=bool(w.settings.get("ui_design_guidance_enabled", True)))
         self._begin_busy()
         self._activity_start("در حال بررسی پروژه و ساخت برنامهٔ کار…" if readonly else "در حال تحلیل پروژه و برنامه‌ریزی تغییرات…")
         sess = self.session
