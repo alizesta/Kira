@@ -24,6 +24,9 @@ set "REPO_URL=https://github.com/alizesta/Kira.git"
 set "BRANCH=new-main"
 set "KIRA_NO_PAUSE=1"
 set "NEEDS_INSTALL=0"
+rem Prevent interactive Git pagers from blocking unattended updater commands.
+set "GIT_PAGER=cat"
+set "GIT_TERMINAL_PROMPT=0"
 set "KIRA_INSTALL_PATH_FILE=%LOCALAPPDATA%\ProjectKira\install_path.txt"
 if exist "%KIRA_INSTALL_PATH_FILE%" set /p "KIRA_DATA_DIR="<"%KIRA_INSTALL_PATH_FILE%"
 if not defined KIRA_DATA_DIR if exist "A:\Project KIRA\Kira Attachments" set "KIRA_DATA_DIR=A:\Project KIRA\Kira Attachments"
@@ -63,9 +66,9 @@ if errorlevel 1 (
   echo [FILES] First checkout: downloading the complete project once.
 ) else (
   echo [FILES] Files changed since your installed revision:
-  git diff --name-status "%BRANCH%" "origin/%BRANCH%"
+  git --no-pager diff --name-status "%BRANCH%" "origin/%BRANCH%"
   rem Only setup/dependency changes trigger install.bat.
-  for /f "delims=" %%F in ('git diff --name-only "%BRANCH%" "origin/%BRANCH%"') do (
+  for /f "delims=" %%F in ('git --no-pager diff --name-only "%BRANCH%" "origin/%BRANCH%"') do (
     echo %%F| findstr /I /R /C:"^requirements.*\.txt$" >nul && set "NEEDS_INSTALL=1"
     if /I "%%F"=="install.bat" set "NEEDS_INSTALL=1"
     if /I "%%F"=="install_deps.py" set "NEEDS_INSTALL=1"
