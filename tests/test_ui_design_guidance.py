@@ -25,6 +25,9 @@ class UiDesignGuidanceTests(unittest.TestCase):
             "Optimize the API retry policy",
             "Explain Python decorators",
             "سلام، حالت چطوره؟",
+            "ظاهر کیرا چطوره؟",
+            "امروز تب دارم",
+            "منو دوست داری؟",
         ):
             with self.subTest(request=request):
                 self.assertFalse(is_ui_design_task(request))
