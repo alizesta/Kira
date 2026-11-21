@@ -29,10 +29,10 @@ _CONTEXT_OVERFLOW_RE = re.compile(
 )
 MAX_CONTEXT_RETRIES = 4
 _THINKING_FINAL_MARK = re.compile(
-    r"(?im)^[ \\t]*(?:final(?:\\s+(?:answer|response|reply))?|پاسخ(?:\\s+نهایی)?|جواب(?:\\s+نهایی)?)"
-    r"\\s*[:：]\\s*"
+    r"(?im)^[ \t]*(?:final(?:\s+(?:answer|response|reply))?|پاسخ(?:\s+نهایی)?|جواب(?:\s+نهایی)?)"
+    r"\s*[:：]\s*"
 )
-_THINKING_SEPARATOR = re.compile(r"(?m)^[ \\t]*(?:-{3,}|—{3,}|_{3,})[ \\t]*\\r?$")
+_THINKING_SEPARATOR = re.compile(r"(?m)^[ \t]*(?:-{3,}|—{3,}|_{3,})[ \t]*\r?$")
 MAX_THINKING_FALLBACK_CHARS = 24000
 
 
@@ -199,8 +199,8 @@ class OllamaClient:
         else:
             return ""
         candidate = candidate.strip()
-        candidate = re.sub(r"^\`{3,}[A-Za-z0-9_+.-]*\\s*\\r?\\n", "", candidate)
-        candidate = re.sub(r"\\r?\\n\`{3,}\\s*$", "", candidate).strip()
+        candidate = candidate.strip()
+        candidate = candidate.strip()
         if not candidate:
             return ""
         from .leak_guard import clean_final
