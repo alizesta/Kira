@@ -13,7 +13,7 @@ from __future__ import annotations
 REF_W, REF_H = 832, 1248              # reference canvas shared with kira/face.py and kira/rig.py
 BLEED = 24                            # reference pixels of picture kept outside the visible frame
 CARD_W, CARD_H = 520, 680             # crop shown in the narrow chat-page card (same size as Kira's crop)
-KIRA_CARD = (150.0, 0.0, float(CARD_W), float(CARD_H))
+KIRA_CARD = (0.0, 0.0, float(REF_W), float(REF_H))
 
 
 def layout(src_w, src_h):
