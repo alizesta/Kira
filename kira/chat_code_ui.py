@@ -267,6 +267,7 @@ class Kode(QObject):
         if w._closing:
             return
         self._classifying = True
+        w.kode_activity.start("در حال تشخیص نوع درخواست…")
         token = object()
         self._class_token = token
         session = w.cur                                            # the chat that asked: results must never land in another tab
@@ -318,6 +319,7 @@ class Kode(QObject):
             if intent in ("task", "question"):
                 self._route(text, intent)
             else:
+                w.kode_activity.reset()
                 self._bypass = True
                 w._voice_next = voice
                 try:
@@ -388,6 +390,7 @@ class Kode(QObject):
             fn = lambda chunk: engine.ask(question, context, chunk, history=history)  # noqa: E731
             done = lambda result: self._answer_done(question, result)  # noqa: E731
         self._begin_busy()
+        self.win.kode_activity.start("در حال آماده‌سازی تحلیل کد…" if req.kind != "patch" else "در حال آماده‌سازی تغییرات کد…")
         sess = self.session
         job = _Job(fn, self)
         self._streamed = 0
@@ -437,7 +440,8 @@ class Kode(QObject):
         self._streamed += len(piece)
         w = self.win
         if sess is w.front:
-            w.status.setText(f"کیرا در حال بررسی کد است… ({self._streamed:,} نویسه)")
+            w.status.setText("کیرا در حال بررسی کد است…")
+            w.kode_activity.update("در حال تحلیل کد و آماده‌سازی پاسخ…")
 
     @Slot()
     def _job_cleanup(self):
@@ -456,6 +460,7 @@ class Kode(QObject):
                 done(result)
             except Exception as exc:  # noqa: BLE001
                 w.add_chat("error", f"Kode: {exc}")
+                w.kode_activity.fail("پردازش با خطا متوقف شد")
             self._end_busy()
 
     def _failed(self, sess, error):
@@ -464,6 +469,7 @@ class Kode(QObject):
             return
         with w._as(sess):
             w.add_chat("error", f"Kode: {error}")
+            w.kode_activity.fail("پردازش با خطا متوقف شد")
             self._end_busy()
 
     def _remember(self, user_text, answer):
@@ -472,6 +478,7 @@ class Kode(QObject):
 
     def _answer_done(self, question, answer):
         self._bubble("assistant", cc.answer_html(answer))
+        self.win.kode_activity.complete("تحلیل تمام شد")
         self.win.save_message("assistant", answer)
         self._remember(question, answer)
 
@@ -485,9 +492,11 @@ class Kode(QObject):
         diff = cc.make_diff(rel, base_text, replacement)
         if not diff:
             self._say("assistant", "مدل تغییری پیشنهاد نکرد؛ فایل همان است که بود.")
+            self.win.kode_activity.complete("تغییری لازم نبود")
             return
         patch = self.patches.add(rel, replacement, base_bytes)
         self._bubble("assistant", cc.patch_card_html(patch, diff))
+        self.win.kode_activity.complete("پیشنهاد تغییر آماده است؛ منتظر تأیید تو")
         note = (f"پیشنهاد تغییر برای {rel} آماده شد (Diff بالا در چت). "
                 "هنوز هیچ فایلی تغییر نکرده؛ تا تأیید تو اعمال نمی‌شود.")
         self.win.save_message("assistant", note)
@@ -590,6 +599,7 @@ class Kode(QObject):
                           review_route_id=route_for("reflection", w.settings),
                           execution_guard=guard)
         self._begin_busy()
+        w.kode_activity.start("در حال بررسی پروژه و ساخت برنامهٔ کار…" if readonly else "در حال تحلیل پروژه و برنامه‌ریزی تغییرات…")
         sess = self.session
         job = _Job(lambda chunk: (setattr(agent, "emit", chunk), agent.run())[1], self)
         job_box["job"] = job
@@ -607,12 +617,22 @@ class Kode(QObject):
         w.status.setText("کیرا در حال بررسی پروژه است…" if readonly else "کیرا در حال کار خودکار روی پروژه است…")
         job.start()
 
+    @staticmethod
+    def _activity_label(line):
+        """Translate internal tool event labels into concise, user-facing progress."""
+        text = str(line or "").strip().lstrip("• ").strip()
+        if not text:
+            return ""
+        if text.startswith("گام "):
+            text = text.split(":", 1)[-1].strip()
+        return text[:140]
+
     def _auto_event(self, sess, line):
         w = self.win
         if w._closing or sess.cid not in w.sessions:
             return
         with w._as(sess):
-            self._bubble("system", cc.answer_html(line), name="")
+            w.kode_activity.step(self._activity_label(line))
 
     def _store_auto_result(self, zip_path):
         """Register one delivered ZIP under a stable, monotonic id (never len()+1)."""
@@ -626,11 +646,13 @@ class Kode(QObject):
     def _auto_done(self, goal, result):
         w = self.win
         if result.get("readonly"):
+            w.kode_activity.complete("بررسی پروژه تمام شد")
             self._bubble("assistant", cc.answer_html(result["summary"]))
             w.save_message("assistant", result["summary"])
             self._remember(goal, result["summary"])
             return
         if not result.get("zip"):
+            w.kode_activity.fail("مأموریت به خروجی نهایی نرسید")
             changed = result.get("changed") or []
             lines = ["مأموریت خودکار به تحویل نهایی نرسید.", "", result.get("summary") or "نتیجه تأیید نشده است."]
             if result.get("resume_available"):
@@ -642,6 +664,7 @@ class Kode(QObject):
             w.save_message("assistant", "\\n".join(lines))
             self._remember("/auto " + goal, result.get("summary") or "مأموریت ناتمام")
             return
+        w.kode_activity.complete("تغییرات بررسی و بستهٔ خروجی آماده شد")
         zip_path = Path(result["zip"])
         rid = self._store_auto_result(zip_path)
         changed = result["changed"]
@@ -698,6 +721,7 @@ class Kode(QObject):
         proc.errorOccurred.connect(lambda error: self._command_error(sess, proc, error))
         self.proc = proc
         self._begin_busy()
+        w.kode_activity.start("در حال اجرای دستور در پوشهٔ پروژه…")
         self.proc_timer = QTimer(self)
         self.proc_timer.setSingleShot(True)
         self.proc_timer.timeout.connect(proc.kill)
@@ -719,6 +743,7 @@ class Kode(QObject):
             return
         with w._as(sess):
             self._bubble("system", cc.output_html(command, "".join(out).rstrip(), code), name="")
+            w.kode_activity.complete("اجرای دستور تمام شد" if code == 0 else f"دستور با کد خروج {code} تمام شد")
             self._end_busy()
 
     def _command_error(self, sess, proc, error):
