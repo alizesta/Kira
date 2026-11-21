@@ -50,8 +50,11 @@ class RouteEditor(QWidget):
         body.setSpacing(5)
 
         self.route_list = QListWidget()
-        self.route_list.setMinimumHeight(76)
-        self.route_list.setMaximumHeight(126)
+        self.route_list.setMinimumHeight(58)
+        self.route_list.setMaximumHeight(92)
+        self.route_list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.route_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.route_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
         self.route_list.setDragDropMode(QAbstractItemView.InternalMove)
         self.route_list.setDefaultDropAction(Qt.MoveAction)
         self.route_list.setSelectionMode(QAbstractItemView.SingleSelection)
