@@ -237,7 +237,20 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         """Status line while a tool runs (no layout change). The real outcome is always reported by Kira's answer."""
         phase = e.get("phase")
         if phase == "tool_start":
-            self.context.views.status.setText(f"🔧 {e.get('label', '')}…")
+            label = str(e.get("label") or e.get("tool") or "ابزار")
+            self.context.views.status.setText(f"🔧 {label}…")
+            if self.context.state.cur is self.context.state.front:
+                self.context.views.kode_activity.step(f"در حال {label}…")
+        elif phase == "tool_done":
+            label = str(e.get("label") or e.get("tool") or "ابزار")
+            status = str(e.get("status") or "")
+            if self.context.state.cur is self.context.state.front:
+                if status == "ok":
+                    self.context.views.kode_activity.step(f"{label} انجام شد")
+                elif status == "needs_confirm":
+                    self.context.views.kode_activity.step(f"در انتظار تأیید برای {label}")
+                elif status:
+                    self.context.views.kode_activity.step(f"{label}: {status}")
         elif phase == "plan_step":
             self.context.views.status.setText(f"🧭 مرحله {e.get('i', '?')} از {e.get('n', '?')}: {e.get('title', '')}")
         elif phase == "plan_ready":
