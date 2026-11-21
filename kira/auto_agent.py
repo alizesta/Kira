@@ -629,6 +629,12 @@ class AutoAgent:
             self._reviewed = False
             raise RuntimeError("هیچ Diff قابل بازبینی برای تغییرات ثبت‌شده تولید نشد.")
         findings, reviews = [], []
+        review_system_prompt = (
+            "You are an independent code reviewer. Output CLEAN only for a genuinely clean diff chunk; "
+            "otherwise output FINDINGS and concrete findings."
+        )
+        if self.ui_design_guidance:
+            review_system_prompt += "\n\n" + self.ui_design_guidance
         for index, (rel, diff) in enumerate(chunks, 1):
             prompt = (
                 "Review this COMPLETE diff chunk as an independent senior software reviewer. "
@@ -642,11 +648,11 @@ class AutoAgent:
             if callable(scope):
                 with scope(role="reflection", route_id=self.review_route_id):
                     result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                        "You are an independent code reviewer. Output CLEAN only for a genuinely clean diff chunk; otherwise output FINDINGS and concrete findings." + ("\n\n" + self.ui_design_guidance if self.ui_design_guidance else ""),
+                        review_system_prompt,
                         temperature=0.1, on_chunk=None)
             else:
                 result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                    "You are an independent code reviewer. Output CLEAN only for a genuinely clean diff chunk; otherwise output FINDINGS and concrete findings." + ("\n\n" + self.ui_design_guidance if self.ui_design_guidance else ""),
+                    review_system_prompt,
                     temperature=0.1, on_chunk=None)
             review = str((result or {}).get("text") or "").strip()
             if not review:
@@ -913,14 +919,17 @@ class AutoAgent:
                   "Include relevant callers/dependencies, root cause, safe changes, and focused verification. "
                   "Do not claim tests ran. If evidence is insufficient, state exactly which source must be read next.\n\n"
                   f"GOAL:\n{self.goal}\n\nPROPOSED PLAN:\n{proposed}\n\nSOURCE EVIDENCE:\n{evidence[:24000]}")
+        plan_system_prompt = "You are a careful senior software architect. Be evidence-based."
+        if self.ui_design_guidance:
+            plan_system_prompt += "\n\n" + self.ui_design_guidance
         scope = getattr(self.router, "role_scope", None)
         if callable(scope):
             with scope(role="deep", route_id=self.plan_route_id):
                 result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                                                 "You are a careful senior software architect. Be evidence-based." + ("\n\n" + self.ui_design_guidance if self.ui_design_guidance else ""), temperature=0.15, on_chunk=None)
+                                                 plan_system_prompt, temperature=0.15, on_chunk=None)
         else:
             result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                                             "You are a careful senior software architect. Be evidence-based." + ("\n\n" + self.ui_design_guidance if self.ui_design_guidance else ""), temperature=0.15, on_chunk=None)
+                                             plan_system_prompt, temperature=0.15, on_chunk=None)
         reviewed_plan = str((result or {}).get("text") or "").strip()
         if not reviewed_plan:
             raise RuntimeError("برنامه‌ریز مستقل برنامه‌ی قابل استفاده‌ای ارائه نکرد.")
