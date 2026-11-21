@@ -98,13 +98,12 @@ class VoicePage(QScrollArea):
         self.stt_lang.addItems(["fa", "en", "auto"])
         self.stt_lang.setCurrentText(str(settings.get("stt_language") or "fa"))
         self.asr_backend = QComboBox()
-        self.asr_backend.addItem("Qwen3-ASR · 0.6B", "qwen3")
         self.asr_backend.addItem("Shenava Koochik · آفلاین", "shenava")
         backend_index = self.asr_backend.findData(
-            str(settings.get("local_voice_asr_backend") or "qwen3")
+            str(settings.get("local_voice_asr_backend") or "shenava")
         )
         self.asr_backend.setCurrentIndex(max(0, backend_index))
-        stt_form.addRow("موتور ASR محلی", self.asr_backend)
+        self.asr_backend.setVisible(False)
         self.shenava_variant = QComboBox()
         self.shenava_variant.addItem(
             "Shenava INT8 · سبک‌تر · حدود ۱۲۶ مگابایت",
@@ -119,7 +118,7 @@ class VoicePage(QScrollArea):
         )
         self.shenava_variant.setCurrentIndex(max(0, variant_index))
         stt_form.addRow("نسخه مدل شنوا", self.shenava_variant)
-        self.whisper = self._row(stt_form, "whisper", QComboBox())
+        self.whisper = QComboBox()
         self.whisper.setEditable(True)
         self.whisper.addItems([
             "base",
@@ -145,7 +144,6 @@ class VoicePage(QScrollArea):
         stt_actions = QHBoxLayout()
         stt_actions.addWidget(self.whisper_download_btn)
         stt_actions.addWidget(self.whisper_browse_btn)
-        stt_form.addRow(stt_actions)
         shenava_actions = QHBoxLayout()
         self.shenava_download_btn = QPushButton()
         self.shenava_download_btn.clicked.connect(
@@ -216,7 +214,7 @@ class VoicePage(QScrollArea):
         self.live_config_note.setText(
             "حالت اصلی Gemini Live است: صدای میکروفن مستقیم ارسال و پاسخ صوتی مستقیم دریافت می‌شود. "
             "در صورت قطع اتصال، اگر گزینه پشتیبان فعال باشد، Kira به STT محلی "
-            "(شنوا / Qwen3-ASR / Whisper) + مدل چت + Piper منتقل می‌شود. "
+            "شنوا + مدل چت + Piper منتقل می‌شود. "
             "Real-time ASR فقط میکروفن محلی را کنترل می‌کند و روی Gemini Live اثری ندارد."
         )
         live_form.addRow(self.live_config_note)
@@ -270,7 +268,7 @@ class VoicePage(QScrollArea):
         for widget in (self.volume, self.mic_gain, self.mic_sens, self.rate):
             widget.valueChanged.connect(lambda *_: self.save_timer.start())
         for widget in (
-            self.out_device, self.mic_device, self.stt_lang, self.whisper,
+            self.out_device, self.mic_device, self.stt_lang,
             self.asr_backend, self.shenava_variant, self.voice_engine, self.gemini_provider,
         ):
             widget.currentIndexChanged.connect(lambda *_: self.save_timer.start())
