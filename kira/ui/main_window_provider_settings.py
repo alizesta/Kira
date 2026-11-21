@@ -187,23 +187,6 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.views.local_model_tabs = QTabWidget()
         self.context.views.local_model_tabs.setMaximumHeight(255)
 
-        # Local Chat: Ollama remains the provider, but every installed model is listed here.
-        local_chat = QWidget()
-        local_chat_layout = QVBoxLayout(local_chat)
-        local_chat_layout.setContentsMargins(3, 3, 3, 3)
-        local_chat_layout.addWidget(self.build_ollama_group())
-        self.context.views.local_model_list = QListWidget()
-        self.context.views.local_model_list.setAlternatingRowColors(True)
-        self.context.views.local_model_list.setMinimumHeight(90)
-        self.context.views.local_model_list.setMaximumHeight(150)
-        self.context.views.local_model_list.itemChanged.connect(self.on_local_chat_item_changed)
-        local_chat_layout.addWidget(QLabel("مدل‌های چت نصب‌شده‌ی Ollama"))
-        local_chat_layout.addWidget(self.context.views.local_model_list)
-        self.route_scan_btn = QPushButton("یافتن مدل‌های نصب‌شده")
-        self.route_scan_btn.clicked.connect(self.scan_ollama)
-        local_chat_layout.addWidget(self.route_scan_btn)
-        self.context.views.local_model_tabs.addTab(local_chat, "Chat")
-
         # Local STT: Qwen ASR and faster-whisper can use a downloaded local directory.
         local_stt = QWidget()
         local_stt_layout = QVBoxLayout(local_stt)
@@ -1048,7 +1031,8 @@ class ProviderSettingsController(WindowFeatureController):
         current = self.context.resource("_scan_worker")
         if current is not None and current.isRunning():
             return
-        self.route_scan_btn.setEnabled(False)
+        if hasattr(self, "route_scan_btn"):
+            self.route_scan_btn.setEnabled(False)
         self.context.views.route_status.setText("در حال جست‌وجوی مدل‌های نصب‌شده‌ی Ollama…")
         client = self.context.services.provider_application_service.create_ollama_client(self.context.services.settings)
 
@@ -1078,7 +1062,8 @@ class ProviderSettingsController(WindowFeatureController):
         if worker is None or self.context.state._scan_worker is not worker or self.context.state._closing:
             return
         ok, value = result
-        self.route_scan_btn.setEnabled(True)
+        if hasattr(self, "route_scan_btn"):
+            self.route_scan_btn.setEnabled(True)
         if not ok:
             self.context.views.route_status.setText("✕ " + value)
             return
