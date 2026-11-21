@@ -48,6 +48,7 @@ class ChatController(WindowFeatureController):
         if text or files:
             attachments.clear()
             self.context.views.input.clear()
+            self.feature_controller("session").update_chat_placeholder()
             self.submit(text, files)
 
     def _cancel_application_provider(self, request, _worker):
