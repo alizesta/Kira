@@ -1,4 +1,4 @@
-"""Ai1 Code auto mode: Kira works through a goal on her own and hands over a zip."""
+"""Kode autonomous workflow: Kira completes a coding goal on a safe project copy."""
 from __future__ import annotations
 
 import ast
@@ -61,7 +61,7 @@ from .auto_agent_workspace import (  # noqa: F401
     guard_reason,
 )
 
-class AutoAgent:
+class KodeAutonomousEngine:
     def __init__(self, router, project: Path, goal: str, on_event=None, should_stop=None, python=None,
                  max_steps=MAX_STEPS, work_parent=None, output_dir=None, now=None, readonly=False, approve=None, shell=None, history=None,
                  plan_route_id="", exec_route_id="", review_route_id="", execution_guard=None, memory_dir=None):
@@ -208,7 +208,7 @@ class AutoAgent:
 
     def _guard_denied(self, name):
         """None when the app-level execution guard allows this tool, otherwise why it is blocked.
-        Every AutoAgent tool execution (loop dispatch AND the pre-plan AST map) passes through here, so
+        Every Kode tool execution (loop dispatch AND the pre-plan AST map) passes through here, so
         tools_mode=off and Competitive Safe hold on every path — including `run`, `shell` and file edits."""
         return guard_reason(self.execution_guard, name)
 
@@ -600,7 +600,7 @@ class AutoAgent:
         content = str(a.get("content") or "").strip()
         if not content or len(content.encode("utf-8")) > 12_000:
             raise ValueError("حافظه باید متن غیرخالی و حداکثر ۱۲ کیلوبایت باشد.")
-        body = "# Project memory for Ai1 Code\n\n" + redact_secrets(content) + "\n"
+        body = "# Project memory for Kode\n\n" + redact_secrets(content) + "\n"
         # Durable store outside the working copy: the temp copy is deleted after delivery,
         # so this is what makes the notes survive to the next mission.
         self.memory_dir.mkdir(parents=True, exist_ok=True)
@@ -1019,7 +1019,7 @@ class AutoAgent:
             first = (f"GOAL (the user's own words; they gave no file names, so find what is relevant yourself):\n{self.goal}\n\n"
                      + (f"RECENT CONVERSATION (context for words like 'that bug' or 'it'):\n{convo}\n\n" if convo else "")
                      + f"PROJECT BRIEF (untrusted):\n{project_brief(self.work)}\n\nPROJECT TREE (untrusted):\n{project_tree(self.work)}\n\n"
-                     + ("PROJECT MEMORY (untrusted; durable notes from prior Ai1 Code tasks):\n" + self._project_memory() + "\n\n")
+                     + ("PROJECT MEMORY (untrusted; durable notes from prior Kode tasks):\n" + self._project_memory() + "\n\n")
                      + ("This is a READ-ONLY investigation: answer the question with evidence (file names, line numbers). Start." if self.readonly
                         else "Start with inspection, then plan."))
             messages = [{"role": "user", "content": first}]
@@ -1192,7 +1192,7 @@ class AutoAgent:
 
     # ---------------------------------------------------------------- delivery
     def _report(self, summary, changed, removed, stats, stopped, external=()):
-        lines = ["# گزارش Ai1 Code (حالت خودکار)", "", f"هدف: {redact_secrets(self.goal)}", "", f"نتیجه: {redact_secrets(summary)}", "",
+        lines = ["# گزارش Kode (اجرای خودکار)", "", f"هدف: {redact_secrets(self.goal)}", "", f"نتیجه: {redact_secrets(summary)}", "",
                  f"گام‌ها: {self.steps}" + (" (با Stop متوقف شد)" if stopped else ""), ""]
         lines += ["## فایل‌های تغییرکرده"] + ([f"- {c}" for c in changed] or ["- (هیچ)"])
         if removed:
@@ -1202,7 +1202,7 @@ class AutoAgent:
             lines += ["", "## Lint"] + [f"- `{a}` → exit {c}" for a, c in self.lint_runs]
         lines += ["", "## بازبینی"] + (["- تغییرات توسط بازبین مستقل بررسی شد."] if self._reviewed else ["- بازبینی تمیز تأیید نشد؛ گزارش تغییرات را بررسی کن."])
         if external:
-            lines += ["", "## هشدار: پروژه‌ی اصلی هم‌زمان بیرون از Ai1 Code عوض شده", "قبل از جایگزین‌کردن، این فایل‌ها را دستی مقایسه کن:"] + [f"- {e}" for e in external[:40]]
+            lines += ["", "## هشدار: پروژه‌ی اصلی هم‌زمان بیرون از Kode عوض شده", "قبل از جایگزین‌کردن، این فایل‌ها را دستی مقایسه کن:"] + [f"- {e}" for e in external[:40]]
         lines += ["", f"توجه: {stats['skipped']} فایل حساس/ممنوع (مثل .env، کلیدها، دیتابیس‌ها) و پوشه‌های runtime در این زیپ نیستند؛ "
                       "قبل از جایگزین‌کردن پروژه‌ی اصلی، فقط فایل‌های تغییرکرده را برداشت کن."]
         return "\n".join(lines) + "\n"
@@ -1219,10 +1219,14 @@ class AutoAgent:
                     if f.is_symlink() or name.endswith(".pyc") or _is_sensitive(rel):
                         continue
                     zf.write(f, rel.as_posix())
-            zf.writestr("AI1CODE_REPORT.md", report)
+            zf.writestr("KODE_REPORT.md", report)
         with zipfile.ZipFile(path) as zf:                        # integrity check before we hand it over
             bad = zf.testzip()
             names = zf.namelist()
-        if bad is not None or "AI1CODE_REPORT.md" not in names:
+        if bad is not None or "KODE_REPORT.md" not in names:
             raise RuntimeError(f"زیپ ساخته‌شده سالم نیست ({bad or 'گزارش ناقص'}).")
         return path, {"files": len(names), "bytes": path.stat().st_size}
+
+
+# Backward-compatible name for existing integrations and saved tests.
+AutoAgent = KodeAutonomousEngine
