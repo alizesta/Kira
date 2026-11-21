@@ -25,6 +25,7 @@ def create_voice_application_service_factory() -> Callable[[VoiceApplicationPort
             on_note=ports.on_note,
             on_finished=ports.on_finished,
             on_waiting=ports.on_waiting,
+            on_partial=ports.on_partial,
         )
 
     return create
