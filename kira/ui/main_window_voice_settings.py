@@ -558,17 +558,10 @@ class VoiceSettingsController(WindowFeatureController):
                 tts_combo.blockSignals(False)
 
             state = local_voice.status(tts_model)
-            backend = "shenava"
-            if backend == "shenava":
-                asr_loaded = bool(state.get("shenava_loaded"))
-                asr_installed = bool(state.get("shenava_installed"))
-                asr_error = state.get("shenava_error")
-                asr_label = "Shenava · sherpa-onnx"
-            else:
-                asr_loaded = bool(state.get("shenava_loaded"))
-                asr_installed = bool(state.get("shenava_installed"))
-                asr_error = state.get("shenava_error")
-                asr_label = "Shenava · sherpa-onnx"
+            asr_loaded = bool(state.get("shenava_loaded"))
+            asr_installed = bool(state.get("shenava_installed"))
+            asr_error = state.get("shenava_error")
+            asr_label = "Shenava · sherpa-onnx"
             tts_loaded = bool(state["tts_loaded"] and (
                 (tts_model and state.get("tts_model") and Path(state["tts_model"]).resolve() == Path(tts_model).expanduser().resolve())
                 or (not tts_model and state.get("tts_model") == "bundled")
