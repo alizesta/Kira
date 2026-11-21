@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-11-21 17:20 Iran (tray menu root cause)
+- Real cause of the truncated tray menu (from the user's log): `RuntimeController.MENU_ROUTES` did not exist, so `refresh_tray_menu` raised `AttributeError` after the first items. Added `MENU_ROUTES = 8`; the earlier per-section guards stay as a safety net.
+
 ## 2026-11-21 17:05 Iran (Kira portrait, app icon, tray menu)
 - Kira's profile picture is now her 2D portrait (`assets/characters/kira_portrait.png`, cropped from `kira_character.png`, replaces `kira.svg` at the user's request; `personas.py` and `test_characters.py` updated).
 - App icon from her face: `assets/kira_icon.png` / `.ico`; set as the application/window icon in `ui/bootstrap.py` and as the tray icon.
