@@ -141,6 +141,21 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.assertFalse(hasattr(self.cc, "button"))
         self.assertFalse([b for b in w.findChildren(QAbstractButton) if b.text().strip() == "</>"])
 
+    def test_kode_activity_panel_tracks_live_work_and_resets(self):
+        panel = self.cc.win.kode_activity
+        self.assertFalse(panel.isVisible())
+        panel.start("در حال تحلیل درخواست…")
+        self.assertTrue(panel.isVisible())
+        self.assertEqual(panel.status.text(), "در حال تحلیل درخواست…")
+        panel.step("جست‌وجوی فایل‌های پروژه")
+        self.assertEqual(panel.steps.count(), 2)
+        self.assertIn("جست‌وجوی فایل‌های پروژه", panel.steps.item(1).text())
+        panel.complete("تحلیل تمام شد")
+        self.assertEqual(panel.status.text(), "تحلیل تمام شد")
+        panel.reset()
+        self.assertFalse(panel.isVisible())
+        self.assertEqual(panel.steps.count(), 0)
+
     def test_first_coding_request_asks_for_the_project_folder_once(self):
         asked = []
         self.cc.pick_folder = lambda: (asked.append(1), str(self.proj))[1]
