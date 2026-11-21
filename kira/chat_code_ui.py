@@ -420,7 +420,7 @@ class Kode(QObject):
             return
         if rel:
             self.current_rel = rel
-        engine = cc.KodeEngine(w.cur.client)
+        engine = cc.KodeEngine(w.cur.client, ui_design_guidance_enabled=bool(w.settings.get("ui_design_guidance_enabled", True)))
         history = list(self.turns)
         question = req.text
         if req.kind == "patch":
