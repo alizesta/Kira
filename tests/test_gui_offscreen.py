@@ -478,6 +478,8 @@ class GuiTests(unittest.TestCase):
 
     def test_19b_active_character_changes_chat_page_and_companion_art(self):
         w = self.win
+        from kira.face import AvatarView
+        self.assertIsInstance(w.avatar, AvatarView)
         a = w.animator
         try:
             for cid in ("ren", "mika"):

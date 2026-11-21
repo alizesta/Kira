@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QMessageBox, QFrame, QFileDialog, QSizePolicy, QInputDialog, QStackedWidget, QButtonGroup, QGraphicsDropShadowEffect
 from ..config import DATA_DIR
 from ..ollama_client import clamp_num_ctx, clamp_num_predict, DEFAULT_NUM_PREDICT, DEFAULT_NUM_CTX, DEFAULT_KEEP_ALIVE
-from ..vrm_avatar import KiraAvatar
+from ..face import AvatarView  # Temporary fallback: keep Kira on the original 2D animated portrait.
 from ..listener import Listener
 from ..ui_icons import make_icon
 from ..ui_widgets import ChatInput, RouteChip
