@@ -89,7 +89,8 @@ class RouterRouteTests(unittest.TestCase):
         self.assertEqual(len(f.calls), 1)
 
     def test_surface_reports_missing_cloud_when_local_is_disabled(self):
-        s, r = make(ollama=False)
+        s, r = make(ollama=True)
+        routes.set_enabled(s, "ollama", False)
         with r.role_scope("surface"):
             with self.assertRaises(RuntimeError) as cm:
                 r.chat(MSGS, SYS)
