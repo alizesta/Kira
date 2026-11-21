@@ -855,6 +855,9 @@ class ProviderSettingsController(WindowFeatureController):
         self.sync_ollama_primary()
         self.feature_controller("runtime").save_now()
         self.refresh_route_list()
+        # The unified model tabs and the chat route menu must reflect changes
+        # made through the advanced Route switch immediately.
+        self.refresh_unified_models()
         if select:
             for i in range(self.context.views.route_list.count()):
                 if self.context.views.route_list.item(i).data(Qt.UserRole) == select:
