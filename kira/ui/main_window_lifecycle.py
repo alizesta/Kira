@@ -165,13 +165,13 @@ class LifecycleController(WindowFeatureController):
             auto.setChecked(not manual)
             auto.triggered.connect(lambda checked=False: self.feature_controller("runtime").select_route(""))
             routes = self.context.session.client.available_routes()
-            shown = routes[: self.feature_controller("runtime").MENU_ROUTES]
-            chosen = next((r for r in routes if r["route_id"] == manual), None)
-            if chosen is not None and chosen not in shown:
-                shown = shown[:-1] + [chosen]
-            for info in shown:
-                model = info["model"] if len(info["model"]) <= 34 else info["model"][:33] + "…"
-                act = models.addAction(f"{'☁' if info['kind'] == 'cloud' else '⌂'}  {info['label']} / {model}")
+            # Keep tray selection in sync with the chat picker: list all routes
+            # using provider/model names, without a removed UI-only limit or truncation.
+            for info in routes:
+                provider = str(info.get("label") or info.get("provider") or "Provider").strip()
+                model = str(info.get("model") or "").strip()
+                label = f"{provider} / {model}" if model else provider
+                act = models.addAction(label)
                 act.setCheckable(True)
                 act.setChecked(info["route_id"] == manual)
                 act.triggered.connect(lambda checked=False, rid=info["route_id"]: self.feature_controller("runtime").select_route(rid))
