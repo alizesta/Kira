@@ -1,4 +1,4 @@
-"""Ai1 Code inside Kira's chat (Qt offscreen). Proves wiring and safety gates; the real Windows desktop still needs a manual try."""
+"""Kode inside Kira's chat (Qt offscreen): unified flow wiring and safety gates."""
 import json
 import os
 import sys
@@ -136,6 +136,7 @@ class ChatCodeGuiTests(unittest.TestCase):
     def test_no_button_and_not_in_menu(self):
         from PySide6.QtWidgets import QAbstractButton
         w = self.win
+        self.assertNotIn("Kode", [a.text() for a in w.nav_menu.actions()])
         self.assertNotIn("Ai1 Code", [a.text() for a in w.nav_menu.actions()])
         self.assertFalse(hasattr(self.cc, "button"))
         self.assertFalse([b for b in w.findChildren(QAbstractButton) if b.text().strip() == "</>"])
@@ -304,8 +305,8 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.turn_on()
         self.propose()
         html = self.win.chat.toHtml()
-        self.assertIn("kira-code://apply/", html)
-        self.assertIn("kira-code://reject/", html)
+        self.assertIn("kode://apply/", html)
+        self.assertIn("kode://reject/", html)
         self.assertIn("return 2", self.chat_text())
         self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "def save():\n    return 1\n")
         self.assertEqual(len(self.cc.patches), 1)
@@ -314,7 +315,7 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.turn_on()
         self.propose()
         pid = self.cc.patches.last().pid
-        self.win.on_chat_link(QUrl(f"kira-code://apply/{pid}"))
+        self.win.on_chat_link(QUrl(f"kode://apply/{pid}"))
         self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "def save():\n    return 2\n")
         self.assertEqual((self.proj / "app.py.ai1code.bak").read_text(encoding="utf-8"), "def save():\n    return 1\n")
         self.assertEqual(len(self.cc.patches), 0)
@@ -324,14 +325,14 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.turn_on()
         self.propose()
         self.cc.confirm = lambda *a, **k: False
-        self.win.on_chat_link(QUrl(f"kira-code://apply/{self.cc.patches.last().pid}"))
+        self.win.on_chat_link(QUrl(f"kode://apply/{self.cc.patches.last().pid}"))
         self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "def save():\n    return 1\n")
         self.assertEqual(len(self.cc.patches), 1)
 
     def test_reject_link_discards_the_proposal(self):
         self.turn_on()
         self.propose()
-        self.win.on_chat_link(QUrl(f"kira-code://reject/{self.cc.patches.last().pid}"))
+        self.win.on_chat_link(QUrl(f"kode://reject/{self.cc.patches.last().pid}"))
         self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "def save():\n    return 1\n")
         self.assertEqual(len(self.cc.patches), 0)
 
@@ -339,7 +340,7 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.turn_on()
         self.propose()
         (self.proj / "app.py").write_text("def save():\n    return 99\n", encoding="utf-8")   # edited elsewhere meanwhile
-        self.win.on_chat_link(QUrl(f"kira-code://apply/{self.cc.patches.last().pid}"))
+        self.win.on_chat_link(QUrl(f"kode://apply/{self.cc.patches.last().pid}"))
         self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "def save():\n    return 99\n")
         self.assertIn("تغییر کرده", self.chat_text())
 
@@ -412,12 +413,12 @@ class ChatCodeGuiTests(unittest.TestCase):
         import zipfile
         self.assertIn("return 2", zipfile.ZipFile(zips[0]).read("app.py").decode())
         self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "def save():\n    return 1\n")   # original untouched
-        self.assertIn("kira-code://open/1", self.win.chat.toHtml())
+        self.assertIn("kode://open/1", self.win.chat.toHtml())
         self.assertFalse(self.win.busy)
         with mock.patch("kira.chat_code_ui.QDesktopServices.openUrl") as opened:
-            self.win.on_chat_link(QUrl("kira-code://open/1"))
+            self.win.on_chat_link(QUrl("kode://open/1"))
             opened.assert_called_once()
-            self.win.on_chat_link(QUrl("kira-code://open/99"))
+            self.win.on_chat_link(QUrl("kode://open/99"))
             opened.assert_called_once()
 
     def test_auto_result_ids_are_monotonic_and_unique(self):
