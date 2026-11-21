@@ -641,11 +641,11 @@ class AutoAgent:
             if callable(scope):
                 with scope(role="reflection", route_id=self.review_route_id):
                     result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                        "You are an independent code reviewer. Output CLEAN only for a genuinely clean diff chunk; otherwise output FINDINGS and concrete findings." + ("\\n\\n" + self._design_guidance() if self._design_guidance() else ""),
+                        "You are an independent code reviewer. Output CLEAN only for a genuinely clean diff chunk; otherwise output FINDINGS and concrete findings." + ("\n\n" + self._design_guidance() if self._design_guidance() else ""),
                         temperature=0.1, on_chunk=None)
             else:
                 result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                    "You are an independent code reviewer. Output CLEAN only for a genuinely clean diff chunk; otherwise output FINDINGS and concrete findings." + ("\\n\\n" + self._design_guidance() if self._design_guidance() else ""),
+                    "You are an independent code reviewer. Output CLEAN only for a genuinely clean diff chunk; otherwise output FINDINGS and concrete findings." + ("\n\n" + self._design_guidance() if self._design_guidance() else ""),
                     temperature=0.1, on_chunk=None)
             review = str((result or {}).get("text") or "").strip()
             if not review:
@@ -916,10 +916,10 @@ class AutoAgent:
         if callable(scope):
             with scope(role="deep", route_id=self.plan_route_id):
                 result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                                                 "You are a careful senior software architect. Be evidence-based." + ("\\n\\n" + self._design_guidance() if self._design_guidance() else ""), temperature=0.15, on_chunk=None)
+                                                 "You are a careful senior software architect. Be evidence-based." + ("\n\n" + self._design_guidance() if self._design_guidance() else ""), temperature=0.15, on_chunk=None)
         else:
             result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                                             "You are a careful senior software architect. Be evidence-based." + ("\\n\\n" + self._design_guidance() if self._design_guidance() else ""), temperature=0.15, on_chunk=None)
+                                             "You are a careful senior software architect. Be evidence-based." + ("\n\n" + self._design_guidance() if self._design_guidance() else ""), temperature=0.15, on_chunk=None)
         reviewed_plan = str((result or {}).get("text") or "").strip()
         if not reviewed_plan:
             raise RuntimeError("برنامه‌ریز مستقل برنامه‌ی قابل استفاده‌ای ارائه نکرد.")
@@ -952,7 +952,7 @@ class AutoAgent:
             for item in list(messages or ())[-4:]
             if isinstance(item, dict) and item.get("role") == "user"
         )
-        return design_guidance_for("\\n".join(context))
+        return design_guidance_for("\n".join(context))
 
     READONLY_TOOLS = ("plan", "list", "map", "read", "search")
     ALL_TOOLS = READONLY_TOOLS + ("write", "replace", "delete", "run", "shell", "diff", "git", "lint", "review", "memory")
@@ -961,7 +961,7 @@ class AutoAgent:
         scope = getattr(self.router, "role_scope", None)
         route = {"deep": self.plan_route_id, "surface": self.exec_route_id, "reflection": self.review_route_id}.get(role, "")
         design_guidance = self._design_guidance(messages)
-        system_prompt = SYSTEM_PROMPT + ("\\n\\n" + design_guidance if design_guidance else "")
+        system_prompt = SYSTEM_PROMPT + ("\n\n" + design_guidance if design_guidance else "")
         if callable(scope):
             with scope(role=role, route_id=route):
                 return self.router.chat_stream(messages, system_prompt, temperature=0.2, on_chunk=None)
