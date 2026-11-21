@@ -480,10 +480,6 @@ class RuntimeVoiceMixin:
         via = getattr(self.context.listener, "via", "") if self.context.listener else ""
         if via == "local:shenava":
             label = "Shenava Koochik INT8 · Local"
-        elif via == "local:qwen3-asr":
-            label = "Qwen3-ASR · Local"
-        elif via == "local:whisper" or eng == "whisper":
-            label = "Whisper · Local"
         elif self.context.listener is not None and self.context.listener.isRunning():
             label = "STT محلی"
         else:
