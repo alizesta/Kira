@@ -132,7 +132,13 @@ class GuiTests(unittest.TestCase):
         self.assertIsInstance(window.img_search_btn, QAction)
         self.assertIs(window.screen_capture_btn, window.game_mode_btn)
         self.assertIsNot(window.web_btn, window.img_search_btn)
-        self.assertEqual(window.route_badge.text().split("/")[-1].strip(), window.route_badge.text().split("/")[-1].strip())
+        window.build_badge_menu()
+        expected_models = [str(route.get("model") or route.get("label") or route.get("provider") or "Provider")
+                           for route in window.client.available_routes()]
+        self.assertEqual([action.text() for action in window.route_menu.actions()][1:], expected_models)
+        self.assertEqual(window.search_menu.actions()[0].text(), "جست‌وجوی وب")
+        self.assertEqual(window.search_menu.actions()[1].text(), "جست‌وجوی تصویری عکس ارسالی")
+        self.assertEqual(window.game_mode_menu.actions()[0].text(), "گرفتن تصویر از صفحه")
 
         from kira.ui.controllers import ChatAttachmentController
         self.assertIsInstance(window.attachment_controller, ChatAttachmentController)
