@@ -102,7 +102,8 @@ class VoicePage(QScrollArea):
         backend_index = self.asr_backend.findData(
             str(settings.get("local_voice_asr_backend") or "shenava")
         )
-        self.asr_backend.setCurrentIndex(max(0, backend_index))
+        self.asr_backend.setCurrentIndex(max(0, self.asr_backend.findData("shenava")))
+        settings["local_voice_asr_backend"] = "shenava"
         self.asr_backend.setVisible(False)
         self.shenava_variant = QComboBox()
         self.shenava_variant.addItem(
@@ -120,14 +121,7 @@ class VoicePage(QScrollArea):
         stt_form.addRow("نسخه مدل شنوا", self.shenava_variant)
         self.whisper = QComboBox()
         self.whisper.setEditable(True)
-        self.whisper.addItems([
-            "base",
-            "small",
-            "medium",
-            "large-v3-turbo",
-            "large-v3",
-            "parseh/whisper-fa-accuracy-ct2",
-        ])
+        self.whisper.addItem("غیرفعال", "disabled")
         # Older builds accidentally persisted the Qwen3-ASR repository ID in
         # whisper_model, making the Whisper selector look like a duplicate ASR
         # backend. Qwen3-ASR is selected through asr_backend instead.
@@ -135,13 +129,16 @@ class VoicePage(QScrollArea):
         if saved_whisper.casefold() == "qwen/qwen3-asr-0.6b":
             saved_whisper = "base"
             settings["whisper_model"] = saved_whisper
-        self.whisper.setCurrentText(saved_whisper)
+        self.whisper.setCurrentText("disabled")
         self._register(self.whisper.setToolTip, "whisper_tip")
         self.whisper_browse_btn = QPushButton("انتخاب پوشه مدل")
+        self.whisper.setVisible(False)
+        self.whisper_browse_btn.setVisible(False)
         self.whisper_browse_btn.clicked.connect(lambda checked=False: self.choose_whisper_folder_requested.emit())
         self.whisper_download_btn = QPushButton("نصب مدل انتخاب‌شده")
         self.whisper_download_btn.clicked.connect(lambda checked=False: self.download_whisper_requested.emit())
         stt_actions = QHBoxLayout()
+        self.whisper_download_btn.setVisible(False)
         stt_actions.addWidget(self.whisper_download_btn)
         stt_actions.addWidget(self.whisper_browse_btn)
         shenava_actions = QHBoxLayout()
