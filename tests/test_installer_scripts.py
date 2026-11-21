@@ -17,10 +17,20 @@ class InstallerScriptTests(unittest.TestCase):
 
     def test_updater_runs_a_stable_copy_before_fetching_and_replacing_itself(self):
         self.assertIn('copy /y "%~f0" "%KIRA_UPDATER_TEMP%"', self.updater)
-        self.assertIn('start "Project Kira Updater"', self.updater)
+        self.assertIn('call "%KIRA_UPDATER_TEMP%" %*', self.updater)
         self.assertLess(
             self.updater.index('copy /y "%~f0" "%KIRA_UPDATER_TEMP%"'),
-            self.updater.index('git fetch origin "%BRANCH%"'),
+            self.updater.index('git fetch --no-tags origin'),
+        )
+
+    def test_updater_verifies_files_are_synchronized_before_reporting_success(self):
+        self.assertIn('git diff --quiet HEAD "origin/%BRANCH%"', self.updater)
+        self.assertIn("echo [FILES] All changed project files are now applied and verified.", self.updater)
+        self.assertIn("echo [DONE] Project files are synchronized with origin/%BRANCH%.", self.updater)
+        self.assertIn(":sync_fail", self.updater)
+        self.assertLess(
+            self.updater.index('git diff --quiet HEAD "origin/%BRANCH%"'),
+            self.updater.index("echo [OK] Incremental update completed successfully."),
         )
 
     def test_installer_never_installs_or_starts_ollama_or_downloads_chat_models(self):

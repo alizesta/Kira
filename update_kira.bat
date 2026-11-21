@@ -99,6 +99,11 @@ if not errorlevel 1 (
 )
 
 echo.
+echo [VERIFY] Checking that every fetched project change was applied...
+git diff --quiet HEAD "origin/%BRANCH%"
+if errorlevel 1 goto :sync_fail
+echo [FILES] All changed project files are now applied and verified.
+echo.
 echo [LATEST] Installed revision:
 git log -1 --format="  %%h  %%cs  %%s"
 
@@ -114,11 +119,19 @@ if "%NEEDS_INSTALL%"=="1" (
 )
 
 echo.
-echo [OK] Incremental update completed.
-echo Only files changed on origin/%BRANCH% were applied; unchanged dependencies and models were left untouched.
+echo [OK] Incremental update completed successfully.
+echo [DONE] Project files are synchronized with origin/%BRANCH%.
+echo Only changed files were applied; unchanged dependencies and models were left untouched.
 echo.
 pause
 exit /b 0
+
+:sync_fail
+echo.
+echo [ERROR] Git checkout completed, but local files do not match origin/%BRANCH%.
+echo The updater did not report success. Check the Git status and retry.
+pause
+exit /b 1
 
 :local_ahead
 echo.
