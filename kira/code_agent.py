@@ -8,6 +8,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from .ui_design_guidance import guidance_for_task
+
 MAX_FILE_BYTES = 512 * 1024
 MAX_CONTEXT_CHARS = 24_000
 MAX_TREE_ITEMS = 160
@@ -152,7 +154,7 @@ Never request or reproduce API keys, passwords, tokens, private keys or other se
         )
         result = self.router.chat_stream(
             [{"role": "user", "content": prompt}],
-            self.SYSTEM_PROMPT,
+            self.SYSTEM_PROMPT + ("\n\n" + guidance_for_task(request) if guidance_for_task(request) else ""),
             temperature=0.2,
             on_chunk=on_chunk,
         )
@@ -178,7 +180,7 @@ Never request or reproduce API keys, passwords, tokens, private keys or other se
         )
         result = self.router.chat_stream(
             [{"role": "user", "content": prompt}],
-            self.SYSTEM_PROMPT + "\nYou may propose a complete replacement for the selected file, but you cannot apply it. "
+            self.SYSTEM_PROMPT + ("\n\n" + guidance_for_task(request) if guidance_for_task(request) else "") + "\nYou may propose a complete replacement for the selected file, but you cannot apply it. "
             "Never claim a change was saved or tests were run.",
             temperature=0.1,
             on_chunk=on_chunk,
