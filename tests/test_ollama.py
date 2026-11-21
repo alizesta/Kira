@@ -129,7 +129,7 @@ class OllamaTests(unittest.TestCase):
         self.assertNotIn("think", payloads[2])         # remembered: no wasted request next time
 
     def test_thinking_channel_recovers_only_explicit_final_answer(self):
-        thinking = "\\n".join((
+        thinking = chr(10).join((
             "Thinking Process: inspect the question and choose a concise response.",
             "---",
             "پاسخ نهایی: سلام، چطور می‌توانم کمکت کنم؟",
