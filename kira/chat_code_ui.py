@@ -60,7 +60,7 @@ class Kode(QObject):
         self.session = None                # the chat session the running job / command belongs to
         self._streamed = 0
         self.auto_stop = False
-        self.auto_dir = Path(DATA_DIR) / "ai1code_output"       # where the delivered zips go
+        self.auto_dir = Path(DATA_DIR) / "kode_output"         # where Kode delivers completed project archives
         self.auto_results = {}
         self._auto_result_seq = 0                               # monotonic ids: never reused after a removal/restart
         self.auto_python = None                                 # tests may override; None = auto-detect
