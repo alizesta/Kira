@@ -312,14 +312,7 @@ def initialize_main_window(
             clear_text=self.controllers.require("session").t("log_clear"),
         )
         self.views.tabs.addTab(log_page, self.controllers.require("session").t("tab_logs"))
-    # Keep local STT/TTS model management on the Voice page.
-    voice_page = self.views.tabs.widget(self.views.tab_keys.index("tab_voice")) if hasattr(self.views, "tab_keys") else self.views.tabs.widget(2)
-    voice_layout = voice_page.widget().layout()
-    # The Voice page uses a QGridLayout; append local model management below the device controls.
-    voice_row = voice_layout.rowCount()
-    if hasattr(self.views, "local_voice_box"):
-        voice_layout.addWidget(self.views.local_voice_box, voice_row, 0, 1, 2)
-        voice_row += 1
+    # STT and TTS model controls are part of their respective Voice page sections.
     self.controllers.require("voice_settings").refresh_local_voice_status()
     self.views.save_btn = QPushButton()
     self.views.save_btn.setObjectName("save")
