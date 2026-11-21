@@ -6,6 +6,8 @@ from typing import Any
 
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
+from kira.ui.pages._all_pages_fluid_finalizers import finalize_characters_page
+
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -278,6 +280,8 @@ class CharactersPage(QScrollArea):
 
         self.character_combo.currentIndexChanged.connect(lambda index: self.character_selected.emit(index))
         self.retranslate()
+
+        finalize_characters_page(self)
 
     def _open_dance_folder(self) -> None:
         from ... import dance_library
