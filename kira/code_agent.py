@@ -60,7 +60,7 @@ def safe_project_file(root, candidate) -> Path:
     except ValueError as exc:
         raise ValueError("فایل خارج از پوشه پروژه است.") from exc
     if not target.is_file() or _is_sensitive(target.relative_to(root_path)):
-        raise ValueError("این فایل برای Code Agent قابل خواندن نیست.")
+        raise ValueError("این فایل برای Kode قابل خواندن نیست.")
     if target.stat().st_size > MAX_FILE_BYTES:
         raise ValueError("فایل بزرگ‌تر از سقف ۵۱۲ کیلوبایت است.")
     return target
