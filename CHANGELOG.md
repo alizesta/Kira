@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-22 03:20 Iran (one audio player: QAudioSink)
+- `kira/voice.py`: removed every old player path (QMediaPlayer + QAudioOutput, QSoundEffect, the winsound `_NativeWavPlayer`, the `voice_native_wav` setting). All speech now goes through one small `_PcmPlayer`: it reads the 16-bit PCM wav into memory and plays it with `QAudioSink` on the selected / default output device (volume from `voice_volume`). Start-up is much cheaper than creating a media player per sentence; device-change handling and the 8 s "never started" guard are unchanged.
+- Behaviour change: `play_file` (user sound files, click sounds) accepts only PCM .wav now; mp3 / ogg report an error instead of playing.
+- Tests: old QMediaPlayer-slot tests were rewritten for the new player; the remaining failures in test_voice_tts / test_voice_stop (MainWindow callbacks etc.) are the same as before this change.
+- NOT tested with real audio (the server has no sound device). Please listen on Windows: first sentence delay, gaps between sentences, volume, output device switch, Stop button.
+
 ## 2026-11-22 03:11 Iran (registry test fixed)
 - `main_window_voice_settings.py`: the chat composer owner now gets the feature context (`self.context`) as `view_context` instead of the window's root `presentation_context`; it only reads `.views`. `test_feature_controller_registry` is green again (18 passed).
 

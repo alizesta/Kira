@@ -1,7 +1,7 @@
 """Task 01: voice stop/cleanup is re-entrancy safe, idempotent, and a voice problem can never block the chat.
 
 Real audio playback segfaults in a headless sandbox, so playback objects are faked; the fakes reproduce the real Qt
-behaviour that caused the bug (QMediaPlayer.stop() emits playbackStateChanged, which calls Speaker.stop() again)."""
+behaviour that caused the bug (a player's stop() may emit a state change, which calls Speaker.stop() again)."""
 import os
 import unittest
 from unittest import mock
@@ -14,7 +14,6 @@ from tests.helpers import StreamResp, sse
 try:
     from PySide6.QtWidgets import QApplication
     from PySide6.QtCore import QCoreApplication
-    from PySide6.QtMultimedia import QMediaPlayer
     HAVE_QT = True
 except Exception:                                    # pragma: no cover
     HAVE_QT = False
@@ -39,7 +38,7 @@ class FakeSignal:
 
 
 class FakeFx:
-    """Mimics QMediaPlayer: stop() emits the state change, which makes Speaker.stop() run again (once)."""
+    """Mimics a player: stop() emits the state change, which makes Speaker.stop() run again (once)."""
     def __init__(self, speaker, reenter=True, explode=False):
         self.speaker, self.reenter, self.explode = speaker, reenter, explode
         self.stops = self.deleted = 0
@@ -48,15 +47,15 @@ class FakeFx:
     def stop(self):
         self.stops += 1
         if self.explode:
-            raise RuntimeError("Internal C++ object (QMediaPlayer) already deleted.")
+            raise RuntimeError("Internal C++ object (player) already deleted.")
         if self.reenter:
             self.reenter = False
-            self.speaker._on_pstate(QMediaPlayer.StoppedState)       # the real slot, called from inside stop()
+            self.speaker._on_playing(False)                              # the real slot, called from inside stop()
 
     def deleteLater(self):
         self.deleted += 1
         if self.explode:
-            raise RuntimeError("Internal C++ object (QMediaPlayer) already deleted.")
+            raise RuntimeError("Internal C++ object (player) already deleted.")
 
 
 class Out:
@@ -122,9 +121,7 @@ class SpeakerStopTests(unittest.TestCase):
         fx = FakeFx(self.sp, reenter=False)
         self.sp._fx, self.sp._began = fx, True
         self.sp.stop()
-        self.sp._on_pstate(QMediaPlayer.PlayingState)                    # stale event after stop
         self.sp._on_playing()
-        self.sp._on_sound_status()
         self.assertFalse(self.sp._began)
         self.assertFalse(self.sp._timer.isActive())
 
@@ -144,9 +141,9 @@ class SpeakerStopTests(unittest.TestCase):
         self.assertEqual(len(self.errors), 2)
 
     def test_player_creation_failure_is_reported_and_cleaned_up(self):
-        with mock.patch.object(Speaker, "_watch_devices"), mock.patch("kira.voice.QAudioOutput", side_effect=RuntimeError("no audio device")):
+        with mock.patch.object(Speaker, "_watch_devices"), mock.patch("kira.voice._PcmPlayer", side_effect=RuntimeError("no audio device")), mock.patch.object(Speaker, "_default_output", return_value=object()):
             self.sp._new_session(None, None, False)
-            self.sp._on_ready(self.sp._gen, 0, "somefile.mp3", [])          # mp3 path builds a QAudioOutput first
+            self.sp._on_ready(self.sp._gen, 0, "somefile.wav", [])          # the wav path builds the player first
         self.assertEqual(len(self.errors), 1)
         self.assertIn("no audio device", self.errors[0])
         self.assertIsNone(self.sp._fx)

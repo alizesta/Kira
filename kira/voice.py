@@ -16,8 +16,8 @@ from .config import DATA_DIR
 from .speech_split import StreamSplitter, split_sentences, strip_think
 from .leak_guard import strip_blocks, scrub_lines
 from .voice_prosody import apply_audio_effects, resolve_prosody, split_comma_clauses, join_wavs_with_pauses, prepend_wav_silence
-from PySide6.QtCore import QObject, Signal, Slot, QUrl, QTimer, QElapsedTimer
-from PySide6.QtMultimedia import QSoundEffect, QMediaPlayer, QAudioOutput, QMediaDevices
+from PySide6.QtCore import QObject, Signal, Slot, QTimer, QElapsedTimer, QBuffer, QByteArray, QIODevice
+from PySide6.QtMultimedia import QAudio, QAudioFormat, QAudioSink, QMediaDevices
 
 SR = 24000
 PIPER_FA = "Mana Persian Piper"
@@ -122,47 +122,59 @@ STREAM_MARGIN = 40              # (reserved) characters kept back; the splitter 
 
 
 
-class _NativeWavPlayer(QObject):
-    """Plays a PCM .wav through the Windows mixer (winsound), independent of Qt Multimedia.
+class _PcmPlayer(QObject):
+    """Plays one 16-bit PCM .wav straight through QAudioSink (no media demuxer, so it starts almost at once).
 
-    Used on Windows when Qt's player reports success but stays silent. It follows the Windows default speaker and the voice volume
-    (applied by scaling a temporary copy). Exposes stop()/deleteLater() so Voice can treat it like the Qt player."""
+    The whole sentence is loaded into memory (Piper sentences are a few hundred KB at most) and pulled by the sink.
+    Emits playingChanged(True) when audio really flows and playingChanged(False) when the buffer is used up."""
+    playingChanged = Signal(bool)
+    failed = Signal(str)
 
-    def __init__(self, path, volume, parent=None):
+    def __init__(self, path, device, volume, parent=None):
         super().__init__(parent)
-        import wave
-        self._copy = None
         with wave.open(path, "rb") as w:
             params, frames = w.getparams(), w.readframes(w.getnframes())
-            self.duration_ms = int(1000 * params.nframes / max(1, params.framerate))
-            if params.comptype != "NONE":
-                raise ValueError("compressed wav")
-        play = path
-        if volume < 0.99 and params.sampwidth == 2:
-            import array
-            samples = array.array("h")
-            samples.frombytes(frames)
-            samples = array.array("h", (max(-32768, min(32767, int(x * volume))) for x in samples))
-            self._copy = path + ".vol.wav"
-            with wave.open(self._copy, "wb") as o:
-                o.setparams(params)
-                o.writeframes(samples.tobytes())
-            play = self._copy
-        import winsound
-        self._winsound = winsound
-        winsound.PlaySound(play, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
+        if params.comptype != "NONE" or params.sampwidth != 2 or params.nframes <= 0:
+            raise ValueError("فقط WAV خام ۱۶ بیتی پشتیبانی می‌شود")
+        fmt = QAudioFormat()
+        fmt.setSampleRate(int(params.framerate))
+        fmt.setChannelCount(int(params.nchannels))
+        fmt.setSampleFormat(QAudioFormat.SampleFormat.Int16)
+        if not device.isFormatSupported(fmt):
+            raise RuntimeError("دستگاه خروجی این قالب صدا را پشتیبانی نمی‌کند")
+        self.duration_ms = int(1000 * params.nframes / max(1, params.framerate))
+        self._active = False
+        self._buffer = QBuffer(self)
+        self._buffer.setData(QByteArray(frames))
+        self._buffer.open(QIODevice.OpenModeFlag.ReadOnly)
+        self._sink = QAudioSink(device, fmt, self)
+        self._sink.setVolume(max(0.0, min(1.0, float(volume))))
+        self._sink.stateChanged.connect(self._on_state)
+
+    def start(self):
+        self._sink.start(self._buffer)
+
+    def isPlaying(self):
+        return self._active
+
+    def _on_state(self, state):
+        if state == QAudio.State.ActiveState and not self._active:
+            self._active = True
+            self.playingChanged.emit(True)
+        elif state in (QAudio.State.IdleState, QAudio.State.StoppedState):
+            if self._sink.error() != QAudio.Error.NoError:
+                self.failed.emit(f"خطای خروجی صدا ({self._sink.error().name})")
+            elif self._active:
+                self._active = False
+                self.playingChanged.emit(False)
 
     def stop(self):
         try:
-            self._winsound.PlaySound(None, self._winsound.SND_PURGE)
-        except Exception:
+            self._sink.stateChanged.disconnect(self._on_state)      # a stop() from Speaker must not re-enter Speaker
+        except (RuntimeError, TypeError):
             pass
-
-    def deleteLater(self):
-        if self._copy:
-            copy, self._copy = self._copy, None
-            QTimer.singleShot(300, lambda: _silent_remove(copy))
-        super().deleteLater()
+        self._active = False
+        self._sink.stop()
 
 
 def _silent_remove(path):
@@ -279,13 +291,6 @@ class Speaker(QObject):
             self.error.emit("دستگاه خروجی صدا تغییر کرد؛ پخش فعلی متوقف شد و از خروجی پیش‌فرض ویندوز استفاده می‌شود.")
         self.stop()
 
-    def _on_sound_status(self):
-        fx = self._fx
-        if fx is not None and hasattr(fx, "status") and fx.status() == QSoundEffect.Error:
-            self._prefer_default_output = True
-            self.error.emit("خروجی صدا نامعتبر شد؛ پخش فعلی متوقف شد و پیام بعدی از خروجی پیش‌فرض ویندوز استفاده می‌کند.")
-            self.stop()
-
     # ---- public ----
     def speak(self, text, rate=None, pitch=None, cache=False):
         """Speak a complete text (split into sentences). rate / pitch are added to the user's settings (per-area click voices)."""
@@ -394,7 +399,7 @@ class Speaker(QObject):
         """Stop everything: the sentence that plays, the ones already made and the ones still being made. Safe to call any number
         of times, with nothing playing, and from inside a player signal.
 
-        The player is taken out of `self._fx` BEFORE it is stopped: stopping a QMediaPlayer emits a state signal that
+        The player is taken out of `self._fx` BEFORE it is stopped: stopping a player may emit a state signal that
         calls stop() again, and the inner call used to set `self._fx = None` under the outer one (-> NoneType.deleteLater)."""
         self._gen += 1
         try:
@@ -658,115 +663,40 @@ class Speaker(QObject):
             self._report(f"پخش صدا ناموفق بود: {type(e).__name__}: {e}")
 
     def _start_playback(self, s, wav, env):
-        """Play every format through Qt's media backend with the selected output device.
-
-        QSoundEffect is intended for short UI effects and has a narrower WAV/backend
-        compatibility surface. Piper WAVs previously took that separate path, so a
-        successful synthesis could still be silent on Windows audio configurations
-        where QSoundEffect failed to start. QMediaPlayer is already the supported
-        backend for compressed files and handles both paths consistently.
-        """
+        """Play one made sentence through QAudioSink on the chosen (or default) output device."""
         self._wav, self._env, self._item_began = wav, env, False
         self._keep = s.keep or not wav.startswith(self._tmp)
         self._watch_devices()
-        if self._start_native(wav):
+        if not str(wav).lower().endswith(".wav"):
+            self._on_player_failed(None, "فقط فایل WAV پشتیبانی می‌شود (mp3 و ogg دیگر پخش نمی‌شوند).")
             return
-        out = QAudioOutput(self)
         device = self._default_output()
-        if device is not None:
-            out.setDevice(device)
-        else:
-            # QAudioOutput can be constructed even when Windows has no usable
-            # endpoint. Detect that state here instead of letting QMediaPlayer
-            # appear to accept playback while producing silence.
-            try:
-                if out.device().isNull():
-                    raise RuntimeError("هیچ دستگاه خروجی صدایی در ویندوز در دسترس نیست.")
-            except AttributeError:
-                # Keep lightweight test doubles and older Qt wrappers compatible.
-                pass
+        if device is None:
+            self._on_player_failed(None, "هیچ دستگاه خروجی صدایی در ویندوز در دسترس نیست.")
+            return
         try:
             volume = float(self.settings.get("voice_volume", 0.9))
         except (TypeError, ValueError):
             volume = 0.9
-        out.setVolume(max(0.0, min(1.0, volume)))
-
-        fx = QMediaPlayer(self)
-        fx.setAudioOutput(out)
-
-        # Publish the player and connect every failure signal BEFORE setSource().
-        # Qt backends may synchronously emit InvalidMedia/errorOccurred while
-        # resolving a local WAV. Connecting afterwards loses the real error and
-        # leaves Kira waiting for the generic start timeout with no sound.
-        self._out = out
-        self._fx = fx
-        fx.playbackStateChanged.connect(self._on_pstate)
-        fx.errorOccurred.connect(
-            lambda error=None, message="", player=fx: self._on_player_error(player, error, message)
-        )
-        fx.mediaStatusChanged.connect(
-            lambda status, player=fx: self._on_media_status(player, status)
-        )
-        fx.setSource(QUrl.fromLocalFile(wav))
-        # A synchronous source error may already have released this player and
-        # advanced the sentence queue. Never call play() on that released player.
-        if self._fx is not fx:
-            return
-        fx.play()
-        if self._fx is not fx:
-            return
-        QTimer.singleShot(
-            PLAYBACK_START_TIMEOUT_MS,
-            lambda player=fx: self._on_player_failed(player, "پخش صدا شروع نشد."),
-        )
-
-    def _start_native(self, wav):
-        """Windows: play PCM wav files with winsound (the reliable path). Returns False to fall back to Qt's player."""
-        if sys.platform != "win32" or not str(wav).lower().endswith(".wav"):
-            return False
-        if not bool(self.settings.get("voice_native_wav", False)) or str(self.settings.get("output_device") or "").strip():
-            return False
         try:
-            volume = max(0.0, min(1.0, float(self.settings.get("voice_volume", 0.9))))
-        except (TypeError, ValueError):
-            volume = 0.9
-        try:
-            player = _NativeWavPlayer(wav, volume, self)
-        except Exception:
-            return False
+            player = _PcmPlayer(wav, device, volume, self)
+        except Exception as exc:
+            self._on_player_failed(None, f"{type(exc).__name__}: {exc}")
+            return
         self._out = None
         self._fx = player
-        self._item_started()
-        QTimer.singleShot(player.duration_ms + 150, lambda p=player: self._on_native_done(p))
-        return True
+        player.playingChanged.connect(self._on_playing)
+        player.failed.connect(lambda message, p=player: self._on_player_failed(p, message))
+        player.start()
+        if self._fx is not player:
+            return
+        # Safety nets: a sentence that never becomes audible is skipped, and one that never reports its end is closed.
+        QTimer.singleShot(PLAYBACK_START_TIMEOUT_MS, lambda p=player: self._on_player_failed(p, "پخش صدا شروع نشد."))
+        QTimer.singleShot(player.duration_ms + 1500, lambda p=player: self._on_playing_end(p))
 
-    def _on_native_done(self, player):
+    def _on_playing_end(self, player):
         if player is self._fx and self._item_began:
             self._item_finished()
-
-    def _on_player_error(self, player, error=None, message=""):
-        """Preserve Qt's actual backend error instead of reducing silent playback to a timeout."""
-        if player is not self._fx or self._item_began:
-            return
-        try:
-            backend_message = str(message or player.errorString() or "").strip()
-            status = player.mediaStatus()
-            code = player.error() if error is None else error
-            detail = backend_message or "Qt خطای پخش را بدون توضیح برگرداند."
-            self._on_player_failed(player, f"{detail} (Qt error={code}, media status={status})")
-        except Exception as exc:
-            self._on_player_failed(player, f"{message or 'خطای backend صدا'} ({type(exc).__name__})")
-
-    def _on_media_status(self, player, status):
-        """Fail promptly on invalid media; otherwise let playback-state/error signals decide."""
-        try:
-            if player is self._fx and status == QMediaPlayer.InvalidMedia:
-                self._on_player_failed(
-                    player,
-                    f"فایل صوتی توسط Qt نامعتبر شناخته شد: {player.errorString() or 'بدون جزئیات'}",
-                )
-        except Exception:
-            pass
 
     def _on_player_failed(self, player, message=""):
         """The sentence that should be playing never started (or failed): report it and go on with the next one."""
@@ -803,14 +733,6 @@ class Speaker(QObject):
             s.playing = False
             self._advance(s)
             self._pump()
-
-    def _on_pstate(self, state):
-        if self._fx is None:
-            return
-        if state == QMediaPlayer.PlayingState and not self._item_began:
-            self._item_started()
-        elif state == QMediaPlayer.StoppedState and self._item_began:
-            self._item_finished()
 
     def _on_playing(self, playing: bool | None = None):
         # PySide/Qt builds differ: playingChanged may invoke Python slots with

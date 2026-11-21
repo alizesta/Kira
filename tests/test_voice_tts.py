@@ -4,7 +4,6 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from PySide6.QtMultimedia import QSoundEffect
 
 from kira.voice import Speaker
 from kira.ui.main_window import MainWindow
@@ -216,16 +215,6 @@ class LocalTtsPlaybackTests(unittest.TestCase):
         self.assertFalse(fake._local_tts_test_active)
 
 
-    def test_sound_error_is_reported_before_stop_can_emit_finished(self):
-        events = []
-        fake = SimpleNamespace(
-            _fx=SimpleNamespace(status=lambda: QSoundEffect.Error),
-            error=SimpleNamespace(emit=lambda _message: events.append("error")),
-            stop=lambda: events.append("stop"),
-        )
-        Speaker._on_sound_status(fake)
-        self.assertEqual(events, ["error", "stop"])
-
     def test_device_change_is_reported_before_playback_is_cancelled(self):
         events = []
         fake = SimpleNamespace(
@@ -245,18 +234,6 @@ class LocalTtsPlaybackTests(unittest.TestCase):
             stop=lambda: events.append("stop"),
         )
         Speaker._on_devices_changed(fake)
-        self.assertTrue(fake._prefer_default_output)
-        self.assertEqual(events, ["error", "stop"])
-
-    def test_sound_error_switches_future_playback_to_system_default(self):
-        events = []
-        fake = SimpleNamespace(
-            _fx=SimpleNamespace(status=lambda: QSoundEffect.Error),
-            _prefer_default_output=False,
-            error=SimpleNamespace(emit=lambda _message: events.append("error")),
-            stop=lambda: events.append("stop"),
-        )
-        Speaker._on_sound_status(fake)
         self.assertTrue(fake._prefer_default_output)
         self.assertEqual(events, ["error", "stop"])
 
@@ -340,77 +317,37 @@ class LocalTtsPlaybackTests(unittest.TestCase):
         with mock.patch.object(voice_module, "QMediaDevices", devices):
             self.assertIs(Speaker._default_output(speaker), fallback)
 
-    def test_player_is_registered_and_signals_connected_before_source_load(self):
+    def test_player_is_registered_and_signals_connected_before_start(self):
+        speaker = Speaker.__new__(Speaker)
         import kira.voice as voice_module
+        order = []
 
-        class Signal:
-            def __init__(self):
-                self.slots = []
+        class Sig:
+            def __init__(self, name):
+                self.name, self.slots = name, []
 
-            def connect(self, callback):
-                self.slots.append(callback)
-
-        speaker = SimpleNamespace(
-            settings={"voice_volume": 0.9},
-            _tmp="/tmp/kira-tts",
-            _watch_devices=lambda: None,
-            _default_output=lambda: None,
-            _wav=None,
-            _env=[],
-            _item_began=False,
-            _keep=False,
-            _out=None,
-            _fx=None,
-        )
-
-        class AudioOutput:
-            def __init__(self, _parent):
-                self.volume = None
-
-            def setVolume(self, value):
-                self.volume = value
+            def connect(self, slot):
+                self.slots.append(slot)
 
         class Player:
-            def __init__(self, _parent):
-                self.playbackStateChanged = Signal()
-                self.errorOccurred = Signal()
-                self.mediaStatusChanged = Signal()
-                self.play_called = False
+            def __init__(self, path, device, volume, parent):
+                self.playingChanged, self.failed = Sig("p"), Sig("f")
+                self.duration_ms = 100
 
-            def setAudioOutput(self, output):
-                self.output = output
+            def start(self):
+                order.append((speaker._fx is self, bool(self.playingChanged.slots), bool(self.failed.slots)))
 
-            def setSource(self, _source):
-                # These must already be connected when Qt starts resolving media.
-                self.asserted = (
-                    speaker._fx is self
-                    and speaker._out is self.output
-                    and bool(self.playbackStateChanged.slots)
-                    and bool(self.errorOccurred.slots)
-                    and bool(self.mediaStatusChanged.slots)
-                )
-
-            def play(self):
-                self.play_called = True
-
-        player_holder = []
-        original_player = Player
-
-        def make_player(parent):
-            player = original_player(parent)
-            player_holder.append(player)
-            return player
-
-        with mock.patch.object(voice_module, "QAudioOutput", AudioOutput), \
-             mock.patch.object(voice_module, "QMediaPlayer", make_player), \
-             mock.patch.object(voice_module, "QUrl",
-                               SimpleNamespace(fromLocalFile=lambda path: path)), \
-             mock.patch.object(voice_module, "QTimer",
-                               SimpleNamespace(singleShot=mock.Mock())):
+        speaker._tmp = "/tmp/kira_tts"
+        speaker.settings = {}
+        speaker._watch_devices = lambda: None
+        speaker._default_output = lambda: object()
+        speaker._on_playing = lambda *_: None
+        speaker._on_player_failed = lambda *_: None
+        speaker._on_playing_end = lambda *_: None
+        with mock.patch.object(voice_module, "_PcmPlayer", Player), \
+             mock.patch.object(voice_module, "QTimer", SimpleNamespace(singleShot=mock.Mock())):
             Speaker._start_playback(speaker, SimpleNamespace(keep=True), "/tmp/test.wav", [])
-
-        self.assertTrue(player_holder[0].asserted)
-        self.assertTrue(player_holder[0].play_called)
+        self.assertEqual(order, [(True, True, True)])
 
 
 if __name__ == "__main__":

@@ -555,7 +555,6 @@ class GuiTests(unittest.TestCase):
         self.assertIsNone(sp._fx)
         errors = []
         sp.error.connect(errors.append)
-        from PySide6.QtMultimedia import QSoundEffect
 
         class Fake:                                       # plain stand-in: real QSoundEffect needs an audio backend
             def status(self):
@@ -567,7 +566,7 @@ class GuiTests(unittest.TestCase):
             def deleteLater(self):
                 pass
         sp._fx = Fake()
-        sp._on_sound_status()
+        sp._on_devices_changed()
         self.assertIsNone(sp._fx)
         self.assertTrue(errors and "دستگاه" in errors[0])
 
