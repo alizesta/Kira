@@ -755,6 +755,7 @@ class Kode(QObject):
         if not w._closing and sess.cid in w.sessions:
             with w._as(sess):
                 w.add_chat("error", f"اجرای دستور ناموفق بود: {error}")
+                w.kode_activity.fail("اجرای دستور شروع نشد")
                 self._end_busy()
         proc.deleteLater()
 
@@ -762,8 +763,10 @@ class Kode(QObject):
     def stop(self, sess):
         """Called by MainWindow.stop_generation. True = a running command was killed (nothing else to cancel)."""
         if self.job is not None and self.session is sess:
+            self.win.kode_activity.update("در حال متوقف‌کردن عملیات…")
             self.auto_stop = True                              # the auto loop checks this between steps (harmless for other jobs)
         if self.proc is not None and self.session is sess and self.proc.state() != QProcess.NotRunning:
+            self.win.kode_activity.update("در حال متوقف‌کردن دستور…")
             self.proc.kill()
             return True
         return False
