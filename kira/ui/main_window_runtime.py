@@ -152,10 +152,10 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         else:
             provider = str(info.get("label") or info.get("provider") or "Provider").strip()
             model = str(info.get("model") or "").strip()
-            text = f"{self.BADGE_HEAD[phase]} · {provider} / {model}" if model else f"{self.BADGE_HEAD[phase]} · {provider}"
-            tip = f"{provider} / {model}" if model else provider
+            text = f"{self.BADGE_HEAD[phase]} · {model}" if model else f"{self.BADGE_HEAD[phase]} · {provider}"
+            tip = model or provider
         glyph = text.split(" ", 1)[0]
-        compact = f"{glyph} {provider} / {model}" if (info and phase != "error") else text
+        compact = f"{glyph} {model}" if (info and phase != "error" and model) else text
         self.context.views.route_badge.setText(text, display=compact)             # full text for tests/tooltips, short one on the chip
         self.context.views.route_badge.setToolTip(tip)
 
@@ -169,11 +169,10 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         auto.triggered.connect(lambda checked=False: self.select_route(""))
         routes = self.context.session.client.available_routes()
         for info in routes:
-            provider = str(info.get("label") or info.get("provider") or "Provider").strip()
             model = str(info.get("model") or "").strip()
-            # Keep the chat selector concise: provider first, then the exact model ID only.
-            label = f"{provider} / {model}" if model else provider
-            act = menu.addAction(label)
+            provider = str(info.get("label") or info.get("provider") or "Provider").strip()
+            # The chat picker displays the exact model name without repeating its provider.
+            act = menu.addAction(model or provider)
             act.setCheckable(True)
             act.setChecked(info["route_id"] == manual)
             act.triggered.connect(lambda checked=False, rid=info["route_id"]: self.select_route(rid))

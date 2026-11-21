@@ -19,6 +19,10 @@ class RuntimeVoiceMixin:
             w.setChecked(bool(on))
             w.blockSignals(False)
         save_settings(self.context.services.settings)
+        self.context.views.voice_btn.setToolTip(
+            "پاسخ صوتی روشن است؛ Kira با صدا پاسخ می‌دهد."
+            if on else "پاسخ صوتی خاموش است؛ Kira فقط متنی پاسخ می‌دهد."
+        )
         if not on:
             self.safe_stop_speaker()
 
