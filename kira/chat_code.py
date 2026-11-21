@@ -347,7 +347,7 @@ Never request or reproduce API keys, passwords, tokens, private keys or other se
         system_prompt = self.SYSTEM_PROMPT
         ui_guidance = guidance_for_task(request)
         if ui_guidance:
-            system_prompt += "\\n\\n" + ui_guidance
+            system_prompt += "\n\n" + ui_guidance
         result = self.router.chat_stream(messages, system_prompt, temperature=0.2, on_chunk=on_chunk)
         answer = str((result or {}).get("text") or "").strip()
         if not answer:
