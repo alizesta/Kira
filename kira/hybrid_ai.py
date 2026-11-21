@@ -194,6 +194,9 @@ class HybridRouter:
             model_ids = {str(value).strip().lower() for value in allowed_models if str(value).strip()}
             # Let the user choose any enabled local model instead of hard-locking
             # ordinary chat to the bundled default model ID.
+            local_surface_routes = (
+                role == "surface" and isinstance(allowed, set) and "ollama" in allowed
+            )
             routes = [
                 route for route in routes
                 if (
