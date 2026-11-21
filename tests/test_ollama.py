@@ -145,7 +145,7 @@ class OllamaTests(unittest.TestCase):
         c = OllamaClient("http://localhost:11434", "local-model")
         response = Resp(200, {"message": {
             "content": "",
-            "thinking": "تحلیل داخلی\\n---\\nپاسخ نهایی: جواب قابل‌نمایش",
+            "thinking": chr(10).join(("تحلیل داخلی", "---", "پاسخ نهایی: جواب قابل‌نمایش")),
         }})
         with mock.patch("requests.post", return_value=response) as post:
             self.assertEqual(c.chat(MSGS, "system"), "جواب قابل‌نمایش")
@@ -155,7 +155,7 @@ class OllamaTests(unittest.TestCase):
         c = OllamaClient("http://localhost:11434", "local-model")
         response = Resp(200, {"message": {
             "content": "",
-            "thinking": "Thinking Process: choose a short reply\\n---\\nFinal answer: tool task completed",
+            "thinking": chr(10).join(("Thinking Process: choose a short reply", "---", "Final answer: tool task completed")),
             "tool_calls": [],
         }})
         with mock.patch("requests.post", return_value=response):
