@@ -10,7 +10,7 @@ from .main_window_voice_settings_support import (
     DEFAULT_KEEP_ALIVE,
     DEFAULT_NUM_CTX,
     DEFAULT_NUM_PREDICT,
-    KiraAvatar,
+    AvatarView,
     Listener,
     ModelCombo,
     Path,
@@ -74,7 +74,7 @@ class VoiceSettingsController(WindowFeatureController):
         av = QVBoxLayout(self.context.views.avatar_card)
         av.setContentsMargins(8, 8, 8, 10)
         av.setSpacing(4)
-        self.context.views.avatar = KiraAvatar(self.context.adapters.animator, view="card")
+        self.context.views.avatar = AvatarView(self.context.adapters.animator, view="card")
         self.context.views.avatar.setMinimumSize(150, 190)
         self.context.views.avatar.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         av.addWidget(self.context.views.avatar, 1)
