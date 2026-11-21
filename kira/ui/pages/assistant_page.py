@@ -9,6 +9,8 @@ from collections.abc import Callable
 import math
 
 from PySide6.QtCore import Qt, Signal
+from kira.ui.pages._all_pages_fluid_finalizers import finalize_assistant_page
+
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -151,6 +153,8 @@ class AssistantPage(QScrollArea):
         self.retranslate()
 
     @staticmethod
+        finalize_assistant_page(self)
+
     def _line_edit(value: str):
         from PySide6.QtWidgets import QLineEdit
         return QLineEdit(str(value))
