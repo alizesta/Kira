@@ -176,7 +176,7 @@ class ChatComposer(QFrame):
         self.game_mode_btn.setFocusPolicy(Qt.NoFocus)
         self.game_mode_menu = QMenu(self.game_mode_btn)
         self.screen_capture_action = QAction("گرفتن تصویر از صفحه", self.game_mode_menu)
-        self.screen_capture_action.triggered.connect(owner.capture_screen_attachment)
+        self.screen_capture_action.triggered.connect(lambda checked=False: owner.capture_screen_attachment())
         self.game_mode_menu.addAction(self.screen_capture_action)
         self.game_mode_menu.addSeparator()
         self.game_mode_story_action = QAction(
