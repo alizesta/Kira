@@ -11,9 +11,11 @@ import unicodedata
 
 _UI_TASK_RE = re.compile(
     r"\b(?:ui|ux|gui|frontend|front-end|css|html|scss|tailwind|"
-    r"react(?:\s+native)?|compose|swiftui|qml|qt\s+widgets?|"
-    r"component|design\s+system|design\s+token|responsive|accessibility|"
+    r"react\s+(?:native|component|app|ui)|jetpack\s+compose|swiftui|qml|qt\s+widgets?|"
+    r"component|button|form|layout|widget|icon|font|theme|stylesheet|navigation|"
+    r"design\s+system|design\s+token|responsive|accessibility|"
     r"dashboard|wireframe|mockup|visual\s+design|screen\s+layout|"
+    r"settings\s+page|login\s+page|home\s+page|profile\s+page|"
     r"navigation\s+bar|user\s+interface|user\s+experience)\b|"
     r"رابط\s*کاربری|واسط\s*کاربری|"
     r"ظاهر\s*(?:برنامه|اپ|صفحه|پنجره|بخش|رابط)|"
