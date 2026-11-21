@@ -30,3 +30,27 @@ class AppearanceTintTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnslopThemeTests(unittest.TestCase):
+    def test_palette_is_preserved_without_decorative_gradients(self):
+        css = theme.build_style()
+        self.assertIn("#0A0A1C", css)
+        self.assertIn("#8C63FF", css)
+        self.assertIn("#35D9F2", css)
+        self.assertNotIn("qlineargradient", css.lower())
+        self.assertNotIn("font-weight: 800", css)
+        self.assertNotIn("font-weight: 900", css)
+
+    def test_appearance_controls_still_affect_generated_style(self):
+        default = theme.build_style("off", {})
+        brighter = theme.build_style("off", {"background_color": "#203040", "brightness": 120})
+        acrylic = theme.build_style("acrylic", {})
+        self.assertNotEqual(default, brighter)
+        self.assertNotEqual(default, acrylic)
+
+    def test_character_styles_keep_accent_colours_without_gradients(self):
+        kira = theme.character_style(theme.CHARACTER_THEMES["kira"])
+        self.assertIn("#9C7BFF", kira)
+        self.assertIn("#35D9F2", kira)
+        self.assertNotIn("qlineargradient", kira.lower())
