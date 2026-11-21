@@ -203,6 +203,22 @@ class ContextBuilderTests(unittest.TestCase):
         self.assertEqual(latest_user_text([{"role": "assistant", "content": "no user"}]), "")
         self.assertEqual(latest_user_text([]), "")
 
+    def test_ui_request_automatically_receives_appllama_and_unslop_guidance(self):
+        result = self.builder.build(ContextRequest(
+            messages=[{"role": "user", "content": "صفحه تنظیمات و رابط کاربری را بازطراحی کن"}],
+        ))
+        for phrase in (
+            "ON-DEMAND UI DESIGN SKILLS", "Jakob's Law", "Closure", "Figure-ground",
+            "Banner blindness", "Parkinson's law", "Connectedness", "Choice overload",
+        ):
+            self.assertIn(phrase, result.system_prompt)
+
+    def test_non_ui_request_does_not_receive_design_guidance(self):
+        result = self.builder.build(ContextRequest(
+            messages=[{"role": "user", "content": "این تابع محاسباتی را سریع‌تر کن"}],
+        ))
+        self.assertNotIn("ON-DEMAND UI DESIGN SKILLS", result.system_prompt)
+
     def test_missing_prompt_builder_is_rejected(self):
         with self.assertRaises(TypeError):
             ContextBuilder(None)
