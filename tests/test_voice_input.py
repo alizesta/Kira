@@ -39,30 +39,16 @@ def kinds(events):
     return [e[0] for e in events]
 
 
-class QwenGenerationConfigTests(unittest.TestCase):
-    def test_greedy_config_drops_unused_temperature_and_sets_padding(self):
-        from types import SimpleNamespace
-        from kira.local_voice import _sanitize_asr_generation_config
-
-        generation = SimpleNamespace(
-            do_sample=False, temperature=1e-6, pad_token_id=None, eos_token_id=[151643, 151645]
-        )
-        asr = SimpleNamespace(
-            model=SimpleNamespace(generation_config=generation, config=SimpleNamespace(pad_token_id=151643)),
-            processor=SimpleNamespace(tokenizer=SimpleNamespace(pad_token_id=151643)),
-        )
-        _sanitize_asr_generation_config(asr)
-        self.assertIsNone(generation.temperature)
-        self.assertEqual(generation.pad_token_id, 151643)
-
-    def test_sampling_temperature_is_preserved_when_sampling_is_enabled(self):
-        from types import SimpleNamespace
-        from kira.local_voice import _sanitize_asr_generation_config
-
-        generation = SimpleNamespace(do_sample=True, temperature=0.7, pad_token_id=9, eos_token_id=9)
-        asr = SimpleNamespace(model=SimpleNamespace(generation_config=generation))
-        _sanitize_asr_generation_config(asr)
-        self.assertEqual(generation.temperature, 0.7)
+class ShenavaOnlyTests(unittest.TestCase):
+    def test_listener_transcribes_only_through_shenava(self):
+        from kira.listener import Listener
+        from kira import local_voice
+        listener = Listener(settings={})
+        audio = np.zeros(RATE, dtype=np.float32)
+        with mock.patch.object(local_voice, "transcribe_shenava", return_value="سلام") as transcribe:
+            self.assertEqual(listener._transcribe(None, audio), "سلام")
+        transcribe.assert_called_once()
+        self.assertEqual(listener.via, "local:shenava")
 
 
 class LocalASRFallbackTests(unittest.TestCase):
@@ -72,38 +58,6 @@ class LocalASRFallbackTests(unittest.TestCase):
         self.assertEqual(listener.settings.get("local_voice_asr_backend", "shenava"), "shenava")
         self.assertTrue(callable(listener._transcribe))
 
-
-
-class WhisperVADTests(unittest.TestCase):
-    def test_whisper_does_not_run_a_second_vad_after_segmenter(self):
-        from kira.listener import Listener
-
-        class Fixes:
-            def refresh(self):
-                pass
-
-            def hotwords_text(self):
-                return ""
-
-        class Segment:
-            text = "سلام"
-            no_speech_prob = 0.0
-            avg_logprob = -0.1
-
-        class Model:
-            def __init__(self):
-                self.kwargs = None
-
-            def transcribe(self, audio, **kwargs):
-                self.kwargs = kwargs
-                return [Segment()], None
-
-        listener = Listener(settings={})
-        listener.fixes = Fixes()
-        listener._model = Model()
-        self.assertEqual(listener._transcribe_whisper(np.zeros(RATE, dtype=np.float32)), "سلام")
-        self.assertIs(listener._model.kwargs["vad_filter"], False)
-        self.assertNotIn("vad_parameters", listener._model.kwargs)
 
 
 class SegmenterTests(unittest.TestCase):
