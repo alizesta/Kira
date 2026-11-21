@@ -134,7 +134,7 @@ class GuiTests(unittest.TestCase):
         self.assertIsNot(window.web_btn, window.img_search_btn)
         window.build_badge_menu()
         expected_models = [str(route.get("model") or route.get("label") or route.get("provider") or "Provider")
-                           for route in window.client.available_routes()]
+                           for route in window.presentation_context.session.client.available_routes()]
         self.assertEqual([action.text() for action in window.route_menu.actions()][1:], expected_models)
         self.assertEqual(window.search_menu.actions()[0].text(), "جست‌وجوی وب")
         self.assertEqual(window.search_menu.actions()[1].text(), "جست‌وجوی تصویری عکس ارسالی")
