@@ -159,7 +159,7 @@ class ChatCodeGuiTests(unittest.TestCase):
     def test_real_chat_tool_events_appear_in_kira_activity(self):
         panel = self.cc.win.kode_activity
         panel.start("در حال پاسخ‌گویی…")
-        runtime = self.win.presentation_context.require_peer("runtime")
+        runtime = self.win.presentation_context.controllers.require("runtime")
         runtime.on_tool_event({"phase": "tool_start", "tool": "web_search", "label": "جست‌وجوی وب"})
         self.assertEqual(panel.status.text(), "در حال جست‌وجوی وب…")
         runtime.on_tool_event({"phase": "tool_done", "tool": "web_search", "label": "جست‌وجوی وب", "status": "ok"})
