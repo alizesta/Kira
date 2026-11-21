@@ -96,6 +96,7 @@ class SessionController(WindowFeatureController):
         if hasattr(self.context.state, "_menu_actions"):
             for action, key in zip(self.context.state._menu_actions, self.context.views.tab_keys):
                 action.setText(self.t(key))
+        self.tidy_forms()
 
     def update_chat_placeholder(self):
         """Choose a short, character-specific example without inserting it into the message."""
@@ -117,6 +118,7 @@ class SessionController(WindowFeatureController):
         }
         character_examples = examples.get(character_id, examples["kira"])
         self.context.views.input.setPlaceholderText(random.choice(character_examples.get(language, character_examples["fa"])))
+
     def on_voice_error(self, message):
         """Local voice failures are rate-limited so a broken model does not flood the chat."""
         now = time.monotonic()
