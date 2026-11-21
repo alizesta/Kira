@@ -2,8 +2,6 @@
 
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QAction
-from .kode_activity import KodeActivityPanel
-
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -13,6 +11,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from .kode_activity import KodeActivityPanel
 
 
 class ChatComposer(QFrame):
