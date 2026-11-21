@@ -23,6 +23,15 @@ class InstallerScriptTests(unittest.TestCase):
             self.updater.index('git fetch origin "%BRANCH%"'),
         )
 
+    def test_incremental_updates_skip_ollama_model_download(self):
+        self.assertIn('set "KIRA_SKIP_OLLAMA_MODEL_DOWNLOAD=1"', self.updater)
+        self.assertIn('if /I "%KIRA_SKIP_OLLAMA_MODEL_DOWNLOAD%"=="1" (', self.installer)
+        self.assertLess(
+            self.installer.index('if /I "%KIRA_SKIP_OLLAMA_MODEL_DOWNLOAD%"=="1" ('),
+            self.installer.index("scripts\\\\setup_local_chat_model.py"),
+        )
+        self.assertIn("Ollama model download is disabled for incremental updates", self.installer)
+
     def test_installer_accepts_only_python_311_or_312(self):
         self.assertIn('if not errorlevel 1 set "PY=.venv\\Scripts\\python.exe"', self.installer)
         self.assertIn('sys.exit(0 if (3,11)<=sys.version_info[:2]<=(3,12) else 1)', self.installer)
