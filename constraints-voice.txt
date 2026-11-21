@@ -1,2 +1,3 @@
 # Keep Gradio 6.x compatible when installing optional voice engines.
 Pillow>=8,<13
+huggingface-hub>=0.34.0,<1.0
