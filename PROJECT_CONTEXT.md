@@ -174,3 +174,6 @@ Local-only speech stack: Qwen3-ASR primary STT, faster-whisper local fallback, P
 - 2026-11-21 23:49 Iran: UI icons live in `assets/icons/*.svg` (Lucide, ISC) rendered with glow by `kira/ui_icons.py`; `stop` and mood faces remain code-drawn.
 
 - 2026-11-22 03:03 Iran: UNSLOP leftovers done (self-sizing tables via fit_height, collapsed advanced switches in Character tab, scoped notes labels).
+
+
+- 2026-11-22: Desktop UI polish branch `fix/ui-polish-personas-svg-audit`: constrained settings form widths, full-body Kira avatar crop, wider scrollbars, character-specific composer prompts, SVG-only icon renderer (including stop/mood assets), and a Preferences toggle for conditional Appllama/UNSLOP across Kira and Kode. Runtime verification pending.
