@@ -85,17 +85,14 @@ class PreferencesPage(QScrollArea):
         self.web_test_btn.clicked.connect(self.web_search_test_requested.emit)
         language_form.addRow("", self.web_test_btn)
 
-        design_box = QGroupBox("اصول طراحی رابط")
-        design_form = QFormLayout(design_box)
-        self.ui_design_guidance_chk = SwitchCheckBox(
-            "استفاده از Appllama و UNSLOP برای طراحی رابط کیرا و کارهای Kode"
-        )
+        design_box, design_form = self._group("g_design")
+        self.ui_design_guidance_chk = SwitchCheckBox()
+        self._register(self.ui_design_guidance_chk.setText, "ui_design_guidance")
         self.ui_design_guidance_chk.setChecked(bool(settings.get("ui_design_guidance_enabled", True)))
         self.ui_design_guidance_chk.toggled.connect(self.ui_design_guidance_changed.emit)
         design_form.addRow(self.ui_design_guidance_chk)
-        design_hint = QLabel(
-            "درخواست‌های مرتبط با رابط کاربری با اصول طراحی اپلیکیشن، دسترس‌پذیری و چک‌لیست شش‌گانهٔ UNSLOP بررسی می‌شوند؛ کارهای نامرتبط تحت تأثیر قرار نمی‌گیرند."
-        )
+        design_hint = QLabel()
+        self._register(design_hint.setText, "ui_design_guidance_hint")
         design_hint.setWordWrap(True)
         design_form.addRow(design_hint)
 
