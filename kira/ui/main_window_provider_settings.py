@@ -145,6 +145,10 @@ class ProviderSettingsController(WindowFeatureController):
         if self.context.state._closing:
             return
         settings = self.context.services.settings
+        # Ollama is a local daemon, not part of the cloud API catalogue TTL.
+        # Scan it on every startup so installed local models are always selectable,
+        # even when cloud model metadata is still fresh.
+        self.scan_ollama()
         if time.time() - float(settings.get("model_catalog_refreshed_at") or 0) < self.CATALOG_MAX_AGE_SECONDS:
             return
         self.refresh_model_catalogs()
