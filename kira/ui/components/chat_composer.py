@@ -161,7 +161,7 @@ class ChatComposer(QFrame):
         self.mic_menu = QMenu(self.mic_btn)
         self.wake_btn = QAction("حالت بیدارباش", self.mic_menu)
         self.wake_btn.setCheckable(True)
-        self.wake_btn.setChecked(bool(owner.settings.get("wake_enabled", False)))
+        self.wake_btn.setChecked(False)
         self.wake_btn.triggered.connect(owner.toggle_wake)
         self.mic_menu.addAction(self.wake_btn)
         self.mic_btn.setMenu(self.mic_menu)
@@ -169,6 +169,13 @@ class ChatComposer(QFrame):
         self.mic_btn.setToolTip("میکروفون؛ فلش کنار دکمه برای حالت بیدارباش")
         self.voice_btn = owner.icon_button("speaker", True)
         self.voice_btn.setChecked(bool(owner.settings.get("speak_replies", True)))
+        self.voice_btn.setProperty("voiceOnIcon", make_icon("volume-2"))
+        self.voice_btn.setProperty("voiceOffIcon", make_icon("volume-x"))
+        self.voice_btn.setIcon(
+            self.voice_btn.property("voiceOnIcon")
+            if self.voice_btn.isChecked()
+            else self.voice_btn.property("voiceOffIcon")
+        )
         self.voice_btn.clicked.connect(
             lambda: owner.set_voice_enabled(self.voice_btn.isChecked())
         )
