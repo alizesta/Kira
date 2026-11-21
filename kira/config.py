@@ -268,9 +268,20 @@ def load_settings():
         for stale in ("web_engine", "web_read_pages"):               # removed options (Google-through-Gemini / DuckDuckGo)
             merged.pop(stale, None)
         route_model.ensure_routes(merged)
+        # Repair configurations written by versions where a local Route could be
+        # switched on while the Ollama Provider master switch stayed off.
+        migrated_local_route_state = False
+        ollama_cfg = merged.get("providers", {}).get("ollama") or {}
+        if (
+            not bool(ollama_cfg.get("enabled", True))
+            and any(route.get("provider") == "ollama" and route.get("enabled", True)
+                    for route in route_model.get_routes(merged))
+        ):
+            ollama_cfg["enabled"] = True
+            migrated_local_route_state = True
+
         # Migrate only the former bundled default; keep any user-selected model intact.
         migrated_local_model = False
-        ollama_cfg = merged.get("providers", {}).get("ollama") or {}
         if str(ollama_cfg.get("model") or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS:
             ollama_cfg["model"] = LOCAL_UNCENSORED_MODEL
             migrated_local_model = True
@@ -314,6 +325,9 @@ def load_settings():
                 migrated_local_model = True
         if migrated_local_model:
             LOAD_WARNINGS.append("مدل محلی پیش‌فرض به Qwen3.5-9B Abliterated Q4_K_M مهاجرت کرد.")
+        if migrated_local_route_state:
+            LOAD_WARNINGS.append("وضعیت قدیمی Ollama اصلاح شد: Provider محلی برای Route فعال دوباره روشن شد.")
+        if migrated_local_model or migrated_local_route_state:
             save_settings(merged)
         return merged
     fresh = deepcopy(DEFAULTS)
