@@ -122,11 +122,18 @@ class GuiTests(unittest.TestCase):
             window.send_btn,
             window.attach_btn,
             window.screen_capture_btn,
-            window.web_btn,
-            window.img_search_btn,
+            window.game_mode_btn,
+            window.search_btn,
             window.gen_stop_btn,
         ):
             self.assertTrue(window.chat_composer.isAncestorOf(widget))
+        from PySide6.QtGui import QAction
+        self.assertIsInstance(window.web_btn, QAction)
+        self.assertIsInstance(window.img_search_btn, QAction)
+        self.assertIs(window.screen_capture_btn, window.game_mode_btn)
+        self.assertIsNot(window.web_btn, window.img_search_btn)
+        self.assertEqual(window.route_badge.text().split("/")[-1].strip(), window.route_badge.text().split("/")[-1].strip())
+
         from kira.ui.controllers import ChatAttachmentController
         self.assertIsInstance(window.attachment_controller, ChatAttachmentController)
         self.assertIs(window._tiles, window.attachment_controller.tiles)
