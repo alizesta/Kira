@@ -165,7 +165,7 @@ class ProviderSettingsController(WindowFeatureController):
 
         import_row = QHBoxLayout()
         self.context.views.import_model_btn = QPushButton("＋ معرفی مدل از فایل یا پوشه‌ی سیستم")
-        self.context.views.import_model_btn.setToolTip("فایل GGUF برای Chat، مدل CTranslate2/Qwen برای STT یا Piper ONNX برای TTS")
+        self.context.views.import_model_btn.setToolTip("فایل GGUF برای Chat، مدل شنوا برای STT یا Piper ONNX برای TTS")
         self.context.views.import_model_btn.clicked.connect(self.feature_controller("voice_settings").import_local_model)
         import_row.addWidget(self.context.views.import_model_btn)
         import_row.addStretch(1)
