@@ -157,8 +157,6 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         self.context.views.route_badge.setText(text, display=compact)             # full text for tests/tooltips, short one on the chip
         self.context.views.route_badge.setToolTip(tip)
 
-    MENU_ROUTES = 500                                          # effectively all models: the menus scroll (menu-scrollable) instead of cutting the list
-
     def build_badge_menu(self):
         menu = self.context.views.route_menu
         menu.clear()
@@ -168,11 +166,7 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         auto.setChecked(not manual)
         auto.triggered.connect(lambda checked=False: self.select_route(""))
         routes = self.context.session.client.available_routes()
-        shown = routes[: self.MENU_ROUTES]
-        chosen = next((r for r in routes if r["route_id"] == manual), None)
-        if chosen is not None and chosen not in shown:         # the manually selected route is always visible
-            shown = shown[:-1] + [chosen]
-        for info in shown:
+        for info in routes:
             provider = str(info.get("label") or info.get("provider") or "Provider").strip()
             model = str(info.get("model") or "").strip()
             # Keep the chat selector concise: provider first, then the exact model ID only.
@@ -181,11 +175,6 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
             act.setCheckable(True)
             act.setChecked(info["route_id"] == manual)
             act.triggered.connect(lambda checked=False, rid=info["route_id"]: self.select_route(rid))
-        if len(routes) > len(shown):
-            menu.addSeparator()
-            more = menu.addAction(f"{len(routes) - len(shown)} Route دیگر در مدیریت Route…")
-            more.triggered.connect(lambda checked=False: self.feature_controller("session").go_tab(self.context.views.tab_keys.index("tab_ai")))
-
     def show_route_details(self):
         info = self.context.session._route_info or self.context.session.client.preview_route()
         if not info:
