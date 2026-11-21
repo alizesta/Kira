@@ -39,9 +39,11 @@ def dispatch(table):
 
 
 class RouterRouteTests(unittest.TestCase):
-    def test_surface_role_ignores_manual_cloud_route_and_never_fails_over_to_it(self):
+    def test_surface_role_uses_enabled_local_models_and_ignores_manual_cloud_route(self):
         s, r = make("groq")
         s["role_provider_allowlist"] = {"surface": ["ollama"], "deep": ["google"]}
+        # Keep the legacy exact allowlist to prove it no longer hides other
+        # explicitly enabled local chat models.
         s["role_route_models"] = {"surface": ["kira-qwen3.5-9b-abliterated:q4_k_m"]}
         extra = routes.add_route(s, "ollama", "other-local-model", enabled=True)
         routes.move_route(s, extra["id"], 0)
@@ -51,8 +53,16 @@ class RouterRouteTests(unittest.TestCase):
             with mock.patch("requests.post", f):
                 self.assertEqual(r.chat(MSGS, SYS), "local-answer")
         self.assertIn("11434", f.calls[0]["url"])
-        self.assertEqual(f.calls[0]["json"]["model"], "kira-qwen3.5-9b-abliterated:q4_k_m")
+        self.assertEqual(f.calls[0]["json"]["model"], "other-local-model")
         self.assertEqual(len(f.calls), 1)
+
+    def test_surface_disabled_ollama_reports_provider_state_not_a_qwen_install_hint(self):
+        s, r = make(ollama=False)
+        with r.role_scope("surface"):
+            with self.assertRaises(RuntimeError) as cm:
+                r.chat(MSGS, SYS)
+        self.assertIn("Provider محلی Ollama خاموش است", str(cm.exception))
+        self.assertNotIn("Qwen Abliterated نصب", str(cm.exception))
 
     def test_deep_role_uses_gemini_only_even_when_manual_route_is_other_provider(self):
         s, r = make("groq")
