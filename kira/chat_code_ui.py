@@ -347,12 +347,14 @@ class Kode(QObject):
         w = self.win
         if w._closing:
             return
+        w.kode_activity.start("در حال جست‌وجوی فایل‌های مرتبط…")
         try:
             files, problems = cc.resolve_files(self.root, req.mentions, cc.explicit_mentions(raw))
         except Exception as exc:  # noqa: BLE001
             self._say("error", f"خواندن پروژه ناموفق بود: {exc}")
             return
         if problems:
+            w.kode_activity.step("برخی فایل‌های درخواستی پیدا نشدند")
             self._say("system", "\n".join(problems))
         if not files and self.current_rel:                      # a follow-up ("fix it", "explain more") keeps the same file
             try:
@@ -361,9 +363,11 @@ class Kode(QObject):
                 self.current_rel = None
         if req.kind == "patch":
             if not files:
+                w.kode_activity.fail("برای پیشنهاد تغییر، فایل مشخصی لازم است")
                 self._say("system", "برای تغییر باید فایل را مشخص کنی؛ اسمش را با @ بنویس، مثل @app.py")
                 return
             if len(files) > 1:
+                w.kode_activity.fail("برای پیشنهاد تغییر، هر بار یک فایل را انتخاب کن")
                 self._say("system", "برای تغییر، هر بار فقط یک فایل؛ فایل را مشخص کن. (برای تحلیل چند فایل می‌شود.)")
                 return
             blocker = cc.patch_blocker(self.root, files[0])
@@ -376,6 +380,7 @@ class Kode(QObject):
             base_bytes = target.read_bytes() if (target is not None and req.kind == "patch") else None
             rel = target.resolve().relative_to(self.root).as_posix() if target is not None else None
         except Exception as exc:  # noqa: BLE001
+            w.kode_activity.fail("خواندن فایل‌های پروژه ناموفق بود")
             self._say("error", str(exc))
             return
         if rel:
@@ -390,7 +395,7 @@ class Kode(QObject):
             fn = lambda chunk: engine.ask(question, context, chunk, history=history)  # noqa: E731
             done = lambda result: self._answer_done(question, result)  # noqa: E731
         self._begin_busy()
-        self.win.kode_activity.start("در حال آماده‌سازی تحلیل کد…" if req.kind != "patch" else "در حال آماده‌سازی تغییرات کد…")
+        self.win.kode_activity.update("در حال تحلیل کد…" if req.kind != "patch" else "در حال آماده‌سازی پیشنهاد تغییر…")
         sess = self.session
         job = _Job(fn, self)
         self._streamed = 0
