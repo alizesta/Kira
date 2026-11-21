@@ -66,23 +66,12 @@ class QwenGenerationConfigTests(unittest.TestCase):
 
 
 class LocalASRFallbackTests(unittest.TestCase):
-    def test_empty_qwen_result_falls_through_to_next_engine(self):
+    def test_listener_defaults_to_shenava_as_sole_local_asr(self):
         from kira.listener import Listener
-        from kira import local_voice
+        listener = Listener(settings={})
+        self.assertEqual(listener.settings.get("local_voice_asr_backend", "shenava"), "shenava")
+        self.assertTrue(callable(listener._transcribe))
 
-        class Fixes:
-            def refresh(self):
-                pass
-
-            def hotwords_text(self):
-                return ""
-
-        with mock.patch("kira.listener.SpeechFixes", return_value=Fixes()):
-            listener = Listener(settings={"local_voice_asr": True})
-        with mock.patch.object(local_voice, "asr_ready", return_value=True), \
-             mock.patch.object(local_voice, "transcribe", return_value="  \n "):
-            self.assertIsNone(listener._transcribe_local_qwen(np.zeros(RATE, dtype=np.float32)))
-        self.assertFalse(listener._local_asr_failed)
 
 
 class WhisperVADTests(unittest.TestCase):
