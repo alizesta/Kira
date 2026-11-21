@@ -142,6 +142,30 @@ def model_rows(settings):
                 "test": test_result(settings, pid, mid),
                 "order": order.get((pid, mid), 10 ** 6),
             })
+    # Ollama models are discovered from the local daemon, not the cloud API registry.
+    # Their Route records are the local catalogue; expose them in the same table so the
+    # existing per-model switch can enable/disable them through the normal Route service.
+    known = {(row["provider"], row["model"]) for row in rows}
+    for route in routes:
+        pid, mid = route.get("provider"), route.get("model")
+        if pid != "ollama" or not mid or not is_chat_model(mid) or (pid, mid) in known:
+            continue
+        meta = {"free": True, "status": "available"}
+        reason = _archive_reason(settings, pid, mid, meta, route)
+        enabled = bool(route.get("enabled", True)) and not reason
+        tabs = [TAB_ARCHIVED] if reason else [TAB_FREE]
+        if enabled:
+            tabs.insert(0, TAB_ACTIVE)
+        cfg = (settings.get("providers") or {}).get(pid, {})
+        rows.append({
+            "provider": pid, "provider_label": route_model.provider_label(pid, cfg),
+            "model": mid, "price": "free", "free": True, "status": "available",
+            "enabled": enabled, "route_id": route["id"], "reason": reason, "tabs": tabs,
+            "restorable": True, "test": test_result(settings, pid, mid),
+            "order": order.get((pid, mid), 10 ** 6),
+        })
+        known.add((pid, mid))
+
     rows.sort(key=lambda r: (r["provider_label"].casefold(), r["model"].casefold()))
     return rows
 

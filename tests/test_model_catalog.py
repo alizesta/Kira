@@ -59,6 +59,29 @@ class TabRuleTests(unittest.TestCase):
         self.assertEqual(counts, {"active": 1, "free": 2, "paid": 2, "archived": 0})
 
 
+    def test_ollama_models_appear_in_unified_catalog_and_can_be_enabled(self):
+        s = build()
+        added = routes.add_ollama_models(s, ["local-model:latest", "another-local:Q4_K_M"])
+        self.assertEqual(len(added), 2)
+
+        rows = by_model(mc.model_rows(s))
+        local = rows["local-model:latest"]
+        self.assertEqual(local["provider"], "ollama")
+        self.assertEqual(local["price"], "free")
+        self.assertEqual(local["tabs"], [mc.TAB_FREE])
+        self.assertFalse(local["enabled"])
+
+        api_manager.set_model_enabled(s, "ollama", "local-model:latest", True)
+        enabled = by_model(mc.model_rows(s))["local-model:latest"]
+        self.assertTrue(enabled["enabled"])
+        self.assertEqual(enabled["tabs"], [mc.TAB_ACTIVE, mc.TAB_FREE])
+
+        api_manager.set_model_enabled(s, "ollama", "local-model:latest", False)
+        disabled = by_model(mc.model_rows(s))["local-model:latest"]
+        self.assertFalse(disabled["enabled"])
+        self.assertEqual(disabled["tabs"], [mc.TAB_FREE])
+
+
 class ArchiveTests(unittest.TestCase):
     def test_archive_moves_the_model_and_switches_its_route_off(self):
         s = build()
