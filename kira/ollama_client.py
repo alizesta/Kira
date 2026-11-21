@@ -8,7 +8,7 @@ import json
 import re
 import requests
 
-DEFAULT_NUM_CTX = 4096
+DEFAULT_NUM_CTX = 8192
 DEFAULT_KEEP_ALIVE = "2m"
 DEFAULT_NUM_PREDICT = 512          # max reply length in tokens: stops a runaway/slow generation
 MIN_NUM_CTX, MAX_NUM_CTX = 1024, 32768
@@ -23,6 +23,11 @@ class OllamaError(RuntimeError):
 
 
 _DURATION_RE = re.compile(r"^\d+(\.\d+)?(ms|s|m|h)$", re.I)
+_CONTEXT_OVERFLOW_RE = re.compile(
+    r"request\s*\(\s*(\d+)\s*tokens?\s*\).*?available context size\s*\(\s*(\d+)\s*tokens?\s*\)",
+    re.I,
+)
+MAX_CONTEXT_RETRIES = 4
 
 
 def parse_keep_alive(value):
@@ -177,6 +182,32 @@ class OllamaClient:
             pass
         return (response.text or "")[:300].replace("\n", " ")
 
+    def _retry_context_overflow(self, response, payload, messages, system_prompt, *, preserve_tool_messages=False):
+        """Increase Ollama context and rebuild the prompt after a tokenizer-confirmed overflow."""
+        if getattr(response, "status_code", None) != 400:
+            return False
+        match = _CONTEXT_OVERFLOW_RE.search(self._error_text(response))
+        if not match:
+            return False
+        requested_tokens = int(match.group(1))
+        current = clamp_num_ctx((payload.get("options") or {}).get("num_ctx") or self.num_ctx)
+        if current >= MAX_NUM_CTX:
+            return False
+
+        required = min(MAX_NUM_CTX, requested_tokens + REPLY_RESERVE_TOKENS)
+        target = 1 << max(0, required - 1).bit_length()
+        target = clamp_num_ctx(max(current * 2, target))
+        if target <= current:
+            return False
+
+        self.num_ctx = target
+        clean = fit_messages(messages, system_prompt, target, preserve_tool_messages=preserve_tool_messages)
+        if not clean:
+            return False
+        payload["messages"] = [{"role": "system", "content": system_prompt}, *clean]
+        payload.setdefault("options", {})["num_ctx"] = target
+        return True
+
     def _get(self, path, timeout=3):
         try:
             return requests.get(f"{self.base_url}{path}", timeout=timeout)
@@ -315,7 +346,8 @@ class OllamaClient:
     # ---------- chat ----------
     def chat(self, messages, system_prompt, temperature=0.7):
         from .hybrid_ai import normalize_messages          # local import: avoids a circular import
-        clean = fit_messages(normalize_messages(messages), system_prompt, self.num_ctx)
+        normalized = normalize_messages(messages)
+        clean = fit_messages(normalized, system_prompt, self.num_ctx)
         if not clean:
             raise OllamaError("هیچ پیام کاربری برای ارسال وجود ندارد.", "request")
         payload = {
@@ -334,6 +366,10 @@ class OllamaClient:
             r = self._post("/api/chat", payload, self.timeout)
         if r.status_code == 404 and self.resolve_installed() and self.active_model != payload["model"]:
             payload["model"] = self.active_model         # e.g. configured qwen3.5:4b, installed as qwen3.5:latest
+            r = self._post("/api/chat", payload, self.timeout)
+        for _ in range(MAX_CONTEXT_RETRIES):
+            if not self._retry_context_overflow(r, payload, normalized, system_prompt):
+                break
             r = self._post("/api/chat", payload, self.timeout)
         if r.status_code == 404:
             raise self._missing()
@@ -364,9 +400,9 @@ class OllamaClient:
         if not tools:
             return {"text": "", "tool_calls": []}
         from .hybrid_ai import normalize_messages
+        normalized = normalize_messages(messages, preserve_tool_messages=True)
         clean = fit_messages(
-            normalize_messages(messages, preserve_tool_messages=True),
-            system_prompt, self.num_ctx, preserve_tool_messages=True,
+            normalized, system_prompt, self.num_ctx, preserve_tool_messages=True,
         )
         if not clean:
             raise OllamaError("هیچ پیام کاربری برای ارسال وجود ندارد.", "request")
@@ -394,6 +430,12 @@ class OllamaClient:
             r = self._post("/api/chat", payload, self.timeout)
         if r.status_code == 404 and self.resolve_installed() and self.active_model != payload["model"]:
             payload["model"] = self.active_model
+            r = self._post("/api/chat", payload, self.timeout)
+        for _ in range(MAX_CONTEXT_RETRIES):
+            if not self._retry_context_overflow(
+                r, payload, normalized, system_prompt, preserve_tool_messages=True,
+            ):
+                break
             r = self._post("/api/chat", payload, self.timeout)
         if r.status_code in (400, 422):
             detail = self._error_text(r).lower()
@@ -462,7 +504,8 @@ class OllamaClient:
     def stream(self, messages, system_prompt, temperature=0.7, on_connect=None, max_tokens=None):
         """Yield visible text chunks as Ollama produces them (NDJSON). Raises OllamaError. Fills self.last_stats at the end."""
         from .hybrid_ai import normalize_messages, ThinkFilter
-        clean = fit_messages(normalize_messages(messages), system_prompt, self.num_ctx)
+        normalized = normalize_messages(messages)
+        clean = fit_messages(normalized, system_prompt, self.num_ctx)
         if not clean:
             raise OllamaError("هیچ پیام کاربری برای ارسال وجود ندارد.", "request")
         payload = {
@@ -485,6 +528,11 @@ class OllamaClient:
         if r.status_code == 404 and self.resolve_installed() and self.active_model != payload["model"]:
             r.close()
             payload["model"] = self.active_model
+            r = self._open_stream(payload)
+        for _ in range(MAX_CONTEXT_RETRIES):
+            if not self._retry_context_overflow(r, payload, normalized, system_prompt):
+                break
+            r.close()
             r = self._open_stream(payload)
         if r.status_code == 404:
             r.close()
