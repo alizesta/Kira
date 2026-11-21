@@ -23,6 +23,11 @@ class InstallerScriptTests(unittest.TestCase):
             self.updater.index('git fetch --no-tags origin'),
         )
 
+    def test_updater_disables_git_pagers_for_noninteractive_file_listing(self):
+        self.assertIn('set "GIT_PAGER=cat"', self.updater)
+        self.assertIn('set "GIT_TERMINAL_PROMPT=0"', self.updater)
+        self.assertIn('git --no-pager diff --name-status "%BRANCH%" "origin/%BRANCH%"', self.updater)
+        self.assertIn('git --no-pager diff --name-only "%BRANCH%" "origin/%BRANCH%"', self.updater)
     def test_updater_verifies_files_are_synchronized_before_reporting_success(self):
         self.assertIn('git diff --quiet HEAD "origin/%BRANCH%"', self.updater)
         self.assertIn("echo [FILES] All changed project files are now applied and verified.", self.updater)
