@@ -547,12 +547,12 @@ AUTO_DISABLE_AFTER = 2          # consecutive "model not available" answers befo
 def disable_route(settings, route_id, reason):
     """Switch a route OFF (never deletes it) and remember why in settings["route_notes"].
 
-    The last enabled route is never switched off: an app with no usable route cannot chat at all.
+    Explicitly unavailable routes must be allowed to turn off even when they are
+    the last enabled route. Keeping a broken local route artificially enabled
+    makes every request fail instead of reporting that no route is configured.
     Returns True when the route was actually disabled."""
     route = find_route(settings, route_id)
     if route is None or not route.get("enabled", True):
-        return False
-    if sum(1 for r in _mutable(settings) if r.get("enabled", True)) <= 1:
         return False
     update_route(settings, route_id, enabled=False)
     settings.setdefault("route_notes", {})[route_id] = str(reason)[:200]

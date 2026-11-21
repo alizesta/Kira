@@ -187,6 +187,18 @@ class RouteModelTests(unittest.TestCase):
         self.assertEqual((r["enabled"], r["timeout"], r["cooldown"], r["model"]), (False, 33, 7, "openai/gpt-oss-20b"))
         self.assertEqual(s["providers"]["groq"]["api_key"], f"{CANARY}-groq")
 
+    def test_last_unavailable_route_can_be_disabled(self):
+        s = helpers.fresh_settings()
+        routes.ensure_routes(s)
+        # Simulate the user's only enabled route being a missing local model.
+        for route in s["routes"]:
+            route["enabled"] = route["provider"] == "ollama"
+        s["providers"]["ollama"]["enabled"] = True
+
+        self.assertTrue(routes.disable_route(s, "ollama", "مدل روی سیستم نصب نیست"))
+        self.assertFalse(routes.find_route(s, "ollama")["enabled"])
+        self.assertEqual(routes.route_note(s, "ollama"), "مدل روی سیستم نصب نیست")
+
     def test_reorder_drag_drop_default_and_manual(self):
         s = legacy_settings()
         routes.ensure_routes(s)
