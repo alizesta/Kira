@@ -16,6 +16,7 @@ from ..core.interfaces.context import (
     SystemPromptBuilderPort,
 )
 from ..domain.chat import ContextRequest, ContextResult
+from ..skills.design_guidance import design_guidance_for
 
 # Preserve historical type names and imports during the migration.
 SystemPromptBuilder = SystemPromptBuilderPort
@@ -81,6 +82,12 @@ class ContextBuilder:
             text = str(layer or "").strip()
             if text:
                 prompt = (prompt + "\n\n" + text).strip() if prompt else text
+
+        # Built-in interface guidance is activated from the current user turn only;
+        # normal conversation and unrelated coding tasks do not pay its token cost.
+        design_guidance = design_guidance_for(latest_user_text(messages))
+        if design_guidance:
+            prompt = (prompt + "\n\n" + design_guidance).strip() if prompt else design_guidance
 
         if self._prompt_enricher is not None:
             prompt = str(self._prompt_enricher(prompt) or prompt)
