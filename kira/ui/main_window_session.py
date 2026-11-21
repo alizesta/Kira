@@ -18,6 +18,7 @@ from .main_window_session_support import (
     QPushButton,
     QScrollArea,
     QSize,
+    QSizePolicy,
     QSlider,
     QSpinBox,
     QTextBrowser,
