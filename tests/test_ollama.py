@@ -188,8 +188,8 @@ class OllamaTests(unittest.TestCase):
         self.assertEqual([m["role"] for m in sent["messages"]], ["system", "user"])
         self.assertIn("فایل را بررسی کن", sent["messages"][1]["content"])
         self.assertIn("محتوای واقعی فایل", sent["messages"][1]["content"])
-        self.assertNotIn("tool_calls", str(sent["messages"]))
-        self.assertNotIn('"role": "tool"', str(sent["messages"]))
+        self.assertFalse(any("tool_calls" in message for message in sent["messages"]))
+        self.assertFalse(any(message.get("role") == "tool" for message in sent["messages"]))
 
     def test_thinking_only_reply_is_an_error_not_silent(self):
         c = OllamaClient("http://localhost:11434", "m")
