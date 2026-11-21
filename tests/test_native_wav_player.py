@@ -41,3 +41,14 @@ def test_native_player_full_volume_plays_original(tmp_path, monkeypatch):
     _wav(src)
     voice._NativeWavPlayer(str(src), 1.0)
     assert calls[0][0] == str(src)
+
+
+def test_native_player_is_opt_in_by_default_on_windows(monkeypatch, tmp_path):
+    speaker = voice.Speaker({"local_voice_tts": False})
+    monkeypatch.setattr(voice.sys, "platform", "win32")
+    monkeypatch.setattr(voice, "_NativeWavPlayer",
+                        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("native player should be opt-in")))
+    try:
+        assert speaker._start_native(str(tmp_path / "sample.wav")) is False
+    finally:
+        speaker.stop()
