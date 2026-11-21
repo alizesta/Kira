@@ -121,7 +121,6 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.normalize_provider_order(None)[-1], "ollama")
 
     def test_legacy_local_model_migration_also_updates_role_allowlist(self):
-        from kira import routes
         from kira.hybrid_ai import HybridRouter
 
         legacy = {
