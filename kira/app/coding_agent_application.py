@@ -1,4 +1,4 @@
-"""Application boundary for Coding Agent interception and session shutdown."""
+"""Application boundary for Kode request interception and session shutdown."""
 from __future__ import annotations
 
 from typing import Any, Callable
