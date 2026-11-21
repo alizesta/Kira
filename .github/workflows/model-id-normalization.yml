@@ -9,7 +9,6 @@ on:
       - "kira/ollama_client.py"
       - "kira/config.py"
       - "kira/ui/components/route_editor.py"
-      - "scripts/setup_local_chat_model.py"
       - "tests/test_routes.py"
       - "tests/test_providers.py"
       - "tests/test_router_routes.py"
