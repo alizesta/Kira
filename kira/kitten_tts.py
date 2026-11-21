@@ -110,8 +110,19 @@ def load_model(model="mini", cancel_event=None):
         return instance
 
 
+def runtime_installed():
+    """True when the optional ONNX runtime stack is importable (cheap check, nothing is loaded)."""
+    import importlib.util
+    return all(importlib.util.find_spec(name) for name in ("kittenml", "onnxruntime", "num2words", "spacy", "huggingface_hub"))
+
+
 def synthesize_test(model="mini", language="en", cancel_event=None) -> bytes:
     """Generate one English sample and return a standards-compliant PCM WAV."""
+    return synthesize(_TEST_TEXT, model, language, cancel_event)
+
+
+def synthesize(text, model="mini", language="en", cancel_event=None) -> bytes:
+    """Speak `text` (English) and return a standards-compliant 16-bit PCM WAV."""
     import numpy as np
     import soundfile as sf
 
@@ -120,7 +131,7 @@ def synthesize_test(model="mini", language="en", cancel_event=None) -> bytes:
     selected_language = str(language or "en").lower()
     if languages and selected_language not in languages:
         selected_language = "en" if "en" in languages else languages[0]
-    audio = np.asarray(instance.generate(_TEST_TEXT, language=selected_language), dtype=np.float32)
+    audio = np.asarray(instance.generate(str(text), language=selected_language), dtype=np.float32)
     if audio.size == 0 or not np.isfinite(audio).all():
         raise RuntimeError("KittenTTS خروجی صوتی معتبر تولید نکرد.")
     output = io.BytesIO()

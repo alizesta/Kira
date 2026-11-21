@@ -519,6 +519,8 @@ class Speaker(QObject):
         from . import local_voice
         from .voice_prosody import expand_persian_numbers
 
+        if self._use_kitten(text):
+            return self._synth_kitten(s, idx, text)
         model_path = str(self.settings.get("local_voice_tts_model") or "").strip()
         if not bool(self.settings.get("local_voice_tts", True)):
             raise RuntimeError("استفاده از TTS محلی غیرفعال است؛ از بخش مدل‌های Local آن را فعال کن.")
@@ -575,6 +577,37 @@ class Speaker(QObject):
             except Exception:
                 self._report("پس‌پردازش اختیاری صدای احساسی انجام نشد؛ خروجی اصلی Piper حفظ شد.")
             return self._save_local_wav(tag, audio, s.cache, wav_path, meta_path)
+
+    _ARABIC_SCRIPT = re.compile(r"[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]")
+
+    def _use_kitten(self, text):
+        """KittenTTS is English-only: a sentence with Persian/Arabic letters always goes to Piper."""
+        return (str(self.settings.get("tts_engine") or "piper").lower() == "kitten"
+                and not self._ARABIC_SCRIPT.search(str(text)))
+
+    def _synth_kitten(self, s, idx, text):
+        """One English sentence with KittenTTS 2 (CPU ONNX); same file/envelope contract as the Piper path."""
+        from . import kitten_tts
+        model = str(self.settings.get("kitten_model") or "mini").lower()
+        if not kitten_tts.runtime_installed():
+            raise RuntimeError("KittenTTS نصب نیست؛ از تنظیمات صدا دکمه «نصب و تست KittenTTS» را بزن.")
+        spoken = clean_for_speech(text)
+        if not spoken:
+            raise RuntimeError("متن قابل‌خواندن برای تولید صدا باقی نمانده است.")
+        cache_key = hashlib.sha1(f"kitten|{model}|{idx > 0}|{spoken}".encode("utf-8")).hexdigest()[:20]
+        base = str(CACHE_DIR) if s.cache else self._tmp
+        wav_path = os.path.join(base, cache_key + ".wav")
+        meta_path = os.path.join(base, cache_key + ".json")
+        with _CACHE_LOCK:
+            if s.cache and os.path.isfile(wav_path) and os.path.isfile(meta_path):
+                envelope = _load_cached_audio(wav_path, meta_path)
+                if envelope is not None:
+                    return wav_path, envelope
+            audio = kitten_tts.synthesize(spoken, model)
+            if idx > 0:
+                prosody = s.prosody or resolve_prosody()
+                audio = prepend_wav_silence(audio, prosody["pause_sentence_ms"])
+            return self._save_local_wav(f"kira_{s.gen}_{idx}", audio, s.cache, wav_path, meta_path)
 
     def _save_local_wav(self, tag, audio, cache, wav_path, meta_path):
         """Validate Piper WAV output, calculate lip-sync data, and publish cache atomically."""

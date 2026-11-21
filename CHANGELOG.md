@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-22 03:26 Iran (TTS engine switch: Piper / KittenTTS)
+- New settings `tts_engine` (piper | kitten, default piper) and `kitten_model` (pico | nano | mini), chosen in Voice settings ("موتور صدا", "مدل KittenTTS"); saved automatically with the other voice sliders.
+- `voice.py`: with the Kitten engine each English sentence is made by `kitten_tts.synthesize` (new, shares the test code) and goes through the same wav/envelope/cache path and the same `_PcmPlayer`. Sentences containing Persian/Arabic letters ALWAYS use Piper (Kitten is English-only), so mixed replies still work. If the Kitten runtime is not installed, the error tells the user to press "نصب و تست KittenTTS" first. Kitten ignores the speech-rate slider and the emotion post-effects for now.
+- Fixed a regression from my earlier registry fix: giving the composer owner the narrow `voice_settings` context made start-up fail on "undeclared window view 'kode_activity'". The composer's mirrored view names (send_strip, kode_activity, input, mic_btn, web_btn ... 19 names) are now declared in the `voice_settings` view allowlist instead; registry test stays green and the window builds again.
+- Offscreen only; no real Kitten synthesis or audio was run here (needs the optional install and a sound device).
+
 ## 2026-11-22 03:20 Iran (one audio player: QAudioSink)
 - `kira/voice.py`: removed every old player path (QMediaPlayer + QAudioOutput, QSoundEffect, the winsound `_NativeWavPlayer`, the `voice_native_wav` setting). All speech now goes through one small `_PcmPlayer`: it reads the 16-bit PCM wav into memory and plays it with `QAudioSink` on the selected / default output device (volume from `voice_volume`). Start-up is much cheaper than creating a media player per sentence; device-change handling and the 8 s "never started" guard are unchanged.
 - Behaviour change: `play_file` (user sound files, click sounds) accepts only PCM .wav now; mp3 / ogg report an error instead of playing.

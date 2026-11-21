@@ -62,6 +62,8 @@ DEFAULTS = {
     "local_voice_asr": True,              # selected offline ASR first; faster-whisper is the only fallback
     "local_voice_asr_backend": "qwen3",    # qwen3 | shenava
     "realtime_asr_enabled": True,          # local microphone ASR; file-based offline tests still work when disabled
+    "tts_engine": "piper",                # piper = Persian (default) | kitten = English-only KittenTTS 2
+    "kitten_model": "mini",               # pico | nano | mini
     "local_voice_tts": True,              # Piper local TTS only; no network or Windows voice fallback
     "local_voice_asr_model": "Qwen/Qwen3-ASR-0.6B",
     "local_voice_tts_model": "",

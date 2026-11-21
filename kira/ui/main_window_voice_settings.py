@@ -948,6 +948,8 @@ class VoiceSettingsController(WindowFeatureController):
             "stt_language": page.stt_lang.currentText(),
             "stream_speech": page.stream_chk.isChecked(),
             "voice_engine": page.voice_engine.currentData() or "local",
+            "tts_engine": page.tts_engine.currentData() or "piper",
+            "kitten_model": page.kitten_model.currentData() or "mini",
             "gemini_live_provider": page.gemini_provider.currentData() or "",
             "gemini_live_model": page.gemini_model.currentText().strip() or "gemini-3.8-live",
             "voice_local_fallback": page.local_fallback_chk.isChecked(),
