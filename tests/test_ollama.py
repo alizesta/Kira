@@ -244,7 +244,7 @@ class OllamaTests(unittest.TestCase):
         self.assertEqual(parse_keep_alive(""), ("2m", False))
         self.assertEqual(clamp_num_ctx(10), 1024)
         self.assertEqual(clamp_num_ctx(10 ** 9), 32768)
-        self.assertEqual(clamp_num_ctx("x"), 8192)
+        self.assertEqual(clamp_num_ctx("x"), 6144)
         self.assertTrue(model_installed(["qwen3.5:4b"], "qwen3.5:4b"))
         self.assertTrue(model_installed(["qwen3.5:4b"], "qwen3.5"))
         self.assertFalse(model_installed(["qwen3.5:9b"], "qwen3.5:4b"))
