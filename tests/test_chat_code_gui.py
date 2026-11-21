@@ -156,6 +156,15 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.assertFalse(panel.isVisible())
         self.assertEqual(panel.steps.count(), 0)
 
+    def test_real_chat_tool_events_appear_in_kira_activity(self):
+        panel = self.cc.win.kode_activity
+        panel.start("در حال پاسخ‌گویی…")
+        runtime = self.win.presentation_context.require_peer("runtime")
+        runtime.on_tool_event({"phase": "tool_start", "tool": "web_search", "label": "جست‌وجوی وب"})
+        self.assertEqual(panel.status.text(), "در حال جست‌وجوی وب…")
+        runtime.on_tool_event({"phase": "tool_done", "tool": "web_search", "label": "جست‌وجوی وب", "status": "ok"})
+        self.assertEqual(panel.status.text(), "جست‌وجوی وب انجام شد")
+
     def test_first_coding_request_asks_for_the_project_folder_once(self):
         asked = []
         self.cc.pick_folder = lambda: (asked.append(1), str(self.proj))[1]
