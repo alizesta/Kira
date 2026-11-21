@@ -355,6 +355,23 @@ def add_route(settings, provider, model, enabled=True, timeout=None, cooldown=No
     return route
 
 
+def set_provider_enabled(settings, provider, enabled):
+    """Set a provider's master switch without leaving contradictory enabled routes.
+
+    Disabling local Ollama disables all of its routes. Re-enabling the provider
+    leaves model routes off until the user explicitly enables the desired model.
+    """
+    cfg = settings.setdefault("providers", {}).get(provider)
+    if not isinstance(cfg, dict):
+        raise KeyError(provider)
+    cfg["enabled"] = bool(enabled)
+    if provider == "ollama" and not enabled:
+        for route in list(_mutable(settings)):
+            if route.get("provider") == "ollama" and route.get("enabled", True):
+                update_route(settings, route["id"], enabled=False)
+    return cfg["enabled"]
+
+
 def update_route(settings, route_id, **changes):
     route = next((r for r in _mutable(settings) if r["id"] == route_id), None)
     if route is None:
