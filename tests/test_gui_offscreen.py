@@ -129,8 +129,16 @@ class GuiTests(unittest.TestCase):
         self.assertTrue(window.preferences_page.isAncestorOf(window.ui_lang))
         self.assertTrue(window.preferences_page.isAncestorOf(window.tavily_key))
         self.assertIsInstance(window.assistant_page, AssistantPage)
-        self.assertTrue(window.assistant_page.isAncestorOf(window.model))
-        self.assertTrue(window.assistant_page.isAncestorOf(window.persona))
+        # The Assistant tab is gone: identity/persona live in the Character tab,
+        # the local Ollama model group lives in Connections & Models.
+        self.assertTrue(window.character_page.isAncestorOf(window.persona))
+        self.assertTrue(window.character_page.isAncestorOf(window.name))
+        ai_tab = window.tabs.widget(window.tab_keys.index("tab_ai"))
+        self.assertTrue(ai_tab.isAncestorOf(window.model))
+        self.assertTrue(ai_tab.isAncestorOf(window.url))
+        self.assertTrue(ai_tab.isAncestorOf(window.conn_btn))
+        self.assertNotIn("tab_assistant", window.tab_keys)
+        self.assertFalse(window.assistant_page.isVisible())
         self.assertIsInstance(window.appearance_page, AppearancePage)
         self.assertIsInstance(window.character_page, CharactersPage)
         self.assertIsInstance(window.voice_page, VoicePage)
@@ -159,7 +167,7 @@ class GuiTests(unittest.TestCase):
         self.assertTrue(w.rect().contains(top_left))
         self.assertTrue(w.rect().contains(w.menu_btn.mapTo(w, w.menu_btn.rect().bottomRight())))
         texts = [a.text() for a in w._menu_actions]
-        self.assertEqual(texts, ["گفتگو", "دستیار", "صدا و میکروفون", "شخصیت", "عمومی", "Route"])
+        self.assertEqual(texts, ["گفتگو", "صدا و میکروفون", "شخصیت", "ظاهر", "عمومی", "اتصال‌ها و مدل‌ها"])
         self.assertNotIn("Ai1 Code", [a.text() for a in w.nav_menu.actions()])      # Ai1 Code lives inside Kira's chat now
         for i, action in enumerate(w._menu_actions):
             action.trigger()
@@ -169,7 +177,7 @@ class GuiTests(unittest.TestCase):
         w = self.win
         w.settings["ui_lang"] = "en"
         w.retranslate()
-        self.assertEqual(w._menu_actions[-1].text(), "Routes")
+        self.assertEqual(w._menu_actions[-1].text(), "Connections & Models")
         w.settings["ui_lang"] = "fa"
         w.retranslate()
 

@@ -267,8 +267,10 @@ class CharactersPage(QScrollArea):
         save_traits.clicked.connect(lambda checked=False: self.save_personality_requested.emit())
         personality_form.addRow(save_traits)
 
+        personality_scroll = self._page(personality_box)
+        self._personality_layout = personality_scroll.widget().layout()
         subtabs.addTab(self._page(box), "")
-        subtabs.addTab(self._page(personality_box), "")
+        subtabs.addTab(personality_scroll, "")
         self._register(lambda value: subtabs.setTabText(0, value), "tab_characters")
         self._register(lambda value: subtabs.setTabText(1, value), "tab_personality")
         host = QWidget()
@@ -282,6 +284,10 @@ class CharactersPage(QScrollArea):
         self.retranslate()
 
         finalize_characters_page(self)
+
+    def attach_identity_box(self, box: QWidget) -> None:
+        """Show the assistant identity/persona group at the top of the personality sub-tab."""
+        self._personality_layout.insertWidget(0, box)
 
     def _open_dance_folder(self) -> None:
         from ... import dance_library

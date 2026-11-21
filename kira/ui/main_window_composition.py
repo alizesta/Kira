@@ -320,7 +320,7 @@ def initialize_main_window(
     self.views.save_btn.setIconSize(QSize(16, 16))
     self.views.save_btn.clicked.connect(self.controllers.require("lifecycle").apply_settings)
     self.controllers.require("session").reg(self.views.save_btn.setText, "save")
-    self.views.tab_keys = ["tab_chat", "tab_assistant", "tab_voice", "tab_char", "tab_appearance", "tab_general", "tab_ai"]
+    self.views.tab_keys = ["tab_chat", "tab_voice", "tab_char", "tab_appearance", "tab_general", "tab_ai"]
     if console_log_capture is not None:
         self.views.tab_keys.append("tab_logs")
     install_window_shortcuts(                                            # shortcuts are children of the window, nothing else to keep
@@ -337,11 +337,12 @@ def initialize_main_window(
         self.controllers.require("session").reg(lambda s, i=i: self.views.tabs.setTabText(i, s), key)
     # Compact icon navigation. The QTabWidget stays as the page stack (its tab strip is hidden).
     self.views.tabs.tabBar().hide()
-    ai_index = self.views.tab_keys.index("tab_ai")
     # Dedicated icon navigation for every primary page. The overflow menu remains
     # available as an alternate route, but sections are now one tap away.
-    self.state._nav_icon_map = [("chat", 0), ("brain", 1), ("mic", 2), ("user", 3),
-                          ("palette", 4), ("settings", 5), ("route", ai_index)]
+    # Indices follow tab_keys so removing or reordering a tab cannot shift the icons.
+    nav_icons = {"tab_chat": "chat", "tab_voice": "mic", "tab_char": "user",
+                 "tab_appearance": "palette", "tab_general": "settings", "tab_ai": "route"}
+    self.state._nav_icon_map = [(nav_icons[key], self.views.tab_keys.index(key)) for key in nav_icons]
     if console_log_capture is not None:
         self.state._nav_icon_map.append(("terminal", self.views.tab_keys.index("tab_logs")))
     # Primary sections are accessed from the hamburger menu only.

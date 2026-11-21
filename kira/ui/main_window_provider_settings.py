@@ -180,6 +180,10 @@ class ProviderSettingsController(WindowFeatureController):
         self.models_panel.restore_requested.connect(self.on_model_restore)
         layout.addWidget(self.models_panel)
 
+        assistant_page = getattr(self.context.views, "assistant_page", None)
+        if assistant_page is not None:
+            layout.addWidget(assistant_page.model_box)        # local Ollama model settings (formerly in the Assistant tab)
+
         # Advanced controls remain available but are collapsed by default.
         self.connections_advanced_btn = QToolButton()
         self.connections_advanced_btn.setText("تنظیمات پیشرفته و مدیریت Providerها")

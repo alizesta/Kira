@@ -67,6 +67,9 @@ class CharacterSettingsController(WindowFeatureController):
         page.open_sounds_requested.connect(self.feature_controller("lifecycle").open_sounds)
         page.save_requested.connect(lambda: self.save_character_settings(silent=True))
         page.save_personality_requested.connect(self.save_personality_profile)
+        assistant_page = getattr(self.context.views, "assistant_page", None)
+        if assistant_page is not None:
+            page.attach_identity_box(assistant_page.identity_box)      # name / persona / modes / temperature live in the personality sub-tab
         self.context.views.tabs.addTab(page, "")
         self.refresh_character_choices()
         self.refresh_character_card()

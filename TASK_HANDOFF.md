@@ -1,5 +1,11 @@
 # Task Handoff
 
+## Latest task: Assistant tab merged into Character + Connections (2026-11-21, 16:26 Iran)
+
+- No more Assistant tab. `AssistantPage` (kira/ui/pages/assistant_page.py) stays as the hidden owner of the widgets; `identity_box` goes to the Character tab personality sub-tab (`CharactersPage.attach_identity_box`), `model_box` (Ollama) goes to the Connections & Models tab (`ProviderSettingsController.build_ai_tab`, under the models list). Aliases (`views.persona`, `views.model`, ...) and lifecycle handlers are unchanged.
+- Tab order is now chat, voice, character, appearance, general, connections (+ logs); nav icons derive from `tab_keys`.
+- Not run: full GUI tests (no Qt Multimedia in the sandbox). On Windows run `python -m unittest tests.test_gui_offscreen` and check both groups by eye; press Save and restart to confirm name/persona/Ollama values persist. Known unrelated failures: two `test_ui_facade_regressions` tests (`widget_parent` argument).
+
 ## Latest task: desktop-pet behaviour (2026-11-21)
 
 - New: `kira/pet.py` (PetController owned by `CompanionWindow.pet`), `kira/perch.py`, `kira/music_dance.py`, JS `kiraHang` / `kiraMusic` in `assets/vrm/viewer.html`; the music watcher starts in `main_window_composition.py` (Windows only).

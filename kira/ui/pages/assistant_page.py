@@ -146,6 +146,11 @@ class AssistantPage(QScrollArea):
         self._register(game_note.setText, "o_game_note")
         model_form.addRow(game_note)
 
+        # The page is no longer a tab of its own: it only builds and owns these two
+        # sections. The host moves `identity_box` into the Character tab (personality
+        # sub-tab) and `model_box` into the Connections & Models tab.
+        self.identity_box = assistant_box
+        self.model_box = model_box
         layout.addWidget(assistant_box)
         layout.addWidget(model_box)
         layout.addStretch(1)

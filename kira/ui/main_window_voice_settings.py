@@ -158,7 +158,9 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.assistant_page.load_model_requested.connect(self.feature_controller("lifecycle").load_local_model)
         self.context.views.assistant_page.unload_model_requested.connect(self.feature_controller("lifecycle").unload_local_model)
         self.context.views.assistant_page.speed_test_requested.connect(self.feature_controller("lifecycle").speed_test)
-        self.context.views.tabs.addTab(self.context.views.assistant_page, "")
+        # No tab of its own: build_characters_tab() and build_ai_tab() host its two sections.
+        # The emptied page stays alive (it owns the widgets, signals and translations) but is never shown.
+        self.context.views.assistant_page.hide()
 
     def build_voice_tab(self):
         """Compose the independent Voice page and connect its intent signals."""

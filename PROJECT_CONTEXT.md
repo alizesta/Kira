@@ -149,6 +149,9 @@ Local-only speech stack: Qwen3-ASR primary STT, faster-whisper local fallback, P
 - Ren/Mika memory no longer digests shared legacy chat rows or summarizes the global chat database. Clearing the shared chat resets voice/digest samples for all profiles but preserves each profile's facts/moments/habits. The legacy Kira evidence index may contain unattributed pre-isolation facts because older chat rows have no character ID; new Ren/Mika messages are not added to it.
 
 
+## Settings tabs (2026-11-21)
+- Pages: Chat, Voice, Character, Appearance, General, Connections & Models (+ Runtime Log). There is no Assistant tab: identity/persona/modes/temperature live in Character -> personality sub-tab; the local Ollama model group lives in Connections & Models. `AssistantPage` only owns those widgets (hidden).
+
 ## Character chat tabs (per-character conversations)
 - The chat page has a tab strip at the top: one tab per character (Kira, Ren, Mika, custom ones). Each tab is an independent conversation: own saved history, own chat view, own HybridRouter (own Stop flag; health/cooldown state is shared), own stream state, own pending-message queue. Several characters can generate answers at the same time.
 - `messages.character_id` (default 'kira') stores ownership. Old databases are migrated by `ALTER TABLE`; every old row is Kira's. Backups, corruption recovery, snapshots and import keep the owner. `recent_messages/message_count/conversation_context/clear_memory(character_id=None)` — None = every chat (legacy). "Clear chat memory" clears only the visible character's chat.

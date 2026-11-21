@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-21 16:26 Iran (Assistant tab merged away)
+- The extra "دستیار" (Assistant) tab is gone. Its two groups moved: **هویت و شخصیت** (assistant name, persona, active modes, temperature) is now the first group of the Character tab -> "شخصیت و رفتار" sub-tab; **مدل محلی (Ollama)** (model, URL, num_ctx, num_predict, keep-alive, check/load/unload, speed test) is now in "اتصال‌ها و مدل‌ها", right under the models list.
+- Code: `AssistantPage` still builds the widgets and signals (same `views.name/persona/model/...` aliases, same controller wiring) but exposes `identity_box` / `model_box` and is never shown; `CharactersPage.attach_identity_box()` and `build_ai_tab()` host them. `tab_keys` lost `tab_assistant` (tabs: chat, voice, character, appearance, general, connections; shortcuts Ctrl+1..6) and the nav icon map is now built from `tab_keys`, so icons cannot shift. Unused `tab_assistant` strings removed.
+- `tests/test_gui_offscreen.py` updated (ancestors of persona/model, menu texts). Not run here: the full window needs Qt Multimedia (missing in the sandbox); the move itself was checked with the real page classes offscreen. Needs a look on Windows: both groups' layout in their new tabs, and Save still storing name/persona/Ollama values.
+
 ## 2026-11-21 (silent voice on Windows)
 - `kira/voice.py`: on Windows, PCM `.wav` replies are now played with `winsound` (`_NativeWavPlayer`, volume applied to a temp copy, lip-sync/finish via duration timer) because Qt's QMediaPlayer reported success but stayed silent on the user's PC while Media Player played the same wav. Falls back to Qt for mp3/ogg, when a specific output device is chosen in settings, on any error, or if `voice_native_wav` is false. A chosen output device is ignored by the native path (it uses the Windows default).
 - Not verified on Windows hardware (sandbox is Linux; unit test uses a fake winsound). 15 `test_voice_tts` failures are pre-existing.
