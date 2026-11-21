@@ -14,10 +14,11 @@ def normalize_page_widget(page_widget: QWidget):
         page_widget.setWidgetResizable(True)
         page_widget.setAlignment(Qt.AlignHCenter)
     configure_fluid_layout_on_widget(page_widget)
-    content = page_widget.widget() if isinstance(page_widget, QScrollArea) else None
+    content = page_widget.widget() if isinstance(page_widget, QScrollArea) else page_widget
     if content is not None:
         configure_fluid_layout_on_widget(content)
-        content.setMaximumWidth(1180)
+        if isinstance(page_widget, QScrollArea):
+            content.setMaximumWidth(1180)
         for group in content.findChildren(QGroupBox):
             group.setMaximumWidth(1120)
         for field_type in (QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox):
