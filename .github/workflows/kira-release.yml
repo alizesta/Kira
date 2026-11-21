@@ -48,6 +48,9 @@ on:
       - "tests/test_attachments.py"
       - "tests/test_routes.py"
       - "tests/test_router_routes.py"
+      - "tests/test_ollama.py"
+      - "tests/test_route_editor_widget.py"
+      - "scripts/setup_local_chat_model.py"
       - "tests/test_providers.py"
       - "tests/test_persona_memory.py"
       - "tests/test_app_resolution.py"
@@ -124,6 +127,7 @@ jobs:
           tests.test_attachments
           tests.test_routes
           tests.test_router_routes
+          tests.test_ollama
           tests.test_providers
           tests.test_persona_memory
           tests.test_characters
@@ -214,6 +218,7 @@ jobs:
           tests.test_attachments
           tests.test_routes
           tests.test_router_routes
+          tests.test_ollama
           tests.test_providers
           tests.test_persona_memory
           tests.test_characters

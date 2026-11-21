@@ -253,11 +253,11 @@ def get_routes(settings):
 
 
 def ensure_routes(settings):
-    """Persistable migration: make settings["routes"] exist, clean, with unique ids. Idempotent."""
+    """Persist and repair routes, collapsing duplicate provider/model entries."""
     settings.setdefault("providers", {})
     stored = settings.get("routes")
     routes = derive_routes(settings) if not isinstance(stored, list) else stored
-    clean, seen = [], set()
+    clean, seen, model_positions, id_remap = [], set(), {}, {}
     for r in routes:
         if not isinstance(r, dict) or not r.get("provider"):
             continue
@@ -274,7 +274,35 @@ def ensure_routes(settings):
                           num_ctx=r.get("num_ctx"), num_predict=r.get("num_predict"))
         if r.get("label"):
             item["label"] = str(r["label"])[:60]
+
+        model = str(item.get("model") or "").strip()
+        model_key = (provider, model.casefold()) if model else None
+        if model_key and model_key in model_positions:
+            # add_route already prevents duplicate model IDs. Collapse duplicates
+            # left by older builds or repeated imports, preserving enabled state
+            # and the largest per-route generation limits.
+            existing = clean[model_positions[model_key]]
+            existing["enabled"] = bool(existing.get("enabled", True) or item.get("enabled", True))
+            for option in ("num_ctx", "num_predict"):
+                values = []
+                for candidate in (existing.get(option), item.get(option)):
+                    try:
+                        number = int(candidate or 0)
+                    except (TypeError, ValueError):
+                        number = 0
+                    if number > 0:
+                        values.append(number)
+                if values:
+                    existing[option] = max(values)
+                else:
+                    existing.pop(option, None)
+            id_remap[rid] = existing["id"]
+            continue
+
+        if model_key:
+            model_positions[model_key] = len(clean)
         clean.append(item)
+
     for name in BUILTIN:                                         # built-in providers always keep at least one route
         if not any(r["provider"] == name for r in clean):
             cfg = settings["providers"].get(name) or {}
@@ -282,6 +310,20 @@ def ensure_routes(settings):
             rid = name if name not in seen else f"{name}-2"
             clean.append(make_route(rid, name, model, name == "ollama" and bool(cfg.get("enabled", True)), cfg.get("timeout")))
             seen.add(rid)
+
+    # Keep manual/default choices and route health notes attached to the
+    # surviving route when a duplicate ID is collapsed.
+    for field in ("manual_route_id", "default_route_id"):
+        selected = settings.get(field)
+        if selected in id_remap:
+            settings[field] = id_remap[selected]
+    notes = settings.get("route_notes")
+    if isinstance(notes, dict):
+        for old_id, new_id in id_remap.items():
+            if old_id in notes:
+                notes.setdefault(new_id, notes[old_id])
+                notes.pop(old_id, None)
+
     settings["routes"] = clean
     ids = {r["id"] for r in clean}
     if settings.get("manual_route_id") not in ids:
@@ -291,8 +333,6 @@ def ensure_routes(settings):
     settings.setdefault("failover_enabled", True)
     sync_legacy(settings)
     return settings
-
-
 def sync_legacy(settings):
     """Keep the old provider_order (and the Ollama model mirror) consistent with the routes (older versions can still read it)."""
     routes = settings.get("routes")

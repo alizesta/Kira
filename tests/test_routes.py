@@ -30,6 +30,33 @@ class RouteModelTests(unittest.TestCase):
         self.assertEqual(s["providers"], before)                       # API keys / options not modified
         self.assertEqual(s["providers"]["groq"]["api_key"], f"{CANARY}-groq")
 
+    def test_ensure_routes_collapses_duplicate_local_models_and_preserves_selection(self):
+        s = legacy_settings()
+        model = "kira-qwen3.5-9b-abliterated:q4_k_m"
+        s["routes"] = [
+            {"id": "ollama", "provider": "ollama", "model": model, "enabled": False, "num_ctx": 2048},
+            {"id": "ollama-2", "provider": "ollama", "model": model, "enabled": True, "num_ctx": 8192,
+             "num_predict": 256},
+            {"id": "ollama-3", "provider": "ollama", "model": model, "enabled": False},
+        ]
+        s["manual_route_id"] = "ollama-3"
+        s["default_route_id"] = "ollama-2"
+        s["route_notes"] = {"ollama-3": "previous local error"}
+
+        routes.ensure_routes(s)
+
+        local = [r for r in routes.get_routes(s) if r["provider"] == "ollama"]
+        self.assertEqual(len(local), 1)
+        self.assertEqual(local[0]["id"], "ollama")
+        self.assertTrue(local[0]["enabled"])
+        self.assertEqual(local[0]["num_ctx"], 8192)
+        self.assertEqual(local[0]["num_predict"], 256)
+        self.assertEqual(s["manual_route_id"], "ollama")
+        self.assertEqual(s["default_route_id"], "ollama")
+        self.assertEqual(s["route_notes"]["ollama"], "previous local error")
+        self.assertNotIn("ollama-2", {r["id"] for r in routes.get_routes(s)})
+        self.assertNotIn("ollama-3", {r["id"] for r in routes.get_routes(s)})
+
     def test_migration_is_idempotent_and_keeps_user_edits(self):
         s = legacy_settings()
         routes.ensure_routes(s)
@@ -262,6 +289,18 @@ class RoutePersistenceTests(unittest.TestCase):
         self.assertTrue(routes.find_route(again, "ollama")["enabled"])
         persisted = json.loads(self.path.read_text(encoding="utf-8"))
         self.assertTrue(persisted["providers"]["ollama"]["enabled"])
+
+    def test_old_ollama_2048_context_is_migrated_to_8192_on_load(self):
+        s = config.load_settings()
+        s["providers"]["ollama"]["num_ctx"] = 2048
+        routes.update_route(s, "ollama", num_ctx=2048)
+        config.save_settings(s)
+
+        again = config.load_settings()
+        self.assertEqual(again["providers"]["ollama"]["num_ctx"], 8192)
+        self.assertEqual(routes.find_route(again, "ollama")["num_ctx"], 8192)
+        persisted = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(persisted["providers"]["ollama"]["num_ctx"], 8192)
 
     def test_orphan_routes_of_missing_provider_are_dropped_on_load(self):
         s = config.load_settings()

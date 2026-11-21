@@ -6,9 +6,15 @@ on:
     paths:
       - "kira/routes.py"
       - "kira/hybrid_ai.py"
+      - "kira/ollama_client.py"
+      - "kira/config.py"
+      - "kira/ui/components/route_editor.py"
+      - "scripts/setup_local_chat_model.py"
       - "tests/test_routes.py"
       - "tests/test_providers.py"
       - "tests/test_router_routes.py"
+      - "tests/test_ollama.py"
+      - "tests/test_route_editor_widget.py"
       - ".github/workflows/model-id-normalization.yml"
 
 permissions:
@@ -31,7 +37,7 @@ jobs:
           pip install -r requirements.txt
       - name: Compile changed modules and tests
         run: |
-          python -m py_compile kira/routes.py kira/hybrid_ai.py tests/test_routes.py tests/test_providers.py tests/test_router_routes.py
+          python -m py_compile kira/routes.py kira/hybrid_ai.py kira/ollama_client.py kira/config.py tests/test_routes.py tests/test_providers.py tests/test_router_routes.py tests/test_ollama.py
       - name: Run route and provider regression tests
         run: |
-          python -m unittest tests.test_routes tests.test_providers tests.test_router_routes -v
+          python -m unittest tests.test_routes tests.test_providers tests.test_router_routes tests.test_ollama -v

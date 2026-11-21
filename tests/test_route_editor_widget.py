@@ -5,6 +5,7 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 try:
+    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication, QComboBox
     HAVE_QT = True
 except Exception:  # pragma: no cover
@@ -30,6 +31,13 @@ class RouteEditorTests(unittest.TestCase):
         editor = self.make()
         for name in ("route_up_btn", "route_down_btn", "route_default_btn", "route_bench_all_btn"):
             self.assertFalse(hasattr(editor, name), name)
+
+    def test_route_list_is_compact_and_uses_vertical_scrolling(self):
+        editor = self.make()
+        self.assertLessEqual(editor.route_list.maximumHeight(), 96)
+        self.assertEqual(editor.route_list.verticalScrollBarPolicy(), Qt.ScrollBarAsNeeded)
+        self.assertEqual(editor.route_list.horizontalScrollBarPolicy(), Qt.ScrollBarAlwaysOff)
+
 
     def test_benchmark_is_one_menu_button_with_two_choices(self):
         editor = self.make()
