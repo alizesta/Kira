@@ -1,4 +1,4 @@
-"""Ai1 Code inside Kira's chat (Qt side). The logic lives in chat_code.py (intent) and auto_agent.py (the agent).
+"""Kode: one chat-facing coding subsystem with analysis, safe patching and autonomous execution.
 
 No button and no mode: Kira's tab decides from the wording whether a message is a coding mission (agent on a copy of the
 project, ends with a zip), a question about the project (read-only investigation) or ordinary talk (normal chat).
@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox
 from . import characters
 from . import chat_code as cc
 from .chat_render import message_html
-from .auto_agent import AutoAgent, MAX_STEPS, guard_reason
+from .auto_agent import KodeAutonomousEngine, MAX_STEPS, guard_reason
 from .brain import route_for
 from .code_agent import project_tree
 from .config import save_settings, DATA_DIR
@@ -44,8 +44,8 @@ class _Job(QThread):
             self.failed.emit(f"{type(exc).__name__}: {exc}"[:800])
 
 
-class CodeChat(QObject):
-    """Owns the code mode of Kira's chat: project folder, pending patches, the running job / command."""
+class Kode(QObject):
+    """Unified coding workspace for Kira: analysis, reviewed patches and autonomous project missions."""
 
     def __init__(self, win):
         super().__init__(getattr(win, "widget", win))
@@ -87,7 +87,7 @@ class CodeChat(QObject):
     # ------------------------------------------------------------ project / mode
     def pick_folder(self):
         start = str(self.root or Path.home())
-        return QFileDialog.getExistingDirectory(getattr(self.win, "widget", self.win), "پوشه‌ی پروژه برای Ai1 Code", start)
+        return QFileDialog.getExistingDirectory(getattr(self.win, "widget", self.win), "پوشه‌ی پروژه برای Kode", start)
 
     def confirm(self, title, text, default_no=True):
         answer = QMessageBox.warning(getattr(self.win, "widget", self.win), title, text, QMessageBox.Yes | QMessageBox.No,
@@ -190,7 +190,7 @@ class CodeChat(QObject):
             if self.root is not None and self.root.is_dir():
                 self._say("system", f"مسیر پوشه‌ی پروژه‌ی فعلی: {self.root}")
             else:
-                self._say("system", "هنوز پوشه‌ی پروژه‌ای برای Ai1 Code انتخاب نشده؛ برای انتخاب پوشه بگو «پوشه‌ی پروژه را عوض کن».")
+                self._say("system", "هنوز پوشه‌ی پروژه‌ای برای Kode انتخاب نشده؛ برای انتخاب پوشه بگو «پوشه‌ی پروژه را عوض کن».")
             return True
         req = cc.parse_request(text)
         if req.kind in ("files", "project", "apply", "reject", "help", "run", "auto") or req.explicit:
@@ -378,7 +378,7 @@ class CodeChat(QObject):
             return
         if rel:
             self.current_rel = rel
-        engine = cc.KiraCodeEngine(w.cur.client)
+        engine = cc.KodeEngine(w.cur.client)
         history = list(self.turns)
         question = req.text
         if req.kind == "patch":
@@ -455,7 +455,7 @@ class CodeChat(QObject):
             try:
                 done(result)
             except Exception as exc:  # noqa: BLE001
-                w.add_chat("error", f"Code Agent: {exc}")
+                w.add_chat("error", f"Kode: {exc}")
             self._end_busy()
 
     def _failed(self, sess, error):
@@ -463,7 +463,7 @@ class CodeChat(QObject):
         if w._closing or sess.cid not in w.sessions:
             return
         with w._as(sess):
-            w.add_chat("error", f"Code Agent: {error}")
+            w.add_chat("error", f"Kode: {error}")
             self._end_busy()
 
     def _remember(self, user_text, answer):
@@ -582,7 +582,7 @@ class CodeChat(QObject):
                     return False
             return holder["ok"]
 
-        agent = AutoAgent(w.cur.client, self.root, goal, should_stop=lambda: self.auto_stop, python=self.auto_python,
+        agent = KodeAutonomousEngine(w.cur.client, self.root, goal, should_stop=lambda: self.auto_stop, python=self.auto_python,
                           output_dir=self.auto_dir, readonly=readonly, approve=approve,
                           max_steps=15 if readonly else MAX_STEPS, shell=self.auto_shell, history=history,
                           plan_route_id=route_for("deep", w.settings),
@@ -651,11 +651,11 @@ class CodeChat(QObject):
         if runs:
             lines.append("اجراها: " + "؛ ".join(f"{a} ← exit {c}" for a, c in runs[-6:]))
         if result.get("external"):
-            lines.append(f"⚠ هشدار: {len(result['external'])} فایل پروژه‌ی اصلی هم‌زمان بیرون از Ai1 Code عوض شده؛ جزئیات در AI1CODE_REPORT.md داخل زیپ.")
+            lines.append(f"⚠ هشدار: {len(result['external'])} فایل پروژه‌ی اصلی هم‌زمان بیرون از Kode عوض شده؛ جزئیات در KODE_REPORT.md داخل زیپ.")
         info = result.get("zip_info") or {}
         lines.append(f"زیپ سالم است ({info.get('files', '?')} فایل): {zip_path}")
         body = cc.answer_html("\n".join(lines)) + (
-            f'<p dir="rtl" align="right" style="margin:4px 0;"><a href="kira-code://open/{rid}" style="color:#7ee787;">📂 باز کردن پوشه‌ی زیپ</a></p>')
+            f'<p dir="rtl" align="right" style="margin:4px 0;"><a href="kode://open/{rid}" style="color:#7ee787;">📂 باز کردن پوشه‌ی زیپ</a></p>')
         self._bubble("assistant", body)
         w.save_message("assistant", "\n".join(lines))
         self._remember("/auto " + goal, result["summary"])
@@ -762,4 +762,8 @@ class CodeChat(QObject):
             if class_job.isRunning():
                 class_job.requestInterruption()
         if self.job is not None and self.job.isRunning():
-            self.job.requestInterruption()                   # AutoAgent checks should_stop between steps
+            self.job.requestInterruption()                   # Kode checks should_stop between steps
+
+
+# Backward-compatible name for older composition roots.
+CodeChat = Kode
