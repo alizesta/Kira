@@ -73,7 +73,7 @@ class SessionController(WindowFeatureController):
         input_widget = self.context.views.input
         set_character_placeholder = getattr(input_widget, "set_character_placeholder", None)
         if callable(set_character_placeholder):
-            set_character_placeholder(getattr(self.context.state.front, "cid", "kira"),
+            set_character_placeholder(getattr(getattr(self.context.state, "front", None), "cid", "kira"),
                                       self.context.services.settings.get("ui_lang", "fa"))
         else:
             input_widget.setPlaceholderText(self.t("input_ph"))
