@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QScrollArea, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QComboBox, QDoubleSpinBox, QGroupBox, QLineEdit, QPlainTextEdit, QScrollArea, QSpinBox, QTextEdit, QWidget
 
 from kira.ui.responsive_layout import configure_fluid_layout_on_widget
 
@@ -11,10 +12,20 @@ def normalize_page_widget(page_widget: QWidget):
         return None
     if isinstance(page_widget, QScrollArea):
         page_widget.setWidgetResizable(True)
+        page_widget.setAlignment(Qt.AlignHCenter)
     configure_fluid_layout_on_widget(page_widget)
     content = page_widget.widget() if isinstance(page_widget, QScrollArea) else None
     if content is not None:
         configure_fluid_layout_on_widget(content)
+        content.setMaximumWidth(1180)
+        for group in content.findChildren(QGroupBox):
+            group.setMaximumWidth(1120)
+        for field_type in (QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox):
+            for field in content.findChildren(field_type):
+                field.setMaximumWidth(520)
+        for field_type in (QTextEdit, QPlainTextEdit):
+            for field in content.findChildren(field_type):
+                field.setMaximumWidth(760)
     return page_widget
 
 
