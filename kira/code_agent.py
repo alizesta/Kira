@@ -1,4 +1,4 @@
-"""Provider-neutral, read-only Code Agent engine for Ai1 Code.
+"""Provider-neutral, read-only analysis engine used by Kode.
 
 The engine never writes project files and never executes commands. It receives only a bounded,
 explicit project context from the workspace UI and uses the same configured HybridRouter routes.
