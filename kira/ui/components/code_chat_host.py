@@ -7,7 +7,7 @@ and routes each name to the state, view or controller that owns it today.
 from __future__ import annotations
 
 _STATE = frozenset({"sessions", "cur", "front", "_closing"})
-_VIEWS = frozenset({"status", "gen_stop_btn"})
+_VIEWS = frozenset({"status", "gen_stop_btn", "kode_activity"})
 _SESSION = frozenset({"busy", "_voice_next"})
 _CONTROLLERS = {
     "_as": "session",
