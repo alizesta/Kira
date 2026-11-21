@@ -567,7 +567,7 @@ class Kode(QObject):
             return
         if not self.confirm("تأیید اعمال تغییر",
                             f"فایل «{patch.rel}» با پیشنهاد کیرا بازنویسی می‌شود. "
-                            "یک نسخه‌ی پشتیبان (.ai1code.bak) کنارش می‌ماند.\n\nاعمال شود؟", default_no=False):
+                            "یک نسخه‌ی پشتیبان از فایل اصلی نگه داشته می‌شود.\n\nاعمال شود؟", default_no=False):
             self._say("system", "اعمال لغو شد؛ پیشنهاد هنوز در انتظار است.")
             return
         try:
@@ -576,7 +576,7 @@ class Kode(QObject):
             self._say("error", f"اعمال ناموفق بود: {exc}")
             return
         self.patches.pop(pid)
-        self._say("system", f"✅ تغییر روی {patch.rel} با تأیید تو اعمال شد. پشتیبان: {backup.name}")
+        self._say("system", f"✅ تغییر روی {patch.rel} با تأیید تو اعمال شد؛ نسخه‌ی پشتیبان فایل اصلی نگه داشته شد.")
 
     def reject(self, pid):
         if self.patches.pop(pid) is None:
