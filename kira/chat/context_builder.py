@@ -72,7 +72,7 @@ class ContextBuilder:
         if str(request.character_id or "").strip().lower() == "kira":
             ui_guidance = guidance_for_task(latest_user_text(messages))
             if ui_guidance:
-                prompt = (prompt + "\\n\\n" + ui_guidance).strip()
+                prompt = (prompt + "\n\n" + ui_guidance).strip()
 
         # Keep the historical order: base character/policy prompt, character
         # service layer, body-control notes, then the deterministic brain hint.
