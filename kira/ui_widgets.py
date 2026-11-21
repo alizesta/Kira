@@ -1,6 +1,7 @@
 """Small reusable widgets for the compact companion UI."""
 import base64
 import os
+import random
 
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFontMetrics, QPixmap
@@ -16,6 +17,17 @@ class ChatInput(QPlainTextEdit):
     filesDropped = Signal(list)          # local file paths dropped or pasted as files
     imagePasted = Signal(object)         # QImage pasted from the clipboard
     MAX_LINES = 5
+    CHARACTER_PROMPTS = {
+        "kira": {"fa": ("خب، امروز قراره چی بسازیم؟", "یه باگ سمج داری که با هم نابودش کنیم؟", "ایده‌تو بگو؛ من آماده‌ام دست‌به‌کد بشیم.", "کجای پروژه گیر کردی؟ بذار بررسیش کنیم.", "یه چیزی بگو که کنجکاوم کنه!"), "en": ("What are we building today?", "Got a stubborn bug to defeat?", "Tell me your idea — let's code.")},
+        "mika": {"fa": ("خب خب، امروز چه چیزی رو با هم کشف کنیم؟", "حالت چطوره؟ چیزی هست که بخوای بررسی کنیم؟", "هر سؤالی داری بپرس؛ با حوصله بازش می‌کنیم.", "امروز چه خبر؟ از کجا شروع کنیم؟"), "en": ("What shall we explore today?", "How are you feeling? Anything to look into?", "Ask me anything — we'll unpack it together.")},
+        "ren": {"fa": ("چه موضوعی رو می‌خوای دقیق بررسی کنیم؟", "خبر یا ادعایی هست که باید راستی‌آزمایی بشه؟", "داده‌ها رو بده؛ تحلیلش می‌کنم.", "کدوم مسئله ارزش بررسی عمیق داره؟"), "en": ("What should we investigate?", "Any claim or headline to verify?", "Give me the evidence; I'll analyse it.")},
+    }
+
+    def set_character_placeholder(self, character_id="kira", language="fa"):
+        """Choose a fresh, character-appropriate prompt for the visible chat."""
+        profile = self.CHARACTER_PROMPTS.get(str(character_id or "kira").lower(), self.CHARACTER_PROMPTS["kira"])
+        lang = "en" if str(language or "fa").lower().startswith("en") else "fa"
+        self.setPlaceholderText(random.choice(profile.get(lang) or profile["fa"]))
 
     def __init__(self, parent=None):
         super().__init__(parent)
