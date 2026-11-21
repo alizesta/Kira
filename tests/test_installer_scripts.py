@@ -23,14 +23,16 @@ class InstallerScriptTests(unittest.TestCase):
             self.updater.index('git fetch origin "%BRANCH%"'),
         )
 
-    def test_incremental_updates_skip_ollama_model_download(self):
-        self.assertIn('set "KIRA_SKIP_OLLAMA_MODEL_DOWNLOAD=1"', self.updater)
-        self.assertIn('if /I "%KIRA_SKIP_OLLAMA_MODEL_DOWNLOAD%"=="1" (', self.installer)
-        self.assertLess(
-            self.installer.index('if /I "%KIRA_SKIP_OLLAMA_MODEL_DOWNLOAD%"=="1" ('),
-            self.installer.index("echo Installing the pinned, checksum-verified Qwen3.5-9B Abliterated Q4_K_M model..."),
-        )
-        self.assertIn("Ollama model download is disabled for incremental updates", self.installer)
+    def test_installer_never_installs_or_starts_ollama_or_downloads_chat_models(self):
+        self.assertIn("Ollama model installation is currently disabled", self.installer)
+        self.assertNotIn("Ollama.Ollama", self.installer)
+        self.assertNotIn("ollama serve", self.installer)
+        self.assertNotIn("setup_local_chat_model.py", self.installer)
+        self.assertNotIn("OLLAMA_MODELS", self.installer)
+
+    def test_updater_does_not_trigger_install_for_optional_ollama_model_script(self):
+        self.assertNotIn('if /I "%%F"=="scripts/setup_local_chat_model.py" set "NEEDS_INSTALL=1"', self.updater)
+        self.assertNotIn("KIRA_SKIP_OLLAMA_MODEL_DOWNLOAD", self.updater)
 
     def test_installer_accepts_only_python_311_or_312(self):
         self.assertIn('if not errorlevel 1 set "PY=.venv\\Scripts\\python.exe"', self.installer)

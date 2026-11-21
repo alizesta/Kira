@@ -144,52 +144,9 @@ if errorlevel 1 (
 )
 
 echo.
-echo [4/4] Installing/configuring Ollama and the default local chat model...
-where ollama >nul 2>nul
-if errorlevel 1 (
-  where winget >nul 2>nul
-  if errorlevel 1 (
-    echo ERROR: winget is unavailable; Ollama cannot be installed automatically.
-    goto fail
-  )
-  winget install --id Ollama.Ollama --exact --silent --accept-package-agreements --accept-source-agreements
-  if exist "%LOCALAPPDATA%\Programs\Ollama\ollama.exe" set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Ollama"
-  if exist "%ProgramFiles%\Ollama\ollama.exe" set "PATH=%PATH%;%ProgramFiles%\Ollama"
-  where ollama >nul 2>nul
-  if errorlevel 1 (
-    echo ERROR: Ollama was not found after its installation attempt.
-    goto fail
-  )
-)
-
-set "OLLAMA_TARGET=%KIRA_DATA_DIR%\ollama\models"
-if not exist "%OLLAMA_TARGET%" mkdir "%OLLAMA_TARGET%"
-if defined OLLAMA_MODELS (set "OLLAMA_SOURCE=%OLLAMA_MODELS%") else (set "OLLAMA_SOURCE=%USERPROFILE%\.ollama\models")
-if exist "%OLLAMA_SOURCE%\" if /I not "%OLLAMA_SOURCE%"=="%OLLAMA_TARGET%" (
-  echo Copying existing Ollama models. The old folder will be kept.
-  robocopy "%OLLAMA_SOURCE%" "%OLLAMA_TARGET%" /E /COPY:DAT /DCOPY:DAT /R:1 /W:1
-  if errorlevel 8 echo WARNING: Existing Ollama model copy failed; original files remain untouched.
-)
-set "OLLAMA_MODELS=%OLLAMA_TARGET%"
-setx OLLAMA_MODELS "%OLLAMA_TARGET%" >nul
-echo Ollama models: %OLLAMA_TARGET%
-echo Restarting Ollama to apply the new storage location...
-taskkill /IM ollama.exe /F >nul 2>nul
-timeout /t 2 /nobreak >nul
-start "" /b ollama serve
-timeout /t 8 /nobreak >nul
-ollama list >nul 2>nul
-if errorlevel 1 (
-  echo ERROR: Ollama service did not start.
-  goto fail
-)
-if /I "%KIRA_SKIP_OLLAMA_MODEL_DOWNLOAD%"=="1" (
-  echo [SKIP] Ollama model download is disabled for incremental updates.
-) else (
-  echo Installing the pinned, checksum-verified Qwen3.5-9B Abliterated Q4_K_M model...
-  .venv\Scripts\python.exe scripts\setup_local_chat_model.py
-  if errorlevel 1 goto fail
-)
+echo [4/4] Ollama model installation is currently disabled.
+echo No Ollama application, server, or chat model will be installed or downloaded.
+echo You can select and install a local model later when ready.
 
 :install_done
 echo.
