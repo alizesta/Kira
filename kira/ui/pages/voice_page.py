@@ -95,14 +95,7 @@ class VoicePage(QScrollArea):
         self.stt_lang = self._row(stt_form, "stt_lang", QComboBox())
         self.stt_lang.addItems(["fa", "en", "auto"])
         self.stt_lang.setCurrentText(str(settings.get("stt_language") or "fa"))
-        self.asr_backend = QComboBox()
-        self.asr_backend.addItem("Shenava Koochik · آفلاین", "shenava")
-        backend_index = self.asr_backend.findData(
-            str(settings.get("local_voice_asr_backend") or "shenava")
-        )
-        self.asr_backend.setCurrentIndex(max(0, self.asr_backend.findData("shenava")))
         settings["local_voice_asr_backend"] = "shenava"
-        self.asr_backend.setVisible(False)
         self.shenava_variant = QComboBox()
         self.shenava_variant.addItem(
             "Shenava INT8 · سبک‌تر · حدود ۱۲۶ مگابایت",
@@ -243,7 +236,7 @@ class VoicePage(QScrollArea):
             widget.valueChanged.connect(lambda *_: self.save_timer.start())
         for widget in (
             self.out_device, self.mic_device, self.stt_lang,
-            self.asr_backend, self.shenava_variant, self.voice_engine, self.gemini_provider,
+            self.shenava_variant, self.voice_engine, self.gemini_provider,
         ):
             widget.currentIndexChanged.connect(lambda *_: self.save_timer.start())
         self.gemini_model.currentTextChanged.connect(lambda *_: self.save_timer.start())
