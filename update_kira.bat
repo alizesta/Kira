@@ -106,7 +106,10 @@ git log -1 --format="  %%h  %%cs  %%s"
 if "%NEEDS_INSTALL%"=="1" (
   echo.
   echo [4/4] Setup files changed. Running dependency/model setup...
+  rem Incremental updates must never download/recreate the pinned Ollama chat model.
+  set "KIRA_SKIP_OLLAMA_MODEL_DOWNLOAD=1"
   call install.bat
+  set "KIRA_SKIP_OLLAMA_MODEL_DOWNLOAD="
   if errorlevel 1 goto :install_fail
 ) else (
   echo.

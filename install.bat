@@ -183,9 +183,13 @@ if errorlevel 1 (
   echo ERROR: Ollama service did not start.
   goto fail
 )
-echo Installing the pinned, checksum-verified Qwen3.5-9B Abliterated Q4_K_M model...
-.venv\Scripts\python.exe scripts\setup_local_chat_model.py
-if errorlevel 1 goto fail
+if /I "%KIRA_SKIP_OLLAMA_MODEL_DOWNLOAD%"=="1" (
+  echo [SKIP] Ollama model download is disabled for incremental updates.
+) else (
+  echo Installing the pinned, checksum-verified Qwen3.5-9B Abliterated Q4_K_M model...
+  .venv\Scripts\python.exe scripts\setup_local_chat_model.py
+  if errorlevel 1 goto fail
+)
 
 :install_done
 echo.
