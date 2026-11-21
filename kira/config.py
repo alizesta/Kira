@@ -295,6 +295,23 @@ def load_settings():
             for role, default_values in DEFAULTS["role_route_models"].items():
                 value = model_allowlist.get(role)
                 merged["role_route_models"][role] = list(value) if isinstance(value, (list, tuple)) else list(default_values)
+        # The previous migration changed the Ollama model and Route but left the
+        # role-level exact model allowlist untouched. That silently filtered the
+        # only permitted local route, making ordinary chat report that Ollama
+        # was unavailable even when the new model was installed and running.
+        model_allowlist = merged.get("role_route_models") or {}
+        for role, value in list(model_allowlist.items()):
+            if not isinstance(value, (list, tuple)):
+                continue
+            migrated = [
+                LOCAL_UNCENSORED_MODEL
+                if str(model or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS
+                else model
+                for model in value
+            ]
+            if migrated != list(value):
+                model_allowlist[role] = migrated
+                migrated_local_model = True
         if migrated_local_model:
             LOAD_WARNINGS.append("مدل محلی پیش‌فرض به Qwen3.5-9B Abliterated Q4_K_M مهاجرت کرد.")
             save_settings(merged)
