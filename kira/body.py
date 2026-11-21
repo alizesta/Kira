@@ -139,7 +139,7 @@ def _both(c):
 def _clause(c):
     """Command names for one clause (usually one)."""
     out = []
-    add = out.append
+    out.append
     VERB_UP = r"(?:ببر|بیار|بلند کن|بگیر|بذار|بزار|ببرین|ببرید|بیارین|کن|بده|بالا)"
     has_hand = bool(re.search(r"دست|بازو", c))
     up = bool(re.search(r"بالا|بلند", c))

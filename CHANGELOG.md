@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-21 17:50 Iran (dead code removal)
+- Deleted 21 modules that nothing imported or referenced (the old `fluid_*`/`direct_*`/`*_hook`/`*_sync` wiring files in `kira/ui` and `kira/ui/pages`), plus a few unused imports/variables in two files. The full test suite gives exactly the same results as before (1804 run, same failures; Qt Multimedia tests cannot run in the sandbox).
+- Not done on purpose: bulk removal of unused imports across the code base. Many modules re-export names and tests patch module attributes; a first attempt broke imports (`STOCK_PERSONAS`), so it was reverted. Unused imports cost almost nothing at runtime.
+
 ## 2026-11-21 17:35 Iran (cleanup)
 - Removed the now-unused `MENU_ROUTES`, the unreferenced `assets/characters/kira.svg`, and unused imports/variables in the character and assistant pages. No behaviour change.
 

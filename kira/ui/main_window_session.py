@@ -271,7 +271,7 @@ class SessionController(WindowFeatureController):
         self.context.services.chat_application_service.close_session(session.session_id)
         self.context.services.tool_agent.release_session(session.cid)
         session.dispatch_scheduled = False
-        response_relay = getattr(session, "response_relay", None)
+        getattr(session, "response_relay", None)
         if session.client is not None:
             session.client.cancel()
             session.client = None
