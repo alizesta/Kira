@@ -997,6 +997,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.session.client.reset_cooldowns()
         self.feature_controller("runtime").save_now()
         self.refresh_route_list()
+        self.refresh_unified_models()
         if not self.context.session.busy:
             self.feature_controller("runtime").set_badge("idle", self.context.session.client.preview_route())
 
