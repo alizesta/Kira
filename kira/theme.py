@@ -230,99 +230,203 @@ def build_style(effect="off", appearance=None):
     for opaque, tint in GLASS_TINTS.items():
         css = css.replace(opaque, tint)
     glow = max(0, min(100, int(appearance.get("glow", 18))))
-    cyan_alpha = min(0.98, 0.62 + glow * 0.0034)
-    magenta_alpha = min(0.88, 0.34 + glow * 0.0048)
+    # Keep the blue/pink glass gradient, but let the surface colour do the work:
+    # outlines stay single-pixel, neutral and low-contrast instead of glowing neon rails.
+    border_alpha = min(0.34, 0.18 + glow * 0.0016)
+    hover_alpha = min(0.42, border_alpha + 0.08)
     override = f"""
 QGroupBox {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(7,39,61,0.54), stop:0.48 rgba(20,24,65,0.48), stop:1 rgba(48,15,59,0.40));
-    border: 1px solid rgba(53,217,242,{cyan_alpha:.2f});
-    border-top: 2px solid rgba(104,245,255,{min(1.0, cyan_alpha + 0.02):.2f});
-    border-bottom: 2px solid rgba(255,77,204,{magenta_alpha:.2f});
+        stop:0 rgba(7,39,61,0.46), stop:0.48 rgba(20,24,65,0.42), stop:1 rgba(48,15,59,0.36));
+    border: 1px solid rgba(145,166,207,{border_alpha:.2f});
     border-radius: 14px;
 }}
-QGroupBox::title {{ color: #8AF5FF; font-weight: 800; }}
-QGroupBox:hover {{
-    border-color: rgba(255,77,204,{min(0.96, magenta_alpha + 0.12):.2f});
-}}
+QGroupBox::title {{ color: #A9EAF4; font-weight: 750; }}
+QGroupBox:hover {{ border-color: rgba(104,193,216,{hover_alpha:.2f}); }}
+
 QPushButton {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(25,198,226,0.66), stop:0.48 rgba(68,104,225,0.66), stop:1 rgba(147,73,206,0.68));
-    border: 1px solid rgba(169,249,255,0.94);
-    border-bottom: 2px solid rgba(255,102,220,0.92);
-    border-radius: 10px;
+        stop:0 rgba(25,198,226,0.52), stop:0.48 rgba(68,104,225,0.52), stop:1 rgba(147,73,206,0.50));
+    border: 1px solid rgba(208,224,248,0.22);
+    border-radius: 9px;
     color: #FFFFFF;
-    font-weight: 750;
+    font-weight: 650;
 }}
 QPushButton:hover {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(52,235,255,0.88), stop:0.48 rgba(92,133,255,0.86), stop:1 rgba(205,91,245,0.88));
-    border-color: #FFFFFF;
+        stop:0 rgba(52,211,229,0.62), stop:0.48 rgba(92,119,220,0.62), stop:1 rgba(181,91,211,0.60));
+    border-color: rgba(170,225,239,0.34);
 }}
 QPushButton:pressed {{
-    background: rgba(37,198,226,0.86);
-    border: 1px solid #FFFFFF;
+    background: rgba(87,105,190,0.62);
+    border-color: rgba(176,203,235,0.28);
 }}
-QComboBox, QLineEdit, QSpinBox, QDoubleSpinBox {{
-    border: 1px solid rgba(91,226,255,0.72);
-    background: rgba(5,22,43,0.42);
+QPushButton:disabled {{
+    background: rgba(120,133,163,0.12);
+    border-color: rgba(164,177,204,0.12);
+    color: #8994AC;
 }}
-QComboBox:focus, QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus {{
-    border: 1px solid #FF79DF;
-    background: rgba(43,36,91,0.48);
+QPushButton:checked {{
+    background: rgba(62,171,204,0.34);
+    border-color: rgba(135,211,229,0.34);
 }}
-QTabBar::tab {{
-    background: rgba(13,35,61,0.56);
-    border: 1px solid rgba(76,211,245,0.60);
-    color: #DDFBFF;
+
+QTextEdit, QPlainTextEdit, QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
+    background: rgba(7,18,39,0.38);
+    color: #EAF2FF;
+    border: 1px solid rgba(166,187,220,0.20);
     border-radius: 9px;
-    padding: 0.65em 1.1em;
+    selection-background-color: rgba(113,104,202,0.42);
+}}
+QTextEdit:hover, QPlainTextEdit:hover, QLineEdit:hover, QSpinBox:hover,
+QDoubleSpinBox:hover, QComboBox:hover {{
+    background: rgba(13,25,48,0.46);
+    border-color: rgba(164,194,221,0.28);
+}}
+QTextEdit:focus, QPlainTextEdit:focus, QLineEdit:focus, QSpinBox:focus,
+QDoubleSpinBox:focus, QComboBox:focus {{
+    background: rgba(25,31,67,0.46);
+    border: 1px solid rgba(105,207,225,0.48);
+}}
+QTextEdit#chatView:focus, QPlainTextEdit#chatInput:focus {{ border: none; }}
+
+QTabBar::tab {{
+    background: rgba(13,35,61,0.40);
+    border: 1px solid rgba(181,197,227,0.16);
+    color: #D3DFEF;
+    border-radius: 8px;
+    padding: 0.62em 1.05em;
 }}
 QTabBar::tab:selected {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(30,210,237,0.70), stop:0.52 rgba(87,105,235,0.76), stop:1 rgba(177,68,203,0.72));
-    border: 1px solid #B9FBFF;
-    border-bottom: 2px solid #FF79DF;
+        stop:0 rgba(30,183,211,0.48), stop:0.52 rgba(87,99,201,0.52), stop:1 rgba(163,78,188,0.48));
+    border: 1px solid rgba(178,213,235,0.34);
     color: #FFFFFF;
-    font-weight: 800;
+    font-weight: 750;
 }}
 QTabBar::tab:hover:!selected {{
-    background: rgba(53,217,242,0.22);
-    border-color: rgba(255,113,220,0.90);
+    background: rgba(60,126,161,0.20);
+    border-color: rgba(151,195,222,0.25);
 }}
+
 QSlider::groove:horizontal {{
-    height: 6px;
-    background: rgba(76,117,190,0.34);
-    border: 1px solid rgba(53,217,242,0.36);
+    height: 5px;
+    background: rgba(116,140,185,0.28);
+    border: none;
     border-radius: 3px;
 }}
 QSlider::sub-page:horizontal {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #22DDF2, stop:0.62 #438DFF, stop:1 #C65BFF);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #22C8DC, stop:0.62 #6488DC, stop:1 #B86BCB);
     border-radius: 3px;
 }}
 QSlider::handle:horizontal {{
-    background: #7AF4FF;
-    border: 2px solid #FFFFFF;
+    background: #8BE6EF;
+    border: 1px solid rgba(224,246,250,0.62);
     width: 0.9em;
-    margin: -0.45em 0;
+    margin: -0.4em 0;
     border-radius: 0.55em;
+}}
+
+QToolButton {{
+    border: 1px solid transparent;
+    border-radius: 9px;
+    padding: 6px;
+    color: #E2ECFF;
+}}
+QToolButton:hover {{
+    background: rgba(80,133,177,0.18);
+    border-color: rgba(145,194,220,0.24);
+}}
+QToolButton:pressed {{ background: rgba(93,105,177,0.34); border-color: rgba(168,190,224,0.28); }}
+QToolButton:checked {{ background: rgba(57,159,190,0.22); border-color: rgba(119,194,216,0.30); }}
+QToolButton:disabled {{ background: transparent; color: #66738F; }}
+
+QFrame#neonToolbar {{
+    border: 1px solid rgba(150,166,207,0.24);
+    border-radius: 15px;
+}}
+QToolButton#navTabBtn {{
+    background: rgba(12,17,39,0.42);
+    border: 1px solid rgba(164,180,218,0.16);
+    border-radius: 10px;
+}}
+QToolButton#navTabBtn:hover {{ background: rgba(72,93,142,0.30); border-color: rgba(104,200,221,0.32); }}
+QToolButton#navTabBtn:pressed {{ background: rgba(100,91,169,0.42); border-color: rgba(185,207,235,0.30); }}
+QToolButton#navTabBtn:checked {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(139,94,255,0.46), stop:1 rgba(42,190,224,0.26));
+    border: 1px solid rgba(191,211,238,0.34);
+}}
+QToolButton#navTabBtn:focus {{ border: 1px solid rgba(122,201,221,0.38); }}
+
+QLabel#characterPortrait {{
+    background: rgba(13,10,31,0.90);
+    border: 1px solid rgba(90,194,218,0.28);
+    border-radius: 12px;
+    padding: 2px;
 }}
 QToolButton#menuBtn {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-        stop:0 rgba(31,205,235,0.50), stop:1 rgba(139,79,220,0.54));
-    border: 1px solid rgba(150,247,255,0.92);
-    border-bottom: 2px solid rgba(255,91,216,0.90);
+        stop:0 rgba(31,175,205,0.34), stop:1 rgba(139,79,194,0.36));
+    border: 1px solid rgba(180,205,235,0.26);
+    border-radius: 11px;
 }}
-QLabel#sectionTitle {{ color: #76F0FF; font-weight: 800; }}
-QLabel#hint {{ color: #C4D8F5; }}
-QToolButton:hover {{
-    background: rgba(53,217,242,{0.14 + glow * 0.0032:.2f});
-    border-color: rgba(255,112,220,{0.30 + glow * 0.0052:.2f});
+QToolButton#menuBtn:hover {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 rgba(43,190,213,0.48), stop:1 rgba(151,91,207,0.48));
+    border-color: rgba(173,216,235,0.36);
 }}
-QProgressBar {{ border-color: rgba(53,217,242,0.78); }}
+QToolButton#sendBtn {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #8870E8, stop:1 #36BFD7);
+    border: 1px solid rgba(225,239,255,0.36);
+    border-radius: 16px;
+    padding: 0px;
+}}
+QToolButton#sendBtn:hover {{ border-color: rgba(230,247,255,0.52); }}
+QToolButton#sendBtn:disabled {{ background: rgba(255,255,255,0.08); border-color: rgba(190,205,228,0.16); }}
+QToolButton#routeChip {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 rgba(53,174,205,0.28), stop:1 rgba(126,92,190,0.30));
+    border: 1px solid rgba(148,205,225,0.32);
+    border-radius: 12px;
+    padding: 3px 11px;
+    color: #DDFBFF;
+    font-size: 8.5pt;
+    font-weight: 750;
+}}
+QToolButton#routeChip:hover {{
+    background: rgba(65,155,185,0.38);
+    border-color: rgba(167,218,233,0.42);
+}}
+QToolButton#genStop {{
+    background: rgba(168,50,97,0.72);
+    border: 1px solid rgba(235,145,182,0.30);
+    border-radius: 16px;
+    padding: 0px;
+}}
+QToolButton#genStop:hover {{ background: rgba(190,62,112,0.78); border-color: rgba(239,171,197,0.42); }}
+
+QComboBox QAbstractItemView {{
+    background: #120F26;
+    color: #EAF2FF;
+    border: 1px solid rgba(153,170,210,0.26);
+    selection-background-color: rgba(112,105,190,0.42);
+    selection-color: #FFFFFF;
+    padding: 4px;
+}}
+QMenu {{ background: #120F26; color: #EAF2FF; border: 1px solid rgba(153,170,210,0.24); border-radius: 10px; padding: 6px; }}
+QMenu::item {{ padding: 8px 24px; border-radius: 7px; }}
+QMenu::item:selected {{ background: rgba(98,104,178,0.34); color: #FFFFFF; }}
+QMenu::separator {{ height: 1px; background: rgba(190,205,225,0.14); margin: 5px 9px; }}
+QToolTip {{ background: #120F26; color: #F0F6FF; border: 1px solid rgba(153,170,210,0.22); border-radius: 7px; padding: 5px 8px; }}
+
+QProgressBar {{ background: rgba(255,255,255,0.05); border: 1px solid rgba(146,169,207,0.20); border-radius: 6px; text-align: center; }}
 QProgressBar::chunk {{
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #24DDF2, stop:0.55 #6488FF, stop:1 #DA62EC);
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #24C7DB, stop:0.55 #6486DA, stop:1 #B968C4);
+    border-radius: 5px;
 }}
+QLabel#sectionTitle {{ color: #9ADFEA; font-weight: 750; }}
+QLabel#hint {{ color: #C4D8F5; }}
 """
     return css + "\n" + GLASS_OPAQUE + "\n" + override
 
@@ -392,7 +496,8 @@ def character_style(theme, effect="off", appearance=None):
     if effect in ("mica", "acrylic"):
         a_card = min(a_card, 0.62 if effect == "mica" else 0.46)
         a_comp = min(a_comp, 0.70 if effect == "mica" else 0.56)
-    border_alpha = 0.34 + glow * 0.0055
+    # Keep the character-tinted glass, but make the edge a quiet separator rather than a neon outline.
+    border_alpha = min(0.34, 0.16 + glow * 0.0018)
     return f"""
 QFrame#avatarCard {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba({r + 14},{g + 14},{b + 24},{a_card}), stop:1 rgba({r},{g},{b},{a_card}));
@@ -404,22 +509,22 @@ QFrame#chatCard {{
 }}
 QFrame#composer {{
     background: rgba({r + 22},{g + 22},{b + 34},{a_comp});
-    border: 1px solid rgba({sr},{sg},{sb},{max(0.25, border_alpha):.2f}); border-radius: 16px;
+    border: 1px solid rgba({sr},{sg},{sb},{max(0.18, border_alpha - 0.02):.2f}); border-radius: 16px;
 }}
 QLabel#title {{ color: {second}; }}
 QTextEdit#chatView {{ selection-background-color: rgba({mr},{mg},{mb},0.55); }}
-QToolButton#sendBtn {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {main}, stop:1 {second}); border: 1px solid rgba(255,255,255,0.55); }}
-QToolButton#sendBtn:hover {{ border: 1px solid #FFFFFF; }}
-QToolButton:checked {{ background: rgba({mr},{mg},{mb},0.30); border: 1px solid rgba({sr},{sg},{sb},0.75); }}
-QToolButton:hover {{ background: rgba({sr},{sg},{sb},0.16); border: 1px solid rgba({sr},{sg},{sb},0.55); }}
+QToolButton#sendBtn {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {main}, stop:1 {second}); border: 1px solid rgba(225,239,255,0.28); }}
+QToolButton#sendBtn:hover {{ border: 1px solid rgba(235,247,255,0.42); }}
+QToolButton:checked {{ background: rgba({mr},{mg},{mb},0.26); border: 1px solid rgba({sr},{sg},{sb},0.32); }}
+QToolButton:hover {{ background: rgba({sr},{sg},{sb},0.14); border: 1px solid rgba({sr},{sg},{sb},0.24); }}
 QFrame#charTabs {{ background: transparent; border: none; }}
 QPushButton#charTab {{
-    background: rgba({r + 20},{g + 20},{b + 32},0.55); border: 1px solid rgba({mr},{mg},{mb},{0.12 + glow * 0.003:.2f});
+    background: rgba({r + 20},{g + 20},{b + 32},0.55); border: 1px solid rgba({mr},{mg},{mb},{0.10 + glow * 0.0012:.2f});
     border-radius: 13px; padding: 7px 18px; color: #D8E2F6; font-weight: 700;
 }}
-QPushButton#charTab:hover {{ border: 1px solid rgba({sr},{sg},{sb},{0.25 + glow * 0.005:.2f}); color: #FFFFFF; }}
+QPushButton#charTab:hover {{ border: 1px solid rgba({sr},{sg},{sb},{0.16 + glow * 0.0015:.2f}); color: #FFFFFF; }}
 QPushButton#charTab:checked {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba({mr},{mg},{mb},0.62), stop:1 rgba({sr},{sg},{sb},0.40));
-    border: 1px solid {main}; color: #FFFFFF;
+    border: 1px solid rgba({mr},{mg},{mb},0.38); color: #FFFFFF;
 }}
 """
