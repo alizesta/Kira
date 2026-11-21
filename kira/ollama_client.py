@@ -199,8 +199,6 @@ class OllamaClient:
         else:
             return ""
         candidate = candidate.strip()
-        candidate = candidate.strip()
-        candidate = candidate.strip()
         if not candidate:
             return ""
         from .leak_guard import clean_final
