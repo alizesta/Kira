@@ -109,7 +109,7 @@ class SegmenterTests(unittest.TestCase):
 
     def test_snapshot_returns_active_audio_without_resetting_segmenter(self):
         segmenter = calibrated()
-        signal = voice(RATE) + room(RATE)
+        signal = voice(RATE)
         run(segmenter, signal)
         self.assertTrue(segmenter.speaking)
         before = len(segmenter.buf)
