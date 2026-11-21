@@ -5,6 +5,8 @@ from collections.abc import Callable
 
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
+from kira.ui.pages._all_pages_fluid_finalizers import finalize_help_page
+
 from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
@@ -98,6 +100,8 @@ class HelpPage(QScrollArea):
         self.retranslate()
 
     @staticmethod
+        finalize_help_page(self)
+
     def _open(url: str) -> None:
         QDesktopServices.openUrl(QUrl(url))
 
