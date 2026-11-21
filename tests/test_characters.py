@@ -16,6 +16,10 @@ class CharacterProfilesTests(unittest.TestCase):
         self.assertIn("Jakob’s Law", prompt)
         self.assertIn("navy/violet/cyan palette", prompt)
         self.assertIn("loading, empty, error, disabled and success", prompt)
+        self.assertIn("Unslop UX-audit workflow", prompt)
+        for principle in ("Closure", "Figure–ground", "Banner blindness", "Parkinson’s law", "Connectedness", "Choice overload"):
+            self.assertIn(principle, prompt)
+        self.assertIn("remove generic AI-looking decoration", prompt)
 
     def test_builtin_temperament_baselines_are_distinct_and_kira_stays_canonical(self):
         self.assertEqual(characters.CHARACTERS["kira"]["traits"], KIRA_PROFILE["traits"])
