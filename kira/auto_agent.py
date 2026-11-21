@@ -64,11 +64,12 @@ from .auto_agent_workspace import (  # noqa: F401
 class KodeAutonomousEngine:
     def __init__(self, router, project: Path, goal: str, on_event=None, should_stop=None, python=None,
                  max_steps=MAX_STEPS, work_parent=None, output_dir=None, now=None, readonly=False, approve=None, shell=None, history=None,
-                 plan_route_id="", exec_route_id="", review_route_id="", execution_guard=None, memory_dir=None):
+                 plan_route_id="", exec_route_id="", review_route_id="", execution_guard=None, memory_dir=None,
+                 ui_design_guidance_enabled=True):
         self.router = router
         self.project = Path(project).resolve(strict=True)
         self.goal = str(goal or "").strip()[:4000]
-        self.ui_design_guidance = guidance_for_task(self.goal)
+        self.ui_design_guidance = guidance_for_task(self.goal, enabled=ui_design_guidance_enabled)
         self.system_prompt = SYSTEM_PROMPT + ("\n\n" + self.ui_design_guidance if self.ui_design_guidance else "")
         self.emit = on_event or (lambda text: None)
         self.should_stop = should_stop or (lambda: False)
