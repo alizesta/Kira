@@ -120,9 +120,40 @@ class ConfigTests(unittest.TestCase):
                          ["mistral", "ollama", "groq", "cloudflare", "openrouter"])
         self.assertEqual(config.normalize_provider_order(None)[-1], "ollama")
 
+    def test_legacy_local_model_migration_also_updates_role_allowlist(self):
+        from kira.hybrid_ai import HybridRouter
+
+        legacy = {
+            "model": "qwen3.5:4b",
+            "providers": {"ollama": {"enabled": True, "model": "qwen3.5:4b"}},
+            "routes": [{"id": "ollama", "provider": "ollama", "model": "qwen3.5:4b", "enabled": True}],
+            "role_provider_allowlist": {
+                "surface": ["ollama"], "deep": ["google"], "reflection": ["google"], "memory": ["ollama"]
+            },
+            "role_route_models": {"surface": ["qwen3.5:4b"]},
+        }
+        self.path.write_text(json.dumps(legacy), encoding="utf-8")
+
+        settings = config.load_settings()
+
+        expected = config.LOCAL_UNCENSORED_MODEL
+        self.assertEqual(settings["model"], expected)
+        self.assertEqual(settings["routes"][0]["model"], expected)
+        self.assertEqual(settings["role_route_models"]["surface"], [expected])
+        self.assertTrue(any("Abliterated" in warning for warning in config.LOAD_WARNINGS))
+
+        router = HybridRouter(settings)
+        with router.role_scope("surface"):
+            candidates = router._candidates()
+        self.assertEqual([route["id"] for route in candidates], ["ollama"])
+        self.assertTrue(all(route["provider"] == "ollama" for route in candidates))
+
+        saved = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["role_route_models"]["surface"], [expected])
+
     def test_fresh_defaults(self):
         s = helpers.fresh_settings()
-        self.assertEqual(s["model"], "qwen3.5:4b")
+        self.assertEqual(s["model"], config.LOCAL_UNCENSORED_MODEL)
         self.assertEqual(s["providers"]["ollama"]["num_ctx"], 4096)
         for n in ("groq", "cloudflare", "mistral", "openrouter"):
             self.assertFalse(s["providers"][n]["enabled"])
