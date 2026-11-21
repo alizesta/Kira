@@ -4,6 +4,8 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt, QTimer, Signal
+from kira.ui.pages._all_pages_fluid_finalizers import finalize_appearance_page
+
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
@@ -123,6 +125,8 @@ class AppearancePage(QScrollArea):
             self.appearance_transparency,
         ):
             slider.valueChanged.connect(self.schedule_appearance)
+
+        finalize_appearance_page(self)
 
     def _slider(self, form: QFormLayout, key: str, minimum: int, maximum: int, value: int):
         label = QLabel()

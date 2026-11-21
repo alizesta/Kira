@@ -9,6 +9,8 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt, QTimer, Signal
+from kira.ui.pages._all_pages_fluid_finalizers import finalize_voice_page
+
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -272,6 +274,8 @@ class VoicePage(QScrollArea):
         self.real_time_asr_chk.toggled.connect(lambda *_: self.save_timer.start())
         self._update_live_toggle_text(False)
         self.retranslate()
+
+        finalize_voice_page(self)
 
     def _update_shenava_download_label(self) -> None:
         """Keep the download action explicit about the selected model size."""

@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
+from kira.ui.pages._all_pages_fluid_finalizers import finalize_skills_page
+
 from PySide6.QtWidgets import (
     QCheckBox, QHBoxLayout, QLabel, QPushButton, QScrollArea,
     QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
@@ -55,6 +57,8 @@ class SkillsPage(QScrollArea):
         self.status.setObjectName("hint")
         layout.addWidget(self.status)
         self.setWidget(host)
+
+        finalize_skills_page(self)
 
     def set_status(self, message: str, error: bool = False):
         self.status.setText(str(message))

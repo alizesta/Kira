@@ -8,6 +8,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 
 from PySide6.QtCore import Qt, Signal
+from kira.ui.pages._all_pages_fluid_finalizers import finalize_preferences_page
+
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -111,6 +113,8 @@ class PreferencesPage(QScrollArea):
         layout.addStretch(1)
         self.setWidget(host)
         self.retranslate()
+
+        finalize_preferences_page(self)
 
     def _register(self, setter, key: str) -> None:
         self._translations.append((setter, key))
