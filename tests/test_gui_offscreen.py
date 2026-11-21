@@ -205,7 +205,10 @@ class GuiTests(unittest.TestCase):
         self.assertIsNone(window.mic_btn.menu())
         self.assertIn(window.wake_btn, window.game_mode_menu.actions())
         toolbar = window.chat_composer.layout().itemAt(4).layout()
-        self.assertLess(toolbar.indexOf(window.voice_btn), toolbar.indexOf(window.mic_btn))
+        # RTL reverses the visual order of QHBoxLayout items.
+        self.assertLess(toolbar.indexOf(window.mic_btn), toolbar.indexOf(window.voice_btn))
+        self.assertIs(window.screen_capture_btn, window.game_mode_btn)
+        self.assertTrue(window.game_mode_btn.isVisible())
         self.assertEqual(window.game_mode_btn.property("kiraIconName"), "gamepad-2")
         self.assertFalse(hasattr(window, "stop_btn"))
         window.build_badge_menu()
