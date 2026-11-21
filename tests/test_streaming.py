@@ -157,7 +157,7 @@ class ProviderStreamTests(unittest.TestCase):
         c = OllamaClient("http://localhost:11434", "qwen3.5-9b-abliterated")
         frames = [
             {"message": {"thinking": "Thinking Process: consider the request."}, "done": False},
-            {"message": {"thinking": "\\n---\\nپاسخ نهایی: جواب سالم و قابل‌نمایش"}, "done": False},
+            {"message": {"thinking": chr(10).join(("---", "پاسخ نهایی: جواب سالم و قابل‌نمایش"))}, "done": False},
             {"done": True, "done_reason": "stop", "eval_count": 20, "total_duration": 1000},
         ]
         response = StreamResp([__import__("json").dumps(frame).encode() for frame in frames])
