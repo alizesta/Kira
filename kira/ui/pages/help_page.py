@@ -99,9 +99,9 @@ class HelpPage(QScrollArea):
         self.setWidget(host)
         self.retranslate()
 
-    @staticmethod
         finalize_help_page(self)
 
+    @staticmethod
     def _open(url: str) -> None:
         QDesktopServices.openUrl(QUrl(url))
 
