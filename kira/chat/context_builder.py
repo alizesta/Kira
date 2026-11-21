@@ -16,6 +16,7 @@ from ..core.interfaces.context import (
     SystemPromptBuilderPort,
 )
 from ..domain.chat import ContextRequest, ContextResult
+from ..ui_design_guidance import guidance_for_task
 
 # Preserve historical type names and imports during the migration.
 SystemPromptBuilder = SystemPromptBuilderPort
@@ -66,6 +67,12 @@ class ContextBuilder:
             character_profile=dict(request.character_profile),
         )
         prompt = str(prompt or "").strip()
+        # Apply Kira's UI-design workflow only to relevant turns; other characters
+        # and non-UI tasks keep the exact historical prompt.
+        if str(request.character_id or "").strip().lower() == "kira":
+            ui_guidance = guidance_for_task(latest_user_text(messages))
+            if ui_guidance:
+                prompt = (prompt + "\\n\\n" + ui_guidance).strip()
 
         # Keep the historical order: base character/policy prompt, character
         # service layer, body-control notes, then the deterministic brain hint.
