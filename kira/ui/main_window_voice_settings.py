@@ -402,7 +402,6 @@ class VoiceSettingsController(WindowFeatureController):
             if metadata.resolve() != target_meta.resolve():
                 shutil.copy2(metadata, target_meta)
             self.context.services.settings["local_voice_tts_model"] = str(target)
-            self.context.views.local_tts_model_path.setText(str(target))
             self.feature_controller("runtime").save_now()
             self.refresh_local_voice_status()
             self.context.views.api_add_status.setText("مدل Piper به پوشه‌ی داده‌ی Kira کپی شد و برای TTS انتخاب شد.")
@@ -916,14 +915,11 @@ class VoiceSettingsController(WindowFeatureController):
         self.feature_controller("runtime").save_now()
 
     def show_voice_routes(self):
-        """Open the local STT model controls in Connections."""
-        self.feature_controller("session").go_tab(self.context.views.tab_keys.index("tab_ai"))
-        if hasattr(self.context.views, "local_model_tabs"):
-            self.context.views.local_model_tabs.setCurrentIndex(1)
+        """Open the unified voice settings page containing STT and TTS controls."""
+        self.feature_controller("session").go_tab(self.context.views.tab_keys.index("tab_voice"))
 
     def set_route_view(self, index):
-        if hasattr(self.context.views, "local_model_tabs") and int(index) in (1, 2):
-            self.context.views.local_model_tabs.setCurrentIndex(int(index))
+        self.show_voice_routes()
 
     def on_voice_note(self, message):
         """Show local ASR fallback and warmup notes without flooding the conversation."""
