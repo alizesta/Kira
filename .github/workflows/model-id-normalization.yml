@@ -8,6 +8,7 @@ on:
       - "kira/hybrid_ai.py"
       - "tests/test_routes.py"
       - "tests/test_providers.py"
+      - "tests/test_router_routes.py"
       - ".github/workflows/model-id-normalization.yml"
 
 permissions:
@@ -30,7 +31,7 @@ jobs:
           pip install -r requirements.txt
       - name: Compile changed modules and tests
         run: |
-          python -m py_compile kira/routes.py kira/hybrid_ai.py tests/test_routes.py tests/test_providers.py
+          python -m py_compile kira/routes.py kira/hybrid_ai.py tests/test_routes.py tests/test_providers.py tests/test_router_routes.py
       - name: Run route and provider regression tests
         run: |
-          python -m unittest tests.test_routes tests.test_providers -v
+          python -m unittest tests.test_routes tests.test_providers tests.test_router_routes -v
