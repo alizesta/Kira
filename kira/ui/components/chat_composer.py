@@ -30,6 +30,8 @@ class ChatComposer(QFrame):
         "route_badge",
         "route_menu",
         "web_btn",
+        "search_btn",
+        "screen_capture_btn",
         "img_search_btn",
         "code_chat",
         "mic_btn",
