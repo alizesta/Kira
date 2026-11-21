@@ -156,8 +156,10 @@ class GuiTests(unittest.TestCase):
         self.assertIsInstance(window.img_search_btn, QAction)
         self.assertIs(window.screen_capture_btn, window.game_mode_btn)
         self.assertIsNot(window.web_btn, window.img_search_btn)
+        self.assertTrue(window.voice_btn.isCheckable())
+        self.assertFalse(hasattr(window, "stop_btn"))
         window.build_badge_menu()
-        expected_models = [str(route.get("model") or route.get("label") or route.get("provider") or "Provider")
+        expected_models = [str(route.get("model") or route.get("label") or route.get("provider") or "Provider").strip()
                            for route in window.presentation_context.session.client.available_routes()]
         self.assertEqual([action.text() for action in window.route_menu.actions()][1:], expected_models)
         self.assertEqual(window.search_menu.actions()[0].text(), "جست‌وجوی وب")
