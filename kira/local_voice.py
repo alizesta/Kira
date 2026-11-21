@@ -26,8 +26,6 @@ configure_cache_environment(_DATA_ROOT)
 
 _asr_lock = threading.RLock()
 _tts_lock = threading.RLock()
-_asr = None
-_asr_model_name = None
 _shenava_recognizer = None
 _shenava_model_path = ""
 _shenava_error = None
@@ -49,7 +47,6 @@ _tts = None  # Keep only the currently selected voice in memory.
 _tts_model_path = ""
 _tts_model_label = ""
 _tts_model_signature = None
-_asr_error = None
 _tts_error = None
 
 
@@ -230,7 +227,6 @@ def shenava_ready() -> bool:
 def load_shenava(model_path=""):
     """Load the selected Persian Shenava CTC model (INT8 or FP32) on CPU."""
 
-    global _asr, _asr_model_name, _asr_error
     global _shenava_recognizer, _shenava_model_path, _shenava_error
     model_file, tokens_file = _resolve_shenava_model_files(model_path)
     selected = str(model_file)
@@ -242,13 +238,6 @@ def load_shenava(model_path=""):
             import sherpa_onnx
 
             # Release any previously held recognizer before loading Shenava.
-            old_qwen, _asr = _asr, None
-            _asr_model_name = None
-            _asr_error = None
-            if old_qwen is not None:
-                del old_qwen
-                gc.collect()
-
             try:
                 threads = max(1, min(8, int(os.environ.get("KIRA_ASR_THREADS", "4"))))
             except (TypeError, ValueError):
