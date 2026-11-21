@@ -278,6 +278,11 @@ def _shapes(name):
         w2.moveTo(18.5, 6.5)
         w2.cubicTo(22, 10, 22, 14, 18.5, 17.5)
         return [(cone, False), (w1, False), (w2, False)]
+    if name == "speaker_muted":
+        cone = _poly([(4, 10), (8, 10), (13, 6), (13, 18), (8, 14), (4, 14)])
+        cone.closeSubpath()
+        slash = _poly([(16, 8), (21, 16)])
+        return [(cone, False), (slash, False)]
     if name == "monitor":
         screen = QPainterPath()
         screen.addRoundedRect(QRectF(2.5, 3.5, 19, 13.5), 1.8, 1.8)
