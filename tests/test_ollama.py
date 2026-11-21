@@ -128,6 +128,44 @@ class OllamaTests(unittest.TestCase):
         self.assertNotIn("think", payloads[1])
         self.assertNotIn("think", payloads[2])         # remembered: no wasted request next time
 
+    def test_thinking_channel_recovers_only_explicit_final_answer(self):
+        thinking = (
+            "Thinking Process: inspect the question and choose a concise response.\\n"
+            "---\\n"
+            "پاسخ نهایی: سلام، چطور می‌توانم کمکت کنم؟"
+        )
+        recovered = OllamaClient._recover_final_from_thinking(thinking)
+        self.assertEqual(recovered, "سلام، چطور می‌توانم کمکت کنم؟")
+        self.assertEqual(
+            OllamaClient._recover_final_from_thinking("Thinking Process: private reasoning only"),
+            "",
+        )
+
+    def test_chat_recovers_qwen_answer_from_thinking_field(self):
+        c = OllamaClient("http://localhost:11434", "local-model")
+        response = Resp(200, {"message": {
+            "content": "",
+            "thinking": "تحلیل داخلی\\n---\\nپاسخ نهایی: جواب قابل‌نمایش",
+        }})
+        with mock.patch("requests.post", return_value=response) as post:
+            self.assertEqual(c.chat(MSGS, "system"), "جواب قابل‌نمایش")
+        self.assertIs(post.call_args.kwargs["json"]["think"], False)
+
+    def test_native_tool_chat_recovers_final_from_thinking_field(self):
+        c = OllamaClient("http://localhost:11434", "local-model")
+        response = Resp(200, {"message": {
+            "content": "",
+            "thinking": "Thinking Process: choose a short reply\\n---\\nFinal answer: tool task completed",
+            "tool_calls": [],
+        }})
+        with mock.patch("requests.post", return_value=response):
+            result = c.chat_with_tools(
+                MSGS, "system",
+                tools=[{"name": "lookup", "parameters": {"type": "object"}}],
+            )
+        self.assertEqual(result["text"], "tool task completed")
+        self.assertEqual(result["tool_calls"], [])
+
     def test_thinking_only_reply_is_an_error_not_silent(self):
         c = OllamaClient("http://localhost:11434", "m")
         r = Resp(200, {"message": {"content": "<think>x</think>", "thinking": "reasoning"}})
