@@ -1,5 +1,17 @@
 # Task Handoff
 
+## Latest task: desktop UI polish, character prompts, SVG migration and design guidance (2026-11-22)
+
+- Branch: `fix/ui-polish-personas-svg-audit` (based on `new-main`, with concurrent UNSLOP follow-up commits merged in).
+- Settings page content is centered and capped at 1180 px; group boxes at 1120 px; single-line controls at 520 px; multiline controls at 760 px. Scrollbars are 14 px.
+- Kira avatar card now uses `(0, 0, 832, 1248)` to show the full-body artwork. Ren/Mika crop geometry is unchanged.
+- Composer placeholder chooses character-specific Persian/English examples for Kira, Mika and Ren; it refreshes on character switch and language retranslation.
+- `kira/ui_icons.py` is SVG-only; added `stop.svg` plus 12 emotion-family SVGs. All prior toolbar SVGs remain.
+- Preferences adds `ui_design_guidance_enabled` (default true). It gates conditional Appllama/UNSLOP for Kira chat, Kode read-only analysis and patch proposals, and Kode autonomous missions. Unrelated tasks do not receive the design block.
+- Added/updated tests: `tests/test_avatar_art.py`, `tests/test_ui_design_guidance.py`, `tests/test_ui_icons_svg.py`.
+- Not run in this environment: Python/Qt tests or Windows GUI. Validate with `python -m unittest tests.test_avatar_art tests.test_ui_design_guidance tests.test_ui_icons_svg` and then `python -m unittest discover -s tests -t .`; visually check Kira's feet, field widths, scrollbars and prompt changes while switching characters.
+
+
 ## Latest task: portrait, icon, tray menu (2026-11-21, 17:05 Iran)
 
 - Check on Windows: Kira's card shows the new portrait; taskbar/window/tray show her face icon; right-click tray shows show/hide Kira, show/hide character, model, web, mic, خروج. If items are still missing, the cause is in `refresh_tray_menu` (`kira/ui/main_window_lifecycle.py`). The `.exe`/shortcut icon (`assets/kira_icon.ico`) is not wired into any installer or `.bat`.
