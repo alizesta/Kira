@@ -59,7 +59,8 @@ class AssistantPage(QScrollArea):
         self.name = self._row(assistant_form, "name", self._line_edit(settings.get("assistant_name", "")))
         self.persona = QTextEdit()
         self.persona.setPlainText(str(settings.get("persona", "")))
-        self.persona.setMinimumHeight(110)
+        self.persona.setMinimumHeight(80)
+        self.persona.setMaximumHeight(120)             # optional notes: a few lines, not half the screen
         self._row(assistant_form, "persona", self.persona)
 
         from PySide6.QtWidgets import QLineEdit

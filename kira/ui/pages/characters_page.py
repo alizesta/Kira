@@ -74,8 +74,9 @@ class CharactersPage(QScrollArea):
         self.character_add_btn.setToolTip("ساخت شخصیت جدید")
         self.character_add_btn.clicked.connect(lambda checked=False: self.add_character_requested.emit())
         tabs_row = QHBoxLayout()
-        tabs_row.addWidget(self.character_tabbar, 1)
+        tabs_row.addWidget(self.character_tabbar)           # tabs and "＋" sit together (Connectedness), not at opposite edges
         tabs_row.addWidget(self.character_add_btn)
+        tabs_row.addStretch(1)
 
         profile_box = QGroupBox()
         profile_form = QFormLayout(profile_box)

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-21 00:20 Iran (UNSLOP audit of the Character / Connections screens)
+- Audited the rendered screens (offscreen screenshots) against the six UNSLOP points in `kira/ui_design_guidance.py`. Fixed: the character tabs and the "＋" button now sit together (Connectedness; before, "＋" was at the opposite edge); the optional notes box is capped at ~120 px instead of filling half the page (Parkinson).
+- Not changed, needs a decision: two overlapping notes boxes (global assistant notes under "هویت و شخصیت" vs per-character "پرسونالیتی و یادداشت‌ها"); nine flat toggles in "شخصیت روی دسکتاپ" that could move into a collapsed "advanced" group; large empty tables in the Connections tab.
+
 ## 2026-11-21 23:55 Iran (VRM removed)
 - Removed the 3D VRM avatar: `kira/vrm_avatar.py`, `kira/vrm_vendor.py`, `kira/dance_library.py`, `assets/vrm/` (viewer, vendor libs, model, animations), their tests, the "open dance folder / Mixamo" buttons in the Character tab and the VRM download step in `install_deps.py`. The floating companion now uses the 2D `AvatarView` directly (no QtWebEngine). A live 2D avatar will replace the wrapper later.
 - Kept on purpose: `kira/body.py` and the `[body:...]` command plumbing (inert without a 3D body, may be reused for the live 2D avatar), `pet.py` / `music_dance.py` (they already skip calls the avatar does not have), and the "hang on drag" / "auto dance" switches.
