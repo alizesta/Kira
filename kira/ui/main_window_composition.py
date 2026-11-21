@@ -192,6 +192,7 @@ def initialize_main_window(
     self.session._turn_extra = None            # full text + images of the message being answered (history keeps a short form)
     self.session._turn_attach_kinds = []       # kinds ("image"/"text") of what the user attached to the message being answered
     self.session._voice_next = False           # the next submit() comes from the microphone (the model is told it may contain mishearings)
+    self.session._voice_preview_pos = None       # temporary live ASR bubble; never persisted as a message
     self.session._turn_voice = False
     self.session._stream_text, self.session._stream_pos, self.session._stream_dirty, self.session._stream_mood = "", None, False, None
     self.session._t_req = self.session._t_first = None
