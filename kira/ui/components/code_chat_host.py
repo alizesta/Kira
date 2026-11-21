@@ -1,7 +1,7 @@
-"""Explicit host facade for CodeChat.
+"""Explicit host facade for Kode.
 
-CodeChat predates the controller split and talks to "the window". MainWindow is
-now an empty Qt host, so this adapter exposes exactly the surface CodeChat uses
+The coding workspace predates the controller split and talks to "the window". MainWindow is
+now an empty Qt host, so this adapter exposes exactly the surface Kode uses
 and routes each name to the state, view or controller that owns it today.
 """
 from __future__ import annotations
@@ -36,7 +36,7 @@ class CodeChatHost:
 
     @property
     def tool_agent(self):
-        # CodeChat must use the same command guard as the regular chat path.
+        # Kode must use the same command guard as the regular chat path.
         return self._context.services.tool_agent
 
     def __getattr__(self, name: str):
