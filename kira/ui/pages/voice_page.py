@@ -40,6 +40,7 @@ class VoicePage(QScrollArea):
     local_tts_enabled_requested = Signal(bool)
     download_piper_requested = Signal()
     test_piper_requested = Signal()
+    choose_piper_file_requested = Signal()
     select_piper_requested = Signal(str)
 
     def __init__(self, settings: dict, translate: Callable[[str], str], parent=None) -> None:
@@ -228,9 +229,12 @@ class VoicePage(QScrollArea):
         piper_actions = QHBoxLayout()
         self.piper_download_btn = QPushButton("دانلود صدای Piper")
         self.piper_download_btn.clicked.connect(lambda checked=False: self.download_piper_requested.emit())
+        self.piper_file_btn = QPushButton("انتخاب ONNX")
+        self.piper_file_btn.clicked.connect(lambda checked=False: self.choose_piper_file_requested.emit())
         self.piper_test_btn = QPushButton("تست صدا")
         self.piper_test_btn.clicked.connect(lambda checked=False: self.test_piper_requested.emit())
         piper_actions.addWidget(self.piper_download_btn)
+        piper_actions.addWidget(self.piper_file_btn)
         piper_actions.addWidget(self.piper_test_btn)
         tts_form.addRow(piper_actions)
         self.rate = QSpinBox()
