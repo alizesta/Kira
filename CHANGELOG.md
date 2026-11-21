@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-22 03:03 Iran (UNSLOP leftovers finished)
+- Connections tab: the API table, the model tables and the MCP result list now size themselves to their rows (`ui/components/fit_height.py`) instead of leaving big empty boxes.
+- Character tab: five rarely used switches (perch, hang, auto-dance, minimise/close to tray) moved into a collapsed "گزینه‌های پیشرفته" group; the four everyday ones stay visible.
+- Notes: the two note boxes are now labelled by scope ("یادداشت‌های عمومی برای همه کاراکترها" vs "یادداشت‌های همین کاراکتر"); stored settings unchanged.
+- Offscreen only; not yet seen on Windows.
+
 ## 2026-11-21 23:49 Iran (UI icons are now SVG files)
 - The 23 code-drawn UI icons (chat, paperclip, globe, search, gamepad, brain, palette, settings, help, route, terminal, menu, check, user, bolt, send, mic, moon, speaker, muted speaker, monitor, chevron) are now Lucide SVG files in `assets/icons/<name>.svg` (ISC licence kept in `assets/icons/LICENSE-lucide.txt`). `kira/ui_icons.py` renders them with `QSvgRenderer` and the same neon bloom (3 glow passes + core + white edge); `make_icon` / `set_glow_intensity` API unchanged.
 - Still drawn in code: `stop` (filled square) and the mood faces. A missing SVG falls back to the code path. To change an icon, replace the file.

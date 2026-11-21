@@ -217,3 +217,5 @@ Character specialization and generated portraits. The implementation is complete
 - Voice silent on Windows: added winsound path for wav (`voice._NativeWavPlayer`, setting `voice_native_wav`). Needs a real-device check; if still silent, ask for the error text Kira shows and check the Windows volume mixer for the app.
 
 - 2026-11-21 23:49 Iran: UI icons live in `assets/icons/*.svg` (Lucide, ISC) rendered with glow by `kira/ui_icons.py`; `stop` and mood faces remain code-drawn.
+
+- 2026-11-22 03:03 Iran: UNSLOP leftovers done (self-sizing tables via fit_height, collapsed advanced switches in Character tab, scoped notes labels).

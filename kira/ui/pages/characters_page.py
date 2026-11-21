@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
     QGroupBox,
+    QToolButton,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -182,9 +183,6 @@ class CharactersPage(QScrollArea):
         self.dance_chk = SwitchCheckBox("وقتی آهنگ پخش می‌شود خودکار برقصد")
         self.dance_chk.setChecked(bool(settings.get("auto_dance", True)))
         form.addRow(self.react_chk)
-        form.addRow(self.perch_chk)
-        form.addRow(self.hang_chk)
-        form.addRow(self.dance_chk)
         form.addRow(self.idle_chk)
         form.addRow(self.initiative_chk)
         form.addRow(self.top_chk)
@@ -193,8 +191,27 @@ class CharactersPage(QScrollArea):
         self.tray_min_chk.setChecked(bool(settings.get("minimize_to_tray", True)))
         self.tray_close_chk = SwitchCheckBox("با دکمه‌ی بستن (X) به System Tray برود و بسته نشود")
         self.tray_close_chk.setChecked(bool(settings.get("close_to_tray", False)))
-        form.addRow(self.tray_min_chk)
-        form.addRow(self.tray_close_chk)
+
+        # Rarely changed switches live in a collapsed group (Hick's law: fewer choices up front).
+        self.advanced_toggle = QToolButton()
+        self.advanced_toggle.setObjectName("advancedToggle")
+        self.advanced_toggle.setCheckable(True)
+        self.advanced_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.advanced_toggle.setArrowType(Qt.RightArrow)
+        self.advanced_toggle.setText("گزینه‌های پیشرفته")
+        self.advanced_toggle.setCursor(Qt.PointingHandCursor)
+        advanced_body = QWidget()
+        advanced_layout = QVBoxLayout(advanced_body)
+        advanced_layout.setContentsMargins(0, 0, 0, 0)
+        advanced_layout.setSpacing(6)
+        for chk in (self.perch_chk, self.hang_chk, self.dance_chk, self.tray_min_chk, self.tray_close_chk):
+            advanced_layout.addWidget(chk)
+        advanced_body.setVisible(False)
+        self.advanced_toggle.toggled.connect(advanced_body.setVisible)
+        self.advanced_toggle.toggled.connect(
+            lambda on: self.advanced_toggle.setArrowType(Qt.DownArrow if on else Qt.RightArrow))
+        form.addRow(self.advanced_toggle)
+        form.addRow(advanced_body)
 
         self.mood_combo = QComboBox()
         for mood in moods:
@@ -234,7 +251,7 @@ class CharactersPage(QScrollArea):
             "لحن، رفتار، علاقه‌ها و مرزهای شخصیت را اینجا بنویس…"
         )
         self.character_notes_edit.textChanged.connect(lambda: self.save_timer.start())
-        personality_form.addRow("پرسونالیتی و یادداشت‌های شخصیت", self.character_notes_edit)
+        personality_form.addRow("یادداشت‌های همین کاراکتر", self.character_notes_edit)
         for key, translation_key in labels.items():
             slider = QSlider(Qt.Horizontal)
             slider.setRange(0, 100)
