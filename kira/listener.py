@@ -121,7 +121,7 @@ class Listener(QThread):
         self.engine = "shenava"
         model = None
 
-        q = queue.Queue()
+        q = queue.Queue(maxsize=64)  # bounded: partial ASR must not create an ever-growing audio backlog
 
         try:
             gain = max(0.5, min(3.0, float(self.settings.get("mic_gain", 100)) / 100.0))
@@ -132,7 +132,17 @@ class Listener(QThread):
             block = indata[:, 0].copy()
             if gain != 1.0:                                  # microphone gain is independent of the speaker volume
                 block = np.clip(block * gain, -1.0, 1.0)
-            q.put(block)
+            try:
+                q.put_nowait(block)
+            except queue.Full:
+                try:
+                    q.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    q.put_nowait(block)
+                except queue.Full:
+                    pass
 
         stream = None
         try:
