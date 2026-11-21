@@ -57,6 +57,8 @@ def price_pill(price: str) -> QWidget:
     box = QWidget()
     lay = QHBoxLayout(box)
     lay.setContentsMargins(2, 1, 2, 1)
+    lay.setSpacing(0)
+    lay.setAlignment(Qt.AlignCenter)
     label = QLabel(text.replace("● ", ""))
     label.setAlignment(Qt.AlignCenter)
     label.setToolTip(tip)
@@ -64,19 +66,19 @@ def price_pill(price: str) -> QWidget:
     label.setStyleSheet(
         f"QLabel{{color:{color.name()};border:1px solid {color.name()};border-radius:9px;padding:2px 10px;min-height:22px;"
         f"background:rgba({color.red()},{color.green()},{color.blue()},40);}}")
-    label.setMinimumWidth(0)
-    label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-    lay.addWidget(label)
-    box.setMinimumWidth(0)
-    box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+    label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+    label.setFixedSize(label.sizeHint())
+    lay.addWidget(label, 0, Qt.AlignCenter)
+    box.setMinimumSize(0, 0)
+    box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
     return box
 
 
 class ResponsiveModelsTable(QTableWidget):
     """Table whose columns always fit the visible viewport; long values remain available in tooltips."""
 
-    NORMAL_RATIOS = (0.055, 0.36, 0.16, 0.10, 0.13, 0.095, 0.10)
-    ARCHIVED_RATIOS = (0.0, 0.39, 0.18, 0.11, 0.15, 0.085, 0.08)
+    NORMAL_RATIOS = (0.055, 0.33, 0.15, 0.105, 0.13, 0.105, 0.125)
+    ARCHIVED_RATIOS = (0.0, 0.36, 0.17, 0.11, 0.15, 0.09, 0.12)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -255,18 +257,19 @@ class ModelsPanel(QGroupBox):
     def _button(text, slot, *, enabled=True, tip="") -> QWidget:
         box = QWidget()
         lay = QHBoxLayout(box)
-        lay.setContentsMargins(1, 1, 1, 1)
+        lay.setContentsMargins(2, 1, 2, 1)
         lay.setSpacing(0)
+        lay.setAlignment(Qt.AlignCenter)
         button = QPushButton(text)
-        button.setStyleSheet("QPushButton{padding:2px 5px;min-height:22px;font-size:9pt;}")
-        button.setMinimumWidth(0)
-        button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        button.setStyleSheet("QPushButton{padding:2px 5px;min-height:20px;font-size:8pt;}")
+        button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        button.setFixedSize(button.sizeHint())
         button.setEnabled(enabled)
         button.setToolTip(tip)
         button.clicked.connect(lambda: slot())
-        lay.addWidget(button)
-        box.setMinimumWidth(0)
-        box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        lay.addWidget(button, 0, Qt.AlignCenter)
+        box.setMinimumSize(0, 0)
+        box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         return box
 
     # ------------------------------------------------------------------ interaction
