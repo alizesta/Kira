@@ -346,6 +346,11 @@ def add_route(settings, provider, model, enabled=True, timeout=None, cooldown=No
         routes.append(route)
     else:
         routes.insert(max(0, min(position, len(routes))), route)
+    # Enabling a local Ollama Route must also enable its shared Provider.
+    # Otherwise the Route switch appears green while HybridRouter rejects it
+    # at provider-level eligibility before sending any request.
+    if provider == "ollama" and enabled:
+        settings.setdefault("providers", {}).setdefault("ollama", {})["enabled"] = True
     sync_legacy(settings)
     return route
 
@@ -362,6 +367,11 @@ def update_route(settings, route_id, **changes):
         route["model"] = model
     if "enabled" in changes:
         route["enabled"] = bool(changes["enabled"])
+        # The Route and Provider switches are both required by eligibility().
+        # When a user explicitly enables a local Ollama Route, bring its
+        # Provider online as part of the same settings mutation.
+        if route["provider"] == "ollama" and route["enabled"]:
+            settings.setdefault("providers", {}).setdefault("ollama", {})["enabled"] = True
     if "timeout" in changes:
         route["timeout"] = clamp_timeout(changes["timeout"], kind)
     if "cooldown" in changes:
