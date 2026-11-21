@@ -167,9 +167,6 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.voice_page.live_requested.connect(self.feature_controller("runtime").set_live_listening)
         self.context.views.voice_page.download_shenava_requested.connect(self.download_local_shenava_model)
         self.context.views.voice_page.test_shenava_file_requested.connect(self.test_shenava_file)
-        self.context.views.voice_page.asr_backend.currentIndexChanged.connect(
-            self.select_local_asr_backend
-        )
         self.context.views.voice_page.shenava_variant.currentIndexChanged.connect(
             self.select_shenava_variant
         )
@@ -530,7 +527,7 @@ class VoiceSettingsController(WindowFeatureController):
     def refresh_local_voice_status(self):
         try:
             from .. import local_voice
-            asr_model = str(self.context.services.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B")
+            asr_model = str(self.context.services.settings.get("local_voice_asr_model") or local_voice.SHENAVA_INT8_REPO_ID)
             tts_model = str(self.context.services.settings.get("local_voice_tts_model") or "")
             discovered = local_voice.discover_cached_models()
 
@@ -561,17 +558,17 @@ class VoiceSettingsController(WindowFeatureController):
                 tts_combo.blockSignals(False)
 
             state = local_voice.status(tts_model)
-            backend = str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3")
+            backend = "shenava"
             if backend == "shenava":
                 asr_loaded = bool(state.get("shenava_loaded"))
                 asr_installed = bool(state.get("shenava_installed"))
                 asr_error = state.get("shenava_error")
                 asr_label = "Shenava · sherpa-onnx"
             else:
-                asr_loaded = bool(state["asr_loaded"] and state.get("asr_model") == asr_model)
-                asr_installed = bool(state["asr_installed"])
-                asr_error = state.get("asr_error")
-                asr_label = "Qwen3-ASR"
+                asr_loaded = bool(state.get("shenava_loaded"))
+                asr_installed = bool(state.get("shenava_installed"))
+                asr_error = state.get("shenava_error")
+                asr_label = "Shenava · sherpa-onnx"
             tts_loaded = bool(state["tts_loaded"] and (
                 (tts_model and state.get("tts_model") and Path(state["tts_model"]).resolve() == Path(tts_model).expanduser().resolve())
                 or (not tts_model and state.get("tts_model") == "bundled")
@@ -663,15 +660,13 @@ class VoiceSettingsController(WindowFeatureController):
 
     def load_local_asr(self):
         from .. import local_voice
-        model_name = str(self.context.services.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B")
-        backend = str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3")
-        loader = local_voice.load_shenava if backend == "shenava" else local_voice.load_asr
-        self._run_local_voice_task(lambda: loader(model_name), self.context.views.local_asr_load_btn, self._on_local_asr_loaded)
+        model_name = str(self.context.services.settings.get("local_voice_asr_model") or local_voice.SHENAVA_INT8_REPO_ID)
+        self.context.services.settings["local_voice_asr_backend"] = "shenava"
+        self._run_local_voice_task(lambda: local_voice.load_shenava(model_name), self.context.views.local_asr_load_btn, self._on_local_asr_loaded)
 
     def _on_local_asr_loaded(self, result):
         ok, value = result
-        backend = str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3")
-        label = "شنوا" if backend == "shenava" else "Qwen3-ASR"
+        label = "شنوا"
         if ok:
             self.context.views.local_voice_status.setText(f"{label} با موفقیت بارگذاری شد. تشخیص گفتار محلی آماده است.")
         else:
