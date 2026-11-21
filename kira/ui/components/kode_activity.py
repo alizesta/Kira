@@ -28,7 +28,7 @@ class KodeActivityPanel(QFrame):
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(8)
-        self.title = QLabel("Kode")
+        self.title = QLabel("فعالیت کیرا")
         self.title.setObjectName("kodeActivityTitle")
         self.status = QLabel("در حال آماده‌سازی…")
         self.status.setObjectName("kodeActivityStatus")
