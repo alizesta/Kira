@@ -12,7 +12,7 @@ from tests import helpers
 from tests.helpers import Resp, ok_openai, ok_cloudflare, CANARY, StreamResp, sse
 
 try:
-    from PySide6.QtWidgets import QApplication
+    from PySide6.QtWidgets import QApplication, QPushButton
     from PySide6.QtCore import QCoreApplication
     HAVE_QT = True
 except Exception:                                    # pragma: no cover
@@ -106,6 +106,28 @@ class GuiTests(unittest.TestCase):
         if not routes:
             expected.append("هیچ Route فعالی نیست")
         self.assertEqual([action.text() for action in model_menu.actions()], expected)
+
+    def test_model_table_price_and_action_controls_are_centered_in_their_cells(self):
+        from PySide6.QtWidgets import QLabel
+        from kira.ui.components.models_panel import ModelsPanel, price_pill
+
+        cases = [
+            (price_pill("free"), QLabel),
+            (ModelsPanel._button("تست", lambda: None), QPushButton),
+            (ModelsPanel._button("منسوخ", lambda: None), QPushButton),
+        ]
+        for cell, child_type in cases:
+            cell.resize(82, 36)
+            cell.layout().activate()
+            child = cell.findChild(child_type)
+            self.assertIsNotNone(child)
+            geometry = child.geometry()
+            self.assertGreaterEqual(geometry.left(), 0)
+            self.assertGreaterEqual(geometry.top(), 0)
+            self.assertLessEqual(geometry.right(), cell.width())
+            self.assertLessEqual(geometry.bottom(), cell.height())
+            self.assertLessEqual(abs(geometry.center().x() - cell.rect().center().x()), 2)
+            self.assertLessEqual(abs(geometry.center().y() - cell.rect().center().y()), 2)
 
     def test_model_tables_fit_without_horizontal_scroll_and_route_list_shows_five_rows(self):
         from PySide6.QtCore import Qt
