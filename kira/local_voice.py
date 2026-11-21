@@ -1,6 +1,6 @@
 """Offline speech engines used by Kira. No network recognition or synthesis fallback lives here.
 
-ASR: Shenava Koochik INT8, Qwen3-ASR 0.6B and faster-whisper (managed by Listener).
+ASR: Shenava Koochik INT8/FP32 only.
 TTS: Piper ONNX or the bundled Persian Piper runtime.
 """
 from __future__ import annotations
@@ -54,11 +54,7 @@ _tts_error = None
 
 
 def asr_ready() -> bool:
-    try:
-        import qwen_asr  # noqa: F401
-        return True
-    except ImportError:
-        return False
+    return shenava_ready()
 
 
 _PERSIAN_TTS_TRANSLATION = str.maketrans({
@@ -89,10 +85,6 @@ _PERSIAN_TTS_TERMS = {
     "elevenlabs": "اِلِوِن‌لَبز",
     "openai": "اوپن‌ای‌آی",
     "deepseek": "دیپ‌سیک",
-    "qwen3-asr": "کوئن سه اِی‌اِس‌آر",
-    "qwen3": "کوئن سه",
-    "whisper.cpp": "ویسپر دات سی‌پلاس‌پلاس",
-    "whisper": "ویسپر",
     "vulkan": "وولکان",
     "openrouter": "اوپن‌روتر",
     "cloudflare": "کلادفلر",
@@ -106,7 +98,6 @@ _PERSIAN_TTS_TERMS = {
     "wav": "وَو",
     "mp3": "اِم‌پی‌تری",
     "fps": "اِف‌پی‌اِس",
-    "qwen": "کوئن",
     "piper": "پایپر",
     "python": "پایتون",
     "windows": "ویندوز",
@@ -174,107 +165,6 @@ def tts_ready(model_path="") -> bool:
         return True
     except ImportError:
         return False
-
-
-def _sanitize_asr_generation_config(asr) -> None:
-    """Remove inactive sampling flags and set explicit padding for greedy Qwen ASR."""
-    model = getattr(asr, "model", None)
-    generation = getattr(model, "generation_config", None)
-    if generation is None:
-        return
-    # Qwen3-ASR checkpoints ship temperature=1e-6 while do_sample=False.
-    # Transformers warns on every generate() call because temperature is unused.
-    if getattr(generation, "do_sample", False) is False and hasattr(generation, "temperature"):
-        generation.temperature = None
-    # Avoid repeatedly inferring pad_token_id from eos_token_id on every decode.
-    if getattr(generation, "pad_token_id", None) is None:
-        processor = getattr(asr, "processor", None)
-        tokenizer = getattr(processor, "tokenizer", None)
-        pad_id = getattr(tokenizer, "pad_token_id", None)
-        if pad_id is None:
-            config = getattr(model, "config", None)
-            pad_id = getattr(config, "pad_token_id", None)
-        if pad_id is None:
-            eos_id = getattr(generation, "eos_token_id", None)
-            pad_id = eos_id[0] if isinstance(eos_id, (list, tuple)) and eos_id else eos_id
-        if pad_id is not None:
-            generation.pad_token_id = int(pad_id)
-
-
-def load_asr(model_name="Qwen/Qwen3-ASR-0.6B"):
-    """Load the selected Qwen3-ASR model; a changed model id/path replaces the previous instance."""
-    global _asr, _asr_error, _asr_model_name, _shenava_recognizer, _shenava_model_path, _shenava_error
-    selected = str(model_name or "Qwen/Qwen3-ASR-0.6B")
-    with _asr_lock:
-        if _asr is not None and _asr_model_name == selected:
-            return True
-        try:
-            # Only one local ASR engine is retained in memory at a time.
-            old_shenava, _shenava_recognizer = _shenava_recognizer, None
-            _shenava_model_path = ""
-            _shenava_error = None
-            if old_shenava is not None:
-                del old_shenava
-                gc.collect()
-            import torch
-            from qwen_asr import Qwen3ASRModel
-            try:
-                torch.set_num_threads(max(1, min(8, int(os.environ.get("KIRA_ASR_THREADS", "4")))))
-            except (AttributeError, TypeError, ValueError, RuntimeError):
-                pass
-            old_model, _asr = _asr, None
-            _asr_model_name = None
-            if old_model is not None:
-                del old_model
-                gc.collect()
-            _asr = Qwen3ASRModel.from_pretrained(
-                selected,
-                dtype=torch.float32,
-                device_map="cpu",
-                max_inference_batch_size=1,
-                max_new_tokens=256,
-            )
-            _sanitize_asr_generation_config(_asr)
-            _asr_model_name = selected
-            _asr_error = None
-        except Exception as exc:
-            _asr = None
-            _asr_model_name = None
-            _asr_error = exc
-            raise RuntimeError(f"Qwen3-ASR load failed: {type(exc).__name__}: {exc}") from exc
-    return True
-
-
-def transcribe(audio, sample_rate=16000, language="fa", prompt="", model_name="Qwen/Qwen3-ASR-0.6B") -> str:
-    """Transcribe one mono float32 numpy segment locally. Model loading is lazy."""
-    import numpy as np
-
-    samples = np.asarray(audio, dtype=np.float32).reshape(-1)
-    if samples.size == 0:
-        return ""
-    load_asr(model_name)
-    with _asr_lock:
-        # Some qwen-asr / Transformers combinations rebuild or mutate their
-        # generation config between calls. Re-apply the greedy-decoding cleanup
-        # immediately before inference so unused temperature and inferred
-        # pad_token_id warnings do not recur on every utterance.
-        _sanitize_asr_generation_config(_asr)
-        lang = {"fa": "Persian", "en": "English", "ar": "Arabic"}.get(language, None)
-        # qwen-asr's public transcribe() API does not accept a prompt
-        # keyword in all released versions. Passing it raises TypeError and
-        # makes Kira silently fall back to another STT engine.
-        results = _asr.transcribe(
-            audio=(samples, int(sample_rate)),
-            language=lang,
-        )
-        if not results:
-            return ""
-        first = results[0]
-        if isinstance(first, dict):
-            text = first.get("text", "")
-        else:
-            text = getattr(first, "text", "")
-        return str(text or "").strip()
 
 
 def _resolve_shenava_model_files(model_path=""):
@@ -871,30 +761,6 @@ def _download_voice_repo(repo_id: str) -> str:
     )).resolve())
 
 
-def install_and_download_qwen_asr(repo_id: str = "Qwen/Qwen3-ASR-0.6B", *, cancel_event=None) -> str:
-    """Install Qwen runtime and download the selected model into Kira's data folder."""
-    _ensure_pillow_compatible(cancel_event)
-    try:
-        import qwen_asr  # noqa: F401
-    except ImportError:
-        _install_voice_package("qwen-asr", cancel_event)
-    if cancel_event is not None and cancel_event.is_set():
-        raise RuntimeError("دانلود مدل به‌دلیل خروج برنامه لغو شد.")
-    return _download_voice_repo(repo_id or "Qwen/Qwen3-ASR-0.6B")
-
-
-def install_and_download_whisper(repo_id: str, *, cancel_event=None) -> str:
-    """Install faster-whisper and download a CTranslate2 Whisper model."""
-    _ensure_pillow_compatible(cancel_event)
-    try:
-        import faster_whisper  # noqa: F401
-    except ImportError:
-        _install_voice_package("faster-whisper", cancel_event)
-    if cancel_event is not None and cancel_event.is_set():
-        raise RuntimeError("دانلود مدل به‌دلیل خروج برنامه لغو شد.")
-    return _download_voice_repo(repo_id)
-
-
 def install_and_download_piper_voice(repo_id: str, *, cancel_event=None) -> str:
     """Install Piper runtime and download a Piper ONNX voice."""
     _ensure_pillow_compatible(cancel_event)
@@ -927,11 +793,8 @@ def status(model_path="") -> dict:
         "shenava_model": _shenava_model_path,
         "shenava_error": str(_shenava_error)[:240] if _shenava_error else "",
         "tts_installed": tts_ready(model_path),
-        "asr_loaded": _asr is not None,
-        "asr_model": _asr_model_name or "",
         "tts_loaded": _tts is not None,
         "tts_model": _tts_model_label if _tts is not None else "",
-        "asr_error": str(_asr_error)[:240] if _asr_error else "",
         "tts_error": str(_tts_error)[:240] if _tts_error else "",
         "tts_model_signature": _tts_model_signature,
         "tts_ezafe": _ezafe_status(),
@@ -982,12 +845,11 @@ def discover_cached_models() -> dict:
                     and (snapshot / SHENAVA_MODEL_FILENAME).is_file()
                     and (snapshot / "tokens.txt").is_file()
                 )
-                is_qwen_asr = any(token in signature for token in ("qwen3-asr", "qwen3asr", "qwen_asr"))
-                if (is_qwen_asr or is_shenava) and repo_id.casefold() not in seen_asr:
+                if is_shenava and repo_id.casefold() not in seen_asr:
                     asr_models.append({
                         "id": repo_id,
                         "path": str(snapshot),
-                        "backend": "shenava" if is_shenava else "qwen3",
+                        "backend": "shenava",
                     })
                     seen_asr.add(repo_id.casefold())
                 for onnx in snapshot.glob("*.onnx"):
@@ -1029,6 +891,6 @@ def discover_cached_models() -> dict:
                     seen_tts.add(key)
         except OSError:
             continue
-    asr_models.sort(key=lambda item: (item["id"].casefold() != "qwen/qwen3-asr-0.6b", item["id"].casefold()))
+    asr_models.sort(key=lambda item: item["id"].casefold())
     tts_models.sort(key=lambda item: item["name"].casefold())
     return {"asr": asr_models, "tts": tts_models}
