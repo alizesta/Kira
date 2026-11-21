@@ -8,14 +8,14 @@ import re
 # change, evaluate or discuss an actual interface rather than ordinary code.
 _DESIGN_TASK_RE = re.compile(
     r"(?:"
-    r"\\b(?:ui|ux|gui|frontend|front[- ]end|user interface|design system|"
+    r"\b(?:ui|ux|gui|frontend|front[- ]end|user interface|design system|"
     r"responsive|wireframe|usability|accessibility|visual design|visual polish|"
     r"css|stylesheet|layout|dashboard|component|screen|modal|navigation|"
-    r"button|form|dialog|theme|typography|interaction design)\\b"
-    r"|رابط\\s*کاربری|تجربه\\s*کاربری|طراحی\\s*(?:رابط|صفحه|ظاهر|دیزاین)|"
-    r"ظاهر\\s*(?:برنامه|اپ|نرم\\s*افزار)|صفحه(?:ات|های)?\\s*(?:برنامه|تنظیمات|ورود|اصلی)|"
+    r"button|form|dialog|theme|typography|interaction design)\b"
+    r"|رابط\s*کاربری|تجربه\s*کاربری|طراحی\s*(?:رابط|صفحه|ظاهر|دیزاین)|"
+    r"ظاهر\s*(?:برنامه|اپ|نرم\s*افزار)|صفحه(?:ات|های)?\s*(?:برنامه|تنظیمات|ورود|اصلی)|"
     r"کامپوننت|مولفه|چیدمان|داشبورد|واکنش.?گرا|ریسپانسیو|استایل|رنگ.?بندی|"
-    r"دکمه|فرم|منو|پنجره|مودال|ناوبری|دسترس.?پذیری|تجربه\\s*بصری"
+    r"دکمه|فرم|منو|پنجره|مودال|ناوبری|دسترس.?پذیری|تجربه\s*بصری"
     r")",
     re.IGNORECASE,
 )
