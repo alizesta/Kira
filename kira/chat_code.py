@@ -1,4 +1,4 @@
-"""Ai1 Code inside Kira's chat: Qt-free logic (request parsing, context, diff, safe apply, chat rendering).
+"""Kode inside Kira's chat: unified coding workflow (analysis, safe patches and autonomous execution).
 
 Kira's chat can switch into a code mode. The model still gets only a bounded, redacted project context and has no
 tools: it may *propose* a complete replacement of one file, the chat shows a Diff with approve / reject links and
@@ -428,7 +428,7 @@ def match_newlines(base_text: str, replacement: str) -> str:
 
 
 def apply_patch(root, patch: PendingPatch) -> Path:
-    """Write an approved replacement. Rejected when the file changed since the proposal. One-time .ai1code.bak backup,
+    """Write an approved replacement. Reject stale proposals. Keep the legacy .ai1code.bak backup name for compatibility,
     temporary sibling file, atomic replace."""
     target = safe_project_file(root, patch.rel)
     if target.read_bytes() != patch.base_bytes:
