@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-22 (UI polish and design-guidance settings)
+- Settings form controls now have sensible maximum widths instead of expanding across the entire page; multiline fields retain a larger readable cap.
+- Vertical and horizontal scrollbars are wider (14 px) with larger handles.
+- Kira's chat avatar crop now includes the full-height figure instead of the previous head-and-torso crop.
+- Chat composer placeholders rotate through short, character-specific examples for Kira, Mika and Ren.
+- Added a saved setting for the shared Appllama + six-point Unslop workflow; it is enabled by default and controls Kira's UI-task prompt, Kode analysis/patches and autonomous missions.
+- The stop action icon now loads from a new SVG file; mood expressions remain vector-painted because they are character expressions, not action buttons.
+
 ## 2026-11-21 23:49 Iran (UI icons are now SVG files)
 - The 23 code-drawn UI icons (chat, paperclip, globe, search, gamepad, brain, palette, settings, help, route, terminal, menu, check, user, bolt, send, mic, moon, speaker, muted speaker, monitor, chevron) are now Lucide SVG files in `assets/icons/<name>.svg` (ISC licence kept in `assets/icons/LICENSE-lucide.txt`). `kira/ui_icons.py` renders them with `QSvgRenderer` and the same neon bloom (3 glow passes + core + white edge); `make_icon` / `set_glow_intensity` API unchanged.
 - Still drawn in code: `stop` (filled square) and the mood faces. A missing SVG falls back to the code path. To change an icon, replace the file.

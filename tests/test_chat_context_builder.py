@@ -226,6 +226,15 @@ class ContextBuilderTests(unittest.TestCase):
         ))
         self.assertNotIn("APPLLAMMA APP-DESIGN WORKFLOW", ren_ui.system_prompt)
 
+    def test_ui_design_guidance_can_be_disabled_from_settings(self):
+        result = self.builder.build(ContextRequest(
+            character_id="kira",
+            settings={"ui_design_guidance_enabled": False},
+            character_profile={"name": "Kira"},
+            messages=[{"role": "user", "content": "رابط کاربری تنظیمات رو مرتب کن"}],
+        ))
+        self.assertNotIn("APPLLAMMA APP-DESIGN WORKFLOW", result.system_prompt)
+
     def test_missing_prompt_builder_is_rejected(self):
         with self.assertRaises(TypeError):
             ContextBuilder(None)

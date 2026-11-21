@@ -421,13 +421,14 @@ class Kode(QObject):
         if rel:
             self.current_rel = rel
         engine = cc.KodeEngine(w.cur.client)
+        ui_guidance_enabled = bool(w.settings.get("ui_design_guidance_enabled", True))
         history = list(self.turns)
         question = req.text
         if req.kind == "patch":
-            fn = lambda chunk: engine.propose_replacement(question, context, chunk)  # noqa: E731
+            fn = lambda chunk: engine.propose_replacement(question, context, chunk, ui_guidance_enabled=ui_guidance_enabled)  # noqa: E731
             done = lambda result: self._patch_done(rel, base_bytes, result, question)  # noqa: E731
         else:
-            fn = lambda chunk: engine.ask(question, context, chunk, history=history)  # noqa: E731
+            fn = lambda chunk: engine.ask(question, context, chunk, history=history, ui_guidance_enabled=ui_guidance_enabled)  # noqa: E731
             done = lambda result: self._answer_done(question, result)  # noqa: E731
         self._begin_busy()
         self._activity_update("در حال تحلیل کد…" if req.kind != "patch" else "در حال آماده‌سازی پیشنهاد تغییر…")
@@ -637,7 +638,7 @@ class Kode(QObject):
                           plan_route_id=route_for("deep", w.settings),
                           exec_route_id=route_for("surface", w.settings),
                           review_route_id=route_for("reflection", w.settings),
-                          execution_guard=guard)
+                          execution_guard=guard, ui_design_guidance_enabled=bool(w.settings.get("ui_design_guidance_enabled", True)))
         self._begin_busy()
         self._activity_start("در حال بررسی پروژه و ساخت برنامهٔ کار…" if readonly else "در حال تحلیل پروژه و برنامه‌ریزی تغییرات…")
         sess = self.session

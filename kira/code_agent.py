@@ -167,7 +167,7 @@ Never request or reproduce API keys, passwords, tokens, private keys or other se
             raise RuntimeError("مدل پاسخ متنی برنگرداند.")
         return answer
 
-    def propose_replacement(self, request: str, project_context: str, on_chunk=None) -> str:
+    def propose_replacement(self, request: str, project_context: str, on_chunk=None, *, ui_guidance_enabled=True) -> str:
         """Ask for a full replacement of the selected file; caller must preview and approve it."""
         if "[REDACTED]" in str(project_context or ""):
             raise ValueError("این فایل شامل مقدار محرمانه‌ی ماسک‌شده است؛ برای جلوگیری از حذف یا خراب‌شدن کلیدها، پیشنهاد Patch برای آن مسدود شد.")
@@ -184,7 +184,7 @@ Never request or reproduce API keys, passwords, tokens, private keys or other se
         )
         system_prompt = self.SYSTEM_PROMPT
         ui_guidance = guidance_for_task(request)
-        if ui_guidance:
+        if ui_guidance_enabled and ui_guidance:
             system_prompt += "\n\n" + ui_guidance
         system_prompt += "\nYou may propose a complete replacement for the selected file, but you cannot apply it. "
         system_prompt += "Never claim a change was saved or tests were run."
