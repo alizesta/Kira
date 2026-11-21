@@ -143,7 +143,7 @@ class SessionController(WindowFeatureController):
     def make_session_view(self):
         view = QTextBrowser()                              # read-only chat whose links open in the default browser
         view.setObjectName("chatView")
-        view.setOpenLinks(False)                           # links are handled in on_chat_link (web pages + the Ai1 Code approve / reject links)
+        view.setOpenLinks(False)                           # links are handled in on_chat_link (web pages + Kode approval links)
         view.setOpenExternalLinks(False)
         view.anchorClicked.connect(self.on_chat_link)
         view.setReadOnly(True)
@@ -152,12 +152,11 @@ class SessionController(WindowFeatureController):
         return view
 
     def on_chat_link(self, url):
-        """Web / mail links open in the default app; kira-code:// links are the Diff approve / reject buttons of Ai1 Code mode;
-        kira-action:// links are the per-message copy / edit / speak chips."""
+        """Web/mail links open externally; kode:// handles Kode actions (legacy kira-code:// links remain supported)."""
         if url.scheme() == "kira-action":
             self.handle_chat_link(url)
             return
-        if url.scheme() == "kira-code":
+        if url.scheme() in ("kode", "kira-code"):
             code_chat = getattr(self.context.views, "code_chat", None)
             if code_chat is not None:
                 code_chat.on_link(url)
