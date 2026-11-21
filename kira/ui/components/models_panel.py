@@ -1,7 +1,7 @@
 """The "مدل‌ها" box: one table per tab (active / free / paid-or-unknown / archived).
 
 Row data comes from kira.model_catalog.model_rows; this widget only draws rows and emits intents.
-Model names are never elided: the name column sizes to its content and the table scrolls sideways if it must."""
+Columns fit the viewport without horizontal scrolling; full cell values remain available in tooltips."""
 from __future__ import annotations
 
 import time
