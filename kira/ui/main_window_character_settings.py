@@ -487,11 +487,12 @@ class CharacterSettingsController(WindowFeatureController):
             parent=self.window,
         )
         for name in (
-            "ui_lang", "tavily_key", "web_depth", "web_fallback_chk", "web_test_btn",
+            "ui_lang", "tavily_key", "web_depth", "web_fallback_chk", "web_test_btn", "ui_design_guidance_chk",
             "restore_chat_btn", "memory_btn", "import_chat_btn", "about_labels",
         ):
             setattr(self.context.views, name, getattr(self.context.views.preferences_page, name))
 
+        self.context.views.preferences_page.ui_design_guidance_changed.connect(self.set_ui_design_guidance)
         self.context.views.preferences_page.web_search_test_requested.connect(self.feature_controller("chat").test_web_search)
         self.context.views.preferences_page.clear_history_requested.connect(self.feature_controller("runtime").clear_chat)
         self.context.views.preferences_page.restore_history_requested.connect(self.feature_controller("runtime").restore_cleared_chat)
@@ -506,6 +507,11 @@ class CharacterSettingsController(WindowFeatureController):
         self.feature_controller("session").reg(lambda text: subtabs.setTabText(0, text), "tab_preferences")
         self.feature_controller("session").reg(lambda text: subtabs.setTabText(2, text), "tab_help")
         self.context.views.tabs.addTab(self.feature_controller("session").page(subtabs), "")
+
+    def set_ui_design_guidance(self, enabled):
+        """Persist the shared Appllama + Unslop workflow for Kira chat and Kode."""
+        self.context.services.settings["ui_design_guidance_enabled"] = bool(enabled)
+        self.feature_controller("runtime").save_now()
 
     def build_skills_tab(self):
         """Compose the Skills page and adapt its intents to the application service."""

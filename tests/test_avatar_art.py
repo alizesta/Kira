@@ -37,8 +37,9 @@ class AvatarArtGeometryTests(unittest.TestCase):
         self.assertAlmostEqual(full[2], art.CARD_W)
         self.assertAlmostEqual(full[3], art.CARD_H)
 
-    def test_kira_card_constant_is_the_original_crop(self):
-        self.assertEqual(art.KIRA_CARD, (150.0, 0.0, 520.0, 680.0))
+    def test_kira_chat_card_includes_full_body_instead_of_head_and_torso_crop(self):
+        self.assertEqual(art.KIRA_CARD, (150.0, 0.0, 520.0, 1180.0))
+        self.assertGreater(art.KIRA_CARD[3], art.CARD_H)
 
     def test_invalid_sizes_are_rejected(self):
         with self.assertRaises(ValueError):

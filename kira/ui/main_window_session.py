@@ -1,5 +1,6 @@
 """Session and presentation feature controller."""
 import logging
+import random
 
 from .shortcuts import delete_key
 from .main_window_session_support import (
@@ -70,7 +71,7 @@ class SessionController(WindowFeatureController):
         QApplication.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
         for setter, key in self.context.state._tr:
             setter(self.t(key))
-        self.context.views.input.setPlaceholderText(self.t("input_ph"))
+        self.update_chat_placeholder()
         if hasattr(self.context.state, "_menu_actions"):
             for action, key in zip(self.context.state._menu_actions, self.context.views.tab_keys):
                 action.setText(self.t(key))
@@ -96,6 +97,26 @@ class SessionController(WindowFeatureController):
             for action, key in zip(self.context.state._menu_actions, self.context.views.tab_keys):
                 action.setText(self.t(key))
 
+    def update_chat_placeholder(self):
+        """Choose a short, character-specific example without inserting it into the message."""
+        character_id = str(getattr(self.context.state.front, "cid", "kira") or "kira")
+        language = self.context.services.settings.get("ui_lang", "fa")
+        examples = {
+            "kira": {
+                "fa": ("یه باگ عجیب رو باهم پیدا کنیم؟", "می‌تونی این کد رو بررسی کنی؟", "یه ابزار کوچیک برام بساز…", "چرا برنامه‌م این خطا رو می‌ده؟", "می‌خوام یه قابلیت تازه اضافه کنم…"),
+                "en": ("Can you help me track down a bug?", "Could you review this code?", "Build me a small useful tool…", "Why is my app throwing this error?", "Let's add a new feature…"),
+            },
+            "mika": {
+                "fa": ("این جواب آزمایش یعنی چی؟", "برای خواب بهتر چه عادت‌هایی کمک می‌کنن؟", "فرق این دو دارو چیه؟", "چطور تغذیه‌م رو متعادل‌تر کنم؟", "این علامت معمولاً چه علت‌هایی داره؟"),
+                "en": ("Can you explain this lab result?", "What habits can improve my sleep?", "What's the difference between these medicines?", "How can I make my diet more balanced?", "What can commonly cause this symptom?"),
+            },
+            "ren": {
+                "fa": ("مهم‌ترین خبرهای امروز چیه؟", "این ادعا رو با منبع بررسی کن", "دو روایت متفاوت از این خبر رو مقایسه کن", "این اتفاق چه اثری روی بازار می‌ذاره؟", "از این موضوع چه اطلاعات قطعی‌ای داریم؟"),
+                "en": ("What are today's most important stories?", "Can you verify this claim with sources?", "Compare two different accounts of this story.", "How could this event affect the market?", "What do we know about this for certain?"),
+            },
+        }
+        character_examples = examples.get(character_id, examples["kira"])
+        self.context.views.input.setPlaceholderText(random.choice(character_examples.get(language, character_examples["fa"])))
     def on_voice_error(self, message):
         """Local voice failures are rate-limited so a broken model does not flood the chat."""
         now = time.monotonic()
@@ -352,6 +373,7 @@ class SessionController(WindowFeatureController):
         self.context.state.front = self.context.state.cur = sess
         sess.unread = False
         self.context.services.settings["active_character_id"] = cid
+        self.update_chat_placeholder()
         self.refresh_navigation_icons()
         try:
             self.context.services.mood_service.set_active_character(cid, self.character_traits(cid, self.context.services.character_service.all_profiles(self.context.services.settings).get(cid)))
@@ -775,16 +797,22 @@ class SessionController(WindowFeatureController):
             page = self.context.views.tabs.widget(i)
             for widget in page.findChildren(QSpinBox) + page.findChildren(QDoubleSpinBox):
                 widget.setMinimumWidth(0)
+                widget.setMaximumWidth(220)
                 widget.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
             for widget in page.findChildren(QSlider):
                 widget.setMinimumWidth(0)
                 widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             for widget in page.findChildren(QComboBox):
                 widget.setMinimumWidth(0)
+                widget.setMaximumWidth(480)
                 widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             for widget in page.findChildren(QLineEdit):
                 widget.setMinimumWidth(0)
+                widget.setMaximumWidth(480)
                 widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            for widget in page.findChildren(QWidget):
+                if widget.metaObject().className() in {"QTextEdit", "QPlainTextEdit"}:
+                    widget.setMaximumWidth(640)
             for form in page.findChildren(QFormLayout):
                 form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
                 form.setRowWrapPolicy(QFormLayout.WrapLongRows)
