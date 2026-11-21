@@ -17,6 +17,7 @@ class VoicePageModelSelectionTests(unittest.TestCase):
         settings = {"local_voice_asr_backend": "qwen3", "local_voice_asr_model": "Qwen/Qwen3-ASR-0.6B"}
         page = VoicePage(settings, lambda key: key)
         self.assertEqual(settings["local_voice_asr_backend"], "shenava")
+        self.assertEqual(settings["local_voice_asr_model"], "SajjadMajdi/shenava-koochik-fa-int8")
         self.assertFalse(hasattr(page, "asr_backend"))
         self.assertFalse(hasattr(page, "whisper"))
         self.assertEqual(page.shenava_variant.count(), 2)
