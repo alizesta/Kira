@@ -24,6 +24,7 @@ from pathlib import Path
 from .code_agent import (
     MAX_FILE_BYTES, SKIP_DIRS, _is_sensitive, project_tree, redact_secrets, safe_project_file,
 )
+from .ui_design_guidance import guidance_for_task
 from .auto_agent_workspace import (  # noqa: F401
     MAX_STEPS,
     MAX_OBSERVATION,
@@ -67,6 +68,8 @@ class AutoAgent:
         self.router = router
         self.project = Path(project).resolve(strict=True)
         self.goal = str(goal or "").strip()[:4000]
+        self.ui_design_guidance = guidance_for_task(self.goal)
+        self.system_prompt = SYSTEM_PROMPT + ("\n\n" + self.ui_design_guidance if self.ui_design_guidance else "")
         self.emit = on_event or (lambda text: None)
         self.should_stop = should_stop or (lambda: False)
         self.max_steps = max_steps
@@ -639,11 +642,11 @@ class AutoAgent:
             if callable(scope):
                 with scope(role="reflection", route_id=self.review_route_id):
                     result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                        "You are an independent code reviewer. Output CLEAN only for a genuinely clean diff chunk; otherwise output FINDINGS and concrete findings.",
+                        "You are an independent code reviewer. Output CLEAN only for a genuinely clean diff chunk; otherwise output FINDINGS and concrete findings." + ("\n\n" + self.ui_design_guidance if self.ui_design_guidance else ""),
                         temperature=0.1, on_chunk=None)
             else:
                 result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                    "You are an independent code reviewer. Output CLEAN only for a genuinely clean diff chunk; otherwise output FINDINGS and concrete findings.",
+                    "You are an independent code reviewer. Output CLEAN only for a genuinely clean diff chunk; otherwise output FINDINGS and concrete findings." + ("\n\n" + self.ui_design_guidance if self.ui_design_guidance else ""),
                     temperature=0.1, on_chunk=None)
             review = str((result or {}).get("text") or "").strip()
             if not review:
@@ -914,10 +917,10 @@ class AutoAgent:
         if callable(scope):
             with scope(role="deep", route_id=self.plan_route_id):
                 result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                                                 "You are a careful senior software architect. Be evidence-based.", temperature=0.15, on_chunk=None)
+                                                 "You are a careful senior software architect. Be evidence-based." + ("\n\n" + self.ui_design_guidance if self.ui_design_guidance else ""), temperature=0.15, on_chunk=None)
         else:
             result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                                             "You are a careful senior software architect. Be evidence-based.", temperature=0.15, on_chunk=None)
+                                             "You are a careful senior software architect. Be evidence-based." + ("\n\n" + self.ui_design_guidance if self.ui_design_guidance else ""), temperature=0.15, on_chunk=None)
         reviewed_plan = str((result or {}).get("text") or "").strip()
         if not reviewed_plan:
             raise RuntimeError("برنامه‌ریز مستقل برنامه‌ی قابل استفاده‌ای ارائه نکرد.")
@@ -949,8 +952,8 @@ class AutoAgent:
         route = {"deep": self.plan_route_id, "surface": self.exec_route_id, "reflection": self.review_route_id}.get(role, "")
         if callable(scope):
             with scope(role=role, route_id=route):
-                return self.router.chat_stream(messages, SYSTEM_PROMPT, temperature=0.2, on_chunk=None)
-        return self.router.chat_stream(messages, SYSTEM_PROMPT, temperature=0.2, on_chunk=None)
+                return self.router.chat_stream(messages, self.system_prompt, temperature=0.2, on_chunk=None)
+        return self.router.chat_stream(messages, self.system_prompt, temperature=0.2, on_chunk=None)
 
     def _cleanup_temp(self):
         parent, self._temp_parent = self._temp_parent, None
