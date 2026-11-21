@@ -31,8 +31,6 @@ from ..components.switch_checkbox import SwitchCheckBox
 
 class VoicePage(QScrollArea):
     voice_enabled_requested = Signal(bool)
-    choose_whisper_folder_requested = Signal()
-    download_whisper_requested = Signal()
     autosave_requested = Signal()
     live_requested = Signal(bool)
     download_shenava_requested = Signal()
@@ -97,13 +95,7 @@ class VoicePage(QScrollArea):
         self.stt_lang = self._row(stt_form, "stt_lang", QComboBox())
         self.stt_lang.addItems(["fa", "en", "auto"])
         self.stt_lang.setCurrentText(str(settings.get("stt_language") or "fa"))
-        self.asr_backend = QComboBox()
-        self.asr_backend.addItem("Shenava Koochik · آفلاین", "shenava")
-        backend_index = self.asr_backend.findData(
-            str(settings.get("local_voice_asr_backend") or "shenava")
-        )
-        self.asr_backend.setCurrentIndex(max(0, backend_index))
-        self.asr_backend.setVisible(False)
+        settings["local_voice_asr_backend"] = "shenava"
         self.shenava_variant = QComboBox()
         self.shenava_variant.addItem(
             "Shenava INT8 · سبک‌تر · حدود ۱۲۶ مگابایت",
@@ -113,37 +105,18 @@ class VoicePage(QScrollArea):
             "Shenava FP32 · نسخه کامل · حدود ۴۵۹ مگابایت",
             "Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx",
         )
-        variant_index = self.shenava_variant.findData(
-            str(settings.get("local_voice_asr_model") or "")
-        )
+        selected_asr_model = str(settings.get("local_voice_asr_model") or "")
+        supported_asr_models = {
+            "SajjadMajdi/shenava-koochik-fa-int8",
+            "Reza2kn/Shenava-Koochik-v1.0-sherpa-onnx",
+        }
+        if selected_asr_model not in supported_asr_models:
+            selected_asr_model = "SajjadMajdi/shenava-koochik-fa-int8"
+            settings["local_voice_asr_model"] = selected_asr_model
+        variant_index = self.shenava_variant.findData(selected_asr_model)
         self.shenava_variant.setCurrentIndex(max(0, variant_index))
+        stt_form.addRow("موتور تشخیص گفتار محلی", QLabel("شنوا · Sherpa-ONNX"))
         stt_form.addRow("نسخه مدل شنوا", self.shenava_variant)
-        self.whisper = QComboBox()
-        self.whisper.setEditable(True)
-        self.whisper.addItems([
-            "base",
-            "small",
-            "medium",
-            "large-v3-turbo",
-            "large-v3",
-            "parseh/whisper-fa-accuracy-ct2",
-        ])
-        # Older builds accidentally persisted the Qwen3-ASR repository ID in
-        # whisper_model, making the Whisper selector look like a duplicate ASR
-        # backend. Qwen3-ASR is selected through asr_backend instead.
-        saved_whisper = str(settings.get("whisper_model") or "base").strip()
-        if saved_whisper.casefold() == "qwen/qwen3-asr-0.6b":
-            saved_whisper = "base"
-            settings["whisper_model"] = saved_whisper
-        self.whisper.setCurrentText(saved_whisper)
-        self._register(self.whisper.setToolTip, "whisper_tip")
-        self.whisper_browse_btn = QPushButton("انتخاب پوشه مدل")
-        self.whisper_browse_btn.clicked.connect(lambda checked=False: self.choose_whisper_folder_requested.emit())
-        self.whisper_download_btn = QPushButton("نصب مدل انتخاب‌شده")
-        self.whisper_download_btn.clicked.connect(lambda checked=False: self.download_whisper_requested.emit())
-        stt_actions = QHBoxLayout()
-        stt_actions.addWidget(self.whisper_download_btn)
-        stt_actions.addWidget(self.whisper_browse_btn)
         shenava_actions = QHBoxLayout()
         self.shenava_download_btn = QPushButton()
         self.shenava_download_btn.clicked.connect(
@@ -269,7 +242,7 @@ class VoicePage(QScrollArea):
             widget.valueChanged.connect(lambda *_: self.save_timer.start())
         for widget in (
             self.out_device, self.mic_device, self.stt_lang,
-            self.asr_backend, self.shenava_variant, self.voice_engine, self.gemini_provider,
+            self.shenava_variant, self.voice_engine, self.gemini_provider,
         ):
             widget.currentIndexChanged.connect(lambda *_: self.save_timer.start())
         self.gemini_model.currentTextChanged.connect(lambda *_: self.save_timer.start())

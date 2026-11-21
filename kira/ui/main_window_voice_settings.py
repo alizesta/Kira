@@ -165,13 +165,8 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.voice_page = VoicePage(self.context.services.settings, self.feature_controller("session").t, parent=self.window)
         self.context.views.voice_page.voice_enabled_requested.connect(self.feature_controller("runtime").set_voice_enabled)
         self.context.views.voice_page.live_requested.connect(self.feature_controller("runtime").set_live_listening)
-        self.context.views.voice_page.choose_whisper_folder_requested.connect(self.choose_local_whisper_folder)
-        self.context.views.voice_page.download_whisper_requested.connect(self.download_local_whisper_model)
         self.context.views.voice_page.download_shenava_requested.connect(self.download_local_shenava_model)
         self.context.views.voice_page.test_shenava_file_requested.connect(self.test_shenava_file)
-        self.context.views.voice_page.asr_backend.currentIndexChanged.connect(
-            self.select_local_asr_backend
-        )
         self.context.views.voice_page.shenava_variant.currentIndexChanged.connect(
             self.select_shenava_variant
         )
@@ -184,36 +179,6 @@ class VoiceSettingsController(WindowFeatureController):
         self.fill_output_devices(str(self.context.services.settings.get("output_device") or ""))
         self.refresh_voice_caps()
 
-    def select_local_asr_backend(self, index):
-        """Keep the model ID and selected Shenava precision aligned with the ASR runtime."""
-        from .. import local_voice
-
-        page = self.context.views.voice_page
-        backend = str(page.asr_backend.currentData() or "qwen3")
-        settings = self.context.services.settings
-        settings["local_voice_asr_backend"] = backend
-        runtime = self.feature_controller("runtime")
-        if getattr(runtime, "_voice_mode", "") in ("local_fallback", "local_primary", "local_stt"):
-            runtime.set_live_listening(False)
-        self.stop_local_stt_test(update_ui=False)
-        current_model = str(settings.get("local_voice_asr_model") or "")
-        supported_shenava = set(local_voice.SHENAVA_MODEL_FILENAMES)
-        if backend == "shenava":
-            if current_model not in supported_shenava:
-                current_model = local_voice.SHENAVA_INT8_REPO_ID
-                settings["local_voice_asr_model"] = current_model
-            page.shenava_variant.blockSignals(True)
-            page.shenava_variant.setCurrentIndex(
-                max(0, page.shenava_variant.findData(current_model))
-            )
-            page.shenava_variant.blockSignals(False)
-            page._update_shenava_download_label()
-        elif current_model in supported_shenava:
-            settings["local_voice_asr_model"] = "Qwen/Qwen3-ASR-0.6B"
-        self.feature_controller("runtime").save_now()
-        if hasattr(self.context.views, "local_voice_status"):
-            self.refresh_local_voice_status()
-
     def select_shenava_variant(self, index):
         """Select the INT8 or FP32 Shenava download and runtime model."""
         from .. import local_voice
@@ -225,9 +190,6 @@ class VoiceSettingsController(WindowFeatureController):
         settings = self.context.services.settings
         settings["local_voice_asr_backend"] = "shenava"
         settings["local_voice_asr_model"] = repo_id
-        page.asr_backend.blockSignals(True)
-        page.asr_backend.setCurrentIndex(max(0, page.asr_backend.findData("shenava")))
-        page.asr_backend.blockSignals(False)
         runtime = self.feature_controller("runtime")
         if getattr(runtime, "_voice_mode", "") in ("local_fallback", "local_primary", "local_stt"):
             runtime.set_live_listening(False)
@@ -249,42 +211,6 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.services.settings["local_voice_asr_model"] = folder
         self.feature_controller("runtime").save_now()
         self.refresh_local_voice_status()
-
-    def download_local_qwen_model(self):
-        model_id = str(self.context.views.local_asr_path_edit.text() or "").strip() or "Qwen/Qwen3-ASR-0.6B"
-        if Path(model_id).expanduser().is_dir():
-            self.context.views.local_voice_status.setText("این مدل از قبل روی سیستم وجود دارد.")
-            self.refresh_local_voice_status()
-            return
-        if "/" not in model_id:
-            self.context.views.local_voice_status.setText("شناسه مخزن Hugging Face را به شکل owner/repository وارد کن.")
-            return
-        self.context.views.local_voice_status.setText("در حال آماده‌سازی موتور Qwen و دانلود مدل از Hugging Face؛ ممکن است چند گیگابایت باشد…")
-        from .. import local_voice
-        self._run_local_voice_task(lambda cancel: local_voice.install_and_download_qwen_asr(model_id, cancel_event=cancel),
-                                   self.context.views.local_asr_download_btn, self._on_local_qwen_downloaded,
-                                   cancellable=True)
-
-    def _on_local_qwen_downloaded(self, result):
-        ok, value = result
-        if not ok:
-            self.context.views.local_voice_status.setText(f"دانلود مدل Qwen ناموفق بود: {value}")
-            return
-        model_id = str(self.context.views.local_asr_path_edit.text() or "").strip() or "Qwen/Qwen3-ASR-0.6B"
-        self.context.services.settings["local_voice_asr_backend"] = "qwen3"
-        self.context.services.settings["local_voice_asr_model"] = model_id
-        self.context.views.voice_page.asr_backend.setCurrentIndex(
-            max(0, self.context.views.voice_page.asr_backend.findData("qwen3"))
-        )
-        self.context.views.local_asr_path_edit.setText(model_id)
-        self.feature_controller("runtime").save_now()
-        self.refresh_local_voice_status()
-        from .. import local_voice
-        self.context.views.local_voice_status.setText(
-            f"Qwen نصب و فعال شد.\nمسیر مدل: {value}\nمحل ذخیره مدل‌ها: {local_voice.cache_directory()}"
-        )
-
-
 
     def download_local_shenava_model(self):
         """Install sherpa-onnx and download the currently selected Shenava variant."""
@@ -326,9 +252,6 @@ class VoiceSettingsController(WindowFeatureController):
         page.shenava_variant.setCurrentIndex(max(0, page.shenava_variant.findData(repo_id)))
         page.shenava_variant.blockSignals(False)
         page._update_shenava_download_label()
-        page.asr_backend.blockSignals(True)
-        page.asr_backend.setCurrentIndex(max(0, page.asr_backend.findData("shenava")))
-        page.asr_backend.blockSignals(False)
         self.feature_controller("runtime").save_now()
         self.refresh_local_voice_status()
         precision = "FP32" if repo_id == local_voice.SHENAVA_FP32_REPO_ID else "INT8"
@@ -394,66 +317,8 @@ class VoiceSettingsController(WindowFeatureController):
         page.shenava_variant.blockSignals(True)
         page.shenava_variant.setCurrentIndex(max(0, page.shenava_variant.findData(repo_id)))
         page.shenava_variant.blockSignals(False)
-        page.asr_backend.blockSignals(True)
-        page.asr_backend.setCurrentIndex(max(0, page.asr_backend.findData("shenava")))
-        page.asr_backend.blockSignals(False)
         self.feature_controller("runtime").save_now()
 
-
-    def choose_local_whisper_folder(self):
-        folder = QFileDialog.getExistingDirectory(self.window, "پوشه مدل Whisper را انتخاب کن", str(Path.home()))
-        if not folder:
-            return
-        self.context.views.voice_page.whisper.setCurrentText(folder)
-        self.context.services.settings["whisper_model"] = folder
-        self.feature_controller("runtime").save_now()
-        self.context.views.local_voice_status.setText(f"مدل Whisper از سیستم انتخاب شد: {folder}")
-
-    def download_local_whisper_model(self):
-        value = str(self.context.views.voice_page.whisper.currentText() or "").strip()
-        if value.casefold() == "qwen/qwen3-asr-0.6b":
-            self.context.views.local_asr_path_edit.setText(value)
-            self.context.views.local_voice_status.setText("در حال نصب موتور Qwen ASR و دانلود مدل محلی…")
-            from .. import local_voice
-            self._run_local_voice_task(
-                lambda cancel: local_voice.install_and_download_qwen_asr(value, cancel_event=cancel),
-                self.context.views.voice_page.whisper_download_btn, self._on_local_qwen_downloaded,
-                cancellable=True,
-            )
-            return
-        if Path(value).expanduser().is_dir():
-            self.context.views.local_voice_status.setText("این مدل Whisper از قبل روی سیستم وجود دارد.")
-            return
-        aliases = {
-            "tiny": "Systran/faster-whisper-tiny",
-            "base": "Systran/faster-whisper-base",
-            "small": "Systran/faster-whisper-small",
-            "medium": "Systran/faster-whisper-medium",
-            "large-v3": "Systran/faster-whisper-large-v3",
-            "large-v3-turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
-        }
-        repo_id = aliases.get(value, value)
-        if "/" not in repo_id:
-            self.context.views.local_voice_status.setText("برای دانلود، یک شناسه Hugging Face معتبر انتخاب کن.")
-            return
-        from .. import local_voice
-        self.context.views.local_voice_status.setText("در حال نصب موتور faster-whisper و دانلود مدل…")
-        self._run_local_voice_task(lambda cancel: local_voice.install_and_download_whisper(repo_id, cancel_event=cancel),
-                                   self.context.views.voice_page.whisper_download_btn, self._on_whisper_downloaded,
-                                   cancellable=True)
-
-    def _on_whisper_downloaded(self, result):
-        ok, value = result
-        if not ok:
-            self.context.views.local_voice_status.setText(f"دانلود مدل STT ناموفق بود: {value}")
-            return
-        self.context.services.settings["whisper_model"] = str(value)
-        self.context.views.voice_page.whisper.setCurrentText(str(value))
-        self.feature_controller("runtime").save_now()
-        from .. import local_voice
-        self.context.views.local_voice_status.setText(
-            f"Whisper نصب و فعال شد.\nمسیر مدل: {value}\nمحل ذخیره مدل‌ها: {local_voice.cache_directory()}"
-        )
 
     def download_local_tts_model(self):
         repo_id = str(self.context.views.local_tts_model_path.text() or "").strip()
@@ -483,16 +348,6 @@ class VoiceSettingsController(WindowFeatureController):
             )
         except Exception as exc:
             self.context.views.local_voice_status.setText(f"نصب مدل TTS ناموفق بود: {type(exc).__name__}: {exc}")
-
-    def apply_local_whisper_model(self):
-        value = self.context.views.local_whisper_path.text().strip() or "small"
-        self.context.services.settings["whisper_model"] = value
-        if hasattr(self.context.views.voice_page, "whisper"):
-            if self.context.views.voice_page.whisper.findText(value) < 0:
-                self.context.views.voice_page.whisper.addItem(value)
-            self.context.views.voice_page.whisper.setCurrentText(value)
-        self.feature_controller("runtime").save_now()
-        self.feature_controller("session").add_chat("system", "مدل STT محلی به‌روزرسانی شد.")
 
     def choose_local_tts_model(self):
         path, _ = QFileDialog.getOpenFileName(self.window, "مدل Piper ONNX", str(Path.home()), "Piper ONNX (*.onnx)")
@@ -549,10 +404,6 @@ class VoiceSettingsController(WindowFeatureController):
             elif onnx:
                 self._install_piper_voice(onnx[0])
                 return
-            elif (source / "model.bin").is_file():
-                self.context.views.local_whisper_path.setText(str(source))
-                self.apply_local_whisper_model()
-                return
             elif (source / "config.json").is_file():
                 try:
                     config_text = (source / "config.json").read_text(encoding="utf-8", errors="replace").lower()
@@ -565,30 +416,14 @@ class VoiceSettingsController(WindowFeatureController):
                 model_type = str(config_data.get("model_type") or "").lower()
                 architectures = " ".join(str(x) for x in (config_data.get("architectures") or [])).lower()
                 signature = " ".join((model_type, architectures, source.name.lower()))
-                if any(token in signature for token in ("whisper", "qwen3asr", "qwen_asr", "speechrecognition", "speech_to_text", "audioencoderdecoder")):
-                    self.context.views.local_asr_path_edit.setText(str(source))
-                    self.context.services.settings["local_voice_asr_model"] = str(source)
-                    self.feature_controller("runtime").save_now()
-                    self.refresh_local_voice_status()
-                    return
                 if any(token in signature for token in ("causallm", "forcausallm", "textgeneration", "llama", "qwen3for")):
                     QMessageBox.information(self.window, "مدل Chat شناسایی شد",
                         "این پوشه یک مدل متنی Hugging Face است، اما Ollama مستقیماً پوشه‌ی Transformers را وارد نمی‌کند. نسخه‌ی GGUF همین مدل را انتخاب کن.")
                     return
                 category, ok = QInputDialog.getItem(
                     self.window, "نوع مدل", "معماری مدل از روی فایل‌هایش قطعی نبود؛ نوع واقعی را انتخاب کن.",
-                    ["STT · Qwen3-ASR", "STT · Whisper", "TTS · Piper ONNX", "Chat · GGUF"], 0, False)
+                    ["TTS · Piper ONNX", "Chat · GGUF"], 0, False)
                 if not ok:
-                    return
-                if category.startswith("STT · Qwen"):
-                    self.context.views.local_asr_path_edit.setText(str(source))
-                    self.context.services.settings["local_voice_asr_model"] = str(source)
-                    self.feature_controller("runtime").save_now()
-                    self.refresh_local_voice_status()
-                    return
-                if category.startswith("STT · Whisper"):
-                    self.context.views.local_whisper_path.setText(str(source))
-                    self.apply_local_whisper_model()
                     return
                 QMessageBox.information(self.window, "معرفی مدل", "برای TTS فایل Piper ONNX و برای Chat فایل GGUF را انتخاب کن.")
                 return
@@ -604,9 +439,6 @@ class VoiceSettingsController(WindowFeatureController):
             self._create_ollama_model(source)
         elif source.suffix.lower() == ".onnx":
             self._install_piper_voice(source)
-        elif source.name.lower() == "model.bin":
-            self.context.views.local_whisper_path.setText(str(source.parent))
-            self.apply_local_whisper_model()
         elif source.suffix.lower() in (".json", ".safetensors", ".pt", ".pth"):
             self._import_local_model_path(source.parent)
         else:
@@ -673,23 +505,6 @@ class VoiceSettingsController(WindowFeatureController):
         self.feature_controller("provider_settings").refresh_unified_models()
         self.context.views.api_add_status.setText(f"✓ مدل «{model}» به Ollama اضافه شد.")
 
-    def select_local_asr_model(self, index):
-        combo = getattr(self.context.views, "local_asr_model_list", None)
-        if combo is None or index < 0:
-            return
-        value = str(combo.itemData(index) or "").strip()
-        if not value:
-            return
-        self.context.views.local_asr_path_edit.setText(value)
-        backend = "shenava" if value.casefold() == "sajjadmajdi/shenava-koochik-fa-int8" else "qwen3"
-        self.context.services.settings["local_voice_asr_backend"] = backend
-        self.context.services.settings["local_voice_asr_model"] = value
-        self.context.views.voice_page.asr_backend.setCurrentIndex(
-            max(0, self.context.views.voice_page.asr_backend.findData(backend))
-        )
-        self.feature_controller("runtime").save_now()
-        self.refresh_local_voice_status()
-
     def select_local_tts_model(self, index):
         combo = getattr(self.context.views, "local_tts_model_list", None)
         if combo is None or index < 0:
@@ -703,7 +518,7 @@ class VoiceSettingsController(WindowFeatureController):
     def refresh_local_voice_status(self):
         try:
             from .. import local_voice
-            asr_model = str(self.context.services.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B")
+            asr_model = str(self.context.services.settings.get("local_voice_asr_model") or local_voice.SHENAVA_INT8_REPO_ID)
             tts_model = str(self.context.services.settings.get("local_voice_tts_model") or "")
             discovered = local_voice.discover_cached_models()
 
@@ -734,17 +549,10 @@ class VoiceSettingsController(WindowFeatureController):
                 tts_combo.blockSignals(False)
 
             state = local_voice.status(tts_model)
-            backend = str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3")
-            if backend == "shenava":
-                asr_loaded = bool(state.get("shenava_loaded"))
-                asr_installed = bool(state.get("shenava_installed"))
-                asr_error = state.get("shenava_error")
-                asr_label = "Shenava · sherpa-onnx"
-            else:
-                asr_loaded = bool(state["asr_loaded"] and state.get("asr_model") == asr_model)
-                asr_installed = bool(state["asr_installed"])
-                asr_error = state.get("asr_error")
-                asr_label = "Qwen3-ASR"
+            asr_loaded = bool(state.get("shenava_loaded"))
+            asr_installed = bool(state.get("shenava_installed"))
+            asr_error = state.get("shenava_error")
+            asr_label = "Shenava · sherpa-onnx"
             tts_loaded = bool(state["tts_loaded"] and (
                 (tts_model and state.get("tts_model") and Path(state["tts_model"]).resolve() == Path(tts_model).expanduser().resolve())
                 or (not tts_model and state.get("tts_model") == "bundled")
@@ -836,15 +644,13 @@ class VoiceSettingsController(WindowFeatureController):
 
     def load_local_asr(self):
         from .. import local_voice
-        model_name = str(self.context.services.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B")
-        backend = str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3")
-        loader = local_voice.load_shenava if backend == "shenava" else local_voice.load_asr
-        self._run_local_voice_task(lambda: loader(model_name), self.context.views.local_asr_load_btn, self._on_local_asr_loaded)
+        model_name = str(self.context.services.settings.get("local_voice_asr_model") or local_voice.SHENAVA_INT8_REPO_ID)
+        self.context.services.settings["local_voice_asr_backend"] = "shenava"
+        self._run_local_voice_task(lambda: local_voice.load_shenava(model_name), self.context.views.local_asr_load_btn, self._on_local_asr_loaded)
 
     def _on_local_asr_loaded(self, result):
         ok, value = result
-        backend = str(self.context.services.settings.get("local_voice_asr_backend") or "qwen3")
-        label = "شنوا" if backend == "shenava" else "Qwen3-ASR"
+        label = "شنوا"
         if ok:
             self.context.views.local_voice_status.setText(f"{label} با موفقیت بارگذاری شد. تشخیص گفتار محلی آماده است.")
         else:
@@ -878,7 +684,8 @@ class VoiceSettingsController(WindowFeatureController):
             return
 
         from ..listener import Listener
-        model_name = str(self.context.services.settings.get("whisper_model") or "small")
+        from .. import local_voice
+        model_name = str(self.context.services.settings.get("local_voice_asr_model") or local_voice.SHENAVA_INT8_REPO_ID)
         language = str(self.context.services.settings.get("stt_language") or "fa")
         listener = Listener(
             model_name, language, self,
@@ -1048,7 +855,7 @@ class VoiceSettingsController(WindowFeatureController):
         )
         page.live_config_note.setText(
             "کلید Google از بخش اتصالات خوانده می‌شود و کلید جداگانه‌ای اینجا ذخیره نمی‌شود. "
-            "صدای زنده با Gemini پردازش می‌شود؛ در صورت قطع اتصال، مسیر محلی شنوا/Qwen3-ASR/Whisper + مدل چت + Piper فعال می‌شود."
+            "صدای زنده با Gemini پردازش می‌شود؛ در صورت قطع اتصال، مسیر محلی شنوا + مدل چت + Piper فعال می‌شود."
         )
 
     def collect_voice_settings(self):
@@ -1062,13 +869,12 @@ class VoiceSettingsController(WindowFeatureController):
             "mic_gain": page.mic_gain.value(),
             "mic_sensitivity": page.mic_sens.value(),
             "stt_language": page.stt_lang.currentText(),
-            "whisper_model": page.whisper.currentText().strip(),
             "stream_speech": page.stream_chk.isChecked(),
             "voice_engine": page.voice_engine.currentData() or "local",
             "gemini_live_provider": page.gemini_provider.currentData() or "",
             "gemini_live_model": page.gemini_model.currentText().strip() or "gemini-3.8-live",
             "voice_local_fallback": page.local_fallback_chk.isChecked(),
-            "local_voice_asr_backend": page.asr_backend.currentData() or "qwen3",
+            "local_voice_asr_backend": "shenava",
             "realtime_asr_enabled": page.real_time_asr_chk.isChecked(),
         })
 
