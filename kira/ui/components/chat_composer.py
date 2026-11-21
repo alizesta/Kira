@@ -158,8 +158,15 @@ class ChatComposer(QFrame):
 
         self.mic_btn = owner.icon_button("mic", True)
         self.mic_btn.toggled.connect(owner.toggle_mic)
-        self.wake_btn = owner.icon_button("moon", True)
-        self.wake_btn.clicked.connect(owner.toggle_wake)
+        self.mic_menu = QMenu(self.mic_btn)
+        self.wake_btn = QAction("حالت بیدارباش", self.mic_menu)
+        self.wake_btn.setCheckable(True)
+        self.wake_btn.setChecked(bool(owner.settings.get("wake_enabled", False)))
+        self.wake_btn.triggered.connect(owner.toggle_wake)
+        self.mic_menu.addAction(self.wake_btn)
+        self.mic_btn.setMenu(self.mic_menu)
+        self.mic_btn.setPopupMode(QToolButton.MenuButtonPopup)
+        self.mic_btn.setToolTip("میکروفون؛ فلش کنار دکمه برای حالت بیدارباش")
         self.voice_btn = owner.icon_button("speaker", True)
         self.voice_btn.setChecked(bool(owner.settings.get("speak_replies", True)))
         self.voice_btn.clicked.connect(
@@ -229,11 +236,11 @@ class ChatComposer(QFrame):
 
         for button, key in (
             (self.mic_btn, "mic"),
-            (self.wake_btn, "wake"),
             (self.voice_btn, "voice"),
         ):
             owner.reg(button.setToolTip, key)
             bar.addWidget(button)
+        owner.reg(self.wake_btn.setToolTip, "wake")
         self.voice_btn.setToolTip(
             "پاسخ صوتی روشن است؛ Kira با صدا پاسخ می‌دهد."
             if self.voice_btn.isChecked()
