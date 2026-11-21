@@ -62,14 +62,11 @@ class Listener(QThread):
             self.muted = True
 
     def _input_device(self, sd):
-        """Index of the microphone chosen in the settings (by name), or None = the Windows default."""
+        """Resolve the exact host-API endpoint; empty/legacy settings remain supported."""
+        from .audio_devices import resolve_input_device
+
         wanted = str(getattr(self, "settings", {}).get("mic_device") or "").strip()
-        if not wanted:
-            return None
-        for idx, dev in enumerate(sd.query_devices()):
-            if dev.get("max_input_channels", 0) > 0 and dev.get("name") == wanted:
-                return idx
-        return None                                          # that microphone is not connected now: use the default
+        return resolve_input_device(sd, wanted)
 
     def stop(self):
         # Never block the GUI thread for the old 4-second wait. The owner keeps the

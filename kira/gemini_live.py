@@ -11,6 +11,8 @@ import threading
 
 from PySide6.QtCore import QThread, Signal
 
+from .audio_devices import resolve_input_device
+
 
 INPUT_RATE = 16_000
 OUTPUT_RATE = 24_000
@@ -50,14 +52,15 @@ def resolve_google_api_key(settings: dict, provider_id: str = "") -> str:
 
 
 def _device_index(sd, wanted: str, *, input_device: bool):
-    """Resolve the configured device by its Windows description, else use system default."""
+    """Resolve the selected PortAudio endpoint; input uses host-API-aware identities."""
     wanted = str(wanted or "").strip()
     if not wanted:
         return None
+    if input_device:
+        return resolve_input_device(sd, wanted)
     devices = sd.query_devices()
     for index, device in enumerate(devices):
-        channels = device.get("max_input_channels" if input_device else "max_output_channels", 0)
-        if channels > 0 and device.get("name") == wanted:
+        if device.get("max_output_channels", 0) > 0 and device.get("name") == wanted:
             return index
     return None  # Device was disconnected; use the current system default.
 

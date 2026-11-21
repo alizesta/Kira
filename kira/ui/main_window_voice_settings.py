@@ -1,4 +1,6 @@
 """Voice settings feature controller."""
+import logging
+
 from .components.composer_owner import ComposerOwner
 from .main_window_voice_settings_support import (
     AssistantPage,
@@ -859,20 +861,33 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.voice_page.out_device.setCurrentIndex(i if i >= 0 else 0)
 
     def fill_mic_devices(self, current):
-        self.context.views.voice_page.mic_device.clear()
-        self.context.views.voice_page.mic_device.addItem(self.feature_controller("session").t("dev_default"), "")
+        page = self.context.views.voice_page
+        combo = page.mic_device
+        combo.clear()
+        combo.addItem(self.feature_controller("session").t("dev_default"), "")
         try:
             import sounddevice as sd
-            seen = set()
-            for dev in sd.query_devices():
-                name = str(dev.get("name") or "")
-                if dev.get("max_input_channels", 0) > 0 and name and name not in seen:
-                    seen.add(name)
-                    self.context.views.voice_page.mic_device.addItem(name, name)
-        except Exception:                                      # noqa: BLE001 - sounddevice missing: only the default entry
-            pass
-        i = self.context.views.voice_page.mic_device.findData(current)
-        self.context.views.voice_page.mic_device.setCurrentIndex(i if i >= 0 else 0)
+            from ..audio_devices import input_device_entries, resolve_input_device
+
+            entries = input_device_entries(sd)
+            for entry in entries:
+                combo.addItem(entry["label"], entry["value"])
+
+            # Migrate an old name-only setting to the matching host-API token.
+            selected_index = resolve_input_device(sd, current)
+            if selected_index is not None:
+                selected = next(
+                    (i for i, entry in enumerate(entries) if entry["index"] == selected_index),
+                    None,
+                )
+                combo.setCurrentIndex(selected + 1 if selected is not None else 0)
+            else:
+                combo.setCurrentIndex(0)
+        except Exception as exc:                              # noqa: BLE001 - retain the system-default option
+            combo.setCurrentIndex(0)
+            logging.getLogger("kira.audio").warning(
+                "Unable to enumerate microphone input devices: %s", exc
+            )
 
     def refresh_gemini_providers(self):
         """Keep the Live provider selector synchronized with Connections changes."""

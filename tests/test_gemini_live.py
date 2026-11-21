@@ -13,6 +13,19 @@ class _AudioDevices:
         ]
 
 
+class _DuplicateAudioDevices:
+    @staticmethod
+    def query_devices():
+        return [
+            {"name": "USB Headset", "hostapi": 0, "max_input_channels": 1},
+            {"name": "USB Headset", "hostapi": 1, "max_input_channels": 1},
+        ]
+
+    @staticmethod
+    def query_hostapis():
+        return [{"name": "MME"}, {"name": "Windows WASAPI"}]
+
+
 class GeminiLiveTests(unittest.TestCase):
     def test_selected_google_connection_key_is_used(self):
         settings = {
@@ -58,6 +71,17 @@ class GeminiLiveTests(unittest.TestCase):
     def test_missing_selected_audio_device_uses_system_default(self):
         self.assertIsNone(
             _device_index(_AudioDevices, "Missing Headset", input_device=True)
+        )
+
+
+    def test_gemini_live_uses_the_host_api_selected_in_voice_settings(self):
+        from kira.audio_devices import input_device_entries
+
+        entries = input_device_entries(_DuplicateAudioDevices)
+        wasapi = next(entry for entry in entries if entry["hostapi"] == "Windows WASAPI")
+        self.assertEqual(
+            _device_index(_DuplicateAudioDevices, wasapi["value"], input_device=True),
+            1,
         )
 
 
