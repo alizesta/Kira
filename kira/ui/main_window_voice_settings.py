@@ -170,6 +170,20 @@ class VoiceSettingsController(WindowFeatureController):
         self.context.views.voice_page.shenava_variant.currentIndexChanged.connect(
             self.select_shenava_variant
         )
+        page = self.context.views.voice_page
+        self.context.views.local_voice_status = page.local_voice_status
+        self.context.views.local_tts_model_list = page.local_tts_model
+        self.context.views.local_tts_download_btn = page.piper_download_btn
+        self.context.views.local_tts_test_btn = page.piper_test_btn
+        page.local_asr_enabled_requested.connect(
+            lambda enabled: self.set_local_voice_option("local_voice_asr", enabled)
+        )
+        page.local_tts_enabled_requested.connect(
+            lambda enabled: self.set_local_voice_option("local_voice_tts", enabled)
+        )
+        page.download_piper_requested.connect(self.download_local_tts_model)
+        page.test_piper_requested.connect(self.test_local_tts)
+        page.select_piper_requested.connect(self.select_piper_model)
         self.context.views.voice_page.realtime_asr_requested.connect(
             self.feature_controller("runtime").set_realtime_asr
         )
@@ -321,15 +335,27 @@ class VoiceSettingsController(WindowFeatureController):
 
 
     def download_local_tts_model(self):
-        repo_id = str(self.context.views.local_tts_model_path.text() or "").strip()
-        if "/" not in repo_id or "\\" in repo_id:
-            self.context.views.local_voice_status.setText("شناسه مخزن Piper در Hugging Face را در کادر مدل TTS وارد کن.")
+        repo_id, accepted = QInputDialog.getText(
+            self.window, "دانلود صدای Piper",
+            "شناسه مخزن صدای Piper در Hugging Face:",
+            text="",
+        )
+        repo_id = str(repo_id or "").strip()
+        if not accepted or "/" not in repo_id or "\\" in repo_id:
             return
         from .. import local_voice
-        self.context.views.local_voice_status.setText("در حال نصب Piper و دانلود صدای انتخاب‌شده…")
-        self._run_local_voice_task(lambda cancel: local_voice.install_and_download_piper_voice(repo_id, cancel_event=cancel),
-                                   self.context.views.local_tts_download_btn, self._on_local_tts_downloaded,
-                                   cancellable=True)
+        self.context.views.local_voice_status.setText("در حال نصب Piper و دانلود صدا…")
+        self._run_local_voice_task(
+            lambda cancel: local_voice.install_and_download_piper_voice(repo_id, cancel_event=cancel),
+            self.context.views.local_tts_download_btn,
+            self._on_local_tts_downloaded,
+            cancellable=True,
+        )
+
+    def select_piper_model(self, value):
+        self.context.services.settings["local_voice_tts_model"] = str(value or "")
+        self.feature_controller("runtime").save_now()
+        self.refresh_local_voice_status()
 
     def _on_local_tts_downloaded(self, result):
         ok, value = result
@@ -525,7 +551,6 @@ class VoiceSettingsController(WindowFeatureController):
         if combo is None or index < 0:
             return
         value = str(combo.itemData(index) or "").strip()
-        self.context.views.local_tts_model_path.setText(value)
         self.context.services.settings["local_voice_tts_model"] = value
         self.feature_controller("runtime").save_now()
         self.refresh_local_voice_status()
@@ -537,19 +562,10 @@ class VoiceSettingsController(WindowFeatureController):
             tts_model = str(self.context.services.settings.get("local_voice_tts_model") or "")
             discovered = local_voice.discover_cached_models()
 
-            asr_combo = getattr(self.context.views, "local_asr_model_list", None)
-            if asr_combo is not None:
-                asr_combo.blockSignals(True)
-                asr_combo.clear()
-                asr_entries = discovered.get("asr", [])
-                if not any(item.get("id") == asr_model for item in asr_entries):
-                    asr_combo.addItem(f"{asr_model} · هنوز در کش پیدا نشد", asr_model)
-                for item in asr_entries:
-                    asr_combo.addItem(f"{item['id']} · دانلودشده", item["id"])
-                selected = next((i for i in range(asr_combo.count())
-                                 if str(asr_combo.itemData(i)) == asr_model), 0)
-                asr_combo.setCurrentIndex(selected)
-                asr_combo.blockSignals(False)
+            page = self.context.views.voice_page
+            page.shenava_variant.blockSignals(True)
+            page.shenava_variant.setCurrentIndex(max(0, page.shenava_variant.findData(asr_model)))
+            page.shenava_variant.blockSignals(False)
 
             tts_combo = getattr(self.context.views, "local_tts_model_list", None)
             if tts_combo is not None:
