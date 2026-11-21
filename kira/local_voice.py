@@ -829,7 +829,7 @@ def discover_cached_models() -> dict:
                 ) or (snapshot / "model.safetensors.index.json").is_file()
                 if not has_weights:
                     continue
-                shenava_filename = SHENAVA_MODEL_FILENAMES.get(repo_id)
+                shenava_filename = next((filename for model_id, filename in SHENAVA_MODEL_FILENAMES.items() if model_id.casefold() == repo_id.casefold()), None)
                 is_shenava = bool(
                     shenava_filename
                     and (snapshot / shenava_filename).is_file()
