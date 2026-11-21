@@ -203,11 +203,9 @@ class GuiTests(unittest.TestCase):
         self.assertIsNotNone(window.voice_btn.property("voiceOffIcon"))
         self.assertIsInstance(window.wake_btn, QAction)
         self.assertIsNone(window.mic_btn.menu())
-        self.assertIs(window.wake_btn.parent(), window.game_mode_menu)
-        self.assertLess(
-            window.chat_composer.findChild(type(window.voice_btn)).parent().layout().indexOf(window.voice_btn),
-            window.chat_composer.findChild(type(window.mic_btn)).parent().layout().indexOf(window.mic_btn),
-        )
+        self.assertIn(window.wake_btn, window.game_mode_menu.actions())
+        toolbar = window.chat_composer.layout().itemAt(4).layout()
+        self.assertLess(toolbar.indexOf(window.voice_btn), toolbar.indexOf(window.mic_btn))
         self.assertEqual(window.game_mode_btn.property("kiraIconName"), "gamepad-2")
         self.assertFalse(hasattr(window, "stop_btn"))
         window.build_badge_menu()
