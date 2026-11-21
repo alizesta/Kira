@@ -50,8 +50,12 @@ class RouteEditor(QWidget):
         body.setSpacing(5)
 
         self.route_list = QListWidget()
-        self.route_list.setMinimumHeight(58)
-        self.route_list.setMaximumHeight(92)
+        self.route_list.setMinimumHeight(176)   # room for at least five route/model rows
+        self.route_list.setMaximumHeight(210)
+        self.route_list.setSpacing(1)
+        self.route_list.setStyleSheet(
+            "QListWidget{font-size:9pt;} QListWidget::item{padding:3px 5px;}"
+        )
         self.route_list.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.route_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.route_list.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
