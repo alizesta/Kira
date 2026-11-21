@@ -168,8 +168,8 @@ class ChatComposer(QFrame):
         self.wake_btn.triggered.connect(owner.toggle_wake)
         self.voice_btn = owner.icon_button("speaker", True)
         self.voice_btn.setChecked(bool(owner.settings.get("speak_replies", True)))
-        self.voice_btn.setProperty("voiceOnIcon", make_icon("volume-2"))
-        self.voice_btn.setProperty("voiceOffIcon", make_icon("volume-x"))
+        self.voice_btn.setProperty("voiceOnIcon", make_icon("speaker"))
+        self.voice_btn.setProperty("voiceOffIcon", make_icon("speaker_muted"))
         self.voice_btn.setIcon(
             self.voice_btn.property("voiceOnIcon")
             if self.voice_btn.isChecked()
