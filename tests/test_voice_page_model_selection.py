@@ -27,6 +27,16 @@ class VoicePageModelSelectionTests(unittest.TestCase):
         self.assertEqual(page.voice_engine.currentData(), "gemini_live")
         self.assertEqual(page.gemini_model.currentText(), "gemini-3.8-live")
 
+    def test_local_voice_controls_are_embedded_in_stt_and_tts_sections(self):
+        page = VoicePage({}, lambda key: key)
+        self.assertTrue(hasattr(page, "local_asr_chk"))
+        self.assertTrue(hasattr(page, "local_tts_chk"))
+        self.assertEqual(page.local_tts_model.count(), 1)
+        self.assertTrue(hasattr(page, "piper_download_btn"))
+        self.assertTrue(hasattr(page, "piper_test_btn"))
+        self.assertTrue(hasattr(page, "piper_file_btn"))
+        self.assertFalse(hasattr(page, "local_model_tabs"))
+
 
 if __name__ == "__main__":
     unittest.main()
