@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REQ = ROOT / "requirements-voice-local.txt"
-MODEL = "Qwen/Qwen3-ASR-0.6B"
+MODEL = "SajjadMajdi/shenava-koochik-fa-int8"
 def configure_data_paths() -> Path:
     """Use the same writable persistent-data resolver as the desktop application."""
     if str(ROOT) not in sys.path:
@@ -32,7 +32,7 @@ def run_install() -> bool:
         print(f"ERROR: Missing dependency file: {REQ}")
         return False
     print(f"Python: {sys.executable}")
-    print(f"Installing local voice dependencies from {REQ.name} ...")
+    print(f"Installing Shenava and local TTS dependencies from {REQ.name} ...")
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "5", "--timeout", "60", "-r", str(REQ)],
         cwd=ROOT,
@@ -45,10 +45,12 @@ def run_install() -> bool:
 
 def prepare_asr() -> bool:
     try:
-        from huggingface_hub import snapshot_download
-        print(f"Downloading/checking ASR model: {MODEL}")
-        path = snapshot_download(repo_id=MODEL)
-        print(f"ASR model is cached at: {path}")
+        if str(ROOT) not in sys.path:
+            sys.path.insert(0, str(ROOT))
+        from kira.local_voice import install_and_download_shenava_asr
+        print(f"Downloading/checking Shenava INT8 model: {MODEL}")
+        path = install_and_download_shenava_asr(MODEL)
+        print(f"Shenava model is ready at: {path}")
         return True
     except Exception as exc:
         print(f"ASR MODEL ERROR: {type(exc).__name__}: {exc}")
