@@ -12,6 +12,10 @@ class CharacterProfilesTests(unittest.TestCase):
         prompt = characters.prompt_for({})
         self.assertIn("coding and software-development specialist", prompt)
         self.assertIn("Ai1 Code", prompt)
+        self.assertIn("Appllama app-design workflow", prompt)
+        self.assertIn("Jakob’s Law", prompt)
+        self.assertIn("navy/violet/cyan palette", prompt)
+        self.assertIn("loading, empty, error, disabled and success", prompt)
 
     def test_builtin_temperament_baselines_are_distinct_and_kira_stays_canonical(self):
         self.assertEqual(characters.CHARACTERS["kira"]["traits"], KIRA_PROFILE["traits"])
