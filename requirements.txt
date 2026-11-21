@@ -4,3 +4,4 @@ numpy>=1.26
 psutil>=5.9            # optional: faster / richer PC information (Kira works without it)
 ruff>=0.6              # Ai1 Code automatic lint after Python edits
 google-genai>=2.3.0,<3
+hf_xet>=1.1,<2
