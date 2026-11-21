@@ -571,7 +571,7 @@ class Kode(QObject):
             self._say("system", "اعمال لغو شد؛ پیشنهاد هنوز در انتظار است.")
             return
         try:
-            backup = cc.apply_patch(self.root, patch)
+            cc.apply_patch(self.root, patch)
         except Exception as exc:  # noqa: BLE001
             self._say("error", f"اعمال ناموفق بود: {exc}")
             return
