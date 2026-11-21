@@ -83,6 +83,30 @@ class GuiTests(unittest.TestCase):
         self.assertIn("Ollama", self.win.status.text())
         self.assertTrue(self.win.isVisible())
 
+    def test_tray_route_menu_refresh_lists_routes_without_runtime_menu_limit(self):
+        from PySide6.QtWidgets import QMenu
+
+        lifecycle = self.win.controllers.require("lifecycle")
+        lifecycle._tray_menu = QMenu(self.win)
+        lifecycle.refresh_tray_menu()
+
+        actions = lifecycle._tray_menu.actions()
+        self.assertEqual(actions[-1].text(), "خروج")
+        model_menu = next((action.menu() for action in actions if action.text() == "تعویض مدل"), None)
+        self.assertIsNotNone(model_menu)
+
+        routes = lifecycle.context.session.client.available_routes()
+        expected = ["خودکار (بر اساس اولویت)"]
+        expected.extend(
+            f"{str(route.get('label') or route.get('provider') or 'Provider').strip()} / {str(route.get('model') or '').strip()}"
+            if str(route.get("model") or "").strip()
+            else str(route.get("label") or route.get("provider") or "Provider").strip()
+            for route in routes
+        )
+        if not routes:
+            expected.append("هیچ Route فعالی نیست")
+        self.assertEqual([action.text() for action in model_menu.actions()], expected)
+
     def test_model_tables_fit_without_horizontal_scroll_and_route_list_shows_five_rows(self):
         from PySide6.QtCore import Qt
 
