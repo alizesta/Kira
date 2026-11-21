@@ -117,7 +117,7 @@ class LifecycleController(WindowFeatureController):
         tray = getattr(self.context.views, "tray", None)
         self.context.views.tray = tray                                             # always defined (no system tray = None)
         if wanted and tray is None:
-            icon = QIcon(str(ROOT / "assets" / "kira_character.png"))
+            icon = QIcon(str(ROOT / "assets" / "kira_icon.png"))
             tray = QSystemTrayIcon(icon, self.window)
             tray.setToolTip("Kira")
             menu = QMenu()
@@ -136,41 +136,61 @@ class LifecycleController(WindowFeatureController):
         if app is not None:
             app.setQuitOnLastWindowClosed(self.context.views.tray is None)         # with a tray icon the app lives on while hidden
 
+    def _tray_button(self, name):
+        """Chat-composer button by name (window alias first, then the composer itself)."""
+        for source in (lambda: getattr(self.context.views, name, None),
+                       lambda: getattr(self.window.presentation_context.views.chat_composer, name, None)):
+            try:
+                button = source()
+            except Exception:                                      # noqa: BLE001 - view access is allow-listed per controller
+                button = None
+            if button is not None:
+                return button
+        return None
+
     def refresh_tray_menu(self):
-        """Rebuilt every time the menu opens, so model / web / mic states are always current."""
+        """Rebuilt every time the menu opens, so model / web / mic states are always current.
+        Each section is guarded: one failing section can no longer cut the rest (or "Exit") off the menu."""
         menu = self._tray_menu
         menu.clear()
         menu.addAction("نمایش / مخفی کردن Kira", self.toggle_main_window)
         menu.addAction("نمایش / مخفی کردن شخصیت", self.feature_controller("runtime").toggle_companion)
         menu.addSeparator()
-        models = menu.addMenu("تعویض مدل")
-        models.setStyleSheet("QMenu { menu-scrollable: 1; }")
-        manual = self.context.services.settings.get("manual_route_id", "")
-        auto = models.addAction("خودکار (بر اساس اولویت)")
-        auto.setCheckable(True)
-        auto.setChecked(not manual)
-        auto.triggered.connect(lambda checked=False: self.feature_controller("runtime").select_route(""))
-        routes = self.context.session.client.available_routes()
-        shown = routes[: self.feature_controller("runtime").MENU_ROUTES]
-        chosen = next((r for r in routes if r["route_id"] == manual), None)
-        if chosen is not None and chosen not in shown:
-            shown = shown[:-1] + [chosen]
-        for info in shown:
-            model = info["model"] if len(info["model"]) <= 34 else info["model"][:33] + "…"
-            act = models.addAction(f"{'☁' if info['kind'] == 'cloud' else '⌂'}  {info['label']} / {model}")
-            act.setCheckable(True)
-            act.setChecked(info["route_id"] == manual)
-            act.triggered.connect(lambda checked=False, rid=info["route_id"]: self.feature_controller("runtime").select_route(rid))
-        if not routes:
-            models.addAction("هیچ Route فعالی نیست").setEnabled(False)
-        web = menu.addAction("جست‌وجوی وب")
-        web.setCheckable(True)
-        web.setChecked(self.context.views.web_btn.isChecked())
-        web.triggered.connect(lambda checked=False: self.context.views.web_btn.setChecked(not self.context.views.web_btn.isChecked()))
-        mic = menu.addAction("میکروفن")
-        mic.setCheckable(True)
-        mic.setChecked(self.context.views.mic_btn.isChecked())
-        mic.triggered.connect(self.tray_toggle_mic)
+        try:
+            models = menu.addMenu("تعویض مدل")
+            models.setStyleSheet("QMenu { menu-scrollable: 1; }")
+            manual = self.context.services.settings.get("manual_route_id", "")
+            auto = models.addAction("خودکار (بر اساس اولویت)")
+            auto.setCheckable(True)
+            auto.setChecked(not manual)
+            auto.triggered.connect(lambda checked=False: self.feature_controller("runtime").select_route(""))
+            routes = self.context.session.client.available_routes()
+            shown = routes[: self.feature_controller("runtime").MENU_ROUTES]
+            chosen = next((r for r in routes if r["route_id"] == manual), None)
+            if chosen is not None and chosen not in shown:
+                shown = shown[:-1] + [chosen]
+            for info in shown:
+                model = info["model"] if len(info["model"]) <= 34 else info["model"][:33] + "…"
+                act = models.addAction(f"{'☁' if info['kind'] == 'cloud' else '⌂'}  {info['label']} / {model}")
+                act.setCheckable(True)
+                act.setChecked(info["route_id"] == manual)
+                act.triggered.connect(lambda checked=False, rid=info["route_id"]: self.feature_controller("runtime").select_route(rid))
+            if not routes:
+                models.addAction("هیچ Route فعالی نیست").setEnabled(False)
+        except Exception:                                          # noqa: BLE001
+            pass
+        web_btn = self._tray_button("web_btn")
+        if web_btn is not None:
+            web = menu.addAction("جست‌وجوی وب")
+            web.setCheckable(True)
+            web.setChecked(web_btn.isChecked())
+            web.triggered.connect(lambda checked=False, b=web_btn: b.setChecked(not b.isChecked()))
+        mic_btn = self._tray_button("mic_btn")
+        if mic_btn is not None:
+            mic = menu.addAction("میکروفن")
+            mic.setCheckable(True)
+            mic.setChecked(mic_btn.isChecked())
+            mic.triggered.connect(self.tray_toggle_mic)
         menu.addSeparator()
         menu.addAction("خروج", self.quit_app)
 

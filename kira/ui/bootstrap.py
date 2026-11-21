@@ -62,6 +62,13 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("Kira")
+    try:                                                    # application / taskbar / dialog icon: Kira's face
+        from PySide6.QtGui import QIcon
+        icon_path = Path(__file__).resolve().parents[2] / "assets" / "kira_icon.png"
+        if icon_path.is_file():
+            app.setWindowIcon(QIcon(str(icon_path)))
+    except Exception:                                       # noqa: BLE001 - an icon must never block start-up
+        pass
     started_at = perf_counter()
     previous_mark = started_at
     phases: dict[str, dict[str, float]] = {}

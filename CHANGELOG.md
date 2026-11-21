@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-21 17:05 Iran (Kira portrait, app icon, tray menu)
+- Kira's profile picture is now her 2D portrait (`assets/characters/kira_portrait.png`, cropped from `kira_character.png`, replaces `kira.svg` at the user's request; `personas.py` and `test_characters.py` updated).
+- App icon from her face: `assets/kira_icon.png` / `.ico`; set as the application/window icon in `ui/bootstrap.py` and as the tray icon.
+- Tray menu: every section is now guarded, and the web/mic buttons are looked up safely (a failing section used to cut the menu short and drop "خروج"). Exit is always the last item. Not run on Windows.
+
 ## 2026-11-21 16:45 Iran (Character tab: one page, one tab per character)
 - The two sub-tabs of the Character tab (list + personality) are merged into one scrolling page: character card, identity/persona, voice, resources, desktop options, baseline traits.
 - A tab bar on top has one tab per character (Kira, Ren, Mika, custom) and a "＋" button (new character) beside it. `character_combo` is kept hidden as the source of truth; `CharactersPage.sync_character_tabs()` mirrors it (called from `refresh_character_choices`).

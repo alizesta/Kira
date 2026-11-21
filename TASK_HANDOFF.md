@@ -1,5 +1,9 @@
 # Task Handoff
 
+## Latest task: portrait, icon, tray menu (2026-11-21, 17:05 Iran)
+
+- Check on Windows: Kira's card shows the new portrait; taskbar/window/tray show her face icon; right-click tray shows show/hide Kira, show/hide character, model, web, mic, خروج. If items are still missing, the cause is in `refresh_tray_menu` (`kira/ui/main_window_lifecycle.py`). The `.exe`/shortcut icon (`assets/kira_icon.ico`) is not wired into any installer or `.bat`.
+
 ## Latest task: Character tab merged into one page with per-character tabs (2026-11-21, 16:45 Iran)
 
 - `CharactersPage` has no sub-tabs now: top `character_tabbar` (one tab per character) + `character_add_btn` (＋), then one scroll page. Edit/Delete stay in the card; `character_combo` is hidden but still drives selection. Check on Windows: tab switching changes chat colours/avatar, ＋ opens the creation dialog, layout in RTL.

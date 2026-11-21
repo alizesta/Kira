@@ -100,7 +100,7 @@ class CharacterProfilesTests(unittest.TestCase):
     def test_builtin_portraits_and_chat_page_art(self):
         root = Path(__file__).resolve().parents[1]
         # Kira's original portrait is unchanged and she keeps her own animated PNG (no separate avatar file)
-        self.assertEqual(characters.CHARACTERS["kira"]["image"], "assets/characters/kira.svg")
+        self.assertEqual(characters.CHARACTERS["kira"]["image"], "assets/characters/kira_portrait.png")
         self.assertTrue((root / characters.CHARACTERS["kira"]["image"]).is_file())
         self.assertEqual(characters.CHARACTERS["kira"]["avatar"], "")
         self.assertIsNone(characters.avatar_file(characters.CHARACTERS["kira"], root))
