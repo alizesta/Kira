@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-11-22 03:11 Iran (registry test fixed)
+- `main_window_voice_settings.py`: the chat composer owner now gets the feature context (`self.context`) as `view_context` instead of the window's root `presentation_context`; it only reads `.views`. `test_feature_controller_registry` is green again (18 passed).
+
 ## 2026-11-22 03:03 Iran (UNSLOP leftovers finished)
 - Connections tab: the API table, the model tables and the MCP result list now size themselves to their rows (`ui/components/fit_height.py`) instead of leaving big empty boxes.
 - Character tab: five rarely used switches (perch, hang, auto-dance, minimise/close to tray) moved into a collapsed "گزینه‌های پیشرفته" group; the four everyday ones stay visible.
