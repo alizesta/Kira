@@ -83,6 +83,22 @@ class GuiTests(unittest.TestCase):
         self.assertIn("Ollama", self.win.status.text())
         self.assertTrue(self.win.isVisible())
 
+    def test_model_tables_fit_without_horizontal_scroll_and_route_list_shows_five_rows(self):
+        from PySide6.QtCore import Qt
+
+        for table in self.win.models_panel.tables.values():
+            table.fit_columns()
+            self.assertEqual(table.horizontalScrollBarPolicy(), Qt.ScrollBarAlwaysOff)
+            viewport_width = table.viewport().width()
+            if viewport_width > 0:  # inactive model tabs may not have received geometry yet
+                self.assertLessEqual(
+                    sum(table.columnWidth(index) for index in range(table.columnCount())),
+                    viewport_width,
+                )
+
+        self.assertGreaterEqual(self.win.route_list.minimumHeight(), 176)
+        self.assertEqual(self.win.route_list.horizontalScrollBarPolicy(), Qt.ScrollBarAlwaysOff)
+
     def test_extracted_settings_pages_own_their_widgets(self):
         from kira.ui.components import ApiPanel, ModelsPanel, McpRegistryPanel, OllamaProviderPanel, RouteEditor
         from kira.ui.pages import AssistantPage, AppearancePage, CharactersPage, HelpPage, PreferencesPage, VoicePage
