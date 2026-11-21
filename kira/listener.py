@@ -19,10 +19,14 @@ from .speech_text import clean_transcript, grace_for, is_hallucination, merge_te
 from .vad import BLOCK, RATE, Segmenter
 
 MAX_HOLD_S = 40.0               # a message is never held longer than this, however many pauses there were
+PARTIAL_INTERVAL_S = 0.85       # decode the active utterance periodically; the full hypothesis may revise earlier words
+PARTIAL_MIN_AUDIO_S = 0.55
+PARTIAL_MIN_GROWTH_S = 0.35
 
 
 class Listener(QThread):
     heard = Signal(str)
+    partial_heard = Signal(str)  # replaceable full hypothesis while the user is still speaking
     state = Signal(str)     # loading | listening | hearing | transcribing
     error = Signal(str)
     interrupted = Signal()  # the person started talking while Kira was speaking
@@ -45,6 +49,9 @@ class Listener(QThread):
         self.fixes = SpeechFixes()      # the user's dictionary (hotwords + word fixes), re-read when the file changes
         self.via = "local:shenava"
         self._pending, self._pending_until, self._pending_since = "", 0.0, 0.0
+        self._partial_last_at = 0.0
+        self._partial_last_samples = 0
+        self._partial_last_text = ""
 
     # ---- called by the window ----
     def begin_kira_speech(self):
@@ -168,6 +175,8 @@ class Listener(QThread):
                     continue
                 for ev in seg.feed(blk, self.kira_speaking, self.kira_level):
                     self._on_event(ev, model)
+                if seg.speaking:
+                    self._maybe_emit_partial(seg, model)
         finally:
             self._close_stream(stream)
             self._seg = None
@@ -186,9 +195,13 @@ class Listener(QThread):
             self.barge_capturing = True
             self.interrupted.emit()
         elif kind == "start":
+            self._partial_last_at = 0.0
+            self._partial_last_samples = 0
             self.state.emit("hearing")
         elif kind == "noise":
             self.barge_capturing = False
+            if not self._pending:
+                self._emit_partial("")
             if self._run:
                 self.state.emit("listening")
         elif kind == "segment":
@@ -197,11 +210,43 @@ class Listener(QThread):
             text = self._transcribe(model, ev[1])
             if text and not is_hallucination(text):
                 self._pending = merge_text(self._pending, text)
+                self._emit_partial(clean_transcript(self._pending, self.language, self.fixes))
                 now = time.monotonic()
                 self._pending_since = self._pending_since or now
                 self._pending_until = now + grace_for(self._pending)     # wait a little: the person may only be pausing
             if self._run:
                 self.state.emit("listening")
+
+    def _emit_partial(self, text):
+        """Publish a replaceable transcript snapshot; never append hypotheses together."""
+        value = str(text or "").strip()
+        if value == self._partial_last_text:
+            return
+        self._partial_last_text = value
+        self.partial_heard.emit(value)
+
+    def _maybe_emit_partial(self, segmenter, model):
+        """Re-decode the growing utterance so later context can correct earlier words."""
+        now = time.monotonic()
+        audio_samples = len(segmenter.buf) * segmenter.block
+        if audio_samples < int(RATE * PARTIAL_MIN_AUDIO_S):
+            return
+        if now - self._partial_last_at < PARTIAL_INTERVAL_S:
+            return
+        if audio_samples - self._partial_last_samples < int(RATE * PARTIAL_MIN_GROWTH_S):
+            return
+        self._partial_last_at = now
+        self._partial_last_samples = audio_samples
+        audio = segmenter.snapshot()
+        if not len(audio):
+            return
+        hypothesis = self._transcribe(model, audio)
+        if not hypothesis or is_hallucination(hypothesis):
+            return
+        self.fixes.refresh()
+        cleaned = clean_transcript(hypothesis, self.language, self.fixes)
+        if cleaned:
+            self._emit_partial(merge_text(self._pending, cleaned))
 
     def _flush_pending(self, force=False):
         """Hand the collected text over once the pause after it was long enough (or when forced)."""
@@ -217,7 +262,11 @@ class Listener(QThread):
         text = clean_transcript(self._pending, self.language, self.fixes)
         self._pending, self._pending_since = "", 0.0
         if len(text) > 1:
+            self.partial_heard.emit("")
+            self._partial_last_text = ""
             self.heard.emit(text)
+        else:
+            self._emit_partial("")
 
     # ---- local recognition: return the transcript or an empty string ----
     def _transcribe(self, model, audio):
