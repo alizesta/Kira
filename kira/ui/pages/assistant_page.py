@@ -152,9 +152,9 @@ class AssistantPage(QScrollArea):
         self.setWidget(host)
         self.retranslate()
 
-    @staticmethod
         finalize_assistant_page(self)
 
+    @staticmethod
     def _line_edit(value: str):
         from PySide6.QtWidgets import QLineEdit
         return QLineEdit(str(value))
