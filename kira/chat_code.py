@@ -1,4 +1,4 @@
-"""Ai1 Code inside Kira's chat: Qt-free logic (request parsing, context, diff, safe apply, chat rendering).
+"""Kode inside Kira's chat: unified coding workflow (analysis, safe patches and autonomous execution).
 
 Kira's chat can switch into a code mode. The model still gets only a bounded, redacted project context and has no
 tools: it may *propose* a complete replacement of one file, the chat shows a Diff with approve / reject links and
@@ -14,8 +14,9 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .ui_design_guidance import guidance_for_task
 from .code_agent import (
-    CodeAgentEngine, MAX_CONTEXT_CHARS, MAX_FILE_BYTES, SKIP_DIRS, _is_sensitive,
+    KodeAnalysisEngine, MAX_CONTEXT_CHARS, MAX_FILE_BYTES, SKIP_DIRS, _is_sensitive,
     build_project_context, project_tree, redact_secrets, safe_project_file,
 )
 
@@ -24,7 +25,7 @@ MAX_PENDING_PATCHES = 8
 MAX_HISTORY_TURNS = 6
 MAX_DIFF_LINES = 400
 MAX_OUTPUT_CHARS = 6000
-LINK_SCHEME = "kira-code"
+LINK_SCHEME = "kode"
 
 # ---------------------------------------------------------------- request parsing
 _RUN = re.compile(r"^/(?:run|اجرا)\s+(.+)$", re.I | re.S)
@@ -327,8 +328,8 @@ def patch_blocker(root, file) -> str:
 
 
 # ---------------------------------------------------------------- engine (Kira's voice, same safety rules)
-class KiraCodeEngine(CodeAgentEngine):
-    SYSTEM_PROMPT = """You are Kira, the user's coding and software-development specialist, now working in Ai1 Code mode inside the chat.
+class KodeEngine(KodeAnalysisEngine):
+    SYSTEM_PROMPT = """You are Kira, the user's coding and software-development specialist, working through Kode.
 Keep Kira's warm, direct manner but be precise and technical. Reply in the user's language (Persian unless they write otherwise).
 You have NO tools, filesystem access or shell access and you cannot modify files: when a change is needed, the app shows the person a Diff and they approve it.
 Never claim you changed, saved or ran anything, and never claim tests passed. Say which file and line you mean, separate root cause from symptoms,
@@ -343,7 +344,11 @@ Never request or reproduce API keys, passwords, tokens, private keys or other se
             + "\n\nProvide an evidence-based answer. Do not modify files or claim to have executed tests."
         )
         messages = _history_messages(history) + [{"role": "user", "content": prompt}]
-        result = self.router.chat_stream(messages, self.SYSTEM_PROMPT, temperature=0.2, on_chunk=on_chunk)
+        system_prompt = self.SYSTEM_PROMPT
+        ui_guidance = guidance_for_task(request)
+        if ui_guidance:
+            system_prompt += "\n\n" + ui_guidance
+        result = self.router.chat_stream(messages, system_prompt, temperature=0.2, on_chunk=on_chunk)
         answer = str((result or {}).get("text") or "").strip()
         if not answer:
             raise RuntimeError("مدل پاسخ متنی برنگرداند.")
@@ -423,7 +428,7 @@ def match_newlines(base_text: str, replacement: str) -> str:
 
 
 def apply_patch(root, patch: PendingPatch) -> Path:
-    """Write an approved replacement. Rejected when the file changed since the proposal. One-time .ai1code.bak backup,
+    """Write an approved replacement. Reject stale proposals. Keep the legacy .ai1code.bak backup name for compatibility,
     temporary sibling file, atomic replace."""
     target = safe_project_file(root, patch.rel)
     if target.read_bytes() != patch.base_bytes:
@@ -485,7 +490,7 @@ def output_html(command: str, output: str, code) -> str:
 
 
 HELP_TEXT_OLD = (
-    "حالت Ai1 Code روشن است. فقط مأموریتت را عادی بنویس؛ لازم نیست اسم فایل بدهی.\n"
+    "Kode آماده است؛ فقط درخواستت را عادی بنویس، لازم نیست اسم فایل بدهی.\n"
     "• مأموریت (مثلاً «مدل دوبعدی کیرا را حذف کن و فقط VRM بماند»): کیرا خودش پروژه را می‌گردد، برنامه می‌ریزد، روی یک کپی تغییر می‌دهد، تست می‌زند، خطاها را رفع می‌کند و آخرش زیپ تحویل می‌دهد. پروژه‌ی اصلی دست‌نخورده می‌ماند.\n"
     "• سؤال درباره‌ی کد (مثلاً «چرا آواتار دوبعدی قبل از VRM لود می‌شود؟»): کیرا خودش فایل‌های مرتبط را پیدا می‌کند و فقط می‌خواند؛ چیزی عوض نمی‌شود.\n"
     "• دستور PowerShell یا حذف پوشه همیشه با تأیید جدا. /auto هدف همان مأموریت را اجباری می‌کند؛ /patch @فایل ... فقط یک فایل را با Diff پیشنهاد می‌دهد.\n"
@@ -494,10 +499,14 @@ HELP_TEXT_OLD = (
 
 
 HELP_TEXT = (
-    "نیازی به دکمه یا حالت ویژه نیست؛ کیرا از حرف زدنت می‌فهمد چه می‌خواهی.\n"
+    "Kode به‌صورت خودکار از درخواستت تشخیص می‌دهد؛ نیازی به دکمه یا حالت جدا نیست.\n"
     "• مأموریت («مدل دوبعدی را حذف کن و فقط VRM بماند»، «این قابلیت را اضافه کن»): خودش پروژه را می‌گردد، برنامه می‌ریزد، روی یک کپی تغییر می‌دهد، تست می‌زند، خطاها را رفع می‌کند و زیپ تحویل می‌دهد. پروژه‌ی اصلی دست‌نخورده می‌ماند.\n"
     "• سؤال درباره‌ی پروژه («چرا آواتار دوبعدی قبل از VRM لود می‌شود؟»): خودش فایل‌ها را پیدا و فقط می‌خواند.\n"
     "• حرف عادی یا سؤال عمومی برنامه‌نویسی: همان چت معمولی کیرا.\n"
     "• دستور PowerShell و حذف پوشه همیشه با تأیید جدا. پوشه‌ی پروژه را بار اول می‌پرسد؛ برای عوض‌کردنش بگو «پوشه‌ی پروژه را عوض کن».\n"
-    "• میانبرها: /auto مأموریت · /patch @فایل ... (Diff یک فایل) · /files · /project · /run دستور · /help"
+    "• میانبرها: /auto مأموریت کامل · /patch @فایل ... (پیشنهاد تغییر یک فایل) · /files · /project · /run دستور · /help"
 )
+
+
+# Backward-compatible import name.
+KiraCodeEngine = KodeEngine

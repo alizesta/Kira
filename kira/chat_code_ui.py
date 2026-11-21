@@ -1,4 +1,4 @@
-"""Ai1 Code inside Kira's chat (Qt side). The logic lives in chat_code.py (intent) and auto_agent.py (the agent).
+"""Kode: one chat-facing coding subsystem with analysis, safe patching and autonomous execution.
 
 No button and no mode: Kira's tab decides from the wording whether a message is a coding mission (agent on a copy of the
 project, ends with a zip), a question about the project (read-only investigation) or ordinary talk (normal chat).
@@ -17,7 +17,7 @@ from PySide6.QtWidgets import QFileDialog, QMessageBox
 from . import characters
 from . import chat_code as cc
 from .chat_render import message_html
-from .auto_agent import AutoAgent, MAX_STEPS, guard_reason
+from .auto_agent import KodeAutonomousEngine, MAX_STEPS, guard_reason
 from .brain import route_for
 from .code_agent import project_tree
 from .config import save_settings, DATA_DIR
@@ -44,8 +44,8 @@ class _Job(QThread):
             self.failed.emit(f"{type(exc).__name__}: {exc}"[:800])
 
 
-class CodeChat(QObject):
-    """Owns the code mode of Kira's chat: project folder, pending patches, the running job / command."""
+class Kode(QObject):
+    """Unified coding workspace for Kira: analysis, reviewed patches and autonomous project missions."""
 
     def __init__(self, win):
         super().__init__(getattr(win, "widget", win))
@@ -60,7 +60,7 @@ class CodeChat(QObject):
         self.session = None                # the chat session the running job / command belongs to
         self._streamed = 0
         self.auto_stop = False
-        self.auto_dir = Path(DATA_DIR) / "ai1code_output"       # where the delivered zips go
+        self.auto_dir = Path(DATA_DIR) / "kode_output"         # where Kode delivers completed project archives
         self.auto_results = {}
         self._auto_result_seq = 0                               # monotonic ids: never reused after a removal/restart
         self.auto_python = None                                 # tests may override; None = auto-detect
@@ -87,7 +87,7 @@ class CodeChat(QObject):
     # ------------------------------------------------------------ project / mode
     def pick_folder(self):
         start = str(self.root or Path.home())
-        return QFileDialog.getExistingDirectory(getattr(self.win, "widget", self.win), "پوشه‌ی پروژه برای Ai1 Code", start)
+        return QFileDialog.getExistingDirectory(getattr(self.win, "widget", self.win), "پوشه‌ی پروژه برای Kode", start)
 
     def confirm(self, title, text, default_no=True):
         answer = QMessageBox.warning(getattr(self.win, "widget", self.win), title, text, QMessageBox.Yes | QMessageBox.No,
@@ -130,6 +130,41 @@ class CodeChat(QObject):
             save_settings(self.win.settings)
         except Exception:  # noqa: BLE001 - a settings write problem must not break the chat
             pass
+
+    def _activity_panel(self):
+        """The activity card belongs to the visible conversation, never a background tab."""
+        w = self.win
+        return w.kode_activity if w.cur is w.front else None
+
+    def _activity_start(self, status):
+        panel = self._activity_panel()
+        if panel is not None:
+            panel.start(status)
+
+    def _activity_update(self, status):
+        panel = self._activity_panel()
+        if panel is not None:
+            panel.update(status)
+
+    def _activity_step(self, status):
+        panel = self._activity_panel()
+        if panel is not None:
+            panel.step(status)
+
+    def _activity_complete(self, status):
+        panel = self._activity_panel()
+        if panel is not None:
+            panel.complete(status)
+
+    def _activity_fail(self, status):
+        panel = self._activity_panel()
+        if panel is not None:
+            panel.fail(status)
+
+    def _activity_reset(self):
+        panel = self._activity_panel()
+        if panel is not None:
+            panel.reset()
 
     # ------------------------------------------------------------ chat output helpers
     def _as_kira(self, fn):
@@ -190,7 +225,7 @@ class CodeChat(QObject):
             if self.root is not None and self.root.is_dir():
                 self._say("system", f"مسیر پوشه‌ی پروژه‌ی فعلی: {self.root}")
             else:
-                self._say("system", "هنوز پوشه‌ی پروژه‌ای برای Ai1 Code انتخاب نشده؛ برای انتخاب پوشه بگو «پوشه‌ی پروژه را عوض کن».")
+                self._say("system", "هنوز پوشه‌ی پروژه‌ای برای Kode انتخاب نشده؛ برای انتخاب پوشه بگو «پوشه‌ی پروژه را عوض کن».")
             return True
         req = cc.parse_request(text)
         if req.kind in ("files", "project", "apply", "reject", "help", "run", "auto") or req.explicit:
@@ -267,6 +302,7 @@ class CodeChat(QObject):
         if w._closing:
             return
         self._classifying = True
+        self._activity_start("در حال تشخیص نوع درخواست…")
         token = object()
         self._class_token = token
         session = w.cur                                            # the chat that asked: results must never land in another tab
@@ -318,6 +354,7 @@ class CodeChat(QObject):
             if intent in ("task", "question"):
                 self._route(text, intent)
             else:
+                self._activity_reset()
                 self._bypass = True
                 w._voice_next = voice
                 try:
@@ -345,12 +382,14 @@ class CodeChat(QObject):
         w = self.win
         if w._closing:
             return
+        self._activity_start("در حال جست‌وجوی فایل‌های مرتبط…")
         try:
             files, problems = cc.resolve_files(self.root, req.mentions, cc.explicit_mentions(raw))
         except Exception as exc:  # noqa: BLE001
             self._say("error", f"خواندن پروژه ناموفق بود: {exc}")
             return
         if problems:
+            self._activity_step("برخی فایل‌های درخواستی پیدا نشدند")
             self._say("system", "\n".join(problems))
         if not files and self.current_rel:                      # a follow-up ("fix it", "explain more") keeps the same file
             try:
@@ -359,9 +398,11 @@ class CodeChat(QObject):
                 self.current_rel = None
         if req.kind == "patch":
             if not files:
+                self._activity_fail("برای پیشنهاد تغییر، فایل مشخصی لازم است")
                 self._say("system", "برای تغییر باید فایل را مشخص کنی؛ اسمش را با @ بنویس، مثل @app.py")
                 return
             if len(files) > 1:
+                self._activity_fail("برای پیشنهاد تغییر، هر بار یک فایل را انتخاب کن")
                 self._say("system", "برای تغییر، هر بار فقط یک فایل؛ فایل را مشخص کن. (برای تحلیل چند فایل می‌شود.)")
                 return
             blocker = cc.patch_blocker(self.root, files[0])
@@ -374,11 +415,12 @@ class CodeChat(QObject):
             base_bytes = target.read_bytes() if (target is not None and req.kind == "patch") else None
             rel = target.resolve().relative_to(self.root).as_posix() if target is not None else None
         except Exception as exc:  # noqa: BLE001
+            self._activity_fail("خواندن فایل‌های پروژه ناموفق بود")
             self._say("error", str(exc))
             return
         if rel:
             self.current_rel = rel
-        engine = cc.KiraCodeEngine(w.cur.client)
+        engine = cc.KodeEngine(w.cur.client)
         history = list(self.turns)
         question = req.text
         if req.kind == "patch":
@@ -388,6 +430,7 @@ class CodeChat(QObject):
             fn = lambda chunk: engine.ask(question, context, chunk, history=history)  # noqa: E731
             done = lambda result: self._answer_done(question, result)  # noqa: E731
         self._begin_busy()
+        self._activity_update("در حال تحلیل کد…" if req.kind != "patch" else "در حال آماده‌سازی پیشنهاد تغییر…")
         sess = self.session
         job = _Job(fn, self)
         self._streamed = 0
@@ -437,7 +480,8 @@ class CodeChat(QObject):
         self._streamed += len(piece)
         w = self.win
         if sess is w.front:
-            w.status.setText(f"کیرا در حال بررسی کد است… ({self._streamed:,} نویسه)")
+            w.status.setText("کیرا در حال بررسی کد است…")
+            self._activity_update("در حال تحلیل کد و آماده‌سازی پاسخ…")
 
     @Slot()
     def _job_cleanup(self):
@@ -455,7 +499,8 @@ class CodeChat(QObject):
             try:
                 done(result)
             except Exception as exc:  # noqa: BLE001
-                w.add_chat("error", f"Code Agent: {exc}")
+                w.add_chat("error", f"Kode: {exc}")
+                self._activity_fail("پردازش با خطا متوقف شد")
             self._end_busy()
 
     def _failed(self, sess, error):
@@ -463,7 +508,8 @@ class CodeChat(QObject):
         if w._closing or sess.cid not in w.sessions:
             return
         with w._as(sess):
-            w.add_chat("error", f"Code Agent: {error}")
+            w.add_chat("error", f"Kode: {error}")
+            self._activity_fail("پردازش با خطا متوقف شد")
             self._end_busy()
 
     def _remember(self, user_text, answer):
@@ -472,6 +518,7 @@ class CodeChat(QObject):
 
     def _answer_done(self, question, answer):
         self._bubble("assistant", cc.answer_html(answer))
+        self._activity_complete("تحلیل تمام شد")
         self.win.save_message("assistant", answer)
         self._remember(question, answer)
 
@@ -485,9 +532,11 @@ class CodeChat(QObject):
         diff = cc.make_diff(rel, base_text, replacement)
         if not diff:
             self._say("assistant", "مدل تغییری پیشنهاد نکرد؛ فایل همان است که بود.")
+            self._activity_complete("تغییری لازم نبود")
             return
         patch = self.patches.add(rel, replacement, base_bytes)
         self._bubble("assistant", cc.patch_card_html(patch, diff))
+        self._activity_complete("پیشنهاد تغییر آماده است؛ منتظر تأیید تو")
         note = (f"پیشنهاد تغییر برای {rel} آماده شد (Diff بالا در چت). "
                 "هنوز هیچ فایلی تغییر نکرده؛ تا تأیید تو اعمال نمی‌شود.")
         self.win.save_message("assistant", note)
@@ -518,16 +567,16 @@ class CodeChat(QObject):
             return
         if not self.confirm("تأیید اعمال تغییر",
                             f"فایل «{patch.rel}» با پیشنهاد کیرا بازنویسی می‌شود. "
-                            "یک نسخه‌ی پشتیبان (.ai1code.bak) کنارش می‌ماند.\n\nاعمال شود؟", default_no=False):
+                            "یک نسخه‌ی پشتیبان از فایل اصلی نگه داشته می‌شود.\n\nاعمال شود؟", default_no=False):
             self._say("system", "اعمال لغو شد؛ پیشنهاد هنوز در انتظار است.")
             return
         try:
-            backup = cc.apply_patch(self.root, patch)
+            cc.apply_patch(self.root, patch)
         except Exception as exc:  # noqa: BLE001
             self._say("error", f"اعمال ناموفق بود: {exc}")
             return
         self.patches.pop(pid)
-        self._say("system", f"✅ تغییر روی {patch.rel} با تأیید تو اعمال شد. پشتیبان: {backup.name}")
+        self._say("system", f"✅ تغییر روی {patch.rel} با تأیید تو اعمال شد؛ نسخه‌ی پشتیبان فایل اصلی نگه داشته شد.")
 
     def reject(self, pid):
         if self.patches.pop(pid) is None:
@@ -582,7 +631,7 @@ class CodeChat(QObject):
                     return False
             return holder["ok"]
 
-        agent = AutoAgent(w.cur.client, self.root, goal, should_stop=lambda: self.auto_stop, python=self.auto_python,
+        agent = KodeAutonomousEngine(w.cur.client, self.root, goal, should_stop=lambda: self.auto_stop, python=self.auto_python,
                           output_dir=self.auto_dir, readonly=readonly, approve=approve,
                           max_steps=15 if readonly else MAX_STEPS, shell=self.auto_shell, history=history,
                           plan_route_id=route_for("deep", w.settings),
@@ -590,6 +639,7 @@ class CodeChat(QObject):
                           review_route_id=route_for("reflection", w.settings),
                           execution_guard=guard)
         self._begin_busy()
+        self._activity_start("در حال بررسی پروژه و ساخت برنامهٔ کار…" if readonly else "در حال تحلیل پروژه و برنامه‌ریزی تغییرات…")
         sess = self.session
         job = _Job(lambda chunk: (setattr(agent, "emit", chunk), agent.run())[1], self)
         job_box["job"] = job
@@ -607,12 +657,22 @@ class CodeChat(QObject):
         w.status.setText("کیرا در حال بررسی پروژه است…" if readonly else "کیرا در حال کار خودکار روی پروژه است…")
         job.start()
 
+    @staticmethod
+    def _activity_label(line):
+        """Translate internal tool event labels into concise, user-facing progress."""
+        text = str(line or "").strip().lstrip("• ").strip()
+        if not text:
+            return ""
+        if text.startswith("گام "):
+            text = text.split(":", 1)[-1].strip()
+        return text[:140]
+
     def _auto_event(self, sess, line):
         w = self.win
         if w._closing or sess.cid not in w.sessions:
             return
         with w._as(sess):
-            self._bubble("system", cc.answer_html(line), name="")
+            self._activity_step(self._activity_label(line))
 
     def _store_auto_result(self, zip_path):
         """Register one delivered ZIP under a stable, monotonic id (never len()+1)."""
@@ -626,11 +686,13 @@ class CodeChat(QObject):
     def _auto_done(self, goal, result):
         w = self.win
         if result.get("readonly"):
+            self._activity_complete("بررسی پروژه تمام شد")
             self._bubble("assistant", cc.answer_html(result["summary"]))
             w.save_message("assistant", result["summary"])
             self._remember(goal, result["summary"])
             return
         if not result.get("zip"):
+            self._activity_fail("مأموریت به خروجی نهایی نرسید")
             changed = result.get("changed") or []
             lines = ["مأموریت خودکار به تحویل نهایی نرسید.", "", result.get("summary") or "نتیجه تأیید نشده است."]
             if result.get("resume_available"):
@@ -642,6 +704,7 @@ class CodeChat(QObject):
             w.save_message("assistant", "\\n".join(lines))
             self._remember("/auto " + goal, result.get("summary") or "مأموریت ناتمام")
             return
+        self._activity_complete("تغییرات بررسی و بستهٔ خروجی آماده شد")
         zip_path = Path(result["zip"])
         rid = self._store_auto_result(zip_path)
         changed = result["changed"]
@@ -651,11 +714,11 @@ class CodeChat(QObject):
         if runs:
             lines.append("اجراها: " + "؛ ".join(f"{a} ← exit {c}" for a, c in runs[-6:]))
         if result.get("external"):
-            lines.append(f"⚠ هشدار: {len(result['external'])} فایل پروژه‌ی اصلی هم‌زمان بیرون از Ai1 Code عوض شده؛ جزئیات در AI1CODE_REPORT.md داخل زیپ.")
+            lines.append(f"⚠ هشدار: {len(result['external'])} فایل پروژه‌ی اصلی هم‌زمان بیرون از Kode عوض شده؛ جزئیات در KODE_REPORT.md داخل زیپ.")
         info = result.get("zip_info") or {}
         lines.append(f"زیپ سالم است ({info.get('files', '?')} فایل): {zip_path}")
         body = cc.answer_html("\n".join(lines)) + (
-            f'<p dir="rtl" align="right" style="margin:4px 0;"><a href="kira-code://open/{rid}" style="color:#7ee787;">📂 باز کردن پوشه‌ی زیپ</a></p>')
+            f'<p dir="rtl" align="right" style="margin:4px 0;"><a href="kode://open/{rid}" style="color:#7ee787;">📂 باز کردن پوشه‌ی زیپ</a></p>')
         self._bubble("assistant", body)
         w.save_message("assistant", "\n".join(lines))
         self._remember("/auto " + goal, result["summary"])
@@ -698,6 +761,7 @@ class CodeChat(QObject):
         proc.errorOccurred.connect(lambda error: self._command_error(sess, proc, error))
         self.proc = proc
         self._begin_busy()
+        self._activity_start("در حال اجرای دستور در پوشهٔ پروژه…")
         self.proc_timer = QTimer(self)
         self.proc_timer.setSingleShot(True)
         self.proc_timer.timeout.connect(proc.kill)
@@ -719,6 +783,7 @@ class CodeChat(QObject):
             return
         with w._as(sess):
             self._bubble("system", cc.output_html(command, "".join(out).rstrip(), code), name="")
+            self._activity_complete("اجرای دستور تمام شد" if code == 0 else f"دستور با کد خروج {code} تمام شد")
             self._end_busy()
 
     def _command_error(self, sess, proc, error):
@@ -730,6 +795,7 @@ class CodeChat(QObject):
         if not w._closing and sess.cid in w.sessions:
             with w._as(sess):
                 w.add_chat("error", f"اجرای دستور ناموفق بود: {error}")
+                self._activity_fail("اجرای دستور شروع نشد")
                 self._end_busy()
         proc.deleteLater()
 
@@ -737,8 +803,10 @@ class CodeChat(QObject):
     def stop(self, sess):
         """Called by MainWindow.stop_generation. True = a running command was killed (nothing else to cancel)."""
         if self.job is not None and self.session is sess:
+            self._activity_update("در حال متوقف‌کردن عملیات…")
             self.auto_stop = True                              # the auto loop checks this between steps (harmless for other jobs)
         if self.proc is not None and self.session is sess and self.proc.state() != QProcess.NotRunning:
+            self._activity_update("در حال متوقف‌کردن دستور…")
             self.proc.kill()
             return True
         return False
@@ -762,4 +830,8 @@ class CodeChat(QObject):
             if class_job.isRunning():
                 class_job.requestInterruption()
         if self.job is not None and self.job.isRunning():
-            self.job.requestInterruption()                   # AutoAgent checks should_stop between steps
+            self.job.requestInterruption()                   # Kode checks should_stop between steps
+
+
+# Backward-compatible name for older composition roots.
+CodeChat = Kode

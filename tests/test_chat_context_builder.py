@@ -203,6 +203,29 @@ class ContextBuilderTests(unittest.TestCase):
         self.assertEqual(latest_user_text([{"role": "assistant", "content": "no user"}]), "")
         self.assertEqual(latest_user_text([]), "")
 
+    def test_appllama_unslop_guidance_is_added_only_for_kira_ui_tasks(self):
+        kira_ui = self.builder.build(ContextRequest(
+            character_id="kira",
+            character_profile={"name": "Kira"},
+            messages=[{"role": "user", "content": "رابط کاربری تنظیمات رو مرتب کن"}],
+        ))
+        self.assertIn("APPLLAMMA APP-DESIGN WORKFLOW", kira_ui.system_prompt)
+        self.assertIn("Choice overload", kira_ui.system_prompt)
+
+        kira_backend = self.builder.build(ContextRequest(
+            character_id="kira",
+            character_profile={"name": "Kira"},
+            messages=[{"role": "user", "content": "Fix the API retry policy"}],
+        ))
+        self.assertNotIn("APPLLAMMA APP-DESIGN WORKFLOW", kira_backend.system_prompt)
+
+        ren_ui = self.builder.build(ContextRequest(
+            character_id="ren",
+            character_profile={"name": "Ren"},
+            messages=[{"role": "user", "content": "Redesign the dashboard UI"}],
+        ))
+        self.assertNotIn("APPLLAMMA APP-DESIGN WORKFLOW", ren_ui.system_prompt)
+
     def test_missing_prompt_builder_is_rejected(self):
         with self.assertRaises(TypeError):
             ContextBuilder(None)

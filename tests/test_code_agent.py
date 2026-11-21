@@ -4,11 +4,14 @@ from pathlib import Path
 
 from kira.code_agent import (
     build_project_context, project_tree, safe_project_file,
-    extract_replacement, PATCH_START, PATCH_END, CodeAgentEngine,
+    extract_replacement, PATCH_START, PATCH_END, CodeAgentEngine, KodeAnalysisEngine,
 )
 
 
 class CodeAgentContextTests(unittest.TestCase):
+    def test_kode_analysis_engine_is_the_canonical_name(self):
+        self.assertIs(CodeAgentEngine, KodeAnalysisEngine)
+
     def test_project_tree_excludes_secrets_and_runtime_folders(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -93,6 +96,26 @@ class CodeAgentContextTests(unittest.TestCase):
         engine = CodeAgentEngine(NoCallRouter())
         with self.assertRaises(ValueError):
             engine.propose_replacement("edit config", "[REDACTED]")
+
+
+    def test_ui_requests_receive_appllama_and_unslop_guidance(self):
+        class CapturingRouter:
+            def __init__(self):
+                self.system = ""
+
+            def chat_stream(self, messages, system, **kwargs):
+                self.system = system
+                return {"text": "analysis"}
+
+        router = CapturingRouter()
+        answer = CodeAgentEngine(router).ask("Redesign the dashboard UI", "project files")
+        self.assertEqual(answer, "analysis")
+        self.assertIn("APPLLAMMA APP-DESIGN WORKFLOW", router.system)
+        self.assertIn("Banner blindness", router.system)
+
+        CodeAgentEngine(router).ask("Fix the database migration", "project files")
+        self.assertNotIn("APPLLAMMA APP-DESIGN WORKFLOW", router.system)
+
 
 
 if __name__ == "__main__":

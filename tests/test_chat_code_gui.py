@@ -1,4 +1,4 @@
-"""Ai1 Code inside Kira's chat (Qt offscreen). Proves wiring and safety gates; the real Windows desktop still needs a manual try."""
+"""Kode inside Kira's chat (Qt offscreen): unified flow wiring and safety gates."""
 import json
 import os
 import sys
@@ -136,9 +136,34 @@ class ChatCodeGuiTests(unittest.TestCase):
     def test_no_button_and_not_in_menu(self):
         from PySide6.QtWidgets import QAbstractButton
         w = self.win
+        self.assertNotIn("Kode", [a.text() for a in w.nav_menu.actions()])
         self.assertNotIn("Ai1 Code", [a.text() for a in w.nav_menu.actions()])
         self.assertFalse(hasattr(self.cc, "button"))
         self.assertFalse([b for b in w.findChildren(QAbstractButton) if b.text().strip() == "</>"])
+
+    def test_kode_activity_panel_tracks_live_work_and_resets(self):
+        panel = self.cc.win.kode_activity
+        self.assertFalse(panel.isVisible())
+        panel.start("در حال تحلیل درخواست…")
+        self.assertTrue(panel.isVisible())
+        self.assertEqual(panel.status.text(), "در حال تحلیل درخواست…")
+        panel.step("جست‌وجوی فایل‌های پروژه")
+        self.assertEqual(panel.steps.count(), 2)
+        self.assertIn("جست‌وجوی فایل‌های پروژه", panel.steps.item(1).text())
+        panel.complete("تحلیل تمام شد")
+        self.assertEqual(panel.status.text(), "تحلیل تمام شد")
+        panel.reset()
+        self.assertFalse(panel.isVisible())
+        self.assertEqual(panel.steps.count(), 0)
+
+    def test_real_chat_tool_events_appear_in_kira_activity(self):
+        panel = self.cc.win.kode_activity
+        panel.start("در حال پاسخ‌گویی…")
+        runtime = self.win.presentation_context.controllers.require("runtime")
+        runtime.on_tool_event({"phase": "tool_start", "tool": "web_search", "label": "جست‌وجوی وب"})
+        self.assertEqual(panel.status.text(), "در حال جست‌وجوی وب…")
+        runtime.on_tool_event({"phase": "tool_done", "tool": "web_search", "label": "جست‌وجوی وب", "status": "ok"})
+        self.assertEqual(panel.status.text(), "جست‌وجوی وب انجام شد")
 
     def test_first_coding_request_asks_for_the_project_folder_once(self):
         asked = []
@@ -304,8 +329,8 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.turn_on()
         self.propose()
         html = self.win.chat.toHtml()
-        self.assertIn("kira-code://apply/", html)
-        self.assertIn("kira-code://reject/", html)
+        self.assertIn("kode://apply/", html)
+        self.assertIn("kode://reject/", html)
         self.assertIn("return 2", self.chat_text())
         self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "def save():\n    return 1\n")
         self.assertEqual(len(self.cc.patches), 1)
@@ -314,7 +339,7 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.turn_on()
         self.propose()
         pid = self.cc.patches.last().pid
-        self.win.on_chat_link(QUrl(f"kira-code://apply/{pid}"))
+        self.win.on_chat_link(QUrl(f"kode://apply/{pid}"))
         self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "def save():\n    return 2\n")
         self.assertEqual((self.proj / "app.py.ai1code.bak").read_text(encoding="utf-8"), "def save():\n    return 1\n")
         self.assertEqual(len(self.cc.patches), 0)
@@ -324,14 +349,14 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.turn_on()
         self.propose()
         self.cc.confirm = lambda *a, **k: False
-        self.win.on_chat_link(QUrl(f"kira-code://apply/{self.cc.patches.last().pid}"))
+        self.win.on_chat_link(QUrl(f"kode://apply/{self.cc.patches.last().pid}"))
         self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "def save():\n    return 1\n")
         self.assertEqual(len(self.cc.patches), 1)
 
     def test_reject_link_discards_the_proposal(self):
         self.turn_on()
         self.propose()
-        self.win.on_chat_link(QUrl(f"kira-code://reject/{self.cc.patches.last().pid}"))
+        self.win.on_chat_link(QUrl(f"kode://reject/{self.cc.patches.last().pid}"))
         self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "def save():\n    return 1\n")
         self.assertEqual(len(self.cc.patches), 0)
 
@@ -339,7 +364,7 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.turn_on()
         self.propose()
         (self.proj / "app.py").write_text("def save():\n    return 99\n", encoding="utf-8")   # edited elsewhere meanwhile
-        self.win.on_chat_link(QUrl(f"kira-code://apply/{self.cc.patches.last().pid}"))
+        self.win.on_chat_link(QUrl(f"kode://apply/{self.cc.patches.last().pid}"))
         self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "def save():\n    return 99\n")
         self.assertIn("تغییر کرده", self.chat_text())
 
@@ -412,12 +437,12 @@ class ChatCodeGuiTests(unittest.TestCase):
         import zipfile
         self.assertIn("return 2", zipfile.ZipFile(zips[0]).read("app.py").decode())
         self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "def save():\n    return 1\n")   # original untouched
-        self.assertIn("kira-code://open/1", self.win.chat.toHtml())
+        self.assertIn("kode://open/1", self.win.chat.toHtml())
         self.assertFalse(self.win.busy)
         with mock.patch("kira.chat_code_ui.QDesktopServices.openUrl") as opened:
-            self.win.on_chat_link(QUrl("kira-code://open/1"))
+            self.win.on_chat_link(QUrl("kode://open/1"))
             opened.assert_called_once()
-            self.win.on_chat_link(QUrl("kira-code://open/99"))
+            self.win.on_chat_link(QUrl("kode://open/99"))
             opened.assert_called_once()
 
     def test_auto_result_ids_are_monotonic_and_unique(self):
@@ -553,10 +578,20 @@ class ChatCodeGuiTests(unittest.TestCase):
             self.win.on_chat_link(QUrl("file:///C:/Windows/system32/calc.exe"))
             opened.assert_called_once()                       # anything else is ignored
 
+    def test_legacy_kira_code_links_still_route_to_kode(self):
+        patch = self.cc.patches.add("app.py", "def save(): return 2", b"def save(): return 1")
+        self.win.on_chat_link(QUrl(f"kira-code://reject/{patch.pid}"))
+        APP.processEvents()
+        self.assertIsNone(self.cc.patches.get(patch.pid))
+
     def test_project_folder_survives_a_restart(self):
         self.turn_on()
-        from kira.chat_code_ui import CodeChat
-        again = CodeChat(self.win)
+        from kira.chat_code_ui import CodeChat, Kode
+        from kira.kode import Kode as PublicKode
+        self.assertIs(CodeChat, Kode)
+        self.assertIs(Kode, PublicKode)
+        self.assertIsInstance(self.cc, Kode)
+        again = Kode(self.win)
         self.assertEqual(again.root, self.proj.resolve())
 
     def test_changing_the_folder_in_words(self):

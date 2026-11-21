@@ -12,6 +12,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .kode_activity import KodeActivityPanel
+
 
 class ChatComposer(QFrame):
     """Owns the message input, attachment indicators, and chat action toolbar.
@@ -26,6 +28,7 @@ class ChatComposer(QFrame):
     # views.chat_composer.<name> and is deliberately not a window-level alias.
     _OWNER_ALIASES = (
         "send_strip",
+        "kode_activity",
         "input",
         "route_badge",
         "route_menu",
@@ -84,6 +87,9 @@ class ChatComposer(QFrame):
         self.attach_err_widget = QWidget()
         self.attach_err_widget.setLayout(self.attach_err_row)
         self.attach_err_widget.hide()
+        self.kode_activity = KodeActivityPanel(self)
+        owner.kode_activity = self.kode_activity
+        co.addWidget(self.kode_activity)
         co.addWidget(self.send_strip)
         co.addWidget(self.attach_strip)
         co.addWidget(self.attach_err_widget)

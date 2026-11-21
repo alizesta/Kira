@@ -91,8 +91,12 @@ class ChatController(WindowFeatureController):
                     + (f"\nعلت: {event.error}" if event.error else ""),
                 )
             if event.kind is ApplicationEventKind.PROVIDER_CHUNK:
+                if session is self.context.state.front:
+                    self.context.views.kode_activity.update("در حال نوشتن پاسخ…")
                 self.feature_controller("runtime").on_stream_chunk(event.chunk, event.content)
             elif event.kind is ApplicationEventKind.PROVIDER_FINAL and event.result is not None:
+                if session is self.context.state.front:
+                    self.context.views.kode_activity.complete("پاسخ آماده شد")
                 result = event.result
                 response = dict(result.metadata)
                 response.update({
@@ -103,6 +107,8 @@ class ChatController(WindowFeatureController):
                 })
                 self.feature_controller("runtime").on_stream_done(response)
             elif event.kind is ApplicationEventKind.REQUEST_CANCELLED:
+                if session is self.context.state.front:
+                    self.context.views.kode_activity.complete("درخواست متوقف شد")
                 self.feature_controller("runtime").on_stream_done({
                     "text": event.content,
                     "stopped": True,
@@ -110,6 +116,8 @@ class ChatController(WindowFeatureController):
                     "session_id": event.session_id,
                 })
             elif event.kind is ApplicationEventKind.REQUEST_FAILED:
+                if session is self.context.state.front:
+                    self.context.views.kode_activity.fail("پاسخ با خطا متوقف شد")
                 if event.metadata.get("interrupted"):
                     self.feature_controller("runtime").on_stream_done({
                         "text": event.content,
@@ -256,6 +264,8 @@ class ChatController(WindowFeatureController):
             self.feature_controller("runtime").reply_local(command_dispatch.reply_text or "فرمان اجرا شد.")
             return
         self.context.session.busy = True
+        if self.context.state.cur is self.context.state.front:
+            self.context.views.kode_activity.start("در حال آماده‌سازی پاسخ…")
         self.context.views.gen_stop_btn.show()
         self.feature_controller("session").set_status("st_thinking")
         self.feature_controller("runtime").set_badge("connecting", self.context.session.client.preview_route())
@@ -326,6 +336,8 @@ class ChatController(WindowFeatureController):
         )
         self.context.session._search_token += 1
         self.context.session._search_base = (base_text, images)
+        if self.context.state.cur is self.context.state.front:
+            self.context.views.kode_activity.start("در حال جست‌وجوی تصویر در وب…")
         self.context.views.status.setText("🔎 در حال جست‌وجوی تصویر در وب…")
         self.context.session._search_worker = SearchWorker(
             self.context.session._search_token,
@@ -348,6 +360,8 @@ class ChatController(WindowFeatureController):
             return
         self.context.session._search_token += 1
         self.context.session._search_base = (base_text, images)
+        if self.context.state.cur is self.context.state.front:
+            self.context.views.kode_activity.start(f"در حال جست‌وجوی وب: «{query[:60]}»…")
         self.context.views.status.setText(f"🌐 در حال جست‌وجوی وب: «{query[:60]}»…")
         conversation_id = self.feature_controller("session")._ensure_session_conversation(self.context.state.cur)
         history = self.context.services.chat_application_service.conversation_context(
@@ -421,6 +435,8 @@ class ChatController(WindowFeatureController):
                 base, images, self.context.services.web_search_service.format_evidence(result),
                 image_search=bool(getattr(self.context.session, "_image_search_turn", False)),
             )
+            if self.context.state.cur is self.context.state.front:
+                self.context.views.kode_activity.update(f"{len(result['results'])} منبع پیدا شد؛ در حال بررسی و آماده‌سازی پاسخ…")
             self.context.views.status.setText(f"{'🔎 Google' if result.get('engine') == 'google' else ('🦆 DuckDuckGo' if result.get('engine') == 'ddg' else '🌐 Tavily')}: {len(result['results'])} منبع پیدا شد؛ در حال پاسخ دادن…")
         elif getattr(self.context.session, "_image_search_turn", False):
             # the picture itself is still in the request: she answers from what she sees and says what is unconfirmed
@@ -435,6 +451,8 @@ class ChatController(WindowFeatureController):
         else:
             # no usable web result: do not let the model improvise from memory; Kira says she does not know
             self.context.adapters.director.event("response_failed")
+            if self.context.state.cur is self.context.state.front:
+                self.context.views.kode_activity.fail("جست‌وجوی وب ناموفق بود")
             self.feature_controller("session").add_chat("system", f"🌐 جست‌وجوی وب انجام نشد: {result}")
             self.context.session._turn_extra = None
             self.feature_controller("runtime").reply_local(self.context.services.web_search_service.failure_reply(result), "sad")

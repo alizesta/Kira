@@ -1,11 +1,11 @@
-"""Application boundary for Coding Agent interception and session shutdown."""
+"""Application boundary for Kode request interception and session shutdown."""
 from __future__ import annotations
 
 from typing import Any, Callable
 
 
-class CodingAgentApplicationService:
-    """Route eligible chat turns to the existing Coding Agent lifecycle."""
+class KodeApplicationService:
+    """Single application boundary for all Kode analysis and coding missions."""
 
     @staticmethod
     def dispatch(
@@ -28,7 +28,11 @@ class CodingAgentApplicationService:
 
     @staticmethod
     def stop_session(code_chat: Any | None, session: Any | None) -> bool:
-        """Stop the Coding Agent session if one is active."""
+        """Stop the active Kode session, whether it is analyzing or executing a mission."""
         if code_chat is None or session is None:
             return False
         return bool(code_chat.stop(session))
+
+
+# Backward-compatible name for existing dependency registrations.
+CodingAgentApplicationService = KodeApplicationService

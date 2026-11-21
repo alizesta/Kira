@@ -1,4 +1,4 @@
-"""Ai1 Code auto mode: Kira works through a goal on her own and hands over a zip.
+"""Kode autonomous workflow: Kira works through a goal on a safe project copy.
 
 The person says `/auto <goal>`. Kira then loops: look at the files, decide, edit, run the checks, repeat, and finally
 the project is zipped with a Gregorian date + Iran-time stamp. Safety model:
@@ -111,7 +111,7 @@ NONPY_CHECKS = {
 }
 SECRET_ENV = re.compile(r"(key|token|secret|passw|credential|auth)", re.I)
 
-SYSTEM_PROMPT = """You are Kira in Ai1 Code AUTO mode: an autonomous software engineer working on a COPY of the user's project.
+SYSTEM_PROMPT = """You are Kira in Kode's autonomous execution workflow: a software engineer working on a COPY of the user's project.
 Work like a careful engineer: INSPECT -> PLAN -> EDIT -> TEST -> ANALYZE ERRORS -> FIX -> RETEST -> FINISH. The user will not tell you file names:
 find the relevant files yourself (list, map, search, read), understand how they connect, keep unrelated behaviour intact.
 Each reply must be ONE JSON object and nothing else (no markdown fences), choosing one action:

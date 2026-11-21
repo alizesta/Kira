@@ -1,4 +1,4 @@
-"""Ai1 Code auto mode: Kira works through a goal on her own and hands over a zip."""
+"""Kode autonomous workflow: Kira completes a coding goal on a safe project copy."""
 from __future__ import annotations
 
 import ast
@@ -24,6 +24,7 @@ from pathlib import Path
 from .code_agent import (
     MAX_FILE_BYTES, SKIP_DIRS, _is_sensitive, project_tree, redact_secrets, safe_project_file,
 )
+from .ui_design_guidance import guidance_for_task
 from .auto_agent_workspace import (  # noqa: F401
     MAX_STEPS,
     MAX_OBSERVATION,
@@ -60,13 +61,15 @@ from .auto_agent_workspace import (  # noqa: F401
     guard_reason,
 )
 
-class AutoAgent:
+class KodeAutonomousEngine:
     def __init__(self, router, project: Path, goal: str, on_event=None, should_stop=None, python=None,
                  max_steps=MAX_STEPS, work_parent=None, output_dir=None, now=None, readonly=False, approve=None, shell=None, history=None,
                  plan_route_id="", exec_route_id="", review_route_id="", execution_guard=None, memory_dir=None):
         self.router = router
         self.project = Path(project).resolve(strict=True)
         self.goal = str(goal or "").strip()[:4000]
+        self.ui_design_guidance = guidance_for_task(self.goal)
+        self.system_prompt = SYSTEM_PROMPT + ("\n\n" + self.ui_design_guidance if self.ui_design_guidance else "")
         self.emit = on_event or (lambda text: None)
         self.should_stop = should_stop or (lambda: False)
         self.max_steps = max_steps
@@ -205,7 +208,7 @@ class AutoAgent:
 
     def _guard_denied(self, name):
         """None when the app-level execution guard allows this tool, otherwise why it is blocked.
-        Every AutoAgent tool execution (loop dispatch AND the pre-plan AST map) passes through here, so
+        Every Kode tool execution (loop dispatch AND the pre-plan AST map) passes through here, so
         tools_mode=off and Competitive Safe hold on every path — including `run`, `shell` and file edits."""
         return guard_reason(self.execution_guard, name)
 
@@ -597,7 +600,7 @@ class AutoAgent:
         content = str(a.get("content") or "").strip()
         if not content or len(content.encode("utf-8")) > 12_000:
             raise ValueError("حافظه باید متن غیرخالی و حداکثر ۱۲ کیلوبایت باشد.")
-        body = "# Project memory for Ai1 Code\n\n" + redact_secrets(content) + "\n"
+        body = "# Project memory for Kode\n\n" + redact_secrets(content) + "\n"
         # Durable store outside the working copy: the temp copy is deleted after delivery,
         # so this is what makes the notes survive to the next mission.
         self.memory_dir.mkdir(parents=True, exist_ok=True)
@@ -626,6 +629,12 @@ class AutoAgent:
             self._reviewed = False
             raise RuntimeError("هیچ Diff قابل بازبینی برای تغییرات ثبت‌شده تولید نشد.")
         findings, reviews = [], []
+        review_system_prompt = (
+            "You are an independent code reviewer. Output CLEAN only for a genuinely clean diff chunk; "
+            "otherwise output FINDINGS and concrete findings."
+        )
+        if self.ui_design_guidance:
+            review_system_prompt += "\n\n" + self.ui_design_guidance
         for index, (rel, diff) in enumerate(chunks, 1):
             prompt = (
                 "Review this COMPLETE diff chunk as an independent senior software reviewer. "
@@ -639,11 +648,11 @@ class AutoAgent:
             if callable(scope):
                 with scope(role="reflection", route_id=self.review_route_id):
                     result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                        "You are an independent code reviewer. Output CLEAN only for a genuinely clean diff chunk; otherwise output FINDINGS and concrete findings.",
+                        review_system_prompt,
                         temperature=0.1, on_chunk=None)
             else:
                 result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                    "You are an independent code reviewer. Output CLEAN only for a genuinely clean diff chunk; otherwise output FINDINGS and concrete findings.",
+                    review_system_prompt,
                     temperature=0.1, on_chunk=None)
             review = str((result or {}).get("text") or "").strip()
             if not review:
@@ -910,14 +919,17 @@ class AutoAgent:
                   "Include relevant callers/dependencies, root cause, safe changes, and focused verification. "
                   "Do not claim tests ran. If evidence is insufficient, state exactly which source must be read next.\n\n"
                   f"GOAL:\n{self.goal}\n\nPROPOSED PLAN:\n{proposed}\n\nSOURCE EVIDENCE:\n{evidence[:24000]}")
+        plan_system_prompt = "You are a careful senior software architect. Be evidence-based."
+        if self.ui_design_guidance:
+            plan_system_prompt += "\n\n" + self.ui_design_guidance
         scope = getattr(self.router, "role_scope", None)
         if callable(scope):
             with scope(role="deep", route_id=self.plan_route_id):
                 result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                                                 "You are a careful senior software architect. Be evidence-based.", temperature=0.15, on_chunk=None)
+                                                 plan_system_prompt, temperature=0.15, on_chunk=None)
         else:
             result = self.router.chat_stream([{"role": "user", "content": prompt}],
-                                             "You are a careful senior software architect. Be evidence-based.", temperature=0.15, on_chunk=None)
+                                             plan_system_prompt, temperature=0.15, on_chunk=None)
         reviewed_plan = str((result or {}).get("text") or "").strip()
         if not reviewed_plan:
             raise RuntimeError("برنامه‌ریز مستقل برنامه‌ی قابل استفاده‌ای ارائه نکرد.")
@@ -949,8 +961,8 @@ class AutoAgent:
         route = {"deep": self.plan_route_id, "surface": self.exec_route_id, "reflection": self.review_route_id}.get(role, "")
         if callable(scope):
             with scope(role=role, route_id=route):
-                return self.router.chat_stream(messages, SYSTEM_PROMPT, temperature=0.2, on_chunk=None)
-        return self.router.chat_stream(messages, SYSTEM_PROMPT, temperature=0.2, on_chunk=None)
+                return self.router.chat_stream(messages, self.system_prompt, temperature=0.2, on_chunk=None)
+        return self.router.chat_stream(messages, self.system_prompt, temperature=0.2, on_chunk=None)
 
     def _cleanup_temp(self):
         parent, self._temp_parent = self._temp_parent, None
@@ -1007,7 +1019,7 @@ class AutoAgent:
             first = (f"GOAL (the user's own words; they gave no file names, so find what is relevant yourself):\n{self.goal}\n\n"
                      + (f"RECENT CONVERSATION (context for words like 'that bug' or 'it'):\n{convo}\n\n" if convo else "")
                      + f"PROJECT BRIEF (untrusted):\n{project_brief(self.work)}\n\nPROJECT TREE (untrusted):\n{project_tree(self.work)}\n\n"
-                     + ("PROJECT MEMORY (untrusted; durable notes from prior Ai1 Code tasks):\n" + self._project_memory() + "\n\n")
+                     + ("PROJECT MEMORY (untrusted; durable notes from prior Kode tasks):\n" + self._project_memory() + "\n\n")
                      + ("This is a READ-ONLY investigation: answer the question with evidence (file names, line numbers). Start." if self.readonly
                         else "Start with inspection, then plan."))
             messages = [{"role": "user", "content": first}]
@@ -1180,7 +1192,7 @@ class AutoAgent:
 
     # ---------------------------------------------------------------- delivery
     def _report(self, summary, changed, removed, stats, stopped, external=()):
-        lines = ["# گزارش Ai1 Code (حالت خودکار)", "", f"هدف: {redact_secrets(self.goal)}", "", f"نتیجه: {redact_secrets(summary)}", "",
+        lines = ["# گزارش Kode (اجرای خودکار)", "", f"هدف: {redact_secrets(self.goal)}", "", f"نتیجه: {redact_secrets(summary)}", "",
                  f"گام‌ها: {self.steps}" + (" (با Stop متوقف شد)" if stopped else ""), ""]
         lines += ["## فایل‌های تغییرکرده"] + ([f"- {c}" for c in changed] or ["- (هیچ)"])
         if removed:
@@ -1190,7 +1202,7 @@ class AutoAgent:
             lines += ["", "## Lint"] + [f"- `{a}` → exit {c}" for a, c in self.lint_runs]
         lines += ["", "## بازبینی"] + (["- تغییرات توسط بازبین مستقل بررسی شد."] if self._reviewed else ["- بازبینی تمیز تأیید نشد؛ گزارش تغییرات را بررسی کن."])
         if external:
-            lines += ["", "## هشدار: پروژه‌ی اصلی هم‌زمان بیرون از Ai1 Code عوض شده", "قبل از جایگزین‌کردن، این فایل‌ها را دستی مقایسه کن:"] + [f"- {e}" for e in external[:40]]
+            lines += ["", "## هشدار: پروژه‌ی اصلی هم‌زمان بیرون از Kode عوض شده", "قبل از جایگزین‌کردن، این فایل‌ها را دستی مقایسه کن:"] + [f"- {e}" for e in external[:40]]
         lines += ["", f"توجه: {stats['skipped']} فایل حساس/ممنوع (مثل .env، کلیدها، دیتابیس‌ها) و پوشه‌های runtime در این زیپ نیستند؛ "
                       "قبل از جایگزین‌کردن پروژه‌ی اصلی، فقط فایل‌های تغییرکرده را برداشت کن."]
         return "\n".join(lines) + "\n"
@@ -1207,10 +1219,14 @@ class AutoAgent:
                     if f.is_symlink() or name.endswith(".pyc") or _is_sensitive(rel):
                         continue
                     zf.write(f, rel.as_posix())
-            zf.writestr("AI1CODE_REPORT.md", report)
+            zf.writestr("KODE_REPORT.md", report)
         with zipfile.ZipFile(path) as zf:                        # integrity check before we hand it over
             bad = zf.testzip()
             names = zf.namelist()
-        if bad is not None or "AI1CODE_REPORT.md" not in names:
+        if bad is not None or "KODE_REPORT.md" not in names:
             raise RuntimeError(f"زیپ ساخته‌شده سالم نیست ({bad or 'گزارش ناقص'}).")
         return path, {"files": len(names), "bytes": path.stat().st_size}
+
+
+# Backward-compatible name for existing integrations and saved tests.
+AutoAgent = KodeAutonomousEngine
