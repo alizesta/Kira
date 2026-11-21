@@ -505,6 +505,21 @@ class VoiceSettingsController(WindowFeatureController):
         self.feature_controller("provider_settings").refresh_unified_models()
         self.context.views.api_add_status.setText(f"✓ مدل «{model}» به Ollama اضافه شد.")
 
+    def select_local_asr_model(self, index):
+        combo = getattr(self.context.views, "local_asr_model_list", None)
+        if combo is None or index < 0:
+            return
+        value = str(combo.itemData(index) or "").strip()
+        if not value:
+            return
+        from .. import local_voice
+        if value not in local_voice.SHENAVA_MODEL_FILENAMES:
+            value = local_voice.SHENAVA_INT8_REPO_ID
+        self.context.services.settings["local_voice_asr_backend"] = "shenava"
+        self.context.services.settings["local_voice_asr_model"] = value
+        self.feature_controller("runtime").save_now()
+        self.refresh_local_voice_status()
+
     def select_local_tts_model(self, index):
         combo = getattr(self.context.views, "local_tts_model_list", None)
         if combo is None or index < 0:

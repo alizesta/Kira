@@ -165,7 +165,7 @@ class ProviderSettingsController(WindowFeatureController):
 
         import_row = QHBoxLayout()
         self.context.views.import_model_btn = QPushButton("＋ معرفی مدل از فایل یا پوشه‌ی سیستم")
-        self.context.views.import_model_btn.setToolTip("فایل GGUF برای Chat، مدل CTranslate2/Qwen برای STT یا Piper ONNX برای TTS")
+        self.context.views.import_model_btn.setToolTip("فایل GGUF برای Chat، مدل شنوا برای STT یا Piper ONNX برای TTS")
         self.context.views.import_model_btn.clicked.connect(self.feature_controller("voice_settings").import_local_model)
         import_row.addWidget(self.context.views.import_model_btn)
         import_row.addStretch(1)
@@ -181,18 +181,50 @@ class ProviderSettingsController(WindowFeatureController):
         layout.addWidget(self.models_panel)
 
         local_box, local_form = self.feature_controller("session").group("مدل‌های Local")
-        local_form.setContentsMargins(8, 6, 8, 6)
+        local_box.setObjectName("localVoiceModelsBox")
+        local_box.setStyleSheet(
+            "QGroupBox#localVoiceModelsBox {"
+            " background: rgba(132, 112, 190, 0.10);"
+            " border: 1px solid rgba(160, 130, 255, 0.75);"
+            " border-radius: 16px; margin-top: 12px; padding: 12px 8px 8px 8px;"
+            "}"
+            "QGroupBox#localVoiceModelsBox::title {"
+            " subcontrol-origin: margin; subcontrol-position: top right;"
+            " padding: 0 8px; color: #b9a5ff; font-weight: 600;"
+            "}"
+        )
+        local_form.setContentsMargins(8, 8, 8, 8)
         local_form.setHorizontalSpacing(8)
-        local_form.setVerticalSpacing(4)
+        local_form.setVerticalSpacing(8)
         self.context.views.local_model_tabs = QTabWidget()
-        self.context.views.local_model_tabs.setMaximumHeight(255)
+        self.context.views.local_model_tabs.setObjectName("localVoiceModelTabs")
+        self.context.views.local_model_tabs.setDocumentMode(True)
+        self.context.views.local_model_tabs.setMovable(False)
+        self.context.views.local_model_tabs.setMaximumHeight(285)
+        self.context.views.local_model_tabs.setStyleSheet(
+            "QTabWidget#localVoiceModelTabs::pane {"
+            " border: 1px solid rgba(160, 130, 255, 0.45);"
+            " border-radius: 12px; background: rgba(255,255,255,0.025);"
+            " top: -1px; padding: 8px;"
+            "}"
+            "QTabWidget#localVoiceModelTabs QTabBar::tab {"
+            " background: rgba(150, 140, 180, 0.13);"
+            " border: 1px solid rgba(180, 170, 210, 0.25);"
+            " border-radius: 10px; padding: 9px 20px; margin: 3px;"
+            " min-width: 54px; color: palette(text);"
+            "}"
+            "QTabWidget#localVoiceModelTabs QTabBar::tab:selected {"
+            " background: rgba(145, 105, 235, 0.34);"
+            " border: 2px solid #9667ff; font-weight: 700;"
+            "}"
+        )
 
-        # Local STT: Qwen ASR and faster-whisper can use a downloaded local directory.
+        # Local STT uses Shenava only; Gemini Live remains in the real-time voice settings.
         local_stt = QWidget()
         local_stt_layout = QVBoxLayout(local_stt)
         local_stt_layout.setContentsMargins(2, 2, 2, 2)
         local_stt_layout.setSpacing(4)
-        self.local_asr_chk = SwitchCheckBox("استفاده از Qwen3-ASR محلی")
+        self.local_asr_chk = SwitchCheckBox("استفاده از شنوا محلی")
         self.local_asr_chk.setChecked(bool(self.context.services.settings.get("local_voice_asr", True)))
         self.local_asr_chk.toggled.connect(lambda on: self.feature_controller("voice_settings").set_local_voice_option("local_voice_asr", on))
         local_stt_layout.addWidget(self.local_asr_chk)
@@ -200,24 +232,20 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.views.local_asr_model_list.setToolTip("مدل‌های STT موجود در کش Hugging Face")
         self.context.views.local_asr_model_list.setMaximumHeight(30)
         self.context.views.local_asr_model_list.currentIndexChanged.connect(self.feature_controller("voice_settings").select_local_asr_model)
-        local_stt_layout.addWidget(QLabel("مدل‌های دانلودشده‌ی STT"))
+        stt_heading = QLabel("مدل شنوا")
+        stt_heading.setObjectName("hint")
+        local_stt_layout.addWidget(stt_heading)
         local_stt_layout.addWidget(self.context.views.local_asr_model_list)
         # Keep the optional custom path internally; the normal flow needs no manual path entry.
-        self.context.views.local_asr_path_edit = QLineEdit(str(self.context.services.settings.get("local_voice_asr_model") or "Qwen/Qwen3-ASR-0.6B"))
-        self.context.views.local_asr_path_edit.setVisible(False)
-        self.local_asr_browse_btn = QPushButton("انتخاب پوشه")
-        self.local_asr_browse_btn.clicked.connect(self.feature_controller("voice_settings").choose_local_asr_folder)
         asr_actions = QHBoxLayout()
-        self.context.views.local_asr_download_btn = QPushButton("نصب خودکار Qwen + مدل")
-        self.context.views.local_asr_download_btn.clicked.connect(self.feature_controller("voice_settings").download_local_qwen_model)
+        asr_actions.setSpacing(8)
+        self.context.views.local_asr_download_btn = QPushButton("دانلود شنوا")
+        self.context.views.local_asr_download_btn.clicked.connect(self.feature_controller("voice_settings").download_local_shenava_model)
         self.context.views.local_asr_load_btn = QPushButton("بارگذاری مدل")
         self.context.views.local_asr_load_btn.clicked.connect(self.feature_controller("voice_settings").load_local_asr)
         asr_actions.addWidget(self.context.views.local_asr_download_btn)
         asr_actions.addWidget(self.context.views.local_asr_load_btn)
         local_stt_layout.addLayout(asr_actions)
-        # Whisper selection and one-click installation are available in the main Voice settings above.
-        self.context.views.local_whisper_path = QLineEdit(str(self.context.services.settings.get("whisper_model") or "small"))
-        self.context.views.local_whisper_path.setVisible(False)
         self.context.views.local_model_tabs.addTab(local_stt, "STT")
 
         # Local TTS: bundled Persian Piper or a user-selected ONNX voice.
@@ -233,7 +261,9 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.views.local_tts_model_list.setToolTip("صداهای Piper دانلودشده و صدای فارسی پیش‌فرض")
         self.context.views.local_tts_model_list.setMaximumHeight(30)
         self.context.views.local_tts_model_list.currentIndexChanged.connect(self.feature_controller("voice_settings").select_local_tts_model)
-        local_tts_layout.addWidget(QLabel("مدل‌های دانلودشده‌ی TTS"))
+        tts_heading = QLabel("مدل‌های دانلودشده‌ی TTS")
+        tts_heading.setObjectName("hint")
+        local_tts_layout.addWidget(tts_heading)
         local_tts_layout.addWidget(self.context.views.local_tts_model_list)
         self.context.views.local_tts_model_path = QLineEdit(str(self.context.services.settings.get("local_voice_tts_model") or ""))
         self.context.views.local_tts_model_path.setPlaceholderText("مسیر فایل Piper ONNX یا شناسه مخزن Hugging Face؛ خالی = صدای پیش‌فرض")
@@ -255,7 +285,7 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.views.local_voice_status = QLabel()
         self.context.views.local_voice_status.setWordWrap(True)
         self.context.views.local_voice_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.context.views.local_voice_status.setMaximumHeight(96)
+        self.context.views.local_voice_status.setMaximumHeight(72)
         self.context.views.local_voice_status.setObjectName("hint")
         self.local_voice_copy_btn = QPushButton("کپی لاگ")
         self.local_voice_copy_btn.setMaximumWidth(90)
