@@ -242,9 +242,11 @@ class ChatComposer(QFrame):
         owner.screen_capture_btn = self.game_mode_btn
         bar.addWidget(self.game_mode_btn)
 
+        # The composer runs in RTL: Qt lays out QHBoxLayout items right-to-left.
+        # Add mic first so the speaker is physically to its left on screen.
         for button, key in (
-            (self.voice_btn, "voice"),
             (self.mic_btn, "mic"),
+            (self.voice_btn, "voice"),
         ):
             owner.reg(button.setToolTip, key)
             bar.addWidget(button)
