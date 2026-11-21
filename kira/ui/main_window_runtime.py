@@ -148,12 +148,12 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
             text = self.BADGE_HEAD[phase] + (" · No active route" if phase == "idle" else "")
             tip = "هیچ Route فعالی آماده نیست. تب Route را ببین."
         else:
-            kind = "Cloud" if info.get("kind") == "cloud" else "Local"
-            text = f"{self.BADGE_HEAD[phase]} · {info['label']} / {info['model']} · {kind}"
-            tip = (f"Provider: {info['label']}\nModel: {info['model']}\nنوع: {kind}\nRoute: {info.get('route_id', '')}\n"
-                   "کلیک: جزئیات و انتخاب دستی مدل")
+            provider = str(info.get("label") or info.get("provider") or "Provider").strip()
+            model = str(info.get("model") or "").strip()
+            text = f"{self.BADGE_HEAD[phase]} · {provider} / {model}" if model else f"{self.BADGE_HEAD[phase]} · {provider}"
+            tip = f"{provider} / {model}" if model else provider
         glyph = text.split(" ", 1)[0]
-        compact = f"{glyph} {info['label']} / {info['model']}" if (info and phase != "error") else text
+        compact = f"{glyph} {provider} / {model}" if (info and phase != "error") else text
         self.context.views.route_badge.setText(text, display=compact)             # full text for tests/tooltips, short one on the chip
         self.context.views.route_badge.setToolTip(tip)
 
@@ -162,9 +162,6 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
     def build_badge_menu(self):
         menu = self.context.views.route_menu
         menu.clear()
-        menu.addAction("جزئیات Route فعال…", self.show_route_details)
-        menu.addAction(self.feature_controller("session").t("route_open"), lambda: self.feature_controller("session").go_tab(self.context.views.tab_keys.index("tab_ai")))
-        menu.addSeparator()
         manual = self.context.services.settings.get("manual_route_id", "")
         auto = menu.addAction("خودکار (بر اساس اولویت)")
         auto.setCheckable(True)
@@ -176,9 +173,11 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         if chosen is not None and chosen not in shown:         # the manually selected route is always visible
             shown = shown[:-1] + [chosen]
         for info in shown:
-            icon = "☁" if info["kind"] == "cloud" else "⌂"
-            model = info["model"] if len(info["model"]) <= 38 else info["model"][:37] + "…"
-            act = menu.addAction(f"{icon}  {info['label']} / {model}")
+            provider = str(info.get("label") or info.get("provider") or "Provider").strip()
+            model = str(info.get("model") or "").strip()
+            # Keep the chat selector concise: provider first, then the exact model ID only.
+            label = f"{provider} / {model}" if model else provider
+            act = menu.addAction(label)
             act.setCheckable(True)
             act.setChecked(info["route_id"] == manual)
             act.triggered.connect(lambda checked=False, rid=info["route_id"]: self.select_route(rid))
