@@ -252,9 +252,15 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
                 elif status:
                     self.context.views.kode_activity.step(f"{label}: {status}")
         elif phase == "plan_step":
-            self.context.views.status.setText(f"🧭 مرحله {e.get('i', '?')} از {e.get('n', '?')}: {e.get('title', '')}")
+            label = f"مرحله {e.get('i', '?')} از {e.get('n', '?')}: {e.get('title', '')}"
+            self.context.views.status.setText("🧭 " + label)
+            if self.context.state.cur is self.context.state.front:
+                self.context.views.kode_activity.step(label)
         elif phase == "plan_ready":
-            self.context.views.status.setText(f"🧭 برنامه آماده شد: {e.get('n', '?')} مرحله" + (f" — {e['estimate']}" if e.get("estimate") else ""))
+            label = f"برنامه آماده شد: {e.get('n', '?')} مرحله" + (f" — {e['estimate']}" if e.get("estimate") else "")
+            self.context.views.status.setText("🧭 " + label)
+            if self.context.state.cur is self.context.state.front:
+                self.context.views.kode_activity.update(label)
 
     def on_stream_done(self, res):
         if self.context.state._closing:
