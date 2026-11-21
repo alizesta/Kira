@@ -134,6 +134,26 @@ class RouteModelTests(unittest.TestCase):
         self.assertFalse(added[0]["enabled"])
         self.assertFalse(s["providers"]["ollama"]["enabled"])
 
+    def test_enabling_ollama_route_also_enables_shared_provider(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        s["providers"]["ollama"]["enabled"] = False
+
+        # Enabling an existing route must also open the provider-level gate.
+        routes.set_enabled(s, "ollama", True)
+        self.assertTrue(s["providers"]["ollama"]["enabled"])
+
+        # Creating an explicitly enabled local route follows the same rule.
+        s["providers"]["ollama"]["enabled"] = False
+        routes.add_route(s, "ollama", "llama3.2:3b", enabled=True)
+        self.assertTrue(s["providers"]["ollama"]["enabled"])
+
+        # Auto-discovery creates OFF routes and must not activate the provider.
+        s["providers"]["ollama"]["enabled"] = False
+        added = routes.add_ollama_models(s, ["gemma3:4b"])
+        self.assertFalse(added[0]["enabled"])
+        self.assertFalse(s["providers"]["ollama"]["enabled"])
+
     def test_enable_disable_keeps_all_route_settings(self):
         s = legacy_settings()
         routes.ensure_routes(s)
