@@ -70,7 +70,13 @@ class SessionController(WindowFeatureController):
         QApplication.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
         for setter, key in self.context.state._tr:
             setter(self.t(key))
-        self.context.views.input.setPlaceholderText(self.t("input_ph"))
+        input_widget = self.context.views.input
+        set_character_placeholder = getattr(input_widget, "set_character_placeholder", None)
+        if callable(set_character_placeholder):
+            set_character_placeholder(getattr(self.context.state.front, "cid", "kira"),
+                                      self.context.services.settings.get("ui_lang", "fa"))
+        else:
+            input_widget.setPlaceholderText(self.t("input_ph"))
         if hasattr(self.context.state, "_menu_actions"):
             for action, key in zip(self.context.state._menu_actions, self.context.views.tab_keys):
                 action.setText(self.t(key))
@@ -352,6 +358,9 @@ class SessionController(WindowFeatureController):
         self.context.state.front = self.context.state.cur = sess
         sess.unread = False
         self.context.services.settings["active_character_id"] = cid
+        set_character_placeholder = getattr(self.context.views.input, "set_character_placeholder", None)
+        if callable(set_character_placeholder):
+            set_character_placeholder(cid, self.context.services.settings.get("ui_lang", "fa"))
         self.refresh_navigation_icons()
         try:
             self.context.services.mood_service.set_active_character(cid, self.character_traits(cid, self.context.services.character_service.all_profiles(self.context.services.settings).get(cid)))
