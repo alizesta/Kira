@@ -41,8 +41,28 @@ def _run(command, timeout=3600, cancel_event=None):
 def install_runtime(cancel_event=None):
     """Install only the ONNX runtime stack; avoid the optional multi-GB PyTorch stack."""
     import importlib.util
-    required_modules = ("kittenml", "onnxruntime", "num2words", "spacy")
-    if all(importlib.util.find_spec(name) for name in required_modules):
+    from importlib.metadata import PackageNotFoundError, version
+
+    required_modules = (
+        "kittenml", "onnxruntime", "num2words", "spacy", "huggingface_hub",
+    )
+
+    def hub_version_is_compatible():
+        try:
+            installed = version("huggingface-hub")
+        except PackageNotFoundError:
+            return False
+        # Kitten's transformers integration requires huggingface-hub >=0.34,<1.
+        # Avoid adding packaging as another runtime dependency just for comparison.
+        import re
+        match = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?", installed)
+        if not match:
+            return False
+        current = tuple(int(part or 0) for part in match.groups())
+        return (0, 34, 0) <= current < (1, 0, 0)
+
+    if (all(importlib.util.find_spec(name) for name in required_modules)
+            and hub_version_is_compatible()):
         return True
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
     # Kitten's default extra dependencies include PyTorch. --no-deps keeps this
@@ -55,11 +75,20 @@ def install_runtime(cancel_event=None):
           "--timeout", "60", "--constraint",
           str(Path(__file__).resolve().parents[1] / "constraints-voice.txt"),
           "onnxruntime>=1.20", "numpy>=1.26", "soundfile",
-          "huggingface_hub", "phonemizer", "espeakng_loader", "misaki",
+          "huggingface-hub>=0.34.0,<1.0", "phonemizer", "espeakng_loader", "misaki",
           "num2words", "spacy>=3.8"], cancel_event=cancel_event)
     missing = [name for name in required_modules if not importlib.util.find_spec(name)]
     if missing:
         raise RuntimeError("پس از نصب، ماژول‌های لازم پیدا نشدند: " + ", ".join(missing))
+    if not hub_version_is_compatible():
+        try:
+            installed = version("huggingface-hub")
+        except PackageNotFoundError:
+            installed = "نصب نشده"
+        raise RuntimeError(
+            "نسخه ناسازگار huggingface-hub پس از نصب باقی مانده است: "
+            f"{installed}؛ نسخه مجاز >=0.34.0 و <1.0 است."
+        )
     return True
 
 
