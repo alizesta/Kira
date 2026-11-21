@@ -241,6 +241,15 @@ class EngineTests(unittest.TestCase):
         self.assertEqual([m["role"] for m in messages], ["user", "assistant", "user"])
         self.assertIn("q2", messages[-1]["content"])
 
+    def test_ui_design_guidance_is_injected_only_for_interface_tasks(self):
+        router = _Router("تحلیل")
+        cc.KiraCodeEngine(router).ask("رابط کاربری تنظیمات رو ساده کن", "CTX")
+        self.assertIn("APPLLAMMA APP-DESIGN WORKFLOW", router.calls[-1][1])
+        self.assertIn("Choice overload", router.calls[-1][1])
+
+        cc.KiraCodeEngine(router).ask("Fix the API retry policy", "CTX")
+        self.assertNotIn("APPLLAMMA APP-DESIGN WORKFLOW", router.calls[-1][1])
+
     def test_patch_proposal_parsed_and_redacted_context_blocked(self):
         router = _Router(f"{PATCH_START}\nprint('x')\n{PATCH_END}")
         self.assertEqual(cc.KiraCodeEngine(router).propose_replacement("do", "CTX"), "print('x')")
