@@ -52,6 +52,7 @@ class Listener(QThread):
         self._partial_last_at = 0.0
         self._partial_last_samples = 0
         self._partial_last_text = ""
+        self._segment_partial_text = ""
 
     # ---- called by the window ----
     def begin_kira_speech(self):
@@ -207,9 +208,11 @@ class Listener(QThread):
         elif kind == "start":
             self._partial_last_at = 0.0
             self._partial_last_samples = 0
+            self._segment_partial_text = ""
             self.state.emit("hearing")
         elif kind == "noise":
             self.barge_capturing = False
+            self._segment_partial_text = ""
             if not self._pending:
                 self._emit_partial("")
             if self._run:
@@ -218,6 +221,8 @@ class Listener(QThread):
             self.barge_capturing = False
             self.state.emit("transcribing")
             text = self._transcribe(model, ev[1])
+            if not text or is_hallucination(text):
+                text = self._segment_partial_text
             if text and not is_hallucination(text):
                 self._pending = merge_text(self._pending, text)
                 self._emit_partial(clean_transcript(self._pending, self.language, self.fixes))
@@ -256,6 +261,7 @@ class Listener(QThread):
         self.fixes.refresh()
         cleaned = clean_transcript(hypothesis, self.language, self.fixes)
         if cleaned:
+            self._segment_partial_text = cleaned
             self._emit_partial(merge_text(self._pending, cleaned))
 
     def _flush_pending(self, force=False):
@@ -274,8 +280,10 @@ class Listener(QThread):
         if len(text) > 1:
             self.partial_heard.emit("")
             self._partial_last_text = ""
+            self._segment_partial_text = ""
             self.heard.emit(text)
         else:
+            self._segment_partial_text = ""
             self._emit_partial("")
 
     # ---- local recognition: return the transcript or an empty string ----
