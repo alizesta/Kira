@@ -23,6 +23,11 @@ class RuntimeVoiceMixin:
             "پاسخ صوتی روشن است؛ Kira با صدا پاسخ می‌دهد."
             if on else "پاسخ صوتی خاموش است؛ Kira فقط متنی پاسخ می‌دهد."
         )
+        icon = self.context.views.voice_btn.property(
+            "voiceOnIcon" if on else "voiceOffIcon"
+        )
+        if icon is not None:
+            self.context.views.voice_btn.setIcon(icon)
         if not on:
             self.safe_stop_speaker()
 
