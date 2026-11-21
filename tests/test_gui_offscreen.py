@@ -129,6 +129,26 @@ class GuiTests(unittest.TestCase):
             self.assertLessEqual(abs(geometry.center().x() - cell.rect().center().x()), 2)
             self.assertLessEqual(abs(geometry.center().y() - cell.rect().center().y()), 2)
 
+    def test_neon_glass_theme_uses_soft_single_pixel_outlines(self):
+        from kira.theme import CHARACTER_THEMES, build_style, character_style
+
+        style = build_style("off", {"glow": 58})
+        group_start = style.rfind("QGroupBox {")
+        group_end = style.find("QGroupBox::title", group_start)
+        group_rule = style[group_start:group_end]
+        self.assertIn("border: 1px solid rgba(145,166,207,", group_rule)
+        self.assertNotIn("border-top:", group_rule)
+        self.assertNotIn("border-bottom:", group_rule)
+
+        self.assertIn("border: 1px solid rgba(208,224,248,0.22)", style)
+        self.assertNotIn("border-bottom: 2px solid rgba(255,102,220", style)
+        self.assertIn("border: 1px solid rgba(166,187,220,0.20)", style)
+
+        character_css = character_style(CHARACTER_THEMES["kira"], appearance={"glow": 58})
+        self.assertIn("border: 1px solid rgba(156,123,255,0.26)", character_css)
+        self.assertIn("border: 1px solid rgba(53,217,242,0.24)", character_css)
+        self.assertNotIn("0.75);", character_css)
+
     def test_model_tables_fit_without_horizontal_scroll_and_route_list_shows_five_rows(self):
         from PySide6.QtCore import Qt
 
