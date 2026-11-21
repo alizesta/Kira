@@ -50,15 +50,21 @@ class KodeActivityPanel(QFrame):
         self.steps.setFocusPolicy(Qt.NoFocus)
         self.steps.hide()
         outer.addWidget(self.steps)
-        self._generation = 0
         self._active = False
+        self._hide_timer = QTimer(self)
+        self._hide_timer.setSingleShot(True)
+        self._hide_timer.timeout.connect(self._hide_completed)
         self.hide()
 
     def _toggle_details(self, expanded: bool) -> None:
         self.steps.setVisible(bool(expanded and self.steps.count()))
 
+    def _hide_completed(self) -> None:
+        self._active = False
+        self.hide()
+
     def start(self, status: str) -> None:
-        self._generation += 1
+        self._hide_timer.stop()
         self._active = True
         self.steps.clear()
         self.toggle.setChecked(False)
@@ -102,25 +108,15 @@ class KodeActivityPanel(QFrame):
     def complete(self, status: str = "انجام شد") -> None:
         self.status.setText(status)
         self._append(status)
-        generation = self._generation
-        def hide_if_current():
-            if generation == self._generation:
-                self._active = False
-                self.hide()
-        QTimer.singleShot(6000, hide_if_current)
+        self._hide_timer.start(6000)
 
     def fail(self, status: str = "با خطا متوقف شد") -> None:
         self.status.setText(status)
         self._append(status)
-        generation = self._generation
-        def hide_if_current():
-            if generation == self._generation:
-                self._active = False
-                self.hide()
-        QTimer.singleShot(10000, hide_if_current)
+        self._hide_timer.start(10000)
 
     def reset(self) -> None:
-        self._generation += 1
+        self._hide_timer.stop()
         self._active = False
         self.steps.clear()
         self.status.clear()
