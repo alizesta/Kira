@@ -190,9 +190,6 @@ class VoiceSettingsController(WindowFeatureController):
         settings = self.context.services.settings
         settings["local_voice_asr_backend"] = "shenava"
         settings["local_voice_asr_model"] = repo_id
-        page.asr_backend.blockSignals(True)
-        page.asr_backend.setCurrentIndex(max(0, page.asr_backend.findData("shenava")))
-        page.asr_backend.blockSignals(False)
         runtime = self.feature_controller("runtime")
         if getattr(runtime, "_voice_mode", "") in ("local_fallback", "local_primary", "local_stt"):
             runtime.set_live_listening(False)
@@ -255,9 +252,6 @@ class VoiceSettingsController(WindowFeatureController):
         page.shenava_variant.setCurrentIndex(max(0, page.shenava_variant.findData(repo_id)))
         page.shenava_variant.blockSignals(False)
         page._update_shenava_download_label()
-        page.asr_backend.blockSignals(True)
-        page.asr_backend.setCurrentIndex(max(0, page.asr_backend.findData("shenava")))
-        page.asr_backend.blockSignals(False)
         self.feature_controller("runtime").save_now()
         self.refresh_local_voice_status()
         precision = "FP32" if repo_id == local_voice.SHENAVA_FP32_REPO_ID else "INT8"
@@ -323,9 +317,6 @@ class VoiceSettingsController(WindowFeatureController):
         page.shenava_variant.blockSignals(True)
         page.shenava_variant.setCurrentIndex(max(0, page.shenava_variant.findData(repo_id)))
         page.shenava_variant.blockSignals(False)
-        page.asr_backend.blockSignals(True)
-        page.asr_backend.setCurrentIndex(max(0, page.asr_backend.findData("shenava")))
-        page.asr_backend.blockSignals(False)
         self.feature_controller("runtime").save_now()
 
 
