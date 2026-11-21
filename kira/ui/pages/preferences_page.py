@@ -31,6 +31,7 @@ class PreferencesPage(QScrollArea):
     restore_history_requested = Signal()
     open_memory_requested = Signal()
     import_history_requested = Signal()
+    ui_design_guidance_changed = Signal(bool)
 
     def __init__(
         self,
@@ -84,6 +85,20 @@ class PreferencesPage(QScrollArea):
         self.web_test_btn.clicked.connect(self.web_search_test_requested.emit)
         language_form.addRow("", self.web_test_btn)
 
+        design_box = QGroupBox("اصول طراحی رابط")
+        design_form = QFormLayout(design_box)
+        self.ui_design_guidance_chk = SwitchCheckBox(
+            "استفاده از Appllama و UNSLOP برای طراحی رابط کیرا و کارهای Kode"
+        )
+        self.ui_design_guidance_chk.setChecked(bool(settings.get("ui_design_guidance_enabled", True)))
+        self.ui_design_guidance_chk.toggled.connect(self.ui_design_guidance_changed.emit)
+        design_form.addRow(self.ui_design_guidance_chk)
+        design_hint = QLabel(
+            "درخواست‌های مرتبط با رابط کاربری با اصول طراحی اپلیکیشن، دسترس‌پذیری و چک‌لیست شش‌گانهٔ UNSLOP بررسی می‌شوند؛ کارهای نامرتبط تحت تأثیر قرار نمی‌گیرند."
+        )
+        design_hint.setWordWrap(True)
+        design_form.addRow(design_hint)
+
         memory_box, memory_form = self._group("g_memory")
         clear_button = QPushButton()
         self._register(clear_button.setText, "clear_mem")
@@ -108,6 +123,7 @@ class PreferencesPage(QScrollArea):
             self.about_labels[key] = self._row(about_form, key, label)
 
         layout.addWidget(language_box)
+        layout.addWidget(design_box)
         layout.addWidget(memory_box)
         layout.addWidget(about_box)
         layout.addStretch(1)
