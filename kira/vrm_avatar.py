@@ -29,7 +29,7 @@ READY_TIMEOUT_S = 90
 
 
 def enabled():
-    return os.environ.get("KIRA_VRM", "1") != "0" and MODEL.is_file()
+    return os.environ.get("KIRA_VRM", "0") == "1" and MODEL.is_file()
 
 
 # ---------------------------------------------------------------- local file server (127.0.0.1 only, assets/vrm only)
