@@ -14,6 +14,7 @@ class UiDesignGuidanceTests(unittest.TestCase):
             "دکمه‌های تکراری این صفحه رو حذف کن",
             "Redesign the dashboard layout",
             "Improve accessibility and responsive UI states",
+            "Fix the React component layout",
         ):
             with self.subTest(request=request):
                 self.assertTrue(is_ui_design_task(request))
@@ -24,6 +25,7 @@ class UiDesignGuidanceTests(unittest.TestCase):
             "Fix the database migration",
             "Optimize the API retry policy",
             "Explain Python decorators",
+            "Compose an email to the project team",
             "سلام، حالت چطوره؟",
             "ظاهر کیرا چطوره؟",
             "امروز تب دارم",
