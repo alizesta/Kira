@@ -148,7 +148,7 @@ def model_rows(settings):
     known = {(row["provider"], row["model"]) for row in rows}
     for route in routes:
         pid, mid = route.get("provider"), route.get("model")
-        if pid != "ollama" or not mid or (pid, mid) in known:
+        if pid != "ollama" or not mid or not is_chat_model(mid) or (pid, mid) in known:
             continue
         meta = {"free": True, "status": "available"}
         reason = _archive_reason(settings, pid, mid, meta, route)
