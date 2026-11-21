@@ -1,4 +1,4 @@
-"""Ai1 Code autonomous agent (Qt-free): tools, safety gates, test/fix loop, zip delivery."""
+"""Kode autonomous engine (Qt-free): tools, safety gates, test/fix loop, zip delivery."""
 import json
 import sys
 import tempfile
@@ -79,7 +79,8 @@ class AgentBase(unittest.TestCase):
 
     def agent(self, router, **kw):
         kw.setdefault("python", sys.executable)
-        return aa.AutoAgent(router, self.proj, kw.pop("goal", "fix add"), on_event=self.events.append, output_dir=self.out,
+        self.assertIs(aa.AutoAgent, aa.KodeAutonomousEngine)
+        return aa.KodeAutonomousEngine(router, self.proj, kw.pop("goal", "fix add"), on_event=self.events.append, output_dir=self.out,
                             now=FIXED_NOW, **kw)
 
     def zip_text(self, result, name):
@@ -132,7 +133,7 @@ class FullLoopTests(AgentBase):
         # delivered zip: fixed file, report, timestamped Iran-time name, healthy
         self.assertEqual(result["zip"].name, "Demo_2026-11-12_14-24_IRST.zip")
         self.assertIn("a + b", self.zip_text(result, "calc.py"))
-        self.assertIn("calc.py", self.zip_text(result, "AI1CODE_REPORT.md"))
+        self.assertIn("calc.py", self.zip_text(result, "KODE_REPORT.md"))
         self.assertEqual(result["zip_info"]["files"], len(zipfile.ZipFile(result["zip"]).namelist()))
         # the original project is untouched; secrets and runtime folders never reach the copy or the zip
         self.assertIn("a - b", (self.proj / "calc.py").read_text(encoding="utf-8"))
@@ -243,7 +244,7 @@ class SafetyTests(AgentBase):
                 return super().chat_stream(*a, **k)
         result = self.agent(Meddler({"action": "finish", "summary": "x"})).run()
         self.assertEqual(result["external"], ["calc.py"])
-        self.assertIn("هشدار", self.zip_text(result, "AI1CODE_REPORT.md"))
+        self.assertIn("هشدار", self.zip_text(result, "KODE_REPORT.md"))
 
     def test_long_running_command_is_killed_by_stop(self):
         flag = {"stop": False}
@@ -728,7 +729,7 @@ class ReliabilityTests(AgentBase):
         path, _ = agent._zip("report")
         with zipfile.ZipFile(path) as zf:
             self.assertNotIn(".env", zf.namelist())
-            self.assertNotIn("do-not-leak", zf.read("AI1CODE_REPORT.md").decode("utf-8"))
+            self.assertNotIn("do-not-leak", zf.read("KODE_REPORT.md").decode("utf-8"))
 
 
 
