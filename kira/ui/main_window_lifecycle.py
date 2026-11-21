@@ -137,16 +137,11 @@ class LifecycleController(WindowFeatureController):
             app.setQuitOnLastWindowClosed(self.context.views.tray is None)         # with a tray icon the app lives on while hidden
 
     def _tray_button(self, name):
-        """Chat-composer button by name (window alias first, then the composer itself)."""
-        for source in (lambda: getattr(self.context.views, name, None),
-                       lambda: getattr(self.window.presentation_context.views.chat_composer, name, None)):
-            try:
-                button = source()
-            except Exception:                                      # noqa: BLE001 - view access is allow-listed per controller
-                button = None
-            if button is not None:
-                return button
-        return None
+        """Chat-composer button by name; None when the view is not available."""
+        try:
+            return getattr(self.context.views, name, None)
+        except Exception:                                          # noqa: BLE001 - view access is allow-listed per controller
+            return None
 
     def refresh_tray_menu(self):
         """Rebuilt every time the menu opens, so model / web / mic states are always current.

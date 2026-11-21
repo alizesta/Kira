@@ -603,7 +603,21 @@ class CharacterSettingsController(WindowFeatureController):
         self.context.views.mcp_registry_panel.search_requested.connect(self.search_mcp_registry)
         self.context.views.mcp_registry_panel.add_requested.connect(self.add_mcp_registry_server)
         parent_layout.addWidget(self.context.views.mcp_registry_panel)
-        QTimer.singleShot(1200, self.search_mcp_registry)
+        # The registry search is a network request: run it the first time the panel is actually shown
+        # (Connections tab opened), not on every start-up, where it competed with the avatar for the interpreter.
+        from PySide6.QtCore import QEvent, QObject
+        panel = self.context.views.mcp_registry_panel
+        owner = self
+
+        class _FirstShow(QObject):
+            def eventFilter(self, obj, event):
+                if event.type() == QEvent.Type.Show:
+                    obj.removeEventFilter(self)
+                    QTimer.singleShot(0, owner.search_mcp_registry)
+                return False
+
+        self._mcp_registry_first_show = _FirstShow(panel)
+        panel.installEventFilter(self._mcp_registry_first_show)
 
     def search_mcp_registry(self):
         if self.context.state._closing:

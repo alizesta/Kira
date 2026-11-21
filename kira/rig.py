@@ -223,11 +223,12 @@ class Rig:
 
     def affine(self, X, Y, e=14.0):
         """Per-point displacement and local 2x2 Jacobian (so tiles stretch with the field)."""
-        dx, dy = self.field(X, Y)
-        dxp, dyp = self.field(X + e, Y)
-        dxm, dym = self.field(X - e, Y)
-        dxu, dyu = self.field(X, Y + e)
-        dxd, dyd = self.field(X, Y - e)
+        # One batched field() call over all five sample sets: identical maths, but the per-part numpy
+        # overhead is paid once instead of five times (this runs for every visible avatar, every frame).
+        n = len(X)
+        fx, fy = self.field(np.concatenate((X, X + e, X - e, X, X)), np.concatenate((Y, Y, Y, Y + e, Y - e)))
+        dx, dxp, dxm, dxu, dxd = (fx[i * n:(i + 1) * n] for i in range(5))
+        dy, dyp, dym, dyu, dyd = (fy[i * n:(i + 1) * n] for i in range(5))
         a = 1 + (dxp - dxm) / (2 * e)      # d x'/d x
         b = (dyp - dym) / (2 * e)          # d y'/d x
         c = (dxu - dxd) / (2 * e)          # d x'/d y
