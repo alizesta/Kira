@@ -724,7 +724,7 @@ class Speaker(QObject):
         """Windows: play PCM wav files with winsound (the reliable path). Returns False to fall back to Qt's player."""
         if sys.platform != "win32" or not str(wav).lower().endswith(".wav"):
             return False
-        if not bool(self.settings.get("voice_native_wav", True)) or str(self.settings.get("output_device") or "").strip():
+        if not bool(self.settings.get("voice_native_wav", False)) or str(self.settings.get("output_device") or "").strip():
             return False
         try:
             volume = max(0.0, min(1.0, float(self.settings.get("voice_volume", 0.9))))
