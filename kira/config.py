@@ -138,7 +138,7 @@ DEFAULTS = {
         # num_ctx / keep_alive keep the local model light while gaming (8 GB VRAM card).
         # "model" and "base_url" here mirror the top-level "model" / "ollama_url" keys.
         "ollama": {"enabled": True, "base_url": "http://localhost:11434", "model": LOCAL_UNCENSORED_MODEL,
-                   "num_ctx": 4096, "keep_alive": "2m", "timeout": 180, "num_predict": 512}
+                   "num_ctx": 8192, "keep_alive": "2m", "timeout": 180, "num_predict": 512}
     }
 }
 
@@ -268,6 +268,26 @@ def load_settings():
         for stale in ("web_engine", "web_read_pages"):               # removed options (Google-through-Gemini / DuckDuckGo)
             merged.pop(stale, None)
         route_model.ensure_routes(merged)
+        # A 2048-token override was too small for Kira's system prompt and history.
+        # Upgrade that known legacy value; custom values remain user-controlled.
+        migrated_local_context = False
+        ollama_cfg = merged.get("providers", {}).get("ollama") or {}
+        try:
+            if int(ollama_cfg.get("num_ctx") or 0) == 2048:
+                ollama_cfg["num_ctx"] = 8192
+                migrated_local_context = True
+        except (TypeError, ValueError):
+            pass
+        for local_route in route_model.get_routes(merged):
+            if local_route.get("provider") != "ollama":
+                continue
+            try:
+                if int(local_route.get("num_ctx") or 0) == 2048:
+                    route_model.update_route(merged, local_route["id"], num_ctx=8192)
+                    migrated_local_context = True
+            except (TypeError, ValueError):
+                continue
+
         # Repair configurations written by versions where a local Route could be
         # switched on while the Ollama Provider master switch stayed off.
         migrated_local_route_state = False
@@ -327,7 +347,9 @@ def load_settings():
             LOAD_WARNINGS.append("مدل محلی پیش‌فرض به Qwen3.5-9B Abliterated Q4_K_M مهاجرت کرد.")
         if migrated_local_route_state:
             LOAD_WARNINGS.append("وضعیت قدیمی Ollama اصلاح شد: Provider محلی برای Route فعال دوباره روشن شد.")
-        if migrated_local_model or migrated_local_route_state:
+        if migrated_local_context:
+            LOAD_WARNINGS.append("ظرفیت Context مدل محلی از مقدار قدیمی ۲۰۴۸ به ۸۱۹۲ افزایش یافت.")
+        if migrated_local_model or migrated_local_route_state or migrated_local_context:
             save_settings(merged)
         return merged
     fresh = deepcopy(DEFAULTS)
