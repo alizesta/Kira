@@ -496,7 +496,8 @@ def character_style(theme, effect="off", appearance=None):
     if effect in ("mica", "acrylic"):
         a_card = min(a_card, 0.62 if effect == "mica" else 0.46)
         a_comp = min(a_comp, 0.70 if effect == "mica" else 0.56)
-    border_alpha = 0.34 + glow * 0.0055
+    # Keep the character-tinted glass, but make the edge a quiet separator rather than a neon outline.
+    border_alpha = min(0.34, 0.16 + glow * 0.0018)
     return f"""
 QFrame#avatarCard {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba({r + 14},{g + 14},{b + 24},{a_card}), stop:1 rgba({r},{g},{b},{a_card}));
@@ -508,22 +509,22 @@ QFrame#chatCard {{
 }}
 QFrame#composer {{
     background: rgba({r + 22},{g + 22},{b + 34},{a_comp});
-    border: 1px solid rgba({sr},{sg},{sb},{max(0.25, border_alpha):.2f}); border-radius: 16px;
+    border: 1px solid rgba({sr},{sg},{sb},{max(0.18, border_alpha - 0.02):.2f}); border-radius: 16px;
 }}
 QLabel#title {{ color: {second}; }}
 QTextEdit#chatView {{ selection-background-color: rgba({mr},{mg},{mb},0.55); }}
-QToolButton#sendBtn {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {main}, stop:1 {second}); border: 1px solid rgba(255,255,255,0.55); }}
-QToolButton#sendBtn:hover {{ border: 1px solid #FFFFFF; }}
-QToolButton:checked {{ background: rgba({mr},{mg},{mb},0.30); border: 1px solid rgba({sr},{sg},{sb},0.75); }}
-QToolButton:hover {{ background: rgba({sr},{sg},{sb},0.16); border: 1px solid rgba({sr},{sg},{sb},0.55); }}
+QToolButton#sendBtn {{ background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 {main}, stop:1 {second}); border: 1px solid rgba(225,239,255,0.28); }}
+QToolButton#sendBtn:hover {{ border: 1px solid rgba(235,247,255,0.42); }}
+QToolButton:checked {{ background: rgba({mr},{mg},{mb},0.26); border: 1px solid rgba({sr},{sg},{sb},0.32); }}
+QToolButton:hover {{ background: rgba({sr},{sg},{sb},0.14); border: 1px solid rgba({sr},{sg},{sb},0.24); }}
 QFrame#charTabs {{ background: transparent; border: none; }}
 QPushButton#charTab {{
-    background: rgba({r + 20},{g + 20},{b + 32},0.55); border: 1px solid rgba({mr},{mg},{mb},{0.12 + glow * 0.003:.2f});
+    background: rgba({r + 20},{g + 20},{b + 32},0.55); border: 1px solid rgba({mr},{mg},{mb},{0.10 + glow * 0.0012:.2f});
     border-radius: 13px; padding: 7px 18px; color: #D8E2F6; font-weight: 700;
 }}
-QPushButton#charTab:hover {{ border: 1px solid rgba({sr},{sg},{sb},{0.25 + glow * 0.005:.2f}); color: #FFFFFF; }}
+QPushButton#charTab:hover {{ border: 1px solid rgba({sr},{sg},{sb},{0.16 + glow * 0.0015:.2f}); color: #FFFFFF; }}
 QPushButton#charTab:checked {{
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 rgba({mr},{mg},{mb},0.62), stop:1 rgba({sr},{sg},{sb},0.40));
-    border: 1px solid {main}; color: #FFFFFF;
+    border: 1px solid rgba({mr},{mg},{mb},0.38); color: #FFFFFF;
 }}
 """
