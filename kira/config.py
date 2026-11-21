@@ -138,7 +138,7 @@ DEFAULTS = {
         # num_ctx / keep_alive keep the local model light while gaming (8 GB VRAM card).
         # "model" and "base_url" here mirror the top-level "model" / "ollama_url" keys.
         "ollama": {"enabled": True, "base_url": "http://localhost:11434", "model": LOCAL_UNCENSORED_MODEL,
-                   "num_ctx": 8192, "keep_alive": "2m", "timeout": 180, "num_predict": 512}
+                   "num_ctx": 6144, "keep_alive": "2m", "timeout": 180, "num_predict": 512}
     }
 }
 
@@ -268,13 +268,13 @@ def load_settings():
         for stale in ("web_engine", "web_read_pages"):               # removed options (Google-through-Gemini / DuckDuckGo)
             merged.pop(stale, None)
         route_model.ensure_routes(merged)
-        # A 2048-token override was too small for Kira's system prompt and history.
-        # Upgrade that known legacy value; custom values remain user-controlled.
+        # 6144 tokens balance prompt capacity and KV-cache memory on 8 GB GPUs.
+        # Upgrade known bundled defaults; custom values remain user-controlled.
         migrated_local_context = False
         ollama_cfg = merged.get("providers", {}).get("ollama") or {}
         try:
-            if int(ollama_cfg.get("num_ctx") or 0) == 2048:
-                ollama_cfg["num_ctx"] = 8192
+            if int(ollama_cfg.get("num_ctx") or 0) in (2048, 8192):
+                ollama_cfg["num_ctx"] = 6144
                 migrated_local_context = True
         except (TypeError, ValueError):
             pass
@@ -282,8 +282,8 @@ def load_settings():
             if local_route.get("provider") != "ollama":
                 continue
             try:
-                if int(local_route.get("num_ctx") or 0) == 2048:
-                    route_model.update_route(merged, local_route["id"], num_ctx=8192)
+                if int(local_route.get("num_ctx") or 0) in (2048, 8192):
+                    route_model.update_route(merged, local_route["id"], num_ctx=6144)
                     migrated_local_context = True
             except (TypeError, ValueError):
                 continue
