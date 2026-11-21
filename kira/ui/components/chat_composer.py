@@ -145,6 +145,7 @@ class ChatComposer(QFrame):
         self.search_btn.setMenu(self.search_menu)
         self.search_btn.setPopupMode(QToolButton.InstantPopup)
         self.search_btn.setToolTip("جست‌وجو: وب یا جست‌وجوی تصویری عکس ارسالی")
+        owner.search_btn = self.search_btn
         owner.web_btn = self.web_btn
         owner.img_search_btn = self.img_search_btn
         owner.update_web_tip()
@@ -235,6 +236,11 @@ class ChatComposer(QFrame):
         ):
             owner.reg(button.setToolTip, key)
             bar.addWidget(button)
+        self.voice_btn.setToolTip(
+            "پاسخ صوتی روشن است؛ Kira با صدا پاسخ می‌دهد."
+            if self.voice_btn.isChecked()
+            else "پاسخ صوتی خاموش است؛ Kira فقط متنی پاسخ می‌دهد."
+        )
 
         self.gen_stop_btn = QToolButton()
         self.gen_stop_btn.setObjectName("genStop")
