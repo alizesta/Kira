@@ -181,9 +181,9 @@ class ChatComposer(QFrame):
 
         self.game_mode_btn = QToolButton()
         self.game_mode_btn.setObjectName("gameModeBtn")
-        # The shared Vision + Game Mode control uses the original screen-tools icon.
-        self.game_mode_btn.setProperty("kiraIconName", "monitor")
-        self.game_mode_btn.setIcon(make_icon("monitor"))
+        # Shared Vision + Game Mode control uses a gamepad icon.
+        self.game_mode_btn.setProperty("kiraIconName", "gamepad-2")
+        self.game_mode_btn.setIcon(make_icon("gamepad-2"))
         self.game_mode_btn.setIconSize(QSize(19, 19))
         self.game_mode_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.game_mode_btn.setCheckable(False)
