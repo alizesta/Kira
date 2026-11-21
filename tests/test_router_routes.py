@@ -56,6 +56,18 @@ class RouterRouteTests(unittest.TestCase):
         self.assertEqual(f.calls[0]["json"]["model"], "other-local-model")
         self.assertEqual(len(f.calls), 1)
 
+    def test_enabling_local_chat_route_reactivates_disabled_ollama_provider(self):
+        s, r = make(ollama=False)
+        routes.set_enabled(s, "ollama", True)
+        self.assertTrue(s["providers"]["ollama"]["enabled"])
+
+        f = dispatch({"11434": ok_ollama("local-answer")})
+        with r.role_scope("surface"):
+            with mock.patch("requests.post", f):
+                self.assertEqual(r.chat(MSGS, SYS), "local-answer")
+        self.assertEqual(len(f.calls), 1)
+        self.assertIn("11434", f.calls[0]["url"])
+
     def test_surface_disabled_ollama_reports_provider_state_not_a_qwen_install_hint(self):
         s, r = make(ollama=False)
         with r.role_scope("surface"):
