@@ -152,9 +152,13 @@ Never request or reproduce API keys, passwords, tokens, private keys or other se
             + "\n\nPROJECT CONTEXT:\n" + str(project_context or "")[:MAX_CONTEXT_CHARS + 12_000]
             + "\n\nProvide an evidence-based answer. Do not modify files or claim to have executed tests."
         )
+        system_prompt = self.SYSTEM_PROMPT
+        ui_guidance = guidance_for_task(request)
+        if ui_guidance:
+            system_prompt += "\n\n" + ui_guidance
         result = self.router.chat_stream(
             [{"role": "user", "content": prompt}],
-            self.SYSTEM_PROMPT + ("\n\n" + guidance_for_task(request) if guidance_for_task(request) else ""),
+            system_prompt,
             temperature=0.2,
             on_chunk=on_chunk,
         )
@@ -178,10 +182,15 @@ Never request or reproduce API keys, passwords, tokens, private keys or other se
             + str(request or "").strip()[:5000]
             + "\n\nPROJECT CONTEXT:\n" + str(project_context or "")[:MAX_CONTEXT_CHARS + 12_000]
         )
+        system_prompt = self.SYSTEM_PROMPT
+        ui_guidance = guidance_for_task(request)
+        if ui_guidance:
+            system_prompt += "\n\n" + ui_guidance
+        system_prompt += "\nYou may propose a complete replacement for the selected file, but you cannot apply it. "
+        system_prompt += "Never claim a change was saved or tests were run."
         result = self.router.chat_stream(
             [{"role": "user", "content": prompt}],
-            self.SYSTEM_PROMPT + ("\n\n" + guidance_for_task(request) if guidance_for_task(request) else "") + "\nYou may propose a complete replacement for the selected file, but you cannot apply it. "
-            "Never claim a change was saved or tests were run.",
+            system_prompt,
             temperature=0.1,
             on_chunk=on_chunk,
         )
