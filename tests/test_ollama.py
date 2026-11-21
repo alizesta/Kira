@@ -4,7 +4,7 @@ from unittest import mock
 import requests
 
 from tests import helpers
-from tests.helpers import Resp, ok_ollama
+from tests.helpers import Resp, StreamResp, ok_ollama
 from kira.ollama_client import (OllamaClient, OllamaError, parse_keep_alive, clamp_num_ctx, model_installed, fit_messages)
 
 MSGS = [{"role": "user", "content": "سلام"}]
@@ -59,6 +59,59 @@ class OllamaTests(unittest.TestCase):
         self.assertEqual(p["messages"][0], {"role": "system", "content": "persona"})
         self.assertEqual(p["messages"][1]["content"], "سلام")
         self.assertFalse(p["stream"])
+
+    def test_chat_retries_context_overflow_with_larger_window(self):
+        c = OllamaClient("http://localhost:11434", "local-model", num_ctx=2048)
+        responses = [
+            Resp(400, {"error": "request (6038 tokens) exceeds the available context size (2048 tokens), try increasing it"}),
+            ok_ollama("پاسخ محلی"),
+        ]
+        seen = []
+
+        def fake(url, json=None, timeout=None, **kw):
+            seen.append(json["options"]["num_ctx"])
+            return responses.pop(0)
+
+        with mock.patch("requests.post", fake):
+            self.assertEqual(c.chat(MSGS, "system prompt"), "پاسخ محلی")
+        self.assertEqual(seen, [2048, 8192])
+        self.assertEqual(c.num_ctx, 8192)
+
+    def test_tool_chat_retries_context_overflow(self):
+        c = OllamaClient("http://localhost:11434", "local-model", num_ctx=2048)
+        responses = [
+            Resp(400, {"error": "request (6038 tokens) exceeds the available context size (2048 tokens)"}),
+            ok_ollama("tool-ready"),
+        ]
+        seen = []
+
+        def fake(url, json=None, timeout=None, **kw):
+            seen.append(json["options"]["num_ctx"])
+            return responses.pop(0)
+
+        with mock.patch("requests.post", fake):
+            result = c.chat_with_tools(
+                MSGS, "system prompt", tools=[{"name": "lookup", "parameters": {"type": "object"}}]
+            )
+        self.assertEqual(result["text"], "tool-ready")
+        self.assertEqual(seen, [2048, 8192])
+
+    def test_stream_retries_context_overflow(self):
+        c = OllamaClient("http://localhost:11434", "local-model", num_ctx=2048)
+        responses = [
+            StreamResp([], status=400, body={"error": "request (6038 tokens) exceeds the available context size (2048 tokens)"}),
+            StreamResp([b'{"message":{"content":"streamed"},"done":true}']),
+        ]
+        seen = []
+
+        def fake(url, json=None, timeout=None, stream=False, **kw):
+            seen.append((json["options"]["num_ctx"], stream))
+            return responses.pop(0)
+
+        with mock.patch("requests.post", fake):
+            text = "".join(c.stream(MSGS, "system prompt"))
+        self.assertEqual(text, "streamed")
+        self.assertEqual(seen, [(2048, True), (8192, True)])
 
     def test_think_unsupported_retries_once_and_remembers(self):
         c = OllamaClient("http://localhost:11434", "qwen2.5:3b")
@@ -128,7 +181,7 @@ class OllamaTests(unittest.TestCase):
         self.assertEqual(parse_keep_alive(""), ("2m", False))
         self.assertEqual(clamp_num_ctx(10), 1024)
         self.assertEqual(clamp_num_ctx(10 ** 9), 32768)
-        self.assertEqual(clamp_num_ctx("x"), 4096)
+        self.assertEqual(clamp_num_ctx("x"), 8192)
         self.assertTrue(model_installed(["qwen3.5:4b"], "qwen3.5:4b"))
         self.assertTrue(model_installed(["qwen3.5:4b"], "qwen3.5"))
         self.assertFalse(model_installed(["qwen3.5:9b"], "qwen3.5:4b"))
