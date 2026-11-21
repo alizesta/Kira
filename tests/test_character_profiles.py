@@ -153,7 +153,7 @@ class CharacterTabWiringTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "kira" / "main.py").read_text(encoding="utf-8")
         for required in (
             "self.build_characters_tab()", "self.build_personality_tab()", "self.build_help_tab()",
-            '"tab_characters"', '"tab_personality"', '"tab_preferences"', '"tab_ai"', '"tab_help"',
+            '"tab_preferences"', '"tab_ai"', '"tab_help"',
             "character_profile=self.active_character()",
         ):
             self.assertIn(required, source)

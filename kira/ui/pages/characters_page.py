@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QSlider,
     QSpinBox,
-    QTabWidget,
+    QTabBar,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -63,11 +63,26 @@ class CharactersPage(QScrollArea):
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        subtabs = QTabWidget()
-        self.character_subtabs = subtabs
+        # One tab per character on top, with "+" (new character) next to them.
+        # `character_combo` stays as the hidden source of truth (ids / order) that the
+        # controller and tests drive; the tab bar mirrors it.
+        self.character_combo = QComboBox(self)
+        self.character_combo.hide()
+        self.character_tabbar = QTabBar()
+        self.character_tabbar.setExpanding(False)
+        self.character_tabbar.setDrawBase(False)
+        self.character_tabbar.setUsesScrollButtons(True)
+        self.character_add_btn = QPushButton("＋")
+        self.character_add_btn.setFixedWidth(38)
+        self.character_add_btn.setToolTip("ساخت شخصیت جدید")
+        self.character_add_btn.clicked.connect(lambda checked=False: self.add_character_requested.emit())
+        tabs_row = QHBoxLayout()
+        tabs_row.addWidget(self.character_tabbar, 1)
+        tabs_row.addWidget(self.character_add_btn)
 
+        profile_box = QGroupBox()
+        profile_form = QFormLayout(profile_box)
         box, form = self._group("g_char")
-        self.character_combo = QComboBox()
         self.character_portrait = QLabel()
         self.character_portrait.setObjectName("characterPortrait")
         self.character_portrait.setFixedSize(144, 180)
@@ -77,20 +92,13 @@ class CharactersPage(QScrollArea):
         profile_row = QHBoxLayout()
         profile_row.addWidget(self.character_portrait)
         profile_info = QVBoxLayout()
-        profile_info.addWidget(QLabel("شخصیت فعال"))
-        profile_info.addWidget(self.character_combo)
         profile_info.addWidget(self.character_description)
 
         manager_row = QHBoxLayout()
-        self.character_add_btn = QPushButton("＋")
-        self.character_add_btn.setFixedWidth(38)
-        self.character_add_btn.setToolTip("ساخت شخصیت جدید")
         self.character_edit_btn = QPushButton("ویرایش")
         self.character_delete_btn = QPushButton("حذف")
-        self.character_add_btn.clicked.connect(lambda checked=False: self.add_character_requested.emit())
         self.character_edit_btn.clicked.connect(lambda checked=False: self.edit_character_requested.emit())
         self.character_delete_btn.clicked.connect(lambda checked=False: self.delete_character_requested.emit())
-        manager_row.addWidget(self.character_add_btn)
         manager_row.addWidget(self.character_edit_btn)
         manager_row.addWidget(self.character_delete_btn)
         profile_info.addLayout(manager_row)
@@ -108,7 +116,7 @@ class CharactersPage(QScrollArea):
         theme_row.addWidget(self.character_theme_reset_btn)
         profile_info.addLayout(theme_row)
         profile_row.addLayout(profile_info, 1)
-        form.addRow(profile_row)
+        profile_form.addRow(profile_row)
 
         voice_box, voice_form = self._group("تن صدا و سرعت شخصیت")
         self.char_voice_rate = QSpinBox()
@@ -118,12 +126,6 @@ class CharactersPage(QScrollArea):
         self.char_voice_volume = QSlider(Qt.Horizontal)
         self.char_voice_volume.setRange(0, 100)
         voice_form.addRow("بلندی صدا", self.char_voice_volume)
-        voice_note = QLabel(
-            "همه‌ی شخصیت‌ها از موتور Piper محلی استفاده می‌کنند؛ فقط سرعت و بلندی صدای هر شخصیت جداست."
-        )
-        voice_note.setObjectName("hint")
-        voice_note.setWordWrap(True)
-        voice_form.addRow(voice_note)
         form.addRow(voice_box)
 
         resource_box, resource_form = self._group("منابع اختصاصی شخصیت")
@@ -224,11 +226,6 @@ class CharactersPage(QScrollArea):
         self._register(sounds.setText, "open_sounds")
         sounds.clicked.connect(lambda checked=False: self.open_sounds_requested.emit())
         form.addRow(sounds)
-        note = QLabel()
-        note.setObjectName("hint")
-        note.setWordWrap(True)
-        self._register(note.setText, "char_note")
-        form.addRow(note)
 
         personality_box, personality_form = self._group("g_personality_traits")
         labels = {
@@ -257,37 +254,53 @@ class CharactersPage(QScrollArea):
             slider.setValue(int(round(float(base_traits.get(key, 0.5)) * 100)))
             self._row(personality_form, translation_key, slider)
             self.personality_sliders[key] = slider
-        personality_hint = QLabel()
-        personality_hint.setObjectName("hint")
-        personality_hint.setWordWrap(True)
-        self._register(personality_hint.setText, "personality_hint")
-        personality_form.addRow(personality_hint)
         save_traits = QPushButton()
         self._register(save_traits.setText, "character_save_traits")
         save_traits.clicked.connect(lambda checked=False: self.save_personality_requested.emit())
         personality_form.addRow(save_traits)
 
-        personality_scroll = self._page(personality_box)
-        self._personality_layout = personality_scroll.widget().layout()
-        subtabs.addTab(self._page(box), "")
-        subtabs.addTab(personality_scroll, "")
-        self._register(lambda value: subtabs.setTabText(0, value), "tab_characters")
-        self._register(lambda value: subtabs.setTabText(1, value), "tab_personality")
+        # Single page (the former "character list" and "personality" sub-tabs are merged).
+        content = self._page(profile_box, box, personality_box)
+        self._content_layout = content.widget().layout()
         host = QWidget()
         layout = QVBoxLayout(host)
         layout.setContentsMargins(6, 6, 6, 6)
         layout.setSpacing(6)
-        layout.addWidget(subtabs)
+        layout.addLayout(tabs_row)
+        layout.addWidget(content, 1)
         self.setWidget(host)
 
         self.character_combo.currentIndexChanged.connect(lambda index: self.character_selected.emit(index))
+        self.character_combo.currentIndexChanged.connect(self._select_tab_from_combo)
+        self.character_tabbar.currentChanged.connect(self._on_tab_changed)
         self.retranslate()
 
         finalize_characters_page(self)
 
     def attach_identity_box(self, box: QWidget) -> None:
-        """Show the assistant identity/persona group at the top of the personality sub-tab."""
-        self._personality_layout.insertWidget(0, box)
+        """Show the assistant identity/persona group right under the character card."""
+        self._content_layout.insertWidget(1, box)
+
+    def sync_character_tabs(self) -> None:
+        """Rebuild the tab bar from the hidden combo (call after the character list changes)."""
+        bar = self.character_tabbar
+        bar.blockSignals(True)
+        while bar.count():
+            bar.removeTab(0)
+        for i in range(self.character_combo.count()):
+            bar.addTab(self.character_combo.itemText(i).split(" · ")[0])
+        bar.setCurrentIndex(max(0, self.character_combo.currentIndex()))
+        bar.blockSignals(False)
+
+    def _select_tab_from_combo(self, index: int) -> None:
+        if 0 <= index < self.character_tabbar.count():
+            self.character_tabbar.blockSignals(True)
+            self.character_tabbar.setCurrentIndex(index)
+            self.character_tabbar.blockSignals(False)
+
+    def _on_tab_changed(self, index: int) -> None:
+        if 0 <= index < self.character_combo.count() and index != self.character_combo.currentIndex():
+            self.character_combo.setCurrentIndex(index)
 
     def _open_dance_folder(self) -> None:
         from ... import dance_library

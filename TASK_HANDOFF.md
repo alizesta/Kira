@@ -1,5 +1,9 @@
 # Task Handoff
 
+## Latest task: Character tab merged into one page with per-character tabs (2026-11-21, 16:45 Iran)
+
+- `CharactersPage` has no sub-tabs now: top `character_tabbar` (one tab per character) + `character_add_btn` (＋), then one scroll page. Edit/Delete stay in the card; `character_combo` is hidden but still drives selection. Check on Windows: tab switching changes chat colours/avatar, ＋ opens the creation dialog, layout in RTL.
+
 ## Latest task: Assistant tab merged into Character + Connections (2026-11-21, 16:26 Iran)
 
 - No more Assistant tab. `AssistantPage` (kira/ui/pages/assistant_page.py) stays as the hidden owner of the widgets; `identity_box` goes to the Character tab personality sub-tab (`CharactersPage.attach_identity_box`), `model_box` (Ollama) goes to the Connections & Models tab (`ProviderSettingsController.build_ai_tab`, under the models list). Aliases (`views.persona`, `views.model`, ...) and lifecycle handlers are unchanged.

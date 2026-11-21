@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-21 16:45 Iran (Character tab: one page, one tab per character)
+- The two sub-tabs of the Character tab (list + personality) are merged into one scrolling page: character card, identity/persona, voice, resources, desktop options, baseline traits.
+- A tab bar on top has one tab per character (Kira, Ren, Mika, custom) and a "＋" button (new character) beside it. `character_combo` is kept hidden as the source of truth; `CharactersPage.sync_character_tabs()` mirrors it (called from `refresh_character_choices`).
+- Removed the "active character" label/combo row and three hint texts (voice note, `char_note`, `personality_hint`); removed `tab_characters` / `tab_personality` strings.
+- Not run on Windows (full window needs Qt Multimedia). Tab <-> combo sync was checked offscreen with the real page class. Pre-existing failures in `test_character_profiles` (2) are unchanged.
+
 ## 2026-11-21 16:26 Iran (Assistant tab merged away)
 - The extra "دستیار" (Assistant) tab is gone. Its two groups moved: **هویت و شخصیت** (assistant name, persona, active modes, temperature) is now the first group of the Character tab -> "شخصیت و رفتار" sub-tab; **مدل محلی (Ollama)** (model, URL, num_ctx, num_predict, keep-alive, check/load/unload, speed test) is now in "اتصال‌ها و مدل‌ها", right under the models list.
 - Code: `AssistantPage` still builds the widgets and signals (same `views.name/persona/model/...` aliases, same controller wiring) but exposes `identity_box` / `model_box` and is never shown; `CharactersPage.attach_identity_box()` and `build_ai_tab()` host them. `tab_keys` lost `tab_assistant` (tabs: chat, voice, character, appearance, general, connections; shortcuts Ctrl+1..6) and the nav icon map is now built from `tab_keys`, so icons cannot shift. Unused `tab_assistant` strings removed.

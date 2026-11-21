@@ -69,7 +69,7 @@ class CharacterSettingsController(WindowFeatureController):
         page.save_personality_requested.connect(self.save_personality_profile)
         assistant_page = getattr(self.context.views, "assistant_page", None)
         if assistant_page is not None:
-            page.attach_identity_box(assistant_page.identity_box)      # name / persona / modes / temperature live in the personality sub-tab
+            page.attach_identity_box(assistant_page.identity_box)      # name / persona / modes / temperature sit under the character card
         self.context.views.tabs.addTab(page, "")
         self.refresh_character_choices()
         self.refresh_character_card()
@@ -77,7 +77,7 @@ class CharacterSettingsController(WindowFeatureController):
 
     def build_personality_tab(self):
         """Compatibility entry point; personality controls are owned by CharactersPage."""
-        return self.context.views.character_page.character_subtabs.widget(1)
+        return self.context.views.character_page
 
     def refresh_character_controls(self):
         cid = self.context.services.character_service.active_id(self.context.services.settings)
@@ -207,6 +207,7 @@ class CharacterSettingsController(WindowFeatureController):
                 self.context.views.character_page.character_combo.addItem(p.get("name_fa", p["name"]) + " · " + p["name"], cid)
         self.context.views.character_page.character_combo.setCurrentIndex(max(0, self.context.views.character_page.character_combo.findData(current)))
         self.context.views.character_page.character_combo.blockSignals(False)
+        self.context.views.character_page.sync_character_tabs()
         self.context.views.character_page.character_edit_btn.setEnabled(current != "kira")
         self.context.views.character_page.character_delete_btn.setEnabled(current != "kira")
         self._refresh_character_theme_preview()
