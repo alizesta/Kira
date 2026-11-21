@@ -169,6 +169,7 @@ class QtVoiceListenerAdapter:
 
     _SIGNALS = {
         "heard": ("heard", "text"),
+        "partial": ("partial_heard", "text"),
         "interrupted": ("interrupted", "no_args"),
         "state": ("state", "text"),
         "error": ("error", "text"),
@@ -322,6 +323,7 @@ def create_voice_application_ports(context, speaker) -> VoiceApplicationPorts:
         speaker=QtSpeakerAdapter(speaker),
         listener_factory=lambda: QtVoiceListenerAdapter(context.controllers.require("runtime")._create_voice_listener()),
         on_heard=context.controllers.require("runtime").on_heard,
+        on_partial=context.controllers.require("runtime").on_voice_partial,
         on_interrupted=context.controllers.require("runtime").on_user_barge_in,
         on_state=context.controllers.require("runtime").on_listener_state,
         on_error=context.controllers.require("runtime").on_listener_error,
