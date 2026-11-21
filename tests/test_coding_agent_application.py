@@ -1,4 +1,4 @@
-"""Qt-free tests for Coding Agent application handoff."""
+"""Qt-free tests for Kode application handoff."""
 import unittest
 from unittest.mock import Mock
 
