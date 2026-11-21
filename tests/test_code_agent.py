@@ -4,11 +4,14 @@ from pathlib import Path
 
 from kira.code_agent import (
     build_project_context, project_tree, safe_project_file,
-    extract_replacement, PATCH_START, PATCH_END, CodeAgentEngine,
+    extract_replacement, PATCH_START, PATCH_END, CodeAgentEngine, KodeAnalysisEngine,
 )
 
 
 class CodeAgentContextTests(unittest.TestCase):
+    def test_kode_analysis_engine_is_the_canonical_name(self):
+        self.assertIs(CodeAgentEngine, KodeAnalysisEngine)
+
     def test_project_tree_excludes_secrets_and_runtime_folders(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
