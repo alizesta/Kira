@@ -199,6 +199,8 @@ class GuiTests(unittest.TestCase):
         self.assertIs(window.screen_capture_btn, window.game_mode_btn)
         self.assertIsNot(window.web_btn, window.img_search_btn)
         self.assertTrue(window.voice_btn.isCheckable())
+        self.assertIsNotNone(window.voice_btn.property("voiceOnIcon"))
+        self.assertIsNotNone(window.voice_btn.property("voiceOffIcon"))
         self.assertIsInstance(window.wake_btn, QAction)
         self.assertIs(window.wake_btn.parent(), window.mic_menu)
         self.assertIs(window.mic_btn.menu(), window.mic_menu)
