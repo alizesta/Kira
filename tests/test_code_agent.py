@@ -95,5 +95,25 @@ class CodeAgentContextTests(unittest.TestCase):
             engine.propose_replacement("edit config", "[REDACTED]")
 
 
+    def test_ui_requests_receive_appllama_and_unslop_guidance(self):
+        class CapturingRouter:
+            def __init__(self):
+                self.system = ""
+
+            def chat_stream(self, messages, system, **kwargs):
+                self.system = system
+                return {"text": "analysis"}
+
+        router = CapturingRouter()
+        answer = CodeAgentEngine(router).ask("Redesign the dashboard UI", "project files")
+        self.assertEqual(answer, "analysis")
+        self.assertIn("APPLLAMMA APP-DESIGN WORKFLOW", router.system)
+        self.assertIn("Banner blindness", router.system)
+
+        CodeAgentEngine(router).ask("Fix the database migration", "project files")
+        self.assertNotIn("APPLLAMMA APP-DESIGN WORKFLOW", router.system)
+
+
+
 if __name__ == "__main__":
     unittest.main()
