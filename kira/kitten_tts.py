@@ -41,7 +41,8 @@ def _run(command, timeout=3600, cancel_event=None):
 def install_runtime(cancel_event=None):
     """Install only the ONNX runtime stack; avoid the optional multi-GB PyTorch stack."""
     import importlib.util
-    if importlib.util.find_spec("kittenml") and importlib.util.find_spec("onnxruntime"):
+    required_modules = ("kittenml", "onnxruntime", "num2words")
+    if all(importlib.util.find_spec(name) for name in required_modules):
         return True
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
     # Kitten's default extra dependencies include PyTorch. --no-deps keeps this
@@ -54,9 +55,11 @@ def install_runtime(cancel_event=None):
           "--timeout", "60", "--constraint",
           str(Path(__file__).resolve().parents[1] / "constraints-voice.txt"),
           "onnxruntime>=1.20", "numpy>=1.26", "soundfile",
-          "huggingface_hub", "phonemizer", "espeakng_loader", "misaki"], cancel_event=cancel_event)
-    if not importlib.util.find_spec("kittenml") or not importlib.util.find_spec("onnxruntime"):
-        raise RuntimeError("پس از نصب، ماژول‌های KittenTTS و ONNX Runtime پیدا نشدند.")
+          "huggingface_hub", "phonemizer", "espeakng_loader", "misaki",
+          "num2words"], cancel_event=cancel_event)
+    missing = [name for name in required_modules if not importlib.util.find_spec(name)]
+    if missing:
+        raise RuntimeError("پس از نصب، ماژول‌های لازم پیدا نشدند: " + ", ".join(missing))
     return True
 
 
