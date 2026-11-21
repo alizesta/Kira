@@ -34,6 +34,7 @@ class VoicePageModelSelectionTests(unittest.TestCase):
         self.assertEqual(page.local_tts_model.count(), 1)
         self.assertTrue(hasattr(page, "piper_download_btn"))
         self.assertTrue(hasattr(page, "piper_test_btn"))
+        self.assertTrue(hasattr(page, "piper_file_btn"))
         self.assertFalse(hasattr(page, "local_model_tabs"))
 
 
