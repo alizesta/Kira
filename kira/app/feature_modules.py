@@ -60,7 +60,7 @@ def register_application_modules(
         PersonaMemoryService,
         SqliteChatHistoryService,
     )
-    from .coding_agent_application import CodingAgentApplicationService
+    from .coding_agent_application import KodeApplicationService
     from .game_mode_application import GameModeApplicationService
     from .provider_application import ProviderApplicationService
     from .runtime_settings_application import RuntimeSettingsApplicationService
@@ -164,7 +164,7 @@ def register_application_modules(
         ),
         "game_mode_application_service": selected("game_mode_application_service", GameModeApplicationService),
         "provider_application_service": selected("provider_application_service", ProviderApplicationService),
-        "coding_agent_application_service": selected("coding_agent_application_service", CodingAgentApplicationService),
+        "coding_agent_application_service": selected("coding_agent_application_service", KodeApplicationService),
         "runtime_settings_application_service": selected("runtime_settings_application_service", RuntimeSettingsApplicationService),
         "vision_application_service": selected("vision_application_service", create_vision),
         "chat_application_service_factory": selected("chat_application_service_factory", create_chat_factory),
