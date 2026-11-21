@@ -114,6 +114,26 @@ class RouteModelTests(unittest.TestCase):
         self.assertNotIn(pid, s["providers"])
         self.assertEqual(s["manual_route_id"], "")
 
+    def test_enabling_ollama_route_also_enables_shared_provider(self):
+        s = legacy_settings()
+        routes.ensure_routes(s)
+        s["providers"]["ollama"]["enabled"] = False
+
+        # Enabling an existing route must not leave its provider-level gate off.
+        routes.set_enabled(s, "ollama", True)
+        self.assertTrue(s["providers"]["ollama"]["enabled"])
+
+        # The same invariant applies when the UI creates an enabled local route.
+        s["providers"]["ollama"]["enabled"] = False
+        routes.add_route(s, "ollama", "llama3.2:3b", enabled=True)
+        self.assertTrue(s["providers"]["ollama"]["enabled"])
+
+        # Discovering a model OFF must not silently turn the provider on.
+        s["providers"]["ollama"]["enabled"] = False
+        added = routes.add_ollama_models(s, ["gemma3:4b"])
+        self.assertFalse(added[0]["enabled"])
+        self.assertFalse(s["providers"]["ollama"]["enabled"])
+
     def test_enable_disable_keeps_all_route_settings(self):
         s = legacy_settings()
         routes.ensure_routes(s)
