@@ -2,7 +2,14 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QListWidget, QToolButton, QVBoxLayout
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QToolButton,
+    QVBoxLayout,
+)
 
 
 class KodeActivityPanel(QFrame):
@@ -16,7 +23,7 @@ class KodeActivityPanel(QFrame):
             "QFrame#kodeActivity { background: rgba(72, 57, 112, 28); "
             "border: 1px solid rgba(143, 107, 255, 90); border-radius: 10px; }"
             "QLabel#kodeActivityTitle { color: #cfc4ff; font-weight: 600; }"
-            "QLabel#kodeActivityStatus { color: palette(text); }"
+            "QLabel#kodeActivityStatus { color: #d7d4e8; }"
             "QListWidget#kodeActivitySteps { border: 0; background: transparent; "
             "padding: 0 4px; color: palette(text); }"
             "QToolButton#kodeActivityToggle { border: 0; color: #cfc4ff; padding: 2px 6px; }"
