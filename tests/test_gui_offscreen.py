@@ -209,7 +209,7 @@ class GuiTests(unittest.TestCase):
         self.assertLess(toolbar.indexOf(window.mic_btn), toolbar.indexOf(window.voice_btn))
         self.assertIs(window.screen_capture_btn, window.game_mode_btn)
         self.assertTrue(window.game_mode_btn.isVisible())
-        self.assertEqual(window.game_mode_btn.property("kiraIconName"), "gamepad-2")
+        self.assertEqual(window.game_mode_btn.property("kiraIconName"), "gamepad")
         self.assertEqual(window.game_mode_btn.toolButtonStyle(), Qt.ToolButtonIconOnly)
         self.assertTrue(window.game_mode_btn.text() == "")
         self.assertFalse(hasattr(window, "stop_btn"))
