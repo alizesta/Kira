@@ -730,6 +730,40 @@ class ReliabilityTests(AgentBase):
 
 
 
+class AutomaticDesignSkillTests(AgentBase):
+    def test_ui_coding_mission_receives_design_skills_in_agent_system_prompt(self):
+        class CaptureRouter:
+            def __init__(self):
+                self.system = ""
+
+            def chat_stream(self, messages, system, **kwargs):
+                self.system = system
+                return {"text": '{"action":"list"}'}
+
+        router = CaptureRouter()
+        agent = self.agent(router, goal="بازطراحی رابط کاربری و صفحه تنظیمات")
+        agent._ask_model([{"role": "user", "content": "Inspect the UI"}])
+        for phrase in (
+            "ON-DEMAND UI DESIGN SKILLS", "Closure", "Figure-ground", "Banner blindness",
+            "Parkinson's law", "Connectedness", "Choice overload",
+        ):
+            self.assertIn(phrase, router.system)
+
+    def test_non_ui_coding_mission_does_not_receive_design_skills(self):
+        class CaptureRouter:
+            def __init__(self):
+                self.system = ""
+
+            def chat_stream(self, messages, system, **kwargs):
+                self.system = system
+                return {"text": '{"action":"list"}'}
+
+        router = CaptureRouter()
+        agent = self.agent(router, goal="Fix the arithmetic bug in add()")
+        agent._ask_model([{"role": "user", "content": "Inspect the Python function"}])
+        self.assertNotIn("ON-DEMAND UI DESIGN SKILLS", router.system)
+
+
 class BoundedExecutionOutputTests(unittest.TestCase):
     def test_verbose_process_output_is_bounded_and_retains_the_final_complete_line(self):
         with tempfile.TemporaryDirectory() as directory:
