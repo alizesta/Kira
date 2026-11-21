@@ -181,7 +181,7 @@ def _run_create(exe: str, model_path: Path, data_dir: Path) -> None:
     modelfile = model_dir / "Modelfile"
     modelfile.write_text(
         f"FROM {model_path.resolve().as_posix()}\n"
-        "PARAMETER num_ctx 4096\n"
+        "PARAMETER num_ctx 8192\n"
         "PARAMETER num_predict 768\n"
         "PARAMETER temperature 0.7\n",
         encoding="utf-8",
