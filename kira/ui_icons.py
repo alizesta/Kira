@@ -60,7 +60,7 @@ def _svg_pass(painter, source, colour, width, alpha):
     tint = QColor(colour)
     svg = (
         source.replace('stroke="currentColor"', f'stroke="{tint.name()}" stroke-opacity="{max(0.0, min(1.0, alpha / 255.0)):.3f}"')
-        .replace('fill="currentColor"', f'fill="{tint.name()}"')
+        .replace('fill="currentColor"', f'fill="{tint.name()}" fill-opacity="{max(0.0, min(1.0, alpha / 255.0)):.3f}"')
         .replace('stroke-width="2"', f'stroke-width="{width:.2f}"')
     )
     QSvgRenderer(QByteArray(svg.encode("utf-8"))).render(painter, QRectF(0, 0, _SIZE, _SIZE))
