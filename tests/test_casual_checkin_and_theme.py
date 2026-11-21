@@ -51,6 +51,6 @@ class UnslopThemeTests(unittest.TestCase):
 
     def test_character_styles_keep_accent_colours_without_gradients(self):
         kira = theme.character_style(theme.CHARACTER_THEMES["kira"])
-        self.assertIn("#9C7BFF", kira)
+        self.assertIn("rgba(156,123,255", kira)
         self.assertIn("#35D9F2", kira)
         self.assertNotIn("qlineargradient", kira.lower())
