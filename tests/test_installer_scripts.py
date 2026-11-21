@@ -28,7 +28,7 @@ class InstallerScriptTests(unittest.TestCase):
         self.assertIn('if /I "%KIRA_SKIP_OLLAMA_MODEL_DOWNLOAD%"=="1" (', self.installer)
         self.assertLess(
             self.installer.index('if /I "%KIRA_SKIP_OLLAMA_MODEL_DOWNLOAD%"=="1" ('),
-            self.installer.index("scripts\\\\setup_local_chat_model.py"),
+            self.installer.index("echo Installing the pinned, checksum-verified Qwen3.5-9B Abliterated Q4_K_M model..."),
         )
         self.assertIn("Ollama model download is disabled for incremental updates", self.installer)
 
