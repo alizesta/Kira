@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-21 23:55 Iran (VRM removed)
+- Removed the 3D VRM avatar: `kira/vrm_avatar.py`, `kira/vrm_vendor.py`, `kira/dance_library.py`, `assets/vrm/` (viewer, vendor libs, model, animations), their tests, the "open dance folder / Mixamo" buttons in the Character tab and the VRM download step in `install_deps.py`. The floating companion now uses the 2D `AvatarView` directly (no QtWebEngine). A live 2D avatar will replace the wrapper later.
+- Kept on purpose: `kira/body.py` and the `[body:...]` command plumbing (inert without a 3D body, may be reused for the live 2D avatar), `pet.py` / `music_dance.py` (they already skip calls the avatar does not have), and the "hang on drag" / "auto dance" switches.
+- Not run on Windows. Offscreen start-up and idle load unchanged (~2.7 s, ~21 %).
+
 ## 2026-11-21 17:50 Iran (dead code removal)
 - Deleted 21 modules that nothing imported or referenced (the old `fluid_*`/`direct_*`/`*_hook`/`*_sync` wiring files in `kira/ui` and `kira/ui/pages`), plus a few unused imports/variables in two files. The full test suite gives exactly the same results as before (1804 run, same failures; Qt Multimedia tests cannot run in the sandbox).
 - Not done on purpose: bulk removal of unused imports across the code base. Many modules re-export names and tests patch module attributes; a first attempt broke imports (`STOCK_PERSONAS`), so it was reverted. Unused imports cost almost nothing at runtime.

@@ -149,6 +149,9 @@ Local-only speech stack: Qwen3-ASR primary STT, faster-whisper local fallback, P
 - Ren/Mika memory no longer digests shared legacy chat rows or summarizes the global chat database. Clearing the shared chat resets voice/digest samples for all profiles but preserves each profile's facts/moments/habits. The legacy Kira evidence index may contain unattributed pre-isolation facts because older chat rows have no character ID; new Ren/Mika messages are not added to it.
 
 
+## Avatar (2026-11-21)
+- Only the 2D avatar exists (`kira/face.py` `AvatarView`, also in the companion window). The VRM avatar, its viewer page and dance library were removed; `kira/body.py` is kept but has no body to move until a new live 2D avatar uses it.
+
 ## Settings tabs (2026-11-21)
 - Pages: Chat, Voice, Character, Appearance, General, Connections & Models (+ Runtime Log). There is no Assistant tab: identity/persona/modes/temperature live in Character -> personality sub-tab; the local Ollama model group lives in Connections & Models. `AssistantPage` only owns those widgets (hidden).
 
