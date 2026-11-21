@@ -69,7 +69,10 @@ class ContextBuilder:
         prompt = str(prompt or "").strip()
         # Apply Kira's UI-design workflow only to relevant turns; other characters
         # and non-UI tasks keep the exact historical prompt.
-        if str(request.character_id or "").strip().lower() == "kira":
+        if (
+            str(request.character_id or "").strip().lower() == "kira"
+            and request.settings.get("ui_design_guidance_enabled", True) is not False
+        ):
             ui_guidance = guidance_for_task(latest_user_text(messages))
             if ui_guidance:
                 prompt = (prompt + "\n\n" + ui_guidance).strip()
