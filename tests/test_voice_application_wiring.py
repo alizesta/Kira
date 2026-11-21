@@ -50,6 +50,22 @@ class VoiceApplicationWiringTests(unittest.TestCase):
         )
         self.assertIn("if speech_live:", completion)
 
+    def test_live_transcript_is_replaceable_and_assistant_reply_is_already_streamed(self):
+        adapters = self.read("kira/ui/application_adapters.py")
+        listener = self.read("kira/listener.py")
+        runtime_voice = self.read("kira/ui/main_window_runtime_voice.py")
+        runtime = self.read("kira/ui/main_window_runtime.py")
+        service = self.read("kira/app/voice_application.py")
+        self.assertIn('"partial": ("partial_heard", "text")', adapters)
+        self.assertIn('listener.subscribe("partial", self.on_partial)', service)
+        self.assertIn("def _maybe_emit_partial", listener)
+        self.assertIn("segmenter.snapshot()", listener)
+        self.assertIn("self._clear_voice_preview()", runtime_voice)
+        self.assertIn("def on_voice_partial", runtime_voice)
+        self.assertIn("cursor.removeSelectedText()", runtime_voice)
+        self.assertIn("self._speak_stream(text)", runtime)
+        self.assertIn("session.timer.setInterval(60)", self.read("kira/ui/main_window_session.py"))
+
     def test_tray_exit_delegates_to_close_event_shutdown(self):
         lifecycle = self.read("kira/ui/main_window_lifecycle.py")
         start = lifecycle.index("    def quit_app(self):")
