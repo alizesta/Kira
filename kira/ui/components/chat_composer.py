@@ -158,15 +158,14 @@ class ChatComposer(QFrame):
 
         self.mic_btn = owner.icon_button("mic", True)
         self.mic_btn.toggled.connect(owner.toggle_mic)
-        self.mic_menu = QMenu(self.mic_btn)
-        self.wake_btn = QAction("حالت بیدارباش", self.mic_menu)
+        # Keep the microphone as a single-action button: no split-button arrow.
+        self.mic_btn.setMenu(None)
+        self.mic_btn.setPopupMode(QToolButton.DelayedPopup)
+        self.mic_btn.setToolTip("روشن/خاموش کردن میکروفون")
+        self.wake_btn = QAction("حالت بیدارباش", self.mic_btn)
         self.wake_btn.setCheckable(True)
         self.wake_btn.setChecked(False)
         self.wake_btn.triggered.connect(owner.toggle_wake)
-        self.mic_menu.addAction(self.wake_btn)
-        self.mic_btn.setMenu(self.mic_menu)
-        self.mic_btn.setPopupMode(QToolButton.MenuButtonPopup)
-        self.mic_btn.setToolTip("میکروفون؛ فلش کنار دکمه برای حالت بیدارباش")
         self.voice_btn = owner.icon_button("speaker", True)
         self.voice_btn.setChecked(bool(owner.settings.get("speak_replies", True)))
         self.voice_btn.setProperty("voiceOnIcon", make_icon("volume-2"))
@@ -182,8 +181,8 @@ class ChatComposer(QFrame):
 
         self.game_mode_btn = QToolButton()
         self.game_mode_btn.setObjectName("gameModeBtn")
-        self.game_mode_btn.setProperty("kiraIconName", "monitor")
-        self.game_mode_btn.setIcon(make_icon("monitor"))
+        self.game_mode_btn.setProperty("kiraIconName", "gamepad-2")
+        self.game_mode_btn.setIcon(make_icon("gamepad-2"))
         self.game_mode_btn.setIconSize(QSize(19, 19))
         self.game_mode_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.game_mode_btn.setCheckable(False)
@@ -230,6 +229,8 @@ class ChatComposer(QFrame):
             )
             self.vision_rate_menu.addAction(action)
             self.vision_rate_actions[mode] = action
+        self.game_mode_menu.addAction(self.wake_btn)
+        self.game_mode_menu.addSeparator()
         self.game_mode_menu.addAction(self.game_mode_story_action)
         self.game_mode_menu.addAction(self.game_mode_safe_action)
         self.game_mode_menu.addSeparator()
@@ -242,12 +243,13 @@ class ChatComposer(QFrame):
         bar.addWidget(self.game_mode_btn)
 
         for button, key in (
-            (self.mic_btn, "mic"),
             (self.voice_btn, "voice"),
+            (self.mic_btn, "mic"),
         ):
             owner.reg(button.setToolTip, key)
             bar.addWidget(button)
         owner.reg(self.wake_btn.setToolTip, "wake")
+        self.wake_btn.setToolTip("حالت بیدارباش")
         self.voice_btn.setToolTip(
             "پاسخ صوتی روشن است؛ Kira با صدا پاسخ می‌دهد."
             if self.voice_btn.isChecked()
