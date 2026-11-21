@@ -28,10 +28,6 @@ class AppearanceTintTests(unittest.TestCase):
         self.assertNotEqual(theme.character_style(t, "off", {"brightness": 140}), theme.character_style(t, "off", {"brightness": 60}))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class UnslopThemeTests(unittest.TestCase):
     def test_palette_is_preserved_without_decorative_gradients(self):
         css = theme.build_style()
@@ -54,3 +50,7 @@ class UnslopThemeTests(unittest.TestCase):
         self.assertIn("rgba(156,123,255", kira)
         self.assertIn("#35D9F2", kira)
         self.assertNotIn("qlineargradient", kira.lower())
+
+
+if __name__ == "__main__":
+    unittest.main()
