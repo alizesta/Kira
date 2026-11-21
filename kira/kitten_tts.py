@@ -41,7 +41,7 @@ def _run(command, timeout=3600, cancel_event=None):
 def install_runtime(cancel_event=None):
     """Install only the ONNX runtime stack; avoid the optional multi-GB PyTorch stack."""
     import importlib.util
-    required_modules = ("kittenml", "onnxruntime", "num2words")
+    required_modules = ("kittenml", "onnxruntime", "num2words", "spacy")
     if all(importlib.util.find_spec(name) for name in required_modules):
         return True
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -56,7 +56,7 @@ def install_runtime(cancel_event=None):
           str(Path(__file__).resolve().parents[1] / "constraints-voice.txt"),
           "onnxruntime>=1.20", "numpy>=1.26", "soundfile",
           "huggingface_hub", "phonemizer", "espeakng_loader", "misaki",
-          "num2words"], cancel_event=cancel_event)
+          "num2words", "spacy>=3.8"], cancel_event=cancel_event)
     missing = [name for name in required_modules if not importlib.util.find_spec(name)]
     if missing:
         raise RuntimeError("پس از نصب، ماژول‌های لازم پیدا نشدند: " + ", ".join(missing))
