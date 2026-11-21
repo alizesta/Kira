@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-22 (desktop UI polish and design guidance)
+- Settings-page content is centered and bounded; form fields cap at 520 px and long text fields at 760 px. Scrollbars are 14 px wide/high.
+- Kira's chat avatar now uses the full 832×1248 body canvas instead of the old upper-body crop.
+- Chat composer placeholders rotate through character-specific prompts for Kira, Mika and Ren (Persian/English).
+- Toolbar and mood icons now use SVG only; added stop and 12 mood-family SVGs and removed the QPainterPath icon fallback.
+- Added a Preferences toggle for conditional Appllama + UNSLOP guidance; it applies to Kira chat, Kode analysis/patches and autonomous Kode tasks. UI guidance now audits over-wide fields and cards.
+- Added regression coverage for full-body avatar framing, design-guidance opt-out and SVG asset coverage. Runtime/GUI tests still require Windows validation.
+
 ## 2026-11-22 03:11 Iran (registry test fixed)
 - `main_window_voice_settings.py`: the chat composer owner now gets the feature context (`self.context`) as `view_context` instead of the window's root `presentation_context`; it only reads `.views`. `test_feature_controller_registry` is green again (18 passed).
 
