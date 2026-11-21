@@ -87,6 +87,18 @@ class AgentBase(unittest.TestCase):
             return zf.read(name).decode("utf-8")
 
 
+class UiGuidanceTests(AgentBase):
+    def test_auto_agent_selects_ui_guidance_from_goal_without_changing_backend_tasks(self):
+        ui_agent = self.agent(Script(), goal="بازطراحی صفحه تنظیمات")
+        self.assertIn("APPLLAMMA APP-DESIGN WORKFLOW", ui_agent.system_prompt)
+        self.assertIn("Connectedness", ui_agent.system_prompt)
+
+        backend_agent = self.agent(Script(), goal="Fix the database migration")
+        self.assertNotIn("APPLLAMMA APP-DESIGN WORKFLOW", backend_agent.system_prompt)
+
+
+
+
 class FullLoopTests(AgentBase):
     def test_inspect_plan_edit_test_fix_retest_package(self):
         router = Script(
