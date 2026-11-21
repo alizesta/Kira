@@ -62,7 +62,7 @@ class AssistantPage(QScrollArea):
         self.persona.setMinimumHeight(110)
         self._row(assistant_form, "persona", self.persona)
 
-        from PySide6.QtWidgets import QCheckBox, QLineEdit
+        from PySide6.QtWidgets import QLineEdit
         self.modes_chk = SwitchCheckBox()
         self.modes_chk.setChecked(bool(settings.get("active_modes", True)))
         self._register(self.modes_chk.setText, "active_modes")
@@ -85,7 +85,6 @@ class AssistantPage(QScrollArea):
         self.temp.setCurrentText(temperature_text)
 
         model_box, model_form = self._group("g_model")
-        ollama = (settings.get("providers") or {}).get("ollama", {})
         route_note = QLabel("فعال‌سازی و اولویت Ollama از بخش Route مدیریت می‌شود.")
         route_note.setObjectName("hint")
         route_note.setWordWrap(True)

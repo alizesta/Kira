@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-11-21 17:35 Iran (cleanup)
+- Removed the now-unused `MENU_ROUTES`, the unreferenced `assets/characters/kira.svg`, and unused imports/variables in the character and assistant pages. No behaviour change.
+
 ## 2026-11-21 17:20 Iran (tray menu root cause)
 - Real cause of the truncated tray menu (from the user's log): `RuntimeController.MENU_ROUTES` did not exist, so `refresh_tray_menu` raised `AttributeError` after the first items. Added `MENU_ROUTES = 8`; the earlier per-section guards stay as a safety net.
 

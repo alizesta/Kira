@@ -34,8 +34,6 @@ _log = logging.getLogger(__name__)
 
 
 class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
-    MENU_ROUTES = 8                     # routes listed in the tray / route menus (the tray menu read this and it was missing)
-
     def _check_chat_command_permission(self, command, _request):
         reason = self.context.services.game_mode_application_service.command_denial_reason(
             self.context.state._game_mode_profile, command.required_permissions
