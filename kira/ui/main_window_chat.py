@@ -91,10 +91,12 @@ class ChatController(WindowFeatureController):
                     + (f"\nعلت: {event.error}" if event.error else ""),
                 )
             if event.kind is ApplicationEventKind.PROVIDER_CHUNK:
-                self.context.views.kode_activity.update("در حال نوشتن پاسخ…")
+                if session is self.context.state.front:
+                    self.context.views.kode_activity.update("در حال نوشتن پاسخ…")
                 self.feature_controller("runtime").on_stream_chunk(event.chunk, event.content)
             elif event.kind is ApplicationEventKind.PROVIDER_FINAL and event.result is not None:
-                self.context.views.kode_activity.complete("پاسخ آماده شد")
+                if session is self.context.state.front:
+                    self.context.views.kode_activity.complete("پاسخ آماده شد")
                 result = event.result
                 response = dict(result.metadata)
                 response.update({
@@ -105,7 +107,8 @@ class ChatController(WindowFeatureController):
                 })
                 self.feature_controller("runtime").on_stream_done(response)
             elif event.kind is ApplicationEventKind.REQUEST_CANCELLED:
-                self.context.views.kode_activity.complete("درخواست متوقف شد")
+                if session is self.context.state.front:
+                    self.context.views.kode_activity.complete("درخواست متوقف شد")
                 self.feature_controller("runtime").on_stream_done({
                     "text": event.content,
                     "stopped": True,
@@ -113,7 +116,8 @@ class ChatController(WindowFeatureController):
                     "session_id": event.session_id,
                 })
             elif event.kind is ApplicationEventKind.REQUEST_FAILED:
-                self.context.views.kode_activity.fail("پاسخ با خطا متوقف شد")
+                if session is self.context.state.front:
+                    self.context.views.kode_activity.fail("پاسخ با خطا متوقف شد")
                 if event.metadata.get("interrupted"):
                     self.feature_controller("runtime").on_stream_done({
                         "text": event.content,
