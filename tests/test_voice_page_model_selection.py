@@ -35,6 +35,12 @@ class VoicePageModelSelectionTests(unittest.TestCase):
         self.assertTrue(hasattr(page, "piper_download_btn"))
         self.assertTrue(hasattr(page, "piper_test_btn"))
         self.assertTrue(hasattr(page, "piper_file_btn"))
+        self.assertEqual(page.kitten_model.count(), 3)
+        self.assertEqual(page.kitten_model.itemData(0), "pico")
+        self.assertEqual(page.kitten_model.itemData(1), "nano")
+        self.assertEqual(page.kitten_model.itemData(2), "mini")
+        self.assertTrue(hasattr(page, "kitten_test_btn"))
+        self.assertTrue(hasattr(page, "kitten_result"))
         self.assertFalse(hasattr(page, "local_model_tabs"))
 
 

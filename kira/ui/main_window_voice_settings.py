@@ -187,6 +187,7 @@ class VoiceSettingsController(WindowFeatureController):
         )
         page.download_piper_requested.connect(self.download_local_tts_model)
         page.test_piper_requested.connect(self.test_local_tts)
+        page.test_kitten_requested.connect(self.test_kitten_tts)
         page.choose_piper_file_requested.connect(self.choose_local_tts_model)
         page.select_piper_requested.connect(self.select_piper_model)
         self.context.views.voice_page.realtime_asr_requested.connect(
@@ -706,6 +707,34 @@ class VoiceSettingsController(WindowFeatureController):
             ),
             self.context.views.local_tts_test_btn, self._on_local_tts_tested
         )
+
+    def test_kitten_tts(self, model="mini"):
+        """Install/load one KittenTTS 2 tiny model and play a fixed English sample."""
+        from .. import kitten_tts
+
+        page = self.context.views.voice_page
+        info = kitten_tts.model_info(model)
+        page.kitten_result.setText(
+            f"در حال آماده‌سازی Kitten {model.title()} · دانلود مدل حدود {info['size_mb']} مگابایت؛ "
+            "بار اول ممکن است وابستگی‌ها نیز نصب شوند…"
+        )
+        self._run_local_voice_task(
+            lambda cancel: kitten_tts.synthesize_test(model, cancel_event=cancel),
+            page.kitten_test_btn,
+            lambda result: self._on_kitten_tts_tested(result, model),
+            cancellable=True,
+        )
+
+    def _on_kitten_tts_tested(self, result, model):
+        ok, value = result
+        page = self.context.views.voice_page
+        if not ok:
+            page.kitten_result.setText(f"تست KittenTTS ناموفق بود: {value}")
+            return
+        page.kitten_result.setText(
+            f"✓ Kitten {model.title()} صدا تولید کرد؛ در حال پخش نمونه انگلیسی…"
+        )
+        self._on_local_tts_tested(result)
 
     def test_local_stt(self):
         listener = self.context.resource("_local_stt_test_listener")
