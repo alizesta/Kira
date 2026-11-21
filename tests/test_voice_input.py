@@ -60,11 +60,63 @@ class LocalASRFallbackTests(unittest.TestCase):
 
 
 
+class LivePartialRecognitionTests(unittest.TestCase):
+    def test_growing_audio_hypotheses_replace_earlier_words(self):
+        from kira.listener import Listener
+
+        class ActiveSegment:
+            block = BLOCK
+            def __init__(self):
+                self.buf = [np.zeros(BLOCK, dtype=np.float32) for _ in range(32)]
+            def snapshot(self):
+                return np.zeros(RATE, dtype=np.float32)
+
+        listener = Listener(settings={})
+        emitted = []
+        listener.partial_heard.connect(emitted.append)
+        segment = ActiveSegment()
+        with mock.patch("kira.listener.time.monotonic", side_effect=(10.0, 11.0)):
+            with mock.patch.object(listener, "_transcribe", side_effect=("من فردا", "من امروز")):
+                listener._maybe_emit_partial(segment, None)
+                segment.buf.extend([np.zeros(BLOCK, dtype=np.float32) for _ in range(16)])
+                listener._maybe_emit_partial(segment, None)
+        self.assertEqual(emitted, ["من فردا", "من امروز"])
+        self.assertNotIn("فردا", emitted[-1])
+
+    def test_partial_hypotheses_are_not_emitted_for_recognizer_hallucinations(self):
+        from kira.listener import Listener
+
+        class ActiveSegment:
+            block = BLOCK
+            buf = [np.zeros(BLOCK, dtype=np.float32) for _ in range(32)]
+            def snapshot(self):
+                return np.zeros(RATE, dtype=np.float32)
+
+        listener = Listener(settings={})
+        emitted = []
+        listener.partial_heard.connect(emitted.append)
+        with mock.patch("kira.listener.time.monotonic", return_value=10.0):
+            with mock.patch.object(listener, "_transcribe", return_value="Thanks for watching!"):
+                listener._maybe_emit_partial(ActiveSegment(), None)
+        self.assertEqual(emitted, [])
+
+
 class SegmenterTests(unittest.TestCase):
     def test_hum_and_a_click_are_not_speech(self):
         click = np.zeros(4000, dtype=np.float32)
         click[1000:1300] = 0.3
         self.assertEqual(run(calibrated(), np.concatenate([room(RATE), click + room(4000), room(RATE)])), [])
+
+    def test_snapshot_returns_active_audio_without_resetting_segmenter(self):
+        segmenter = calibrated()
+        signal = voice(RATE)
+        run(segmenter, signal)
+        self.assertTrue(segmenter.speaking)
+        before = len(segmenter.buf)
+        snapshot = segmenter.snapshot()
+        self.assertEqual(len(snapshot), before * BLOCK)
+        self.assertTrue(segmenter.speaking)
+        self.assertEqual(len(segmenter.buf), before)
 
     def test_sentence_is_found_and_the_trailing_silence_is_trimmed(self):
         ev = run(calibrated(), np.concatenate([room(RATE // 2), voice(RATE * 2) + room(RATE * 2), room(RATE * 2)]))

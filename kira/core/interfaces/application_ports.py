@@ -33,3 +33,4 @@ class VoiceApplicationPorts:
     on_note: Callable[[str], None]
     on_finished: Callable[[Any, bool, bool], None]
     on_waiting: Callable[[], None]
+    on_partial: Callable[[str], None] | None = None
