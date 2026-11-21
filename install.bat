@@ -136,7 +136,7 @@ for %%P in (%PKGS%) do (
 
 echo.
 echo [3/4] Installing local Persian STT/TTS and downloading their models...
-echo Qwen ASR and its dependencies may require several GB of downloads.
+echo Installing only Shenava INT8 for offline speech recognition.
 .venv\Scripts\python.exe scripts\setup_local_voice.py --install --prepare-models
 if errorlevel 1 (
   echo WARNING: Local voice setup reported an error. Kira core installation will continue.
