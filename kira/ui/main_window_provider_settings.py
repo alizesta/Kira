@@ -530,8 +530,12 @@ class ProviderSettingsController(WindowFeatureController):
         return self.ollama_panel
 
     def collect_provider_settings(self):
-        """Only the local Ollama switch lives in the form now; API keys / enabled flags are changed by the API Manager actions directly."""
-        self.context.services.settings.setdefault("providers", {}).setdefault("ollama", {})["enabled"] = self.context.views.route_ollama_enabled.isChecked()
+        """Apply the local Provider master switch through the Route model's consistency rules."""
+        route_model.set_provider_enabled(
+            self.context.services.settings,
+            "ollama",
+            self.context.views.route_ollama_enabled.isChecked(),
+        )
         self.context.services.provider_application_service.ensure_routes(self.context.services.settings)
 
     def ollama_edit_mode(self, on):
