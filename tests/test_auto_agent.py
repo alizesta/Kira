@@ -96,6 +96,19 @@ class UiGuidanceTests(AgentBase):
         backend_agent = self.agent(Script(), goal="Fix the database migration")
         self.assertNotIn("APPLLAMMA APP-DESIGN WORKFLOW", backend_agent.system_prompt)
 
+        class CapturingRouter:
+            def __init__(self):
+                self.system = ""
+
+            def chat_stream(self, messages, system, **kwargs):
+                self.system = system
+                return {"text": "ok"}
+
+        router = CapturingRouter()
+        ui_agent.router = router
+        ui_agent._ask_model([{"role": "user", "content": "inspect UI"}])
+        self.assertIn("APPLLAMMA APP-DESIGN WORKFLOW", router.system)
+
 
 
 
