@@ -39,7 +39,6 @@ class ChatComposer(QFrame):
         "game_mode_story_action",
         "game_mode_safe_action",
         "vision_rate_actions",
-        "stop_btn",
         "gen_stop_btn",
         "send_btn",
     )
@@ -226,13 +225,10 @@ class ChatComposer(QFrame):
         owner.screen_capture_btn = self.game_mode_btn
         bar.addWidget(self.game_mode_btn)
 
-        self.stop_btn = owner.icon_button("stop")
-        self.stop_btn.clicked.connect(lambda: owner.on_stop_clicked())
         for button, key in (
             (self.mic_btn, "mic"),
             (self.wake_btn, "wake"),
             (self.voice_btn, "voice"),
-            (self.stop_btn, "stop"),
         ):
             owner.reg(button.setToolTip, key)
             bar.addWidget(button)
