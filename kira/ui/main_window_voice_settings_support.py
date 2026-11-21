@@ -15,7 +15,7 @@ from ..face import AvatarView  # Temporary fallback: keep Kira on the original 2
 from ..listener import Listener
 from ..ui_icons import make_icon
 from ..ui_widgets import ChatInput, RouteChip
-from ..chat_code_ui import CodeChat
+from ..chat_code_ui import Kode
 from .components import ChatHeader, ModelCombo, ChatComposer
 from .pages import AssistantPage, VoicePage
 from .workers import TaskWorker
