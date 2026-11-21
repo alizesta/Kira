@@ -153,6 +153,33 @@ class ProviderStreamTests(unittest.TestCase):
         self.assertEqual(c.last_stats["load_ms"], 2000)
         self.assertTrue(resp.closed)
 
+    def test_ollama_stream_recovers_final_answer_from_thinking_channel(self):
+        c = OllamaClient("http://localhost:11434", "qwen3.5-9b-abliterated")
+        frames = [
+            {"message": {"thinking": "Thinking Process: consider the request."}, "done": False},
+            {"message": {"thinking": chr(10).join(("---", "پاسخ نهایی: جواب سالم و قابل‌نمایش"))}, "done": False},
+            {"done": True, "done_reason": "stop", "eval_count": 20, "total_duration": 1000},
+        ]
+        response = StreamResp([__import__("json").dumps(frame).encode() for frame in frames])
+        with mock.patch("requests.post", post_table({"11434": response})):
+            self.assertEqual("".join(c.stream(MSGS, SYS)), "جواب سالم و قابل‌نمایش")
+        self.assertEqual(c.last_stats["eval_tokens"], 20)
+        self.assertTrue(response.closed)
+
+    def test_ollama_stream_does_not_expose_unmarked_thinking(self):
+        c = OllamaClient("http://localhost:11434", "qwen3.5-9b-abliterated")
+        frames = [
+            {"message": {"thinking": "Thinking Process: private chain of thought only"}, "done": False},
+            {"done": True, "done_reason": "stop"},
+        ]
+        response = StreamResp([__import__("json").dumps(frame).encode() for frame in frames])
+        with mock.patch("requests.post", post_table({"11434": response})):
+            with self.assertRaises(OllamaError) as cm:
+                list(c.stream(MSGS, SYS))
+        self.assertEqual(cm.exception.kind, "empty")
+        self.assertNotIn("private chain of thought", str(cm.exception))
+        self.assertTrue(response.closed)
+
     def test_ollama_stream_payload_and_think_fallback_and_missing_model(self):
         c = OllamaClient("http://localhost:11434", "m", num_ctx=2048, keep_alive="5m", num_predict=100)
         first = StreamResp([], status=400, body={"error": "model does not support think"}, headers={})

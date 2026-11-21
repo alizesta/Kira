@@ -128,6 +128,69 @@ class OllamaTests(unittest.TestCase):
         self.assertNotIn("think", payloads[1])
         self.assertNotIn("think", payloads[2])         # remembered: no wasted request next time
 
+    def test_thinking_channel_recovers_only_explicit_final_answer(self):
+        thinking = chr(10).join((
+            "Thinking Process: inspect the question and choose a concise response.",
+            "---",
+            "پاسخ نهایی: سلام، چطور می‌توانم کمکت کنم؟",
+        ))
+        recovered = OllamaClient._recover_final_from_thinking(thinking)
+        self.assertEqual(recovered, "سلام، چطور می‌توانم کمکت کنم؟")
+        self.assertEqual(
+            OllamaClient._recover_final_from_thinking("Thinking Process: private reasoning only"),
+            "",
+        )
+
+    def test_chat_recovers_qwen_answer_from_thinking_field(self):
+        c = OllamaClient("http://localhost:11434", "local-model")
+        response = Resp(200, {"message": {
+            "content": "",
+            "thinking": chr(10).join(("تحلیل داخلی", "---", "پاسخ نهایی: جواب قابل‌نمایش")),
+        }})
+        with mock.patch("requests.post", return_value=response) as post:
+            self.assertEqual(c.chat(MSGS, "system"), "جواب قابل‌نمایش")
+        self.assertIs(post.call_args.kwargs["json"]["think"], False)
+
+    def test_native_tool_chat_recovers_final_from_thinking_field(self):
+        c = OllamaClient("http://localhost:11434", "local-model")
+        response = Resp(200, {"message": {
+            "content": "",
+            "thinking": chr(10).join(("Thinking Process: choose a short reply", "---", "Final answer: tool task completed")),
+            "tool_calls": [],
+        }})
+        with mock.patch("requests.post", return_value=response):
+            result = c.chat_with_tools(
+                MSGS, "system",
+                tools=[{"name": "lookup", "parameters": {"type": "object"}}],
+            )
+        self.assertEqual(result["text"], "tool task completed")
+        self.assertEqual(result["tool_calls"], [])
+
+    def test_native_tool_chat_flattens_previous_tool_turns_for_qwen(self):
+        c = OllamaClient("http://localhost:11434", "local-model")
+        history = [
+            {"role": "user", "content": "فایل را بررسی کن"},
+            {"role": "assistant", "content": None, "tool_calls": [
+                {"id": "call-1", "type": "function",
+                 "function": {"name": "read_file", "arguments": {"path": "README.md"}}}
+            ]},
+            {"role": "tool", "tool_call_id": "call-1", "name": "read_file",
+             "content": "محتوای واقعی فایل"},
+        ]
+        with mock.patch("requests.post", return_value=ok_ollama("بررسی تمام شد")) as post:
+            result = c.chat_with_tools(
+                history, "system",
+                tools=[{"name": "read_file", "parameters": {"type": "object"}}],
+            )
+        self.assertEqual(result["text"], "بررسی تمام شد")
+        sent = post.call_args.kwargs["json"]
+        self.assertIs(sent["think"], False)
+        self.assertEqual([m["role"] for m in sent["messages"]], ["system", "user"])
+        self.assertIn("فایل را بررسی کن", sent["messages"][1]["content"])
+        self.assertIn("محتوای واقعی فایل", sent["messages"][1]["content"])
+        self.assertFalse(any("tool_calls" in message for message in sent["messages"]))
+        self.assertFalse(any(message.get("role") == "tool" for message in sent["messages"]))
+
     def test_thinking_only_reply_is_an_error_not_silent(self):
         c = OllamaClient("http://localhost:11434", "m")
         r = Resp(200, {"message": {"content": "<think>x</think>", "thinking": "reasoning"}})
