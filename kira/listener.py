@@ -1,4 +1,4 @@
-"""Microphone listener: local-only Shenava / Qwen3-ASR / faster-whisper plus speech segmentation (kira/vad.py).
+"""Microphone listener: local-only Shenava speech recognition plus speech segmentation (kira/vad.py).
 
 Behaviour (see vad.py / speech_text.py for the details):
   * less sensitive to room noise: speech-band level, measured noise floor, onset check, hysteresis;
@@ -15,7 +15,7 @@ import time
 from PySide6.QtCore import QThread, Signal
 
 from .speech_fixes import SpeechFixes
-from .speech_text import clean_transcript, grace_for, initial_prompt, is_hallucination, merge_text
+from .speech_text import clean_transcript, grace_for, is_hallucination, merge_text
 from .vad import BLOCK, RATE, Segmenter
 
 MAX_HOLD_S = 40.0               # a message is never held longer than this, however many pauses there were
@@ -30,9 +30,6 @@ class Listener(QThread):
 
     def __init__(self, model_name="small", language="fa", parent=None, sensitivity=100, barge_in=True, settings=None):
         super().__init__(parent)
-        # The selected offline ASR engine is preferred; faster-whisper remains the fallback.
-        selected_model = str(model_name or "small").strip()
-        self.model_name = "small" if selected_model.casefold().startswith("qwen/") else selected_model
         self.language = None if language in ("", "auto") else language
         self.sensitivity = sensitivity
         self.settings = settings if settings is not None else {}
@@ -46,10 +43,7 @@ class Listener(QThread):
         self._sr = None
         self._seg = None
         self.fixes = SpeechFixes()      # the user's dictionary (hotwords + word fixes), re-read when the file changes
-        self._model = None              # faster-whisper model, loaded only when the local fallback is needed
-        self.via = ""                   # local:qwen3-asr or local:whisper
-        self._local_asr_failed = False  # avoid retrying a broken local model for every segment
-        self._hotwords_ok = True        # becomes False if the installed faster-whisper does not know `hotwords`
+        self.via = "local:shenava"
         self._pending, self._pending_until, self._pending_since = "", 0.0, 0.0
 
     # ---- called by the window ----
@@ -121,6 +115,7 @@ class Listener(QThread):
         if not self._run:
             return
         self.engine = "shenava"
+        model = None
 
         q = queue.Queue()
 
@@ -179,23 +174,6 @@ class Listener(QThread):
         finally:
             self._close_stream(stream)
             self._seg = None
-
-    def _load_local(self):
-        """Load faster-whisper as the local fallback when Qwen3-ASR is unavailable."""
-        if self.engine == "whisper" and self._model is not None:
-            return True
-        try:
-            from faster_whisper import WhisperModel
-        except ImportError:
-            self.error.emit("هیچ موتور STT محلی نصب نیست. از بخش مدل‌های Local، Qwen3-ASR یا Whisper را نصب کن.")
-            return False
-        try:
-            self._model = WhisperModel(self.model_name, device="cpu", compute_type="int8")
-            self.engine = "whisper"
-            return True
-        except Exception as exc:
-            self.error.emit(f"بارگذاری Whisper محلی ناموفق بود: {type(exc).__name__}: {exc}")
-            return False
 
     def _next_block(self, q):
         while self._run:
