@@ -19,6 +19,7 @@ class _Signal:
 class _Listener:
     def __init__(self):
         self.heard = _Signal()
+        self.partial_heard = _Signal()
         self.interrupted = _Signal()
         self.state = _Signal()
         self.error = _Signal()
@@ -32,6 +33,7 @@ class _Listener:
         self.kira_level = 0.0
         self._event_signals = {
             "heard": self.heard,
+            "partial": self.partial_heard,
             "interrupted": self.interrupted,
             "state": self.state,
             "error": self.error,
@@ -118,6 +120,7 @@ class VoiceApplicationServiceTests(unittest.TestCase):
             speaker=self.speaker,
             listener_factory=lambda: self.created.append(_Listener()) or self.created[-1],
             on_heard=lambda text: self.events.append(("heard", text)),
+            on_partial=lambda text: self.events.append(("partial", text)),
             on_interrupted=lambda: self.events.append(("interrupted",)),
             on_state=lambda state: self.events.append(("state", state)),
             on_error=lambda message: self.events.append(("error", message)),
@@ -233,7 +236,8 @@ class VoiceApplicationServiceTests(unittest.TestCase):
         self.service.start_recording()
         listener = self.created[0]
 
-        listener.heard.emit("سلام")
+        listener.partial_heard.emit("سلام د")
+        listener.heard.emit("سلام دنیا")
         listener.interrupted.emit()
         listener.state.emit("listening")
         listener.error.emit("device error")
@@ -242,7 +246,8 @@ class VoiceApplicationServiceTests(unittest.TestCase):
         self.assertEqual(
             self.events,
             [
-                ("heard", "سلام"),
+                ("partial", "سلام د"),
+                ("heard", "سلام دنیا"),
                 ("interrupted",),
                 ("state", "listening"),
                 ("error", "device error"),
