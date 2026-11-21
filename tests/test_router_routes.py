@@ -68,13 +68,33 @@ class RouterRouteTests(unittest.TestCase):
         self.assertEqual(len(f.calls), 1)
         self.assertIn("11434", f.calls[0]["url"])
 
-    def test_surface_disabled_ollama_reports_provider_state_not_a_qwen_install_hint(self):
-        s, r = make(ollama=False)
+    def test_surface_falls_back_to_explicitly_enabled_cloud_when_local_is_disabled(self):
+        s, r = make("groq", ollama=False)
+        f = dispatch({"groq": ok_openai("cloud-fallback")})
+        with r.role_scope("surface"):
+            with mock.patch("requests.post", f):
+                self.assertEqual(r.chat(MSGS, SYS), "cloud-fallback")
+        self.assertEqual(len(f.calls), 1)
+        self.assertIn("groq", f.calls[0]["url"])
+
+    def test_surface_never_uses_cloud_when_local_route_is_ready(self):
+        s, r = make("groq", ollama=True)
+        f = dispatch({
+            "11434": ok_ollama("local-answer"),
+            "groq": AssertionError("cloud must not be used while local route is ready"),
+        })
+        with r.role_scope("surface"):
+            with mock.patch("requests.post", f):
+                self.assertEqual(r.chat(MSGS, SYS), "local-answer")
+        self.assertEqual(len(f.calls), 1)
+
+    def test_surface_reports_missing_cloud_when_local_is_disabled(self):
+        s, r = make(ollama=True)
+        routes.set_enabled(s, "ollama", False)
         with r.role_scope("surface"):
             with self.assertRaises(RuntimeError) as cm:
                 r.chat(MSGS, SYS)
-        self.assertIn("Provider محلی Ollama خاموش است", str(cm.exception))
-        self.assertNotIn("Qwen Abliterated نصب", str(cm.exception))
+        self.assertIn("هیچ Route ابریِ فعال و معتبری", str(cm.exception))
 
     def test_deep_role_uses_gemini_only_even_when_manual_route_is_other_provider(self):
         s, r = make("groq")

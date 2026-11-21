@@ -8,7 +8,7 @@ import json
 import re
 import requests
 
-DEFAULT_NUM_CTX = 8192
+DEFAULT_NUM_CTX = 6144
 DEFAULT_KEEP_ALIVE = "2m"
 DEFAULT_NUM_PREDICT = 512          # max reply length in tokens: stops a runaway/slow generation
 MIN_NUM_CTX, MAX_NUM_CTX = 1024, 32768

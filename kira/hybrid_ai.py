@@ -153,6 +153,23 @@ class HybridRouter:
         role = _ROLE.get()
         role_allowlist = self.settings.get("role_provider_allowlist")
         allowed = role_allowlist.get(role) if isinstance(role_allowlist, dict) else None
+        # Keep ordinary chat local-first. If all local routes are unavailable,
+        # permit explicitly enabled cloud routes as a fallback. eligibility()
+        # still enforces provider/route switches and valid API credentials.
+        surface_local_ready = False
+        if role == "surface" and not _VISION_ONLY.get():
+            surface_local_ready = any(
+                route.get("provider") == "ollama" and self.eligibility(route)[0]
+                for route in routes
+            )
+            if not surface_local_ready:
+                routes = [
+                    route for route in routes
+                    if route_model.provider_kind(
+                        route.get("provider"), self._provider_cfg(route)
+                    ) == "cloud"
+                ]
+                allowed = None
         # Images require a vision-capable cloud route; this local GGUF is text-only.
         if _VISION_ONLY.get() and role in ("surface", "deep"):
             allowed = ["google"]
@@ -171,12 +188,15 @@ class HybridRouter:
         allowed_models = model_allowlist.get(role) if isinstance(model_allowlist, dict) else None
         if _VISION_ONLY.get():
             allowed_models = None
-        if isinstance(allowed_models, (list, tuple)):
+        if isinstance(allowed_models, (list, tuple)) and not (
+            role == "surface" and not surface_local_ready
+        ):
             model_ids = {str(value).strip().lower() for value in allowed_models if str(value).strip()}
-            # The surface role is provider-locked to Ollama. Let the user choose
-            # any enabled local model instead of hard-locking chat to the bundled
-            # default model ID. Cloud routes remain excluded by the provider allowlist.
-            local_surface_routes = role == "surface" and isinstance(allowed, set) and "ollama" in allowed
+            # Let the user choose any enabled local model instead of hard-locking
+            # ordinary chat to the bundled default model ID.
+            local_surface_routes = (
+                role == "surface" and isinstance(allowed, set) and "ollama" in allowed
+            )
             routes = [
                 route for route in routes
                 if (
@@ -555,7 +575,16 @@ class HybridRouter:
                     elif not local_routes:
                         failures.append("هیچ مدل Ollama در Routeها ثبت نشده است؛ مدل‌های نصب‌شده را اسکن کن.")
                     elif not enabled_local:
-                        failures.append("مدل‌های محلی شناسایی شده‌اند، اما همه Routeها خاموش‌اند؛ حداقل یک مدل محلی را فعال کن.")
+                        cloud_ready = any(
+                            route_model.provider_kind(route.get("provider"), (providers.get(route.get("provider")) or {})) == "cloud"
+                            and self.eligibility(route)[0]
+                            for route in self.routes()
+                        )
+                        failures.append(
+                            "مدل محلی خاموش است و هیچ Route ابریِ فعال و معتبری برای جایگزینی وجود ندارد؛ یک Provider ابری را همراه با حداقل یک Route و کلید معتبر فعال کن."
+                            if not cloud_ready else
+                            "هیچ Route ابریِ آماده‌ای برای مکالمه پیدا نشد؛ تنظیمات Provider را بررسی کن."
+                        )
                     elif not provider_allowed:
                         failures.append("سیاست نقش مکالمهٔ عادی Provider محلی Ollama را مجاز نکرده است؛ role_provider_allowlist را بررسی کن.")
                     else:
