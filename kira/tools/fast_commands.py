@@ -15,6 +15,11 @@ _ALLOWED = {
     "get_system_info", "get_resource_usage", "get_disks", "get_network_info",
     "list_running_apps", "get_active_window",
 }
+def is_direct_result_tool(name: str) -> bool:
+    """Tools whose own output is already a complete, human-readable answer (no model rewrite needed)."""
+    return name in _ALLOWED
+
+
 _DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 _LETTERS = str.maketrans({
     "ي": "ی", "ك": "ک", "ۀ": "ه", "ة": "ه", "ـ": "",
