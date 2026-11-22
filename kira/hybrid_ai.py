@@ -682,6 +682,7 @@ class HybridRouter:
             metrics.update(load_ms=stats.get("load_ms"), eval_tokens=stats.get("eval_tokens"), eval_ms=stats.get("eval_ms"))
         self.metrics.append(metrics)
         self.last_metrics = metrics
+        request_trace("request_completed", provider=route["provider"], model=model, route_id=route["id"], result=metrics["result"], total_ms=self.last_duration_ms, connect_ms=metrics.get("connect_ms"), first_token_ms=metrics.get("first_token_ms"), response_chars=len(text))
         self._ledger(metrics, metrics["result"], provider, stats)
         self._write_telemetry({"provider": route["provider"], "model": model, "result": metrics["result"],
                                "duration_ms": self.last_duration_ms, "attempts": self.last_attempts,
