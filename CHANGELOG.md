@@ -1,3 +1,11 @@
+## 2026-11-22 (Fast Path stage 4 — real registry boundary tests)
+- Strengthened integration coverage using the production `ToolRegistry` and `AccessManager`: successful dispatch is recorded once in Journal; post-plan tools-off and runtime Competitive Safe denials are also journaled.
+- Verified Competitive Safe transition cancels a pending Fast Path before registry dispatch.
+- Verified replaying an identical Fast Path plan returns the cached result without a second handler call or Journal record.
+- Verified the cache is cleared at the next turn so a fresh request can execute again; cancellation before dispatch leaves Journal empty.
+- The model router remains a deliberate fail-fast stub, proving these local deterministic calls do not invoke the model.
+- Validation: source and tests fetched back from GitHub and statically inspected. Python unittest, Windows runtime, and GitHub Actions were not executed.
+
 ## 2026-11-22 (Planned execution safety)
 - Tool argument validation rejects undeclared parameter names instead of silently ignoring typos or extra model-supplied fields.
 - Every planned tool call must carry an explicit positive integer step ID and object arguments; missing, malformed, unknown, or ambiguous IDs are rejected before dispatch.

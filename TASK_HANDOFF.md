@@ -1,3 +1,13 @@
+## Fast Path Stage 4 — Real registry boundary integration tests (2026-11-22)
+
+- Branch: `test/fastpath-real-boundary-integration`; based on `claude/task-understanding-review` after stage 3 PR #225 was merged.
+- `FastPathRealRegistryBoundaryTests` exercises the production `ToolRegistry` and `AccessManager`; only the model router is stubbed to fail if called.
+- Covers successful Fast Path dispatch and one success Journal entry; post-plan `tools_mode=off` denial and Journal record; Competitive Safe transition cancellation before dispatch; runtime execution-guard denial and Journal record; duplicate-call cache behavior without a second handler or Journal entry.
+- Added assertions that Journal contains exactly one record for successful execution and no duplicate record for cached replay.
+- Added turn-boundary coverage: the same call is deduplicated within one turn, allowed again after `begin_turn()`, and pre-dispatch cancellation creates no Journal record.
+- Validation: updated test and documentation sources fetched back from GitHub and statically inspected. Python unittest and Windows runtime have not been executed; GitHub Actions were not run.
+- Local command when a checkout is available: `python -m unittest discover -s tests -p "test_fast_commands.py" -v`.
+
 ## Stage 3 — Planned execution safety guards (2026-11-22)
 
 - Branch: `fix/planned-execution-safety-guards`; PR #225 targets `claude/task-understanding-review`.

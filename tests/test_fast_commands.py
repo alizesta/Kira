@@ -325,7 +325,10 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(result["tools"][0]["status"], "ok")
         self.assertIn("system facts", result["text"])
         self.assertEqual(calls, [{}])
-        self.assertEqual(registry.access.journal.recent()[-1]["status"], "ok")
+        journal = registry.access.journal.recent()
+        self.assertEqual(len(journal), 1)
+        self.assertEqual(journal[-1]["tool"], "get_system_info")
+        self.assertEqual(journal[-1]["status"], "ok")
 
     def test_tools_mode_change_after_planning_is_enforced_at_execution(self):
         from kira.tools.registry import DENIED
@@ -340,7 +343,7 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertIn("ابزارها خاموش", result["text"])
 
     def test_competitive_safe_transition_cancels_pending_fast_call(self):
-        agent, _registry, calls = self._agent()
+        agent, registry, calls = self._agent()
         plan = self._plan(agent)
         agent.set_competitive_safe_mode(True)
         result = self._run(agent, plan)
@@ -348,6 +351,7 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertTrue(result["stopped"])
         self.assertEqual(result["tools"], [])
+        self.assertEqual(registry.access.journal.recent(), [])
 
     def test_competitive_safe_execution_guard_denies_fast_call(self):
         from kira.tools.registry import DENIED
@@ -363,6 +367,30 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(result["tools"][0]["status"], DENIED)
         self.assertIn("Competitive Safe", result["text"])
 
+    def test_execution_denials_are_recorded_in_the_real_registry_journal(self):
+        from kira.tools.registry import DENIED
+
+        cases = ("tools_off", "competitive_safe")
+        for case in cases:
+            with self.subTest(case=case):
+                agent, registry, calls = self._agent()
+                plan = self._plan(agent)
+                if case == "tools_off":
+                    agent.settings["tools_mode"] = "off"
+                else:
+                    # Bypass transition cancellation to test the registry's
+                    # execution guard and its journal independently.
+                    agent._competitive_safe_mode = True
+
+                result = self._run(agent, plan)
+
+                self.assertEqual(calls, [])
+                self.assertEqual(result["tools"][0]["status"], DENIED)
+                journal = registry.access.journal.recent()
+                self.assertEqual(len(journal), 1)
+                self.assertEqual(journal[0]["tool"], "get_system_info")
+                self.assertEqual(journal[0]["status"], DENIED)
+
     def test_same_fast_call_is_not_executed_twice_in_one_turn(self):
         agent, _registry, calls = self._agent()
         plan = self._plan(agent)
@@ -372,7 +400,31 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(calls, [{}])
         self.assertEqual(first["tools"][0]["status"], "ok")
         self.assertTrue(second["tools"][0]["cached"])
+        journal = agent.registry.access.journal.recent()
+        self.assertEqual(len(journal), 1)
+        self.assertEqual(journal[0]["status"], "ok")
 
+    def test_same_fast_call_can_execute_again_in_a_new_turn(self):
+        agent, registry, calls = self._agent()
+        first_plan = self._plan(agent)
+        first = self._run(agent, first_plan)
+        self.assertEqual(first["tools"][0]["status"], "ok")
+
+        # The lightweight agent fixture does not initialize task persistence;
+        # provide the three per-turn collections used by AutonomyMixin._turn_reset.
+        agent._turn_plan_ids = {}
+        agent._pause_requests = set()
+        agent._cancel_plan_requests = set()
+        agent.begin_turn("kira")
+        second_plan = self._plan(agent)
+        second = self._run(agent, second_plan)
+
+        self.assertEqual(calls, [{}, {}])
+        self.assertEqual(second["tools"][0]["status"], "ok")
+        self.assertFalse(second["tools"][0]["cached"])
+        journal = registry.access.journal.recent()
+        self.assertEqual(len(journal), 2)
+        self.assertEqual([entry["status"] for entry in journal], ["ok", "ok"])
 
 
 class SemanticPlannerRoutingTests(unittest.TestCase):
