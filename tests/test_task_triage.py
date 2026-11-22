@@ -32,6 +32,7 @@ def _agent(**settings):
     agent.settings = {"tools_mode": "auto", "agent_planning": "off", **settings}
     agent.registry = build_registry(PathPolicy({}))
     agent._competitive_safe_mode = False
+    agent.registry.execution_guard = agent._game_mode_execution_guard
     agent._pending_by_session = {}
     agent._pending_new_sessions = set()
     agent._init_session_turn_states()
@@ -231,19 +232,25 @@ class TriagePlanTests(unittest.TestCase):
         self.assertEqual(router.stream_calls, 1)
         self.assertIn("CAPABILITY INDEX", router.prompts[0])
 
-    def test_off_scope_tool_call_is_denied_before_registry_execution(self):
+    def test_off_scope_tool_call_is_journaled_and_handler_never_runs(self):
+        from kira.tools.registry import Tool, READ
+
         agent = _agent()
-        calls = []
-        original_execute = agent.registry.execute
-        agent.registry.execute = lambda name, args: calls.append((name, args))
+        handler_calls = []
+        agent.registry.register(Tool(
+            "scope_probe", "test-only tool outside the selected category",
+            lambda args: handler_calls.append(args) or "executed",
+            (), READ, ("bluetooth",),
+        ))
         with agent._use_session("files-scope"):
             agent._current_turn_state().schema_categories = {"files"}
-            results = agent._run_calls([{"tool": "bluetooth_status", "args": {}}], [], None)
-        self.assertEqual(calls, [])
+            results = agent._run_calls([{"tool": "scope_probe", "args": {}}], [], None)
+        self.assertEqual(handler_calls, [])
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].status, "denied")
         self.assertIn("دامنه", results[0].text)
-        agent.registry.execute = original_execute
+        records = agent.registry.access.journal.recent(10)
+        self.assertTrue(any(item.get("tool") == "scope_probe" and item.get("status") == "denied" for item in records))
 
     def test_empty_selected_schema_scope_never_means_all_tools(self):
         agent = _agent()
