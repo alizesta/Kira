@@ -1,5 +1,14 @@
 # Task Handoff
 
+## Latest task: full source/documentation synchronization (2026-11-22)
+
+- Audited the repository tree at source baseline new-main@e058021c97e5e90990ba129e2361f340706217a3: 585 tracked files, 270 Python modules under kira/, 164 Python test files, 8 workflows and 52 documentation files.
+- Updated the README voice description, local voice and voice-routing guides, Windows Control guide, architecture index/master/roadmap, module ownership register, project context and changelog.
+- Confirmed runtime voice architecture: Gemini Live is the default bidirectional mode; local mode/fallback uses Shenava Koochik via sherpa-onnx and Piper. KittenTTS is optional for English; Persian continues to use Piper. The real-time Listener does not use the older Qwen3-ASR/faster-whisper chain described in stale docs.
+- Audit note: config.py still has legacy Qwen3 values/comments for local_voice_asr_backend / local_voice_asr_model, while VoicePage sets the backend to shenava and Listener directly loads Shenava. This is documented as a code cleanup item; no runtime code was changed.
+- Verification: GitHub source files were re-read and document replacements checked. No Python tests, imports, py_compile, Windows GUI/audio test or release build were executed in this documentation-only pass.
+
+## Latest task: portrait, icon, tray menu (2026-11-21, 17:05 Iran)
 ## Latest task: portrait, icon, tray menu (2026-11-21, 17:05 Iran)
 
 - Check on Windows: Kira's card shows the new portrait; taskbar/window/tray show her face icon; right-click tray shows show/hide Kira, show/hide character, model, web, mic, خروج. If items are still missing, the cause is in `refresh_tray_menu` (`kira/ui/main_window_lifecycle.py`). The `.exe`/shortcut icon (`assets/kira_icon.ico`) is not wired into any installer or `.bat`.
