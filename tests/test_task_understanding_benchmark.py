@@ -235,6 +235,161 @@ CASES = {
     ],
 }
 
+HARD_CASES = [
+    [
+        "time",
+        "Check the local time first; then report the current date and weekday without changing any settings.",
+        [
+            "time"
+        ]
+    ],
+    [
+        "system",
+        "If drive C has less than 15 GB free, list the five largest files; do not delete or move anything.",
+        [
+            "system",
+            "files"
+        ]
+    ],
+    [
+        "apps",
+        "Open Wallpaper Engine; if it is already running, bring its window forward instead of launching a second copy.",
+        [
+            "apps",
+            "desktop"
+        ]
+    ],
+    [
+        "web",
+        "Find the latest official GPU driver from the manufacturer's website and verify its version against a second source.",
+        [
+            "web"
+        ]
+    ],
+    [
+        "files",
+        "Back up the Documents folder to drive D, then count the copied files and report any failures.",
+        [
+            "files"
+        ]
+    ],
+    [
+        "bluetooth",
+        "List paired Bluetooth devices; if my headset is disconnected, report that fact but do not pair or connect it.",
+        [
+            "bluetooth",
+            "audio"
+        ]
+    ],
+    [
+        "audio",
+        "Check whether the default microphone is muted; unmute it only if it is currently muted, then report the final state.",
+        [
+            "audio",
+            "desktop"
+        ]
+    ],
+    [
+        "desktop",
+        "Open Settings, navigate to the Bluetooth page, inspect the paired-device list, and do not change any device settings.",
+        [
+            "apps",
+            "desktop",
+            "bluetooth"
+        ]
+    ],
+    [
+        "web",
+        "Read the article at the URL I provide, verify its three main claims against official sources, and cite each finding.",
+        [
+            "web"
+        ]
+    ],
+    [
+        "files",
+        "Find duplicate photos in Pictures, group only exact matches, and show the candidates without deleting anything.",
+        [
+            "files"
+        ]
+    ],
+    [
+        "system",
+        "Compare current RAM and CPU usage; if either exceeds 85 percent, identify the top process but do not terminate it.",
+        [
+            "system"
+        ]
+    ],
+    [
+        "apps",
+        "If Chrome is not open, launch it; otherwise reuse the existing window and open the URL I provide in a new tab.",
+        [
+            "apps",
+            "web"
+        ]
+    ],
+    [
+        "files",
+        "Find the newest spreadsheet in Downloads, make a copy in Documents, and preserve the original filename and contents.",
+        [
+            "files"
+        ]
+    ],
+    [
+        "mcp",
+        "Use the configured MCP server to inspect its available tools, but do not send credentials or private file contents.",
+        [
+            "mcp"
+        ]
+    ],
+    [
+        "agents",
+        "Delegate a public-source research task to an independent agent, return its job ID, and check status before reporting completion.",
+        [
+            "agents",
+            "web"
+        ]
+    ],
+    [
+        "web",
+        "Compare prices for three current laptops across multiple retailers, exclude sponsored listings, and save the sourced comparison to a spreadsheet.",
+        [
+            "web",
+            "files"
+        ]
+    ],
+    [
+        "desktop",
+        "In Notepad, type a short report of the current battery status; read back the text before saying it was saved.",
+        [
+            "desktop",
+            "apps",
+            "system"
+        ]
+    ],
+    [
+        "bluetooth",
+        "If the Bluetooth keyboard is paired, report its connection state; if it is not paired, ask before pairing it.",
+        [
+            "bluetooth"
+        ]
+    ],
+    [
+        "audio",
+        "Set the headset as the output device only if it is already connected; otherwise leave audio settings unchanged and explain why.",
+        [
+            "audio",
+            "bluetooth"
+        ]
+    ],
+    [
+        "system",
+        "Check internet connectivity and available disk space; if the connection is down, report it and do not attempt a network reset.",
+        [
+            "system"
+        ]
+    ]
+]
+
 CHAT_ONLY = [
     "سلام، امروز حالت چطوره؟",
     "به نظرت چه فیلمی ارزش دیدن داره؟",
@@ -289,6 +444,20 @@ class TaskUnderstandingBenchmarkTests(unittest.TestCase):
                     plan = agent.plan(prompt, session_id=f"bench-{category}-{index}")
                     self.assertIsNotNone(plan)
                     self.assertFalse(plan.index_only)
+
+    def test_hard_multistep_cases_require_every_expected_tool_family(self):
+        agent = _make_agent()
+        self.assertEqual(len(HARD_CASES), 20)
+        for index, (label, prompt, required_categories) in enumerate(HARD_CASES):
+            with self.subTest(index=index, label=label, prompt=prompt):
+                detected = protocol.detect_categories(prompt)
+                self.assertTrue(
+                    set(required_categories).issubset(detected),
+                    f"missing={set(required_categories) - detected}; detected={detected}",
+                )
+                plan = agent.plan(prompt, session_id=f"hard-{index}")
+                self.assertIsNotNone(plan)
+                self.assertFalse(plan.index_only)
 
     def test_chat_controls_remain_on_the_cheap_triage_path(self):
         agent = _make_agent()
