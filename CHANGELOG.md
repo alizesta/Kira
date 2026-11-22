@@ -1,12 +1,108 @@
+## 2026-11-22 (Fast Path stage 4 — real registry boundary tests)
+- Strengthened integration coverage using the production `ToolRegistry` and `AccessManager`: successful dispatch is recorded once in Journal; post-plan tools-off and runtime Competitive Safe denials are also journaled.
+- Verified Competitive Safe transition cancels a pending Fast Path before registry dispatch.
+- Verified replaying an identical Fast Path plan returns the cached result without a second handler call or Journal record.
+- Verified the cache is cleared at the next turn so a fresh request can execute again; cancellation before dispatch leaves Journal empty.
+- The model router remains a deliberate fail-fast stub, proving these local deterministic calls do not invoke the model.
+- Validation: source and tests fetched back from GitHub and statically inspected. Python unittest, Windows runtime, and GitHub Actions were not executed.
+
+## 2026-11-22 (Planned execution safety)
+- Tool argument validation rejects undeclared parameter names instead of silently ignoring typos or extra model-supplied fields.
+- Every planned tool call must carry an explicit positive integer step ID and object arguments; missing, malformed, unknown, or ambiguous IDs are rejected before dispatch.
+- Planned calls reject tool/step mismatches and replay attempts for done, skipped, running, confirmation-pending, or review-pending steps.
+- Planner validation rejects duplicate, boolean, zero, negative, and malformed step IDs rather than silently renumbering ambiguous plans; falsey non-list dependency containers are rejected instead of becoming empty lists.
+- Persisted task loading rejects malformed/duplicate step records; malformed dependencies are retained as invalid sentinels and block execution.
+- Dependency checks fail closed for missing, malformed, non-positive, ambiguous, self, and forward references, even if a later step is marked complete.
+- Added regression cases for execution guards, handler non-invocation on invalid arguments, malformed step IDs, duplicate/corrupt persisted plans, planner dependency containers, and dependency-order enforcement.
+- Validation: source and tests fetched back from GitHub and statically inspected. Python unittest and Windows runtime remain unavailable; GitHub Actions were not run.
+
+## 2026-11-22 (Fast Path / web-lock boundary)
+- Fixed an unnecessary serialization conflict: deterministic local Fast Path calls return before any model or web-tool round, so they no longer acquire the process-wide WebIntel research lock merely because auto-mode plans expose the web category in their capability set.
+- Added a regression test that probes the web lock while executing a deterministic volume command through ToolAgent.
+- Hardened `planner.parse_plan`: malformed, unknown, and forward step dependencies are now rejected instead of silently removed, preventing an invalid plan from running a dependent action early.
+- Added regressions for forward, unknown, non-numeric, and valid backward dependencies.
+- Validation: source and test changes fetched back from GitHub and branch diff checked. Python unittest execution, Windows runtime, and GitHub Actions were not run.
+
+## 2026-11-22 (20 adversarial multi-step cases)
+- Added 20 harder task-understanding cases to `tests/test_task_understanding_benchmark.py`. They combine conditional branches, sequencing, explicit non-action constraints, read-before-write, status verification, and mixed local/web/MCP/agent capabilities.
+- The hard-case test checks every required tool family and verifies that each case exits the cheap index-only triage route. An independent harness reconstructed from the committed detector patterns found all 20/20 required-category sets; this is not execution of the Python unittest module or live planning.
+
+## 2026-11-22 (200-case task-understanding benchmark)
+- Added `tests/test_task_understanding_benchmark.py`: 200 actionable prompts (20 each across time, system, apps, Bluetooth, audio, files, desktop, web, MCP and agents) plus 20 ordinary-chat controls. Each actionable prompt pins a required tool family; the chat controls must stay on the cheap `index_only` triage route with no category match.
+- The benchmark tests category recall and routing boundaries on the actual `protocol.detect_categories` and `ToolAgent.plan` implementations. It does not measure live LLM semantic decisions, plan quality, Windows execution, or end-to-end task success.
+- Dataset integrity check: 200/200 actionable prompts are unique; 20/20 chat controls are unique. A separate JavaScript regex harness reconstructed from the committed Python patterns found 200/200 required category matches and 0/20 chat false positives. It exposed and led to fixes for Persian local-time, paired-device/Pair, Persian menu-genitive, counted-source, and delegated-job wording. This harness is not the Python unittest suite; repository tests were not run. No GitHub Actions were triggered.
+
+## 2026-11-22 (contextual Persian slang and pragmatic intent)
+- Added model guidance to both the cheap capability-index prompt and the full PC-tool prompt: interpret slang, profanity, dialect and idioms from sentence/conversation context; treat user corrections as conversation-local meaning; do not mistake profanity alone for a PC action.
+- Added four contrastive Persian colloquial examples as chat-only routing controls, including the user's examples. They must remain on the cheap triage path rather than dispatching PC tools.
+- Added prompt-regression assertions for both model contexts. This protects routing boundaries; it does not claim to measure whether every configured LLM correctly understands the intended slang.
+- Validation in this environment: source-level review only; the repository unittest module and live model behavior were not executed. GitHub Actions were not run.
+
+## 2026-11-22 (explicit user-led slang learning)
+- Kira now extracts only explicit Persian definitions in the form «expression یعنی meaning» from user messages and stores them as evidence-backed `language_rule` memories.
+- The stored rule is retrieved by topic into later prompts; vague slang without an explicit definition is not guessed or persisted.
+- Added regression coverage for persistence, evidence provenance, retrieval, and the no-guess boundary.
+- Validation: the exact definition matcher was exercised independently against the supplied correction and a no-definition control. Full repository tests and live-model learning behavior were not run; GitHub Actions were not run.
+
 # Changelog
 
-## 2026-11-22 (desktop UI polish and design guidance)
-- Settings-page content is centered and bounded; form fields cap at 520 px and long text fields at 760 px. Scrollbars are 14 px wide/high.
-- Kira's chat avatar now uses the full 832×1248 body canvas instead of the old upper-body crop.
-- Chat composer placeholders rotate through character-specific prompts for Kira, Mika and Ren (Persian/English).
-- Toolbar and mood icons now use SVG only; added stop and 12 mood-family SVGs and removed the QPainterPath icon fallback.
-- Added a Preferences toggle for conditional Appllama + UNSLOP guidance; it applies to Kira chat, Kode analysis/patches and autonomous Kode tasks. UI guidance now audits over-wide fields and cards.
-- Added regression coverage for full-body avatar framing, design-guidance opt-out and SVG asset coverage. Runtime/GUI tests still require Windows validation.
+## 2026-11-22 (English task-intent coverage)
+- Expanded the request-intent gates with English patterns for common Windows, file, desktop, app and web workflows: drive/free-space checks, backups/archives/duplicates, Notepad and Settings interaction, official sources, supplied article links, retailer comparisons, latest-version/download lookups and wallpaper search/application.
+- Added a 20-case English regression matrix to `tests/test_task_triage.py`. It checks expected category coverage and whether each request skips the cheap triage round when a task signal exists. The email-draft-only request deliberately remains in triage because drafting text alone does not require PC access.
+- Added a negative regression so a generic source-code explanation is not mistaken for web research.
+- Independent regex harness: 20/20 scenarios contained their expected categories; 19/20 produced a known task signal and the email-only case correctly remained triage. This is a focused pattern check, not a repository unittest run or a live Kira/Windows test.
+- Not run: repository unittest suite, real model/provider, Windows actions, GitHub Actions.
+
+
+## 2026-11-22 08:32 Iran (planner review rounds no longer carry the character prompt)
+- Measured with a scripted model (`tests/test_task_cost.py`): a one-tool task costs 5 model calls (plan, run step, step review, goal review, final answer). The step review and the final goal review are internal JSON phases, yet each re-sent the whole character/memory system prompt. They now use a short fixed verifier prompt (`planner.REVIEW_SYSTEM`) plus the same review instructions and task state. In the test the two review prompts shrink from about 7.3k to 2.6k characters (the stand-in persona is 4.6k; the real one is larger). Plan, execution and final-answer calls keep the personality.
+- No change to what is verified: both reviews still run, exact-evidence rules, the `verifies_result` handling and the "tool ok is not goal ok" design are untouched (an existing test already pins that). Call count is unchanged; only prefill per review call drops.
+- Not done on purpose: merging review into the next action call, skipping the goal review for one-step plans, or trusting `verifies_result` tools without review. Each would cut calls but weakens the evidence design chosen in `20aa301`; decide that with real-model latency numbers.
+- Tests: `tests/test_task_cost.py` (2). Local run: cost + triage + fast-path + task-store → 67 OK; the 11 surrounding tool-agent modules keep the same 1 failure + 7 errors as before. Not run: Windows, real models, GitHub Actions.
+
+## 2026-11-22 08:23 Iran (cheap model-owned triage: chat stays fast, unknown tasks still reach the planner)
+- Measured: since `42d34b6` every `auto` turn carried the full local tool catalog (~9.9k chars, ~3.5k tokens with rules) and, via `decide()`, went through the planner; plain "سلام" paid that too, and (because `web` was always in its categories) also took the process-wide web-research lock, serializing characters.
+- New two-step flow in `auto` when the message has no known task signal (`ToolPlan.index_only`): the model gets a short capability index (`protocol.build_index_block`, tool names only, ~1k chars). Chat is answered in that one call. If the PC/internet is needed — any wording — the model writes the internal `use_tools` block (never shown, nothing executed); `ToolAgent.run` then re-runs the turn with the full local catalog and, when planning is on, the planner (`plan.complex`). External MCP/agent tools stay opt-in. Messages with a known signal skip triage; exact Fast Path commands are untouched.
+- Triage rounds use the text protocol (no native function schemas) and do not take the web-research lock. Competitive Safe is unchanged (no tool plan without explicit web intent). Access control, confirmations and the ToolRegistry execution path are unchanged; no UI change.
+- Tests: new `tests/test_task_triage.py` (11 cases: plan flags, small-prompt ratio, one-call chat turn, lock not taken, escalation without showing the block, planner hand-off, direct tool block in the triage round never executes); one old assertion in `tests/test_fast_commands.py` updated to the new contract. Local run: `tests.test_task_triage tests.test_fast_commands tests.test_task_store` → 65 OK. The other 11 modules touching the tool agent give the same 1 failure + 7 errors as the branch tip before this change (pre-existing, UI facade / role routes). Not run: Windows, real models, full suite, GitHub Actions.
+
+## 2026-11-22 08:03 Iran (Competitive Safe regression after model-owned intent classification)
+- Regression from `42d34b6`: in `tools_mode=auto` every turn now carries all local categories, so under Competitive Safe the `{"web"}` intersection was never empty and every message (even a blocked local query like "مشخصات سیستم چیه") got a web-tool plan. `ToolAgent.plan` now keeps `web` in Competitive Safe only when the message explicitly asks for it (or a paused web research is resumed) in `auto` mode; `always` mode is unchanged.
+- Tests: fixed `test_competitive_safe_still_blocks_local_fast_path` (it failed on `42d34b6`, passed on `20aa301`); added `test_competitive_safe_ordinary_chat_gets_no_tool_plan` and `test_competitive_safe_keeps_explicit_web_request`.
+- Local run: `python -m unittest tests.test_fast_commands tests.test_task_store` → 53 tests OK (Linux sandbox). Windows runtime and the full suite were not run; no GitHub Action was triggered.
+
+## 2026-11-22 (Fast Path stages 4–5)
+- Added integration regressions using the real ToolRegistry boundary, not only a mocked registry: successful dispatch/journaling, execution-time enforcement when tools_mode changes to off, execution-time Competitive Safe enforcement, and same-turn duplicate suppression.
+- Documented the five-stage Fast Path contract, focused unittest command, Windows acceptance checklist and the distinction between source coverage and runtime acceptance.
+- These tests have been added but not executed here. Windows runtime acceptance remains open; GitHub Actions is not part of this verification.
+
+## 2026-11-22 (Fast Path stage 3)
+- Hardened Fast Path dispatch integration with ToolAgent: a complex planner decision always wins; direct dispatch requires a registered, internal, low-risk tool whose category matches both the parsed command and the registry metadata.
+- Added regressions for complex-plan precedence, sensitive/external tool rejection, category mismatch, disabled tools mode and missing registry entries. Existing ToolRegistry execution remains the only execution path; no UI or new command surface was added.
+- Repository tests and Windows runtime checks remain unexecuted in this environment; these changes are source-level until run on a supported checkout.
+
+## 2026-11-22 (Fast Path stage 2)
+- The deterministic Fast Path now recognizes high-confidence read-only PC queries: system specifications, RAM/CPU/GPU/battery usage, disk space, network status/local IP, running apps and the active window. The existing time, Bluetooth, audio and app-launch commands remain supported.
+- All calls still execute through ToolRegistry and keep the existing tool-level, AccessManager, tools-mode and Competitive Safe checks. Compound or ambiguous utterances continue through the normal model route.
+- Added parser coverage and ToolAgent no-model integration regressions. An isolated parser harness passed 47 positive (25 new and 22 existing) and 6 negative examples; the repository unittest module and Windows runtime have not been executed in this environment.
+
+## 2026-11-22 03:37 Iran (Voice settings simplified)
+- Voice tab: a new top card "مکالمه" with one switch, "نوع مکالمه": ریل‌تایم (Gemini Live) or محلی (آفلاین). Realtime shows the Google AI key and the Kira voice; local shows the input (STT = Shenava, automatic, one option) and output (TTS = Piper فارسی / KittenTTS). Mic and output-device cards stay visible; STT, TTS and Gemini detail boxes moved into a collapsed "تنظیمات پیشرفته" area. All old widgets still exist (controllers unchanged); the redundant "Shenava · Sherpa-ONNX" label row was removed.
+- New setting `gemini_voice` (Zephyr default; Kore, Leda, Aoede = female, Puck, Charon, Fenrir, Orus = male), read by `gemini_live.py` instead of the hard-coded "Zephyr". Local voices (Piper Mana, Kitten) have no voice choice.
+- In realtime mode what the user says and Kira's reply are written to the chat after each turn (already the behaviour via the Gemini input transcription).
+- Offscreen only; not seen on Windows.
+
+## 2026-11-22 03:26 Iran (TTS engine switch: Piper / KittenTTS)
+- New settings `tts_engine` (piper | kitten, default piper) and `kitten_model` (pico | nano | mini), chosen in Voice settings ("موتور صدا", "مدل KittenTTS"); saved automatically with the other voice sliders.
+- `voice.py`: with the Kitten engine each English sentence is made by `kitten_tts.synthesize` (new, shares the test code) and goes through the same wav/envelope/cache path and the same `_PcmPlayer`. Sentences containing Persian/Arabic letters ALWAYS use Piper (Kitten is English-only), so mixed replies still work. If the Kitten runtime is not installed, the error tells the user to press "نصب و تست KittenTTS" first. Kitten ignores the speech-rate slider and the emotion post-effects for now.
+- Fixed a regression from my earlier registry fix: giving the composer owner the narrow `voice_settings` context made start-up fail on "undeclared window view 'kode_activity'". The composer's mirrored view names (send_strip, kode_activity, input, mic_btn, web_btn ... 19 names) are now declared in the `voice_settings` view allowlist instead; registry test stays green and the window builds again.
+- Offscreen only; no real Kitten synthesis or audio was run here (needs the optional install and a sound device).
+
+## 2026-11-22 03:20 Iran (one audio player: QAudioSink)
+- `kira/voice.py`: removed every old player path (QMediaPlayer + QAudioOutput, QSoundEffect, the winsound `_NativeWavPlayer`, the `voice_native_wav` setting). All speech now goes through one small `_PcmPlayer`: it reads the 16-bit PCM wav into memory and plays it with `QAudioSink` on the selected / default output device (volume from `voice_volume`). Start-up is much cheaper than creating a media player per sentence; device-change handling and the 8 s "never started" guard are unchanged.
+- Behaviour change: `play_file` (user sound files, click sounds) accepts only PCM .wav now; mp3 / ogg report an error instead of playing.
+- Tests: old QMediaPlayer-slot tests were rewritten for the new player; the remaining failures in test_voice_tts / test_voice_stop (MainWindow callbacks etc.) are the same as before this change.
+- NOT tested with real audio (the server has no sound device). Please listen on Windows: first sentence delay, gaps between sentences, volume, output device switch, Stop button.
 
 ## 2026-11-22 03:11 Iran (registry test fixed)
 - `main_window_voice_settings.py`: the chat composer owner now gets the feature context (`self.context`) as `view_context` instead of the window's root `presentation_context`; it only reads `.views`. `test_feature_controller_registry` is green again (18 passed).
@@ -303,7 +399,7 @@ Mate Engine (shinyflvre) is a Unity/C# project under AGPL-3.0 + its own licence,
 - Competitive Safe disables game-window Vision/capture, game/system WASAPI loopback and local desktop/app/file/MCP/agent control tools. It retains ordinary chat, web tools and independent microphone/wake-word interaction.
 - Added a central ToolRegistry execution guard so restrictions also apply to direct tool calls, confirmations and Agent tasks.
 - Unknown profiles fail closed to Competitive Safe; detection only recommends and never auto-enables a profile.
-- Story Mode retains existing user-requested desktop controls for offline play; Competitive Safe blocks desktop controls and gameplay input. Both profiles keep code injection, game memory access, graphics hooks, overlays, game-file modification and driver installation disabled.
+- Story Mode retains existing user-requested desktop controls for offline play; Competitive Safe blocks desktop controls and gameplay input. Both profiles keep code injection, game memory access, graphics hooks, game-file modification and driver installation disabled.
 - Added pure-Python regression tests for profile capabilities and tool-category restrictions.
 
 ### Game Mode audio and wake update
@@ -416,3 +512,53 @@ Mate Engine (shinyflvre) is a Unity/C# project under AGPL-3.0 + its own licence,
 - Planner, executor and reviewer requests now use the existing `deep`, `surface` and `reflection` role routes and fallback behavior.
 - Prompt now directs Kira to create focused tests for changed behavior where the project supports them.
 
+
+
+### Planner hardening — natural multi-step requests
+- Count action occurrences instead of collapsing repeated verbs into a set.
+- Recognize common Persian task verbs such as «بگرد»، «بذار/بزار»، «انتخاب کن» and «اعمال کن», plus English browse/select/apply actions.
+- Route two coordinated actions (for example, «باز کن و ... باز کن») to the existing model-based planner while keeping one-action requests simple.
+- Add regression coverage for repeated verbs, Persian multi-step desktop tasks, English sequences, single-action negatives and empty categories.
+
+- Follow-up corpus testing removed a category-count false positive for explanatory questions and added English `create` / `make` plus Persian create/build verbs.
+
+
+### Model-driven task reasoning and evidence review
+- Replaced production verb/phrase-based task complexity routing with model-based decisions for tool-relevant requests; exact one-shot Fast Path commands remain deterministic.
+- Expose the full local tool catalog during planning so the model can select cross-category capabilities (including desktop observation and input) without per-task keyword wiring. MCP/agent tools remain opt-in.
+- Added a structured semantic review phase after successful tool calls. The model judges each result against the user's goal; satisfied verdicts require an exact quote from that step's real output.
+- Keep successful tool execution distinct from goal completion, prevent blind repeat of an already-executed call, and recover interrupted reviews conservatively after restart.
+- Added regression tests for semantic routing, evidence provenance, review gating and restart recovery.
+
+
+### Explicit task success criteria
+- Store user-level success criteria and per-step observable postconditions in task plans.
+- Feed those criteria back into semantic result review so the model judges the actual requested end state, not merely tool execution.
+- Persist and restore criteria with task state; retain safe review recovery after restart.
+
+
+### Final goal-level verification
+- Separate per-step postcondition review from final task completion review.
+- Require exact output evidence for every final success criterion before a task can enter the completed state.
+- Reopen final verification after an interrupted run because raw tool evidence is intentionally not persisted.
+
+
+### Evidence mapping and explicit external-tool scope
+- Map final evidence quotes to explicit success-criterion numbers, rejecting missing, duplicate or unknown criterion references.
+- Include MCP/agent capabilities in the model's planning catalog only when the user's request explicitly selects that external capability.
+
+
+### Model-owned tool-intent classification
+- In `tools_mode=auto`, let the model decide in the same primary response call whether a turn is ordinary conversation or requires local tools; do not let unknown task vocabulary bypass the planner.
+- Keep exact deterministic Fast Path commands, and keep MCP/agent tools hidden unless the user explicitly asks for those external capabilities.
+
+- Include read-only web research tools in the auto-mode planner catalog; existing web rules still require explicit user intent before searching.
+
+## 2026-11-22 15:12 Iran (desktop UI polish, SVG icons, Appllama/UNSLOP switch, simpler Voice tab)
+- Settings-page content is centred and width-capped (content 1180 px, group boxes 1120 px, single-line fields 520 px, multi-line fields 760 px); scrollbars are 14 px wide.
+- Kira's chat avatar card shows the whole 832×1248 body canvas instead of the upper-body crop; Ren/Mika crops are unchanged.
+- The chat composer shows random character-specific example prompts for Kira, Mika and Ren (Persian/English), refreshed on character switch, language change and every 25 s while the box is empty.
+- The icon renderer is SVG-only: `stop` plus mood faces are SVG files. Every mood with its own file (`emotion_<mood>.svg`, 24 faces) uses it; other moods fall back to their family's face. Copy / edit / speak chips under chat messages use SVG icons (`copy.svg`, `pencil.svg`, `speaker.svg`) with a text-glyph fallback.
+- Preferences has a switch (`ui_design_guidance_enabled`, default on) for the conditional Appllama + UNSLOP design guidance; it applies to Kira chat, Kode analysis/patch proposals and autonomous Kode missions. The guidance also audits over-wide fields and cards.
+- Voice tab: the microphone and output cards keep only volume, microphone sensitivity and one record-and-play test button (3 s, default Windows devices). Device pickers, engine label, the second mic slider, barge-in, wake timeout and real-time ASR are hidden (widgets and saved values kept). New `kira/ui/pages/audio_card_simplify.py`.
+- Tests added: avatar framing, design-guidance opt-out, SVG asset coverage. Not run: Python/Qt tests, Windows runtime, GitHub Actions (earlier runs stopped before executing any step).
