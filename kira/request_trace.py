@@ -32,16 +32,25 @@ def reset_request_id(token):
     _request_id.reset(token)
 
 
-def _log_path() -> Path:
+def _log_path(filename: str = "request_trace.jsonl") -> Path:
     # Lazy import avoids config/provider import cycles.
     from . import config
     folder = Path(config.DATA_DIR) / "logs"
     folder.mkdir(parents=True, exist_ok=True)
-    return folder / "request_trace.jsonl"
+    return folder / filename
 
 
 def trace(phase: str, **fields):
     """Write one bounded, secret-safe JSONL event. Logging must never break chat."""
+    _write(phase, fields, "request_trace.jsonl")
+
+
+def gemini_trace(phase: str, **fields):
+    """Same as trace(), but into DATA_DIR/logs/gemini_trace.jsonl: only requests sent to Google's Gemini endpoint."""
+    _write(phase, fields, "gemini_trace.jsonl")
+
+
+def _write(phase: str, fields: dict, filename: str):
     record = {
         "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
         "mono": round(time.monotonic(), 6),
@@ -53,7 +62,7 @@ def trace(phase: str, **fields):
         if value is None or isinstance(value, (str, int, float, bool)):
             record[str(key)[:48]] = value[:240] if isinstance(value, str) else value
     try:
-        path = _log_path()
+        path = _log_path(filename)
         line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
         with _lock:
             if path.exists() and path.stat().st_size + len(line.encode("utf-8")) > _MAX_BYTES:
@@ -68,7 +77,7 @@ def trace(phase: str, **fields):
                     pass
             with path.open("a", encoding="utf-8") as stream:
                 stream.write(line)
-        _logger.info("%s", json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+        _logger.info("%s%s", "[gemini] " if filename.startswith("gemini") else "", json.dumps(record, ensure_ascii=False, separators=(",", ":")))
     except Exception:
         # Diagnostics are best-effort and must never interrupt provider traffic.
         pass

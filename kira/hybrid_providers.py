@@ -20,7 +20,7 @@ from typing import Any
 
 from . import routes as route_model
 from .leak_guard import LeakGuard, clean_final
-from .request_trace import trace as request_trace
+from .request_trace import trace as request_trace, gemini_trace
 from .ollama_client import OllamaClient, OllamaError
 from .core.interfaces.chat_provider import ChatProvider
 from .infrastructure.providers import ProviderRegistry
@@ -243,6 +243,29 @@ class ProgressBody:
         return chunk
 
 
+def _gemini_finish(obj):
+    try:
+        return str(obj["choices"][0].get("finish_reason") or "")
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return ""
+
+
+def _gemini_usage(obj):
+    """Scalar token counts from an OpenAI-style 'usage' block (incl. thinking tokens when Google reports them)."""
+    usage = obj.get("usage") if isinstance(obj, dict) else None
+    if not isinstance(usage, dict):
+        return {}
+    out = {}
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        if isinstance(usage.get(key), int):
+            out[key] = usage[key]
+    details = usage.get("completion_tokens_details")
+    if isinstance(details, dict) and isinstance(details.get("reasoning_tokens"), int):
+        out["thinking_tokens"] = details["reasoning_tokens"]
+    return out
+
+
+
 class BaseProvider(ChatProvider):
     name = "base"
     upload_progress = None                  # optional callback(percent) - set by the router; used when a request carries images
@@ -368,12 +391,33 @@ class BaseProvider(ChatProvider):
         started = time.monotonic()
         host = __import__("urllib.parse", fromlist=["urlsplit"]).urlsplit(url).hostname or "unknown"
         request_trace("http_send", provider=self.name, model=self.model, host=host, stream=bool(stream), connect_timeout=timeout[0] if isinstance(timeout, tuple) else timeout, read_timeout=timeout[1] if isinstance(timeout, tuple) else timeout)
+        google = self._is_google_endpoint()
+        if google:
+            # Dedicated Gemini log: exactly where this request goes and with which settings (never prompts or keys).
+            path = __import__("urllib.parse", fromlist=["urlsplit"]).urlsplit(url).path
+            gemini_trace("request", route=self.name, model=self.model, host=host, path=path, stream=bool(stream),
+                         temperature=payload.get("temperature"), reasoning_effort=payload.get("reasoning_effort"),
+                         max_tokens=payload.get("max_tokens"), messages=len(payload.get("messages") or []),
+                         tools=len(payload.get("tools") or []), has_images=bool(getattr(self, "_sent_images", False)),
+                         read_timeout_s=timeout[1] if isinstance(timeout, tuple) else timeout)
         try:
             response = requests.post(url, timeout=timeout, **kwargs)
         except Exception as exc:
             request_trace("http_transport_error", provider=self.name, model=self.model, host=host, error_type=type(exc).__name__, elapsed_ms=int((time.monotonic()-started)*1000))
+            if google:
+                gemini_trace("transport_error", model=self.model, error_type=type(exc).__name__, elapsed_ms=int((time.monotonic()-started)*1000),
+                             note="request was sent; Google may still count it against quota")
             raise
         request_trace("http_headers", provider=self.name, model=self.model, host=host, status_code=int(response.status_code), elapsed_ms=int((time.monotonic()-started)*1000), stream=bool(stream))
+        if google:
+            err = ""
+            if response.status_code >= 400:
+                try:
+                    err = redact(_api_message(response), self.secret)
+                except Exception:                                          # noqa: BLE001 - logging never breaks a request
+                    err = ""
+            gemini_trace("response", model=self.model, status_code=int(response.status_code), elapsed_ms=int((time.monotonic()-started)*1000),
+                         retry_after=response.headers.get("Retry-After"), error=err or None)
         return response
 
     def _post_json(self, url, headers, payload):
@@ -391,6 +435,16 @@ class BaseProvider(ChatProvider):
         except ValueError as exc:
             raise self._fail("پاسخ سرویس قابل خواندن نبود.", True, kind="response") from exc
         self._note_usage(data)
+        if self._is_google_endpoint():
+            try:
+                msg = (data.get("choices") or [{}])[0].get("message") or {}
+                content = msg.get("content")
+                chars = sum(len(str(x.get("text", ""))) for x in content if isinstance(x, dict)) if isinstance(content, list) else len(str(content or ""))
+                gemini_trace("result", model=self.model, finish_reason=_gemini_finish(data) or None, content_chars=chars,
+                             tool_calls=len(msg.get("tool_calls") or []), empty=(chars == 0 and not msg.get("tool_calls")),
+                             **_gemini_usage(data))
+            except Exception:                                              # noqa: BLE001
+                pass
         request_trace("http_body_decoded", provider=self.name, model=self.model, elapsed_ms=int((time.monotonic()-body_started)*1000), response_shape="json")
         return data
 
@@ -420,6 +474,10 @@ class BaseProvider(ChatProvider):
         flt = ThinkFilter()
         stream_started = time.monotonic()
         first_event = False
+        g_on = self._is_google_endpoint()
+        g_chunks = g_raw = g_out = 0
+        g_finish = ""
+        g_usage = {}
         try:
             for data in iter_sse(response):
                 if not first_event:
@@ -432,15 +490,22 @@ class BaseProvider(ChatProvider):
                 except ValueError:
                     continue
                 self._note_usage(obj)
+                if g_on and isinstance(obj, dict):
+                    g_chunks += 1
+                    g_finish = _gemini_finish(obj) or g_finish
+                    g_usage.update(_gemini_usage(obj))
+                    g_raw += len(extract(obj) or "")
                 if isinstance(obj, dict) and obj.get("error"):
                     err = obj["error"]
                     msg = err.get("message") if isinstance(err, dict) else err
                     raise self._fail(f"خطای سرویس وسط پاسخ: {str(msg)[:300]}", True, kind="server")
                 piece = flt.feed(extract(obj) or "")
                 if piece:
+                    g_out += len(piece)
                     yield piece
             tail = flt.flush()
             if tail:
+                g_out += len(tail)
                 yield tail
         except requests.Timeout as exc:
             request_trace("stream_read_timeout", provider=self.name, model=self.model, elapsed_ms=int((time.monotonic()-stream_started)*1000))
@@ -449,6 +514,9 @@ class BaseProvider(ChatProvider):
             raise self._fail(f"ارتباط وسط پاسخ قطع شد: {exc}", True, kind="network") from exc
         finally:
             request_trace("stream_closed", provider=self.name, model=self.model, elapsed_ms=int((time.monotonic()-stream_started)*1000))
+            if g_on:
+                gemini_trace("stream_closed", model=self.model, elapsed_ms=int((time.monotonic()-stream_started)*1000), chunks=g_chunks,
+                             raw_chars=g_raw, shown_chars=g_out, finish_reason=g_finish or None, empty=(g_out == 0), **g_usage)
             self._resp = None
             try:
                 response.close()
