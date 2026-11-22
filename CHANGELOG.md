@@ -32,6 +32,12 @@
 - The benchmark tests category recall and routing boundaries on the actual `protocol.detect_categories` and `ToolAgent.plan` implementations. It does not measure live LLM semantic decisions, plan quality, Windows execution, or end-to-end task success.
 - Dataset integrity check: 200/200 actionable prompts are unique; 20/20 chat controls are unique. A separate JavaScript regex harness reconstructed from the committed Python patterns found 200/200 required category matches and 0/20 chat false positives. It exposed and led to fixes for Persian local-time, paired-device/Pair, Persian menu-genitive, counted-source, and delegated-job wording. This harness is not the Python unittest suite; repository tests were not run. No GitHub Actions were triggered.
 
+## 2026-11-22 (contextual Persian slang and pragmatic intent)
+- Added model guidance to both the cheap capability-index prompt and the full PC-tool prompt: interpret slang, profanity, dialect and idioms from sentence/conversation context; treat user corrections as conversation-local meaning; do not mistake profanity alone for a PC action.
+- Added four contrastive Persian colloquial examples as chat-only routing controls, including the user's examples. They must remain on the cheap triage path rather than dispatching PC tools.
+- Added prompt-regression assertions for both model contexts. This protects routing boundaries; it does not claim to measure whether every configured LLM correctly understands the intended slang.
+- Validation in this environment: source-level review only; the repository unittest module and live model behavior were not executed. GitHub Actions were not run.
+
 # Changelog
 
 ## 2026-11-22 (English task-intent coverage)
