@@ -264,6 +264,8 @@ def _make_agent():
     agent.settings = {"tools_mode": "auto", "agent_planning": "off"}
     agent.registry = build_registry(PathPolicy({}))
     agent._competitive_safe_mode = False
+    agent._pending_by_session = {}
+    agent._pending_new_sessions = set()
     agent._init_session_turn_states()
     return agent
 
@@ -275,20 +277,22 @@ class TaskUnderstandingBenchmarkTests(unittest.TestCase):
         self.assertEqual(len({p for items in CASES.values() for p in items}), 200)
 
     def test_all_actionable_cases_reach_the_expected_tool_family(self):
+        agent = _make_agent()
         for category, prompts in CASES.items():
             for index, prompt in enumerate(prompts):
                 with self.subTest(category=category, index=index, prompt=prompt):
                     detected = protocol.detect_categories(prompt)
                     self.assertIn(category, detected)
-                    plan = _make_agent().plan(prompt, session_id=f"bench-{category}-{index}")
+                    plan = agent.plan(prompt, session_id=f"bench-{category}-{index}")
                     self.assertIsNotNone(plan)
                     self.assertFalse(plan.index_only)
 
     def test_chat_controls_remain_on_the_cheap_triage_path(self):
+        agent = _make_agent()
         for index, prompt in enumerate(CHAT_ONLY):
             with self.subTest(index=index, prompt=prompt):
                 self.assertEqual(protocol.detect_categories(prompt), set())
-                plan = _make_agent().plan(prompt, session_id=f"chat-{index}")
+                plan = agent.plan(prompt, session_id=f"chat-{index}")
                 self.assertIsNotNone(plan)
                 self.assertTrue(plan.index_only)
 
