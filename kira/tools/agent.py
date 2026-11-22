@@ -622,7 +622,10 @@ class ToolAgent(AutonomyMixin):
         owner = str(getattr(plan, "session_id", "") or self._current_turn_state().session_id)
         with self._use_session(owner):
             web_locked = False
-            uses_web_tools = "web" in (getattr(plan, "categories", set()) or set()) and not getattr(plan, "index_only", False)
+            # Fast Path returns after one allow-listed local tool; it never enters web research.
+            uses_web_tools = (not getattr(plan, "fast_call", None)
+                              and "web" in (getattr(plan, "categories", set()) or set())
+                              and not getattr(plan, "index_only", False))
             if uses_web_tools:
                 while not self._web_research_lock.acquire(timeout=0.1):
                     if self._cancel.is_set():
