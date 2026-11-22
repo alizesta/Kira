@@ -339,9 +339,6 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertTrue(second["tools"][0]["cached"])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class PlannerComplexityRegressionTests(unittest.TestCase):
     """The planner prefilter counts action occurrences and recognizes natural task sequences."""
@@ -412,3 +409,6 @@ class PlannerComplexityRegressionTests(unittest.TestCase):
 
         complex_, reasons = assess("برنامه‌ریزی یعنی چه؟", {"apps"})
         self.assertFalse(complex_, reasons)
+
+if __name__ == "__main__":
+    unittest.main()
