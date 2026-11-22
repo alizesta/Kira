@@ -299,12 +299,24 @@ def initialize_main_window(
 
     # Reserve stable tab indexes, but construct settings pages only on first entry.
     self.views.tab_keys = ["tab_chat", "tab_voice", "tab_char", "tab_appearance", "tab_general", "tab_ai"]
+    def _ensure_assistant_section():
+        if not hasattr(self.views, "assistant_page"):
+            voice_controller.build_assistant_section()
+
+    def _build_characters_tab():
+        _ensure_assistant_section()
+        character_controller.build_characters_tab()
+
+    def _build_ai_tab():
+        _ensure_assistant_section()
+        provider_controller.build_ai_tab()
+
     lazy_tab_builders = {
         1: ("tab_voice", voice_controller.build_voice_tab),
-        2: ("tab_char", lambda: (voice_controller.build_assistant_section(), character_controller.build_characters_tab())),
+        2: ("tab_char", _build_characters_tab),
         3: ("tab_appearance", character_controller.build_appearance_tab),
         4: ("tab_general", character_controller.build_general_tab),
-        5: ("tab_ai", lambda: (voice_controller.build_assistant_section(), provider_controller.build_ai_tab())),
+        5: ("tab_ai", _build_ai_tab),
     }
     for key in self.views.tab_keys[1:]:
         placeholder = QWidget(self.host)
