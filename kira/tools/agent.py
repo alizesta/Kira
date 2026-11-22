@@ -336,9 +336,11 @@ class ToolAgent(AutonomyMixin):
                         # an explicit web request (or a paused web research) may keep the web tools.
                         allowed &= protocol.detect_categories(text) | ({"web"} if self._web_resume(text) else set())
                     plan.categories.intersection_update(allowed)
+                    if plan.schema_categories is not None:
+                        plan.schema_categories.intersection_update(allowed)
                     if not plan.categories:
                         return None
-                plan.web = "web" in plan.categories and (bool(protocol.detect_categories(text) & {"web"}) or self._web_resume(text))
+                plan.web = "web" in self._schema_categories(plan) and (bool(protocol.detect_categories(text) & {"web"}) or self._web_resume(text))
                 plan.session_id = owner
                 if fast_call and not plan.complex and not plan.resume:
                     tool = self.registry.get(fast_call["tool"])
@@ -348,6 +350,10 @@ class ToolAgent(AutonomyMixin):
                             and category in plan.categories and category in tool_categories):
                         plan.fast_call = {"tool": fast_call["tool"], "args": dict(fast_call.get("args") or {}),
                                           "category": category}
+                        if plan.schema_categories is None:
+                            plan.schema_categories = set(tool_categories)
+                        else:
+                            plan.schema_categories.update(tool_categories)
                         plan.index_only = False
             if plan is not None and plan.categories & {"mcp", "agents"}:
                 self._ensure_mcp()
