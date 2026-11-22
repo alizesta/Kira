@@ -28,7 +28,8 @@ from . import protocol
 from .autonomy import AutonomyMixin
 from .access import PathPolicy
 from .builtin import build_registry
-from .registry import ToolResult, NEEDS_CONFIRM, BAD_ARGS, DENIED, OK, LEVEL_NAMES, clip
+from .registry import ToolResult, NEEDS_CONFIRM, BAD_ARGS, DENIED, OK, ACTION, LEVEL_NAMES, clip
+from . import fast_commands
 from ..webintel.session import CANCEL as WEB_CANCEL
 from ..game_mode_policy import tool_categories_allowed
 
@@ -86,6 +87,7 @@ class ToolPlan:
     reasons: tuple = ()
     web: bool = False                 # the request is a web research / page reading request (the tool route handles it, the old one-shot auto search is skipped)
     session_id: str = ""               # bind plans to the character whose request created them
+    fast_call: dict | None = None       # deterministic allow-listed command; still executed via ToolRegistry
 
 
 @dataclass
@@ -291,6 +293,11 @@ class ToolAgent(AutonomyMixin):
             if self.mode() == "off":
                 return None
             plan = self.decide(text, self._plan_simple(text))
+            fast_call = fast_commands.parse_fast_command(text)
+            if plan is None and fast_call:
+                tool = self.registry.get(fast_call["tool"])
+                if tool is not None:
+                    plan = ToolPlan(set(tool.categories), protocol.is_strong(text))
             if plan is not None:
                 if self._competitive_safe_mode:
                     plan.categories.intersection_update({"web"})
@@ -298,6 +305,14 @@ class ToolAgent(AutonomyMixin):
                         return None
                 plan.web = "web" in plan.categories and (bool(protocol.detect_categories(text) & {"web"}) or self._web_resume(text))
                 plan.session_id = owner
+                if fast_call and not plan.complex and not plan.resume:
+                    tool = self.registry.get(fast_call["tool"])
+                    category = fast_call.get("category")
+                    tool_categories = set(getattr(tool, "categories", ()) or ()) if tool is not None else set()
+                    if (tool is not None and tool.level <= ACTION and not tool.external
+                            and category in plan.categories and category in tool_categories):
+                        plan.fast_call = {"tool": fast_call["tool"], "args": dict(fast_call.get("args") or {}),
+                                          "category": category}
             return plan
 
     def _web_resume(self, text: str) -> bool:
@@ -576,6 +591,8 @@ class ToolAgent(AutonomyMixin):
                 if web_locked:
                     self._active_web_sessions.add(owner)
             try:
+                if getattr(plan, "fast_call", None):
+                    return self._run_fast(plan.fast_call, on_chunk or (lambda s: None), on_tool)
                 if getattr(plan, "complex", False) and self.planning_enabled():
                     return self.run_planned(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
                 return self._run_simple(router, messages, system_prompt, self.temperature(temperature), plan, retry_index, on_chunk or (lambda s: None), on_event, on_tool)
@@ -587,6 +604,21 @@ class ToolAgent(AutonomyMixin):
                 if web_locked:
                     WEB_CANCEL.deactivate(owner)
                     self._web_research_lock.release()
+
+    def _run_fast(self, call, emit, on_tool):
+        """Execute one unambiguous allow-listed command without a model round trip."""
+        results = self._run_calls([call], [], on_tool)
+        if self._cancel.is_set() and not results:
+            return self._final({"fast_path": True}, "عملیات متوقف شد؛ ابزار جدیدی اجرا نشد.", [], stopped=True)
+        parts = []
+        for result in results:
+            mark = "✅" if result.status == OK else ("⏸" if result.status == NEEDS_CONFIRM else "❌")
+            parts.append(f"{mark} {result.text}")
+        text = "\n\n".join(parts) if parts else "عملیات اجرا نشد."
+        if self.has_new_pending_confirmation(self._turn_session_id) and not re.search(r"تأیید|تایید|confirm", text):
+            text += "\n\n(برای انجام همین کار «تأیید» بنویس؛ برای انصراف «لغو».)"
+        emit(text)
+        return self._final({"fast_path": True}, text, results)
 
     def _run_simple(self, router, messages, system_prompt, temp, plan, retry_index, emit, on_event, on_tool):
         rounds = self.max_rounds()
