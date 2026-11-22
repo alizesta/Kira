@@ -104,8 +104,7 @@ class ProviderTests(unittest.TestCase):
         post = dispatch({"generativelanguage.googleapis.com": Resp(
             429, {"error": {"message": "Quota exceeded for requests per day, limit: 20"}}
         )})
-        with mock.patch("requests.get", get), mock.patch("requests.post", post), \\
-             mock.patch("kira.hybrid_ai.time.sleep") as sleep:
+        with mock.patch("requests.get", get), mock.patch("requests.post", post), mock.patch("kira.hybrid_ai.time.sleep") as sleep:
             ok, message = probe_provider("custom-google", cfg)
         self.assertFalse(ok)
         self.assertIn("429", message)
