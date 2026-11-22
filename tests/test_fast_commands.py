@@ -391,3 +391,24 @@ class PlannerComplexityRegressionTests(unittest.TestCase):
 
         complex_, _ = assess("فایل رو پیدا کن، بررسی کن و خلاصه کن", {"files"})
         self.assertTrue(complex_)
+
+
+    def test_english_create_and_move_is_detected(self):
+        from kira.tools.planner import assess
+
+        complex_, _ = assess("create a folder and move the files", {"files"})
+        self.assertTrue(complex_)
+
+    def test_explanatory_word_mention_is_not_a_task(self):
+        from kira.tools.planner import assess
+
+        for text in ("لطفاً معنی کلمه browse رو بگو", "what does the word delete mean?"):
+            with self.subTest(text=text):
+                complex_, reasons = assess(text, {"apps", "files"})
+                self.assertFalse(complex_, reasons)
+
+    def test_question_about_planning_is_not_an_explicit_plan_request(self):
+        from kira.tools.planner import assess
+
+        complex_, reasons = assess("برنامه‌ریزی یعنی چه؟", {"apps"})
+        self.assertFalse(complex_, reasons)

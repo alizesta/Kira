@@ -170,10 +170,10 @@ _N = str.maketrans({"ي": "ی", "ك": "ک", "‌": " ", "‏": " "})
 _VERBS = re.compile(
     r"(?:پیدا(?:ش)?|بررسی|چک|مرتب|بگو|گزارش|مقایسه|منتقل|جابه?\s*جا|باز\s*کن|باز|"
     r"بخون|بخوان|پاک|حذف|لیست|فهرست|جست\s*و?\s*جو|سرچ|بگرد|"
-    r"بذار|بزار|انتخاب|اعمال|محاسبه|حساب|خلاصه|تحلیل|دسته\s*بندی|"
+    r"بذار|بزار|انتخاب|اعمال|ایجاد|بساز|ساخت|محاسبه|حساب|خلاصه|تحلیل|دسته\s*بندی|"
     r"پیدا\s*کردن|پوشه\s*بساز)"
     r"\s*(?:ش|شون|شو|اش|هاش)?\s*(?:کن|کنی|کنید|بکن|بده|بدی|کردن)?|"
-    r"\b(?:find|check|sort|compare|move|list|report|open|read|delete|search|"
+    r"\b(?:find|check|sort|compare|move|list|report|open|read|delete|search|create|make|"
     r"browse|look\s*for|select|choose|apply|set|analy[sz]e|summari[sz]e|tell)\b",
     re.I,
 )
@@ -181,7 +181,7 @@ _SEQ = re.compile(r"سپس|بعدش|بعد\s*از\s*(?:اون|آن|آنکه|ای
 _ACTION_JOIN = re.compile(r"\s+و\s+|\s*,\s*|\s+and\s+", re.I)
 _DEICTIC = re.compile(r"(?:این|اون|آن|همین|همون|اینا|اونا)\s*(?:ها\s*)?(?:فایل|پوشه|فولدر|عکس|پی\s*دی\s*اف|مورد)", re.I)
 _RISKY = re.compile(r"منتقل|جابه?\s*جا|پاک|حذف|\bmove\b|\bdelete\b", re.I)
-_ASKS_PLAN = re.compile(r"برنامه\s*ریزی|برنامه\s*بریز|\bplan\b|تقسیم\s*کن", re.I)
+_ASKS_PLAN = re.compile(r"برنامه\s*ریزی\s*(?:کن|کنید|بکن|بریز|بچین)|برنامه\s*بریز|\b(?:make|create)\s+a\s+plan\b|\bplan\s+(?:this|the\s+task)\b|تقسیم\s*کن", re.I)
 
 
 def assess(text: str, categories) -> tuple:
@@ -200,8 +200,6 @@ def assess(text: str, categories) -> tuple:
     # enter the planner even when no explicit "then" is present.
     if n_verbs >= 2 and _ACTION_JOIN.search(t):
         reasons.append("چند عمل متصل در یک درخواست")
-    if n_verbs >= 2 and (len(categories) >= 2 or words >= 12):
-        reasons.append("چند عمل روی بیشتر از یک موضوع / درخواست بلند")
     if _DEICTIC.search(t) and _RISKY.search(t):
         reasons.append("ارجاع به فایل‌های نامشخص + عمل حساس")
     if _ASKS_PLAN.search(t):
