@@ -1,6 +1,8 @@
 ## 2026-11-22 (Fast Path / web-lock boundary)
 - Fixed an unnecessary serialization conflict: deterministic local Fast Path calls return before any model or web-tool round, so they no longer acquire the process-wide WebIntel research lock merely because auto-mode plans expose the web category in their capability set.
 - Added a regression test that probes the web lock while executing a deterministic volume command through ToolAgent.
+- Hardened `planner.parse_plan`: malformed, unknown, and forward step dependencies are now rejected instead of silently removed, preventing an invalid plan from running a dependent action early.
+- Added regressions for forward, unknown, non-numeric, and valid backward dependencies.
 - Validation: source and test changes fetched back from GitHub and branch diff checked. Python unittest execution, Windows runtime, and GitHub Actions were not run.
 
 ## 2026-11-22 (20 adversarial multi-step cases)
