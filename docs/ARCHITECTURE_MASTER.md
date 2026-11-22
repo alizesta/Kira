@@ -46,6 +46,14 @@ Status labels in this document:
 - Settings tabs retain stable indexes and navigation but replace eager page construction with first-visit builders. Piper warm-up, MusicWatcher and provider model-catalog refresh are also deferred until after initial display or until the relevant page/capability is requested.
 - Focused tests are added in `tests/test_startup_deferred_loading.py`. No Python test, compile/import suite, Windows GUI run, startup timing or RAM measurement is claimed for this branch; acceptance remains pending runtime evidence.
 
+### 2.3 Topic-scoped tool schema change — 2026-11-23 (stacked implementation branch)
+
+- Implementation branch: `codex/tool-schema-pruning-2026-11-23`, stacked on `codex/startup-lazy-loading-2026-11-23`; it is not merged into `new-main`.
+- `ToolPlan.categories` remains the wider runtime/safety availability set. The new `schema_categories` is the model-visible scope used for both native function schemas and the text tool catalog. Auto mode exposes the categories detected in the current request; tools tagged with multiple categories are included when any selected category matches. Explicit Always mode retains all categories.
+- Unknown wording stays on the compact capability index regardless of native-function support. The local tool catalog is restored only after explicit model escalation; external MCP/Agent capability groups remain opt-in.
+- Registry adds explicit selected-category projections where an empty selection returns no tools. ToolAgent enforces that per-session scope again before dispatch, so unexposed registered tools are denied before handlers run. Competitive Safe applies its web-only intersection to both scopes.
+- Regression cases are added to `tests/test_task_triage.py`. Python tests, live provider calls, token/latency measurements and Windows runtime are not executed or claimed in this source review.
+
 ## 3. High-level architecture
 
 ```mermaid
