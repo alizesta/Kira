@@ -87,7 +87,7 @@ _SMALLTALK = re.compile(
     r"hi|hello|hey|thanks|thank\s*you|ok|okay|yes|yeah|no|nope|bye|good\s*(?:morning|night)|how\s*are\s*you)[\s.!?؟،,]*$", re.I)
 _UNCERTAIN_RX = re.compile(r"شاید|فکر\s*کنم|احتمالا|احتمالاً|مطمئن\s*نیستم|یادم\s*نیست|\bmaybe\b|\bperhaps\b|i\s+think\b|not\s+sure|\bprobably\b", re.I)
 _CORRECTION_RX = re.compile(r"^(?:نه|نخیر|اشتباه|در\s*واقع|راستش|ببخشید|درستش|correction|actually|no)\b|اشتباه\s*گفتم|منظورم\s*این\s*بود|\bi\s+meant\b", re.I)
-_EXPLICIT_MEANING_RX = re.compile(r"(?P<term>[^\\s،,؛.!؟?\\n]+(?:\\s+[^\\s،,؛.!؟?\\n]+)?)\\s+یعنی\\s+(?P<meaning>[^،,؛.!؟?\\n]{2,60})")
+_EXPLICIT_MEANING_RX = re.compile(r"(?P<term>[^\s،,؛.!؟?\n]+(?:\s+[^\s،,؛.!؟?\n]+)?)\s+یعنی\s+(?P<meaning>[^،,؛.!؟?\n]{2,60})")
 
 
 def norm(text) -> str:
