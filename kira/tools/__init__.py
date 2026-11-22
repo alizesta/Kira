@@ -1,23 +1,39 @@
-"""Kira tool system: Computer Awareness + a unified, Provider-independent tool registry.
+"""Kira tool system public exports.
 
-  registry.py  tool definition, validation, access levels, execution + error handling
-  access.py    allowed folders and secret protection for every file operation
-  sysinfo.py   live Windows information (time, hardware, usage, windows, network)
-  fileops.py   search / read files; delete / move (confirmed)
-  apps.py      open an app / file / folder / link (launch + reuse of running instances)
-  appcatalog.py app discovery: Start Menu, Steam, installed-apps registry, Store apps, running processes / windows
-  sysaccess.py Unified System Access Manager: permission levels, confirmation grants, explicit-request gate, taint, backends, journal (every tool passes through it)
-  wincontrol.py Windows Control Layer: how a Windows capability is declared (permission, gate, backend) and registered
-  winmodules.py declares the apps + Bluetooth + audio capabilities (future: wallpaper, tray, system)
-  winrunner.py  shared, controlled Windows PowerShell runner (FixedScript only; data via KIRA_* environment variables)
-  bluetooth.py Windows Bluetooth radio: status / on / off (Windows Runtime Radio API, verified after every change)
-  audio.py     Windows Audio Manager: volume / mute, per-app volume, devices, default devices (Core Audio API, verified after every change)
-  builtin.py   registers all tools
-  protocol.py  text protocol every Provider can speak, stream gate, intent gate
-  agent.py     the turn loop that connects the tools to the Hybrid Brain (HybridRouter)
+Keep the package initializer lightweight: importing a small submodule such as
+kira.tools.protocol must not import the ToolAgent, built-in registry, or
+Windows capability adapters as an incidental package side effect.
 """
-from .agent import ToolAgent
-from .builtin import build_registry
-from .registry import ToolRegistry, Tool, ToolResult, READ, ACTION, SENSITIVE
+from __future__ import annotations
 
-__all__ = ["ToolAgent", "build_registry", "ToolRegistry", "Tool", "ToolResult", "READ", "ACTION", "SENSITIVE"]
+from importlib import import_module
+from typing import Any
+
+
+_EXPORTS = {
+    "ToolAgent": (".agent", "ToolAgent"),
+    "build_registry": (".builtin", "build_registry"),
+    "ToolRegistry": (".registry", "ToolRegistry"),
+    "Tool": (".registry", "Tool"),
+    "ToolResult": (".registry", "ToolResult"),
+    "READ": (".registry", "READ"),
+    "ACTION": (".registry", "ACTION"),
+    "SENSITIVE": (".registry", "SENSITIVE"),
+}
+
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    """Import a public tool component only when a caller requests that export."""
+    target = _EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attribute = target
+    value = getattr(import_module(module_name, __name__), attribute)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

@@ -386,35 +386,44 @@ class CharacterSettingsController(WindowFeatureController):
             page.schedule_appearance()
 
     def apply_appearance(self, save=False):
-        """Apply the current Appearance controls immediately; persist only after the short debounce."""
-        if not hasattr(self.context.views, "appearance_page"):
-            return
+        """Apply persisted appearance immediately; controls are read only after the page is built."""
+        page = getattr(self.context.views, "appearance_page", None)
         previous = getattr(self.context.state, "_effect", "off")
-        color = self.context.views.appearance_page.background_color or (self.context.services.settings.get("appearance") or {}).get("background_color", "#0A0A1C")
+        stored = self.context.services.settings.get("appearance") or {}
+        color = (
+            (page.background_color if page is not None else "")
+            or stored.get("background_color")
+            or "#0A0A1C"
+        )
         appearance = {
             "background_color": color,
-            "brightness": self.context.views.appearance_page.appearance_brightness.value(),
-            "glow": self.context.views.appearance_page.appearance_glow.value(),
-            "transparency": self.context.views.appearance_page.appearance_transparency.value(),
+            "brightness": page.appearance_brightness.value() if page is not None else int(stored.get("brightness", 100)),
+            "glow": page.appearance_glow.value() if page is not None else int(stored.get("glow", 58)),
+            "transparency": page.appearance_transparency.value() if page is not None else int(stored.get("transparency", 28)),
         }
         # Reduce the old high default once; subsequent values are entirely user-controlled.
         if not self.context.services.settings.get("appearance_glow_adjusted"):
             appearance["glow"] = min(int(appearance["glow"]), 18)
-            self.context.views.appearance_page.appearance_glow.blockSignals(True)
-            self.context.views.appearance_page.appearance_glow.setValue(appearance["glow"])
-            self.context.views.appearance_page.appearance_glow.blockSignals(False)
+            if page is not None:
+                page.appearance_glow.blockSignals(True)
+                page.appearance_glow.setValue(appearance["glow"])
+                page.appearance_glow.blockSignals(False)
             self.context.services.settings["appearance_glow_adjusted"] = True
         # One-time migration from the restrained glow to the Neon Shooter bloom level.
         # Preserve stronger user-selected values; only lift the old low default.
         if not self.context.services.settings.get("appearance_neon_shooter_v1"):
             if int(appearance["glow"]) < 42:
                 appearance["glow"] = 58
-            self.context.views.appearance_page.appearance_glow.blockSignals(True)
-            self.context.views.appearance_page.appearance_glow.setValue(int(appearance["glow"]))
-            self.context.views.appearance_page.appearance_glow.blockSignals(False)
+            if page is not None:
+                page.appearance_glow.blockSignals(True)
+                page.appearance_glow.setValue(int(appearance["glow"]))
+                page.appearance_glow.blockSignals(False)
             self.context.services.settings["appearance_neon_shooter_v1"] = True
         self.context.services.settings["appearance"] = appearance
-        wanted = self.context.views.appearance_page.window_effect.currentData() or "acrylic"
+        wanted = (
+            page.window_effect.currentData() if page is not None
+            else self.context.services.settings.get("window_effect", "acrylic")
+        ) or "acrylic"
         current = winfx.active_effect(wanted)
         self.context.state._effect = current
         set_glow_intensity(appearance["glow"] / 100.0)
@@ -426,7 +435,8 @@ class CharacterSettingsController(WindowFeatureController):
         self._refresh_icon_glow()
         self._apply_neon_glow_effects(appearance)
         winfx.apply_effect(self.window.winId(), current)
-        self.context.views.appearance_page.set_background_color(color)
+        if page is not None:
+            page.set_background_color(color)
         if (previous == "off") != (current == "off") and previous != current and getattr(self.window, "isVisible", lambda: False)():
             self.feature_controller("session").add_chat("system", "برای اعمال کامل حالت شیشه‌ای، برنامه را یک بار ببند و دوباره باز کن.")
         if save:
@@ -517,6 +527,7 @@ class CharacterSettingsController(WindowFeatureController):
         from .pages.skills_page import SkillsPage
 
         page = SkillsPage(parent=self.window)
+        self.context.views.skills_page = page
         page.install_zip_requested.connect(self.install_shared_skill_zip)
         page.install_folder_requested.connect(self.install_shared_skill_folder)
         page.enable_changed.connect(self.set_shared_skill_enabled)

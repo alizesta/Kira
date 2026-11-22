@@ -24,7 +24,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 
-from . import protocol, appcatalog
+from . import protocol
 from .autonomy import AutonomyMixin
 from .access import PathPolicy
 from .builtin import build_registry
@@ -120,25 +120,47 @@ class ToolAgent(AutonomyMixin):
         self.settings = settings
         self.policy = PathPolicy(settings, data_dir, program_root)
         self.registry = build_registry(self.policy)
-        # Warm the Windows app indexes off the first command's execution path.
-        try:
-            appcatalog.start_background_warmup()
-        except Exception:                                      # noqa: BLE001
-            _LOGGER.exception("App catalog warm-up could not be scheduled")
         self._competitive_safe_mode = False
         self.registry.execution_guard = self._game_mode_execution_guard
         self.registry.access.require_grants = True           # production: a confirmed execution needs a grant made from the user's own confirmation message
+        # Optional Windows discovery and MCP integrations are activated only for matching requests.
+        self._app_catalog_warmup_started = False
+        self._app_catalog_warmup_lock = threading.Lock()
         self.mcp = None
-        try:                                              # external MCP servers + independent agents (kira/mcp); optional, in the background
-            from .. import mcp as _mcp
-            self.mcp = _mcp.install(self.registry, data_dir or self.policy.data_dir, lambda: self.settings)
-        except Exception:                                 # noqa: BLE001 - MCP is optional, but startup failure must be visible
-            _LOGGER.exception("Optional MCP integration could not be imported or initialized")
-            self.mcp = None
+        self._mcp_attempted = False
+        self._mcp_lock = threading.Lock()
         self._init_session_turn_states()
         self._pending_by_session: dict[str, Pending] = {}
         self._pending_new_sessions: set[str] = set()
         self._init_autonomy(data_dir)            # task plans, task state, user control of a running task
+
+    def _ensure_app_catalog_warmup(self):
+        """Warm Windows app indexes only when a request actually uses app tools."""
+        with self._app_catalog_warmup_lock:
+            if self._app_catalog_warmup_started:
+                return
+            self._app_catalog_warmup_started = True
+        try:
+            from . import appcatalog
+            appcatalog.start_background_warmup()
+        except Exception:                                      # noqa: BLE001 - optional capability
+            _LOGGER.exception("App catalog warm-up could not be scheduled")
+
+    def _ensure_mcp(self):
+        """Load optional MCP/independent-agent integrations only for explicit MCP requests."""
+        with self._mcp_lock:
+            if self._mcp_attempted:
+                return self.mcp
+            self._mcp_attempted = True
+            try:
+                from .. import mcp as _mcp
+                self.mcp = _mcp.install(
+                    self.registry, self.policy.data_dir, lambda: self.settings
+                )
+            except Exception:                                 # noqa: BLE001 - MCP is optional
+                _LOGGER.exception("Optional MCP integration could not be imported or initialized")
+                self.mcp = None
+            return self.mcp
 
     def _init_session_turn_states(self):
         """Create isolated ToolAgent request state while keeping one shared tool catalogue."""
@@ -326,6 +348,8 @@ class ToolAgent(AutonomyMixin):
                         plan.fast_call = {"tool": fast_call["tool"], "args": dict(fast_call.get("args") or {}),
                                           "category": category}
                         plan.index_only = False
+            if plan is not None and plan.categories & {"mcp", "agents"}:
+                self._ensure_mcp()
             return plan
 
     def _web_resume(self, text: str) -> bool:
@@ -609,6 +633,8 @@ class ToolAgent(AutonomyMixin):
         so ordinary chat/PC turns of several characters never queue behind each other."""
         owner = self._turn_session_id
         tool = self.registry.get(name)
+        if tool is not None and "apps" in (getattr(tool, "categories", ()) or ()):
+            self._ensure_app_catalog_warmup()
         needs_lock = (tool is not None and "web" in (getattr(tool, "categories", ()) or ())
                       and owner not in self._active_web_sessions)
         if not needs_lock:

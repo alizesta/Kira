@@ -12,6 +12,13 @@
 - Release tests include optional `psutil` and must not treat its intentional presence as an unexpected dependency.
 - Streaming tests must respect LeakGuard's 48-character undecided preamble buffer: short normal answers are released at stream completion, while short fragments are not promised to display before the guard can classify them.
 
+## Startup performance boundaries (2026-11-23)
+The desktop startup path is intentionally chat-first. `kira/ui/bootstrap.py` must not import or construct ToolAgent eagerly; it receives a `LazyToolAgent` facade and realizes the concrete agent/tool registry only when the chat/tool path first needs it. Passive cancel/release operations must not realize an unused agent. Explicit task-history clearing may realize it because it must clear durable task state.
+
+The tool protocol imports the standalone provider-neutral `kira/think_filter.py`, not `kira/hybrid_ai.py`. Settings tabs keep stable indexes with lightweight placeholders and build their actual page on first navigation. Piper warm-up, Windows MusicWatcher, and provider model-catalog refresh are optional work and must not block initial chat display; provider refresh begins on first visit to the AI/Provider page. App-catalog warm-up is triggered by app-tool execution, and MCP setup by explicit MCP/agent intent.
+
+These are implementation boundaries for the Task 1 startup optimization. They do not assert a measured startup-time or memory improvement until Windows measurements are recorded in `logs/startup-performance.jsonl`.
+
 ## Version metadata and developer attribution (mandatory)
 This rule binds every developer and every AI agent (Codex, OpenCode, Claude Code, ChatGPT) that changes this repository.
 

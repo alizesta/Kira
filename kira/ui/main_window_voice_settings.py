@@ -155,6 +155,9 @@ class VoiceSettingsController(WindowFeatureController):
             "unload_btn", "speed_btn", "conn_lbl",
         ):
             setattr(self.context.views, name, getattr(self.context.views.assistant_page, name))
+        cached_models = getattr(self.context.state, "_ollama_models", None)
+        if cached_models:
+            self.context.views.model.set_models(cached_models)
 
         self.context.views.assistant_page.test_connection_requested.connect(self.feature_controller("lifecycle").test_connection)
         self.context.views.assistant_page.load_model_requested.connect(self.feature_controller("lifecycle").load_local_model)
@@ -198,6 +201,8 @@ class VoiceSettingsController(WindowFeatureController):
         self.fill_mic_devices(str(self.context.services.settings.get("mic_device") or ""))
         self.fill_output_devices(str(self.context.services.settings.get("output_device") or ""))
         self.refresh_voice_caps()
+        self.context.views.voice_page.refresh_responsive_layout()
+        self.refresh_local_voice_status()
 
     def select_shenava_variant(self, index):
         """Select the INT8 or FP32 Shenava download and runtime model."""
@@ -561,13 +566,15 @@ class VoiceSettingsController(WindowFeatureController):
         self.refresh_local_voice_status()
 
     def refresh_local_voice_status(self):
+        page = getattr(self.context.views, "voice_page", None)
+        if page is None:
+            return
         try:
             from .. import local_voice
             asr_model = str(self.context.services.settings.get("local_voice_asr_model") or local_voice.SHENAVA_INT8_REPO_ID)
             tts_model = str(self.context.services.settings.get("local_voice_tts_model") or "")
             discovered = local_voice.discover_cached_models()
 
-            page = self.context.views.voice_page
             page.shenava_variant.blockSignals(True)
             page.shenava_variant.setCurrentIndex(max(0, page.shenava_variant.findData(asr_model)))
             page.shenava_variant.blockSignals(False)

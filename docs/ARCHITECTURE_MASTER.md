@@ -38,6 +38,14 @@ Status labels in this document:
 - The PR's follow-up workflow executions still produced failed jobs with empty step lists and no retrievable logs. This is an infrastructure/runner execution failure signal, not evidence that the test assertions passed or failed at runtime.
 - `kira/ui/bootstrap.py` is the only production Qt Composition Root. Older statements in historical documents that name `kira/app/bootstrap.py` are superseded and must not be used as current architecture facts.
 
+### 2.2 Startup deferral change — 2026-11-23 (unmerged implementation branch)
+
+- Implementation branch: `codex/startup-lazy-loading-2026-11-23`, created directly from `new-main` at `3d69726aee718c2405d51bd1f4cf9785b44fe5ee`; this delta is not yet part of `new-main`.
+- The tool package now exposes public components lazily. Importing `kira.tools.protocol` no longer imports `ToolAgent`, the built-in tool registry, Windows app catalog, or Hybrid AI provider implementation as package side effects. `ThinkFilter` is owned by provider-neutral `kira/think_filter.py`.
+- Bootstrap supplies a `LazyToolAgent` facade instead of importing/constructing the agent before showing the window. ToolAgent/registry, app-catalog warm-up and MCP installation are deferred; explicit task-history clearing still realizes the owner so durable history is not skipped.
+- Settings tabs retain stable indexes and navigation but replace eager page construction with first-visit builders. Piper warm-up, MusicWatcher and provider model-catalog refresh are also deferred until after initial display or until the relevant page/capability is requested.
+- Focused tests are added in `tests/test_startup_deferred_loading.py`. No Python test, compile/import suite, Windows GUI run, startup timing or RAM measurement is claimed for this branch; acceptance remains pending runtime evidence.
+
 ## 3. High-level architecture
 
 ```mermaid
