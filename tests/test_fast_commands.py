@@ -14,6 +14,20 @@ class FastCommandParserTests(unittest.TestCase):
         if args is not None:
             self.assertEqual(result["args"], args)
 
+    def test_datetime_right_now_variants(self):
+        for text in ("What time is it right now?", "what's the time right now", "tell me the time right now"):
+            self.assertTool(text, "get_datetime", {})
+
+    def test_speaker_and_loudspeaker_words_route_to_audio(self):
+        self.assertTool("اسپیکر رو بی\u200cصدا کن", "audio_mute", {})
+        self.assertTool("بلندگو رو میوت کن", "audio_mute", {})
+
+    def test_generic_app_word_is_not_an_app_name(self):
+        for text in ("برنامه رو باز کن", "اپ رو باز کن", "open the app", "open it", "open that program"):
+            self.assertIsNone(parse_fast_command(text), text)
+        self.assertTool("برنامه کروم رو باز کن", "open_app", {"name": "کروم"})
+        self.assertTool("open chrome", "open_app", {"name": "chrome"})
+
     def test_datetime_persian_and_english(self):
         for text in ("ساعت چنده؟", "الان ساعت چنده", "تاریخ امروز چیه", "what time is it", "today's date"):
             self.assertTool(text, "get_datetime", {})
