@@ -7,7 +7,7 @@ from kira.tools.autonomy import AutonomyMixin
 from kira.tools.registry import (
     ACTION, BAD_ARGS, OK, Param, Tool, ToolError, ToolRegistry, ToolResult,
 )
-from kira.tools.tasks import AWAITING, DONE, REVIEW, Step, TaskPlan
+from kira.tools.tasks import AWAITING, DONE, REVIEW, RUNNING, SKIPPED, Step, TaskPlan
 
 
 class ToolArgumentValidationTests(unittest.TestCase):
@@ -112,12 +112,14 @@ class PlannedStepExecutionGuardTests(unittest.TestCase):
         self.assertEqual(self.agent.registry.executed, [])
         self.assertIn("unfinished dependency", notes[0])
 
-    def test_completed_step_cannot_be_reexecuted(self):
-        self.plan.steps[0].status = DONE
-        results, notes = self._run()
-        self.assertEqual(results[0].status, BAD_ARGS)
-        self.assertEqual(self.agent.registry.executed, [])
-        self.assertIn("repeat call", notes[0])
+    def test_completed_skipped_and_running_steps_cannot_be_reexecuted(self):
+        for status in (DONE, SKIPPED, RUNNING):
+            with self.subTest(status=status):
+                self.plan.steps[0].status = status
+                results, notes = self._run()
+                self.assertEqual(results[0].status, BAD_ARGS)
+                self.assertEqual(self.agent.registry.executed, [])
+                self.assertIn("repeat call", notes[0])
 
     def test_step_id_is_required_for_planned_execution(self):
         results, notes = self.agent._run_calls_planned(
