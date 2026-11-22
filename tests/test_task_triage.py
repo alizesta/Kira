@@ -1,11 +1,13 @@
 """Cheap model-owned triage: ordinary chat costs one small call, a PC task escalates to the full catalog/planner."""
 import threading
 import unittest
+from types import SimpleNamespace
 
 from kira.tools import protocol
 from kira.tools.access import PathPolicy
 from kira.tools.agent import ToolAgent
 from kira.tools.builtin import build_registry
+from kira.tools.tasks import P_RUNNING
 
 USE_TOOLS_REPLY = '<kira_tool>{"tool": "use_tools", "args": {}}</kira_tool>'
 
@@ -57,6 +59,23 @@ class TriagePlanTests(unittest.TestCase):
         self.assertIsNotNone(plan)
         self.assertFalse(plan.index_only)
         self.assertIsNotNone(plan.fast_call)
+
+    def test_web_gate_recognizes_price_lookup_without_explicit_web_word(self):
+        self.assertIn("web", protocol.detect_categories("قیمت یورو رو پیدا کن"))
+        self.assertIn("web", protocol.detect_categories("نرخ دلار چنده؟"))
+        self.assertIn("web", protocol.detect_categories("قیمت طلا رو از اینترنت بررسی کن"))
+
+    def test_resume_preserves_failure_signatures(self):
+        agent = _agent()
+        agent.tasks = SimpleNamespace(save=lambda: None)
+        signatures = {"open_app:{name:missing}": 1}
+        plan = SimpleNamespace(
+            steps=[], fail_sigs=signatures, status="paused", question="continue", updated=0,
+        )
+        agent._prepare_resume(plan)
+        self.assertIs(plan.fail_sigs, signatures)
+        self.assertEqual(plan.status, P_RUNNING)
+        self.assertEqual(plan.question, "")
 
     def test_competitive_safe_chat_has_no_tool_plan(self):
         agent = _agent()
