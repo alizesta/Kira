@@ -231,6 +231,20 @@ class TriagePlanTests(unittest.TestCase):
         self.assertEqual(router.stream_calls, 1)
         self.assertIn("CAPABILITY INDEX", router.prompts[0])
 
+    def test_off_scope_tool_call_is_denied_before_registry_execution(self):
+        agent = _agent()
+        calls = []
+        original_execute = agent.registry.execute
+        agent.registry.execute = lambda name, args: calls.append((name, args))
+        with agent._use_session("files-scope"):
+            agent._current_turn_state().schema_categories = {"files"}
+            results = agent._run_calls([{"tool": "bluetooth_status", "args": {}}], [], None)
+        self.assertEqual(calls, [])
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].status, "denied")
+        self.assertIn("دامنه", results[0].text)
+        agent.registry.execute = original_execute
+
     def test_empty_selected_schema_scope_never_means_all_tools(self):
         agent = _agent()
         self.assertEqual(agent.registry.schemas_for_selected_categories(set()), [])
