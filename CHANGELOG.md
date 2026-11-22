@@ -2,7 +2,7 @@
 - Tool argument validation rejects undeclared parameter names instead of silently ignoring typos or extra model-supplied fields.
 - Every planned tool call must carry an explicit positive integer step ID and object arguments; missing, malformed, unknown, or ambiguous IDs are rejected before dispatch.
 - Planned calls reject tool/step mismatches and replay attempts for done, skipped, running, confirmation-pending, or review-pending steps.
-- Planner validation rejects duplicate, boolean, zero, negative, and malformed step IDs rather than silently renumbering ambiguous plans.
+- Planner validation rejects duplicate, boolean, zero, negative, and malformed step IDs rather than silently renumbering ambiguous plans; falsey non-list dependency containers are rejected instead of becoming empty lists.
 - Persisted task loading rejects malformed/duplicate step records; malformed dependencies are retained as invalid sentinels and block execution.
 - Dependency checks fail closed for missing, malformed, non-positive, ambiguous, self, and forward references, even if a later step is marked complete.
 - Added regression cases for execution guards, planner IDs, persisted-state validation, and dependency-order enforcement.
