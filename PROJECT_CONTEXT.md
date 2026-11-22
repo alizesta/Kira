@@ -35,11 +35,11 @@ Ai1 is a Windows desktop anime-style digital companion. It combines local and cl
 - All three share the same Route Manager, model intelligence, tools, computer permissions and safety policy. Each has its OWN saved conversation (chat tab) and long-term memory. Specialty is not an access-control boundary. Mika's prompt requests careful handling, but profile-level medical-memory isolation is not implemented.
 
 ## Current platform
-- Windows 11
-- Python / PySide6 desktop application
-- Local chat through Ollama
-- Cloud chat through the Route Manager
-- Speech input/output use local Qwen3-ASR, faster-whisper fallback and Piper; Chat Route providers are not used for audio
+- Windows 11 desktop application built with Python and PySide6.
+- Local chat through Ollama; cloud chat through the Route Manager and configured Providers.
+- Voice defaults to bidirectional Gemini Live. The selectable local mode and Live-failure fallback use Shenava Koochik (sherpa-onnx) for real-time local ASR and Piper for Persian TTS; KittenTTS 2 is optional for English sentences only.
+- Gemini Live transmits microphone audio to Google. In local voice mode, raw microphone audio stays local, while the recognized text is sent through the selected Chat Route (which may itself be a cloud Provider).
+- Desktop tools, file operations, web research and MCP integrations are governed by the shared Tool Registry and System Access Manager; they do not receive permissions merely from a character's specialty.
 
 ## Game Mode
 - Game Mode has two manually selected profiles: Story Mode and Competitive Safe.
@@ -180,3 +180,10 @@ Local-only speech stack: Qwen3-ASR primary STT, faster-whisper local fallback, P
 - 2026-11-22 03:26 Iran: speech engine is switchable (settings `tts_engine`: piper | kitten; Kitten English-only, Persian sentences always Piper). See kira/voice.py `_use_kitten` / `_synth_kitten`.
 
 - 2026-11-22 03:37 Iran: Voice tab = mode card (realtime/local) + mic/output cards + collapsed advanced; setting `gemini_voice`.
+
+## Documentation audit — 2026-11-22
+- Source baseline inspected: new-main at e058021c97e5e90990ba129e2361f340706217a3.
+- The live voice path and the offline voice path are separate. Do not describe the entire voice feature as local-only.
+- The real-time local Listener currently calls Shenava; the old Qwen3-ASR/faster-whisper wording is not accurate for this code path.
+- The voice UI normalizes the local ASR backend setting to shenava; config.py still contains legacy Qwen3 defaults/comments and should be cleaned up separately in code.
+- Static inspection is not a substitute for running the Python suite or testing on Windows with real audio devices.
