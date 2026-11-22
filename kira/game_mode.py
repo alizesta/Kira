@@ -28,7 +28,7 @@ _NON_GAME = {
     "cmd.exe", "conhost.exe", "openconsole.exe", "powershell.exe", "pwsh.exe", "windowsterminal.exe", "wt.exe",
     "python.exe", "pythonw.exe", "py.exe", "pyw.exe", "qtwebengineprocess.exe",
 }
-_OWN_TITLE = re.compile(r"\\b(kira|ai1)\\b", re.I)
+_OWN_TITLE = re.compile(r"\b(kira|ai1)\b", re.I)
 CAPTURE_MAX_WIDTH = 854
 CAPTURE_MAX_HEIGHT = 480
 CAPTURE_INTERVAL_MS = 1000
