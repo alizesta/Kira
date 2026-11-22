@@ -694,7 +694,7 @@ def probe_provider(name, config, provider_cls=None):
             elif response.status_code != 404:
                 return False, redact(f"خطای بررسی کلید ({response.status_code}): {_api_message(response)}", provider.secret)
         last = None
-        for attempt in range(3):                                   # 503 / 429 are usually momentary overload: retry briefly
+        for attempt in range(3):                                   # retry only transient server statuses that are safe to retry
             try:
                 provider.chat([{"role": "user", "content": "Reply with only: OK"}], "You are a connection test.", 0.1)
                 return True, "اتصال و دریافت پاسخ موفق بود."
