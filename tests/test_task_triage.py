@@ -97,6 +97,12 @@ class TriagePlanTests(unittest.TestCase):
                 self.assertIsNotNone(plan)
                 self.assertEqual(plan.index_only, not bool(detected))
 
+    def test_generic_source_code_discussion_is_not_misclassified_as_web(self):
+        categories = protocol.detect_categories("Explain how source code is compiled")
+        self.assertNotIn("web", categories)
+        plan = _agent().plan("Explain how source code is compiled", session_id="source-code-chat")
+        self.assertTrue(plan.index_only)
+
     def test_web_price_queries_do_not_fall_into_time_or_system(self):
         cases = (
             "قیمت یورو رو پیدا کن",
