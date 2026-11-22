@@ -87,8 +87,7 @@ class ProviderTests(unittest.TestCase):
         }
         get = mock.Mock(return_value=Resp(200, {"models": [{"name": "models/gemini-3.8-flash"}]}))
         post = dispatch({"generativelanguage.googleapis.com": Resp(503, text="overloaded")})
-        with mock.patch("requests.get", get), mock.patch("requests.post", post), \\
-             mock.patch("kira.hybrid_ai.time.sleep") as sleep:
+        with mock.patch("requests.get", get), mock.patch("requests.post", post), mock.patch("kira.hybrid_ai.time.sleep") as sleep:
             ok, message = probe_provider("custom-google", cfg)
         self.assertFalse(ok)
         self.assertIn("503", message)
