@@ -751,6 +751,30 @@ class PlannerDependencyValidationTests(unittest.TestCase):
         self.assertEqual(parsed["steps"][1]["depends_on"], [1])
 
 
+
+class AutonomyRetryBudgetTests(unittest.TestCase):
+    def test_resume_preserves_failure_budget_for_identical_tool_calls(self):
+        from types import SimpleNamespace
+        from kira.tools.autonomy import AutonomyMixin
+        from kira.tools.tasks import TaskPlan, Step, FAILED, PENDING
+
+        plan = TaskPlan(
+            "task-1",
+            "test task",
+            steps=[Step(1, "retry step", status=FAILED, attempts=2)],
+            fail_sigs={"same-call-signature": 2},
+        )
+        agent = AutonomyMixin.__new__(AutonomyMixin)
+        agent.tasks = SimpleNamespace(save=lambda: True)
+
+        AutonomyMixin._prepare_resume(agent, plan)
+
+        self.assertEqual(plan.status, "running")
+        self.assertEqual(plan.steps[0].status, PENDING)
+        self.assertEqual(plan.steps[0].attempts, 0)
+        self.assertEqual(plan.fail_sigs["same-call-signature"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()
 
