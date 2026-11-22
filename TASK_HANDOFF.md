@@ -187,7 +187,7 @@ Character specialization and generated portraits. The implementation is complete
 ## Game detector self-identification fix
 - Root cause: the generic large-foreground-window heuristic did not exclude Ai1's own process. Its full-size window could therefore trigger the game suggestion.
 - Fix: `GameModeMonitor.poll()` now ignores `os.getpid()` before title/process hints and window-size heuristics.
-- Regression test covers the `Project Kira 1 stable` title, current process ID and full-screen geometry; it must emit no `game_detected` signal.
+- Regression test covers the `Project Kira 1 stable` window title, current process ID and full-screen geometry; it must emit no `game_detected` signal.
 
 
 ## 2026-11-11 native function calling and Game Mode follow-up
@@ -202,7 +202,7 @@ Character specialization and generated portraits. The implementation is complete
 
 
 ## Stage 1: Game Mode self-detection validation
-- Current source rejects Ai1's own PID and known Ai1/Kira window titles before game-name and large-window heuristics. 
+- Current source rejects Ai1's own PID and known Ai1/Kira window titles before game-name and large-window heuristics.
 - Portable tests cover the current PID, the `Project Kira 1 stable` title with a mismatched PID, the `Ai1` title, and a positive unrelated game-window case.
 - Added a required Windows CI job running `tests.test_game_detection` and `tests.test_game_mode` with PySide6/Qt offscreen. Release packaging is gated on that job.
 - CI does not emulate the user's actual desktop session. A final interactive smoke test on the user's Windows 11 machine remains necessary to confirm its live title/PID behavior.
@@ -250,7 +250,8 @@ Character specialization and generated portraits. The implementation is complete
 - Stage 5 also extends Stage 4 storage handling to every character memory file. Kira's legacy path remains unchanged; Ren/Mika/custom profile files are included in migration and backups, with existing destination files preserved.
 - Character memory scope is context-local and restored after nested calls. Memory dialog text and prompt labels use the selected profile. Short-term chat history is still shared.
 
-- Follow-up hardening: Ren/Mika no longer receive a digest of Kira's shared historical chat and do not summarize the global chat database. Clearing shared chat resets voice/digest samples for all characters but leaves their facts/moments/habits intact. The existing Kira evidence DB may contain unattributed facts backfilled from pre-isolation shared chat; this cannot be safely split because legacy chat rows lack character IDs. New Ren/Mika messages are not written to that index.
+- Follow-up hardening: Ren/Mika no longer receive a digest of Kira's shared historical chat and do not summarize the global chat database. Clearing shared chat resets voice/digest samples for all characters but leaves their facts/moments/habits intact. Kira alone resets the shared mood state.
+- The existing Kira evidence DB may contain unattributed facts backfilled from pre-isolation shared chat; this cannot be safely split because legacy chat rows lack character IDs. New Ren/Mika messages are not written to that index.
 
 
 ## Character art on the chat page (2026-11-11)
@@ -277,5 +278,3 @@ Character specialization and generated portraits. The implementation is complete
 - 2026-11-22 03:26 Iran: speech engine is switchable (settings `tts_engine`: piper | kitten; Kitten English-only, Persian sentences always Piper). See kira/voice.py `_use_kitten` / `_synth_kitten`.
 
 - 2026-11-22 03:37 Iran: Voice tab = mode card (realtime/local) + mic/output cards + collapsed advanced; setting `gemini_voice`.
-
-- 2026-11-22 15:12 Iran: UI polish branch `fix/ui-polish-personas-svg-audit` (PR #218): settings pages centred and width-capped, 14 px scrollbars, Kira's chat card = full-body canvas, per-character composer prompts (rotated every 25 s), SVG-only icons (all mood faces + copy/pencil for message actions), Preferences switch `ui_design_guidance_enabled` for Appllama + UNSLOP, Voice tab mic/speaker cards reduced to volume, sensitivity and one record-and-play test button (`kira/ui/pages/audio_card_simplify.py`; device pickers, engine label, second mic slider, barge-in, wake timeout and real-time ASR are hidden, not deleted). Windows runtime and CI not verified: check Kira's feet, field widths, scrollbars, prompt rotation, the test button (needs mic permission) and that saving the Voice tab still persists.
