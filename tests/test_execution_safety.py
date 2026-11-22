@@ -10,6 +10,50 @@ from kira.tools.registry import (
 from kira.tools.tasks import AWAITING, DONE, REVIEW, RUNNING, SKIPPED, Step, TaskPlan
 
 
+class PlanStructureValidationTests(unittest.TestCase):
+    class _Registry:
+        def get(self, _name):
+            return SimpleNamespace(level=1)
+
+    def _parse(self, steps):
+        import json
+        from kira.tools.planner import parse_plan
+        raw = "<kira_plan>" + json.dumps({"goal": "test", "steps": steps}) + "</kira_plan>"
+        return parse_plan(raw, self._Registry(), max_steps=8)
+
+    def test_duplicate_step_ids_are_rejected_instead_of_renumbered(self):
+        with self.assertRaisesRegex(ValueError, "duplicated"):
+            self._parse([
+                {"id": 1, "title": "first", "tool": "open_app"},
+                {"id": 1, "title": "second", "tool": "open_app"},
+            ])
+
+    def test_zero_and_negative_step_ids_are_rejected(self):
+        for invalid_id in (0, -1):
+            with self.subTest(step_id=invalid_id):
+                with self.assertRaisesRegex(ValueError, "positive integer"):
+                    self._parse([{"id": invalid_id, "title": "invalid", "tool": "open_app"}])
+
+    def test_forward_dependency_cannot_be_satisfied_by_later_completed_step(self):
+        plan = TaskPlan("t-order", "Respect declared order")
+        first = Step(10, "First", "open_app", depends_on=[20])
+        later = Step(20, "Later", "open_app", status=DONE)
+        plan.steps.extend([first, later])
+        self.assertEqual(plan.deps_unmet(first), [20])
+
+    def test_corrupt_persisted_step_ids_are_rejected(self):
+        for invalid_id in (True, 1.5, 0, -2):
+            with self.subTest(step_id=invalid_id):
+                with self.assertRaises(ValueError):
+                    Step.from_dict({"id": invalid_id})
+
+    def test_corrupt_persisted_dependencies_are_preserved_as_blocking(self):
+        step = Step.from_dict({"id": 1, "depends_on": [1.5, True, "bad"]})
+        plan = TaskPlan("t-corrupt", "Fail closed")
+        plan.steps.append(step)
+        self.assertEqual(plan.deps_unmet(step), [0, 0, 0])
+
+
 class ToolArgumentValidationTests(unittest.TestCase):
     def setUp(self):
         self.registry = ToolRegistry()
