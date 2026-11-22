@@ -377,6 +377,7 @@ class BaseProvider(ChatProvider):
 
     def _post_json(self, url, headers, payload):
         """POST and return the decoded JSON body. Every failure becomes a classified ProviderError."""
+        body_started = time.monotonic()
         try:
             response = self._post_once(url, headers, payload)
         except requests.Timeout as exc:
@@ -389,7 +390,7 @@ class BaseProvider(ChatProvider):
         except ValueError as exc:
             raise self._fail("پاسخ سرویس قابل خواندن نبود.", True, kind="response") from exc
         self._note_usage(data)
-        request_trace("http_body_decoded", provider=self.name, model=self.model, elapsed_ms=None, response_shape="json")
+        request_trace("http_body_decoded", provider=self.name, model=self.model, elapsed_ms=int((time.monotonic()-body_started)*1000), response_shape="json")
         return data
 
     def _open_stream(self, url, headers, payload):
