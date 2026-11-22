@@ -210,7 +210,10 @@ class GameModeMonitor(QObject):
         except Exception:  # noqa: BLE001 - use the default adapter when enumeration text is unavailable
             device_count = 1
         preferred_backend = self._dxcam_backend
-        backends = ([preferred_backend] + [name for name in ("dxgi", "winrt") if name != preferred_backend]) if preferred_backend else ["dxgi", "winrt"]
+        backends = (
+            [preferred_backend] + [name for name in ("dxgi", "winrt") if name != preferred_backend]
+            if preferred_backend else ["dxgi", "winrt"]
+        )
         for backend in backends:
             for device_idx in range(max(1, device_count)):
                 try:
@@ -279,4 +282,4 @@ class GameModeMonitor(QObject):
                 Qt.TransformationMode.FastTransformation,
             )
         return pixmap
-"
+
