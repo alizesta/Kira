@@ -282,7 +282,7 @@ def _rx(*items):
 
 _NORM_TABLE = str.maketrans({"ي": "ی", "ك": "ک", "\u200c": " ", "\u200f": " "})
 GATES = {
-    "time": _rx(r"ساعت", r"تاریخ", r"امروز\s*چند", r"چندمه", r"چندم", r"چه\s*روزی", r"روز\s*هفته", r"منطقه\s*زمانی", r"\btime\b", r"\bdate\b", r"what\s*day",
+    "time": _rx(r"ساعت", r"تاریخ", r"امروز\s*چند", r"چندمه", r"چندم", r"چه\s*روزی", r"روز\s*هفته", r"منطقه\s*زمانی", r"زمان\s*(?:محلی|فعلی)", r"\btime\b", r"\bdate\b", r"what\s*day",
                 r"timezone", r"time\s*zone", r"o'?clock"),
     "system": _rx(r"\bram\b", r"رم\b", r"\bcpu\b", r"سی\s*پی\s*یو", r"پردازنده", r"\bgpu\b", r"گرافیک", r"باتری", r"battery", r"ویندوز", r"windows",
                   r"مشخصات", r"\bspec", r"سخت\s*افزار", r"hardware", r"هارد", r"درایو", r"دیسک", r"\bdisk\b", r"فضا(?:ی)?\s*(?:آزاد|خالی|باقی)", r"storage",
@@ -293,7 +293,7 @@ GATES = {
                 r"\bwindow", r"دیسکورد", r"discord", r"کروم", r"chrome", r"استیم", r"steam", r"تلگرام", r"telegram", r"نوت\s*پد", r"notepad",
                 r"ماشین\s*حساب", r"calculator", r"در\s*حال\s*(?:استفاده|اجرا)", r"چی\s*باز", r"کدوم\s*برنامه", r"مرورگر", r"browser", r"لینک", r"سایت\s*(?:رو|را)?\s*باز",
                 r"wallpaper\s*engine", r"\bexcel\b", r"\bsettings\b", r"\bapplications?\b", r"\binstaller\b"),
-    "bluetooth": _rx(r"بلو\s*توث", r"بلو\s*توس", r"بلوتوث", r"bluetooth", r"\bbt\b"),
+    "bluetooth": _rx(r"بلو\s*توث", r"بلو\s*توس", r"بلوتوث", r"bluetooth", r"\bbt\b", r"جفت\s*شده", r"دستگاه.{0,20}\bpair\b", r"\bpair\b.{0,20}(?:device|headphones?|keyboard|mouse)"),
     "audio": _rx(r"صدا(?!ت\b|تو\b|تون\b|ی\s*تو\b|ی\s*خودت)", r"ولوم", r"ولیوم", r"\bvolume\b", r"\bun-?mute\b", r"\bmute\b", r"میوت", r"سایلنت", r"هدفون", r"هدست", r"اسپیکر",
                  r"بلندگو", r"میکروفون", r"میکروفن", r"\bmic\b", r"microphone", r"headphones?", r"headset", r"speakers?", r"\baudio\b", r"\bsound\b", r"ایرپاد", r"airpods"),
     "files": _rx(r"فایل", r"پوشه", r"فولدر", r"\bfiles?\b", r"\bfolders?\b", r"\bdirectory", r"\bpdf\b", r"\bdocx?\b", r"\bxlsx?\b", r"\btxt\b", r"دانلود", r"download",
@@ -303,13 +303,13 @@ GATES = {
                  r"\bdownloads?\b", r"\bpictures\b", r"\blargest\s+files?\b", r"\bspreadsheet\b", r"\bsave\s+to\s+(?:the\s+)?desktop\b"),
     # external tool servers (MCP) and independent agents: matched only by explicit words (more words come from the user's own config, see set_gate_words)
     "mcp": _rx(r"\bmcp\b", r"ام\s*سی\s*پی"),
-    "agents": _rx(r"\bagents?\b", r"ایجنت", r"عامل\s*(?:مستقل|خارجی)", r"\bjob\s*(?:status|id)\b", r"کار\s*(?:رو|را)?\s*(?:به|بسپار)"),
+    "agents": _rx(r"\bagents?\b", r"ایجنت", r"عامل\s*(?:مستقل|خارجی)", r"\bjob\s*(?:status|id)\b", r"کار\s*(?:رو|را)?\s*(?:به|بسپار)", r"\bdelegated\s+job\b"),
     # desktop interaction (T5-B): windows, typing, keys, clicks, clipboard, controls
     "desktop": _rx(r"تایپ", r"\btype\b", r"کلیک", r"\bclick\b", r"پنجره", r"\bwindow\b", r"کیبورد", r"صفحه\s*کلید", r"\bkeyboard\b", r"\bhotkey\b", r"میانبر",
                    r"کلیپ\s*بورد", r"\bclipboard\b", r"ببند", r"\bclose\b", r"کوچک\s*کن", r"بزرگ\s*کن", r"\bminimi[sz]e\b", r"\bmaximi[sz]e\b", r"داخلش\s*بنویس",
-                   r"دکمه", r"\bbutton\b", r"منو\b", r"\bmenu\b", r"چک\s*باکس", r"\bcheckbox\b",
+                   r"دکمه", r"\bbutton\b", r"منو(?:ی)?\b", r"\bmenu\b", r"چک\s*باکس", r"\bcheckbox\b",
                    r"\bnotepad\b", r"\bnavigate\s+to\b", r"\bdefault\s+microphone\b", r"\bpaired\s+devices?\b", r"\bdocument\s+.{0,30}\bin\s+notepad\b"),
-    "web": _rx(r"تحقیق", r"پژوهش", r"\bresearch\b", r"deep\s*research", r"(?:سرچ|جست\s*و\s*جوی?)\s*(?:عمیق|کامل|دقیق|چند\s*مرحله)", r"چند\s*منبع", r"منابع?\s*(?:معتبر|مستند|مختلف|رو|را)",
+    "web": _rx(r"تحقیق", r"پژوهش", r"\bresearch\b", r"deep\s*research", r"(?:سرچ|جست\s*و\s*جوی?)\s*(?:عمیق|کامل|دقیق|چند\s*مرحله)", r"چند\s*منبع", r"(?:دو|سه|چهار|پنج)\s+منبع", r"منابع?\s*(?:معتبر|مستند|مختلف|رو|را)",
                r"با\s*منبع", r"مستند", r"fact\s*-?check", r"صحت\s*(?:سنجی)?", r"investigate", r"https?://", r"\bwww\.", r"(?:این|همین|اون|همون)\s*(?:لینک|سایت|صفحه|مقاله|آدرس)",
                r"(?:لینک|سایت|صفحه|مقاله)\s*(?:رو|را)?\s*(?:بخون|بخوان|مطالعه|خلاصه)", r"^/(?:research|read|تحقیق)\b", r"\bpdf\s*(?:آنلاین|اینترنتی)", r"مقایسه\s*(?:ی)?\s*منابع",
                r"(?:خلاصه(?:\s*سازی)?|خلاصه\s*کردن).{0,48}(?:مقاله|صفحه|لینک|سایت)", r"(?:مقاله|صفحه|لینک|سایت).{0,48}(?:خلاصه(?:\s*کن)?|خلاصه\s*سازی)",
