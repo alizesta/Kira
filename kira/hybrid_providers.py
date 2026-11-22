@@ -731,12 +731,13 @@ def probe_provider(name, config, provider_cls=None, *, timeout=None):
                 return True, "اتصال و دریافت پاسخ موفق بود."
             except ProviderError as exc:
                 last = exc
-                # A quota response is final for this probe. Retrying HTTP 429 is
-                # pointless; Google 503s can also consume Free Tier RPD, so one
-                # failed probe must never fan out into repeated generation calls.
+                # A probe is diagnostic, not a chat turn. Google may account a
+                # timed-out or failed generation attempt against RPM/RPD even when
+                # the client never receives a response. Never replay it: one probe
+                # must produce at most one generation request for a Google model.
                 if exc.status_code == 429 or getattr(exc, "quota", ""):
                     return False, str(exc)[:400]
-                if provider._is_google_endpoint() and exc.status_code == 503:
+                if provider._is_google_endpoint():
                     return False, str(exc)[:400]
                 if exc.kind not in ("server", "rate") and exc.status_code not in (500, 502, 503, 504):
                     raise

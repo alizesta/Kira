@@ -94,6 +94,38 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(len(post.calls), 1)
         sleep.assert_not_called()
 
+    def test_google_probe_never_retries_failed_generation_requests(self):
+        cfg = {
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_key": "google-test-key",
+            "model": "gemini-4-hydrogen",
+        }
+        for status in (500, 502, 504):
+            with self.subTest(status=status):
+                get = mock.Mock(return_value=Resp(200, {"models": [{"name": "models/gemini-4-hydrogen"}]}))
+                post = dispatch({"generativelanguage.googleapis.com": Resp(status, text="temporary failure")})
+                with mock.patch("requests.get", get), mock.patch("requests.post", post), mock.patch("kira.hybrid_ai.time.sleep") as sleep:
+                    ok, message = probe_provider("custom-google", cfg)
+                self.assertFalse(ok)
+                self.assertIn(str(status), message)
+                self.assertEqual(len(post.calls), 1)
+                sleep.assert_not_called()
+
+    def test_google_probe_does_not_replay_timed_out_generation_request(self):
+        cfg = {
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_key": "google-test-key",
+            "model": "gemini-4-hydrogen",
+        }
+        get = mock.Mock(return_value=Resp(200, {"models": [{"name": "models/gemini-4-hydrogen"}]}))
+        post = mock.Mock(side_effect=requests.Timeout("read timed out"))
+        with mock.patch("requests.get", get), mock.patch("requests.post", post), mock.patch("kira.hybrid_ai.time.sleep") as sleep:
+            ok, message = probe_provider("custom-google", cfg)
+        self.assertFalse(ok)
+        self.assertIn("مهلت", message)
+        self.assertEqual(post.call_count, 1)
+        sleep.assert_not_called()
+
     def test_probe_does_not_retry_quota_exhausted_429(self):
         cfg = {
             "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
