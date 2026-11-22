@@ -413,6 +413,16 @@ CHAT_ONLY = [
     "Explain how source code is compiled.",
 ]
 
+# Contrastive pragmatic-language controls. These are conversation-only examples:
+# the profanity/slang is not, by itself, a request to operate the PC.
+PRAGMATIC_CHAT_CASES = [
+    "سیکتو بزن",
+    "سیک فست پس رو بزن",
+    "اوضاع سیکیم خیاریه",
+    "سیکتیر",
+]
+
+
 
 def _make_agent():
     agent = ToolAgent.__new__(ToolAgent)
@@ -467,6 +477,21 @@ class TaskUnderstandingBenchmarkTests(unittest.TestCase):
                 plan = agent.plan(prompt, session_id=f"chat-{index}")
                 self.assertIsNotNone(plan)
                 self.assertTrue(plan.index_only)
+
+    def test_contextual_slang_examples_are_not_misrouted_as_pc_actions(self):
+        agent = _make_agent()
+        for index, prompt in enumerate(PRAGMATIC_CHAT_CASES):
+            with self.subTest(index=index, prompt=prompt):
+                self.assertEqual(protocol.detect_categories(prompt), set())
+                plan = agent.plan(prompt, session_id=f"pragmatic-chat-{index}")
+                self.assertIsNotNone(plan)
+                self.assertTrue(plan.index_only)
+
+    def test_both_model_contexts_include_pragmatic_language_guidance(self):
+        for prompt in (protocol.INDEX_HEAD, protocol.PROMPT_HEAD):
+            with self.subTest(prompt=prompt[:30]):
+                self.assertIn("full sentence and nearby conversation", prompt)
+                self.assertIn("Profanity by itself is not a PC action", prompt)
 
 
 if __name__ == "__main__":
