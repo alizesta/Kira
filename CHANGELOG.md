@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-22 (English task-intent coverage)
+- Expanded the request-intent gates with English patterns for common Windows, file, desktop, app and web workflows: drive/free-space checks, backups/archives/duplicates, Notepad and Settings interaction, official sources, supplied article links, retailer comparisons, latest-version/download lookups and wallpaper search/application.
+- Added a 20-case English regression matrix to `tests/test_task_triage.py`. It checks expected category coverage and whether each request skips the cheap triage round when a task signal exists. The email-draft-only request deliberately remains in triage because drafting text alone does not require PC access.
+- Added a negative regression so a generic source-code explanation is not mistaken for web research.
+- Independent regex harness: 20/20 scenarios contained their expected categories; 19/20 produced a known task signal and the email-only case correctly remained triage. This is a focused pattern check, not a repository unittest run or a live Kira/Windows test.
+- Not run: repository unittest suite, real model/provider, Windows actions, GitHub Actions.
+
+
 ## 2026-11-22 08:32 Iran (planner review rounds no longer carry the character prompt)
 - Measured with a scripted model (`tests/test_task_cost.py`): a one-tool task costs 5 model calls (plan, run step, step review, goal review, final answer). The step review and the final goal review are internal JSON phases, yet each re-sent the whole character/memory system prompt. They now use a short fixed verifier prompt (`planner.REVIEW_SYSTEM`) plus the same review instructions and task state. In the test the two review prompts shrink from about 7.3k to 2.6k characters (the stand-in persona is 4.6k; the real one is larger). Plan, execution and final-answer calls keep the personality.
 - No change to what is verified: both reviews still run, exact-evidence rules, the `verifies_result` handling and the "tool ok is not goal ok" design are untouched (an existing test already pins that). Call count is unchanged; only prefill per review call drops.
