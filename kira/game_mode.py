@@ -97,6 +97,7 @@ class GameModeMonitor(QObject):
         self.last_game = None
         self._seen_pids = set()
         self._dxcam_camera = None
+        self._dxcam_backend = None
         self._user32 = ctypes.windll.user32 if os.name == "nt" else None
         self._kernel32 = ctypes.windll.kernel32 if os.name == "nt" else None
         if self._user32 is not None:
@@ -177,6 +178,7 @@ class GameModeMonitor(QObject):
 
     def _release_dxcam(self):
         camera, self._dxcam_camera = self._dxcam_camera, None
+        self._dxcam_backend = None
         if camera is not None:
             try:
                 camera.release()
@@ -190,43 +192,50 @@ class GameModeMonitor(QObject):
             self._release_dxcam()
 
     def _capture_with_dxcam(self, rect, screen, max_width, max_height):
-        """Capture the foreground game through DXGI Desktop Duplication when available."""
+        """Prefer DXGI Desktop Duplication, then DXcam's Windows Graphics Capture backend."""
         try:
             import dxcam
-            geometry = screen.geometry()
-            region = fit_capture_region(
-                rect, geometry, getattr(screen, "devicePixelRatio", lambda: 1.0)()
-            )
-            if region is None:
-                return None
-            if self._dxcam_camera is None:
-                # BGRA avoids OpenCV and keeps the capture path lightweight.
-                self._dxcam_camera = dxcam.create(
-                    output_color="BGRA",
-                    backend="dxgi",
-                    processor_backend="numpy",
-                    max_buffer_len=2,
-                )
-            frame = self._dxcam_camera.grab(region=region, new_frame_only=False)
-            if frame is None or getattr(frame, "ndim", 0) != 3 or frame.shape[2] != 4:
-                return None
-            height, width = frame.shape[:2]
-            image = QImage(
-                frame.data, width, height, int(frame.strides[0]),
-                QImage.Format.Format_ARGB32,
-            ).copy()
-            if image.isNull():
-                return None
-            target = fit_capture_size(image.width(), image.height(), max_width, max_height)
-            if image.width() > target[0] or image.height() > target[1]:
-                image = image.scaled(
-                    target[0], target[1], Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.FastTransformation,
-                )
-            return QPixmap.fromImage(image)
-        except Exception:  # noqa: BLE001 - keep the legacy Qt path as a safe fallback
-            self._release_dxcam()
+        except Exception:  # noqa: BLE001 - the legacy Qt capture remains available without DXcam
             return None
+        geometry = screen.geometry()
+        region = fit_capture_region(
+            rect, geometry, getattr(screen, "devicePixelRatio", lambda: 1.0)()
+        )
+        if region is None:
+            return None
+        for backend in ("dxgi", "winrt"):
+            try:
+                if self._dxcam_camera is None or self._dxcam_backend != backend:
+                    self._release_dxcam()
+                    self._dxcam_camera = dxcam.create(
+                        output_color="BGRA",
+                        backend=backend,
+                        processor_backend="numpy",
+                        max_buffer_len=2,
+                    )
+                    self._dxcam_backend = backend
+                frame = self._dxcam_camera.grab(region=region, new_frame_only=False)
+                if frame is None or getattr(frame, "ndim", 0) != 3 or frame.shape[2] != 4:
+                    self._release_dxcam()
+                    continue
+                height, width = frame.shape[:2]
+                image = QImage(
+                    frame.data, width, height, int(frame.strides[0]),
+                    QImage.Format.Format_ARGB32,
+                ).copy()
+                if image.isNull():
+                    self._release_dxcam()
+                    continue
+                target = fit_capture_size(image.width(), image.height(), max_width, max_height)
+                if image.width() > target[0] or image.height() > target[1]:
+                    image = image.scaled(
+                        target[0], target[1], Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.FastTransformation,
+                    )
+                return QPixmap.fromImage(image)
+            except Exception:  # noqa: BLE001 - recover with the next capture backend
+                self._release_dxcam()
+        return None
 
     def capture_last_game(self, max_width=CAPTURE_MAX_WIDTH, max_height=CAPTURE_MAX_HEIGHT):
         """Return a bounded game frame; prefer DXcam and retain Qt as a fallback."""
