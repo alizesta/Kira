@@ -249,8 +249,8 @@ class AttachmentsVisionController(WindowFeatureController):
             self.context.views.game_mode_btn.setToolTip("Story Mode فعال است؛ Vision و تحلیل محلی صدای بازی فعال‌اند")
             self.feature_controller("session").add_chat("system", "🎮 Story Mode فعال شد. Vision و تحلیل محلی صدای بازی فعال‌اند. دست‌کاری پردازش، حافظه یا ورودی بازی همچنان ممنوع است.")
         else:
-            self.context.views.game_mode_btn.setToolTip("Competitive Safe فعال است؛ بدون Vision، Capture، شنود بازی یا کنترل دسکتاپ")
-            self.feature_controller("session").add_chat("system", "🛡️ Competitive Safe فعال شد. Vision، Capture، شنود صدای بازی و ابزارهای کنترل دسکتاپ/MCP مسدودند. فقط چت، جست‌وجوی وب و میکروفون/Wake Word مستقل فعال‌اند.")
+            self.context.views.game_mode_btn.setToolTip("Competitive Safe فعال است؛ Vision فقط‌خواندنی فعال، بدون شنود بازی و کنترل دسکتاپ")
+            self.feature_controller("session").add_chat("system", "🛡️ Competitive Safe فعال شد. Kira تصویر بازیِ پنجرهٔ فعال را فقط‌خواندنی تحلیل می‌کند؛ شنود صدای بازی و کنترل ورودی/دسکتاپ غیرفعال‌اند. فقط چت، جست‌وجوی وب و میکروفون/Wake Word مستقل هم فعال‌اند.")
 
     def _start_game_audio_listener(self):
         if self.context.state._closing or not self.context.state._game_mode_enabled:
@@ -415,7 +415,7 @@ class AttachmentsVisionController(WindowFeatureController):
         if self.context.state._game_mode_enabled:
             return
         name = info.get("title") or info.get("exe") or "بازی"
-        note = (f"🎮 بازی «{name[:90]}» شناسایی شد. اگر آفلاین/داستانی است Story Mode و اگر آنلاین/PvP یا نامشخص است Competitive Safe را انتخاب کن. انتخاب با خودت است.")
+        note = (f"🎮 بازی «{name[:90]}» شناسایی شد. برای بازی آنلاین/PvP، Competitive Safe (تحلیل تصویری بدون کنترل بازی) و برای بازی داستانی، Story Mode (به‌همراه تحلیل صدای بازی) را انتخاب کن. انتخاب با خودت است.")
         self.feature_controller("session").add_chat("system", note)
         tray = getattr(self.context.views, "tray", None)
         if tray is not None and tray.isVisible():
