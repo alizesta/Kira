@@ -8,6 +8,14 @@ from pathlib import Path
 from time import perf_counter
 
 from ..core.interfaces.transfer import ChatTransferFilePort
+from ..lazy_tool_agent import LazyToolAgent
+
+
+def _create_tool_agent(settings, data_dir, program_root):
+    """Import the Windows tool stack only when Kira first needs a PC capability."""
+    from ..tools import ToolAgent
+
+    return ToolAgent(settings, data_dir, program_root)
 
 
 def _show_startup_splash(app):
@@ -107,7 +115,6 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
         from ..chat.session_manager import SessionManager
         from ..chat_sessions import ChatSession
         from ..config import DATA_DIR, ROOT, load_settings
-        from ..tools import ToolAgent
         from .main_window import MainWindow
         from .main_window_composition import initialize_main_window
         from ..app.dependency_container import DependencyContainer
@@ -149,7 +156,7 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
         mark_phase("modules_started")
 
         session_manager = SessionManager(ChatSession)
-        tool_agent = ToolAgent(settings, DATA_DIR, ROOT)
+        tool_agent = LazyToolAgent(lambda: _create_tool_agent(settings, DATA_DIR, ROOT))
         window = MainWindow()
         initialize_main_window(
             window,
