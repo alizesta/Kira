@@ -60,8 +60,8 @@ _NAME_ALIASES = {
 }
 NOT_FOUND_TEXT_SHORT = "جست‌وجو در Start Menu، Steam، برنامه‌های نصب‌شده‌ی ویندوز و برنامه‌های Store انجام شد (برنامه‌های پورتابل بدون نصب ممکن است دیده نشوند)."
 NOT_FOUND_TEXT = "برنامه‌ای با این نام پیدا نشد؛ " + NOT_FOUND_TEXT_SHORT
-_NO_PLAN_WAIT = 8.0
-_STEAM_WAIT = 20.0
+_NO_PLAN_WAIT = 0.0
+_STEAM_WAIT = 0.0
 
 
 def installed_apps(max_age: float = 120.0) -> list[tuple[str, str]]:
@@ -388,7 +388,7 @@ class AppTools:
             subprocess.Popen([target], shell=False)
         else:
             os.startfile(target)                                  # a Windows protocol link such as ms-clock:
-        return f"دستور اجرای «{label}» به ویندوز داده شد. " + self._wait_new_window(before, 4.0)[1]
+        return f"دستور اجرای «{label}» به ویندوز داده شد. " + self._wait_new_window(before, 0.0)[1]
 
     # -- every other app: look at the real state first, reuse the running instance, start only if needed
     def _open_entry(self, entry) -> str:
