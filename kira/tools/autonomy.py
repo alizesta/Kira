@@ -1,14 +1,11 @@
-"""Multi-step autonomy for ToolAgent: planning, step-by-step execution, verification, replanning, task state and user control.
+"""Model-driven task autonomy for ToolAgent: planning, execution, semantic review and replanning.
 
-This is a layer ON TOP of the existing tool loop (agent.py / registry.py / protocol.py), not a replacement:
-  * simple requests (one tool, or plain chat) still run through the old loop, exactly as before;
-  * a request that looks multi-step (planner.assess) goes through ``run_planned``: the model may answer with a plan block, the system
-    executes the steps one by one through the SAME registry (same access levels, same confirmations), checks every real result,
-    lets the model revise the plan, and keeps the task state (tasks.py) outside of any model, so a Route change cannot lose it.
-
-Safety is enforced in code, never by trusting the plan: a sensitive tool never runs without the user's own confirmation (a plan cannot grant
-it), the same failing call is never executed more than twice, a succeeded call is never executed again, a read-only tool is retried only for
-transient errors, and every loop has a hard cap (agent_max_steps / agent_max_replans).
+Exact deterministic one-shot commands keep their Fast Path. Other tool-relevant
+requests are classified by the selected model using the user's goal, context and
+tool catalog rather than task-specific verb rules. Successful tool execution
+is not accepted as proof of goal completion: the model compares real outputs
+with explicit success criteria and per-step postconditions. The central registry
+continues to enforce permissions, confirmations and execution safety.
 """
 from __future__ import annotations
 
@@ -20,8 +17,8 @@ import time
 
 from . import protocol, planner
 from .registry import ToolResult, NEEDS_CONFIRM, BAD_ARGS, DENIED, OK, ERROR, READ, SENSITIVE, clip
-from .tasks import (TaskStore, TaskPlan, Step, call_sig, verify, classify_error, summarize_result, parse_control, _safe,
-                    PENDING, RUNNING, DONE, FAILED, UNMET, SKIPPED, AWAITING,
+from .tasks import (TaskStore, TaskPlan, Step, call_sig, classify_error, summarize_result, parse_control, _safe,
+                    PENDING, RUNNING, REVIEW, DONE, FAILED, UNMET, SKIPPED, AWAITING,
                     P_PLANNING, P_RUNNING, P_WAIT_USER, P_WAIT_CONFIRM, P_PAUSED, P_DONE, P_FAILED, P_CANCELLED, P_SUPERSEDED,
                     STEP_MAX_ATTEMPTS, FAIL_SIG_MAX)
 
@@ -97,9 +94,13 @@ class AutonomyMixin:
         self._resume_sessions.discard(self._turn_session_id)
         self._remember_task_preference(text)
         if base is not None:
-            cx, reasons = planner.assess(text, base.categories)
-            if cx:
-                base.complex, base.reasons = True, reasons
+            # Exact, deterministic one-shot commands keep their Fast Path. Every
+            # other tool-relevant request is classified by the model itself using
+            # the goal, context and complete local tool catalog—not verb regexes.
+            from .fast_commands import parse_fast_command
+            if parse_fast_command(text) is None:
+                base.complex = True
+                base.reasons = ("ارزیابی معنایی هدف توسط Planner مدل",)
         return base
 
     def _cats_for(self, plan: TaskPlan, text: str) -> set:
@@ -243,22 +244,36 @@ class AutonomyMixin:
             st.status, st.declined, st.error = FAILED, True, "کاربر انجامش را لغو کرد"
             plan.status = P_PAUSED
         elif res.ok:
-            st.status, st.verified, st.result = DONE, "ok", summarize_result(res.tool, res.status, res.text)
-            plan.done_sigs[call_sig(res.tool, res.args)] = st.result
+            tool = self.registry.get(res.tool)
+            st.result = summarize_result(res.tool, res.status, res.text)
+            st.data = clip(res.text, 1500)
+            plan.goal_reviewed, plan.goal_verified, plan.goal_review_reason = False, False, ""
+            if tool is not None and tool.verifies_result:
+                st.status, st.verified = DONE, "ok"
+                plan.done_sigs[call_sig(res.tool, res.args)] = st.result
+            else:
+                st.status, st.verified = REVIEW, ""
+                plan.done_sigs[call_sig(res.tool, res.args)] = "عملیات اجرا شد؛ ارزیابی هدف در ادامه لازم است."
         else:
             st.status, st.error = FAILED, clip(res.text, 200)
             plan.fail_sigs[call_sig(res.tool, res.args)] = 1
-        left = [s for s in plan.steps if s.tool and s.status in (PENDING, UNMET, RUNNING)]
+        left = [s for s in plan.steps if s.tool and s.status in (PENDING, UNMET, RUNNING, REVIEW)]
         failed = [s for s in plan.steps if s.status == FAILED]
-        if confirmed and res.ok and not left and not failed:
+        goal_pending = bool(plan.success_criteria and res.ok and not plan.goal_verified)
+        if confirmed and res.ok and not left and not failed and not goal_pending:
             for s in plan.steps:
                 if not s.tool and s.status == PENDING:
                     s.status, s.result = DONE, "گزارش نهایی"
             plan.status = P_DONE
             suffix = ""
         else:
-            plan.status = P_PAUSED if (left or not confirmed) else P_FAILED
-            suffix = f"\n\n📋 وظیفه هنوز تمام نشده است ({'، '.join(str(s.id) for s in left) or 'بدون مرحله‌ی باقی‌مانده'}). برای ادامه «ادامه بده»، برای انصراف «لغو کار» را بنویس." if left or failed else ""
+            plan.status = P_PAUSED if (left or goal_pending or not confirmed) else P_FAILED
+            if any(s.status == REVIEW for s in plan.steps):
+                suffix = "\n\nعملیات اجرا شد اما نتیجه هنوز از نظر تحقق هدف ارزیابی نشده است؛ برای بررسی وضعیت و ادامه‌ی وظیفه «ادامه بده» بنویس."
+            elif goal_pending:
+                suffix = "\n\nعملیات تأیید شد، اما معیارهای نهایی کار هنوز بررسی نشده‌اند؛ برای بررسی وضعیت فعلی «ادامه بده» بنویس."
+            else:
+                suffix = f"\n\n📋 وظیفه هنوز تمام نشده است ({'، '.join(str(s.id) for s in left) or 'بدون مرحله‌ی باقی‌مانده'}). برای ادامه «ادامه بده»، برای انصراف «لغو کار» را بنویس." if left or failed else ""
         plan.updated = time.time()
         self.tasks.save()
         return suffix
@@ -331,8 +346,11 @@ class AutonomyMixin:
                     draft = planner.parse_plan(gate.raw, self.registry, max_steps)
                 except ValueError as exc:
                     attempts += 1
-                    if attempts >= 2:                       # the model cannot plan: the ordinary loop (unchanged behaviour) takes over
-                        return "done", self._run_simple(router, list(cur), system_prompt, temp, plan, retry_index, emit, on_event, on_tool)
+                    if attempts >= 2:
+                        # Never fall back to an unreviewed tool path after planning failed.
+                        text = "نتوانستم برنامه‌ی معتبر و قابل‌ارزیابی بسازم؛ برای جلوگیری از اجرای نادرست، هیچ مرحله‌ای اجرا نشد."
+                        emit(text)
+                        return "done", self._final(res, text, [])
                     cur = cur + [{"role": "assistant", "content": "(برنامه)"},
                                  {"role": "user", "content": f"[System note, not from the user: your plan was rejected: {exc}. Send ONE corrected <kira_plan> block, or answer without a plan.]"}]
                     continue
@@ -340,6 +358,11 @@ class AutonomyMixin:
                 tp.apply_draft(draft)
                 if not tp.goal or tp.goal == "…":
                     tp.goal = _safe(self._goal_of(cur), 240)
+                if tp.steps and not tp.success_criteria and tp.goal:
+                    tp.success_criteria = [tp.goal]
+                for step in tp.tool_steps():
+                    if not step.postcondition:
+                        step.postcondition = "; ".join(tp.success_criteria) if tp.success_criteria else tp.goal
                 if prev is not None and prev is not tp:
                     prev.status = P_SUPERSEDED
                 self._turn_plan_ids[self._turn_session_id] = tp.id
@@ -357,6 +380,7 @@ class AutonomyMixin:
                 return "go", tp, None
             if gate.is_tool:                                # the model went straight to a tool: still tracked as a task (ad-hoc steps)
                 tp = self.tasks.new(self._goal_of(cur), session_id=self._turn_session_id)
+                tp.success_criteria = [_safe(self._goal_of(cur), 240)]
                 if prev is not None and prev is not tp:
                     prev.status = P_SUPERSEDED
                 tp.status = P_RUNNING
@@ -373,7 +397,7 @@ class AutonomyMixin:
 
     # ---- phase 2: step-by-step execution
     def _execute_loop(self, router, cur, system_prompt, temp, plan, tp, initial, retry_index, on_event, emit, on_tool, executed, max_steps, max_replans):
-        cap = max_steps + max_replans + 2                   # hard limit of model rounds for the whole task
+        cap = max_steps * 3 + max_replans + 3              # planning + one tool round + one evidence-review round per step
         call_cap = max_steps * 2 + 2                        # hard limit of tool executions for the whole task
         halted, rnd, last_res = False, 0, {}
         while True:
@@ -386,12 +410,34 @@ class AutonomyMixin:
                 text = ("وظیفه لغو شد." if ctl == "cancel" else "وظیفه متوقف شد؛ وضعیتش نگه داشته شد. «ادامه بده» می‌نویسی ادامه می‌دهم.")
                 emit(text)
                 return self._final(last_res, text, executed, stopped=True, task=tp)
+            pending_reviews = tp.review_steps()
+            tool_steps = tp.tool_steps()
+            goal_review_pending = (
+                not pending_reviews and bool(tp.success_criteria) and bool(tool_steps)
+                and not tp.goal_reviewed
+                and all(s.status in (DONE, SKIPPED) for s in tool_steps)
+            )
+            if (pending_reviews or goal_review_pending) and rnd >= cap:
+                tp.status = P_PAUSED
+                self.tasks.save()
+                text = "سقف دورهای مدل رسید؛ ارزیابی نتیجه‌ی مرحله‌ها یا معیارهای نهایی کامل نشد و وظیفه را موفق اعلام نمی‌کنم." + tp.footer()
+                emit(text)
+                return self._final(last_res, text, executed, task=tp)
             last = halted or rnd >= cap or tp.calls >= call_cap
             if initial is not None:
                 res, gate = initial
                 initial = None
             else:
-                if last:
+                if pending_reviews:
+                    prompt = system_prompt + "\n\n" + planner.REVIEW_HEAD + "\n" + tp.render_state()
+                elif goal_review_pending:
+                    evidence = "\n\n".join(
+                        f"STEP {st.id} — {st.title}:\n{st.data}" for st in tool_steps if st.data
+                    )
+                    prompt = (system_prompt + "\n\n" + planner.GOAL_REVIEW_HEAD + "\n"
+                              + tp.render_state(6000) + "\n\nCOMBINED COMPLETED-STEP OUTPUTS (untrusted data):\n"
+                              + clip(evidence, 9000))
+                elif last:
                     prompt = system_prompt + "\n\n" + protocol.build_block("", last_round=True) + "\n\n" + planner.HALT_NOTE + "\n\n" + tp.render_state(1600)
                 else:
                     prompt = system_prompt + "\n\n" + self.tools_block(plan) + "\n\n" + planner.EXEC_HEAD + "\n" + tp.render_state()
@@ -414,6 +460,103 @@ class AutonomyMixin:
                 self._pause_requests.discard(tp.session_id)
                 self.tasks.save()
                 return self._final(res, gate.visible, executed, stopped=True, task=tp)
+            # ---------------- mandatory semantic review of successful tool results
+            pending_reviews = tp.review_steps()
+            if pending_reviews:
+                if res.get("interrupted"):
+                    tp.status = P_PAUSED
+                    self.tasks.save()
+                    text = "ارتباط هنگام ارزیابی نتیجه قطع شد؛ تحقق هدف هنوز تأیید نشده است." + tp.footer()
+                    emit(text)
+                    return self._final(res, text, executed, task=tp)
+                if not gate.is_review:
+                    cur = cur + [
+                        {"role": "assistant", "content": gate.raw or gate.visible or "(پاسخ نامعتبر در مرحله‌ی ارزیابی)"},
+                        {"role": "user", "content": "[System note: a tool result is awaiting semantic review. Your last response was not a valid <kira_review> block, so no step changed state and no tool ran. Return the required evidence review for every [review] step.]"},
+                    ]
+                    continue
+                try:
+                    reviews = planner.parse_review(gate.raw, pending_reviews)
+                except ValueError as exc:
+                    cur = cur + [
+                        {"role": "assistant", "content": "(ارزیابی نتیجه)"},
+                        {"role": "user", "content": f"[System note: review rejected: {exc}. Re-evaluate every pending step and return one valid <kira_review> block. No tool has run.]"},
+                    ]
+                    continue
+                for item in reviews:
+                    st = tp.step(item["step"])
+                    if st is None:
+                        continue
+                    sig = call_sig(st.tool, st.args)
+                    if item["verdict"] == "satisfied":
+                        st.status, st.verified, st.error = DONE, "model", ""
+                        st.result = summarize_result(st.tool, OK, st.data) or item["reason"]
+                        tp.done_sigs[sig] = st.result
+                        tool = self.registry.get(st.tool)
+                        if tool is not None:
+                            self._memoize(ToolResult(st.tool, OK, st.data, dict(st.args), tool.level))
+                    else:
+                        st.status = UNMET if st.attempts < STEP_MAX_ATTEMPTS else FAILED
+                        st.verified = "uncertain" if item["verdict"] == "uncertain" else ""
+                        st.error = item["reason"] or "شواهد خروجی برای اثبات تحقق هدف کافی نیست."
+                        # The operation already ran successfully; never blindly repeat
+                        # the same call. The model must observe state or choose another route.
+                        tool = self.registry.get(st.tool)
+                        if tool is not None and tool.level > READ:
+                            tp.done_sigs[sig] = "عملیات اجرا شد؛ هدف با شواهد موجود تأیید نشد؛ همان فراخوانی تکرار نشود."
+                tp.status = P_RUNNING
+                self.tasks.save()
+                cur = cur + [
+                    {"role": "assistant", "content": gate.raw},
+                    {"role": "user", "content": "[System note: evidence review accepted and stored in TASK STATE. Now choose the next unmet step, observe the current state, revise the remaining plan, ask one necessary question, or give the final answer only when the user's goal is actually met.]"},
+                ]
+                continue
+            if goal_review_pending:
+                if res.get("interrupted"):
+                    tp.status = P_PAUSED
+                    self.tasks.save()
+                    text = "ارتباط هنگام بررسی معیارهای نهایی قطع شد؛ وظیفه کامل تأیید نشده است." + tp.footer()
+                    emit(text)
+                    return self._final(res, text, executed, task=tp)
+                if not gate.is_review:
+                    cur = cur + [
+                        {"role": "assistant", "content": gate.raw or gate.visible or "(پاسخ نامعتبر در ارزیابی نهایی)"},
+                        {"role": "user", "content": "[System note: final success criteria are awaiting review. Return one <kira_review> block for step 0 only. No tool ran.]"},
+                    ]
+                    continue
+                goal_evidence = "\n\n".join(
+                    f"STEP {st.id} — {st.title}:\n{st.data}" for st in tool_steps if st.data
+                )
+                goal_step = Step(0, "ارزیابی معیارهای موفقیت نهایی",
+                                 postcondition="\n".join(tp.success_criteria))
+                goal_step.data = clip(goal_evidence, 9000)
+                try:
+                    review = planner.parse_review(gate.raw, [goal_step])[0]
+                except ValueError as exc:
+                    cur = cur + [
+                        {"role": "assistant", "content": "(ارزیابی موفقیت نهایی)"},
+                        {"role": "user", "content": f"[System note: final goal review rejected: {exc}. Return one corrected <kira_review> for step 0. No tool ran.]"},
+                    ]
+                    continue
+                tp.goal_reviewed = True
+                tp.goal_verified = review["verdict"] == "satisfied"
+                tp.goal_review_reason = "" if tp.goal_verified else review["reason"]
+                tp.status = P_RUNNING
+                self.tasks.save()
+                note = ("[System note: every final success criterion was supported by exact output evidence. You may now give the final answer based only on verified results.]"
+                        if tp.goal_verified else
+                        "[System note: the final success criteria are NOT all proven. Add observation/action steps with a revised <kira_plan>, ask one necessary question, or report that the goal could not be completed. Do not claim success.]")
+                cur = cur + [
+                    {"role": "assistant", "content": gate.raw},
+                    {"role": "user", "content": note},
+                ]
+                continue
+            if gate.is_review:
+                cur = cur + [
+                    {"role": "assistant", "content": gate.raw},
+                    {"role": "user", "content": "[System note: no step is awaiting review. Continue with the next planned action or final answer.]"},
+                ]
+                continue
             # ---------------- a tool request
             if gate.is_tool:
                 if res.get("interrupted"):
@@ -498,6 +641,8 @@ class AutonomyMixin:
             tp.status = P_WAIT_CONFIRM
         elif any(s.status in (FAILED, UNMET) for s in tp.steps):
             tp.status = P_FAILED
+        elif tp.success_criteria and tool_steps and not tp.goal_verified:
+            tp.status = P_FAILED if tp.goal_reviewed else P_PAUSED
         elif all(s.status in (DONE, SKIPPED) for s in tp.steps):
             tp.status = P_DONE
             tp.interrupted = False
@@ -585,19 +730,18 @@ class AutonomyMixin:
             tp.status = P_WAIT_CONFIRM
             return f"step {st.id}: waiting for the USER's confirmation; nothing was changed; tell the user exactly what will happen and ask for «تأیید» / «لغو». Do not continue the plan."
         if res.status == OK:
-            verdict, note = verify(res.tool, res.args, res.status, res.text)
+            st.status, st.error, st.verified = REVIEW, "", ""
             st.data = clip(res.text, 1500)
-            if verdict == "unmet":
-                st.error, st.result = note, ""
-                tp.fail_sigs[sig] = tp.fail_sigs.get(sig, 0) + 1
-                st.status = FAILED if st.attempts >= STEP_MAX_ATTEMPTS else UNMET
-                return f"step {st.id}: goal NOT met - {note}. Revise the plan, try different arguments, or ask the user. Do not report this step as done."
-            st.status, st.error = DONE, ""
-            st.verified = "ok" if verdict == "ok" else "unverified"
+            tp.goal_reviewed, tp.goal_verified, tp.goal_review_reason = False, False, ""
             st.result = summarize_result(res.tool, res.status, res.text)
-            tp.done_sigs[sig] = st.result or "ok"
-            self._memoize(res)
-            return f"step {st.id}: done" + (f" ({note})" if note else " (verified)") + "."
+            # Record execution to suppress duplicate side effects while the model
+            # checks whether the user's intended postcondition actually holds.
+            # Never blindly repeat an action while its result is under review.
+            # Read-only observations may safely be repeated to verify fresh state.
+            if res.level > READ:
+                tp.done_sigs[sig] = "ابزار اجرا شد؛ ارزیابی تحقق هدف هنوز انجام نشده است."
+            return (f"step {st.id}: tool execution returned OK, but goal completion is NOT established. "
+                    "The step is awaiting semantic evidence review; do not call the same operation again.")
         kind = classify_error(res.status, res.text)
         st.error = clip(res.text, 200)
         tp.fail_sigs[sig] = tp.fail_sigs.get(sig, 0) + 1

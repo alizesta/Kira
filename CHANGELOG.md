@@ -450,3 +450,28 @@ Mate Engine (shinyflvre) is a Unity/C# project under AGPL-3.0 + its own licence,
 - Add regression coverage for repeated verbs, Persian multi-step desktop tasks, English sequences, single-action negatives and empty categories.
 
 - Follow-up corpus testing removed a category-count false positive for explanatory questions and added English `create` / `make` plus Persian create/build verbs.
+
+
+### Model-driven task reasoning and evidence review
+- Replaced production verb/phrase-based task complexity routing with model-based decisions for tool-relevant requests; exact one-shot Fast Path commands remain deterministic.
+- Expose the full local tool catalog during planning so the model can select cross-category capabilities (including desktop observation and input) without per-task keyword wiring. MCP/agent tools remain opt-in.
+- Added a structured semantic review phase after successful tool calls. The model judges each result against the user's goal; satisfied verdicts require an exact quote from that step's real output.
+- Keep successful tool execution distinct from goal completion, prevent blind repeat of an already-executed call, and recover interrupted reviews conservatively after restart.
+- Added regression tests for semantic routing, evidence provenance, review gating and restart recovery.
+
+
+### Explicit task success criteria
+- Store user-level success criteria and per-step observable postconditions in task plans.
+- Feed those criteria back into semantic result review so the model judges the actual requested end state, not merely tool execution.
+- Persist and restore criteria with task state; retain safe review recovery after restart.
+
+
+### Final goal-level verification
+- Separate per-step postcondition review from final task completion review.
+- Require exact output evidence for every final success criterion before a task can enter the completed state.
+- Reopen final verification after an interrupted run because raw tool evidence is intentionally not persisted.
+
+
+### Evidence mapping and explicit external-tool scope
+- Map final evidence quotes to explicit success-criterion numbers, rejecting missing, duplicate or unknown criterion references.
+- Include MCP/agent capabilities in the model's planning catalog only when the user's request explicitly selects that external capability.

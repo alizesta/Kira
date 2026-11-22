@@ -346,17 +346,31 @@ class ToolAgent(AutonomyMixin):
         if last_round:
             return protocol.build_block("", last_round=True)
         extra = ""
+        planning_scope = bool(plan.complex)
         if "web" in plan.categories:
             extra = protocol.WEB_RULES
             ctx = getattr(self.registry, "web_context", None)
             cur = ctx.store.current() if ctx else None
             if cur is not None and cur.status == "paused" and cur.subtopics:
                 extra += f"\nA paused research exists: «{cur.topic}» ({len(cur.done_subtopics)}/{len(cur.subtopics)} sub-topics done). If the user wants it continued, call web_research with resume=true."
-        if "desktop" in plan.categories:
+        if "desktop" in plan.categories or (planning_scope and not self._competitive_safe_mode):
             extra = (extra + "\n\n" if extra else "") + protocol.DESKTOP_RULES
         if plan.categories & {"mcp", "agents"}:
             extra = (extra + "\n\n" if extra else "") + protocol.MCP_RULES
-        return protocol.build_block(self.registry.catalog(plan.categories), self._memo_block(), extra=extra)
+        if planning_scope:
+            # Let the model choose the correct local capability from the goal,
+            # instead of hiding desktop/file/app tools behind keyword categories.
+            # External MCP/agent tools stay opt-in and are never exposed by default.
+            if self._competitive_safe_mode:
+                catalog_categories = {"web"}
+            else:
+                catalog_categories = set(protocol.ALL_CATEGORIES) - {"mcp", "agents"}
+                catalog_categories.update(plan.categories & {"mcp", "agents"})
+                if "web" not in plan.categories:
+                    catalog_categories.discard("web")
+        else:
+            catalog_categories = plan.categories
+        return protocol.build_block(self.registry.catalog(catalog_categories), self._memo_block(), extra=extra)
 
     # ------------------------------------------------------------ session-only notes
     def _memo_block(self) -> str:
@@ -493,7 +507,9 @@ class ToolAgent(AutonomyMixin):
             self._pending_new_sessions.discard(owner)
             self.registry.access.grant(pending.tool, pending.args)
             result = self.registry.execute(pending.tool, pending.args, confirmed=True)
-            self._memoize(result)
+            tool_meta = self.registry.get(result.tool)
+            if result.ok and tool_meta is not None and tool_meta.verifies_result:
+                self._memoize(result)
             return (("✅ " + result.text) if result.ok else f"❌ انجام نشد: {result.text}") + self._after_confirm(pending, result, True)
         self._pending_by_session.pop(owner, None)
         self._pending_new_sessions.discard(owner)

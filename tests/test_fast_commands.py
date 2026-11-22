@@ -340,75 +340,243 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
 
 
 
-class PlannerComplexityRegressionTests(unittest.TestCase):
-    """The planner prefilter counts action occurrences and recognizes natural task sequences."""
+class SemanticPlannerRoutingTests(unittest.TestCase):
+    def _autonomy_probe(self):
+        from kira.tools.autonomy import AutonomyMixin
 
-    def test_repeated_persian_action_is_not_collapsed(self):
-        from kira.tools.planner import assess
+        class Probe(AutonomyMixin):
+            def __init__(self):
+                self.settings = {"agent_planning": "auto"}
+                self._turn_session_id = "kira"
+                self._resume_sessions = set()
+                self.tasks = SimpleNamespace(active=lambda _owner: None)
 
-        complex_, reasons = assess("دیسکورد رو باز کن و بعد کروم رو باز کن", {"apps"})
-        self.assertTrue(complex_)
-        self.assertTrue(reasons)
+            def planning_enabled(self):
+                return True
 
-    def test_wallpaper_style_persian_task_enters_planner(self):
-        from kira.tools.planner import assess
+            def _remember_task_preference(self, _text):
+                return None
 
-        complex_, reasons = assess(
-            "والپیپر انجین رو باز کن و دنبال والپیپر ماشین های پورش بگرد و یه والپیپر پورش بزار",
-            {"apps"},
-        )
-        self.assertTrue(complex_)
-        self.assertGreaterEqual(len(reasons), 1)
+        return Probe()
 
-    def test_two_actions_joined_without_then_enter_planner(self):
-        from kira.tools.planner import assess
+    def test_legacy_task_schema_gets_goal_based_review_criteria(self):
+        from kira.tools.tasks import TaskPlan
 
-        complex_, _ = assess("open Discord and open Chrome", {"apps"})
-        self.assertTrue(complex_)
+        legacy = TaskPlan.from_dict({
+            "id": "legacy",
+            "goal": "open Wallpaper Engine and apply the selected wallpaper",
+            "steps": [{"id": 1, "title": "Open app", "tool": "open_app", "status": "done"}],
+        })
+        self.assertEqual(legacy.success_criteria, [legacy.goal])
+        self.assertEqual(legacy.steps[0].postcondition, legacy.goal)
 
-    def test_single_action_stays_simple(self):
-        from kira.tools.planner import assess
+    def test_one_tool_request_still_uses_model_to_define_its_goal(self):
+        from kira.tools.agent import ToolPlan
 
-        for text in ("کروم رو باز کن", "برنامه رو باز کن", "open Discord", "مشخصات سیستم رو بررسی کن"):
-            with self.subTest(text=text):
-                complex_, reasons = assess(text, {"apps", "system"})
-                self.assertFalse(complex_, reasons)
+        probe = self._autonomy_probe()
+        plan = probe.decide("از بین برنامه‌های نصب‌شده نسخه‌ی Discord را پیدا کن", ToolPlan({"apps"}))
+        self.assertTrue(plan.complex)
+        self.assertIn("Planner", " ".join(plan.reasons))
 
-    def test_no_tool_category_does_not_force_task_planning(self):
-        from kira.tools.planner import assess
+    def test_natural_task_is_routed_to_model_without_verb_matching(self):
+        from kira.tools.agent import ToolPlan
 
-        complex_, reasons = assess(
-            "والپیپر انجین رو باز کن و دنبال والپیپر بگرد و یکی بزار",
-            set(),
-        )
-        self.assertFalse(complex_, reasons)
+        probe = self._autonomy_probe()
+        base = ToolPlan({"apps"})
+        plan = probe.decide("والپیپر انجین رو باز کن، یک طرح مناسب پورشه پیدا کن و اعمالش کن", base)
+        self.assertTrue(plan.complex)
+        self.assertIn("Planner", " ".join(plan.reasons))
 
-    def test_three_distinct_actions_are_detected_without_sequence_word(self):
-        from kira.tools.planner import assess
+    def test_explicit_external_tool_intent_is_not_silently_filtered_from_catalog(self):
+        from kira.tools.agent import ToolAgent, ToolPlan
 
-        complex_, _ = assess("فایل رو پیدا کن، بررسی کن و خلاصه کن", {"files"})
-        self.assertTrue(complex_)
+        class Registry:
+            web_context = None
+            def catalog(self, categories):
+                return ",".join(sorted(categories))
+        agent = ToolAgent.__new__(ToolAgent)
+        agent.registry = Registry()
+        agent._competitive_safe_mode = False
+        agent._memo_block = lambda: ""
+        plan = ToolPlan({"apps", "mcp", "agents"}, complex=True)
+        block = agent.tools_block(plan)
+        self.assertIn("mcp", block)
+        self.assertIn("agents", block)
+
+    def test_exact_fast_command_keeps_deterministic_fast_path(self):
+        from kira.tools.agent import ToolPlan
+
+        probe = self._autonomy_probe()
+        base = ToolPlan({"apps"})
+        plan = probe.decide("کروم رو باز کن", base)
+        self.assertFalse(plan.complex)
+
+    def test_no_detected_tool_intent_is_not_forced_into_task_planner(self):
+        probe = self._autonomy_probe()
+        self.assertIsNone(probe.decide("سلام، حالت چطوره؟", None))
 
 
-    def test_english_create_and_move_is_detected(self):
-        from kira.tools.planner import assess
+class SemanticResultReviewTests(unittest.TestCase):
+    def _step(self, data="پنجره فعال: Wallpaper Engine", sid=1):
+        from kira.tools.tasks import Step, REVIEW
+        step = Step(sid, "رسیدن به وضعیت درخواستی", "window_active", status=REVIEW)
+        step.data = data
+        return step
 
-        complex_, _ = assess("create a folder and move the files", {"files"})
-        self.assertTrue(complex_)
+    def test_review_requires_exact_evidence_for_satisfied_verdict(self):
+        from kira.tools.planner import parse_review
 
-    def test_explanatory_word_mention_is_not_a_task(self):
-        from kira.tools.planner import assess
+        raw = ('<kira_review>{"reviews":[{"step":1,"verdict":"satisfied",'
+               '"reason":"پنجره‌ی موردنظر فعال است","evidence":"پنجره فعال: Wallpaper Engine"}]}</kira_review>')
+        parsed = parse_review(raw, [self._step()])
+        self.assertEqual(parsed[0]["verdict"], "satisfied")
 
-        for text in ("لطفاً معنی کلمه browse رو بگو", "what does the word delete mean?"):
-            with self.subTest(text=text):
-                complex_, reasons = assess(text, {"apps", "files"})
-                self.assertFalse(complex_, reasons)
+    def test_review_rejects_hallucinated_evidence(self):
+        from kira.tools.planner import parse_review
 
-    def test_question_about_planning_is_not_an_explicit_plan_request(self):
-        from kira.tools.planner import assess
+        raw = ('<kira_review>{"reviews":[{"step":1,"verdict":"satisfied",'
+               '"reason":"انجام شد","evidence":"Wallpaper Engine is fully configured"}]}</kira_review>')
+        with self.assertRaises(ValueError):
+            parse_review(raw, [self._step()])
 
-        complex_, reasons = assess("برنامه‌ریزی یعنی چه؟", {"apps"})
-        self.assertFalse(complex_, reasons)
+    def test_review_requires_every_pending_step_exactly_once(self):
+        from kira.tools.planner import parse_review
+
+        raw = ('<kira_review>{"reviews":[{"step":1,"verdict":"uncertain",'
+               '"reason":"خروجی فقط ارسال کلیک را تأیید می‌کند"}]}</kira_review>')
+        with self.assertRaises(ValueError):
+            parse_review(raw, [self._step(), self._step("نتیجه دوم", sid=2)])
+
+    def test_read_only_result_can_be_observed_again(self):
+        from kira.tools.autonomy import AutonomyMixin
+        from kira.tools.registry import ToolResult, OK
+        from kira.tools.tasks import Step, TaskPlan, REVIEW
+
+        plan = TaskPlan("t-read", "مشاهده وضعیت پنجره")
+        step = Step(1, "خواندن وضعیت", "window_active")
+        plan.steps.append(step)
+        result = ToolResult("window_active", OK, "پنجره فعال: Wallpaper Engine", {}, 1)
+
+        class Probe(AutonomyMixin):
+            pass
+
+        Probe()._settle_step(plan, step, result, "read-signature", object)
+        self.assertEqual(step.status, REVIEW)
+        self.assertNotIn("read-signature", plan.done_sigs)
+
+    def test_single_tool_plan_uses_goal_as_legacy_success_criterion(self):
+        from kira.tools.planner import parse_plan
+
+        class Registry:
+            def get(self, name):
+                return SimpleNamespace(level=1) if name == "get_system_info" else None
+
+        raw = ('<kira_plan>{"goal":"read the current system information",'
+               '"steps":[{"id":1,"title":"Read system information","tool":"get_system_info",'
+               '"depends_on":[],"confirm":false}]}'
+               '</kira_plan>')
+        draft = parse_plan(raw, Registry(), 8)
+        self.assertEqual(draft["success_criteria"], ["read the current system information"])
+        self.assertEqual(draft["steps"][0]["postcondition"], "read the current system information")
+
+    def test_plan_parser_preserves_goal_and_step_success_conditions(self):
+        from kira.tools.planner import parse_plan
+        from kira.tools.tasks import TaskPlan
+
+        class Registry:
+            def get(self, name):
+                return SimpleNamespace(level=1) if name == "window_active" else None
+
+        raw = ('<kira_plan>{"goal":"activate Wallpaper Engine",'
+               '"success_criteria":["Wallpaper Engine is the active window"],'
+               '"steps":[{"id":1,"title":"Read active window","postcondition":"Wallpaper Engine is active",'
+               '"tool":"window_active","depends_on":[],"confirm":false}]}'
+               '</kira_plan>')
+        draft = parse_plan(raw, Registry(), 8)
+        plan = TaskPlan("t-criteria", draft["goal"])
+        plan.apply_draft(draft)
+        self.assertEqual(plan.success_criteria, ["Wallpaper Engine is the active window"])
+        self.assertEqual(plan.steps[0].postcondition, "Wallpaper Engine is active")
+        self.assertIn("FINAL SUCCESS CRITERIA", plan.render_state())
+        self.assertIn("postcondition: Wallpaper Engine is active", plan.render_state())
+
+    def test_goal_review_requires_exact_evidence_for_every_criterion(self):
+        from kira.tools.planner import parse_review
+        from kira.tools.tasks import Step
+
+        goal = Step(0, "final goal review", postcondition="app is active\nwallpaper is applied")
+        goal.data = "Active window: Wallpaper Engine\nApplied wallpaper: Porsche 911"
+        one_quote = ('<kira_review>{"reviews":[{"step":0,"verdict":"satisfied",'
+                     '"reason":"both are done","evidence":[{"criterion":1,"quote":"Active window: Wallpaper Engine"}]}]}'
+                     '</kira_review>')
+        with self.assertRaises(ValueError):
+            parse_review(one_quote, [goal])
+        two_quotes = ('<kira_review>{"reviews":[{"step":0,"verdict":"satisfied",'
+                      '"reason":"both criteria are proven","evidence":[{"criterion":1,"quote":"Active window: Wallpaper Engine"},'
+                      '{"criterion":2,"quote":"Applied wallpaper: Porsche 911"}]}]}'
+                      '</kira_review>')
+        result = parse_review(two_quotes, [goal])
+        self.assertEqual(result[0]["verdict"], "satisfied")
+        self.assertEqual(len(result[0]["evidence"]), 2)
+
+    def test_report_only_task_does_not_wait_for_tool_evidence(self):
+        from kira.tools.autonomy import AutonomyMixin
+        from kira.tools.tasks import TaskPlan, Step, P_DONE
+
+        class Probe(AutonomyMixin):
+            def __init__(self):
+                self._pending_by_session = {}
+
+        plan = TaskPlan("t-report", "explain the result")
+        plan.success_criteria = ["a clear explanation is provided"]
+        plan.steps.append(Step(1, "Write the explanation"))
+        Probe()._settle_plan(plan)
+        self.assertEqual(plan.status, P_DONE)
+
+    def test_task_cannot_be_marked_done_without_final_goal_review(self):
+        from kira.tools.autonomy import AutonomyMixin
+        from kira.tools.tasks import TaskPlan, Step, DONE, P_PAUSED
+
+        class Probe(AutonomyMixin):
+            def __init__(self):
+                self._pending_by_session = {}
+
+        plan = TaskPlan("t-final", "complete the requested UI task")
+        plan.success_criteria = ["the requested wallpaper is applied"]
+        plan.steps.append(Step(1, "apply wallpaper", "ui_click", status=DONE))
+        Probe()._settle_plan(plan)
+        self.assertEqual(plan.status, P_PAUSED)
+        self.assertFalse(plan.goal_verified)
+
+    def test_agent_gate_hides_review_blocks(self):
+        from kira.tools.planner import AgentGate
+
+        shown = []
+        gate = AgentGate(shown.append)
+        gate.feed('<kira_review>{"reviews":[]}</kira_review>')
+        gate.finish()
+        self.assertTrue(gate.is_review)
+        self.assertEqual(shown, [])
+
+    def test_action_result_is_locked_against_blind_repetition_until_review(self):
+        from kira.tools.autonomy import AutonomyMixin
+        from kira.tools.registry import ToolResult, OK
+        from kira.tools.tasks import Step, TaskPlan, REVIEW
+
+        plan = TaskPlan("t-test", "هدف کاربر")
+        step = Step(1, "فعال‌کردن پنجره", "window_focus", postcondition="پنجره Wallpaper Engine فعال باشد")
+        plan.steps.append(step)
+        result = ToolResult("window_focus", OK, "پنجره موردنظر فعال شد", {}, 2)
+
+        class Probe(AutonomyMixin):
+            pass
+
+        note = Probe()._settle_step(plan, step, result, "call-signature", object)
+        self.assertEqual(step.status, REVIEW)
+        self.assertIn("NOT established", note)
+        self.assertIn("call-signature", plan.done_sigs)
+        self.assertIn("ارزیابی تحقق هدف", plan.done_sigs["call-signature"])
+        self.assertEqual(step.postcondition, "پنجره Wallpaper Engine فعال باشد")
 
 if __name__ == "__main__":
     unittest.main()

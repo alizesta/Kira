@@ -5,7 +5,7 @@ Everything here is plain, deterministic code (no model call, no Provider knowled
 * ``TaskPlan`` / ``Step``   the internal plan of one multi-step request: goal, steps, status of every step, results, errors.
 * ``TaskStore``             saves the plan to ``kira_tasks.json`` so an unfinished task survives closing the program. Only short,
                             redacted summaries are written: never file contents, never keys, never the full results of tools.
-* ``verify``                does a tool result really satisfy the step, or did the tool only "succeed"?
+* ``verify``                conservative status/empty-output checks only; semantic postconditions are judged by the model.
 * ``classify_error``        transient (retry once, read-only tools only) vs permanent vs needs-confirmation.
 * ``parse_control``         the user's own commands during a task (status / pause / cancel / resume / add a step / change the goal).
 
@@ -36,14 +36,14 @@ STEP_MAX_ATTEMPTS = 2                  # one call may be tried this many times (
 FAIL_SIG_MAX = 2                       # the same failing call (same tool + arguments) is never executed a third time
 
 # step status
-PENDING, RUNNING, DONE, FAILED, UNMET, SKIPPED, AWAITING = "pending", "running", "done", "failed", "unmet", "skipped", "awaiting_confirm"
+PENDING, RUNNING, REVIEW, DONE, FAILED, UNMET, SKIPPED, AWAITING = "pending", "running", "review", "done", "failed", "unmet", "skipped", "awaiting_confirm"
 # plan status
 P_PLANNING, P_RUNNING, P_WAIT_USER, P_WAIT_CONFIRM, P_PAUSED, P_DONE, P_FAILED, P_CANCELLED, P_SUPERSEDED = (
     "planning", "running", "waiting_user", "waiting_confirm", "paused", "done", "failed", "cancelled", "superseded")
 ACTIVE = (P_PLANNING, P_RUNNING, P_WAIT_USER, P_WAIT_CONFIRM, P_PAUSED)
 FINISHED = (P_DONE, P_FAILED, P_CANCELLED, P_SUPERSEDED)
 
-_MARK = {PENDING: "⚪", RUNNING: "⏳", DONE: "✅", FAILED: "❌", UNMET: "⚠️", SKIPPED: "➖", AWAITING: "⏸"}
+_MARK = {PENDING: "⚪", RUNNING: "⏳", REVIEW: "🔎", DONE: "✅", FAILED: "❌", UNMET: "⚠️", SKIPPED: "➖", AWAITING: "⏸"}
 _STATUS_FA = {P_PLANNING: "در حال برنامه‌ریزی", P_RUNNING: "در حال اجرا", P_WAIT_USER: "منتظر جواب تو", P_WAIT_CONFIRM: "منتظر تأیید تو",
               P_PAUSED: "متوقف‌شده", P_DONE: "تمام‌شده", P_FAILED: "ناقص / ناموفق", P_CANCELLED: "لغوشده", P_SUPERSEDED: "جایگزین‌شده با درخواست جدید"}
 _SECONDS = {"search_files": 8, "read_file": 3, "get_resource_usage": 3, "get_network_info": 4, "open_app": 12}
@@ -81,20 +81,22 @@ class Step:
     attempts: int = 0
     result: str = ""                     # one-line summary of the REAL result (persisted)
     error: str = ""
-    verified: str = ""                   # "" | "ok" | "unverified"
+    verified: str = ""                   # "" | "ok" | "model" | "unverified" | "uncertain"
     adhoc: bool = False                  # created by the executor because the model called a tool that no step covered
     declined: bool = False               # the user answered "cancel" to the confirmation of this step: it is never re-asked on resume
     data: str = field(default="", repr=False, compare=False)       # real result text, IN MEMORY ONLY (never persisted)
+    postcondition: str = ""                                         # observable condition that proves this individual step reached its goal
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "title": _safe(self.title, 140), "tool": self.tool, "depends_on": list(self.depends_on), "confirm": self.confirm,
+        return {"id": self.id, "title": _safe(self.title, 140), "postcondition": _safe(self.postcondition, 240), "tool": self.tool, "depends_on": list(self.depends_on), "confirm": self.confirm,
                 "status": self.status, "attempts": self.attempts, "result": _nopath(self.result, 220), "error": _nopath(self.error, 220), "verified": self.verified, "adhoc": self.adhoc, "declined": self.declined}
 
     @classmethod
     def from_dict(cls, d: dict) -> "Step":
         return cls(int(d.get("id", 0)), str(d.get("title", ""))[:140], str(d.get("tool", "")), [int(x) for x in d.get("depends_on", []) if str(x).lstrip("-").isdigit()],
                    bool(d.get("confirm")), str(d.get("status", PENDING)), {}, int(d.get("attempts", 0)),
-                   str(d.get("result", "")), str(d.get("error", "")), str(d.get("verified", "")), bool(d.get("adhoc")), bool(d.get("declined")))
+                   str(d.get("result", "")), str(d.get("error", "")), str(d.get("verified", "")), bool(d.get("adhoc")), bool(d.get("declined")),
+                   postcondition=str(d.get("postcondition", ""))[:240])
 
 
 @dataclass
@@ -117,6 +119,10 @@ class TaskPlan:
     done_sigs: dict = field(default_factory=dict)        # signature -> summary of a call that already SUCCEEDED (never executed again)
     fail_sigs: dict = field(default_factory=dict)        # signature -> how many times it failed
     session_id: str = ""                                  # owner character session; old records default to the legacy session
+    success_criteria: list = field(default_factory=list)   # observable end-state conditions for the whole task
+    goal_reviewed: bool = False                             # whether the current plan version received its final evidence review
+    goal_verified: bool = False                             # true only when every final success criterion has evidence
+    goal_review_reason: str = ""                            # why final criteria were not proven
 
     # ---------------------------------------------------------------- steps
     def step(self, sid) -> Step | None:
@@ -146,6 +152,9 @@ class TaskPlan:
     def tool_steps(self) -> list:
         return [s for s in self.steps if s.tool]
 
+    def review_steps(self) -> list:
+        return [s for s in self.steps if s.tool and s.status == REVIEW]
+
     def counts(self) -> tuple:
         total = len(self.steps)
         done = sum(1 for s in self.steps if s.status in (DONE, SKIPPED))
@@ -159,7 +168,7 @@ class TaskPlan:
         if st is None:
             st = next((s for s in self.steps if s.tool == tool and s.status in (PENDING, UNMET, FAILED, AWAITING) and s.attempts < STEP_MAX_ATTEMPTS), None)
         if st is None:
-            st = Step(self.next_id(), label, tool, adhoc=True)
+            st = Step(self.next_id(), label, tool, adhoc=True, postcondition=self.goal)
             self.steps.append(st)
         if st.tool != tool:
             st.tool = tool                                   # the model chose another tool for this step; the registry still decides what it may do
@@ -183,10 +192,17 @@ class TaskPlan:
             nid = base + len(new) + 1
             remap[raw["id"]] = nid
             deps = [remap[d] for d in raw["depends_on"] if d in remap]
-            new.append(Step(nid, raw["title"], raw["tool"], sorted(set(deps)), raw["confirm"]))
+            new.append(Step(nid, raw["title"], raw["tool"], sorted(set(deps)), raw["confirm"],
+                             postcondition=str(raw.get("postcondition") or "")[:240]))
         self.steps = keep + new
         if draft.get("goal") and not revise:
             self.goal = _safe(draft["goal"], 240)
+        if draft.get("success_criteria"):
+            self.success_criteria = [" ".join(str(x).split())[:240] for x in draft["success_criteria"]][:6]
+        if revise:
+            self.goal_reviewed = False
+            self.goal_verified = False
+            self.goal_review_reason = ""
         if draft.get("assumptions"):
             self.assumptions = [_safe(a, 160) for a in draft["assumptions"]][:6]
         self.missing = [_safe(m, 160) for m in draft.get("missing", [])][:5]
@@ -210,19 +226,34 @@ class TaskPlan:
     # ---------------------------------------------------------------- prompt state (re-sent every round: survives a Route change)
     def render_state(self, limit: int = 2600) -> str:
         done, total = self.counts()
-        lines = ["TASK STATE (kept by the system, not by you: it stays correct even if the model or provider changes in the middle of the task):",
-                 f"Goal: {self.goal}", f"Status: {self.status}; {done}/{total} steps finished." + (f" {self.estimate_text()}." if self.estimate_text() else "")]
+        status_line = f"Status: {self.status}; {done}/{total} steps finished."
+        if self.estimate_text():
+            status_line += f" {self.estimate_text()}."
+        lines = [
+            "TASK STATE (kept by the system, not by you: it stays correct even if the model or provider changes in the middle of the task):",
+            f"Goal: {self.goal}",
+            status_line,
+        ]
+        if self.success_criteria:
+            lines.append("FINAL SUCCESS CRITERIA (all must hold before the task is complete):")
+            lines.extend(f"- {item}" for item in self.success_criteria)
+            if self.goal_reviewed:
+                state = "SATISFIED" if self.goal_verified else "NOT PROVEN"
+                lines.append(f"FINAL GOAL REVIEW: {state}. {self.goal_review_reason}")
+            else:
+                lines.append("FINAL GOAL REVIEW: pending.")
         nxt = self.next_step()
         for s in self.steps:
             tag = "next" if s is nxt else s.status
             tool = f" ({s.tool}{', needs user confirmation' if s.confirm else ''})" if s.tool else " (thinking/report step, no tool)"
+            expected = f" | postcondition: {s.postcondition}" if s.postcondition else ""
             dep = f" after {','.join(map(str, s.depends_on))}" if s.depends_on else ""
             res = f" -> {s.result}" if s.result else (f" -> ERROR: {s.error}" if s.error else "")
-            lines.append(f"[{tag}] {s.id}. {s.title}{tool}{dep}{res}"[:330])
+            lines.append(f"[{tag}] {s.id}. {s.title}{tool}{expected}{dep}{res}"[:500])
         facts = [f"{s.id}: {s.result}" + (" (completion NOT verified)" if s.verified == "unverified" else "") for s in self.steps if s.status == DONE and s.result][:8]
         lines.append("VERIFIED FACTS (summaries of real tool results; nothing else in this task is a verified fact):")
         lines += [f"- {f}" for f in facts] or ["- (none yet)"]
-        temp = [f"step {s.id}: {clip(s.data, 700)}" for s in self.steps if s.status == DONE and s.data][-2:]
+        temp = [f"step {s.id}: {clip(s.data, 700)}" for s in self.steps if s.status in (REVIEW, DONE) and s.data][-4:]
         if temp:
             lines.append("TEMPORARY DATA (real output of the latest steps, this session only, may be outdated):")
             lines += [f"- {t}" for t in temp]
@@ -261,18 +292,32 @@ class TaskPlan:
     def footer(self) -> str:
         """Honest one-block summary appended to the final answer when the task is NOT fully and cleanly finished (never claims success)."""
         bad = [s for s in self.steps if s.status in (FAILED, UNMET)]
-        open_ = [s for s in self.steps if s.tool and s.status in (PENDING, RUNNING, AWAITING)]
+        open_ = [s for s in self.steps if s.tool and s.status in (PENDING, RUNNING, REVIEW, AWAITING)]
         unver = [s for s in self.steps if s.status == DONE and s.verified == "unverified"]
-        if not (bad or open_ or unver):
+        tool_steps = self.tool_steps()
+        goal_pending = bool(self.success_criteria and tool_steps and not self.goal_reviewed
+                            and all(s.status in (DONE, SKIPPED) for s in tool_steps))
+        goal_unproven = bool(self.success_criteria and self.goal_reviewed and not self.goal_verified)
+        if not (bad or open_ or unver or goal_unproven or goal_pending):
             return ""
         done, total = self.counts()
         out = [f"\n\n📋 وضعیت وظیفه: {done} از {total} مرحله انجام شد."]
         for s in bad:
             out.append(f"❌ مرحله‌ی {s.id} «{s.title}» به نتیجه نرسید" + (f": {clip(s.error or s.result, 140)}" if (s.error or s.result) else "."))
         for s in open_:
-            out.append(f"⏸ مرحله‌ی {s.id} «{s.title}» انجام نشد" + (" (منتظر تأیید تو)." if s.status == AWAITING else "."))
+            if s.status == REVIEW:
+                out.append(f"🔎 مرحله‌ی {s.id} «{s.title}» اجرا شد اما نتیجه هنوز از نظر تحقق هدف ارزیابی نشده است.")
+            else:
+                out.append(f"⏸ مرحله‌ی {s.id} «{s.title}» انجام نشد" + (" (منتظر تأیید تو)." if s.status == AWAITING else "."))
         for s in unver:
             out.append(f"⚠️ مرحله‌ی {s.id} «{s.title}»: اجرا شد ولی نتیجه‌اش تأیید نشد.")
+        if goal_pending:
+            out.append("⏸ معیارهای نهایی هنوز با شواهد بررسی نشده‌اند؛ برای بررسی و ادامه «ادامه بده» بنویس.")
+        if goal_unproven:
+            out.append("❌ معیارهای نهایی کار با شواهد موجود تأیید نشدند؛ وظیفه کامل اعلام نمی‌شود.")
+            if self.goal_review_reason:
+                out.append("علت: " + clip(self.goal_review_reason, 220))
+            out.append("برای بررسی دوباره یا افزودن مراحل، «ادامه بده» بنویس.")
         if any(s.status == AWAITING for s in open_):
             out.append("برای انجام مرحله‌ی در انتظار «تأیید» و برای انصراف «لغو» بنویس.")
         elif bad or open_:
@@ -281,7 +326,9 @@ class TaskPlan:
 
     # ---------------------------------------------------------------- persistence
     def to_dict(self) -> dict:
-        return {"id": self.id, "goal": _safe(self.goal, 240), "session_id": self.session_id, "status": self.status, "created": self.created, "updated": self.updated,
+        return {"id": self.id, "goal": _safe(self.goal, 240), "success_criteria": [_safe(x, 240) for x in self.success_criteria][:6],
+                "goal_reviewed": self.goal_reviewed, "goal_verified": self.goal_verified, "goal_review_reason": _safe(self.goal_review_reason, 220),
+                "session_id": self.session_id, "status": self.status, "created": self.created, "updated": self.updated,
                 "steps": [s.to_dict() for s in self.steps], "assumptions": [_safe(a, 160) for a in self.assumptions][:6],
                 "missing": [_safe(m, 160) for m in self.missing][:5], "question": _safe(self.question, 300),
                 "answers": [_safe(a, 160) for a in self.answers][-4:], "user_updates": [_safe(a, 160) for a in self.user_updates][-4:],
@@ -291,8 +338,16 @@ class TaskPlan:
     @classmethod
     def from_dict(cls, d: dict) -> "TaskPlan":
         p = cls(str(d.get("id", "")), str(d.get("goal", ""))[:240])
+        p.success_criteria = [" ".join(str(x).split())[:240] for x in d.get("success_criteria", []) if str(x).strip()][:6]
+        p.goal_reviewed, p.goal_verified = bool(d.get("goal_reviewed")), bool(d.get("goal_verified"))
+        p.goal_review_reason = _safe(d.get("goal_review_reason", ""), 220)
         p.session_id = str(d.get("session_id") or "kira")
         p.steps = [Step.from_dict(x) for x in d.get("steps", []) if isinstance(x, dict)]
+        if p.steps and not p.success_criteria and p.goal:
+            p.success_criteria = [p.goal]
+        for step in p.steps:
+            if not step.postcondition:
+                step.postcondition = p.goal
         p.status = str(d.get("status", P_PAUSED))
         p.created, p.updated = float(d.get("created", time.time())), float(d.get("updated", time.time()))
         p.assumptions, p.missing = list(d.get("assumptions", [])), list(d.get("missing", []))
@@ -350,6 +405,17 @@ class TaskStore:
                 for s in p.steps:
                     if s.status == AWAITING:
                         s.status = PENDING
+            for s in p.steps:
+                if s.status == REVIEW:
+                    # Full tool output is intentionally memory-only. Re-observe after restart;
+                    # never blindly repeat an action whose result has not been reviewed.
+                    s.status = UNMET
+                    s.verified = "uncertain"
+                    s.error = "نتیجه‌ی کامل ابزار پس از راه‌اندازی در دسترس نیست؛ پیش از تکرار عملیات، وضعیت فعلی را دوباره مشاهده کن."
+            if p.status in ACTIVE and p.goal_verified:
+                # Goal evidence is memory-only. A persisted boolean is not proof after restart.
+                p.goal_reviewed, p.goal_verified = False, False
+                p.goal_review_reason = "شواهد نهایی پس از راه‌اندازی در حافظه باقی نمانده‌اند؛ وضعیت فعلی باید دوباره مشاهده شود."
         self.plans = self._trim_history(plans)
 
     @staticmethod
@@ -473,31 +539,18 @@ class TaskStore:
                         pass
 
 
-# ---------------------------------------------------------------------------------------------------- verification of results
-_NOT_FOUND_RX = re.compile(r"فایلی با این مشخصات پیدا نشد|برنامه‌ای با این نام .* پیدا نشد|پیدا نشد")
-_NOT_SEEN_RX = re.compile(r"پنجره‌ی جدیدی دیده نشد")
-
-
+# ---------------------------------------------------------------------------------------------------- generic result status checks
 def verify(tool: str, args: dict, status: str, text: str) -> tuple:
-    """Did the REAL result satisfy the step?  -> (verdict, note) with verdict 'ok' | 'unmet' | 'unverified'.
-    A tool that returned status ok can still have achieved nothing (0 files found, window never appeared)."""
+    """Return only facts code can establish without understanding the user's goal.
+
+    Semantic postcondition review belongs to the model and is evidence-checked by
+    planner.parse_review(). Tool-specific success heuristics do not live here.
+    """
     if status != OK:
         return "unmet", f"the tool returned {status}"
-    body = str(text or "").strip()
-    if not body:
+    if not str(text or "").strip():
         return "unmet", "the tool returned an empty result"
-    if tool == "search_files" and _NOT_FOUND_RX.search(body):
-        return "unmet", "the search found 0 files (the goal 'find files' is NOT met; widen the query, change folder/extension, or ask the user)"
-    if tool == "find_app" and _NOT_FOUND_RX.search(body):
-        return "unmet", "the app was not found"
-    if tool == "open_app" and _NOT_SEEN_RX.search(body):
-        return "unverified", "the launch command was sent but no new window was seen; do not claim the app is open"
-    if tool == "list_folder" and re.search(r" — 0 پوشه و 0 فایل", body):
-        return "ok", "the folder is empty (a valid result, but say so)"
-    if "ناقص ماند" in body:
-        return "ok", "the result is incomplete (search stopped early); say so in the report"
-    return "ok", ""
-
+    return "unverified", "execution returned successfully; goal completion still requires semantic evidence review"
 
 _TRANSIENT_RX = re.compile(r"winerror\s*(?:32|33|170|1117|1450|21)\b|timed?\s*out|timeout|temporar|busy|try again|مشغول|در حال استفاده|موقت|قطع شد|دوباره تلاش", re.I)
 _MISSING_RX = re.compile(r"پیدا نشد|وجود ندارد|یافت نشد|not found", re.I)
