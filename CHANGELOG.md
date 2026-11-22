@@ -1,7 +1,7 @@
 ## 2026-11-22 (200-case task-understanding benchmark)
 - Added `tests/test_task_understanding_benchmark.py`: 200 actionable prompts (20 each across time, system, apps, Bluetooth, audio, files, desktop, web, MCP and agents) plus 20 ordinary-chat controls. Each actionable prompt pins a required tool family; the chat controls must stay on the cheap `index_only` triage route with no category match.
 - The benchmark tests category recall and routing boundaries on the actual `protocol.detect_categories` and `ToolAgent.plan` implementations. It does not measure live LLM semantic decisions, plan quality, Windows execution, or end-to-end task success.
-- Dataset integrity check: 200/200 actionable prompts are unique; 20/20 chat controls are unique. Repository tests were not run in this environment; no GitHub Actions were triggered.
+- Dataset integrity check: 200/200 actionable prompts are unique; 20/20 chat controls are unique. A separate JavaScript regex harness reconstructed from the committed Python patterns found 200/200 required category matches and 0/20 chat false positives. It exposed and led to fixes for Persian local-time, paired-device/Pair, Persian menu-genitive, counted-source, and delegated-job wording. This harness is not the Python unittest suite; repository tests were not run. No GitHub Actions were triggered.
 
 # Changelog
 
