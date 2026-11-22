@@ -42,7 +42,7 @@ For current status and limitations, use the verification sections in the three c
 
 ## Synchronization — 2026-11-22
 
-Static source inventory was refreshed against new-main at e058021c97e5e90990ba129e2361f340706217a3. The repository tree contained 585 tracked files, including 270 Python modules under kira/, 64 UI Python modules, 25 application modules, 22 tool modules, 164 Python test files, 8 GitHub Actions workflows and 52 files under docs/.
+Static source inventory was refreshed against new-main at e058021c97e5e90990ba129e2361f340706217a3. The repository tree contained 583 tracked files, including 270 Python modules under kira/, 64 UI Python modules, 25 application modules, 22 tool modules, 164 Python test files, 8 GitHub Actions workflows and 51 files under docs/.
 
 Current voice routing is not local-only: Gemini Live is the default bidirectional voice mode; local mode/fallback uses Shenava ASR and Piper, with optional English-only KittenTTS. The local real-time Listener currently calls Shenava directly. See the synchronized voice guides and the audit note in docs/ARCHITECTURE_MASTER.md.
 
