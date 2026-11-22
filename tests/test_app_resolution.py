@@ -84,6 +84,16 @@ class AppCatalogPerformanceRegressionTests(unittest.TestCase):
         self.assertTrue(suggestions)
         deep_apps.assert_called_once_with()
 
+    def test_main_executable_folder_scan_is_cached(self):
+        appcatalog.drop_cache()
+        with patch.object(appcatalog, "_usable_dir", return_value=True), \
+             patch.object(appcatalog, "_find_main_exe_uncached", return_value=r"C:\Apps\Example\example.exe") as scan:
+            first = appcatalog.find_main_exe("Example", r"C:\Apps\Example")
+            second = appcatalog.find_main_exe("Example", r"C:\Apps\Example")
+        self.assertEqual(first, second)
+        scan.assert_called_once_with("Example", r"C:\Apps\Example")
+        appcatalog.drop_cache()
+
 
 class BrokenShortcutFallbackTests(unittest.TestCase):
     def test_missing_shortcut_target_does_not_block_install_folder_exe(self):

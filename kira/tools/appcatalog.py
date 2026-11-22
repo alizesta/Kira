@@ -350,6 +350,10 @@ _DEEP_LOCK = threading.RLock()
 _UWP_LOCK = threading.RLock()
 _WARMUP_LOCK = threading.Lock()
 _WARMUP_THREAD = None
+_MAIN_EXE_LOCK = threading.Lock()
+_MAIN_EXE_CACHE: dict[tuple[str, str], tuple[float, str]] = {}
+_MAIN_EXE_CACHE_TTL = 120.0
+_MAIN_EXE_CACHE_MAX = 256
 
 
 def _build(collectors) -> list[AppEntry]:
@@ -478,13 +482,32 @@ def drop_cache():
             _CACHE.update(time=0.0, menu=None, deep=None)
     with _UWP_LOCK:
         _UWP.update(time=0.0, items=None)
+    with _MAIN_EXE_LOCK:
+        _MAIN_EXE_CACHE.clear()
 
 
 # ------------------------------------------------------------------ finding the main program inside an install folder
 def find_main_exe(name: str, folder: str) -> str:
-    """The most likely main .exe of an app inside its install folder, or '' when it is not clear (then Kira does NOT guess)."""
+    """The most likely main .exe in an install folder; cache positive and negative scans briefly."""
     if not _usable_dir(folder):
         return ""
+    key = (norm(name), os.path.normcase(os.path.normpath(folder)))
+    now = time.monotonic()
+    with _MAIN_EXE_LOCK:
+        cached = _MAIN_EXE_CACHE.get(key)
+        if cached and now - cached[0] < _MAIN_EXE_CACHE_TTL:
+            return cached[1]
+    result = _find_main_exe_uncached(name, folder)
+    with _MAIN_EXE_LOCK:
+        _MAIN_EXE_CACHE[key] = (time.monotonic(), result)
+        if len(_MAIN_EXE_CACHE) > _MAIN_EXE_CACHE_MAX:
+            oldest = sorted(_MAIN_EXE_CACHE.items(), key=lambda item: item[1][0])
+            for old_key, _ in oldest[:len(_MAIN_EXE_CACHE) - _MAIN_EXE_CACHE_MAX]:
+                _MAIN_EXE_CACHE.pop(old_key, None)
+    return result
+
+
+def _find_main_exe_uncached(name: str, folder: str) -> str:
     want = norm(name)
     words = [w for w in re.findall(r"[a-z0-9]{3,}", name.lower())]
     cands = []
