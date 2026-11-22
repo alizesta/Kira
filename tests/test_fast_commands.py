@@ -753,3 +753,111 @@ class PlannerDependencyValidationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FastPathRoutingBoundaryTests(unittest.TestCase):
+    """Keep deterministic one-step commands out of semantic planning."""
+
+    @staticmethod
+    def _planner_probe():
+        from kira.tools.autonomy import AutonomyMixin
+
+        class Probe(AutonomyMixin):
+            def __init__(self):
+                self.settings = {"agent_planning": "auto"}
+                self._turn_session_id = "fast-boundary"
+                self._resume_sessions = set()
+                self.tasks = SimpleNamespace(active=lambda _owner: None)
+
+            def planning_enabled(self):
+                return True
+
+            def _remember_task_preference(self, _text):
+                return None
+
+        return Probe()
+
+    def test_twenty_simple_commands_remain_fast_and_non_complex(self):
+        from kira.tools.fast_commands import parse_fast_command
+
+        prompts = (
+            "ساعت چنده؟",
+            "تاریخ امروز چیه",
+            "what time is it",
+            "today's date",
+            "وضعیت بلوتوث چیه",
+            "بلوتوث رو روشن کن",
+            "turn bluetooth off",
+            "صدا رو روی ۵۰ درصد بذار",
+            "set volume to 35%",
+            "صدا رو زیاد کن",
+            "mute the speakers",
+            "unmute the speakers",
+            "مشخصات سیستم چیه",
+            "system specs",
+            "چقدر رم مصرف شده",
+            "RAM usage",
+            "فضای خالی درایوها چقدره",
+            "free disk space",
+            "وضعیت اینترنت چطوره",
+            "what apps are running",
+        )
+        planner = self._planner_probe()
+        self.assertEqual(len(prompts), 20)
+        for index, prompt in enumerate(prompts):
+            with self.subTest(index=index, prompt=prompt):
+                self.assertIsNotNone(parse_fast_command(prompt), prompt)
+                plan = planner.decide(prompt, SimpleNamespace(complex=False, index_only=False))
+                self.assertFalse(plan.complex, prompt)
+
+    def test_twenty_multistep_requests_never_enter_fast_path(self):
+        from kira.tools.fast_commands import parse_fast_command
+
+        prompts = (
+            "If drive C has less than 15 GB free, list the five largest files; do not delete or move anything.",
+            "Open Wallpaper Engine; if it is already running, bring its window forward instead of launching a second copy.",
+            "Find the latest official GPU driver and verify its version against a second source.",
+            "Back up Documents to drive D, then count copied files and report failures.",
+            "List paired Bluetooth devices; if my headset is disconnected, report it but do not connect it.",
+            "Check whether the microphone is muted; unmute only if needed, then report its final state.",
+            "Open Settings, navigate to Bluetooth, inspect paired devices, and change nothing.",
+            "Read the supplied article, verify its claims against official sources, and cite each finding.",
+            "Find duplicate photos, group exact matches, and show candidates without deleting anything.",
+            "If RAM or CPU exceeds 85 percent, identify the top process but do not terminate it.",
+            "If Chrome is closed, launch it; otherwise reuse its window and open the supplied URL.",
+            "Find the newest spreadsheet in Downloads and copy it to Documents without changing the original.",
+            "Inspect configured MCP tools but do not send credentials or personal data.",
+            "Delegate public-source research to an agent, return its job ID, and check status before reporting.",
+            "Compare three laptop prices across retailers and save sourced results to a spreadsheet.",
+            "Type the battery report in Notepad, read it back, and only then report completion.",
+            "If the keyboard is not paired, ask before pairing it.",
+            "Select the headset only if it is already connected; otherwise leave audio unchanged.",
+            "Check internet and disk space; if internet is down, report it without resetting the network.",
+            "Open Chrome, search for the official driver, download it, and verify the downloaded file.",
+        )
+        planner = self._planner_probe()
+        self.assertEqual(len(prompts), 20)
+        for index, prompt in enumerate(prompts):
+            with self.subTest(index=index, prompt=prompt):
+                self.assertIsNone(parse_fast_command(prompt), prompt)
+                plan = planner.decide(prompt, SimpleNamespace(complex=False, index_only=False))
+                self.assertTrue(plan.complex, prompt)
+
+    def test_fast_path_parser_does_not_claim_chat_or_ambiguous_requests(self):
+        from kira.tools.fast_commands import parse_fast_command
+
+        prompts = (
+            "سلام، امروز حالت چطوره؟",
+            "به نظرت چه فیلمی ببینم؟",
+            "Explain how source code is compiled.",
+            "این کار رو برام انجام بده",
+            "سیستم رو بررسی کن",
+            "فایل گزارش رو باز کن",
+            "open https://example.com",
+            "open the report.pdf",
+            "open Discord and search the web",
+            "volume to 250 percent",
+        )
+        for prompt in prompts:
+            with self.subTest(prompt=prompt):
+                self.assertIsNone(parse_fast_command(prompt), prompt)
