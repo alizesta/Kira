@@ -97,6 +97,8 @@ class DetectionTests(unittest.TestCase):
             R(200, {"models": [
                 {"name": "models/gemini-2.5-pro", "displayName": "Gemini 2.5 Pro",
                  "supportedGenerationMethods": ["generateContent"], "inputTokenLimit": 2000},
+                {"name": "models/gemini-4-hydrogen", "displayName": "Gemini 4 Hydrogen",
+                 "supportedGenerationMethods": ["generateContent"], "inputTokenLimit": 1048576},
             ]}),
         ]
         calls = []
@@ -106,7 +108,12 @@ class DetectionTests(unittest.TestCase):
         with mock.patch.object(discovery.requests, "get", side_effect=get):
             det = am.detect(GOOGLE_KEY)
         self.assertEqual((det.state, det.service), ("ok", "google"))
-        self.assertEqual([m["id"] for m in det.models], ["gemini-2.5-flash", "gemini-2.5-pro"])
+        self.assertEqual(
+            [m["id"] for m in det.models],
+            ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-4-hydrogen"],
+        )
+        hydrogen = next(m for m in det.models if m["id"] == "gemini-4-hydrogen")
+        self.assertTrue(hydrogen["free"])
         self.assertEqual(calls[1][2]["pageToken"], "next-page")
         self.assertEqual(calls[0][1]["x-goog-api-key"], GOOGLE_KEY)
         self.assertNotIn(GOOGLE_KEY, calls[0][0])

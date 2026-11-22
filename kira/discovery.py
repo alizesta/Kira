@@ -122,10 +122,16 @@ _GEMINI_NOT_CHAT = ("embedding", "imagen", "veo", "tts", "image", "live", "aqa",
 
 
 def _gemini_free(mid):
-    """Google's API does not publish pricing per model. Heuristic: Flash / Flash-Lite are the free-tier families;
-    Pro / Ultra and other premium lines are paid. Real access is only known when the model is used."""
-    low = mid.lower()
-    if any(x in low for x in ("pro", "ultra", "argon", "deep-research")):
+    """Free-tier classification for known Gemini model families.
+
+    Google explicitly lists Gemini 4 Hydrogen as available on the Free tier;
+    Flash / Flash-Lite remain free-tier families. Unknown models stay unknown
+    rather than being optimistically mislabeled as free.
+    """
+    low = str(mid or "").strip().lower()
+    if low == "gemini-4-hydrogen":
+        return True
+    if any(x in low for x in ("pro", "ultra", "argon", "carbon", "neon", "deep-research")):
         return False
     return True if "flash" in low else None
 
