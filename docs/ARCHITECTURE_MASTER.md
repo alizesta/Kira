@@ -1,11 +1,11 @@
 # KIRA ARCHITECTURE MASTER ROADMAP
 
-**Snapshot date:** 2026-11-19  
+**Snapshot date:** 2026-11-22  
 **Repository:** `alizesta/Kira`  
 **Base branch:** `new-main`  
-**Source baseline SHA:** `0a84bbdc3d47afb1728ff314a056b49e6e56848b`  
-**Evidence:** TASK 015 historical static audit; merged TASK 013+014 integration PR #48; TASK 017–020 source work and handoff; current `new-main` source at the baseline SHA; and merged PR #98 (merge commit `0a84bbdc3d47afb1728ff314a056b49e6e56848b`) correcting stale Chat event test contracts and CI path filters.  
-**Verification boundary:** Source and documentation were statically inspected. PR #98 merged the stale Chat event test-path/assertion fixes and added the test file to the lifecycle workflow path filter. Its GitHub Actions jobs still completed without an assigned runner (`runner_id=0`, `steps=[]`) and logs were unavailable (`BlobNotFound`). No Python test, import, compile or desktop runtime pass is claimed from those jobs.
+**Source baseline SHA:** `e058021c97e5e90990ba129e2361f340706217a3`  
+**Evidence:** TASK 015 historical static audit; merged Chat/application architecture work; source inspection of new-main at the baseline SHA; repository tree inventory and the 2026-11-22 documentation synchronization. Historical PR/task evidence remains historical and is not treated as runtime verification.  
+**Verification boundary:** Source and documentation were statically inspected. The repository's latest previously observed GitHub Actions runs were failures whose job logs were not retrievable; this does not establish a code failure or a quota failure. No Python test, import, compile or Windows desktop/audio runtime pass is claimed by this documentation synchronization.
 
 > This is the canonical detailed architecture reference, linked from the root `ARCHITECTURE.md` index. It distinguishes the repository state observed at this snapshot from the desired migration direction. A planned boundary is not evidence that the boundary is already implemented.
 
@@ -209,3 +209,32 @@ The implementation and verification evidence is summarized in [ARCHITECTURE_IMPL
 - [Chat Search & Retrieval](CHAT_SEARCH_RETRIEVAL.md)
 - [Chat Transfer](CHAT_TRANSFER.md)
 - [Chat Events](CHAT_EVENTS.md)
+
+
+## 12. Source synchronization — 2026-11-22
+
+**Inspected source ref:** new-main at e058021c97e5e90990ba129e2361f340706217a3. The documentation branch adds only documentation changes; the application source baseline is unchanged.
+
+### Verified subsystem ownership
+
+- **Composition and lifecycle:** kira/main.py delegates to kira/ui/bootstrap.py. Bootstrap creates the dependency container, EventBus, ChatEventPublisher and ModuleManager, registers application modules through kira/app/feature_modules.py, then injects services into initialize_main_window.
+- **UI:** kira/ui/main_window.py is a thin Qt shell with eight feature controllers and a FeatureControllerRegistry; WindowPresentationContext provides allowlisted state, service, adapter and view buckets.
+- **Chat:** Domain contracts live under kira/domain; application use cases and Core ports are separated from Qt. Durable Chat persistence remains in the Chat repository/persistence boundary. Runtime Session state and durable Conversation state are distinct.
+- **Voice:** voice_engine defaults to gemini_live. GeminiLiveWorker streams microphone PCM at 16 kHz to Gemini and receives 24 kHz audio. Local selection/fallback starts Listener, which uses Shenava Koochik through sherpa-onnx; local TTS is Piper, with optional KittenTTS for English-only sentences. Persian always uses Piper. Playback uses QAudioSink.
+- **System tools:** ToolRegistry.execute() and kira/tools/sysaccess.py are the shared execution/permission boundary. WindowsControlLayer declares capabilities; the currently registered Windows modules are Apps, Bluetooth, Audio and Desktop. File operations, web tools and MCP tools also pass through the shared registry and access checks. No arbitrary shell interface is registered.
+- **Web intelligence:** kira/webintel performs provider-independent search/read/research, with explicit URL/network guards, size/time/redirect limits, ranking and resumable per-character research state. The chat model consumes the research result; the engine itself does not need a model call.
+- **MCP:** kira/mcp supports stdio and plain HTTP JSON-RPC. Server-supplied annotations do not determine tool permissions; configured access levels and the central registry do. Server content is treated as untrusted.
+- **Brain and character state:** Brain roles separate surface/deep/reflection/memory processing. ToolAgent and WebIntel keep character/session-scoped ephemeral state and research data. Character specialty does not grant additional tool permissions.
+- **Game Mode:** Story and Competitive Safe are explicit profiles; process detection is advisory and must not auto-enable a profile.
+
+### Verified documentation corrections and remaining source discrepancy
+
+The prior README and local-voice guides described Qwen3-ASR plus faster-whisper as the real-time local recognition chain and described all voice processing as local. The current code does not support those claims: Gemini Live is the default, and the current local Listener calls Shenava directly. The guides have been corrected.
+
+A legacy configuration mismatch remains in source: kira/config.py still declares Qwen3 values/comments for local_voice_asr_backend and local_voice_asr_model, while VoicePage normalizes the backend to shenava and the Listener loads Shenava directly. This should be cleaned up in a separate code change with a regression test; it was not changed during this documentation task.
+
+### Inventory and verification boundary
+
+The inspected tree contained 585 tracked files: 270 Python files under kira/, 64 UI Python modules, 25 application modules, 22 tool modules, 164 Python test files, 8 GitHub Actions workflows and 52 files under docs/.
+
+This is a static source/documentation audit. No Python tests, imports, py_compile, Windows GUI/audio checks or release build were executed in this pass. Existing CI failure statuses are not classified as source defects without job logs.
