@@ -1,3 +1,9 @@
+## Latest task: 200-case task-understanding benchmark (2026-11-22)
+
+- Added `tests/test_task_understanding_benchmark.py`: 200 actionable prompts split evenly across 10 tool families, plus 20 chat-only negative controls. The test checks required category recall and that actionable prompts bypass index-only triage while ordinary chat remains on it.
+- Dataset integrity checked through the GitHub source: 200/200 actionable entries unique and 20/20 chat controls unique. The Python unittest module has **not** been executed here; this is not a live-model or Windows acceptance result. No GitHub Actions run.
+- Next: execute `python -m unittest tests.test_task_understanding_benchmark tests.test_task_triage` in a local checkout, fix every failing case against the actual detector, then run the broader relevant suite. After that, add a separate live-model benchmark for triage escalation, plan decomposition, approval compliance, recovery and verified postconditions.
+
 # Task Handoff
 
 ## Latest task: review of model-driven task understanding (2026-11-22, 08:03 Iran)
