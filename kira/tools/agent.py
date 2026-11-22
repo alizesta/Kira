@@ -280,13 +280,13 @@ class ToolAgent(AutonomyMixin):
         if self.mode() == "off":
             return ("ابزارها خاموش است (tools_mode = off)؛ هیچ ابزاری اجرا نمی‌شود. "
                     "برای اجرای ابزار، حالت ابزارها را در تنظیمات از Off خارج کن.")
+        if self._competitive_safe_mode and not tool_categories_allowed("competitive_safe", tool.categories):
+            return ("Competitive Safe دسترسی ابزارهای محلی و کنترلی، دسکتاپ، برنامه‌ها، فایل‌ها، MCP و Agent را مسدود کرده است. "
+                    "فقط ابزارهای وب مستقل مجازند.")
         visible = self._current_turn_state().schema_categories
         if visible is not None and not set(getattr(tool, "categories", ()) or ()).intersection(visible):
             return ("این ابزار در دامنه‌ی قابلیت‌های ارائه‌شده برای درخواست فعلی نبود؛ "
                     "هیچ عملیاتی اجرا نشد. درخواست را با موضوع دقیق‌تر دوباره مطرح کن.")
-        if self._competitive_safe_mode and not tool_categories_allowed("competitive_safe", tool.categories):
-            return ("Competitive Safe دسترسی ابزارهای محلی و کنترلی، دسکتاپ، برنامه‌ها، فایل‌ها، MCP و Agent را مسدود کرده است. "
-                    "فقط ابزارهای وب مستقل مجازند.")
         return None
 
     # ------------------------------------------------------------ settings
