@@ -150,6 +150,10 @@ When testing is explicitly authorized after TASK 016:
 
 A successful static review is not a substitute for these runtime checks.
 
+### Tool schema scope delta — 2026-11-23
+
+Task 2 is implemented on `codex/tool-schema-pruning-2026-11-23`, stacked on the Task 1 startup-deferral branch. Auto mode keeps the full runtime category allowance but projects only request-relevant categories into Native Function Calling schemas and the text catalog. Unknown requests retain compact triage and explicitly expand only after the model asks for PC tools; Always mode keeps full exposure. A per-session execution check blocks hidden tools before dispatch. Regression tests are authored but remain unexecuted; token/latency and Windows acceptance are open.
+
 ## 8. Decision log
 
 | Date | Decision | Evidence |

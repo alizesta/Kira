@@ -87,10 +87,18 @@ class AutonomyMixin:
             active.question = ""
             active.status = P_RUNNING
             self.tasks.save()
-            return ToolPlan(self._cats_for(active, text), True, complex=True, resume=True, reasons=("جواب به سؤال وظیفه",))
+            visible = self._cats_for(active, text)
+            return ToolPlan(
+                visible, True, complex=True, resume=True,
+                reasons=("جواب به سؤال وظیفه",), schema_categories=set(visible),
+            )
         if self._turn_session_id in self._resume_sessions and active is not None:
             self._resume_sessions.discard(self._turn_session_id)
-            return ToolPlan(self._cats_for(active, text), True, complex=True, resume=True, reasons=("ادامه‌ی وظیفه",))
+            visible = self._cats_for(active, text)
+            return ToolPlan(
+                visible, True, complex=True, resume=True,
+                reasons=("ادامه‌ی وظیفه",), schema_categories=set(visible),
+            )
         self._resume_sessions.discard(self._turn_session_id)
         self._remember_task_preference(text)
         if base is not None:

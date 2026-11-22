@@ -90,6 +90,7 @@ class ToolPlan:
     fast_call: dict | None = None       # deterministic allow-listed command; still executed via ToolRegistry
     direct: bool = False                # single-call bridge: native tools from the first call, no triage/planner round trips
     index_only: bool = False            # cheap triage round: the model sees only a short capability index and either answers or asks for the PC (escalates)
+    schema_categories: set | None = None  # model-visible tool scope; independent from the full security/availability categories
 
 
 @dataclass
@@ -169,6 +170,9 @@ class ToolAgent(AutonomyMixin):
         self._session_states_lock = threading.RLock()
         self._active_turn_state = ContextVar(
             f"toolagent_turn_state_{id(self)}", default=None
+        )
+        self._active_schema_scope = ContextVar(
+            f"toolagent_schema_scope_{id(self)}", default=None
         )
         self._runtime_lock = threading.RLock()
         self._running_sessions: set[str] = set()
@@ -281,6 +285,11 @@ class ToolAgent(AutonomyMixin):
         if self._competitive_safe_mode and not tool_categories_allowed("competitive_safe", tool.categories):
             return ("Competitive Safe دسترسی ابزارهای محلی و کنترلی، دسکتاپ، برنامه‌ها، فایل‌ها، MCP و Agent را مسدود کرده است. "
                     "فقط ابزارهای وب مستقل مجازند.")
+        scope_context = getattr(self, "_active_schema_scope", None)
+        visible = scope_context.get() if scope_context is not None else None
+        if visible is not None and not set(getattr(tool, "categories", ()) or ()).intersection(visible):
+            return ("این ابزار در دامنه‌ی قابلیت‌های ارائه‌شده برای درخواست فعلی نبود؛ "
+                    "هیچ عملیاتی اجرا نشد. درخواست را با موضوع دقیق‌تر دوباره مطرح کن.")
         return None
 
     # ------------------------------------------------------------ settings
@@ -335,9 +344,11 @@ class ToolAgent(AutonomyMixin):
                         # an explicit web request (or a paused web research) may keep the web tools.
                         allowed &= protocol.detect_categories(text) | ({"web"} if self._web_resume(text) else set())
                     plan.categories.intersection_update(allowed)
+                    if plan.schema_categories is not None:
+                        plan.schema_categories.intersection_update(allowed)
                     if not plan.categories:
                         return None
-                plan.web = "web" in plan.categories and (bool(protocol.detect_categories(text) & {"web"}) or self._web_resume(text))
+                plan.web = "web" in self._schema_categories(plan) and (bool(protocol.detect_categories(text) & {"web"}) or self._web_resume(text))
                 plan.session_id = owner
                 if fast_call and not plan.complex and not plan.resume:
                     tool = self.registry.get(fast_call["tool"])
@@ -347,6 +358,10 @@ class ToolAgent(AutonomyMixin):
                             and category in plan.categories and category in tool_categories):
                         plan.fast_call = {"tool": fast_call["tool"], "args": dict(fast_call.get("args") or {}),
                                           "category": category}
+                        if plan.schema_categories is None:
+                            plan.schema_categories = set(tool_categories)
+                        else:
+                            plan.schema_categories.update(tool_categories)
                         plan.index_only = False
             if plan is not None and plan.categories & {"mcp", "agents"}:
                 self._ensure_mcp()
@@ -363,7 +378,12 @@ class ToolAgent(AutonomyMixin):
         if mode == "off":
             return None
         if mode == "always":
-            return ToolPlan(set(protocol.ALL_CATEGORIES), protocol.is_strong(text))
+            all_categories = set(protocol.ALL_CATEGORIES)
+            return ToolPlan(
+                all_categories,
+                protocol.is_strong(text),
+                schema_categories=set(all_categories),
+            )
         detected = protocol.detect_categories(text)
         if self._web_resume(text):
             detected.add("web")
@@ -373,56 +393,68 @@ class ToolAgent(AutonomyMixin):
         # External MCP/agent capabilities remain opt-in via explicit user intent.
         cats = set(protocol.ALL_CATEGORIES) - {"mcp", "agents"}
         cats.update(detected & {"mcp", "agents"})
-        # Cost control: a message with no known task signal is first shown to the model with a short
-        # capability index only (conversation costs one small call). The model, not a word list, decides
-        # whether the PC is needed; if so the turn escalates to the full catalog / planner (see run()).
-        return ToolPlan(cats, protocol.is_strong(text), index_only=not detected)
+        # Keep the complete allowed category set for runtime safety and task routing,
+        # but expose only the categories signalled by this request to the model.
+        # An unclassified request remains on the compact index and can explicitly escalate.
+        return ToolPlan(
+            cats,
+            protocol.is_strong(text),
+            index_only=not detected,
+            schema_categories=set(detected),
+        )
 
     def temperature(self, temperature: float) -> float:
         return min(float(temperature), 0.4)                  # tool blocks and exact facts do not need a high temperature
 
+    @staticmethod
+    def _schema_categories(plan: ToolPlan) -> set:
+        """Return the intentionally exposed tool categories, never the wider execution allow-list."""
+        selected = getattr(plan, "schema_categories", None)
+        return set(plan.categories or ()) if selected is None else set(selected)
+
     def native_block(self, plan: ToolPlan) -> str:
-        """Short behaviour prompt for native function calling (the tool catalog travels as JSON schemas)."""
+        """Short behaviour prompt; the native tool schemas are limited to the selected request topics."""
+        visible = self._schema_categories(plan)
         extra = []
-        if getattr(plan, "web", False):
+        if getattr(plan, "web", False) and "web" in visible:
             extra.append(protocol.WEB_RULES)
-        if "desktop" in plan.categories:
+        if "desktop" in visible:
             extra.append(protocol.DESKTOP_RULES)
-        if plan.categories & {"mcp", "agents"}:
+        if visible & {"mcp", "agents"}:
             extra.append(protocol.MCP_RULES)
+        if visible:
+            extra.append(
+                "Only the functions supplied for this request are available. "
+                "Use those functions only; do not invent hidden tool names or assume other capabilities were exposed."
+            )
         return protocol.build_native_block(self._memo_block(), "\n\n".join(extra))
 
     def tools_block(self, plan: ToolPlan, last_round: bool = False) -> str:
         if last_round:
             return protocol.build_block("", last_round=True)
         if getattr(plan, "index_only", False):
+            # The compact index intentionally names every local capability but sends no argument schemas.
             return protocol.build_index_block(self.registry.for_categories(plan.categories), self._memo_block())
+        visible = self._schema_categories(plan)
         extra = ""
-        planning_scope = bool(plan.complex)
-        if "web" in plan.categories:
+        if "web" in visible:
             extra = protocol.WEB_RULES
             ctx = getattr(self.registry, "web_context", None)
             cur = ctx.store.current() if ctx else None
             if cur is not None and cur.status == "paused" and cur.subtopics:
                 extra += f"\nA paused research exists: «{cur.topic}» ({len(cur.done_subtopics)}/{len(cur.subtopics)} sub-topics done). If the user wants it continued, call web_research with resume=true."
-        if "desktop" in plan.categories or (planning_scope and not self._competitive_safe_mode):
+        if "desktop" in visible:
             extra = (extra + "\n\n" if extra else "") + protocol.DESKTOP_RULES
-        if plan.categories & {"mcp", "agents"}:
+        if visible & {"mcp", "agents"}:
             extra = (extra + "\n\n" if extra else "") + protocol.MCP_RULES
-        if planning_scope:
-            # Let the model choose the correct local capability from the goal,
-            # instead of hiding desktop/file/app tools behind keyword categories.
-            # External MCP/agent tools stay opt-in and are never exposed by default.
-            if self._competitive_safe_mode:
-                catalog_categories = {"web"}
-            else:
-                catalog_categories = set(protocol.ALL_CATEGORIES) - {"mcp", "agents"}
-                catalog_categories.update(plan.categories & {"mcp", "agents"})
-                if "web" not in plan.categories:
-                    catalog_categories.discard("web")
-        else:
-            catalog_categories = plan.categories
-        return protocol.build_block(self.registry.catalog(catalog_categories), self._memo_block(), extra=extra)
+        if visible:
+            extra = (extra + "\n\n" if extra else "") + (
+                "Only the tools listed for this request are available. If the requested workflow needs "
+                "a capability that is not listed, ask a concise clarifying question instead of "
+                "inventing a tool name or claiming the action was performed."
+            )
+        catalog = self.registry.catalog_for_selected_categories(visible)
+        return protocol.build_block(catalog, self._memo_block(), extra=extra)
 
     # ------------------------------------------------------------ session-only notes
     def _memo_block(self) -> str:
@@ -676,6 +708,9 @@ class ToolAgent(AutonomyMixin):
         result = self._run_once(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
         if isinstance(result, dict) and result.pop("_escalate", False) and getattr(plan, "index_only", False):
             plan.index_only = False
+            if not self._schema_categories(plan):
+                # Unknown but model-confirmed PC requests receive the full local catalog only after escalation.
+                plan.schema_categories = set(protocol.ALL_CATEGORIES) - {"mcp", "agents"}
             if self.planning_enabled():
                 plan.complex = True
                 plan.reasons = ("ارزیابی معنایی هدف توسط Planner مدل",)
@@ -688,9 +723,13 @@ class ToolAgent(AutonomyMixin):
         planner round and the review rounds for ordinary requests. Resumed tasks keep the planner."""
         if str(self.settings.get("agent_single_call", "on")).lower() in ("off", "false", "0"):
             return False
+        # Unknown wording stays on the cheap capability-index triage path; bypassing it
+        # with a native call would otherwise attach the entire local schema set to ordinary chat.
+        if getattr(plan, "index_only", False):
+            return False
         if getattr(plan, "resume", False) or getattr(plan, "fast_call", None):
             return False
-        if not (getattr(plan, "index_only", False) or getattr(plan, "complex", False)):
+        if not getattr(plan, "complex", False):
             return False
         return callable(getattr(router, "chat_with_tools", None))
 
@@ -712,7 +751,7 @@ class ToolAgent(AutonomyMixin):
             web_locked = False
             # Fast Path returns after one allow-listed local tool; it never enters web research.
             uses_web_tools = (not getattr(plan, "fast_call", None)
-                              and "web" in (getattr(plan, "categories", set()) or set())
+                              and "web" in self._schema_categories(plan)
                               and not getattr(plan, "index_only", False)
                               and (getattr(plan, "web", False) or not getattr(plan, "direct", False)))
             if uses_web_tools:
@@ -726,6 +765,7 @@ class ToolAgent(AutonomyMixin):
                     raise
                 web_locked = True
 
+            schema_scope_token = self._active_schema_scope.set(self._schema_categories(plan))
             with self._runtime_lock:
                 self._running_sessions.add(owner)
                 if web_locked:
@@ -737,6 +777,7 @@ class ToolAgent(AutonomyMixin):
                     return self.run_planned(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
                 return self._run_simple(router, messages, system_prompt, self.temperature(temperature), plan, retry_index, on_chunk or (lambda s: None), on_event, on_tool)
             finally:
+                self._active_schema_scope.reset(schema_scope_token)
                 with self._runtime_lock:
                     self._running_sessions.discard(owner)
                     if web_locked:
@@ -775,7 +816,13 @@ class ToolAgent(AutonomyMixin):
             # Providers without a native adapter keep the existing text-protocol fallback unchanged.
             if not last and not getattr(plan, "index_only", False) and callable(getattr(router, "chat_with_tools", None)):
                 try:
-                    native = router.chat_with_tools(cur, prompt, temp, self.registry.schemas(plan.categories), on_event=on_event)
+                    native = router.chat_with_tools(
+                        cur,
+                        prompt,
+                        temp,
+                        self.registry.schemas_for_selected_categories(self._schema_categories(plan)),
+                        on_event=on_event,
+                    )
                 except Exception as exc:                         # noqa: BLE001 - preserve real outcomes if a later native round fails
                     if not executed:
                         raise

@@ -32,10 +32,33 @@ def _agent(**settings):
     agent.settings = {"tools_mode": "auto", "agent_planning": "off", **settings}
     agent.registry = build_registry(PathPolicy({}))
     agent._competitive_safe_mode = False
+    agent.registry.execution_guard = agent._game_mode_execution_guard
     agent._pending_by_session = {}
     agent._pending_new_sessions = set()
     agent._init_session_turn_states()
     return agent
+
+
+class _NativeSchemaRouter:
+    def __init__(self, text="done"):
+        self.text = text
+        self.schemas = None
+        self.prompts = []
+        self.native_calls = 0
+        self.stream_calls = 0
+
+    def chat_with_tools(self, messages, system_prompt, temperature, schemas, on_event=None):
+        self.native_calls += 1
+        self.schemas = list(schemas)
+        self.prompts.append(system_prompt)
+        return {"text": self.text, "tool_calls": [], "stopped": False}
+
+    def chat_stream(self, messages, system_prompt, temperature, on_chunk=None, on_event=None, retry_index=0, **_):
+        self.stream_calls += 1
+        self.prompts.append(system_prompt)
+        if on_chunk:
+            on_chunk(self.text)
+        return {"text": self.text, "stopped": False, "interrupted": None}
 
 
 class TriagePlanTests(unittest.TestCase):
@@ -145,11 +168,104 @@ class TriagePlanTests(unittest.TestCase):
         agent._competitive_safe_mode = True
         self.assertIsNone(agent.plan("سلام، حالت چطوره؟", session_id="kira"))
 
+    def test_auto_plan_keeps_security_categories_but_selects_topic_schemas(self):
+        agent = _agent()
+        plan = agent.plan("فایل‌های PDF قدیمی‌تر از یک ماه رو پیدا کن و فهرست کن", session_id="files-only")
+        self.assertIsNotNone(plan)
+        self.assertFalse(plan.index_only)
+        self.assertEqual(plan.schema_categories, {"files"})
+        self.assertIn("system", plan.categories)       # full availability/safety scope is unchanged
+        self.assertIn("apps", plan.categories)
+        selected = agent.registry.schemas_for_selected_categories(plan.schema_categories)
+        all_schemas = agent.registry.schemas()
+        selected_names = {item["name"] for item in selected}
+        self.assertIn("search_files", selected_names)
+        self.assertNotIn("bluetooth_status", selected_names)
+        self.assertNotIn("web_search", selected_names)
+        self.assertLess(len(selected), len(all_schemas) / 2)
+
+    def test_native_function_call_receives_only_selected_topic_schemas(self):
+        agent = _agent(agent_planning="off")
+        plan = agent.plan("فایل‌های PDF قدیمی‌تر از یک ماه رو پیدا کن و فهرست کن", session_id="native-files")
+        router = _NativeSchemaRouter()
+        result = agent.run(
+            router,
+            [{"role": "user", "content": "فایل‌های PDF قدیمی‌تر از یک ماه رو پیدا کن و فهرست کن"}],
+            "SYS", 0.2, plan,
+        )
+        self.assertEqual(result["text"], "done")
+        self.assertEqual(router.native_calls, 1)
+        self.assertEqual(router.stream_calls, 0)
+        names = {item["name"] for item in router.schemas}
+        self.assertIn("search_files", names)
+        self.assertNotIn("bluetooth_status", names)
+        self.assertNotIn("web_search", names)
+
+    def test_mixed_request_keeps_all_detected_topic_schema_groups(self):
+        agent = _agent()
+        prompt = "Open Windows Settings, navigate to Bluetooth, and inspect paired devices."
+        plan = agent.plan(prompt, session_id="mixed-desktop-bluetooth")
+        self.assertIsNotNone(plan)
+        self.assertTrue({"apps", "desktop", "bluetooth"}.issubset(plan.schema_categories))
+        names = {item["name"] for item in agent.registry.schemas_for_selected_categories(plan.schema_categories)}
+        self.assertIn("bluetooth_status", names)
+        self.assertNotIn("web_search", names)
+
+    def test_always_mode_retains_the_full_explicit_tool_catalog(self):
+        agent = _agent(tools_mode="always")
+        plan = agent.plan("سلام", session_id="always-mode")
+        self.assertEqual(plan.schema_categories, set(protocol.ALL_CATEGORIES))
+        self.assertEqual(
+            len(agent.registry.schemas_for_selected_categories(plan.schema_categories)),
+            len(agent.registry.schemas()),
+        )
+
+    def test_native_route_does_not_bypass_compact_triage_for_unknown_chat(self):
+        agent = _agent(agent_planning="off")
+        prompt = "می‌تونی یه کم کمکم کنی؟"
+        plan = agent.plan(prompt, session_id="unknown-chat")
+        self.assertTrue(plan.index_only)
+        router = _NativeSchemaRouter(text="حتماً، بگو چه کمکی لازم داری؟")
+        result = agent.run(router, [{"role": "user", "content": prompt}], "SYS", 0.2, plan)
+        self.assertEqual(result["text"], router.text)
+        self.assertEqual(router.native_calls, 0)
+        self.assertEqual(router.stream_calls, 1)
+        self.assertIn("CAPABILITY INDEX", router.prompts[0])
+
+    def test_off_scope_tool_call_is_journaled_and_handler_never_runs(self):
+        from kira.tools.registry import Tool, READ
+
+        agent = _agent()
+        handler_calls = []
+        agent.registry.register(Tool(
+            "scope_probe", "test-only tool outside the selected category",
+            lambda args: handler_calls.append(args) or "executed",
+            (), READ, ("bluetooth",),
+        ))
+        scope_token = agent._active_schema_scope.set({"files"})
+        try:
+            with agent._use_session("files-scope"):
+                results = agent._run_calls([{"tool": "scope_probe", "args": {}}], [], None)
+        finally:
+            agent._active_schema_scope.reset(scope_token)
+        self.assertEqual(handler_calls, [])
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].status, "denied")
+        self.assertIn("دامنه", results[0].text)
+        records = agent.registry.access.journal.recent(10)
+        self.assertTrue(any(item.get("tool") == "scope_probe" and item.get("status") == "denied" for item in records))
+
+    def test_empty_selected_schema_scope_never_means_all_tools(self):
+        agent = _agent()
+        self.assertEqual(agent.registry.schemas_for_selected_categories(set()), [])
+        self.assertEqual(agent.registry.catalog_for_selected_categories(set()), "")
+
     def test_triage_prompt_is_a_small_fraction_of_the_full_catalog(self):
         agent = _agent()
         plan = agent.plan("سلام", session_id="kira")
         small = agent.tools_block(plan)
         plan.index_only = False
+        plan.schema_categories = set(plan.categories) - {"mcp", "agents"}  # the explicit triage escalation broadens only now
         full = agent.tools_block(plan)
         self.assertLess(len(small), len(full) / 2)
         self.assertIn("use_tools", small)

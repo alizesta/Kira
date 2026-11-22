@@ -1,3 +1,10 @@
+## 2026-11-23 (topic-scoped tool schemas — Task 2)
+- Separated the full runtime/security category set from `ToolPlan.schema_categories`, the model-visible tool scope. In Auto mode, native function schemas and text catalogs now include only categories detected for the current request; cross-category tools remain available when they match at least one selected topic.
+- Kept the explicit `tools_mode=always` behavior: it still exposes the full catalog. Unknown wording keeps the compact capability-index triage and only expands to the local catalog after the model requests PC tools. MCP/Agent schemas remain opt-in.
+- Added an explicit selected-category projection to ToolRegistry. An empty selected scope returns no schemas/catalog rather than accidentally meaning “all tools”. Added runtime enforcement so a model cannot execute a registered tool that was not exposed in the current session's schema scope.
+- Preserved per-session schema scope across native/text tool execution and planned-task resume. Competitive Safe continues to intersect both runtime categories and model-visible schemas with its web-only allowance.
+- Regression coverage added to `tests/test_task_triage.py` for Auto-mode pruning, mixed categories, Native Function Calling schemas, Always mode, unknown-chat triage, empty scopes, and pre-execution denial of hidden tools. Tests and Windows runtime have not been executed in this GitHub-only session; no measured token or latency reduction is claimed.
+
 ## 2026-11-22 (Fast Path stage 4 — real registry boundary tests)
 
 ## 2026-11-23 (startup deferred loading — Task 1)

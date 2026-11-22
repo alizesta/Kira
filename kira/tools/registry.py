@@ -268,6 +268,21 @@ class ToolRegistry:
     def schemas(self, categories=None) -> list[dict]:
         return [t.json_schema() for t in self.for_categories(categories)]
 
+    def for_selected_categories(self, categories) -> list[Tool]:
+        """Return only tools matching a non-empty model-visible capability selection."""
+        wanted = set(categories or ())
+        if not wanted:
+            return []
+        return [tool for tool in self.all() if wanted.intersection(tool.categories)]
+
+    def catalog_for_selected_categories(self, categories) -> str:
+        """Build a model catalog without treating an empty selection as permission to expose everything."""
+        return "\n".join(tool.catalog_line() for tool in self.for_selected_categories(categories))
+
+    def schemas_for_selected_categories(self, categories) -> list[dict]:
+        """Build native function schemas for the selected request topics only."""
+        return [tool.json_schema() for tool in self.for_selected_categories(categories)]
+
     # ---- validation ----
     def clean_args(self, tool: Tool, args: Any) -> dict:
         if args is None:
