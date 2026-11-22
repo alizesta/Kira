@@ -15,6 +15,7 @@ import requests
 from typing import Any
 
 from . import routes as route_model
+from .request_trace import trace as request_trace, set_request_id as set_trace_request_id, reset_request_id as reset_trace_request_id
 from .leak_guard import LeakGuard, clean_final
 from .ollama_client import OllamaClient, OllamaError
 from .core.interfaces.chat_provider import ChatProvider
@@ -435,6 +436,7 @@ class HybridRouter:
             self._lock.release()
             raise RuntimeError("درخواست لغو شده است.")
         self._cancel.clear()
+        trace_token = None
         try:
             started = time.monotonic()
             messages = normalize_messages(messages)
@@ -445,6 +447,8 @@ class HybridRouter:
                        "stream": bool(stream), "retries": int(retry_index), "failovers": 0, "provider": None, "model": None,
                        "route_id": None, "kind": None, "connect_ms": None, "first_token_ms": None, "total_ms": None,
                        "result": None, "chars": 0, "role": _ROLE.get() or None}
+            trace_token = set_trace_request_id(metrics["request_id"])
+            request_trace("request_start", stream=bool(stream), retry_index=int(retry_index), role=_ROLE.get() or "chat", candidates=len(self._candidates()))
             failures = []
             emit = on_event or (lambda e: None)
             candidates = self._candidates()
@@ -497,6 +501,7 @@ class HybridRouter:
                         continue
                     attempted_google_models.add(google_model_key)
                 secrets = (route_cfg.get("api_key"),)
+                request_trace("route_selected", route_id=rid, provider=route.get("provider"), model=route.get("model"), stream=bool(stream), failover_index=metrics["failovers"])
                 emit({"phase": "connecting" if not failures and metrics["failovers"] == 0 else "failover",
                       "failovers": metrics["failovers"], **info})
                 attempt_started = time.monotonic()
@@ -519,6 +524,7 @@ class HybridRouter:
                         def on_connect():
                             nonlocal connect_at
                             connect_at = time.monotonic()
+                            request_trace("response_headers_received", route_id=rid, provider=route.get("provider"), model=route.get("model"), elapsed_ms=int((time.monotonic()-attempt_started)*1000))
                             emit({"phase": "waiting", "failovers": metrics["failovers"], **info})
                         gen = provider.stream(messages, system_prompt, temperature, on_connect=on_connect)
                         if cancel_event is not None and cancel_event.is_set():
@@ -531,6 +537,7 @@ class HybridRouter:
                                     continue
                                 if first_at is None:
                                     first_at = time.monotonic()
+                                    request_trace("first_content_chunk", route_id=rid, provider=route.get("provider"), model=route.get("model"), elapsed_ms=int((first_at-attempt_started)*1000))
                                     emit({"phase": "streaming", "failovers": metrics["failovers"], **info})
                                 chunk = guard.feed(chunk)
                                 if chunk:
@@ -556,6 +563,7 @@ class HybridRouter:
                                             stopped=True, failures=failures)
                     safe = RuntimeError(redact(exc, *secrets)) if not isinstance(exc, (ProviderError, OllamaError)) else exc
                     kind, status, cooldown = self._mark_failure(route, exc, secrets)
+                    request_trace("route_failed", route_id=rid, provider=route.get("provider"), model=route.get("model"), error_kind=kind, status_code=status, elapsed_ms=int((time.monotonic()-attempt_started)*1000))
                     note = f"{rid}: {redact(exc, *secrets)}" if kind != "unexpected" else \
                         f"{rid}: خطای پیش‌بینی‌نشده ({redact(exc, *secrets)})"
                     failures.append(note)
@@ -623,6 +631,9 @@ class HybridRouter:
                                    "failovers": metrics["failovers"], "retries": metrics["retries"]})
             raise RuntimeError("تمام Routeهای فعال ناموفق بودند یا غیرفعال‌اند:\n" + ("\n".join(failures) or self.last_error))
         finally:
+            request_trace("request_end", duration_ms=int((time.monotonic()-started)*1000) if "started" in locals() else None)
+            if trace_token is not None:
+                reset_trace_request_id(trace_token)
             self._active = None
             self._lock.release()
 
