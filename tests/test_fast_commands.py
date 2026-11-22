@@ -366,6 +366,20 @@ class PlannerComplexityRegressionTests(unittest.TestCase):
         complex_, _ = assess("open Discord and open Chrome", {"apps"})
         self.assertTrue(complex_)
 
+    def test_persian_execute_after_bare_then_is_detected(self):
+        from kira.tools.planner import assess
+
+        complex_, reasons = assess("اول دیسکورد رو باز کن بعد کروم رو اجرا کن", {"apps"})
+        self.assertTrue(complex_)
+        self.assertTrue(reasons)
+
+    def test_persian_change_action_joined_with_and_is_detected(self):
+        from kira.tools.planner import assess
+
+        complex_, reasons = assess("Wallpaper Engine را باز کن و والپیپر را تغییر بده", {"apps"})
+        self.assertTrue(complex_)
+        self.assertTrue(reasons)
+
     def test_single_action_stays_simple(self):
         from kira.tools.planner import assess
 
