@@ -66,6 +66,20 @@ class VoiceApplicationWiringTests(unittest.TestCase):
         self.assertIn("self._speak_stream(text)", runtime)
         self.assertIn("session.timer.setInterval(60)", self.read("kira/ui/main_window_session.py"))
 
+    def test_gemini_live_transcripts_are_persisted_to_the_active_chat(self):
+        worker = self.read("kira/gemini_live.py")
+        runtime_voice = self.read("kira/ui/main_window_runtime_voice.py")
+        runtime = self.read("kira/ui/main_window_runtime.py")
+
+        self.assertIn('"input_audio_transcription": types.AudioTranscriptionConfig()', worker)
+        self.assertIn('"output_audio_transcription": types.AudioTranscriptionConfig()', worker)
+        self.assertIn('self.feature_controller("runtime").save_message(', runtime_voice)
+        self.assertIn('"source": "gemini_live"', runtime_voice)
+        self.assertIn('"modality": "audio"', runtime_voice)
+        self.assertIn("use_current_request=False", runtime_voice)
+        self.assertIn("persist_message(", runtime)
+        self.assertIn("if use_current_request else None", runtime)
+
     def test_tray_exit_delegates_to_close_event_shutdown(self):
         lifecycle = self.read("kira/ui/main_window_lifecycle.py")
         start = lifecycle.index("    def quit_app(self):")
