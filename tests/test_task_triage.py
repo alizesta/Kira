@@ -65,6 +65,31 @@ class TriagePlanTests(unittest.TestCase):
         self.assertIn("web", protocol.detect_categories("نرخ دلار چنده؟"))
         self.assertIn("web", protocol.detect_categories("قیمت طلا رو از اینترنت بررسی کن"))
 
+    def test_web_price_queries_do_not_fall_into_time_or_system(self):
+        cases = (
+            "قیمت یورو رو پیدا کن",
+            "نرخ دلار چنده؟",
+            "نرخ دلار امروز چنده؟",
+            "قیمت طلا رو از اینترنت بررسی کن",
+        )
+        for prompt in cases:
+            with self.subTest(prompt=prompt):
+                categories = protocol.detect_categories(prompt)
+                self.assertIn("web", categories)
+                self.assertNotIn("time", categories)
+                self.assertNotIn("system", categories)
+
+    def test_web_article_summary_is_not_a_local_file_request(self):
+        for prompt in ("یک مقاله رو بخون و خلاصه کن", "خلاصه یک مقاله درباره Passkey رو پیدا کن"):
+            with self.subTest(prompt=prompt):
+                categories = protocol.detect_categories(prompt)
+                self.assertIn("web", categories)
+                self.assertNotIn("files", categories)
+
+    def test_network_diagnostics_remain_system_requests(self):
+        categories = protocol.detect_categories("وضعیت اتصال اینترنت رو بررسی کن")
+        self.assertIn("system", categories)
+
     def test_resume_preserves_failure_signatures(self):
         agent = _agent()
         agent.tasks = SimpleNamespace(save=lambda: None)
