@@ -38,7 +38,8 @@ class GeminiTraceTests(unittest.TestCase):
         req, _resp, res = ev
         self.assertEqual(req["model"], "gemini-3.8-flash")
         self.assertEqual(req["host"], "generativelanguage.googleapis.com")
-        self.assertEqual(req["path"], "/v1beta/openai/chat/completions")
+        self.assertEqual(req["path"], "/v1beta/models/gemini-3.8-flash:generateContent")
+        self.assertEqual(req["api"], "native")
         self.assertEqual(req["reasoning_effort"], "low")
         self.assertTrue(res["empty"])
         self.assertEqual(res["finish_reason"], "length")

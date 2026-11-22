@@ -8,6 +8,7 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import json
+import os
 import re
 import threading
 import time
@@ -247,12 +248,24 @@ def _gemini_finish(obj):
     try:
         return str(obj["choices"][0].get("finish_reason") or "")
     except (KeyError, IndexError, TypeError, AttributeError):
+        pass
+    try:
+        return str(obj["candidates"][0].get("finishReason") or "").lower()
+    except (KeyError, IndexError, TypeError, AttributeError):
         return ""
 
 
 def _gemini_usage(obj):
     """Scalar token counts from an OpenAI-style 'usage' block (incl. thinking tokens when Google reports them)."""
     usage = obj.get("usage") if isinstance(obj, dict) else None
+    meta = obj.get("usageMetadata") if isinstance(obj, dict) else None
+    if isinstance(meta, dict) and not isinstance(usage, dict):                      # native shape
+        out = {}
+        for src, dst in (("promptTokenCount", "prompt_tokens"), ("candidatesTokenCount", "completion_tokens"),
+                         ("totalTokenCount", "total_tokens"), ("thoughtsTokenCount", "thinking_tokens")):
+            if isinstance(meta.get(src), int):
+                out[dst] = meta[src]
+        return out
     if not isinstance(usage, dict):
         return {}
     out = {}
@@ -263,6 +276,146 @@ def _gemini_usage(obj):
     if isinstance(details, dict) and isinstance(details.get("reasoning_tokens"), int):
         out["thinking_tokens"] = details["reasoning_tokens"]
     return out
+
+
+
+# --- Gemini native transport -------------------------------------------------------------------------------
+# Google's OpenAI-compatible layer (/v1beta/openai) was timing out / returning 503 for the newest models while the
+# native generateContent API answered. Kira keeps building OpenAI-shaped payloads (tests, tools, history all unchanged);
+# for the models below the payload is translated to the native format at send time and the reply is translated back.
+NATIVE_GEMINI_MODELS = {"gemini-3.8-flash", "gemini-4-hydrogen"}
+_THOUGHT_SIG_BYPASS = "skip_thought_signature_validator"   # Google's documented value for history that carries no signature
+_FINISH_MAP = {"STOP": "stop", "MAX_TOKENS": "length", "SAFETY": "content_filter", "RECITATION": "content_filter",
+               "BLOCKLIST": "content_filter", "PROHIBITED_CONTENT": "content_filter", "SPII": "content_filter"}
+
+
+def _native_parts(content):
+    if isinstance(content, str):
+        return [{"text": content}] if content.strip() else []
+    parts = []
+    for item in content or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") == "text" and str(item.get("text") or "").strip():
+            parts.append({"text": str(item["text"])})
+        elif item.get("type") == "image_url":
+            url = str((item.get("image_url") or {}).get("url") or "")
+            m = re.match(r"data:([^;,]+);base64,(.+)$", url, re.DOTALL)
+            if m:
+                parts.append({"inlineData": {"mimeType": m.group(1), "data": m.group(2)}})
+    return parts
+
+
+def _openai_to_native(payload):
+    """OpenAI chat-completions payload -> Gemini generateContent body."""
+    system, contents = [], []
+
+    def push(role, parts):
+        if not parts:
+            return
+        if contents and contents[-1]["role"] == role:
+            contents[-1]["parts"].extend(parts)
+        else:
+            contents.append({"role": role, "parts": list(parts)})
+
+    for msg in payload.get("messages") or []:
+        role = msg.get("role")
+        if role == "system":
+            if str(msg.get("content") or "").strip():
+                system.append(str(msg["content"]))
+        elif role == "tool":
+            push("user", [{"functionResponse": {"name": str(msg.get("name") or "tool"),
+                                                "response": {"result": str(msg.get("content") or "")}}}])
+        elif role == "assistant":
+            parts = _native_parts(msg.get("content") or "")
+            for i, call in enumerate(msg.get("tool_calls") or []):
+                fn = call.get("function") or {}
+                try:
+                    args = json.loads(fn.get("arguments") or "{}")
+                except (TypeError, ValueError):
+                    args = {}
+                part = {"functionCall": {"name": str(fn.get("name") or ""), "args": args if isinstance(args, dict) else {}}}
+                sig = ((call.get("extra_content") or {}).get("google") or {}).get("thought_signature") or (_THOUGHT_SIG_BYPASS if i == 0 else None)
+                if sig:
+                    part["thoughtSignature"] = sig
+                parts.append(part)
+            push("model", parts)
+        else:
+            push("user", _native_parts(msg.get("content")))
+    body = {"contents": contents}
+    if system:
+        body["systemInstruction"] = {"parts": [{"text": "\n\n".join(system)}]}
+    gen = {}
+    if payload.get("temperature") is not None:
+        gen["temperature"] = payload["temperature"]
+    if payload.get("max_tokens"):
+        gen["maxOutputTokens"] = int(payload["max_tokens"])
+    if payload.get("reasoning_effort"):
+        gen["thinkingConfig"] = {"thinkingLevel": str(payload["reasoning_effort"])}
+    if gen:
+        body["generationConfig"] = gen
+    decls = []
+    for tool in payload.get("tools") or []:
+        fn = tool.get("function") if isinstance(tool, dict) else None
+        if isinstance(fn, dict) and fn.get("name"):
+            decl = {"name": fn["name"], "description": fn.get("description") or ""}
+            if fn.get("parameters"):
+                decl["parametersJsonSchema"] = fn["parameters"]
+            decls.append(decl)
+    if decls:
+        body["tools"] = [{"functionDeclarations": decls}]
+    return body
+
+
+def _native_to_openai(data):
+    """Gemini generateContent reply (or one stream chunk) -> the OpenAI chat-completions shape the rest of Kira reads."""
+    if not isinstance(data, dict) or "choices" in data or "candidates" not in data and "promptFeedback" not in data:
+        return data
+    cands = data.get("candidates") or []
+    cand = cands[0] if cands and isinstance(cands[0], dict) else {}
+    parts = (cand.get("content") or {}).get("parts") or []
+    text = "".join(str(p.get("text")) for p in parts if isinstance(p, dict) and p.get("text") and not p.get("thought"))
+    calls = []
+    for i, part in enumerate(parts):
+        fc = part.get("functionCall") if isinstance(part, dict) else None
+        if isinstance(fc, dict) and fc.get("name"):
+            call = {"id": str(fc.get("id") or f"gem_call_{i}"), "type": "function",
+                    "function": {"name": fc["name"], "arguments": json.dumps(fc.get("args") or {}, ensure_ascii=False)}}
+            if part.get("thoughtSignature"):
+                call["extra_content"] = {"google": {"thought_signature": part["thoughtSignature"]}}
+            calls.append(call)
+    reason = str(cand.get("finishReason") or "")
+    if calls:
+        finish = "tool_calls"
+    elif reason:
+        finish = _FINISH_MAP.get(reason, reason.lower())
+    else:
+        finish = "content_filter" if (data.get("promptFeedback") or {}).get("blockReason") else ""
+    message = {"role": "assistant", "content": text}
+    if calls:
+        message["tool_calls"] = calls
+    out = {"choices": [{"message": message, "finish_reason": finish}]}
+    meta = data.get("usageMetadata")
+    if isinstance(meta, dict):
+        prompt = int(meta.get("promptTokenCount") or 0)
+        thoughts = int(meta.get("thoughtsTokenCount") or 0)
+        completion = int(meta.get("candidatesTokenCount") or 0) + thoughts
+        out["usage"] = {"prompt_tokens": prompt, "completion_tokens": completion,
+                        "total_tokens": int(meta.get("totalTokenCount") or (prompt + completion)),
+                        "completion_tokens_details": {"reasoning_tokens": thoughts}}
+    return out
+
+
+def _payload_shape(payload):
+    """(messages, tools, reasoning_effort, max_tokens) of either payload shape, for the Gemini log."""
+    gen = payload.get("generationConfig") or {}
+    tools = 0
+    for t in payload.get("tools") or []:
+        if isinstance(t, dict):
+            tools += len(t.get("functionDeclarations") or []) if "functionDeclarations" in t else 1
+    return (len(payload.get("contents") or payload.get("messages") or []), tools,
+            payload.get("reasoning_effort") or (gen.get("thinkingConfig") or {}).get("thinkingLevel"),
+            payload.get("max_tokens") or gen.get("maxOutputTokens"))
 
 
 
@@ -395,10 +548,12 @@ class BaseProvider(ChatProvider):
         if google:
             # Dedicated Gemini log: exactly where this request goes and with which settings (never prompts or keys).
             path = __import__("urllib.parse", fromlist=["urlsplit"]).urlsplit(url).path
+            n_msgs, n_tools, effort, max_out = _payload_shape(payload)
             gemini_trace("request", route=self.name, model=self.model, host=host, path=path, stream=bool(stream),
-                         temperature=payload.get("temperature"), reasoning_effort=payload.get("reasoning_effort"),
-                         max_tokens=payload.get("max_tokens"), messages=len(payload.get("messages") or []),
-                         tools=len(payload.get("tools") or []), has_images=bool(getattr(self, "_sent_images", False)),
+                         api="native" if "contents" in payload else "openai-compat",
+                         temperature=(payload.get("generationConfig") or payload).get("temperature"), reasoning_effort=effort,
+                         max_tokens=max_out, messages=n_msgs, tools=n_tools,
+                         has_images=bool(getattr(self, "_sent_images", False)),
                          read_timeout_s=timeout[1] if isinstance(timeout, tuple) else timeout)
         try:
             response = requests.post(url, timeout=timeout, **kwargs)
@@ -434,6 +589,8 @@ class BaseProvider(ChatProvider):
             data = response.json()
         except ValueError as exc:
             raise self._fail("پاسخ سرویس قابل خواندن نبود.", True, kind="response") from exc
+        if ":generateContent" in url:
+            data = _native_to_openai(data)
         self._note_usage(data)
         if self._is_google_endpoint():
             try:
@@ -587,7 +744,7 @@ class OpenAICompatibleProvider(BaseProvider):
 
     def chat(self, messages, system_prompt, temperature=0.7):
         url, headers, payload = self._prepare(messages, system_prompt, temperature, False)
-        data = self._post_json(url, headers, payload)
+        data = self._send_json(url, headers, payload)
         try:
             content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -616,7 +773,7 @@ class OpenAICompatibleProvider(BaseProvider):
         payload["tools"] = [{"type": "function", "function": schema} for schema in tools]
         payload["tool_choice"] = "auto"
         try:
-            data = self._post_json(url, headers, payload)
+            data = self._send_json(url, headers, payload)
         except ProviderError as exc:
             detail = str(exc).lower()
             unsupported = (
@@ -666,9 +823,78 @@ class OpenAICompatibleProvider(BaseProvider):
             content = "".join(str(x.get("text", "")) for x in content if isinstance(x, dict))
         return content if isinstance(content, str) else ""
 
+    # ---- Gemini native transport (see NATIVE_GEMINI_MODELS) ----
+    def _native_enabled(self):
+        if not self._is_google_endpoint() or str(os.environ.get("KIRA_GEMINI_NATIVE", "1")).strip() in ("0", "false", "off"):
+            return False
+        if self.config.get("gemini_native", True) is False:
+            return False
+        return _bare_model_id(self.model).casefold() in NATIVE_GEMINI_MODELS
+
+    def _maybe_native(self, url, headers, payload, stream):
+        """(url, headers, body) for Google's native API, or the arguments unchanged when this route does not use it."""
+        if not self._native_enabled():
+            return url, headers, payload
+        base = self._base()
+        base = base[:-len("/openai")] if base.endswith("/openai") else base
+        suffix = (f"/models/{_bare_model_id(self.model)}:streamGenerateContent?alt=sse" if stream
+                  else f"/models/{_bare_model_id(self.model)}:generateContent")
+        return base + suffix, {"Content-Type": "application/json", "x-goog-api-key": self.secret}, _openai_to_native(payload)
+
+    @staticmethod
+    def _native_rejected(exc):
+        """Only a plain 400 means 'this request shape is not accepted': safe to retry once on the OpenAI-compatible route
+        (a 400 does not consume quota; timeouts / 5xx / 429 are never replayed because they may)."""
+        return getattr(exc, "status_code", None) == 400 and getattr(exc, "kind", "") == "request"
+
+    def _send_json(self, url, headers, payload):
+        n_url, n_headers, n_payload = self._maybe_native(url, headers, payload, False)
+        if n_url == url:
+            return self._post_json(url, headers, payload)
+        try:
+            return self._post_json(n_url, n_headers, n_payload)
+        except ProviderError as exc:
+            if not self._native_rejected(exc):
+                raise
+            gemini_trace("native_rejected_use_openai_compat", model=self.model, error=redact(str(exc), self.secret)[:200])
+            return self._post_json(url, headers, payload)
+
+    @staticmethod
+    def _extract_native(obj):
+        if isinstance(obj, dict) and "choices" in obj:
+            return OpenAICompatibleProvider._extract(obj)
+        try:
+            parts = obj["candidates"][0]["content"]["parts"]
+        except (KeyError, IndexError, TypeError):
+            return ""
+        return "".join(str(p.get("text")) for p in parts if isinstance(p, dict) and p.get("text") and not p.get("thought"))
+
     def stream(self, messages, system_prompt, temperature=0.7, on_connect=None, max_tokens=None):
         url, headers, payload = self._prepare(messages, system_prompt, temperature, True, max_tokens)
-        return self._stream_sse(url, headers, payload, self._extract, on_connect)
+        n_url, n_headers, n_payload = self._maybe_native(url, headers, payload, True)
+        if n_url == url:
+            return self._stream_sse(url, headers, payload, self._extract, on_connect)
+        return self._stream_native(n_url, n_headers, n_payload, (url, headers, payload), on_connect)
+
+    def _stream_native(self, n_url, n_headers, n_payload, compat, on_connect):
+        started = False
+        inner = self._stream_sse(n_url, n_headers, n_payload, self._extract_native, on_connect)
+        try:
+            for piece in inner:
+                started = True
+                yield piece
+            return
+        except ProviderError as exc:
+            if started or not self._native_rejected(exc):
+                raise
+            gemini_trace("native_rejected_use_openai_compat", model=self.model, error=redact(str(exc), self.secret)[:200])
+        finally:
+            inner.close()
+        fallback = self._stream_sse(compat[0], compat[1], compat[2], self._extract, on_connect)
+        try:
+            yield from fallback
+        finally:
+            fallback.close()
 
 
 class GroqProvider(OpenAICompatibleProvider):
