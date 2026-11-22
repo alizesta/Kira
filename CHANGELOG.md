@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-22 (Fast Path stage 2)
+- The deterministic Fast Path now recognizes high-confidence read-only PC queries: system specifications, RAM/CPU/GPU/battery usage, disk space, network status/local IP, running apps and the active window. The existing time, Bluetooth, audio and app-launch commands remain supported.
+- All calls still execute through ToolRegistry and keep the existing tool-level, AccessManager, tools-mode and Competitive Safe checks. Compound or ambiguous utterances continue through the normal model route.
+- Added parser coverage and ToolAgent no-model integration regressions. An isolated parser harness passed 25 positive and 6 negative examples; the repository unittest module and Windows runtime have not been executed in this environment.
+
 ## 2026-11-22 03:37 Iran (Voice settings simplified)
 - Voice tab: a new top card "مکالمه" with one switch, "نوع مکالمه": ریل‌تایم (Gemini Live) or محلی (آفلاین). Realtime shows the Google AI key and the Kira voice; local shows the input (STT = Shenava, automatic, one option) and output (TTS = Piper فارسی / KittenTTS). Mic and output-device cards stay visible; STT, TTS and Gemini detail boxes moved into a collapsed "تنظیمات پیشرفته" area. All old widgets still exist (controllers unchanged); the redundant "Shenava · Sherpa-ONNX" label row was removed.
 - New setting `gemini_voice` (Zephyr default; Kore, Leda, Aoede = female, Puck, Charon, Fenrir, Orus = male), read by `gemini_live.py` instead of the hard-coded "Zephyr". Local voices (Piper Mana, Kitten) have no voice choice.
