@@ -100,6 +100,35 @@ class ProviderTests(unittest.TestCase):
         self.assertEqual(payload["model"], "gemini-3.8-flash")
         self.assertTrue(url.endswith("/chat/completions"))
 
+    def test_gemini_38_flash_uses_low_reasoning_effort_for_stream_and_chat(self):
+        provider = hybrid_ai.OpenAICompatibleProvider({
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_key": "google-test-key",
+            "model": "gemini-3.8-flash",
+        }, name="google-ai")
+        for streaming in (False, True):
+            _url, _headers, payload = provider._prepare(MSGS, SYS, 0.7, streaming)
+            self.assertEqual(payload["reasoning_effort"], "low")
+            self.assertEqual(payload["stream"], streaming)
+
+    def test_low_reasoning_effort_is_not_forced_on_other_google_models(self):
+        provider = hybrid_ai.OpenAICompatibleProvider({
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_key": "google-test-key",
+            "model": "gemini-3.5-flash",
+        }, name="google-ai")
+        _url, _headers, payload = provider._prepare(MSGS, SYS, 0.7, False)
+        self.assertNotIn("reasoning_effort", payload)
+
+    def test_low_reasoning_effort_is_not_forced_on_non_google_endpoints(self):
+        provider = hybrid_ai.OpenAICompatibleProvider({
+            "base_url": "https://example.com/v1",
+            "api_key": "example-key",
+            "model": "gemini-3.8-flash",
+        }, name="custom")
+        _url, _headers, payload = provider._prepare(MSGS, SYS, 0.7, True)
+        self.assertNotIn("reasoning_effort", payload)
+
     def test_telemetry_records_provider_model_and_duration_without_chat_content(self):
         r = router("groq")
         r.settings["providers"]["groq"]["model"] = "test-model"
