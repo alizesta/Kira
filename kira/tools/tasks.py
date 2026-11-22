@@ -139,8 +139,9 @@ class TaskPlan:
         out = []
         for d in st.depends_on:
             dep = self.step(d)
-            if dep is not None and dep.status not in (DONE, SKIPPED):
-                out.append(dep.id)
+            # A missing prerequisite is corrupted/incomplete task state, never proof that the dependency passed.
+            if dep is None or dep.status not in (DONE, SKIPPED):
+                out.append(int(d))
         return out
 
     def next_step(self) -> Step | None:
