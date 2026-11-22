@@ -1,3 +1,9 @@
+## Latest task: 20 adversarial multi-step cases (2026-11-22)
+
+- Added 20 hard cases to `tests/test_task_understanding_benchmark.py`: conditional operations, sequence constraints, read-only boundaries, explicit approval/no-delete constraints, web evidence, status polling, and combinations of local tools with web/MCP/agents.
+- Added a unittest asserting all required categories are detected and each hard case routes beyond index-only triage. Independent detector-pattern harness: 20/20 required-category coverage, zero regex compile errors. Extra category matches were observed in some prompts; this benchmark currently asserts required-family recall, not exact category precision.
+- Python unittest suite, live model, and Windows execution have not been run. GitHub Actions were not triggered.
+
 ## Latest task: 200-case task-understanding benchmark (2026-11-22)
 
 - Added `tests/test_task_understanding_benchmark.py`: 200 actionable prompts split evenly across 10 tool families, plus 20 chat-only negative controls. The test checks required category recall and that actionable prompts bypass index-only triage while ordinary chat remains on it.
