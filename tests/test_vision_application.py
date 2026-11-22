@@ -10,10 +10,11 @@ class VisionApplicationServiceTests(unittest.TestCase):
         self.game_mode = GameModeApplicationService()
         self.service = VisionApplicationService(self.game_mode, "economic")
 
-    def test_capture_requires_manual_enablement_and_permitted_profile(self):
+    def test_capture_requires_manual_enablement_but_supports_both_profiles(self):
         self.assertFalse(self.service.capture_allowed(False, "story"))
-        self.assertFalse(self.service.capture_allowed(True, "competitive_safe"))
+        self.assertFalse(self.service.capture_allowed(False, "competitive_safe"))
         self.assertTrue(self.service.capture_allowed(True, "story"))
+        self.assertTrue(self.service.capture_allowed(True, "competitive_safe"))
 
     def test_unknown_mode_falls_back_to_economic_policy(self):
         policy = self.service.set_mode("not-a-mode")
@@ -41,7 +42,7 @@ class VisionApplicationServiceTests(unittest.TestCase):
         self.assertFalse(self.service.should_analyze(**common))
         common["frame_available"] = True
         common["profile"] = "competitive_safe"
-        self.assertFalse(self.service.should_analyze(**common))
+        self.assertTrue(self.service.should_analyze(**common))
 
     def test_result_is_deduplicated_and_disabled_capture_is_silent(self):
         self.assertEqual(
