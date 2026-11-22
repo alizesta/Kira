@@ -411,7 +411,23 @@ class SemanticPlannerRoutingTests(unittest.TestCase):
         plan = probe.decide("کروم رو باز کن", base)
         self.assertFalse(plan.complex)
 
-    def test_no_detected_tool_intent_is_not_forced_into_task_planner(self):
+    def test_auto_mode_lets_model_classify_unknown_intent_without_category_keywords(self):
+        from kira.tools.agent import ToolAgent
+
+        agent = ToolAgent.__new__(ToolAgent)
+        agent.settings = {"tools_mode": "auto"}
+        agent.registry = SimpleNamespace(web_context=None)
+        plan = agent._plan_simple("میشه این کار رو برام انجام بدی؟")
+        self.assertIsNotNone(plan)
+        self.assertIn("desktop", plan.categories)
+        self.assertIn("files", plan.categories)
+        self.assertNotIn("mcp", plan.categories)
+        self.assertNotIn("agents", plan.categories)
+        self.assertIn("web", plan.categories)
+        decision = self._autonomy_probe().decide("میشه این کار رو برام انجام بدی؟", plan)
+        self.assertTrue(decision.complex)
+
+    def test_no_base_tool_plan_remains_plain_chat_for_direct_decision(self):
         probe = self._autonomy_probe()
         self.assertIsNone(probe.decide("سلام، حالت چطوره؟", None))
 

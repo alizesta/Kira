@@ -332,12 +332,16 @@ class ToolAgent(AutonomyMixin):
             return None
         if mode == "always":
             return ToolPlan(set(protocol.ALL_CATEGORIES), protocol.is_strong(text))
-        cats = protocol.detect_categories(text)
-        if not cats and self._web_resume(text):
-            cats = {"web"}                                   # "ادامه بده" while a web research is paused
-        if not cats and self._turn_id - self._last_used_turn <= 2 and len(str(text).split()) <= 10:
-            cats = set(self._last_cats)                      # a short follow-up to a tool turn ("بازش کن", "اولیش")
-        return ToolPlan(cats, protocol.is_strong(text)) if cats else None
+        detected = protocol.detect_categories(text)
+        if self._web_resume(text):
+            detected.add("web")
+        # In auto mode the model itself classifies every turn as conversation,
+        # knowledge, or an actionable task. Give it local capabilities up front
+        # so an unfamiliar app/task is not lost by a keyword/category prefilter.
+        # External MCP/agent capabilities remain opt-in via explicit user intent.
+        cats = set(protocol.ALL_CATEGORIES) - {"mcp", "agents"}
+        cats.update(detected & {"mcp", "agents"})
+        return ToolPlan(cats, protocol.is_strong(text))
 
     def temperature(self, temperature: float) -> float:
         return min(float(temperature), 0.4)                  # tool blocks and exact facts do not need a high temperature

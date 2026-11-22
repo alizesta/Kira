@@ -475,3 +475,10 @@ Mate Engine (shinyflvre) is a Unity/C# project under AGPL-3.0 + its own licence,
 ### Evidence mapping and explicit external-tool scope
 - Map final evidence quotes to explicit success-criterion numbers, rejecting missing, duplicate or unknown criterion references.
 - Include MCP/agent capabilities in the model's planning catalog only when the user's request explicitly selects that external capability.
+
+
+### Model-owned tool-intent classification
+- In `tools_mode=auto`, let the model decide in the same primary response call whether a turn is ordinary conversation or requires local tools; do not let unknown task vocabulary bypass the planner.
+- Keep exact deterministic Fast Path commands, and keep MCP/agent tools hidden unless the user explicitly asks for those external capabilities.
+
+- Include read-only web research tools in the auto-mode planner catalog; existing web rules still require explicit user intent before searching.
