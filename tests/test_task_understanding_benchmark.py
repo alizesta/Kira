@@ -238,7 +238,7 @@ CASES = {
 HARD_CASES = [
     [
         "time",
-        "Check the local time first; then report the current date and weekday without changing any settings.",
+        "Check the local time first; then report the current date and weekday without modifying any configuration.",
         [
             "time"
         ]
@@ -321,7 +321,7 @@ HARD_CASES = [
     ],
     [
         "apps",
-        "If Chrome is not open, launch it; otherwise reuse the existing window and open the URL I provide in a new tab.",
+        "If Chrome is not open, launch it; otherwise reuse the existing window and open the website at the URL I provide in a new tab.",
         [
             "apps",
             "web"
@@ -336,7 +336,7 @@ HARD_CASES = [
     ],
     [
         "mcp",
-        "Use the configured MCP server to inspect its available tools, but do not send credentials or private file contents.",
+        "Use the configured MCP server to inspect its available tools, but do not send credentials or personal data.",
         [
             "mcp"
         ]
@@ -375,7 +375,7 @@ HARD_CASES = [
     ],
     [
         "audio",
-        "Set the headset as the output device only if it is already connected; otherwise leave audio settings unchanged and explain why.",
+        "Set the Bluetooth headset as the output device only if it is already connected; otherwise leave audio settings unchanged and explain why.",
         [
             "audio",
             "bluetooth"
