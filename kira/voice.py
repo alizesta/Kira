@@ -245,15 +245,29 @@ class Speaker(QObject):
         self._devices = None            # created lazily on first playback (needs a working audio backend)
         self._prefer_default_output = False  # do not reuse a stale endpoint after Windows invalidates it
         self._stream_dead = False       # a live reply was stopped (barge-in / stop / device change): its rest is NOT spoken
+        self._tts_warmup_timer = None
         if bool(self.settings.get("local_voice_tts", True)):
-            try:
-                from . import local_voice
-                selected_tts = self.settings.get("local_voice_tts_model", "")
-                if local_voice.tts_ready(selected_tts):
-                    threading.Thread(target=lambda: local_voice.warmup_tts(selected_tts),
-                                     daemon=True, name="kira-tts-warmup").start()
-            except Exception:
-                pass
+            # Let the window paint and the event loop settle before optional model warm-up.
+            self._tts_warmup_timer = QTimer(self)
+            self._tts_warmup_timer.setSingleShot(True)
+            self._tts_warmup_timer.timeout.connect(self._warmup_local_tts)
+            self._tts_warmup_timer.start(10000)
+
+    def _warmup_local_tts(self):
+        self._tts_warmup_timer = None
+        if not bool(self.settings.get("local_voice_tts", True)):
+            return
+        try:
+            from . import local_voice
+            selected_tts = self.settings.get("local_voice_tts_model", "")
+            if local_voice.tts_ready(selected_tts):
+                threading.Thread(
+                    target=lambda: local_voice.warmup_tts(selected_tts),
+                    daemon=True,
+                    name="kira-tts-warmup",
+                ).start()
+        except Exception:
+            pass
 
     def _watch_devices(self):
         if self._devices is None:
