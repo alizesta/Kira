@@ -88,9 +88,14 @@ class TriagePlanTests(unittest.TestCase):
             ("Check the battery; if below 20%, enable Battery Saver", {"system"}),
             ("Find duplicate files, list only confirmed duplicates, and ask permission before deleting", {"files"}),
         )
-        for prompt, expected in cases:
+        agent = _agent()
+        for index, (prompt, expected) in enumerate(cases, 1):
             with self.subTest(prompt=prompt):
-                self.assertTrue(expected.issubset(protocol.detect_categories(prompt)))
+                detected = protocol.detect_categories(prompt)
+                self.assertTrue(expected.issubset(detected))
+                plan = agent.plan(prompt, session_id=f"english-{index}")
+                self.assertIsNotNone(plan)
+                self.assertEqual(plan.index_only, not bool(detected))
 
     def test_web_price_queries_do_not_fall_into_time_or_system(self):
         cases = (
