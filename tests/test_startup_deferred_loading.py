@@ -119,6 +119,15 @@ class StartupImportBoundaryTests(unittest.TestCase):
         self.assertNotIn("hybrid_ai", imports)
         self.assertIn("think_filter", imports)
 
+    def test_root_window_support_does_not_import_tool_agent(self):
+        source = (ROOT / "kira" / "ui" / "main_window_root_support.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            imported = {alias.name for alias in node.names}
+            self.assertNotIn("ToolAgent", imported)
+
     def test_importing_tool_protocol_does_not_load_agent_or_provider_stack(self):
         code = (
             "import sys; import kira.tools.protocol; "
