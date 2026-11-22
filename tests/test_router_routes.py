@@ -147,6 +147,27 @@ class RouterRouteTests(unittest.TestCase):
         with r.role_scope("surface"):
             self.assertEqual(r.vision_route_id(), gemini_route["id"])
 
+    def test_duplicate_google_hydrogen_routes_are_not_retried_within_one_chat_turn(self):
+        s, r = make("groq")
+        google = routes.add_provider(
+            s, "Google AI Studio", "https://generativelanguage.googleapis.com/v1beta/openai",
+            "test-google-api-key-1234567890", local=False, enabled=True,
+        )
+        first = routes.add_route(s, google, "gemini-4-hydrogen", enabled=True)
+        second = routes.add_route(s, google, "gemini-4-hydrogen", enabled=True)
+        routes.reorder(s, [first["id"], second["id"], "groq"])
+        f = dispatch({
+            "generativelanguage.googleapis.com": Resp(503, {"error": {"message": "temporary unavailable"}}),
+            "groq": ok_openai("fallback-answer"),
+        })
+        with mock.patch("requests.post", f):
+            self.assertEqual(r.chat(MSGS, SYS), "fallback-answer")
+        google_calls = [call for call in f.calls if "generativelanguage.googleapis.com" in call["url"]]
+        self.assertEqual(len(google_calls), 1)
+        self.assertEqual(google_calls[0]["json"]["model"], "gemini-4-hydrogen")
+        self.assertTrue(any(a.get("result") == "duplicate_model_skipped" for a in r.last_attempts))
+        self.assertEqual(len(f.calls), 2)
+
     def test_two_models_of_one_provider_are_independent_routes(self):
         s, r = make("groq")
         routes.add_route(s, "groq", "second-model")
