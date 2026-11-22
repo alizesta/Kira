@@ -1,3 +1,7 @@
+## 2026-11-22 (20 adversarial multi-step cases)
+- Added 20 harder task-understanding cases to `tests/test_task_understanding_benchmark.py`. They combine conditional branches, sequencing, explicit non-action constraints, read-before-write, status verification, and mixed local/web/MCP/agent capabilities.
+- The hard-case test checks every required tool family and verifies that each case exits the cheap index-only triage route. An independent harness reconstructed from the committed detector patterns found all 20/20 required-category sets; this is not execution of the Python unittest module or live planning.
+
 ## 2026-11-22 (200-case task-understanding benchmark)
 - Added `tests/test_task_understanding_benchmark.py`: 200 actionable prompts (20 each across time, system, apps, Bluetooth, audio, files, desktop, web, MCP and agents) plus 20 ordinary-chat controls. Each actionable prompt pins a required tool family; the chat controls must stay on the cheap `index_only` triage route with no category match.
 - The benchmark tests category recall and routing boundaries on the actual `protocol.detect_categories` and `ToolAgent.plan` implementations. It does not measure live LLM semantic decisions, plan quality, Windows execution, or end-to-end task success.
