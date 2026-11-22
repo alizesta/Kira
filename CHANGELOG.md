@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-22 08:03 Iran (Competitive Safe regression after model-owned intent classification)
+- Regression from `42d34b6`: in `tools_mode=auto` every turn now carries all local categories, so under Competitive Safe the `{"web"}` intersection was never empty and every message (even a blocked local query like "مشخصات سیستم چیه") got a web-tool plan. `ToolAgent.plan` now keeps `web` in Competitive Safe only when the message explicitly asks for it (or a paused web research is resumed) in `auto` mode; `always` mode is unchanged.
+- Tests: fixed `test_competitive_safe_still_blocks_local_fast_path` (it failed on `42d34b6`, passed on `20aa301`); added `test_competitive_safe_ordinary_chat_gets_no_tool_plan` and `test_competitive_safe_keeps_explicit_web_request`.
+- Local run: `python -m unittest tests.test_fast_commands tests.test_task_store` → 53 tests OK (Linux sandbox). Windows runtime and the full suite were not run; no GitHub Action was triggered.
+
 ## 2026-11-22 (Fast Path stages 4–5)
 - Added integration regressions using the real ToolRegistry boundary, not only a mocked registry: successful dispatch/journaling, execution-time enforcement when tools_mode changes to off, execution-time Competitive Safe enforcement, and same-turn duplicate suppression.
 - Documented the five-stage Fast Path contract, focused unittest command, Windows acceptance checklist and the distinction between source coverage and runtime acceptance.

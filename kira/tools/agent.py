@@ -305,7 +305,12 @@ class ToolAgent(AutonomyMixin):
                     plan = ToolPlan(set(tool.categories), protocol.is_strong(text))
             if plan is not None:
                 if self._competitive_safe_mode:
-                    plan.categories.intersection_update({"web"})
+                    allowed = {"web"}
+                    if self.mode() == "auto":
+                        # Auto mode now offers every local category up front; in Competitive Safe only
+                        # an explicit web request (or a paused web research) may keep the web tools.
+                        allowed &= protocol.detect_categories(text) | ({"web"} if self._web_resume(text) else set())
+                    plan.categories.intersection_update(allowed)
                     if not plan.categories:
                         return None
                 plan.web = "web" in plan.categories and (bool(protocol.detect_categories(text) & {"web"}) or self._web_resume(text))

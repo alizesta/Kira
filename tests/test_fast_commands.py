@@ -181,6 +181,18 @@ class FastPathIntegrationTests(unittest.TestCase):
         agent._competitive_safe_mode = True
         self.assertIsNone(agent.plan("مشخصات سیستم چیه", session_id="kira"))
 
+    def test_competitive_safe_ordinary_chat_gets_no_tool_plan(self):
+        agent = self._agent(tool_name="get_system_info")
+        agent._competitive_safe_mode = True
+        self.assertIsNone(agent.plan("سلام، حالت چطوره؟", session_id="kira"))
+
+    def test_competitive_safe_keeps_explicit_web_request(self):
+        agent = self._agent(tool_name="get_system_info")
+        agent._competitive_safe_mode = True
+        plan = agent.plan("در وب درباره پورشه 911 تحقیق کن", session_id="kira")
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan.categories, {"web"})            # local categories stay blocked
+
     def test_tool_failure_is_reported_without_false_success(self):
         from kira.tools.registry import ERROR
         agent = self._agent(ERROR)

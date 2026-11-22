@@ -1,5 +1,11 @@
 # Task Handoff
 
+## Latest task: review of model-driven task understanding (2026-11-22, 08:03 Iran)
+
+- Branch `claude/task-understanding-review` (from `new-main` @ `42d34b6`). Reviewed `20aa301` (model-driven planning/verification) and `42d34b6` (model classifies intent in auto mode); fixed one regression (Competitive Safe gave every message a web plan, see CHANGELOG 08:03).
+- Open design question, not changed: in `auto` mode every message now carries the full local tool catalog (`ToolAgent._plan_simple`), so even ordinary chat pays prompt size and the model decides conversation vs task. Measure latency/false-positive tool calls on real routes before deciding whether to add a cheap pre-gate (keeping the model as the authority for unknown vocabulary).
+- Not verified: Windows runtime, real-model behaviour on the Wallpaper Engine / Porsche 911 example, full test suite. Only `tests.test_fast_commands` and `tests.test_task_store` were run (53 OK).
+
 ## Latest task: portrait, icon, tray menu (2026-11-21, 17:05 Iran)
 
 - Check on Windows: Kira's card shows the new portrait; taskbar/window/tray show her face icon; right-click tray shows show/hide Kira, show/hide character, model, web, mic, خروج. If items are still missing, the cause is in `refresh_tray_menu` (`kira/ui/main_window_lifecycle.py`). The `.exe`/shortcut icon (`assets/kira_icon.ico`) is not wired into any installer or `.bat`.
