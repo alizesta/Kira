@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-22 (Fast Path stages 4–5)
+- Added integration regressions using the real ToolRegistry boundary, not only a mocked registry: successful dispatch/journaling, execution-time enforcement when tools_mode changes to off, execution-time Competitive Safe enforcement, and same-turn duplicate suppression.
+- Documented the five-stage Fast Path contract, focused unittest command, Windows acceptance checklist and the distinction between source coverage and runtime acceptance.
+- These tests have been added but not executed here. Windows runtime acceptance remains open; GitHub Actions is not part of this verification.
+
 ## 2026-11-22 (Fast Path stage 3)
 - Hardened Fast Path dispatch integration with ToolAgent: a complex planner decision always wins; direct dispatch requires a registered, internal, low-risk tool whose category matches both the parsed command and the registry metadata.
 - Added regressions for complex-plan precedence, sensitive/external tool rejection, category mismatch, disabled tools mode and missing registry entries. Existing ToolRegistry execution remains the only execution path; no UI or new command surface was added.

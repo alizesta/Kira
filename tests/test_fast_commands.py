@@ -233,5 +233,99 @@ class FastPathIntegrationTests(unittest.TestCase):
         self.assertIsNone(plan.fast_call)
 
 
+
+class FastPathRealRegistryBoundaryTests(unittest.TestCase):
+    """Exercise the Fast Path through the production ToolRegistry permission boundary."""
+
+    def _agent(self):
+        from kira.tools.agent import ToolAgent
+        from kira.tools.registry import Tool, ToolRegistry, READ
+
+        registry = ToolRegistry()
+        calls = []
+        registry.register(Tool(
+            "get_system_info",
+            "test-only system information reader",
+            lambda args: calls.append(dict(args)) or "system facts",
+            (),
+            READ,
+            ("system",),
+        ))
+
+        agent = ToolAgent.__new__(ToolAgent)
+        agent.settings = {"tools_mode": "auto", "agent_planning": "off"}
+        agent.registry = registry
+        agent._competitive_safe_mode = False
+        agent._pending_by_session = {}
+        agent._pending_new_sessions = set()
+        agent._init_session_turn_states()
+        registry.execution_guard = agent._game_mode_execution_guard
+        registry.access.require_grants = True
+        return agent, registry, calls
+
+    def _plan(self, agent):
+        plan = agent.plan("مشخصات سیستم چیه", session_id="kira")
+        self.assertIsNotNone(plan)
+        self.assertEqual(
+            plan.fast_call,
+            {"tool": "get_system_info", "args": {}, "category": "system"},
+        )
+        return plan
+
+    def _run(self, agent, plan):
+        return agent.run(
+            _NoModelRouter(),
+            [{"role": "user", "content": "مشخصات سیستم چیه"}],
+            "system",
+            0.2,
+            plan,
+        )
+
+    def test_fast_path_executes_through_real_registry(self):
+        agent, registry, calls = self._agent()
+        plan = self._plan(agent)
+        result = self._run(agent, plan)
+
+        self.assertTrue(result["fast_path"])
+        self.assertEqual(result["tools"][0]["status"], "ok")
+        self.assertIn("system facts", result["text"])
+        self.assertEqual(calls, [{}])
+        self.assertEqual(registry.access.journal.recent()[-1]["status"], "ok")
+
+    def test_tools_mode_change_after_planning_is_enforced_at_execution(self):
+        from kira.tools.registry import DENIED
+
+        agent, _registry, calls = self._agent()
+        plan = self._plan(agent)
+        agent.settings["tools_mode"] = "off"
+        result = self._run(agent, plan)
+
+        self.assertEqual(calls, [])
+        self.assertEqual(result["tools"][0]["status"], DENIED)
+        self.assertIn("ابزارها خاموش", result["text"])
+
+    def test_competitive_safe_change_after_planning_is_enforced_at_execution(self):
+        from kira.tools.registry import DENIED
+
+        agent, _registry, calls = self._agent()
+        plan = self._plan(agent)
+        agent.set_competitive_safe_mode(True)
+        result = self._run(agent, plan)
+
+        self.assertEqual(calls, [])
+        self.assertEqual(result["tools"][0]["status"], DENIED)
+        self.assertIn("Competitive Safe", result["text"])
+
+    def test_same_fast_call_is_not_executed_twice_in_one_turn(self):
+        agent, _registry, calls = self._agent()
+        plan = self._plan(agent)
+        first = self._run(agent, plan)
+        second = self._run(agent, plan)
+
+        self.assertEqual(calls, [{}])
+        self.assertEqual(first["tools"][0]["status"], "ok")
+        self.assertTrue(second["tools"][0]["cached"])
+
+
 if __name__ == "__main__":
     unittest.main()
