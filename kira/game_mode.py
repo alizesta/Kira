@@ -203,38 +203,46 @@ class GameModeMonitor(QObject):
         )
         if region is None:
             return None
+        try:
+            device_count = sum(
+                line.startswith("Device[") for line in dxcam.device_info().splitlines()
+            )
+        except Exception:  # noqa: BLE001 - use the default adapter when enumeration text is unavailable
+            device_count = 1
         for backend in ("dxgi", "winrt"):
-            try:
-                if self._dxcam_camera is None or self._dxcam_backend != backend:
+            for device_idx in range(max(1, device_count)):
+                try:
+                    if self._dxcam_camera is None or self._dxcam_backend != backend:
+                        self._release_dxcam()
+                        self._dxcam_camera = dxcam.create(
+                            device_idx=device_idx,
+                            output_color="BGRA",
+                            backend=backend,
+                            processor_backend="numpy",
+                            max_buffer_len=2,
+                        )
+                        self._dxcam_backend = backend
+                    frame = self._dxcam_camera.grab(region=region, new_frame_only=False)
+                    if frame is None or getattr(frame, "ndim", 0) != 3 or frame.shape[2] != 4:
+                        self._release_dxcam()
+                        continue
+                    height, width = frame.shape[:2]
+                    image = QImage(
+                        frame.data, width, height, int(frame.strides[0]),
+                        QImage.Format.Format_ARGB32,
+                    ).copy()
+                    if image.isNull():
+                        self._release_dxcam()
+                        continue
+                    target = fit_capture_size(image.width(), image.height(), max_width, max_height)
+                    if image.width() > target[0] or image.height() > target[1]:
+                        image = image.scaled(
+                            target[0], target[1], Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.FastTransformation,
+                        )
+                    return QPixmap.fromImage(image)
+                except Exception:  # noqa: BLE001 - recover with another adapter/backend
                     self._release_dxcam()
-                    self._dxcam_camera = dxcam.create(
-                        output_color="BGRA",
-                        backend=backend,
-                        processor_backend="numpy",
-                        max_buffer_len=2,
-                    )
-                    self._dxcam_backend = backend
-                frame = self._dxcam_camera.grab(region=region, new_frame_only=False)
-                if frame is None or getattr(frame, "ndim", 0) != 3 or frame.shape[2] != 4:
-                    self._release_dxcam()
-                    continue
-                height, width = frame.shape[:2]
-                image = QImage(
-                    frame.data, width, height, int(frame.strides[0]),
-                    QImage.Format.Format_ARGB32,
-                ).copy()
-                if image.isNull():
-                    self._release_dxcam()
-                    continue
-                target = fit_capture_size(image.width(), image.height(), max_width, max_height)
-                if image.width() > target[0] or image.height() > target[1]:
-                    image = image.scaled(
-                        target[0], target[1], Qt.AspectRatioMode.KeepAspectRatio,
-                        Qt.TransformationMode.FastTransformation,
-                    )
-                return QPixmap.fromImage(image)
-            except Exception:  # noqa: BLE001 - recover with the next capture backend
-                self._release_dxcam()
         return None
 
     def capture_last_game(self, max_width=CAPTURE_MAX_WIDTH, max_height=CAPTURE_MAX_HEIGHT):
