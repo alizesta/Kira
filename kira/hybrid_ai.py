@@ -842,9 +842,20 @@ class HybridRouter:
                 client.chat([{"role": "user", "content": "OK"}], "Reply with only: OK", 0.1)
                 ok, msg = True, "اتصال و دریافت پاسخ موفق بود."
             else:
-                cap = route_model.CLOUD_TIMEOUT[1] if route_model.is_google(route["provider"], cfg) else 30
-                merged = {**cfg, "model": route["model"], "timeout": min(int(route_model.effective_timeout(route, cfg) or 15), cap)}
-                ok, msg = probe_provider(route["provider"], merged)
+                # Explicit route tests are quick health checks, not full chat turns.
+                # Keep them bounded even though normal Google chat may use 60 seconds.
+                test_timeout = 15
+                merged = {
+                    **cfg,
+                    "model": route["model"],
+                    "timeout": min(
+                        int(route_model.effective_timeout(route, cfg) or test_timeout),
+                        test_timeout,
+                    ),
+                }
+                ok, msg = probe_provider(
+                    route["provider"], merged, timeout=test_timeout
+                )
         except Exception as exc:                                                    # noqa: BLE001
             ok, msg = False, redact(exc, cfg.get("api_key"))[:400]
         ms = int((time.monotonic() - t0) * 1000)

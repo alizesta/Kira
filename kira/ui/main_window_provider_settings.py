@@ -1,5 +1,6 @@
 """Provider settings feature controller."""
 import copy
+import logging
 import re
 import time
 
@@ -8,6 +9,9 @@ from PySide6.QtCore import Slot
 from .. import api_manager
 from .. import model_catalog
 from .. import routes as route_model
+_log = logging.getLogger(__name__)
+
+
 from .main_window_provider_settings_support import (
     ApiPanel,
     ModelsPanel,
@@ -304,6 +308,7 @@ class ProviderSettingsController(WindowFeatureController):
         rid = route["id"]
         worker = TaskWorker(lambda: router.test_route(rid))
         worker._model_key = key
+        worker._model_test_terminal = False
         workers[key] = worker
         worker.done.connect(self._on_model_test_done)
         worker.finished.connect(self._clear_model_test_worker)
@@ -317,23 +322,55 @@ class ProviderSettingsController(WindowFeatureController):
         key = getattr(worker, "_model_key", None)
         if key is None or self.context.state._closing:
             return
-        ok, value = result
-        if ok:
-            good, message, ms = value
-        else:
-            good, message, ms = False, str(value), None
-        model_catalog.record_test(self.context.services.settings, key[0], key[1], good, ms, message)
-        self.feature_controller("runtime").save_now()
-        self.models_panel.status.setText((f"✓ {key[1]}: سالم ({ms} ms)" if good else f"✕ {key[1]}: {message[:240]}"))
-        self.__dict__.get("_model_test_workers", {}).pop(key, None)
-        self.models_panel.set_testing(key[0], key[1], False)
-        self.refresh_unified_models()
+        try:
+            ok, value = result
+            if ok:
+                good, message, ms = value
+            else:
+                good, message, ms = False, str(value), None
+        except Exception as exc:  # noqa: BLE001 - malformed worker result must still release the indicator
+            good, message, ms = False, f"نتیجهٔ تست قابل‌خواندن نبود: {type(exc).__name__}", None
+        worker._model_test_terminal = True
+        try:
+            model_catalog.record_test(self.context.services.settings, key[0], key[1], good, ms, message)
+            self.feature_controller("runtime").save_now()
+            self.models_panel.status.setText(
+                (f"✓ {key[1]}: سالم ({ms} ms)" if good else f"✕ {key[1]}: {message[:240]}")
+            )
+        except Exception as exc:  # noqa: BLE001 - a UI/persistence error must not leave the spinner active
+            self.models_panel.status.setText(f"✕ ثبت نتیجهٔ تست {key[1]} ناموفق بود: {str(exc)[:180]}")
+        finally:
+            self.__dict__.get("_model_test_workers", {}).pop(key, None)
+            try:
+                self.models_panel.set_testing(key[0], key[1], False)
+                self.refresh_unified_models()
+            except Exception:  # noqa: BLE001 - keep the model-test worker lifecycle recoverable
+                _log.exception("Could not reset the model test indicator for %s", key[1])
 
     @Slot()
     def _clear_model_test_worker(self):
         worker = self.sender()
         key = getattr(worker, "_model_key", None)
         self.__dict__.get("_model_test_workers", {}).pop(key, None)
+        if key is not None and worker is not None and not getattr(worker, "_model_test_terminal", False):
+            if not self.context.state._closing:
+                try:
+                    model_catalog.record_test(
+                        self.context.services.settings, key[0], key[1], False, None,
+                        "تست پیش از دریافت نتیجه متوقف شد."
+                    )
+                    self.feature_controller("runtime").save_now()
+                    self.models_panel.status.setText(
+                        f"✕ تست {key[1]} بدون دریافت نتیجه متوقف شد."
+                    )
+                    self.models_panel.set_testing(key[0], key[1], False)
+                    self.refresh_unified_models()
+                except Exception:  # noqa: BLE001
+                    _log.exception("Could not recover an unfinished model test for %s", key[1])
+                    try:
+                        self.models_panel.set_testing(key[0], key[1], False)
+                    except Exception:
+                        pass
         if worker is not None:
             worker.deleteLater()
 

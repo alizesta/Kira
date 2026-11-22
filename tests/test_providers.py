@@ -38,30 +38,29 @@ def dispatch(table):
 
 
 class ProviderTests(unittest.TestCase):
-    def test_google_stream_retries_transient_503_before_route_failover(self):
+    def test_google_stream_does_not_retry_503_and_spend_daily_quota(self):
         provider = hybrid_ai.OpenAICompatibleProvider({
             "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
             "api_key": "google-test-key",
             "model": "gemini-3.8-flash",
             "timeout": 60,
         }, name="custom-gemini")
-        success_response = StreamResp([])
-        responses = [Resp(503, text="overloaded"), Resp(503, text="overloaded"), success_response]
         calls = []
 
         def post(url, **kwargs):
             calls.append((url, kwargs))
-            return responses.pop(0)
+            return Resp(503, text="overloaded")
 
         with mock.patch("requests.post", side_effect=post), mock.patch("kira.hybrid_ai.time.sleep") as sleep:
-            response = provider._open_stream(
-                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-                {"Authorization": "Bearer google-test-key"}, {"model": "gemini-3.8-flash"},
-            )
-        self.assertEqual(len(calls), 3)
-        self.assertTrue(all(call[1]["stream"] is True for call in calls))
-        self.assertEqual(sleep.call_count, 2)
-        self.assertIs(response, success_response)
+            with self.assertRaises(ProviderError) as cm:
+                provider._open_stream(
+                    "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                    {"Authorization": "Bearer google-test-key"}, {"model": "gemini-3.8-flash"},
+                )
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(calls[0][1]["stream"] is True)
+        self.assertEqual(cm.exception.status_code, 503)
+        sleep.assert_not_called()
 
     def test_non_google_provider_does_not_retry_503(self):
         provider = hybrid_ai.OpenAICompatibleProvider({
@@ -78,6 +77,38 @@ class ProviderTests(unittest.TestCase):
                 provider._post_json("https://example.com/v1/chat/completions", {}, {"model": "test-model"})
         self.assertEqual(len(calls), 1)
         self.assertEqual(cm.exception.status_code, 503)
+        sleep.assert_not_called()
+
+    def test_google_probe_does_not_repeat_503_generation_requests(self):
+        cfg = {
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_key": "google-test-key",
+            "model": "gemini-3.8-flash",
+        }
+        get = mock.Mock(return_value=Resp(200, {"models": [{"name": "models/gemini-3.8-flash"}]}))
+        post = dispatch({"generativelanguage.googleapis.com": Resp(503, text="overloaded")})
+        with mock.patch("requests.get", get), mock.patch("requests.post", post), mock.patch("kira.hybrid_ai.time.sleep") as sleep:
+            ok, message = probe_provider("custom-google", cfg)
+        self.assertFalse(ok)
+        self.assertIn("503", message)
+        self.assertEqual(len(post.calls), 1)
+        sleep.assert_not_called()
+
+    def test_probe_does_not_retry_quota_exhausted_429(self):
+        cfg = {
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_key": "google-test-key",
+            "model": "gemini-3.8-flash",
+        }
+        get = mock.Mock(return_value=Resp(200, {"models": [{"name": "models/gemini-3.8-flash"}]}))
+        post = dispatch({"generativelanguage.googleapis.com": Resp(
+            429, {"error": {"message": "Quota exceeded for requests per day, limit: 20"}}
+        )})
+        with mock.patch("requests.get", get), mock.patch("requests.post", post), mock.patch("kira.hybrid_ai.time.sleep") as sleep:
+            ok, message = probe_provider("custom-google", cfg)
+        self.assertFalse(ok)
+        self.assertIn("429", message)
+        self.assertEqual(len(post.calls), 1)
         sleep.assert_not_called()
 
     def test_provider_extracts_model_id_from_catalog_object(self):

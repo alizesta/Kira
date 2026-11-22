@@ -236,6 +236,32 @@ class RouterRouteTests(unittest.TestCase):
         self.assertEqual(route["timeout"], routes.DEFAULT_CLOUD_TIMEOUT)
         self.assertEqual(provider.timeout, routes.CLOUD_TIMEOUT[1])
 
+    def test_google_route_probe_has_a_fifteen_second_total_budget(self):
+        s = helpers.fresh_settings()
+        pid = routes.add_provider(
+            s, "Google AI Studio",
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key=f"{CANARY}-google-test",
+        )
+        route = routes.add_route(s, pid, "gemini-3.8-flash")
+        router = HybridRouter(s)
+        get = mock.Mock(return_value=Resp(
+            200, {"models": [{"name": "models/gemini-3.8-flash"}]}
+        ))
+        post = dispatch({
+            "generativelanguage.googleapis.com": ok_openai("OK")
+        })
+
+        with mock.patch("requests.get", get), mock.patch("requests.post", post):
+            ok, message, _ms = router.test_route(route["id"])
+
+        self.assertTrue(ok, message)
+        # The short test budget must not reduce the normal chat route timeout.
+        self.assertEqual(router._make_provider(route).timeout, routes.CLOUD_TIMEOUT[1])
+        self.assertLessEqual(get.call_args.kwargs["timeout"], 15)
+        self.assertLessEqual(post.calls[0]["timeout"], 15)
+        self.assertGreater(post.calls[0]["timeout"], 0)
+
     def test_google_gemini_explicit_extended_timeout_is_preserved(self):
         s = helpers.fresh_settings()
         pid = routes.add_provider(
