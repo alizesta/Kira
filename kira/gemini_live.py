@@ -65,6 +65,33 @@ def _device_index(sd, wanted: str, *, input_device: bool):
     return None  # Device was disconnected; use the current system default.
 
 
+def _take_transcript(buffers: dict[str, list[str]], role: str) -> str | None:
+    """Join and clear one completed role transcript."""
+    value = "".join(buffers[role]).strip()
+    buffers[role].clear()
+    return value or None
+
+
+def _append_transcript_chunk(buffers: dict[str, list[str]], role: str, transcription):
+    """Accumulate a Live transcript and emit only when the API marks it finished.
+
+    Returns (completed_text, supports_finished). A None support value means there
+    was no transcription event; False identifies older SDK objects that need the
+    turn_complete compatibility fallback.
+    """
+    if transcription is None:
+        return None, None
+
+    supports_finished = hasattr(transcription, "finished")
+    text = str(getattr(transcription, "text", "") or "")
+    if text:
+        buffers[role].append(text)
+
+    if supports_finished and bool(getattr(transcription, "finished", False)):
+        return _take_transcript(buffers, role), True
+    return None, supports_finished
+
+
 class GeminiLiveWorker(QThread):
     """Low-latency PCM audio streaming to/from Gemini Live on a dedicated thread."""
 
@@ -98,6 +125,7 @@ class GeminiLiveWorker(QThread):
         self._output_stream = None
         self._failure = ""
         self._transcript_buffers = {"user": [], "assistant": []}
+        self._transcript_finished_support = {"user": None, "assistant": None}
 
     def stop(self):
         self._stop.set()
@@ -204,18 +232,27 @@ class GeminiLiveWorker(QThread):
                                 pass
                 input_transcription = getattr(content, "input_transcription", None)
                 output_transcription = getattr(content, "output_transcription", None)
-                input_text = str(getattr(input_transcription, "text", "") or "")
-                output_text = str(getattr(output_transcription, "text", "") or "")
-                if input_text:
-                    self._transcript_buffers["user"].append(input_text)
-                if output_text:
-                    self._transcript_buffers["assistant"].append(output_text)
+                for role, transcription in (
+                    ("user", input_transcription),
+                    ("assistant", output_transcription),
+                ):
+                    value, supports_finished = _append_transcript_chunk(
+                        self._transcript_buffers, role, transcription
+                    )
+                    if supports_finished is not None:
+                        self._transcript_finished_support[role] = supports_finished
+                    if value:
+                        self.transcript.emit(role, value)
+
                 if getattr(content, "turn_complete", False):
+                    # Older SDK response objects may not expose Transcription.finished.
+                    # Keep their previous turn-complete fallback without prematurely
+                    # flushing modern SDK buffers whose final transcript can arrive later.
                     for role in ("user", "assistant"):
-                        value = "".join(self._transcript_buffers[role]).strip()
-                        if value:
-                            self.transcript.emit(role, value)
-                        self._transcript_buffers[role].clear()
+                        if self._transcript_finished_support[role] is False:
+                            value = _take_transcript(self._transcript_buffers, role)
+                            if value:
+                                self.transcript.emit(role, value)
 
     async def _run_session(self):
         if self._stop.is_set():
