@@ -1,6 +1,6 @@
 # Audio Manager (مدیریت صدای ویندوز)
 
-ماژول صدا بخشی از Windows Control Layer است (`AudioModule` در `kira/tools/winmodules.py`، کد در `kira/tools/audio.py`). به هیچ Provider/مدلی وابسته نیست. WindowsControlLayer فقط Capabilityها را اعلام می‌کند؛ اجرای ابزار، درخواست صریح، مجوز و ثبت نتیجه از ToolRegistry و System Access Manager مرکزی عبور می‌کنند (جزئیات: docs/SYSTEM_ACCESS_FA.md).
+ماژول صدا بخشی از Windows Control Layer است (`AudioModule` در `kira/tools/winmodules.py`، کد در `kira/tools/audio.py`). به هیچ Provider/مدلی وابسته نیست. WindowsControlLayer فقط Capabilityها را اعلام می‌کند؛ اجرای ابزار، درخواست صریح، مجوز و ثبت نتیجه از ToolRegistry و System Access Manager مرکزی عبور می‌کنند (جزئیات: [راهنمای System Access](SYSTEM_ACCESS_FA.md)).
 
 ## ابزارها
 
