@@ -1,4 +1,4 @@
-"""Regression tests for Gemini 3.8 Flash reasoning-effort routing."""
+"""Regression tests for low-latency reasoning settings on supported Gemini models."""
 import unittest
 
 from kira.hybrid_providers import OpenAICompatibleProvider
@@ -18,6 +18,20 @@ class GeminiReasoningEffortTests(unittest.TestCase):
         for streaming in (False, True):
             _url, _headers, payload = provider._prepare(
                 MESSAGES, "system", 0.7, streaming
+            )
+            self.assertEqual(payload["reasoning_effort"], "low")
+            self.assertEqual(payload["stream"], streaming)
+
+    def test_gemini_4_hydrogen_uses_low_effort_for_stream_and_non_stream(self):
+        provider = OpenAICompatibleProvider({
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_key": "google-test-key",
+            "model": "gemini-4-hydrogen",
+        }, name="google-ai")
+
+        for streaming in (False, True):
+            _url, _headers, payload = provider._prepare(
+                MESSAGES, "system", 0.1, streaming
             )
             self.assertEqual(payload["reasoning_effort"], "low")
             self.assertEqual(payload["stream"], streaming)
