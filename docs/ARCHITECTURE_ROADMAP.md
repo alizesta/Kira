@@ -1,10 +1,10 @@
 # KIRA ARCHITECTURE ROADMAP
 
-**Snapshot:** 2026-11-19  
+**Snapshot:** 2026-11-22  
 **Base branch:** `new-main`  
-**Source baseline SHA:** `0a84bbdc3d47afb1728ff314a056b49e6e56848b`  
+**Source baseline SHA:** `e058021c97e5e90990ba129e2361f340706217a3`  
 **Input:** TASK 015 historical audit, merged TASK 013+014 integration PR #48, TASK 017–020 implementation delta, and merged Chat event test/CI correction PR #98.  
-**Execution / verification:** Source and static contracts are recorded at the baseline SHA. PR #98 merged corrections to the Chat event test contract and its workflow path filter. The corresponding GitHub Actions jobs still completed without a runner (`runner_id=0`, `steps=[]`) and logs were unavailable (`BlobNotFound`). No Python test or Windows runtime acceptance is claimed.
+**Execution / verification:** Source and static contracts were refreshed against the baseline SHA. This synchronization did not execute Python tests, imports, compile checks, Windows GUI/audio acceptance or a release build. Previously observed CI failures have no retrievable job logs and are not classified as code regressions.
 
 ## 1. Roadmap principles
 
@@ -289,3 +289,21 @@ Initial candidates for evidence-based decisions (not automatic split instruction
 
 **Current outcome:** no large file is split merely to satisfy a LOC threshold. The immediate decisions are KEEP for cohesive owners and DEFER for the two areas where extraction would cross shared contracts/lifecycle. A future SPLIT requires a concrete ownership boundary and focused regression coverage first.
 
+
+
+## 7. Synchronization delta — 2026-11-22
+
+The source snapshot was refreshed against new-main@e058021c97e5e90990ba129e2361f340706217a3. The current architecture remains a modular PySide6 desktop application with a single Qt Composition Root, dependency-aware application modules, a thin MainWindow shell, separated Chat Domain/Application/Persistence contracts, and eight window-scoped feature controllers.
+
+Newly documented subsystem facts:
+- Voice is dual-mode: Gemini Live is the default real-time bidirectional path; local mode/fallback is Shenava ASR + Piper TTS, with optional English-only KittenTTS.
+- The current registered Windows Control modules are Apps, Bluetooth, Audio and Desktop. The shared System Access Manager is the enforcement point for intent, taint, confirmation, backend and operation journaling.
+- WebIntel performs provider-independent research with guarded network access and per-character resumable state.
+- MCP servers are treated as untrusted; their annotations cannot elevate permissions.
+- ToolAgent, WebIntel, Brain and Reflection preserve character/session ownership boundaries; Game Mode remains explicit and fail-closed.
+
+### Audit item DOC-SRC-01 — legacy local-ASR defaults
+kira/config.py still carries Qwen3-era default values/comments for local ASR, while VoicePage sets local_voice_asr_backend=shenava and the real-time Listener directly loads Shenava. The local voice documentation now describes the implemented behavior. A separate source cleanup should align defaults/comments and add a focused regression test.
+
+### Verification status
+The source tree inventory contained 585 tracked files and 164 Python test files. The source and documentation were statically inspected, but tests and runtime acceptance were not executed in this pass. The earlier failed GitHub Actions runs remain inconclusive until their actual logs or a successful rerun are available.
