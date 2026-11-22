@@ -3,6 +3,7 @@
 ## 2026-11-22 (Documentation and architecture synchronization)
 - Reconciled the README and voice guides with the current runtime: Gemini Live is the default voice mode; local mode/fallback uses Shenava + Piper, with optional English-only KittenTTS.
 - Updated Windows Control documentation to describe the registered Apps, Bluetooth, Audio and Desktop modules and the shared System Access Manager.
+- Corrected installer/updater guidance: install.bat prepares Shenava/Piper but does not install Ollama or the chat model; update_kira.bat does not run the full test suite on ordinary incremental updates. Replaced obsolete Ollama migration-script instructions and fixed the Gemini Live fallback chain.
 - Refreshed architecture snapshot metadata, module ownership, project context and task handoff against source baseline e058021c97e5e90990ba129e2361f340706217a3.
 - Documentation-only change; application version and generated build metadata were not changed. No test or Windows runtime pass is claimed.
 
