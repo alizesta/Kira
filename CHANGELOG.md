@@ -1,9 +1,11 @@
 ## 2026-11-22 (Planned execution safety)
-- Tool argument validation now rejects undeclared parameter names instead of silently ignoring them; malformed model calls fail closed before a handler can run.
-- Planned tool calls must reference an existing step whose declared tool matches the requested tool. Unknown steps, tool/step mismatches, completed steps, active executions, and steps awaiting evidence review are rejected before execution.
-- Missing dependencies in persisted or corrupted task state are treated as unmet, never as implicitly satisfied.
-- Added regression tests for strict argument validation, step identity/status enforcement, and missing-dependency blocking.
-- Validation: source and tests fetched back from GitHub. Local Python unittest and Windows runtime were unavailable; GitHub Actions were not run.
+- Tool argument validation rejects undeclared parameter names instead of silently ignoring typos or extra model-supplied fields.
+- Every planned tool call must carry an explicit positive integer step ID; missing, malformed, unknown, or ambiguous IDs are rejected before binding or dispatch.
+- Planned calls reject tool/step mismatches and steps already done, skipped, running, awaiting confirmation, or awaiting evidence review.
+- Non-object tool arguments are rejected before task-state mutation. Duplicate step IDs are treated as ambiguous.
+- Missing, malformed, non-positive, and ambiguous dependencies fail closed as unmet.
+- Added regression cases for these boundaries plus strict arguments and required parameters.
+- Validation: source and tests fetched back from GitHub and inspected. Python unittest and Windows runtime remain unavailable; GitHub Actions were not run.
 
 ## 2026-11-22 (Fast Path / web-lock boundary)
 - Fixed an unnecessary serialization conflict: deterministic local Fast Path calls return before any model or web-tool round, so they no longer acquire the process-wide WebIntel research lock merely because auto-mode plans expose the web category in their capability set.
