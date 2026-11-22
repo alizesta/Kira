@@ -154,6 +154,7 @@ jobs:
           tests.test_application_policy_wiring
           tests.test_service_module
           tests.test_tool_agent_session_isolation
+          tests.test_fast_commands
           tests.test_web_search_application
           tests.test_persian_quality
           tests.test_release_package
