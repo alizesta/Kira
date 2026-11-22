@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-22 (Documentation and architecture synchronization)
+- Reconciled the README and voice guides with the current runtime: Gemini Live is the default voice mode; local mode/fallback uses Shenava + Piper, with optional English-only KittenTTS.
+- Updated Windows Control documentation to describe the registered Apps, Bluetooth, Audio and Desktop modules and the shared System Access Manager.
+- Refreshed architecture snapshot metadata, module ownership, project context and task handoff against source baseline e058021c97e5e90990ba129e2361f340706217a3.
+- Documentation-only change; application version and generated build metadata were not changed. No test or Windows runtime pass is claimed.
+
 ## 2026-11-22 03:37 Iran (Voice settings simplified)
 - Voice tab: a new top card "مکالمه" with one switch, "نوع مکالمه": ریل‌تایم (Gemini Live) or محلی (آفلاین). Realtime shows the Google AI key and the Kira voice; local shows the input (STT = Shenava, automatic, one option) and output (TTS = Piper فارسی / KittenTTS). Mic and output-device cards stay visible; STT, TTS and Gemini detail boxes moved into a collapsed "تنظیمات پیشرفته" area. All old widgets still exist (controllers unchanged); the redundant "Shenava · Sherpa-ONNX" label row was removed.
 - New setting `gemini_voice` (Zephyr default; Kore, Leda, Aoede = female, Puck, Charon, Fenrir, Orus = male), read by `gemini_live.py` instead of the hard-coded "Zephyr". Local voices (Piper Mana, Kitten) have no voice choice.
