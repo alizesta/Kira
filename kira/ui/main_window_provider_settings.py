@@ -1,5 +1,6 @@
 """Provider settings feature controller."""
 import copy
+import logging
 import re
 import time
 
@@ -8,6 +9,9 @@ from PySide6.QtCore import Slot
 from .. import api_manager
 from .. import model_catalog
 from .. import routes as route_model
+_log = logging.getLogger(__name__)
+
+
 from .main_window_provider_settings_support import (
     ApiPanel,
     ModelsPanel,
