@@ -7,7 +7,7 @@
 - `planner.parse_plan` rejects duplicate, boolean, non-positive, and malformed step IDs rather than silently renumbering duplicate IDs; falsey non-list dependency containers are rejected instead of treated as no dependencies.
 - Persisted task loading rejects malformed step records and duplicate IDs. Malformed dependency values are converted to an invalid sentinel, never dropped.
 - `TaskPlan.deps_unmet` fails closed for missing, malformed, non-positive, ambiguous, self, and forward dependencies, even when a later referenced step is marked complete.
-- Added 20 unittest methods covering argument validation, planned dispatch guards, planner structure, persisted state, and dependency ordering.
+- Added 21 unittest methods covering argument validation, planned dispatch guards, planner structure, persisted state, and dependency ordering.
 - Validation: updated source/tests/docs fetched back from GitHub and statically inspected. Python unittest and Windows runtime have not been executed; GitHub Actions were not run.
 - Local validation when a checkout is available: `python -m unittest tests.test_execution_safety tests.test_fast_commands tests.test_task_triage tests.test_task_cost`.
 
