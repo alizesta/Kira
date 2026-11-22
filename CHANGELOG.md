@@ -553,12 +553,3 @@ Mate Engine (shinyflvre) is a Unity/C# project under AGPL-3.0 + its own licence,
 - Keep exact deterministic Fast Path commands, and keep MCP/agent tools hidden unless the user explicitly asks for those external capabilities.
 
 - Include read-only web research tools in the auto-mode planner catalog; existing web rules still require explicit user intent before searching.
-
-## 2026-11-22 15:12 Iran (desktop UI polish, SVG icons, Appllama/UNSLOP switch, simpler Voice tab)
-- Settings-page content is centred and width-capped (content 1180 px, group boxes 1120 px, single-line fields 520 px, multi-line fields 760 px); scrollbars are 14 px wide.
-- Kira's chat avatar card shows the whole 832×1248 body canvas instead of the upper-body crop; Ren/Mika crops are unchanged.
-- The chat composer shows random character-specific example prompts for Kira, Mika and Ren (Persian/English), refreshed on character switch, language change and every 25 s while the box is empty.
-- The icon renderer is SVG-only: `stop` plus mood faces are SVG files. Every mood with its own file (`emotion_<mood>.svg`, 24 faces) uses it; other moods fall back to their family's face. Copy / edit / speak chips under chat messages use SVG icons (`copy.svg`, `pencil.svg`, `speaker.svg`) with a text-glyph fallback.
-- Preferences has a switch (`ui_design_guidance_enabled`, default on) for the conditional Appllama + UNSLOP design guidance; it applies to Kira chat, Kode analysis/patch proposals and autonomous Kode missions. The guidance also audits over-wide fields and cards.
-- Voice tab: the microphone and output cards keep only volume, microphone sensitivity and one record-and-play test button (3 s, default Windows devices). Device pickers, engine label, the second mic slider, barge-in, wake timeout and real-time ASR are hidden (widgets and saved values kept). New `kira/ui/pages/audio_card_simplify.py`.
-- Tests added: avatar framing, design-guidance opt-out, SVG asset coverage. Not run: Python/Qt tests, Windows runtime, GitHub Actions (earlier runs stopped before executing any step).
