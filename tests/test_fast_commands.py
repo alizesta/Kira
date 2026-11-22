@@ -325,7 +325,10 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(result["tools"][0]["status"], "ok")
         self.assertIn("system facts", result["text"])
         self.assertEqual(calls, [{}])
-        self.assertEqual(registry.access.journal.recent()[-1]["status"], "ok")
+        journal = registry.access.journal.recent()
+        self.assertEqual(len(journal), 1)
+        self.assertEqual(journal[-1]["tool"], "get_system_info")
+        self.assertEqual(journal[-1]["status"], "ok")
 
     def test_tools_mode_change_after_planning_is_enforced_at_execution(self):
         from kira.tools.registry import DENIED
@@ -363,6 +366,30 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(result["tools"][0]["status"], DENIED)
         self.assertIn("Competitive Safe", result["text"])
 
+    def test_execution_denials_are_recorded_in_the_real_registry_journal(self):
+        from kira.tools.registry import DENIED
+
+        cases = ("tools_off", "competitive_safe")
+        for case in cases:
+            with self.subTest(case=case):
+                agent, registry, calls = self._agent()
+                plan = self._plan(agent)
+                if case == "tools_off":
+                    agent.settings["tools_mode"] = "off"
+                else:
+                    # Bypass transition cancellation to test the registry's
+                    # execution guard and its journal independently.
+                    agent._competitive_safe_mode = True
+
+                result = self._run(agent, plan)
+
+                self.assertEqual(calls, [])
+                self.assertEqual(result["tools"][0]["status"], DENIED)
+                journal = registry.access.journal.recent()
+                self.assertEqual(len(journal), 1)
+                self.assertEqual(journal[0]["tool"], "get_system_info")
+                self.assertEqual(journal[0]["status"], DENIED)
+
     def test_same_fast_call_is_not_executed_twice_in_one_turn(self):
         agent, _registry, calls = self._agent()
         plan = self._plan(agent)
@@ -372,6 +399,9 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(calls, [{}])
         self.assertEqual(first["tools"][0]["status"], "ok")
         self.assertTrue(second["tools"][0]["cached"])
+        journal = agent.registry.access.journal.recent()
+        self.assertEqual(len(journal), 1)
+        self.assertEqual(journal[0]["status"], "ok")
 
 
 
