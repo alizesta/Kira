@@ -75,7 +75,7 @@ class GameModeSafetyTests(unittest.TestCase):
 
     def test_capture_region_accounts_for_monitor_origin_and_dpi(self):
         self.assertEqual(
-            fit_capture_region((2000, 100, 3000, 900), _Geometry(1920, 0, 1280, 720), 1.5),
+            fit_capture_region((2800, 100, 4500, 1200), _Geometry(1920, 0, 1280, 720), 1.5),
             (0, 100, 1620, 1080),
         )
 
