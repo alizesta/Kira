@@ -4,10 +4,10 @@
 - `ToolRegistry.clean_args` rejects undeclared arguments rather than silently dropping typos/extra fields.
 - `AutonomyMixin._run_calls_planned` requires each planned call to supply an explicit positive integer step ID and object arguments; malformed calls are rejected before binding or dispatch.
 - Planned calls reject unknown/ambiguous step IDs, tool/step mismatches, and replay attempts for DONE, SKIPPED, RUNNING, AWAITING, or REVIEW steps.
-- `planner.parse_plan` rejects duplicate, boolean, non-positive, and malformed step IDs rather than silently renumbering duplicate IDs.
+- `planner.parse_plan` rejects duplicate, boolean, non-positive, and malformed step IDs rather than silently renumbering duplicate IDs; falsey non-list dependency containers are rejected instead of treated as no dependencies.
 - Persisted task loading rejects malformed step records and duplicate IDs. Malformed dependency values are converted to an invalid sentinel, never dropped.
 - `TaskPlan.deps_unmet` fails closed for missing, malformed, non-positive, ambiguous, self, and forward dependencies, even when a later referenced step is marked complete.
-- Added 19 unittest methods covering argument validation, planned dispatch guards, planner structure, persisted state, and dependency ordering.
+- Added 20 unittest methods covering argument validation, planned dispatch guards, planner structure, persisted state, and dependency ordering.
 - Validation: updated source/tests/docs fetched back from GitHub and statically inspected. Python unittest and Windows runtime have not been executed; GitHub Actions were not run.
 - Local validation when a checkout is available: `python -m unittest tests.test_execution_safety tests.test_fast_commands tests.test_task_triage tests.test_task_cost`.
 
