@@ -38,6 +38,12 @@
 - Added prompt-regression assertions for both model contexts. This protects routing boundaries; it does not claim to measure whether every configured LLM correctly understands the intended slang.
 - Validation in this environment: source-level review only; the repository unittest module and live model behavior were not executed. GitHub Actions were not run.
 
+## 2026-11-22 (explicit user-led slang learning)
+- Kira now extracts only explicit Persian definitions in the form «expression یعنی meaning» from user messages and stores them as evidence-backed `language_rule` memories.
+- The stored rule is retrieved by topic into later prompts; vague slang without an explicit definition is not guessed or persisted.
+- Added regression coverage for persistence, evidence provenance, retrieval, and the no-guess boundary.
+- Validation: the exact definition matcher was exercised independently against the supplied correction and a no-definition control. Full repository tests and live-model learning behavior were not run; GitHub Actions were not run.
+
 # Changelog
 
 ## 2026-11-22 (English task-intent coverage)
