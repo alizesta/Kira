@@ -90,6 +90,24 @@ _CORRECTION_RX = re.compile(r"^(?:نه|نخیر|اشتباه|در\s*واقع|ر�
 _EXPLICIT_MEANING_RX = re.compile(r"(?P<term>[^\s،,؛.!؟?\n]+(?:\s+[^\s،,؛.!؟?\n]+)?)\s+یعنی\s+(?P<meaning>[^،,؛.!؟?\n]{2,60})")
 
 
+_MEANING_QUESTION_RX = re.compile(r"^(?:چی|چیه|چیست|چه|چطور|چگونه|what|why|how)\b", re.I)
+_MEANING_TERM_STOP = frozenset({
+    "من", "تو", "او", "ما", "شما", "اونا", "این", "اون", "آن", "همین", "همون", "که", "پس", "خب", "حالا", "ولی",
+    "اگه", "اگر", "وقتی", "یعنی", "هم", "همه", "هیچی", "اینکه", "آیا", "i", "you", "it", "this", "that",
+})
+_MEANING_TERM_COND = frozenset({"اگه", "اگر", "وقتی", "هر", "تا", "چون", "if", "when", "because"})
+
+
+def _is_definition(term: str, meaning: str, tail: str) -> bool:
+    """Guard for 'X یعنی Y': ignore questions ('X یعنی چی؟'), filler/discourse use ('من یعنی ...') and conditionals."""
+    words = term.split()
+    if not words or any(w.lower() in _MEANING_TERM_STOP for w in words[-1:]) or words[0].lower() in _MEANING_TERM_COND:
+        return False
+    if _MEANING_QUESTION_RX.match(meaning) or tail.lstrip().startswith(("؟", "?")):
+        return False
+    return True
+
+
 def norm(text) -> str:
     """Persian-aware normalisation: Arabic letter variants, digits, diacritics, ZWNJ -> space, lower case, single spaces."""
     t = str(text or "").lower().translate(_CHAR_MAP).translate(_DIGITS).replace("‌", " ")
@@ -342,6 +360,8 @@ def record_user_message(content, facts=None, moments=None, now=None) -> int:
         term = " ".join(match.group("term").split()).strip()
         meaning = " ".join(match.group("meaning").split()).strip()
         if not term or not meaning or len(term) > 48 or len(meaning) > 60:
+            continue
+        if not _is_definition(term, meaning, str(content or "")[match.end():match.end() + 2]):
             continue
         language_rules.append((term, meaning, match.group(0).strip()))
     if not (facts or moments or language_rules):
