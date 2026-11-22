@@ -73,9 +73,8 @@ class LazyToolAgent:
         return bool(instance.request_cancel(*args, **kwargs)) if instance is not None else False
 
     def clear_session(self, *args: Any, **kwargs: Any) -> Any:
-        """Do not construct tool infrastructure merely to clear nonexistent state."""
-        instance = self._instance
-        return instance.clear_session(*args, **kwargs) if instance is not None else None
+        """An explicit clear request also clears durable task history, so realize the owner."""
+        return self._get().clear_session(*args, **kwargs)
 
     def release_session(self, *args: Any, **kwargs: Any) -> bool:
         """Do not construct tool infrastructure merely to release nonexistent state."""
