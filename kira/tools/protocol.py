@@ -296,7 +296,7 @@ GATES = {
                  r"بلندگو", r"میکروفون", r"میکروفن", r"\bmic\b", r"microphone", r"headphones?", r"headset", r"speakers?", r"\baudio\b", r"\bsound\b", r"ایرپاد", r"airpods"),
     "files": _rx(r"فایل", r"پوشه", r"فولدر", r"\bfiles?\b", r"\bfolders?\b", r"\bdirectory", r"\bpdf\b", r"\bdocx?\b", r"\bxlsx?\b", r"\btxt\b", r"دانلود", r"download",
                  r"دسکتاپ", r"desktop", r"داکیومنت", r"documents", r"سند", r"عکس[هها]?\s*(?:ام|م|من)", r"سطل", r"recycle", r"جابه?\s*جا\s*کن", r"منتقل", r"پاک\s*کن",
-                 r"حذف\s*کن", r"\bdelete\b", r"\bmove\b", r"کپی", r"رونوشت", r"تغییر\s*(?:نام|اسم)", r"\brename\b", r"\bcopy\b", r"مرتب\s*کن", r"\borgani[sz]e\b", r"\bundo\b", r"برگردون", r"بخون", r"متن\s*(?:فایل|این)", r"\bread\s*(?:the\s*)?file"),
+                 r"حذف\s*کن", r"\bdelete\b", r"\bmove\b", r"کپی", r"رونوشت", r"تغییر\s*(?:نام|اسم)", r"\brename\b", r"\bcopy\b", r"مرتب\s*کن", r"\borgani[sz]e\b", r"\bundo\b", r"برگردون", r"(?:فایل|سند|متن)\s*(?:رو|را)?\s*بخون", r"متن\s*(?:فایل|این)", r"\bread\s*(?:the\s*)?file"),
     # external tool servers (MCP) and independent agents: matched only by explicit words (more words come from the user's own config, see set_gate_words)
     "mcp": _rx(r"\bmcp\b", r"ام\s*سی\s*پی"),
     "agents": _rx(r"\bagents?\b", r"ایجنت", r"عامل\s*(?:مستقل|خارجی)", r"\bjob\s*(?:status|id)\b", r"کار\s*(?:رو|را)?\s*(?:به|بسپار)"),
@@ -304,13 +304,14 @@ GATES = {
     "desktop": _rx(r"تایپ", r"\btype\b", r"کلیک", r"\bclick\b", r"پنجره", r"\bwindow\b", r"کیبورد", r"صفحه\s*کلید", r"\bkeyboard\b", r"\bhotkey\b", r"میانبر",
                    r"کلیپ\s*بورد", r"\bclipboard\b", r"ببند", r"\bclose\b", r"کوچک\s*کن", r"بزرگ\s*کن", r"\bminimi[sz]e\b", r"\bmaximi[sz]e\b", r"داخلش\s*بنویس",
                    r"دکمه", r"\bbutton\b", r"منو\b", r"\bmenu\b", r"چک\s*باکس", r"\bcheckbox\b"),
-    "web": _rx(r"تحقیق", r"پژوهش", r"\\bresearch", r"deep\\s*research", r"(?:سرچ|جست\\s*و\\s*جوی?)\\s*(?:عمیق|کامل|دقیق|چند\\s*مرحله)", r"چند\\s*منبع", r"منابع?\\s*(?:معتبر|مستند|مختلف|رو|را)",
-               r"با\\s*منبع", r"مستند", r"fact\\s*-?check", r"صحت\\s*(?:سنجی)?", r"investigate", r"https?://", r"\\bwww\\.", r"(?:این|همین|اون|همون)\\s*(?:لینک|سایت|صفحه|مقاله|آدرس)",
-               r"(?:لینک|سایت|صفحه|مقاله)\\s*(?:رو|را)?\\s*(?:بخون|بخوان|مطالعه|خلاصه)", r"^/(?:research|read|تحقیق)\\b", r"\\bpdf\\s*(?:آنلاین|اینترنتی)", r"مقایسه\\s*(?:ی)?\\s*منابع",
-               # Price / rate lookups are normally external research even when the user omits the word "web".
-               r"(?:قیمت|نرخ)\\s*.{0,48}(?:یورو|دلار|ارز|طلا|سهام|بیت\\s*کوین|bitcoin|usd|eur)",
-               r"(?:یورو|دلار|ارز|طلا|سهام|بیت\\s*کوین|bitcoin|usd|eur).{0,48}(?:قیمت|نرخ)",
-               r"(?:در|از|توی)\\s*(?:وب|اینترنت)", r"\\b(?:online|internet|web)\\b", r"آنلاین|اینترنتی"),
+    "web": _rx(r"تحقیق", r"پژوهش", r"\bresearch\b", r"deep\s*research", r"(?:سرچ|جست\s*و\s*جوی?)\s*(?:عمیق|کامل|دقیق|چند\s*مرحله)", r"چند\s*منبع", r"منابع?\s*(?:معتبر|مستند|مختلف|رو|را)",
+               r"با\s*منبع", r"مستند", r"fact\s*-?check", r"صحت\s*(?:سنجی)?", r"investigate", r"https?://", r"\bwww\.", r"(?:این|همین|اون|همون)\s*(?:لینک|سایت|صفحه|مقاله|آدرس)",
+               r"(?:لینک|سایت|صفحه|مقاله)\s*(?:رو|را)?\s*(?:بخون|بخوان|مطالعه|خلاصه)", r"^/(?:research|read|تحقیق)\b", r"\bpdf\s*(?:آنلاین|اینترنتی)", r"مقایسه\s*(?:ی)?\s*منابع",
+               r"(?:خلاصه(?:\s*سازی)?|خلاصه\s*کردن).{0,48}(?:مقاله|صفحه|لینک|سایت)", r"(?:مقاله|صفحه|لینک|سایت).{0,48}(?:خلاصه(?:\s*کن)?|خلاصه\s*سازی)",
+               # Price / rate lookups are external research even when the user omits the word "web".
+               r"(?:قیمت|نرخ)\s*.{0,48}(?:یورو|دلار|ارز|طلا|سهام|بیت\s*کوین|bitcoin|usd|eur)",
+               r"(?:یورو|دلار|ارز|طلا|سهام|بیت\s*کوین|bitcoin|usd|eur).{0,48}(?:قیمت|نرخ)",
+               r"(?:در|از|توی)\s*(?:وب|اینترنت)", r"\b(?:online|internet|web)\b", r"آنلاین|اینترنتی"),
 }
 ALL_CATEGORIES = tuple(GATES)
 _GATE_BASE = {k: v.pattern for k, v in GATES.items()}
@@ -329,7 +330,24 @@ STRONG_RX = _rx(r"باز\s*کن", r"اجرا\s*کن", r"بالا\s*بیار", r"
 def detect_categories(text: str) -> set:
     t = str(text or "").lower().translate(_NORM_TABLE)
     t = re.sub(r"\s+", " ", t)
-    return {name for name, rx in GATES.items() if rx.search(t)}
+    found = {name for name, rx in GATES.items() if rx.search(t)}
+
+    # A price/rate query mentioning "today" is a web lookup, not a clock query.
+    price_lookup = bool(GATES["web"].search(t) and re.search(
+        r"(?:قیمت|نرخ).{0,48}(?:یورو|دلار|ارز|طلا|سهام|بیت\s*کوین|bitcoin|usd|eur)|"
+        r"(?:یورو|دلار|ارز|طلا|سهام|بیت\s*کوین|bitcoin|usd|eur).{0,48}(?:قیمت|نرخ)", t, re.I))
+    if price_lookup:
+        found.discard("time")
+
+    # "از اینترنت بررسی کن" is a research source, not a request to inspect
+    # the PC's network. Keep system for explicit connectivity diagnostics.
+    internet_research = bool("web" in found and re.search(r"(?:از|در|توی)\s*اینترنت", t))
+    network_diagnostics = bool(re.search(
+        r"(?:وضعیت|سرعت|اتصال|قطعی|قطع|وصل|پینگ|\bip\b|شبکه|wi-?fi|وای\s*فای).{0,24}(?:اینترنت|نت|شبکه)?|"
+        r"(?:اینترنت|نت).{0,24}(?:وضعیت|سرعت|اتصال|قطعی|قطع|وصل|پینگ|\bip\b)", t, re.I))
+    if internet_research and not network_diagnostics:
+        found.discard("system")
+    return found
 
 
 def is_strong(text: str) -> bool:
