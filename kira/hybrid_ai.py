@@ -448,10 +448,10 @@ class HybridRouter:
                        "route_id": None, "kind": None, "connect_ms": None, "first_token_ms": None, "total_ms": None,
                        "result": None, "chars": 0, "role": _ROLE.get() or None}
             trace_token = set_trace_request_id(metrics["request_id"])
-            request_trace("request_start", stream=bool(stream), retry_index=int(retry_index), role=_ROLE.get() or "chat", candidates=len(self._candidates()))
+            candidates = self._candidates()
+            request_trace("request_start", stream=bool(stream), retry_index=int(retry_index), role=_ROLE.get() or "chat", candidates=len(candidates))
             failures = []
             emit = on_event or (lambda e: None)
-            candidates = self._candidates()
             # Record every skipped cooldown route up front. Cooldown routes are
             # deliberately sorted behind healthy routes, so a successful fallback
             # could otherwise return before their skip was reflected in telemetry.
