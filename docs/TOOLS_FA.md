@@ -32,7 +32,7 @@ Fast Path پنج مرحله‌ی مشخص دارد:
 
 **پوشش آزمون مرز واقعی (Stage 4):**
 
-در `tests/test_fast_commands.py`، کلاس `FastPathRealRegistryBoundaryTests` از `ToolRegistry` و `AccessManager` واقعی استفاده می‌کند؛ فقط Router مدل عمداً stub شده تا در صورت فراخوانی، تست فوراً شکست بخورد. پوشش آن شامل اجرای موفق و ثبت Journal، رد پس از خاموش‌شدن `tools_mode`، لغو Plan معلق با Competitive Safe، رد در guard زمان اجرا و ثبت Journal، و جلوگیری از ثبت/اجرای تکراری هنگام بازگشت نتیجه از cache است. این تست‌ها integration در سطح مرز نرم‌افزاری‌اند و جایگزین اجرای کامل unittest یا آزمون Windows واقعی نیستند.
+در `tests/test_fast_commands.py`، کلاس `FastPathRealRegistryBoundaryTests` از `ToolRegistry` و `AccessManager` واقعی استفاده می‌کند؛ فقط Router مدل عمداً stub شده تا در صورت فراخوانی، تست فوراً شکست بخورد. پوشش آن شامل اجرای موفق و ثبت Journal، رد پس از خاموش‌شدن `tools_mode`، لغو Plan معلق با Competitive Safe، رد در guard زمان اجرا و ثبت Journal، و جلوگیری از ثبت/اجرای تکراری هنگام بازگشت نتیجه از cache است. همچنین آزمون می‌کند cache فقط به همان نوبت محدود باشد و همان درخواست در نوبت بعدی دوباره قابل اجرا باشد؛ لغو پیش از dispatch نیز نباید Journal entry بسازد. این تست‌ها integration در سطح مرز نرم‌افزاری‌اند و جایگزین اجرای کامل unittest یا آزمون Windows واقعی نیستند.
 
 **اجرای تست متمرکز:**
 
