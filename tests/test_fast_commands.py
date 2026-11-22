@@ -351,6 +351,7 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertTrue(result["stopped"])
         self.assertEqual(result["tools"], [])
+        self.assertEqual(registry.access.journal.recent(), [])
 
     def test_competitive_safe_execution_guard_denies_fast_call(self):
         from kira.tools.registry import DENIED
@@ -403,6 +404,22 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(len(journal), 1)
         self.assertEqual(journal[0]["status"], "ok")
 
+    def test_same_fast_call_can_execute_again_in_a_new_turn(self):
+        agent, registry, calls = self._agent()
+        first_plan = self._plan(agent)
+        first = self._run(agent, first_plan)
+        self.assertEqual(first["tools"][0]["status"], "ok")
+
+        agent.begin_turn("kira")
+        second_plan = self._plan(agent)
+        second = self._run(agent, second_plan)
+
+        self.assertEqual(calls, [{}, {}])
+        self.assertEqual(second["tools"][0]["status"], "ok")
+        self.assertFalse(second["tools"][0]["cached"])
+        journal = registry.access.journal.recent()
+        self.assertEqual(len(journal), 2)
+        self.assertEqual([entry["status"] for entry in journal], ["ok", "ok"])
 
 
 class SemanticPlannerRoutingTests(unittest.TestCase):
