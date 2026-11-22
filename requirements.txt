@@ -2,7 +2,7 @@ PySide6>=6.7,<7
 requests>=2.31,<3
 numpy>=1.26
 psutil>=5.9            # optional: faster / richer PC information (Kira works without it)
-dxcam>=0.3.0; platform_system == "Windows"  # DXGI / Windows Graphics Capture for low-latency game frames
+dxcam[winrt]>=0.3.0; platform_system == "Windows"  # DXGI / Windows Graphics Capture for low-latency game frames
 ruff>=0.6              # Ai1 Code automatic lint after Python edits
 google-genai>=2.3.0,<3
 hf_xet>=1.1,<2
