@@ -632,5 +632,58 @@ class SemanticResultReviewTests(unittest.TestCase):
         self.assertIn("ارزیابی تحقق هدف", plan.done_sigs["call-signature"])
         self.assertEqual(step.postcondition, "پنجره Wallpaper Engine فعال باشد")
 
+
+class PlannerDependencyValidationTests(unittest.TestCase):
+    @staticmethod
+    def _plan(steps):
+        import json
+        return "<kira_plan>" + json.dumps({
+            "goal": "Complete dependent steps",
+            "steps": steps,
+        }) + "</kira_plan>"
+
+    @staticmethod
+    def _registry():
+        return SimpleNamespace(get=lambda _name: None)
+
+    def test_forward_dependency_is_rejected_instead_of_dropped(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": [2]},
+            {"id": 2, "title": "Second", "depends_on": []},
+        ))
+        with self.assertRaisesRegex(ValueError, "must be declared earlier"):
+            parse_plan(raw, self._registry(), max_steps=8)
+
+    def test_unknown_dependency_is_rejected(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": [99]},
+        ))
+        with self.assertRaisesRegex(ValueError, "must be declared earlier"):
+            parse_plan(raw, self._registry(), max_steps=8)
+
+    def test_non_numeric_dependency_is_rejected(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": ["later"]},
+        ))
+        with self.assertRaisesRegex(ValueError, "invalid dependency"):
+            parse_plan(raw, self._registry(), max_steps=8)
+
+    def test_valid_backward_dependency_is_preserved(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": []},
+            {"id": 2, "title": "Second", "depends_on": [1]},
+        ))
+        parsed = parse_plan(raw, self._registry(), max_steps=8)
+        self.assertEqual(parsed["steps"][1]["depends_on"], [1])
+
+
 if __name__ == "__main__":
     unittest.main()
