@@ -38,6 +38,22 @@ class TabRuleTests(unittest.TestCase):
         for hidden in ("whisper-large", "embed-text-embedding", "no-text"):
             self.assertNotIn(hidden, rows)
 
+    def test_gemini_4_hydrogen_appears_in_the_free_tab(self):
+        s = helpers.fresh_settings()
+        pid = routes.add_provider(
+            s, "Google AI Studio",
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            api_key="test-google-api-key-1234567890",
+        )
+        api_manager.ensure_registry(s)
+        api_manager.apply_models(
+            s, pid, [{"id": "gemini-4-hydrogen", "free": True, "text": "Yes"}]
+        )
+
+        row = by_model(mc.model_rows(s))["gemini-4-hydrogen"]
+        self.assertEqual(row["price"], "free")
+        self.assertEqual(row["tabs"], [mc.TAB_FREE])
+
     def test_enabled_route_adds_the_active_tab_and_keeps_its_price_tab(self):
         s = build()
         api_manager.set_model_enabled(s, "groq", "free-a", True)
