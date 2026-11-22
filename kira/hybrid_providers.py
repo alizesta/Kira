@@ -482,6 +482,11 @@ class OpenAICompatibleProvider(BaseProvider):
                    "messages": [{"role": "system", "content": system_prompt}, *[_openai_message(m) for m in clean]],
                    "temperature": float(temperature), "stream": bool(stream)}
         self._sent_images = any(m.get("images") for m in clean)
+        if self._is_google_endpoint() and self.model.casefold() == "gemini-3.8-flash":
+            # Gemini 3.8 defaults to medium thinking. Kira prioritizes low-latency
+            # interaction, so use the officially supported low effort for this
+            # model only; other models keep their own provider defaults.
+            payload["reasoning_effort"] = "low"
         if max_tokens:
             payload["max_tokens"] = int(max_tokens)
         if stream and self.name in ("groq", "openrouter") and self.config.get("usage_stream_options", True):
