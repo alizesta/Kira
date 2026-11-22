@@ -24,7 +24,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 
-from . import protocol
+from . import protocol, appcatalog
 from .autonomy import AutonomyMixin
 from .access import PathPolicy
 from .builtin import build_registry
@@ -118,6 +118,11 @@ class ToolAgent(AutonomyMixin):
         self.settings = settings
         self.policy = PathPolicy(settings, data_dir, program_root)
         self.registry = build_registry(self.policy)
+        # Warm the Windows app indexes off the first command's execution path.
+        try:
+            appcatalog.start_background_warmup()
+        except Exception:                                      # noqa: BLE001
+            _LOGGER.exception("App catalog warm-up could not be scheduled")
         self._competitive_safe_mode = False
         self.registry.execution_guard = self._game_mode_execution_guard
         self.registry.access.require_grants = True           # production: a confirmed execution needs a grant made from the user's own confirmation message
