@@ -452,6 +452,11 @@ class HybridRouter:
             # deliberately sorted behind healthy routes, so a successful fallback
             # could otherwise return before their skip was reflected in telemetry.
             cooldown_routes = set()
+            # A single logical chat turn must not spend the same Google model's
+            # low RPM/RPD quota through duplicate Routes. Keep failover to other
+            # models/providers available, but attempt an identical Google
+            # endpoint + model + credential at most once per turn.
+            attempted_google_models = set()
             for candidate in candidates:
                 if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
                     break
@@ -479,7 +484,19 @@ class HybridRouter:
                 if not ok:
                     continue
                 info = self.route_info(route)
-                secrets = (self._provider_cfg(route).get("api_key"),)
+                route_cfg = self._provider_cfg(route)
+                google_base = str(route_cfg.get("base_url") or "").lower()
+                google_model_key = None
+                if "generativelanguage.googleapis.com" in google_base:
+                    google_model_key = (google_base.rstrip("/"), str(route.get("model") or "").casefold(),
+                                        str(route_cfg.get("api_key") or ""))
+                    if google_model_key in attempted_google_models:
+                        failures.append(f"{rid}: همان مدل Google در همین درخواست قبلاً امتحان شد؛ درخواست تکراری حذف شد.")
+                        self.last_attempts.append({"provider": route["provider"], "route_id": rid,
+                                                   "model": route["model"], "result": "duplicate_model_skipped"})
+                        continue
+                    attempted_google_models.add(google_model_key)
+                secrets = (route_cfg.get("api_key"),)
                 emit({"phase": "connecting" if not failures and metrics["failovers"] == 0 else "failover",
                       "failovers": metrics["failovers"], **info})
                 attempt_started = time.monotonic()
