@@ -54,7 +54,7 @@ def trace(phase: str, **fields):
             record[str(key)[:48]] = value[:240] if isinstance(value, str) else value
     try:
         path = _log_path()
-        line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\\n"
+        line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"
         with _lock:
             if path.exists() and path.stat().st_size + len(line.encode("utf-8")) > _MAX_BYTES:
                 backup = path.with_suffix(".jsonl.1")
