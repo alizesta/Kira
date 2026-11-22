@@ -41,6 +41,17 @@ class PlanStructureValidationTests(unittest.TestCase):
         plan.steps.extend([first, later])
         self.assertEqual(plan.deps_unmet(first), [20])
 
+    def test_falsey_non_list_dependencies_are_rejected(self):
+        for malformed in (None, False, 0, ""):
+            with self.subTest(dependencies=malformed):
+                with self.assertRaisesRegex(ValueError, "dependencies must be a list"):
+                    self._parse([{
+                        "id": 1,
+                        "title": "Invalid dependency container",
+                        "tool": "open_app",
+                        "depends_on": malformed,
+                    }])
+
     def test_corrupt_persisted_step_ids_are_rejected(self):
         for invalid_id in (True, 1.5, 0, -2):
             with self.subTest(step_id=invalid_id):
