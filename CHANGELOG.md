@@ -1,3 +1,10 @@
+## 2026-11-22 (Planned execution safety)
+- Tool argument validation now rejects undeclared parameter names instead of silently ignoring them; malformed model calls fail closed before a handler can run.
+- Planned tool calls must reference an existing step whose declared tool matches the requested tool. Unknown steps, tool/step mismatches, completed steps, active executions, and steps awaiting evidence review are rejected before execution.
+- Missing dependencies in persisted or corrupted task state are treated as unmet, never as implicitly satisfied.
+- Added regression tests for strict argument validation, step identity/status enforcement, and missing-dependency blocking.
+- Validation: source and tests fetched back from GitHub. Local Python unittest and Windows runtime were unavailable; GitHub Actions were not run.
+
 ## 2026-11-22 (Fast Path / web-lock boundary)
 - Fixed an unnecessary serialization conflict: deterministic local Fast Path calls return before any model or web-tool round, so they no longer acquire the process-wide WebIntel research lock merely because auto-mode plans expose the web category in their capability set.
 - Added a regression test that probes the web lock while executing a deterministic volume command through ToolAgent.
