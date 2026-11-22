@@ -274,7 +274,10 @@ class TaskUnderstandingBenchmarkTests(unittest.TestCase):
     def test_benchmark_contains_200_actionable_cases_and_20_chat_controls(self):
         self.assertEqual(sum(len(items) for items in CASES.values()), 200)
         self.assertEqual(len(CHAT_ONLY), 20)
+        self.assertEqual(set(CASES), set(protocol.ALL_CATEGORIES))
+        self.assertTrue(all(len(items) == 20 for items in CASES.values()))
         self.assertEqual(len({p for items in CASES.values() for p in items}), 200)
+        self.assertEqual(len(set(CHAT_ONLY)), 20)
 
     def test_all_actionable_cases_reach_the_expected_tool_family(self):
         agent = _make_agent()
