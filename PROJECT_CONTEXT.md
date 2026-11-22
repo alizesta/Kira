@@ -151,6 +151,7 @@ Local-only speech stack: Qwen3-ASR primary STT, faster-whisper local fallback, P
 
 ## Avatar (2026-11-21)
 - Only the 2D avatar exists (`kira/face.py` `AvatarView`, also in the companion window). The VRM avatar, its viewer page and dance library were removed; `kira/body.py` is kept but has no body to move until a new live 2D avatar uses it.
+- 2026-11-22 UI polish (branch `fix/ui-polish-personas-svg-audit`): settings pages centred and width-capped, 14 px scrollbars, Kira's chat card shows the whole body canvas, per-character composer prompts, SVG-only icons (all mood faces plus copy/pencil for message actions), Preferences switch for Appllama + UNSLOP, Voice tab mic/speaker cards reduced to volume, sensitivity and a record-and-play test (`kira/ui/pages/audio_card_simplify.py`). Runtime verification on Windows pending.
 
 ## Settings tabs (2026-11-21)
 - Pages: Chat, Voice, Character, Appearance, General, Connections & Models (+ Runtime Log). There is no Assistant tab: identity/persona/modes/temperature live in Character -> personality sub-tab; the local Ollama model group lives in Connections & Models. `AssistantPage` only owns those widgets (hidden).
@@ -175,5 +176,8 @@ Local-only speech stack: Qwen3-ASR primary STT, faster-whisper local fallback, P
 
 - 2026-11-22 03:03 Iran: UNSLOP leftovers done (self-sizing tables via fit_height, collapsed advanced switches in Character tab, scoped notes labels).
 
+- 2026-11-22 03:20 Iran: audio playback = `_PcmPlayer` (QAudioSink, PCM wav only) in kira/voice.py; QMediaPlayer / QSoundEffect / winsound removed. Needs a listening test on Windows.
 
-- 2026-11-22: Desktop UI polish branch `fix/ui-polish-personas-svg-audit`: constrained settings form widths, full-body Kira avatar crop, wider scrollbars, character-specific composer prompts, SVG-only icon renderer (including stop/mood assets), and a Preferences toggle for conditional Appllama/UNSLOP across Kira and Kode. Runtime verification pending.
+- 2026-11-22 03:26 Iran: speech engine is switchable (settings `tts_engine`: piper | kitten; Kitten English-only, Persian sentences always Piper). See kira/voice.py `_use_kitten` / `_synth_kitten`.
+
+- 2026-11-22 03:37 Iran: Voice tab = mode card (realtime/local) + mic/output cards + collapsed advanced; setting `gemini_voice`.
