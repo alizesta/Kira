@@ -164,6 +164,11 @@ class PlannedStepExecutionGuardTests(unittest.TestCase):
             ["not-an-id", 0, -1, 99],
         )
 
+    def test_float_step_ids_and_dependencies_are_not_coerced(self):
+        self.assertIsNone(self.plan.step(1.5))
+        self.plan.steps[0].depends_on = [1.5]
+        self.assertEqual(self.plan.deps_unmet(self.plan.steps[0]), [1.5])
+
 
 if __name__ == "__main__":
     unittest.main()
