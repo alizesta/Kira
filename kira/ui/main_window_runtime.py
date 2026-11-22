@@ -409,12 +409,22 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         self.context.adapters.animator.set_expression(expression, hold=4)
         self.say(text)
 
-    def save_message(self, role, content, *, status="complete", metadata=None, persist=True, observe=True):
-        """Persist through ChatApplicationService; keep character memory/mood observation in the UI adapter."""
+    def save_message(
+        self, role, content, *, status="complete", metadata=None, persist=True,
+        observe=True, use_current_request=True,
+    ):
+        """Persist through ChatApplicationService; keep character memory/mood observation in the UI adapter.
+
+        Independent voice turns pass use_current_request=False so they cannot be
+        attached to a previous text-provider request.
+        """
         if persist:
             outcome = self.context.services.chat_application_service.persist_message(
                 self.context.state.cur.session_id, role, content,
-                request_id=getattr(self.context.state.cur, "application_request_id", None),
+                request_id=(
+                    getattr(self.context.state.cur, "application_request_id", None)
+                    if use_current_request else None
+                ),
                 conversation_id=getattr(self.context.state.cur, "conversation_id", None),
                 status=status, character_id=self.context.state.cur.cid, metadata=metadata,
             )
