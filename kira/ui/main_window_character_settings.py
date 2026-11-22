@@ -527,6 +527,7 @@ class CharacterSettingsController(WindowFeatureController):
         from .pages.skills_page import SkillsPage
 
         page = SkillsPage(parent=self.window)
+        self.context.views.skills_page = page
         page.install_zip_requested.connect(self.install_shared_skill_zip)
         page.install_folder_requested.connect(self.install_shared_skill_folder)
         page.enable_changed.connect(self.set_shared_skill_enabled)
