@@ -3,7 +3,24 @@ from unittest import mock
 
 from PySide6.QtWidgets import QApplication
 
-from kira.game_mode import GameModeMonitor, fit_capture_size
+from kira.game_mode import GameModeMonitor, fit_capture_region, fit_capture_size
+
+
+class _Geometry:
+    def __init__(self, x, y, width, height):
+        self._values = (x, y, width, height)
+
+    def x(self):
+        return self._values[0]
+
+    def y(self):
+        return self._values[1]
+
+    def width(self):
+        return self._values[2]
+
+    def height(self):
+        return self._values[3]
 
 
 class GameModeSafetyTests(unittest.TestCase):
@@ -24,11 +41,15 @@ class GameModeSafetyTests(unittest.TestCase):
         self.assertIsNone(monitor.capture_last_game())
         monitor._user32.IsWindow.assert_not_called()
 
-    def test_disabling_game_mode_clears_cached_game_window(self):
+    def test_disabling_game_mode_clears_cached_game_window_and_releases_capture(self):
         monitor = GameModeMonitor()
         monitor.last_game = {"hwnd": 123, "pid": 456}
+        camera = mock.Mock()
+        monitor._dxcam_camera = camera
         monitor.set_enabled(False)
         self.assertIsNone(monitor.last_game)
+        self.assertIsNone(monitor._dxcam_camera)
+        camera.release.assert_called_once_with()
 
     def test_poll_clears_stale_game_when_foreground_is_not_a_game(self):
         monitor = GameModeMonitor()
@@ -45,6 +66,23 @@ class GameModeSafetyTests(unittest.TestCase):
         self.assertEqual(fit_capture_size(1920, 1080), (853, 480))
         self.assertEqual(fit_capture_size(1280, 1024), (600, 480))
         self.assertEqual(fit_capture_size(640, 360), (640, 360))
+
+    def test_capture_region_is_clipped_to_primary_output(self):
+        self.assertEqual(
+            fit_capture_region((-100, 50, 900, 800), _Geometry(0, 0, 800, 600)),
+            (0, 50, 800, 600),
+        )
+
+    def test_capture_region_accounts_for_monitor_origin_and_dpi(self):
+        self.assertEqual(
+            fit_capture_region((2000, 100, 3000, 900), _Geometry(1920, 0, 1280, 720), 1.5),
+            (0, 100, 1620, 1080),
+        )
+
+    def test_capture_region_rejects_empty_intersections(self):
+        self.assertIsNone(
+            fit_capture_region((900, 700, 1000, 800), _Geometry(0, 0, 800, 600))
+        )
 
     def test_poll_ignores_ai1_own_process_even_when_window_is_large(self):
         import os
