@@ -77,6 +77,8 @@ class VoiceApplicationWiringTests(unittest.TestCase):
         self.assertIn('"source": "gemini_live"', runtime_voice)
         self.assertIn('"modality": "audio"', runtime_voice)
         self.assertIn("use_current_request=False", runtime_voice)
+        self.assertIn("_append_transcript_chunk(", worker)
+        self.assertIn("if self._transcript_finished_support[role] is False:", worker)
         self.assertIn("persist_message(", runtime)
         self.assertIn("if use_current_request else None", runtime)
 
