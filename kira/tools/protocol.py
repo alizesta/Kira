@@ -304,9 +304,13 @@ GATES = {
     "desktop": _rx(r"تایپ", r"\btype\b", r"کلیک", r"\bclick\b", r"پنجره", r"\bwindow\b", r"کیبورد", r"صفحه\s*کلید", r"\bkeyboard\b", r"\bhotkey\b", r"میانبر",
                    r"کلیپ\s*بورد", r"\bclipboard\b", r"ببند", r"\bclose\b", r"کوچک\s*کن", r"بزرگ\s*کن", r"\bminimi[sz]e\b", r"\bmaximi[sz]e\b", r"داخلش\s*بنویس",
                    r"دکمه", r"\bbutton\b", r"منو\b", r"\bmenu\b", r"چک\s*باکس", r"\bcheckbox\b"),
-    "web": _rx(r"تحقیق", r"پژوهش", r"\bresearch", r"deep\s*research", r"(?:سرچ|جست\s*و\s*جوی?)\s*(?:عمیق|کامل|دقیق|چند\s*مرحله)", r"چند\s*منبع", r"منابع?\s*(?:معتبر|مستند|مختلف|رو|را)",
-               r"با\s*منبع", r"مستند", r"fact\s*-?check", r"صحت\s*(?:سنجی)?", r"investigate", r"https?://", r"\bwww\.", r"(?:این|همین|اون|همون)\s*(?:لینک|سایت|صفحه|مقاله|آدرس)",
-               r"(?:لینک|سایت|صفحه|مقاله)\s*(?:رو|را)?\s*(?:بخون|بخوان|مطالعه|خلاصه)", r"^/(?:research|read|تحقیق)\b", r"\bpdf\s*(?:آنلاین|اینترنتی)", r"مقایسه\s*(?:ی)?\s*منابع"),
+    "web": _rx(r"تحقیق", r"پژوهش", r"\\bresearch", r"deep\\s*research", r"(?:سرچ|جست\\s*و\\s*جوی?)\\s*(?:عمیق|کامل|دقیق|چند\\s*مرحله)", r"چند\\s*منبع", r"منابع?\\s*(?:معتبر|مستند|مختلف|رو|را)",
+               r"با\\s*منبع", r"مستند", r"fact\\s*-?check", r"صحت\\s*(?:سنجی)?", r"investigate", r"https?://", r"\\bwww\\.", r"(?:این|همین|اون|همون)\\s*(?:لینک|سایت|صفحه|مقاله|آدرس)",
+               r"(?:لینک|سایت|صفحه|مقاله)\\s*(?:رو|را)?\\s*(?:بخون|بخوان|مطالعه|خلاصه)", r"^/(?:research|read|تحقیق)\\b", r"\\bpdf\\s*(?:آنلاین|اینترنتی)", r"مقایسه\\s*(?:ی)?\\s*منابع",
+               # Price / rate lookups are normally external research even when the user omits the word "web".
+               r"(?:قیمت|نرخ)\\s*.{0,48}(?:یورو|دلار|ارز|طلا|سهام|بیت\\s*کوین|bitcoin|usd|eur)",
+               r"(?:یورو|دلار|ارز|طلا|سهام|بیت\\s*کوین|bitcoin|usd|eur).{0,48}(?:قیمت|نرخ)",
+               r"(?:در|از|توی)\\s*(?:وب|اینترنت)", r"\\b(?:online|internet|web)\\b", r"آنلاین|اینترنتی"),
 }
 ALL_CATEGORIES = tuple(GATES)
 _GATE_BASE = {k: v.pattern for k, v in GATES.items()}
