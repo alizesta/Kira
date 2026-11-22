@@ -127,6 +127,34 @@ class EvidenceMemoryRecallTests(unittest.TestCase):
         self.assertEqual(after[0]["text"], before[0]["text"])
 
 
+    def test_explicit_slang_definition_is_learned_and_recalled_with_evidence(self):
+        message = "نه کسخل، سیک کن یعنی خفه شو"
+        stored = em.record_user_message(message, facts=[], moments=[], now=1000)
+        self.assertEqual(stored, 1)
+
+        recalled = em.retrieve("سیک کن یعنی چی؟", now=1001)
+        self.assertTrue(any("سیک کن" in item["text"] and "خفه شو" in item["text"] for item in recalled))
+        with em._db() as con:
+            row = con.execute("SELECT predicate, source_kind FROM facts WHERE predicate='language_rule'").fetchone()
+            evidence = con.execute("SELECT quote, speaker FROM evidence WHERE fact_id=(SELECT id FROM facts WHERE predicate='language_rule')").fetchone()
+        self.assertEqual(row["source_kind"], "explicit_language_correction")
+        self.assertEqual(evidence["speaker"], "user")
+        self.assertIn("سیک کن یعنی خفه شو", evidence["quote"])
+
+    def test_unexplained_slang_is_not_guessed_or_learned(self):
+        stored = em.record_user_message("سیکتو بزن", facts=[], moments=[], now=1000)
+        self.assertEqual(stored, 0)
+        self.assertEqual(em.retrieve("سیکتو بزن", now=1001), [])
+
+    def test_questions_fillers_and_conditionals_are_not_learned_as_definitions(self):
+        for message in ("سیکتو بزن یعنی چی؟", "سیکتو یعنی چی", "اگه نیای یعنی قهری", "من یعنی خیلی خسته\u200cام"):
+            self.assertEqual(em.record_user_message(message, facts=[], moments=[], now=1000), 0, message)
+
+    def test_slang_rule_is_recalled_for_a_different_phrasing_of_the_same_term(self):
+        em.record_user_message("نه کسخل، سیک کن یعنی خفه شو", facts=[], moments=[], now=1000)
+        recalled = em.retrieve("سیک فست پس رو بزن", now=1001)
+        self.assertTrue(any("خفه شو" in item["text"] for item in recalled))
+
     def test_message_ingestion_failure_is_logged_and_does_not_escape_chat(self):
         with mock.patch.object(em, "_db", side_effect=RuntimeError("synthetic ingestion failure")):
             with self.assertLogs("kira.evidence_memory", level="WARNING") as captured:

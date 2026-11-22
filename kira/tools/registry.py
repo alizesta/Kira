@@ -275,11 +275,14 @@ class ToolRegistry:
         if not isinstance(args, dict):
             raise ToolError("آرگومان‌های ابزار باید یک شیء JSON باشند.", BAD_ARGS)
         known = {p.name: p for p in tool.params}
+        unknown = [str(key) for key in args if key not in known]
+        if unknown:
+            shown = ", ".join(unknown[:5])
+            suffix = "، ..." if len(unknown) > 5 else ""
+            raise ToolError(f"پارامتر ناشناخته برای ابزار «{tool.name}»: {shown}{suffix}. فقط پارامترهای تعریف‌شده پذیرفته می‌شوند.", BAD_ARGS)
         out: dict[str, Any] = {}
         for key, value in args.items():
-            param = known.get(key)
-            if param is None:
-                continue                                           # unknown arguments are ignored, never passed on
+            param = known[key]
             if value is None or (isinstance(value, str) and not value.strip() and param.type != "string"):
                 continue
             try:

@@ -14,6 +14,20 @@ class FastCommandParserTests(unittest.TestCase):
         if args is not None:
             self.assertEqual(result["args"], args)
 
+    def test_datetime_right_now_variants(self):
+        for text in ("What time is it right now?", "what's the time right now", "tell me the time right now"):
+            self.assertTool(text, "get_datetime", {})
+
+    def test_speaker_and_loudspeaker_words_route_to_audio(self):
+        self.assertTool("اسپیکر رو بی\u200cصدا کن", "audio_mute", {})
+        self.assertTool("بلندگو رو میوت کن", "audio_mute", {})
+
+    def test_generic_app_word_is_not_an_app_name(self):
+        for text in ("برنامه رو باز کن", "اپ رو باز کن", "open the app", "open it", "open that program"):
+            self.assertIsNone(parse_fast_command(text), text)
+        self.assertTool("برنامه کروم رو باز کن", "open_app", {"name": "کروم"})
+        self.assertTool("open chrome", "open_app", {"name": "chrome"})
+
     def test_datetime_persian_and_english(self):
         for text in ("ساعت چنده؟", "الان ساعت چنده", "تاریخ امروز چیه", "what time is it", "today's date"):
             self.assertTool(text, "get_datetime", {})
@@ -166,6 +180,29 @@ class FastPathIntegrationTests(unittest.TestCase):
         self.assertEqual(chunks, [result["text"]])
 
 
+    def test_fast_path_does_not_acquire_web_research_lock(self):
+        class LockProbe:
+            def __init__(self):
+                self.acquire_calls = 0
+                self.release_calls = 0
+
+            def acquire(self, timeout=None):
+                self.acquire_calls += 1
+                return True
+
+            def release(self):
+                self.release_calls += 1
+
+        agent = self._agent()
+        lock = LockProbe()
+        agent._web_research_lock = lock
+        plan = agent.plan("صدا رو روی ۵۰ درصد بذار", session_id="kira")
+        result = agent.run(_NoModelRouter(), [{"role": "user", "content": "صدا رو روی ۵۰ درصد بذار"}],
+                           "system", 0.2, plan)
+        self.assertTrue(result["fast_path"])
+        self.assertEqual(lock.acquire_calls, 0)
+        self.assertEqual(lock.release_calls, 0)
+
     def test_read_only_system_query_runs_without_model_round_trip(self):
         agent = self._agent(tool_name="get_system_info")
         plan = agent.plan("مشخصات سیستم چیه", session_id="kira")
@@ -180,6 +217,18 @@ class FastPathIntegrationTests(unittest.TestCase):
         agent = self._agent(tool_name="get_system_info")
         agent._competitive_safe_mode = True
         self.assertIsNone(agent.plan("مشخصات سیستم چیه", session_id="kira"))
+
+    def test_competitive_safe_ordinary_chat_gets_no_tool_plan(self):
+        agent = self._agent(tool_name="get_system_info")
+        agent._competitive_safe_mode = True
+        self.assertIsNone(agent.plan("سلام، حالت چطوره؟", session_id="kira"))
+
+    def test_competitive_safe_keeps_explicit_web_request(self):
+        agent = self._agent(tool_name="get_system_info")
+        agent._competitive_safe_mode = True
+        plan = agent.plan("در وب درباره پورشه 911 تحقیق کن", session_id="kira")
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan.categories, {"web"})            # local categories stay blocked
 
     def test_tool_failure_is_reported_without_false_success(self):
         from kira.tools.registry import ERROR
@@ -290,7 +339,10 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(result["tools"][0]["status"], "ok")
         self.assertIn("system facts", result["text"])
         self.assertEqual(calls, [{}])
-        self.assertEqual(registry.access.journal.recent()[-1]["status"], "ok")
+        journal = registry.access.journal.recent()
+        self.assertEqual(len(journal), 1)
+        self.assertEqual(journal[-1]["tool"], "get_system_info")
+        self.assertEqual(journal[-1]["status"], "ok")
 
     def test_tools_mode_change_after_planning_is_enforced_at_execution(self):
         from kira.tools.registry import DENIED
@@ -305,7 +357,7 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertIn("ابزارها خاموش", result["text"])
 
     def test_competitive_safe_transition_cancels_pending_fast_call(self):
-        agent, _registry, calls = self._agent()
+        agent, registry, calls = self._agent()
         plan = self._plan(agent)
         agent.set_competitive_safe_mode(True)
         result = self._run(agent, plan)
@@ -313,6 +365,7 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertTrue(result["stopped"])
         self.assertEqual(result["tools"], [])
+        self.assertEqual(registry.access.journal.recent(), [])
 
     def test_competitive_safe_execution_guard_denies_fast_call(self):
         from kira.tools.registry import DENIED
@@ -328,6 +381,30 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(result["tools"][0]["status"], DENIED)
         self.assertIn("Competitive Safe", result["text"])
 
+    def test_execution_denials_are_recorded_in_the_real_registry_journal(self):
+        from kira.tools.registry import DENIED
+
+        cases = ("tools_off", "competitive_safe")
+        for case in cases:
+            with self.subTest(case=case):
+                agent, registry, calls = self._agent()
+                plan = self._plan(agent)
+                if case == "tools_off":
+                    agent.settings["tools_mode"] = "off"
+                else:
+                    # Bypass transition cancellation to test the registry's
+                    # execution guard and its journal independently.
+                    agent._competitive_safe_mode = True
+
+                result = self._run(agent, plan)
+
+                self.assertEqual(calls, [])
+                self.assertEqual(result["tools"][0]["status"], DENIED)
+                journal = registry.access.journal.recent()
+                self.assertEqual(len(journal), 1)
+                self.assertEqual(journal[0]["tool"], "get_system_info")
+                self.assertEqual(journal[0]["status"], DENIED)
+
     def test_same_fast_call_is_not_executed_twice_in_one_turn(self):
         agent, _registry, calls = self._agent()
         plan = self._plan(agent)
@@ -337,78 +414,342 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(calls, [{}])
         self.assertEqual(first["tools"][0]["status"], "ok")
         self.assertTrue(second["tools"][0]["cached"])
+        journal = agent.registry.access.journal.recent()
+        self.assertEqual(len(journal), 1)
+        self.assertEqual(journal[0]["status"], "ok")
+
+    def test_same_fast_call_can_execute_again_in_a_new_turn(self):
+        agent, registry, calls = self._agent()
+        first_plan = self._plan(agent)
+        first = self._run(agent, first_plan)
+        self.assertEqual(first["tools"][0]["status"], "ok")
+
+        # The lightweight agent fixture does not initialize task persistence;
+        # provide the three per-turn collections used by AutonomyMixin._turn_reset.
+        agent._turn_plan_ids = {}
+        agent._pause_requests = set()
+        agent._cancel_plan_requests = set()
+        agent.begin_turn("kira")
+        second_plan = self._plan(agent)
+        second = self._run(agent, second_plan)
+
+        self.assertEqual(calls, [{}, {}])
+        self.assertEqual(second["tools"][0]["status"], "ok")
+        self.assertFalse(second["tools"][0]["cached"])
+        journal = registry.access.journal.recent()
+        self.assertEqual(len(journal), 2)
+        self.assertEqual([entry["status"] for entry in journal], ["ok", "ok"])
 
 
+class SemanticPlannerRoutingTests(unittest.TestCase):
+    def _autonomy_probe(self):
+        from kira.tools.autonomy import AutonomyMixin
 
-class PlannerComplexityRegressionTests(unittest.TestCase):
-    """The planner prefilter counts action occurrences and recognizes natural task sequences."""
+        class Probe(AutonomyMixin):
+            def __init__(self):
+                self.settings = {"agent_planning": "auto"}
+                self._turn_session_id = "kira"
+                self._resume_sessions = set()
+                self.tasks = SimpleNamespace(active=lambda _owner: None)
 
-    def test_repeated_persian_action_is_not_collapsed(self):
-        from kira.tools.planner import assess
+            def planning_enabled(self):
+                return True
 
-        complex_, reasons = assess("دیسکورد رو باز کن و بعد کروم رو باز کن", {"apps"})
-        self.assertTrue(complex_)
-        self.assertTrue(reasons)
+            def _remember_task_preference(self, _text):
+                return None
 
-    def test_wallpaper_style_persian_task_enters_planner(self):
-        from kira.tools.planner import assess
+        return Probe()
 
-        complex_, reasons = assess(
-            "والپیپر انجین رو باز کن و دنبال والپیپر ماشین های پورش بگرد و یه والپیپر پورش بزار",
-            {"apps"},
-        )
-        self.assertTrue(complex_)
-        self.assertGreaterEqual(len(reasons), 1)
+    def test_legacy_task_schema_gets_goal_based_review_criteria(self):
+        from kira.tools.tasks import TaskPlan
 
-    def test_two_actions_joined_without_then_enter_planner(self):
-        from kira.tools.planner import assess
+        legacy = TaskPlan.from_dict({
+            "id": "legacy",
+            "goal": "open Wallpaper Engine and apply the selected wallpaper",
+            "steps": [{"id": 1, "title": "Open app", "tool": "open_app", "status": "done"}],
+        })
+        self.assertEqual(legacy.success_criteria, [legacy.goal])
+        self.assertEqual(legacy.steps[0].postcondition, legacy.goal)
 
-        complex_, _ = assess("open Discord and open Chrome", {"apps"})
-        self.assertTrue(complex_)
+    def test_one_tool_request_still_uses_model_to_define_its_goal(self):
+        from kira.tools.agent import ToolPlan
 
-    def test_single_action_stays_simple(self):
-        from kira.tools.planner import assess
+        probe = self._autonomy_probe()
+        plan = probe.decide("از بین برنامه‌های نصب‌شده نسخه‌ی Discord را پیدا کن", ToolPlan({"apps"}))
+        self.assertTrue(plan.complex)
+        self.assertIn("Planner", " ".join(plan.reasons))
 
-        for text in ("کروم رو باز کن", "برنامه رو باز کن", "open Discord", "مشخصات سیستم رو بررسی کن"):
-            with self.subTest(text=text):
-                complex_, reasons = assess(text, {"apps", "system"})
-                self.assertFalse(complex_, reasons)
+    def test_natural_task_is_routed_to_model_without_verb_matching(self):
+        from kira.tools.agent import ToolPlan
 
-    def test_no_tool_category_does_not_force_task_planning(self):
-        from kira.tools.planner import assess
+        probe = self._autonomy_probe()
+        base = ToolPlan({"apps"})
+        plan = probe.decide("والپیپر انجین رو باز کن، یک طرح مناسب پورشه پیدا کن و اعمالش کن", base)
+        self.assertTrue(plan.complex)
+        self.assertIn("Planner", " ".join(plan.reasons))
 
-        complex_, reasons = assess(
-            "والپیپر انجین رو باز کن و دنبال والپیپر بگرد و یکی بزار",
-            set(),
-        )
-        self.assertFalse(complex_, reasons)
+    def test_explicit_external_tool_intent_is_not_silently_filtered_from_catalog(self):
+        from kira.tools.agent import ToolAgent, ToolPlan
 
-    def test_three_distinct_actions_are_detected_without_sequence_word(self):
-        from kira.tools.planner import assess
+        class Registry:
+            web_context = None
+            def catalog(self, categories):
+                return ",".join(sorted(categories))
+        agent = ToolAgent.__new__(ToolAgent)
+        agent.registry = Registry()
+        agent._competitive_safe_mode = False
+        agent._memo_block = lambda: ""
+        plan = ToolPlan({"apps", "mcp", "agents"}, complex=True)
+        block = agent.tools_block(plan)
+        self.assertIn("mcp", block)
+        self.assertIn("agents", block)
 
-        complex_, _ = assess("فایل رو پیدا کن، بررسی کن و خلاصه کن", {"files"})
-        self.assertTrue(complex_)
+    def test_exact_fast_command_keeps_deterministic_fast_path(self):
+        from kira.tools.agent import ToolPlan
+
+        probe = self._autonomy_probe()
+        base = ToolPlan({"apps"})
+        plan = probe.decide("کروم رو باز کن", base)
+        self.assertFalse(plan.complex)
+
+    def test_auto_mode_lets_model_classify_unknown_intent_without_category_keywords(self):
+        from kira.tools.agent import ToolAgent
+
+        agent = ToolAgent.__new__(ToolAgent)
+        agent.settings = {"tools_mode": "auto"}
+        agent.registry = SimpleNamespace(web_context=None)
+        plan = agent._plan_simple("میشه این کار رو برام انجام بدی؟")
+        self.assertIsNotNone(plan)
+        self.assertIn("desktop", plan.categories)
+        self.assertIn("files", plan.categories)
+        self.assertNotIn("mcp", plan.categories)
+        self.assertNotIn("agents", plan.categories)
+        self.assertIn("web", plan.categories)
+        # No known task signal: the model triages with a short capability index first (cheap for chat),
+        # and only escalates to the planner when it asks for the PC (see tests/test_task_triage.py).
+        self.assertTrue(plan.index_only)
+        decision = self._autonomy_probe().decide("میشه این کار رو برام انجام بدی؟", plan)
+        self.assertFalse(decision.complex)
+
+    def test_no_base_tool_plan_remains_plain_chat_for_direct_decision(self):
+        probe = self._autonomy_probe()
+        self.assertIsNone(probe.decide("سلام، حالت چطوره؟", None))
 
 
-    def test_english_create_and_move_is_detected(self):
-        from kira.tools.planner import assess
+class SemanticResultReviewTests(unittest.TestCase):
+    def _step(self, data="پنجره فعال: Wallpaper Engine", sid=1):
+        from kira.tools.tasks import Step, REVIEW
+        step = Step(sid, "رسیدن به وضعیت درخواستی", "window_active", status=REVIEW)
+        step.data = data
+        return step
 
-        complex_, _ = assess("create a folder and move the files", {"files"})
-        self.assertTrue(complex_)
+    def test_review_requires_exact_evidence_for_satisfied_verdict(self):
+        from kira.tools.planner import parse_review
 
-    def test_explanatory_word_mention_is_not_a_task(self):
-        from kira.tools.planner import assess
+        raw = ('<kira_review>{"reviews":[{"step":1,"verdict":"satisfied",'
+               '"reason":"پنجره‌ی موردنظر فعال است","evidence":"پنجره فعال: Wallpaper Engine"}]}</kira_review>')
+        parsed = parse_review(raw, [self._step()])
+        self.assertEqual(parsed[0]["verdict"], "satisfied")
 
-        for text in ("لطفاً معنی کلمه browse رو بگو", "what does the word delete mean?"):
-            with self.subTest(text=text):
-                complex_, reasons = assess(text, {"apps", "files"})
-                self.assertFalse(complex_, reasons)
+    def test_review_rejects_hallucinated_evidence(self):
+        from kira.tools.planner import parse_review
 
-    def test_question_about_planning_is_not_an_explicit_plan_request(self):
-        from kira.tools.planner import assess
+        raw = ('<kira_review>{"reviews":[{"step":1,"verdict":"satisfied",'
+               '"reason":"انجام شد","evidence":"Wallpaper Engine is fully configured"}]}</kira_review>')
+        with self.assertRaises(ValueError):
+            parse_review(raw, [self._step()])
 
-        complex_, reasons = assess("برنامه‌ریزی یعنی چه؟", {"apps"})
-        self.assertFalse(complex_, reasons)
+    def test_review_requires_every_pending_step_exactly_once(self):
+        from kira.tools.planner import parse_review
+
+        raw = ('<kira_review>{"reviews":[{"step":1,"verdict":"uncertain",'
+               '"reason":"خروجی فقط ارسال کلیک را تأیید می‌کند"}]}</kira_review>')
+        with self.assertRaises(ValueError):
+            parse_review(raw, [self._step(), self._step("نتیجه دوم", sid=2)])
+
+    def test_read_only_result_can_be_observed_again(self):
+        from kira.tools.autonomy import AutonomyMixin
+        from kira.tools.registry import ToolResult, OK
+        from kira.tools.tasks import Step, TaskPlan, REVIEW
+
+        plan = TaskPlan("t-read", "مشاهده وضعیت پنجره")
+        step = Step(1, "خواندن وضعیت", "window_active")
+        plan.steps.append(step)
+        result = ToolResult("window_active", OK, "پنجره فعال: Wallpaper Engine", {}, 1)
+
+        class Probe(AutonomyMixin):
+            pass
+
+        Probe()._settle_step(plan, step, result, "read-signature", object)
+        self.assertEqual(step.status, REVIEW)
+        self.assertNotIn("read-signature", plan.done_sigs)
+
+    def test_single_tool_plan_uses_goal_as_legacy_success_criterion(self):
+        from kira.tools.planner import parse_plan
+
+        class Registry:
+            def get(self, name):
+                return SimpleNamespace(level=1) if name == "get_system_info" else None
+
+        raw = ('<kira_plan>{"goal":"read the current system information",'
+               '"steps":[{"id":1,"title":"Read system information","tool":"get_system_info",'
+               '"depends_on":[],"confirm":false}]}'
+               '</kira_plan>')
+        draft = parse_plan(raw, Registry(), 8)
+        self.assertEqual(draft["success_criteria"], ["read the current system information"])
+        self.assertEqual(draft["steps"][0]["postcondition"], "read the current system information")
+
+    def test_plan_parser_preserves_goal_and_step_success_conditions(self):
+        from kira.tools.planner import parse_plan
+        from kira.tools.tasks import TaskPlan
+
+        class Registry:
+            def get(self, name):
+                return SimpleNamespace(level=1) if name == "window_active" else None
+
+        raw = ('<kira_plan>{"goal":"activate Wallpaper Engine",'
+               '"success_criteria":["Wallpaper Engine is the active window"],'
+               '"steps":[{"id":1,"title":"Read active window","postcondition":"Wallpaper Engine is active",'
+               '"tool":"window_active","depends_on":[],"confirm":false}]}'
+               '</kira_plan>')
+        draft = parse_plan(raw, Registry(), 8)
+        plan = TaskPlan("t-criteria", draft["goal"])
+        plan.apply_draft(draft)
+        self.assertEqual(plan.success_criteria, ["Wallpaper Engine is the active window"])
+        self.assertEqual(plan.steps[0].postcondition, "Wallpaper Engine is active")
+        self.assertIn("FINAL SUCCESS CRITERIA", plan.render_state())
+        self.assertIn("postcondition: Wallpaper Engine is active", plan.render_state())
+
+    def test_goal_review_requires_exact_evidence_for_every_criterion(self):
+        from kira.tools.planner import parse_review
+        from kira.tools.tasks import Step
+
+        goal = Step(0, "final goal review", postcondition="app is active\nwallpaper is applied")
+        goal.data = "Active window: Wallpaper Engine\nApplied wallpaper: Porsche 911"
+        one_quote = ('<kira_review>{"reviews":[{"step":0,"verdict":"satisfied",'
+                     '"reason":"both are done","evidence":[{"criterion":1,"quote":"Active window: Wallpaper Engine"}]}]}'
+                     '</kira_review>')
+        with self.assertRaises(ValueError):
+            parse_review(one_quote, [goal])
+        two_quotes = ('<kira_review>{"reviews":[{"step":0,"verdict":"satisfied",'
+                      '"reason":"both criteria are proven","evidence":[{"criterion":1,"quote":"Active window: Wallpaper Engine"},'
+                      '{"criterion":2,"quote":"Applied wallpaper: Porsche 911"}]}]}'
+                      '</kira_review>')
+        result = parse_review(two_quotes, [goal])
+        self.assertEqual(result[0]["verdict"], "satisfied")
+        self.assertEqual(len(result[0]["evidence"]), 2)
+
+    def test_report_only_task_does_not_wait_for_tool_evidence(self):
+        from kira.tools.autonomy import AutonomyMixin
+        from kira.tools.tasks import TaskPlan, Step, P_DONE
+
+        class Probe(AutonomyMixin):
+            def __init__(self):
+                self._pending_by_session = {}
+
+        plan = TaskPlan("t-report", "explain the result")
+        plan.success_criteria = ["a clear explanation is provided"]
+        plan.steps.append(Step(1, "Write the explanation"))
+        Probe()._settle_plan(plan)
+        self.assertEqual(plan.status, P_DONE)
+
+    def test_task_cannot_be_marked_done_without_final_goal_review(self):
+        from kira.tools.autonomy import AutonomyMixin
+        from kira.tools.tasks import TaskPlan, Step, DONE, P_PAUSED
+
+        class Probe(AutonomyMixin):
+            def __init__(self):
+                self._pending_by_session = {}
+
+        plan = TaskPlan("t-final", "complete the requested UI task")
+        plan.success_criteria = ["the requested wallpaper is applied"]
+        plan.steps.append(Step(1, "apply wallpaper", "ui_click", status=DONE))
+        Probe()._settle_plan(plan)
+        self.assertEqual(plan.status, P_PAUSED)
+        self.assertFalse(plan.goal_verified)
+
+    def test_agent_gate_hides_review_blocks(self):
+        from kira.tools.planner import AgentGate
+
+        shown = []
+        gate = AgentGate(shown.append)
+        gate.feed('<kira_review>{"reviews":[]}</kira_review>')
+        gate.finish()
+        self.assertTrue(gate.is_review)
+        self.assertEqual(shown, [])
+
+    def test_action_result_is_locked_against_blind_repetition_until_review(self):
+        from kira.tools.autonomy import AutonomyMixin
+        from kira.tools.registry import ToolResult, OK
+        from kira.tools.tasks import Step, TaskPlan, REVIEW
+
+        plan = TaskPlan("t-test", "هدف کاربر")
+        step = Step(1, "فعال‌کردن پنجره", "window_focus", postcondition="پنجره Wallpaper Engine فعال باشد")
+        plan.steps.append(step)
+        result = ToolResult("window_focus", OK, "پنجره موردنظر فعال شد", {}, 2)
+
+        class Probe(AutonomyMixin):
+            pass
+
+        note = Probe()._settle_step(plan, step, result, "call-signature", object)
+        self.assertEqual(step.status, REVIEW)
+        self.assertIn("NOT established", note)
+        self.assertIn("call-signature", plan.done_sigs)
+        self.assertIn("ارزیابی تحقق هدف", plan.done_sigs["call-signature"])
+        self.assertEqual(step.postcondition, "پنجره Wallpaper Engine فعال باشد")
+
+
+class PlannerDependencyValidationTests(unittest.TestCase):
+    @staticmethod
+    def _plan(steps):
+        import json
+        return "<kira_plan>" + json.dumps({
+            "goal": "Complete dependent steps",
+            "steps": steps,
+        }) + "</kira_plan>"
+
+    @staticmethod
+    def _registry():
+        return SimpleNamespace(get=lambda _name: None)
+
+    def test_forward_dependency_is_rejected_instead_of_dropped(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": [2]},
+            {"id": 2, "title": "Second", "depends_on": []},
+        ))
+        with self.assertRaisesRegex(ValueError, "must be declared earlier"):
+            parse_plan(raw, self._registry(), max_steps=8)
+
+    def test_unknown_dependency_is_rejected(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": [99]},
+        ))
+        with self.assertRaisesRegex(ValueError, "must be declared earlier"):
+            parse_plan(raw, self._registry(), max_steps=8)
+
+    def test_non_numeric_dependency_is_rejected(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": ["later"]},
+        ))
+        with self.assertRaisesRegex(ValueError, "invalid dependency"):
+            parse_plan(raw, self._registry(), max_steps=8)
+
+    def test_valid_backward_dependency_is_preserved(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": []},
+            {"id": 2, "title": "Second", "depends_on": [1]},
+        ))
+        parsed = parse_plan(raw, self._registry(), max_steps=8)
+        self.assertEqual(parsed["steps"][1]["depends_on"], [1])
+
 
 
 class AutonomyRetryBudgetTests(unittest.TestCase):
@@ -436,3 +777,111 @@ class AutonomyRetryBudgetTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FastPathRoutingBoundaryTests(unittest.TestCase):
+    """Keep deterministic one-step commands out of semantic planning."""
+
+    @staticmethod
+    def _planner_probe():
+        from kira.tools.autonomy import AutonomyMixin
+
+        class Probe(AutonomyMixin):
+            def __init__(self):
+                self.settings = {"agent_planning": "auto"}
+                self._turn_session_id = "fast-boundary"
+                self._resume_sessions = set()
+                self.tasks = SimpleNamespace(active=lambda _owner: None)
+
+            def planning_enabled(self):
+                return True
+
+            def _remember_task_preference(self, _text):
+                return None
+
+        return Probe()
+
+    def test_twenty_simple_commands_remain_fast_and_non_complex(self):
+        from kira.tools.fast_commands import parse_fast_command
+
+        prompts = (
+            "ساعت چنده؟",
+            "تاریخ امروز چیه",
+            "what time is it",
+            "today's date",
+            "وضعیت بلوتوث چیه",
+            "بلوتوث رو روشن کن",
+            "turn bluetooth off",
+            "صدا رو روی ۵۰ درصد بذار",
+            "set volume to 35%",
+            "صدا رو زیاد کن",
+            "mute the speakers",
+            "unmute the speakers",
+            "مشخصات سیستم چیه",
+            "system specs",
+            "چقدر رم مصرف شده",
+            "RAM usage",
+            "فضای خالی درایوها چقدره",
+            "free disk space",
+            "وضعیت اینترنت چطوره",
+            "what apps are running",
+        )
+        planner = self._planner_probe()
+        self.assertEqual(len(prompts), 20)
+        for index, prompt in enumerate(prompts):
+            with self.subTest(index=index, prompt=prompt):
+                self.assertIsNotNone(parse_fast_command(prompt), prompt)
+                plan = planner.decide(prompt, SimpleNamespace(complex=False, index_only=False))
+                self.assertFalse(plan.complex, prompt)
+
+    def test_twenty_multistep_requests_never_enter_fast_path(self):
+        from kira.tools.fast_commands import parse_fast_command
+
+        prompts = (
+            "If drive C has less than 15 GB free, list the five largest files; do not delete or move anything.",
+            "Open Wallpaper Engine; if it is already running, bring its window forward instead of launching a second copy.",
+            "Find the latest official GPU driver and verify its version against a second source.",
+            "Back up Documents to drive D, then count copied files and report failures.",
+            "List paired Bluetooth devices; if my headset is disconnected, report it but do not connect it.",
+            "Check whether the microphone is muted; unmute only if needed, then report its final state.",
+            "Open Settings, navigate to Bluetooth, inspect paired devices, and change nothing.",
+            "Read the supplied article, verify its claims against official sources, and cite each finding.",
+            "Find duplicate photos, group exact matches, and show candidates without deleting anything.",
+            "If RAM or CPU exceeds 85 percent, identify the top process but do not terminate it.",
+            "If Chrome is closed, launch it; otherwise reuse its window and open the supplied URL.",
+            "Find the newest spreadsheet in Downloads and copy it to Documents without changing the original.",
+            "Inspect configured MCP tools but do not send credentials or personal data.",
+            "Delegate public-source research to an agent, return its job ID, and check status before reporting.",
+            "Compare three laptop prices across retailers and save sourced results to a spreadsheet.",
+            "Type the battery report in Notepad, read it back, and only then report completion.",
+            "If the keyboard is not paired, ask before pairing it.",
+            "Select the headset only if it is already connected; otherwise leave audio unchanged.",
+            "Check internet and disk space; if internet is down, report it without resetting the network.",
+            "Open Chrome, search for the official driver, download it, and verify the downloaded file.",
+        )
+        planner = self._planner_probe()
+        self.assertEqual(len(prompts), 20)
+        for index, prompt in enumerate(prompts):
+            with self.subTest(index=index, prompt=prompt):
+                self.assertIsNone(parse_fast_command(prompt), prompt)
+                plan = planner.decide(prompt, SimpleNamespace(complex=False, index_only=False))
+                self.assertTrue(plan.complex, prompt)
+
+    def test_fast_path_parser_does_not_claim_chat_or_ambiguous_requests(self):
+        from kira.tools.fast_commands import parse_fast_command
+
+        prompts = (
+            "سلام، امروز حالت چطوره؟",
+            "به نظرت چه فیلمی ببینم؟",
+            "Explain how source code is compiled.",
+            "این کار رو برام انجام بده",
+            "سیستم رو بررسی کن",
+            "فایل گزارش رو باز کن",
+            "open https://example.com",
+            "open the report.pdf",
+            "open Discord and search the web",
+            "volume to 250 percent",
+        )
+        for prompt in prompts:
+            with self.subTest(prompt=prompt):
+                self.assertIsNone(parse_fast_command(prompt), prompt)

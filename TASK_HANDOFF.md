@@ -1,4 +1,57 @@
+## Fast Path Stage 4 — Real registry boundary integration tests (2026-11-22)
+
+- Branch: `test/fastpath-real-boundary-integration`; based on `claude/task-understanding-review` after stage 3 PR #225 was merged.
+- `FastPathRealRegistryBoundaryTests` exercises the production `ToolRegistry` and `AccessManager`; only the model router is stubbed to fail if called.
+- Covers successful Fast Path dispatch and one success Journal entry; post-plan `tools_mode=off` denial and Journal record; Competitive Safe transition cancellation before dispatch; runtime execution-guard denial and Journal record; duplicate-call cache behavior without a second handler or Journal entry.
+- Added assertions that Journal contains exactly one record for successful execution and no duplicate record for cached replay.
+- Added turn-boundary coverage: the same call is deduplicated within one turn, allowed again after `begin_turn()`, and pre-dispatch cancellation creates no Journal record.
+- Validation: updated test and documentation sources fetched back from GitHub and statically inspected. Python unittest and Windows runtime have not been executed; GitHub Actions were not run.
+- Local command when a checkout is available: `python -m unittest discover -s tests -p "test_fast_commands.py" -v`.
+
+## Stage 3 — Planned execution safety guards (2026-11-22)
+
+- Branch: `fix/planned-execution-safety-guards`; PR #225 targets `claude/task-understanding-review`.
+- `ToolRegistry.clean_args` rejects undeclared arguments rather than silently dropping typos/extra fields.
+- `AutonomyMixin._run_calls_planned` requires each planned call to supply an explicit positive integer step ID and object arguments; malformed calls are rejected before binding or dispatch.
+- Planned calls reject unknown/ambiguous step IDs, tool/step mismatches, and replay attempts for DONE, SKIPPED, RUNNING, AWAITING, or REVIEW steps.
+- `planner.parse_plan` rejects duplicate, boolean, non-positive, and malformed step IDs rather than silently renumbering duplicate IDs; falsey non-list dependency containers are rejected instead of treated as no dependencies.
+- Persisted task loading rejects malformed step records and duplicate IDs. Malformed dependency values are converted to an invalid sentinel, never dropped.
+- `TaskPlan.deps_unmet` fails closed for missing, malformed, non-positive, ambiguous, self, and forward dependencies, even when a later referenced step is marked complete.
+- Added 22 unittest methods covering argument validation, planned dispatch guards, planner structure, persisted state, and dependency ordering.
+- Validation: updated source/tests/docs fetched back from GitHub and statically inspected. Python unittest and Windows runtime have not been executed; GitHub Actions were not run.
+- Local validation when a checkout is available: `python -m unittest tests.test_execution_safety tests.test_fast_commands tests.test_task_triage tests.test_task_cost`.
+
+## Fast Path stage 2 — Planner / ToolRegistry boundary review (2026-11-22)
+
+- Branch: `fix/fastpath-web-lock-scope`; PR #224: https://github.com/alizesta/Kira/pull/224 (open, draft; not merged).
+- Found and fixed unnecessary WebIntel lock acquisition for deterministic local Fast Path calls. The fast route returns after its single allow-listed registry execution and does not enter a web/model round, so it no longer serializes unrelated web research.
+- Hardened `planner.parse_plan`: malformed, unknown, and forward dependencies are rejected rather than silently dropped. Valid backward dependencies remain intact.
+- Added regression coverage for the web-lock boundary and four planner dependency cases.
+- Reviewed execution boundary: Fast Path still reaches `ToolRegistry.execute`; app execution guard, `tools_mode=off`, argument validation, AccessManager permissions/intent, and sensitive-action confirmation remain enforced.
+- Validation: files fetched back from GitHub and branch diff verified. Python unittest and Windows runtime were not run; GitHub Actions were not triggered.
+- Next: when a local checkout is available, run `python -m unittest tests.test_fast_commands`, then the related task-triage/planner tests. Do not treat PR #224 as runtime-validated until then.
+
+## Latest task: 20 adversarial multi-step cases (2026-11-22)
+
+- Added 20 hard cases to `tests/test_task_understanding_benchmark.py`: conditional operations, sequence constraints, read-only boundaries, explicit approval/no-delete constraints, web evidence, status polling, and combinations of local tools with web/MCP/agents.
+- Added a unittest asserting all required categories are detected and each hard case routes beyond index-only triage. Independent detector-pattern harness: 20/20 required-category coverage, zero regex compile errors. Extra category matches were observed in some prompts; this benchmark currently asserts required-family recall, not exact category precision.
+- Python unittest suite, live model, and Windows execution have not been run. GitHub Actions were not triggered.
+
+## Latest task: 200-case task-understanding benchmark (2026-11-22)
+
+- Added `tests/test_task_understanding_benchmark.py`: 200 actionable prompts split evenly across 10 tool families, plus 20 chat-only negative controls. The test checks required category recall and that actionable prompts bypass index-only triage while ordinary chat remains on it.
+- Dataset integrity checked through the GitHub source: 20 cases per each of the 10 protocol categories; 200/200 actionable entries unique and 20/20 chat controls unique. An independent JavaScript harness reconstructed from the Python regex patterns measured 200/200 required-category hits and 0/20 chat false positives; it exposed and prompted fixes for Persian local-time, paired-device/Pair, menu-genitive, counted-source, and delegated-job wording. The unittest fixture now mirrors the existing triage-test fixture and reuses one ToolAgent across the dataset. This is not an execution of Python's unittest module. The Python tests, live model, and Windows runtime remain unverified. No GitHub Actions run.
+- Next: execute `python -m unittest tests.test_task_understanding_benchmark tests.test_task_triage` in a local checkout, fix every failing case against the actual detector, then run the broader relevant suite. After that, add a separate live-model benchmark for triage escalation, plan decomposition, approval compliance, recovery and verified postconditions.
+
 # Task Handoff
+
+## Latest task: review of model-driven task understanding (2026-11-22, 08:03 Iran)
+
+- Branch `claude/task-understanding-review` (from `new-main` @ `42d34b6`). Reviewed `20aa301` (model-driven planning/verification) and `42d34b6` (model classifies intent in auto mode); fixed one regression (Competitive Safe gave every message a web plan, see CHANGELOG 08:03).
+- 08:32 Iran: planner review calls (step review + final goal review) use `planner.REVIEW_SYSTEM` instead of the character prompt (CHANGELOG 08:32). A one-tool task is still 5 model calls; real latency per call on the user's routes is unmeasured. Next candidates (need real numbers first): skip the goal review for one-step plans, merge review with the next action, or route review calls to a faster `surface` model.
+- 2026-11-22: English task-intent coverage expanded in `protocol.py`; a 20-case regression matrix was added to `tests/test_task_triage.py`. Independent regex check: 20/20 expected category sets covered; 19 actionable prompts bypass triage and the email-draft-only prompt remains in triage. Generic source-code discussion has a negative regression. Not verified: repository unit tests, live models, Windows execution. No Actions run.
+- 08:23 Iran: the open cost question was resolved with a model-owned triage (`ToolPlan.index_only`, `use_tools`, see CHANGELOG 08:23): chat = one small call, unknown-wording tasks escalate to the full catalog/planner. Validate on Windows with a real route: «سلام» answers fast; «یه والپیپر زنده‌ی پورشه بذار» escalates and plans; check that weak local models (Qwen 4B) emit the `use_tools` block reliably (if not, they answer in text and the task is missed: then lower triage to keyword hits only for such routes); two characters chatting at once no longer wait on each other.
+- Not verified: Windows runtime, real-model behaviour on the Wallpaper Engine / Porsche 911 example, full test suite. Only `tests.test_fast_commands` and `tests.test_task_store` were run (53 OK).
 
 ## Latest task: portrait, icon, tray menu (2026-11-21, 17:05 Iran)
 

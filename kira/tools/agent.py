@@ -88,6 +88,7 @@ class ToolPlan:
     web: bool = False                 # the request is a web research / page reading request (the tool route handles it, the old one-shot auto search is skipped)
     session_id: str = ""               # bind plans to the character whose request created them
     fast_call: dict | None = None       # deterministic allow-listed command; still executed via ToolRegistry
+    index_only: bool = False            # cheap triage round: the model sees only a short capability index and either answers or asks for the PC (escalates)
 
 
 @dataclass
@@ -305,7 +306,12 @@ class ToolAgent(AutonomyMixin):
                     plan = ToolPlan(set(tool.categories), protocol.is_strong(text))
             if plan is not None:
                 if self._competitive_safe_mode:
-                    plan.categories.intersection_update({"web"})
+                    allowed = {"web"}
+                    if self.mode() == "auto":
+                        # Auto mode now offers every local category up front; in Competitive Safe only
+                        # an explicit web request (or a paused web research) may keep the web tools.
+                        allowed &= protocol.detect_categories(text) | ({"web"} if self._web_resume(text) else set())
+                    plan.categories.intersection_update(allowed)
                     if not plan.categories:
                         return None
                 plan.web = "web" in plan.categories and (bool(protocol.detect_categories(text) & {"web"}) or self._web_resume(text))
@@ -318,6 +324,7 @@ class ToolAgent(AutonomyMixin):
                             and category in plan.categories and category in tool_categories):
                         plan.fast_call = {"tool": fast_call["tool"], "args": dict(fast_call.get("args") or {}),
                                           "category": category}
+                        plan.index_only = False
             return plan
 
     def _web_resume(self, text: str) -> bool:
@@ -332,12 +339,19 @@ class ToolAgent(AutonomyMixin):
             return None
         if mode == "always":
             return ToolPlan(set(protocol.ALL_CATEGORIES), protocol.is_strong(text))
-        cats = protocol.detect_categories(text)
-        if not cats and self._web_resume(text):
-            cats = {"web"}                                   # "ادامه بده" while a web research is paused
-        if not cats and self._turn_id - self._last_used_turn <= 2 and len(str(text).split()) <= 10:
-            cats = set(self._last_cats)                      # a short follow-up to a tool turn ("بازش کن", "اولیش")
-        return ToolPlan(cats, protocol.is_strong(text)) if cats else None
+        detected = protocol.detect_categories(text)
+        if self._web_resume(text):
+            detected.add("web")
+        # In auto mode the model itself classifies every turn as conversation,
+        # knowledge, or an actionable task. Give it local capabilities up front
+        # so an unfamiliar app/task is not lost by a keyword/category prefilter.
+        # External MCP/agent capabilities remain opt-in via explicit user intent.
+        cats = set(protocol.ALL_CATEGORIES) - {"mcp", "agents"}
+        cats.update(detected & {"mcp", "agents"})
+        # Cost control: a message with no known task signal is first shown to the model with a short
+        # capability index only (conversation costs one small call). The model, not a word list, decides
+        # whether the PC is needed; if so the turn escalates to the full catalog / planner (see run()).
+        return ToolPlan(cats, protocol.is_strong(text), index_only=not detected)
 
     def temperature(self, temperature: float) -> float:
         return min(float(temperature), 0.4)                  # tool blocks and exact facts do not need a high temperature
@@ -345,18 +359,34 @@ class ToolAgent(AutonomyMixin):
     def tools_block(self, plan: ToolPlan, last_round: bool = False) -> str:
         if last_round:
             return protocol.build_block("", last_round=True)
+        if getattr(plan, "index_only", False):
+            return protocol.build_index_block(self.registry.for_categories(plan.categories), self._memo_block())
         extra = ""
+        planning_scope = bool(plan.complex)
         if "web" in plan.categories:
             extra = protocol.WEB_RULES
             ctx = getattr(self.registry, "web_context", None)
             cur = ctx.store.current() if ctx else None
             if cur is not None and cur.status == "paused" and cur.subtopics:
                 extra += f"\nA paused research exists: «{cur.topic}» ({len(cur.done_subtopics)}/{len(cur.subtopics)} sub-topics done). If the user wants it continued, call web_research with resume=true."
-        if "desktop" in plan.categories:
+        if "desktop" in plan.categories or (planning_scope and not self._competitive_safe_mode):
             extra = (extra + "\n\n" if extra else "") + protocol.DESKTOP_RULES
         if plan.categories & {"mcp", "agents"}:
             extra = (extra + "\n\n" if extra else "") + protocol.MCP_RULES
-        return protocol.build_block(self.registry.catalog(plan.categories), self._memo_block(), extra=extra)
+        if planning_scope:
+            # Let the model choose the correct local capability from the goal,
+            # instead of hiding desktop/file/app tools behind keyword categories.
+            # External MCP/agent tools stay opt-in and are never exposed by default.
+            if self._competitive_safe_mode:
+                catalog_categories = {"web"}
+            else:
+                catalog_categories = set(protocol.ALL_CATEGORIES) - {"mcp", "agents"}
+                catalog_categories.update(plan.categories & {"mcp", "agents"})
+                if "web" not in plan.categories:
+                    catalog_categories.discard("web")
+        else:
+            catalog_categories = plan.categories
+        return protocol.build_block(self.registry.catalog(catalog_categories), self._memo_block(), extra=extra)
 
     # ------------------------------------------------------------ session-only notes
     def _memo_block(self) -> str:
@@ -493,7 +523,9 @@ class ToolAgent(AutonomyMixin):
             self._pending_new_sessions.discard(owner)
             self.registry.access.grant(pending.tool, pending.args)
             result = self.registry.execute(pending.tool, pending.args, confirmed=True)
-            self._memoize(result)
+            tool_meta = self.registry.get(result.tool)
+            if result.ok and tool_meta is not None and tool_meta.verifies_result:
+                self._memoize(result)
             return (("✅ " + result.text) if result.ok else f"❌ انجام نشد: {result.text}") + self._after_confirm(pending, result, True)
         self._pending_by_session.pop(owner, None)
         self._pending_new_sessions.discard(owner)
@@ -575,11 +607,25 @@ class ToolAgent(AutonomyMixin):
 
     # ------------------------------------------------------------ the turn loop
     def run(self, router, messages, system_prompt, temperature, plan, retry_index=0, on_chunk=None, on_event=None, on_tool=None):
+        """Run a ToolPlan. A cheap triage plan that the model escalates is re-run with the full catalog / planner."""
+        result = self._run_once(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
+        if isinstance(result, dict) and result.pop("_escalate", False) and getattr(plan, "index_only", False):
+            plan.index_only = False
+            if self.planning_enabled():
+                plan.complex = True
+                plan.reasons = ("ارزیابی معنایی هدف توسط Planner مدل",)
+            return self._run_once(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
+        return result
+
+    def _run_once(self, router, messages, system_prompt, temperature, plan, retry_index=0, on_chunk=None, on_event=None, on_tool=None):
         """Run a ToolPlan in its creating character's state and serialize shared WebIntel access."""
         owner = str(getattr(plan, "session_id", "") or self._current_turn_state().session_id)
         with self._use_session(owner):
             web_locked = False
-            uses_web_tools = "web" in (getattr(plan, "categories", set()) or set())
+            # Fast Path returns after one allow-listed local tool; it never enters web research.
+            uses_web_tools = (not getattr(plan, "fast_call", None)
+                              and "web" in (getattr(plan, "categories", set()) or set())
+                              and not getattr(plan, "index_only", False))
             if uses_web_tools:
                 while not self._web_research_lock.acquire(timeout=0.1):
                     if self._cancel.is_set():
@@ -635,7 +681,7 @@ class ToolAgent(AutonomyMixin):
             prompt = system_prompt + "\n\n" + self.tools_block(plan, last_round=last)
             # Prefer provider-native function calling where the selected route supports the OpenAI tools schema.
             # Providers without a native adapter keep the existing text-protocol fallback unchanged.
-            if not last and callable(getattr(router, "chat_with_tools", None)):
+            if not last and not getattr(plan, "index_only", False) and callable(getattr(router, "chat_with_tools", None)):
                 try:
                     native = router.chat_with_tools(cur, prompt, temp, self.registry.schemas(plan.categories), on_event=on_event)
                 except Exception as exc:                         # noqa: BLE001 - preserve real outcomes if a later native round fails
@@ -698,6 +744,10 @@ class ToolAgent(AutonomyMixin):
                     text = "ارتباط با مدل وسط درخواست ابزار قطع شد؛ هیچ عملیاتی اجرا نشد."
                     emit(text)
                     return self._final(res, text, executed)
+                if getattr(plan, "index_only", False):
+                    out = self._final(res, "", executed)           # the model asked for the PC: nothing was shown or executed yet
+                    out["_escalate"] = True
+                    return out
                 calls, errors = protocol.parse_calls(gate.raw)
                 if not last and (calls or errors):
                     results = self._run_calls(calls, errors, on_tool)

@@ -78,5 +78,47 @@ class TaskStorePersistenceTests(unittest.TestCase):
             self.assertFalse(list(root.glob(".kira_tasks.json.*.tmp")))
 
 
+    def test_verified_goal_is_reopened_after_restart_when_its_evidence_was_memory_only(self):
+        from kira.tools.tasks import P_RUNNING, Step
+
+        with tempfile.TemporaryDirectory() as temp:
+            store = TaskStore(Path(temp))
+            plan = store.new("finish a UI task", session_id="kira")
+            plan.status = P_RUNNING
+            plan.success_criteria = ["Wallpaper Engine has the requested wallpaper"]
+            plan.goal_reviewed = True
+            plan.goal_verified = True
+            plan.steps.append(Step(1, "apply wallpaper", "ui_click", status="done"))
+            self.assertTrue(store.save())
+
+            restored = TaskStore(Path(temp))
+            active = restored.active("kira")
+            self.assertIsNotNone(active)
+            self.assertFalse(active.goal_reviewed)
+            self.assertFalse(active.goal_verified)
+            self.assertIn("دوباره مشاهده", active.goal_review_reason)
+
+    def test_reviewing_step_is_not_marked_done_after_restart(self):
+        from kira.tools.tasks import Step, REVIEW, UNMET
+
+        with tempfile.TemporaryDirectory() as temp:
+            store = TaskStore(Path(temp))
+            plan = store.new("verify a UI action", session_id="kira")
+            plan.success_criteria = ["Wallpaper Engine is active"]
+            step = Step(1, "read back final state", "window_active", status=REVIEW, result="review pending",
+                        postcondition="Wallpaper Engine must be the active window")
+            plan.steps.append(step)
+            plan.done_sigs["pending"] = "executed; semantic review pending"
+            self.assertTrue(store.save())
+
+            restored = TaskStore(Path(temp))
+            recovered = restored.active("kira").steps[0]
+            self.assertEqual(recovered.status, UNMET)
+            self.assertIn("دوباره مشاهده کن", recovered.error)
+            self.assertEqual(recovered.postcondition, "Wallpaper Engine must be the active window")
+            self.assertEqual(restored.active("kira").success_criteria, ["Wallpaper Engine is active"])
+            self.assertIn("pending", restored.active("kira").done_sigs)
+
+
 if __name__ == "__main__":
     unittest.main()
