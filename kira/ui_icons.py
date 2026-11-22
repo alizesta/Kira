@@ -2,6 +2,9 @@
 
 Lucide assets and Kira-specific mood/stop SVGs are rendered through QtSvg.
 The multi-pass neon bloom and make_icon/set_glow_intensity public API stay stable.
+
+Mood faces: a mood with its own file (assets/icons/emotion_<mood>.svg) uses it; any other mood falls back to the
+SVG of its family (_EMOTION_GROUPS), so a new mood never renders as an empty button.
 """
 from pathlib import Path
 
@@ -39,6 +42,8 @@ def set_glow_intensity(value):
 def _asset_name(name):
     value = str(name or "help")
     if value.startswith("emotion_"):
+        if (_SVG_DIR / f"{value}.svg").is_file():
+            return value
         mood = value.removeprefix("emotion_")
         return "emotion_" + _EMOTION_GROUPS.get(mood, "neutral")
     return value
