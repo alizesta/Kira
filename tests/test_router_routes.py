@@ -256,6 +256,8 @@ class RouterRouteTests(unittest.TestCase):
             ok, message, _ms = router.test_route(route["id"])
 
         self.assertTrue(ok, message)
+        # The short test budget must not reduce the normal chat route timeout.
+        self.assertEqual(router._make_provider(route).timeout, routes.CLOUD_TIMEOUT[1])
         self.assertLessEqual(get.call_args.kwargs["timeout"], 15)
         self.assertLessEqual(post.calls[0]["timeout"], 15)
         self.assertGreater(post.calls[0]["timeout"], 0)
