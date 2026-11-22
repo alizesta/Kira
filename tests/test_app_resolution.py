@@ -42,6 +42,49 @@ class PersianAppResolutionTests(unittest.TestCase):
         self.assertEqual(state, "none")
 
 
+class AppCatalogPerformanceRegressionTests(unittest.TestCase):
+    def test_empty_menu_catalog_is_cached(self):
+        appcatalog.drop_cache()
+        try:
+            with patch.object(appcatalog, "_build", return_value=[]) as build:
+                self.assertEqual(appcatalog.menu_apps(), [])
+                self.assertEqual(appcatalog.menu_apps(), [])
+                self.assertEqual(build.call_count, 1)
+        finally:
+            appcatalog.drop_cache()
+
+    def test_deep_catalog_reuses_menu_scan(self):
+        menu_entry = appcatalog.AppEntry("Opera GX")
+        extra_entry = appcatalog.AppEntry("Opera GX")
+        extra_entry.add("installed-apps", "exe", r"C:\Program Files\Opera GX\opera.exe",
+                        install_dir=r"C:\Program Files\Opera GX")
+        appcatalog.drop_cache()
+        calls = []
+        def fake_build(collectors):
+            calls.append(tuple(collectors))
+            return [menu_entry] if appcatalog._collect_shortcuts in collectors else [extra_entry]
+        try:
+            with patch.object(appcatalog, "_build", side_effect=fake_build):
+                appcatalog.menu_apps()
+                merged = appcatalog.deep_apps()
+            self.assertEqual(len(calls), 2)
+            self.assertNotIn(appcatalog._collect_shortcuts, calls[1])
+            self.assertIn("installed-apps", merged[0].sources)
+            self.assertIn(("exe", r"C:\Program Files\Opera GX\opera.exe"), merged[0].launchers)
+        finally:
+            appcatalog.drop_cache()
+
+    def test_resolver_reuses_deep_catalog_for_fuzzy_candidates(self):
+        deep = [appcatalog.AppEntry("Opera GX")]
+        with patch.object(app_tools.appcatalog, "menu_apps", return_value=[]), \
+             patch.object(app_tools.appcatalog, "deep_apps", return_value=deep) as deep_apps, \
+             patch.object(app_tools.appcatalog, "uwp_apps", return_value=[]):
+            state, suggestions = app_tools.resolve_app("opera gxx")
+        self.assertEqual(state, "none")
+        self.assertTrue(suggestions)
+        deep_apps.assert_called_once_with()
+
+
 class BrokenShortcutFallbackTests(unittest.TestCase):
     def test_missing_shortcut_target_does_not_block_install_folder_exe(self):
         entry = appcatalog.AppEntry("Opera GX")
@@ -74,6 +117,23 @@ class BrokenShortcutFallbackTests(unittest.TestCase):
             plan = app_tools._launch_plan(entry)
 
         self.assertEqual(plan[0], ("lnk", shortcut, True))
+
+
+class AppLaunchSnapshotTests(unittest.TestCase):
+    def test_zero_wait_verification_uses_one_post_launch_process_snapshot(self):
+        from types import SimpleNamespace
+
+        tool = app_tools.AppTools.__new__(app_tools.AppTools)
+        ident = appcatalog.AppIdentity("Example", (), (), {"example"})
+        before = SimpleNamespace(all_hwnds=set(), main_exe_count=lambda: 0)
+        process_rows = [{"pid": 42, "name": "example.exe", "exe": ""}]
+        with patch.object(app_tools.appcatalog, "running_processes", return_value=process_rows) as snapshot, \
+             patch.object(app_tools.appcatalog, "match_processes", return_value=([], [])), \
+             patch.object(app_tools.appcatalog, "windows_of_pids", return_value=[]), \
+             patch.object(app_tools.sysinfo, "visible_windows", return_value=[]):
+            result = tool._verify("Example", ident, before, 0.0)
+        self.assertIn("پردازشی", result)
+        snapshot.assert_called_once_with()
 
 
 if __name__ == "__main__":

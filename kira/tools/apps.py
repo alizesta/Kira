@@ -127,11 +127,23 @@ def resolve_app(name: str):
     for key, (label, _, _, aliases) in BUILTIN_APPS.items():
         if q == _norm(key) or q in {_norm(a) for a in aliases}:
             return "builtin", key
-    for source in (appcatalog.menu_apps, appcatalog.deep_apps, appcatalog.uwp_apps):
-        state, val = _pick(q, source())
-        if state != "none":
-            return ("app", val) if state == "hit" else ("ambiguous", val)
-    names = {_norm(e.name): e.name for e in appcatalog.deep_apps()}
+    menu = appcatalog.menu_apps()
+    state, val = _pick(q, menu)
+    if state != "none":
+        return ("app", val) if state == "hit" else ("ambiguous", val)
+
+    # Reuse one deep-catalog snapshot for exact resolution and fuzzy suggestions.
+    deep = appcatalog.deep_apps()
+    state, val = _pick(q, deep)
+    if state != "none":
+        return ("app", val) if state == "hit" else ("ambiguous", val)
+
+    uwp = appcatalog.uwp_apps()
+    state, val = _pick(q, uwp)
+    if state != "none":
+        return ("app", val) if state == "hit" else ("ambiguous", val)
+
+    names = {_norm(e.name): e.name for e in deep}
     close = difflib.get_close_matches(q, list(names), n=3, cutoff=0.72)
     return "none", [names[c] for c in close]
 
@@ -447,9 +459,12 @@ class AppTools:
                       "باز شدنش را تأیید نکن، فقط همین را به کاربر بگو.")
 
     def _verify(self, label: str, ident, before: "_State", seconds: float) -> str:
-        """Honest check after a start: a new window, a window of the app's processes, or (at least) its processes."""
+        """Honest post-launch check; reuse its process snapshot for all subsequent checks."""
         deadline = time.monotonic() + seconds
         other_new = None
+        procs = None
+        strong, weak = [], []
+        pids = set()
         while time.monotonic() < deadline:
             time.sleep(0.5)
             procs = appcatalog.running_processes()
@@ -458,34 +473,41 @@ class AppTools:
             new = [w for w in sysinfo.visible_windows() if w["hwnd"] not in before.all_hwnds and w["pid"] != os.getpid()]
             mine = [w for w in new if w["pid"] in pids or _by_name(w, ident.stems)]
             if mine:
-                return self._finish(f"پنجره‌ی جدید دیده شد: «{mine[0]['title'][:60]}» ({mine[0].get('process') or 'نامشخص'}).", ident, before)
+                return self._finish(
+                    f"پنجره‌ی جدید دیده شد: «{mine[0]['title'][:60]}» ({mine[0].get('process') or 'نامشخص'}).",
+                    ident, before, processes=procs,
+                )
             if new and other_new is None:
                 other_new = new[0]
-        procs = appcatalog.running_processes()
-        strong, weak = appcatalog.match_processes(ident, procs)
-        pids = {p["pid"] for p in strong + weak}
+        # A zero-wait check still takes one post-launch snapshot. Reuse that result,
+        # rather than enumerating every process again for duplicate-instance reporting.
+        if procs is None:
+            procs = appcatalog.running_processes()
+            strong, weak = appcatalog.match_processes(ident, procs)
+            pids = {p["pid"] for p in strong + weak}
         hidden = [w for w in appcatalog.windows_of_pids(pids) if not w["visible"]] if pids else []
         if hidden:                                                # the relaunch woke the app's tray window: show it
             text, ok = _activate_best(label, hidden, hidden=True)
             if ok:
-                return self._finish(text, ident, before)
+                return self._finish(text, ident, before, processes=procs)
         if other_new:
             return self._finish(f"پنجره‌ی جدید دیده شد: «{other_new['title'][:60]}» ({other_new.get('process') or 'نامشخص'}) "
-                                "(ممکن است پنجره‌ی لانچر/برنامه‌ی واسط باشد، نه خود برنامه).", ident, before)
+                                "(ممکن است پنجره‌ی لانچر/برنامه‌ی واسط باشد، نه خود برنامه).", ident, before,
+                                processes=procs)
         if pids:
             names = ", ".join(sorted({p["name"] for p in strong + weak if p.get("name")})[:4])
             return self._finish(f"پردازش برنامه در حال اجراست ({len(pids)} پردازش: {names}) ولی تا {int(seconds)} ثانیه پنجره‌ی جدیدی دیده نشد؛ "
                                 "احتمالاً در System Tray/پس‌زمینه است یا با دسترسی Administrator اجرا شده و Kira نمی‌تواند پنجره‌اش را ببیند. "
-                                "باز شدنش را تأیید نکن، فقط همین را به کاربر بگو.", ident, before)
+                                "باز شدنش را تأیید نکن، فقط همین را به کاربر بگو.", ident, before, processes=procs)
         return self._finish(f"تا {int(seconds)} ثانیه پنجره‌ی جدیدی دیده نشد و هیچ پردازشی از این برنامه هم پیدا نشد؛ ویندوز دستور را پذیرفت ولی برنامه بالا نیامد "
                             "(علت ممکن: خطای خود برنامه، نیاز به ورود/به‌روزرسانی، یا مسدود شدن توسط آنتی‌ویروس/UAC). باز شدنش را تأیید نکن، فقط همین را به کاربر بگو.",
-                            ident, before)
+                            ident, before, processes=procs)
 
     @staticmethod
-    def _finish(text: str, ident, before: "_State") -> str:
+    def _finish(text: str, ident, before: "_State", processes=None) -> str:
         """Add a warning when the main program now has MORE processes than before (a possible second copy)."""
         try:
-            now_procs = appcatalog.running_processes()
+            now_procs = processes if processes is not None else appcatalog.running_processes()
             main = next((os.path.normcase(os.path.normpath(e)) for e in ident.exes if e), "")
             after = sum(1 for p in now_procs if main and p.get("exe") and os.path.normcase(os.path.normpath(p["exe"])) == main)
             was = before.main_exe_count()

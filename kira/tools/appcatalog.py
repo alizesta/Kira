@@ -18,6 +18,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 
 from .winrunner import FixedScript, run_fixed
@@ -83,6 +84,19 @@ class AppEntry:
 
     def lnk_path(self) -> str:
         return next((t for k, t in self.launchers if k == "lnk"), "")
+
+    def merge(self, other: "AppEntry"):
+        """Merge discovery metadata for the same normalized app name."""
+        self.sources.update(other.sources)
+        for launcher in other.launchers:
+            if launcher not in self.launchers:
+                self.launchers.append(launcher)
+        if not self.install_dir:
+            self.install_dir = other.install_dir
+        if not self.exe:
+            self.exe = other.exe
+        if not self.steam_id:
+            self.steam_id = other.steam_id
 
     def __repr__(self):                                       # pragma: no cover
         return f"AppEntry({self.name!r}, {sorted(self.sources)})"
@@ -328,8 +342,14 @@ def _collect_app_paths(add) -> None:
 
 
 # ------------------------------------------------------------------ catalog (two tiers: what the user sees in menus, then everything else)
-_CACHE = {"time": 0.0, "menu": [], "deep": []}
+# None means "not loaded"; an empty list is a valid cached result.
+_CACHE = {"time": 0.0, "menu": None, "deep": None}
 _UWP = {"time": 0.0, "items": None}
+_MENU_LOCK = threading.RLock()
+_DEEP_LOCK = threading.RLock()
+_UWP_LOCK = threading.RLock()
+_WARMUP_LOCK = threading.Lock()
+_WARMUP_THREAD = None
 
 
 def _build(collectors) -> list[AppEntry]:
@@ -358,26 +378,40 @@ def _build(collectors) -> list[AppEntry]:
 
 
 def _refresh(max_age: float):
-    now = time.monotonic()
-    if _CACHE["menu"] and now - _CACHE["time"] < max_age:
-        return
-    _CACHE["menu"] = _build([_collect_shortcuts, _collect_steam])
-    _CACHE["deep"] = None                                      # built lazily
-    _CACHE["time"] = now
+    # Serialize cold/expired refreshes. An empty Start Menu is still a cached result.
+    with _MENU_LOCK:
+        now = time.monotonic()
+        if _CACHE["menu"] is not None and now - _CACHE["time"] < max_age:
+            return
+        menu = _build([_collect_shortcuts, _collect_steam])
+        with _DEEP_LOCK:
+            _CACHE["menu"] = menu
+            _CACHE["deep"] = None                              # built lazily
+            _CACHE["time"] = time.monotonic()
 
 
 def menu_apps(max_age: float = 120.0) -> list[AppEntry]:
     """Apps the user can see in the Start Menu / Desktop / Steam library."""
     _refresh(max_age)
-    return _CACHE["menu"]
+    with _MENU_LOCK:
+        return _CACHE["menu"] or []
 
 
 def deep_apps(max_age: float = 120.0) -> list[AppEntry]:
-    """menu apps + Installed-apps registry + App Paths (only needed when the menu has no match)."""
+    """Menu/Steam apps enriched with Installed-apps registry and App Paths."""
     _refresh(max_age)
-    if _CACHE["deep"] is None:
-        _CACHE["deep"] = _build([_collect_shortcuts, _collect_steam, _collect_uninstall, _collect_app_paths])
-    return _CACHE["deep"]
+    with _DEEP_LOCK:
+        if _CACHE["deep"] is None:
+            merged = {entry.key: entry for entry in (_CACHE["menu"] or [])}
+            extras = _build([_collect_uninstall, _collect_app_paths])
+            for entry in extras:
+                current = merged.get(entry.key)
+                if current is None:
+                    merged[entry.key] = entry
+                else:
+                    current.merge(entry)
+            _CACHE["deep"] = sorted(merged.values(), key=lambda entry: entry.name.lower())
+        return _CACHE["deep"]
 
 
 _STARTAPPS = FixedScript("start-apps", """
@@ -391,30 +425,59 @@ def uwp_apps(max_age: float = 600.0) -> list[AppEntry]:
     """Store (UWP) apps from a FIXED Get-StartApps query. No user text is ever part of this command."""
     if not IS_WIN:
         return []
-    now = time.monotonic()
-    if _UWP["items"] is not None and now - _UWP["time"] < max_age:
-        return _UWP["items"]
-    items: list[AppEntry] = []
+    with _UWP_LOCK:
+        now = time.monotonic()
+        if _UWP["items"] is not None and now - _UWP["time"] < max_age:
+            return _UWP["items"]
+        items: list[AppEntry] = []
+        try:
+            res = run_fixed(_STARTAPPS, timeout=15, api_name="Store apps")
+            data = [] if res.get("fatal") or not res.get("ok") else res.get("items") or []
+            if isinstance(data, dict):
+                data = [data]
+            for row in data:
+                name, aid = str(row.get("Name") or "").strip(), str(row.get("AppID") or "").strip()
+                if name and _AUMID_RX.match(aid) and not any(w in name.lower() for w in SKIP_WORDS):
+                    e = AppEntry(name)
+                    e.add("store-app", "uwp", aid)
+                    items.append(e)
+        except Exception:                                      # noqa: BLE001 - PowerShell blocked / slow: Store apps are simply not listed
+            items = []
+        _UWP.update(time=time.monotonic(), items=items)
+        return items
+
+
+def _warm_catalog():
+    """Populate expensive Windows app indexes away from the first user request."""
     try:
-        res = run_fixed(_STARTAPPS, timeout=15, api_name="Store apps")
-        data = [] if res.get("fatal") or not res.get("ok") else res.get("items") or []
-        if isinstance(data, dict):
-            data = [data]
-        for row in data:
-            name, aid = str(row.get("Name") or "").strip(), str(row.get("AppID") or "").strip()
-            if name and _AUMID_RX.match(aid) and not any(w in name.lower() for w in SKIP_WORDS):
-                e = AppEntry(name)
-                e.add("store-app", "uwp", aid)
-                items.append(e)
-    except Exception:                                          # noqa: BLE001 - PowerShell blocked / slow: Store apps are simply not listed
-        items = []
-    _UWP.update(time=now, items=items)
-    return items
+        menu_apps()
+        deep_apps()
+        uwp_apps()
+    except Exception:                                          # noqa: BLE001 - discovery must never break application startup
+        pass
+
+
+def start_background_warmup() -> bool:
+    """Start one best-effort daemon catalog warm-up on Windows without blocking startup."""
+    if not IS_WIN:
+        return False
+    global _WARMUP_THREAD
+    with _WARMUP_LOCK:
+        if _WARMUP_THREAD is not None and _WARMUP_THREAD.is_alive():
+            return False
+        _WARMUP_THREAD = threading.Thread(
+            target=_warm_catalog, name="Kira-AppCatalogWarmup", daemon=True
+        )
+        _WARMUP_THREAD.start()
+        return True
 
 
 def drop_cache():
-    _CACHE.update(time=0.0, menu=[], deep=[])
-    _UWP.update(time=0.0, items=None)
+    with _MENU_LOCK:
+        with _DEEP_LOCK:
+            _CACHE.update(time=0.0, menu=None, deep=None)
+    with _UWP_LOCK:
+        _UWP.update(time=0.0, items=None)
 
 
 # ------------------------------------------------------------------ finding the main program inside an install folder
