@@ -12,6 +12,8 @@ import re
 _ALLOWED = {
     "get_datetime", "open_app", "bluetooth_status", "bluetooth_on", "bluetooth_off",
     "audio_set_volume", "audio_change_volume", "audio_mute", "audio_unmute",
+    "get_system_info", "get_resource_usage", "get_disks", "get_network_info",
+    "list_running_apps", "get_active_window",
 }
 _DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 _LETTERS = str.maketrans({
@@ -149,6 +151,105 @@ def _app(text: str) -> dict | None:
     return _call("open_app", "apps", name=name)
 
 
+
+def _system_info(text: str) -> dict | None:
+    patterns = (
+        r"(?:مشخصات|اطلاعات) (?:این )?(?:سیستم|کامپیوتر|لپ تاپ)(?: چیه| چیست| رو بگو| را بگو)?",
+        r"(?:سیستم|کامپیوتر|لپ تاپ) (?:چه مشخصاتی داره|مشخصاتش چیه|اطلاعاتش چیه)",
+        r"(?:system|pc|computer) (?:specs|specifications|info|information)",
+        r"(?:show|tell me) (?:the )?(?:system|pc|computer) (?:specs|specifications|info|information)",
+        r"what are (?:the )?(?:system|pc|computer) specs",
+    )
+    return _call("get_system_info", "system") if any(re.fullmatch(p, text, re.I) for p in patterns) else None
+
+
+def _resource_usage(text: str) -> dict | None:
+    # Specific metrics must be named; a bare "check my system" is not deterministic.
+    all_patterns = (
+        r"(?:مصرف منابع|منابع سیستم)(?: چقدره| چقدر است| چیه| چیست)?",
+        r"(?:system resource usage|system performance|overall resource usage)",
+        r"(?:وضعیت|مصرف) منابع (?:کامپیوتر|سیستم)",
+    )
+    if any(re.fullmatch(p, text, re.I) for p in all_patterns):
+        return _call("get_resource_usage", "system", part="all")
+
+    metrics = (
+        ("ram", r"(?:حافظه رم|رم|ram|memory)"),
+        ("cpu", r"(?:سی پی یو|پردازنده|cpu|processor)"),
+        ("gpu", r"(?:کارت گرافیک|گرافیک|gpu)"),
+        ("battery", r"(?:باتری|شارژ باتری|battery)"),
+    )
+    for part, term in metrics:
+        patterns = (
+            rf"چقدر (?:از )?{term} (?:مصرف شده|مصرف میشه|استفاده شده|استفاده میشه|درگیره|در حال استفاده است)",
+            rf"(?:مصرف|استفاده) {term} (?:چقدره|چقدر است|چه قدر است|چند درصده)",
+            rf"(?:میزان|وضعیت|مصرف) {term} (?:چیه|چیست|چقدره|چقدر است)?",
+            rf"{term} (?:چقدر|چه قدر) (?:مصرف شده|استفاده شده|درگیره|مصرف میشه)",
+            rf"{term} (?:usage|use|consumption|status|level|percentage)(?: now)?",
+            rf"(?:show|check|what is) (?:the )?{term} (?:usage|use|consumption|status|level|percentage)",
+            rf"how much (?:of the )?{term} (?:is )?(?:being used|used|available)",
+        )
+        if any(re.fullmatch(p, text, re.I) for p in patterns):
+            return _call("get_resource_usage", "system", part=part)
+    battery_patterns = (
+        r"(?:وضعیت|درصد|مقدار) باتری(?: چیه| چقدره| چقدر است)?",
+        r"باتری (?:چقدره|چه وضعیه|وضعیتش چیه|چند درصده)",
+        r"(?:battery status|battery level|battery percentage|check battery)",
+        r"how much battery (?:is )?left",
+    )
+    if any(re.fullmatch(p, text, re.I) for p in battery_patterns):
+        return _call("get_resource_usage", "system", part="battery")
+    return None
+
+
+def _disks(text: str) -> dict | None:
+    patterns = (
+        r"(?:فضای خالی|فضای آزاد) (?:درایوها|دیسک ها|ذخیره سازی)(?: چقدره| چقدر است)?",
+        r"(?:چقدر )?(?:فضای خالی|فضای آزاد) (?:روی )?(?:دیسک|درایوها)(?: دارم| باقی مونده| باقی مانده)?",
+        r"(?:فضای ذخیره سازی|فضای دیسک|فضای درایوها)(?: چقدره| چقدر خالیه| چقدر است)?",
+        r"(?:disk space|free disk space|available disk space|storage space|drive space)",
+        r"how much (?:disk|storage) space (?:is )?(?:free|available)",
+    )
+    return _call("get_disks", "system") if any(re.fullmatch(p, text, re.I) for p in patterns) else None
+
+
+def _network(text: str) -> dict | None:
+    patterns = (
+        r"(?:وضعیت|اتصال) (?:اینترنت|شبکه|وای فای)(?: چیه| چطوره| چیست)?",
+        r"(?:اطلاعات|وضعیت) شبکه(?: چیه| چیست)?",
+        r"آی پی (?:من )?(?:چیه|چیست|چنده)",
+        r"(?:network information|network info|internet status|internet connection|my ip address)",
+        r"what is my ip(?: address)?",
+        r"am i connected to the internet",
+    )
+    return _call("get_network_info", "system") if any(re.fullmatch(p, text, re.I) for p in patterns) else None
+
+
+def _running_apps(text: str) -> dict | None:
+    patterns = (
+        r"(?:چه|کدوم) (?:برنامه|اپلیکیشن|اپ)(?: ها| هایی)? (?:الان )?(?:باز|در حال اجرا)(?: هستند|ن| هستن)?",
+        r"(?:برنامه|اپلیکیشن|اپ) های (?:باز|در حال اجرا)(?: کدوما| چیا)?",
+        r"(?:لیست|فهرست) (?:برنامه|اپلیکیشن|اپ) های (?:باز|در حال اجرا)",
+        r"(?:برنامه های باز|اپ های باز) چیا هستن",
+        r"(?:list|show) (?:the )?(?:open|running) apps",
+        r"what apps are (?:open|running)",
+        r"which apps are (?:open|running)",
+    )
+    return _call("list_running_apps", "apps") if any(re.fullmatch(p, text, re.I) for p in patterns) else None
+
+
+def _active_window(text: str) -> dict | None:
+    patterns = (
+        r"(?:پنجره فعال|پنجره فعلی)(?: چیه| چیست)?",
+        r"(?:الان )?(?:چه برنامه ای|کدوم برنامه) (?:فعاله|در حال استفاده است|رو دارم استفاده می کنم)",
+        r"(?:الان )?من توی چه برنامه ای هستم",
+        r"(?:what|which) (?:app|program|window) (?:am i using|is active|is in the foreground)",
+        r"what is the active window",
+        r"what app am i currently using",
+    )
+    return _call("get_active_window", "apps") if any(re.fullmatch(p, text, re.I) for p in patterns) else None
+
+
 def parse_fast_command(text: str) -> dict | None:
     """Return one exact ToolRegistry call, or None when the request is not safely deterministic."""
     value = normalize(text)
@@ -156,6 +257,10 @@ def parse_fast_command(text: str) -> dict | None:
         return None
     if _datetime(value):
         return _call("get_datetime", "time")
+    for parser in (_system_info, _resource_usage, _disks, _network, _running_apps, _active_window):
+        command = parser(value)
+        if command:
+            return command
     command = _bluetooth(value)
     if command:
         return command
