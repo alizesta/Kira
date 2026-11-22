@@ -155,6 +155,9 @@ class VoiceSettingsController(WindowFeatureController):
             "unload_btn", "speed_btn", "conn_lbl",
         ):
             setattr(self.context.views, name, getattr(self.context.views.assistant_page, name))
+        cached_models = getattr(self.context.state, "_ollama_models", None)
+        if cached_models:
+            self.context.views.model.set_models(cached_models)
 
         self.context.views.assistant_page.test_connection_requested.connect(self.feature_controller("lifecycle").test_connection)
         self.context.views.assistant_page.load_model_requested.connect(self.feature_controller("lifecycle").load_local_model)
