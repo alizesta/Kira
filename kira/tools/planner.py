@@ -84,7 +84,7 @@ def parse_plan(raw: str, registry, max_steps: int, revise: bool = False) -> dict
                 problems.append(f"step {sid} uses unknown tool '{tool}'")
                 continue
             confirm = confirm or t.level >= 3                     # a sensitive tool ALWAYS needs the user's confirmation, whatever the model wrote
-        raw_deps = s.get("depends_on") or []
+        raw_deps = s.get("depends_on", [])
         deps = []
         if not isinstance(raw_deps, list):
             problems.append(f"step {sid} dependencies must be a list")
