@@ -235,6 +235,6 @@ A legacy configuration mismatch remains in source: kira/config.py still declares
 
 ### Inventory and verification boundary
 
-The inspected tree contained 585 tracked files: 270 Python files under kira/, 64 UI Python modules, 25 application modules, 22 tool modules, 164 Python test files, 8 GitHub Actions workflows and 52 files under docs/.
+The inspected tree contained 583 tracked files: 270 Python files under kira/, 64 UI Python modules, 25 application modules, 22 tool modules, 164 Python test files, 8 GitHub Actions workflows and 51 files under docs/.
 
 This is a static source/documentation audit. No Python tests, imports, py_compile, Windows GUI/audio checks or release build were executed in this pass. Existing CI failure statuses are not classified as source defects without job logs.
