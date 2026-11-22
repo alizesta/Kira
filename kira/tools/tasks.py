@@ -126,22 +126,40 @@ class TaskPlan:
 
     # ---------------------------------------------------------------- steps
     def step(self, sid) -> Step | None:
+        if isinstance(sid, bool):
+            return None
         try:
             sid = int(sid)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return None
-        return next((s for s in self.steps if s.id == sid), None)
+        if sid <= 0:
+            return None
+        matches = [step for step in self.steps if step.id == sid]
+        # Duplicate persisted IDs make references ambiguous; fail closed.
+        return matches[0] if len(matches) == 1 else None
 
     def next_id(self) -> int:
         return max([s.id for s in self.steps] + [0]) + 1
 
     def deps_unmet(self, st: Step) -> list:
         out = []
-        for d in st.depends_on:
-            dep = self.step(d)
-            # A missing prerequisite is corrupted/incomplete task state, never proof that the dependency passed.
+        for dependency in st.depends_on:
+            # Persisted task state is untrusted: malformed, non-positive, missing,
+            # or ambiguous references must never be treated as satisfied.
+            if isinstance(dependency, bool):
+                out.append(dependency)
+                continue
+            try:
+                dependency_id = int(dependency)
+            except (TypeError, ValueError, OverflowError):
+                out.append(dependency)
+                continue
+            if dependency_id <= 0:
+                out.append(dependency_id)
+                continue
+            dep = self.step(dependency_id)
             if dep is None or dep.status not in (DONE, SKIPPED):
-                out.append(int(d))
+                out.append(dependency_id)
         return out
 
     def next_step(self) -> Step | None:
