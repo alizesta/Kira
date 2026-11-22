@@ -18,9 +18,9 @@ class GameModePolicyTests(unittest.TestCase):
         self.assertTrue(permissions["automatic_game_audio_alerts"])
         self.assertTrue(permissions["microphone_wake_word"])
 
-    def test_competitive_safe_disables_game_observation(self):
+    def test_competitive_safe_allows_read_only_vision_but_disables_game_audio(self):
         permissions = game_mode_permissions(COMPETITIVE_SAFE_MODE)
-        self.assertFalse(permissions["vision_capture"])
+        self.assertTrue(permissions["vision_capture"])
         self.assertFalse(permissions["game_audio_loopback"])
         self.assertFalse(permissions["automatic_game_audio_alerts"])
         self.assertTrue(permissions["microphone_wake_word"])
@@ -35,7 +35,9 @@ class GameModePolicyTests(unittest.TestCase):
 
     def test_unknown_profile_fails_closed(self):
         self.assertEqual(normalize_game_mode_profile("unknown"), COMPETITIVE_SAFE_MODE)
-        self.assertFalse(game_mode_permissions("unknown")["vision_capture"])
+        self.assertTrue(game_mode_permissions("unknown")["vision_capture"])
+        self.assertFalse(game_mode_permissions("unknown")["input_automation"])
+        self.assertFalse(game_mode_permissions("unknown")["game_audio_loopback"])
 
     def test_competitive_safe_only_allows_web_tools(self):
         self.assertTrue(tool_categories_allowed(COMPETITIVE_SAFE_MODE, ("web",)))
