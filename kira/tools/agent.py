@@ -88,6 +88,7 @@ class ToolPlan:
     web: bool = False                 # the request is a web research / page reading request (the tool route handles it, the old one-shot auto search is skipped)
     session_id: str = ""               # bind plans to the character whose request created them
     fast_call: dict | None = None       # deterministic allow-listed command; still executed via ToolRegistry
+    direct: bool = False                # single-call bridge: native tools from the first call, no triage/planner round trips
     index_only: bool = False            # cheap triage round: the model sees only a short capability index and either answers or asks for the PC (escalates)
 
 
@@ -356,6 +357,17 @@ class ToolAgent(AutonomyMixin):
     def temperature(self, temperature: float) -> float:
         return min(float(temperature), 0.4)                  # tool blocks and exact facts do not need a high temperature
 
+    def native_block(self, plan: ToolPlan) -> str:
+        """Short behaviour prompt for native function calling (the tool catalog travels as JSON schemas)."""
+        extra = []
+        if getattr(plan, "web", False):
+            extra.append(protocol.WEB_RULES)
+        if "desktop" in plan.categories:
+            extra.append(protocol.DESKTOP_RULES)
+        if plan.categories & {"mcp", "agents"}:
+            extra.append(protocol.MCP_RULES)
+        return protocol.build_native_block(self._memo_block(), "\n\n".join(extra))
+
     def tools_block(self, plan: ToolPlan, last_round: bool = False) -> str:
         if last_round:
             return protocol.build_block("", last_round=True)
@@ -576,7 +588,7 @@ class ToolAgent(AutonomyMixin):
                     args if isinstance(args, dict) else {},
                 )
             else:
-                res = self.registry.execute(name, args)
+                res = self._execute_guarded(name, args)
             self._turn_cache[sig] = res
             if res.status == NEEDS_CONFIRM:
                 self._pending_by_session[self._turn_session_id] = Pending(
@@ -591,6 +603,31 @@ class ToolAgent(AutonomyMixin):
                 on_tool({"phase": "tool_done", "tool": name, "label": label, "status": res.status, "ms": res.ms})
             results.append(res)
         return results
+
+    def _execute_guarded(self, name, args):
+        """Execute one tool. In a single-call (direct) turn the web-research lock is taken only around web tools,
+        so ordinary chat/PC turns of several characters never queue behind each other."""
+        owner = self._turn_session_id
+        tool = self.registry.get(name)
+        needs_lock = (tool is not None and "web" in (getattr(tool, "categories", ()) or ())
+                      and owner not in self._active_web_sessions)
+        if not needs_lock:
+            return self.registry.execute(name, args)
+        while not self._web_research_lock.acquire(timeout=0.1):
+            if self._cancel.is_set():
+                return ToolResult(name, DENIED, "جست‌وجوی وب متوقف شد؛ ابزار اجرا نشد.", args if isinstance(args, dict) else {})
+        try:
+            WEB_CANCEL.activate(owner)
+            with self._runtime_lock:
+                self._active_web_sessions.add(owner)
+            try:
+                return self.registry.execute(name, args)
+            finally:
+                with self._runtime_lock:
+                    self._active_web_sessions.discard(owner)
+                WEB_CANCEL.deactivate(owner)
+        finally:
+            self._web_research_lock.release()
 
     @staticmethod
     def _results_message(results) -> str:
@@ -608,6 +645,8 @@ class ToolAgent(AutonomyMixin):
     # ------------------------------------------------------------ the turn loop
     def run(self, router, messages, system_prompt, temperature, plan, retry_index=0, on_chunk=None, on_event=None, on_tool=None):
         """Run a ToolPlan. A cheap triage plan that the model escalates is re-run with the full catalog / planner."""
+        if self._direct_bridge(router, plan):
+            plan.index_only, plan.complex, plan.reasons, plan.direct = False, False, (), True
         result = self._run_once(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
         if isinstance(result, dict) and result.pop("_escalate", False) and getattr(plan, "index_only", False):
             plan.index_only = False
@@ -617,6 +656,29 @@ class ToolAgent(AutonomyMixin):
             return self._run_once(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
         return result
 
+    def _direct_bridge(self, router, plan) -> bool:
+        """Single-call bridge: when the route can use native function calling, the model gets the tools in the very
+        first call and decides itself (answer / call / chain calls). This removes the wasted triage round, the
+        planner round and the review rounds for ordinary requests. Resumed tasks keep the planner."""
+        if str(self.settings.get("agent_single_call", "on")).lower() in ("off", "false", "0"):
+            return False
+        if getattr(plan, "resume", False) or getattr(plan, "fast_call", None):
+            return False
+        if not (getattr(plan, "index_only", False) or getattr(plan, "complex", False)):
+            return False
+        return callable(getattr(router, "chat_with_tools", None))
+
+    def _direct_answer(self, calls, results, rnd, emit, res):
+        """One successful call of a self-explanatory tool: show its own output instead of paying a second model call."""
+        if rnd != 0 or len(calls) != 1 or len(results) != 1:
+            return None
+        result = results[0]
+        if result.status != OK or not fast_commands.is_direct_result_tool(calls[0].get("tool", "")):
+            return None
+        text = f"✅ {result.text}"
+        emit(text)
+        return self._final(dict(res or {}, direct_result=True), text, results)
+
     def _run_once(self, router, messages, system_prompt, temperature, plan, retry_index=0, on_chunk=None, on_event=None, on_tool=None):
         """Run a ToolPlan in its creating character's state and serialize shared WebIntel access."""
         owner = str(getattr(plan, "session_id", "") or self._current_turn_state().session_id)
@@ -625,7 +687,8 @@ class ToolAgent(AutonomyMixin):
             # Fast Path returns after one allow-listed local tool; it never enters web research.
             uses_web_tools = (not getattr(plan, "fast_call", None)
                               and "web" in (getattr(plan, "categories", set()) or set())
-                              and not getattr(plan, "index_only", False))
+                              and not getattr(plan, "index_only", False)
+                              and (getattr(plan, "web", False) or not getattr(plan, "direct", False)))
             if uses_web_tools:
                 while not self._web_research_lock.acquire(timeout=0.1):
                     if self._cancel.is_set():
@@ -678,7 +741,10 @@ class ToolAgent(AutonomyMixin):
         last_res = None
         for rnd in range(rounds + 1):
             last = rnd == rounds
-            prompt = system_prompt + "\n\n" + self.tools_block(plan, last_round=last)
+            native_ok = (not last and not getattr(plan, "index_only", False)
+                         and callable(getattr(router, "chat_with_tools", None)))
+            prompt = system_prompt + "\n\n" + (self.native_block(plan) if native_ok and getattr(plan, "direct", False)
+                                                else self.tools_block(plan, last_round=last))
             # Prefer provider-native function calling where the selected route supports the OpenAI tools schema.
             # Providers without a native adapter keep the existing text-protocol fallback unchanged.
             if not last and not getattr(plan, "index_only", False) and callable(getattr(router, "chat_with_tools", None)):
@@ -699,6 +765,9 @@ class ToolAgent(AutonomyMixin):
                         executed.extend(results)
                         if self._cancel.is_set():
                             return self._final(native, "", executed, stopped=True)
+                        direct = self._direct_answer(calls, results, rnd, emit, native)
+                        if direct is not None:
+                            return direct
                         assistant_calls = []
                         tool_messages = []
                         for call, raw_call, result in zip(calls, native_calls, results):
@@ -719,6 +788,9 @@ class ToolAgent(AutonomyMixin):
                         return self._final(native, text, executed)
                     # A valid native response with neither text nor calls is treated as a failed model response.
                     raise RuntimeError("مدل در پاسخ Native Function Calling نه متن برگرداند و نه فراخوانی ابزار.")
+            if native_ok and getattr(plan, "direct", False):
+                # No route accepted native tools: fall back to the text protocol with the full catalog.
+                prompt = system_prompt + "\n\n" + self.tools_block(plan, last_round=last)
             # A non-native fallback route cannot consume OpenAI tool-role messages; fold verified outputs into user data.
             if any(item.get("role") == "tool" for item in cur):
                 native_results = [item for item in cur if item.get("role") == "tool"]
@@ -754,6 +826,9 @@ class ToolAgent(AutonomyMixin):
                     executed.extend(results)
                     if self._cancel.is_set():
                         return self._final(res, "", executed, stopped=True)
+                    direct = self._direct_answer(calls, results, rnd, emit, res)
+                    if direct is not None:
+                        return direct
                     cur = cur + [{"role": "assistant", "content": "\n".join(protocol.canonical_call(c) for c in calls) or "(درخواست ابزار)"},
                                  {"role": "user", "content": self._results_message(results) + (("\n" + protocol.LAST_ROUND_NOTE) if rnd + 1 == rounds else "")}]
                     continue
