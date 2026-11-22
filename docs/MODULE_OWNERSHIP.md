@@ -1,7 +1,7 @@
 # KIRA MODULE OWNERSHIP
 
-**Snapshot:** 2026-11-19  
-**Source baseline:** `new-main` at `0a84bbdc3d47afb1728ff314a056b49e6e56848b`  
+**Snapshot:** 2026-11-22  
+**Source baseline:** `new-main` at `e058021c97e5e90990ba129e2361f340706217a3`  
 **Scope:** TASK 001–020 and adjacent application capabilities. This register describes observed ownership, not desired ownership where implementation is absent.
 
 ## 1. Ownership rules
@@ -381,3 +381,25 @@ Both services are lifecycle-registered by `ModuleManager` and injected through B
 Each scoped namespace is a live write-through bucket: reads observe current root values, and permitted assignments update the shared composition state rather than a detached snapshot. Undeclared field reads/writes raise `AttributeError`; peer-controller access outside the allowlist and resource access outside the controller's explicit resource list raise `PermissionError`. The scope does not expose the root `host` or global `controllers` registry.
 
 The ChatComposer/CodeChat compatibility facades receive the Chat controller's scoped context and an explicit Qt widget parent. They resolve callbacks only through the Chat scope's peer allowlist; they no longer require a global registry or the root host from Presentation Context. New controller fields, peer calls and resource access must be added deliberately to the owning controller's `CONTROLLER_ACCESS` policy and covered by the AST capability-matrix regression test. Root bucket additions alone never widen controller access.
+
+
+## 2026-11-22 subsystem ownership synchronization
+
+This section extends the historical TASK 001–020 register with the current source boundaries observed at new-main@e058021c97e5e90990ba129e2361f340706217a3.
+
+| Subsystem | Current owner | Contract / boundary | Must not own |
+|---|---|---|---|
+| Desktop composition | kira/ui/bootstrap.py, kira/app/feature_modules.py | Bootstrap is the production Qt composition root; ModuleManager starts/disposes application modules in dependency order. | Domain policy inside the entry point or application services importing Qt widgets. |
+| Main window | kira/ui/main_window.py, kira/ui/feature_controller_registry.py, kira/ui/window_presentation_context.py | Thin QMainWindow host, eight feature controllers, explicit controller registry and allowlisted presentation context. | Shared application policy or arbitrary attribute forwarding. |
+| Voice application lifecycle | kira/app/voice_application.py, kira/core/interfaces/voice_service.py | Provider-neutral voice lifecycle via Speaker/Listener ports and UI callbacks. | Owning Qt devices/workers directly or choosing cloud-provider credentials. |
+| Voice transports and engines | kira/gemini_live.py, kira/listener.py, kira/local_voice.py, kira/voice.py | Gemini Live owns its real-time cloud audio session; Listener/local_voice own local Shenava ASR; voice.py owns Piper/Kitten synthesis and QAudioSink playback. | Treating Gemini Live as local processing or claiming Qwen3/faster-whisper is the active real-time Listener. |
+| Tool execution and permissions | kira/tools/registry.py, kira/tools/sysaccess.py | Registry validates and executes all tools; System Access Manager enforces READ/CONTROL/FILE/ELEVATED/PROTECTED policy, explicit intent, taint, confirmation and journaling. | Per-module permission engines or trusting model/page/MCP annotations. |
+| Windows capability declarations | kira/tools/wincontrol.py, kira/tools/winmodules.py, kira/tools/desktop.py | WindowsControlLayer adapts declared capabilities; registered modules are Apps, Bluetooth, Audio and Desktop. | Owning central permission decisions or accepting arbitrary shell/script parameters. |
+| Web research | kira/webintel/engine.py, extract.py, netguard.py, rank.py, session.py | Provider-independent search/read/research, SSRF/network guard, bounded extraction/ranking and resumable character-scoped sessions. | Executing downloaded content or relying on a model to enforce network safety. |
+| MCP | kira/mcp/client.py, kira/mcp/hub.py, kira/mcp/config.py | JSON-RPC client and server lifecycle; server output is untrusted and all registered tools pass through ToolRegistry/System Access. | Trusting server-provided annotations as permission grants or forwarding Kira's full environment/API keys. |
+| Brain and reflection | kira/brain.py, kira/app/brain_application.py, kira/app/reflection_application.py | Deterministic turn classification, role routing and bounded after-reply checks; state is character-scoped where defined. | Rewriting an already displayed answer or silently adding extra model calls to simple turns. |
+| Initiative | kira/character/initiative.py, kira/app/initiative_application.py | Eligibility, check-in candidates and history coordination; opt-in is per character. | Enabling itself from game detection or bypassing user settings. |
+
+### Verification note
+
+The inventory and ownership statements above are based on static source inspection. They do not claim that the 164 test files were executed, that Windows-specific backends were exercised, or that audio/MCP/network integrations passed runtime acceptance.
