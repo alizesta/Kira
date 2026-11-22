@@ -670,7 +670,22 @@ class AutonomyMixin:
                 results.append(self.registry.execute(name, args))             # unknown tool: the registry explains
                 notes.append(f"unknown tool '{name}'")
                 continue
-            st = tp.bind(name, call.get("step"), label, tool.level >= SENSITIVE)
+            requested_step = call.get("step")
+            if requested_step is not None:
+                requested = tp.step(requested_step)
+                if requested is None:
+                    results.append(ToolResult(name, BAD_ARGS, f"مرحله‌ی {requested_step} در برنامه وجود ندارد؛ این فراخوانی اجرا نشد.", args, tool.level))
+                    notes.append(f"rejected tool call for unknown step {requested_step}")
+                    continue
+                if requested.tool != name:
+                    results.append(ToolResult(name, BAD_ARGS, f"ابزار «{name}» با ابزار تعریف‌شده برای مرحله‌ی {requested.id} («{requested.tool or 'بدون ابزار'}») مطابقت ندارد؛ برنامه باید اصلاح شود.", args, tool.level))
+                    notes.append(f"rejected tool mismatch for step {requested.id}")
+                    continue
+                if requested.status in (DONE, SKIPPED, REVIEW, RUNNING):
+                    results.append(ToolResult(name, BAD_ARGS, f"مرحله‌ی {requested.id} در وضعیت «{requested.status}» است و فعلاً اجازه‌ی اجرای دوباره ندارد.", args, tool.level))
+                    notes.append(f"rejected repeat call for step {requested.id} in state {requested.status}")
+                    continue
+            st = tp.bind(name, requested_step, label, tool.level >= SENSITIVE)
             if awaiting_confirmation:
                 # A Session has one confirmation slot. Keep later plan steps
                 # pending instead of replacing the operation the user saw.
