@@ -343,7 +343,7 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertIn("ابزارها خاموش", result["text"])
 
     def test_competitive_safe_transition_cancels_pending_fast_call(self):
-        agent, _registry, calls = self._agent()
+        agent, registry, calls = self._agent()
         plan = self._plan(agent)
         agent.set_competitive_safe_mode(True)
         result = self._run(agent, plan)
