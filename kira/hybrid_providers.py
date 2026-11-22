@@ -351,31 +351,24 @@ class BaseProvider(ChatProvider):
         base = str(self.config.get("base_url") or "").lower()
         return "generativelanguage.googleapis.com" in base
 
-    def _post_with_google_retry(self, url, headers, payload, *, stream=False):
-        """Retry transient Google 503 overloads before exposing the failure to route failover."""
+    def _post_once(self, url, headers, payload, *, stream=False):
+        """Send exactly one provider request.
+
+        Google free-tier request quotas may count failed 503 attempts toward the
+        model's daily request limit. Retrying the same request here can therefore
+        burn multiple RPD units before HybridRouter gets a chance to fail over.
+        Let the router classify the single response and apply its normal cooldown.
+        """
         kwargs = self._send_args(headers, payload)
         if stream:
             kwargs["stream"] = True
         timeout = (min(10, self.timeout), self.timeout) if stream else self.timeout
-        for attempt in range(3):
-            response = requests.post(url, timeout=timeout, **kwargs)
-            if not self._is_google_endpoint() or response.status_code != 503 or attempt == 2:
-                return response
-            try:
-                retry_after = float(response.headers.get("Retry-After", ""))
-            except (TypeError, ValueError, AttributeError):
-                retry_after = 0.5 * (2 ** attempt)
-            try:
-                response.close()
-            except Exception:
-                pass
-            time.sleep(max(0.0, min(retry_after, 5.0)))
-        return response
+        return requests.post(url, timeout=timeout, **kwargs)
 
     def _post_json(self, url, headers, payload):
         """POST and return the decoded JSON body. Every failure becomes a classified ProviderError."""
         try:
-            response = self._post_with_google_retry(url, headers, payload)
+            response = self._post_once(url, headers, payload)
         except requests.Timeout as exc:
             raise self._fail("مهلت پاسخ‌گویی سرویس تمام شد.", True, kind="timeout") from exc
         except requests.RequestException as exc:
@@ -391,7 +384,7 @@ class BaseProvider(ChatProvider):
     def _open_stream(self, url, headers, payload):
         """POST with stream=True; the status is checked before the first byte of the body is read."""
         try:
-            response = self._post_with_google_retry(url, headers, payload, stream=True)
+            response = self._post_once(url, headers, payload, stream=True)
         except requests.Timeout as exc:
             raise self._fail("مهلت اتصال به سرویس تمام شد.", True, kind="timeout") from exc
         except requests.RequestException as exc:
@@ -707,7 +700,14 @@ def probe_provider(name, config, provider_cls=None):
                 return True, "اتصال و دریافت پاسخ موفق بود."
             except ProviderError as exc:
                 last = exc
-                if exc.kind not in ("server", "rate") and exc.status_code not in (429, 500, 502, 503, 504):
+                # A quota response is final for this probe. Retrying HTTP 429 is
+                # pointless; Google 503s can also consume Free Tier RPD, so one
+                # failed probe must never fan out into repeated generation calls.
+                if exc.status_code == 429 or getattr(exc, "quota", ""):
+                    return False, str(exc)[:400]
+                if provider._is_google_endpoint() and exc.status_code == 503:
+                    return False, str(exc)[:400]
+                if exc.kind not in ("server", "rate") and exc.status_code not in (500, 502, 503, 504):
                     raise
                 if attempt < 2:
                     time.sleep(2 * (attempt + 1))
