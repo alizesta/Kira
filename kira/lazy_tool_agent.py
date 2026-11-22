@@ -26,6 +26,8 @@ class LazyToolAgent:
         self._factory = factory
         self._instance = None
         self._lock = threading.Lock()
+        self._pending_settings = None
+        self._pending_competitive_safe_mode = None
         self._tasks_proxy = _LazyTaskStore(self)
 
     def _get(self) -> Any:
@@ -37,12 +39,48 @@ class LazyToolAgent:
                 instance = self._factory()
                 if instance is None:
                     raise RuntimeError("ToolAgent factory returned None")
+                if self._pending_settings is not None:
+                    instance.set_settings(self._pending_settings)
+                if self._pending_competitive_safe_mode is not None:
+                    instance.set_competitive_safe_mode(self._pending_competitive_safe_mode)
                 self._instance = instance
             return self._instance
 
     @property
     def tasks(self) -> _LazyTaskStore:
         return self._tasks_proxy
+
+    def set_settings(self, settings: dict[str, Any]) -> None:
+        """Update settings without realizing the agent when startup has not needed it yet."""
+        with self._lock:
+            if self._instance is None:
+                self._pending_settings = settings
+                return
+            instance = self._instance
+        instance.set_settings(settings)
+
+    def set_competitive_safe_mode(self, enabled: bool) -> None:
+        """Preserve the active Game Mode restriction even before the agent is realized."""
+        with self._lock:
+            self._pending_competitive_safe_mode = bool(enabled)
+            instance = self._instance
+        if instance is not None:
+            instance.set_competitive_safe_mode(bool(enabled))
+
+    def request_cancel(self, *args: Any, **kwargs: Any) -> bool:
+        """A not-yet-created agent has no running requests to cancel."""
+        instance = self._instance
+        return bool(instance.request_cancel(*args, **kwargs)) if instance is not None else False
+
+    def clear_session(self, *args: Any, **kwargs: Any) -> Any:
+        """Do not construct tool infrastructure merely to clear nonexistent state."""
+        instance = self._instance
+        return instance.clear_session(*args, **kwargs) if instance is not None else None
+
+    def release_session(self, *args: Any, **kwargs: Any) -> bool:
+        """Do not construct tool infrastructure merely to release nonexistent state."""
+        instance = self._instance
+        return bool(instance.release_session(*args, **kwargs)) if instance is not None else False
 
     def is_task_running(self, *args: Any, **kwargs: Any) -> bool:
         """Keep callback registration cheap; instantiate only when the callback is invoked."""
