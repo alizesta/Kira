@@ -217,13 +217,14 @@ class AutonomyMixin:
         self.tasks.save()
 
     def _prepare_resume(self, plan: TaskPlan):
-        """'ادامه بده': open steps run again; steps that failed get ONE more chance (counters reset), except those the user declined."""
+        """Resume unfinished steps without forgetting failures for identical tool calls."""
         for s in plan.steps:
             if s.declined:
                 continue
             if s.status in (FAILED, UNMET, RUNNING, AWAITING):
                 s.status, s.attempts, s.error = PENDING, 0, ""
-        plan.fail_sigs = {}
+        # Keep fail_sigs: clearing it lets Resume bypass the per-call retry budget
+        # and repeat an operation that has already failed with identical arguments.
         plan.status = P_RUNNING
         plan.question = ""
         plan.updated = time.time()
