@@ -25,6 +25,7 @@ from .request_trace import trace as request_trace, gemini_trace
 from .ollama_client import OllamaClient, OllamaError
 from .core.interfaces.chat_provider import ChatProvider
 from .infrastructure.providers import ProviderRegistry
+from .think_filter import ThinkFilter
 
 COOLDOWN_RATE_LIMIT = 300      # seconds after HTTP 429 (or Retry-After, capped)
 COOLDOWN_TRANSIENT = 45        # network / timeout / 5xx (default; each route can override it)
@@ -165,47 +166,6 @@ _QUOTA_TEXT = {
     "daily": "سهمیه‌ی روزانه‌ی این مدل تمام شده؛ تا بازنشانی (حدود نیمه‌شب وقت آمریکا) صبر کن یا مدل دیگری را امتحان کن.",
 }
 
-
-class ThinkFilter:
-    """Removes <think>...</think> blocks from a stream, even when a tag is split between two chunks."""
-    OPEN, CLOSE = "<think>", "</think>"
-
-    def __init__(self):
-        self.buf = ""
-        self.inside = False
-
-    def feed(self, text):
-        self.buf += text or ""
-        out = []
-        while True:
-            if self.inside:
-                i = self.buf.find(self.CLOSE)
-                if i < 0:
-                    self.buf = self.buf[-(len(self.CLOSE) - 1):]
-                    break
-                self.buf = self.buf[i + len(self.CLOSE):]
-                self.inside = False
-                continue
-            i = self.buf.find(self.OPEN)
-            if i >= 0:
-                out.append(self.buf[:i])
-                self.buf = self.buf[i + len(self.OPEN):]
-                self.inside = True
-                continue
-            hold = 0
-            for k in range(min(len(self.OPEN) - 1, len(self.buf)), 0, -1):
-                if self.OPEN.startswith(self.buf[-k:]):
-                    hold = k
-                    break
-            out.append(self.buf[:len(self.buf) - hold])
-            self.buf = self.buf[len(self.buf) - hold:]
-            break
-        return "".join(out)
-
-    def flush(self):
-        rest = "" if self.inside else self.buf
-        self.buf, self.inside = "", False
-        return rest
 
 
 def iter_sse(response):
