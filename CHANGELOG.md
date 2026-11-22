@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-22 (Fast Path stage 3)
+- Hardened Fast Path dispatch integration with ToolAgent: a complex planner decision always wins; direct dispatch requires a registered, internal, low-risk tool whose category matches both the parsed command and the registry metadata.
+- Added regressions for complex-plan precedence, sensitive/external tool rejection, category mismatch, disabled tools mode and missing registry entries. Existing ToolRegistry execution remains the only execution path; no UI or new command surface was added.
+- Repository tests and Windows runtime checks remain unexecuted in this environment; these changes are source-level until run on a supported checkout.
+
 ## 2026-11-22 (Fast Path stage 2)
 - The deterministic Fast Path now recognizes high-confidence read-only PC queries: system specifications, RAM/CPU/GPU/battery usage, disk space, network status/local IP, running apps and the active window. The existing time, Bluetooth, audio and app-launch commands remain supported.
 - All calls still execute through ToolRegistry and keep the existing tool-level, AccessManager, tools-mode and Competitive Safe checks. Compound or ambiguous utterances continue through the normal model route.

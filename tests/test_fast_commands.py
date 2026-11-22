@@ -191,6 +191,47 @@ class FastPathIntegrationTests(unittest.TestCase):
         self.assertNotIn("✅", result["text"])
         self.assertIn("Windows audio endpoint unavailable", result["text"])
 
+    def test_fast_path_does_not_override_complex_planner_decision(self):
+        from kira.tools.agent import ToolPlan
+        agent = self._agent()
+        agent.decide = lambda text, base: ToolPlan({"audio"}, complex=True)
+        plan = agent.plan("صدا رو روی ۵۰ درصد بذار", session_id="kira")
+        self.assertTrue(plan.complex)
+        self.assertIsNone(plan.fast_call)
+
+    def test_fast_path_rejects_sensitive_registry_tool(self):
+        agent = self._agent(tool_name="get_system_info")
+        agent.registry.get("get_system_info").level = 3
+        plan = agent.plan("مشخصات سیستم چیه", session_id="kira")
+        self.assertIsNotNone(plan)
+        self.assertIsNone(plan.fast_call)
+
+    def test_fast_path_rejects_external_registry_tool(self):
+        agent = self._agent(tool_name="get_system_info")
+        agent.registry.get("get_system_info").external = True
+        plan = agent.plan("مشخصات سیستم چیه", session_id="kira")
+        self.assertIsNotNone(plan)
+        self.assertIsNone(plan.fast_call)
+
+    def test_fast_path_rejects_registry_category_mismatch(self):
+        agent = self._agent(tool_name="get_system_info")
+        agent.registry.get("get_system_info").categories = ("files",)
+        plan = agent.plan("مشخصات سیستم چیه", session_id="kira")
+        self.assertIsNotNone(plan)
+        self.assertIsNone(plan.fast_call)
+
+    def test_fast_path_respects_tools_disabled(self):
+        agent = self._agent(tool_name="get_system_info")
+        agent.settings["tools_mode"] = "off"
+        self.assertIsNone(agent.plan("مشخصات سیستم چیه", session_id="kira"))
+
+    def test_fast_path_requires_registered_tool(self):
+        agent = self._agent(tool_name="get_system_info")
+        del agent.registry.tools["get_system_info"]
+        plan = agent.plan("مشخصات سیستم چیه", session_id="kira")
+        self.assertIsNotNone(plan)
+        self.assertIsNone(plan.fast_call)
+
 
 if __name__ == "__main__":
     unittest.main()
