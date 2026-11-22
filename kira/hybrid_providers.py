@@ -658,26 +658,45 @@ def _bare_model_id(value):
     return value[7:] if value.startswith("models/") else value
 
 
-def probe_provider(name, config, provider_cls=None):
+def probe_provider(name, config, provider_cls=None, *, timeout=None):
     """Real connection test used by the Route panel. Returns (ok, message).
 
-    Order: list models with the key (separates a bad key from a bad model) -> one tiny real chat request that
-    includes a user message. Works for built-in and user-added OpenAI-compatible providers."""
+    When timeout is supplied, it is an overall budget shared by model discovery
+    and the tiny generation request, not a fresh timeout for each HTTP call.
+    """
     config = dict(config or {})
     cls = provider_cls or provider_class(name, config)
     if not cls:
         return False, "سرویس ناشناخته است."
     provider = cls(config, name=name)
+    deadline = None
+    if timeout is not None:
+        try:
+            budget = max(1.0, float(timeout))
+        except (TypeError, ValueError):
+            budget = 15.0
+        deadline = time.monotonic() + budget
+        provider.timeout = min(float(provider.timeout), budget)
+
+    def remaining(default):
+        if deadline is None:
+            return default
+        left = deadline - time.monotonic()
+        return max(0.0, min(float(default), left))
+
     try:
         if cls is not CloudflareProvider and cls is not OpenRouterProvider:
             base = provider._base()
             headers = {"Authorization": "Bearer " + provider.secret} if provider.secret else {}
+            get_timeout = remaining(15)
+            if get_timeout <= 0:
+                return False, "مهلت تست مدل تمام شد."
             try:
-                response = requests.get(base + "/models", headers=headers, timeout=15)
+                response = requests.get(base + "/models", headers=headers, timeout=get_timeout)
             except requests.Timeout:
-                return False, "مهلت بررسی کلید تمام شد (شبکه یا VPN را بررسی کن)."
+                return False, "مهلت بررسی مدل‌ها تمام شد (شبکه یا VPN را بررسی کن)."
             except requests.RequestException as exc:
-                return False, redact(f"خطای شبکه هنگام بررسی کلید: {exc}", provider.secret)[:400]
+                return False, redact(f"خطای شبکه هنگام بررسی مدل‌ها: {exc}", provider.secret)[:400]
             if response.status_code in (401, 403):
                 return False, redact(f"کلید یا دسترسی رد شد ({response.status_code}): {_api_message(response)}", provider.secret)
             if response.status_code == 200:
@@ -694,7 +713,11 @@ def probe_provider(name, config, provider_cls=None):
             elif response.status_code != 404:
                 return False, redact(f"خطای بررسی کلید ({response.status_code}): {_api_message(response)}", provider.secret)
         last = None
-        for attempt in range(3):                                   # retry only transient server statuses that are safe to retry
+        for attempt in range(3):                                   # bounded retries within the test's shared time budget
+            call_timeout = remaining(provider.timeout)
+            if call_timeout <= 0:
+                return False, "مهلت تست مدل تمام شد."
+            provider.timeout = call_timeout
             try:
                 provider.chat([{"role": "user", "content": "Reply with only: OK"}], "You are a connection test.", 0.1)
                 return True, "اتصال و دریافت پاسخ موفق بود."
@@ -710,7 +733,10 @@ def probe_provider(name, config, provider_cls=None):
                 if exc.kind not in ("server", "rate") and exc.status_code not in (500, 502, 503, 504):
                     raise
                 if attempt < 2:
-                    time.sleep(2 * (attempt + 1))
+                    delay = 2 * (attempt + 1)
+                    if deadline is not None and remaining(delay) < delay:
+                        return False, str(exc)[:400]
+                    time.sleep(delay)
         if getattr(last, "quota", ""):                       # the message already says exactly what to do
             return False, str(last)[:400]
         hint = (" — این خطا از سمت سرویس است (شلوغی یا محدودیت موقت)، نه کلید یا مدل. چند دقیقه بعد دوباره تست کن "
