@@ -222,9 +222,18 @@ def initialize_main_window(
     self.adapters.companion = CompanionWindow(self.adapters.animator)
     self.adapters.companion.pet.settings = self.services.settings          # live reference: perch / hang / auto_dance switches
     self.adapters.music_watcher = None
-    if sys.platform == "win32" and self.services.settings.get("auto_dance", True):
+
+    def _start_music_watcher():
+        if (
+            self.state._closing
+            or self.adapters.music_watcher is not None
+            or sys.platform != "win32"
+            or not self.services.settings.get("auto_dance", True)
+        ):
+            return
         try:
             from ..music_dance import MusicWatcher
+
             watcher = MusicWatcher(self.host)
             watcher.state.connect(self.adapters.companion.pet.on_music)
             watcher.error.connect(lambda message: logging.getLogger("kira.pet").warning("%s", message))
@@ -233,6 +242,12 @@ def initialize_main_window(
             self.adapters.music_watcher = watcher
         except Exception as exc:                                           # noqa: BLE001 - optional animation
             logging.getLogger("kira.pet").warning("music watcher not started: %s", exc)
+
+    # Optional loopback analysis waits until after the desktop has painted.
+    self.state._music_watcher_timer = QTimer(self.host)
+    self.state._music_watcher_timer.setSingleShot(True)
+    self.state._music_watcher_timer.timeout.connect(_start_music_watcher)
+    self.state._music_watcher_timer.start(10000)
     self.controllers.require("character_settings").apply_character_art()
     self.controllers.require("chat")._install_chat_commands()
     self.adapters.bubble = CompanionBubble()
@@ -276,7 +291,86 @@ def initialize_main_window(
     if self.state._effect != "off":
         self.host.setAttribute(Qt.WA_TranslucentBackground, True)    # the DWM paints the glass behind the transparent window
     self.views.tabs = QTabWidget()
-    self.controllers.require("voice_settings").build_chat_tab()
+    voice_controller = self.controllers.require("voice_settings")
+    character_controller = self.controllers.require("character_settings")
+    provider_controller = self.controllers.require("provider_settings")
+    session_controller = self.controllers.require("session")
+    voice_controller.build_chat_tab()
+
+    # Reserve stable tab indexes, but construct settings pages only on first entry.
+    self.views.tab_keys = ["tab_chat", "tab_voice", "tab_char", "tab_appearance", "tab_general", "tab_ai"]
+    lazy_tab_builders = {
+        1: ("tab_voice", voice_controller.build_voice_tab),
+        2: ("tab_char", lambda: (voice_controller.build_assistant_section(), character_controller.build_characters_tab())),
+        3: ("tab_appearance", character_controller.build_appearance_tab),
+        4: ("tab_general", character_controller.build_general_tab),
+        5: ("tab_ai", lambda: (voice_controller.build_assistant_section(), provider_controller.build_ai_tab())),
+    }
+    for key in self.views.tab_keys[1:]:
+        placeholder = QWidget(self.host)
+        placeholder.setObjectName(f"lazySettings_{key}")
+        self.views.tabs.addTab(placeholder, "")
+
+    built_settings_tabs = set()
+    building_settings_tabs = set()
+
+    def _ensure_settings_tab(index):
+        entry = lazy_tab_builders.get(int(index))
+        if entry is None or index in built_settings_tabs or index in building_settings_tabs:
+            return index in built_settings_tabs
+        key, builder = entry
+        placeholder = self.views.tabs.widget(index)
+        if placeholder is None:
+            return False
+        tabs = self.views.tabs
+        selected_index = tabs.currentIndex()
+        count_before = tabs.count()
+        building_settings_tabs.add(index)
+        try:
+            builder()
+            page = tabs.widget(tabs.count() - 1)
+            if page is None or page is placeholder:
+                raise RuntimeError(f"Settings page builder did not create {key}")
+            added_index = tabs.indexOf(page)
+            tabs.removeTab(added_index)
+            tabs.removeTab(index)
+            tabs.insertTab(index, page, session_controller.t(key))
+            placeholder.deleteLater()
+            built_settings_tabs.add(index)
+
+            # Reapply page-specific responsive finalizers and translated labels after lazy creation.
+            from .pages._pages_finalizer_entry import apply_all_page_finalizers
+            page_fields = {
+                "appearance": "appearance_page",
+                "assistant": "assistant_page",
+                "characters": "character_page",
+                "help": "help_page",
+                "preferences": "preferences_page",
+                "skills": "skills_page",
+                "voice": "voice_page",
+            }
+            pages = {name: getattr(self.views, field) for name, field in page_fields.items() if hasattr(self.views, field)}
+            apply_all_page_finalizers(pages)
+            session_controller.tidy_forms()
+            session_controller.retranslate()
+            tabs.setCurrentIndex(min(selected_index, tabs.count() - 1))
+            return True
+        except Exception as exc:                                          # noqa: BLE001 - one settings page must not break the chat shell
+            if tabs.count() > count_before:
+                failed_page = tabs.widget(tabs.count() - 1)
+                tabs.removeTab(tabs.count() - 1)
+                if failed_page is not None:
+                    failed_page.deleteLater()
+            placeholder.setToolTip(f"بارگذاری این بخش ناموفق بود: {exc}")
+            logging.getLogger("kira.ui").exception("Could not build settings page %s", key)
+            tabs.setCurrentIndex(min(selected_index, tabs.count() - 1))
+            return False
+        finally:
+            building_settings_tabs.discard(index)
+
+    # Save may be requested from any settings section; build all sections on demand then.
+    self.host._ensure_settings_tab = _ensure_settings_tab
+
     self.adapters.chat_attachment_controller = ChatAttachmentController(
         attach_strip=self.views.chat_composer.attach_strip,
         error_label=self.views.chat_composer.attach_err,
@@ -298,12 +392,6 @@ def initialize_main_window(
     # Compatibility aliases remain while callers migrate to the controller contract.
     self.state._tiles = self.adapters.chat_attachment_controller.tiles
     self.state._load_tiles = self.adapters.chat_attachment_controller.loading_tiles
-    self.controllers.require("voice_settings").build_assistant_section()
-    self.controllers.require("voice_settings").build_voice_tab()
-    self.controllers.require("character_settings").build_characters_tab()
-    self.controllers.require("character_settings").build_appearance_tab()
-    self.controllers.require("character_settings").build_general_tab()
-    self.controllers.require("provider_settings").build_ai_tab()
     if console_log_capture is not None:
         log_page = build_console_log_page(
             console_log_capture,
@@ -312,15 +400,12 @@ def initialize_main_window(
             clear_text=self.controllers.require("session").t("log_clear"),
         )
         self.views.tabs.addTab(log_page, self.controllers.require("session").t("tab_logs"))
-    # STT and TTS model controls are part of their respective Voice page sections.
-    self.controllers.require("voice_settings").refresh_local_voice_status()
     self.views.save_btn = QPushButton()
     self.views.save_btn.setObjectName("save")
     self.views.save_btn.setIcon(make_icon("check", normal="#ffffff", hover="#ffffff"))
     self.views.save_btn.setIconSize(QSize(16, 16))
     self.views.save_btn.clicked.connect(self.controllers.require("lifecycle").apply_settings)
     self.controllers.require("session").reg(self.views.save_btn.setText, "save")
-    self.views.tab_keys = ["tab_chat", "tab_voice", "tab_char", "tab_appearance", "tab_general", "tab_ai"]
     if console_log_capture is not None:
         self.views.tab_keys.append("tab_logs")
     install_window_shortcuts(                                            # shortcuts are children of the window, nothing else to keep
@@ -332,8 +417,7 @@ def initialize_main_window(
         tab_count=len(self.views.tab_keys),
         settings_tab=self.views.tab_keys.index("tab_ai"),
     )
-    self.controllers.require("session").tidy_forms()                      # field widths follow their content (done once every page exists)
-    self.views.voice_page.refresh_responsive_layout()
+    # Only the chat page exists initially; each settings page is tidied when it is first built.
     for i, key in enumerate(self.views.tab_keys):
         self.controllers.require("session").reg(lambda s, i=i: self.views.tabs.setTabText(i, s), key)
     # Compact icon navigation. The QTabWidget stays as the page stack (its tab strip is hidden).
@@ -379,7 +463,17 @@ def initialize_main_window(
     central_layout.addWidget(toolbar_frame)
     central_layout.addWidget(self.views.tabs, 1)
     self.host.setCentralWidget(central)
+    self.views.tabs.currentChanged.connect(_ensure_settings_tab)
     self.views.tabs.currentChanged.connect(self.controllers.require("session")._sync_nav)
+
+    def _maybe_refresh_provider_catalog(index):
+        if index != self.views.tab_keys.index("tab_ai") or self.state._provider_catalog_auto_refresh_started:
+            return
+        self.state._provider_catalog_auto_refresh_started = True
+        QTimer.singleShot(0, provider_controller.auto_refresh_model_catalogs)
+
+    self.state._provider_catalog_auto_refresh_started = False
+    self.views.tabs.currentChanged.connect(_maybe_refresh_provider_catalog)
     self.controllers.require("session")._sync_nav()
     self.state._mood_ui_timer = QTimer(self.host)                 # the neon mood chips follow the persisted emotional state
     self.state._mood_ui_timer.setInterval(1500)
@@ -403,5 +497,4 @@ def initialize_main_window(
         self.controllers.require("session").add_chat("system", warning)
     self.controllers.require("lifecycle").check_status()
     self.adapters.director.event("app_startup")
-    QTimer.singleShot(15000, self.controllers.require("provider_settings").auto_refresh_model_catalogs)   # keep the model catalogs fresh without a button
 
