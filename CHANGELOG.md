@@ -441,3 +441,10 @@ Mate Engine (shinyflvre) is a Unity/C# project under AGPL-3.0 + its own licence,
 - Planner, executor and reviewer requests now use the existing `deep`, `surface` and `reflection` role routes and fallback behavior.
 - Prompt now directs Kira to create focused tests for changed behavior where the project supports them.
 
+
+
+### Planner hardening — natural multi-step requests
+- Count action occurrences instead of collapsing repeated verbs into a set.
+- Recognize common Persian task verbs such as «بگرد»، «بذار/بزار»، «انتخاب کن» and «اعمال کن», plus English browse/select/apply actions.
+- Route two coordinated actions (for example, «باز کن و ... باز کن») to the existing model-based planner while keeping one-action requests simple.
+- Add regression coverage for repeated verbs, Persian multi-step desktop tasks, English sequences, single-action negatives and empty categories.

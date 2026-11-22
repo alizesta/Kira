@@ -341,3 +341,53 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlannerComplexityRegressionTests(unittest.TestCase):
+    """The planner prefilter counts action occurrences and recognizes natural task sequences."""
+
+    def test_repeated_persian_action_is_not_collapsed(self):
+        from kira.tools.planner import assess
+
+        complex_, reasons = assess("دیسکورد رو باز کن و بعد کروم رو باز کن", {"apps"})
+        self.assertTrue(complex_)
+        self.assertTrue(reasons)
+
+    def test_wallpaper_style_persian_task_enters_planner(self):
+        from kira.tools.planner import assess
+
+        complex_, reasons = assess(
+            "والپیپر انجین رو باز کن و دنبال والپیپر ماشین های پورش بگرد و یه والپیپر پورش بزار",
+            {"apps"},
+        )
+        self.assertTrue(complex_)
+        self.assertGreaterEqual(len(reasons), 1)
+
+    def test_two_actions_joined_without_then_enter_planner(self):
+        from kira.tools.planner import assess
+
+        complex_, _ = assess("open Discord and open Chrome", {"apps"})
+        self.assertTrue(complex_)
+
+    def test_single_action_stays_simple(self):
+        from kira.tools.planner import assess
+
+        for text in ("کروم رو باز کن", "برنامه رو باز کن", "open Discord", "مشخصات سیستم رو بررسی کن"):
+            with self.subTest(text=text):
+                complex_, reasons = assess(text, {"apps", "system"})
+                self.assertFalse(complex_, reasons)
+
+    def test_no_tool_category_does_not_force_task_planning(self):
+        from kira.tools.planner import assess
+
+        complex_, reasons = assess(
+            "والپیپر انجین رو باز کن و دنبال والپیپر بگرد و یکی بزار",
+            set(),
+        )
+        self.assertFalse(complex_, reasons)
+
+    def test_three_distinct_actions_are_detected_without_sequence_word(self):
+        from kira.tools.planner import assess
+
+        complex_, _ = assess("فایل رو پیدا کن، بررسی کن و خلاصه کن", {"files"})
+        self.assertTrue(complex_)
