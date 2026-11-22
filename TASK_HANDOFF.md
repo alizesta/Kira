@@ -1,12 +1,13 @@
 ## Stage 3 — Planned execution safety guards (2026-11-22)
 
-- Branch: `fix/planned-execution-safety-guards` (PR will be opened against `claude/task-understanding-review`).
-- `ToolRegistry.clean_args` now rejects undeclared arguments rather than silently dropping typos/extra fields.
-- `AutonomyMixin._run_calls_planned` now rejects a tool call that references an unknown step, a step assigned to another tool, or a step already completed/running/awaiting evidence review.
-- `TaskPlan.deps_unmet` now fails closed when a dependency ID is missing from persisted task state.
-- Added `tests/test_execution_safety.py` covering strict argument checks, mismatched/unknown/completed/review steps, and missing dependencies.
-- Validation: GitHub source/test files were fetched back and inspected. Python unittest and Windows runtime were not executed; GitHub Actions were not run.
-- Next local validation: `python -m unittest tests.test_execution_safety tests.test_fast_commands tests.test_task_triage tests.test_task_cost`.
+- Branch: `fix/planned-execution-safety-guards`; PR #225 targets `claude/task-understanding-review`.
+- `ToolRegistry.clean_args` rejects undeclared arguments rather than silently dropping typos/extra fields.
+- `AutonomyMixin._run_calls_planned` requires each planned call to supply an explicit positive integer step ID and an object of arguments. Invalid calls are rejected before binding or dispatch.
+- Planned calls reject unknown/ambiguous step IDs, tool/step mismatches, and steps already done, skipped, running, awaiting confirmation, or awaiting evidence review.
+- `TaskPlan.step` treats duplicate/non-positive IDs as invalid; `TaskPlan.deps_unmet` fails closed for missing, malformed, non-positive, or ambiguous dependencies.
+- Added regression coverage for strict arguments, missing required arguments, omitted step IDs, malformed arguments, replay guards, duplicate IDs, and corrupted dependencies.
+- Validation: updated source and tests fetched back from GitHub and statically inspected. Python unittest and Windows runtime have not been executed; GitHub Actions were not run.
+- Local validation when a checkout is available: `python -m unittest tests.test_execution_safety tests.test_fast_commands tests.test_task_triage tests.test_task_cost`.
 
 ## Fast Path stage 2 — Planner / ToolRegistry boundary review (2026-11-22)
 
