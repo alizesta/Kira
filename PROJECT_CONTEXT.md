@@ -151,6 +151,7 @@ Local-only speech stack: Qwen3-ASR primary STT, faster-whisper local fallback, P
 
 ## Avatar (2026-11-21)
 - Only the 2D avatar exists (`kira/face.py` `AvatarView`, also in the companion window). The VRM avatar, its viewer page and dance library were removed; `kira/body.py` is kept but has no body to move until a new live 2D avatar uses it.
+- 2026-11-22 UI polish (branch `fix/ui-polish-personas-svg-audit`): settings pages centred and width-capped, 14 px scrollbars, Kira's chat card shows the whole body canvas, per-character composer prompts, SVG-only icons (all mood faces plus copy/pencil for message actions), Preferences switch for Appllama + UNSLOP, Voice tab mic/speaker cards reduced to volume, sensitivity and a record-and-play test (`kira/ui/pages/audio_card_simplify.py`). Runtime verification on Windows pending.
 
 ## Settings tabs (2026-11-21)
 - Pages: Chat, Voice, Character, Appearance, General, Connections & Models (+ Runtime Log). There is no Assistant tab: identity/persona/modes/temperature live in Character -> personality sub-tab; the local Ollama model group lives in Connections & Models. `AssistantPage` only owns those widgets (hidden).

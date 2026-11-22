@@ -187,7 +187,7 @@ Character specialization and generated portraits. The implementation is complete
 ## Game detector self-identification fix
 - Root cause: the generic large-foreground-window heuristic did not exclude Ai1's own process. Its full-size window could therefore trigger the game suggestion.
 - Fix: `GameModeMonitor.poll()` now ignores `os.getpid()` before title/process hints and window-size heuristics.
-- Regression test covers the `Project Kira 1 stable` title, current process ID and full-screen geometry; it must emit no `game_detected` signal.
+- Regression test covers the `Project Kira 1 stable` window title, current process ID and full-screen geometry; it must emit no `game_detected` signal.
 
 
 ## 2026-11-11 native function calling and Game Mode follow-up

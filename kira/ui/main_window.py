@@ -1,7 +1,7 @@
 """Thin Qt host; feature methods and presentation state live outside the shell."""
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import QMainWindow
 
 from .main_window_session import SessionController
@@ -16,6 +16,8 @@ from .feature_controller_registry import FeatureControllerRegistry
 from .window_presentation_context import WindowPresentationContext
 from kira.ui.main_window_fluid_entry import enable_main_window_fluid
 from kira.ui.pages._pages_finalizer_entry import apply_all_page_finalizers
+
+INPUT_HINT_INTERVAL_MS = 25000
 
 
 class MainWindow(QMainWindow):
@@ -56,6 +58,26 @@ class MainWindow(QMainWindow):
             if field in views
         }
         apply_all_page_finalizers(pages)
+        self._init_input_hint_rotation()
+
+    def _init_input_hint_rotation(self):
+        """Pick a fresh character-specific example prompt every so often (also set on character switch/retranslate)."""
+        def refresh():
+            try:
+                context = self.presentation_context
+                field = context.views.input
+                setter = getattr(field, "set_character_placeholder", None)
+                if not callable(setter) or field.toPlainText().strip():
+                    return
+                front = getattr(context.state, "front", None)
+                setter(getattr(front, "cid", "kira"), context.services.settings.get("ui_lang", "fa"))
+            except Exception:  # noqa: BLE001 - a placeholder must never break the window
+                pass
+
+        self._input_hint_timer = QTimer(self)
+        self._input_hint_timer.setInterval(INPUT_HINT_INTERVAL_MS)
+        self._input_hint_timer.timeout.connect(refresh)
+        self._input_hint_timer.start()
 
     def _dispatch_qt_event(self, controller_name, event_name, event):
         context = getattr(self, "presentation_context", None)

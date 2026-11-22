@@ -151,11 +151,12 @@ QTabBar::tab {
 QTabBar::tab:selected { background: rgba(140,99,255,0.34); border: 2px solid #8C63FF; color: #FFFFFF; font-weight: 800; }
 QTabBar::tab:hover:!selected { background: rgba(140,99,255,0.14); border: 1px solid rgba(140,99,255,0.60); }
 QScrollArea { border: none; background: transparent; }
-QScrollBar:vertical { background: transparent; width: 9px; margin: 3px; }
-QScrollBar::handle:vertical { background: rgba(140,99,255,0.50); border-radius: 4px; min-height: 32px; }
-QScrollBar::handle:vertical:hover { background: #8C63FF; }
-QScrollBar:horizontal { background: transparent; height: 9px; margin: 3px; }
-QScrollBar::handle:horizontal { background: rgba(140,99,255,0.50); border-radius: 4px; min-width: 32px; }
+QScrollBar:vertical { background: rgba(255,255,255,0.035); width: 14px; margin: 2px; border-radius: 7px; }
+QScrollBar::handle:vertical { background: rgba(140,99,255,0.62); border: 1px solid rgba(205,190,255,0.28); border-radius: 6px; min-height: 42px; }
+QScrollBar::handle:vertical:hover { background: #9B79FF; }
+QScrollBar:horizontal { background: rgba(255,255,255,0.035); height: 14px; margin: 2px; border-radius: 7px; }
+QScrollBar::handle:horizontal { background: rgba(140,99,255,0.62); border: 1px solid rgba(205,190,255,0.28); border-radius: 6px; min-width: 42px; }
+QScrollBar::handle:horizontal:hover { background: #9B79FF; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0px; height: 0px; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 

@@ -70,7 +70,13 @@ class SessionController(WindowFeatureController):
         QApplication.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
         for setter, key in self.context.state._tr:
             setter(self.t(key))
-        self.context.views.input.setPlaceholderText(self.t("input_ph"))
+        input_widget = self.context.views.input
+        set_character_placeholder = getattr(input_widget, "set_character_placeholder", None)
+        if callable(set_character_placeholder):
+            set_character_placeholder(getattr(getattr(self.context.state, "front", None), "cid", "kira"),
+                                      self.context.services.settings.get("ui_lang", "fa"))
+        else:
+            input_widget.setPlaceholderText(self.t("input_ph"))
         if hasattr(self.context.state, "_menu_actions"):
             for action, key in zip(self.context.state._menu_actions, self.context.views.tab_keys):
                 action.setText(self.t(key))
@@ -352,6 +358,9 @@ class SessionController(WindowFeatureController):
         self.context.state.front = self.context.state.cur = sess
         sess.unread = False
         self.context.services.settings["active_character_id"] = cid
+        set_character_placeholder = getattr(self.context.views.input, "set_character_placeholder", None)
+        if callable(set_character_placeholder):
+            set_character_placeholder(cid, self.context.services.settings.get("ui_lang", "fa"))
         self.refresh_navigation_icons()
         try:
             self.context.services.mood_service.set_active_character(cid, self.character_traits(cid, self.context.services.character_service.all_profiles(self.context.services.settings).get(cid)))
@@ -639,28 +648,48 @@ class SessionController(WindowFeatureController):
             label.setText("")
             face_label.setToolTip("حال‌وهوای شخصیت فعال")
 
+    def _chat_action_icon_url(self, view, action, icon_name, colour):
+        """Register the SVG icon of a message action once per chat view; returns the URL used by <img>."""
+        url = f"kira-icon://{action}"
+        done = getattr(view, "_kira_icon_urls", None)
+        if done is None:
+            done = view._kira_icon_urls = set()
+        if url not in done:
+            pixmap = make_icon(icon_name, normal=colour, hover=colour, checked=colour, disabled=colour).pixmap(QSize(18, 18))
+            view.document().addResource(QTextDocument.ImageResource, QUrl(url), pixmap)
+            done.add(url)
+        return url
+
     def chat_actions_html(self, kind, text):
-        """Neon icon chips with generous separation; labels stay in tooltips to keep the chat compact."""
+        """Neon SVG icon chips with generous separation; labels stay in tooltips to keep the chat compact."""
         if kind not in ("assistant", "user") or not str(text or "").strip():
             return ""
         self.context.state._chat_action_seq += 1
         key = str(self.context.state._chat_action_seq)
         self.context.state._chat_action_texts[key] = str(text)
         # Keep action targets for all messages currently present in the chat view.
+        # (action, svg icon name, text fallback, colour, background, border, tooltip)
         actions = [
-            ("copy", "⧉", "#8CF5FF", "#103A52", "#39DFFF", "کپی"),
-            ("edit", "✎", "#E0C8FF", "#30214F", "#B18AFF", "ویرایش"),
+            ("copy", "copy", "⧉", "#8CF5FF", "#103A52", "#39DFFF", "کپی"),
+            ("edit", "pencil", "✎", "#E0C8FF", "#30214F", "#B18AFF", "ویرایش"),
         ]
         if kind == "assistant":
-            actions.append(("speak", "♫", "#FFC0E9", "#4B2044", "#FF83D0", "خواندن"))
+            actions.append(("speak", "speaker", "♫", "#FFC0E9", "#4B2044", "#FF83D0", "خواندن"))
+        view = getattr(self.context.session, "view", None)
         cells = []
-        for action, glyph, colour, background, border, tooltip in actions:
-            # The whole chip is the link (padding sits inside <a>): a click anywhere on the chip works, not only on the glyph.
+        for action, icon_name, glyph, colour, background, border, tooltip in actions:
+            try:
+                url = self._chat_action_icon_url(view, action, icon_name, colour)
+                inner = f'&nbsp;&nbsp;<img src="{url}" width="18" height="18">&nbsp;&nbsp;'
+            except Exception:                                # noqa: BLE001 - fall back to the text glyph
+                _log.debug("Could not load the SVG icon for chat action %s", action, exc_info=True)
+                inner = f'&nbsp;&nbsp;&nbsp;{glyph}&nbsp;&nbsp;&nbsp;'
+            # The whole chip is the link (padding sits inside <a>): a click anywhere on the chip works, not only on the icon.
             cells.append(
                 f'<td bgcolor="{background}" style="border:1px solid {border};border-radius:7px;">'
                 f'<a href="kira-action://{action}/{key}" title="{tooltip}" '
                 f'style="color:{colour};text-decoration:none;font-size:10pt;font-weight:600;">'
-                f'&nbsp;&nbsp;&nbsp;{glyph}&nbsp;&nbsp;&nbsp;</a>'
+                f'{inner}</a>'
                 f'</td>'
             )
         links = "".join(cells)

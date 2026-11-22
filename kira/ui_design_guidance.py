@@ -36,6 +36,7 @@ APPLLAMMA APP-DESIGN WORKFLOW:
 - Inspect the existing screens, component patterns, platform conventions and design tokens before proposing changes. Understand the primary user task and the target device.
 - Follow Jakob's Law: preserve familiar platform behavior and predictable navigation. Prefer native controls and established patterns over novelty.
 - Establish hierarchy, readable typography, consistent spacing, meaningful contrast and accessible semantics. Respect keyboard/focus behavior on desktop and safe areas/touch targets/system navigation on mobile.
+- Avoid making every field, input and card edge-to-edge by default. Give text fields and form groups a readable maximum width, align related controls consistently, and reserve full width for content that genuinely benefits from it (tables, timelines, editors and wide data views).
 - Cover real interaction states: loading, empty, error, disabled, success, focus, hover and pressed where relevant. Make state changes understandable.
 - Use progressive disclosure: show the common path first and keep advanced controls available without overwhelming the default view.
 - Reuse the product's existing components and design tokens. Preserve its visual identity; for Kira itself, retain the established navy/purple/cyan palette. Do not impose Kira's palette on other projects.
@@ -62,6 +63,6 @@ def is_ui_design_task(task: str) -> bool:
     return bool(_UI_TASK_RE.search(value))
 
 
-def guidance_for_task(task: str) -> str:
-    """Return the conditional design block only for UI-focused tasks."""
-    return UI_DESIGN_GUIDANCE if is_ui_design_task(task) else ""
+def guidance_for_task(task: str, enabled: bool = True) -> str:
+    """Return the conditional design block only when enabled for UI-focused tasks."""
+    return UI_DESIGN_GUIDANCE if enabled and is_ui_design_task(task) else ""

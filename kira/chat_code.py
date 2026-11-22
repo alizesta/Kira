@@ -345,7 +345,7 @@ Never request or reproduce API keys, passwords, tokens, private keys or other se
         )
         messages = _history_messages(history) + [{"role": "user", "content": prompt}]
         system_prompt = self.SYSTEM_PROMPT
-        ui_guidance = guidance_for_task(request)
+        ui_guidance = guidance_for_task(request, enabled=self.ui_design_guidance_enabled)
         if ui_guidance:
             system_prompt += "\n\n" + ui_guidance
         result = self.router.chat_stream(messages, system_prompt, temperature=0.2, on_chunk=on_chunk)

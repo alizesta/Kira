@@ -35,6 +35,9 @@ class UiDesignGuidanceTests(unittest.TestCase):
                 self.assertFalse(is_ui_design_task(request))
                 self.assertEqual(guidance_for_task(request), "")
 
+    def test_guidance_can_be_disabled_explicitly(self):
+        self.assertEqual(guidance_for_task("Redesign the settings UI", enabled=False), "")
+
     def test_guidance_contains_all_six_unslop_principles_and_appllama(self):
         self.assertIn("APPLLAMMA APP-DESIGN WORKFLOW", UI_DESIGN_GUIDANCE)
         self.assertIn("Jakob's Law", UI_DESIGN_GUIDANCE)

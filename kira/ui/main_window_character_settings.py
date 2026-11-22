@@ -477,6 +477,10 @@ class CharacterSettingsController(WindowFeatureController):
             button.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
                                      checked=palette["main"], disabled="#52617B"))
 
+    def _save_ui_design_guidance(self, enabled):
+        self.context.services.settings["ui_design_guidance_enabled"] = bool(enabled)
+        save_settings(self.context.services.settings)
+
     def build_general_tab(self):
         """Compose preferences and help pages; the preferences widget owns its controls."""
         self.context.views.preferences_page = PreferencesPage(
@@ -488,11 +492,12 @@ class CharacterSettingsController(WindowFeatureController):
         )
         for name in (
             "ui_lang", "tavily_key", "web_depth", "web_fallback_chk", "web_test_btn",
-            "restore_chat_btn", "memory_btn", "import_chat_btn", "about_labels",
+            "ui_design_guidance_chk", "restore_chat_btn", "memory_btn", "import_chat_btn", "about_labels",
         ):
             setattr(self.context.views, name, getattr(self.context.views.preferences_page, name))
 
         self.context.views.preferences_page.web_search_test_requested.connect(self.feature_controller("chat").test_web_search)
+        self.context.views.preferences_page.ui_design_guidance_changed.connect(self._save_ui_design_guidance)
         self.context.views.preferences_page.clear_history_requested.connect(self.feature_controller("runtime").clear_chat)
         self.context.views.preferences_page.restore_history_requested.connect(self.feature_controller("runtime").restore_cleared_chat)
         self.context.views.preferences_page.open_memory_requested.connect(self.feature_controller("runtime").open_memory_dialog)
