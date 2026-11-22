@@ -259,6 +259,10 @@ This section supersedes the earlier residual-UI notes above for the current refa
 Flow 1's source-architecture exit criteria are complete. Focused regression coverage was updated for strict namespace contracts, front-session isolation, peer-controller lookup, and the absence of the legacy proxy. Python tests were not executed in this environment. Windows/GUI and GitHub Actions validation remain excluded from this workstream, so runtime acceptance is still pending.
 
 
+### Startup performance delta — 2026-11-23
+
+Task 1 implementation is tracked on `codex/startup-lazy-loading-2026-11-23`, based on `new-main` at `3d69726aee718c2405d51bd1f4cf9785b44fe5ee`. It removes the unused eager ToolAgent import from the MainWindow support graph, makes `kira.tools` exports lazy, extracts the provider-neutral stream filter, defers Agent/registry and optional app-catalog/MCP setup, constructs settings pages on first visit, and postpones Piper/MusicWatcher/provider-catalog work. This is a branch-level implementation, not a merged or runtime-accepted state. Focused regression tests are committed but not run; Windows startup timing and memory measurements remain open.
+
 ## 9. Responsibility-aligned module sizing
 
 **TASK ARCH-QUALITY-01 — right-size modules by responsibility, not line count**
