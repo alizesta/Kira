@@ -20,6 +20,7 @@ from typing import Any
 
 from . import routes as route_model
 from .leak_guard import LeakGuard, clean_final
+from .request_trace import trace as request_trace
 from .ollama_client import OllamaClient, OllamaError
 from .core.interfaces.chat_provider import ChatProvider
 from .infrastructure.providers import ProviderRegistry
@@ -363,7 +364,16 @@ class BaseProvider(ChatProvider):
         if stream:
             kwargs["stream"] = True
         timeout = (min(10, self.timeout), self.timeout) if stream else self.timeout
-        return requests.post(url, timeout=timeout, **kwargs)
+        started = time.monotonic()
+        host = __import__("urllib.parse", fromlist=["urlsplit"]).urlsplit(url).hostname or "unknown"
+        request_trace("http_send", provider=self.name, model=self.model, host=host, stream=bool(stream), connect_timeout=timeout[0] if isinstance(timeout, tuple) else timeout, read_timeout=timeout[1] if isinstance(timeout, tuple) else timeout)
+        try:
+            response = requests.post(url, timeout=timeout, **kwargs)
+        except Exception as exc:
+            request_trace("http_transport_error", provider=self.name, model=self.model, host=host, error_type=type(exc).__name__, elapsed_ms=int((time.monotonic()-started)*1000))
+            raise
+        request_trace("http_headers", provider=self.name, model=self.model, host=host, status_code=int(response.status_code), elapsed_ms=int((time.monotonic()-started)*1000), stream=bool(stream))
+        return response
 
     def _post_json(self, url, headers, payload):
         """POST and return the decoded JSON body. Every failure becomes a classified ProviderError."""
@@ -379,6 +389,7 @@ class BaseProvider(ChatProvider):
         except ValueError as exc:
             raise self._fail("پاسخ سرویس قابل خواندن نبود.", True, kind="response") from exc
         self._note_usage(data)
+        request_trace("http_body_decoded", provider=self.name, model=self.model, elapsed_ms=None, response_shape="json")
         return data
 
     def _open_stream(self, url, headers, payload):
@@ -405,8 +416,13 @@ class BaseProvider(ChatProvider):
         if on_connect:
             on_connect()
         flt = ThinkFilter()
+        stream_started = time.monotonic()
+        first_event = False
         try:
             for data in iter_sse(response):
+                if not first_event:
+                    first_event = True
+                    request_trace("first_sse_event", provider=self.name, model=self.model, elapsed_ms=int((time.monotonic()-stream_started)*1000))
                 if data == "[DONE]":
                     break
                 try:
@@ -425,10 +441,12 @@ class BaseProvider(ChatProvider):
             if tail:
                 yield tail
         except requests.Timeout as exc:
+            request_trace("stream_read_timeout", provider=self.name, model=self.model, elapsed_ms=int((time.monotonic()-stream_started)*1000))
             raise self._fail("سرویس وسط پاسخ ساکت شد (Timeout).", True, kind="timeout") from exc
         except requests.RequestException as exc:
             raise self._fail(f"ارتباط وسط پاسخ قطع شد: {exc}", True, kind="network") from exc
         finally:
+            request_trace("stream_closed", provider=self.name, model=self.model, elapsed_ms=int((time.monotonic()-stream_started)*1000))
             self._resp = None
             try:
                 response.close()
