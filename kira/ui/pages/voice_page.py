@@ -23,9 +23,24 @@ from PySide6.QtWidgets import (
     QSlider,
     QSpinBox,
     QSizePolicy,
+    QToolButton,
+    QVBoxLayout,
     QWidget,
 )
 from ..components.switch_checkbox import SwitchCheckBox
+
+
+# Gemini Live prebuilt voices: (API name, label shown to the user)
+GEMINI_VOICES = (
+    ("Zephyr", "Zephyr · زن، روشن (پیش‌فرض)"),
+    ("Kore", "Kore · زن، محکم"),
+    ("Leda", "Leda · زن، جوان"),
+    ("Aoede", "Aoede · زن، آرام"),
+    ("Puck", "Puck · مرد، شاد"),
+    ("Charon", "Charon · مرد، آرام"),
+    ("Fenrir", "Fenrir · مرد، پرانرژی"),
+    ("Orus", "Orus · مرد، محکم"),
+)
 
 
 class VoicePage(QScrollArea):
@@ -125,7 +140,6 @@ class VoicePage(QScrollArea):
         self.local_asr_chk.setChecked(bool(settings.get("local_voice_asr", True)))
         self.local_asr_chk.toggled.connect(self.local_asr_enabled_requested.emit)
         stt_form.addRow(self.local_asr_chk)
-        stt_form.addRow("موتور تشخیص گفتار", QLabel("شنوا · Sherpa-ONNX"))
         stt_form.addRow("نسخه مدل شنوا", self.shenava_variant)
         shenava_actions = QGridLayout()
         shenava_actions.setHorizontalSpacing(8)
@@ -172,8 +186,8 @@ class VoicePage(QScrollArea):
         )
         live_form.addRow(self.live_toggle)
         self.voice_engine = QComboBox()
-        self.voice_engine.addItem("Gemini Live · مکالمه صوتی دوطرفه", "gemini_live")
-        self.voice_engine.addItem("محلی · STT + مدل چت + Piper", "local")
+        self.voice_engine.addItem("ریل‌تایم · Gemini Live", "gemini_live")
+        self.voice_engine.addItem("محلی · آفلاین", "local")
         selected_engine = str(settings.get("voice_engine") or "gemini_live")
         self.voice_engine.setCurrentIndex(max(0, self.voice_engine.findData(selected_engine)))
         live_form.addRow("موتور اصلی", self.voice_engine)
@@ -194,6 +208,11 @@ class VoicePage(QScrollArea):
         self.gemini_model.setCurrentText(str(settings.get("gemini_live_model") or "gemini-3.8-live"))
         self.gemini_model.setEnabled(True)
         live_form.addRow("مدل Gemini Live", self.gemini_model)
+        self.gemini_voice = QComboBox()
+        for voice_name, voice_label in GEMINI_VOICES:
+            self.gemini_voice.addItem(voice_label, voice_name)
+        self.gemini_voice.setCurrentIndex(max(0, self.gemini_voice.findData(str(settings.get("gemini_voice") or "Zephyr"))))
+        self.gemini_voice.currentIndexChanged.connect(lambda *_: self.autosave_requested.emit())
         self.local_fallback_chk = SwitchCheckBox("در صورت قطع Gemini Live، انتقال خودکار به STT/TTS محلی")
         self.local_fallback_chk.setChecked(bool(settings.get("voice_local_fallback", True)))
         live_form.addRow(self.local_fallback_chk)
@@ -284,9 +303,76 @@ class VoicePage(QScrollArea):
         tts_form.addRow(self.voice_caps_note)
         self.tts_form = tts_form
 
-        host = QWidget()
-        grid = QGridLayout(host)
-        grid.setContentsMargins(6, 6, 6, 6)
+        # ---- simple top card: the conversation mode and only the fields that matter for it ----
+        def lift(form, field):
+            """Move one row out of its old form; returns the label widget it had (or None)."""
+            row = form.takeRow(field)
+            return row.labelItem.widget() if row.labelItem is not None else None
+
+        mode_box = QGroupBox("مکالمه")
+        mode_form = QFormLayout(mode_box)
+        mode_form.setContentsMargins(8, 6, 8, 6)
+        mode_form.setHorizontalSpacing(8)
+        mode_form.setVerticalSpacing(6)
+        mode_label = lift(live_form, self.voice_engine)
+        mode_form.addRow("نوع مکالمه", self.voice_engine)
+        if mode_label is not None:
+            mode_label.hide()
+            mode_label.deleteLater()
+        lift(live_form, self.live_toggle)
+        mode_form.addRow(self.live_toggle)
+
+        # realtime (Gemini Live): key + voice. What the user says is written into the chat.
+        self._realtime_group = QWidget()
+        realtime_form = QFormLayout(self._realtime_group)
+        realtime_form.setContentsMargins(0, 0, 0, 0)
+        realtime_form.setVerticalSpacing(6)
+        for field, text in ((self.gemini_provider, "کلید Google AI"),):
+            old = lift(live_form, field)
+            realtime_form.addRow(text, field)
+            if old is not None:
+                old.hide()
+                old.deleteLater()
+        realtime_form.addRow("صدای کیرا", self.gemini_voice)
+        realtime_hint = QLabel("حرف‌های تو و پاسخ کیرا بعد از هر نوبت در چت نوشته می‌شود.")
+        realtime_hint.setObjectName("hint")
+        realtime_hint.setWordWrap(True)
+        realtime_form.addRow(realtime_hint)
+        mode_form.addRow(self._realtime_group)
+
+        # local (offline): input = Shenava (automatic), output = the TTS engine
+        self._local_group = QWidget()
+        local_form = QFormLayout(self._local_group)
+        local_form.setContentsMargins(0, 0, 0, 0)
+        local_form.setVerticalSpacing(6)
+        stt_value = QLabel("شنوا · آفلاین (خودکار)")
+        local_form.addRow("ورودی (STT)", stt_value)
+        old = lift(tts_form, self.tts_engine)
+        local_form.addRow("خروجی (TTS)", self.tts_engine)
+        if old is not None:
+            old.hide()
+            old.deleteLater()
+        local_hint = QLabel("جمله‌های فارسی همیشه با Piper خوانده می‌شوند؛ Kitten فقط انگلیسی می‌خواند.")
+        local_hint.setObjectName("hint")
+        local_hint.setWordWrap(True)
+        local_form.addRow(local_hint)
+        mode_form.addRow(self._local_group)
+
+        # speaking on/off belongs with the output card
+        lift(tts_form, self.speak_chk)
+        output_form.insertRow(0, self.speak_chk)
+
+        # ---- everything else lives in one collapsed "advanced" area ----
+        self.advanced_toggle = QToolButton()
+        self.advanced_toggle.setObjectName("advancedToggle")
+        self.advanced_toggle.setCheckable(True)
+        self.advanced_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.advanced_toggle.setArrowType(Qt.RightArrow)
+        self.advanced_toggle.setText("تنظیمات پیشرفته")
+        self.advanced_toggle.setCursor(Qt.PointingHandCursor)
+        advanced_body = QWidget()
+        grid = QGridLayout(advanced_body)
+        grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(8)
         grid.setVerticalSpacing(8)
         for box in (mic_box, output_box, stt_box, tts_box, live_box):
@@ -297,7 +383,23 @@ class VoicePage(QScrollArea):
         self._responsive_columns = 0
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
+        self._advanced_sections = (stt_box, tts_box, live_box)      # mic + output stay visible; the rest is "advanced"
+        for box in self._advanced_sections:
+            box.setVisible(False)
+        self.advanced_toggle.setStyleSheet("QToolButton,QToolButton:checked,QToolButton:hover{background:rgba(24,32,64,0.62);color:#ffffff;border:1px solid rgba(143,107,255,0.55);border-radius:10px;font-weight:700;padding:5px 14px;}")
+        self.advanced_toggle.toggled.connect(self._toggle_advanced)
+
+        host = QWidget()
+        host_layout = QVBoxLayout(host)
+        host_layout.setContentsMargins(6, 6, 6, 6)
+        host_layout.setSpacing(8)
+        host_layout.addWidget(mode_box)
+        host_layout.addWidget(self.advanced_toggle, 0, Qt.AlignLeft)
+        host_layout.addWidget(advanced_body)
+        host_layout.addStretch(1)
         self.setWidget(host)
+        self.voice_engine.currentIndexChanged.connect(lambda *_: self._sync_mode_groups())
+        self._sync_mode_groups()
 
         self.save_timer = QTimer(self)
         self.save_timer.setSingleShot(True)
@@ -307,7 +409,7 @@ class VoicePage(QScrollArea):
             widget.valueChanged.connect(lambda *_: self.save_timer.start())
         for widget in (
             self.out_device, self.mic_device, self.stt_lang,
-            self.shenava_variant, self.voice_engine, self.gemini_provider,
+            self.shenava_variant, self.voice_engine, self.gemini_provider, self.gemini_voice,
         ):
             widget.currentIndexChanged.connect(lambda *_: self.save_timer.start())
         self.gemini_model.currentTextChanged.connect(lambda *_: self.save_timer.start())
@@ -319,6 +421,18 @@ class VoicePage(QScrollArea):
         self.retranslate()
 
         finalize_voice_page(self)
+        QTimer.singleShot(0, self._reflow_sections)
+
+    def _sync_mode_groups(self) -> None:
+        """Show only the fields of the chosen conversation mode."""
+        local = self.voice_engine.currentData() == "local"
+        self._realtime_group.setVisible(not local)
+        self._local_group.setVisible(local)
+
+    def _toggle_advanced(self, on: bool) -> None:
+        for box in self._advanced_sections:
+            box.setVisible(bool(on))
+        self.advanced_toggle.setArrowType(Qt.DownArrow if on else Qt.RightArrow)
         QTimer.singleShot(0, self._reflow_sections)
 
     def resizeEvent(self, event) -> None:

@@ -232,7 +232,7 @@ class GeminiLiveWorker(QThread):
             "response_modalities": ["AUDIO"],
             "speech_config": types.SpeechConfig(
                 voice_config=types.VoiceConfig(
-                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name="Zephyr")
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=str(self.settings.get("gemini_voice") or "Zephyr"))
                 )
             ),
             "input_audio_transcription": types.AudioTranscriptionConfig(),

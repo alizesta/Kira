@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-11-22 03:37 Iran (Voice settings simplified)
+- Voice tab: a new top card "مکالمه" with one switch, "نوع مکالمه": ریل‌تایم (Gemini Live) or محلی (آفلاین). Realtime shows the Google AI key and the Kira voice; local shows the input (STT = Shenava, automatic, one option) and output (TTS = Piper فارسی / KittenTTS). Mic and output-device cards stay visible; STT, TTS and Gemini detail boxes moved into a collapsed "تنظیمات پیشرفته" area. All old widgets still exist (controllers unchanged); the redundant "Shenava · Sherpa-ONNX" label row was removed.
+- New setting `gemini_voice` (Zephyr default; Kore, Leda, Aoede = female, Puck, Charon, Fenrir, Orus = male), read by `gemini_live.py` instead of the hard-coded "Zephyr". Local voices (Piper Mana, Kitten) have no voice choice.
+- In realtime mode what the user says and Kira's reply are written to the chat after each turn (already the behaviour via the Gemini input transcription).
+- Offscreen only; not seen on Windows.
+
 ## 2026-11-22 03:26 Iran (TTS engine switch: Piper / KittenTTS)
 - New settings `tts_engine` (piper | kitten, default piper) and `kitten_model` (pico | nano | mini), chosen in Voice settings ("موتور صدا", "مدل KittenTTS"); saved automatically with the other voice sliders.
 - `voice.py`: with the Kitten engine each English sentence is made by `kitten_tts.synthesize` (new, shares the test code) and goes through the same wav/envelope/cache path and the same `_PcmPlayer`. Sentences containing Persian/Arabic letters ALWAYS use Piper (Kitten is English-only), so mixed replies still work. If the Kitten runtime is not installed, the error tells the user to press "نصب و تست KittenTTS" first. Kitten ignores the speech-rate slider and the emotion post-effects for now.

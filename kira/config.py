@@ -51,6 +51,7 @@ DEFAULTS = {
     "voice_engine_migrated": True,       # one-time migration guard; preserves an intentional local-primary choice
     "gemini_live_provider": "",          # provider id from the existing Google API Manager; never stores a second API key
     "gemini_live_model": "gemini-3.8-live",
+    "gemini_voice": "Zephyr",             # Gemini Live prebuilt voice name (see GEMINI_VOICES in ui/pages/voice_page.py)
     "voice_local_fallback": True,        # retain existing local STT/TTS as the fallback path
     "active_modes": True,                # per-message Active Mode (chat / task / plain answer): the request outranks the personality
     "stream_speech": True,               # speech starts from the first finished sentence while the reply is still being written
