@@ -58,6 +58,15 @@ class PlanStructureValidationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     Step.from_dict({"id": invalid_id})
 
+    def test_persisted_duplicate_ids_and_non_object_steps_reject_the_plan(self):
+        for steps in (
+            [{"id": 1}, {"id": 1}],
+            [{"id": 1}, None],
+        ):
+            with self.subTest(steps=steps):
+                with self.assertRaises(ValueError):
+                    TaskPlan.from_dict({"id": "t-corrupt", "goal": "test", "steps": steps})
+
     def test_corrupt_persisted_dependencies_are_preserved_as_blocking(self):
         step = Step.from_dict({"id": 1, "depends_on": [1.5, True, "bad"]})
         plan = TaskPlan("t-corrupt", "Fail closed")
@@ -190,17 +199,23 @@ class PlannedStepExecutionGuardTests(unittest.TestCase):
                 self.assertEqual(self.agent.registry.executed, [])
                 self.assertIn("repeat call", notes[0])
 
-    def test_step_id_is_required_for_planned_execution(self):
-        results, notes = self.agent._run_calls_planned(
-            self.plan,
-            [{"tool": "open_app", "args": {"name": "Calculator"}}],
-            [],
-            None,
-            8,
-        )
-        self.assertEqual(results[0].status, BAD_ARGS)
-        self.assertEqual(self.agent.registry.executed, [])
-        self.assertIn("invalid step id", notes[0])
+    def test_missing_and_malformed_step_ids_are_rejected(self):
+        invalid_calls = [
+            {"tool": "open_app", "args": {"name": "Calculator"}},
+            {"tool": "open_app", "args": {"name": "Calculator"}, "step": True},
+            {"tool": "open_app", "args": {"name": "Calculator"}, "step": 1.5},
+            {"tool": "open_app", "args": {"name": "Calculator"}, "step": "1"},
+            {"tool": "open_app", "args": {"name": "Calculator"}, "step": 0},
+            {"tool": "open_app", "args": {"name": "Calculator"}, "step": -1},
+        ]
+        for call in invalid_calls:
+            with self.subTest(call=call):
+                results, notes = self.agent._run_calls_planned(
+                    self.plan, [call], [], None, 8,
+                )
+                self.assertEqual(results[0].status, BAD_ARGS)
+                self.assertEqual(self.agent.registry.executed, [])
+                self.assertIn("invalid step id", notes[0])
 
     def test_non_object_arguments_are_rejected_before_binding(self):
         results, notes = self.agent._run_calls_planned(
