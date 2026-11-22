@@ -304,12 +304,24 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(result["tools"][0]["status"], DENIED)
         self.assertIn("ابزارها خاموش", result["text"])
 
-    def test_competitive_safe_change_after_planning_is_enforced_at_execution(self):
+    def test_competitive_safe_transition_cancels_pending_fast_call(self):
+        agent, _registry, calls = self._agent()
+        plan = self._plan(agent)
+        agent.set_competitive_safe_mode(True)
+        result = self._run(agent, plan)
+
+        self.assertEqual(calls, [])
+        self.assertTrue(result["stopped"])
+        self.assertEqual(result["tools"], [])
+
+    def test_competitive_safe_execution_guard_denies_fast_call(self):
         from kira.tools.registry import DENIED
 
         agent, _registry, calls = self._agent()
         plan = self._plan(agent)
-        agent.set_competitive_safe_mode(True)
+        # Exercise the registry's defence-in-depth guard independently of
+        # the public transition method's immediate cancellation.
+        agent._competitive_safe_mode = True
         result = self._run(agent, plan)
 
         self.assertEqual(calls, [])
