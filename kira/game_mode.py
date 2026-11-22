@@ -1,4 +1,4 @@
-""""Manual Game Mode and foreground-game detection for Ai1.
+"""Manual Game Mode and foreground-game detection for Ai1.
 
 Detection is advisory only. It never enables Game Mode or captures a frame by itself.
 Screen capture is available only while the user has manually enabled Game Mode.
