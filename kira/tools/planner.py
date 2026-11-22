@@ -52,10 +52,23 @@ def parse_plan(raw: str, registry, max_steps: int, revise: bool = False) -> dict
         if not isinstance(s, dict):
             problems.append(f"step {i} is not an object")
             continue
-        sid = s.get("id")
-        sid = int(sid) if str(sid).lstrip("-").isdigit() else i
+        raw_sid = s.get("id", i)
+        if isinstance(raw_sid, bool):
+            problems.append(f"step {i} has a boolean ID")
+            continue
+        if isinstance(raw_sid, int):
+            sid = raw_sid
+        elif isinstance(raw_sid, str) and raw_sid.strip().isdigit():
+            sid = int(raw_sid.strip())
+        else:
+            problems.append(f"step {i} has an invalid ID")
+            continue
+        if sid <= 0:
+            problems.append(f"step {i} ID must be a positive integer")
+            continue
         if sid in seen:
-            sid = max(seen) + 1
+            problems.append(f"step ID {sid} is duplicated")
+            continue
         title = str(s.get("title") or "").strip()[:140]
         postcondition = " ".join(str(s.get("postcondition") or "").split())[:240]
         if not postcondition and (success_criteria or goal_text):
@@ -71,7 +84,7 @@ def parse_plan(raw: str, registry, max_steps: int, revise: bool = False) -> dict
                 problems.append(f"step {sid} uses unknown tool '{tool}'")
                 continue
             confirm = confirm or t.level >= 3                     # a sensitive tool ALWAYS needs the user's confirmation, whatever the model wrote
-        raw_deps = s.get("depends_on") or []
+        raw_deps = s.get("depends_on", [])
         deps = []
         if not isinstance(raw_deps, list):
             problems.append(f"step {sid} dependencies must be a list")
@@ -81,6 +94,9 @@ def parse_plan(raw: str, registry, max_steps: int, revise: bool = False) -> dict
                     problems.append(f"step {sid} has an invalid dependency '{dependency}'")
                     continue
                 dependency_id = int(dependency)
+                if dependency_id <= 0:
+                    problems.append(f"step {sid} has a non-positive dependency ID '{dependency}'")
+                    continue
                 if dependency_id not in seen:
                     problems.append(f"step {sid} depends on step {dependency_id}, which must be declared earlier")
                     continue
