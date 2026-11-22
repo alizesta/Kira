@@ -5,7 +5,7 @@
 - Planner validation rejects duplicate, boolean, zero, negative, and malformed step IDs rather than silently renumbering ambiguous plans; falsey non-list dependency containers are rejected instead of becoming empty lists.
 - Persisted task loading rejects malformed/duplicate step records; malformed dependencies are retained as invalid sentinels and block execution.
 - Dependency checks fail closed for missing, malformed, non-positive, ambiguous, self, and forward references, even if a later step is marked complete.
-- Added regression cases for execution guards, handler non-invocation on invalid arguments, planner IDs, persisted-state validation, and dependency-order enforcement.
+- Added regression cases for execution guards, handler non-invocation on invalid arguments, malformed step IDs, duplicate/corrupt persisted plans, planner dependency containers, and dependency-order enforcement.
 - Validation: source and tests fetched back from GitHub and statically inspected. Python unittest and Windows runtime remain unavailable; GitHub Actions were not run.
 
 ## 2026-11-22 (Fast Path / web-lock boundary)
