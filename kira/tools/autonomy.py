@@ -98,7 +98,7 @@ class AutonomyMixin:
             # other tool-relevant request is classified by the model itself using
             # the goal, context and complete local tool catalog—not verb regexes.
             from .fast_commands import parse_fast_command
-            if parse_fast_command(text) is None:
+            if parse_fast_command(text) is None and not getattr(base, "index_only", False):
                 base.complex = True
                 base.reasons = ("ارزیابی معنایی هدف توسط Planner مدل",)
         return base

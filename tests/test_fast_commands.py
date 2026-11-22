@@ -436,8 +436,11 @@ class SemanticPlannerRoutingTests(unittest.TestCase):
         self.assertNotIn("mcp", plan.categories)
         self.assertNotIn("agents", plan.categories)
         self.assertIn("web", plan.categories)
+        # No known task signal: the model triages with a short capability index first (cheap for chat),
+        # and only escalates to the planner when it asks for the PC (see tests/test_task_triage.py).
+        self.assertTrue(plan.index_only)
         decision = self._autonomy_probe().decide("میشه این کار رو برام انجام بدی؟", plan)
-        self.assertTrue(decision.complex)
+        self.assertFalse(decision.complex)
 
     def test_no_base_tool_plan_remains_plain_chat_for_direct_decision(self):
         probe = self._autonomy_probe()

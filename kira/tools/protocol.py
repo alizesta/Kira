@@ -156,6 +156,39 @@ EXTERNAL TOOLS (MCP servers and independent agents) - rules:
 - A delegated job runs on its own: tell the user the job id and that you will check it (agent_status); never claim it finished without a status result saying so."""
 
 
+USE_TOOLS = "use_tools"            # pseudo-call of the triage round: "this turn needs the PC"; never executed, only escalates
+
+_INDEX_GLOSS = {
+    "time": "clock and date", "system": "PC specs and live usage", "files": "find, read and organize files and folders",
+    "apps": "launch, close and inspect programs", "audio": "volume and media", "bluetooth": "Bluetooth devices",
+    "desktop": "see and operate windows, keyboard and mouse", "web": "search, read and research the internet, download",
+}
+
+INDEX_HEAD = """\
+PC CAPABILITY INDEX - this assistant can act on the user's Windows computer, not only chat. You decide for THIS message:
+- Ordinary conversation, feelings, opinions, general knowledge, writing or explaining: just answer in your normal voice. No block.
+- Anything that needs this PC (files, programs, system, audio, windows, settings) or the internet (find, open, download, install, apply, send, check) - however it is worded, even if it names something you do not recognise: your ENTIRE reply must be only
+<kira_tool>{"tool": "use_tools", "args": {}}</kira_tool>
+and the system then gives you the full tools and the planner. Do not describe or promise the action yourself. When unsure whether a request needs the PC, use use_tools.
+Capabilities:"""
+
+
+def build_index(tools) -> str:
+    """One short line per capability group (tool names only, no schemas): cheap enough for every ordinary chat turn."""
+    groups: dict[str, list[str]] = {}
+    for tool in tools:
+        cats = [c for c in getattr(tool, "categories", ()) if c in _INDEX_GLOSS]
+        if cats:
+            groups.setdefault(cats[0], []).append(tool.name)
+    order = [c for c in ALL_CATEGORIES if c in groups]
+    return "\n".join(f"- {c} ({_INDEX_GLOSS[c]}): {', '.join(groups[c])}" for c in order)
+
+
+def build_index_block(tools, memos: str = "") -> str:
+    out = INDEX_HEAD + "\n" + build_index(tools)
+    return out + ("\n\n" + memos if memos else "")
+
+
 def build_block(catalog: str, memos: str = "", last_round: bool = False, extra: str = "") -> str:
     if last_round:
         return "PC TOOLS: not available any more in this turn; answer with what you already have."
