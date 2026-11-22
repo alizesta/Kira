@@ -7,7 +7,7 @@ from kira.tools.autonomy import AutonomyMixin
 from kira.tools.registry import (
     ACTION, BAD_ARGS, OK, Param, Tool, ToolError, ToolRegistry, ToolResult,
 )
-from kira.tools.tasks import DONE, REVIEW, Step, TaskPlan
+from kira.tools.tasks import AWAITING, DONE, REVIEW, Step, TaskPlan
 
 
 class ToolArgumentValidationTests(unittest.TestCase):
@@ -118,6 +118,49 @@ class PlannedStepExecutionGuardTests(unittest.TestCase):
         self.assertEqual(results[0].status, BAD_ARGS)
         self.assertEqual(self.agent.registry.executed, [])
         self.assertIn("repeat call", notes[0])
+
+    def test_step_id_is_required_for_planned_execution(self):
+        results, notes = self.agent._run_calls_planned(
+            self.plan,
+            [{"tool": "open_app", "args": {"name": "Calculator"}}],
+            [],
+            None,
+            8,
+        )
+        self.assertEqual(results[0].status, BAD_ARGS)
+        self.assertEqual(self.agent.registry.executed, [])
+        self.assertIn("invalid step id", notes[0])
+
+    def test_non_object_arguments_are_rejected_before_binding(self):
+        results, notes = self.agent._run_calls_planned(
+            self.plan,
+            [{"tool": "open_app", "args": ["Calculator"], "step": 1}],
+            [],
+            None,
+            8,
+        )
+        self.assertEqual(results[0].status, BAD_ARGS)
+        self.assertEqual(self.agent.registry.executed, [])
+        self.assertIn("non-object arguments", notes[0])
+
+    def test_confirmation_waiting_step_cannot_be_replayed(self):
+        self.plan.steps[0].status = AWAITING
+        results, notes = self._run()
+        self.assertEqual(results[0].status, BAD_ARGS)
+        self.assertEqual(self.agent.registry.executed, [])
+        self.assertIn("repeat call", notes[0])
+
+    def test_duplicate_step_ids_are_ambiguous_and_fail_closed(self):
+        self.plan.steps.append(Step(1, "Duplicate step", "open_app"))
+        self.assertIsNone(self.plan.step(1))
+        self.assertEqual(self.plan.deps_unmet(self.plan.steps[0]), [])
+
+    def test_malformed_and_non_positive_dependencies_are_unmet(self):
+        self.plan.steps[0].depends_on = ["not-an-id", 0, -1, 99]
+        self.assertEqual(
+            self.plan.deps_unmet(self.plan.steps[0]),
+            ["not-an-id", 0, -1, 99],
+        )
 
 
 if __name__ == "__main__":
