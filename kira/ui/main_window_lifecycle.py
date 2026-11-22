@@ -43,6 +43,16 @@ class LifecycleController(WindowFeatureController):
             self.feature_controller("session").add_chat("system", "برای اعمال کامل حالت شیشه‌ای، برنامه را یک بار ببند و دوباره باز کن.")
 
     def apply_settings(self):
+        ensure_settings_tab = getattr(self.window, "_ensure_settings_tab", None)
+        if callable(ensure_settings_tab):
+            for index in (1, 2, 3, 4, 5):
+                if not ensure_settings_tab(index):
+                    QMessageBox.warning(
+                        self.window,
+                        "تنظیمات",
+                        "یکی از صفحات تنظیمات بارگذاری نشد؛ تغییرات ذخیره نشدند.",
+                    )
+                    return
         s = self.context.services.settings
         s.update({
             "assistant_name": self.context.views.name.text().strip() or "Kira",
@@ -342,7 +352,9 @@ class LifecycleController(WindowFeatureController):
         ok, detail = self.context.services.ollama_client.status()
         m = self.context.services.settings["model"]
         if ok:
-            self.context.views.model.set_models(detail)
+            model_widget = getattr(self.context.views, "model", None)
+            if model_widget is not None:
+                model_widget.set_models(detail)
             self.context.state._ollama_models = list(detail)
             self.feature_controller("session").set_status("st_ok" if model_installed(detail, m) else "st_nomodel", m=m)
         else:
