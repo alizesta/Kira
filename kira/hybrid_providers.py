@@ -28,7 +28,8 @@ from .infrastructure.providers import ProviderRegistry
 COOLDOWN_RATE_LIMIT = 300      # seconds after HTTP 429 (or Retry-After, capped)
 COOLDOWN_TRANSIENT = 45        # network / timeout / 5xx (default; each route can override it)
 COOLDOWN_CONFIG = 60           # bad key / bad model: stop retrying on every message (reset when settings are saved)
-METRICS_KEEP = 200             # in-memory history of request metrics (bounded: no memory growth)
+THINKING_MIN_MAX_TOKENS = 1024  # floor for max_tokens on Gemini thinking models (thinking shares this budget)
+METRICS_KEEP = 200            # in-memory history of request metrics (bounded: no memory growth)
 
 # Brain-role scope is per logical request, not per router instance: two sessions (or a
 # background reviewer and the visible chat) may use the same router from different threads.
@@ -502,6 +503,11 @@ class OpenAICompatibleProvider(BaseProvider):
             # Hydrogen defaults to HIGH thinking; reasoning_effort maps to the
             # model's supported thinking_level on the OpenAI-compatible endpoint.
             payload["reasoning_effort"] = "low"
+            if max_tokens:
+                # Thinking tokens are paid from the same max_tokens budget as the
+                # visible reply. A tiny cap (e.g. the 48-token Benchmark) would be
+                # spent entirely on thinking: empty text, but quota still used.
+                max_tokens = max(int(max_tokens), THINKING_MIN_MAX_TOKENS)
         if max_tokens:
             payload["max_tokens"] = int(max_tokens)
         if stream and self.name in ("groq", "openrouter") and self.config.get("usage_stream_options", True):
@@ -522,6 +528,15 @@ class OpenAICompatibleProvider(BaseProvider):
             content = "\n".join(str(x.get("text", "")) for x in content if isinstance(x, dict))
         content = str(content or "").strip()
         if not content:
+            finish = ""
+            try:
+                finish = str(data["choices"][0].get("finish_reason") or "")
+            except (KeyError, IndexError, TypeError, AttributeError):
+                pass
+            if finish == "length":
+                raise self._fail("مدل پاسخ خالی برگرداند: سقف توکن خروجی (شامل توکن‌های thinking) تمام شد.", True, kind="response")
+            if finish:
+                raise self._fail(f"مدل پاسخ خالی برگرداند (finish_reason={finish}).", True, kind="response")
             raise self._fail("مدل پاسخ خالی برگرداند.", True, kind="response")
         return content
 

@@ -36,6 +36,20 @@ class GeminiReasoningEffortTests(unittest.TestCase):
             self.assertEqual(payload["reasoning_effort"], "low")
             self.assertEqual(payload["stream"], streaming)
 
+    def test_thinking_models_get_a_token_floor_for_small_caps(self):
+        for model in ("gemini-3.8-flash", "gemini-4-hydrogen"):
+            provider = OpenAICompatibleProvider({
+                "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+                "api_key": "google-test-key",
+                "model": model,
+            }, name="google-ai")
+            _u, _h, small = provider._prepare(MESSAGES, "system", 0.3, True, 48)
+            _u, _h, big = provider._prepare(MESSAGES, "system", 0.3, True, 4000)
+            _u, _h, none = provider._prepare(MESSAGES, "system", 0.3, True)
+            self.assertGreaterEqual(small["max_tokens"], 1024)
+            self.assertEqual(big["max_tokens"], 4000)
+            self.assertNotIn("max_tokens", none)
+
     def test_other_google_models_keep_provider_default_reasoning(self):
         provider = OpenAICompatibleProvider({
             "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
