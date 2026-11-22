@@ -1,3 +1,13 @@
+## Stage 3 — Planned execution safety guards (2026-11-22)
+
+- Branch: `fix/planned-execution-safety-guards` (PR will be opened against `claude/task-understanding-review`).
+- `ToolRegistry.clean_args` now rejects undeclared arguments rather than silently dropping typos/extra fields.
+- `AutonomyMixin._run_calls_planned` now rejects a tool call that references an unknown step, a step assigned to another tool, or a step already completed/running/awaiting evidence review.
+- `TaskPlan.deps_unmet` now fails closed when a dependency ID is missing from persisted task state.
+- Added `tests/test_execution_safety.py` covering strict argument checks, mismatched/unknown/completed/review steps, and missing dependencies.
+- Validation: GitHub source/test files were fetched back and inspected. Python unittest and Windows runtime were not executed; GitHub Actions were not run.
+- Next local validation: `python -m unittest tests.test_execution_safety tests.test_fast_commands tests.test_task_triage tests.test_task_cost`.
+
 ## Fast Path stage 2 — Planner / ToolRegistry boundary review (2026-11-22)
 
 - Branch: `fix/fastpath-web-lock-scope`; PR #224: https://github.com/alizesta/Kira/pull/224 (open, draft; not merged).
