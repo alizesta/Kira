@@ -128,13 +128,15 @@ class TaskPlan:
     def step(self, sid) -> Step | None:
         if isinstance(sid, bool):
             return None
-        try:
-            sid = int(sid)
-        except (TypeError, ValueError, OverflowError):
+        if isinstance(sid, int):
+            step_id = sid
+        elif isinstance(sid, str) and sid.strip().isdigit():
+            step_id = int(sid.strip())
+        else:
             return None
-        if sid <= 0:
+        if step_id <= 0:
             return None
-        matches = [step for step in self.steps if step.id == sid]
+        matches = [step for step in self.steps if type(step.id) is int and step.id == step_id]
         # Duplicate persisted IDs make references ambiguous; fail closed.
         return matches[0] if len(matches) == 1 else None
 
@@ -149,9 +151,11 @@ class TaskPlan:
             if isinstance(dependency, bool):
                 out.append(dependency)
                 continue
-            try:
-                dependency_id = int(dependency)
-            except (TypeError, ValueError, OverflowError):
+            if isinstance(dependency, int):
+                dependency_id = dependency
+            elif isinstance(dependency, str) and dependency.strip().lstrip("-").isdigit():
+                dependency_id = int(dependency.strip())
+            else:
                 out.append(dependency)
                 continue
             if dependency_id <= 0:
