@@ -410,6 +410,11 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         first = self._run(agent, first_plan)
         self.assertEqual(first["tools"][0]["status"], "ok")
 
+        # The lightweight agent fixture does not initialize task persistence;
+        # provide the three per-turn collections used by AutonomyMixin._turn_reset.
+        agent._turn_plan_ids = {}
+        agent._pause_requests = set()
+        agent._cancel_plan_requests = set()
         agent.begin_turn("kira")
         second_plan = self._plan(agent)
         second = self._run(agent, second_plan)
