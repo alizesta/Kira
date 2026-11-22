@@ -93,7 +93,35 @@ class Step:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Step":
-        return cls(int(d.get("id", 0)), str(d.get("title", ""))[:140], str(d.get("tool", "")), [int(x) for x in d.get("depends_on", []) if str(x).lstrip("-").isdigit()],
+        raw_id = d.get("id", 0)
+        if isinstance(raw_id, bool):
+            raise ValueError("task step ID must be a positive integer")
+        if isinstance(raw_id, int):
+            step_id = raw_id
+        elif isinstance(raw_id, str) and raw_id.strip().isdigit():
+            step_id = int(raw_id.strip())
+        else:
+            raise ValueError("task step ID must be a positive integer")
+        if step_id <= 0:
+            raise ValueError("task step ID must be a positive integer")
+
+        raw_dependencies = d.get("depends_on", [])
+        if not isinstance(raw_dependencies, list):
+            raise ValueError("task step dependencies must be a list")
+        dependencies = []
+        for dependency in raw_dependencies:
+            if isinstance(dependency, bool):
+                dependencies.append(0)
+            elif isinstance(dependency, int):
+                dependencies.append(dependency)
+            elif isinstance(dependency, str) and dependency.strip().lstrip("-").isdigit():
+                dependencies.append(int(dependency.strip()))
+            else:
+                # Preserve the fact that a prerequisite was malformed; 0 is invalid
+                # and TaskPlan.deps_unmet will block the step rather than drop it.
+                dependencies.append(0)
+
+        return cls(step_id, str(d.get("title", ""))[:140], str(d.get("tool", "")), dependencies,
                    bool(d.get("confirm")), str(d.get("status", PENDING)), {}, int(d.get("attempts", 0)),
                    str(d.get("result", "")), str(d.get("error", "")), str(d.get("verified", "")), bool(d.get("adhoc")), bool(d.get("declined")),
                    postcondition=str(d.get("postcondition", ""))[:240])
@@ -145,9 +173,13 @@ class TaskPlan:
 
     def deps_unmet(self, st: Step) -> list:
         out = []
+        try:
+            step_index = next(i for i, item in enumerate(self.steps) if item is st)
+        except StopIteration:
+            return list(st.depends_on) or [0]
         for dependency in st.depends_on:
             # Persisted task state is untrusted: malformed, non-positive, missing,
-            # or ambiguous references must never be treated as satisfied.
+            # ambiguous, self, and forward references must never count as satisfied.
             if isinstance(dependency, bool):
                 out.append(dependency)
                 continue
@@ -162,7 +194,11 @@ class TaskPlan:
                 out.append(dependency_id)
                 continue
             dep = self.step(dependency_id)
-            if dep is None or dep.status not in (DONE, SKIPPED):
+            if dep is None:
+                out.append(dependency_id)
+                continue
+            dependency_index = next(i for i, item in enumerate(self.steps) if item is dep)
+            if dependency_index >= step_index or dep.status not in (DONE, SKIPPED):
                 out.append(dependency_id)
         return out
 
@@ -365,7 +401,13 @@ class TaskPlan:
         p.goal_reviewed, p.goal_verified = bool(d.get("goal_reviewed")), bool(d.get("goal_verified"))
         p.goal_review_reason = _safe(d.get("goal_review_reason", ""), 220)
         p.session_id = str(d.get("session_id") or "kira")
-        p.steps = [Step.from_dict(x) for x in d.get("steps", []) if isinstance(x, dict)]
+        raw_steps = d.get("steps", [])
+        if not isinstance(raw_steps, list) or any(not isinstance(item, dict) for item in raw_steps):
+            raise ValueError("task steps must be a list of objects")
+        p.steps = [Step.from_dict(item) for item in raw_steps]
+        step_ids = [step.id for step in p.steps]
+        if len(step_ids) != len(set(step_ids)):
+            raise ValueError("task contains duplicate step IDs")
         if p.steps and not p.success_criteria and p.goal:
             p.success_criteria = [p.goal]
         for step in p.steps:
