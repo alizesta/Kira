@@ -306,4 +306,4 @@ Newly documented subsystem facts:
 kira/config.py still carries Qwen3-era default values/comments for local ASR, while VoicePage sets local_voice_asr_backend=shenava and the real-time Listener directly loads Shenava. The local voice documentation now describes the implemented behavior. A separate source cleanup should align defaults/comments and add a focused regression test.
 
 ### Verification status
-The source tree inventory contained 585 tracked files and 164 Python test files. The source and documentation were statically inspected, but tests and runtime acceptance were not executed in this pass. The earlier failed GitHub Actions runs remain inconclusive until their actual logs or a successful rerun are available.
+The source tree inventory contained 583 tracked files and 164 Python test files. The source and documentation were statically inspected, but tests and runtime acceptance were not executed in this pass. The earlier failed GitHub Actions runs remain inconclusive until their actual logs or a successful rerun are available.
