@@ -2,6 +2,7 @@
 - Strengthened integration coverage using the production `ToolRegistry` and `AccessManager`: successful dispatch is recorded once in Journal; post-plan tools-off and runtime Competitive Safe denials are also journaled.
 - Verified Competitive Safe transition cancels a pending Fast Path before registry dispatch.
 - Verified replaying an identical Fast Path plan returns the cached result without a second handler call or Journal record.
+- Verified the cache is cleared at the next turn so a fresh request can execute again; cancellation before dispatch leaves Journal empty.
 - The model router remains a deliberate fail-fast stub, proving these local deterministic calls do not invoke the model.
 - Validation: source and tests fetched back from GitHub and statically inspected. Python unittest, Windows runtime, and GitHub Actions were not executed.
 
