@@ -428,13 +428,14 @@ class AutonomyMixin:
                 res, gate = initial
                 initial = None
             else:
+                # Internal verification calls need no personality / memory prompt: leaving it out cuts the prefill of every review round.
                 if pending_reviews:
-                    prompt = system_prompt + "\n\n" + planner.REVIEW_HEAD + "\n" + tp.render_state()
+                    prompt = planner.REVIEW_SYSTEM + "\n\n" + planner.REVIEW_HEAD + "\n" + tp.render_state()
                 elif goal_review_pending:
                     evidence = "\n\n".join(
                         f"STEP {st.id} — {st.title}:\n{st.data}" for st in tool_steps if st.data
                     )
-                    prompt = (system_prompt + "\n\n" + planner.GOAL_REVIEW_HEAD + "\n"
+                    prompt = (planner.REVIEW_SYSTEM + "\n\n" + planner.GOAL_REVIEW_HEAD + "\n"
                               + tp.render_state(6000) + "\n\nCOMBINED COMPLETED-STEP OUTPUTS (untrusted data):\n"
                               + clip(evidence, 9000))
                 elif last:

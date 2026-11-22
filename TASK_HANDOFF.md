@@ -3,6 +3,7 @@
 ## Latest task: review of model-driven task understanding (2026-11-22, 08:03 Iran)
 
 - Branch `claude/task-understanding-review` (from `new-main` @ `42d34b6`). Reviewed `20aa301` (model-driven planning/verification) and `42d34b6` (model classifies intent in auto mode); fixed one regression (Competitive Safe gave every message a web plan, see CHANGELOG 08:03).
+- 08:32 Iran: planner review calls (step review + final goal review) use `planner.REVIEW_SYSTEM` instead of the character prompt (CHANGELOG 08:32). A one-tool task is still 5 model calls; real latency per call on the user's routes is unmeasured. Next candidates (need real numbers first): skip the goal review for one-step plans, merge review with the next action, or route review calls to a faster `surface` model.
 - 08:23 Iran: the open cost question was resolved with a model-owned triage (`ToolPlan.index_only`, `use_tools`, see CHANGELOG 08:23): chat = one small call, unknown-wording tasks escalate to the full catalog/planner. Validate on Windows with a real route: «سلام» answers fast; «یه والپیپر زنده‌ی پورشه بذار» escalates and plans; check that weak local models (Qwen 4B) emit the `use_tools` block reliably (if not, they answer in text and the task is missed: then lower triage to keyword hits only for such routes); two characters chatting at once no longer wait on each other.
 - Not verified: Windows runtime, real-model behaviour on the Wallpaper Engine / Porsche 911 example, full test suite. Only `tests.test_fast_commands` and `tests.test_task_store` were run (53 OK).
 

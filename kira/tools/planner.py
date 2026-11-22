@@ -271,6 +271,9 @@ class AgentGate(ToolGate):
         return self.mode == "tool" and self.kind == "review"
 
 
+REVIEW_SYSTEM = ("You are the internal verifier of a Windows PC assistant. This phase produces only the structured review block described below; "
+                 "no personality, memory or conversation is needed, and nothing is shown to the user.")
+
 REVIEW_HEAD = """\
 TASK STEP REVIEW (internal, evidence-based; no action is permitted in this phase).
 The TASK STATE contains one or more [review] steps and the TEMPORARY DATA contains their REAL tool outputs.
