@@ -1,3 +1,13 @@
+## Fast Path stage 2 — Planner / ToolRegistry boundary review (2026-11-22)
+
+- Branch: `fix/fastpath-web-lock-scope`; PR #224: https://github.com/alizesta/Kira/pull/224 (open, draft; not merged).
+- Found and fixed unnecessary WebIntel lock acquisition for deterministic local Fast Path calls. The fast route returns after its single allow-listed registry execution and does not enter a web/model round, so it no longer serializes unrelated web research.
+- Hardened `planner.parse_plan`: malformed, unknown, and forward dependencies are rejected rather than silently dropped. Valid backward dependencies remain intact.
+- Added regression coverage for the web-lock boundary and four planner dependency cases.
+- Reviewed execution boundary: Fast Path still reaches `ToolRegistry.execute`; app execution guard, `tools_mode=off`, argument validation, AccessManager permissions/intent, and sensitive-action confirmation remain enforced.
+- Validation: files fetched back from GitHub and branch diff verified. Python unittest and Windows runtime were not run; GitHub Actions were not triggered.
+- Next: when a local checkout is available, run `python -m unittest tests.test_fast_commands`, then the related task-triage/planner tests. Do not treat PR #224 as runtime-validated until then.
+
 ## Latest task: 20 adversarial multi-step cases (2026-11-22)
 
 - Added 20 hard cases to `tests/test_task_understanding_benchmark.py`: conditional operations, sequence constraints, read-only boundaries, explicit approval/no-delete constraints, web evidence, status polling, and combinations of local tools with web/MCP/agents.

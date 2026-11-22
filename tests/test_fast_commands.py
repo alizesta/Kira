@@ -166,6 +166,29 @@ class FastPathIntegrationTests(unittest.TestCase):
         self.assertEqual(chunks, [result["text"]])
 
 
+    def test_fast_path_does_not_acquire_web_research_lock(self):
+        class LockProbe:
+            def __init__(self):
+                self.acquire_calls = 0
+                self.release_calls = 0
+
+            def acquire(self, timeout=None):
+                self.acquire_calls += 1
+                return True
+
+            def release(self):
+                self.release_calls += 1
+
+        agent = self._agent()
+        lock = LockProbe()
+        agent._web_research_lock = lock
+        plan = agent.plan("صدا رو روی ۵۰ درصد بذار", session_id="kira")
+        result = agent.run(_NoModelRouter(), [{"role": "user", "content": "صدا رو روی ۵۰ درصد بذار"}],
+                           "system", 0.2, plan)
+        self.assertTrue(result["fast_path"])
+        self.assertEqual(lock.acquire_calls, 0)
+        self.assertEqual(lock.release_calls, 0)
+
     def test_read_only_system_query_runs_without_model_round_trip(self):
         agent = self._agent(tool_name="get_system_info")
         plan = agent.plan("مشخصات سیستم چیه", session_id="kira")
@@ -608,6 +631,59 @@ class SemanticResultReviewTests(unittest.TestCase):
         self.assertIn("call-signature", plan.done_sigs)
         self.assertIn("ارزیابی تحقق هدف", plan.done_sigs["call-signature"])
         self.assertEqual(step.postcondition, "پنجره Wallpaper Engine فعال باشد")
+
+
+class PlannerDependencyValidationTests(unittest.TestCase):
+    @staticmethod
+    def _plan(steps):
+        import json
+        return "<kira_plan>" + json.dumps({
+            "goal": "Complete dependent steps",
+            "steps": steps,
+        }) + "</kira_plan>"
+
+    @staticmethod
+    def _registry():
+        return SimpleNamespace(get=lambda _name: None)
+
+    def test_forward_dependency_is_rejected_instead_of_dropped(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": [2]},
+            {"id": 2, "title": "Second", "depends_on": []},
+        ))
+        with self.assertRaisesRegex(ValueError, "must be declared earlier"):
+            parse_plan(raw, self._registry(), max_steps=8)
+
+    def test_unknown_dependency_is_rejected(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": [99]},
+        ))
+        with self.assertRaisesRegex(ValueError, "must be declared earlier"):
+            parse_plan(raw, self._registry(), max_steps=8)
+
+    def test_non_numeric_dependency_is_rejected(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": ["later"]},
+        ))
+        with self.assertRaisesRegex(ValueError, "invalid dependency"):
+            parse_plan(raw, self._registry(), max_steps=8)
+
+    def test_valid_backward_dependency_is_preserved(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": []},
+            {"id": 2, "title": "Second", "depends_on": [1]},
+        ))
+        parsed = parse_plan(raw, self._registry(), max_steps=8)
+        self.assertEqual(parsed["steps"][1]["depends_on"], [1])
+
 
 if __name__ == "__main__":
     unittest.main()
