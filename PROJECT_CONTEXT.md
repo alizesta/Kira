@@ -19,6 +19,13 @@ The tool protocol imports the standalone provider-neutral `kira/think_filter.py`
 
 These are implementation boundaries for the Task 1 startup optimization. They do not assert a measured startup-time or memory improvement until Windows measurements are recorded in `logs/startup-performance.jsonl`.
 
+## Tool schema scope boundaries (2026-11-23)
+Tool exposure is distinct from runtime permission. In `tools_mode=auto`, `ToolPlan.categories` remains the full set used for availability/security policy, while `ToolPlan.schema_categories` controls which tool schemas and text catalog are shown to the model for the current turn. The selected scope is derived from detected request topics and includes every registered tool tagged with at least one selected category. Mixed-category requests retain all detected groups; `tools_mode=always` retains the full catalog.
+
+Unclassified wording must stay on the compact capability-index triage path, including when the active provider supports native function calling. Only an explicit `use_tools` escalation expands the scope to the local tool catalog. MCP and independent-agent schemas remain opt-in. An empty selected scope means no tools, never “all tools”. ToolAgent enforces the current per-session schema scope again before registry dispatch, so a model-supplied hidden function name is denied before its handler runs. Competitive Safe intersects both the runtime allowance and model-visible scope with its web-only policy.
+
+This is a source-level implementation contract; schema counts, provider token usage, request latency and full regression behavior remain unverified until the focused tests and Windows/provider acceptance are executed.
+
 ## Version metadata and developer attribution (mandatory)
 This rule binds every developer and every AI agent (Codex, OpenCode, Claude Code, ChatGPT) that changes this repository.
 
