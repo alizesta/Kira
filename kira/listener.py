@@ -53,6 +53,7 @@ class Listener(QThread):
         self._partial_last_samples = 0
         self._partial_last_text = ""
         self._segment_partial_text = ""
+        self._partial_decode_count = 0  # Shenava is offline: every preview decodes the full utterance again.
 
     # ---- called by the window ----
     def begin_kira_speech(self):
@@ -208,6 +209,7 @@ class Listener(QThread):
         elif kind == "start":
             self._partial_last_at = 0.0
             self._partial_last_samples = 0
+            self._partial_decode_count = 0
             self._segment_partial_text = ""
             self.state.emit("hearing")
         elif kind == "noise":
@@ -241,7 +243,9 @@ class Listener(QThread):
         self.partial_heard.emit(value)
 
     def _maybe_emit_partial(self, segmenter, model):
-        """Re-decode the growing utterance so later context can correct earlier words."""
+        """Emit one live preview per utterance; Shenava's offline decoder reprocesses all buffered audio."""
+        if self._partial_decode_count >= 1:
+            return
         now = time.monotonic()
         audio_samples = len(segmenter.buf) * segmenter.block
         if audio_samples < int(RATE * PARTIAL_MIN_AUDIO_S):
@@ -255,6 +259,7 @@ class Listener(QThread):
         audio = segmenter.snapshot()
         if not len(audio):
             return
+        self._partial_decode_count += 1
         hypothesis = self._transcribe(model, audio)
         if not hypothesis or is_hallucination(hypothesis):
             return

@@ -61,7 +61,7 @@ class LocalASRFallbackTests(unittest.TestCase):
 
 
 class LivePartialRecognitionTests(unittest.TestCase):
-    def test_growing_audio_hypotheses_replace_earlier_words(self):
+    def test_partial_asr_runs_once_per_utterance_and_resets_for_the_next(self):
         from kira.listener import Listener
 
         class ActiveSegment:
@@ -76,13 +76,19 @@ class LivePartialRecognitionTests(unittest.TestCase):
         listener.partial_heard.connect(emitted.append)
         segment = ActiveSegment()
         with mock.patch("kira.listener.time.monotonic", side_effect=(10.0, 11.0)):
-            with mock.patch.object(listener, "_transcribe", side_effect=("من فردا", "من امروز")):
+            with mock.patch.object(listener, "_transcribe", side_effect=("من فردا", "من امروز")) as transcribe:
                 listener._maybe_emit_partial(segment, None)
                 segment.buf.extend([np.zeros(BLOCK, dtype=np.float32) for _ in range(16)])
                 listener._maybe_emit_partial(segment, None)
-        self.assertEqual(emitted, ["من فردا", "من امروز"])
-        self.assertNotIn("فردا", emitted[-1])
 
+                self.assertEqual(transcribe.call_count, 1)
+                self.assertEqual(emitted, ["من فردا"])
+
+                listener._on_event(("start",), None)
+                listener._maybe_emit_partial(segment, None)
+
+                self.assertEqual(transcribe.call_count, 2)
+        self.assertEqual(emitted, ["من فردا", "من امروز"])
     def test_partial_hypotheses_are_not_emitted_for_recognizer_hallucinations(self):
         from kira.listener import Listener
 
