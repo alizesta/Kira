@@ -1,4 +1,13 @@
 ## 2026-11-22 (Fast Path stage 4 — real registry boundary tests)
+
+## 2026-11-23 (startup deferred loading — Task 1)
+- Moved the streaming `ThinkFilter` into a provider-neutral module so importing the tool protocol no longer imports the Hybrid AI/provider stack.
+- Added a thread-safe lazy ToolAgent facade. Bootstrap now defers importing and constructing ToolAgent and its registry until the first chat/tool-agent use; settings updates and Game Mode restrictions are retained without forcing construction, and passive shutdown/session cleanup does not create an unused agent.
+- Settings tabs now start as lightweight placeholders and build their pages on first visit. The existing page builders, controller ownership, translations, responsive finalizers and explicit Save workflow are preserved.
+- Deferred optional Piper warm-up and Windows MusicWatcher startup until after the initial desktop paint. Provider model-catalog refresh now starts only on first entry to the AI/Provider page.
+- ToolAgent defers Windows app-catalog warm-up until an app capability is executed and installs optional MCP integration only for explicit MCP/agent requests.
+- Added focused regression coverage in `tests/test_startup_deferred_loading.py`. Tests, Python imports, Windows GUI startup, and memory/timing measurements have **not** been executed in this GitHub-only session; no runtime pass or performance percentage is claimed.
+
 - Strengthened integration coverage using the production `ToolRegistry` and `AccessManager`: successful dispatch is recorded once in Journal; post-plan tools-off and runtime Competitive Safe denials are also journaled.
 - Verified Competitive Safe transition cancels a pending Fast Path before registry dispatch.
 - Verified replaying an identical Fast Path plan returns the cached result without a second handler call or Journal record.
