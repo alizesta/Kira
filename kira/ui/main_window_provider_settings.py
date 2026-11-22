@@ -322,12 +322,15 @@ class ProviderSettingsController(WindowFeatureController):
         key = getattr(worker, "_model_key", None)
         if key is None or self.context.state._closing:
             return
+        try:
+            ok, value = result
+            if ok:
+                good, message, ms = value
+            else:
+                good, message, ms = False, str(value), None
+        except Exception as exc:  # noqa: BLE001 - malformed worker result must still release the indicator
+            good, message, ms = False, f"نتیجهٔ تست قابل‌خواندن نبود: {type(exc).__name__}", None
         worker._model_test_terminal = True
-        ok, value = result
-        if ok:
-            good, message, ms = value
-        else:
-            good, message, ms = False, str(value), None
         try:
             model_catalog.record_test(self.context.services.settings, key[0], key[1], good, ms, message)
             self.feature_controller("runtime").save_now()
