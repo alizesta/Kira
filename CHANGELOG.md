@@ -1,3 +1,8 @@
+## 2026-11-22 (Fast Path / web-lock boundary)
+- Fixed an unnecessary serialization conflict: deterministic local Fast Path calls return before any model or web-tool round, so they no longer acquire the process-wide WebIntel research lock merely because auto-mode plans expose the web category in their capability set.
+- Added a regression test that probes the web lock while executing a deterministic volume command through ToolAgent.
+- Validation: source and test changes fetched back from GitHub and branch diff checked. Python unittest execution, Windows runtime, and GitHub Actions were not run.
+
 ## 2026-11-22 (20 adversarial multi-step cases)
 - Added 20 harder task-understanding cases to `tests/test_task_understanding_benchmark.py`. They combine conditional branches, sequencing, explicit non-action constraints, read-before-write, status verification, and mixed local/web/MCP/agent capabilities.
 - The hard-case test checks every required tool family and verifies that each case exits the cheap index-only triage route. An independent harness reconstructed from the committed detector patterns found all 20/20 required-category sets; this is not execution of the Python unittest module or live planning.
