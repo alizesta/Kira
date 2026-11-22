@@ -82,6 +82,20 @@ class ToolArgumentValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ToolError, "پارامتر ناشناخته"):
             self.registry.clean_args(self.tool, {"percent": 50, "percennt": 80})
 
+    def test_unknown_argument_never_reaches_tool_handler(self):
+        called = []
+        tool = Tool(
+            "set_volume",
+            "Set the system volume",
+            lambda args: called.append(args) or "volume changed",
+            params=(Param("percent", "integer", required=True),),
+            level=ACTION,
+        )
+        self.registry.register(tool)
+        result = self.registry.execute("set_volume", {"percent": 50, "percennt": 80})
+        self.assertEqual(result.status, BAD_ARGS)
+        self.assertEqual(called, [])
+
     def test_known_arguments_are_preserved(self):
         self.assertEqual(
             self.registry.clean_args(self.tool, {"percent": 50}),
