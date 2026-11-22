@@ -1,4 +1,4 @@
-"""Manual Game Mode and foreground-game detection for Ai1.
+""""Manual Game Mode and foreground-game detection for Ai1.
 
 Detection is advisory only. It never enables Game Mode or captures a frame by itself.
 Screen capture is available only while the user has manually enabled Game Mode.
@@ -11,7 +11,7 @@ import re
 from ctypes import wintypes
 
 from PySide6.QtCore import QObject, Signal, Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import QApplication
 from .game_detection import is_ai1_window
 
@@ -28,7 +28,7 @@ _NON_GAME = {
     "cmd.exe", "conhost.exe", "openconsole.exe", "powershell.exe", "pwsh.exe", "windowsterminal.exe", "wt.exe",
     "python.exe", "pythonw.exe", "py.exe", "pyw.exe", "qtwebengineprocess.exe",
 }
-_OWN_TITLE = re.compile(r"\b(kira|ai1)\b", re.I)
+_OWN_TITLE = re.compile(r"\\b(kira|ai1)\\b", re.I)
 CAPTURE_MAX_WIDTH = 854
 CAPTURE_MAX_HEIGHT = 480
 CAPTURE_INTERVAL_MS = 1000
@@ -41,6 +41,25 @@ def fit_capture_size(width: int, height: int, max_width: int = CAPTURE_MAX_WIDTH
     width, height = max(1, int(width)), max(1, int(height))
     scale = min(1.0, max_width / width, max_height / height)
     return max(1, round(width * scale)), max(1, round(height * scale))
+
+
+def fit_capture_region(rect, screen_geometry, device_pixel_ratio=1.0):
+    """Convert a physical desktop window rect into a clipped DXGI output-local region."""
+    left, top, right, bottom = (int(value) for value in rect)
+    screen_x, screen_y, screen_width, screen_height = (
+        int(screen_geometry.x()), int(screen_geometry.y()),
+        int(screen_geometry.width()), int(screen_geometry.height()),
+    )
+    scale = max(0.5, float(device_pixel_ratio or 1.0))
+    output_width = max(1, round(screen_width * scale))
+    output_height = max(1, round(screen_height * scale))
+    left = max(0, min(output_width, round(left - screen_x * scale)))
+    top = max(0, min(output_height, round(top - screen_y * scale)))
+    right = max(0, min(output_width, round(right - screen_x * scale)))
+    bottom = max(0, min(output_height, round(bottom - screen_y * scale)))
+    if right <= left or bottom <= top:
+        return None
+    return left, top, right, bottom
 
 
 _GAME_HINTS = re.compile(
@@ -77,6 +96,7 @@ class GameModeMonitor(QObject):
         self.enabled = False
         self.last_game = None
         self._seen_pids = set()
+        self._dxcam_camera = None
         self._user32 = ctypes.windll.user32 if os.name == "nt" else None
         self._kernel32 = ctypes.windll.kernel32 if os.name == "nt" else None
         if self._user32 is not None:
@@ -155,13 +175,61 @@ class GameModeMonitor(QObject):
             self._seen_pids.add(info["pid"])
             self.game_detected.emit(dict(info))
 
+    def _release_dxcam(self):
+        camera, self._dxcam_camera = self._dxcam_camera, None
+        if camera is not None:
+            try:
+                camera.release()
+            except Exception:  # noqa: BLE001 - cleanup must not interrupt Game Mode shutdown
+                pass
+
     def set_enabled(self, enabled):
         self.enabled = bool(enabled)
         if not self.enabled:
             self.last_game = None
+            self._release_dxcam()
+
+    def _capture_with_dxcam(self, rect, screen, max_width, max_height):
+        """Capture the foreground game through DXGI Desktop Duplication when available."""
+        try:
+            import dxcam
+            geometry = screen.geometry()
+            region = fit_capture_region(
+                rect, geometry, getattr(screen, "devicePixelRatio", lambda: 1.0)()
+            )
+            if region is None:
+                return None
+            if self._dxcam_camera is None:
+                # BGRA avoids OpenCV and keeps the capture path lightweight.
+                self._dxcam_camera = dxcam.create(
+                    output_color="BGRA",
+                    backend="dxgi",
+                    processor_backend="numpy",
+                    max_buffer_len=2,
+                )
+            frame = self._dxcam_camera.grab(region=region, new_frame_only=False)
+            if frame is None or getattr(frame, "ndim", 0) != 3 or frame.shape[2] != 4:
+                return None
+            height, width = frame.shape[:2]
+            image = QImage(
+                frame.data, width, height, int(frame.strides[0]),
+                QImage.Format.Format_ARGB32,
+            ).copy()
+            if image.isNull():
+                return None
+            target = fit_capture_size(image.width(), image.height(), max_width, max_height)
+            if image.width() > target[0] or image.height() > target[1]:
+                image = image.scaled(
+                    target[0], target[1], Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.FastTransformation,
+                )
+            return QPixmap.fromImage(image)
+        except Exception:  # noqa: BLE001 - keep the legacy Qt path as a safe fallback
+            self._release_dxcam()
+            return None
 
     def capture_last_game(self, max_width=CAPTURE_MAX_WIDTH, max_height=CAPTURE_MAX_HEIGHT):
-        """Return a bounded QPixmap for the last detected game window, only in manual Game Mode."""
+        """Return a bounded game frame; prefer DXcam and retain Qt as a fallback."""
         if not self.enabled or self._user32 is None or not self.last_game:
             return None
         hwnd = int(self.last_game["hwnd"])
@@ -176,10 +244,20 @@ class GameModeMonitor(QObject):
         screen = QApplication.primaryScreen()
         if screen is None:
             return None
+        pixmap = self._capture_with_dxcam(
+            self.last_game.get("rect", (0, 0, 0, 0)), screen, max_width, max_height
+        )
+        if pixmap is not None and not pixmap.isNull():
+            return pixmap
+        # Compatibility fallback for systems where DXcam is unavailable or unsupported.
         pixmap = screen.grabWindow(hwnd)
         if pixmap.isNull():
             return None
         target = fit_capture_size(pixmap.width(), pixmap.height(), max_width, max_height)
         if pixmap.width() > target[0] or pixmap.height() > target[1]:
-            pixmap = pixmap.scaled(target[0], target[1], Qt.KeepAspectRatio, Qt.FastTransformation)
+            pixmap = pixmap.scaled(
+                target[0], target[1], Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.FastTransformation,
+            )
         return pixmap
+"
