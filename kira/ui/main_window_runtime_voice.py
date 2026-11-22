@@ -215,9 +215,14 @@ class RuntimeVoiceMixin:
             return
         value = str(text or "").strip()
         if value and not self.context.state._closing:
-            self.feature_controller("session").add_chat(
-                "user" if role == "user" else "assistant", value
+            message_role = "user" if role == "user" else "assistant"
+            self.feature_controller("runtime").save_message(
+                message_role,
+                value,
+                metadata={"source": "gemini_live", "modality": "audio"},
+                use_current_request=False,
             )
+            self.feature_controller("session").add_chat(message_role, value)
 
     def _on_gemini_failed(self, message):
         worker = self.sender()
