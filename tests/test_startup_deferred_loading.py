@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import ast
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 
@@ -116,6 +118,24 @@ class StartupImportBoundaryTests(unittest.TestCase):
         ]
         self.assertNotIn("hybrid_ai", imports)
         self.assertIn("think_filter", imports)
+
+    def test_importing_tool_protocol_does_not_load_agent_or_provider_stack(self):
+        code = (
+            "import sys; import kira.tools.protocol; "
+            "forbidden = {'kira.tools.agent', 'kira.tools.builtin', "
+            "'kira.tools.appcatalog', 'kira.hybrid_ai', 'kira.hybrid_providers'}; "
+            "loaded = forbidden.intersection(sys.modules); "
+            "assert not loaded, sorted(loaded)"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=20,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
     def test_bootstrap_keeps_tool_agent_import_inside_lazy_factory(self):
         source = (ROOT / "kira" / "ui" / "bootstrap.py").read_text(encoding="utf-8")
