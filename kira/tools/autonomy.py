@@ -662,7 +662,7 @@ class AutonomyMixin:
         for call in calls[:protocol.MAX_CALLS_PER_ROUND]:
             if self._cancel.is_set():
                 break
-            name, args = call["tool"], call.get("args") or {}
+            name, args = call["tool"], call.get("args", {})
             tool = self.registry.get(name)
             label = TOOL_LABELS.get(name, name)
             sig = call_sig(name, args)
@@ -670,21 +670,28 @@ class AutonomyMixin:
                 results.append(self.registry.execute(name, args))             # unknown tool: the registry explains
                 notes.append(f"unknown tool '{name}'")
                 continue
+            if not isinstance(args, dict):
+                results.append(ToolResult(name, BAD_ARGS, "آرگومان‌های فراخوانی ابزار باید یک شیء JSON باشند؛ اجرا نشد.", {}, tool.level))
+                notes.append(f"rejected non-object arguments for tool {name}")
+                continue
             requested_step = call.get("step")
-            if requested_step is not None:
-                requested = tp.step(requested_step)
-                if requested is None:
-                    results.append(ToolResult(name, BAD_ARGS, f"مرحله‌ی {requested_step} در برنامه وجود ندارد؛ این فراخوانی اجرا نشد.", args, tool.level))
-                    notes.append(f"rejected tool call for unknown step {requested_step}")
-                    continue
-                if requested.tool != name:
-                    results.append(ToolResult(name, BAD_ARGS, f"ابزار «{name}» با ابزار تعریف‌شده برای مرحله‌ی {requested.id} («{requested.tool or 'بدون ابزار'}») مطابقت ندارد؛ برنامه باید اصلاح شود.", args, tool.level))
-                    notes.append(f"rejected tool mismatch for step {requested.id}")
-                    continue
-                if requested.status in (DONE, SKIPPED, REVIEW, RUNNING):
-                    results.append(ToolResult(name, BAD_ARGS, f"مرحله‌ی {requested.id} در وضعیت «{requested.status}» است و فعلاً اجازه‌ی اجرای دوباره ندارد.", args, tool.level))
-                    notes.append(f"rejected repeat call for step {requested.id} in state {requested.status}")
-                    continue
+            if isinstance(requested_step, bool) or not isinstance(requested_step, int) or requested_step <= 0:
+                results.append(ToolResult(name, BAD_ARGS, "فراخوانی ابزار در اجرای برنامه باید شناسه‌ی عددی و مثبتِ مرحله را مشخص کند؛ اجرا نشد.", args, tool.level))
+                notes.append(f"rejected missing or invalid step id for tool {name}")
+                continue
+            requested = tp.step(requested_step)
+            if requested is None:
+                results.append(ToolResult(name, BAD_ARGS, f"مرحله‌ی {requested_step} در برنامه وجود ندارد یا شناسه‌ی آن مبهم است؛ این فراخوانی اجرا نشد.", args, tool.level))
+                notes.append(f"rejected tool call for unknown or ambiguous step {requested_step}")
+                continue
+            if requested.tool != name:
+                results.append(ToolResult(name, BAD_ARGS, f"ابزار «{name}» با ابزار تعریف‌شده برای مرحله‌ی {requested.id} («{requested.tool or 'بدون ابزار'}») مطابقت ندارد؛ برنامه باید اصلاح شود.", args, tool.level))
+                notes.append(f"rejected tool mismatch for step {requested.id}")
+                continue
+            if requested.status in (DONE, SKIPPED, REVIEW, RUNNING, AWAITING):
+                results.append(ToolResult(name, BAD_ARGS, f"مرحله‌ی {requested.id} در وضعیت «{requested.status}» است و فعلاً اجازه‌ی اجرای دوباره ندارد.", args, tool.level))
+                notes.append(f"rejected repeat call for step {requested.id} in state {requested.status}")
+                continue
             st = tp.bind(name, requested_step, label, tool.level >= SENSITIVE)
             if awaiting_confirmation:
                 # A Session has one confirmation slot. Keep later plan steps
