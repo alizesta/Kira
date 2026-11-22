@@ -87,6 +87,25 @@ _SMALLTALK = re.compile(
     r"hi|hello|hey|thanks|thank\s*you|ok|okay|yes|yeah|no|nope|bye|good\s*(?:morning|night)|how\s*are\s*you)[\s.!?؟،,]*$", re.I)
 _UNCERTAIN_RX = re.compile(r"شاید|فکر\s*کنم|احتمالا|احتمالاً|مطمئن\s*نیستم|یادم\s*نیست|\bmaybe\b|\bperhaps\b|i\s+think\b|not\s+sure|\bprobably\b", re.I)
 _CORRECTION_RX = re.compile(r"^(?:نه|نخیر|اشتباه|در\s*واقع|راستش|ببخشید|درستش|correction|actually|no)\b|اشتباه\s*گفتم|منظورم\s*این\s*بود|\bi\s+meant\b", re.I)
+_EXPLICIT_MEANING_RX = re.compile(r"(?P<term>[^\s،,؛.!؟?\n]+(?:\s+[^\s،,؛.!؟?\n]+)?)\s+یعنی\s+(?P<meaning>[^،,؛.!؟?\n]{2,60})")
+
+
+_MEANING_QUESTION_RX = re.compile(r"^(?:چی|چیه|چیست|چه|چطور|چگونه|what|why|how)\b", re.I)
+_MEANING_TERM_STOP = frozenset({
+    "من", "تو", "او", "ما", "شما", "اونا", "این", "اون", "آن", "همین", "همون", "که", "پس", "خب", "حالا", "ولی",
+    "اگه", "اگر", "وقتی", "یعنی", "هم", "همه", "هیچی", "اینکه", "آیا", "i", "you", "it", "this", "that",
+})
+_MEANING_TERM_COND = frozenset({"اگه", "اگر", "وقتی", "هر", "تا", "چون", "if", "when", "because"})
+
+
+def _is_definition(term: str, meaning: str, tail: str) -> bool:
+    """Guard for 'X یعنی Y': ignore questions ('X یعنی چی؟'), filler/discourse use ('من یعنی ...') and conditionals."""
+    words = term.split()
+    if not words or any(w.lower() in _MEANING_TERM_STOP for w in words[-1:]) or words[0].lower() in _MEANING_TERM_COND:
+        return False
+    if _MEANING_QUESTION_RX.match(meaning) or tail.lstrip().startswith(("؟", "?")):
+        return False
+    return True
 
 
 def norm(text) -> str:
@@ -332,10 +351,21 @@ def _delete_rows(con, ids) -> None:
 def record_user_message(content, facts=None, moments=None, now=None) -> int:
     """Called by persona_memory.observe() for every saved user message. `facts` = persona_memory.extract_facts_detailed() dicts,
     `moments` = [(kind, sentence)] with kind event|promise. Returns how many facts were stored. Never raises."""
-    if not _enabled or not (facts or moments):
+    if not _enabled:
         return 0
     now = time.time() if now is None else now
     stored = 0
+    language_rules = []
+    for match in _EXPLICIT_MEANING_RX.finditer(str(content or "")):
+        term = " ".join(match.group("term").split()).strip()
+        meaning = " ".join(match.group("meaning").split()).strip()
+        if not term or not meaning or len(term) > 48 or len(meaning) > 60:
+            continue
+        if not _is_definition(term, meaning, str(content or "")[match.end():match.end() + 2]):
+            continue
+        language_rules.append((term, meaning, match.group(0).strip()))
+    if not (facts or moments or language_rules):
+        return 0
     try:
         message_id = _find_message_id("user", content)
         with _lock, _db() as con:
@@ -351,6 +381,12 @@ def record_user_message(content, facts=None, moments=None, now=None) -> int:
                               category=KIND_CATEGORY.get(kind, "event"), quote=sentence, speaker="user", message_id=message_id, source_kind="user",
                               now=now, valid_to=now + EVENT_TTL.get(kind, 30 * DAY), source_text=content,
                               persona_id=moment[2] if len(moment) > 2 else None)
+                stored += 1 if fid else 0
+            for term, meaning, quote in language_rules:
+                note = f"In this user's colloquial usage, «{term}» means «{meaning}»; interpret it using the surrounding context."
+                fid = _ingest(con, subject="user", predicate="language_rule", value=f"{term} = {meaning}", text=note,
+                              category="permanent", quote=quote, speaker="user", message_id=message_id,
+                              source_kind="explicit_language_correction", now=now, source_text=content)
                 stored += 1 if fid else 0
             _prune(con)
     except Exception:                                                  # noqa: BLE001

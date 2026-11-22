@@ -14,6 +14,20 @@ class FastCommandParserTests(unittest.TestCase):
         if args is not None:
             self.assertEqual(result["args"], args)
 
+    def test_datetime_right_now_variants(self):
+        for text in ("What time is it right now?", "what's the time right now", "tell me the time right now"):
+            self.assertTool(text, "get_datetime", {})
+
+    def test_speaker_and_loudspeaker_words_route_to_audio(self):
+        self.assertTool("اسپیکر رو بی\u200cصدا کن", "audio_mute", {})
+        self.assertTool("بلندگو رو میوت کن", "audio_mute", {})
+
+    def test_generic_app_word_is_not_an_app_name(self):
+        for text in ("برنامه رو باز کن", "اپ رو باز کن", "open the app", "open it", "open that program"):
+            self.assertIsNone(parse_fast_command(text), text)
+        self.assertTool("برنامه کروم رو باز کن", "open_app", {"name": "کروم"})
+        self.assertTool("open chrome", "open_app", {"name": "chrome"})
+
     def test_datetime_persian_and_english(self):
         for text in ("ساعت چنده؟", "الان ساعت چنده", "تاریخ امروز چیه", "what time is it", "today's date"):
             self.assertTool(text, "get_datetime", {})
@@ -166,6 +180,29 @@ class FastPathIntegrationTests(unittest.TestCase):
         self.assertEqual(chunks, [result["text"]])
 
 
+    def test_fast_path_does_not_acquire_web_research_lock(self):
+        class LockProbe:
+            def __init__(self):
+                self.acquire_calls = 0
+                self.release_calls = 0
+
+            def acquire(self, timeout=None):
+                self.acquire_calls += 1
+                return True
+
+            def release(self):
+                self.release_calls += 1
+
+        agent = self._agent()
+        lock = LockProbe()
+        agent._web_research_lock = lock
+        plan = agent.plan("صدا رو روی ۵۰ درصد بذار", session_id="kira")
+        result = agent.run(_NoModelRouter(), [{"role": "user", "content": "صدا رو روی ۵۰ درصد بذار"}],
+                           "system", 0.2, plan)
+        self.assertTrue(result["fast_path"])
+        self.assertEqual(lock.acquire_calls, 0)
+        self.assertEqual(lock.release_calls, 0)
+
     def test_read_only_system_query_runs_without_model_round_trip(self):
         agent = self._agent(tool_name="get_system_info")
         plan = agent.plan("مشخصات سیستم چیه", session_id="kira")
@@ -180,6 +217,18 @@ class FastPathIntegrationTests(unittest.TestCase):
         agent = self._agent(tool_name="get_system_info")
         agent._competitive_safe_mode = True
         self.assertIsNone(agent.plan("مشخصات سیستم چیه", session_id="kira"))
+
+    def test_competitive_safe_ordinary_chat_gets_no_tool_plan(self):
+        agent = self._agent(tool_name="get_system_info")
+        agent._competitive_safe_mode = True
+        self.assertIsNone(agent.plan("سلام، حالت چطوره؟", session_id="kira"))
+
+    def test_competitive_safe_keeps_explicit_web_request(self):
+        agent = self._agent(tool_name="get_system_info")
+        agent._competitive_safe_mode = True
+        plan = agent.plan("در وب درباره پورشه 911 تحقیق کن", session_id="kira")
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan.categories, {"web"})            # local categories stay blocked
 
     def test_tool_failure_is_reported_without_false_success(self):
         from kira.tools.registry import ERROR
@@ -290,7 +339,10 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(result["tools"][0]["status"], "ok")
         self.assertIn("system facts", result["text"])
         self.assertEqual(calls, [{}])
-        self.assertEqual(registry.access.journal.recent()[-1]["status"], "ok")
+        journal = registry.access.journal.recent()
+        self.assertEqual(len(journal), 1)
+        self.assertEqual(journal[-1]["tool"], "get_system_info")
+        self.assertEqual(journal[-1]["status"], "ok")
 
     def test_tools_mode_change_after_planning_is_enforced_at_execution(self):
         from kira.tools.registry import DENIED
@@ -305,7 +357,7 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertIn("ابزارها خاموش", result["text"])
 
     def test_competitive_safe_transition_cancels_pending_fast_call(self):
-        agent, _registry, calls = self._agent()
+        agent, registry, calls = self._agent()
         plan = self._plan(agent)
         agent.set_competitive_safe_mode(True)
         result = self._run(agent, plan)
@@ -313,6 +365,7 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertTrue(result["stopped"])
         self.assertEqual(result["tools"], [])
+        self.assertEqual(registry.access.journal.recent(), [])
 
     def test_competitive_safe_execution_guard_denies_fast_call(self):
         from kira.tools.registry import DENIED
@@ -328,6 +381,30 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(result["tools"][0]["status"], DENIED)
         self.assertIn("Competitive Safe", result["text"])
 
+    def test_execution_denials_are_recorded_in_the_real_registry_journal(self):
+        from kira.tools.registry import DENIED
+
+        cases = ("tools_off", "competitive_safe")
+        for case in cases:
+            with self.subTest(case=case):
+                agent, registry, calls = self._agent()
+                plan = self._plan(agent)
+                if case == "tools_off":
+                    agent.settings["tools_mode"] = "off"
+                else:
+                    # Bypass transition cancellation to test the registry's
+                    # execution guard and its journal independently.
+                    agent._competitive_safe_mode = True
+
+                result = self._run(agent, plan)
+
+                self.assertEqual(calls, [])
+                self.assertEqual(result["tools"][0]["status"], DENIED)
+                journal = registry.access.journal.recent()
+                self.assertEqual(len(journal), 1)
+                self.assertEqual(journal[0]["tool"], "get_system_info")
+                self.assertEqual(journal[0]["status"], DENIED)
+
     def test_same_fast_call_is_not_executed_twice_in_one_turn(self):
         agent, _registry, calls = self._agent()
         plan = self._plan(agent)
@@ -337,7 +414,31 @@ class FastPathRealRegistryBoundaryTests(unittest.TestCase):
         self.assertEqual(calls, [{}])
         self.assertEqual(first["tools"][0]["status"], "ok")
         self.assertTrue(second["tools"][0]["cached"])
+        journal = agent.registry.access.journal.recent()
+        self.assertEqual(len(journal), 1)
+        self.assertEqual(journal[0]["status"], "ok")
 
+    def test_same_fast_call_can_execute_again_in_a_new_turn(self):
+        agent, registry, calls = self._agent()
+        first_plan = self._plan(agent)
+        first = self._run(agent, first_plan)
+        self.assertEqual(first["tools"][0]["status"], "ok")
+
+        # The lightweight agent fixture does not initialize task persistence;
+        # provide the three per-turn collections used by AutonomyMixin._turn_reset.
+        agent._turn_plan_ids = {}
+        agent._pause_requests = set()
+        agent._cancel_plan_requests = set()
+        agent.begin_turn("kira")
+        second_plan = self._plan(agent)
+        second = self._run(agent, second_plan)
+
+        self.assertEqual(calls, [{}, {}])
+        self.assertEqual(second["tools"][0]["status"], "ok")
+        self.assertFalse(second["tools"][0]["cached"])
+        journal = registry.access.journal.recent()
+        self.assertEqual(len(journal), 2)
+        self.assertEqual([entry["status"] for entry in journal], ["ok", "ok"])
 
 
 class SemanticPlannerRoutingTests(unittest.TestCase):
@@ -424,8 +525,11 @@ class SemanticPlannerRoutingTests(unittest.TestCase):
         self.assertNotIn("mcp", plan.categories)
         self.assertNotIn("agents", plan.categories)
         self.assertIn("web", plan.categories)
+        # No known task signal: the model triages with a short capability index first (cheap for chat),
+        # and only escalates to the planner when it asks for the PC (see tests/test_task_triage.py).
+        self.assertTrue(plan.index_only)
         decision = self._autonomy_probe().decide("میشه این کار رو برام انجام بدی؟", plan)
-        self.assertTrue(decision.complex)
+        self.assertFalse(decision.complex)
 
     def test_no_base_tool_plan_remains_plain_chat_for_direct_decision(self):
         probe = self._autonomy_probe()
@@ -594,5 +698,166 @@ class SemanticResultReviewTests(unittest.TestCase):
         self.assertIn("ارزیابی تحقق هدف", plan.done_sigs["call-signature"])
         self.assertEqual(step.postcondition, "پنجره Wallpaper Engine فعال باشد")
 
+
+class PlannerDependencyValidationTests(unittest.TestCase):
+    @staticmethod
+    def _plan(steps):
+        import json
+        return "<kira_plan>" + json.dumps({
+            "goal": "Complete dependent steps",
+            "steps": steps,
+        }) + "</kira_plan>"
+
+    @staticmethod
+    def _registry():
+        return SimpleNamespace(get=lambda _name: None)
+
+    def test_forward_dependency_is_rejected_instead_of_dropped(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": [2]},
+            {"id": 2, "title": "Second", "depends_on": []},
+        ))
+        with self.assertRaisesRegex(ValueError, "must be declared earlier"):
+            parse_plan(raw, self._registry(), max_steps=8)
+
+    def test_unknown_dependency_is_rejected(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": [99]},
+        ))
+        with self.assertRaisesRegex(ValueError, "must be declared earlier"):
+            parse_plan(raw, self._registry(), max_steps=8)
+
+    def test_non_numeric_dependency_is_rejected(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": ["later"]},
+        ))
+        with self.assertRaisesRegex(ValueError, "invalid dependency"):
+            parse_plan(raw, self._registry(), max_steps=8)
+
+    def test_valid_backward_dependency_is_preserved(self):
+        from kira.tools.planner import parse_plan
+
+        raw = self._plan((
+            {"id": 1, "title": "First", "depends_on": []},
+            {"id": 2, "title": "Second", "depends_on": [1]},
+        ))
+        parsed = parse_plan(raw, self._registry(), max_steps=8)
+        self.assertEqual(parsed["steps"][1]["depends_on"], [1])
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class FastPathRoutingBoundaryTests(unittest.TestCase):
+    """Keep deterministic one-step commands out of semantic planning."""
+
+    @staticmethod
+    def _planner_probe():
+        from kira.tools.autonomy import AutonomyMixin
+
+        class Probe(AutonomyMixin):
+            def __init__(self):
+                self.settings = {"agent_planning": "auto"}
+                self._turn_session_id = "fast-boundary"
+                self._resume_sessions = set()
+                self.tasks = SimpleNamespace(active=lambda _owner: None)
+
+            def planning_enabled(self):
+                return True
+
+            def _remember_task_preference(self, _text):
+                return None
+
+        return Probe()
+
+    def test_twenty_simple_commands_remain_fast_and_non_complex(self):
+        from kira.tools.fast_commands import parse_fast_command
+
+        prompts = (
+            "ساعت چنده؟",
+            "تاریخ امروز چیه",
+            "what time is it",
+            "today's date",
+            "وضعیت بلوتوث چیه",
+            "بلوتوث رو روشن کن",
+            "turn bluetooth off",
+            "صدا رو روی ۵۰ درصد بذار",
+            "set volume to 35%",
+            "صدا رو زیاد کن",
+            "mute the speakers",
+            "unmute the speakers",
+            "مشخصات سیستم چیه",
+            "system specs",
+            "چقدر رم مصرف شده",
+            "RAM usage",
+            "فضای خالی درایوها چقدره",
+            "free disk space",
+            "وضعیت اینترنت چطوره",
+            "what apps are running",
+        )
+        planner = self._planner_probe()
+        self.assertEqual(len(prompts), 20)
+        for index, prompt in enumerate(prompts):
+            with self.subTest(index=index, prompt=prompt):
+                self.assertIsNotNone(parse_fast_command(prompt), prompt)
+                plan = planner.decide(prompt, SimpleNamespace(complex=False, index_only=False))
+                self.assertFalse(plan.complex, prompt)
+
+    def test_twenty_multistep_requests_never_enter_fast_path(self):
+        from kira.tools.fast_commands import parse_fast_command
+
+        prompts = (
+            "If drive C has less than 15 GB free, list the five largest files; do not delete or move anything.",
+            "Open Wallpaper Engine; if it is already running, bring its window forward instead of launching a second copy.",
+            "Find the latest official GPU driver and verify its version against a second source.",
+            "Back up Documents to drive D, then count copied files and report failures.",
+            "List paired Bluetooth devices; if my headset is disconnected, report it but do not connect it.",
+            "Check whether the microphone is muted; unmute only if needed, then report its final state.",
+            "Open Settings, navigate to Bluetooth, inspect paired devices, and change nothing.",
+            "Read the supplied article, verify its claims against official sources, and cite each finding.",
+            "Find duplicate photos, group exact matches, and show candidates without deleting anything.",
+            "If RAM or CPU exceeds 85 percent, identify the top process but do not terminate it.",
+            "If Chrome is closed, launch it; otherwise reuse its window and open the supplied URL.",
+            "Find the newest spreadsheet in Downloads and copy it to Documents without changing the original.",
+            "Inspect configured MCP tools but do not send credentials or personal data.",
+            "Delegate public-source research to an agent, return its job ID, and check status before reporting.",
+            "Compare three laptop prices across retailers and save sourced results to a spreadsheet.",
+            "Type the battery report in Notepad, read it back, and only then report completion.",
+            "If the keyboard is not paired, ask before pairing it.",
+            "Select the headset only if it is already connected; otherwise leave audio unchanged.",
+            "Check internet and disk space; if internet is down, report it without resetting the network.",
+            "Open Chrome, search for the official driver, download it, and verify the downloaded file.",
+        )
+        planner = self._planner_probe()
+        self.assertEqual(len(prompts), 20)
+        for index, prompt in enumerate(prompts):
+            with self.subTest(index=index, prompt=prompt):
+                self.assertIsNone(parse_fast_command(prompt), prompt)
+                plan = planner.decide(prompt, SimpleNamespace(complex=False, index_only=False))
+                self.assertTrue(plan.complex, prompt)
+
+    def test_fast_path_parser_does_not_claim_chat_or_ambiguous_requests(self):
+        from kira.tools.fast_commands import parse_fast_command
+
+        prompts = (
+            "سلام، امروز حالت چطوره؟",
+            "به نظرت چه فیلمی ببینم؟",
+            "Explain how source code is compiled.",
+            "این کار رو برام انجام بده",
+            "سیستم رو بررسی کن",
+            "فایل گزارش رو باز کن",
+            "open https://example.com",
+            "open the report.pdf",
+            "open Discord and search the web",
+            "volume to 250 percent",
+        )
+        for prompt in prompts:
+            with self.subTest(prompt=prompt):
+                self.assertIsNone(parse_fast_command(prompt), prompt)

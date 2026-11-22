@@ -45,7 +45,7 @@ def _datetime(text: str) -> bool:
         r"امروز چندمه",
         r"امروز چه روزیه",
         r"تاریخ امروز چیه",
-        r"(?:what time is it(?: now)?|what(?:'s| is) the time(?: now)?|tell me the time|current time)",
+        r"(?:what time is it(?: (?:right )?now)?|what(?:'s| is) the time(?: (?:right )?now)?|tell me the time(?: (?:right )?now)?|(?:the )?current time)",
         r"(?:what(?:'s| is) the date(?: today)?|what date is it(?: today)?|today'?s date|current date|date today)",
         r"(?:date and time|time and date)",
     )
@@ -77,7 +77,7 @@ def _bluetooth(text: str) -> dict | None:
     return None
 
 
-_AUDIO = r"(?:صدای سیستم|صدا|ولوم|ولیوم|volume|system volume|sound|audio|speakers?)"
+_AUDIO = r"(?:صدای سیستم|صدا|ولوم|ولیوم|اسپیکر(?:ها)?|بلندگو(?:ها)?|volume|system volume|sound|audio|speakers?)"
 
 
 def _audio(text: str) -> dict | None:
@@ -127,6 +127,13 @@ def _audio(text: str) -> dict | None:
     return None
 
 
+_GENERIC_APP_WORDS = frozenset({
+    "برنامه", "برنامه ها", "اپ", "اپلیکیشن", "نرم", "افزار", "نرم افزار", "رو", "را", "این", "اون", "آن",
+    "یه", "یک", "ی", "همون", "همین", "هر", "برنامه‌ای", "app", "apps", "application", "program",
+    "software", "the", "a", "an", "it", "that", "this", "one", "some", "any", "my", "your",
+})
+
+
 def _app(text: str) -> dict | None:
     patterns = (
         r"(?:لطفا )?(?:(?:برنامه|اپلیکیشن|اپ) )?(.+?) (?:(?:رو|را) )?(?:باز کن|اجرا کن|بالا بیار|راه بنداز)",
@@ -140,6 +147,10 @@ def _app(text: str) -> dict | None:
             name = match.group(1).strip().strip("\"'“”‘’")
             break
     if not name or len(name) > 64 or len(name.split()) > 5:
+        return None
+    # A bare generic word ("the app", "برنامه رو") is not an application name; the
+    # model path must ask which app is meant instead of guessing one.
+    if _GENERIC_APP_WORDS.issuperset(name.lower().split()):
         return None
     # Keep URLs, paths, files and compound/multi-action requests on the normal path.
     if any(token in name for token in ("/", "\\", "://", "؟", "?", "و ", " and ", " then ")) or "." in name:

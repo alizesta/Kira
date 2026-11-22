@@ -1,4 +1,75 @@
+## 2026-11-22 (Fast Path stage 4 — real registry boundary tests)
+- Strengthened integration coverage using the production `ToolRegistry` and `AccessManager`: successful dispatch is recorded once in Journal; post-plan tools-off and runtime Competitive Safe denials are also journaled.
+- Verified Competitive Safe transition cancels a pending Fast Path before registry dispatch.
+- Verified replaying an identical Fast Path plan returns the cached result without a second handler call or Journal record.
+- Verified the cache is cleared at the next turn so a fresh request can execute again; cancellation before dispatch leaves Journal empty.
+- The model router remains a deliberate fail-fast stub, proving these local deterministic calls do not invoke the model.
+- Validation: source and tests fetched back from GitHub and statically inspected. Python unittest, Windows runtime, and GitHub Actions were not executed.
+
+## 2026-11-22 (Planned execution safety)
+- Tool argument validation rejects undeclared parameter names instead of silently ignoring typos or extra model-supplied fields.
+- Every planned tool call must carry an explicit positive integer step ID and object arguments; missing, malformed, unknown, or ambiguous IDs are rejected before dispatch.
+- Planned calls reject tool/step mismatches and replay attempts for done, skipped, running, confirmation-pending, or review-pending steps.
+- Planner validation rejects duplicate, boolean, zero, negative, and malformed step IDs rather than silently renumbering ambiguous plans; falsey non-list dependency containers are rejected instead of becoming empty lists.
+- Persisted task loading rejects malformed/duplicate step records; malformed dependencies are retained as invalid sentinels and block execution.
+- Dependency checks fail closed for missing, malformed, non-positive, ambiguous, self, and forward references, even if a later step is marked complete.
+- Added regression cases for execution guards, handler non-invocation on invalid arguments, malformed step IDs, duplicate/corrupt persisted plans, planner dependency containers, and dependency-order enforcement.
+- Validation: source and tests fetched back from GitHub and statically inspected. Python unittest and Windows runtime remain unavailable; GitHub Actions were not run.
+
+## 2026-11-22 (Fast Path / web-lock boundary)
+- Fixed an unnecessary serialization conflict: deterministic local Fast Path calls return before any model or web-tool round, so they no longer acquire the process-wide WebIntel research lock merely because auto-mode plans expose the web category in their capability set.
+- Added a regression test that probes the web lock while executing a deterministic volume command through ToolAgent.
+- Hardened `planner.parse_plan`: malformed, unknown, and forward step dependencies are now rejected instead of silently removed, preventing an invalid plan from running a dependent action early.
+- Added regressions for forward, unknown, non-numeric, and valid backward dependencies.
+- Validation: source and test changes fetched back from GitHub and branch diff checked. Python unittest execution, Windows runtime, and GitHub Actions were not run.
+
+## 2026-11-22 (20 adversarial multi-step cases)
+- Added 20 harder task-understanding cases to `tests/test_task_understanding_benchmark.py`. They combine conditional branches, sequencing, explicit non-action constraints, read-before-write, status verification, and mixed local/web/MCP/agent capabilities.
+- The hard-case test checks every required tool family and verifies that each case exits the cheap index-only triage route. An independent harness reconstructed from the committed detector patterns found all 20/20 required-category sets; this is not execution of the Python unittest module or live planning.
+
+## 2026-11-22 (200-case task-understanding benchmark)
+- Added `tests/test_task_understanding_benchmark.py`: 200 actionable prompts (20 each across time, system, apps, Bluetooth, audio, files, desktop, web, MCP and agents) plus 20 ordinary-chat controls. Each actionable prompt pins a required tool family; the chat controls must stay on the cheap `index_only` triage route with no category match.
+- The benchmark tests category recall and routing boundaries on the actual `protocol.detect_categories` and `ToolAgent.plan` implementations. It does not measure live LLM semantic decisions, plan quality, Windows execution, or end-to-end task success.
+- Dataset integrity check: 200/200 actionable prompts are unique; 20/20 chat controls are unique. A separate JavaScript regex harness reconstructed from the committed Python patterns found 200/200 required category matches and 0/20 chat false positives. It exposed and led to fixes for Persian local-time, paired-device/Pair, Persian menu-genitive, counted-source, and delegated-job wording. This harness is not the Python unittest suite; repository tests were not run. No GitHub Actions were triggered.
+
+## 2026-11-22 (contextual Persian slang and pragmatic intent)
+- Added model guidance to both the cheap capability-index prompt and the full PC-tool prompt: interpret slang, profanity, dialect and idioms from sentence/conversation context; treat user corrections as conversation-local meaning; do not mistake profanity alone for a PC action.
+- Added four contrastive Persian colloquial examples as chat-only routing controls, including the user's examples. They must remain on the cheap triage path rather than dispatching PC tools.
+- Added prompt-regression assertions for both model contexts. This protects routing boundaries; it does not claim to measure whether every configured LLM correctly understands the intended slang.
+- Validation in this environment: source-level review only; the repository unittest module and live model behavior were not executed. GitHub Actions were not run.
+
+## 2026-11-22 (explicit user-led slang learning)
+- Kira now extracts only explicit Persian definitions in the form «expression یعنی meaning» from user messages and stores them as evidence-backed `language_rule` memories.
+- The stored rule is retrieved by topic into later prompts; vague slang without an explicit definition is not guessed or persisted.
+- Added regression coverage for persistence, evidence provenance, retrieval, and the no-guess boundary.
+- Validation: the exact definition matcher was exercised independently against the supplied correction and a no-definition control. Full repository tests and live-model learning behavior were not run; GitHub Actions were not run.
+
 # Changelog
+
+## 2026-11-22 (English task-intent coverage)
+- Expanded the request-intent gates with English patterns for common Windows, file, desktop, app and web workflows: drive/free-space checks, backups/archives/duplicates, Notepad and Settings interaction, official sources, supplied article links, retailer comparisons, latest-version/download lookups and wallpaper search/application.
+- Added a 20-case English regression matrix to `tests/test_task_triage.py`. It checks expected category coverage and whether each request skips the cheap triage round when a task signal exists. The email-draft-only request deliberately remains in triage because drafting text alone does not require PC access.
+- Added a negative regression so a generic source-code explanation is not mistaken for web research.
+- Independent regex harness: 20/20 scenarios contained their expected categories; 19/20 produced a known task signal and the email-only case correctly remained triage. This is a focused pattern check, not a repository unittest run or a live Kira/Windows test.
+- Not run: repository unittest suite, real model/provider, Windows actions, GitHub Actions.
+
+
+## 2026-11-22 08:32 Iran (planner review rounds no longer carry the character prompt)
+- Measured with a scripted model (`tests/test_task_cost.py`): a one-tool task costs 5 model calls (plan, run step, step review, goal review, final answer). The step review and the final goal review are internal JSON phases, yet each re-sent the whole character/memory system prompt. They now use a short fixed verifier prompt (`planner.REVIEW_SYSTEM`) plus the same review instructions and task state. In the test the two review prompts shrink from about 7.3k to 2.6k characters (the stand-in persona is 4.6k; the real one is larger). Plan, execution and final-answer calls keep the personality.
+- No change to what is verified: both reviews still run, exact-evidence rules, the `verifies_result` handling and the "tool ok is not goal ok" design are untouched (an existing test already pins that). Call count is unchanged; only prefill per review call drops.
+- Not done on purpose: merging review into the next action call, skipping the goal review for one-step plans, or trusting `verifies_result` tools without review. Each would cut calls but weakens the evidence design chosen in `20aa301`; decide that with real-model latency numbers.
+- Tests: `tests/test_task_cost.py` (2). Local run: cost + triage + fast-path + task-store → 67 OK; the 11 surrounding tool-agent modules keep the same 1 failure + 7 errors as before. Not run: Windows, real models, GitHub Actions.
+
+## 2026-11-22 08:23 Iran (cheap model-owned triage: chat stays fast, unknown tasks still reach the planner)
+- Measured: since `42d34b6` every `auto` turn carried the full local tool catalog (~9.9k chars, ~3.5k tokens with rules) and, via `decide()`, went through the planner; plain "سلام" paid that too, and (because `web` was always in its categories) also took the process-wide web-research lock, serializing characters.
+- New two-step flow in `auto` when the message has no known task signal (`ToolPlan.index_only`): the model gets a short capability index (`protocol.build_index_block`, tool names only, ~1k chars). Chat is answered in that one call. If the PC/internet is needed — any wording — the model writes the internal `use_tools` block (never shown, nothing executed); `ToolAgent.run` then re-runs the turn with the full local catalog and, when planning is on, the planner (`plan.complex`). External MCP/agent tools stay opt-in. Messages with a known signal skip triage; exact Fast Path commands are untouched.
+- Triage rounds use the text protocol (no native function schemas) and do not take the web-research lock. Competitive Safe is unchanged (no tool plan without explicit web intent). Access control, confirmations and the ToolRegistry execution path are unchanged; no UI change.
+- Tests: new `tests/test_task_triage.py` (11 cases: plan flags, small-prompt ratio, one-call chat turn, lock not taken, escalation without showing the block, planner hand-off, direct tool block in the triage round never executes); one old assertion in `tests/test_fast_commands.py` updated to the new contract. Local run: `tests.test_task_triage tests.test_fast_commands tests.test_task_store` → 65 OK. The other 11 modules touching the tool agent give the same 1 failure + 7 errors as the branch tip before this change (pre-existing, UI facade / role routes). Not run: Windows, real models, full suite, GitHub Actions.
+
+## 2026-11-22 08:03 Iran (Competitive Safe regression after model-owned intent classification)
+- Regression from `42d34b6`: in `tools_mode=auto` every turn now carries all local categories, so under Competitive Safe the `{"web"}` intersection was never empty and every message (even a blocked local query like "مشخصات سیستم چیه") got a web-tool plan. `ToolAgent.plan` now keeps `web` in Competitive Safe only when the message explicitly asks for it (or a paused web research is resumed) in `auto` mode; `always` mode is unchanged.
+- Tests: fixed `test_competitive_safe_still_blocks_local_fast_path` (it failed on `42d34b6`, passed on `20aa301`); added `test_competitive_safe_ordinary_chat_gets_no_tool_plan` and `test_competitive_safe_keeps_explicit_web_request`.
+- Local run: `python -m unittest tests.test_fast_commands tests.test_task_store` → 53 tests OK (Linux sandbox). Windows runtime and the full suite were not run; no GitHub Action was triggered.
 
 ## 2026-11-22 (Fast Path stages 4–5)
 - Added integration regressions using the real ToolRegistry boundary, not only a mocked registry: successful dispatch/journaling, execution-time enforcement when tools_mode changes to off, execution-time Competitive Safe enforcement, and same-turn duplicate suppression.

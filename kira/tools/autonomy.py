@@ -98,7 +98,7 @@ class AutonomyMixin:
             # other tool-relevant request is classified by the model itself using
             # the goal, context and complete local tool catalog—not verb regexes.
             from .fast_commands import parse_fast_command
-            if parse_fast_command(text) is None:
+            if parse_fast_command(text) is None and not getattr(base, "index_only", False):
                 base.complex = True
                 base.reasons = ("ارزیابی معنایی هدف توسط Planner مدل",)
         return base
@@ -217,13 +217,14 @@ class AutonomyMixin:
         self.tasks.save()
 
     def _prepare_resume(self, plan: TaskPlan):
-        """'ادامه بده': open steps run again; steps that failed get ONE more chance (counters reset), except those the user declined."""
+        """Resume unfinished steps without forgetting failures for identical tool calls."""
         for s in plan.steps:
             if s.declined:
                 continue
             if s.status in (FAILED, UNMET, RUNNING, AWAITING):
                 s.status, s.attempts, s.error = PENDING, 0, ""
-        plan.fail_sigs = {}
+        # Keep fail_sigs: clearing it lets Resume bypass the per-call retry budget
+        # and repeat an operation that has already failed with identical arguments.
         plan.status = P_RUNNING
         plan.question = ""
         plan.updated = time.time()
@@ -428,13 +429,14 @@ class AutonomyMixin:
                 res, gate = initial
                 initial = None
             else:
+                # Internal verification calls need no personality / memory prompt: leaving it out cuts the prefill of every review round.
                 if pending_reviews:
-                    prompt = system_prompt + "\n\n" + planner.REVIEW_HEAD + "\n" + tp.render_state()
+                    prompt = planner.REVIEW_SYSTEM + "\n\n" + planner.REVIEW_HEAD + "\n" + tp.render_state()
                 elif goal_review_pending:
                     evidence = "\n\n".join(
                         f"STEP {st.id} — {st.title}:\n{st.data}" for st in tool_steps if st.data
                     )
-                    prompt = (system_prompt + "\n\n" + planner.GOAL_REVIEW_HEAD + "\n"
+                    prompt = (planner.REVIEW_SYSTEM + "\n\n" + planner.GOAL_REVIEW_HEAD + "\n"
                               + tp.render_state(6000) + "\n\nCOMBINED COMPLETED-STEP OUTPUTS (untrusted data):\n"
                               + clip(evidence, 9000))
                 elif last:
@@ -660,7 +662,7 @@ class AutonomyMixin:
         for call in calls[:protocol.MAX_CALLS_PER_ROUND]:
             if self._cancel.is_set():
                 break
-            name, args = call["tool"], call.get("args") or {}
+            name, args = call["tool"], call.get("args", {})
             tool = self.registry.get(name)
             label = TOOL_LABELS.get(name, name)
             sig = call_sig(name, args)
@@ -668,7 +670,29 @@ class AutonomyMixin:
                 results.append(self.registry.execute(name, args))             # unknown tool: the registry explains
                 notes.append(f"unknown tool '{name}'")
                 continue
-            st = tp.bind(name, call.get("step"), label, tool.level >= SENSITIVE)
+            if not isinstance(args, dict):
+                results.append(ToolResult(name, BAD_ARGS, "آرگومان‌های فراخوانی ابزار باید یک شیء JSON باشند؛ اجرا نشد.", {}, tool.level))
+                notes.append(f"rejected non-object arguments for tool {name}")
+                continue
+            requested_step = call.get("step")
+            if isinstance(requested_step, bool) or not isinstance(requested_step, int) or requested_step <= 0:
+                results.append(ToolResult(name, BAD_ARGS, "فراخوانی ابزار در اجرای برنامه باید شناسه‌ی عددی و مثبتِ مرحله را مشخص کند؛ اجرا نشد.", args, tool.level))
+                notes.append(f"rejected missing or invalid step id for tool {name}")
+                continue
+            requested = tp.step(requested_step)
+            if requested is None:
+                results.append(ToolResult(name, BAD_ARGS, f"مرحله‌ی {requested_step} در برنامه وجود ندارد یا شناسه‌ی آن مبهم است؛ این فراخوانی اجرا نشد.", args, tool.level))
+                notes.append(f"rejected tool call for unknown or ambiguous step {requested_step}")
+                continue
+            if requested.tool != name:
+                results.append(ToolResult(name, BAD_ARGS, f"ابزار «{name}» با ابزار تعریف‌شده برای مرحله‌ی {requested.id} («{requested.tool or 'بدون ابزار'}») مطابقت ندارد؛ برنامه باید اصلاح شود.", args, tool.level))
+                notes.append(f"rejected tool mismatch for step {requested.id}")
+                continue
+            if requested.status in (DONE, SKIPPED, REVIEW, RUNNING, AWAITING):
+                results.append(ToolResult(name, BAD_ARGS, f"مرحله‌ی {requested.id} در وضعیت «{requested.status}» است و فعلاً اجازه‌ی اجرای دوباره ندارد.", args, tool.level))
+                notes.append(f"rejected repeat call for step {requested.id} in state {requested.status}")
+                continue
+            st = tp.bind(name, requested_step, label, tool.level >= SENSITIVE)
             if awaiting_confirmation:
                 # A Session has one confirmation slot. Keep later plan steps
                 # pending instead of replacing the operation the user saw.
