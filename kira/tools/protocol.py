@@ -317,7 +317,7 @@ GATES = {
                r"(?:قیمت|نرخ)\s*.{0,48}(?:یورو|دلار|ارز|طلا|سهام|بیت\s*کوین|bitcoin|usd|eur)",
                r"(?:یورو|دلار|ارز|طلا|سهام|بیت\s*کوین|bitcoin|usd|eur).{0,48}(?:قیمت|نرخ)",
                r"(?:در|از|توی)\s*(?:وب|اینترنت)", r"\b(?:online|internet|web)\b", r"آنلاین|اینترنتی",
-               r"\bofficial\s+sources?\b", r"\b(?:source|sources)\b", r"\bwebpages?\b", r"\bwebsites?\b", r"\bretailers?\b",
+               r"\bofficial\s+sources?\b", r"\b(?:two|three|multiple|several)\s+(?:official\s+)?sources?\b", r"\bwebpages?\b", r"\bwebsites?\b", r"\bretailers?\b",
                r"\bprovided\s+link\b", r"\blink\s+i\s+(?:will\s+)?provide\b", r"\bverify\s+.{0,40}\bclaims?\b",
                r"\b(?:latest|current)\s+version\b", r"\bofficial\s+download\b", r"\bdownload\s+link\b", r"\bprices?\s+of\s+.{0,50}\b(?:laptops?|computers?|products?)\b",
                r"\bwallpapers?\b", r"\barticle\b.{0,50}\blink\b", r"\blink\b.{0,50}\barticle\b", r"\bcompare\s+.{0,60}\b(?:sites?|stores?|retailers?|websites?)\b", r"\bsearch\s+for\b", r"\blook\s+up\b", r"\binvestigate\b"),
