@@ -216,13 +216,14 @@ class AutonomyMixin:
         self.tasks.save()
 
     def _prepare_resume(self, plan: TaskPlan):
-        """'ادامه بده': open steps run again; steps that failed get ONE more chance (counters reset), except those the user declined."""
+        """Resume open steps without resetting the per-call failure budget."""
         for s in plan.steps:
             if s.declined:
                 continue
             if s.status in (FAILED, UNMET, RUNNING, AWAITING):
                 s.status, s.attempts, s.error = PENDING, 0, ""
-        plan.fail_sigs = {}
+        # Keep fail_sigs across manual resumes: otherwise the same broken call
+        # could be retried indefinitely by repeatedly asking to resume.
         plan.status = P_RUNNING
         plan.question = ""
         plan.updated = time.time()
@@ -562,6 +563,9 @@ class AutonomyMixin:
             res = self.registry.execute(name, args)
             st.attempts += 1
             if res.status == ERROR and tool.level == READ and classify_error(res.status, res.text) == "transient" and st.attempts < STEP_MAX_ATTEMPTS:
+                # Count the failed execution itself, not just the final result
+                # after the automatic retry, so the global call budget is exact.
+                tp.fail_sigs[sig] = tp.fail_sigs.get(sig, 0) + 1
                 time.sleep(0.8)                                              # a temporary error of a READ-ONLY tool: one more try, never for actions
                 res = self.registry.execute(name, args)
                 st.attempts += 1
