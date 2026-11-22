@@ -152,8 +152,10 @@ class PlannedStepExecutionGuardTests(unittest.TestCase):
 
     def test_duplicate_step_ids_are_ambiguous_and_fail_closed(self):
         self.plan.steps.append(Step(1, "Duplicate step", "open_app"))
+        dependent = Step(2, "Dependent step", "open_app", depends_on=[1])
+        self.plan.steps.append(dependent)
         self.assertIsNone(self.plan.step(1))
-        self.assertEqual(self.plan.deps_unmet(self.plan.steps[0]), [])
+        self.assertEqual(self.plan.deps_unmet(dependent), [1])
 
     def test_malformed_and_non_positive_dependencies_are_unmet(self):
         self.plan.steps[0].depends_on = ["not-an-id", 0, -1, 99]
