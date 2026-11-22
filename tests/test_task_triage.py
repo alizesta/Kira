@@ -242,9 +242,12 @@ class TriagePlanTests(unittest.TestCase):
             lambda args: handler_calls.append(args) or "executed",
             (), READ, ("bluetooth",),
         ))
-        with agent._use_session("files-scope"):
-            agent._current_turn_state().schema_categories = {"files"}
-            results = agent._run_calls([{"tool": "scope_probe", "args": {}}], [], None)
+        scope_token = agent._active_schema_scope.set({"files"})
+        try:
+            with agent._use_session("files-scope"):
+                results = agent._run_calls([{"tool": "scope_probe", "args": {}}], [], None)
+        finally:
+            agent._active_schema_scope.reset(scope_token)
         self.assertEqual(handler_calls, [])
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].status, "denied")
