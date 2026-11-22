@@ -27,7 +27,9 @@ def game_mode_permissions(profile: str | None) -> dict[str, bool]:
     permissions.update({
         "microphone_wake_word": True,
         "input_automation": normalized == STORY_MODE,
-        "vision_capture": normalized == STORY_MODE,
+        # Screen observation is read-only and remains available in both profiles.
+        # It is still gated by explicit Game Mode activation and foreground-game detection.
+        "vision_capture": True,
         "game_audio_loopback": normalized == STORY_MODE,
         "automatic_game_audio_alerts": normalized == STORY_MODE,
     })
