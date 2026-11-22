@@ -100,6 +100,7 @@ class _ToolTurnState:
     turn_cache: dict[str, ToolResult] = field(default_factory=dict)
     memos: deque = field(default_factory=lambda: deque(maxlen=6))
     last_categories: set = field(default_factory=set)
+    schema_categories: set | None = None  # scoped per-session model-visible tools; execution is denied outside this set
     last_used_turn: int = -99
     last_results: list[ToolResult] = field(default_factory=list)
     cancel: threading.Event = field(default_factory=threading.Event)
@@ -636,7 +637,20 @@ class ToolAgent(AutonomyMixin):
                     args if isinstance(args, dict) else {},
                 )
             else:
-                res = self._execute_guarded(name, args)
+                tool = self.registry.get(name)
+                visible = self._current_turn_state().schema_categories
+                if (tool is not None and visible is not None
+                        and not set(getattr(tool, "categories", ()) or ()).intersection(visible)):
+                    res = ToolResult(
+                        name,
+                        DENIED,
+                        "این ابزار در دامنه‌ی قابلیت‌های ارائه‌شده برای درخواست فعلی نبود؛ "
+                        "هیچ عملیاتی اجرا نشد. درخواست را با موضوع دقیق‌تر دوباره مطرح کن.",
+                        args if isinstance(args, dict) else {},
+                        getattr(tool, "level", 1),
+                    )
+                else:
+                    res = self._execute_guarded(name, args)
             self._turn_cache[sig] = res
             if res.status == NEEDS_CONFIRM:
                 self._pending_by_session[self._turn_session_id] = Pending(
@@ -757,6 +771,9 @@ class ToolAgent(AutonomyMixin):
                     raise
                 web_locked = True
 
+            state = self._current_turn_state()
+            previous_schema_categories = state.schema_categories
+            state.schema_categories = self._schema_categories(plan)
             with self._runtime_lock:
                 self._running_sessions.add(owner)
                 if web_locked:
@@ -768,6 +785,7 @@ class ToolAgent(AutonomyMixin):
                     return self.run_planned(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
                 return self._run_simple(router, messages, system_prompt, self.temperature(temperature), plan, retry_index, on_chunk or (lambda s: None), on_event, on_tool)
             finally:
+                state.schema_categories = previous_schema_categories
                 with self._runtime_lock:
                     self._running_sessions.discard(owner)
                     if web_locked:
