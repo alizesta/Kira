@@ -2,7 +2,7 @@
 
 ## Latest task: full source/documentation synchronization (2026-11-22)
 
-- Audited the repository tree at source baseline new-main@e058021c97e5e90990ba129e2361f340706217a3: 585 tracked files, 270 Python modules under kira/, 164 Python test files, 8 workflows and 52 documentation files.
+- Audited the repository tree at source baseline new-main@e058021c97e5e90990ba129e2361f340706217a3: 583 tracked files, 270 Python modules under kira/, 164 Python test files, 8 workflows and 51 documentation files.
 - Updated the README voice description, local voice and voice-routing guides, Windows Control guide, architecture index/master/roadmap, module ownership register, project context and changelog.
 - Corrected install/update instructions after checking install.bat, update_kira.bat and setup scripts: local voice installs Shenava INT8/Piper; Ollama chat setup is a separate opt-in script; the incremental updater skips the test suite unless a setup-triggering change causes install.bat to run. Removed references to the absent configure_ollama_storage.bat/download_model.bat helpers.
 - Confirmed runtime voice architecture: Gemini Live is the default bidirectional mode; local mode/fallback uses Shenava Koochik via sherpa-onnx and Piper. KittenTTS is optional for English; Persian continues to use Piper. The real-time Listener does not use the older Qwen3-ASR/faster-whisper chain described in stale docs.
