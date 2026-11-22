@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import re
 
-from ..hybrid_ai import ThinkFilter
+from ..think_filter import ThinkFilter
 
 TAG = "kira_tool"
 OPEN, CLOSE = f"<{TAG}>", f"</{TAG}>"
