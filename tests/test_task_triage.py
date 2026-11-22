@@ -65,6 +65,33 @@ class TriagePlanTests(unittest.TestCase):
         self.assertIn("web", protocol.detect_categories("نرخ دلار چنده؟"))
         self.assertIn("web", protocol.detect_categories("قیمت طلا رو از اینترنت بررسی کن"))
 
+    def test_english_task_intents_cover_common_pc_and_web_workflows(self):
+        cases = (
+            ("Prepare a report using three official sources comparing Windows 11 and Linux", {"system", "web"}),
+            ("Check available space on drive C. If below 10 GB, find largest files in Downloads", {"system", "files"}),
+            ("Open Chrome, navigate to the provided webpage, and summarize its three main points", {"apps", "web"}),
+            ("Sort PDFs in the project folder by date and move files older than one year into Archive", {"files", "time"}),
+            ("If Discord is not running, launch it. Then switch audio output to Bluetooth headphones", {"apps", "audio", "bluetooth"}),
+            ("Find the latest Python version online and provide the official download link", {"web"}),
+            ("Create an Excel spreadsheet with prices of five laptops suitable for programming and save to Desktop", {"apps", "files", "web"}),
+            ("Read the article at the link I provide and verify its claims against official sources", {"web"}),
+            ("Change the default microphone and document the result in Notepad", {"apps", "audio", "desktop"}),
+            ("If the config file exists, back it up, then change timeout to 30", {"files"}),
+            ("Identify applications consuming the most RAM; report only, do not close them", {"apps", "system"}),
+            ("Find a 4K Porsche wallpaper, download it, and apply it using Wallpaper Engine", {"apps", "files", "web"}),
+            ("Check Wi-Fi; if disconnected, reconnect", {"system"}),
+            ("Back up the Pictures folder to drive D and report the copied file count", {"files"}),
+            ("Write a professional email explaining the project delay; show me the draft for approval before sending", set()),
+            ("Compare three online component retailers and find the cheapest 1 TB SSD", {"web"}),
+            ("If the application installer exists in Downloads, run it; otherwise find the official website", {"apps", "files", "web"}),
+            ("Open Windows Settings, navigate to Bluetooth, and report paired device names", {"apps", "bluetooth", "desktop"}),
+            ("Check the battery; if below 20%, enable Battery Saver", {"system"}),
+            ("Find duplicate files, list only confirmed duplicates, and ask permission before deleting", {"files"}),
+        )
+        for prompt, expected in cases:
+            with self.subTest(prompt=prompt):
+                self.assertTrue(expected.issubset(protocol.detect_categories(prompt)))
+
     def test_web_price_queries_do_not_fall_into_time_or_system(self):
         cases = (
             "قیمت یورو رو پیدا کن",
