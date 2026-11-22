@@ -166,6 +166,29 @@ class FastPathIntegrationTests(unittest.TestCase):
         self.assertEqual(chunks, [result["text"]])
 
 
+    def test_fast_path_does_not_acquire_web_research_lock(self):
+        class LockProbe:
+            def __init__(self):
+                self.acquire_calls = 0
+                self.release_calls = 0
+
+            def acquire(self, timeout=None):
+                self.acquire_calls += 1
+                return True
+
+            def release(self):
+                self.release_calls += 1
+
+        agent = self._agent()
+        lock = LockProbe()
+        agent._web_research_lock = lock
+        plan = agent.plan("صدا رو روی ۵۰ درصد بذار", session_id="kira")
+        result = agent.run(_NoModelRouter(), [{"role": "user", "content": "صدا رو روی ۵۰ درصد بذار"}],
+                           "system", 0.2, plan)
+        self.assertTrue(result["fast_path"])
+        self.assertEqual(lock.acquire_calls, 0)
+        self.assertEqual(lock.release_calls, 0)
+
     def test_read_only_system_query_runs_without_model_round_trip(self):
         agent = self._agent(tool_name="get_system_info")
         plan = agent.plan("مشخصات سیستم چیه", session_id="kira")
