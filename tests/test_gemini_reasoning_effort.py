@@ -1,0 +1,51 @@
+"""Regression tests for Gemini 3.8 Flash reasoning-effort routing."""
+import unittest
+
+from kira.hybrid_providers import OpenAICompatibleProvider
+
+
+MESSAGES = [{"role": "user", "content": "سلام"}]
+
+
+class GeminiReasoningEffortTests(unittest.TestCase):
+    def test_gemini_38_flash_uses_low_effort_for_stream_and_non_stream(self):
+        provider = OpenAICompatibleProvider({
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_key": "google-test-key",
+            "model": "gemini-3.8-flash",
+        }, name="google-ai")
+
+        for streaming in (False, True):
+            _url, _headers, payload = provider._prepare(
+                MESSAGES, "system", 0.7, streaming
+            )
+            self.assertEqual(payload["reasoning_effort"], "low")
+            self.assertEqual(payload["stream"], streaming)
+
+    def test_other_google_models_keep_provider_default_reasoning(self):
+        provider = OpenAICompatibleProvider({
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_key": "google-test-key",
+            "model": "gemini-3.5-flash",
+        }, name="google-ai")
+
+        _url, _headers, payload = provider._prepare(
+            MESSAGES, "system", 0.7, False
+        )
+        self.assertNotIn("reasoning_effort", payload)
+
+    def test_non_google_endpoint_does_not_receive_google_reasoning_parameter(self):
+        provider = OpenAICompatibleProvider({
+            "base_url": "https://example.com/v1",
+            "api_key": "example-key",
+            "model": "gemini-3.8-flash",
+        }, name="custom")
+
+        _url, _headers, payload = provider._prepare(
+            MESSAGES, "system", 0.7, True
+        )
+        self.assertNotIn("reasoning_effort", payload)
+
+
+if __name__ == "__main__":
+    unittest.main()
