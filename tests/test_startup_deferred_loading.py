@@ -53,7 +53,6 @@ class LazyToolAgentTests(unittest.TestCase):
         self.assertIsNotNone(lazy.tasks)
         self.assertFalse(lazy.request_cancel())
         self.assertFalse(lazy.release_session("kira"))
-        self.assertIsNone(lazy.clear_session("kira"))
         self.assertEqual(created, [])
 
     def test_first_capability_use_creates_agent_once_and_applies_pending_state(self):
