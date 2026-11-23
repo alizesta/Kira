@@ -308,6 +308,23 @@ def _rx(*items):
 
 
 _NORM_TABLE = str.maketrans({"ي": "ی", "ك": "ک", "\u200c": " ", "\u200f": " "})
+
+_ACTION_VERB_RX = _rx(
+    r"\b(?:set|apply|install|download|run|open|launch|change|configure|enable|disable|switch|connect|disconnect|move|copy|delete|remove|rename|create|make|organize|sort|find|search|list|read|inspect|check|scan|save|backup|play|pause|stop|type|click|press|update|fix|repair|set\s+up|turn\s+on|turn\s+off)\b",
+    r"بذار|بزار|قرار\s*بده|اعمال\s*کن|نصب\s*کن|دانلود\s*کن|اجرا\s*کن|باز\s*کن|تغییر\s*بده|عوض\s*کن|تنظیم\s*کن|وصل\s*کن|قطع\s*کن|فعال\s*کن|غیرفعال\s*کن|بساز|ایجاد\s*کن|حذف\s*کن|پاک\s*کن|جابه?\s*جا\s*کن|منتقل\s*کن|مرتب\s*کن|پیدا\s*کن|فهرست\s*کن|لیست\s*کن|بخون|بخوان|بررسی\s*کن|چک\s*کن|ذخیره\s*کن|کپی\s*کن|بکاپ\s*بگیر|راه\s*اندازی\s*کن|بنداز|بردار"
+)
+_ACTION_OBJECT_RX = _rx(
+    r"\b(?:wallpapers?|backgrounds?|computer|\bpc\b|windows|system|applications?|\bapps?\b|files?|folders?|documents?|desktop|bluetooth|volume|audio|sound|microphones?|headphones?|browsers?|windows?|screen|display|mouse|keyboard|printer|drives?|paths?|excel|word|pdf|website|websites|links?|settings|notifications?|clipboard|screenshots?|games?|monitor|gpu|ram|avatar)\b",
+    r"والپیپر|تصویر|عکس|زمینه|پس\s*زمینه|کامپیوتر|رایانه|ویندوز|سیستم|برنامه|اپلیکیشن|فایل|پوشه|فولدر|سند|دسکتاپ|بلوتوث|ولوم|صدا|میکروفون|میکروفن|هدفون|هدست|مرورگر|صفحه|پنجره|نمایشگر|موس|ماوس|کیبورد|صفحه\s*کلید|پرینتر|چاپگر|درایو|مسیر|اکسل|ورد|لینک|تنظیمات|اعلان|کلیپ\s*بورد|اسکرین\s*شات|بازی|مانیتور|گرافیک|رم|آواتار|قابلیت"
+)
+
+
+def is_actionable_intent(text: str) -> bool:
+    """Detect concrete PC actions even when the exact capability keyword is unfamiliar."""
+    normalized = re.sub(r"\s+", " ", str(text or "").lower().translate(_NORM_TABLE)).strip()
+    return bool(_ACTION_VERB_RX.search(normalized) and _ACTION_OBJECT_RX.search(normalized))
+
+
 GATES = {
     "time": _rx(r"ساعت", r"تاریخ", r"امروز\s*چند", r"چندمه", r"چندم", r"چه\s*روزی", r"روز\s*هفته", r"منطقه\s*زمانی", r"زمان\s*(?:محلی|فعلی)", r"\btime\b", r"\bdate\b", r"what\s*day",
                 r"timezone", r"time\s*zone", r"o'?clock"),
@@ -383,6 +400,14 @@ def detect_categories(text: str) -> set:
         r"(?:اینترنت|نت).{0,24}(?:وضعیت|سرعت|اتصال|قطعی|قطع|وصل|پینگ|\bip\b)", t, re.I))
     if internet_research and not network_diagnostics:
         found.discard("system")
+
+    # Wallpaper setup commonly spans discovery, download and application.
+    wallpaper_action = bool(
+        re.search(r"wallpaper|والپیپر|تصویر\s*(?:زمینه|پس\s*زمینه)", t, re.I)
+        and is_actionable_intent(t)
+    )
+    if wallpaper_action:
+        found.update({"apps", "files", "web"})
     return found
 
 

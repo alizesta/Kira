@@ -44,6 +44,11 @@ class WebSearchApplicationService:
         "رایگان از tavily.com). بدون وب ادامه می‌دهم."
     )
 
+    @classmethod
+    def missing_key_message(cls) -> str:
+        """Return the user-facing message without exposing service internals."""
+        return cls.MISSING_KEY_MESSAGE
+
     @staticmethod
     def can_search(settings: Mapping[str, Any]) -> bool:
         return bool(str(settings.get("tavily_api_key", "")).strip() or settings.get("web_fallback", True))

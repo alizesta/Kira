@@ -1,5 +1,6 @@
 """Lifecycle adapter for exposing an application service through dependency injection."""
 from __future__ import annotations
+import threading
 
 from collections.abc import Callable
 from typing import Any
@@ -7,10 +8,81 @@ from typing import Any
 from ..core.interfaces.application_module import DependencyRegistry, ModuleEventBus
 
 
+class _LazyServiceProxy:
+    """Defer construction and startup of a service until one of its methods is used."""
+
+    def __init__(self, factory: Callable[[], Any]) -> None:
+        self._factory = factory
+        self._instance: Any | None = None
+        self._started = False
+        self._lock = threading.RLock()
+
+    def _get(self) -> Any:
+        with self._lock:
+            if self._instance is None:
+                instance = self._factory()
+                if instance is None:
+                    raise TypeError("Lazy service factory returned None")
+                self._instance = instance
+            if not self._started:
+                start = getattr(self._instance, "start", None)
+                if callable(start):
+                    start()
+                self._started = True
+            return self._instance
+
+    def __getattr__(self, name: str):
+        # Method lookup may happen during UI composition (callback registration).
+        # Keep the wrapped service unrealized until that callback is actually invoked.
+        def invoke(*args, **kwargs):
+            return getattr(self._get(), name)(*args, **kwargs)
+        return invoke
+
+    def value(self, name: str):
+        """Read a non-callable service attribute explicitly, on demand."""
+        return getattr(self._get(), str(name))
+
+    def start(self) -> None:
+        """Restart an already-created service without defeating laziness."""
+        with self._lock:
+            if self._instance is None or self._started:
+                return
+            start = getattr(self._instance, "start", None)
+            if callable(start):
+                start()
+            self._started = True
+
+    def stop(self) -> None:
+        with self._lock:
+            if self._instance is None or not self._started:
+                return
+            stop = getattr(self._instance, "stop", None)
+            if callable(stop):
+                stop()
+            self._started = False
+
+    def dispose(self) -> None:
+        with self._lock:
+            instance, started = self._instance, self._started
+            self._instance = None
+            self._started = False
+        if instance is None:
+            return
+        if started:
+            stop = getattr(instance, "stop", None)
+            if callable(stop):
+                stop()
+        cleanup = getattr(instance, "dispose", None)
+        if not callable(cleanup):
+            cleanup = getattr(instance, "close", None)
+        if callable(cleanup):
+            cleanup()
+
+
 class ServiceModule:
     """Own one service instance, its lifecycle hooks, and its DI registration."""
 
-    def __init__(self, service_key: str, factory: Callable[[], Any]) -> None:
+    def __init__(self, service_key: str, factory: Callable[[], Any], *, lazy: bool = False) -> None:
         key = str(service_key or "").strip()
         if not key:
             raise ValueError("service_key is required")
@@ -18,6 +90,7 @@ class ServiceModule:
             raise TypeError("service factory must be callable")
         self.service_key = key
         self.factory = factory
+        self.lazy = bool(lazy)
         self._container: DependencyRegistry | None = None
         self._instance: Any | None = None
         self._registered = False
@@ -53,6 +126,14 @@ class ServiceModule:
     def start(self) -> None:
         if self._container is None:
             raise RuntimeError(f"Service module is not registered: {self.service_key}")
+
+        if self.lazy and self._instance is None:
+            proxy = _LazyServiceProxy(self.factory)
+            self._container.register_instance(self.service_key, proxy)
+            self._instance = proxy
+            self._registered = True
+            self._started = True
+            return
 
         # A stopped module retains its service object and DI registration. Restart
         # that same object instead of silently treating stop as a permanent close.

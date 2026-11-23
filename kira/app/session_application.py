@@ -152,8 +152,14 @@ class SessionApplicationService:
         *,
         ensure_resources: Callable[[RuntimeSessionPort, Mapping[str, Any]], None],
         restore_history: Callable[[RuntimeSessionPort], bool | None],
+        active_character_id: str | None = None,
     ) -> tuple[str, ...]:
-        """Synchronize runtime Sessions with character profiles and drain deleted profiles."""
+        """Synchronize character tabs while realizing only active/existing Sessions.
+
+        A missing active_character_id preserves eager behavior for compatibility
+        callers. The desktop UI supplies its active character so inactive profiles
+        remain lightweight until the user selects one.
+        """
         order = [
             character_id
             for character_id in ("kira", "ren", "mika")
@@ -165,6 +171,9 @@ class SessionApplicationService:
             if character_id not in ("kira", "ren", "mika")
         )
         for character_id in order:
+            existing = self.session_manager.get_session_for_character(character_id)
+            if existing is None and active_character_id is not None and character_id != active_character_id:
+                continue
             session = self.ensure_session(
                 character_id,
                 profiles[character_id],
@@ -185,11 +194,12 @@ class SessionApplicationService:
                 self.publish_history_loaded(session)
 
         sessions = self.session_manager.sessions_by_character
-        order.extend(character_id for character_id in sessions if character_id not in order)
         for character_id, session in tuple(sessions.items()):
             if character_id in profiles:
                 continue
             if self.has_pending_work(session):
+                if character_id not in order:
+                    order.append(character_id)
                 continue
             self.close_session(session)
         return tuple(order)

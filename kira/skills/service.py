@@ -125,6 +125,8 @@ class SharedSkillService:
         allowed = {str(item) for item in global_ids}
         allowed.update(str(item) for item in additions)
         allowed.difference_update(str(item) for item in exclusions)
+        if not allowed:
+            return ()
         installed = self.registry.discover()
         return tuple(sorted(item for item in allowed if item in installed))
 

@@ -1,3 +1,8 @@
+## 2026-11-23 — Startup phase 2 (four-stage follow-up)
+- Character tabs retain lightweight entries and defer ChatSession, router, Qt view, and history restoration until selection.
+- Optional Web Search, Skills, conversation search/transfer/organization services use lazy service proxies; empty Skills enablement skips directory discovery.
+- Ordinary Auto-mode chat no longer constructs ToolAgent; actionable and unknown-but-concrete PC requests retain compact triage and controlled local-schema escalation.
+
 ## 2026-11-23 (topic-scoped tool schemas — Task 2)
 - Separated the full runtime/security category set from `ToolPlan.schema_categories`, the model-visible tool scope. In Auto mode, native function schemas and text catalogs now include only categories detected for the current request; cross-category tools remain available when they match at least one selected topic.
 - Kept the explicit `tools_mode=always` behavior: it still exposes the full catalog. Unknown wording keeps the compact capability-index triage and only expands to the local catalog after the model requests PC tools. MCP/Agent schemas remain opt-in.

@@ -59,6 +59,21 @@ class SharedSkillsApplicationServiceTests(unittest.TestCase):
         self.assertTrue(self.service.uninstall("research-helper"))
         self.assertFalse(self.service.is_enabled("research-helper", "mika"))
 
+    def test_start_does_not_scan_the_skills_directory(self):
+        calls = []
+        original = self.service._skills.list_installed
+        self.service._skills.list_installed = lambda: calls.append(True) or original()
+        self.service.start()
+        self.assertEqual(calls, [])
+
+    def test_empty_enablement_skips_library_discovery(self):
+        calls = []
+        original = self.service._skills.registry.discover
+        self.service._skills.registry.discover = lambda: calls.append(True) or original()
+        self.service.start()
+        self.assertEqual(self.service._skills.enabled_for(self.settings, "kira"), ())
+        self.assertEqual(calls, [])
+
     def test_disposed_service_rejects_use(self):
         self.service.dispose()
         with self.assertRaises(RuntimeError):

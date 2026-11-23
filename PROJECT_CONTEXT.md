@@ -1,3 +1,10 @@
+## Startup phase 2 — four-stage follow-up (2026-11-23)
+- Session synchronization accepts an active character and keeps inactive profiles as lightweight navigation entries until selected.
+- ServiceModule lazy proxies defer Web Search, shared Skills, chat search, transfer and conversation organization construction/startup until use.
+- LazyToolAgent does not construct the Windows tool stack for ordinary Auto-mode chat; it does so for detected topics, actionable fallback requests, live task/confirmation, or Always mode.
+- Unknown actionable phrasing stays on compact index triage; model-confirmed escalation exposes local categories only and never implicitly enables MCP/independent agents.
+- Python/Windows runtime verification is pending; source changes alone do not establish startup or memory gains.
+
 # Ai1 Project Context
 
 ## Product identity

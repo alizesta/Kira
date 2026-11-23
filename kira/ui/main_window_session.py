@@ -211,8 +211,23 @@ class SessionController(WindowFeatureController):
         """Compatibility callback; event translation belongs to the application service."""
         self.context.services.session_application_service.publish_state_change(event)
 
+    def _ensure_character_tab_button(self, character_id, profile=None):
+        """Create the lightweight navigation button without creating a ChatSession."""
+        buttons = self.context.views.char_tab_buttons
+        button = buttons.get(character_id)
+        if button is None:
+            button = QPushButton(self.window)
+            button.setObjectName("charTab")
+            button.setCheckable(True)
+            button.setCursor(Qt.PointingHandCursor)
+            button.setFocusPolicy(Qt.NoFocus)
+            button.clicked.connect(lambda checked=False, c=character_id: self.switch_session(c))
+            self.context.views.char_tab_group.addButton(button)
+            buttons[character_id] = button
+        return button
+
     def _ensure_session_ui_resources(self, session, profile):
-        """Attach Qt resources after the application service resolves the Session."""
+        """Attach Qt resources only when a character chat is opened."""
         if session.view is None:
             session.view = self.make_session_view()
             self.context.views.chat_stack.addWidget(session.view)
@@ -223,15 +238,6 @@ class SessionController(WindowFeatureController):
         if session.client is None:
             session.client = self._new_router()
         session.theme = self.theme_for_character(session.cid, profile)
-        if session.cid not in self.context.views.char_tab_buttons:
-            button = QPushButton()
-            button.setObjectName("charTab")
-            button.setCheckable(True)
-            button.setCursor(Qt.PointingHandCursor)
-            button.setFocusPolicy(Qt.NoFocus)
-            button.clicked.connect(lambda checked=False, c=session.cid: self.switch_session(c))
-            self.context.views.char_tab_group.addButton(button)
-            self.context.views.char_tab_buttons[session.cid] = button
 
     def _ensure_session(self, cid, profile):
         return self.context.services.session_application_service.ensure_session(
@@ -245,18 +251,35 @@ class SessionController(WindowFeatureController):
             return self.restore_history()
 
     def sync_sessions(self):
-        """Rebuild visible character tabs from application-owned session state."""
+        """Keep every character selectable while realizing only active/existing Sessions."""
         profiles = self.context.services.character_service.all_profiles(self.context.services.settings)
+        active_id = getattr(self.context.state.front, "cid", None) or self.context.services.character_service.active_id(
+            self.context.services.settings
+        )
         order = self.context.services.session_application_service.sync_sessions(
             profiles,
             ensure_resources=self._ensure_session_ui_resources,
             restore_history=self._restore_session_history,
+            active_character_id=active_id,
         )
+        for cid in order:
+            self._ensure_character_tab_button(cid, profiles.get(cid))
+
+        # Deleted profiles without a realized Session have no resource-release callback.
+        for cid in tuple(self.context.views.char_tab_buttons):
+            if cid in order:
+                continue
+            button = self.context.views.char_tab_buttons.pop(cid)
+            self.context.views.char_tabs_row.removeWidget(button)
+            self.context.views.char_tab_group.removeButton(button)
+            button.deleteLater()
+
         while self.context.views.char_tabs_row.count():
             self.context.views.char_tabs_row.takeAt(0)
         for cid in order:
-            if cid in self.context.views.char_tab_buttons:
-                self.context.views.char_tabs_row.addWidget(self.context.views.char_tab_buttons[cid])
+            button = self.context.views.char_tab_buttons.get(cid)
+            if button is not None:
+                self.context.views.char_tabs_row.addWidget(button)
         self.context.views.char_tabs_row.addStretch(1)
         self.refresh_tab_buttons()
 
@@ -338,9 +361,31 @@ class SessionController(WindowFeatureController):
             button.setChecked(sess is self.context.state.front)
 
     def switch_session(self, cid, save=True):
-        """Bring one character's chat to the front: its conversation, its colours, its picture. Other chats keep working."""
+        """Open a character ChatSession on demand, then bring it to the front."""
+        profiles = self.context.services.character_service.all_profiles(self.context.services.settings)
         sess = self.context.state.sessions.get(cid)
-        if sess is None or not self.context.services.session_application_service.activate_session(sess.session_id):
+        profile = profiles.get(cid)
+        # A deleted character may retain an in-flight Session until its work drains.
+        # Keep that already-existing conversation reachable; do not create new ones.
+        if profile is None and sess is None:
+            return
+        if profile is None:
+            profile = {}
+        if sess is None or sess.view is None or sess.client is None:
+            sess = self._ensure_session(cid, profile)
+            if sess is None:
+                return
+            self._ensure_character_tab_button(cid, profile)
+        if not sess.loaded:
+            try:
+                restored = self._restore_session_history(sess)
+            except Exception:
+                _log.exception("Could not restore character history for %s", cid)
+                restored = False
+            if restored is not False:
+                sess.loaded = True
+                self.context.services.session_application_service.publish_history_loaded(sess)
+        if not self.context.services.session_application_service.activate_session(sess.session_id):
             return
         if cid != self.context.state.front.cid:
             self.feature_controller("character_settings")._flush_character_autosave()

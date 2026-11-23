@@ -156,7 +156,11 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
         mark_phase("modules_started")
 
         session_manager = SessionManager(ChatSession)
-        tool_agent = LazyToolAgent(lambda: _create_tool_agent(settings, DATA_DIR, ROOT))
+        tool_agent = LazyToolAgent(
+            lambda: _create_tool_agent(settings, DATA_DIR, ROOT),
+            data_dir=DATA_DIR,
+        )
+        tool_agent.set_settings(settings)
         window = MainWindow()
         initialize_main_window(
             window,
