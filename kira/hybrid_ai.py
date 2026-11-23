@@ -456,11 +456,10 @@ class HybridRouter:
             # deliberately sorted behind healthy routes, so a successful fallback
             # could otherwise return before their skip was reflected in telemetry.
             cooldown_routes = set()
-            # A single logical chat turn must not spend the same Google model's
-            # low RPM/RPD quota through duplicate Routes. Keep failover to other
-            # models/providers available, but attempt an identical Google
-            # endpoint + model + credential at most once per turn.
-            attempted_google_models = set()
+            # A single logical turn must not retry an identical endpoint/model/
+            # credential merely because it is configured as multiple Routes.
+            # This avoids apparent model-hopping that only repeats the same backend.
+            attempted_route_targets = set()
             for candidate in candidates:
                 if self._cancel.is_set() or (cancel_event is not None and cancel_event.is_set()):
                     break
@@ -489,17 +488,15 @@ class HybridRouter:
                     continue
                 info = self.route_info(route)
                 route_cfg = self._provider_cfg(route)
-                google_base = str(route_cfg.get("base_url") or "").lower()
-                google_model_key = None
-                if "generativelanguage.googleapis.com" in google_base:
-                    google_model_key = (google_base.rstrip("/"), str(route.get("model") or "").casefold(),
-                                        str(route_cfg.get("api_key") or ""))
-                    if google_model_key in attempted_google_models:
-                        failures.append(f"{rid}: همان مدل Google در همین درخواست قبلاً امتحان شد؛ درخواست تکراری حذف شد.")
-                        self.last_attempts.append({"provider": route["provider"], "route_id": rid,
-                                                   "model": route["model"], "result": "duplicate_model_skipped"})
-                        continue
-                    attempted_google_models.add(google_model_key)
+                endpoint = str(route_cfg.get("base_url") or route.get("provider") or "").strip().rstrip("/").casefold()
+                target_key = (endpoint, str(route.get("model") or "").strip().casefold(),
+                              str(route_cfg.get("api_key") or ""))
+                if target_key in attempted_route_targets:
+                    failures.append(f"{rid}: همین endpoint/model/credential در این درخواست قبلاً امتحان شد؛ تکرار حذف شد.")
+                    self.last_attempts.append({"provider": route["provider"], "route_id": rid,
+                                               "model": route["model"], "result": "duplicate_target_skipped"})
+                    continue
+                attempted_route_targets.add(target_key)
                 secrets = (route_cfg.get("api_key"),)
                 request_trace("route_selected", route_id=rid, provider=route.get("provider"), model=route.get("model"), stream=bool(stream), failover_index=metrics["failovers"])
                 emit({"phase": "connecting" if not failures and metrics["failovers"] == 0 else "failover",
