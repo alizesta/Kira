@@ -46,6 +46,7 @@ STATE_FIELDS = frozenset({
     "_model_import_worker",
     "_mood_emotion_glow",
     "_mood_ui_timer",
+    "_music_watcher_timer",
     "_nav_icon_map",
     "_neon_animations",
     "_ollama_models",

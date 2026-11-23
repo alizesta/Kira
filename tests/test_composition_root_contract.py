@@ -86,6 +86,27 @@ class CompositionRootContractTests(unittest.TestCase):
         self.assertTrue(keys.issubset(composition_args))
         self.assertTrue(keys.issubset(composition_required_keys))
 
+    def test_music_watcher_timer_is_declared_presentation_state(self):
+        context = parse("kira/ui/window_presentation_context.py")
+        composition = parse("kira/ui/main_window_composition.py")
+        state_fields = next(
+            node.value for node in context.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "STATE_FIELDS" for target in node.targets)
+        )
+        declared = {item.value for item in state_fields.elts if isinstance(item, ast.Constant)}
+        timer_assignments = [
+            node for node in ast.walk(composition)
+            if isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Attribute)
+                and target.attr == "_music_watcher_timer"
+                for target in node.targets
+            )
+        ]
+        self.assertIn("_music_watcher_timer", declared)
+        self.assertTrue(timer_assignments)
+
     def test_ui_composition_does_not_construct_application_services(self):
         module = parse("kira/ui/main_window_composition.py")
         forbidden_imports = []
