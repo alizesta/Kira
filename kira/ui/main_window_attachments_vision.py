@@ -1,5 +1,6 @@
 """Attachment and vision feature controller for the desktop window."""
 from PySide6.QtCore import Slot
+from ..request_trace import vision_trace
 from .main_window_attachments_vision_support import (
     AttachmentTile,
     CAPTURE_JPEG_QUALITY,
@@ -21,6 +22,25 @@ from .main_window_attachments_vision_support import (
 
 
 from .window_feature_controller import WindowFeatureController
+
+# Last (game_detected, frame_ok) pair written to the vision trace; the capture timer
+# only logs when this changes so the log is not flooded every few seconds.
+_LAST_CAPTURE_STATE = {}
+
+
+def _game_fields(game):
+    """Scalar window identity for the vision trace (exe and title only)."""
+    if not game:
+        return {"exe": None, "title": None}
+    return {"exe": str(game.get("exe") or "")[:80], "title": str(game.get("title") or "")[:120]}
+
+
+def _trace_capture_state(game, frame):
+    state = (bool(game), frame is not None and not frame.isNull())
+    if _LAST_CAPTURE_STATE.get("value") == state:
+        return
+    _LAST_CAPTURE_STATE["value"] = state
+    vision_trace("capture_state", game_detected=state[0], frame_ok=state[1], **_game_fields(game))
 
 
 class AttachmentsVisionController(WindowFeatureController):
@@ -206,6 +226,7 @@ class AttachmentsVisionController(WindowFeatureController):
     def handle_game_mode_command(self, action):
         """Execute an explicit chat command against the real Game Mode controller state."""
         action = str(action or "").strip().lower()
+        vision_trace("command", action=action)
         if action in ("enable", "disable"):
             enabled = action == "enable"
             self.set_game_mode(enabled, announce=False)
@@ -235,20 +256,20 @@ class AttachmentsVisionController(WindowFeatureController):
             return f"بله؛ فریم تازه‌ای از «{title}» دریافت شده و تحلیل Vision در حال اجراست."
         return f"فریم فعلی «{title}» دریافت شده است. در پیام بعدی درباره بازی، همین تصویر به درخواست مدل ضمیمه می‌شود تا بتوانم محتوایش را بررسی کنم."
 
-    def build_chat_vision_context(self, turn_extra=None):
-        """Tell the model whether a live game frame is actually present in this provider turn."""
+    def _vision_status(self, turn_extra=None):
+        """Return (status_code, model_context) describing whether a live frame reaches this turn."""
         game_frame_attached = bool(
             isinstance(turn_extra, dict)
             and turn_extra.get("live_game_frame_attached") is True
         )
         if game_frame_attached:
-            return (
+            return "attached", (
                 "LIVE GAME VISION STATUS: A frame captured by the user's manually enabled Game Mode "
                 "is attached to THIS user request as an image. You may inspect that image and describe "
                 "only visible evidence. Do not claim access beyond this attached frame."
             )
         if not self.context.state._game_mode_enabled:
-            return (
+            return "game_mode_off", (
                 "LIVE GAME VISION STATUS: Game Mode is OFF. No live game-screen frame is attached "
                 "or available to this request. Do not claim to see the desktop or game. User-supplied "
                 "image attachments, if present, are separate and may still be analyzed."
@@ -257,7 +278,7 @@ class AttachmentsVisionController(WindowFeatureController):
         if not service.capture_allowed(
             self.context.state._game_mode_enabled, self.context.state._game_mode_profile
         ):
-            return (
+            return "profile_blocks_capture", (
                 "LIVE GAME VISION STATUS: Game Mode is on, but the selected profile does not permit "
                 "screen capture. No live game frame is available; do not claim to see it."
             )
@@ -266,23 +287,44 @@ class AttachmentsVisionController(WindowFeatureController):
         frame = self.context.state._latest_game_frame
         if not game:
             self.context.state._latest_game_frame = None
-            return (
+            return "no_game_window", (
                 "LIVE GAME VISION STATUS: Game Mode is on, but no supported game window is currently "
                 "detected in the foreground. No live game image is attached. Do not invent the scene "
                 "or ask for a screenshot as a substitute for reporting this actual status."
             )
         if frame is None or frame.isNull():
             title = str(game.get("title") or game.get("exe") or "game")[:90]
-            return (
+            return "capture_failed", (
                 f"LIVE GAME VISION STATUS: Game Mode is on and foreground window '{title}' was detected, "
                 "but capture did not produce a valid frame. No game image is attached; do not claim to "
                 "see its contents. State that capture failed rather than pretending the camera is off."
             )
-        return (
+        return "frame_not_attached", (
             "LIVE GAME VISION STATUS: A local game frame exists, but it was NOT attached to this "
             "provider request. You cannot inspect its pixels in this turn and must not claim to see "
             "the scene. This can happen when the attachment limit is reached."
         )
+
+    def build_chat_vision_context(self, turn_extra=None):
+        """Tell the model whether a live game frame is actually present in this provider turn."""
+        code, text = self._vision_status(turn_extra)
+        images = turn_extra.get("images") if isinstance(turn_extra, dict) else None
+        names = ",".join(str(item.get("name") or "?")[:40] for item in (images or []) if isinstance(item, dict))
+        game = None
+        try:
+            game = self.context.adapters.game_mode.last_game
+        except Exception:  # noqa: BLE001 - tracing must never break a chat turn
+            pass
+        vision_trace(
+            "turn_context",
+            status=code,
+            game_mode=bool(self.context.state._game_mode_enabled),
+            live_frame_flag=code == "attached",
+            images_in_turn=len(images or []),
+            image_names=names[:200],
+            **_game_fields(game),
+        )
+        return text
 
     def set_game_mode(self, enabled, *, announce=True):
         enabled = bool(enabled)
@@ -291,6 +333,10 @@ class AttachmentsVisionController(WindowFeatureController):
         permissions = self.context.services.game_mode_application_service.permissions(self.context.state._game_mode_profile)
         vision_allowed = bool(permissions["vision_capture"])
         audio_allowed = bool(permissions["game_audio_loopback"])
+        vision_trace(
+            "game_mode_set", enabled=enabled, profile=str(self.context.state._game_mode_profile),
+            vision_allowed=vision_allowed, audio_allowed=audio_allowed,
+        )
 
         # Capture is gated by the selected profile, not only by the master toggle.
         self._set_game_vision_capture(enabled and vision_allowed)
@@ -427,6 +473,7 @@ class AttachmentsVisionController(WindowFeatureController):
         if not self.context.services.vision_application_service.capture_allowed(self.context.state._game_mode_enabled, self.context.state._game_mode_profile):
             self.context.state._latest_game_frame = None
             self.context.services.vision_application_service.reset()
+            _trace_capture_state(None, None)
             return
         # Re-check the foreground immediately before every capture; the slower
         # suggestion timer alone could leave a background game capturable for seconds.
@@ -435,6 +482,7 @@ class AttachmentsVisionController(WindowFeatureController):
             self.context.services.vision_application_service.policy.max_width, self.context.services.vision_application_service.policy.max_height
         )
         self.context.state._latest_game_frame = pixmap.toImage() if pixmap is not None else None
+        _trace_capture_state(self.context.adapters.game_mode.last_game, self.context.state._latest_game_frame)
         if not self.context.services.vision_application_service.should_analyze(
             enabled=self.context.state._game_mode_enabled,
             profile=self.context.state._game_mode_profile,
@@ -460,6 +508,11 @@ class AttachmentsVisionController(WindowFeatureController):
             if not self.context.services.vision_application_service.accept_frame(jpeg, visual_sample=visual_sample):
                 return
             image = att.image_attachment(jpeg, "game-screen.jpg", "image/jpeg")
+            vision_trace(
+                "analysis_started", jpeg_bytes=len(jpeg),
+                width=self.context.state._latest_game_frame.width(),
+                height=self.context.state._latest_game_frame.height(),
+            )
             session = self.context.state.cur
             self.context.session._vision_session = session
             self.context.session._vision_worker = VisionAnalysisWorker(self.context.session.client, image)
@@ -467,6 +520,7 @@ class AttachmentsVisionController(WindowFeatureController):
             self.context.session._vision_worker.finished.connect(session.relay.game_vision_finished)
             self.context.session._vision_worker.start()
         except Exception as exc:  # noqa: BLE001 - vision must never interrupt the game/chat
+            vision_trace("analysis_error", error=f"{type(exc).__name__}: {exc}")
             self.feature_controller("session").add_chat("system", f"Vision: آماده‌سازی فریم ناموفق بود: {str(exc)[:180]}")
 
     def _send_pending_for_session(self, session):
@@ -476,6 +530,8 @@ class AttachmentsVisionController(WindowFeatureController):
 
     def _on_game_vision_result(self, ok, result, latency_ms):
         self.context.services.vision_application_service.mark_latency(latency_ms)
+        # What the background Vision model said about the frame (first 200 characters only).
+        vision_trace("analysis_result", ok=bool(ok), latency_ms=int(latency_ms or 0), text=str(result or "")[:200])
         stats = self.context.services.vision_application_service.snapshot()
         self.context.views.game_mode_btn.setToolTip(
             f"Vision {stats['mode']} · تحلیل: {stats['analysis_count']} · "
@@ -506,15 +562,36 @@ class AttachmentsVisionController(WindowFeatureController):
             tray.showMessage("Ai1 · Game Mode", "بازی شناسایی شد. برای کمک در حین بازی، Game Mode را خودت فعال کن.",
                              QSystemTrayIcon.Information, 7000)
 
+    @staticmethod
+    def _dump_trace_frame(jpeg):
+        """Opt-in: set KIRA_VISION_TRACE_FRAMES=1 to keep the latest attached frame at DATA_DIR/logs/vision_last_frame.jpg."""
+        import os
+        if os.environ.get("KIRA_VISION_TRACE_FRAMES") != "1":
+            return False
+        try:
+            from pathlib import Path
+            from .. import config
+            folder = Path(config.DATA_DIR) / "logs"
+            folder.mkdir(parents=True, exist_ok=True)
+            (folder / "vision_last_frame.jpg").write_bytes(jpeg)
+            return True
+        except Exception:  # noqa: BLE001 - diagnostics must never block chat
+            return False
+
     def _game_vision_attachment(self):
         """Attach a fresh foreground frame only while Game Mode is manually enabled."""
         if not self.context.services.vision_application_service.capture_allowed(
             self.context.state._game_mode_enabled, self.context.state._game_mode_profile
         ):
             self.context.state._latest_game_frame = None
+            vision_trace(
+                "attach_skip", reason="capture_not_allowed",
+                game_mode=bool(self.context.state._game_mode_enabled),
+            )
             return None
         # Do not attach a stale frame from a game that lost foreground focus since the last timer tick.
         self.context.adapters.game_mode.poll()
+        game = self.context.adapters.game_mode.last_game
         pixmap = self.context.adapters.game_mode.capture_last_game(
             self.context.services.vision_application_service.policy.max_width,
             self.context.services.vision_application_service.policy.max_height,
@@ -523,15 +600,28 @@ class AttachmentsVisionController(WindowFeatureController):
             pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
         )
         if self.context.state._latest_game_frame is None:
+            vision_trace(
+                "attach_skip", reason="capture_failed" if game else "no_game_window",
+                **_game_fields(game),
+            )
             return None
         try:
             from PySide6.QtCore import QBuffer, QByteArray, QIODevice
             data = QByteArray()
             buffer = QBuffer(data)
             if not buffer.open(QIODevice.WriteOnly) or not self.context.state._latest_game_frame.save(buffer, "JPEG", CAPTURE_JPEG_QUALITY):
+                vision_trace("attach_skip", reason="jpeg_encode_failed", **_game_fields(game))
                 return None
-            return att.image_attachment(bytes(data), "game-screen.jpg", "image/jpeg")
+            jpeg = bytes(data)
+            saved = self._dump_trace_frame(jpeg)
+            vision_trace(
+                "attach_ok", width=self.context.state._latest_game_frame.width(),
+                height=self.context.state._latest_game_frame.height(),
+                jpeg_bytes=len(jpeg), frame_saved=saved, **_game_fields(game),
+            )
+            return att.image_attachment(jpeg, "game-screen.jpg", "image/jpeg")
         except Exception as exc:  # noqa: BLE001 - a failed capture must not block ordinary chat
+            vision_trace("attach_error", error=f"{type(exc).__name__}: {exc}", **_game_fields(game))
             self.feature_controller("session").add_chat("system", f"تصویر بازی آماده نشد: {exc}")
             return None
 
