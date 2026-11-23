@@ -1064,6 +1064,8 @@ class AttachmentsVisionController(WindowFeatureController):
             self._cancel_vision_worker()
             service.reset()
             return
+        # Live Gemini receives the complete monitor independently of the foreground-window crop.
+        self._maybe_stream_gemini_live_frame(None, "game", window_info)
         capture = self.context.adapters.game_mode.capture_service
         policy = service.policy
         pixmap = capture.capture_window(
@@ -1071,8 +1073,6 @@ class AttachmentsVisionController(WindowFeatureController):
         )
         frame = pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
         self.context.state._latest_game_frame = frame
-        if frame is None:
-            self._clear_live_video_state()
         _trace_capture_state(window_info, frame, "game" if frame is not None else None)
         self._submit_vision_frame(frame, "game", window_info)
 
@@ -1096,6 +1096,8 @@ class AttachmentsVisionController(WindowFeatureController):
             self._cancel_vision_worker()
             service.reset()
             return
+        # The selected monitor can be streamed even when the foreground window is on another display.
+        self._maybe_stream_gemini_live_frame(None, "desktop", window_info)
         policy = service.policy
         pixmap = capture.capture_window(
             window_info,
@@ -1106,7 +1108,6 @@ class AttachmentsVisionController(WindowFeatureController):
         frame = pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
         self.context.state._latest_game_frame = frame
         if frame is None:
-            self._clear_live_video_state()
             _FRAME_SOURCE["value"] = None
             _FRAME_WINDOW_INFO["value"] = None
             vision_trace(
@@ -1122,8 +1123,6 @@ class AttachmentsVisionController(WindowFeatureController):
         service = self.context.services.vision_application_service
         if frame is None or frame.isNull():
             return
-        # The Gemini Live visual path is independent of ordinary Chat/Vision worker busy state.
-        self._maybe_stream_gemini_live_frame(frame, source, window_info)
         # The local Perception path is independent of cloud/model analysis busy state.
         self._queue_perception_ocr(frame, source, window_info)
         enabled = self.context.state._game_mode_enabled if source == "game" else True
