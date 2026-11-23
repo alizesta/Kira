@@ -85,6 +85,40 @@ class DesktopContextTests(unittest.TestCase):
         self.assertEqual(snapshot["recent_events"][-1]["type"], "capture_blocked")
         self.assertIn("bitwarden.exe", snapshot["recent_events"][-1]["summary"])
 
+    def test_summary_prioritizes_latest_visual_observations(self):
+        context = DesktopContext(max_events=12)
+        context.update_active_window(window())
+        for index in range(1, 7):
+            context.record_event(
+                "visual_observation",
+                f"screen-description-{index} " + ("detail " * 20),
+                dedupe_key=f"visual:{index}",
+            )
+
+        summary = context.summary()
+
+        self.assertIn("Latest visual observations (newest first):", summary)
+        self.assertIn("screen-description-6", summary)
+        self.assertIn("screen-description-5", summary)
+        self.assertIn("screen-description-4", summary)
+        self.assertNotIn("screen-description-1", summary)
+        self.assertLess(summary.index("screen-description-6"), summary.index("screen-description-5"))
+        self.assertLessEqual(len(summary), MAX_SUMMARY_CHARS)
+
+    def test_small_summary_budget_keeps_the_latest_screen_observation(self):
+        context = DesktopContext()
+        context.update_active_window(window())
+        context.record_event(
+            "visual_observation",
+            "LATEST_SCREEN_STATE " + ("useful detail " * 12),
+            dedupe_key="visual:latest",
+        )
+
+        summary = context.summary(max_chars=700)
+
+        self.assertIn("LATEST_SCREEN_STATE", summary)
+        self.assertLessEqual(len(summary), 700)
+
     def test_stop_and_dispose_clear_ram_context(self):
         context = DesktopContext()
         context.update_active_window(window())
