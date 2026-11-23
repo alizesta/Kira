@@ -206,6 +206,17 @@ class WebSearchApplicationService:
             else:
                 updated.pop("live_game_frame_attached", None)
             return updated
+        if isinstance(base_content, dict) and "model" in base_content:
+            # Legacy compose() payload: extend its model text. Stringifying the whole
+            # dict would put the base64 image data into the prompt text.
+            merged = dict(base_content)
+            merged["model"] = str(base_content.get("model") or "") + "\n\n" + str(addition or "")
+            merged["images"] = list(images or [])
+            if live_frame:
+                merged["live_game_frame_attached"] = True
+            else:
+                merged.pop("live_game_frame_attached", None)
+            return merged
         merged = {
             "model": str(base_content or "") + "\n\n" + str(addition or ""),
             "images": list(images or []),
