@@ -25,7 +25,11 @@ class PerceptionEngine:
             self.context.clear_sensitive(reason="foreground_window_unidentified")
             self.change_detector.reset()
             return None
-        self.context.update_active_window(normalized, source=source)
+        changed = self.context.update_active_window(normalized, source=source)
+        if changed:
+            # A new app/window needs its own initial sample even when its pixels
+            # resemble the previous foreground window.
+            self.change_detector.reset()
         return normalized
 
     def screen_changed(self, sample: bytes) -> bool:
