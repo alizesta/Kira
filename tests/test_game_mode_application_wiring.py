@@ -24,6 +24,16 @@ class GameModeApplicationWiringTests(unittest.TestCase):
         self.assertIn('game_mode_application_service=container.resolve("game_mode_application_service")', bootstrap)
         self.assertIn("game_mode_application_service=None", composition)
 
+    def test_game_mode_toolbar_is_a_single_checkable_toggle(self):
+        composer = (ROOT / "kira/ui/components/chat_composer.py").read_text(encoding="utf-8")
+        vision = (ROOT / "kira/ui/main_window_attachments_vision.py").read_text(encoding="utf-8")
+        self.assertIn("self.game_mode_btn.setCheckable(True)", composer)
+        self.assertIn("self.game_mode_btn.toggled.connect(owner.set_game_mode)", composer)
+        self.assertNotIn("self.game_mode_menu", composer)
+        self.assertNotIn("game_mode_story_action", composer)
+        self.assertNotIn("game_mode_safe_action", composer)
+        self.assertNotIn("vision_rate_menu", composer)
+        self.assertIn("game_mode_button.setChecked(enabled)", vision)
     def test_ui_delegates_game_mode_permissions_and_audio_alert_policy(self):
         vision = (ROOT / "kira/ui/main_window_attachments_vision.py").read_text(encoding="utf-8")
         runtime = (ROOT / "kira/ui/main_window_runtime.py").read_text(encoding="utf-8")
