@@ -1059,7 +1059,7 @@ class AttachmentsVisionController(WindowFeatureController):
         self._submit_vision_frame(frame, "game", window_info)
 
     def _capture_desktop_frame(self):
-        """Capture an approved foreground window only on the selected monitor."""
+        """Capture the complete privacy-approved selected monitor."""
         service = self.context.services.vision_application_service
         privacy = service.desktop_capture_application_service
         capture = self.context.adapters.game_mode.capture_service
@@ -1078,10 +1078,10 @@ class AttachmentsVisionController(WindowFeatureController):
             self._cancel_vision_worker()
             service.reset()
             return
-        # The selected monitor can be streamed even when the foreground window is on another display.
+        # The same complete selected-monitor frame feeds live Gemini and local analysis.
         self._maybe_stream_gemini_live_frame(None, "desktop", window_info)
         policy = service.policy
-        pixmap = capture.capture_window(
+        pixmap = capture.capture_monitor_for_window(
             window_info,
             monitor_id=privacy.selected_monitor_id or None,
             max_width=policy.max_width,
@@ -1095,7 +1095,7 @@ class AttachmentsVisionController(WindowFeatureController):
             vision_trace(
                 "capture_skipped", source="desktop",
                 exe=str(window_info.get("exe") or "")[:80],
-                reason="capture_failed_or_window_outside_selected_monitor",
+                reason="selected_monitor_capture_failed",
             )
             return
         self._submit_vision_frame(frame, "desktop", window_info)
