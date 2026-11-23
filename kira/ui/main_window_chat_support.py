@@ -13,4 +13,3 @@ from .. import body as body_ctl
 from ..chat.application_service import ApplicationEventKind
 from ..chat.command_adapters import create_default_command_registry
 from ..tools.tasks import parse_control as parse_tool_task_control
-from .workers import SearchWorker, TaskWorker
