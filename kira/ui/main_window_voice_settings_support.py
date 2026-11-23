@@ -18,4 +18,3 @@ from ..ui_widgets import ChatInput, RouteChip
 from ..chat_code_ui import Kode
 from .components import ChatHeader, ModelCombo, ChatComposer
 from .pages import AssistantPage, VoicePage
-from .workers import TaskWorker
