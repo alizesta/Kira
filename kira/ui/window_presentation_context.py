@@ -101,6 +101,7 @@ SERVICE_FIELDS = frozenset({
     "shared_skills_application_service",
     "tool_agent",
     "vision_application_service",
+    "vision_router",
     "voice_application_service",
     "web_search_service",
 })
@@ -338,7 +339,7 @@ class _FieldBucket:
 CONTROLLER_ACCESS = {
  "runtime": {
   "state": frozenset({"_clicks","_close_after_local_voice","_closing","_quitting","_game_mode_profile","_last_variant","_provider_workers","_save_warned","awake","cur","front","reactions","sessions"}),
-  "services": frozenset({"brain_application_service","character_service","chat_application_service","vision_application_service","game_mode_application_service","memory_service","mood_service","provider_application_service","reflection_application_service","session_application_service","settings","tool_agent","voice_application_service"}),
+  "services": frozenset({"brain_application_service","character_service","chat_application_service","vision_application_service","game_mode_application_service","memory_service","mood_service","provider_application_service","reflection_application_service","session_application_service","settings","tool_agent","vision_router","voice_application_service"}),
   "adapters": frozenset({"animator","bubble","companion","director","game_mode"}),
   "views": frozenset({"code_chat","companion_btn","desktop_vision_action","desktop_vision_auto_action","desktop_vision_monitor_actions","desktop_vision_monitor_menu","gen_stop_btn","input","kode_activity","mic_btn","route_badge","route_menu","route_status","send_btn","status","tab_keys","tray","voice_btn","voice_page","wake_btn","wake_timer"}),
   "peers": frozenset({"session","provider_settings","attachments_vision","chat","lifecycle","voice_settings"}),
@@ -365,7 +366,7 @@ CONTROLLER_ACCESS = {
  },
  "lifecycle": {
   "state": frozenset({"_closing","_effect","_ollama_models","_ollama_worker","_quitting","sessions"}),
-  "services": frozenset({"ollama_client","provider_application_service","runtime_settings_application_service","settings","tool_agent"}),
+  "services": frozenset({"ollama_client","provider_application_service","runtime_settings_application_service","settings","tool_agent","vision_router"}),
   "adapters": frozenset({"animator","companion","bubble", "appearance_runtime"}),
   "views": frozenset({"appearance_page","avatar","character_page","conn_btn","conn_lbl","keep_alive","load_btn","mic_btn","model","modes_chk","name","num_ctx","num_predict","persona","route_ollama_enabled","speed_btn","tavily_key","temp","tray","ui_lang","unload_btn","url","voice_page","web_btn","web_depth","web_fallback_chk"}),
   "peers": frozenset({"session","provider_settings","runtime","character_settings"}),
@@ -374,7 +375,7 @@ CONTROLLER_ACCESS = {
  },
  "attachments_vision": {
   "state": frozenset({"_closing","_game_audio_restart_pending","_game_capture_timer","_game_mode_enabled","_game_mode_profile","_game_poll_timer","_game_prev_mic","_game_prev_wake","_latest_game_frame","_perception_worker","_perception_window_info","_perception_source","_perception_result","_stopping_game_audio_listener","_upload_done","_upload_tiles","_upload_token","cur","sessions"}),
-  "services": frozenset({"coding_agent_application_service","desktop_context_application_service","game_mode_application_service","settings","tool_agent","vision_application_service","voice_application_service"}),
+  "services": frozenset({"coding_agent_application_service","desktop_context_application_service","game_mode_application_service","settings","tool_agent","vision_application_service","vision_router","voice_application_service"}),
   "adapters": frozenset({"game_audio_listener","game_mode"}),
   "views": frozenset({"game_mode_btn","desktop_vision_action","desktop_vision_auto_action","desktop_vision_monitor_actions","desktop_vision_monitor_menu","mic_btn","send_strip","wake_btn","code_chat","tray"}),
   "peers": frozenset({"session","chat","runtime"}),
