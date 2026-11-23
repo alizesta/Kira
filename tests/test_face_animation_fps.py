@@ -20,6 +20,7 @@ class AvatarFrameRateTests(unittest.TestCase):
 
     def setUp(self):
         self.animator = FaceAnimator()
+        self.animator._timer.stop()
         self.windows = []
 
     def tearDown(self):
@@ -51,6 +52,30 @@ class AvatarFrameRateTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(self.animator.animation_fps, 5)
         self.assertEqual(self.animator._timer.interval(), 200)
+
+    def test_avatar_views_share_rig_transforms_until_next_tick(self):
+        calls = []
+        original_affine = self.animator.rig.affine
+
+        def counted_affine(x, y, e=14.0):
+            calls.append(None)
+            return original_affine(x, y, e)
+
+        self.animator.rig.affine = counted_affine
+        try:
+            tile_result = self.animator._tile_affine()
+            self.assertIs(self.animator._tile_affine(), tile_result)
+            face_result = self.animator._face_affine()
+            self.assertIs(self.animator._face_affine(), face_result)
+            self.assertEqual(len(calls), 2)
+
+            self.animator._tick()
+
+            self.assertIsNot(self.animator._tile_affine(), tile_result)
+            self.assertIsNot(self.animator._face_affine(), face_result)
+            self.assertEqual(len(calls), 4)
+        finally:
+            self.animator.rig.affine = original_affine
 
     def test_one_visible_avatar_keeps_full_rate_when_another_is_hidden(self):
         first = self._window_with_avatar()
