@@ -81,3 +81,16 @@ def test_eye_mode_has_one_toggle_and_monitor_selection_only():
     assert 'addAction("Live Desktop Vision")' not in source
     assert 'addMenu("Eye Mode · انتخاب مانیتور")' in source
     assert 'desktop_policy.set_enabled(False)' in source
+
+
+
+def test_eye_mode_uses_the_selected_monitor_for_chat_and_background_analysis():
+    source = read("kira/ui/main_window_attachments_vision.py")
+    live_attach = source.split("def _live_vision_attachment(self):", 1)[1].split("def _game_vision_attachment(self):", 1)[0]
+    desktop_capture = source.split("def _capture_desktop_frame(self):", 1)[1].split("def _submit_vision_frame(self, frame, source, window_info):", 1)[0]
+    assert 'if not self.context.state._game_mode_enabled:' in live_attach
+    assert 'source="desktop"' in live_attach
+    assert 'capture.capture_monitor_for_window(' in live_attach
+    assert 'return att.image_attachment(jpeg, "eye-screen.jpg", "image/jpeg")' in live_attach
+    assert 'capture.capture_monitor_for_window(' in desktop_capture
+    assert 'self._submit_vision_frame(frame, "desktop", window_info)' in desktop_capture
