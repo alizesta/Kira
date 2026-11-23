@@ -14,6 +14,7 @@ from .commands import (
     NO_MATCH,
     PermissionChecker,
 )
+from .game_mode_commands import parse_game_mode_command
 
 
 def create_default_command_registry(
@@ -31,6 +32,7 @@ def create_default_command_registry(
     tool_agent: Any,
     desktop_action_matcher: Callable[[str], str | None],
     desktop_action_handler: Callable[[str], Any],
+    game_mode_handler: Callable[[str], str] | None = None,
 ) -> CommandRegistry:
     """Build the compatibility adapter set from injected existing command owners."""
     registry = CommandRegistry(permission_checker=permission_checker)
@@ -41,6 +43,17 @@ def create_default_command_registry(
             return None
         days = usage_parser(text)
         return {"days": days} if days is not None else None
+
+    def match_game_mode(text, context):
+        if game_mode_handler is None:
+            return None
+        action = parse_game_mode_command(text)
+        return {"action": action} if action else None
+
+    def execute_game_mode(context, arguments):
+        result = game_mode_handler(str(arguments["action"]))
+        metadata = {"continue_chat": True} if context.metadata.get("has_attachments") else {}
+        return CommandOutcome(result=str(result or ""), metadata=metadata)
 
     def parse_web(text, _context):
         query, forced = web_parser(text)
@@ -120,6 +133,20 @@ def create_default_command_registry(
             )
         return NO_MATCH
 
+    registry.register(CommandDefinition(
+        command_id="chat.game_mode",
+        name="game_mode",
+        description="Enable, disable or report the current read-only game-screen capture state.",
+        parameters={
+            "type": "object",
+            "properties": {"action": {"type": "string", "enum": ["enable", "disable", "status"]}},
+            "required": ["action"],
+            "additionalProperties": False,
+        },
+        required_permissions=(),
+        matcher=match_game_mode,
+        handler=execute_game_mode,
+    ))
     registry.register(CommandDefinition(
         command_id="chat.body_control",
         name="body_control",

@@ -186,17 +186,6 @@ class ChatController(WindowFeatureController):
             complete_local_request=self.context.services.chat_application_service.complete_local_request,
         ):
             return  # Coding Agent owns this separate execution lifecycle.
-        if self.context.state._game_mode_enabled and len(attachments or []) < self.context.services.chat_application_service.max_attachments:
-            frame = self.feature_controller("attachments_vision")._game_vision_attachment()
-            if frame is not None:
-                attachments = list(attachments or []) + [frame]
-                try:
-                    self.context.services.chat_application_service.add_request_attachment(
-                        self.context.state.cur.application_request_id, frame
-                    )
-                except (AttributeError, ValueError):
-                    # A non-application request can still use the legacy payload.
-                    pass
         self.context.session._turn_voice = voice
         if self.context.services.voice_application_service.is_speaking():
             self.context.adapters.director.event("user_interrupt")
@@ -225,6 +214,26 @@ class ChatController(WindowFeatureController):
         img_search = bool(
             has_image and (force_img or self.context.services.settings.get("image_search", False))
         )
+        # Dispatch explicit Game Mode controls before adding an automatic live frame.
+        # Otherwise the frame itself would mark the request as "has attachments" and
+        # prevent deterministic on/off/status commands from matching.
+        live_game_frame_added = False
+        if (
+            self.context.state._game_mode_enabled
+            and not (command_dispatch.handled and not command_dispatch.continue_chat)
+            and len(attachments or []) < self.context.services.chat_application_service.max_attachments
+        ):
+            frame = self.feature_controller("attachments_vision")._game_vision_attachment()
+            if frame is not None:
+                live_game_frame_added = True
+                attachments = list(attachments or []) + [frame]
+                try:
+                    self.context.services.chat_application_service.add_request_attachment(
+                        self.context.state.cur.application_request_id, frame
+                    )
+                except (AttributeError, ValueError):
+                    # A non-application request can still use the legacy payload.
+                    pass
         packed = None
         if self.context.state.cur.application_request_id:
             try:
@@ -236,6 +245,14 @@ class ChatController(WindowFeatureController):
         if packed is None and attachments:
             packed = self.context.services.chat_application_service.compose_attachments(text, attachments, search=img_search)
         if packed is not None:
+            # Do not infer live-screen provenance from a user-controlled filename.
+            packed["live_game_frame_attached"] = bool(
+                live_game_frame_added
+                and any(
+                    isinstance(item, dict) and item.get("name") == "game-screen.jpg"
+                    for item in (packed.get("images") or [])
+                )
+            )
             # Search must only run with a successfully prepared image payload.
             img_search = bool(packed.get("images")) and (force_img or self.context.services.settings.get("image_search", False))
         if packed and packed.get("errors"):
@@ -544,6 +561,9 @@ class ChatController(WindowFeatureController):
             "voice_input": self.context.session._turn_voice,
             "mode": mode,
             "body_context": body_context,
+            "tool_context": self.feature_controller("attachments_vision").build_chat_vision_context(
+                self.context.session._turn_extra
+            ),
             "active_capabilities": tuple(sorted(getattr(self.context.session._tool_plan, "categories", ()) or ())),
             "turn_extra": self.context.session._turn_extra,
             "max_context_chars": self.context.services.settings.get("chat_context_char_limit", 0),
@@ -626,6 +646,7 @@ class ChatController(WindowFeatureController):
             tool_agent=self.context.services.tool_agent,
             desktop_action_matcher=match_safe_action,
             desktop_action_handler=lambda text: run_safe_action(text, allow_desktop=True),
+            game_mode_handler=lambda action: self.feature_controller("attachments_vision").handle_game_mode_command(action),
         )
         self.context.services.chat_application_service.set_command_registry(registry)
         self.command_registry = registry

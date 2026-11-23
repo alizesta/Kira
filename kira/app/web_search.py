@@ -176,7 +176,18 @@ class WebSearchApplicationService:
 
     @staticmethod
     def merge_search_content(base_content, images, addition, *, image_search: bool = False):
-        """Attach search evidence without dropping prepared files, text or image payloads."""
+        """Attach search evidence without dropping prepared files, text or image payloads.
+
+        The Chat controller marks a turn with ``live_game_frame_attached`` when a real
+        Game Mode frame is part of the provider request. Rebuilding the turn payload
+        after a web/image search must not silently drop that provenance flag, or the
+        model would be told no live frame was attached while the image is present.
+        """
+        live_frame = bool(
+            isinstance(base_content, dict)
+            and base_content.get("live_game_frame_attached") is True
+            and images
+        )
         if isinstance(base_content, dict) and "files" in base_content and "text" in base_content:
             updated = dict(base_content)
             current_text = str(updated.get("text") or "").strip()
@@ -190,11 +201,18 @@ class WebSearchApplicationService:
             updated["text"] = (current_text + "\n\n" if current_text else "") + str(addition or "")
             updated["images"] = list(images or [])
             updated["search"] = bool(image_search)
+            if live_frame:
+                updated["live_game_frame_attached"] = True
+            else:
+                updated.pop("live_game_frame_attached", None)
             return updated
-        return {
+        merged = {
             "model": str(base_content or "") + "\n\n" + str(addition or ""),
             "images": list(images or []),
         }
+        if live_frame:
+            merged["live_game_frame_attached"] = True
+        return merged
 
     @staticmethod
     def diagnose(

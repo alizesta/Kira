@@ -67,6 +67,16 @@ _GAME_HINTS = re.compile(
     r"eldenring|elden ring|cyberpunk|valorant|league of legends|"
     r"fortnite|minecraft|gta5|witcher|steam_app)", re.I
 )
+_BROWSER_EXES = frozenset({"chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"})
+# Only named game sites bypass the browser deny-list. Ordinary browser tabs remain excluded.
+_BROWSER_GAME_HINTS = re.compile(r"(?:^|[^\w])(?:chess\.com|lichess\.org)(?:$|[^\w])", re.I)
+
+
+def _is_supported_browser_game(exe: str, title: str) -> bool:
+    """Allow a narrowly-scoped set of browser game tabs without treating browsers as games."""
+    return str(exe or "").strip().lower() in _BROWSER_EXES and bool(
+        _BROWSER_GAME_HINTS.search(str(title or ""))
+    )
 
 
 def _is_own_process(info):
@@ -156,7 +166,8 @@ class GameModeMonitor(QObject):
             return
         exe = info["exe"]
         title = info["title"]
-        if not exe or exe in _NON_GAME or not title:
+        browser_game = _is_supported_browser_game(exe, title)
+        if not exe or (exe in _NON_GAME and not browser_game) or not title:
             return
         if _OWN_TITLE.search(title) or _is_own_process(info):
             return
@@ -167,9 +178,10 @@ class GameModeMonitor(QObject):
             return
         area = screen.geometry()
         large = width >= area.width() * 0.58 and height >= area.height() * 0.58
-        hinted = bool(_GAME_HINTS.search(exe) or _GAME_HINTS.search(title))
-        # Avoid treating ordinary small windows as games; large immersive windows are a useful generic signal.
-        if not hinted and not large:
+        hinted = browser_game or bool(_GAME_HINTS.search(exe) or _GAME_HINTS.search(title))
+        # Browser games are only admitted for named sites in a large foreground window.
+        # Other browser tabs stay denied even when the browser fills the screen.
+        if (browser_game and not large) or (not hinted and not large):
             return
         self.last_game = info
         if info["pid"] not in self._seen_pids:
