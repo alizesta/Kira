@@ -121,10 +121,7 @@ class AttachmentsVisionController(WindowFeatureController):
     def set_live_video_active(self, enabled):
         """Use a 1 Hz timer only while Live and a manual screen source are both active."""
         self._live_video_active = bool(enabled)
-        source_active = (
-            self.context.state._game_mode_enabled
-            or self.context.services.vision_application_service.desktop_capture_application_service.enabled
-        )
+        source_active = bool(self.context.state._game_mode_enabled)
         timer = self.context.state._game_capture_timer
         timer.setInterval(self._vision_interval_ms())
         if not enabled:
@@ -647,80 +644,29 @@ class AttachmentsVisionController(WindowFeatureController):
         )
 
     def _set_game_vision_capture(self, allowed):
-        """Keep timer ownership source-aware and cancel analysis when permission closes."""
+        """Eye Mode owns the only live capture source: the selected desktop monitor."""
         allowed = bool(allowed)
-        desktop_policy = self.context.services.vision_application_service.desktop_capture_application_service
-        if allowed and desktop_policy.enabled:
-            self.set_desktop_vision(False, announce=False)
+        privacy = self.context.services.vision_application_service.desktop_capture_application_service
+        privacy.set_enabled(allowed)
         self.context.adapters.game_mode.set_enabled(allowed)
-        if not allowed and not desktop_policy.enabled:
+        if not allowed:
+            self._cancel_vision_worker()
             self._cancel_perception_worker()
+            self._clear_live_video_state()
             self.context.services.desktop_context_application_service.clear()
-        if allowed:
-            self.context.state._game_capture_timer.setInterval(
-                self._vision_interval_ms()
-            )
-            self._capture_game_frame()
-            self.context.state._game_capture_timer.start()
-        else:
-            if not desktop_policy.enabled:
-                self._clear_live_video_state()
-                self.context.state._game_capture_timer.stop()
+            self.context.state._game_capture_timer.stop()
             self.context.state._latest_game_frame = None
             self.context.services.vision_application_service.reset()
             _FRAME_SOURCE["value"] = None
             _FRAME_WINDOW_INFO["value"] = None
-            self._cancel_vision_worker()
+            return
+        self.context.state._game_capture_timer.setInterval(self._vision_interval_ms())
+        self._capture_desktop_frame()
+        self.context.state._game_capture_timer.start()
 
     def set_desktop_vision(self, enabled, *, announce=True):
-        """Manually enable/stop Live Desktop Vision; it always starts off after app launch."""
-        service = self.context.services.vision_application_service
-        privacy = service.desktop_capture_application_service
-        enabled = bool(enabled)
-        if enabled and self.context.state._game_mode_enabled:
-            enabled = False
-            if announce:
-                self.feature_controller("session").add_chat(
-                    "system", "برای جلوگیری از تداخل، ابتدا Game Mode را خاموش کن."
-                )
-        privacy.set_enabled(enabled)
-        self.context.services.settings["desktop_vision_enabled"] = enabled
-        save_settings(self.context.services.settings)
-        action = self.context.views.desktop_vision_action
-        if action.isChecked() != enabled:
-            previous = action.blockSignals(True)
-            action.setChecked(enabled)
-            action.blockSignals(previous)
-        service.reset()
-        self._cancel_vision_worker()
-        if not enabled:
-            self._cancel_perception_worker()
-            self.context.services.desktop_context_application_service.clear()
-            if not self.context.state._game_mode_enabled:
-                self._clear_live_video_state()
-        self.context.state._latest_game_frame = None
-        _FRAME_SOURCE["value"] = None
-        _FRAME_WINDOW_INFO["value"] = None
-        if enabled:
-            self.context.state._game_capture_timer.setInterval(
-                self._vision_interval_ms()
-            )
-            self._capture_desktop_frame()
-            self.context.state._game_capture_timer.start()
-            if announce:
-                self.feature_controller("session").add_chat(
-                    "system",
-                    "🖥️ Live Desktop Vision روشن شد. فقط پنجرهٔ فعال و مجاز روی مانیتور انتخاب‌شده بررسی می‌شود؛ برای توقف فوری همین گزینه را خاموش کن."
-                )
-        else:
-            if not self.context.state._game_mode_enabled:
-                self.context.state._game_capture_timer.stop()
-            if announce:
-                self.feature_controller("session").add_chat(
-                    "system", "Live Desktop Vision متوقف شد و تحلیل جاری لغو شد."
-                )
-        vision_trace("desktop_vision_state", enabled=enabled)
-        return enabled
+        """Compatibility shim: legacy Desktop Vision requests now toggle Eye Mode."""
+        return self.set_game_mode(bool(enabled), announce=announce)
 
     def set_desktop_monitor(self, monitor_id):
         """Persist selected display; empty value follows the foreground window's display."""
@@ -757,10 +703,8 @@ class AttachmentsVisionController(WindowFeatureController):
         return True
 
     def _capture_active_vision_frame(self):
-        """Dispatch the shared timer to the sole manually enabled source."""
+        """Eye Mode always captures the selected desktop monitor."""
         if self.context.state._game_mode_enabled:
-            self._capture_game_frame()
-        elif self.context.services.vision_application_service.desktop_capture_application_service.enabled:
             self._capture_desktop_frame()
 
     def _cancel_vision_worker(self):
@@ -824,72 +768,46 @@ class AttachmentsVisionController(WindowFeatureController):
         return f"فریم پنجرهٔ {exe} دریافت شده؛ هنگام ارسال پیام دربارهٔ بازی می‌توان آن را ضمیمه کرد."
 
     def _vision_status(self, turn_extra=None):
-        """Describe only a frame proven to be attached to this exact provider request."""
+        """Describe Eye Mode state and never claim a frame was attached without proof."""
         extra = turn_extra if isinstance(turn_extra, dict) else {}
         attached = extra.get("live_vision_frame_attached") is True
         source = str(extra.get("live_vision_frame_source") or "")
         if not attached and extra.get("live_game_frame_attached") is True:
-            attached, source = True, "game"
-        if attached and source == "desktop":
+            attached, source = True, "desktop"
+        if attached and source in ("desktop", "game"):
             return "attached", (
-                "LIVE DESKTOP VISION STATUS: A privacy-approved crop of the foreground application "
-                "window on the user's selected monitor is attached to THIS request. It is a single "
-                "captured frame, not unrestricted access to the desktop. Describe only visible evidence "
-                "and do not claim to see windows behind the foreground window."
-            )
-        if attached and source == "game":
-            return "attached", (
-                "LIVE GAME VISION STATUS: A foreground game-window frame captured while the user's "
-                "Game Mode was manually enabled is attached to THIS request. Describe only visible "
-                "evidence; this is not unrestricted desktop access."
+                "EYE MODE STATUS: A privacy-approved frame from the user's selected monitor is attached "
+                "to THIS request. Inspect only the supplied frame; do not infer hidden windows or claim "
+                "continuous visual access from this single attachment."
             )
         if attached:
             return "attached_unknown_source", (
-                "LIVE VISION STATUS: An image is attached, but its live-capture source could not be "
-                "verified. Inspect only the image actually attached; do not infer other screen contents."
-            )
-        desktop = self.context.services.vision_application_service.desktop_capture_application_service
-        if desktop.enabled:
-            return "desktop_frame_not_attached", (
-                "LIVE DESKTOP VISION STATUS: Desktop Vision is enabled, but no privacy-approved "
-                "foreground-window frame was attached to this request. You cannot inspect live pixels "
-                "in this turn and must not claim to see the desktop. Blocked or unidentified windows "
-                "produce no image."
+                "EYE MODE STATUS: An image is attached, but its source could not be verified. Inspect "
+                "only the image actually attached."
             )
         if not self.context.state._game_mode_enabled:
-            return "vision_off", (
-                "LIVE VISION STATUS: Both Game Mode and Live Desktop Vision are OFF. No live frame is "
-                "available to this request. Do not claim to see the desktop or game. User-supplied image "
-                "attachments, if present, are separate and may still be analyzed."
+            return "eye_mode_off", (
+                "EYE MODE STATUS: Eye Mode is OFF. No live screen frame is available to this request. "
+                "Do not claim to see the desktop. User-supplied image attachments remain separate."
             )
-        service = self.context.services.vision_application_service
-        if not service.capture_allowed(
-            self.context.state._game_mode_enabled,
-            self.context.state._game_mode_profile,
-            source="game",
-        ):
-            return "profile_blocks_capture", (
-                "LIVE GAME VISION STATUS: Game Mode is on, but the selected profile does not permit "
-                "screen capture. No live frame is attached; do not claim to see the game."
+        self._capture_desktop_frame()
+        privacy = self.context.services.vision_application_service.desktop_capture_application_service
+        window_info = self.context.adapters.game_mode.capture_service.foreground_window_info()
+        allowed, reason = privacy.evaluate_window(window_info)
+        if not allowed:
+            return "eye_mode_blocked", (
+                f"EYE MODE STATUS: Capture is blocked by the privacy policy ({reason}). No image is "
+                "available; do not claim to see the screen."
             )
-        self.context.adapters.game_mode.poll()
-        game = self.context.adapters.game_mode.last_game
         frame = self.context.state._latest_game_frame
-        if not game:
-            self.context.state._latest_game_frame = None
-            return "no_game_window", (
-                "LIVE GAME VISION STATUS: Game Mode is on, but no supported game window is detected "
-                "in the foreground. No fallback whole-screen image is captured or attached."
-            )
-        exe = str(game.get("exe") or "game")[:80]
         if frame is None or frame.isNull():
-            return "capture_failed", (
-                f"LIVE GAME VISION STATUS: Foreground process {exe!r} was detected, but no permitted "
-                "window frame was captured. No image is attached; do not claim to see its contents."
+            return "eye_mode_capture_failed", (
+                "EYE MODE STATUS: Eye Mode is ON, but the selected monitor's foreground window could "
+                "not be captured. No image is available."
             )
-        return "frame_not_attached", (
-            "LIVE GAME VISION STATUS: A local game frame exists, but it was NOT attached to this "
-            "provider request. You cannot inspect its pixels in this turn and must not claim to see it."
+        return "eye_mode_frame_not_attached", (
+            "EYE MODE STATUS: A local screen frame exists, but no frame is attached to THIS provider "
+            "request. Do not claim to inspect its pixels in this turn."
         )
 
     def build_chat_vision_context(self, turn_extra=None):
@@ -904,10 +822,7 @@ class AttachmentsVisionController(WindowFeatureController):
             pass
         desktop_context = ""
         context_service = self.context.services.desktop_context_application_service
-        source_active = (
-            self.context.state._game_mode_enabled
-            or self.context.services.vision_application_service.desktop_capture_application_service.enabled
-        )
+        source_active = bool(self.context.state._game_mode_enabled)
         context_started = time.monotonic()
         if source_active:
             desktop_context = format_desktop_context(context_service.summary())
@@ -945,8 +860,16 @@ class AttachmentsVisionController(WindowFeatureController):
         permissions = self.context.services.game_mode_application_service.permissions(self.context.state._game_mode_profile)
         vision_allowed = bool(permissions["vision_capture"])
         audio_allowed = bool(permissions["game_audio_loopback"])
+        self.context.services.settings["desktop_vision_enabled"] = enabled
+        save_settings(self.context.services.settings)
+        legacy_action = getattr(self.context.views, "desktop_vision_action", None)
+        if legacy_action is not None:
+            previous = legacy_action.blockSignals(True)
+            legacy_action.setChecked(enabled)
+            legacy_action.setVisible(False)
+            legacy_action.blockSignals(previous)
         vision_trace(
-            "game_mode_set", enabled=enabled, profile=str(self.context.state._game_mode_profile),
+            "eye_mode_set", enabled=enabled, profile=str(self.context.state._game_mode_profile),
             vision_allowed=vision_allowed, audio_allowed=audio_allowed,
         )
 
@@ -982,19 +905,19 @@ class AttachmentsVisionController(WindowFeatureController):
                 self.feature_controller("runtime").stop_listener()
 
         if not enabled:
-            self.context.views.game_mode_btn.setToolTip("Game Mode خاموش است؛ برای فعال‌کردن دستی کلیک کن")
+            self.context.views.game_mode_btn.setToolTip("Eye Mode خاموش است؛ برای دیدن صفحه کلیک کن")
             if announce:
-                self.feature_controller("session").add_chat("system", "🎮 Game Mode خاموش شد؛ تمام Captureها و شنود صدای بازی متوقف شدند.")
+                self.feature_controller("session").add_chat("system", "Eye Mode خاموش شد؛ ضبط صفحه، تحلیل و ارسال فریم‌ها متوقف شدند.")
         elif self.context.services.game_mode_application_service.is_story(self.context.state._game_mode_profile):
-            self.context.views.game_mode_btn.setToolTip("Story Mode فعال است؛ Vision و تحلیل محلی صدای بازی فعال‌اند")
+            self.context.views.game_mode_btn.setToolTip("Eye Mode روشن است · Story audio فعال")
             if announce:
-                self.feature_controller("session").add_chat("system", "🎮 Story Mode فعال شد. Vision و تحلیل محلی صدای بازی فعال‌اند. دست‌کاری پردازش، حافظه یا ورودی بازی همچنان ممنوع است.")
+                self.feature_controller("session").add_chat("system", "Eye Mode روشن شد؛ تصویر مانیتور انتخاب‌شده به‌صورت زنده و با رعایت محدودیت‌های حریم خصوصی بررسی می‌شود.")
         else:
-            self.context.views.game_mode_btn.setToolTip("Competitive Safe فعال است؛ Vision فقط‌خواندنی فعال، بدون شنود بازی و کنترل دسکتاپ")
+            self.context.views.game_mode_btn.setToolTip("Eye Mode روشن است · حالت امن")
             if announce:
-                self.feature_controller("session").add_chat("system", "🛡️ Competitive Safe فعال شد. Kira تصویر بازیِ پنجرهٔ فعال را فقط‌خواندنی تحلیل می‌کند؛ شنود صدای بازی و کنترل ورودی/دسکتاپ غیرفعال‌اند. فقط چت، جست‌وجوی وب و میکروفون/Wake Word مستقل هم فعال‌اند.")
+                self.feature_controller("session").add_chat("system", "Eye Mode روشن شد؛ تصویر مانیتور انتخاب‌شده فقط‌خواندنی تحلیل می‌شود.")
         if enabled and vision_allowed and announce:
-            self.feature_controller("session").add_chat("system", "🖥️ فقط فریم پنجرهٔ بازیِ فعال و پس از بررسی حریم خصوصی برای تحلیل استفاده می‌شود؛ اگر پنجرهٔ بازی شناسایی نشود، هیچ تصویر جایگزینی ارسال نمی‌شود.")
+            self.feature_controller("session").add_chat("system", "🖥️ ضبط زنده از مانیتور انتخاب‌شده انجام می‌شود؛ برای توقف فوری Eye Mode را خاموش کن.")
 
     def _start_game_audio_listener(self):
         if self.context.state._closing or not self.context.state._game_mode_enabled:
