@@ -1232,61 +1232,38 @@ class AttachmentsVisionController(WindowFeatureController):
         if self.context.state._game_mode_enabled:
             return
         name = info.get("title") or info.get("exe") or "بازی"
-        note = (f"🎮 بازی «{name[:90]}» شناسایی شد. برای بازی آنلاین/PvP، Competitive Safe (تحلیل تصویری بدون کنترل بازی) و برای بازی داستانی، Story Mode (به‌همراه تحلیل صدای بازی) را انتخاب کن. انتخاب با خودت است.")
+        note = (f"🎮 بازی «{name[:90]}» شناسایی شد. اگر می‌خواهی Kira صفحه را ببیند، Eye Mode را روشن کن.")
         self.feature_controller("session").add_chat("system", note)
         tray = getattr(self.context.views, "tray", None)
         if tray is not None and tray.isVisible():
-            tray.showMessage("Ai1 · Game Mode", "بازی شناسایی شد. برای کمک در حین بازی، Game Mode را خودت فعال کن.",
+            tray.showMessage("Kira · Eye Mode", "بازی شناسایی شد. برای تحلیل زندهٔ مانیتور، Eye Mode را روشن کن.",
                              QSystemTrayIcon.Information, 7000)
 
     def _live_vision_attachment(self):
-        """Attach a privacy-approved crop of the foreground window to this chat request."""
-        service = self.context.services.vision_application_service
-        source = "game" if self.context.state._game_mode_enabled else "desktop"
-        if source == "game":
-            if not service.capture_allowed(
-                self.context.state._game_mode_enabled,
-                self.context.state._game_mode_profile,
-                source="game",
-            ):
-                return None
-            self.context.adapters.game_mode.poll()
-            window_info = self.context.adapters.game_mode.last_game
-        else:
-            privacy = service.desktop_capture_application_service
-            if not privacy.enabled:
-                return None
-            window_info = self.context.adapters.game_mode.capture_service.foreground_window_info()
-
-        if not service.capture_allowed(
-            self.context.state._game_mode_enabled if source == "game" else False,
-            self.context.state._game_mode_profile if source == "game" else None,
-            source=source,
-            window_info=window_info,
-        ):
-            if window_info:
-                _allowed, reason = service.desktop_capture_application_service.evaluate_window(
-                    window_info, explicit=(source == "game")
-                )
-                vision_trace(
-                    "capture_blocked",
-                    exe=str(window_info.get("exe") or "")[:80],
-                    reason=reason,
-                )
-            else:
-                vision_trace(
-                    "capture_blocked",
-                    exe=None,
-                    reason="foreground_window_unidentified",
-                )
+        """Attach a privacy-approved frame from Eye Mode's selected monitor."""
+        if not self.context.state._game_mode_enabled:
             return None
-
+        service = self.context.services.vision_application_service
         privacy = service.desktop_capture_application_service
-        policy = service.policy
+        if not privacy.enabled:
+            return None
         capture = self.context.adapters.game_mode.capture_service
-        pixmap = capture.capture_window(
+        window_info = capture.foreground_window_info()
+        allowed, reason = privacy.evaluate_window(window_info)
+        if not allowed or not service.capture_allowed(
+            False, None, source="desktop", window_info=window_info
+        ):
+            vision_trace(
+                "attach_blocked",
+                source="desktop",
+                exe=str((window_info or {}).get("exe") or "")[:80] or None,
+                reason=reason if not allowed else "eye_mode_source_disabled",
+            )
+            return None
+        policy = service.policy
+        pixmap = capture.capture_monitor_for_window(
             window_info,
-            monitor_id=(privacy.selected_monitor_id or None) if source == "desktop" else None,
+            monitor_id=privacy.selected_monitor_id or None,
             max_width=policy.max_width,
             max_height=policy.max_height,
         )
@@ -1294,9 +1271,9 @@ class AttachmentsVisionController(WindowFeatureController):
         if frame is None:
             vision_trace(
                 "attach_skip",
-                source=source,
-                exe=str(window_info.get("exe") or "")[:80],
-                reason="foreground_window_capture_failed_or_outside_selected_monitor",
+                source="desktop",
+                exe=str((window_info or {}).get("exe") or "")[:80] or None,
+                reason="selected_monitor_capture_failed",
             )
             return None
         try:
@@ -1307,25 +1284,24 @@ class AttachmentsVisionController(WindowFeatureController):
             if not buffer.open(QIODevice.WriteOnly) or not frame.save(buffer, "JPEG", quality):
                 return None
             jpeg = bytes(data)
-            name = "desktop-screen.jpg" if source == "desktop" else "game-screen.jpg"
             vision_trace(
                 "attach_ok",
-                source=source,
-                exe=str(window_info.get("exe") or "")[:80],
+                source="desktop",
+                exe=str((window_info or {}).get("exe") or "")[:80] or None,
                 width=frame.width(),
                 height=frame.height(),
                 jpeg_bytes=len(jpeg),
             )
-            return att.image_attachment(jpeg, name, "image/jpeg")
+            return att.image_attachment(jpeg, "eye-screen.jpg", "image/jpeg")
         except Exception as exc:  # noqa: BLE001 - a failed capture must not block ordinary chat
             vision_trace(
                 "attach_error",
-                source=source,
-                exe=str(window_info.get("exe") or "")[:80],
+                source="desktop",
+                exe=str((window_info or {}).get("exe") or "")[:80] or None,
                 error=f"{type(exc).__name__}: {exc}",
             )
             self.feature_controller("session").add_chat(
-                "system", f"تصویر پنجرهٔ فعال آماده نشد: {str(exc)[:180]}"
+                "system", f"تصویر مانیتور انتخاب‌شده آماده نشد: {str(exc)[:180]}"
             )
             return None
 
