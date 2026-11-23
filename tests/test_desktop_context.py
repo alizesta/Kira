@@ -49,6 +49,7 @@ class DesktopContextTests(unittest.TestCase):
     def test_blocklist_denial_never_enters_context(self):
         context = DesktopContext()
         privacy = DesktopCaptureApplicationService({"desktop_vision_enabled": True})
+        privacy.set_enabled(True)
         blocked = window(exe="bitwarden.exe", title="Vault")
         allowed, reason = privacy.evaluate_window(blocked)
         self.assertFalse(allowed)
