@@ -34,7 +34,6 @@ from .main_window_voice_settings_support import (
     QWidget,
     Qt,
     RouteChip,
-    TaskWorker,
     VoicePage,
     clamp_num_ctx,
     clamp_num_predict,
@@ -504,6 +503,8 @@ class VoiceSettingsController(WindowFeatureController):
                 raise RuntimeError((result.stderr or result.stdout or "ollama create failed")[-3000:])
             return name
 
+        from .workers import TaskWorker
+
         worker = TaskWorker(work, cancellable=True)
         self.context.state._model_import_worker = worker
         worker.done.connect(self.on_local_model_imported)
@@ -644,6 +645,8 @@ class VoiceSettingsController(WindowFeatureController):
         button.setEnabled(False)
         if hasattr(self.context.views, "local_voice_progress"):
             self.context.views.local_voice_progress.show()
+        from .workers import TaskWorker
+
         worker = TaskWorker(fn, cancellable=cancellable)
         self.context.state._local_voice_worker = worker
         worker._ui_button = button
