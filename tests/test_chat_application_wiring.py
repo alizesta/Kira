@@ -106,6 +106,7 @@ class ChatApplicationWiringTests(unittest.TestCase):
         vision = (ROOT / "kira" / "ui" / "main_window_attachments_vision.py").read_text(encoding="utf-8")
         chat = (ROOT / "kira" / "ui" / "main_window_chat.py").read_text(encoding="utf-8")
         self.assertIn("self.services.vision_router = self.services.provider_application_service.create_isolated_router(", composition)
+        self.assertIn("previous_router=self.session.client", composition)
         self.assertIn("vision_router,", vision)
         self.assertNotIn("VisionAnalysisWorker(\n                self.context.session.client,", vision)
 
