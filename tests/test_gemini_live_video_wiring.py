@@ -32,6 +32,8 @@ def test_live_stream_uses_full_monitor_and_privacy_rechecks():
     assert "capture_monitor_for_window(" in source
     assert "service.capture_allowed(" in source
     assert "LIVE_VIDEO_CHANGE_THRESHOLD" in source
+    assert "LIVE_VIDEO_MAX_WIDTH = 640" in source
+    assert "LIVE_VIDEO_MAX_HEIGHT = 360" in source
     assert "def set_live_video_active(self, enabled)" in source
     assert 'return 1000 if getattr(self, "_live_video_active", False) else base' in source
 
