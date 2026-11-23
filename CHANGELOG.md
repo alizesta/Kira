@@ -1,3 +1,10 @@
+## 1.2 — 2026-11-24 — Eye Mode and desktop-awareness release
+- Unified Game Mode screen understanding and Live Desktop Vision under one user-facing Eye Mode capture path. The selected monitor is sampled for desktop context; the same privacy-checked capture source can provide frames to Gemini Live when a compatible Live session is active.
+- Added a bounded, RAM-only DesktopContext with current-screen state, observation freshness (fresh ≤15 s, recent 15–60 s, stale >60 s), and separately labelled historical observations. Stale observations are not presented as the current screen.
+- Added monitor-bound capture, foreground identity and privacy rechecks, allow/block rules, change-aware sampling, a bounded one-frame Gemini Live queue and a maximum video-send rate of 1 FPS.
+- Eye Mode stop, source disable or privacy denial stops capture and clears pending frame/context state. Raw screen images are not persisted and are not automatically attached to ordinary chat; ordinary chat receives the bounded text context. Manual screenshots and user-selected image attachments remain separate supported actions.
+- Documented the sampled-screen model and its limits: this is not continuous 30/60 FPS video. Gemini Live availability depends on the selected model/provider and a running Live session.
+- Updated architecture, project context, handoff and user documentation. Regression test sources exist for capture, privacy, perception, context freshness and wiring; those tests and Windows/Gemini Live runtime acceptance have not been executed in this source-only release preparation.
 ## 2026-11-23 — Gemini Live visual companion (Task 3)
 - Extend the existing Gemini Live audio session with full-monitor JPEG snapshots from the selected display (or the foreground window's display in automatic mode).
 - Add foreground HWND/PID and privacy rechecks, meaningful-change sampling, a one-frame in-memory queue and a maximum video-send rate of one frame per second.
