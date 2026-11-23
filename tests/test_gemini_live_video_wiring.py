@@ -13,6 +13,7 @@ def test_worker_uses_bounded_video_on_existing_live_session():
     assert "class LiveVideoFrameGate" in source
     assert "MAX_VIDEO_CHUNKS = 1" in source
     assert "VIDEO_FRAME_INTERVAL_SECONDS = 1.0" in source
+    assert "MAX_VIDEO_FRAME_BYTES = 128 * 1024" in source
     assert 'video=types.Blob(data=chunk, mime_type="image/jpeg")' in source
     assert "async with self._send_lock" in source
     assert "def clear_video_frames(self)" in source
@@ -32,12 +33,15 @@ def test_live_stream_uses_full_monitor_and_privacy_rechecks():
     assert "capture_monitor_for_window(" in source
     assert "service.capture_allowed(" in source
     assert "LIVE_VIDEO_CHANGE_THRESHOLD" in source
-    assert "LIVE_VIDEO_MAX_WIDTH = 640" in source
-    assert "LIVE_VIDEO_MAX_HEIGHT = 360" in source
-    assert "LIVE_VIDEO_CHANNEL_LEVELS = 21" in source
+    assert "LIVE_VIDEO_MAX_WIDTH = 480" in source
+    assert "LIVE_VIDEO_MAX_HEIGHT = 270" in source
+    assert "LIVE_VIDEO_CHANNEL_LEVELS = 16" in source
     assert "LIVE_VIDEO_PALETTE_COLORS = LIVE_VIDEO_CHANNEL_LEVELS ** 3" in source
     assert "bytes(rgb.constBits()).translate(_LIVE_VIDEO_CHANNEL_LUT)" in source
     assert "palette_colors=LIVE_VIDEO_PALETTE_COLORS" in source
+    assert "jpeg_quality=quality" in source
+    assert "approx_kib_per_second=" in source
+    assert "frame_exceeds_size_limit" in source
     assert "def set_live_video_active(self, enabled)" in source
     assert 'return 1000 if getattr(self, "_live_video_active", False) else base' in source
 
