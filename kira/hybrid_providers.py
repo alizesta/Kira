@@ -17,6 +17,8 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 import requests
+from http.client import HTTPException
+from urllib3.exceptions import HTTPError as Urllib3HTTPError
 from typing import Any
 
 from . import routes as route_model
@@ -444,6 +446,33 @@ class BaseProvider(ChatProvider):
         if code == 403:
             detail = _api_message(response)
             low = detail.casefold()
+            content_type = str(getattr(response, "headers", {}).get("Content-Type", "")).casefold()
+            html_gateway_page = (
+                "text/html" in content_type
+                or bool(re.search(r"<\\s*(?:!doctype|html|head|title|meta)\\b", detail, re.IGNORECASE))
+            )
+            if html_gateway_page:
+                raise self._fail(
+                    f"درخواست از درگاه سرویس با صفحه HTML و کد 403 رد شد؛ این پاسخ به‌تنهایی نامعتبر بودن API Key را ثابت نمی‌کند. "
+                    f"محدودیت IP/منطقه، VPN یا Proxy، محدودیت پروژه و محدودیت دسترسی Gemini API را بررسی کن. {detail}",
+                    True, code, "network",
+                )
+            if "api_key_service_blocked" in low:
+                raise self._fail(
+                    f"کلید Google برای این API مجاز نیست؛ محدودیت API Key را روی Gemini API "
+                    f"(generativelanguage.googleapis.com) تنظیم کن. {detail}",
+                    False, code, "auth",
+                )
+            if "your project has been denied access" in low or "project is restricted" in low:
+                raise self._fail(
+                    f"دسترسی پروژه به سرویس «{self.name}» رد شده است؛ وضعیت و محدودیت‌های خود پروژه را بررسی کن. {detail}",
+                    False, code, "permission",
+                )
+            if "model_permission_blocked" in low or "blocked at the project level" in low or "blocked at the organization level" in low:
+                raise self._fail(
+                    f"دسترسی مدل «{self.model}» در سطح پروژه یا سازمان «{self.name}» مسدود است؛ مجوز مدل را در تنظیمات Provider بررسی کن. {detail}",
+                    False, code, "model",
+                )
             # Several providers use 403 for model/plan gates, not invalid credentials.
             model_access_terms = (
                 "not available on the workers free plan", "not available for free",
@@ -457,7 +486,10 @@ class BaseProvider(ChatProvider):
             if "network settings" in low or "ip address" in low or "geo restriction" in low:
                 raise self._fail(f"دسترسی شبکه به {self.name} رد شد ({code}). تنظیمات شبکه، VPN یا محدودیت IP را بررسی کن. {detail}",
                                  True, code, "network")
-            raise self._fail(f"{self.auth_hint} ({code}). {detail}", False, code, "auth")
+            raise self._fail(
+                f"Provider دسترسی درخواست را رد کرد ({code})؛ ممکن است API Key معتبر باشد اما مجوز پروژه/سازمان یا دسترسی به مدل کافی نباشد. {detail}",
+                False, code, "permission",
+            )
         if code == 401:
             raise self._fail(f"{self.auth_hint} ({code}). {_api_message(response)}", False, code, "auth")
         if code >= 400:
@@ -542,7 +574,7 @@ class BaseProvider(ChatProvider):
             response = self._post_once(url, headers, payload)
         except requests.Timeout as exc:
             raise self._fail("مهلت پاسخ‌گویی سرویس تمام شد.", True, kind="timeout") from exc
-        except requests.RequestException as exc:
+        except (requests.RequestException, Urllib3HTTPError, HTTPException, OSError) as exc:
             raise self._fail(f"خطای شبکه: {exc}", True, kind="network") from exc
         self._check_status(response)
         try:
@@ -571,7 +603,7 @@ class BaseProvider(ChatProvider):
             response = self._post_once(url, headers, payload, stream=True)
         except requests.Timeout as exc:
             raise self._fail("مهلت اتصال به سرویس تمام شد.", True, kind="timeout") from exc
-        except requests.RequestException as exc:
+        except (requests.RequestException, Urllib3HTTPError, HTTPException, OSError) as exc:
             raise self._fail(f"خطای شبکه: {exc}", True, kind="network") from exc
         try:
             self._check_status(response)
@@ -627,7 +659,13 @@ class BaseProvider(ChatProvider):
         except requests.Timeout as exc:
             request_trace("stream_read_timeout", provider=self.name, model=self.model, elapsed_ms=int((time.monotonic()-stream_started)*1000))
             raise self._fail("سرویس وسط پاسخ ساکت شد (Timeout).", True, kind="timeout") from exc
-        except requests.RequestException as exc:
+        except (requests.RequestException, Urllib3HTTPError, HTTPException, OSError) as exc:
+            request_trace(
+                "stream_transport_error",
+                provider=self.name,
+                model=self.model,
+                error_type=type(exc).__name__,
+            )
             raise self._fail(f"ارتباط وسط پاسخ قطع شد: {exc}", True, kind="network") from exc
         finally:
             request_trace("stream_closed", provider=self.name, model=self.model, elapsed_ms=int((time.monotonic()-stream_started)*1000))
@@ -890,10 +928,14 @@ class CloudflareProvider(BaseProvider):
             raise self._fail("هیچ پیام کاربری برای ارسال وجود ندارد.", False, kind="request")
         if any(item.get("images") for item in clean):
             raise self._fail("مدل انتخاب‌شده در Cloudflare این مسیر تصویر را پشتیبانی نمی‌کند؛ برای تحلیل تصویر یک مدل Vision انتخاب کن.", False, kind="request")
-        url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{self.model}"
+        # Use Cloudflare's documented OpenAI-compatible Chat Completions API.
+        # The legacy /ai/run/{model} endpoint expects model-specific input shapes;
+        # it is not a universal chat endpoint for classification/embedding models.
+        url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1/chat/completions"
         headers = {"Authorization": f"Bearer {self.secret}", "Content-Type": "application/json"}
-        payload = {"messages": [{"role": "system", "content": system_prompt}, *[{"role": m["role"], "content": m["content"]} for m in clean]],
-                   "temperature": float(temperature), "stream": bool(stream)}      # Cloudflare text models: images are not sent
+        payload = {"model": self.model,
+                   "messages": [{"role": "system", "content": system_prompt}, *[{"role": m["role"], "content": m["content"]} for m in clean]],
+                   "temperature": float(temperature), "stream": bool(stream)}
         if max_tokens:
             payload["max_tokens"] = int(max_tokens)
         return url, headers, payload
@@ -902,10 +944,16 @@ class CloudflareProvider(BaseProvider):
         url, headers, payload = self._prepare(messages, system_prompt, temperature, False)
         data = self._post_json(url, headers, payload)
         try:
-            result = data.get("result") or {}
-            content = result.get("response") or result.get("output_text")
-            if not content and isinstance(result.get("choices"), list):
-                content = result["choices"][0].get("message", {}).get("content")
+            choices = data.get("choices")
+            content = (
+                choices[0].get("message", {}).get("content")
+                if isinstance(choices, list) and choices else None
+            )
+            if not content:
+                result = data.get("result") or {}
+                content = result.get("response") or result.get("output_text")
+                if not content and isinstance(result.get("choices"), list):
+                    content = result["choices"][0].get("message", {}).get("content")
         except (AttributeError, IndexError, TypeError) as exc:
             raise self._fail("ساختار پاسخ Cloudflare شناخته‌شده نیست.", True, kind="response") from exc
         if not content:
