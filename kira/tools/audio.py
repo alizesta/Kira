@@ -722,6 +722,8 @@ def _call(op: str, doing: str, **params) -> dict:
         raise ToolError(f"عملیات صدای ناشناخته: {op}", BAD_ARGS)
     req = {"op": op, **params}
     data = run_fixed(_SCRIPT, env={"KIRA_AUDIO_REQ": json.dumps(req, ensure_ascii=True)}, timeout=40, api_name="صدای ویندوز")
+    if data.get("cancelled"):
+        raise ToolError(str(data.get("error") or f"{doing} با درخواست Stop متوقف شد."), DENIED)
     if not data.get("ok"):
         raise _explain(data, doing)
     return data

@@ -25,6 +25,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 
 from . import protocol
+from .cancellation import cancellation_scope
 from .autonomy import AutonomyMixin
 from .access import PathPolicy
 from .builtin import build_registry
@@ -669,8 +670,14 @@ class ToolAgent(AutonomyMixin):
             self._ensure_app_catalog_warmup()
         needs_lock = (tool is not None and "web" in (getattr(tool, "categories", ()) or ())
                       and owner not in self._active_web_sessions)
+        def execute():
+            # Keep the owning character's Stop event visible to process-backed
+            # tools without changing every public handler signature.
+            with cancellation_scope(self._cancel):
+                return self.registry.execute(name, args)
+
         if not needs_lock:
-            return self.registry.execute(name, args)
+            return execute()
         while not self._web_research_lock.acquire(timeout=0.1):
             if self._cancel.is_set():
                 return ToolResult(name, DENIED, "جست‌وجوی وب متوقف شد؛ ابزار اجرا نشد.", args if isinstance(args, dict) else {})
@@ -679,7 +686,7 @@ class ToolAgent(AutonomyMixin):
             with self._runtime_lock:
                 self._active_web_sessions.add(owner)
             try:
-                return self.registry.execute(name, args)
+                return execute()
             finally:
                 with self._runtime_lock:
                     self._active_web_sessions.discard(owner)

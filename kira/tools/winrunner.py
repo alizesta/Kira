@@ -21,6 +21,9 @@ import os
 import re
 import subprocess
 import sys
+import time
+
+from .cancellation import current_cancel_event
 
 IS_WIN = sys.platform == "win32"
 NO_WINDOW = 0x08000000 if IS_WIN else 0
@@ -44,10 +47,69 @@ def powershell_path() -> str:
     return candidate if os.path.isfile(candidate) else "powershell.exe"
 
 
-def run_fixed(script: FixedScript, env: dict | None = None, timeout: int = 45, api_name: str = "ویندوز") -> dict:
-    """Run a FixedScript. `env` = {'KIRA_NAME': 'value'} data for the script. -> parsed JSON dict, or a fatal error dict (see module doc)."""
+def _terminate_process_tree(process) -> None:
+    """Stop the fixed-script process and descendants, then reap the parent."""
+    if process.poll() is not None:
+        return
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                check=False,
+                creationflags=NO_WINDOW,
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
+    elif getattr(process, "pid", None):
+        try:
+            import signal
+            os.killpg(process.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
+    if process.poll() is None:
+        try:
+            process.terminate()
+        except (ProcessLookupError, OSError):
+            pass
+        try:
+            process.wait(timeout=2)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+    if process.poll() is None:
+        try:
+            process.kill()
+        except (ProcessLookupError, OSError):
+            pass
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def run_fixed(
+    script: FixedScript,
+    env: dict | None = None,
+    timeout: int = 45,
+    api_name: str = "ویندوز",
+    cancel_event=None,
+) -> dict:
+    """Run a fixed script with bounded output capture and cooperative Stop support."""
     if not isinstance(script, FixedScript):
         raise TypeError("فقط FixedScript اجرا می‌شود؛ متن آزاد به‌عنوان اسکریپت پذیرفته نمی‌شود.")
+    cancel_event = cancel_event if cancel_event is not None else current_cancel_event()
+    if cancel_event is not None and cancel_event.is_set():
+        return {
+            "ok": False,
+            "error": "عملیات پیش از شروع با Stop لغو شد.",
+            "fatal": True,
+            "cancelled": True,
+        }
+
     child_env = None
     if env:
         child_env = dict(os.environ)
@@ -58,22 +120,56 @@ def run_fixed(script: FixedScript, env: dict | None = None, timeout: int = 45, a
             if len(value) > MAX_ENV_CHARS:
                 raise ValueError(f"مقدار «{key}» بیش از حد بزرگ است.")
             child_env[str(key)] = value
+
     encoded = base64.b64encode(script.text.encode("utf-16-le")).decode("ascii")
+    command = [powershell_path(), "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded]
+    options = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.PIPE,
+        "stderr": subprocess.PIPE,
+        "creationflags": NO_WINDOW,
+        "env": child_env,
+    }
+    if os.name != "nt":
+        options["start_new_session"] = True
+
     try:
-        r = subprocess.run([powershell_path(), "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
-                           capture_output=True, timeout=timeout, creationflags=NO_WINDOW, env=child_env)
+        process = subprocess.Popen(command, **options)
+        deadline = time.monotonic() + max(0.1, float(timeout))
+        while True:
+            if cancel_event is not None and cancel_event.is_set():
+                _terminate_process_tree(process)
+                process.communicate()
+                return {
+                    "ok": False,
+                    "error": "عملیات با درخواست Stop متوقف شد.",
+                    "fatal": True,
+                    "cancelled": True,
+                }
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                _terminate_process_tree(process)
+                process.communicate()
+                return {
+                    "ok": False,
+                    "error": f"پاسخ API {api_name} بیش از {str(timeout).translate(_FA_DIGITS)} ثانیه طول کشید",
+                    "fatal": True,
+                }
+            try:
+                stdout, stderr = process.communicate(timeout=min(0.1, remaining))
+                break
+            except subprocess.TimeoutExpired:
+                continue
     except FileNotFoundError:
         return {"ok": False, "error": "Windows PowerShell (powershell.exe) پیدا نشد", "fatal": True}
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "error": f"پاسخ API {api_name} بیش از {str(timeout).translate(_FA_DIGITS)} ثانیه طول کشید", "fatal": True}
-    except OSError as e:
-        return {"ok": False, "error": f"اجرای PowerShell ممکن نشد: {e}", "fatal": True}
-    text = r.stdout.decode("utf-8", "ignore").strip()
+    except OSError as exc:
+        return {"ok": False, "error": f"اجرای PowerShell ممکن نشد: {exc}", "fatal": True}
+    text = stdout.decode("utf-8", "ignore").strip()
     try:
         data = json.loads(text[text.index("{"):]) if "{" in text else {}
     except ValueError:
         data = {}
     if not isinstance(data, dict) or not data:
-        err = r.stderr.decode("utf-8", "ignore").strip()[:300] or f"خروجی نامعتبر (کد {r.returncode})"
+        err = stderr.decode("utf-8", "ignore").strip()[:300] or f"خروجی نامعتبر (کد {process.returncode})"
         return {"ok": False, "error": err, "fatal": True}
     return data
