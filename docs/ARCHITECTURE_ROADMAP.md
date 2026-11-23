@@ -325,13 +325,13 @@ The 2026-11-19 TASK 015 counts remain a historical audit result. They must not b
 | #246 | Lazy Chat/UI imports and controllers, `ChatHistoryFacade`, `SqliteSchemaManager`, startup memory/timing instrumentation | Merged |
 
 Open follow-ups at this snapshot:
-- **PR #248:** idle avatar cadence/cache and deferred worker imports. Code and focused regression tests are present, but tests, Windows Qt behavior and actual CPU impact are unverified.
+- **PR #252 (rebased from the former PR #248):** idle avatar cadence/cache and deferred worker imports are carried on the latest `new-main` base. Focused regression tests are included; executable results, Windows Qt behavior and actual CPU impact still require acceptance.
 - **PR #250:** voice toggle guard for an unopened lazy settings page. Source correction is present; runtime/Qt tests are unverified.
 
 ### Required closure sequence
 
 1. Execute focused regression tests and a Windows/offscreen application smoke test for the merged lazy-loading and lifecycle changes.
-2. Review and accept PR #248 only after avatar visibility transitions, shared transform invalidation, mood cache invalidation and worker-import behavior are tested.
+2. Verify the optimization carried by PR #252: avatar visibility transitions, shared transform invalidation, mood cache invalidation and worker-import behavior.
 3. Accept PR #250 after toggling voice before opening settings, after opening settings, and across repeated toggles is verified.
 4. Capture at least five fresh Windows launches and compare median `window_shown` / `event_loop_first_tick`, Working Set and Private Bytes. Measure idle CPU separately with avatars visible and hidden; do not infer process CPU reduction from timer callback counts.
 5. Update this register with actual test commands/results, runtime build identity and measured data. Do not claim acceptance from an Actions job with no steps or runner.
