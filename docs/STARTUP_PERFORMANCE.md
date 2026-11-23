@@ -31,6 +31,16 @@ The code change adds measurement instrumentation; it does not claim a measured s
 
 Startup phase timing and process-memory sampling were integrated into `new-main` by PR #246. The JSONL record is emitted through the first Qt event-loop tick and includes the import, settings/module initialization, UI composition, window display and event-loop phases.
 
+## Generating the five-launch report
+
+After completing at least five clean launches on Windows, run the report utility from the repository root in PowerShell:
+
+```powershell
+python scripts\analyze_startup_performance.py "PATH_TO_DATA_DIR\logs\startup-performance.jsonl" --runs 5
+```
+
+Replace `PATH_TO_DATA_DIR` with the actual configured `DATA_DIR` from Kira's installation. The utility uses the latest five complete schema-v2 Windows records and prints the median, minimum and maximum for startup timings, Working Set, Private Bytes and Peak Working Set at both `window_shown` and `event_loop_first_tick`. It rejects an insufficient sample instead of reporting a misleading median, and skips malformed or incomplete records with counts.
+
 The measurement protocol above is still required. At this snapshot no genuine target-Windows baseline has been accepted, and no before/after speedup or RAM reduction is claimed. Collect at least five comparable fresh launches from the same PC/build/profile and compare medians; keep Peak Working Set separate from the phase-specific Working Set and Private Bytes values.
 
 Idle-avatar CPU is a separate measurement. A reduction from 30 to 5 scheduled animation callbacks per second must not be translated into an equivalent percentage reduction in total process CPU.
