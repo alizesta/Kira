@@ -210,7 +210,7 @@ class RuntimeVoiceMixin:
     def is_gemini_live_ready(self):
         worker = getattr(self, "_gemini_worker", None)
         return bool(
-            self._voice_session_requested
+            getattr(self, "_voice_session_requested", False)
             and getattr(self, "_voice_mode", "") == "gemini_live"
             and worker is not None and worker.isRunning() and worker.video_ready
         )
@@ -273,17 +273,17 @@ class RuntimeVoiceMixin:
         failure, self._gemini_failure = getattr(self, "_gemini_failure", ""), ""
         if self.context.state._closing:
             return
-        if self._voice_session_requested and failure:
+        if getattr(self, "_voice_session_requested", False) and failure:
             self._start_local_voice_fallback(failure)
-        elif not self._voice_session_requested:
+        elif not getattr(self, "_voice_session_requested", False):
             self._voice_mode = "idle"
             self._set_mic_checked(False)
             self._sync_live_toggle(False)
-        elif self._voice_session_requested and not failure:
+        elif getattr(self, "_voice_session_requested", False) and not failure:
             self._start_local_voice_fallback("نشست Gemini بدون خطای مشخص بسته شد")
 
     def _launch_gemini_live_worker(self):
-        if not self._voice_session_requested or self.context.state._closing:
+        if not getattr(self, "_voice_session_requested", False) or self.context.state._closing:
             return
         page = self.context.views.voice_page
         try:
@@ -483,7 +483,7 @@ class RuntimeVoiceMixin:
             self._sync_live_toggle(keep_listening)
             self._sync_voice_mode_badge()
         self.update_engine_label()
-        if getattr(self, "_pending_gemini_start", False) and self._voice_session_requested and not self.context.state._closing:
+        if getattr(self, "_pending_gemini_start", False) and getattr(self, "_voice_session_requested", False) and not self.context.state._closing:
             self._pending_gemini_start = False
             QTimer.singleShot(0, self._launch_gemini_live_worker)
         if self.context.state._closing:
