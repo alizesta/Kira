@@ -34,6 +34,8 @@ class _FakeProcess:
 
     def communicate(self, timeout=None):
         self.communicate_calls.append(timeout)
+        if self.returncode is None and timeout is not None:
+            raise subprocess.TimeoutExpired("powershell", timeout)
         return self.stdout, self.stderr
 
     def terminate(self):
@@ -117,7 +119,7 @@ class WinRunnerCancellationTests(unittest.TestCase):
             result = run_fixed(self.script, cancel_event=event)
 
         self.assertEqual(result, {"ok": True})
-        self.assertEqual(process.communicate_calls, [None])
+        self.assertEqual(process.communicate_calls, [0])
 
     def test_successful_process_output_is_parsed(self):
         process = _FakeProcess(stdout=b'noise\n{"ok":true,"value":7}')
@@ -169,9 +171,6 @@ class AudioCancellationTests(unittest.TestCase):
         self.assertIn("Stop", str(raised.exception))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 class BluetoothCancellationTests(unittest.TestCase):
     def test_bluetooth_runner_surfaces_process_stop_as_a_cancellation(self):
         from kira.tools.bluetooth import _run
@@ -193,3 +192,5 @@ class BluetoothCancellationTests(unittest.TestCase):
         self.assertIn("Stop", str(raised.exception))
 
 
+if __name__ == "__main__":
+    unittest.main()

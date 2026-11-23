@@ -48,9 +48,7 @@ def powershell_path() -> str:
 
 
 def _terminate_process_tree(process) -> None:
-    """Stop the fixed-script process and descendants, then reap the parent."""
-    if process.poll() is not None:
-        return
+    """Stop the fixed-script process group and descendants, then reap the parent."""
     if os.name == "nt":
         try:
             subprocess.run(
@@ -137,20 +135,21 @@ def run_fixed(
         process = subprocess.Popen(command, **options)
         deadline = time.monotonic() + max(0.1, float(timeout))
         while True:
-            # Completion wins a race with Stop: never report a finished tool
-            # as cancelled merely because the event was set a moment later.
-            if process.poll() is not None:
-                stdout, stderr = process.communicate()
-                break
             if cancel_event is not None and cancel_event.is_set():
-                _terminate_process_tree(process)
-                process.communicate()
-                return {
-                    "ok": False,
-                    "error": "عملیات با درخواست Stop متوقف شد.",
-                    "fatal": True,
-                    "cancelled": True,
-                }
+                try:
+                    # If the process has already exited and its output is ready,
+                    # preserve the completed result instead of misreporting Stop.
+                    stdout, stderr = process.communicate(timeout=0)
+                    break
+                except subprocess.TimeoutExpired:
+                    _terminate_process_tree(process)
+                    process.communicate()
+                    return {
+                        "ok": False,
+                        "error": "عملیات با درخواست Stop متوقف شد.",
+                        "fatal": True,
+                        "cancelled": True,
+                    }
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 _terminate_process_tree(process)
