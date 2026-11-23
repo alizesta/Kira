@@ -106,6 +106,19 @@ class WinRunnerCancellationTests(unittest.TestCase):
         self.assertTrue(popen.called)
         self.assertTrue(popen.call_args.kwargs["start_new_session"])
 
+    def test_completed_process_wins_a_race_with_a_late_stop(self):
+        event = mock.Mock()
+        event.is_set.return_value = True
+        process = _FakeProcess(stdout=b'{"ok":true}', returncode=0)
+
+        with mock.patch(
+            "kira.tools.winrunner.subprocess.Popen", return_value=process
+        ):
+            result = run_fixed(self.script, cancel_event=event)
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(process.communicate_calls, [None])
+
     def test_successful_process_output_is_parsed(self):
         process = _FakeProcess(stdout=b'noise\n{"ok":true,"value":7}')
 
@@ -158,3 +171,25 @@ class AudioCancellationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class BluetoothCancellationTests(unittest.TestCase):
+    def test_bluetooth_runner_surfaces_process_stop_as_a_cancellation(self):
+        from kira.tools.bluetooth import _run
+        from kira.tools.registry import DENIED, ToolError
+
+        with mock.patch(
+            "kira.tools.bluetooth.run_fixed",
+            return_value={
+                "ok": False,
+                "fatal": True,
+                "cancelled": True,
+                "error": "stopped",
+            },
+        ):
+            with self.assertRaises(ToolError) as raised:
+                _run("read")
+
+        self.assertEqual(raised.exception.status, DENIED)
+        self.assertIn("Stop", str(raised.exception))
+
+

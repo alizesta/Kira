@@ -137,6 +137,11 @@ def run_fixed(
         process = subprocess.Popen(command, **options)
         deadline = time.monotonic() + max(0.1, float(timeout))
         while True:
+            # Completion wins a race with Stop: never report a finished tool
+            # as cancelled merely because the event was set a moment later.
+            if process.poll() is not None:
+                stdout, stderr = process.communicate()
+                break
             if cancel_event is not None and cancel_event.is_set():
                 _terminate_process_tree(process)
                 process.communicate()

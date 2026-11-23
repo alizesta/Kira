@@ -13,6 +13,7 @@ import threading
 import time
 
 from .registry import ToolError, DENIED, ERROR
+from .cancellation import current_cancel_event
 from .winrunner import FixedScript, run_fixed          # shared controlled PowerShell runner (also used by Audio)
 
 IS_WIN = sys.platform == "win32"
@@ -49,6 +50,8 @@ _SCRIPTS = {"read": FixedScript("bluetooth-read", _SCRIPT.replace("@@SET@@", "")
 def _run(mode: str) -> dict:
     """Run one of the three fixed scripts. -> parsed JSON, or {'ok': False, 'error': ...} when Windows PowerShell itself failed."""
     data = run_fixed(_SCRIPTS[mode], timeout=45, api_name="بلوتوث ویندوز")   # KeyError = programming error: only the three fixed modes exist
+    if data.get("cancelled"):
+        raise ToolError(str(data.get("error") or "عملیات بلوتوث با درخواست Stop متوقف شد."), DENIED)
     if data.get("fatal"):
         return data
     radios = data.get("radios") or []
@@ -144,8 +147,15 @@ class BluetoothTools:
             data = _run(mode)
             result = str(data.get("set") or "").strip("; ")
             after = _interpret(data) if data.get("ok") is False else before
+            cancel_event = current_cancel_event()
             for _ in range(6):                                  # the radio needs a moment: check the REAL state again
-                time.sleep(1.0)
+                if cancel_event is not None and cancel_event.wait(1.0):
+                    raise ToolError(
+                        "فرمان بلوتوث ارسال شد، اما بررسی وضعیت نهایی با Stop لغو شد؛ وضعیت واقعی را دوباره بخوان.",
+                        DENIED,
+                    )
+                if cancel_event is None:
+                    time.sleep(1.0)
                 after = _read()
                 if after["state"] == want:
                     return f"بلوتوث {word} شد و بعد از عملیات دوباره بررسی شد: {_report(after)}"
