@@ -39,29 +39,30 @@ class GameModePolicyTests(unittest.TestCase):
         self.assertFalse(game_mode_permissions("unknown")["input_automation"])
         self.assertFalse(game_mode_permissions("unknown")["game_audio_loopback"])
 
-    def test_competitive_safe_only_allows_web_tools(self):
-        self.assertTrue(tool_categories_allowed(COMPETITIVE_SAFE_MODE, ("web",)))
-        self.assertFalse(tool_categories_allowed(COMPETITIVE_SAFE_MODE, ("desktop",)))
-        self.assertFalse(tool_categories_allowed(COMPETITIVE_SAFE_MODE, ("apps",)))
-        self.assertFalse(tool_categories_allowed(COMPETITIVE_SAFE_MODE, ("mcp",)))
+    def test_competitive_safe_keeps_ordinary_local_and_remote_tools_available(self):
+        for category in ("web", "desktop", "apps", "files", "system", "mcp", "agents"):
+            with self.subTest(category=category):
+                self.assertTrue(tool_categories_allowed(COMPETITIVE_SAFE_MODE, (category,)))
+        self.assertTrue(tool_categories_allowed(COMPETITIVE_SAFE_MODE, ("web", "desktop", "files")))
         self.assertFalse(tool_categories_allowed(COMPETITIVE_SAFE_MODE, ()))
-        self.assertFalse(tool_categories_allowed(COMPETITIVE_SAFE_MODE, ("web", "desktop")))
 
-    def test_entering_competitive_safe_cancels_running_tool_tasks(self):
+    def test_competitive_safe_execution_guard_does_not_block_local_tools(self):
+        agent = object.__new__(ToolAgent)
+        agent._competitive_safe_mode = True
+        agent.settings = {"tools_mode": "always"}
+        tool = SimpleNamespace(categories=("desktop", "apps"))
+        self.assertIsNone(agent._game_mode_execution_guard(tool))
+
+    def test_switching_competitive_safe_does_not_cancel_ordinary_tool_work(self):
         agent = object.__new__(ToolAgent)
         agent._competitive_safe_mode = False
-        agent.registry = SimpleNamespace(access=SimpleNamespace(revoke_grants=mock.Mock()))
-        agent._pending_by_session = {}
-        agent._pending_new_sessions = set()
         agent.request_cancel = mock.Mock()
         agent.set_competitive_safe_mode(True)
         self.assertTrue(agent._competitive_safe_mode)
-        agent.request_cancel.assert_called_once_with()
-        agent.set_competitive_safe_mode(True)
-        agent.request_cancel.assert_called_once_with()
+        agent.request_cancel.assert_not_called()
         agent.set_competitive_safe_mode(False)
         self.assertFalse(agent._competitive_safe_mode)
-        agent.request_cancel.assert_called_once_with()
+        agent.request_cancel.assert_not_called()
 
     def test_story_mode_retains_existing_tool_permissions(self):
         self.assertTrue(tool_categories_allowed(STORY_MODE, ("desktop",)))
