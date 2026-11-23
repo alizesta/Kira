@@ -1153,8 +1153,11 @@ class AttachmentsVisionController(WindowFeatureController):
             image = att.image_attachment(jpeg, name, "image/jpeg")
             session = self.context.state.cur
             self.context.session._vision_session = session
+            vision_router = getattr(self.context.services, "vision_router", None)
+            if vision_router is None:
+                raise RuntimeError("isolated Vision router is unavailable")
             self.context.session._vision_worker = VisionAnalysisWorker(
-                self.context.session.client,
+                vision_router,
                 image,
                 ocr_enabled=(
                     bool(self.context.services.settings.get("vision_ocr_in_game_mode", False))
