@@ -223,25 +223,28 @@ class ChatController(WindowFeatureController):
         img_search = bool(
             has_image and (force_img or self.context.services.settings.get("image_search", False))
         )
-        # Dispatch explicit Game Mode controls before adding an automatic live frame.
-        # Otherwise the frame itself would mark the request as "has attachments" and
-        # prevent deterministic on/off/status commands from matching.
-        live_game_frame_added = False
+        # Append a live frame only from a manually enabled source.
+        live_vision_frame_added = False
+        live_vision_source = None
+        desktop_enabled = (
+            self.context.services.vision_application_service
+            .desktop_capture_application_service.enabled
+        )
         if (
-            self.context.state._game_mode_enabled
+            (self.context.state._game_mode_enabled or desktop_enabled)
             and not (command_dispatch.handled and not command_dispatch.continue_chat)
             and len(attachments or []) < self.context.services.chat_application_service.max_attachments
         ):
-            frame = self.feature_controller("attachments_vision")._game_vision_attachment()
+            frame = self.feature_controller("attachments_vision")._live_vision_attachment()
             if frame is not None:
-                live_game_frame_added = True
+                live_vision_frame_added = True
+                live_vision_source = "desktop" if frame.get("name") == "desktop-screen.jpg" else "game"
                 attachments = list(attachments or []) + [frame]
                 try:
                     self.context.services.chat_application_service.add_request_attachment(
                         self.context.state.cur.application_request_id, frame
                     )
                 except (AttributeError, ValueError):
-                    # A non-application request can still use the legacy payload.
                     pass
         packed = None
         if self.context.state.cur.application_request_id:
@@ -252,18 +255,31 @@ class ChatController(WindowFeatureController):
             except (AttributeError, ValueError):
                 packed = None
         if packed is None and attachments:
-            packed = self.context.services.chat_application_service.compose_attachments(text, attachments, search=img_search)
+            packed = self.context.services.chat_application_service.compose_attachments(
+                text, attachments, search=img_search
+            )
         if packed is not None:
-            # Do not infer live-screen provenance from a user-controlled filename.
-            packed["live_game_frame_attached"] = bool(
-                live_game_frame_added
+            expected_live_name = (
+                "desktop-screen.jpg" if live_vision_source == "desktop" else "game-screen.jpg"
+            )
+            live_image_present = bool(
+                live_vision_frame_added
                 and any(
-                    isinstance(item, dict) and item.get("name") == "game-screen.jpg"
+                    isinstance(item, dict) and item.get("name") == expected_live_name
                     for item in (packed.get("images") or [])
                 )
             )
-            # Search must only run with a successfully prepared image payload.
-            img_search = bool(packed.get("images")) and (force_img or self.context.services.settings.get("image_search", False))
+            packed["live_vision_frame_attached"] = live_image_present
+            packed["live_vision_frame_source"] = live_vision_source if live_image_present else None
+            packed["live_game_frame_attached"] = bool(
+                live_image_present and live_vision_source == "game"
+            )
+            packed["live_desktop_frame_attached"] = bool(
+                live_image_present and live_vision_source == "desktop"
+            )
+            img_search = bool(packed.get("images")) and (
+                force_img or self.context.services.settings.get("image_search", False)
+            )
         if packed and packed.get("errors"):
             self.attachment_controller.show_error(packed["errors"])
             if not packed.get("prepared_count") and not text.strip():

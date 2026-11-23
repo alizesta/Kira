@@ -285,7 +285,7 @@ def initialize_main_window(
     self.state._game_capture_timer = QTimer(self.host)
     self.state._game_capture_timer.setInterval(int(self.services.vision_application_service.policy.interval_seconds * 1000))
     self.state._game_capture_timer.timeout.connect(
-        lambda: self.controllers.require("attachments_vision")._capture_game_frame()
+        lambda: self.controllers.require("attachments_vision")._capture_active_vision_frame()
     )
     self.adapters.game_mode.game_detected.connect(
         lambda *args: self.controllers.require("attachments_vision").on_game_detected(*args)
@@ -475,6 +475,36 @@ def initialize_main_window(
         action = self.views.nav_menu.addAction(make_icon(icon_name), self.controllers.require("session").t(key))
         action.triggered.connect(lambda checked=False, idx=i: self.controllers.require("session").go_tab(idx))
         self.state._menu_actions.append(action)
+
+    desktop_policy = self.services.vision_application_service.desktop_capture_application_service
+    self.views.nav_menu.addSeparator()
+    self.views.desktop_vision_action = self.views.nav_menu.addAction("Live Desktop Vision")
+    self.views.desktop_vision_action.setCheckable(True)
+    self.views.desktop_vision_action.setChecked(False)
+    self.views.desktop_vision_action.toggled.connect(
+        self.controllers.require("attachments_vision").set_desktop_vision
+    )
+    self.views.desktop_vision_monitor_menu = self.views.nav_menu.addMenu("انتخاب مانیتور")
+    self.views.desktop_vision_monitor_actions = {}
+    self.views.desktop_vision_auto_action = self.views.desktop_vision_monitor_menu.addAction(
+        "خودکار · مانیتور پنجرهٔ فعال"
+    )
+    self.views.desktop_vision_auto_action.setCheckable(True)
+    self.views.desktop_vision_auto_action.setChecked(not desktop_policy.selected_monitor_id)
+    self.views.desktop_vision_auto_action.triggered.connect(
+        lambda checked=False: self.controllers.require("attachments_vision").set_desktop_monitor("")
+    )
+    for monitor in self.adapters.game_mode.capture_service.list_monitors():
+        label = monitor.name + (" · اصلی" if monitor.primary else "")
+        action = self.views.desktop_vision_monitor_menu.addAction(label)
+        action.setCheckable(True)
+        action.setChecked(monitor.id == desktop_policy.selected_monitor_id)
+        action.triggered.connect(
+            lambda checked=False, monitor_id=monitor.id:
+                self.controllers.require("attachments_vision").set_desktop_monitor(monitor_id)
+        )
+        self.views.desktop_vision_monitor_actions[monitor.id] = action
+
     central = QWidget()
     central_layout = QVBoxLayout(central)
     central_layout.setContentsMargins(10, 8, 10, 10)
