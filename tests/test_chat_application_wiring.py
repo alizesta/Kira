@@ -86,6 +86,15 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("def compose_attachments(", service)
         self.assertIn("def max_attachments(", service)
 
+
+    def test_eye_mode_frame_is_injected_into_structured_provider_images(self):
+        chat = (ROOT / "kira" / "ui" / "main_window_chat.py").read_text(encoding="utf-8")
+        self.assertIn('._live_vision_attachment()', chat)
+        self.assertIn('extra0["images"].append({', chat)
+        self.assertIn('"mime": live_frame["mime"]', chat)
+        self.assertIn('"b64": live_frame["b64"]', chat)
+        self.assertIn('self.context.session._turn_extra = extra0', chat)
+
     def test_shutdown_uses_two_phase_chat_application_disposal(self):
         runtime_tree = ast.parse((ROOT / "kira" / "ui" / "main_window_runtime.py").read_text(encoding="utf-8"))
         runtime_methods = {n.name: n for n in ast.walk(runtime_tree) if isinstance(n, ast.FunctionDef)}
