@@ -544,6 +544,9 @@ class ChatController(WindowFeatureController):
             "voice_input": self.context.session._turn_voice,
             "mode": mode,
             "body_context": body_context,
+            "tool_context": self.feature_controller("attachments_vision").build_chat_vision_context(
+                self.context.session._turn_extra
+            ),
             "active_capabilities": tuple(sorted(getattr(self.context.session._tool_plan, "categories", ()) or ())),
             "turn_extra": self.context.session._turn_extra,
             "max_context_chars": self.context.services.settings.get("chat_context_char_limit", 0),
@@ -626,6 +629,7 @@ class ChatController(WindowFeatureController):
             tool_agent=self.context.services.tool_agent,
             desktop_action_matcher=match_safe_action,
             desktop_action_handler=lambda text: run_safe_action(text, allow_desktop=True),
+            game_mode_handler=self.feature_controller("attachments_vision").handle_game_mode_command,
         )
         self.context.services.chat_application_service.set_command_registry(registry)
         self.command_registry = registry

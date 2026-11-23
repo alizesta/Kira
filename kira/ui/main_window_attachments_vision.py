@@ -203,7 +203,95 @@ class AttachmentsVisionController(WindowFeatureController):
         self.context.views.game_mode_safe_action.setChecked(self.context.services.game_mode_application_service.is_competitive_safe(self.context.state._game_mode_profile))
         self.set_game_mode(True)
 
-    def set_game_mode(self, enabled):
+    def handle_game_mode_command(self, action):
+        """Execute an explicit chat command against the real Game Mode controller state."""
+        action = str(action or "").strip().lower()
+        if action in ("enable", "disable"):
+            enabled = action == "enable"
+            button = self.context.views.game_mode_btn
+            previous = button.blockSignals(True)
+            try:
+                button.setChecked(enabled)
+            finally:
+                button.blockSignals(previous)
+            self.set_game_mode(enabled, announce=False)
+            if not enabled:
+                return "Game Mode خاموش شد؛ Capture متوقف شد و من الان تصویر زنده‌ای از بازی دریافت نمی‌کنم."
+        return self._game_vision_status_message()
+
+    def _game_vision_status_message(self):
+        """Return a status based on a fresh foreground check and an actual captured frame."""
+        if not self.context.state._game_mode_enabled:
+            return "Game Mode خاموش است؛ من در حال حاضر Capture زنده از صفحه بازی ندارم. با فرمان «گیم مود رو روشن کن» می‌توانی فعالش کنی."
+        service = self.context.services.vision_application_service
+        if not service.capture_allowed(
+            self.context.state._game_mode_enabled, self.context.state._game_mode_profile
+        ):
+            return "Game Mode روشن است، اما پروفایل فعلی اجازه دریافت تصویر را نمی‌دهد؛ بنابراین نمی‌توانم ادعا کنم صفحه بازی را می‌بینم."
+        self._capture_game_frame()
+        game = self.context.adapters.game_mode.last_game
+        frame = self.context.state._latest_game_frame
+        if not game:
+            return "Game Mode روشن است، اما هیچ پنجره بازیِ پشتیبانی‌شده‌ای در پیش‌زمینه شناسایی نشده؛ پس هنوز تصویری از بازی ندارم. تب‌های معمول مرورگر عمداً Capture نمی‌شوند."
+        title = str(game.get("title") or game.get("exe") or "بازی")[:90]
+        if frame is None or frame.isNull():
+            return f"پنجره «{title}» شناسایی شده، اما Capture هنوز فریم معتبری نداده؛ در حال حاضر تصویر را نمی‌بینم و نمی‌خواهم وانمود کنم."
+        worker = getattr(self.context.session, "_vision_worker", None)
+        if worker is not None and worker.isRunning():
+            return f"بله؛ فریم تازه‌ای از «{title}» دریافت شده و تحلیل Vision در حال اجراست."
+        return f"فریم فعلی «{title}» دریافت شده است. در پیام بعدی درباره بازی، همین تصویر به درخواست مدل ضمیمه می‌شود تا بتوانم محتوایش را بررسی کنم."
+
+    def build_chat_vision_context(self, turn_extra=None):
+        """Tell the model whether a live game frame is actually present in this provider turn."""
+        images = turn_extra.get("images", []) if isinstance(turn_extra, dict) else []
+        game_frame_attached = any(
+            isinstance(item, dict) and str(item.get("name") or "").lower() == "game-screen.jpg"
+            for item in (images or [])
+        )
+        if game_frame_attached:
+            return (
+                "LIVE GAME VISION STATUS: A frame captured by the user's manually enabled Game Mode "
+                "is attached to THIS user request as an image. You may inspect that image and describe "
+                "only visible evidence. Do not claim access beyond this attached frame."
+            )
+        if not self.context.state._game_mode_enabled:
+            return (
+                "LIVE GAME VISION STATUS: Game Mode is OFF. No live game-screen frame is attached "
+                "or available to this request. Do not claim to see the desktop or game. User-supplied "
+                "image attachments, if present, are separate and may still be analyzed."
+            )
+        service = self.context.services.vision_application_service
+        if not service.capture_allowed(
+            self.context.state._game_mode_enabled, self.context.state._game_mode_profile
+        ):
+            return (
+                "LIVE GAME VISION STATUS: Game Mode is on, but the selected profile does not permit "
+                "screen capture. No live game frame is available; do not claim to see it."
+            )
+        self.context.adapters.game_mode.poll()
+        game = self.context.adapters.game_mode.last_game
+        frame = self.context.state._latest_game_frame
+        if not game:
+            self.context.state._latest_game_frame = None
+            return (
+                "LIVE GAME VISION STATUS: Game Mode is on, but no supported game window is currently "
+                "detected in the foreground. No live game image is attached. Do not invent the scene "
+                "or ask for a screenshot as a substitute for reporting this actual status."
+            )
+        if frame is None or frame.isNull():
+            title = str(game.get("title") or game.get("exe") or "game")[:90]
+            return (
+                f"LIVE GAME VISION STATUS: Game Mode is on and foreground window '{title}' was detected, "
+                "but capture did not produce a valid frame. No game image is attached; do not claim to "
+                "see its contents. State that capture failed rather than pretending the camera is off."
+            )
+        return (
+            "LIVE GAME VISION STATUS: A local game frame exists, but it was NOT attached to this "
+            "provider request. You cannot inspect its pixels in this turn and must not claim to see "
+            "the scene. This can happen when the attachment limit is reached."
+        )
+
+    def set_game_mode(self, enabled, *, announce=True):
         enabled = bool(enabled)
         was_enabled = self.context.state._game_mode_enabled
         self.context.state._game_mode_enabled = enabled
@@ -244,13 +332,16 @@ class AttachmentsVisionController(WindowFeatureController):
 
         if not enabled:
             self.context.views.game_mode_btn.setToolTip("Game Mode خاموش است؛ برای فعال‌کردن دستی کلیک کن")
-            self.feature_controller("session").add_chat("system", "🎮 Game Mode خاموش شد؛ تمام Captureها و شنود صدای بازی متوقف شدند.")
+            if announce:
+                self.feature_controller("session").add_chat("system", "🎮 Game Mode خاموش شد؛ تمام Captureها و شنود صدای بازی متوقف شدند.")
         elif self.context.services.game_mode_application_service.is_story(self.context.state._game_mode_profile):
             self.context.views.game_mode_btn.setToolTip("Story Mode فعال است؛ Vision و تحلیل محلی صدای بازی فعال‌اند")
-            self.feature_controller("session").add_chat("system", "🎮 Story Mode فعال شد. Vision و تحلیل محلی صدای بازی فعال‌اند. دست‌کاری پردازش، حافظه یا ورودی بازی همچنان ممنوع است.")
+            if announce:
+                self.feature_controller("session").add_chat("system", "🎮 Story Mode فعال شد. Vision و تحلیل محلی صدای بازی فعال‌اند. دست‌کاری پردازش، حافظه یا ورودی بازی همچنان ممنوع است.")
         else:
             self.context.views.game_mode_btn.setToolTip("Competitive Safe فعال است؛ Vision فقط‌خواندنی فعال، بدون شنود بازی و کنترل دسکتاپ")
-            self.feature_controller("session").add_chat("system", "🛡️ Competitive Safe فعال شد. Kira تصویر بازیِ پنجرهٔ فعال را فقط‌خواندنی تحلیل می‌کند؛ شنود صدای بازی و کنترل ورودی/دسکتاپ غیرفعال‌اند. فقط چت، جست‌وجوی وب و میکروفون/Wake Word مستقل هم فعال‌اند.")
+            if announce:
+                self.feature_controller("session").add_chat("system", "🛡️ Competitive Safe فعال شد. Kira تصویر بازیِ پنجرهٔ فعال را فقط‌خواندنی تحلیل می‌کند؛ شنود صدای بازی و کنترل ورودی/دسکتاپ غیرفعال‌اند. فقط چت، جست‌وجوی وب و میکروفون/Wake Word مستقل هم فعال‌اند.")
 
     def _start_game_audio_listener(self):
         if self.context.state._closing or not self.context.state._game_mode_enabled:
@@ -423,9 +514,22 @@ class AttachmentsVisionController(WindowFeatureController):
                              QSystemTrayIcon.Information, 7000)
 
     def _game_vision_attachment(self):
-        """Attach only the newest 480p JPEG frame captured while Game Mode is manually enabled."""
-        if (not self.context.services.vision_application_service.capture_allowed(self.context.state._game_mode_enabled, self.context.state._game_mode_profile)
-                or self.context.state._latest_game_frame is None):
+        """Attach a fresh foreground frame only while Game Mode is manually enabled."""
+        if not self.context.services.vision_application_service.capture_allowed(
+            self.context.state._game_mode_enabled, self.context.state._game_mode_profile
+        ):
+            self.context.state._latest_game_frame = None
+            return None
+        # Do not attach a stale frame from a game that lost foreground focus since the last timer tick.
+        self.context.adapters.game_mode.poll()
+        pixmap = self.context.adapters.game_mode.capture_last_game(
+            self.context.services.vision_application_service.policy.max_width,
+            self.context.services.vision_application_service.policy.max_height,
+        )
+        self.context.state._latest_game_frame = (
+            pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
+        )
+        if self.context.state._latest_game_frame is None:
             return None
         try:
             from PySide6.QtCore import QBuffer, QByteArray, QIODevice
