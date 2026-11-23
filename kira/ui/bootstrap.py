@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -46,21 +47,87 @@ def _show_startup_splash(app):
     return splash
 
 
-def _write_startup_metrics(data_dir: Path, phases: dict[str, dict[str, float]]) -> None:
-    """Append one small, privacy-safe startup timing record for local diagnosis."""
+def _write_startup_metrics(
+    data_dir: Path,
+    phases: dict[str, dict[str, float]],
+    memory_samples: dict[str, dict[str, float]] | None = None,
+) -> None:
+    """Append startup timing and process-memory samples without user content."""
     try:
         log_dir = Path(data_dir) / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         record = {
+            "schema_version": 2,
             "recorded_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "phases": phases,
             "total_ms": max((item["elapsed_ms"] for item in phases.values()), default=0.0),
+            "memory_samples": memory_samples or {},
         }
         with (log_dir / "startup-performance.jsonl").open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(record, ensure_ascii=False) + "\n")
     except OSError:
         # Diagnostics must never prevent the desktop application from starting.
         pass
+
+
+def _process_memory_snapshot() -> dict[str, float] | None:
+    """Sample process memory without adding a third-party dependency."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            from ctypes import wintypes
+
+            size_t = ctypes.c_size_t
+
+            class ProcessMemoryCountersEx(ctypes.Structure):
+                _fields_ = [
+                    ("cb", wintypes.DWORD),
+                    ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", size_t),
+                    ("WorkingSetSize", size_t),
+                    ("QuotaPeakPagedPoolUsage", size_t),
+                    ("QuotaPagedPoolUsage", size_t),
+                    ("QuotaPeakNonPagedPoolUsage", size_t),
+                    ("QuotaNonPagedPoolUsage", size_t),
+                    ("PagefileUsage", size_t),
+                    ("PeakPagefileUsage", size_t),
+                    ("PrivateUsage", size_t),
+                ]
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            psapi = ctypes.WinDLL("psapi", use_last_error=True)
+            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+            get_memory = psapi.GetProcessMemoryInfo
+            get_memory.argtypes = (
+                wintypes.HANDLE,
+                ctypes.POINTER(ProcessMemoryCountersEx),
+                wintypes.DWORD,
+            )
+            get_memory.restype = wintypes.BOOL
+            counters = ProcessMemoryCountersEx()
+            counters.cb = ctypes.sizeof(counters)
+            if not get_memory(
+                kernel32.GetCurrentProcess(),
+                ctypes.byref(counters),
+                counters.cb,
+            ):
+                return None
+            to_mb = 1024.0 * 1024.0
+            return {
+                "working_set_mb": round(counters.WorkingSetSize / to_mb, 2),
+                "peak_working_set_mb": round(counters.PeakWorkingSetSize / to_mb, 2),
+                "private_bytes_mb": round(counters.PrivateUsage / to_mb, 2),
+            }
+
+        import resource
+
+        peak_rss = float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        divisor = 1024.0 * 1024.0 if sys.platform == "darwin" else 1024.0
+        return {"peak_rss_mb": round(peak_rss / divisor, 2)}
+    except Exception:  # noqa: BLE001 - diagnostics must never block application startup
+        return None
+
+
 
 
 def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -> None:
@@ -80,6 +147,7 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
     started_at = perf_counter()
     previous_mark = started_at
     phases: dict[str, dict[str, float]] = {}
+    memory_samples: dict[str, dict[str, float]] = {}
 
     def mark_phase(name: str) -> None:
         nonlocal previous_mark
@@ -89,6 +157,9 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
             "since_previous_ms": round((now - previous_mark) * 1000, 2),
         }
         previous_mark = now
+        memory_snapshot = _process_memory_snapshot()
+        if memory_snapshot:
+            memory_samples[name] = memory_snapshot
         progress_labels = {
             "application_imports": "Loading application modules...",
             "settings_loaded": "Loading your settings...",
@@ -119,7 +190,10 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
         from .main_window_composition import initialize_main_window
         from ..app.dependency_container import DependencyContainer
         from ..app.event_bus import EventBus
-        from ..app.feature_modules import register_application_modules
+        from ..app.feature_modules import (
+            REQUIRED_APPLICATION_MODULES,
+            register_application_modules,
+        )
         from ..app.module_manager import ModuleManager, ModuleState
 
         data_dir = DATA_DIR
@@ -151,8 +225,22 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
             for module_id, state in states.items()
             if state != ModuleState.STARTED
         }
-        if failed:
-            raise RuntimeError(f"Required application modules failed to start: {failed}")
+        required_failed = {
+            module_id: error for module_id, error in failed.items()
+            if module_id in REQUIRED_APPLICATION_MODULES
+        }
+        optional_failed = {
+            module_id: error for module_id, error in failed.items()
+            if module_id not in REQUIRED_APPLICATION_MODULES
+        }
+        if optional_failed:
+            logging.getLogger("kira.bootstrap").warning(
+                "Optional application modules did not start: %s", optional_failed
+            )
+        if required_failed:
+            raise RuntimeError(
+                f"Required application modules failed to start: {required_failed}"
+            )
         mark_phase("modules_started")
 
         session_manager = SessionManager(ChatSession)
@@ -219,7 +307,7 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
     def record_interactive_startup() -> None:
         mark_phase("event_loop_first_tick")
         if data_dir is not None:
-            _write_startup_metrics(data_dir, phases)
+            _write_startup_metrics(data_dir, phases, memory_samples)
 
     QTimer.singleShot(0, record_interactive_startup)
     sys.exit(app.exec())
