@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import ast
-from collections import deque
 import difflib
 import hashlib
 import importlib.util
@@ -12,10 +11,8 @@ import re
 import shlex
 import shutil
 import stat
-import subprocess
 import sys
 import tempfile
-import threading
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -25,6 +22,7 @@ from .code_agent import (
     MAX_FILE_BYTES, SKIP_DIRS, _is_sensitive, project_tree, redact_secrets, safe_project_file,
 )
 from .ui_design_guidance import guidance_for_task
+from .auto_agent_process import run_bounded_process
 from .auto_agent_workspace import (  # noqa: F401
     MAX_STEPS,
     MAX_OBSERVATION,
@@ -702,127 +700,17 @@ class KodeAutonomousEngine:
         return args
 
     def _exec(self, cmd):
-        """Run a bounded process while retaining only a safe, bounded output tail."""
-        import signal
-        import time
-
-        kwargs = {}
-        if os.name == "nt":
-            kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        else:
-            kwargs["start_new_session"] = True
-        proc = subprocess.Popen(
+        """Run a bounded command through the dedicated process lifecycle helper."""
+        return run_bounded_process(
             cmd,
-            cwd=str(self.work),
+            cwd=self.work,
             env=self._clean_env(),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            **kwargs,
+            should_stop=self.should_stop,
+            timeout=RUN_TIMEOUT,
+            max_capture_bytes=MAX_CAPTURE_BYTES,
+            max_observation=MAX_OBSERVATION,
+            redact=redact_secrets,
         )
-
-        chunks = deque()
-        captured_bytes = 0
-        truncated = False
-        capture_lock = threading.Lock()
-
-        def drain_output():
-            nonlocal captured_bytes, truncated
-            try:
-                while True:
-                    block = proc.stdout.read(64 * 1024)
-                    if not block:
-                        break
-                    with capture_lock:
-                        chunks.append(block)
-                        captured_bytes += len(block)
-                        while captured_bytes > MAX_CAPTURE_BYTES and chunks:
-                            excess = captured_bytes - MAX_CAPTURE_BYTES
-                            oldest = chunks[0]
-                            if len(oldest) <= excess:
-                                captured_bytes -= len(chunks.popleft())
-                            else:
-                                chunks[0] = oldest[excess:]
-                                captured_bytes -= excess
-                            truncated = True
-            except (OSError, ValueError):
-                pass
-            finally:
-                try:
-                    proc.stdout.close()
-                except (OSError, ValueError):
-                    pass
-
-        reader = threading.Thread(
-            target=drain_output,
-            name="ai1code-process-output",
-            daemon=True,
-        )
-        reader.start()
-
-        end = time.monotonic() + RUN_TIMEOUT
-        note = ""
-        while proc.poll() is None or reader.is_alive():
-            if self.should_stop():
-                note = "\n(با Stop متوقف شد)"
-            elif time.monotonic() > end:
-                note = f"\n(بعد از {RUN_TIMEOUT} ثانیه متوقف شد)"
-            if note:
-                try:
-                    if os.name == "nt":
-                        subprocess.run(
-                            ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                            stdin=subprocess.DEVNULL,
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
-                            timeout=5,
-                            check=False,
-                        )
-                    else:
-                        os.killpg(proc.pid, signal.SIGKILL)
-                except (ProcessLookupError, PermissionError, OSError, subprocess.TimeoutExpired):
-                    try:
-                        proc.kill()
-                    except (ProcessLookupError, OSError):
-                        pass
-                try:
-                    proc.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    try:
-                        proc.kill()
-                    except (ProcessLookupError, OSError):
-                        pass
-                    proc.wait(timeout=2)
-                reader.join(timeout=5)
-                if reader.is_alive():
-                    try:
-                        proc.stdout.close()
-                    except (OSError, ValueError):
-                        pass
-                    reader.join(timeout=1)
-                break
-            time.sleep(0.3)
-
-        if proc.poll() is None:
-            proc.wait()
-        reader.join(timeout=5)
-
-        with capture_lock:
-            out = b"".join(chunks)
-            was_truncated = truncated
-
-        # The ring buffer can begin in the middle of a line. Drop that partial
-        # line before secret redaction so a key assignment is never split away
-        # from its marker and accidentally exposed in the retained output.
-        if was_truncated:
-            first_line_end = out.find(b"\n")
-            out = out[first_line_end + 1:] if first_line_end >= 0 else b""
-
-        output = redact_secrets(out.decode("utf-8", "replace"))
-        if was_truncated:
-            output += "\n[بخش ابتدایی خروجی طولانی برای محدودیت حافظه حذف شد]"
-        return_code = proc.returncode if not note else -1
-        return return_code, (output + note)[-MAX_OBSERVATION:]
 
     def _show_log(self, title, code, text):
         self.emit(f"{title} ← exit {code}\n```\n{_clip(text.strip() or '(بدون خروجی)', 1800)}\n```")
