@@ -82,6 +82,7 @@ SERVICE_FIELDS = frozenset({
     "chat_search_application_service",
     "chat_transfer_application_service",
     "coding_agent_application_service",
+    "desktop_context_application_service",
     "game_mode_application_service",
     "initiative_application_service",
     "memory_service",
@@ -370,8 +371,8 @@ CONTROLLER_ACCESS = {
   "extras": frozenset({"session"}),
  },
  "attachments_vision": {
-  "state": frozenset({"_closing","_game_audio_restart_pending","_game_capture_timer","_game_mode_enabled","_game_mode_profile","_game_poll_timer","_game_prev_mic","_game_prev_wake","_latest_game_frame","_stopping_game_audio_listener","_upload_done","_upload_tiles","_upload_token","cur","sessions"}),
-  "services": frozenset({"coding_agent_application_service","game_mode_application_service","settings","tool_agent","vision_application_service","voice_application_service"}),
+  "state": frozenset({"_closing","_game_audio_restart_pending","_game_capture_timer","_game_mode_enabled","_game_mode_profile","_game_poll_timer","_game_prev_mic","_game_prev_wake","_latest_game_frame","_perception_worker","_perception_window_info","_perception_source","_perception_result","_stopping_game_audio_listener","_upload_done","_upload_tiles","_upload_token","cur","sessions"}),
+  "services": frozenset({"coding_agent_application_service","desktop_context_application_service","game_mode_application_service","settings","tool_agent","vision_application_service","voice_application_service"}),
   "adapters": frozenset({"game_audio_listener","game_mode"}),
   "views": frozenset({"game_mode_btn","game_mode_safe_action","game_mode_story_action","desktop_vision_action","desktop_vision_auto_action","desktop_vision_monitor_actions","desktop_vision_monitor_menu","mic_btn","send_strip","vision_rate_actions","wake_btn","code_chat","tray"}),
   "peers": frozenset({"session","chat","runtime"}),

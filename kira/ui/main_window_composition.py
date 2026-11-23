@@ -61,6 +61,7 @@ def initialize_main_window(
     provider_application_service=None,
     coding_agent_application_service=None,
     vision_application_service=None,
+    desktop_context_application_service=None,
     runtime_settings_application_service=None,
     shared_skills_application_service=None,
     conversation_organization_application_service=None,
@@ -90,6 +91,7 @@ def initialize_main_window(
         "provider_application_service": provider_application_service,
         "coding_agent_application_service": coding_agent_application_service,
         "vision_application_service": vision_application_service,
+        "desktop_context_application_service": desktop_context_application_service,
         "runtime_settings_application_service": runtime_settings_application_service,
         "shared_skills_application_service": shared_skills_application_service,
         "conversation_organization_application_service": conversation_organization_application_service,
@@ -135,6 +137,7 @@ def initialize_main_window(
     self.services.runtime_settings_application_service.configure(self.services.settings)
     self.services.coding_agent_application_service = coding_agent_application_service
     self.services.vision_application_service = vision_application_service
+    self.services.desktop_context_application_service = desktop_context_application_service
     self.state._db_notes = self.services.chat_application_service.init_history()
     self.services.session_manager = session_manager
     self.services.chat_event_publisher = chat_event_publisher
@@ -210,6 +213,10 @@ def initialize_main_window(
     # Vision cadence, safety gating and deduplication are owned by the application service.
     self.session._vision_worker = None
     self.session._vision_session = None
+    self.state._perception_worker = None
+    self.state._perception_window_info = None
+    self.state._perception_source = None
+    self.state._perception_result = None
     self.adapters.game_audio_listener = None
     self.state._game_prev_mic = False
     self.state._game_prev_wake = False

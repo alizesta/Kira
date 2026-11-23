@@ -28,6 +28,7 @@ APPLICATION_FEATURE_DEPENDENCIES = {
     "shared_skills": (),
     "game_mode": (),
     "desktop_capture": (),
+    "desktop_context": (),
     "provider": (),
     "coding_agent": (),
     "runtime_settings": (),
@@ -81,6 +82,7 @@ def register_application_modules(
     from .runtime_settings_application import RuntimeSettingsApplicationService
     from .vision_application import VisionApplicationService
     from .desktop_capture_application import DesktopCaptureApplicationService
+    from .desktop_context import DesktopContext
     from ..config import DATA_DIR, save_settings
     from .chat_composition import create_chat_application_service_factory
     from .session_composition import create_session_application_service_factory
@@ -208,6 +210,9 @@ def register_application_modules(
         "desktop_capture_application_service": selected(
             "desktop_capture_application_service", create_desktop_capture_service
         ),
+        "desktop_context_application_service": selected(
+            "desktop_context_application_service", DesktopContext
+        ),
         "provider_application_service": selected("provider_application_service", ProviderApplicationService),
         "coding_agent_application_service": selected(
             "coding_agent_application_service", create_coding_agent_service
@@ -240,6 +245,7 @@ def register_application_modules(
         ("shared_skills", "shared_skills_application_service"),
         ("game_mode", "game_mode_application_service"),
         ("desktop_capture", "desktop_capture_application_service"),
+        ("desktop_context", "desktop_context_application_service"),
         ("provider", "provider_application_service"),
         ("coding_agent", "coding_agent_application_service"),
         ("runtime_settings", "runtime_settings_application_service"),

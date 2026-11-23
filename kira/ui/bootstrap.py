@@ -276,6 +276,7 @@ def run_application(*, transfer_file_port: ChatTransferFilePort | None = None) -
             provider_application_service=container.resolve("provider_application_service"),
             coding_agent_application_service=container.resolve("coding_agent_application_service"),
             vision_application_service=container.resolve("vision_application_service"),
+            desktop_context_application_service=container.resolve("desktop_context_application_service"),
             runtime_settings_application_service=container.resolve("runtime_settings_application_service"),
             console_log_capture=console_log_capture,
         )

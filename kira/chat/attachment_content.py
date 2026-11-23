@@ -24,6 +24,17 @@ MAX_ARCHIVE_UNPACKED_BYTES = 40 * 1024 * 1024
 MAX_IMAGE_SIDE = 1568                  # larger images are shrunk: vision models downscale anyway and big payloads get rejected
 MAX_TEXT_CHARS = 30000                 # text sent to the model for one file
 HISTORY_EXCERPT = 3000                 # part of a file kept in the saved chat so Kira can still refer to it later
+DESKTOP_CONTEXT_MAX_CHARS = 2000
+
+
+def format_desktop_context(summary: str) -> str:
+    """Bound local perception facts before including them in a provider prompt."""
+    value = str(summary or "").strip()
+    if not value:
+        return ""
+    if len(value) > DESKTOP_CONTEXT_MAX_CHARS:
+        value = value[:DESKTOP_CONTEXT_MAX_CHARS - 1].rstrip() + "…"
+    return value
 
 
 class AttachmentError(ValueError):

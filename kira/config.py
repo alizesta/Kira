@@ -51,6 +51,8 @@ DEFAULTS = {
     "desktop_vision_monitor_id": "",          # empty = monitor containing the foreground window
     "desktop_vision_allowlist": [],           # explicit exe:<name>, title:<pattern>, path:<pattern> exceptions
     "desktop_vision_blocklist": {},           # custom privacy rules merged with defaults
+    "desktop_vision_ocr_enabled": True,       # local OCR on changed desktop content when Tesseract already exists
+    "vision_ocr_in_game_mode": False,         # OCR stays off during gameplay unless explicitly enabled
     "voice_engine": "gemini_live",       # gemini_live = primary bidirectional voice; local = existing Qwen/Whisper + Piper
     "voice_engine_migrated": True,       # one-time migration guard; preserves an intentional local-primary choice
     "gemini_live_provider": "",          # provider id from the existing Google API Manager; never stores a second API key
