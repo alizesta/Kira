@@ -15,5 +15,4 @@ from ..chat.session_manager import SessionManager
 from .. import winfx
 from ..game_mode import GameModeMonitor
 from .controllers import ChatAttachmentController
-from .workers import AttachWorker
 from .main_window_support import load_reactions
