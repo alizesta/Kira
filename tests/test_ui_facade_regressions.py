@@ -275,19 +275,34 @@ class WidgetRegressionTests(unittest.TestCase):
         def on_chunk(value):
             callback_values.append(value)
             callback_threads.append(threading.get_ident())
+
+        def on_complete(value):
+            callback_values.append(("complete", value))
+            callback_threads.append(threading.get_ident())
             loop.quit()
 
         adapter.subscribe("chunk", on_chunk)
+        adapter.subscribe("complete", on_complete)
         emitter = threading.Thread(
-            target=lambda: raw_worker.chunk.emit("provider chunk")
+            target=lambda: (
+                raw_worker.chunk.emit("provider "),
+                raw_worker.chunk.emit("chunk"),
+                raw_worker.finished_ok.emit({"result": "done"}),
+            )
         )
         emitter.start()
         emitter.join()
         QTimer.singleShot(1000, loop.quit)
         loop.exec()
 
-        self.assertEqual(callback_values, ["provider chunk"])
-        self.assertEqual(callback_threads, [threading.get_ident()])
+        self.assertEqual(
+            callback_values,
+            ["provider chunk", ("complete", {"result": "done"})],
+        )
+        self.assertEqual(
+            callback_threads,
+            [threading.get_ident(), threading.get_ident()],
+        )
 
         finished_loop = QEventLoop()
         finished_events = []

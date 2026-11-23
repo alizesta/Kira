@@ -21,6 +21,7 @@ SESSION_FIELDS = {
     "_stream_text": lambda: "",
     "_stream_pos": lambda: None,
     "_stream_dirty": lambda: False,
+    "_stream_display_text": lambda: "",
     "_stream_mood": lambda: None,
     "_emotion_applied": lambda: False,
     "_body_done": lambda: [],             # body command names already performed for the message being answered (no repeats)

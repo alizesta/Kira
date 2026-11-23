@@ -60,15 +60,17 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
 
     # ---- live text ----
 
-    def display_text(self, raw):
-        """User-visible part of a (possibly unfinished) streamed reply: emotion tag removed, half-written tag hidden."""
+    def display_text(self, raw, parsed=None):
+        """User-visible part of a streamed reply; reuse parsed response metadata when available."""
         head = raw.lstrip()
         if head.startswith("[") and "]" not in head and len(head) < 62:       # a tag still being typed by the model
             return ""
-        return scrub_lines(self.context.adapters.director.parse_reply(raw).text)       # echoed router / system notes are never shown
+        meta = parsed if parsed is not None else self.context.adapters.director.parse_reply(raw)
+        return scrub_lines(meta.text)       # echoed router / system notes are never shown
 
     def _stream_begin(self):
         self.context.session._stream_text, self.context.session._stream_pos, self.context.session._stream_dirty, self.context.session._stream_mood = "", None, False, None
+        self.context.session._stream_display_text = ""
         self.context.session._emotion_applied = False
         self.context.session._t_req = time.monotonic()
         self.context.session._t_first = None
@@ -87,11 +89,14 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
             self.feature_controller("session").on_voice_error(f"صدا ناموفق بود: {type(exc).__name__}: {exc}")
 
     def on_stream_chunk(self, piece, accumulated_content=None):
-        # ResponseHandler owns ordered aggregation; the window keeps only the
-        # current text snapshot required by its existing incremental renderer.
-        self.context.session._stream_text = (str(accumulated_content) if accumulated_content is not None
-                             else self.context.session._stream_text + str(piece))
-        self.context.session._stream_dirty = True
+        # ResponseHandler owns ordered aggregation; ignore duplicate snapshots to
+        # avoid scheduling a no-op render.
+        current = self.context.session._stream_text
+        updated = (str(accumulated_content) if accumulated_content is not None
+                   else current + str(piece))
+        if updated != current:
+            self.context.session._stream_text = updated
+            self.context.session._stream_dirty = True
 
     def _stream_flush(self, final=False):
         if not self.context.session._stream_dirty and not final:
@@ -99,7 +104,7 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         self.context.session._stream_dirty = False
         meta = self.context.adapters.director.parse_reply(self.context.session._stream_text)         # pure parse: no side effects
         self.run_body(meta.body)                                    # [body:...] tags written by the model
-        text = self.display_text(self.context.session._stream_text)
+        text = self.display_text(self.context.session._stream_text, meta)
         # Explicit model tags are applied immediately; keyword-inferred emotions are
         # applied only once the reply is complete, so partial text cannot keep changing
         # the voice profile while the stream is still arriving.
@@ -110,6 +115,9 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
             self.context.adapters.director.on_reply(meta)
         if not text.strip():
             return
+        if not final and text == self.context.session._stream_display_text:
+            return
+        self.context.session._stream_display_text = text
         self._speak_stream(text)
         name = self.context.services.character_service.display_name(self.context.services.settings)
         ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "fa") == "fa" else "ltr"
@@ -125,8 +133,9 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         if self.context.session._stream_pos > 0:
             cur.insertBlock()
         cur.insertHtml(html)
-        if getattr(self.context.adapters, "bubble", None) is not None:
-            self.context.adapters.bubble.set_live(name, text, ui_dir)
+        bubble = getattr(self.context.adapters, "bubble", None)
+        if bubble is not None and (final or bubble.isVisible()):
+            bubble.set_live(name, text, ui_dir)
         bar = self.context.session.view.verticalScrollBar()
         bar.setValue(bar.maximum())
 

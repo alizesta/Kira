@@ -9,19 +9,52 @@ from ..core.interfaces.application_ports import (
 )
 
 
-class _QtProviderEventRelay(QObject):
-    """Deliver provider callbacks on the GUI thread, including service lambdas."""
+STREAM_CHUNK_COALESCE_MS = 16
 
-    def __init__(self, callback, parent=None):
+
+class _QtProviderEventRelay(QObject):
+    """Deliver provider callbacks on the GUI thread, coalescing frequent text chunks."""
+
+    def __init__(self, callback, parent=None, *, coalesce_ms=0, before_callback=None):
         super().__init__(parent)
         self._callback = callback
+        self._before_callback = before_callback
+        self._pending_text = []
+        self._flush_timer = None
+        if int(coalesce_ms) > 0:
+            self._flush_timer = QTimer(self)
+            self._flush_timer.setSingleShot(True)
+            self._flush_timer.setInterval(int(coalesce_ms))
+            self._flush_timer.timeout.connect(self.flush)
+
+    def _flush_before_callback(self):
+        if self._before_callback is not None:
+            self._before_callback()
 
     @Slot(str)
     def text(self, value):
-        self._callback(value)
+        if self._flush_timer is None:
+            self._flush_before_callback()
+            self._callback(value)
+            return
+        if value:
+            self._pending_text.append(str(value))
+            if not self._flush_timer.isActive():
+                self._flush_timer.start()
 
     @Slot(dict)
     def payload(self, value):
+        self._flush_before_callback()
+        self._callback(value)
+
+    @Slot()
+    def flush(self):
+        if self._flush_timer is not None:
+            self._flush_timer.stop()
+        if not self._pending_text:
+            return
+        value = "".join(self._pending_text)
+        self._pending_text.clear()
         self._callback(value)
 
 
@@ -43,6 +76,7 @@ class QtProviderWorkerAdapter(QObject):
         self._worker = worker
         self._registry = registry
         self._subscriptions = {}
+        self._chunk_relays = set()
         self._released = False
         # The QThread QObject has GUI-thread affinity. Parenting it to this
         # adapter guarantees it cannot outlive its owner during window teardown.
@@ -57,7 +91,14 @@ class QtProviderWorkerAdapter(QObject):
         except KeyError as exc:
             raise ValueError(f"Unsupported provider event: {event}") from exc
         signal = getattr(self._worker, signal_name)
-        relay = _QtProviderEventRelay(callback, parent=self)
+        relay = _QtProviderEventRelay(
+            callback,
+            parent=self,
+            coalesce_ms=STREAM_CHUNK_COALESCE_MS if event == "chunk" else 0,
+            before_callback=None if event == "chunk" else self._flush_pending_chunks,
+        )
+        if event == "chunk":
+            self._chunk_relays.add(relay)
         slot = getattr(relay, relay_name)
         signal.connect(slot, Qt.QueuedConnection)
         self._subscriptions.setdefault(event, []).append((signal, slot, relay))
@@ -72,6 +113,9 @@ class QtProviderWorkerAdapter(QObject):
             subscriptions.remove(match)
             if not subscriptions:
                 self._subscriptions.pop(event, None)
+            if relay in self._chunk_relays:
+                relay.flush()
+                self._chunk_relays.discard(relay)
             source, target, receiver = match
             try:
                 source.disconnect(target)
@@ -81,6 +125,10 @@ class QtProviderWorkerAdapter(QObject):
             return True
 
         return unsubscribe
+
+    def _flush_pending_chunks(self):
+        for relay in tuple(self._chunk_relays):
+            relay.flush()
 
     def start(self):
         try:
@@ -106,7 +154,9 @@ class QtProviderWorkerAdapter(QObject):
     def _release(self):
         if self._released:
             return
+        self._flush_pending_chunks()
         self._released = True
+        self._chunk_relays.clear()
         subscriptions, self._subscriptions = self._subscriptions, {}
         for entries in subscriptions.values():
             for signal, slot, relay in entries:
