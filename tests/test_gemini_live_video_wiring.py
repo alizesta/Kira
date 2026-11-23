@@ -34,6 +34,10 @@ def test_live_stream_uses_full_monitor_and_privacy_rechecks():
     assert "LIVE_VIDEO_CHANGE_THRESHOLD" in source
     assert "LIVE_VIDEO_MAX_WIDTH = 640" in source
     assert "LIVE_VIDEO_MAX_HEIGHT = 360" in source
+    assert "LIVE_VIDEO_CHANNEL_LEVELS = 21" in source
+    assert "LIVE_VIDEO_PALETTE_COLORS = LIVE_VIDEO_CHANNEL_LEVELS ** 3" in source
+    assert "bytes(rgb.constBits()).translate(_LIVE_VIDEO_CHANNEL_LUT)" in source
+    assert "palette_colors=LIVE_VIDEO_PALETTE_COLORS" in source
     assert "def set_live_video_active(self, enabled)" in source
     assert 'return 1000 if getattr(self, "_live_video_active", False) else base' in source
 
