@@ -98,8 +98,10 @@ def check_host(url: str) -> None:
         if _ip_blocked(literal):
             raise GuardError("دسترسی به آدرس‌های محلی/خصوصی (IP داخلی) ممنوع است.")
         return
-    if _uses_proxy(url):
-        return                                                   # the proxy resolves the name, our local DNS answer is irrelevant
+    proxy_enabled = _uses_proxy(url)
+    # Resolve and validate the destination even when a system proxy is active.
+    # The connected peer is the proxy, not the destination; skipping this DNS
+    # check would let a URL name an internal host through an otherwise public proxy.
     try:
         infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except socket.gaierror as exc:
@@ -107,6 +109,8 @@ def check_host(url: str) -> None:
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
         if ip in CENSOR_NET:
+            if proxy_enabled:
+                continue  # an external proxy may resolve the real public destination itself
             raise GuardError("این سایت در شبکه‌ی تو فیلتر است (DNS آدرس مسدودسازی داد)؛ با فیلترشکن/پروکسی امتحان کن.")
         if _ip_blocked(ip):
             raise GuardError("نام این سایت به آدرس داخلی/محلی اشاره می‌کند؛ برای امنیت رد شد (SSRF).")
@@ -114,9 +118,9 @@ def check_host(url: str) -> None:
 
 def _peer_blocked(resp) -> bool:
     """Reject private peers; fail closed for direct connections when the socket cannot be inspected."""
-    # A configured proxy owns DNS resolution and the actual outbound socket.
-    # For direct requests, inability to inspect the peer must not disable the
-    # DNS-rebinding defence: check_host() and requests may resolve at different times.
+    # With a proxy this socket belongs to the proxy, so the destination is
+    # validated in check_host() before dispatch. Direct connections must also
+    # validate the actual peer to catch DNS rebinding between lookup and connect.
     if _uses_proxy(resp.url):
         return False
     try:

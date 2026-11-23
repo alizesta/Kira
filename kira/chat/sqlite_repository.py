@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import copy
 import json
+import os
 import shutil
 import sqlite3
 import threading
@@ -25,8 +26,8 @@ DEFAULT_CHARACTER = "kira"
 SCHEMA_VERSION = 1
 SNAPSHOTS_KEEP = 5
 MAX_PENDING_MESSAGES = 500
-# Interactive chat persistence must fail fast and use its in-memory fallback
-# instead of freezing the Qt event loop behind SQLite's default lock wait.
+# Keep a bounded in-memory read cache; the durable JSONL spool carries overflow.
+# Interactive chat persistence must fail fast instead of freezing the Qt event loop.
 SQLITE_BUSY_TIMEOUT_SECONDS = 0.25
 
 
@@ -467,31 +468,140 @@ class SqliteChatRepository:
         self.startup_notes[:] = notes
         return notes
 
+    def _pending_spool_path(self) -> Path:
+        return self.db_path.with_name(self.db_path.name + ".pending.jsonl")
+
+    def _pending_rows_locked(self) -> list[tuple]:
+        """Read the durable emergency queue and merge it with the bounded RAM cache."""
+        rows: dict[str, tuple] = {}
+        spool = self._pending_spool_path()
+        if spool.is_file():
+            try:
+                with spool.open("r", encoding="utf-8") as handle:
+                    for line_number, line in enumerate(handle, 1):
+                        if not line.strip():
+                            continue
+                        try:
+                            raw = json.loads(line)
+                            if not isinstance(raw, list) or len(raw) != 7:
+                                raise ValueError("invalid row shape")
+                            role, body, cid, conv_id, metadata, status, token = raw
+                            if role not in ("user", "assistant", "system"):
+                                raise ValueError("invalid role")
+                            if status not in ("streaming", "complete", "interrupted", "failed", "cancelled"):
+                                raise ValueError("invalid status")
+                            if not str(token or ""):
+                                raise ValueError("missing queue token")
+                            row = (str(role), str(body), _character_id(cid), str(conv_id),
+                                   str(metadata), str(status), str(token))
+                        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                            raise PersistenceError(
+                                f"صف اضطراری پیام‌ها خراب است (خط {line_number}): {exc}"
+                            ) from exc
+                        rows.setdefault(row[6], row)
+            except OSError as exc:
+                raise PersistenceError(f"صف اضطراری پیام‌ها خوانده نشد: {exc}") from exc
+
+        for index, raw in enumerate(self._pending):
+            row = tuple(raw)
+            if len(row) == 6:  # compatibility with pending rows created before the durable spool
+                row = (*row, uuid.uuid4().hex)
+                self._pending[index] = row
+            if len(row) == 7 and str(row[6] or ""):
+                rows.setdefault(str(row[6]), row)
+        return list(rows.values())
+
+    def _queue_pending_locked(self, row: tuple) -> bool:
+        """Durably append a failed DB write; fall back to bounded RAM only if the spool is unavailable."""
+        spool = self._pending_spool_path()
+        original_size = 0
+        try:
+            spool.parent.mkdir(parents=True, exist_ok=True)
+            original_size = spool.stat().st_size if spool.exists() else 0
+            encoded = json.dumps(list(row), ensure_ascii=False, separators=(",", ":")) + "\n"
+            with spool.open("a", encoding="utf-8", newline="") as handle:
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            persisted = True
+        except (OSError, TypeError, ValueError) as exc:
+            persisted = False
+            self._note_error(exc)
+            # Roll back a partial JSONL append so older queued messages remain readable.
+            try:
+                if spool.exists():
+                    with spool.open("r+b") as handle:
+                        handle.truncate(original_size)
+                        handle.flush()
+                        os.fsync(handle.fileno())
+            except OSError as rollback_exc:
+                self._note_error(rollback_exc)
+
+        cached = len(self._pending) < MAX_PENDING_MESSAGES
+        if cached:
+            self._pending.append(row)
+        if persisted:
+            self.last_error = (
+                "SQLite در دسترس نیست؛ پیام در صف اضطراری دیسک ذخیره شد و پس از بازیابی دیتابیس منتقل می‌شود."
+            )
+            return True
+        if cached:
+            self.last_error = (
+                "SQLite و صف اضطراری دیسک در دسترس نیستند؛ پیام فعلاً فقط در حافظه نگه داشته شد. "
+                "برنامه را نبند تا ذخیره‌سازی بازیابی شود."
+            )
+            return True
+        self.last_error = (
+            f"ذخیره‌سازی ناموفق است و صف اضطراری هم قابل نوشتن نیست؛ پیام جدید ذخیره یا صف‌بندی نشد. "
+            f"صف حافظه به سقف {MAX_PENDING_MESSAGES} پیام رسیده است."
+        )
+        return False
+
     def _flush_pending_locked(self):
-        if not self._pending:
+        pending = self._pending_rows_locked()
+        if not pending:
             return
         with self._db() as con:
             self._migrate_schema(con)
-            con.executemany(
-                "INSERT INTO messages(role, content, character_id, conversation_id, metadata, status) VALUES (?, ?, ?, ?, ?, ?)",
-                self._pending,
+            # A receipt shares the same SQLite transaction as the message insert.
+            # If the process crashes after commit but before spool deletion, replay
+            # sees the receipt and cannot duplicate the message.
+            con.execute(
+                "CREATE TABLE IF NOT EXISTS persistence_receipts (token TEXT PRIMARY KEY)"
             )
-            for row in self._pending:
-                self._ensure_conversation_row(con, row[3], row[2])
+            for row in pending:
+                role, body, cid, conv_id, metadata, status, token = row
+                receipt = con.execute(
+                    "INSERT OR IGNORE INTO persistence_receipts(token) VALUES (?)", (token,)
+                )
+                if receipt.rowcount:
+                    self._ensure_conversation_row(con, conv_id, cid)
+                    con.execute(
+                        "INSERT INTO messages(role, content, character_id, conversation_id, metadata, status) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        (role, body, cid, conv_id, metadata, status),
+                    )
         self._pending.clear()
+        try:
+            self._pending_spool_path().unlink(missing_ok=True)
+        except OSError as exc:
+            # Messages are committed and receipt-protected; a later flush safely
+            # retries cleanup without inserting them twice.
+            self._note_error(exc)
 
     def flush_pending(self) -> int:
-        """Persist every queued message before application shutdown."""
+        """Persist the in-memory and disk-spooled messages before application shutdown."""
         with self._lock:
-            pending_count = len(self._pending)
-            if not pending_count:
-                return 0
             try:
+                pending_count = len(self._pending_rows_locked())
+                if not pending_count:
+                    return 0
                 self._flush_pending_locked()
             except (sqlite3.Error, OSError, PersistenceError) as exc:
                 self._note_error(exc)
                 raise PersistenceError(
-                    f"Could not flush {pending_count} pending chat messages: {exc}"
+                    f"Could not flush {pending_count if 'pending_count' in locals() else 'unknown'} "
+                    f"pending chat messages: {exc}"
                 ) from exc
             self.last_error = None
             return pending_count
@@ -805,6 +915,7 @@ class SqliteChatRepository:
         conv_id = str(conversation_id)
         with self._lock:
             try:
+                self._flush_pending_locked()
                 with self._db() as con:
                     self._migrate_schema(con)
                     if not con.in_transaction:
@@ -938,14 +1049,8 @@ class SqliteChatRepository:
                             self._note_error(recovery)
                     break
             pending_conv = resolved_conv_id or fallback_conv_id or _legacy_conversation_id(cid)
-            if len(self._pending) >= MAX_PENDING_MESSAGES:
-                self.last_error = (
-                    f"{self.last_error or 'Chat database is unavailable'}; "
-                    f"in-memory write queue is full ({MAX_PENDING_MESSAGES} messages); "
-                    "the newest message was not queued and existing pending messages were retained."
-                )
-                return False
-            self._pending.append((role, body, cid, pending_conv, meta_json, status))
+            pending_row = (role, body, cid, pending_conv, meta_json, status, uuid.uuid4().hex)
+            self._queue_pending_locked(pending_row)
             return False
 
     @staticmethod
@@ -1007,7 +1112,11 @@ class SqliteChatRepository:
                 return [{"role": row[0], "content": row[1]} for row in reversed(rows)]
             except (sqlite3.Error, OSError) as exc:
                 self._note_error(exc)
-                kept = [row for row in self._pending if
+                try:
+                    pending_rows = self._pending_rows_locked()
+                except PersistenceError:
+                    pending_rows = list(self._pending)
+                kept = [row for row in pending_rows if
                         (character_id is None or row[2] == _character_id(character_id)) and
                         (conversation_id is None or row[3] == str(conversation_id))]
                 return [{"role": row[0], "content": row[1]} for row in kept[-limit:]]
@@ -1167,7 +1276,11 @@ class SqliteChatRepository:
 
     def pending_count(self):
         with self._lock:
-            return len(self._pending)
+            try:
+                return len(self._pending_rows_locked())
+            except (OSError, PersistenceError) as exc:
+                self._note_error(exc)
+                return len(self._pending)
 
     def list_snapshots(self, kind="cleared"):
         root = self.db_path.parent / "snapshots"
@@ -1180,6 +1293,8 @@ class SqliteChatRepository:
         """Snapshot first, then delete only the requested character's messages."""
         with self._lock:
             try:
+                # Flush first so a disk-spooled message cannot reappear after a clear.
+                self._flush_pending_locked()
                 with self._db() as con:
                     self._migrate_schema(con)
                     if not con.in_transaction:

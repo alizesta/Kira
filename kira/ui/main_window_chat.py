@@ -81,12 +81,23 @@ class ChatController(WindowFeatureController):
                         ApplicationEventKind.REQUEST_FAILED,
                         ApplicationEventKind.REQUEST_CANCELLED,
                     )
-                    and not self.context.state._save_warned):
+                    and (
+                        not self.context.state._save_warned
+                        or (event.error and "ذخیره یا صف‌بندی نشد" in event.error)
+                    )):
                 self.context.state._save_warned = True
+                warning = (
+                    "ذخیره‌ی پاسخ روی دیسک ناموفق بود. پاسخ در صف اضطراری نگه داشته شده است؛ "
+                    "Kira را تا بازیابی ذخیره‌سازی نبند."
+                )
+                if event.error and "ذخیره یا صف‌بندی نشد" in event.error:
+                    warning = (
+                        "یک پیام به دلیل پرشدن/خرابی صف ذخیره‌سازی نه روی دیسک ذخیره شد و نه در صف قرار گرفت. "
+                        "برنامه را نبند و فوراً مشکل ذخیره‌سازی را برطرف کن."
+                    )
                 self.feature_controller("session").add_chat(
                     "error",
-                    "ذخیره‌ی پاسخ روی دیسک ناموفق بود. پاسخ تا اولین ذخیره‌ی موفق در حافظه نگه داشته می‌شود."
-                    + (f"\nعلت: {event.error}" if event.error else ""),
+                    warning + (f"\nعلت: {event.error}" if event.error else ""),
                 )
             if event.kind is ApplicationEventKind.PROVIDER_CHUNK:
                 if session is self.context.state.front:

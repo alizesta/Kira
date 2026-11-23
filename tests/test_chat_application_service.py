@@ -62,6 +62,8 @@ class FakePersistence:
         self.messages = []
         self.conversations = {}
         self.history_calls = []
+        self.flush_result = 0
+        self.flush_error = None
 
     @property
     def last_error(self):
@@ -87,6 +89,11 @@ class FakePersistence:
     def add_message(self, role, content, character_id=None, **options):
         self.messages.append((role, content, character_id, options))
         return self.result
+
+    def flush_pending(self):
+        if self.flush_error is not None:
+            raise self.flush_error
+        return self.flush_result
 
 
 class ChatApplicationServiceTests(unittest.TestCase):
@@ -426,6 +433,13 @@ class ChatApplicationServiceTests(unittest.TestCase):
         self.assertIsNone(worker)
         self.assertEqual(service.get_request_status(submission.request.request_id), RequestStatus.FAILED)
         self.assertIn("worker factory failed", self.events[-1].error)
+
+    def test_flush_pending_history_delegates_and_propagates_storage_errors(self):
+        self.persistence.flush_result = 3
+        self.assertEqual(self.service.flush_pending_history(), 3)
+        self.persistence.flush_error = OSError("disk is still unavailable")
+        with self.assertRaisesRegex(OSError, "disk is still unavailable"):
+            self.service.flush_pending_history()
 
     def test_dispose_releases_sessions_and_rejects_new_requests(self):
         self.service.submit_message("kira", "active")

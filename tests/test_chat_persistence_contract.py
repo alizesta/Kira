@@ -389,6 +389,91 @@ class SqliteChatRepositoryTests(unittest.TestCase):
         rows = self.persistence.get_messages(character_id="ren", conversation_id=conversation["id"])
         self.assertEqual([row["content"] for row in rows], ["pending", "after recovery"])
 
+    def test_emergency_queue_survives_repository_recreation_and_flushes(self):
+        conversation = self.persistence.get_or_create_conversation("ren")
+        with mock.patch.object(
+            self.repository, "_db",
+            side_effect=sqlite3.OperationalError("database is locked"),
+        ):
+            self.assertFalse(self.persistence.add_message(
+                "user", "survive restart", "ren", conversation_id=conversation["id"]
+            ))
+
+        spool = self.db.with_name(self.db.name + ".pending.jsonl")
+        self.assertTrue(spool.is_file())
+        self.assertEqual(self.repository.pending_count(), 1)
+
+        reopened = SqliteChatRepository(self.db)
+        self.assertEqual(reopened.init_db(), [])
+        self.assertEqual(reopened.flush_pending(), 1)
+        self.assertFalse(spool.exists())
+        self.assertEqual(
+            [row["content"] for row in reopened.get_messages(
+                character_id="ren", conversation_id=conversation["id"]
+            )],
+            ["survive restart"],
+        )
+
+    def test_spool_replay_after_commit_is_idempotent_if_cleanup_fails(self):
+        conversation = self.persistence.get_or_create_conversation("ren")
+        with mock.patch.object(
+            self.repository, "_db",
+            side_effect=sqlite3.OperationalError("database is locked"),
+        ):
+            self.assertFalse(self.persistence.add_message(
+                "user", "exactly once", "ren", conversation_id=conversation["id"]
+            ))
+        spool = self.db.with_name(self.db.name + ".pending.jsonl")
+        reopened = SqliteChatRepository(self.db)
+        self.assertEqual(reopened.init_db(), [])
+
+        original_unlink = Path.unlink
+        failed = {"once": False}
+        def fail_first_spool_cleanup(path, *args, **kwargs):
+            if path == spool and not failed["once"]:
+                failed["once"] = True
+                raise OSError("simulated spool cleanup failure")
+            return original_unlink(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "unlink", new=fail_first_spool_cleanup):
+            self.assertEqual(reopened.flush_pending(), 1)
+        self.assertTrue(spool.exists())
+        self.assertEqual(reopened.flush_pending(), 1)
+        self.assertFalse(spool.exists())
+        self.assertEqual(reopened.message_count("ren", conversation["id"]), 1)
+
+    def test_emergency_queue_spools_beyond_the_in_memory_cache_limit(self):
+        conversation = self.persistence.get_or_create_conversation("mika")
+        total = 507
+        with mock.patch.object(
+            self.repository, "_db",
+            side_effect=sqlite3.OperationalError("database is locked"),
+        ):
+            for index in range(total):
+                self.assertFalse(self.persistence.add_message(
+                    "user", f"queued-{index}", "mika", conversation_id=conversation["id"]
+                ))
+
+        self.assertEqual(self.repository.pending_count(), total)
+        self.assertLessEqual(len(self.repository._pending), 500)
+        reopened = SqliteChatRepository(self.db)
+        self.assertEqual(reopened.init_db(), [])
+        self.assertEqual(reopened.flush_pending(), total)
+        self.assertEqual(reopened.message_count("mika", conversation["id"]), total)
+
+    def test_clear_flushes_spooled_messages_before_deleting_history(self):
+        conversation = self.persistence.get_or_create_conversation("ren")
+        with mock.patch.object(
+            self.repository, "_db",
+            side_effect=sqlite3.OperationalError("database is locked"),
+        ):
+            self.assertFalse(self.persistence.add_message(
+                "user", "must be cleared", "ren", conversation_id=conversation["id"]
+            ))
+        self.persistence.clear_memory("ren")
+        self.assertEqual(self.repository.pending_count(), 0)
+        self.assertEqual(self.repository.message_count("ren"), 0)
+
     def test_concurrent_saves_across_characters_are_not_lost(self):
         failures = []
         def worker(character):

@@ -452,10 +452,20 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
                 _log.warning("Unable to update conversation memory/emotion state", exc_info=True)
         if persist and ok:
             self.context.state._save_warned = False
-        elif persist and not ok and not self.context.state._save_warned:
-            self.context.state._save_warned = True
-            self.feature_controller("session").add_chat("error", "ذخیره‌ی گفتگو روی دیسک ناموفق بود. گفتگو تا بسته‌شدن برنامه در حافظه می‌ماند و با اولین ذخیره‌ی موفق نوشته می‌شود."
-                                   f"\nعلت: {self.context.services.chat_application_service.last_persistence_error}")
+        elif persist and not ok:
+            error = str(self.context.services.chat_application_service.last_persistence_error or "")
+            message_was_dropped = "ذخیره یا صف‌بندی نشد" in error
+            if message_was_dropped or not self.context.state._save_warned:
+                self.context.state._save_warned = True
+                warning = (
+                    "این پیام ذخیره یا صف‌بندی نشد؛ فضای دیسک/دسترسی دیتابیس را فوراً بررسی کن."
+                    if message_was_dropped else
+                    "ذخیره‌ی گفتگو روی دیسک ناموفق بود. پیام‌ها در صف اضطراری نگه داشته شده‌اند؛ "
+                    "Kira را تا بازیابی ذخیره‌سازی نبند."
+                )
+                self.feature_controller("session").add_chat(
+                    "error", warning + (f"\nعلت: {error}" if error else "")
+                )
         return ok
 
     def safe_stop_speaker(self):
@@ -625,6 +635,19 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         if getattr(self.context.state, "_closing", False):
             if self._running_background_workers():
                 event.ignore()
+                return
+            try:
+                # Workers have drained; commit pending chat data before teardown/exit.
+                self.context.services.chat_application_service.flush_pending_history()
+            except Exception as exc:
+                event.ignore()
+                QMessageBox.critical(
+                    self.window,
+                    "ذخیره‌سازی گفتگو",
+                    "پیام‌های صف‌شده هنوز روی دیسک ذخیره نشده‌اند؛ Kira بسته نشد. "
+                    "فضای دیسک/دسترسی دیتابیس را درست کن و دوباره خروج را بزن.\n\n"
+                    f"علت: {exc}",
+                )
                 return
             if not self._dispose_window_feature_services():
                 event.ignore()

@@ -32,6 +32,32 @@ class NetguardRedirectPrivacyTests(unittest.TestCase):
         with mock.patch.object(netguard, "_uses_proxy", return_value=True):
             self.assertFalse(netguard._peer_blocked(response))
 
+    def test_destination_dns_is_checked_even_when_system_proxy_is_enabled(self):
+        private_answer = [(netguard.socket.AF_INET, netguard.socket.SOCK_STREAM, 6, "", ("192.168.1.10", 443))]
+        with (
+            mock.patch.object(netguard, "_uses_proxy", return_value=True),
+            mock.patch.object(netguard.socket, "getaddrinfo", return_value=private_answer) as resolve,
+        ):
+            with self.assertRaisesRegex(netguard.GuardError, "SSRF|داخلی"):
+                netguard.check_host("https://example.com/")
+        resolve.assert_called_once()
+
+    def test_destination_dns_with_proxy_accepts_public_addresses(self):
+        public_answer = [(netguard.socket.AF_INET, netguard.socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443))]
+        with (
+            mock.patch.object(netguard, "_uses_proxy", return_value=True),
+            mock.patch.object(netguard.socket, "getaddrinfo", return_value=public_answer),
+        ):
+            netguard.check_host("https://example.com/")
+
+    def test_proxy_can_bypass_only_the_known_filter_sinkhole_address(self):
+        blocked_answer = [(netguard.socket.AF_INET, netguard.socket.SOCK_STREAM, 6, "", ("10.10.34.2", 443))]
+        with (
+            mock.patch.object(netguard, "_uses_proxy", return_value=True),
+            mock.patch.object(netguard.socket, "getaddrinfo", return_value=blocked_answer),
+        ):
+            netguard.check_host("https://blocked.example/")
+
     def test_shared_non_global_address_space_is_rejected(self):
         for address in ("100.64.0.1", "192.0.0.1", "198.18.0.1"):
             with self.subTest(address=address):

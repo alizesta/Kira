@@ -922,6 +922,11 @@ class ChatApplicationService:
             self._attachment_manager.close()
         self._disposed = True
 
+    def flush_pending_history(self) -> int:
+        """Flush emergency chat writes before the application is allowed to exit."""
+        flusher = getattr(self._persistence, "flush_pending", None)
+        return int(flusher() or 0) if callable(flusher) else 0
+
     def pending_count(self, session_id: str) -> int:
         coordinator = self._coordinators.get(str(session_id or ""))
         return coordinator.pending_count if coordinator is not None else 0
