@@ -153,11 +153,7 @@ class CharacterSettingsController(WindowFeatureController):
         self.feature_controller("runtime").save_now()
 
     def apply_character_voice_settings(self):
-        """Give the speaker an isolated settings snapshot for the active character."""
-        cid = self.context.services.character_service.active_id(self.context.services.settings)
-        override = (self.context.services.settings.get("character_voice") or {}).get(cid) or {}
-        if getattr(self.context.adapters, "speaker", None) is not None:
-            self.context.services.voice_application_service.apply_character_settings(self.context.services.settings, override)
+        return self.context.adapters.appearance_runtime.apply_character_voice_settings()
 
     def refresh_personality_controls(self):
         if not getattr(getattr(self.context.views, "character_page", None), "personality_sliders", None):
@@ -280,12 +276,7 @@ class CharacterSettingsController(WindowFeatureController):
         return crop.scaled(size, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
 
     def apply_character_art(self):
-        """Chat page + floating companion show the active character: Kira's own animated PNG, or the character's
-        full-body picture (a profile without one falls back to Kira's art). Called at start-up and on every change."""
-        profile = self.context.services.character_service.active(self.context.services.settings)
-        self.context.adapters.animator.set_character_art(self.context.services.character_service.avatar_file(profile, ROOT))
-        self.context.adapters.animator.rig.intensity = float(self.context.services.settings.get("motion_strength", self.context.adapters.animator.rig.intensity)) * self.context.adapters.animator.motion_gain
-        self.context.adapters.animator.touch()
+        return self.context.adapters.appearance_runtime.apply_character_art()
 
     def select_character(self, index):
         character_id = self.context.views.character_page.character_combo.itemData(index)
@@ -386,106 +377,13 @@ class CharacterSettingsController(WindowFeatureController):
             page.schedule_appearance()
 
     def apply_appearance(self, save=False):
-        """Apply persisted appearance immediately; controls are read only after the page is built."""
-        page = getattr(self.context.views, "appearance_page", None)
-        previous = getattr(self.context.state, "_effect", "off")
-        stored = self.context.services.settings.get("appearance") or {}
-        color = (
-            (page.background_color if page is not None else "")
-            or stored.get("background_color")
-            or "#0A0A1C"
-        )
-        appearance = {
-            "background_color": color,
-            "brightness": page.appearance_brightness.value() if page is not None else int(stored.get("brightness", 100)),
-            "glow": page.appearance_glow.value() if page is not None else int(stored.get("glow", 58)),
-            "transparency": page.appearance_transparency.value() if page is not None else int(stored.get("transparency", 28)),
-        }
-        # Reduce the old high default once; subsequent values are entirely user-controlled.
-        if not self.context.services.settings.get("appearance_glow_adjusted"):
-            appearance["glow"] = min(int(appearance["glow"]), 18)
-            if page is not None:
-                page.appearance_glow.blockSignals(True)
-                page.appearance_glow.setValue(appearance["glow"])
-                page.appearance_glow.blockSignals(False)
-            self.context.services.settings["appearance_glow_adjusted"] = True
-        # One-time migration from the restrained glow to the Neon Shooter bloom level.
-        # Preserve stronger user-selected values; only lift the old low default.
-        if not self.context.services.settings.get("appearance_neon_shooter_v1"):
-            if int(appearance["glow"]) < 42:
-                appearance["glow"] = 58
-            if page is not None:
-                page.appearance_glow.blockSignals(True)
-                page.appearance_glow.setValue(int(appearance["glow"]))
-                page.appearance_glow.blockSignals(False)
-            self.context.services.settings["appearance_neon_shooter_v1"] = True
-        self.context.services.settings["appearance"] = appearance
-        wanted = (
-            page.window_effect.currentData() if page is not None
-            else self.context.services.settings.get("window_effect", "acrylic")
-        ) or "acrylic"
-        current = winfx.active_effect(wanted)
-        self.context.state._effect = current
-        set_glow_intensity(appearance["glow"] / 100.0)
-        app = QApplication.instance()
-        if app is not None:
-            app.setStyleSheet(build_style(current, appearance))
-        if hasattr(self.context.views, "glow_effects"):
-            self.feature_controller("session").apply_chat_theme()
-        self._refresh_icon_glow()
-        self._apply_neon_glow_effects(appearance)
-        winfx.apply_effect(self.window.winId(), current)
-        if page is not None:
-            page.set_background_color(color)
-        if (previous == "off") != (current == "off") and previous != current and getattr(self.window, "isVisible", lambda: False)():
-            self.feature_controller("session").add_chat("system", "برای اعمال کامل حالت شیشه‌ای، برنامه را یک بار ببند و دوباره باز کن.")
-        if save:
-            save_settings(self.context.services.settings)
+        return self.context.adapters.appearance_runtime.apply_appearance(save=save)
 
     def _apply_neon_glow_effects(self, appearance=None):
-        """Bloom the glass panels and action controls without touching animated avatar widgets."""
-        appearance = appearance if isinstance(appearance, dict) else (self.context.services.settings.get("appearance") or {})
-        intensity = max(0, min(100, int(appearance.get("glow", 58))))
-        cid = self.context.services.character_service.active_id(self.context.services.settings)
-        palette = self.feature_controller("session").theme_for_character(cid, self.context.services.character_service.all_profiles(self.context.services.settings).get(cid, {}))
-        if not hasattr(self, "_neon_widget_effects"):
-            self._neon_widget_effects = {}
-
-        # Panel borders are handled by the stylesheet; avoid effects on containers because
-        # Qt may composite their child text and inputs into the shadow source.
-        # Shadow effects on every settings button force Qt to re-render dozens of
-        # controls. Keep the expensive bloom on the persistent primary actions only.
-        targets = []
-        for name in ("menu_btn", "mic_btn", "wake_btn", "voice_btn", "stop_btn",
-                     "send_btn", "gen_stop_btn"):
-            widget = getattr(self.context.views, name, None)
-            if widget is not None:
-                targets.append((widget, palette["second"], 7 + intensity * 0.06, 5 + intensity * 0.14))
-        save_button = getattr(self.context.views, "save_btn", None)
-        if save_button is not None:
-            targets.append((save_button, palette["main"], 7 + intensity * 0.06, 5 + intensity * 0.12))
-
-        for widget, colour, blur, alpha in targets:
-            effect = self._neon_widget_effects.get(widget)
-            if effect is None:
-                effect = QGraphicsDropShadowEffect(widget)
-                effect.setOffset(0, 0)
-                widget.setGraphicsEffect(effect)
-                self._neon_widget_effects[widget] = effect
-            effect.setBlurRadius(blur)
-            tint = QColor(colour)
-            tint.setAlpha(round(alpha if widget.isEnabled() else alpha * 0.22))
-            effect.setColor(tint)
+        return self.context.adapters.appearance_runtime._apply_neon_glow_effects(appearance)
 
     def _refresh_icon_glow(self):
-        cid = self.context.services.character_service.active_id(self.context.services.settings)
-        palette = self.feature_controller("session").theme_for_character(cid, self.context.services.character_service.all_profiles(self.context.services.settings).get(cid, {}))
-        for button in self.window.findChildren(QToolButton):
-            name = button.property("kiraIconName")
-            if not name:
-                continue
-            button.setIcon(make_icon(name, normal=palette["second"], hover="#FFFFFF",
-                                     checked=palette["main"], disabled="#52617B"))
+        return self.context.adapters.appearance_runtime._refresh_icon_glow()
 
     def _save_ui_design_guidance(self, enabled):
         self.context.services.settings["ui_design_guidance_enabled"] = bool(enabled)
