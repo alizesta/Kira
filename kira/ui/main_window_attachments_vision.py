@@ -666,15 +666,17 @@ class AttachmentsVisionController(WindowFeatureController):
             self.context.state._game_mode_enabled
             or self.context.services.vision_application_service.desktop_capture_application_service.enabled
         )
+        context_started = time.monotonic()
         if source_active:
             desktop_context = format_desktop_context(context_service.summary())
         else:
             context_service.clear()
+        context_build_ms = (time.monotonic() - context_started) * 1000.0
         if desktop_context:
             text = text + "\n\n" + desktop_context
         vision_trace(
             "perception_context", chars=len(desktop_context),
-            active=bool(source_active),
+            active=bool(source_active), build_ms=round(context_build_ms, 3),
         )
         vision_trace(
             "turn_context",

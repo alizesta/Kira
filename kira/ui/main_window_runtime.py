@@ -557,7 +557,7 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         for name in (
             "_local_voice_worker", "_local_stt_test_listener", "_mcp_registry_worker",
             "_model_catalog_worker", "_api_worker", "_route_worker", "_bench_worker", "_scan_worker",
-            "_provider_test_worker", "_ollama_worker", "_vision_worker", "_web_test_worker",
+            "_provider_test_worker", "_ollama_worker", "_vision_worker", "_perception_worker", "_web_test_worker",
             "_attach_worker", "_model_import_worker", "_stopping_listener",
             "_stopping_game_audio_listener", "game_audio_listener", "listener",
         ):
@@ -683,6 +683,8 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
                 event.ignore()
                 return
         # ChatApplicationService owns cancellation and persists partial output once.
+        self.feature_controller("attachments_vision")._cancel_perception_worker()
+        self.context.services.desktop_context_application_service.clear()
         self.context.state._closing = True
         self._voice_session_requested = False
         self._pending_gemini_start = False

@@ -6,6 +6,7 @@ window identity is unknown or a privacy rule denies capture.
 from __future__ import annotations
 
 from collections import deque
+from datetime import datetime
 from threading import RLock
 import time
 from typing import Any
@@ -221,7 +222,11 @@ class DesktopContext:
         if data["recent_events"]:
             lines.append("Recent events:")
             for event in data["recent_events"]:
-                lines.append(f"- {event['summary']}")
+                try:
+                    event_time = datetime.fromisoformat(event["timestamp"]).strftime("%H:%M:%S")
+                except (TypeError, ValueError):
+                    event_time = "--:--:--"
+                lines.append(f"- {event_time} {event['summary']}")
         value = "\n".join(lines)
         if len(value) <= limit:
             return value
