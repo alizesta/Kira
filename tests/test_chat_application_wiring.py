@@ -95,6 +95,10 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn('"visual_observation"', vision)
         self.assertIn('context_service.record_event(', vision)
         self.assertIn('recent timestamped visual observations', vision)
+        self.assertIn('selected_monitor_frame_is_independent_of_foreground_window', vision)
+        self.assertIn('desktop_source_active and current is not None and desktop_allowed', vision)
+        self.assertIn('("desktop-monitor", str(privacy.selected_monitor_id or "auto"))', vision)
+        self.assertIn('(source == "game" and latest_identity != foreground_identity)', vision)
         self.assertNotIn('self._capture_desktop_frame()', vision[vision.index("    def _vision_status"):vision.index("    def build_chat_vision_context")])
 
     def test_shutdown_uses_two_phase_chat_application_disposal(self):
