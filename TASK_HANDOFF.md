@@ -1,3 +1,11 @@
+## Release 1.2 — Eye Mode integration handoff (2026-11-24)
+- Base: new-main; release preparation consolidates the Live Desktop Vision tasks and the subsequent Eye Mode/freshness-context work.
+- User-facing behavior: Eye Mode is the unified, manually enabled desktop observation path for the selected monitor; it is not limited to games.
+- Capture: monitor-bound capture with foreground identity and privacy-policy rechecks; change-aware samples; no raw-image disk persistence; stop/source-disable/privacy-denial clears queued visual state.
+- Perception: PerceptionEngine + RAM-only DesktopContext, optional local replaceable OCR, bounded event/text state and a 2,000-character summary. Game Mode OCR remains off by default.
+- Conversation context: latest observation carries freshness (fresh ≤15 s, recent 15–60 s, stale >60 s, unknown); earlier observations are explicitly historical. Ordinary chat receives text context rather than automatic raw-frame attachments.
+- Gemini Live: changed full-monitor JPEG samples share the active Live audio session, with a one-frame queue and a maximum send rate of 1 FPS. This is sampled imagery, not continuous 30/60 FPS video.
+- Verification boundary: regression test sources were added during implementation, but this release preparation did not execute Python tests, GitHub Actions, Windows/Qt/DXGI capture, OCR quality/performance, or Gemini Live API runtime checks. Those remain required before claiming runtime acceptance.
 ## Live Desktop Vision — Task 2 handoff (2026-11-23)
 - Branch: `feature/live-desktop-perception-task-2`, based on the Task 1 commits already present in `new-main`.
 - Added `kira/perception/` primitives: `ActiveWindowProbe`, `ChangeDetector`, `PerceptionEvent` and `PerceptionEngine`.
