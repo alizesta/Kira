@@ -15,20 +15,76 @@ class _LazyServiceProxy:
         self._factory = factory
         self._instance: Any | None = None
         self._started = False
+        self._disposing = False
+        self._disposed = False
         self._lock = threading.RLock()
+
+    @staticmethod
+    def _release(instance: Any, *, stop_first: bool) -> Exception | None:
+        """Attempt both stop and final cleanup, returning the first failure."""
+        first_error: Exception | None = None
+        if stop_first:
+            try:
+                stop = getattr(instance, "stop", None)
+                if callable(stop):
+                    stop()
+            except Exception as exc:
+                first_error = exc
+
+        try:
+            cleanup = getattr(instance, "dispose", None)
+        except Exception as exc:
+            cleanup = None
+            if first_error is None:
+                first_error = exc
+        if not callable(cleanup):
+            try:
+                cleanup = getattr(instance, "close", None)
+            except Exception as exc:
+                cleanup = None
+                if first_error is None:
+                    first_error = exc
+        if callable(cleanup):
+            try:
+                cleanup()
+            except Exception as exc:
+                if first_error is None:
+                    first_error = exc
+        return first_error
+
+    def _start_instance(self) -> None:
+        instance = self._instance
+        if instance is None:
+            return
+        try:
+            start = getattr(instance, "start", None)
+            if callable(start):
+                start()
+        except Exception as exc:
+            cleanup_error = self._release(instance, stop_first=True)
+            self._instance = None
+            self._started = False
+            if cleanup_error is not None:
+                add_note = getattr(exc, "add_note", None)
+                if callable(add_note):
+                    add_note(
+                        "Lazy service cleanup after failed start also failed: "
+                        f"{type(cleanup_error).__name__}: {cleanup_error}"
+                    )
+            raise
+        self._started = True
 
     def _get(self) -> Any:
         with self._lock:
+            if self._disposed or self._disposing:
+                raise RuntimeError("Lazy service has been disposed")
             if self._instance is None:
                 instance = self._factory()
                 if instance is None:
                     raise TypeError("Lazy service factory returned None")
                 self._instance = instance
             if not self._started:
-                start = getattr(self._instance, "start", None)
-                if callable(start):
-                    start()
-                self._started = True
+                self._start_instance()
             return self._instance
 
     def __getattr__(self, name: str):
@@ -45,16 +101,15 @@ class _LazyServiceProxy:
     def start(self) -> None:
         """Restart an already-created service without defeating laziness."""
         with self._lock:
+            if self._disposed or self._disposing:
+                raise RuntimeError("Lazy service has been disposed")
             if self._instance is None or self._started:
                 return
-            start = getattr(self._instance, "start", None)
-            if callable(start):
-                start()
-            self._started = True
+            self._start_instance()
 
     def stop(self) -> None:
         with self._lock:
-            if self._instance is None or not self._started:
+            if self._instance is None or not self._started or self._disposing:
                 return
             stop = getattr(self._instance, "stop", None)
             if callable(stop):
@@ -63,20 +118,24 @@ class _LazyServiceProxy:
 
     def dispose(self) -> None:
         with self._lock:
-            instance, started = self._instance, self._started
-            self._instance = None
-            self._started = False
-        if instance is None:
-            return
-        if started:
-            stop = getattr(instance, "stop", None)
-            if callable(stop):
-                stop()
-        cleanup = getattr(instance, "dispose", None)
-        if not callable(cleanup):
-            cleanup = getattr(instance, "close", None)
-        if callable(cleanup):
-            cleanup()
+            if self._disposed:
+                return
+            self._disposing = True
+            instance = self._instance
+            started = self._started
+            cleanup_error = None
+            try:
+                if instance is not None:
+                    cleanup_error = self._release(instance, stop_first=started)
+            finally:
+                # Mark the proxy terminal even when user cleanup raises: callers
+                # must not accidentally recreate a service during shutdown.
+                self._instance = None
+                self._started = False
+                self._disposing = False
+                self._disposed = True
+            if cleanup_error is not None:
+                raise cleanup_error
 
 
 class ServiceModule:

@@ -164,5 +164,132 @@ class ServiceModuleTests(unittest.TestCase):
         manager.shutdown()
 
 
+    def test_lazy_service_is_realized_only_when_first_used(self):
+        container = DependencyContainer()
+        manager = ModuleManager(container, EventBus())
+        events = []
+
+        class LazyService:
+            def start(self):
+                events.append("start")
+
+            def run(self):
+                events.append("run")
+                return "ready"
+
+            def stop(self):
+                events.append("stop")
+
+            def close(self):
+                events.append("close")
+
+        def factory():
+            events.append("create")
+            return LazyService()
+
+        manager.register(
+            "lazy",
+            lambda: ServiceModule("lazy_service", factory, lazy=True),
+        )
+        manager.start("lazy")
+        proxy = container.resolve("lazy_service")
+        self.assertEqual(events, [])
+
+        self.assertEqual(proxy.run(), "ready")
+        self.assertEqual(events, ["create", "start", "run"])
+
+        self.assertEqual(manager.shutdown(), {})
+        self.assertEqual(events, ["create", "start", "run", "stop", "close"])
+
+    def test_lazy_service_failed_start_releases_partial_instance_and_retries_fresh(self):
+        container = DependencyContainer()
+        manager = ModuleManager(container, EventBus())
+        events = []
+        created = []
+
+        class LazyService:
+            def __init__(self, should_fail):
+                self.should_fail = should_fail
+
+            def start(self):
+                events.append(("start", self.should_fail))
+                if self.should_fail:
+                    raise RuntimeError("partial lazy start")
+
+            def run(self):
+                return "ready"
+
+            def stop(self):
+                events.append(("stop", self.should_fail))
+
+            def close(self):
+                events.append(("close", self.should_fail))
+
+        def factory():
+            should_fail = not created
+            service = LazyService(should_fail)
+            created.append(service)
+            return service
+
+        manager.register(
+            "lazy",
+            lambda: ServiceModule("lazy_service", factory, lazy=True),
+        )
+        manager.start("lazy")
+        proxy = container.resolve("lazy_service")
+
+        with self.assertRaisesRegex(RuntimeError, "partial lazy start"):
+            proxy.run()
+
+        self.assertEqual(
+            events,
+            [("start", True), ("stop", True), ("close", True)],
+        )
+        self.assertEqual(proxy.run(), "ready")
+        self.assertEqual(len(created), 2)
+        self.assertIsNot(created[0], created[1])
+        manager.shutdown()
+        self.assertEqual(events[-2:], [("stop", False), ("close", False)])
+
+    def test_lazy_service_disposal_attempts_close_after_stop_failure(self):
+        container = DependencyContainer()
+        manager = ModuleManager(container, EventBus())
+        created = []
+        closed = []
+
+        class BrokenStopService:
+            def start(self):
+                pass
+
+            def run(self):
+                return "active"
+
+            def stop(self):
+                raise RuntimeError("stop failed")
+
+            def close(self):
+                closed.append(True)
+
+        def factory():
+            service = BrokenStopService()
+            created.append(service)
+            return service
+
+        manager.register(
+            "lazy",
+            lambda: ServiceModule("lazy_service", factory, lazy=True),
+        )
+        manager.start("lazy")
+        proxy = container.resolve("lazy_service")
+        self.assertEqual(proxy.run(), "active")
+
+        errors = manager.shutdown()
+        self.assertIn("lazy", errors)
+        self.assertEqual(closed, [True])
+        with self.assertRaisesRegex(RuntimeError, "disposed"):
+            proxy.run()
+        self.assertEqual(len(created), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
