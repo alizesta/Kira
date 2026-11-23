@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QApplication, QGraphicsDropShadowEffect, QToolButton
+from PySide6.QtWidgets import QApplication, QGraphicsDropShadowEffect, QToolButton, QWidget
 
 from .. import winfx
 from ..config import ROOT, save_settings
@@ -126,10 +126,12 @@ class AppearanceRuntime:
             "send_btn", "gen_stop_btn",
         ):
             widget = getattr(self.context.views, name, None)
-            if widget is not None:
+            # QAction objects (for example wake_btn) are not QWidgets and cannot
+            # own a QGraphicsEffect. Only visual widgets support this glow.
+            if isinstance(widget, QWidget):
                 targets.append((widget, palette["second"], 7 + intensity * 0.06, 5 + intensity * 0.14))
         save_button = getattr(self.context.views, "save_btn", None)
-        if save_button is not None:
+        if isinstance(save_button, QWidget):
             targets.append((save_button, palette["main"], 7 + intensity * 0.06, 5 + intensity * 0.12))
         for widget, colour, blur, alpha in targets:
             effect = self._neon_widget_effects.get(widget)
