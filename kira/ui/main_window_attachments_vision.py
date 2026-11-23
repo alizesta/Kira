@@ -16,6 +16,7 @@ from .main_window_attachments_vision_support import (
     QSystemTrayIcon,
     QTimer,
     Qt,
+    TaskWorker,
     VisionAnalysisWorker,
     att,
     front_only,
@@ -196,11 +197,17 @@ class AttachmentsVisionController(WindowFeatureController):
             current is not None
             and int(current.get("hwnd") or 0) == int(captured.get("hwnd") or -1)
             and int(current.get("pid") or 0) == int(captured.get("pid") or -1)
+            and str(current.get("exe") or "").casefold() == str(captured.get("exe") or "").casefold()
+            and str(current.get("title") or "").strip() == str(captured.get("title") or "").strip()
+            and str(current.get("path") or "").casefold() == str(captured.get("path") or "").casefold()
         )
         privacy = self.context.services.vision_application_service.desktop_capture_application_service
         source_enabled = (
-            bool(self.context.state._game_mode_enabled)
-            if source == "game" else bool(privacy.enabled)
+            not bool(self.context.state._closing)
+            and (
+                bool(self.context.state._game_mode_enabled)
+                if source == "game" else bool(privacy.enabled)
+            )
         )
         allowed, reason = privacy.evaluate_window(
             current, explicit=(source == "game")
