@@ -810,11 +810,15 @@ class AttachmentsVisionController(WindowFeatureController):
         context_service = self.context.services.desktop_context_application_service
         if context_service.summary():
             return "eye_mode_monitoring", (
-                "EYE MODE STATUS: Eye Mode is monitoring the selected monitor. The DESKTOP CONTEXT "
-                "below contains recent timestamped visual observations and window facts accumulated "
-                "over time. Use that timeline to understand what happened before the user's question. "
-                "No new screenshot is captured just because the user sent a chat message. If the "
-                "timeline has no recent observation, state that limitation instead of inventing details."
+                "EYE MODE STATUS: Eye Mode is ON and periodically observing the user's selected desktop monitor. "
+                "The DESKTOP CONTEXT below contains recent visual observations from that monitor. This is a "
+                "separate screen-observation channel, not a user-uploaded image attachment; images_in_turn=0 "
+                "is normal and does NOT mean the screen is unseen. When the user asks whether you can see "
+                "their screen, answer from the latest visual observation in DESKTOP CONTEXT. Do not say "
+                "that no image was sent unless the user specifically asks about a separate uploaded image. "
+                "Describe only what the latest observation supports, and be honest if it is stale or incomplete. "
+                "Treat these observations as private context for answering naturally; do not print internal "
+                "analysis templates, risk/goal/action headings, or raw perception notes as chat messages."
             )
         return "eye_mode_waiting_for_observation", (
             "EYE MODE STATUS: Eye Mode is ON and monitoring is enabled, but no visual observation "
@@ -1279,9 +1283,18 @@ class AttachmentsVisionController(WindowFeatureController):
                 history_events=len(context_service.snapshot().get("recent_events", ())),
             )
         if not ok:
-            self.feature_controller("session").add_chat("system", "Vision: " + message[:300])
+            # Failed background observations stay in diagnostics; they are not
+            # presented as if Kira were replying to the user.
+            vision_trace("visual_observation_not_presented", source=source, reason="analysis_failed")
             return
-        self.feature_controller("session").add_chat("system", "👁️ " + message[:900])
+        # Successful observations are stored in the rolling desktop context and
+        # consumed by the next conversational reply. Do not dump the model's raw
+        # analysis into chat as a fake assistant/system utterance.
+        vision_trace(
+            "visual_observation_ready_for_chat",
+            source=source,
+            observation_chars=len(message),
+        )
 
     def on_game_detected(self, info):
         """Suggest Game Mode once per detected process, unless the user already enabled it."""
