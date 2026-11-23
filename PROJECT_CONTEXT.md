@@ -1,3 +1,10 @@
+## Eye Mode — release 1.2 synchronization (2026-11-24)
+- Eye Mode is the unified, manually enabled desktop-observation path for the selected monitor across ordinary desktop use and gameplay; it is not a game-only feature.
+- DesktopCaptureService performs monitor-bound capture with foreground HWND/PID and privacy-policy rechecks. PerceptionEngine supplies change-aware events and optional local OCR; DesktopContext is RAM-only and bounded to 2,000 characters.
+- Latest visual context is freshness-labelled: fresh (≤15 seconds), recent (>15 and ≤60 seconds), stale (>60 seconds) or unknown. Earlier observations are explicitly historical and must not be represented as the current screen.
+- Ordinary chat receives the compact text context, not an automatically attached raw screen image. An active compatible Gemini Live session can receive changed JPEG samples through a one-frame queue at no more than 1 FPS.
+- Eye Mode/source stop or privacy denial stops capture and clears pending visual state. Raw frames are not persisted. OCR uses only already-installed dependencies/language data and remains disabled in Game Mode by default.
+- Regression test sources are present, but Windows/DXGI/Qt capture, OCR quality, performance, latency and Gemini Live API behavior remain runtime-unverified until exercised on the target Windows environment.
 ## Live Desktop Vision — Perception Engine (Task 2, 2026-11-23)
 - Foreground-window facts, bounded visual-change samples and local OCR now feed a RAM-only `DesktopContext`; the summary is capped at 2,000 characters and recent events are count-bounded.
 - OCR is optional and replaceable through `OcrEngine`; no package or language data is installed automatically. OCR runs only after a meaningful foreground-window change, and Game Mode OCR is off by default.
