@@ -7,7 +7,6 @@ from ..core.interfaces.application_ports import (
     ChatApplicationPorts,
     VoiceApplicationPorts,
 )
-from .workers import StreamWorker
 
 
 class _QtProviderEventRelay(QObject):
@@ -301,6 +300,10 @@ class QtSpeakerAdapter:
 def create_chat_application_ports(context) -> ChatApplicationPorts:
     """Expose the minimum UI/provider boundary required by Chat application logic."""
     def create_worker(**request):
+        # The QThread implementation is loaded only when the first chat request
+        # actually needs a provider worker.
+        from .workers import StreamWorker
+
         return QtProviderWorkerAdapter(
             StreamWorker(**request),
             parent=context.host,

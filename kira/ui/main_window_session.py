@@ -642,10 +642,28 @@ class SessionController(WindowFeatureController):
         }
 
         try:
+            character_id = str(getattr(self.context.state.cur, "cid", "") or "")
             state = self.context.services.mood_service.current(
-                character_id=self.context.state.cur.cid
+                character_id=character_id
             )
             emotion = str(state.get("emotion", "neutral") or "neutral").lower()
+            behaviour = str(state.get("behavior", "balanced"))
+            energy = str(state.get("energy_label", "normal"))
+            intensity = int(state.get("intensity", 0) or 0)
+            secondary_items = state.get("secondary_emotions") or []
+            secondary_key = tuple(
+                (str(item[0]), int(item[1]))
+                for item in secondary_items[:2]
+                if isinstance(item, (tuple, list)) and len(item) >= 2
+            )
+            secondary = ", ".join(name for name, _value in secondary_key)
+            signature = (
+                character_id, emotion, intensity, behaviour, energy, secondary_key
+            )
+            # Mood is polled periodically, but unchanged state should not rebuild
+            # SVG icons, QPixmaps, stylesheets or tooltips every time.
+            if signature == getattr(self, "_mood_indicator_signature", None):
+                return
             icon_name = face_map.get(emotion, "neutral")
             neon = emotion_colors.get(emotion, "#69E5FF")
             face_icon = make_icon(
@@ -665,8 +683,6 @@ class SessionController(WindowFeatureController):
 
             # Behaviour and energy are represented by vector neon glyphs only.
             # Never place a plain Unicode emoji beside the neon emotion face.
-            behaviour = str(state.get("behavior", "balanced"))
-            energy = str(state.get("energy_label", "normal"))
             show_bolt = energy in {"active", "hyper"} or behaviour == "energetic"
             if show_bolt:
                 bolt_colour = "#FFE36B" if energy == "hyper" else "#72F4FF"
@@ -683,8 +699,6 @@ class SessionController(WindowFeatureController):
             else:
                 label.clear()
                 label.setVisible(False)
-            intensity = int(state.get("intensity", 0))
-            secondary = ", ".join(name for name, _ in state.get("secondary_emotions", [])[:2])
             tooltip = (
                 f"احساس: {emotion} ({intensity}/100)\n"
                 f"رفتار: {behaviour}\n"
@@ -694,6 +708,7 @@ class SessionController(WindowFeatureController):
                 tooltip += f"\nاحساسات همراه: {secondary}"
             face_label.setToolTip(tooltip)
             label.setToolTip(tooltip)
+            self._mood_indicator_signature = signature
         except Exception:                                    # noqa: BLE001 - the indicator must never break the window
             _log.exception("Could not render the active character mood indicator; using neutral fallback")
             fallback = make_icon("emotion_neutral", normal="#B9D4F5", hover="#B9D4F5",

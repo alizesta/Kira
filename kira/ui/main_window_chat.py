@@ -5,8 +5,6 @@ from .main_window_chat_support import (
     ApplicationEventKind,
     QMessageBox,
     QTimer,
-    SearchWorker,
-    TaskWorker,
     body_ctl,
     create_default_command_registry,
     evidence_memory,
@@ -352,6 +350,8 @@ class ChatController(WindowFeatureController):
                                                   "خاموش — عکس فقط به مدل داده می‌شود. برای جست‌وجوی یک عکس، پیام را با /img شروع کن."))
 
     def begin_image_search(self, hint, base_text, images):
+        from .workers import SearchWorker
+
         options = self.context.services.web_search_service.image_search_options(
             self.context.services.settings, hint, images, self.context.session.client
         )
@@ -375,6 +375,8 @@ class ChatController(WindowFeatureController):
         self.context.session._search_worker.start()
 
     def begin_web_search(self, query, base_text, images):
+        from .workers import SearchWorker
+
         if not self.context.services.web_search_service.can_search(self.context.services.settings):
             self.feature_controller("session").add_chat("system", self.context.services.web_search_service.missing_key_message())
             self.begin_reply()
@@ -406,6 +408,8 @@ class ChatController(WindowFeatureController):
 
     def test_web_search(self):
         """Settings button: one real Tavily search with the key typed in the box (no need to save first)."""
+        from .workers import TaskWorker
+
         key, depth = self.context.views.tavily_key.text().strip(), self.context.views.web_depth.currentData()
         gem = self.context.services.web_search_service.gemini_credentials(self.context.services.settings)
         self.context.views.web_test_btn.setEnabled(False)

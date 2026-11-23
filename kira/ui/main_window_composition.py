@@ -13,7 +13,6 @@ from PySide6.QtWidgets import QApplication
 from .shortcuts import install_window_shortcuts
 from .console_log import build_console_log_page
 from .main_window_root_support import (
-    AttachWorker,
     AttachmentTile,
     ChatAttachmentController,
     CompanionBubble,
@@ -393,6 +392,12 @@ def initialize_main_window(
     # Save may be requested from any settings section; build all sections on demand then.
     self.host._ensure_settings_tab = _ensure_settings_tab
 
+    def create_attachment_worker(paths):
+        # Defer importing the attachment worker until the user actually picks files.
+        from .workers import AttachWorker
+
+        return AttachWorker(paths)
+
     self.adapters.chat_attachment_controller = ChatAttachmentController(
         attach_strip=self.views.chat_composer.attach_strip,
         error_label=self.views.chat_composer.attach_err,
@@ -401,7 +406,7 @@ def initialize_main_window(
         send_button=self.views.send_btn,
         is_chat_busy=lambda: self.session.busy,
         tile_factory=AttachmentTile,
-        worker_factory=AttachWorker,
+        worker_factory=create_attachment_worker,
         attachment_api=att,
         max_files=att.MAX_FILES,
         parent=self.host,

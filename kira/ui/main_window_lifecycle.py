@@ -1,7 +1,6 @@
 """Window lifecycle feature controller."""
 from PySide6.QtCore import Slot
 from .main_window_lifecycle_support import (
-    OllamaTaskWorker,
     QApplication,
     QDesktopServices,
     QIcon,
@@ -287,6 +286,8 @@ class LifecycleController(WindowFeatureController):
         )
 
     def _run_ollama_task(self, fn, busy_text):
+        from .workers import OllamaTaskWorker
+
         for b in (self.context.views.conn_btn, self.context.views.load_btn, self.context.views.unload_btn, self.context.views.speed_btn):
             b.setEnabled(False)
         self.context.views.conn_lbl.setText(busy_text)

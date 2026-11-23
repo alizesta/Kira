@@ -11,9 +11,6 @@ import time
 
 from PySide6.QtCore import QThread, Signal
 
-from .. import attachments as att, websearch
-from ..hybrid_ai import probe_provider
-
 
 class StreamWorker(QThread):
     """Runs one streamed request off the GUI thread. Everything the router reports becomes a Qt signal."""
@@ -77,18 +74,27 @@ class AttachWorker(QThread):
             self._cancelled[int(index)].set()
 
     def run(self):
+        # Attachment parsing is only needed after the user chooses files.
+        try:
+            from ..chat.attachment_content import AttachmentError, load_attachment
+        except Exception as exc:
+            for index, cancelled in enumerate(self._cancelled):
+                if not cancelled.is_set():
+                    self.failed.emit(index, f"بارگذاری ضمیمه ناموفق بود: {type(exc).__name__}")
+            return
+
         for i, path in enumerate(self.paths):
             cancelled = self._cancelled[i]
             if cancelled.is_set():
                 continue
             self.progress.emit(i, 0)
             try:
-                attachment = att.load_attachment(
+                attachment = load_attachment(
                     path, lambda pct, i=i: self.progress.emit(i, pct), cancelled=cancelled.is_set
                 )
                 if not cancelled.is_set():
                     self.loaded.emit(i, attachment)
-            except (att.AttachmentError, OSError) as exc:
+            except (AttachmentError, OSError) as exc:
                 if not cancelled.is_set():
                     self.failed.emit(i, str(exc))
 
@@ -107,6 +113,13 @@ class SearchWorker(QThread):
         self.user_text = user_text or query
 
     def run(self):
+        # Do not load search engines/providers while the chat window is being composed.
+        try:
+            from .. import websearch
+        except Exception as exc:
+            self.done.emit(self.token, False, f"خطای جست‌وجو: {type(exc).__name__}")
+            return
+
         try:
             if self.images:                                           # search WITH a picture (Gemini sees it; the others get a text query)
                 self.done.emit(self.token, True, websearch.image_research(self.images, self.user_text, self.api_key, self.depth,
@@ -182,6 +195,8 @@ class ProviderTestWorker(QThread):
     def run(self):
         # Key check, model check and one real chat request live in hybrid_ai.probe_provider (unit-tested with mocks).
         try:
+            from ..hybrid_ai import probe_provider
+
             ok, detail = probe_provider(self.name, self.config)
         except Exception as exc:
             ok, detail = False, str(exc)[:500]

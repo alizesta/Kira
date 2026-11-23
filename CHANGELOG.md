@@ -1,3 +1,9 @@
+## 2026-11-23 — Idle UI and worker-import optimization (PR #252)
+- Set shared avatar animation to 60 FPS while any view is visible and 5 FPS when all views are hidden/minimized; share rig transforms across views and invalidate them after pose/art updates.
+- Cache mood-indicator rendering when the character/emotion/energy signature is unchanged.
+- Defer attachment, web-search, provider-probe and UI worker imports until the owning action executes.
+- Added focused regression tests and an idle-performance guide. Actual Windows CPU improvement and Qt/runtime test execution remain unverified; callback-rate reduction is not reported as process-CPU reduction.
+
 ## 2026-11-23 — Architecture stabilization (PR #246)
 - Made Chat package exports and optional feature imports lazy; feature controllers now materialize through factories on first use.
 - Separated Chat history/conversation lifecycle delegation into `ChatHistoryFacade` while keeping request dispatch and streaming in `ChatApplicationService`.

@@ -398,6 +398,6 @@ The current `new-main` source includes the following merged ownership boundaries
 | UI feature controller creation | `kira/ui/feature_controller_registry.py` | Registers factories and materializes feature controllers on first owning interaction/page, while retaining explicit controller and host lifecycles. |
 | Startup instrumentation | `kira/ui/bootstrap.py` and startup metrics helper | Records phase timings and process-memory samples in `DATA_DIR/logs/startup-performance.jsonl`; the presence of instrumentation is not evidence of a speedup. |
 
-The merged implementation references are PRs #239, #240, #243 and #246. PR #248 (avatar idle/cache and worker import optimization) and PR #250 (lazy Voice settings guard) remain pending at this snapshot and are not yet treated as accepted owners/behavior.
+The merged implementation references are PRs #239, #240, #243 and #246. The avatar idle/cache and worker-import optimization originally proposed in PR #248 has been rebased onto the current `new-main` in PR #252. It changes the existing `FaceAnimator` and UI worker import boundaries; it does not add a new application-wide service. Its executable/runtime acceptance remains pending. PR #250 (lazy Voice settings guard) also remains pending runtime acceptance.
 
 **Verification status:** these entries describe merged source ownership. Automated execution, real Windows GUI/voice acceptance and measured performance remain separate acceptance requirements; a workflow job with no runner or steps is not a passing test.
