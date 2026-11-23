@@ -41,9 +41,6 @@ class ChatComposer(QFrame):
         "wake_btn",
         "voice_btn",
         "game_mode_btn",
-        "game_mode_story_action",
-        "game_mode_safe_action",
-        "vision_rate_actions",
         "gen_stop_btn",
         "send_btn",
     )
@@ -187,64 +184,16 @@ class ChatComposer(QFrame):
 
         self.game_mode_btn = QToolButton()
         self.game_mode_btn.setObjectName("gameModeBtn")
-        # Shared Vision + Game Mode control uses a gamepad icon.
         self.game_mode_btn.setProperty("kiraIconName", "gamepad")
         self.game_mode_btn.setIcon(make_icon("gamepad"))
         self.game_mode_btn.setIconSize(QSize(19, 19))
         self.game_mode_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
-        self.game_mode_btn.setCheckable(False)
+        self.game_mode_btn.setCheckable(True)
+        self.game_mode_btn.setChecked(False)
         self.game_mode_btn.setCursor(Qt.PointingHandCursor)
         self.game_mode_btn.setFocusPolicy(Qt.NoFocus)
-        self.game_mode_menu = QMenu(self.game_mode_btn)
-        self.screen_capture_action = QAction("گرفتن تصویر از صفحه", self.game_mode_menu)
-        self.screen_capture_action.triggered.connect(lambda checked=False: owner.capture_screen_attachment())
-        self.game_mode_menu.addAction(self.screen_capture_action)
-        self.game_mode_menu.addSeparator()
-        self.game_mode_story_action = QAction(
-            "Story Mode · آفلاین و داستانی", self.game_mode_menu
-        )
-        self.game_mode_story_action.setCheckable(True)
-        self.game_mode_story_action.triggered.connect(
-            lambda checked=False: owner.set_game_mode_profile(story_mode)
-        )
-        self.game_mode_safe_action = QAction(
-            "Competitive Safe · آنلاین و PvP", self.game_mode_menu
-        )
-        self.game_mode_safe_action.setCheckable(True)
-        self.game_mode_safe_action.setChecked(True)
-        self.game_mode_safe_action.triggered.connect(
-            lambda checked=False: owner.set_game_mode_profile(competitive_safe_mode)
-        )
-        self.game_mode_off_action = QAction(
-            "خاموش‌کردن Game Mode", self.game_mode_menu
-        )
-        self.game_mode_off_action.triggered.connect(
-            lambda checked=False: owner.set_game_mode(False)
-        )
-        self.vision_rate_menu = self.game_mode_menu.addMenu("سرعت Vision")
-        self.vision_rate_actions = {}
-        for mode, label in (
-            ("economic", "اقتصادی · هر ۵ ثانیه"),
-            ("smart", "هوشمند · هر ۱ ثانیه"),
-            ("fast", "سریع · هر نیم‌ثانیه"),
-        ):
-            action = QAction(label, self.vision_rate_menu)
-            action.setCheckable(True)
-            action.setChecked(mode == owner._vision_gate.policy.name)
-            action.triggered.connect(
-                lambda checked=False, selected=mode: owner.set_vision_mode(selected)
-            )
-            self.vision_rate_menu.addAction(action)
-            self.vision_rate_actions[mode] = action
-        self.game_mode_menu.addAction(self.wake_btn)
-        self.game_mode_menu.addSeparator()
-        self.game_mode_menu.addAction(self.game_mode_story_action)
-        self.game_mode_menu.addAction(self.game_mode_safe_action)
-        self.game_mode_menu.addSeparator()
-        self.game_mode_menu.addAction(self.game_mode_off_action)
-        self.game_mode_btn.setMenu(self.game_mode_menu)
-        self.game_mode_btn.setPopupMode(QToolButton.InstantPopup)
-        self.game_mode_btn.setToolTip("ابزار صفحه: گرفتن تصویر و تنظیم Game Mode")
+        self.game_mode_btn.toggled.connect(owner.set_game_mode)
+        self.game_mode_btn.setToolTip("Game Mode خاموش است؛ برای فعال‌کردن کلیک کن")
         self.screen_capture_btn = self.game_mode_btn
         owner.screen_capture_btn = self.game_mode_btn
         bar.addWidget(self.game_mode_btn)
@@ -257,8 +206,6 @@ class ChatComposer(QFrame):
         ):
             owner.reg(button.setToolTip, key)
             bar.addWidget(button)
-        owner.reg(self.wake_btn.setToolTip, "wake")
-        self.wake_btn.setToolTip("حالت بیدارباش")
         self.voice_btn.setToolTip(
             "پاسخ صوتی روشن است؛ Kira با صدا پاسخ می‌دهد."
             if self.voice_btn.isChecked()
