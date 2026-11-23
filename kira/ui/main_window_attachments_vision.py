@@ -786,8 +786,6 @@ class AttachmentsVisionController(WindowFeatureController):
             self.context.services.vision_application_service.reset()
             _FRAME_SOURCE["value"] = None
             _FRAME_WINDOW_INFO["value"] = None
-        self.context.views.game_mode_story_action.setChecked(self.context.services.game_mode_application_service.is_story(self.context.state._game_mode_profile))
-        self.context.views.game_mode_safe_action.setChecked(self.context.services.game_mode_application_service.is_competitive_safe(self.context.state._game_mode_profile))
         self.set_game_mode(True)
 
     def handle_game_mode_command(self, action):
@@ -939,6 +937,11 @@ class AttachmentsVisionController(WindowFeatureController):
         enabled = bool(enabled)
         was_enabled = self.context.state._game_mode_enabled
         self.context.state._game_mode_enabled = enabled
+        game_mode_button = self.context.views.game_mode_btn
+        if game_mode_button.isChecked() != enabled:
+            previous = game_mode_button.blockSignals(True)
+            game_mode_button.setChecked(enabled)
+            game_mode_button.blockSignals(previous)
         permissions = self.context.services.game_mode_application_service.permissions(self.context.state._game_mode_profile)
         vision_allowed = bool(permissions["vision_capture"])
         audio_allowed = bool(permissions["game_audio_loopback"])
