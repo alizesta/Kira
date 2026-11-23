@@ -35,8 +35,8 @@ _LAST_CAPTURE_STATE = {}
 # game window) or "screen" (the whole primary screen, used when no game window is captured).
 _FRAME_SOURCE = {"value": None}
 _FRAME_WINDOW_INFO = {"value": None}
-LIVE_VIDEO_MAX_WIDTH = 960
-LIVE_VIDEO_MAX_HEIGHT = 540
+LIVE_VIDEO_MAX_WIDTH = 640
+LIVE_VIDEO_MAX_HEIGHT = 360
 LIVE_VIDEO_JPEG_QUALITY = 58
 LIVE_VIDEO_CHANGE_THRESHOLD = 0.015
 
