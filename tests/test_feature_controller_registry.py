@@ -20,6 +20,67 @@ class SecondController:
 
 
 class FeatureControllerRegistryTests(unittest.TestCase):
+    def test_materialized_lookup_does_not_trigger_a_lazy_factory(self):
+        calls = []
+        registry = FeatureControllerRegistry(
+            {"feature": lambda: calls.append("created") or SecondController()},
+            lazy_factories=True,
+        )
+        self.assertIsNone(registry.get_if_materialized("feature"))
+        self.assertEqual(calls, [])
+        feature = registry.require("feature")
+        self.assertIs(registry.get_if_materialized("feature"), feature)
+        self.assertEqual(calls, ["created"])
+
+    def test_lazy_factories_materialize_only_the_requested_controller(self):
+        created = []
+        registry = FeatureControllerRegistry(
+            {
+                "first": lambda: created.append(FirstController()) or created[-1],
+                "second": lambda: created.append(SecondController()) or created[-1],
+            },
+            lazy_factories=True,
+        )
+        self.assertEqual(created, [])
+        self.assertEqual(registry.materialized_features, ())
+        first = registry.require("first")
+        self.assertIsInstance(first, FirstController)
+        self.assertEqual(registry.materialized_features, ("first",))
+        self.assertEqual(len(created), 1)
+        self.assertIs(registry.require("first"), first)
+        self.assertEqual(len(created), 1)
+
+    def test_lazy_factory_failure_does_not_poison_other_features(self):
+        created = []
+
+        def broken():
+            created.append("broken")
+            raise RuntimeError("optional feature unavailable")
+
+        registry = FeatureControllerRegistry(
+            {"broken": broken, "healthy": lambda: SecondController()},
+            lazy_factories=True,
+        )
+        with self.assertRaisesRegex(RuntimeError, "optional feature unavailable"):
+            registry.require("broken")
+        self.assertIsInstance(registry.require("healthy"), SecondController)
+        self.assertEqual(created, ["broken"])
+
+    def test_lazy_factory_name_is_available_during_construction(self):
+        holder = {}
+
+        class ContextAware:
+            def __init__(self):
+                self.feature_name = holder["registry"].name_for(self)
+
+        registry = FeatureControllerRegistry(
+            {"feature": lambda: ContextAware()},
+            lazy_factories=True,
+        )
+        holder["registry"] = registry
+        controller = registry.require("feature")
+        self.assertEqual(controller.feature_name, "feature")
+
     def setUp(self):
         self.first = FirstController()
         self.second = SecondController()
