@@ -39,6 +39,27 @@ LIVE_VIDEO_MAX_WIDTH = 640
 LIVE_VIDEO_MAX_HEIGHT = 360
 LIVE_VIDEO_JPEG_QUALITY = 58
 LIVE_VIDEO_CHANGE_THRESHOLD = 0.015
+# 21 levels per RGB channel produce at most 9,261 distinct colors.
+LIVE_VIDEO_CHANNEL_LEVELS = 21
+LIVE_VIDEO_PALETTE_COLORS = LIVE_VIDEO_CHANNEL_LEVELS ** 3
+_LIVE_VIDEO_CHANNEL_LUT = bytes(
+    (((value * (LIVE_VIDEO_CHANNEL_LEVELS - 1) + 127) // 255) * 255
+     + (LIVE_VIDEO_CHANNEL_LEVELS - 1) // 2)
+    // (LIVE_VIDEO_CHANNEL_LEVELS - 1)
+    for value in range(256)
+)
+
+
+def _quantize_live_video_image(image):
+    """Reduce RGB channel precision while keeping a true-color JPEG stream."""
+    if image is None or image.isNull():
+        return image
+    rgb = image.convertToFormat(QImage.Format_RGB888)
+    quantized = bytes(rgb.constBits()).translate(_LIVE_VIDEO_CHANNEL_LUT)
+    return QImage(
+        quantized, rgb.width(), rgb.height(), rgb.bytesPerLine(),
+        QImage.Format_RGB888,
+    ).copy()
 
 
 def _game_fields(game):
@@ -190,7 +211,7 @@ class AttachmentsVisionController(WindowFeatureController):
             vision_trace("live_video_blocked", source=source, reason="foreground_changed_during_capture")
             return False
 
-        image = pixmap.toImage()
+        image = _quantize_live_video_image(pixmap.toImage())
         sample = self._perception_sample(image)
         previous = getattr(self, "_live_video_sample", b"")
         if previous and len(previous) == len(sample):
@@ -215,6 +236,8 @@ class AttachmentsVisionController(WindowFeatureController):
         vision_trace(
             "live_video_frame_queued", source=source,
             width=image.width(), height=image.height(), jpeg_bytes=len(jpeg),
+            color_levels=LIVE_VIDEO_CHANNEL_LEVELS,
+            palette_colors=LIVE_VIDEO_PALETTE_COLORS,
         )
         return True
 
