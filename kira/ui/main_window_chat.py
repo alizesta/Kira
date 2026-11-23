@@ -223,29 +223,8 @@ class ChatController(WindowFeatureController):
         img_search = bool(
             has_image and (force_img or self.context.services.settings.get("image_search", False))
         )
-        # Append a live frame only from a manually enabled source.
-        live_vision_frame_added = False
-        live_vision_source = None
-        desktop_enabled = (
-            self.context.services.vision_application_service
-            .desktop_capture_application_service.enabled
-        )
-        if (
-            (self.context.state._game_mode_enabled or desktop_enabled)
-            and not (command_dispatch.handled and not command_dispatch.continue_chat)
-            and len(attachments or []) < self.context.services.chat_application_service.max_attachments
-        ):
-            frame = self.feature_controller("attachments_vision")._live_vision_attachment()
-            if frame is not None:
-                live_vision_frame_added = True
-                live_vision_source = "desktop" if frame.get("name") == "desktop-screen.jpg" else "game"
-                attachments = list(attachments or []) + [frame]
-                try:
-                    self.context.services.chat_application_service.add_request_attachment(
-                        self.context.state.cur.application_request_id, frame
-                    )
-                except (AttributeError, ValueError):
-                    pass
+        # Live perception is sent as a bounded text context. Raw frames are sent only
+        # through explicit image attachments or the user's manual screenshot action.
         packed = None
         if self.context.state.cur.application_request_id:
             try:
@@ -259,24 +238,6 @@ class ChatController(WindowFeatureController):
                 text, attachments, search=img_search
             )
         if packed is not None:
-            expected_live_name = (
-                "desktop-screen.jpg" if live_vision_source == "desktop" else "game-screen.jpg"
-            )
-            live_image_present = bool(
-                live_vision_frame_added
-                and any(
-                    isinstance(item, dict) and item.get("name") == expected_live_name
-                    for item in (packed.get("images") or [])
-                )
-            )
-            packed["live_vision_frame_attached"] = live_image_present
-            packed["live_vision_frame_source"] = live_vision_source if live_image_present else None
-            packed["live_game_frame_attached"] = bool(
-                live_image_present and live_vision_source == "game"
-            )
-            packed["live_desktop_frame_attached"] = bool(
-                live_image_present and live_vision_source == "desktop"
-            )
             img_search = bool(packed.get("images")) and (
                 force_img or self.context.services.settings.get("image_search", False)
             )

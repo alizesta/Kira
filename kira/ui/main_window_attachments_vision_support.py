@@ -10,5 +10,5 @@ from ..chat import attachments as att
 from ..game_audio import GameAudioListener
 from ..ui_widgets import AttachmentTile
 from ..game_mode import CAPTURE_JPEG_QUALITY
-from .workers import VisionAnalysisWorker
+from .workers import TaskWorker, VisionAnalysisWorker
 from .main_window_support import front_only
