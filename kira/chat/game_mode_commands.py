@@ -38,10 +38,11 @@ def parse_game_mode_command(text: str) -> str | None:
     value = _normalize(text)
     if not _MODE_REFERENCE.search(value):
         return None
+    # Status questions must win over words such as "game mode on".
+    if _STATUS.search(value):
+        return "status"
     if _DISABLE.search(value):
         return "disable"
     if _ENABLE.search(value):
         return "enable"
-    if _STATUS.search(value):
-        return "status"
     return None
