@@ -203,7 +203,7 @@ class DesktopContext:
             }
 
     def summary(self, max_chars: int = MAX_SUMMARY_CHARS) -> str:
-        """Return a compact plain-text summary; never exceed the requested cap."""
+        """Return bounded desktop context, prioritizing the newest visual observations."""
         try:
             limit = max(0, min(MAX_SUMMARY_CHARS, int(max_chars)))
         except (TypeError, ValueError):
@@ -214,6 +214,7 @@ class DesktopContext:
         active = data["active_window"]
         if not active:
             return ""
+
         duration = int(data["active_seconds"])
         lines = [
             "DESKTOP CONTEXT (local perception; facts only):",
@@ -221,20 +222,48 @@ class DesktopContext:
             f"Active window: {active['title']}",
             f"Time in foreground: {duration // 60}m {duration % 60}s",
         ]
-        if data["visible_text"]:
-            lines.append(
-                f"Visible on-screen text [{data['ocr_language'] or 'unknown'}, "
-                f"confidence {data['ocr_confidence']:.2f}]: {data['visible_text']}"
-            )
-        if data["recent_events"]:
-            lines.append("Recent events:")
-            for event in data["recent_events"]:
+
+        def append_bounded(line: str) -> bool:
+            current = "\n".join(lines)
+            remaining = limit - len(current) - 1
+            if remaining <= 0:
+                return False
+            value = str(line)
+            if len(value) > remaining:
+                lines.append(value[:max(0, remaining - 1)].rstrip() + "…")
+                return False
+            lines.append(value)
+            return True
+
+        events = list(data["recent_events"])
+        visual_events = [event for event in events if event.get("type") == "visual_observation"]
+        if visual_events and append_bounded("Latest visual observations (newest first):"):
+            # Keep the newest screen descriptions first. Older events must never
+            # crowd the current observation out of the fixed prompt budget.
+            for event in reversed(visual_events[-3:]):
                 try:
                     event_time = datetime.fromisoformat(event["timestamp"]).strftime("%H:%M:%S")
                 except (TypeError, ValueError):
                     event_time = "--:--:--"
-                lines.append(f"- {event_time} {event['summary']}")
+                source = str(event.get("source") or "desktop")[:16]
+                if not append_bounded(f"- {event_time} [{source}] {event.get('summary', '')}"):
+                    break
+
+        if data["visible_text"]:
+            append_bounded(
+                f"Visible on-screen text [{data['ocr_language'] or 'unknown'}, "
+                f"confidence {data['ocr_confidence']:.2f}]: {data['visible_text']}"
+            )
+
+        other_events = [event for event in events if event.get("type") != "visual_observation"]
+        if other_events and append_bounded("Recent window events (newest first):"):
+            for event in reversed(other_events[-3:]):
+                try:
+                    event_time = datetime.fromisoformat(event["timestamp"]).strftime("%H:%M:%S")
+                except (TypeError, ValueError):
+                    event_time = "--:--:--"
+                if not append_bounded(f"- {event_time} {event.get('summary', '')}"):
+                    break
+
         value = "\n".join(lines)
-        if len(value) <= limit:
-            return value
-        return value[:max(0, limit - 1)].rstrip() + "…"
+        return value if len(value) <= limit else value[:max(0, limit - 1)].rstrip() + "…"
