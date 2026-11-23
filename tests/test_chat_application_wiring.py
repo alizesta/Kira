@@ -124,6 +124,20 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertNotIn("force_queue", submit_source)
         self.assertNotIn("cancel_request", submit_source)
 
+    def test_vision_router_is_declared_in_root_and_controller_capabilities(self):
+        presentation = (ROOT / "kira" / "ui" / "window_presentation_context.py").read_text(encoding="utf-8")
+        root_services = presentation[
+            presentation.index("SERVICE_FIELDS = frozenset({"):
+            presentation.index("ADAPTER_FIELDS = frozenset({")
+        ]
+        self.assertIn('"vision_router"', root_services)
+
+        for controller in ("runtime", "lifecycle", "attachments_vision"):
+            start = presentation.index(f'"{controller}": {{', presentation.index("CONTROLLER_ACCESS = {"))
+            next_block = presentation.find('\n "', start + 1)
+            block = presentation[start:next_block if next_block >= 0 else len(presentation)]
+            self.assertIn('"vision_router"', block, controller)
+
     def test_provider_settings_and_shutdown_manage_the_isolated_vision_router(self):
         lifecycle = (ROOT / "kira" / "ui" / "main_window_lifecycle.py").read_text(encoding="utf-8")
         runtime = (ROOT / "kira" / "ui" / "main_window_runtime.py").read_text(encoding="utf-8")
