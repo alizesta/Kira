@@ -138,6 +138,17 @@ class ChatApplicationWiringTests(unittest.TestCase):
             block = presentation[start:next_block if next_block >= 0 else len(presentation)]
             self.assertIn('"vision_router"', block, controller)
 
+    def test_eye_mode_observations_are_context_not_chat_messages(self):
+        vision = (ROOT / "kira" / "ui" / "main_window_attachments_vision.py").read_text(encoding="utf-8")
+        desktop_context = (ROOT / "kira" / "app" / "desktop_context.py").read_text(encoding="utf-8")
+
+        self.assertIn("images_in_turn=0 is normal", vision)
+        self.assertIn("answer from the latest visual observation", vision)
+        self.assertIn("visual_observation_ready_for_chat", vision)
+        self.assertNotIn('add_chat("system", "👁️ " + message', vision)
+        self.assertIn("Latest visual observations (newest first):", desktop_context)
+        self.assertIn('event.get("type") == "visual_observation"', desktop_context)
+
     def test_provider_settings_and_shutdown_manage_the_isolated_vision_router(self):
         lifecycle = (ROOT / "kira" / "ui" / "main_window_lifecycle.py").read_text(encoding="utf-8")
         runtime = (ROOT / "kira" / "ui" / "main_window_runtime.py").read_text(encoding="utf-8")
