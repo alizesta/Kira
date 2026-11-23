@@ -381,3 +381,22 @@ Both services are lifecycle-registered by `ModuleManager` and injected through B
 Each scoped namespace is a live write-through bucket: reads observe current root values, and permitted assignments update the shared composition state rather than a detached snapshot. Undeclared field reads/writes raise `AttributeError`; peer-controller access outside the allowlist and resource access outside the controller's explicit resource list raise `PermissionError`. The scope does not expose the root `host` or global `controllers` registry.
 
 The ChatComposer/CodeChat compatibility facades receive the Chat controller's scoped context and an explicit Qt widget parent. They resolve callbacks only through the Chat scope's peer allowlist; they no longer require a global registry or the root host from Presentation Context. New controller fields, peer calls and resource access must be added deliberately to the owning controller's `CONTROLLER_ACCESS` policy and covered by the AST capability-matrix regression test. Root bucket additions alone never widen controller access.
+
+## 5. Architecture synchronization delta — 2026-11-23
+
+The current `new-main` source includes the following merged ownership boundaries in addition to the task register above:
+
+| Capability / boundary | Canonical owner | Responsibility |
+|---|---|---|
+| Tool schema projection | `ToolPlan.schema_categories` + `ToolRegistry` execution guard | Projects request-relevant model-visible schemas separately from the runtime/security category allowance; denies hidden tool names before handler execution. |
+| Lazy ToolAgent | `LazyToolAgent` facade / Bootstrap | Defers ToolAgent and registry import/construction until actual tool-agent use; task-state inspection remains lightweight. |
+| Character Session activation | Session application factory / Session manager | Creates inactive character Session, router, view and history only when selected; preserves active in-flight work during character removal. |
+| Optional feature services | `kira/app/feature_modules.py` and lazy service proxies | Defers optional Web Search, Skills and conversation capability construction/import until first use. |
+| Chat history lifecycle | `kira/chat/history_facade.py` (`ChatHistoryFacade`) | Owns history/conversation lifecycle delegation; ChatApplicationService continues request dispatch and streaming orchestration. |
+| SQLite schema evolution | `kira/chat/sqlite_schema.py` (`SqliteSchemaManager`) | Owns additive DDL, schema versioning and backfill; SqliteChatRepository retains connection, transaction, snapshot, recovery and durable write ownership. |
+| UI feature controller creation | `kira/ui/feature_controller_registry.py` | Registers factories and materializes feature controllers on first owning interaction/page, while retaining explicit controller and host lifecycles. |
+| Startup instrumentation | `kira/ui/bootstrap.py` and startup metrics helper | Records phase timings and process-memory samples in `DATA_DIR/logs/startup-performance.jsonl`; the presence of instrumentation is not evidence of a speedup. |
+
+The merged implementation references are PRs #239, #240, #243 and #246. PR #248 (avatar idle/cache and worker import optimization) and PR #250 (lazy Voice settings guard) remain pending at this snapshot and are not yet treated as accepted owners/behavior.
+
+**Verification status:** these entries describe merged source ownership. Automated execution, real Windows GUI/voice acceptance and measured performance remain separate acceptance requirements; a workflow job with no runner or steps is not a passing test.
