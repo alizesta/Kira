@@ -50,3 +50,25 @@ def test_stop_and_privacy_disable_clear_pending_video():
     voice = read("kira/ui/main_window_runtime_voice.py")
     assert "set_live_video_active(False)" in voice
     assert "clear_gemini_video_frames()" in read("kira/ui/main_window_attachments_vision.py")
+
+
+
+def test_eye_mode_is_the_single_desktop_and_game_capture_switch():
+    source = read("kira/ui/main_window_attachments_vision.py")
+    assert 'privacy.set_enabled(allowed)' in source
+    assert 'self._capture_desktop_frame()' in source
+    assert 'def set_desktop_vision(self, enabled, *, announce=True):' in source
+    assert 'return self.set_game_mode(bool(enabled), announce=announce)' in source
+    assert 'def _capture_active_vision_frame(self):' in source
+    dispatch = source.split('def _capture_active_vision_frame(self):', 1)[1].split('def _cancel_vision_worker', 1)[0]
+    assert '_capture_desktop_frame()' in dispatch
+    assert '_capture_game_frame()' not in dispatch
+    assert '"eye_mode_set"' in source
+    assert '"Game Mode خاموش' not in source
+
+
+def test_eye_mode_control_uses_eye_identity():
+    source = read("kira/ui/components/chat_composer.py")
+    assert 'setProperty("kiraIconName", "eye")' in source
+    assert 'make_icon("eye")' in source
+    assert 'Eye Mode خاموش است' in source
