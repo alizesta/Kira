@@ -699,7 +699,6 @@ class SessionController(WindowFeatureController):
             else:
                 label.clear()
                 label.setVisible(False)
-            intensity = int(state.get("intensity", 0))
             tooltip = (
                 f"احساس: {emotion} ({intensity}/100)\n"
                 f"رفتار: {behaviour}\n"
