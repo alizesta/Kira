@@ -9,5 +9,4 @@ from ..ollama_client import model_installed, parse_keep_alive, clamp_num_ctx, cl
 from ..speech_fixes import SpeechFixes
 from ..theme import build_style
 from .. import winfx
-from .workers import OllamaTaskWorker
 from .main_window_support import SOUNDS_DIR
