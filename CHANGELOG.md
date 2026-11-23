@@ -1,3 +1,10 @@
+## 2026-11-23 — Live Desktop Vision: Perception Engine
+- Added a bounded, in-memory DesktopContext for allowed foreground-window metadata, visible text and recent perception events.
+- Added replaceable local OCR with language/confidence results; OCR runs only when the foreground crop changes and only from already-installed dependencies/language data.
+- Added privacy purging for blocked/unidentified windows, a 2,000-character context cap and separate OCR opt-in for Game Mode (off by default).
+- Ordinary chat receives the compact DesktopContext summary instead of an automatically attached raw live frame. Manual screenshot and user-selected image attachments remain available.
+- Automated test sources were added; local execution and Windows/target-hardware acceptance are still pending.
+
 ## 2026-11-23 — Startup measurement report utility
 - Added a stdlib-only CLI to summarize the latest five complete Windows startup records, including medians/ranges for window display and first event-loop timings plus Working Set, Private Bytes and Peak Working Set.
 - Incomplete or malformed log records are reported and excluded; the utility refuses to claim a five-run result without five complete samples.
