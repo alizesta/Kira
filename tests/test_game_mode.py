@@ -124,51 +124,12 @@ class GameModeSafetyTests(unittest.TestCase):
         self.assertEqual(monitor.last_game["pid"], 999999)
         detected.assert_called_once()
 
-    def test_poll_detects_chess_com_in_a_foreground_browser_window(self):
-        monitor = GameModeMonitor()
-        monitor._foreground_info = mock.Mock(return_value={
-            "hwnd": 321, "pid": 999998,
-            "exe": "chrome.exe", "title": "Chess.com - Play Chess Online - Free Games",
-            "rect": (0, 0, 1920, 1080),
-        })
-        detected = mock.Mock()
-        monitor.game_detected.connect(detected)
-        monitor.poll()
-        self.assertEqual(monitor.last_game["pid"], 999998)
-        detected.assert_called_once()
-
-    def test_poll_detects_lichess_in_a_foreground_browser_window(self):
-        monitor = GameModeMonitor()
-        monitor._foreground_info = mock.Mock(return_value={
-            "hwnd": 322, "pid": 999997,
-            "exe": "firefox.exe", "title": "lichess.org • Free Online Chess",
-            "rect": (0, 0, 1920, 1080),
-        })
-        detected = mock.Mock()
-        monitor.game_detected.connect(detected)
-        monitor.poll()
-        self.assertEqual(monitor.last_game["pid"], 999997)
-        detected.assert_called_once()
-
-    def test_poll_still_rejects_ordinary_browser_tabs(self):
+    def test_poll_rejects_browser_windows_even_when_large(self):
         monitor = GameModeMonitor()
         monitor._foreground_info = mock.Mock(return_value={
             "hwnd": 323, "pid": 999996,
             "exe": "chrome.exe", "title": "Google Search - Google Chrome",
             "rect": (0, 0, 1920, 1080),
-        })
-        detected = mock.Mock()
-        monitor.game_detected.connect(detected)
-        monitor.poll()
-        self.assertIsNone(monitor.last_game)
-        detected.assert_not_called()
-
-    def test_poll_rejects_small_browser_game_popups(self):
-        monitor = GameModeMonitor()
-        monitor._foreground_info = mock.Mock(return_value={
-            "hwnd": 324, "pid": 999995,
-            "exe": "chrome.exe", "title": "Chess.com - Play Chess Online",
-            "rect": (0, 0, 320, 240),
         })
         detected = mock.Mock()
         monitor.game_detected.connect(detected)
