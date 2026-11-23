@@ -25,6 +25,20 @@ class ProviderApplicationService:
         from ..hybrid_ai import HybridRouter
         return HybridRouter(settings)
 
+    def create_isolated_router(self, settings, previous_router=None):
+        """Create an independent request/cancellation channel for background work."""
+        router = self.create_router(settings)
+        if previous_router is not None:
+            if router is previous_router:
+                raise RuntimeError("isolated router factory returned the previous router")
+            previous_states = getattr(previous_router, "states", None)
+            if isinstance(previous_states, dict):
+                router.states = deepcopy(previous_states)
+            previous_cooldowns = getattr(previous_router, "cooldowns", None)
+            if isinstance(previous_cooldowns, dict):
+                router.cooldowns = dict(previous_cooldowns)
+        return router
+
     def create_ollama_client(self, settings):
         if self._ollama_client_factory is not None:
             return self._ollama_client_factory(settings)
