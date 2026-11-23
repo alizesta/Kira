@@ -211,7 +211,7 @@ def initialize_main_window(
     self.session.client = self.services.provider_application_service.create_router(self.services.settings)
     # Vision requests own a separate transport/cancellation state from chat requests.
     self.services.vision_router = self.services.provider_application_service.create_isolated_router(
-        self.services.settings
+        self.services.settings, previous_router=self.session.client
     )
     self.adapters.game_mode = GameModeMonitor(self.host)
     self.state._game_mode_enabled = False
