@@ -11,9 +11,6 @@ import time
 
 from PySide6.QtCore import QThread, Signal
 
-from .. import attachments as att, websearch
-from ..hybrid_ai import probe_provider
-
 
 class StreamWorker(QThread):
     """Runs one streamed request off the GUI thread. Everything the router reports becomes a Qt signal."""
@@ -77,6 +74,9 @@ class AttachWorker(QThread):
             self._cancelled[int(index)].set()
 
     def run(self):
+        # Attachment parsing is only needed after the user chooses files.
+        from ..chat import attachments as att
+
         for i, path in enumerate(self.paths):
             cancelled = self._cancelled[i]
             if cancelled.is_set():
@@ -107,6 +107,9 @@ class SearchWorker(QThread):
         self.user_text = user_text or query
 
     def run(self):
+        # Do not load search engines/providers while the chat window is being composed.
+        from .. import websearch
+
         try:
             if self.images:                                           # search WITH a picture (Gemini sees it; the others get a text query)
                 self.done.emit(self.token, True, websearch.image_research(self.images, self.user_text, self.api_key, self.depth,
@@ -182,6 +185,8 @@ class ProviderTestWorker(QThread):
     def run(self):
         # Key check, model check and one real chat request live in hybrid_ai.probe_provider (unit-tested with mocks).
         try:
+            from ..hybrid_ai import probe_provider
+
             ok, detail = probe_provider(self.name, self.config)
         except Exception as exc:
             ok, detail = False, str(exc)[:500]
