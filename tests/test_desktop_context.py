@@ -1,4 +1,6 @@
 import unittest
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 
 from kira.app.desktop_context import DesktopContext, MAX_SUMMARY_CHARS
 from kira.app.desktop_capture_application import DesktopCaptureApplicationService
@@ -97,7 +99,7 @@ class DesktopContextTests(unittest.TestCase):
 
         summary = context.summary()
 
-        self.assertIn("Latest visual observations (newest first):", summary)
+        self.assertIn("CURRENT SCREEN STATE (freshness: fresh;", summary)
         self.assertIn("screen-description-6", summary)
         self.assertIn("screen-description-5", summary)
         self.assertIn("screen-description-4", summary)
@@ -118,6 +120,43 @@ class DesktopContextTests(unittest.TestCase):
 
         self.assertIn("LATEST_SCREEN_STATE", summary)
         self.assertLessEqual(len(summary), 700)
+
+
+    def test_summary_separates_latest_state_from_history_and_marks_stale_age(self):
+        now = datetime(2026, 11, 24, 12, 0, 0, tzinfo=timezone.utc)
+        context = DesktopContext(wall_clock=lambda: now)
+        context.update_active_window(window())
+
+        context.record_event("visual_observation", "OLD_WINDOW_STATE", dedupe_key="visual:old")
+        context._events[-1] = replace(
+            context._events[-1], timestamp=(now - timedelta(seconds=10)).isoformat()
+        )
+        context.record_event("visual_observation", "LATEST_KNOWN_STATE", dedupe_key="visual:latest")
+        context._events[-1] = replace(
+            context._events[-1], timestamp=(now - timedelta(seconds=90)).isoformat()
+        )
+
+        summary = context.summary()
+
+        self.assertIn("CURRENT SCREEN STATE (freshness: stale; observation age: 1m 30s;", summary)
+        self.assertIn("Latest known screen state: LATEST_KNOWN_STATE", summary)
+        self.assertIn("Earlier visual observations (historical context only; not the current screen state):", summary)
+        self.assertIn("OLD_WINDOW_STATE", summary)
+        self.assertLess(summary.index("LATEST_KNOWN_STATE"), summary.index("OLD_WINDOW_STATE"))
+
+    def test_summary_marks_recent_observations_without_claiming_live_state(self):
+        now = datetime(2026, 11, 24, 12, 0, 0, tzinfo=timezone.utc)
+        context = DesktopContext(wall_clock=lambda: now)
+        context.update_active_window(window())
+        context.record_event("visual_observation", "RECENT_STATE", dedupe_key="visual:recent")
+        context._events[-1] = replace(
+            context._events[-1], timestamp=(now - timedelta(seconds=30)).isoformat()
+        )
+
+        summary = context.summary()
+
+        self.assertIn("CURRENT SCREEN STATE (freshness: recent; observation age: 30s;", summary)
+        self.assertIn("Latest known screen state: RECENT_STATE", summary)
 
     def test_stop_and_dispose_clear_ram_context(self):
         context = DesktopContext()
