@@ -184,8 +184,8 @@ class ChatComposer(QFrame):
 
         self.game_mode_btn = QToolButton()
         self.game_mode_btn.setObjectName("gameModeBtn")
-        self.game_mode_btn.setProperty("kiraIconName", "gamepad")
-        self.game_mode_btn.setIcon(make_icon("gamepad"))
+        self.game_mode_btn.setProperty("kiraIconName", "eye")
+        self.game_mode_btn.setIcon(make_icon("eye"))
         self.game_mode_btn.setIconSize(QSize(19, 19))
         self.game_mode_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.game_mode_btn.setCheckable(True)
@@ -193,7 +193,7 @@ class ChatComposer(QFrame):
         self.game_mode_btn.setCursor(Qt.PointingHandCursor)
         self.game_mode_btn.setFocusPolicy(Qt.NoFocus)
         self.game_mode_btn.toggled.connect(owner.set_game_mode)
-        self.game_mode_btn.setToolTip("Game Mode خاموش است؛ برای فعال‌کردن کلیک کن")
+        self.game_mode_btn.setToolTip("Eye Mode خاموش است؛ برای دیدن صفحه کلیک کن")
         self.screen_capture_btn = self.game_mode_btn
         owner.screen_capture_btn = self.game_mode_btn
         bar.addWidget(self.game_mode_btn)
