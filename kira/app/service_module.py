@@ -122,11 +122,12 @@ class _LazyServiceProxy:
                 return
             self._disposing = True
             instance = self._instance
-            started = self._started
             cleanup_error = None
             try:
                 if instance is not None:
-                    cleanup_error = self._release(instance, stop_first=started)
+                    # ServiceModule owns stop/retry sequencing; this proxy owns
+                    # only the final release of the wrapped service.
+                    cleanup_error = self._release(instance, stop_first=False)
             finally:
                 # Mark the proxy terminal even when user cleanup raises: callers
                 # must not accidentally recreate a service during shutdown.
