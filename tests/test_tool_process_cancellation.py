@@ -1,6 +1,8 @@
 """Cancellation and process-reaping regressions for process-backed tools."""
 from __future__ import annotations
 
+import os
+import subprocess
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -96,9 +98,10 @@ class WinRunnerCancellationTests(unittest.TestCase):
         event = _CancelOnSecondCheck()
         process = _FakeProcess(stdout=b"", returncode=None)
 
-        with mock.patch(
-            "kira.tools.winrunner.subprocess.Popen", return_value=process
-        ) as popen:
+        with (
+            mock.patch("kira.tools.winrunner.subprocess.Popen", return_value=process) as popen,
+            mock.patch("kira.tools.winrunner.subprocess.run"),
+        ):
             result = run_fixed(self.script, cancel_event=event)
 
         self.assertTrue(result["cancelled"])
@@ -106,7 +109,10 @@ class WinRunnerCancellationTests(unittest.TestCase):
         self.assertFalse(process.killed)
         self.assertGreaterEqual(len(process.communicate_calls), 1)
         self.assertTrue(popen.called)
-        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+        if os.name == "nt":
+            self.assertEqual(popen.call_args.kwargs["creationflags"], 0x08000000)
+        else:
+            self.assertTrue(popen.call_args.kwargs["start_new_session"])
 
     def test_completed_process_wins_a_race_with_a_late_stop(self):
         event = mock.Mock()
@@ -137,6 +143,7 @@ class WinRunnerCancellationTests(unittest.TestCase):
 
         with (
             mock.patch("kira.tools.winrunner.subprocess.Popen", return_value=process),
+            mock.patch("kira.tools.winrunner.subprocess.run"),
             mock.patch("kira.tools.winrunner.time.monotonic", side_effect=[0.0, 1.0]),
         ):
             result = run_fixed(self.script, timeout=0.2)
