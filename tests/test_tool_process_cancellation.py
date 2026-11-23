@@ -192,5 +192,17 @@ class BluetoothCancellationTests(unittest.TestCase):
         self.assertIn("Stop", str(raised.exception))
 
 
+class AudioScriptExtractionTests(unittest.TestCase):
+    def test_audio_handlers_import_the_separate_immutable_script(self):
+        from kira.tools.audio import _SCRIPT
+        from kira.tools.audio_script import AUDIO_SCRIPT
+        from kira.tools.winrunner import FixedScript
+
+        self.assertIs(_SCRIPT, AUDIO_SCRIPT)
+        self.assertIsInstance(AUDIO_SCRIPT, FixedScript)
+        self.assertIn("namespace KiraAudio", AUDIO_SCRIPT.text)
+        self.assertIn("KIRA_AUDIO_REQ", AUDIO_SCRIPT.text)
+
+
 if __name__ == "__main__":
     unittest.main()
