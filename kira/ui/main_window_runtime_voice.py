@@ -525,14 +525,20 @@ class RuntimeVoiceMixin:
             self.feature_controller("session").set_status({"loading": "st_loading", "hearing": "st_hearing", "transcribing": "st_transcribing"}.get(state, "st_ready"))
 
     def update_engine_label(self):
+        # The voice settings page is built lazily when its tab is first opened.
+        # Startup retranslation and early audio callbacks can run before it exists.
+        page = getattr(self.context.views, "voice_page", None)
+        engine_label = getattr(page, "engine_lbl", None) if page is not None else None
+        if engine_label is None:
+            return
+
         mode = getattr(self, "_voice_mode", "idle")
         if mode == "gemini_connecting":
-            self.context.views.voice_page.engine_lbl.setText("Gemini Live · در حال اتصال")
+            engine_label.setText("Gemini Live · در حال اتصال")
             return
         if mode == "gemini_live":
-            self.context.views.voice_page.engine_lbl.setText("Gemini Live · Cloud")
+            engine_label.setText("Gemini Live · Cloud")
             return
-        eng = getattr(self.context.listener, "engine", None) if self.context.listener else None
         via = getattr(self.context.listener, "via", "") if self.context.listener else ""
         if via == "local:shenava":
             label = "Shenava Koochik INT8 · Local"
@@ -540,7 +546,7 @@ class RuntimeVoiceMixin:
             label = "STT محلی"
         else:
             label = "—"
-        self.context.views.voice_page.engine_lbl.setText(label)
+        engine_label.setText(label)
 
     def toggle_wake(self):
         if (
