@@ -76,7 +76,7 @@ class AttachWorker(QThread):
     def run(self):
         # Attachment parsing is only needed after the user chooses files.
         try:
-            from ..chat import attachments as att
+            from ..chat.attachment_content import AttachmentError, load_attachment
         except Exception as exc:
             for index, cancelled in enumerate(self._cancelled):
                 if not cancelled.is_set():
@@ -89,12 +89,12 @@ class AttachWorker(QThread):
                 continue
             self.progress.emit(i, 0)
             try:
-                attachment = att.load_attachment(
+                attachment = load_attachment(
                     path, lambda pct, i=i: self.progress.emit(i, pct), cancelled=cancelled.is_set
                 )
                 if not cancelled.is_set():
                     self.loaded.emit(i, attachment)
-            except (att.AttachmentError, OSError) as exc:
+            except (AttachmentError, OSError) as exc:
                 if not cancelled.is_set():
                     self.failed.emit(i, str(exc))
 
