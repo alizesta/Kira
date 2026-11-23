@@ -27,6 +27,7 @@ class GameModeApplicationWiringTests(unittest.TestCase):
     def test_ui_delegates_game_mode_permissions_and_audio_alert_policy(self):
         vision = (ROOT / "kira/ui/main_window_attachments_vision.py").read_text(encoding="utf-8")
         runtime = (ROOT / "kira/ui/main_window_runtime.py").read_text(encoding="utf-8")
+        chat = (ROOT / "kira/ui/main_window_chat.py").read_text(encoding="utf-8")
         settings = (ROOT / "kira/ui/main_window_voice_settings.py").read_text(encoding="utf-8")
         self.assertNotIn("game_mode_permissions(", vision)
         self.assertNotIn("normalize_game_mode_profile(", vision)
@@ -34,6 +35,9 @@ class GameModeApplicationWiringTests(unittest.TestCase):
         self.assertNotIn("_game_audio_alerts", vision)
         self.assertIn("classify_game_audio(", vision)
         self.assertIn("command_denial_reason(", runtime)
+        self.assertIn('game_mode_handler=self.feature_controller("attachments_vision").handle_game_mode_command', chat)
+        self.assertIn("build_chat_vision_context(", chat)
+        self.assertIn("LIVE GAME VISION STATUS:", vision)
         self.assertIn("self.context.services.game_mode_application_service.STORY_MODE", settings)
 
 

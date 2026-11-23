@@ -15,7 +15,7 @@ class GameModeApplicationServiceTests(unittest.TestCase):
         )
         permissions = self.service.permissions("unknown")
         self.assertFalse(permissions["input_automation"])
-        self.assertFalse(permissions["vision_capture"])
+        self.assertTrue(permissions["vision_capture"])
         self.assertFalse(permissions["game_audio_loopback"])
 
     def test_story_profile_enables_declared_game_capabilities(self):
@@ -29,7 +29,7 @@ class GameModeApplicationServiceTests(unittest.TestCase):
         profile = self.service.COMPETITIVE_SAFE_MODE
         self.assertTrue(self.service.is_competitive_safe(profile))
         self.assertFalse(self.service.can_use_input_automation(profile))
-        self.assertFalse(self.service.can_capture_vision(profile))
+        self.assertTrue(self.service.can_capture_vision(profile))
         self.assertTrue(self.service.tool_categories_allowed(profile, {"web"}))
         self.assertFalse(self.service.tool_categories_allowed(profile, {"web", "desktop"}))
 
