@@ -1,6 +1,7 @@
 # KIRA ARCHITECTURE ROADMAP
 
-**Snapshot:** 2026-11-19  
+**Historical audit snapshot:** 2026-11-19  
+**Current synchronization:** 2026-11-23; `new-main` source baseline `91d5cdad7359da1d8bb626064fa84d676c160c02`.  
 **Base branch:** `new-main`  
 **Source baseline SHA:** `0a84bbdc3d47afb1728ff314a056b49e6e56848b`  
 **Input:** TASK 015 historical audit, merged TASK 013+014 integration PR #48, TASK 017–020 implementation delta, and merged Chat event test/CI correction PR #98.  
@@ -265,7 +266,7 @@ Flow 1's source-architecture exit criteria are complete. Focused regression cove
 
 ### Startup performance delta — 2026-11-23
 
-Task 1 implementation is tracked on `codex/startup-lazy-loading-2026-11-23`, based on `new-main` at `3d69726aee718c2405d51bd1f4cf9785b44fe5ee`. It removes the unused eager ToolAgent import from the MainWindow support graph, makes `kira.tools` exports lazy, extracts the provider-neutral stream filter, defers Agent/registry and optional app-catalog/MCP setup, constructs settings pages on first visit, and postpones Piper/MusicWatcher/provider-catalog work. This is a branch-level implementation, not a merged or runtime-accepted state. Focused regression tests are committed but not run; Windows startup timing and memory measurements remain open.
+Task 1 implementation is tracked on `codex/startup-lazy-loading-2026-11-23`, based on `new-main` at `3d69726aee718c2405d51bd1f4cf9785b44fe5ee`. It removes the unused eager ToolAgent import from the MainWindow support graph, makes `kira.tools` exports lazy, extracts the provider-neutral stream filter, defers Agent/registry and optional app-catalog/MCP setup, constructs settings pages on first visit, and postpones Piper/MusicWatcher/provider-catalog work. This paragraph records the pre-merge implementation state; it was subsequently integrated by PR #239. Runtime acceptance and Windows startup/memory measurements remain open. Focused regression tests are committed but not run; Windows startup timing and memory measurements remain open.
 
 ## 9. Responsibility-aligned module sizing
 
