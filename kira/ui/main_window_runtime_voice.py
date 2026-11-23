@@ -17,7 +17,7 @@ class RuntimeVoiceMixin:
     def set_voice_enabled(self, on):
         self.context.services.settings["speak_replies"] = bool(on)
         controls = [self.context.views.voice_btn]
-        # The voice settings page is lazy-created. Toggling the microphone must
+        # The voice settings page is lazy-created. Toggling voice replies must
         # not force that page to exist or fail when it has not been opened yet.
         voice_page = getattr(self.context.views, "voice_page", None)
         speak_chk = getattr(voice_page, "speak_chk", None) if voice_page is not None else None
