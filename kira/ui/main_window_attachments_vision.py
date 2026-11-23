@@ -660,6 +660,15 @@ class AttachmentsVisionController(WindowFeatureController):
             _FRAME_SOURCE["value"] = None
             _FRAME_WINDOW_INFO["value"] = None
             return
+        # Drop any in-flight game-window result before switching the shared pipeline
+        # to the selected-monitor source.
+        self._cancel_vision_worker()
+        self._cancel_perception_worker()
+        self._clear_live_video_state()
+        self.context.services.desktop_context_application_service.clear()
+        self.context.services.vision_application_service.reset()
+        _FRAME_SOURCE["value"] = None
+        _FRAME_WINDOW_INFO["value"] = None
         self.context.state._game_capture_timer.setInterval(self._vision_interval_ms())
         self._capture_desktop_frame()
         self.context.state._game_capture_timer.start()
@@ -860,7 +869,6 @@ class AttachmentsVisionController(WindowFeatureController):
         if legacy_action is not None:
             previous = legacy_action.blockSignals(True)
             legacy_action.setChecked(enabled)
-            legacy_action.setVisible(False)
             legacy_action.blockSignals(previous)
         vision_trace(
             "eye_mode_set", enabled=enabled, profile=str(self.context.state._game_mode_profile),
