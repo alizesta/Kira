@@ -1,3 +1,8 @@
+## 2026-11-23 — Startup measurement report utility
+- Added a stdlib-only CLI to summarize the latest five complete Windows startup records, including medians/ranges for window display and first event-loop timings plus Working Set, Private Bytes and Peak Working Set.
+- Incomplete or malformed log records are reported and excluded; the utility refuses to claim a five-run result without five complete samples.
+- Actual target-Windows measurements are still pending a real Kira launch on the target PC.
+
 ## 2026-11-23 — Lazy voice settings toggle guard (PR #253)
 - Keep the main voice-reply control synchronized even before the lazy Voice settings page is built.
 - Update the settings checkbox only when it exists and restore each control's prior signal-blocking state.
