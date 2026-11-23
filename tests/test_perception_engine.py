@@ -42,6 +42,16 @@ class PerceptionEngineTests(unittest.TestCase):
         clock.value = 2.0
         self.assertTrue(detector.changed(bytes([255] * 576)))
 
+    def test_window_switch_resets_change_detection_rate_limit(self):
+        clock = FakeClock()
+        detector = ChangeDetector(threshold=0.02, min_interval=10.0, clock=clock)
+        engine = PerceptionEngine(DesktopContext(), FakeOcr(), change_detector=detector)
+        engine.observe_window(window())
+        self.assertTrue(engine.screen_changed(bytes([0] * 576)))
+        clock.value += 0.1
+        engine.observe_window(window(hwnd=11, pid=21, title="another.py"))
+        self.assertTrue(engine.screen_changed(bytes([1] * 576)))
+
     def test_engine_updates_context_only_for_the_observed_window(self):
         context = DesktopContext()
         engine = PerceptionEngine(context, FakeOcr())
