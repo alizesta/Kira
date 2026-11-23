@@ -38,7 +38,7 @@ class GeminiLiveTests(unittest.TestCase):
     def test_live_video_gate_limits_valid_jpeg_to_one_fps(self):
         clock = _Clock()
         gate = LiveVideoFrameGate(clock=clock)
-        jpeg = b"\xff\\xd8sample-frame\xff\\xd9"
+        jpeg = b"\xff\xd8sample-frame\xff\xd9"
         self.assertTrue(gate.accept(jpeg))
         self.assertFalse(gate.accept(jpeg))
         clock.value += 0.999
@@ -50,11 +50,11 @@ class GeminiLiveTests(unittest.TestCase):
         gate = LiveVideoFrameGate(max_bytes=12, clock=_Clock())
         self.assertFalse(gate.accept(b""))
         self.assertFalse(gate.accept(b"not-a-jpeg"))
-        self.assertFalse(gate.accept(b"\xff\\xd8" + b"x" * 20 + b"\xff\\xd9"))
+        self.assertFalse(gate.accept(b"\xff\xd8" + b"x" * 20 + b"\xff\xd9"))
 
     def test_live_video_gate_reset_allows_immediate_next_frame(self):
         gate = LiveVideoFrameGate(clock=_Clock())
-        jpeg = b"\xff\\xd8sample\xff\\xd9"
+        jpeg = b"\xff\xd8sample\xff\xd9"
         self.assertTrue(gate.accept(jpeg))
         self.assertFalse(gate.accept(jpeg))
         gate.reset()
