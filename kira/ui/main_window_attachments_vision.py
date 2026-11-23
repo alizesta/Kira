@@ -35,12 +35,12 @@ _LAST_CAPTURE_STATE = {}
 # game window) or "screen" (the whole primary screen, used when no game window is captured).
 _FRAME_SOURCE = {"value": None}
 _FRAME_WINDOW_INFO = {"value": None}
-LIVE_VIDEO_MAX_WIDTH = 640
-LIVE_VIDEO_MAX_HEIGHT = 360
-LIVE_VIDEO_JPEG_QUALITY = 58
+LIVE_VIDEO_MAX_WIDTH = 480
+LIVE_VIDEO_MAX_HEIGHT = 270
+LIVE_VIDEO_JPEG_QUALITY = 35
 LIVE_VIDEO_CHANGE_THRESHOLD = 0.015
-# 21 levels per RGB channel produce at most 9,261 distinct colors.
-LIVE_VIDEO_CHANNEL_LEVELS = 21
+# 16 levels per RGB channel produce at most 4,096 distinct colors.
+LIVE_VIDEO_CHANNEL_LEVELS = 16
 LIVE_VIDEO_PALETTE_COLORS = LIVE_VIDEO_CHANNEL_LEVELS ** 3
 _LIVE_VIDEO_CHANNEL_LUT = bytes(
     (((value * (LIVE_VIDEO_CHANNEL_LEVELS - 1) + 127) // 255) * 255
@@ -220,13 +220,39 @@ class AttachmentsVisionController(WindowFeatureController):
                 return False
         try:
             from PySide6.QtCore import QBuffer, QByteArray, QIODevice
-            data = QByteArray()
-            buffer = QBuffer(data)
-            if not buffer.open(QIODevice.WriteOnly) or not image.save(
-                buffer, "JPEG", LIVE_VIDEO_JPEG_QUALITY
-            ):
+
+            def encode_jpeg(frame, quality):
+                data = QByteArray()
+                buffer = QBuffer(data)
+                if not buffer.open(QIODevice.WriteOnly) or not frame.save(buffer, "JPEG", quality):
+                    return b""
+                return bytes(data)
+
+            # Keep the normal frame small first; only step down further when necessary.
+            encoded_image = image
+            quality = LIVE_VIDEO_JPEG_QUALITY
+            jpeg = encode_jpeg(encoded_image, quality)
+            if len(jpeg) > MAX_VIDEO_FRAME_BYTES:
+                for quality in (30, 25, 20):
+                    jpeg = encode_jpeg(encoded_image, quality)
+                    if jpeg and len(jpeg) <= MAX_VIDEO_FRAME_BYTES:
+                        break
+            if len(jpeg) > MAX_VIDEO_FRAME_BYTES:
+                for width, height, quality in ((384, 216, 22), (320, 180, 20)):
+                    encoded_image = image.scaled(
+                        width, height, Qt.KeepAspectRatio, Qt.SmoothTransformation
+                    )
+                    jpeg = encode_jpeg(encoded_image, quality)
+                    if jpeg and len(jpeg) <= MAX_VIDEO_FRAME_BYTES:
+                        break
+            if not jpeg or len(jpeg) > MAX_VIDEO_FRAME_BYTES:
+                vision_trace(
+                    "live_video_frame_dropped", source=source,
+                    reason="frame_exceeds_size_limit", jpeg_bytes=len(jpeg),
+                    max_bytes=MAX_VIDEO_FRAME_BYTES,
+                    width=encoded_image.width(), height=encoded_image.height(),
+                )
                 return False
-            jpeg = bytes(data)
         except Exception as exc:  # a video path error must not interrupt audio
             vision_trace("live_video_encode_failed", source=source, error=type(exc).__name__)
             return False
@@ -235,7 +261,11 @@ class AttachmentsVisionController(WindowFeatureController):
         self._live_video_sample = sample
         vision_trace(
             "live_video_frame_queued", source=source,
-            width=image.width(), height=image.height(), jpeg_bytes=len(jpeg),
+            format="JPEG", width=encoded_image.width(), height=encoded_image.height(),
+            jpeg_quality=quality, jpeg_bytes=len(jpeg),
+            jpeg_kib=round(len(jpeg) / 1024.0, 2),
+            max_bytes=MAX_VIDEO_FRAME_BYTES, fps=1,
+            approx_kib_per_second=round(len(jpeg) / 1024.0, 2),
             color_levels=LIVE_VIDEO_CHANNEL_LEVELS,
             palette_colors=LIVE_VIDEO_PALETTE_COLORS,
         )
