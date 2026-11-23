@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import subprocess
+import tempfile
 import sys
 import unittest
 from pathlib import Path
