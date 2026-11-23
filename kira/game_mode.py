@@ -69,7 +69,7 @@ _GAME_HINTS = re.compile(
 )
 _BROWSER_EXES = frozenset({"chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"})
 # Only named game sites bypass the browser deny-list. Ordinary browser tabs remain excluded.
-_BROWSER_GAME_HINTS = re.compile(r"(?:^|[^\\w])(?:chess\\.com|lichess\\.org)(?:$|[^\\w])", re.I)
+_BROWSER_GAME_HINTS = re.compile(r"(?:^|[^\w])(?:chess\.com|lichess\.org)(?:$|[^\w])", re.I)
 
 
 def _is_supported_browser_game(exe: str, title: str) -> bool:
