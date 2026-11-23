@@ -72,3 +72,12 @@ def test_eye_mode_control_uses_eye_identity():
     assert 'setProperty("kiraIconName", "eye")' in source
     assert 'make_icon("eye")' in source
     assert 'Eye Mode خاموش است' in source
+
+
+
+def test_eye_mode_has_one_toggle_and_monitor_selection_only():
+    source = read("kira/ui/main_window_composition.py")
+    assert 'self.views.desktop_vision_action = None' in source
+    assert 'addAction("Live Desktop Vision")' not in source
+    assert 'addMenu("Eye Mode · انتخاب مانیتور")' in source
+    assert 'desktop_policy.set_enabled(False)' in source
