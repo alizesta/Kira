@@ -1,3 +1,11 @@
+## Adaptive Live frame selection — handoff (2026-11-24 01:41 Iran)
+- Branch: `feat/adaptive-live-video-selector`, based on `new-main` 9e85000. Not merged; no Pull Request opened (a PR would trigger `android-apk.yml`); no GitHub Actions run.
+- Root-cause fix: undefined `MAX_VIDEO_FRAME_BYTES` in the vision controller silently disabled all Gemini Live video (visible as `live_video_encode_failed` / `error=NameError` in the vision trace on `new-main`).
+- New Qt-free `LiveFrameSelector` replaces the inline 32x18 nearest-neighbour check. Synthetic measurement on 480x270 frames: the old check missed an 80x40 popup (mean 1.23%), a 60x30 popup (0.82%) and a 200x12 text line (1.33%) against its 1.5% threshold; the new selector sends all three and ignores a 2x16 caret and a 12x12 icon.
+- Tuning constants live in `SelectorPolicy` (`mean_threshold`, `cell_threshold`, `hotspot_cells`). They were chosen on synthetic images, not real screens; tune from the new trace fields (`reason`, `mean_change`, `changed_cells`) after real use.
+- Local verification (Linux, PySide6 offscreen): 11 new selector tests + 2 new wiring tests pass; real `QImage` sampling checked offscreen. Not verified: Windows/DXGI capture, a real Gemini Live session, CPU/latency.
+- Known pre-existing failures on untouched `new-main` (identical set before and after this change): 19 in the wiring/registry test files (stale source-string assertions, e.g. Eye Mode rolling-context wording), 5 in `tests/test_vision_routing.py` (`MainWindow.submit` no longer exists) and 1 in `tests/test_gemini_live.py` (provider-key leak test).
+
 ## Release 1.2 — Eye Mode integration handoff (2026-11-24)
 - Base: new-main; release preparation consolidates the Live Desktop Vision tasks and the subsequent Eye Mode/freshness-context work.
 - User-facing behavior: Eye Mode is the unified, manually enabled desktop observation path for the selected monitor; it is not limited to games.

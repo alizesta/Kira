@@ -46,6 +46,38 @@ def test_live_stream_uses_full_monitor_and_privacy_rechecks():
     assert 'return 1000 if getattr(self, "_live_video_active", False) else base' in source
 
 
+def test_vision_controller_has_no_undefined_names():
+    """A NameError inside the Live try/except is swallowed and silently stops all video."""
+    import ast
+    import builtins
+
+    tree = ast.parse(read("kira/ui/main_window_attachments_vision.py"))
+    defined = set(dir(builtins))
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            defined.update((alias.asname or alias.name).split(".")[0] for alias in node.names)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            defined.add(node.name)
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            defined.add(node.id)
+        elif isinstance(node, ast.arg):
+            defined.add(node.arg)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            defined.add(node.name)
+    used = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
+    assert sorted(used - defined) == []
+
+
+def test_live_frame_decision_is_made_by_the_selector_and_committed_after_queueing():
+    source = read("kira/ui/main_window_attachments_vision.py")
+    assert "from ..gemini_live import MAX_VIDEO_FRAME_BYTES" in source
+    assert "decision = selector.evaluate(sample)" in source
+    queued = source.split("if not runtime.send_gemini_video_frame(jpeg):", 1)[1]
+    assert queued.lstrip().startswith("return False")
+    assert "selector.commit(sample)" in queued
+    assert "self._live_selector().reset()" in source.split("def set_live_video_active", 1)[1]
+
+
 def test_stop_and_privacy_disable_clear_pending_video():
     voice = read("kira/ui/main_window_runtime_voice.py")
     assert "set_live_video_active(False)" in voice

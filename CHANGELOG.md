@@ -1,3 +1,9 @@
+## 2026-11-24 01:41 Iran — Adaptive Gemini Live frame selection and Live video NameError fix
+- Fixed: `kira/ui/main_window_attachments_vision.py` used `MAX_VIDEO_FRAME_BYTES` without importing it. The NameError was swallowed by the Live `try/except` and logged as `live_video_encode_failed`, so no Live video frame could be queued. The constant is now imported from `kira/gemini_live.py` inside the Live path.
+- Added `kira/live_video_selector.py` (Qt-free): a 64x36 smoothed grayscale grid compared against the last frame actually sent. A frame is sent on a global change (mean >= 1.5%) or a local change (>= 12 cells moved by >= 12%), which small popups and text lines trigger without moving the global mean. Caret/icon-sized changes are ignored.
+- The reference frame changes only after a frame is really queued, so a rejected or failed frame is retried on the next tick; a new Live session or privacy stop resets it so the next frame is always sent.
+- `live_video_frame_queued` trace now records `reason`, `mean_change`, `changed_cells` and the cumulative `skipped_unchanged` count.
+- The 1 FPS ceiling, 480x270 frame size, quality stepping and privacy rechecks are unchanged.
 ## 1.2 — 2026-11-24 — Eye Mode and desktop-awareness release
 - Unified Game Mode screen understanding and Live Desktop Vision under one user-facing Eye Mode capture path. The selected monitor is sampled for desktop context; the same privacy-checked capture source can provide frames to Gemini Live when a compatible Live session is active.
 - Added a bounded, RAM-only DesktopContext with current-screen state, observation freshness (fresh ≤15 s, recent 15–60 s, stale >60 s), and separately labelled historical observations. Stale observations are not presented as the current screen.

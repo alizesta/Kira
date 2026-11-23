@@ -3,6 +3,7 @@ from PySide6.QtCore import Slot
 from ..request_trace import vision_trace
 from ..perception import PerceptionEngine
 from ..perception.events import PerceptionEvent
+from ..live_video_selector import LiveFrameSelector, SAMPLE_HEIGHT, SAMPLE_WIDTH, SelectorPolicy
 from ..vision_ocr import OcrResult, TesseractOcrEngine
 from ..chat.attachment_content import format_desktop_context
 from .main_window_attachments_vision_support import (
@@ -62,6 +63,18 @@ def _quantize_live_video_image(image):
     ).copy()
 
 
+def _live_gray_sample(image):
+    """Small smoothed grayscale grid used only to decide whether the screen changed."""
+    small = image.scaled(
+        SAMPLE_WIDTH, SAMPLE_HEIGHT, Qt.IgnoreAspectRatio, Qt.SmoothTransformation
+    ).convertToFormat(QImage.Format_Grayscale8)
+    stride = small.bytesPerLine()
+    raw = bytes(small.constBits())
+    return b"".join(
+        raw[row * stride:row * stride + SAMPLE_WIDTH] for row in range(SAMPLE_HEIGHT)
+    )
+
+
 def _game_fields(game):
     """Scalar window identity for the vision trace (exe and title only)."""
     if not game:
@@ -113,14 +126,26 @@ class AttachmentsVisionController(WindowFeatureController):
         )
         return 1000 if getattr(self, "_live_video_active", False) else base
 
+    def _live_selector(self):
+        selector = getattr(self, "_live_frame_selector", None)
+        if selector is None:
+            selector = LiveFrameSelector(
+                SelectorPolicy(mean_threshold=LIVE_VIDEO_CHANGE_THRESHOLD)
+            )
+            self._live_frame_selector = selector
+        return selector
+
     def _clear_live_video_state(self):
-        self._live_video_sample = b""
+        self._live_selector().reset()
         self._live_video_identity = None
         self.feature_controller("runtime").clear_gemini_video_frames()
 
     def set_live_video_active(self, enabled):
         """Use a 1 Hz timer only while Live and a manual screen source are both active."""
         self._live_video_active = bool(enabled)
+        if enabled:
+            # A new Live session has seen no frame yet, even if the screen has not changed.
+            self._live_selector().reset()
         source_active = bool(self.context.state._game_mode_enabled)
         timer = self.context.state._game_capture_timer
         timer.setInterval(self._vision_interval_ms())
@@ -137,6 +162,8 @@ class AttachmentsVisionController(WindowFeatureController):
         runtime = self.feature_controller("runtime")
         if not runtime.is_gemini_live_ready():
             return False
+        # Imported here: Live is already running at this point and startup stays deferred.
+        from ..gemini_live import MAX_VIDEO_FRAME_BYTES
         privacy = self.context.services.vision_application_service.desktop_capture_application_service
         if source == "desktop":
             source_enabled = bool(privacy.enabled)
@@ -186,7 +213,7 @@ class AttachmentsVisionController(WindowFeatureController):
             return False
         if identity != getattr(self, "_live_video_identity", None):
             runtime.clear_gemini_video_frames()
-            self._live_video_sample = b""
+            self._live_selector().reset()
             self._live_video_identity = identity
 
         monitor_id = privacy.selected_monitor_id if source == "desktop" else None
@@ -215,12 +242,11 @@ class AttachmentsVisionController(WindowFeatureController):
             return False
 
         image = _quantize_live_video_image(pixmap.toImage())
-        sample = self._perception_sample(image)
-        previous = getattr(self, "_live_video_sample", b"")
-        if previous and len(previous) == len(sample):
-            delta = sum(abs(a - b) for a, b in zip(previous, sample))
-            if delta / (255.0 * len(sample)) < LIVE_VIDEO_CHANGE_THRESHOLD:
-                return False
+        selector = self._live_selector()
+        sample = _live_gray_sample(image)
+        decision = selector.evaluate(sample)
+        if not decision.send:
+            return False
         try:
             from PySide6.QtCore import QBuffer, QByteArray, QIODevice
 
@@ -261,9 +287,12 @@ class AttachmentsVisionController(WindowFeatureController):
             return False
         if not runtime.send_gemini_video_frame(jpeg):
             return False
-        self._live_video_sample = sample
+        selector.commit(sample)
         vision_trace(
             "live_video_frame_queued", source=source,
+            reason=decision.reason, mean_change=round(decision.mean_change, 4),
+            changed_cells=decision.changed_cells,
+            skipped_unchanged=selector.skipped_unchanged,
             format="JPEG", width=encoded_image.width(), height=encoded_image.height(),
             jpeg_quality=quality, jpeg_bytes=len(jpeg),
             jpeg_kib=round(len(jpeg) / 1024.0, 2),
