@@ -26,3 +26,11 @@ The timeline includes import, settings and module initialization, UI composition
 4. Compare before/after records from the same PC, data directory and build configuration. Exclude runs performing model downloads or first-time setup.
 
 The code change adds measurement instrumentation; it does not claim a measured speedup or RAM reduction. No target-Windows baseline was available while authoring this change. The application must be launched on the target machine to populate genuine samples.
+
+## Current implementation status — 2026-11-23
+
+Startup phase timing and process-memory sampling were integrated into `new-main` by PR #246. The JSONL record is emitted through the first Qt event-loop tick and includes the import, settings/module initialization, UI composition, window display and event-loop phases.
+
+The measurement protocol above is still required. At this snapshot no genuine target-Windows baseline has been accepted, and no before/after speedup or RAM reduction is claimed. Collect at least five comparable fresh launches from the same PC/build/profile and compare medians; keep Peak Working Set separate from the phase-specific Working Set and Private Bytes values.
+
+Idle-avatar CPU is a separate measurement. A reduction from 30 to 5 scheduled animation callbacks per second must not be translated into an equivalent percentage reduction in total process CPU.
