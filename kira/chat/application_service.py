@@ -39,6 +39,7 @@ from .commands import CommandDispatch, CommandRegistry
 from .context_builder import ContextBuilder
 from .coordinator import ChatCoordinator, ChatProviderDispatcher
 from .response_handler import ResponseHandler
+from .history_facade import ChatHistoryFacade
 
 
 @dataclass
@@ -97,6 +98,7 @@ class ChatApplicationService:
         self._event_publisher = event_publisher
         self._command_registry = command_registry
         self._conversation_lifecycle = conversation_lifecycle
+        self._history = ChatHistoryFacade(persistence, conversation_lifecycle)
         self._schedule = schedule or (lambda callback: callback())
         self._cancel_provider = cancel_provider
         self._max_pending = int(max_pending)
@@ -933,87 +935,73 @@ class ChatApplicationService:
 
     @property
     def last_persistence_error(self) -> str | None:
-        return getattr(self._persistence, "last_error", None)
+        return self._history.last_persistence_error
 
     def set_persistence_error(self, message: str | None) -> None:
-        setter = getattr(self._persistence, "set_last_error", None)
-        if callable(setter):
-            setter(message)
+        self._history.set_persistence_error(message)
 
     def init_history(self) -> list[str]:
-        initializer = getattr(self._persistence, "init_db", None)
-        return list(initializer() or []) if callable(initializer) else []
+        return self._history.init_history()
 
     def get_or_create_conversation(self, character_id: str) -> dict[str, Any]:
-        """Resolve the durable conversation owned by one character."""
-        owner = str(character_id or "").strip()
-        if not owner:
-            raise ValueError("character_id must not be empty")
-        return self._persistence.get_or_create_conversation(owner)
+        return self._history.get_or_create_conversation(character_id)
 
     def list_conversations(self, character_id: str | None = None, *, statuses=None):
-        if self._conversation_lifecycle is None:
-            raise RuntimeError("Conversation Lifecycle service is not configured")
-        options = {} if statuses is None else {"statuses": statuses}
-        return self._conversation_lifecycle.list_conversations(character_id=character_id, **options)
+        return self._history.list_conversations(character_id, statuses=statuses)
 
     def archive_conversation(self, conversation_id: str):
-        return self._require_conversation_lifecycle().archive(conversation_id)
+        return self._history.archive_conversation(conversation_id)
 
     def archive_conversations(self, conversation_ids):
-        return self._require_conversation_lifecycle().archive_many(conversation_ids)
+        return self._history.archive_conversations(conversation_ids)
 
     def restore_conversation(self, conversation_id: str):
-        return self._require_conversation_lifecycle().restore(conversation_id)
+        return self._history.restore_conversation(conversation_id)
 
     def trash_conversation(self, conversation_id: str):
-        return self._require_conversation_lifecycle().trash(conversation_id)
+        return self._history.trash_conversation(conversation_id)
 
     def trash_conversations(self, conversation_ids):
-        return self._require_conversation_lifecycle().trash_many(conversation_ids)
+        return self._history.trash_conversations(conversation_ids)
 
     def restore_trashed_conversation(self, conversation_id: str):
-        return self._require_conversation_lifecycle().restore_trashed(conversation_id)
+        return self._history.restore_trashed_conversation(conversation_id)
 
     def permanently_delete_conversation(self, conversation_id: str, *, authorization):
-        return self._require_conversation_lifecycle().permanent_delete(
+        return self._history.permanently_delete_conversation(
             conversation_id, authorization=authorization
         )
-
-    def _require_conversation_lifecycle(self) -> ConversationLifecycleApplicationPort:
-        if self._conversation_lifecycle is None:
-            raise RuntimeError("Conversation Lifecycle service is not configured")
-        return self._conversation_lifecycle
 
     def recent_messages(
         self, limit: int = 12, character_id: str | None = None,
         conversation_id: str | None = None,
     ):
-        return self._persistence.recent_messages(limit, character_id, conversation_id)
+        return self._history.recent_messages(limit, character_id, conversation_id)
 
     def recent_message_records(self, limit: int = 2000, character_id: str | None = None):
-        """Return persisted message metadata needed to reconcile interrupted local workflows."""
-        return self._persistence.recent_message_records(limit, character_id)
+        return self._history.recent_message_records(limit, character_id)
 
     def conversation_context(
         self, limit: int = 12, max_chars: int = 12000,
         character_id: str | None = None, conversation_id: str | None = None,
     ):
-        return self._persistence.conversation_context(limit, max_chars, character_id, conversation_id)
+        return self._history.conversation_context(
+            limit, max_chars, character_id, conversation_id
+        )
 
     def message_count(
         self, character_id: str | None = None, conversation_id: str | None = None
     ) -> int:
-        return self._persistence.message_count(character_id, conversation_id)
+        return self._history.message_count(character_id, conversation_id)
 
     def clear_history(self, character_id: str | None = None) -> Any:
-        return self._persistence.clear_memory(character_id)
+        return self._history.clear_history(character_id)
 
     def restore_history(self) -> int:
-        return self._persistence.restore_last_cleared()
+        return self._history.restore_history()
 
     def import_history(self, source: Any) -> int:
-        return self._persistence.import_messages(source)
+        return self._history.import_history(source)
 
     def fail_request(self, request_id: str, error: str) -> bool:
         state = self._requests.get(str(request_id or ""))

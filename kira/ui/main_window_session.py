@@ -387,8 +387,9 @@ class SessionController(WindowFeatureController):
                 self.context.services.session_application_service.publish_history_loaded(sess)
         if not self.context.services.session_application_service.activate_session(sess.session_id):
             return
-        if cid != self.context.state.front.cid:
-            self.feature_controller("character_settings")._flush_character_autosave()
+        character_controller = self.context.get_peer_if_materialized("character_settings")
+        if cid != self.context.state.front.cid and character_controller is not None:
+            character_controller._flush_character_autosave()
         old = self.context.state.front
         if old is not sess:
             old.draft = self.context.views.input.text()
@@ -399,7 +400,9 @@ class SessionController(WindowFeatureController):
                 self.context.services.voice_application_service.stream_reset()
             except Exception:                           # noqa: BLE001
                 _log.exception("Could not reset streamed voice while switching characters")
-            self.feature_controller("attachments_vision").clear_upload_tiles()
+            attachment_controller = self.context.get_peer_if_materialized("attachments_vision")
+            if attachment_controller is not None:
+                attachment_controller.clear_upload_tiles()
         self.context.state.front = self.context.state.cur = sess
         sess.unread = False
         self.context.services.settings["active_character_id"] = cid
@@ -415,7 +418,7 @@ class SessionController(WindowFeatureController):
         if old is not sess:
             self.context.views.input.setText(sess.draft)
         self.apply_chat_theme()
-        self.feature_controller("character_settings").apply_character_art()
+        self.context.adapters.appearance_runtime.apply_character_art()
         self.context.views.gen_stop_btn.setVisible(bool(sess.busy))
         self.context.views.gen_stop_btn.setEnabled(True)
         if sess.busy:
@@ -425,10 +428,14 @@ class SessionController(WindowFeatureController):
         phase, info = sess.badge
         self.feature_controller("runtime").set_badge(phase if sess.busy else "idle", info if sess.busy else self.context.session.client.preview_route())
         self.refresh_tab_buttons()
+        character_controller = self.context.get_peer_if_materialized("character_settings")
         if hasattr(self.context.views, "character_page"):
-            self.feature_controller("character_settings").refresh_character_choices()
-            self.feature_controller("character_settings").refresh_character_card(cid)
-        self.feature_controller("character_settings").refresh_personality_controls()
+            character_controller = self.context.require_peer("character_settings")
+            character_controller.refresh_character_choices()
+            character_controller.refresh_character_card(cid)
+            character_controller.refresh_personality_controls()
+        elif character_controller is not None:
+            character_controller.refresh_personality_controls()
         self.update_mood_indicator()
         bar = sess.view.verticalScrollBar()
         bar.setValue(bar.maximum())
@@ -448,7 +455,9 @@ class SessionController(WindowFeatureController):
             intensity = max(0, min(100, int(appearance.get("glow", 34))))
             glow.setBlurRadius(14 + intensity * 0.38)
             glow.setColor(QColor(r, g, b, round(54 + intensity * 0.92)))
-        self.feature_controller("character_settings")._apply_neon_glow_effects(self.context.services.settings.get("appearance", {}))
+        self.context.adapters.appearance_runtime._apply_neon_glow_effects(
+            self.context.services.settings.get("appearance", {})
+        )
 
     def greeting_text(self):
         profile = self.context.services.character_service.active(self.context.services.settings)
@@ -897,7 +906,7 @@ class SessionController(WindowFeatureController):
         if badge is not None:
             badge.setIcon(make_icon("chevron_up", normal=palette["second"], hover="#FFFFFF",
                                     checked=palette["main"], disabled="#52617B"))
-        self.feature_controller("character_settings")._refresh_icon_glow()
+        self.context.adapters.appearance_runtime._refresh_icon_glow()
 
 
 # Backward-compatible import name for callers migrating from mixin composition.
