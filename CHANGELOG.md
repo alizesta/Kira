@@ -1,3 +1,9 @@
+## 2026-11-23 — Architecture stabilization (PR #246)
+- Made Chat package exports and optional feature imports lazy; feature controllers now materialize through factories on first use.
+- Separated Chat history/conversation lifecycle delegation into `ChatHistoryFacade` while keeping request dispatch and streaming in `ChatApplicationService`.
+- Extracted additive SQLite DDL/version migration/backfill into `SqliteSchemaManager`; repository transaction, snapshot, recovery and write ownership remains unchanged.
+- Added startup phase timing and process-memory sampling to `DATA_DIR/logs/startup-performance.jsonl`. Runtime tests and target-Windows measurements remain required; no speedup or memory reduction is asserted.
+
 ## 2026-11-23 — Startup phase 2 (four-stage follow-up)
 - Character tabs retain lightweight entries and defer ChatSession, router, Qt view, and history restoration until selection.
 - Optional Web Search, Skills, conversation search/transfer/organization services use lazy service proxies; empty Skills enablement skips directory discovery.
