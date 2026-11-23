@@ -219,6 +219,8 @@ def initialize_main_window(
     self.services.ollama_client = self.services.provider_application_service.create_ollama_client(self.services.settings)
     self.adapters.director = EmotionDirector.from_default()        # emotion library + engine (kira/emotion, emotion_library/)
     self.adapters.animator = EmotionFaceAnimator(self.host, director=self.adapters.director)
+    from .appearance_runtime import AppearanceRuntime
+    self.adapters.appearance_runtime = AppearanceRuntime(self)
     self.adapters.companion = CompanionWindow(self.adapters.animator)
     self.adapters.companion.pet.settings = self.services.settings          # live reference: perch / hang / auto_dance switches
     self.adapters.music_watcher = None
@@ -248,7 +250,7 @@ def initialize_main_window(
     self.state._music_watcher_timer.setSingleShot(True)
     self.state._music_watcher_timer.timeout.connect(_start_music_watcher)
     self.state._music_watcher_timer.start(10000)
-    self.controllers.require("character_settings").apply_character_art()
+    self.adapters.appearance_runtime.apply_character_art()
     self.controllers.require("chat")._install_chat_commands()
     self.adapters.bubble = CompanionBubble()
     self.adapters.bubble.submitted.connect(self.controllers.require("chat").submit)
@@ -283,8 +285,12 @@ def initialize_main_window(
     self.state._game_poll_timer.start()
     self.state._game_capture_timer = QTimer(self.host)
     self.state._game_capture_timer.setInterval(int(self.services.vision_application_service.policy.interval_seconds * 1000))
-    self.state._game_capture_timer.timeout.connect(self.controllers.require("attachments_vision")._capture_game_frame)
-    self.adapters.game_mode.game_detected.connect(self.controllers.require("attachments_vision").on_game_detected)
+    self.state._game_capture_timer.timeout.connect(
+        lambda: self.controllers.require("attachments_vision")._capture_game_frame()
+    )
+    self.adapters.game_mode.game_detected.connect(
+        lambda *args: self.controllers.require("attachments_vision").on_game_detected(*args)
+    )
     self.host.resize(900, 720)
     self.host.setAcceptDrops(True)                          # drop images / files anywhere on the window to attach them
     self.state._effect = winfx.active_effect(self.services.settings.get("window_effect"))
@@ -292,8 +298,6 @@ def initialize_main_window(
         self.host.setAttribute(Qt.WA_TranslucentBackground, True)    # the DWM paints the glass behind the transparent window
     self.views.tabs = QTabWidget()
     voice_controller = self.controllers.require("voice_settings")
-    character_controller = self.controllers.require("character_settings")
-    provider_controller = self.controllers.require("provider_settings")
     session_controller = self.controllers.require("session")
     voice_controller.build_chat_tab()
 
@@ -305,17 +309,23 @@ def initialize_main_window(
 
     def _build_characters_tab():
         _ensure_assistant_section()
-        character_controller.build_characters_tab()
+        self.controllers.require("character_settings").build_characters_tab()
+
+    def _build_appearance_tab():
+        self.controllers.require("character_settings").build_appearance_tab()
+
+    def _build_general_tab():
+        self.controllers.require("character_settings").build_general_tab()
 
     def _build_ai_tab():
         _ensure_assistant_section()
-        provider_controller.build_ai_tab()
+        self.controllers.require("provider_settings").build_ai_tab()
 
     lazy_tab_builders = {
         1: ("tab_voice", voice_controller.build_voice_tab),
         2: ("tab_char", _build_characters_tab),
-        3: ("tab_appearance", character_controller.build_appearance_tab),
-        4: ("tab_general", character_controller.build_general_tab),
+        3: ("tab_appearance", _build_appearance_tab),
+        4: ("tab_general", _build_general_tab),
         5: ("tab_ai", _build_ai_tab),
     }
     for key in self.views.tab_keys[1:]:
@@ -482,7 +492,10 @@ def initialize_main_window(
         if index != self.views.tab_keys.index("tab_ai") or self.state._provider_catalog_auto_refresh_started:
             return
         self.state._provider_catalog_auto_refresh_started = True
-        QTimer.singleShot(0, provider_controller.auto_refresh_model_catalogs)
+        QTimer.singleShot(
+            0,
+            lambda: self.controllers.require("provider_settings").auto_refresh_model_catalogs(),
+        )
 
     self.state._provider_catalog_auto_refresh_started = False
     self.views.tabs.currentChanged.connect(_maybe_refresh_provider_catalog)
@@ -497,7 +510,7 @@ def initialize_main_window(
     self.views.avatar.clicked.connect(self.controllers.require("runtime").on_region_clicked)
     self.adapters.companion.visibility.connect(self.controllers.require("runtime").on_companion_visibility)
     self.adapters.animator.look_anchor = self.controllers.require("lifecycle").look_anchor
-    self.controllers.require("character_settings").apply_appearance(save=False)
+    self.adapters.appearance_runtime.apply_appearance(save=False)
     self.controllers.require("lifecycle").apply_runtime()
     self.controllers.require("session").retranslate()
     self.controllers.require("runtime").set_badge("idle", self.session.client.preview_route())
