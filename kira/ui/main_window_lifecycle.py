@@ -196,7 +196,9 @@ class LifecycleController(WindowFeatureController):
             mic.setChecked(mic_btn.isChecked())
             mic.triggered.connect(self.tray_toggle_mic)
         menu.addSeparator()
-        menu.addAction("خروج", self.quit_app)
+        exit_action = menu.addAction("خروج")
+        # Defer shutdown until the native tray menu has finished closing.
+        exit_action.triggered.connect(lambda checked=False: QTimer.singleShot(0, self.quit_app))
 
     def tray_toggle_mic(self, checked=False):
         self.context.views.mic_btn.setChecked(not self.context.views.mic_btn.isChecked())
