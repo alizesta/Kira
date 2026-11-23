@@ -25,13 +25,14 @@ class GameModeApplicationServiceTests(unittest.TestCase):
         self.assertTrue(self.service.can_emit_automatic_game_audio_alerts("story"))
         self.assertTrue(self.service.can_use_input_automation("story"))
 
-    def test_competitive_safe_denies_local_control_but_allows_web_research(self):
+    def test_competitive_safe_keeps_vision_and_ordinary_tools_available(self):
         profile = self.service.COMPETITIVE_SAFE_MODE
         self.assertTrue(self.service.is_competitive_safe(profile))
         self.assertFalse(self.service.can_use_input_automation(profile))
         self.assertTrue(self.service.can_capture_vision(profile))
-        self.assertTrue(self.service.tool_categories_allowed(profile, {"web"}))
-        self.assertFalse(self.service.tool_categories_allowed(profile, {"web", "desktop"}))
+        for categories in ({"web"}, {"desktop"}, {"apps"}, {"files"}, {"mcp"}, {"agents"}, {"web", "desktop"}):
+            with self.subTest(categories=categories):
+                self.assertTrue(self.service.tool_categories_allowed(profile, categories))
 
     def test_game_audio_alert_policy_classifies_and_throttles_important_events(self):
         urgent = self.service.classify_game_audio(
