@@ -101,6 +101,36 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn('(source == "game" and latest_identity != foreground_identity)', vision)
         self.assertNotIn('self._capture_desktop_frame()', vision[vision.index("    def _vision_status"):vision.index("    def build_chat_vision_context")])
 
+    def test_vision_uses_an_isolated_router_and_chat_never_waits_for_vision(self):
+        composition = (ROOT / "kira" / "ui" / "main_window_composition.py").read_text(encoding="utf-8")
+        vision = (ROOT / "kira" / "ui" / "main_window_attachments_vision.py").read_text(encoding="utf-8")
+        chat = (ROOT / "kira" / "ui" / "main_window_chat.py").read_text(encoding="utf-8")
+        self.assertIn("self.services.vision_router = self.services.provider_application_service.create_isolated_router(", composition)
+        self.assertIn("vision_router,", vision)
+        self.assertNotIn("VisionAnalysisWorker(\n                self.context.session.client,", vision)
+
+        chat_tree = ast.parse(chat)
+        controller = next(
+            node for node in chat_tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "ChatController"
+        )
+        submit = next(
+            node for node in controller.body
+            if isinstance(node, ast.FunctionDef) and node.name == "submit"
+        )
+        submit_source = ast.get_source_segment(chat, submit)
+        self.assertNotIn("_vision_worker", submit_source)
+        self.assertNotIn("force_queue", submit_source)
+        self.assertNotIn("cancel_request", submit_source)
+
+    def test_provider_settings_and_shutdown_manage_the_isolated_vision_router(self):
+        lifecycle = (ROOT / "kira" / "ui" / "main_window_lifecycle.py").read_text(encoding="utf-8")
+        runtime = (ROOT / "kira" / "ui" / "main_window_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("create_isolated_router(", lifecycle)
+        self.assertIn("previous_vision_router.cancel()", lifecycle)
+        self.assertIn('getattr(self.context.services, "vision_router", None)', runtime)
+        self.assertIn("vision_router.cancel()", runtime)
+
     def test_shutdown_uses_two_phase_chat_application_disposal(self):
         runtime_tree = ast.parse((ROOT / "kira" / "ui" / "main_window_runtime.py").read_text(encoding="utf-8"))
         runtime_methods = {n.name: n for n in ast.walk(runtime_tree) if isinstance(n, ast.FunctionDef)}
