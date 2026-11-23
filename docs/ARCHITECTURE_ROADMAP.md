@@ -326,7 +326,7 @@ The 2026-11-19 TASK 015 counts remain a historical audit result. They must not b
 
 Open follow-ups at this snapshot:
 - **PR #252 (rebased from the former PR #248):** idle avatar cadence/cache and deferred worker imports are carried on the latest `new-main` base. Focused regression tests are included; executable results, Windows Qt behavior and actual CPU impact still require acceptance.
-- **PR #250:** voice toggle guard for an unopened lazy settings page. Source correction is present; runtime/Qt tests are unverified.
+- **PR #253 (rebased from the former PR #250):** lazy voice reply toggle guard plus regression tests for page-not-created, page-created and missing-checkbox states. Qt/runtime execution is still required.
 
 ### Required closure sequence
 
