@@ -103,11 +103,36 @@ class AttachmentsVisionController(WindowFeatureController):
             return
 
         engine = self._perception_engine()
+        previous_window = context.snapshot().get("active_window")
         normalized = engine.observe_window(window_info, source=source)
         if normalized is None:
             context.clear_sensitive(reason="foreground_window_unidentified")
             self._cancel_perception_worker()
             return
+
+        current_identity = (
+            int(normalized.get("hwnd") or 0),
+            int(normalized.get("pid") or 0),
+            str(normalized.get("exe") or "").casefold(),
+            str(normalized.get("title") or "").strip(),
+            str(normalized.get("path") or "").casefold(),
+        )
+        previous_identity = None
+        if isinstance(previous_window, dict):
+            previous_identity = (
+                int(previous_window.get("hwnd") or 0),
+                int(previous_window.get("pid") or 0),
+                str(previous_window.get("exe") or "").casefold(),
+                str(previous_window.get("title") or "").strip(),
+                str(previous_window.get("path") or "").casefold(),
+            )
+        if previous_identity != current_identity:
+            vision_trace(
+                "perception_event",
+                event_type="active_window_changed",
+                source=source,
+                exe=str(normalized.get("exe") or "")[:80] or None,
+            )
 
         worker = self.context.state._perception_worker
         if worker is not None and worker.isRunning():
@@ -124,6 +149,12 @@ class AttachmentsVisionController(WindowFeatureController):
             "Visible foreground content changed",
             source=source,
             dedupe_key=f"screen:{source}:{sample_key}",
+        )
+        vision_trace(
+            "perception_event",
+            event_type="screen_changed",
+            source=source,
+            sample_id=sample_key,
         )
         settings = self.context.services.settings
         ocr_enabled = (
