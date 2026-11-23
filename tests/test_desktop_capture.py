@@ -52,6 +52,27 @@ class DesktopCaptureAdapterTests(unittest.TestCase):
         self.assertIsNone(service.capture_window(item))
         service._capture_dxcam.assert_not_called()
 
+    def test_full_monitor_capture_uses_monitor_containing_foreground_window(self):
+        service = DesktopCaptureService()
+        primary = FakeScreen(r"\\.\\DISPLAY1", (0, 0, 1920, 1080), True)
+        secondary = FakeScreen(r"\\.\\DISPLAY2", (1920, 0, 2560, 1440))
+        service._qt_screens = mock.Mock(return_value=([primary, secondary], primary))
+        service._is_current_foreground = mock.Mock(return_value=True)
+        service._capture_monitor_screen = mock.Mock(return_value="full-monitor")
+        item = {"hwnd": 10, "pid": 20, "exe": "browser.exe", "path": r"C:\Browser.exe",
+                "title": "Work", "rect": (2000, 100, 3000, 900)}
+        self.assertEqual(service.capture_monitor_for_window(item), "full-monitor")
+        service._capture_monitor_screen.assert_called_once_with(secondary, 854, 480)
+
+    def test_full_monitor_capture_rejects_background_window(self):
+        service = DesktopCaptureService()
+        service._is_current_foreground = mock.Mock(return_value=False)
+        service._capture_monitor_screen = mock.Mock()
+        item = {"hwnd": 10, "pid": 20, "exe": "browser.exe", "path": r"C:\Browser.exe",
+                "title": "Work", "rect": (0, 0, 1280, 720)}
+        self.assertIsNone(service.capture_monitor_for_window(item))
+        service._capture_monitor_screen.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -35,6 +35,10 @@ _LAST_CAPTURE_STATE = {}
 # game window) or "screen" (the whole primary screen, used when no game window is captured).
 _FRAME_SOURCE = {"value": None}
 _FRAME_WINDOW_INFO = {"value": None}
+LIVE_VIDEO_MAX_WIDTH = 960
+LIVE_VIDEO_MAX_HEIGHT = 540
+LIVE_VIDEO_JPEG_QUALITY = 58
+LIVE_VIDEO_CHANGE_THRESHOLD = 0.015
 
 
 def _game_fields(game):
@@ -81,6 +85,138 @@ class AttachmentsVisionController(WindowFeatureController):
         worker = self.context.state._perception_worker
         if worker is not None and worker.isRunning():
             worker.cancel()
+
+    def _vision_interval_ms(self):
+        base = max(
+            250, int(self.context.services.vision_application_service.policy.interval_seconds * 1000)
+        )
+        return min(base, 1000) if getattr(self, "_live_video_active", False) else base
+
+    def _clear_live_video_state(self):
+        self._live_video_sample = b""
+        self._live_video_identity = None
+        self.feature_controller("runtime").clear_gemini_video_frames()
+
+    def set_live_video_active(self, enabled):
+        """Use a 1 Hz timer only while Live and a manual screen source are both active."""
+        self._live_video_active = bool(enabled)
+        source_active = (
+            self.context.state._game_mode_enabled
+            or self.context.services.vision_application_service.desktop_capture_application_service.enabled
+        )
+        timer = self.context.state._game_capture_timer
+        timer.setInterval(self._vision_interval_ms())
+        if not enabled:
+            self._clear_live_video_state()
+        if source_active and not self.context.state._closing:
+            if not timer.isActive():
+                timer.start()
+            if enabled:
+                self._capture_active_vision_frame()
+
+    def _maybe_stream_gemini_live_frame(self, _frame, source, window_info):
+        """Send a full-monitor JPEG after rechecking Live readiness and foreground privacy."""
+        runtime = self.feature_controller("runtime")
+        if not runtime.is_gemini_live_ready():
+            return False
+        privacy = self.context.services.vision_application_service.desktop_capture_application_service
+        if source == "desktop":
+            source_enabled = bool(privacy.enabled)
+        elif source == "game":
+            permissions = self.context.services.game_mode_application_service.permissions(
+                self.context.state._game_mode_profile
+            )
+            source_enabled = bool(self.context.state._game_mode_enabled and permissions["vision_capture"])
+        else:
+            source_enabled = False
+        if not source_enabled:
+            self._clear_live_video_state()
+            return False
+
+        capture = self.context.adapters.game_mode.capture_service
+        current = capture.foreground_window_info()
+        service = self.context.services.vision_application_service
+        permitted = service.capture_allowed(
+            self.context.state._game_mode_enabled if source == "game" else False,
+            self.context.state._game_mode_profile if source == "game" else None,
+            source=source, window_info=current,
+        )
+        if not permitted:
+            self._clear_live_video_state()
+            vision_trace("live_video_blocked", source=source, reason="privacy_or_source_disabled")
+            return False
+        identity = (
+            int(current.get("hwnd") or 0), int(current.get("pid") or 0),
+            str(current.get("exe") or "").casefold(), str(current.get("title") or "").strip(),
+            str(current.get("path") or "").casefold(),
+        )
+        expected = (
+            int((window_info or {}).get("hwnd") or 0), int((window_info or {}).get("pid") or 0),
+            str((window_info or {}).get("exe") or "").casefold(),
+            str((window_info or {}).get("title") or "").strip(),
+            str((window_info or {}).get("path") or "").casefold(),
+        )
+        if not all(identity) or identity != expected:
+            self._clear_live_video_state()
+            vision_trace("live_video_blocked", source=source, reason="foreground_changed")
+            return False
+        if identity != getattr(self, "_live_video_identity", None):
+            runtime.clear_gemini_video_frames()
+            self._live_video_sample = b""
+            self._live_video_identity = identity
+
+        monitor_id = privacy.selected_monitor_id if source == "desktop" else None
+        pixmap = capture.capture_monitor_for_window(
+            current, monitor_id=monitor_id or None,
+            max_width=LIVE_VIDEO_MAX_WIDTH, max_height=LIVE_VIDEO_MAX_HEIGHT,
+        )
+        if pixmap is None or pixmap.isNull():
+            self._clear_live_video_state()
+            vision_trace("live_video_capture_skipped", source=source, reason="full_monitor_capture_failed")
+            return False
+        latest = capture.foreground_window_info()
+        latest_identity = (
+            int((latest or {}).get("hwnd") or 0), int((latest or {}).get("pid") or 0),
+            str((latest or {}).get("exe") or "").casefold(),
+            str((latest or {}).get("title") or "").strip(),
+            str((latest or {}).get("path") or "").casefold(),
+        )
+        if latest_identity != identity or not service.capture_allowed(
+            self.context.state._game_mode_enabled if source == "game" else False,
+            self.context.state._game_mode_profile if source == "game" else None,
+            source=source, window_info=latest,
+        ):
+            self._clear_live_video_state()
+            vision_trace("live_video_blocked", source=source, reason="foreground_changed_during_capture")
+            return False
+
+        image = pixmap.toImage()
+        sample = self._perception_sample(image)
+        previous = getattr(self, "_live_video_sample", b"")
+        if previous and len(previous) == len(sample):
+            delta = sum(abs(a - b) for a, b in zip(previous, sample))
+            if delta / (255.0 * len(sample)) < LIVE_VIDEO_CHANGE_THRESHOLD:
+                return False
+        try:
+            from PySide6.QtCore import QBuffer, QByteArray, QIODevice
+            data = QByteArray()
+            buffer = QBuffer(data)
+            if not buffer.open(QIODevice.WriteOnly) or not image.save(
+                buffer, "JPEG", LIVE_VIDEO_JPEG_QUALITY
+            ):
+                return False
+            jpeg = bytes(data)
+        except Exception as exc:  # a video path error must not interrupt audio
+            vision_trace("live_video_encode_failed", source=source, error=type(exc).__name__)
+            return False
+        if not runtime.send_gemini_video_frame(jpeg):
+            return False
+        self._live_video_sample = sample
+        vision_trace(
+            "live_video_frame_queued", source=source,
+            width=image.width(), height=image.height(), jpeg_bytes=len(jpeg),
+        )
+        return True
 
     def _queue_perception_ocr(self, frame, source, window_info):
         """Update safe app context immediately; OCR only follows a changed screen."""
@@ -443,7 +579,7 @@ class AttachmentsVisionController(WindowFeatureController):
             for key, action in self.context.views.vision_rate_actions.items():
                 action.setChecked(key == policy.name)
         self.context.state._game_capture_timer.setInterval(
-            max(250, int(policy.interval_seconds * 1000))
+            self._vision_interval_ms()
         )
         if self.context.state._game_mode_enabled:
             self._capture_game_frame()
@@ -469,7 +605,7 @@ class AttachmentsVisionController(WindowFeatureController):
             self.context.services.desktop_context_application_service.clear()
         if allowed:
             self.context.state._game_capture_timer.setInterval(
-                max(250, int(self.context.services.vision_application_service.policy.interval_seconds * 1000))
+                self._vision_interval_ms()
             )
             self._capture_game_frame()
             self.context.state._game_capture_timer.start()
@@ -506,12 +642,14 @@ class AttachmentsVisionController(WindowFeatureController):
         if not enabled:
             self._cancel_perception_worker()
             self.context.services.desktop_context_application_service.clear()
+            if not self.context.state._game_mode_enabled:
+                self._clear_live_video_state()
         self.context.state._latest_game_frame = None
         _FRAME_SOURCE["value"] = None
         _FRAME_WINDOW_INFO["value"] = None
         if enabled:
             self.context.state._game_capture_timer.setInterval(
-                max(250, int(service.policy.interval_seconds * 1000))
+                self._vision_interval_ms()
             )
             self._capture_desktop_frame()
             self.context.state._game_capture_timer.start()
@@ -893,6 +1031,7 @@ class AttachmentsVisionController(WindowFeatureController):
             self.context.state._game_mode_profile,
             source="game",
         ):
+            self._clear_live_video_state()
             self.context.state._latest_game_frame = None
             service.reset()
             _trace_capture_state(None, None)
@@ -907,6 +1046,7 @@ class AttachmentsVisionController(WindowFeatureController):
             source="game",
             window_info=window_info,
         ):
+            self._clear_live_video_state()
             self.context.state._latest_game_frame = None
             _FRAME_SOURCE["value"] = None
             _FRAME_WINDOW_INFO["value"] = None
@@ -940,6 +1080,7 @@ class AttachmentsVisionController(WindowFeatureController):
         window_info = capture.foreground_window_info()
         allowed, reason = privacy.evaluate_window(window_info)
         if not allowed:
+            self._clear_live_video_state()
             self.context.state._latest_game_frame = None
             _FRAME_SOURCE["value"] = None
             _FRAME_WINDOW_INFO["value"] = None
@@ -976,6 +1117,8 @@ class AttachmentsVisionController(WindowFeatureController):
         service = self.context.services.vision_application_service
         if frame is None or frame.isNull():
             return
+        # The Gemini Live visual path is independent of ordinary Chat/Vision worker busy state.
+        self._maybe_stream_gemini_live_frame(frame, source, window_info)
         # The local Perception path is independent of cloud/model analysis busy state.
         self._queue_perception_ocr(frame, source, window_info)
         enabled = self.context.state._game_mode_enabled if source == "game" else True

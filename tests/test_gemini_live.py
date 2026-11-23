@@ -1,7 +1,7 @@
 """Unit tests for Gemini Live credential selection and device resolution."""
 import unittest
 
-from kira.gemini_live import resolve_google_api_key, _device_index
+from kira.gemini_live import LiveVideoFrameGate, resolve_google_api_key, _device_index
 
 
 class _AudioDevices:
@@ -26,7 +26,39 @@ class _DuplicateAudioDevices:
         return [{"name": "MME"}, {"name": "Windows WASAPI"}]
 
 
+class _Clock:
+    def __init__(self):
+        self.value = 10.0
+
+    def __call__(self):
+        return self.value
+
+
 class GeminiLiveTests(unittest.TestCase):
+    def test_live_video_gate_limits_valid_jpeg_to_one_fps(self):
+        clock = _Clock()
+        gate = LiveVideoFrameGate(clock=clock)
+        jpeg = b"\\xff\\xd8sample-frame\\xff\\xd9"
+        self.assertTrue(gate.accept(jpeg))
+        self.assertFalse(gate.accept(jpeg))
+        clock.value += 0.999
+        self.assertFalse(gate.accept(jpeg))
+        clock.value += 0.002
+        self.assertTrue(gate.accept(jpeg))
+
+    def test_live_video_gate_rejects_invalid_and_oversized_frames(self):
+        gate = LiveVideoFrameGate(max_bytes=12, clock=_Clock())
+        self.assertFalse(gate.accept(b""))
+        self.assertFalse(gate.accept(b"not-a-jpeg"))
+        self.assertFalse(gate.accept(b"\\xff\\xd8" + b"x" * 20 + b"\\xff\\xd9"))
+
+    def test_live_video_gate_reset_allows_immediate_next_frame(self):
+        gate = LiveVideoFrameGate(clock=_Clock())
+        jpeg = b"\\xff\\xd8sample\\xff\\xd9"
+        self.assertTrue(gate.accept(jpeg))
+        self.assertFalse(gate.accept(jpeg))
+        gate.reset()
+        self.assertTrue(gate.accept(jpeg))
     def test_selected_google_connection_key_is_used(self):
         settings = {
             "providers": {

@@ -20,6 +20,39 @@ CHANNELS = 1
 CHUNK_FRAMES = 1_600
 MAX_INPUT_CHUNKS = 12
 MAX_OUTPUT_CHUNKS = 32
+MAX_VIDEO_CHUNKS = 1
+MAX_VIDEO_FRAME_BYTES = 2 * 1024 * 1024
+VIDEO_FRAME_INTERVAL_SECONDS = 1.0
+
+
+class LiveVideoFrameGate:
+    """Validate JPEG frames and enforce a one-frame-per-second ceiling."""
+
+    def __init__(self, *, interval: float = VIDEO_FRAME_INTERVAL_SECONDS,
+                 max_bytes: int = MAX_VIDEO_FRAME_BYTES, clock=None):
+        import time
+        self.interval = max(0.0, float(interval))
+        self.max_bytes = max(1, int(max_bytes))
+        self._clock = clock or time.monotonic
+        self._lock = threading.Lock()
+        self._last_at = None
+
+    def accept(self, jpeg: bytes) -> bool:
+        payload = bytes(jpeg or b"")
+        if (len(payload) < 4 or len(payload) > self.max_bytes
+                or not payload.startswith(b"\\xff\\xd8")
+                or not payload.endswith(b"\\xff\\xd9")):
+            return False
+        now = self._clock()
+        with self._lock:
+            if self._last_at is not None and now - self._last_at < self.interval:
+                return False
+            self._last_at = now
+        return True
+
+    def reset(self) -> None:
+        with self._lock:
+            self._last_at = None
 
 
 def _is_google_provider(provider_id: str, provider: dict) -> bool:
@@ -83,6 +116,10 @@ class GeminiLiveWorker(QThread):
         self._loop = None
         self._main_task = None
         self._input_chunks = None  # asyncio.Queue, created on the session event loop
+        self._video_chunks = None  # one-slot asyncio.Queue, created on the session event loop
+        self._video_ready = threading.Event()
+        self._video_gate = LiveVideoFrameGate()
+        self._send_lock = None  # asyncio.Lock shared by audio/video senders
         self._output_chunks: queue.Queue[bytes] = queue.Queue(MAX_OUTPUT_CHUNKS)
         try:
             self._mic_gain = max(0.5, min(3.0, float(settings.get("mic_gain", 100)) / 100.0))
@@ -99,8 +136,63 @@ class GeminiLiveWorker(QThread):
         self._failure = ""
         self._transcript_buffers = {"user": [], "assistant": []}
 
+    @property
+    def video_ready(self) -> bool:
+        return self._video_ready.is_set() and not self._stop.is_set()
+
+    def send_video_frame(self, jpeg: bytes) -> bool:
+        """Queue a new JPEG without blocking the capture/UI thread."""
+        if not self.video_ready or not self._video_gate.accept(jpeg):
+            return False
+        loop = self._loop
+        if loop is None:
+            self._video_gate.reset()
+            return False
+        try:
+            loop.call_soon_threadsafe(self._queue_video_frame, bytes(jpeg))
+            return True
+        except RuntimeError:
+            self._video_gate.reset()
+            return False
+
+    def _queue_video_frame(self, payload: bytes) -> None:
+        frames = self._video_chunks
+        if frames is None or self._stop.is_set():
+            return
+        if frames.full():
+            try:
+                frames.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+        try:
+            frames.put_nowait(payload)
+        except asyncio.QueueFull:
+            pass
+
+    def _clear_video_queue_on_loop(self) -> None:
+        frames = self._video_chunks
+        if frames is None:
+            return
+        while True:
+            try:
+                frames.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
+    def clear_video_frames(self) -> None:
+        """Discard queued images as soon as Live/source permission closes."""
+        self._video_gate.reset()
+        loop = self._loop
+        if loop is not None and not loop.is_closed():
+            try:
+                loop.call_soon_threadsafe(self._clear_video_queue_on_loop)
+            except RuntimeError:
+                pass
+
     def stop(self):
         self._stop.set()
+        self._video_ready.clear()
+        self.clear_video_frames()
         loop, task = self._loop, self._main_task
         if loop is not None and task is not None:
             try:
@@ -171,9 +263,20 @@ class GeminiLiveWorker(QThread):
     async def _send_audio(self, session, types):
         while not self._stop.is_set():
             chunk = await self._input_chunks.get()
-            await session.send_realtime_input(
-                audio=types.Blob(data=chunk, mime_type=f"audio/pcm;rate={INPUT_RATE}")
-            )
+            async with self._send_lock:
+                await session.send_realtime_input(
+                    audio=types.Blob(data=chunk, mime_type=f"audio/pcm;rate={INPUT_RATE}")
+                )
+
+    async def _send_video(self, session, types):
+        while not self._stop.is_set():
+            chunk = await self._video_chunks.get()
+            if self._stop.is_set():
+                return
+            async with self._send_lock:
+                await session.send_realtime_input(
+                    video=types.Blob(data=chunk, mime_type="image/jpeg")
+                )
 
     async def _receive(self, session):
         while not self._stop.is_set():
@@ -228,6 +331,8 @@ class GeminiLiveWorker(QThread):
             raise RuntimeError("کلید Google AI در بخش اتصالات انتخاب نشده است.")
         client = genai.Client(api_key=self.api_key)
         self._input_chunks = asyncio.Queue(MAX_INPUT_CHUNKS)
+        self._video_chunks = asyncio.Queue(MAX_VIDEO_CHUNKS)
+        self._send_lock = asyncio.Lock()
         config_values = {
             "response_modalities": ["AUDIO"],
             "speech_config": types.SpeechConfig(
@@ -240,6 +345,9 @@ class GeminiLiveWorker(QThread):
         }
         if self.system_instruction:
             config_values["system_instruction"] = self.system_instruction
+        proactivity_type = getattr(types, "ProactivityConfig", None)
+        if callable(proactivity_type) and bool(self.settings.get("gemini_live_proactive_audio", True)):
+            config_values["proactivity"] = proactivity_type(proactive_audio=True)
         config = types.LiveConnectConfig(**config_values)
         mic_device = _device_index(sd, self.settings.get("mic_device", ""), input_device=True)
         output_device = _device_index(sd, self.settings.get("output_device", ""), input_device=False)
@@ -256,10 +364,12 @@ class GeminiLiveWorker(QThread):
             )
             self._input_stream.start()
             self._output_stream.start()
+            self._video_ready.set()
             self.connected.emit()
             self.state_changed.emit("gemini_live")
             async with asyncio.TaskGroup() as group:
                 group.create_task(self._send_audio(session, types))
+                group.create_task(self._send_video(session, types))
                 group.create_task(self._receive(session))
 
     def _close_audio(self):
@@ -298,6 +408,8 @@ class GeminiLiveWorker(QThread):
             if not self._stop.is_set():
                 self._failure = self._format_failure(exc)
         finally:
+            self._video_ready.clear()
+            self._video_gate.reset()
             self._close_audio()
             if self._loop is not None:
                 pending = asyncio.all_tasks(self._loop)
@@ -311,6 +423,8 @@ class GeminiLiveWorker(QThread):
                 self._loop.close()
             self._loop = self._main_task = None
             self._input_chunks = None
+            self._video_chunks = None
+            self._send_lock = None
             if self._failure:
                 self.failed.emit(self._failure)
             self.state_changed.emit("stopped")

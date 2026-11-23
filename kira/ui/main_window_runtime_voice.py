@@ -207,6 +207,25 @@ class RuntimeVoiceMixin:
                 f"شروع مسیر پشتیبان محلی ناموفق بود: {type(exc).__name__}: {exc}"
             )
 
+    def is_gemini_live_ready(self):
+        worker = getattr(self, "_gemini_worker", None)
+        return bool(
+            self._voice_session_requested
+            and getattr(self, "_voice_mode", "") == "gemini_live"
+            and worker is not None and worker.isRunning() and worker.video_ready
+        )
+
+    def send_gemini_video_frame(self, jpeg: bytes) -> bool:
+        worker = getattr(self, "_gemini_worker", None)
+        if not self.is_gemini_live_ready() or worker is None:
+            return False
+        return worker.send_video_frame(jpeg)
+
+    def clear_gemini_video_frames(self) -> None:
+        worker = getattr(self, "_gemini_worker", None)
+        if worker is not None:
+            worker.clear_video_frames()
+
     def _on_gemini_state(self, state):
         worker = self.sender()
         if worker is not None and worker is not getattr(self, "_gemini_worker", None):
@@ -215,6 +234,9 @@ class RuntimeVoiceMixin:
             self._voice_mode = "gemini_connecting"
         elif state == "gemini_live":
             self._voice_mode = "gemini_live"
+            self.feature_controller("attachments_vision").set_live_video_active(True)
+        elif state == "stopped":
+            self.feature_controller("attachments_vision").set_live_video_active(False)
         self._sync_voice_mode_badge()
         self.update_engine_label()
 
@@ -276,7 +298,15 @@ class RuntimeVoiceMixin:
                 settings=self.context.services.settings,
                 system_instruction=(
                     f"You are {self.context.services.character_service.display_name(self.context.services.settings)}. "
-                    "You are a warm, natural voice companion. Speak directly and conversationally in the user's language. "
+                    "You are a warm, attentive, natural voice companion. Speak directly and conversationally "
+                    "in the user's language. You receive occasional JPEG snapshots of the entire explicitly "
+                    "selected monitor, or the monitor containing the foreground window in automatic mode. "
+                    "The user manually enables Live Desktop Vision or Game Mode before screen capture begins. "
+                    "Frames arrive only on meaningful visual changes and at no more than one per second. "
+                    "Use them as continuing context and connect visible events with the user's speech. Offer "
+                    "brief helpful observations or timely warnings when useful, but do not narrate trivial changes "
+                    "or interrupt unnecessarily. Only claim to see content present in received frames; never invent "
+                    "unseen details or imply that other monitors are visible. "
                     "Do not describe yourself as a text model or use local text-to-speech."
                 ),
                 parent=self.window,
@@ -301,6 +331,7 @@ class RuntimeVoiceMixin:
         if not enabled:
             self._voice_session_requested = False
             self._pending_gemini_start = False
+            self.feature_controller("attachments_vision").set_live_video_active(False)
             worker = getattr(self, "_gemini_worker", None)
             if worker is not None and worker.isRunning():
                 worker.stop()

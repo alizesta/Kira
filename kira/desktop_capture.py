@@ -289,11 +289,7 @@ class DesktopCaptureService:
                 self._release_dxcam()
         return None
 
-    def capture_monitor(self, monitor_id: str | None = None,
-                        max_width: int = CAPTURE_MAX_WIDTH,
-                        max_height: int = CAPTURE_MAX_HEIGHT):
-        """Capture one full output. Callers must apply privacy policy before using it."""
-        screen = self._screen_for_monitor(monitor_id)
+    def _capture_monitor_screen(self, screen, max_width: int, max_height: int):
         if screen is None:
             return None
         pixmap = self._capture_dxcam(screen, self._screen_rect(screen), max_width, max_height)
@@ -308,6 +304,33 @@ class DesktopCaptureService:
         if pixmap.width() > target[0] or pixmap.height() > target[1]:
             pixmap = pixmap.scaled(target[0], target[1], Qt.KeepAspectRatio, Qt.FastTransformation)
         return pixmap
+
+    def capture_monitor(self, monitor_id: str | None = None,
+                        max_width: int = CAPTURE_MAX_WIDTH,
+                        max_height: int = CAPTURE_MAX_HEIGHT):
+        """Capture one full output. Callers must apply privacy policy before using it."""
+        return self._capture_monitor_screen(
+            self._screen_for_monitor(monitor_id), max_width, max_height
+        )
+
+    def capture_monitor_for_window(
+        self, window_info: dict[str, Any] | None, *, monitor_id: str | None = None,
+        max_width: int = CAPTURE_MAX_WIDTH, max_height: int = CAPTURE_MAX_HEIGHT,
+    ):
+        """Capture the complete selected/foreground monitor, only for the current HWND/PID."""
+        if not isinstance(window_info, dict):
+            return None
+        try:
+            hwnd, pid = int(window_info["hwnd"]), int(window_info["pid"])
+            rect = tuple(int(value) for value in window_info["rect"])
+            if len(rect) != 4 or rect[2] <= rect[0] or rect[3] <= rect[1]:
+                return None
+        except (KeyError, TypeError, ValueError):
+            return None
+        if hwnd <= 0 or pid <= 0 or not self._is_current_foreground(hwnd, pid):
+            return None
+        screen = self._screen_for_monitor(monitor_id) if monitor_id else self._monitor_for_rect(rect)
+        return self._capture_monitor_screen(screen, max_width, max_height)
 
     def capture_window(self, window_info: dict[str, Any] | None, *, monitor_id: str | None = None,
                        max_width: int = CAPTURE_MAX_WIDTH, max_height: int = CAPTURE_MAX_HEIGHT):
