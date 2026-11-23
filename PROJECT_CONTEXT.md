@@ -1,3 +1,10 @@
+## Live Desktop Vision — Perception Engine (Task 2, 2026-11-23)
+- Foreground-window facts, bounded visual-change samples and local OCR now feed a RAM-only `DesktopContext`; the summary is capped at 2,000 characters and recent events are count-bounded.
+- OCR is optional and replaceable through `OcrEngine`; no package or language data is installed automatically. OCR runs only after a meaningful foreground-window change, and Game Mode OCR is off by default.
+- A blocked or unidentified foreground window clears current OCR text and active-window metadata before anything is added to model context. Trace records timings/counters and safe diagnostic fields only, never OCR text or window title.
+- Ordinary chat receives the compact DesktopContext summary, not an automatically attached raw screen image. User-selected images and explicit manual screenshots remain supported.
+- Unit tests were added for context bounds, duplicate events/text, blocked-window clearing, change detection and optional OCR. They have not yet been executed in this source-only environment; Windows/OCR-quality and target-hardware measurements remain pending.
+
 ## Startup phase 2 — four-stage follow-up (2026-11-23)
 - Session synchronization accepts an active character and keeps inactive profiles as lightweight navigation entries until selected.
 - ServiceModule lazy proxies defer Web Search, shared Skills, chat search, transfer and conversation organization construction/startup until use.

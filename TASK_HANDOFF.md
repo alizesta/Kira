@@ -1,3 +1,13 @@
+## Live Desktop Vision — Task 2 handoff (2026-11-23)
+- Branch: `feature/live-desktop-perception-task-2`, based on the Task 1 commits already present in `new-main`.
+- Added `kira/perception/` primitives: `ActiveWindowProbe`, `ChangeDetector`, `PerceptionEvent` and `PerceptionEngine`.
+- Added lifecycle-managed, Qt-free `DesktopContext` with in-memory foreground application/window, foreground duration, bounded OCR text, deduplicated recent events and a 2,000-character provider summary. Sensitive state is purged whenever the foreground identity is unknown or blocked.
+- `vision_ocr.py` now defines a replaceable `OcrEngine` contract and structured `OcrResult` (language/confidence). The optional Tesseract implementation uses only already-installed Pillow/pytesseract and existing language data; it never installs anything.
+- OCR is triggered only after a changed foreground crop. Game Mode OCR is disabled by default (`vision_ocr_in_game_mode=False`); desktop OCR can be disabled independently. OCR errors are non-fatal.
+- Chat now receives the bounded context summary; live raw frames are no longer added to every ordinary chat request. Explicit user image attachments and manual screenshot capture remain available.
+- Added `tests/test_desktop_context.py`, `tests/test_perception_engine.py` and `tests/test_vision_ocr.py`; existing Game Mode/FrameGate paths remain in place. Local Python tests have not yet been executed; no GitHub Actions were run. Windows multi-monitor, OCR language-quality, CPU and added-latency measurements remain pending.
+- Privacy Trace contains only safe metadata, counts and timings; it never stores OCR text, full window titles or raw image data.
+
 ## Fast Path Stage 4 — Real registry boundary integration tests (2026-11-22)
 
 - Branch: `test/fastpath-real-boundary-integration`; based on `claude/task-understanding-review` after stage 3 PR #225 was merged.
