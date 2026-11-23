@@ -8,6 +8,8 @@ from kira.app.dependency_container import DependencyContainer
 from kira.app.event_bus import EventBus
 from kira.app.feature_modules import (
     APPLICATION_FEATURE_DEPENDENCIES,
+    OPTIONAL_APPLICATION_MODULES,
+    REQUIRED_APPLICATION_MODULES,
     register_application_modules,
 )
 from kira.app.module_manager import ModuleManager, ModuleState
@@ -171,6 +173,49 @@ class FeatureModuleRegistrationTests(unittest.TestCase):
     def tearDown(self):
         self.manager.shutdown()
         self.event_bus.close()
+
+    def test_optional_modules_are_separate_and_disablable(self):
+        self.assertTrue({
+            "conversation_organization", "chat_search", "chat_transfer",
+            "web_search", "shared_skills", "coding_agent",
+            "brain_application", "reflection_application",
+        }.issubset(OPTIONAL_APPLICATION_MODULES))
+        self.assertFalse(OPTIONAL_APPLICATION_MODULES & REQUIRED_APPLICATION_MODULES)
+        self.assertIn("chat_history", REQUIRED_APPLICATION_MODULES)
+        self.assertIn("provider", REQUIRED_APPLICATION_MODULES)
+        self.assertTrue(self.manager._modules["web_search"].optional)
+        self.assertFalse(self.manager._modules["chat_history"].optional)
+        self.manager.disable("web_search")
+        with self.assertRaisesRegex(Exception, "Required module cannot be disabled"):
+            self.manager.disable("chat_history")
+
+    def test_optional_factory_is_deferred_until_capability_use(self):
+        created = []
+
+        def broken_web_search():
+            created.append("called")
+            raise RuntimeError("web search is unavailable")
+
+        manager = ModuleManager()
+        container = manager.container
+        register_application_modules(
+            manager,
+            container,
+            settings={},
+            event_publisher=EventPublisher(),
+            service_factories={"web_search_service": broken_web_search},
+        )
+        try:
+            manager.start("web_search")
+            self.assertEqual(manager.state("web_search"), ModuleState.STARTED)
+            self.assertEqual(created, [])
+            proxy = container.resolve("web_search_service")
+            with self.assertRaisesRegex(RuntimeError, "web search is unavailable"):
+                proxy.search("test")
+            self.assertEqual(created, ["called"])
+        finally:
+            manager.shutdown()
+            manager.event_bus.close()
 
     def test_new_use_cases_are_registered_with_chat_history_dependencies(self):
         expected = {

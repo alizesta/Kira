@@ -20,6 +20,14 @@ class StartupContractTests(unittest.TestCase):
         fields = ast.literal_eval(declaration.value.args[0])
         self.assertIn("music_watcher", fields)
 
+    def test_initial_window_appearance_does_not_materialize_settings_controller(self):
+        source = (ROOT / "kira" / "ui" / "main_window_composition.py").read_text(encoding="utf-8")
+        self.assertIn("AppearanceRuntime(self)", source)
+        self.assertIn("self.adapters.appearance_runtime.apply_character_art()", source)
+        self.assertIn("self.adapters.appearance_runtime.apply_appearance(save=False)", source)
+        self.assertNotIn('self.controllers.require("character_settings").apply_appearance', source)
+        self.assertNotIn('self.controllers.require("character_settings").apply_character_art', source)
+
     def test_chat_components_use_the_project_qt_binding(self):
         for component in ("chat_header.py", "chat_composer.py"):
             with self.subTest(component=component):

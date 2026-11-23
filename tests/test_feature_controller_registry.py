@@ -28,6 +28,25 @@ class FeatureControllerRegistryTests(unittest.TestCase):
             "second": self.second,
         })
 
+    def test_scoped_optional_peer_lookup_does_not_materialize_peer(self):
+        from PySide6.QtCore import QObject
+        from kira.ui.window_feature_controller import WindowFeatureController
+        from kira.ui.window_presentation_context import WindowPresentationContext
+
+        calls = []
+        window = QObject()
+        chat = WindowFeatureController(window)
+        registry = FeatureControllerRegistry(
+            {"chat": chat, "character_settings": lambda: calls.append("built") or SecondController()},
+            lazy_factories=True,
+        )
+        root = WindowPresentationContext(window, registry)
+        window.presentation_context = root
+        self.assertIsNone(chat.context.get_peer_if_materialized("character_settings"))
+        self.assertEqual(calls, [])
+        self.assertIsInstance(chat.context.require_peer("character_settings"), SecondController)
+        self.assertEqual(calls, ["built"])
+
     def test_reports_all_owners_of_legacy_collisions(self):
         self.assertEqual(
             self.registry.owners_for("shared_action"),

@@ -297,3 +297,17 @@ Initial candidates for evidence-based decisions (not automatic split instruction
 
 **Current outcome:** no large file is split merely to satisfy a LOC threshold. The immediate decisions are KEEP for cohesive owners and DEFER for the two areas where extraction would cross shared contracts/lifecycle. A future SPLIT requires a concrete ownership boundary and focused regression coverage first.
 
+
+
+### Architecture stabilization — 2026-11-23
+
+Implemented on `perf/startup-architecture-2026-11-23` (pending review/merge):
+
+1. Chat package exports resolve lazily; importing a leaf Chat module no longer eagerly pulls the complete Chat graph into `sys.modules`.
+2. Feature controllers are registered as factories. Vision, Provider Settings and Character Settings stay cold until their owning event/tab. Initial character artwork and appearance effects are served by the focused `AppearanceRuntime` adapter.
+3. History and conversation operations are extracted behind `ChatHistoryFacade`; request dispatch and stream lifecycle remain in `ChatApplicationService`.
+4. Versioned additive schema creation/backfill is extracted to `SqliteSchemaManager`; the repository retains connection, transaction, snapshot, recovery and write ownership.
+5. Optional service modules are enumerated in `OPTIONAL_APPLICATION_MODULES`; bootstrap gating is driven by `REQUIRED_APPLICATION_MODULES`. Optional services are provided through lazy proxies.
+6. Startup JSONL diagnostics now include phase timings and real process-memory samples. No numeric baseline is available until Kira is launched on the target Windows machine.
+
+Focused regression tests have been added. They still require execution on an available Python/Qt runner. Windows startup/RAM acceptance should use at least five fresh launches and compare median `window_shown` and `event_loop_first_tick` timings plus working-set/private-byte samples recorded at those phases.

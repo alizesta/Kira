@@ -110,8 +110,8 @@ class LifecycleController(WindowFeatureController):
         self.feature_controller("provider_settings").refresh_route_list()
         self.feature_controller("runtime").set_badge("idle", self.context.session.client.preview_route())
         self.apply_runtime()
-        self.feature_controller("character_settings").apply_character_voice_settings()
-        self.feature_controller("character_settings").apply_appearance(save=False)
+        self.context.adapters.appearance_runtime.apply_character_voice_settings()
+        self.context.adapters.appearance_runtime.apply_appearance(save=False)
         self.feature_controller("session").retranslate()
         self.check_status()
         if self.context.views.mic_btn.isChecked():

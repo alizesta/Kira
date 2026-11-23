@@ -102,6 +102,7 @@ SERVICE_FIELDS = frozenset({
 
 ADAPTER_FIELDS = frozenset({
     "animator",
+    "appearance_runtime",
     "bubble",
     "chat_attachment_controller",
     "companion",
@@ -349,7 +350,7 @@ CONTROLLER_ACCESS = {
  "session": {
   "state": frozenset({"_att_seq","_chat_action_seq","_chat_action_texts","_menu_actions","_nav_icon_map","_status","_tr","cur","front","sessions","_closing","_effect","_mood_emotion_glow","_save_warned"}),
   "services": frozenset({"character_service","chat_application_service","initiative_application_service","mood_service","provider_application_service","session_application_service","session_manager","settings","tool_agent","voice_application_service"}),
-  "adapters": frozenset({"bubble","director","chat_attachment_controller"}),
+  "adapters": frozenset({"bubble","director","chat_attachment_controller", "appearance_runtime"}),
   "views": frozenset({"code_chat","appearance_page","assistant_page","char_tab_buttons","char_tab_group","char_tabs_row","character_page","chat_page","chat_stack","gen_stop_btn","glow_effects","help_page","input","mic_btn","mood_indicator","mood_emotion_icon","nav_buttons","avatar_card","menu_btn","route_badge","preferences_page","save_btn","status","tab_keys","tabs","title","voice_page"}),
   "peers": frozenset({"session","runtime","chat","character_settings","attachments_vision","voice_settings"}),
   "resources": frozenset(),
@@ -358,7 +359,7 @@ CONTROLLER_ACCESS = {
  "lifecycle": {
   "state": frozenset({"_closing","_effect","_ollama_models","_ollama_worker","_quitting","sessions"}),
   "services": frozenset({"ollama_client","provider_application_service","runtime_settings_application_service","settings","tool_agent"}),
-  "adapters": frozenset({"animator","companion","bubble"}),
+  "adapters": frozenset({"animator","companion","bubble", "appearance_runtime"}),
   "views": frozenset({"appearance_page","avatar","character_page","conn_btn","conn_lbl","keep_alive","load_btn","mic_btn","model","modes_chk","name","num_ctx","num_predict","persona","route_ollama_enabled","speed_btn","tavily_key","temp","tray","ui_lang","unload_btn","url","voice_page","web_btn","web_depth","web_fallback_chk"}),
   "peers": frozenset({"session","provider_settings","runtime","character_settings"}),
   "resources": frozenset(),
@@ -385,7 +386,7 @@ CONTROLLER_ACCESS = {
  "character_settings": {
   "state": frozenset({"_closing","_effect","_mcp_registry_worker","front","sessions"}),
   "services": frozenset({"character_service","mood_service","settings","shared_skills_application_service","tool_agent","voice_application_service"}),
-  "adapters": frozenset({"animator","speaker"}),
+  "adapters": frozenset({"animator","speaker", "appearance_runtime"}),
   "views": frozenset({"assistant_page","appearance_page","character_page","help_page","mcp_registry_panel","preferences_page","save_btn","glow_effects","tabs","ui_lang","tavily_key","web_depth","web_fallback_chk","web_test_btn","ui_design_guidance_chk","restore_chat_btn","memory_btn","import_chat_btn","about_labels"}),
   "peers": frozenset({"session","lifecycle","runtime","chat","provider_settings"}),
   "resources": frozenset({"_mcp_registry_worker"}),
@@ -427,6 +428,14 @@ class _ControllerPresentationContext:
         if feature not in self._access["peers"]:
             raise PermissionError(f"Controller {self._feature!r} cannot access peer controller {feature!r}")
         return self._root.controllers.require(feature)
+
+    def get_peer_if_materialized(self, feature: str):
+        """Return a peer instance only when already realized; never trigger lazy loading."""
+        if feature not in self._access["peers"]:
+            raise PermissionError(
+                f"Controller {self._feature!r} cannot access peer controller {feature!r}"
+            )
+        return self._root.controllers.get_if_materialized(feature)
 
     @property
     def session(self):
