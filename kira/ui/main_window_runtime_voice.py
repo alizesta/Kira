@@ -16,10 +16,19 @@ class RuntimeVoiceMixin:
 
     def set_voice_enabled(self, on):
         self.context.services.settings["speak_replies"] = bool(on)
-        for w in (self.context.views.voice_btn, self.context.views.voice_page.speak_chk):
-            w.blockSignals(True)
-            w.setChecked(bool(on))
-            w.blockSignals(False)
+        controls = [self.context.views.voice_btn]
+        # The voice settings page is lazy-created. Toggling the microphone must
+        # not force that page to exist or fail when it has not been opened yet.
+        voice_page = getattr(self.context.views, "voice_page", None)
+        speak_chk = getattr(voice_page, "speak_chk", None) if voice_page is not None else None
+        if speak_chk is not None:
+            controls.append(speak_chk)
+        for widget in controls:
+            previous = widget.blockSignals(True)
+            try:
+                widget.setChecked(bool(on))
+            finally:
+                widget.blockSignals(previous)
         save_settings(self.context.services.settings)
         self.context.views.voice_btn.setToolTip(
             "پاسخ صوتی روشن است؛ Kira با صدا پاسخ می‌دهد."
