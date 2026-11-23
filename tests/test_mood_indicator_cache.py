@@ -6,7 +6,7 @@ from unittest.mock import patch
 try:
     from kira.ui.main_window_session import SessionController
     HAVE_QT = True
-except Exception:  # pragma: no cover - minimal portable environment
+except ImportError:  # pragma: no cover - minimal portable environment
     HAVE_QT = False
 
 
