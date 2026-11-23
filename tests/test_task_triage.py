@@ -77,6 +77,27 @@ class TriagePlanTests(unittest.TestCase):
         self.assertIsNotNone(plan)
         self.assertFalse(plan.index_only)
 
+    def test_unknown_actionable_request_keeps_compact_triage(self):
+        prompt = "یه قابلیت ناشناخته رو برام اعمال کن"
+        self.assertTrue(protocol.is_actionable_intent(prompt))
+        self.assertFalse(protocol.detect_categories(prompt))
+        plan = _agent().plan(prompt, session_id="unknown-action")
+        self.assertIsNotNone(plan)
+        self.assertTrue(plan.index_only)
+        self.assertEqual(plan.schema_categories, set())
+
+    def test_wallpaper_setup_detects_the_mixed_workflow_domains(self):
+        prompt = "یه والپیپر زنده‌ی پورشه بذار برام"
+        self.assertTrue(protocol.is_actionable_intent(prompt))
+        categories = protocol.detect_categories(prompt)
+        self.assertTrue({"apps", "files", "web"}.issubset(categories))
+        plan = _agent().plan(prompt, session_id="wallpaper-setup")
+        self.assertFalse(plan.index_only)
+        self.assertTrue({"apps", "files", "web"}.issubset(plan.schema_categories))
+
+    def test_polite_offer_for_help_is_not_an_actionable_pc_request(self):
+        self.assertFalse(protocol.is_actionable_intent("سلام، می‌تونی کمکم کنی؟"))
+
     def test_exact_fast_command_is_never_triaged(self):
         plan = _agent().plan("ساعت چنده", session_id="kira")
         self.assertIsNotNone(plan)

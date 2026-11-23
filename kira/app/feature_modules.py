@@ -65,8 +65,6 @@ def register_application_modules(
     from .provider_application import ProviderApplicationService
     from .runtime_settings_application import RuntimeSettingsApplicationService
     from .vision_application import VisionApplicationService
-    from .web_search import WebSearchApplicationService
-    from .shared_skills_application import SharedSkillsApplicationService
     from ..config import DATA_DIR, save_settings
     from .chat_composition import create_chat_application_service_factory
     from .session_composition import create_session_application_service_factory
@@ -134,6 +132,18 @@ def register_application_modules(
             file_port=transfer_file_port,
         )
 
+    def create_web_search_service() -> Any:
+        from .web_search import WebSearchApplicationService
+
+        return WebSearchApplicationService()
+
+    def create_shared_skills_service() -> Any:
+        from .shared_skills_application import SharedSkillsApplicationService
+
+        return SharedSkillsApplicationService(
+            DATA_DIR / "skills", settings, persist_settings=save_settings
+        )
+
     factories: dict[str, Callable[[], Any]] = {
         "memory_service": selected("memory_service", PersonaMemoryService),
         "mood_service": selected("mood_service", MoodStateService),
@@ -155,12 +165,9 @@ def register_application_modules(
             "chat_transfer_application_service",
             create_transfer_service,
         ),
-        "web_search_service": selected("web_search_service", WebSearchApplicationService),
+        "web_search_service": selected("web_search_service", create_web_search_service),
         "shared_skills_application_service": selected(
-            "shared_skills_application_service",
-            lambda: SharedSkillsApplicationService(
-                DATA_DIR / "skills", settings, persist_settings=save_settings
-            ),
+            "shared_skills_application_service", create_shared_skills_service
         ),
         "game_mode_application_service": selected("game_mode_application_service", GameModeApplicationService),
         "provider_application_service": selected("provider_application_service", ProviderApplicationService),
@@ -199,10 +206,18 @@ def register_application_modules(
         ("reflection_application", "reflection_application_service"),
         ("voice_application", "voice_application_service_factory"),
     )
+    lazy_modules = {
+        "conversation_organization",
+        "chat_search",
+        "chat_transfer",
+        "web_search",
+        "shared_skills",
+    }
     for module_id, service_key in modules:
         module_manager.register(
             module_id,
-            lambda key=service_key, factory=factories[service_key]: ServiceModule(key, factory),
+            lambda key=service_key, factory=factories[service_key], lazy=module_id in lazy_modules:
+                ServiceModule(key, factory, lazy=lazy),
             dependencies=APPLICATION_FEATURE_DEPENDENCIES[module_id],
             optional=False,
         )

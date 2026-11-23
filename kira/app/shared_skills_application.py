@@ -31,12 +31,8 @@ class SharedSkillsApplicationService:
     def start(self) -> None:
         if self._disposed:
             raise RuntimeError("Shared Skills service has been disposed")
+        # Library discovery is intentionally deferred until Skills is actually queried.
         self._started = True
-        try:
-            self._skills.list_installed()
-        except Exception:
-            self._started = False
-            raise
 
     def stop(self) -> None:
         self._started = False

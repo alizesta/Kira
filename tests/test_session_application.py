@@ -103,21 +103,49 @@ class SessionApplicationServiceTests(unittest.TestCase):
             profiles,
             ensure_resources=lambda session, profile: resources.append(session.cid),
             restore_history=lambda session: restored.append(session.cid),
+            active_character_id="kira",
         )
         second = self.service.sync_sessions(
             profiles,
             ensure_resources=lambda session, profile: resources.append(session.cid),
             restore_history=lambda session: restored.append(session.cid),
+            active_character_id="kira",
         )
 
         self.assertEqual(first, ("kira", "ren", "custom"))
         self.assertEqual(second, first)
-        self.assertEqual(restored, ["kira", "ren", "custom"])
-        self.assertEqual(resources.count("kira"), 2)
+        self.assertEqual(restored, ["kira"])
+        self.assertEqual(resources, ["kira", "kira"])
+        self.assertEqual(set(self.manager.sessions_by_character), {"kira"})
         self.assertEqual(
             [name for name, _payload in self.publisher.events],
-            ["session_created", "history_loaded"] * 3,
+            ["session_created", "history_loaded"],
         )
+
+    def test_inactive_character_is_realized_only_when_selected(self):
+        profiles = {"kira": {"name": "Kira"}, "ren": {"name": "Ren"}}
+        restored = []
+        resources = []
+
+        self.service.create_active_session("kira")
+        order = self.service.sync_sessions(
+            profiles,
+            ensure_resources=lambda session, profile: resources.append(session.cid),
+            restore_history=lambda session: restored.append(session.cid) or True,
+            active_character_id="kira",
+        )
+        self.assertEqual(order, ("kira", "ren"))
+        self.assertEqual(set(self.manager.sessions_by_character), {"kira"})
+        self.assertEqual(restored, ["kira"])
+
+        ren = self.service.ensure_session(
+            "ren",
+            profiles["ren"],
+            ensure_resources=lambda session, profile: resources.append(session.cid),
+        )
+        self.assertEqual(ren.cid, "ren")
+        self.assertIn("ren", self.manager.sessions_by_character)
+        self.assertEqual(resources, ["kira", "ren"])
 
     def test_history_restore_failure_does_not_mark_session_loaded_and_retries(self):
         session = self.manager.create_session("kira")
@@ -171,6 +199,17 @@ class SessionApplicationServiceTests(unittest.TestCase):
             [name for name, _payload in self.publisher.events].count("history_loaded"),
             1,
         )
+
+    def test_deleted_idle_character_is_not_returned_as_a_navigation_tab(self):
+        deleted = self.manager.create_session("deleted")
+        order = self.service.sync_sessions(
+            {"kira": {"name": "Kira"}},
+            ensure_resources=lambda _session, _profile: None,
+            restore_history=lambda _session: True,
+            active_character_id="kira",
+        )
+        self.assertEqual(order, ("kira",))
+        self.assertIsNone(self.manager.get_session(deleted.session_id))
 
     def test_deleted_character_session_is_retained_while_work_is_pending(self):
         session = self.manager.create_session("deleted")

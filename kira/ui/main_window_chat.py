@@ -205,6 +205,10 @@ class ChatController(WindowFeatureController):
         self.context.session._body_done = []
         original_text = str(text or "")
         self.context.services.tool_agent.begin_turn(self.context.state.cur.cid)
+        if not attachments:
+            self.context.services.tool_agent.prepare_control_dispatch(
+                original_text, session_id=self.context.state.cur.cid
+            )
         has_image = any(item.get("kind") == "image" for item in (attachments or []))
         command_dispatch = self.context.services.chat_application_service.dispatch_commands(
             self.context.state.cur.application_request_id,
@@ -355,7 +359,7 @@ class ChatController(WindowFeatureController):
 
     def begin_web_search(self, query, base_text, images):
         if not self.context.services.web_search_service.can_search(self.context.services.settings):
-            self.feature_controller("session").add_chat("system", self.context.services.web_search_service.MISSING_KEY_MESSAGE)
+            self.feature_controller("session").add_chat("system", self.context.services.web_search_service.missing_key_message())
             self.begin_reply()
             return
         self.context.session._search_token += 1
@@ -389,7 +393,7 @@ class ChatController(WindowFeatureController):
         gem = self.context.services.web_search_service.gemini_credentials(self.context.services.settings)
         self.context.views.web_test_btn.setEnabled(False)
         self.context.views.web_test_btn.setText("در حال آزمایش (چند ثانیه)…")
-        self.context.state._web_test_worker = TaskWorker(lambda: self.context.services.web_search_service.diagnose(key, depth, self.context.services.web_search_service.WEB_TEST_QUERY, gem))
+        self.context.state._web_test_worker = TaskWorker(lambda: self.context.services.web_search_service.diagnose(key, depth, self.context.services.web_search_service.value("WEB_TEST_QUERY"), gem))
         self.context.state._web_test_worker.done.connect(self.on_web_test_done)
         self.context.state._web_test_worker.start()
 
