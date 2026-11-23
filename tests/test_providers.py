@@ -38,6 +38,94 @@ def dispatch(table):
 
 
 class ProviderTests(unittest.TestCase):
+    def test_cloudflare_uses_openai_compatible_chat_completions_endpoint(self):
+        provider = hybrid_ai.CloudflareProvider({
+            "account_id": "test-account",
+            "api_key": "test-cloudflare-token",
+            "model": "@cf/meta/llama-3.1-8b-instruct",
+        })
+        url, headers, payload = provider._prepare(MSGS, SYS, 0.2, True)
+        self.assertEqual(
+            url,
+            "https://api.cloudflare.com/client/v4/accounts/test-account/ai/v1/chat/completions",
+        )
+        self.assertEqual(payload["model"], "@cf/meta/llama-3.1-8b-instruct")
+        self.assertEqual(payload["messages"][0], {"role": "system", "content": SYS})
+        self.assertEqual(payload["messages"][1], MSGS[0])
+        self.assertTrue(payload["stream"])
+        self.assertEqual(headers["Authorization"], "Bearer test-cloudflare-token")
+
+    def test_cloudflare_chat_parses_openai_compatible_response(self):
+        provider = hybrid_ai.CloudflareProvider({
+            "account_id": "test-account",
+            "api_key": "test-cloudflare-token",
+            "model": "@cf/meta/llama-3.1-8b-instruct",
+        })
+        response = Resp(200, {"choices": [{"message": {"content": "cloudflare answer"}}]})
+        with mock.patch("requests.post", return_value=response) as post:
+            self.assertEqual(provider.chat(MSGS, SYS), "cloudflare answer")
+        self.assertTrue(post.call_args.args[0].endswith("/ai/v1/chat/completions"))
+        self.assertEqual(post.call_args.kwargs["json"]["model"], "@cf/meta/llama-3.1-8b-instruct")
+
+    def test_403_html_gateway_page_is_not_reported_as_an_invalid_api_key(self):
+        provider = hybrid_ai.CustomOpenAIProvider({
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_key": "test-google-key",
+            "model": "gemini-3.8-flash",
+        }, name="custom-google")
+        response = Resp(
+            403,
+            text="<!doctype html><html><title>Error 403 Forbidden</title></html>",
+            headers={"Content-Type": "text/html"},
+        )
+        with self.assertRaises(ProviderError) as caught:
+            provider._check_status(response)
+        self.assertEqual(caught.exception.kind, "network")
+        self.assertIn("نامعتبر بودن API Key را ثابت نمی‌کند", str(caught.exception))
+        self.assertIn("IP", str(caught.exception))
+
+    def test_generic_groq_403_is_reported_as_permission_denied_not_bad_key(self):
+        provider = hybrid_ai.GroqProvider({
+            "api_key": "test-groq-key",
+            "model": "openai/gpt-oss-120b",
+        })
+        with self.assertRaises(ProviderError) as caught:
+            provider._check_status(Resp(403, text="Forbidden"))
+        self.assertEqual(caught.exception.kind, "permission")
+        self.assertNotIn("API Key نامعتبر", str(caught.exception))
+        self.assertIn("مجوز پروژه/سازمان", str(caught.exception))
+
+    def test_groq_model_permission_403_is_classified_as_model_access(self):
+        provider = hybrid_ai.GroqProvider({
+            "api_key": "test-groq-key",
+            "model": "openai/gpt-oss-120b",
+        })
+        response = Resp(403, {
+            "error": {
+                "message": "The model openai/gpt-oss-120b is blocked at the organization level.",
+                "code": "model_permission_blocked_org",
+            }
+        })
+        with self.assertRaises(ProviderError) as caught:
+            provider._check_status(response)
+        self.assertEqual(caught.exception.kind, "model")
+        self.assertIn("سطح پروژه یا سازمان", str(caught.exception))
+
+    def test_incomplete_sse_read_is_a_retryable_network_error(self):
+        from urllib3.exceptions import ProtocolError
+
+        provider = hybrid_ai.GroqProvider({
+            "api_key": "test-groq-key",
+            "model": "openai/gpt-oss-120b",
+        })
+        response = StreamResp([ProtocolError("Connection broken: IncompleteRead(1116 bytes read)")])
+        with mock.patch("requests.post", return_value=response):
+            with self.assertRaises(ProviderError) as caught:
+                list(provider.stream(MSGS, SYS, 0.2))
+        self.assertEqual(caught.exception.kind, "network")
+        self.assertTrue(caught.exception.retryable)
+        self.assertTrue(response.closed)
+
     def test_google_stream_does_not_retry_503_and_spend_daily_quota(self):
         provider = hybrid_ai.OpenAICompatibleProvider({
             "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
