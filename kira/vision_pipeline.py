@@ -15,15 +15,16 @@ class VisionPolicy:
     name: str
     interval_seconds: float
     change_threshold: float = 0.035
-    max_width: int = 854
-    max_height: int = 480
-    jpeg_quality: int = 62
+    max_width: int = 640
+    max_height: int = 360
+    jpeg_quality: int = 45
 
 
+# Frames are kept small on purpose: every analysed frame is uploaded to a cloud vision model.
 POLICIES = {
-    "economic": VisionPolicy("economic", 5.0, 0.045, 854, 480, 62),
-    "smart": VisionPolicy("smart", 1.0, 0.035, 960, 540, 66),
-    "fast": VisionPolicy("fast", 0.5, 0.025, 1280, 720, 70),
+    "economic": VisionPolicy("economic", 5.0, 0.045, 640, 360, 45),
+    "smart": VisionPolicy("smart", 1.0, 0.035, 768, 432, 50),
+    "fast": VisionPolicy("fast", 0.5, 0.025, 960, 540, 55),
 }
 
 
