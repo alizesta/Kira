@@ -50,7 +50,7 @@ class ProviderError(RuntimeError):
         self.provider = provider
         self.retryable = retryable
         self.status_code = status_code
-        self.kind = kind                # auth | model | request | rate | server | network | timeout | response | empty
+        self.kind = kind                # auth | permission | model | request | rate | server | network | timeout | response | empty
         self.retry_after = retry_after
         self.quota = ""                 # 429 only: "no_free" | "daily" | "" (see quota_kind)
 
@@ -449,7 +449,7 @@ class BaseProvider(ChatProvider):
             content_type = str(getattr(response, "headers", {}).get("Content-Type", "")).casefold()
             html_gateway_page = (
                 "text/html" in content_type
-                or bool(re.search(r"<\\s*(?:!doctype|html|head|title|meta)\\b", detail, re.IGNORECASE))
+                or bool(re.search(r"<\s*(?:!doctype|html|head|title|meta)\b", detail, re.IGNORECASE))
             )
             if html_gateway_page:
                 raise self._fail(
