@@ -414,6 +414,17 @@ class RouterRouteTests(unittest.TestCase):
             self.assertIn("تمام Routeهای فعال ناموفق", str(cm.exception), name)
             self.assertNotIn(CANARY, str(cm.exception), name)
 
+    def test_duplicate_endpoint_model_credentials_are_not_retried_as_failover(self):
+        s, r = make("groq", "cloudflare")
+        groq_route = next(route for route in routes.get_routes(s) if route["provider"] == "groq")
+        routes.add_route(s, "groq", groq_route["model"], enabled=True)
+        r = HybridRouter(s)
+        f = dispatch({"groq": requests.ConnectionError("offline"), "cloudflare": ok_cloudflare("backup")})
+        with mock.patch("requests.post", f):
+            self.assertEqual(r.chat(MSGS, SYS), "backup")
+        self.assertEqual(sum("groq" in call["url"] for call in f.calls), 1)
+        self.assertTrue(any(item.get("result") == "duplicate_target_skipped" for item in r.last_attempts))
+
     def test_cooldown_route_is_reported_when_healthy_fallback_returns_first(self):
         s, r = make("groq", "cloudflare")
         r.cooldowns["groq"] = time.monotonic() + 100
