@@ -1,6 +1,9 @@
 # KIRA ARCHITECTURE MASTER ROADMAP
 
 **Snapshot date:** 2026-11-19  
+**Current synchronization:** 2026-11-23; source baseline `new-main` at `91d5cdad7359da1d8bb626064fa84d676c160c02`. Historical audit dates and counts below remain unchanged.  
+**Merged architecture deltas:** PRs #239 (startup deferral), #240 (topic-scoped tool schemas), #243 (inactive Session/service deferral), and #246 (Chat/UI import boundaries, history facade and SQLite schema manager) are merged into `new-main`.  
+**Pending acceptance:** PR #248 (idle avatar/render and worker-import optimization) and PR #250 (lazy voice settings toggle guard) are open at this snapshot. Their tests and Windows runtime/CPU/memory measurements are not yet accepted. Workflow jobs with empty step lists are infrastructure failures, not test passes.
 **Repository:** `alizesta/Kira`  
 **Base branch:** `new-main`  
 **Source baseline SHA:** `0a84bbdc3d47afb1728ff314a056b49e6e56848b`  
@@ -38,7 +41,7 @@ Status labels in this document:
 - The PR's follow-up workflow executions still produced failed jobs with empty step lists and no retrievable logs. This is an infrastructure/runner execution failure signal, not evidence that the test assertions passed or failed at runtime.
 - `kira/ui/bootstrap.py` is the only production Qt Composition Root. Older statements in historical documents that name `kira/app/bootstrap.py` are superseded and must not be used as current architecture facts.
 
-### 2.2 Startup deferral change — 2026-11-23 (unmerged implementation branch)
+### 2.2 Historical startup deferral implementation snapshot — 2026-11-23 (subsequently merged as PR #239)
 
 - Implementation branch: `codex/startup-lazy-loading-2026-11-23`, created directly from `new-main` at `3d69726aee718c2405d51bd1f4cf9785b44fe5ee`; this delta is not yet part of `new-main`.
 - The tool package now exposes public components lazily. Importing `kira.tools.protocol` no longer imports `ToolAgent`, the built-in tool registry, Windows app catalog, or Hybrid AI provider implementation as package side effects. `ThinkFilter` is owned by provider-neutral `kira/think_filter.py`.
@@ -46,13 +49,26 @@ Status labels in this document:
 - Settings tabs retain stable indexes and navigation but replace eager page construction with first-visit builders. Piper warm-up, MusicWatcher and provider model-catalog refresh are also deferred until after initial display or until the relevant page/capability is requested.
 - Focused tests are added in `tests/test_startup_deferred_loading.py`. No Python test, compile/import suite, Windows GUI run, startup timing or RAM measurement is claimed for this branch; acceptance remains pending runtime evidence.
 
-### 2.3 Topic-scoped tool schema change — 2026-11-23 (stacked implementation branch)
+### 2.3 Historical topic-scoped tool schema snapshot — 2026-11-23 (subsequently merged as PR #240)
 
-- Implementation branch: `codex/tool-schema-pruning-2026-11-23`, stacked on `codex/startup-lazy-loading-2026-11-23`; it is not merged into `new-main`.
+- Implementation branch: `codex/tool-schema-pruning-2026-11-23`, stacked on `codex/startup-lazy-loading-2026-11-23`; this was the pre-merge status recorded when the implementation branch was inspected.
 - `ToolPlan.categories` remains the wider runtime/safety availability set. The new `schema_categories` is the model-visible scope used for both native function schemas and the text tool catalog. Auto mode exposes the categories detected in the current request; tools tagged with multiple categories are included when any selected category matches. Explicit Always mode retains all categories.
 - Unknown wording stays on the compact capability index regardless of native-function support. The local tool catalog is restored only after explicit model escalation; external MCP/Agent capability groups remain opt-in.
 - Registry adds explicit selected-category projections where an empty selection returns no tools. ToolAgent enforces that per-session scope again before dispatch, so unexposed registered tools are denied before handlers run. Competitive Safe applies its web-only intersection to both scopes.
 - Regression cases are added to `tests/test_task_triage.py`. Python tests, live provider calls, token/latency measurements and Windows runtime are not executed or claimed in this source review.
+
+### 2.4 Current synchronization — 2026-11-23
+
+The following source changes are now merged into `new-main` and supersede the pre-merge status in sections 2.2–2.3:
+
+- **PR #239 — startup deferral:** lazy ToolAgent facade and tool exports, first-visit settings pages, delayed Piper/MusicWatcher/provider-catalog work, and deferred app-catalog/MCP setup.
+- **PR #240 — topic-scoped tool schemas:** Auto mode projects request-relevant categories into native function schemas and text catalogs; selected scope is enforced centrally before a tool handler executes. Always mode and explicit MCP/Agent opt-in remain intact.
+- **PR #243 — Session/service deferral:** inactive character Sessions and their routers/views/history are created on selection; optional Web Search, Skills, conversation services and ToolAgent are deferred; task status checks use a lightweight store.
+- **PR #246 — architecture stabilization:** lazy Chat package exports and feature-controller factories; optional service imports remain cold; Chat history/conversation lifecycle delegates through `ChatHistoryFacade`; additive SQLite schema creation/backfill belongs to `SqliteSchemaManager`; startup phase/memory telemetry is recorded in `DATA_DIR/logs/startup-performance.jsonl`.
+
+**Open follow-ups at this snapshot:** PR #248 adds visibility-aware avatar cadence (60 FPS visible / 5 FPS hidden), shared avatar transform caching, mood-indicator caching and deferred worker imports. PR #250 guards voice toggling before the lazy voice settings page exists. Neither has runtime acceptance at this snapshot.
+
+**Verification boundary:** source changes and regression tests are present, but the associated GitHub Actions jobs inspected for these changes completed without executable steps/logs. No full Python suite, Qt desktop smoke test, target-Windows startup/RAM baseline or measured CPU improvement is claimed. See `docs/STARTUP_PERFORMANCE.md` for the required measurement protocol.
 
 ## 3. High-level architecture
 
