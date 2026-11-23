@@ -265,6 +265,25 @@ class StartupImportBoundaryTests(unittest.TestCase):
                 )
         self.assertEqual(eager, [])
 
+        attach_worker = next(
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef) and node.name == "AttachWorker"
+        )
+        attach_run = next(
+            node for node in attach_worker.body
+            if isinstance(node, ast.FunctionDef) and node.name == "run"
+        )
+        parser_imports = [
+            node for node in ast.walk(attach_run)
+            if isinstance(node, ast.ImportFrom)
+            and (node.module or "").endswith("chat.attachment_content")
+        ]
+        self.assertTrue(
+            any({alias.name for alias in node.names} >= {"AttachmentError", "load_attachment"}
+                for node in parser_imports),
+            "AttachWorker must lazily import the Qt-free attachment content parser",
+        )
+
     def test_eager_shell_modules_do_not_import_worker_implementations(self):
         paths = (
             "kira/ui/application_adapters.py",
