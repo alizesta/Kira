@@ -80,8 +80,15 @@ class DesktopContext:
         with self._lock:
             if self._disposed or not self._active_lifecycle:
                 return False
-            changed = key != self._active_key
+            previous = self._active or {}
+            changed = (
+                key != self._active_key
+                or exe != str(previous.get("exe") or "")
+                or title != str(previous.get("title") or "")
+                or path.casefold() != str(previous.get("path") or "").casefold()
+            )
             if changed:
+                same_process = key == self._active_key and exe == str(previous.get("exe") or "")
                 self._active_since = now
                 self._visible_text = ""
                 self._ocr_language = ""
@@ -89,10 +96,10 @@ class DesktopContext:
                 self._text_fingerprint = ""
                 self._active_key = key
                 self._events.append(PerceptionEvent.create(
-                    "application_changed",
+                    "window_changed" if same_process else "application_changed",
                     f"Active application: {exe} — {title}",
                     source=source,
-                    dedupe_key=f"app:{key[0]}:{key[1]}",
+                    dedupe_key=f"window:{key[0]}:{key[1]}:{PerceptionEvent.fingerprint(title)}",
                     now=now,
                 ))
             self._active = {
