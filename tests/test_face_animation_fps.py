@@ -8,7 +8,7 @@ try:
     from PySide6.QtWidgets import QApplication, QWidget
     from kira.face import AvatarView, FaceAnimator
     HAVE_QT = True
-except Exception:  # pragma: no cover - portable runs may not install Qt
+except ImportError:  # pragma: no cover - portable runs may not install Qt
     HAVE_QT = False
 
 
