@@ -144,12 +144,14 @@ class ChatApplicationWiringTests(unittest.TestCase):
 
         self.assertIn("images_in_turn=0 is normal", vision)
         self.assertIn("answer from the latest visual observation", vision)
-        self.assertIn("using present-tense conversational language", vision)
-        self.assertIn("Do not frame ordinary screen observations as past events", vision)
-        self.assertIn("A few moments ago I saw the Update button", vision)
+        self.assertIn("structured CURRENT SCREEN STATE section", vision)
+        self.assertIn("freshness label is authoritative", vision)
+        self.assertIn("Earlier visual observations are historical context only", vision)
         self.assertIn("visual_observation_ready_for_chat", vision)
         self.assertNotIn('add_chat("system", "👁️ " + message', vision)
-        self.assertIn("Latest visual observations (newest first):", desktop_context)
+        self.assertIn("CURRENT SCREEN STATE (freshness:", desktop_context)
+        self.assertIn("Latest known screen state:", desktop_context)
+        self.assertIn("historical context only; not the current screen state", desktop_context)
         self.assertIn('event.get("type") == "visual_observation"', desktop_context)
 
     def test_provider_settings_and_shutdown_manage_the_isolated_vision_router(self):
