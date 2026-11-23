@@ -6,7 +6,7 @@ window identity is unknown or a privacy rule denies capture.
 from __future__ import annotations
 
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from threading import RLock
 import time
 from typing import Any
@@ -22,9 +22,13 @@ MAX_RECENT_EVENTS = 12
 class DesktopContext:
     """Keep only the current allowed window, bounded OCR text and recent events."""
 
-    def __init__(self, *, max_events: int = MAX_RECENT_EVENTS, clock=time.monotonic) -> None:
+    def __init__(
+        self, *, max_events: int = MAX_RECENT_EVENTS, clock=time.monotonic,
+        wall_clock=lambda: datetime.now(timezone.utc),
+    ) -> None:
         self._lock = RLock()
         self._clock = clock
+        self._wall_clock = wall_clock
         self._max_events = max(1, int(max_events))
         self._active: dict[str, Any] | None = None
         self._active_key: tuple[int, int] | None = None
@@ -237,17 +241,38 @@ class DesktopContext:
 
         events = list(data["recent_events"])
         visual_events = [event for event in events if event.get("type") == "visual_observation"]
-        if visual_events and append_bounded("Latest visual observations (newest first):"):
-            # Keep the newest screen descriptions first. Older events must never
-            # crowd the current observation out of the fixed prompt budget.
-            for event in reversed(visual_events[-3:]):
-                try:
-                    event_time = datetime.fromisoformat(event["timestamp"]).strftime("%H:%M:%S")
-                except (TypeError, ValueError):
-                    event_time = "--:--:--"
-                source = str(event.get("source") or "desktop")[:16]
-                if not append_bounded(f"- {event_time} [{source}] {event.get('summary', '')}"):
-                    break
+        if visual_events:
+            # The newest observation is the only candidate for the current screen
+            # state. Older observations are explicitly historical so the model
+            # cannot blend them into a false description of what is on screen now.
+            latest = visual_events[-1]
+            try:
+                observed_at = datetime.fromisoformat(latest["timestamp"])
+                if observed_at.tzinfo is None:
+                    observed_at = observed_at.replace(tzinfo=timezone.utc)
+                age_seconds = max(0, int((self._wall_clock() - observed_at).total_seconds()))
+                age_label = f"{age_seconds}s" if age_seconds < 60 else f"{age_seconds // 60}m {age_seconds % 60}s"
+                freshness = "fresh" if age_seconds <= 15 else "recent" if age_seconds <= 60 else "stale"
+            except (KeyError, TypeError, ValueError):
+                age_label, freshness = "unknown", "unknown"
+            source = str(latest.get("source") or "desktop")[:16]
+            append_bounded(
+                f"CURRENT SCREEN STATE (freshness: {freshness}; observation age: {age_label}; "
+                f"source: {source}):"
+            )
+            append_bounded(f"Latest known screen state: {latest.get('summary', '')}")
+
+            older_visual_events = visual_events[:-1]
+            if older_visual_events and append_bounded(
+                "Earlier visual observations (historical context only; not the current screen state):"
+            ):
+                for event in reversed(older_visual_events[-2:]):
+                    try:
+                        event_time = datetime.fromisoformat(event["timestamp"]).strftime("%H:%M:%S")
+                    except (KeyError, TypeError, ValueError):
+                        event_time = "--:--:--"
+                    if not append_bounded(f"- {event_time} {event.get('summary', '')}"):
+                        break
 
         if data["visible_text"]:
             append_bounded(
