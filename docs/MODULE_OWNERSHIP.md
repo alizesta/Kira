@@ -401,3 +401,17 @@ The current `new-main` source includes the following merged ownership boundaries
 The merged implementation references are PRs #239, #240, #243 and #246. The avatar idle/cache and worker-import optimization originally proposed in PR #248 has been rebased onto the current `new-main` in PR #252. It changes the existing `FaceAnimator` and UI worker import boundaries; it does not add a new application-wide service. Its executable/runtime acceptance remains pending. The lazy Voice settings guard originally proposed in PR #250 is carried in PR #253 with regression tests for the unopened and initialized page cases; runtime/Qt acceptance remains pending.
 
 **Verification status:** these entries describe merged source ownership. Automated execution, real Windows GUI/voice acceptance and measured performance remain separate acceptance requirements; a workflow job with no runner or steps is not a passing test.
+
+
+### Live Desktop Perception — local facts and transient context ownership
+
+| Element | Owner / contract | Allowed dependencies | Must not own |
+|---|---|---|---|
+| Foreground identity | \`kira/perception/active_window.py\` — \`ActiveWindowProbe\` normalizes Win32 identity supplied by \`DesktopCaptureService\` | Bounded foreground-window metadata | Win32 handles, Qt objects, provider calls or persistence |
+| Visual change detection | \`kira/perception/change_detector.py\` — \`ChangeDetector\` compares a small grayscale sample and rate-limits changed-screen events | In-memory byte samples and a monotonic clock | Full frames, screenshots on disk or model routing |
+| Perception event | \`kira/perception/events.py\` — immutable \`PerceptionEvent\` records a bounded fact, timestamp and deduplication key | Standard library | OCR payloads, raw image data or durable event storage |
+| OCR adapter | \`kira/vision_ocr.py\` — \`OcrEngine\` protocol, \`OcrResult\` and optional \`TesseractOcrEngine\` | Already-installed Pillow, pytesseract, Tesseract and available language data | Dependency installation, network access, UI/Qt or persistence |
+| DesktopContext | \`kira/app/desktop_context.py\` — \`DesktopContext\` owns current allowed foreground facts, bounded OCR text and a short recent-event ring in RAM | Perception events and primitive window/OCR values | Disk persistence, screenshots, provider calls or interpretation of user intent |
+| UI orchestration | \`kira/ui/main_window_attachments_vision.py\` — source-aware permission recheck, cancellable OCR worker and prompt-context adapter | DesktopCaptureApplicationService, DesktopContext, existing Worker and FrameGate | Raw frame persistence, OCR on blocked windows or unrestricted desktop capture |
+
+DesktopContext is lifecycle-managed through \`feature_modules.py\` and injected through Bootstrap/WindowPresentationContext. Its provider-facing summary is capped at 2,000 characters. Unknown or blocked foreground identity purges current window/OCR state before it can enter a model prompt. Trace records timing/counters and safe diagnostics only. Desktop OCR is separately switchable; Game Mode OCR defaults off. Tests cover context bounds, duplicate events, privacy clearing, change detection and optional OCR; Windows/OCR-quality/performance acceptance remains separate.
