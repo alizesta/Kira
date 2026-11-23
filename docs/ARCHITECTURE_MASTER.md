@@ -225,3 +225,17 @@ The implementation and verification evidence is summarized in [ARCHITECTURE_IMPL
 - [Chat Search & Retrieval](CHAT_SEARCH_RETRIEVAL.md)
 - [Chat Transfer](CHAT_TRANSFER.md)
 - [Chat Events](CHAT_EVENTS.md)
+
+
+## Architecture update — 2026-11-23 (startup and responsibility boundaries)
+
+This section supersedes earlier descriptions above of package-wide eager imports and unconditional creation of every window controller.
+
+- `kira.chat` exposes its historical package-level API through a PEP 562 lazy export map. Importing a leaf module such as `kira.chat.events` no longer imports the Chat application service, SQLite persistence, attachments, search, transfer and lifecycle modules as a package-initialization side effect.
+- `MainWindow` registers controller factories rather than importing and constructing all eight feature controllers. The first composition pass realizes only controllers required by the chat shell and runtime. Vision/drag-drop, Provider Settings and Character Settings controllers are created on their first owning event or settings-page visit. Session switching and icon/glow updates use the focused `AppearanceRuntime` adapter rather than warming Settings controllers.
+- `ChatApplicationService` retains request admission, provider dispatch, stream lifecycle and terminal request state. History and durable conversation operations delegate to `ChatHistoryFacade`; the original public service methods remain compatibility entry points.
+- `SqliteChatRepository` retains connection, transaction, message-write, snapshot, recovery and backup ownership. Versioned DDL and legacy schema backfill are delegated to `SqliteSchemaManager` through repository callbacks. This is a migration-policy boundary, not a second database owner; transaction and recovery invariants remain in the repository.
+- `OPTIONAL_APPLICATION_MODULES` is explicit. Conversation Organization, Chat Search, Chat Transfer, Web Search, Shared Skills, Coding Agent, Brain and Reflection service modules are lazy/optional; the bootstrap gate aborts only for `REQUIRED_APPLICATION_MODULES`. Optional service factory errors can still surface when that capability is first invoked and must be handled by its owning workflow.
+- Startup diagnostics are append-only at `DATA_DIR/logs/startup-performance.jsonl`. Each interactive-startup record stores phase timings plus real per-phase process-memory snapshots: Windows working set, peak working set and private bytes; supported non-Windows systems record peak RSS. No fabricated baseline or speedup is claimed; the first target measurement must come from a real Windows launch of the updated build.
+
+Focused regression coverage was added for lazy Chat imports, lazy controller factories and peer lookup, optional module registration, Chat history delegation, SQLite schema delegation and memory metric serialization. Runtime/Windows acceptance remains a separate verification step.
