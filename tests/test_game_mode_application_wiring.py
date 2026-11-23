@@ -37,6 +37,8 @@ class GameModeApplicationWiringTests(unittest.TestCase):
         self.assertIn("command_denial_reason(", runtime)
         self.assertIn('game_mode_handler=lambda action: self.feature_controller("attachments_vision").handle_game_mode_command(action)', chat)
         self.assertIn("build_chat_vision_context(", chat)
+        self.assertIn('"live_game_frame_attached"', chat)
+        self.assertIn('turn_extra.get("live_game_frame_attached") is True', vision)
         self.assertIn("LIVE GAME VISION STATUS:", vision)
         self.assertLess(chat.index("dispatch_commands("), chat.index("_game_vision_attachment()"))
         self.assertIn("self.context.services.game_mode_application_service.STORY_MODE", settings)

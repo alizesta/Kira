@@ -237,10 +237,9 @@ class AttachmentsVisionController(WindowFeatureController):
 
     def build_chat_vision_context(self, turn_extra=None):
         """Tell the model whether a live game frame is actually present in this provider turn."""
-        images = turn_extra.get("images", []) if isinstance(turn_extra, dict) else []
-        game_frame_attached = any(
-            isinstance(item, dict) and str(item.get("name") or "").lower() == "game-screen.jpg"
-            for item in (images or [])
+        game_frame_attached = bool(
+            isinstance(turn_extra, dict)
+            and turn_extra.get("live_game_frame_attached") is True
         )
         if game_frame_attached:
             return (

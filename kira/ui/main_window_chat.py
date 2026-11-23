@@ -217,6 +217,7 @@ class ChatController(WindowFeatureController):
         # Dispatch explicit Game Mode controls before adding an automatic live frame.
         # Otherwise the frame itself would mark the request as "has attachments" and
         # prevent deterministic on/off/status commands from matching.
+        live_game_frame_added = False
         if (
             self.context.state._game_mode_enabled
             and not (command_dispatch.handled and not command_dispatch.continue_chat)
@@ -224,6 +225,7 @@ class ChatController(WindowFeatureController):
         ):
             frame = self.feature_controller("attachments_vision")._game_vision_attachment()
             if frame is not None:
+                live_game_frame_added = True
                 attachments = list(attachments or []) + [frame]
                 try:
                     self.context.services.chat_application_service.add_request_attachment(
@@ -243,6 +245,14 @@ class ChatController(WindowFeatureController):
         if packed is None and attachments:
             packed = self.context.services.chat_application_service.compose_attachments(text, attachments, search=img_search)
         if packed is not None:
+            # Do not infer live-screen provenance from a user-controlled filename.
+            packed["live_game_frame_attached"] = bool(
+                live_game_frame_added
+                and any(
+                    isinstance(item, dict) and item.get("name") == "game-screen.jpg"
+                    for item in (packed.get("images") or [])
+                )
+            )
             # Search must only run with a successfully prepared image payload.
             img_search = bool(packed.get("images")) and (force_img or self.context.services.settings.get("image_search", False))
         if packed and packed.get("errors"):
