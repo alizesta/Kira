@@ -163,7 +163,7 @@ class AttachmentsVisionController(WindowFeatureController):
             self._clear_live_video_state()
             vision_trace("live_video_blocked", source=source, reason="privacy_or_source_disabled")
             return False
-        identity = (
+        foreground_identity = (
             int(current.get("hwnd") or 0), int(current.get("pid") or 0),
             str(current.get("exe") or "").casefold(), str(current.get("title") or "").strip(),
             str(current.get("path") or "").casefold(),
@@ -174,7 +174,13 @@ class AttachmentsVisionController(WindowFeatureController):
             str((window_info or {}).get("title") or "").strip(),
             str((window_info or {}).get("path") or "").casefold(),
         )
-        if not all(identity) or identity != expected:
+        # Desktop Eye Mode captures the selected monitor, not the foreground window.
+        # Keep its Live stream stable while focus moves between applications.
+        identity = (
+            ("desktop-monitor", str(privacy.selected_monitor_id or "auto"))
+            if source == "desktop" else foreground_identity
+        )
+        if not all(foreground_identity) or (source == "game" and foreground_identity != expected):
             self._clear_live_video_state()
             vision_trace("live_video_blocked", source=source, reason="foreground_changed")
             return False
@@ -199,7 +205,7 @@ class AttachmentsVisionController(WindowFeatureController):
             str((latest or {}).get("title") or "").strip(),
             str((latest or {}).get("path") or "").casefold(),
         )
-        if latest_identity != identity or not service.capture_allowed(
+        if (source == "game" and latest_identity != foreground_identity) or not service.capture_allowed(
             self.context.state._game_mode_enabled if source == "game" else False,
             self.context.state._game_mode_profile if source == "game" else None,
             source=source, window_info=latest,
@@ -1191,22 +1197,51 @@ class AttachmentsVisionController(WindowFeatureController):
             and int(current.get("hwnd") or 0) == int(captured.get("hwnd") or -1)
             and int(current.get("pid") or 0) == int(captured.get("pid") or -1)
         )
+        privacy = service.desktop_capture_application_service
+        desktop_source_active = (
+            source == "desktop"
+            and not bool(self.context.state._closing)
+            and bool(self.context.state._game_mode_enabled)
+            and bool(privacy.enabled)
+        )
+        desktop_allowed, desktop_block_reason = (
+            privacy.evaluate_window(current) if desktop_source_active else (False, "source_disabled")
+        )
+        # A desktop frame represents the entire selected monitor. A foreground
+        # switch after capture must not invalidate the visual analysis result.
+        result_is_current = (
+            (desktop_source_active and current is not None and desktop_allowed)
+            if source == "desktop"
+            else (same_window and bool(self.context.state._game_mode_enabled))
+        )
         service.mark_latency(latency_ms)
         stats = service.snapshot()
         self.context.views.game_mode_btn.setToolTip(
             f"Vision {stats['mode']} · تحلیل: {stats['analysis_count']} · "
             f"فریم تکراری ردشده: {stats['unchanged_skips']} · تأخیر آخرین تحلیل: {latency_ms}ms"
         )
-        if not same_window:
+        if not result_is_current:
             vision_trace(
                 "analysis_discarded",
                 source=source,
                 exe=str(captured.get("exe") or "")[:80] or None,
-                reason="foreground_window_changed",
+                reason=(
+                    "capture_source_disabled" if source == "desktop" and not desktop_source_active
+                    else desktop_block_reason if source == "desktop" and not desktop_allowed
+                    else "foreground_window_changed"
+                ),
             )
             _FRAME_SOURCE["value"] = None
             _FRAME_WINDOW_INFO["value"] = None
             return
+        if source == "desktop" and not same_window:
+            vision_trace(
+                "analysis_foreground_changed_accepted",
+                source=source,
+                captured_exe=str(captured.get("exe") or "")[:80] or None,
+                current_exe=str((current or {}).get("exe") or "")[:80] or None,
+                reason="selected_monitor_frame_is_independent_of_foreground_window",
+            )
         message = service.consume_result(
             enabled=self.context.state._game_mode_enabled if source == "game" else True,
             profile=self.context.state._game_mode_profile if source == "game" else None,
