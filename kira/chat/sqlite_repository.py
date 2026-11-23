@@ -25,6 +25,9 @@ DEFAULT_CHARACTER = "kira"
 SCHEMA_VERSION = 1
 SNAPSHOTS_KEEP = 5
 MAX_PENDING_MESSAGES = 500
+# Interactive chat persistence must fail fast and use its in-memory fallback
+# instead of freezing the Qt event loop behind SQLite's default lock wait.
+SQLITE_BUSY_TIMEOUT_SECONDS = 0.25
 
 
 class PersistenceError(RuntimeError):
@@ -138,7 +141,7 @@ class SqliteChatRepository:
 
     @contextlib.contextmanager
     def _db(self, path=None):
-        con = sqlite3.connect(str(path or self.db_path), timeout=15)
+        con = sqlite3.connect(str(path or self.db_path), timeout=SQLITE_BUSY_TIMEOUT_SECONDS)
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA foreign_keys = ON")
         try:
@@ -182,7 +185,7 @@ class SqliteChatRepository:
             n += 1
             target = root / f"{kind}-{stamp}-{n}"
         target.mkdir()
-        src = sqlite3.connect(str(self.db_path), timeout=15)
+        src = sqlite3.connect(str(self.db_path), timeout=SQLITE_BUSY_TIMEOUT_SECONDS)
         try:
             dst = sqlite3.connect(str(target / DB_NAME))
             try:

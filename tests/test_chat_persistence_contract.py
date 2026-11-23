@@ -3,6 +3,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from kira.chat.persistence import ChatPersistence, ChatRepository, PersistenceError, SqliteChatRepository, create_default_chat_persistence
@@ -99,6 +100,19 @@ class SqliteChatRepositoryTests(unittest.TestCase):
         self.assertEqual(self.persistence.list_snapshots("pre-migration"), [])
         self.persistence.add_message("user", "first message", "kira")
         self.assertEqual(self.persistence.list_snapshots("pre-migration"), [])
+
+    def test_interactive_sqlite_connections_use_a_short_busy_timeout(self):
+        from kira.chat.sqlite_repository import SQLITE_BUSY_TIMEOUT_SECONDS
+
+        with mock.patch(
+            "kira.chat.sqlite_repository.sqlite3.connect",
+            wraps=sqlite3.connect,
+        ) as connect:
+            with self.repository._db():
+                pass
+
+        self.assertEqual(connect.call_args.kwargs["timeout"], SQLITE_BUSY_TIMEOUT_SECONDS)
+        self.assertLessEqual(SQLITE_BUSY_TIMEOUT_SECONDS, 0.5)
 
     def test_factory_creates_real_replaceable_sqlite_repository(self):
         persistence = create_default_chat_persistence(Path(self.temp.name) / "factory.sqlite3")
