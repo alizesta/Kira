@@ -52,6 +52,7 @@ STATE_FIELDS = frozenset({
     "_ollama_models",
     "_ollama_worker",
     "_provider_editing",
+    "_provider_catalog_auto_refresh_started",
     "_provider_test_worker",
     "_provider_workers",
     "_route_worker",
