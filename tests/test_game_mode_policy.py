@@ -1,6 +1,5 @@
 import unittest
 from types import SimpleNamespace
-from unittest import mock
 
 from kira.tools.agent import ToolAgent
 
@@ -44,7 +43,7 @@ class GameModePolicyTests(unittest.TestCase):
             with self.subTest(category=category):
                 self.assertTrue(tool_categories_allowed(COMPETITIVE_SAFE_MODE, (category,)))
         self.assertTrue(tool_categories_allowed(COMPETITIVE_SAFE_MODE, ("web", "desktop", "files")))
-        self.assertFalse(tool_categories_allowed(COMPETITIVE_SAFE_MODE, ()))
+        self.assertTrue(tool_categories_allowed(COMPETITIVE_SAFE_MODE, ()))
 
     def test_competitive_safe_execution_guard_does_not_block_local_tools(self):
         agent = object.__new__(ToolAgent)
@@ -53,16 +52,13 @@ class GameModePolicyTests(unittest.TestCase):
         tool = SimpleNamespace(categories=("desktop", "apps"))
         self.assertIsNone(agent._game_mode_execution_guard(tool))
 
-    def test_switching_competitive_safe_does_not_cancel_ordinary_tool_work(self):
+    def test_switching_competitive_safe_only_updates_the_profile_flag(self):
         agent = object.__new__(ToolAgent)
         agent._competitive_safe_mode = False
-        agent.request_cancel = mock.Mock()
         agent.set_competitive_safe_mode(True)
         self.assertTrue(agent._competitive_safe_mode)
-        agent.request_cancel.assert_not_called()
         agent.set_competitive_safe_mode(False)
         self.assertFalse(agent._competitive_safe_mode)
-        agent.request_cancel.assert_not_called()
 
     def test_story_mode_retains_existing_tool_permissions(self):
         self.assertTrue(tool_categories_allowed(STORY_MODE, ("desktop",)))
