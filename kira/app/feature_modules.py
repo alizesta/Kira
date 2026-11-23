@@ -75,7 +75,6 @@ def register_application_modules(
         PersonaMemoryService,
         SqliteChatHistoryService,
     )
-    from .coding_agent_application import KodeApplicationService
     from .game_mode_application import GameModeApplicationService
     from .provider_application import ProviderApplicationService
     from .runtime_settings_application import RuntimeSettingsApplicationService
@@ -84,8 +83,6 @@ def register_application_modules(
     from .chat_composition import create_chat_application_service_factory
     from .session_composition import create_session_application_service_factory
     from .initiative_composition import create_initiative_application_service_factory
-    from .brain_application import BrainApplicationService
-    from .reflection_application import ReflectionApplicationService
     from .voice_composition import create_voice_application_service_factory
 
     def selected(key: str, default: Callable[[], Any]) -> Callable[[], Any]:
@@ -97,6 +94,21 @@ def register_application_modules(
     def create_vision() -> Any:
         game_mode = container.resolve("game_mode_application_service")
         return VisionApplicationService(game_mode, settings.get("vision_mode", "economic"))
+
+    def create_coding_agent_service() -> Any:
+        from .coding_agent_application import KodeApplicationService
+
+        return KodeApplicationService()
+
+    def create_brain_application_service() -> Any:
+        from .brain_application import BrainApplicationService
+
+        return BrainApplicationService()
+
+    def create_reflection_application_service() -> Any:
+        from .reflection_application import ReflectionApplicationService
+
+        return ReflectionApplicationService()
 
     def create_conversation_lifecycle_service() -> Any:
         from ..chat.conversation_lifecycle import ConversationLifecycleService
@@ -186,7 +198,9 @@ def register_application_modules(
         ),
         "game_mode_application_service": selected("game_mode_application_service", GameModeApplicationService),
         "provider_application_service": selected("provider_application_service", ProviderApplicationService),
-        "coding_agent_application_service": selected("coding_agent_application_service", KodeApplicationService),
+        "coding_agent_application_service": selected(
+            "coding_agent_application_service", create_coding_agent_service
+        ),
         "runtime_settings_application_service": selected("runtime_settings_application_service", RuntimeSettingsApplicationService),
         "vision_application_service": selected("vision_application_service", create_vision),
         "chat_application_service_factory": selected("chat_application_service_factory", create_chat_factory),
@@ -194,8 +208,12 @@ def register_application_modules(
         "initiative_application_service_factory": selected(
             "initiative_application_service_factory", create_initiative_factory
         ),
-        "brain_application_service": selected("brain_application_service", BrainApplicationService),
-        "reflection_application_service": selected("reflection_application_service", ReflectionApplicationService),
+        "brain_application_service": selected(
+            "brain_application_service", create_brain_application_service
+        ),
+        "reflection_application_service": selected(
+            "reflection_application_service", create_reflection_application_service
+        ),
         "voice_application_service_factory": selected("voice_application_service_factory", create_voice_application_service_factory),
     }
     modules = (
