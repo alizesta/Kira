@@ -255,3 +255,12 @@ This section supersedes earlier descriptions above of package-wide eager imports
 - Startup diagnostics are append-only at `DATA_DIR/logs/startup-performance.jsonl`. Each interactive-startup record stores phase timings plus real per-phase process-memory snapshots: Windows working set, peak working set and private bytes; supported non-Windows systems record peak RSS. No fabricated baseline or speedup is claimed; the first target measurement must come from a real Windows launch of the updated build.
 
 Focused regression coverage was added for lazy Chat imports, lazy controller factories and peer lookup, optional module registration, Chat history delegation, SQLite schema delegation and memory metric serialization. Runtime/Windows acceptance remains a separate verification step.
+
+## Live Desktop Vision → Gemini Live video integration (Task 3, 2026-11-23)
+
+- `DesktopCaptureService.capture_monitor_for_window()` binds full-output capture to a freshly verified foreground HWND/PID. The caller separately applies the current Desktop/Game Mode privacy policy before and after capture.
+- `AttachmentsVisionController` owns manual source opt-in, selected-monitor resolution, privacy rechecks, visual-change sampling and JPEG encoding. It never writes captured image bytes to disk.
+- `RuntimeVoiceMixin` exposes the narrow `is_gemini_live_ready/send_gemini_video_frame/clear_gemini_video_frames` bridge; it does not own capture policy or image construction.
+- `GeminiLiveWorker` owns the existing bidirectional audio session and a one-slot latest-frame video queue. Audio and video writes share an asyncio lock; video sends use `send_realtime_input(video=Blob(..., mime_type='image/jpeg'))` and a thread-safe 1 FPS gate.
+- The capture timer runs at up to 1 Hz only while a Live audio session and a manually enabled visual source coexist. Significant visual changes alone enter the video queue. Stop/source-disable/privacy-denial clears queued frames and the local change baseline.
+- This is sampled full-monitor input, not continuous 30/60 FPS video. API support is model/account-dependent. Test sources are added; Windows capture, API compatibility, latency, and audio/video synchronization remain runtime-unverified.

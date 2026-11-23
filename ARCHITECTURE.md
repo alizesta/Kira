@@ -43,3 +43,7 @@ For current status and limitations, use the verification sections in the three c
 - 2026-11-22 03:20 Iran: audio playback = `_PcmPlayer` (QAudioSink, PCM wav only) in kira/voice.py; QMediaPlayer / QSoundEffect / winsound removed. Needs a listening test on Windows.
 
 - 2026-11-22 03:26 Iran: speech engine is switchable (settings `tts_engine`: piper | kitten; Kitten English-only, Persian sentences always Piper). See kira/voice.py `_use_kitten` / `_synth_kitten`.
+
+## Gemini Live visual companion
+
+The existing Gemini Live audio worker accepts privacy-checked full-monitor JPEG snapshots through the same Live session. `AttachmentsVisionController` owns explicit source opt-in, full-monitor capture, foreground/privacy rechecks and change sampling; `RuntimeVoiceMixin` exposes only the send/clear/readiness bridge; `GeminiLiveWorker` owns the bounded one-frame queue and serialized audio/video transport. Video is sampled at no more than 1 FPS and remains RAM-only. Runtime acceptance is pending Windows/API testing.

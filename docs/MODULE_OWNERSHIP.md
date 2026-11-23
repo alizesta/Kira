@@ -415,3 +415,14 @@ The merged implementation references are PRs #239, #240, #243 and #246. The avat
 | UI orchestration | \`kira/ui/main_window_attachments_vision.py\` — source-aware permission recheck, cancellable OCR worker and prompt-context adapter | DesktopCaptureApplicationService, DesktopContext, existing Worker and FrameGate | Raw frame persistence, OCR on blocked windows or unrestricted desktop capture |
 
 DesktopContext is lifecycle-managed through \`feature_modules.py\` and injected through Bootstrap/WindowPresentationContext. Its provider-facing summary is capped at 2,000 characters. Unknown or blocked foreground identity purges current window/OCR state before it can enter a model prompt. Trace records timing/counters and safe diagnostics only. Desktop OCR is separately switchable; Game Mode OCR defaults off. Tests cover context bounds, duplicate events, privacy clearing, change detection and optional OCR; Windows/OCR-quality/performance acceptance remains separate.
+
+## Gemini Live visual companion boundary (Task 3, 2026-11-23)
+
+| Element | Owner / contract | Allowed dependencies | Must not own |
+|---|---|---|---|
+| Monitor identity/capture | `kira/desktop_capture.py` — `DesktopCaptureService.capture_monitor_for_window()` | Current foreground HWND/PID, Qt display enumeration, selected monitor ID | Privacy decisions, API calls, disk persistence |
+| Live visual policy | `AttachmentsVisionController` — source opt-in, foreground identity recheck, blocklist enforcement, visual-change sampling, bounded JPEG encoding | DesktopCapture service, Vision/DesktopCapture application services, Runtime peer bridge | Gemini credentials/session internals, storing frames |
+| Session bridge | `RuntimeVoiceMixin` — active-session readiness, send/clear delegation, voice/session lifecycle | Current GeminiLiveWorker and declared AttachmentsVision peer | Capturing screens, deciding whether a window is safe |
+| Live transport | `GeminiLiveWorker` — same Live WebSocket, serialized audio/video sends, one-slot latest JPEG queue, 1 FPS validation | Google GenAI Live session, local sounddevice streams, immutable JPEG bytes | Qt widgets, monitor discovery, privacy allowlists or durable image storage |
+
+Frames are sent only while a connected Gemini Live session and a manually enabled Game Mode/Live Desktop Vision source coexist. Full-monitor capture is bound to the current foreground HWND/PID and blocked if that identity or privacy decision changes before transfer. The worker's bounded queue and capture controller's change detector avoid accumulating stale frames. This is 1 FPS sampling, not a high-frame-rate video recorder.

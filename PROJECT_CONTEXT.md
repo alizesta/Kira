@@ -209,3 +209,12 @@ Local-only speech stack: Qwen3-ASR primary STT, faster-whisper local fallback, P
 - 2026-11-22 03:26 Iran: speech engine is switchable (settings `tts_engine`: piper | kitten; Kitten English-only, Persian sentences always Piper). See kira/voice.py `_use_kitten` / `_synth_kitten`.
 
 - 2026-11-22 03:37 Iran: Voice tab = mode card (realtime/local) + mic/output cards + collapsed advanced; setting `gemini_voice`.
+
+## Gemini Live visual companion — Task 3 (2026-11-23)
+
+- Extend the existing bidirectional Gemini Live audio session with discrete full-monitor JPEG input; no second audio pipeline or raw screenshot history is added.
+- With Live Desktop Vision manually enabled, Ai1 sends the selected monitor; with automatic monitor selection it follows the monitor containing the current foreground window. Game Mode follows the monitor containing the active game window.
+- The stream requires both an established Gemini Live voice session and a manually enabled visual source. Voice activation alone never enables screen capture.
+- Each image is rechecked against foreground HWND/PID and the existing privacy policy. Only meaningful screen changes are sampled, up to 1 FPS; a one-slot in-memory queue drops stale frames. Stop, source disable and privacy denial clear the pending frame.
+- Live visual input is sent only into Gemini Live, not attached to ordinary chat or persisted. Full monitor pixels are visible to the model, including all content visible on that selected output; sending is denied when the foreground app/window itself is blocked or unidentified.
+- Regression test sources cover JPEG/rate validation, monitor binding and controller wiring. Python tests, Windows capture behavior, model/API compatibility, measured latency and voice/video synchronization remain unverified; GitHub Actions are not run.

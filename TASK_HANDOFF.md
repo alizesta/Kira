@@ -288,3 +288,12 @@ Character specialization and generated portraits. The implementation is complete
 - 2026-11-22 03:26 Iran: speech engine is switchable (settings `tts_engine`: piper | kitten; Kitten English-only, Persian sentences always Piper). See kira/voice.py `_use_kitten` / `_synth_kitten`.
 
 - 2026-11-22 03:37 Iran: Voice tab = mode card (realtime/local) + mic/output cards + collapsed advanced; setting `gemini_voice`.
+
+## Latest task: Gemini Live visual companion (Task 3, 2026-11-23)
+
+- Extend the existing Gemini Live audio WebSocket with video frames from the selected full monitor. The active output is selected explicitly, or follows the monitor containing the foreground window in automatic mode.
+- `AttachmentsVisionController` checks manual Live Desktop Vision/Game Mode enablement and revalidates foreground identity/privacy before every send. It samples meaningful visual changes only; the Gemini worker accepts no more than one JPEG/second into a one-frame RAM queue.
+- `RuntimeVoiceMixin` provides the readiness/send/clear bridge. Audio and video sends are serialized on the same asyncio lock/session. Screen video is not written to disk or attached to ordinary chat.
+- Stop, source disable and privacy rejection clear queued frames. The voice prompt instructs the companion to make useful, restrained observations and never claim unseen visibility.
+- Added tests: `tests/test_gemini_live.py` (JPEG/rate gate), `tests/test_desktop_capture.py` (full-monitor capture tied to current HWND/PID), and `tests/test_gemini_live_video_wiring.py` (cross-controller contract).
+- Validation: source changes are inspected through GitHub. No Python test, import, Qt/Windows capture, live Google API call, audio/video sync test or GitHub Actions run is claimed. Full monitor is visible only while the user explicitly enables a visual source; blocked/unidentified foreground windows fail closed. The uploaded task PDF contains detailed Tasks 1–2, not a separate Task 3 specification; implementation follows the previously agreed Gemini Live + visual companion scope.

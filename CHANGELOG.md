@@ -1,3 +1,9 @@
+## 2026-11-23 — Gemini Live visual companion (Task 3)
+- Extend the existing Gemini Live audio session with full-monitor JPEG snapshots from the selected display (or the foreground window's display in automatic mode).
+- Add foreground HWND/PID and privacy rechecks, meaningful-change sampling, a one-frame in-memory queue and a maximum video-send rate of one frame per second.
+- Keep screen capture manually opt-in through Live Desktop Vision/Game Mode; stopping Live or disabling/rejecting the visual source clears queued frames. No screen images are persisted or attached to ordinary chat.
+- Add regression tests for JPEG/rate validation, monitor-bound capture and controller wiring. Python/Windows/Gemini API runtime validation remains pending; no GitHub Actions are run.
+
 ## 2026-11-23 — Live Desktop Vision: Perception Engine
 - Added a bounded, in-memory DesktopContext for allowed foreground-window metadata, visible text and recent perception events.
 - Added replaceable local OCR with language/confidence results; OCR runs only when the foreground crop changes and only from already-installed dependencies/language data.
