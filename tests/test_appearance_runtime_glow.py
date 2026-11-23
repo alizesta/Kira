@@ -46,8 +46,7 @@ class AppearanceRuntimeGlowTests(unittest.TestCase):
         runtime._apply_neon_glow_effects({"glow": 58})
 
         self.assertIsNotNone(button.graphicsEffect())
-        self.assertIn(button, runtime._neon_widget_effects)
-        self.assertNotIn(wake_action, runtime._neon_widget_effects)
+        self.assertEqual(list(runtime._neon_widget_effects), [button])
 
 
 if __name__ == "__main__":
