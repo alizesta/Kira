@@ -198,11 +198,15 @@ class AttachmentsVisionController(WindowFeatureController):
             and int(current.get("pid") or 0) == int(captured.get("pid") or -1)
         )
         privacy = self.context.services.vision_application_service.desktop_capture_application_service
+        source_enabled = (
+            bool(self.context.state._game_mode_enabled)
+            if source == "game" else bool(privacy.enabled)
+        )
         allowed, reason = privacy.evaluate_window(
             current, explicit=(source == "game")
         )
-        if not same_window or not allowed:
-            if not allowed:
+        if not source_enabled or not same_window or not allowed:
+            if not allowed or not source_enabled:
                 self.context.services.desktop_context_application_service.clear_sensitive(
                     exe=str((current or {}).get("exe") or ""),
                     reason=reason,

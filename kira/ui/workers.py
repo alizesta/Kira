@@ -208,11 +208,12 @@ class VisionAnalysisWorker(QThread):
     """Bounded image analysis; uses only a route marked/recognized as Vision-capable."""
     done = Signal(bool, str, int)
 
-    def __init__(self, router, image, context=""):
+    def __init__(self, router, image, context="", *, ocr_enabled=True):
         super().__init__()
         self.router = router
         self.image = dict(image)
         self.context = str(context or "").strip()[:1200]
+        self.ocr_enabled = bool(ocr_enabled)
         self._cancelled = threading.Event()
 
     def cancel_request(self):
@@ -234,7 +235,7 @@ class VisionAnalysisWorker(QThread):
             if not route_id:
                 raise RuntimeError("هیچ مدل Vision فعالی پیدا نشد. یک Route بینایی انتخاب کن یا برای Provider سفارشی vision_enabled را فعال کن.")
             from ..vision_ocr import extract_local_text
-            ocr_text = extract_local_text(self.image)
+            ocr_text = extract_local_text(self.image) if self.ocr_enabled else ""
             prompt = (
                 "این تصویر، فریم بازی کاربر است. فقط شواهد قابل مشاهده را گزارش کن و حدس نزن. "
                 "اگر متن OCR در اختیار داری، آن را به‌عنوان سرنخ کمکی در نظر بگیر، نه حقیقت قطعی. "

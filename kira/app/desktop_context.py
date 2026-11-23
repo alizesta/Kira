@@ -143,7 +143,7 @@ class DesktopContext:
         with self._lock:
             if self._disposed or not self._active_lifecycle:
                 return False
-            if self._events and dedupe_key and self._events[-1].dedupe_key == dedupe_key:
+            if dedupe_key and any(event.dedupe_key == dedupe_key for event in self._events):
                 return False
             self._events.append(event)
             return True

@@ -55,10 +55,13 @@ class DesktopContextTests(unittest.TestCase):
         context.set_visible_text("secret account value", window_key=context.active_window_key)
         context.clear_sensitive(exe="bitwarden.exe", reason="blocked_exe")
         summary = context.summary()
+        self.assertEqual(summary, "")
         self.assertNotIn("secret account value", summary)
-        self.assertNotIn("notepad.exe", summary)
-        self.assertNotIn("Notes", summary)
-        self.assertIn("bitwarden.exe", summary)
+        snapshot = context.snapshot()
+        self.assertIsNone(snapshot["active_window"])
+        self.assertEqual(snapshot["visible_text"], "")
+        self.assertEqual(snapshot["recent_events"][-1]["type"], "capture_blocked")
+        self.assertIn("bitwarden.exe", snapshot["recent_events"][-1]["summary"])
 
     def test_stop_and_dispose_clear_ram_context(self):
         context = DesktopContext()
