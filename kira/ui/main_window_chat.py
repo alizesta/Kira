@@ -186,17 +186,6 @@ class ChatController(WindowFeatureController):
             complete_local_request=self.context.services.chat_application_service.complete_local_request,
         ):
             return  # Coding Agent owns this separate execution lifecycle.
-        if self.context.state._game_mode_enabled and len(attachments or []) < self.context.services.chat_application_service.max_attachments:
-            frame = self.feature_controller("attachments_vision")._game_vision_attachment()
-            if frame is not None:
-                attachments = list(attachments or []) + [frame]
-                try:
-                    self.context.services.chat_application_service.add_request_attachment(
-                        self.context.state.cur.application_request_id, frame
-                    )
-                except (AttributeError, ValueError):
-                    # A non-application request can still use the legacy payload.
-                    pass
         self.context.session._turn_voice = voice
         if self.context.services.voice_application_service.is_speaking():
             self.context.adapters.director.event("user_interrupt")
@@ -225,6 +214,24 @@ class ChatController(WindowFeatureController):
         img_search = bool(
             has_image and (force_img or self.context.services.settings.get("image_search", False))
         )
+        # Dispatch explicit Game Mode controls before adding an automatic live frame.
+        # Otherwise the frame itself would mark the request as "has attachments" and
+        # prevent deterministic on/off/status commands from matching.
+        if (
+            self.context.state._game_mode_enabled
+            and not (command_dispatch.handled and not command_dispatch.continue_chat)
+            and len(attachments or []) < self.context.services.chat_application_service.max_attachments
+        ):
+            frame = self.feature_controller("attachments_vision")._game_vision_attachment()
+            if frame is not None:
+                attachments = list(attachments or []) + [frame]
+                try:
+                    self.context.services.chat_application_service.add_request_attachment(
+                        self.context.state.cur.application_request_id, frame
+                    )
+                except (AttributeError, ValueError):
+                    # A non-application request can still use the legacy payload.
+                    pass
         packed = None
         if self.context.state.cur.application_request_id:
             try:

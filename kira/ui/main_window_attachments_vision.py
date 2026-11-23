@@ -208,12 +208,6 @@ class AttachmentsVisionController(WindowFeatureController):
         action = str(action or "").strip().lower()
         if action in ("enable", "disable"):
             enabled = action == "enable"
-            button = self.context.views.game_mode_btn
-            previous = button.blockSignals(True)
-            try:
-                button.setChecked(enabled)
-            finally:
-                button.blockSignals(previous)
             self.set_game_mode(enabled, announce=False)
             if not enabled:
                 return "Game Mode خاموش شد؛ Capture متوقف شد و من الان تصویر زنده‌ای از بازی دریافت نمی‌کنم."

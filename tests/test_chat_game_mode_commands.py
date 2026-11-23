@@ -60,7 +60,7 @@ class GameModeCommandParserTests(unittest.TestCase):
         finally:
             registry.close()
 
-    def test_chat_command_does_not_consume_requests_with_attachments(self):
+    def test_chat_command_executes_and_continues_when_user_attached_an_image(self):
         calls = []
         registry = self._registry(lambda action: calls.append(action) or "handled")
         try:
@@ -70,8 +70,9 @@ class GameModeCommandParserTests(unittest.TestCase):
                 request_id="request-2",
                 metadata={"has_attachments": True},
             )
-            self.assertFalse(dispatch.handled)
-            self.assertEqual(calls, [])
+            self.assertTrue(dispatch.handled)
+            self.assertTrue(dispatch.continue_chat)
+            self.assertEqual(calls, ["enable"])
         finally:
             registry.close()
 

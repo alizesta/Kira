@@ -45,14 +45,15 @@ def create_default_command_registry(
         return {"days": days} if days is not None else None
 
     def match_game_mode(text, context):
-        if game_mode_handler is None or context.metadata.get("has_attachments"):
+        if game_mode_handler is None:
             return None
         action = parse_game_mode_command(text)
         return {"action": action} if action else None
 
-    def execute_game_mode(_context, arguments):
+    def execute_game_mode(context, arguments):
         result = game_mode_handler(str(arguments["action"]))
-        return CommandOutcome(result=str(result or ""))
+        metadata = {"continue_chat": True} if context.metadata.get("has_attachments") else {}
+        return CommandOutcome(result=str(result or ""), metadata=metadata)
 
     def parse_web(text, _context):
         query, forced = web_parser(text)
