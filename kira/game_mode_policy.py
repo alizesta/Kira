@@ -37,10 +37,9 @@ def game_mode_permissions(profile: str | None) -> dict[str, bool]:
 
 
 def tool_categories_allowed(profile: str | None, categories) -> bool:
-    """Keep ordinary configured tools available in both profiles; reject uncategorized tools.
+    """Ordinary tool categories are available in both profiles.
 
     Competitive Safe restrictions apply to game-interfering capabilities (memory access,
-    injection, hooks, game-file modification and drivers), not to ordinary desktop,
-    application, file, MCP, Agent or web tools.
+    injection, hooks, game-file modification and drivers), not to the normal tool registry.
     """
-    return bool(set(categories or ()))
+    return True
