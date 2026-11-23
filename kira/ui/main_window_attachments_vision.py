@@ -682,6 +682,7 @@ class AttachmentsVisionController(WindowFeatureController):
         privacy.set_selected_monitor(selected)
         self.context.services.settings["desktop_vision_monitor_id"] = selected
         save_settings(self.context.services.settings)
+        self._clear_live_video_state()
         for monitor_id_value, action in self.context.views.desktop_vision_monitor_actions.items():
             action.setChecked(monitor_id_value == selected)
         self.context.views.desktop_vision_auto_action.setChecked(not selected)
@@ -727,6 +728,7 @@ class AttachmentsVisionController(WindowFeatureController):
         if self.context.state._game_mode_profile != previous:
             # An analysis started under the old profile must not deliver its result under the new one.
             self._cancel_vision_worker()
+            self._clear_live_video_state()
             self.context.services.vision_application_service.reset()
             _FRAME_SOURCE["value"] = None
             _FRAME_WINDOW_INFO["value"] = None
@@ -1069,6 +1071,8 @@ class AttachmentsVisionController(WindowFeatureController):
         )
         frame = pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
         self.context.state._latest_game_frame = frame
+        if frame is None:
+            self._clear_live_video_state()
         _trace_capture_state(window_info, frame, "game" if frame is not None else None)
         self._submit_vision_frame(frame, "game", window_info)
 
@@ -1102,6 +1106,7 @@ class AttachmentsVisionController(WindowFeatureController):
         frame = pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
         self.context.state._latest_game_frame = frame
         if frame is None:
+            self._clear_live_video_state()
             _FRAME_SOURCE["value"] = None
             _FRAME_WINDOW_INFO["value"] = None
             vision_trace(

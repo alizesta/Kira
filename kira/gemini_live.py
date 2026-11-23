@@ -40,8 +40,8 @@ class LiveVideoFrameGate:
     def accept(self, jpeg: bytes) -> bool:
         payload = bytes(jpeg or b"")
         if (len(payload) < 4 or len(payload) > self.max_bytes
-                or not payload.startswith(b"\\xff\\xd8")
-                or not payload.endswith(b"\\xff\\xd9")):
+                or not payload.startswith(b"\xff\\xd8")
+                or not payload.endswith(b"\xff\\xd9")):
             return False
         now = self._clock()
         with self._lock:

@@ -713,6 +713,7 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
             timer = self.context.resource(timer_name)
             if timer is not None:
                 timer.stop()
+        self.feature_controller("attachments_vision").set_live_video_active(False)
         self.feature_controller("attachments_vision")._set_game_vision_capture(False)
         self.feature_controller("attachments_vision")._stop_game_audio_listener()
         self.context.adapters.game_mode.set_enabled(False)
