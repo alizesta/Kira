@@ -308,6 +308,27 @@ class StartupImportBoundaryTests(unittest.TestCase):
             ]
             self.assertEqual(top_level, [], relative)
 
+        # Removing a worker from a support module must also remove every old
+        # re-export import that would fail when the lazy worker is first used.
+        forbidden_support_imports = {
+            "kira/ui/main_window_composition.py": (
+                "main_window_root_support", {"AttachWorker"}
+            ),
+            "kira/ui/main_window_chat.py": (
+                "main_window_chat_support", {"SearchWorker", "TaskWorker"}
+            ),
+        }
+        for relative, (support_module, forbidden_names) in forbidden_support_imports.items():
+            source = (ROOT / relative).read_text(encoding="utf-8")
+            tree = ast.parse(source)
+            stale = [
+                node for node in tree.body
+                if isinstance(node, ast.ImportFrom)
+                and (node.module or "").endswith(support_module)
+                and forbidden_names.intersection(alias.name for alias in node.names)
+            ]
+            self.assertEqual(stale, [], relative)
+
 
 if __name__ == "__main__":
     unittest.main()
