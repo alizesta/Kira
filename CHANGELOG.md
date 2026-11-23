@@ -1,3 +1,8 @@
+## 2026-11-23 — Lazy voice settings toggle guard (PR #253)
+- Keep the main voice-reply control synchronized even before the lazy Voice settings page is built.
+- Update the settings checkbox only when it exists and restore each control's prior signal-blocking state.
+- Add regression coverage for an unopened page, an initialized page, and a page without the optional checkbox. Qt/Windows execution remains required for runtime acceptance.
+
 ## 2026-11-23 — Idle UI and worker-import optimization (PR #252)
 - Set shared avatar animation to 60 FPS while any view is visible and 5 FPS when all views are hidden/minimized; share rig transforms across views and invalidate them after pose/art updates.
 - Cache mood-indicator rendering when the character/emotion/energy signature is unchanged.
