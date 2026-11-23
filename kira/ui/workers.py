@@ -75,7 +75,13 @@ class AttachWorker(QThread):
 
     def run(self):
         # Attachment parsing is only needed after the user chooses files.
-        from ..chat import attachments as att
+        try:
+            from ..chat import attachments as att
+        except Exception as exc:
+            for index, cancelled in enumerate(self._cancelled):
+                if not cancelled.is_set():
+                    self.failed.emit(index, f"بارگذاری ضمیمه ناموفق بود: {type(exc).__name__}")
+            return
 
         for i, path in enumerate(self.paths):
             cancelled = self._cancelled[i]
@@ -108,7 +114,11 @@ class SearchWorker(QThread):
 
     def run(self):
         # Do not load search engines/providers while the chat window is being composed.
-        from .. import websearch
+        try:
+            from .. import websearch
+        except Exception as exc:
+            self.done.emit(self.token, False, f"خطای جست‌وجو: {type(exc).__name__}")
+            return
 
         try:
             if self.images:                                           # search WITH a picture (Gemini sees it; the others get a text query)
