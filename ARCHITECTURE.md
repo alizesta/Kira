@@ -2,7 +2,7 @@
 
 **Current architecture source:** [docs/ARCHITECTURE_MASTER.md](docs/ARCHITECTURE_MASTER.md)  
 **Snapshot branch:** `new-main`  
-**Last synchronized:** 2026-11-19
+**Last synchronized:** 2026-11-23
 
 This file is the short repository-level entry point. It intentionally contains no independent architecture claims; the linked documents below are the canonical records.
 
@@ -23,6 +23,9 @@ This file is the short repository-level entry point. It intentionally contains n
 - The shared EventBus carries notifications; direct request/response work uses explicit service contracts.
 - Durable Chat persistence is owned by the Chat persistence/repository boundary. Runtime Session state is separate from durable Conversation state.
 - MainWindow is no longer the legacy monolith, but Qt presentation, worker/resource lifecycle and some UI orchestration remain in the UI layer.
+- Startup deferral is now merged: inactive character sessions, optional services, ToolAgent construction, settings pages, feature controllers and selected worker/provider imports are deferred until needed.
+- Auto-mode tool schemas are request-topic-scoped, with execution-time enforcement against hidden tools; explicit Always mode retains the full catalog.
+- Chat history delegation and SQLite schema creation/backfill have dedicated owners (`ChatHistoryFacade` and `SqliteSchemaManager`); `ChatApplicationService` retains request dispatch and streaming ownership.
 
 ## Desktop pet and dance library
 
