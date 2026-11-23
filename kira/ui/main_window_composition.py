@@ -13,7 +13,6 @@ from PySide6.QtWidgets import QApplication
 from .shortcuts import install_window_shortcuts
 from .console_log import build_console_log_page
 from .main_window_root_support import (
-    AttachWorker,
     AttachmentTile,
     ChatAttachmentController,
     CompanionBubble,
