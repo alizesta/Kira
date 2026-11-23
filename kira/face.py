@@ -175,6 +175,26 @@ class FaceAnimator(QObject):
         t = np.array(tiles, dtype=np.float64)
         self.tile_cx = (t[:, 0] + t[:, 2]) / 2
         self.tile_cy = (t[:, 1] + t[:, 3]) / 2
+        self._invalidate_render_cache()
+
+    def _invalidate_render_cache(self):
+        """Drop per-frame rig transforms after the pose or character geometry changes."""
+        self._tile_affine_cache = None
+        self._face_affine_cache = None
+
+    def _tile_affine(self):
+        """Compute tile deformation once per animation tick for every AvatarView."""
+        if self._tile_affine_cache is None:
+            self._tile_affine_cache = self.rig.affine(self.tile_cx, self.tile_cy)
+        return self._tile_affine_cache
+
+    def _face_affine(self):
+        """Share the face-anchor transform across views painted in the same frame."""
+        if self._face_affine_cache is None:
+            self._face_affine_cache = self.rig.affine(
+                np.array([FACE_C[0]]), np.array([FACE_C[1]])
+            )
+        return self._face_affine_cache
 
     def set_character_art(self, path=None):
         """Show a character's picture (path to an image file) or, with None / an unreadable file, Kira's own
@@ -270,6 +290,7 @@ class FaceAnimator(QObject):
         self.talking += (min(1.0, self.mouth * 1.6) - self.talking) * 0.2
         mood = "sleepy" if self.sleeping else self.expr
         self.rig.update(now, dt, self._look[0], self._look[1], self.talking, mood)
+        self._invalidate_render_cache()
         if (self.auto_bored and self.expr == "neutral" and not self.sleeping
                 and now - self.last_touch > 45 and self.talking < 0.05):
             self.set_expression("bored")
@@ -586,7 +607,7 @@ class AvatarView(QWidget):
         ox = (w - src.width() * s) / 2 - src.x() * s
         oy = (h - src.height() * s) / 2 - src.y() * s
         self._geo = (ox, oy, s)
-        dx, dy, m11, m12, m21, m22 = a.rig.affine(a.tile_cx, a.tile_cy)
+        dx, dy, m11, m12, m21, m22 = a._tile_affine()
         X, Y = self._bx + ox + dx * s, self._by + oy + dy * s
         vis = np.nonzero((X > -90) & (X < w + 90) & (Y > -90) & (Y < h + 90))[0].tolist()
         Xl, Yl = X.tolist(), Y.tolist()
@@ -605,7 +626,7 @@ class AvatarView(QWidget):
             p.drawPixmap(dr[i], pms[i], pms[i].rect())
         p.resetTransform()
         if a.face_overlays:                                 # eyelid / mouth overlays are measured on Kira's face only
-            fx, fy, f11, f12, f21, f22 = a.rig.affine(np.array([FACE_C[0]]), np.array([FACE_C[1]]))
+            fx, fy, f11, f12, f21, f22 = a._face_affine()
             p.translate(ox + (FACE_C[0] + fx[0]) * s, oy + (FACE_C[1] + fy[0]) * s)
             p.rotate(math.degrees(math.atan2(float(f12[0]), float(f11[0]))))
             p.scale(s, s)
