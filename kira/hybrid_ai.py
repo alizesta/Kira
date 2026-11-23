@@ -381,7 +381,7 @@ class HybridRouter:
         base = int(route.get("cooldown", COOLDOWN_TRANSIENT) or 0)
         if kind == "rate" or status == 429:
             cooldown = min(max(retry_after or COOLDOWN_RATE_LIMIT, 30, base), 600)
-        elif kind in ("auth", "model", "request", "missing"):
+        elif kind in ("auth", "permission", "model", "request", "missing"):
             cooldown = max(COOLDOWN_CONFIG, base)
         elif kind == "offline":
             cooldown = 0                          # connection refused answers instantly: nothing to wait for, retry freely
@@ -394,7 +394,7 @@ class HybridRouter:
         st["last_kind"] = kind
         st["last_attempt_at"] = time.time()
         st["last_error"] = redact(str(exc), *secrets)[:300]
-        st["health"] = "down" if kind in ("auth", "model", "request", "missing", "offline") else "degraded"
+        st["health"] = "down" if kind in ("auth", "permission", "model", "request", "missing", "offline") else "degraded"
         if getattr(exc, "quota", "") == "no_free":
             try:
                 if route_model.disable_route(self.settings, route["id"], "بدون سهمیه‌ی رایگان (limit: 0)"):
