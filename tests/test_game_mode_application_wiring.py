@@ -35,7 +35,7 @@ class GameModeApplicationWiringTests(unittest.TestCase):
         self.assertNotIn("_game_audio_alerts", vision)
         self.assertIn("classify_game_audio(", vision)
         self.assertIn("command_denial_reason(", runtime)
-        self.assertIn('game_mode_handler=self.feature_controller("attachments_vision").handle_game_mode_command', chat)
+        self.assertIn('game_mode_handler=lambda action: self.feature_controller("attachments_vision").handle_game_mode_command(action)', chat)
         self.assertIn("build_chat_vision_context(", chat)
         self.assertIn("LIVE GAME VISION STATUS:", vision)
         self.assertIn("self.context.services.game_mode_application_service.STORY_MODE", settings)

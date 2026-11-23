@@ -629,7 +629,7 @@ class ChatController(WindowFeatureController):
             tool_agent=self.context.services.tool_agent,
             desktop_action_matcher=match_safe_action,
             desktop_action_handler=lambda text: run_safe_action(text, allow_desktop=True),
-            game_mode_handler=self.feature_controller("attachments_vision").handle_game_mode_command,
+            game_mode_handler=lambda action: self.feature_controller("attachments_vision").handle_game_mode_command(action),
         )
         self.context.services.chat_application_service.set_command_registry(registry)
         self.command_registry = registry
