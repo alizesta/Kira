@@ -43,7 +43,7 @@ Status labels in this document:
 
 ### 2.2 Historical startup deferral implementation snapshot — 2026-11-23 (subsequently merged as PR #239)
 
-- Implementation branch: `codex/startup-lazy-loading-2026-11-23`, created directly from `new-main` at `3d69726aee718c2405d51bd1f4cf9785b44fe5ee`; this delta is not yet part of `new-main`.
+- Implementation branch: `codex/startup-lazy-loading-2026-11-23`, created directly from `new-main` at `3d69726aee718c2405d51bd1f4cf9785b44fe5ee`; this line records the pre-merge state; the change was subsequently merged by PR #239.
 - The tool package now exposes public components lazily. Importing `kira.tools.protocol` no longer imports `ToolAgent`, the built-in tool registry, Windows app catalog, or Hybrid AI provider implementation as package side effects. `ThinkFilter` is owned by provider-neutral `kira/think_filter.py`.
 - Bootstrap supplies a `LazyToolAgent` facade instead of importing/constructing the agent before showing the window. ToolAgent/registry, app-catalog warm-up and MCP installation are deferred; explicit task-history clearing still realizes the owner so durable history is not skipped.
 - Settings tabs retain stable indexes and navigation but replace eager page construction with first-visit builders. Piper warm-up, MusicWatcher and provider model-catalog refresh are also deferred until after initial display or until the relevant page/capability is requested.
