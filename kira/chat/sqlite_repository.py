@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any, Callable, Protocol, runtime_checkable
 
 from ..config import DB_PATH
-from .sqlite_schema import SqliteSchemaManager
 
 DB_NAME = "kira_memory.sqlite3"
 DEFAULT_CHARACTER = "kira"
@@ -120,17 +119,6 @@ class SqliteChatRepository:
         self._active_conversations: dict[str, str] = {}
         self.last_error: str | None = None
         self.startup_notes: list[str] = []
-        self._schema_manager = SqliteSchemaManager(
-            has_table=self._has_table,
-            columns=self._columns,
-            ensure_conversation_row=self._ensure_conversation_row,
-            snapshot=self._snapshot,
-            schema_version=SCHEMA_VERSION,
-            persistence_error=PersistenceError,
-            character_id=_character_id,
-            legacy_conversation_id=_legacy_conversation_id,
-            now=_now,
-        )
 
     @property
     def db_path(self) -> Path:
@@ -369,12 +357,115 @@ class SqliteChatRepository:
             raise PersistenceError("شناسه گفتگو به شخصیت دیگری تعلق دارد.")
 
     def _create_schema(self, con):
-        """Compatibility entry point delegated to the schema manager."""
-        return self._schema_manager.create_schema(con)
+        """Run an additive, transactional, versioned migration. Never rebuilds or drops legacy tables."""
+        current_version = int(con.execute("PRAGMA user_version").fetchone()[0])
+        if current_version > SCHEMA_VERSION:
+            raise PersistenceError(
+                f"نسخه دیتابیس ({current_version}) از این نسخه برنامه جدیدتر است؛ برای جلوگیری از Downgrade، تغییر داده نشد."
+            )
+        if self._has_table(con, "persistence_schema"):
+            recorded_versions = [
+                int(row[0]) for row in con.execute("SELECT version FROM persistence_schema")
+            ]
+            if recorded_versions and max(recorded_versions) > SCHEMA_VERSION:
+                raise PersistenceError(
+                    "نسخه ثبت‌شده Schema از این نسخه برنامه جدیدتر است؛ دیتابیس بدون تغییر باقی ماند."
+                )
+        con.execute(
+            "CREATE TABLE IF NOT EXISTS conversations ("
+            "id TEXT PRIMARY KEY, character_id TEXT NOT NULL, title TEXT NOT NULL DEFAULT '', "
+            "metadata TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'active', "
+            "created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+        )
+        if not self._has_table(con, "messages"):
+            con.execute(
+                "CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, role TEXT NOT NULL, content TEXT NOT NULL, "
+                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, character_id TEXT NOT NULL DEFAULT 'kira', "
+                "conversation_id TEXT, metadata TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'complete')"
+            )
+        cols = self._columns(con, "messages")
+        additions = (
+            ("character_id", "TEXT NOT NULL DEFAULT 'kira'"),
+            ("conversation_id", "TEXT"),
+            ("metadata", "TEXT NOT NULL DEFAULT '{}'"),
+            ("status", "TEXT NOT NULL DEFAULT 'complete'"),
+        )
+        for name, definition in additions:
+            if name not in cols:
+                con.execute(f"ALTER TABLE messages ADD COLUMN {name} {definition}")
+        cols = self._columns(con, "messages")
+        if "created_at" not in cols:
+            con.execute("ALTER TABLE messages ADD COLUMN created_at TIMESTAMP")
+        con.execute("CREATE INDEX IF NOT EXISTS messages_character_order ON messages(character_id, id)")
+        con.execute("CREATE INDEX IF NOT EXISTS messages_conversation_order ON messages(conversation_id, id)")
+        con.execute("CREATE INDEX IF NOT EXISTS messages_timestamp_order ON messages(created_at, id)")
+        con.execute("CREATE INDEX IF NOT EXISTS conversations_character_updated ON conversations(character_id, updated_at)")
+        chars = [row[0] for row in con.execute(
+            "SELECT DISTINCT COALESCE(NULLIF(LOWER(character_id), ''), 'kira') FROM messages"
+        )]
+        for cid in chars:
+            conv_id = _legacy_conversation_id(cid)
+            self._ensure_conversation_row(con, conv_id, cid)
+            con.execute(
+                "UPDATE messages SET character_id=? WHERE COALESCE(NULLIF(LOWER(character_id), ''), 'kira')=? "
+                "AND (character_id IS NULL OR TRIM(character_id)='' OR LOWER(character_id)<>?)",
+                (cid, cid, cid),
+            )
+            con.execute(
+                "UPDATE messages SET conversation_id=? WHERE conversation_id IS NULL "
+                "AND COALESCE(NULLIF(LOWER(character_id), ''), 'kira')=?",
+                (conv_id, cid),
+            )
+        con.execute(
+            "CREATE TABLE IF NOT EXISTS persistence_schema (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL, description TEXT NOT NULL)"
+        )
+        con.execute(
+            "INSERT OR IGNORE INTO persistence_schema(version, applied_at, description) VALUES (?, ?, ?)",
+            (SCHEMA_VERSION, _now(), "conversation ids, message metadata and stream status"),
+        )
+        con.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     def _migrate_schema(self, con):
-        """Compatibility entry point delegated to the schema manager."""
-        return self._schema_manager.migrate(con)
+        has_messages = self._has_table(con, "messages")
+        has_conversations = self._has_table(con, "conversations")
+        has_versions = self._has_table(con, "persistence_schema")
+        current_version = int(con.execute("PRAGMA user_version").fetchone()[0])
+        if current_version > SCHEMA_VERSION:
+            raise PersistenceError(
+                f"نسخه دیتابیس ({current_version}) از این نسخه برنامه جدیدتر است؛ برای جلوگیری از Downgrade، تغییر داده نشد."
+            )
+        if has_versions:
+            recorded = [
+                int(row[0]) for row in con.execute("SELECT version FROM persistence_schema")
+            ]
+            if recorded and max(recorded) > SCHEMA_VERSION:
+                raise PersistenceError(
+                    "نسخه ثبت‌شده Schema از این نسخه برنامه جدیدتر است؛ دیتابیس بدون تغییر باقی ماند."
+                )
+
+        needs_migration = (
+            current_version < SCHEMA_VERSION
+            or not has_messages
+            or not has_conversations
+            or not has_versions
+        )
+        if has_messages:
+            cols = self._columns(con, "messages")
+            needs_migration = needs_migration or any(
+                name not in cols
+                for name in ("character_id", "conversation_id", "metadata", "status", "created_at")
+            )
+        # A completely fresh database has nothing to back up. Existing user
+        # data gets an online backup before additive DDL/backfill. Once version
+        # 1 is in place, ordinary message writes do not acquire a schema lock.
+        has_existing_data = has_messages or has_conversations or has_versions
+        if not needs_migration:
+            return
+        if has_existing_data:
+            self._snapshot("pre-migration")
+        if not con.in_transaction:
+            con.execute("BEGIN IMMEDIATE")
+        self._create_schema(con)
 
     def _write_all(self, rows):
         """Transactional recovery rewrite that preserves non-conflicting message IDs."""

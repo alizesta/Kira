@@ -39,6 +39,21 @@ APPLICATION_FEATURE_DEPENDENCIES = {
     "voice_application": (),
 }
 
+OPTIONAL_APPLICATION_MODULES = frozenset({
+    "conversation_organization",
+    "chat_search",
+    "chat_transfer",
+    "web_search",
+    "shared_skills",
+    "coding_agent",
+    "brain_application",
+    "reflection_application",
+})
+REQUIRED_APPLICATION_MODULES = (
+    frozenset(APPLICATION_FEATURE_DEPENDENCIES) - OPTIONAL_APPLICATION_MODULES
+)
+
+
 
 def register_application_modules(
     module_manager: ModuleManager,
@@ -206,19 +221,14 @@ def register_application_modules(
         ("reflection_application", "reflection_application_service"),
         ("voice_application", "voice_application_service_factory"),
     )
-    lazy_modules = {
-        "conversation_organization",
-        "chat_search",
-        "chat_transfer",
-        "web_search",
-        "shared_skills",
-    }
+    # Optional constructors stay cold until the owning capability is first used.
+    lazy_modules = OPTIONAL_APPLICATION_MODULES
     for module_id, service_key in modules:
         module_manager.register(
             module_id,
             lambda key=service_key, factory=factories[service_key], lazy=module_id in lazy_modules:
                 ServiceModule(key, factory, lazy=lazy),
             dependencies=APPLICATION_FEATURE_DEPENDENCIES[module_id],
-            optional=False,
+            optional=module_id in OPTIONAL_APPLICATION_MODULES,
         )
     return tuple(module_id for module_id, _ in modules)
