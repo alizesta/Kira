@@ -363,10 +363,14 @@ class SessionController(WindowFeatureController):
     def switch_session(self, cid, save=True):
         """Open a character ChatSession on demand, then bring it to the front."""
         profiles = self.context.services.character_service.all_profiles(self.context.services.settings)
-        profile = profiles.get(cid)
-        if profile is None:
-            return
         sess = self.context.state.sessions.get(cid)
+        profile = profiles.get(cid)
+        # A deleted character may retain an in-flight Session until its work drains.
+        # Keep that already-existing conversation reachable; do not create new ones.
+        if profile is None and sess is None:
+            return
+        if profile is None:
+            profile = {}
         if sess is None or sess.view is None or sess.client is None:
             sess = self._ensure_session(cid, profile)
             if sess is None:
