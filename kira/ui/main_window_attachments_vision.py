@@ -243,15 +243,27 @@ class AttachmentsVisionController(WindowFeatureController):
         allowed, reason = privacy.evaluate_window(
             current, explicit=(source == "game")
         )
-        if not source_enabled or not same_window or not allowed:
-            if not allowed or not source_enabled:
+        if not source_enabled:
+            self.context.services.desktop_context_application_service.clear()
+        elif not allowed:
+            self.context.services.desktop_context_application_service.clear_sensitive(
+                exe=str((current or {}).get("exe") or ""),
+                reason=reason,
+            )
+        elif not same_window:
+            # A title/PID/HWND change can occur before the next capture tick.
+            # Update the current identity now so a chat turn cannot reuse old OCR.
+            if current is None:
                 self.context.services.desktop_context_application_service.clear_sensitive(
-                    exe=str((current or {}).get("exe") or ""),
-                    reason=reason,
+                    reason="foreground_window_unidentified"
                 )
+            else:
+                self._perception_engine().observe_window(current, source=source)
+        if not source_enabled or not same_window or not allowed:
             vision_trace(
                 "perception_ocr_discarded", source=source,
-                reason="foreground_changed" if not same_window else reason,
+                reason=("capture_source_disabled" if not source_enabled else
+                        "foreground_changed" if not same_window else reason),
             )
             return
 
