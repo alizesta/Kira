@@ -32,7 +32,6 @@ from .builtin import build_registry
 from .registry import ToolResult, NEEDS_CONFIRM, BAD_ARGS, DENIED, OK, ACTION, LEVEL_NAMES, clip
 from . import fast_commands
 from ..webintel.session import CANCEL as WEB_CANCEL
-from ..game_mode_policy import tool_categories_allowed
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -264,18 +263,8 @@ class ToolAgent(AutonomyMixin):
 
     # ------------------------------------------------------------ game-mode permission boundary
     def set_competitive_safe_mode(self, enabled: bool):
-        """Restrict local control tools while an online/PvP safety profile is active."""
-        was_safe = self._competitive_safe_mode
+        """Track the gameplay profile without disabling ordinary local tools or observations."""
         self._competitive_safe_mode = bool(enabled)
-        if self._competitive_safe_mode:
-            # Cancel once on entry; repeated profile refreshes must not stop allowed web research.
-            if not was_safe:
-                self.request_cancel()
-            for session_id, pending in tuple(self._pending_by_session.items()):
-                tool = self.registry.get(pending.tool)
-                if tool is None or not tool_categories_allowed("competitive_safe", tool.categories):
-                    self._pending_by_session.pop(session_id, None)
-                    self._pending_new_sessions.discard(session_id)
 
     def _game_mode_execution_guard(self, tool):
         """The ONE app-level gate for tool execution (ToolRegistry.execution_guard). It must hold on every path,
@@ -283,9 +272,6 @@ class ToolAgent(AutonomyMixin):
         if self.mode() == "off":
             return ("ابزارها خاموش است (tools_mode = off)؛ هیچ ابزاری اجرا نمی‌شود. "
                     "برای اجرای ابزار، حالت ابزارها را در تنظیمات از Off خارج کن.")
-        if self._competitive_safe_mode and not tool_categories_allowed("competitive_safe", tool.categories):
-            return ("Competitive Safe دسترسی ابزارهای محلی و کنترلی، دسکتاپ، برنامه‌ها، فایل‌ها، MCP و Agent را مسدود کرده است. "
-                    "فقط ابزارهای وب مستقل مجازند.")
         scope_context = getattr(self, "_active_schema_scope", None)
         visible = scope_context.get() if scope_context is not None else None
         if visible is not None and not set(getattr(tool, "categories", ()) or ()).intersection(visible):
@@ -338,17 +324,6 @@ class ToolAgent(AutonomyMixin):
                 if tool is not None:
                     plan = ToolPlan(set(tool.categories), protocol.is_strong(text))
             if plan is not None:
-                if self._competitive_safe_mode:
-                    allowed = {"web"}
-                    if self.mode() == "auto":
-                        # Auto mode now offers every local category up front; in Competitive Safe only
-                        # an explicit web request (or a paused web research) may keep the web tools.
-                        allowed &= protocol.detect_categories(text) | ({"web"} if self._web_resume(text) else set())
-                    plan.categories.intersection_update(allowed)
-                    if plan.schema_categories is not None:
-                        plan.schema_categories.intersection_update(allowed)
-                    if not plan.categories:
-                        return None
                 plan.web = "web" in self._schema_categories(plan) and (bool(protocol.detect_categories(text) & {"web"}) or self._web_resume(text))
                 plan.session_id = owner
                 if fast_call and not plan.complex and not plan.resume:
