@@ -1,9 +1,8 @@
-"""Explicit ownership registry and lazy Qt feature-controller construction."""
+"""Explicit ownership registry and Qt event routing for presentation controllers."""
 from __future__ import annotations
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Callable
 
 
 QT_EVENT_OWNERS = {
@@ -18,58 +17,22 @@ QT_EVENT_OWNERS = {
 
 
 class FeatureControllerRegistry:
-    """Own immutable feature membership and materialize controllers on demand.
+    """Own immutable controller membership and deterministic feature lookup."""
 
-    Existing callers may pass instances. MainWindow uses lazy_factories=True
-    so constructing the shell does not import every feature controller.
-    """
-
-    def __init__(
-        self,
-        controllers: Mapping[str, object | Callable[[], object]],
-        *,
-        lazy_factories: bool = False,
-    ):
-        snapshot = dict(controllers)
-        self._lazy_factories = bool(lazy_factories)
-        self._factories = (
-            MappingProxyType(snapshot) if self._lazy_factories else MappingProxyType({})
-        )
-        self._controllers = {} if self._lazy_factories else snapshot
-        self._constructing: list[str] = []
-
-    def _materialize(self, feature: str):
-        controller = self._controllers.get(feature)
-        if controller is not None:
-            return controller
-        if not self._lazy_factories or feature not in self._factories:
-            return None
-        if feature in self._constructing:
-            raise RuntimeError(f"Recursive feature controller construction: {feature}")
-        self._constructing.append(feature)
-        try:
-            factory = self._factories[feature]
-            if not callable(factory):
-                raise TypeError(f"Lazy controller factory is not callable: {feature}")
-            controller = factory()
-            if controller is None:
-                raise TypeError(f"Lazy controller factory returned None: {feature}")
-            self._controllers[feature] = controller
-            return controller
-        finally:
-            self._constructing.pop()
+    def __init__(self, controllers: Mapping[str, object]):
+        # Copy before wrapping so callers cannot mutate registry membership by
+        # retaining and changing the dictionary passed to the constructor.
+        self._controllers = MappingProxyType(dict(controllers))
 
     def get(self, feature: str):
-        """Return a controller, constructing its factory only when requested."""
-        return self._materialize(feature)
+        """Return a controller when present, otherwise None."""
+        return self._controllers.get(feature)
 
     def name_for(self, controller: object) -> str:
-        """Resolve a controller identity, including its in-progress factory."""
+        """Resolve the stable registry key for a registered controller instance."""
         for feature, registered in self._controllers.items():
             if registered is controller:
                 return feature
-        if self._constructing:
-            return self._constructing[-1]
         raise LookupError("Controller instance is not registered in this presentation graph")
 
     def require(self, feature: str):
@@ -80,7 +43,6 @@ class FeatureControllerRegistry:
         return controller
 
     def owners_for(self, attribute: str) -> tuple[str, ...]:
-        """Report owners among realized controllers without forcing feature imports."""
         return tuple(
             feature
             for feature, controller in self._controllers.items()
@@ -98,6 +60,7 @@ class FeatureControllerRegistry:
             handler = getattr(controller, event_name, None)
             if handler is not None:
                 return handler(event)
+        # Preserve Qt's default implementation when a feature has no handler.
         from PySide6.QtWidgets import QMainWindow
 
         base_handler = getattr(QMainWindow, event_name, None)
@@ -105,13 +68,8 @@ class FeatureControllerRegistry:
             return base_handler(window, event)
         return None
 
-    @property
-    def materialized_features(self) -> tuple[str, ...]:
-        """Return only features whose controller objects have been constructed."""
-        return tuple(self._controllers)
-
     def __contains__(self, feature: str) -> bool:
-        return feature in (self._factories if self._lazy_factories else self._controllers)
+        return feature in self._controllers
 
     def __iter__(self):
-        return iter(self._factories if self._lazy_factories else self._controllers)
+        return iter(self._controllers)

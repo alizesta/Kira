@@ -179,20 +179,6 @@ class ThinkFilterTests(unittest.TestCase):
 
 
 class StartupImportBoundaryTests(unittest.TestCase):
-    def test_main_window_defers_feature_controller_imports_to_registry_factories(self):
-        source = (ROOT / "kira" / "ui" / "main_window.py").read_text(encoding="utf-8")
-        tree = ast.parse(source)
-        eager_controller_imports = [
-            node.module
-            for node in tree.body
-            if isinstance(node, ast.ImportFrom)
-            and node.module
-            and node.module.startswith("main_window_")
-        ]
-        self.assertEqual(eager_controller_imports, [])
-        self.assertIn("lazy_factories=True", source)
-        self.assertIn("import_module", source)
-
     def test_tool_protocol_does_not_import_hybrid_ai(self):
         source = (ROOT / "kira" / "tools" / "protocol.py").read_text(encoding="utf-8")
         tree = ast.parse(source)

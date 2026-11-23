@@ -102,6 +102,7 @@ SERVICE_FIELDS = frozenset({
 
 ADAPTER_FIELDS = frozenset({
     "animator",
+    "appearance_runtime",
     "bubble",
     "chat_attachment_controller",
     "companion",
@@ -385,7 +386,7 @@ CONTROLLER_ACCESS = {
  "character_settings": {
   "state": frozenset({"_closing","_effect","_mcp_registry_worker","front","sessions"}),
   "services": frozenset({"character_service","mood_service","settings","shared_skills_application_service","tool_agent","voice_application_service"}),
-  "adapters": frozenset({"animator","speaker"}),
+  "adapters": frozenset({"animator","appearance_runtime","speaker"}),
   "views": frozenset({"assistant_page","appearance_page","character_page","help_page","mcp_registry_panel","preferences_page","save_btn","glow_effects","tabs","ui_lang","tavily_key","web_depth","web_fallback_chk","web_test_btn","ui_design_guidance_chk","restore_chat_btn","memory_btn","import_chat_btn","about_labels"}),
   "peers": frozenset({"session","lifecycle","runtime","chat","provider_settings"}),
   "resources": frozenset({"_mcp_registry_worker"}),
