@@ -488,6 +488,9 @@ def initialize_main_window(
         self.state._menu_actions.append(action)
 
     desktop_policy = self.services.vision_application_service.desktop_capture_application_service
+    # Eye Mode is explicit opt-in and must never inherit a stale legacy Desktop Vision state.
+    desktop_policy.set_enabled(False)
+    self.services.settings["desktop_vision_enabled"] = False
     self.views.nav_menu.addSeparator()
     # Eye Mode has exactly one on/off control in the chat composer. Keep only
     # monitor selection in navigation; the legacy second toggle is removed.
