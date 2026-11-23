@@ -521,6 +521,21 @@ class ChatController(WindowFeatureController):
         # is injected into the independent ContextBuilder.
         try:
             extra0 = self.context.session._turn_extra
+            # Eye Mode frames must enter the same structured image payload as
+            # user attachments. A local capture alone is not visible to providers.
+            if self.context.state._game_mode_enabled:
+                live_frame = self.feature_controller("attachments_vision")._live_vision_attachment()
+                if live_frame:
+                    extra0 = dict(extra0 or {})
+                    extra0["images"] = list(extra0.get("images") or [])
+                    extra0["images"].append({
+                        "mime": live_frame["mime"],
+                        "b64": live_frame["b64"],
+                        "name": live_frame["name"],
+                    })
+                    extra0["model"] = str(extra0.get("model") or "") + "\\n[Eye Mode: live selected-monitor frame attached]"
+                    self.context.session._turn_extra = extra0
+                    vision_trace = None
             has_att = bool(self.context.session._turn_attach_kinds or (extra0 and (extra0.get("images") or "--- فایل ضمیمه" in str(extra0.get("model", "")))))
             last_user = latest_user_text(history)
             self.context.session._brain_user_text = str(last_user)
