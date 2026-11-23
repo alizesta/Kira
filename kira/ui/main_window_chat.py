@@ -535,7 +535,6 @@ class ChatController(WindowFeatureController):
                     })
                     extra0["model"] = str(extra0.get("model") or "") + "\\n[Eye Mode: live selected-monitor frame attached]"
                     self.context.session._turn_extra = extra0
-                    vision_trace = None
             has_att = bool(self.context.session._turn_attach_kinds or (extra0 and (extra0.get("images") or "--- فایل ضمیمه" in str(extra0.get("model", "")))))
             last_user = latest_user_text(history)
             self.context.session._brain_user_text = str(last_user)
