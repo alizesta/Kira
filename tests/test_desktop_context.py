@@ -1,6 +1,7 @@
 import unittest
 
 from kira.app.desktop_context import DesktopContext, MAX_SUMMARY_CHARS
+from kira.app.desktop_capture_application import DesktopCaptureApplicationService
 
 
 def window(hwnd=10, pid=20, exe="notepad.exe", title="Notes"):
@@ -35,6 +36,26 @@ class DesktopContextTests(unittest.TestCase):
         context.update_active_window(window(hwnd=11, pid=21, exe="code.exe", title="project.py"))
         self.assertNotIn("private previous screen", context.summary())
         self.assertIn("code.exe", context.summary())
+
+    def test_window_title_change_clears_previous_ocr_for_same_hwnd(self):
+        context = DesktopContext()
+        context.update_active_window(window(title="Document A"))
+        context.set_visible_text("contents from document A", window_key=context.active_window_key)
+        changed = context.update_active_window(window(title="Document B"))
+        self.assertTrue(changed)
+        self.assertNotIn("contents from document A", context.summary())
+        self.assertIn("Document B", context.summary())
+
+    def test_blocklist_denial_never_enters_context(self):
+        context = DesktopContext()
+        privacy = DesktopCaptureApplicationService({"desktop_vision_enabled": True})
+        blocked = window(exe="bitwarden.exe", title="Vault")
+        allowed, reason = privacy.evaluate_window(blocked)
+        self.assertFalse(allowed)
+        context.clear_sensitive(exe=blocked["exe"], reason=reason)
+        self.assertEqual(context.summary(), "")
+        self.assertIsNone(context.snapshot()["active_window"])
+        self.assertEqual(context.snapshot()["visible_text"], "")
 
     def test_duplicate_text_and_events_are_not_added_repeatedly(self):
         context = DesktopContext(max_events=3)
