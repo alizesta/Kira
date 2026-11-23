@@ -793,24 +793,26 @@ class AttachmentsVisionController(WindowFeatureController):
                 "EYE MODE STATUS: Eye Mode is OFF. No live screen frame is available to this request. "
                 "Do not claim to see the desktop. User-supplied image attachments remain separate."
             )
-        self._capture_desktop_frame()
         privacy = self.context.services.vision_application_service.desktop_capture_application_service
         window_info = self.context.adapters.game_mode.capture_service.foreground_window_info()
         allowed, reason = privacy.evaluate_window(window_info)
         if not allowed:
             return "eye_mode_blocked", (
-                f"EYE MODE STATUS: Capture is blocked by the privacy policy ({reason}). No image is "
-                "available; do not claim to see the screen."
+                f"EYE MODE STATUS: Capture is blocked by the privacy policy ({reason}). No current "
+                "screen observation is available; do not claim to see the screen."
             )
-        frame = self.context.state._latest_game_frame
-        if frame is None or frame.isNull():
-            return "eye_mode_capture_failed", (
-                "EYE MODE STATUS: Eye Mode is ON, but the selected monitor's foreground window could "
-                "not be captured. No image is available."
+        context_service = self.context.services.desktop_context_application_service
+        if context_service.summary():
+            return "eye_mode_monitoring", (
+                "EYE MODE STATUS: Eye Mode is monitoring the selected monitor. The DESKTOP CONTEXT "
+                "below contains recent timestamped visual observations and window facts accumulated "
+                "over time. Use that timeline to understand what happened before the user's question. "
+                "No new screenshot is captured just because the user sent a chat message. If the "
+                "timeline has no recent observation, state that limitation instead of inventing details."
             )
-        return "eye_mode_frame_not_attached", (
-            "EYE MODE STATUS: A local screen frame exists, but no frame is attached to THIS provider "
-            "request. Do not claim to inspect its pixels in this turn."
+        return "eye_mode_waiting_for_observation", (
+            "EYE MODE STATUS: Eye Mode is ON and monitoring is enabled, but no visual observation "
+            "has been recorded yet. Do not claim to know what is currently on screen."
         )
 
     def build_chat_vision_context(self, turn_extra=None):
@@ -1222,6 +1224,22 @@ class AttachmentsVisionController(WindowFeatureController):
         )
         if message is None:
             return
+        if ok and self.context.state._game_mode_enabled:
+            # Preserve each distinct model observation in the bounded desktop timeline.
+            # Chat turns consume this history instead of triggering another screenshot.
+            context_service = self.context.services.desktop_context_application_service
+            context_service.record_event(
+                "visual_observation",
+                message[:240],
+                source=source,
+                dedupe_key=f"visual:{PerceptionEvent.fingerprint(message)}",
+            )
+            vision_trace(
+                "visual_observation_recorded",
+                source=source,
+                observation_chars=len(message),
+                history_events=len(context_service.snapshot().get("recent_events", ())),
+            )
         if not ok:
             self.feature_controller("session").add_chat("system", "Vision: " + message[:300])
             return
