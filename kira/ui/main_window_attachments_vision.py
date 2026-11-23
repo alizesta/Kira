@@ -611,6 +611,7 @@ class AttachmentsVisionController(WindowFeatureController):
             self.context.state._game_capture_timer.start()
         else:
             if not desktop_policy.enabled:
+                self._clear_live_video_state()
                 self.context.state._game_capture_timer.stop()
             self.context.state._latest_game_frame = None
             self.context.services.vision_application_service.reset()
