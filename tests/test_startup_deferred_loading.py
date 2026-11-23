@@ -247,5 +247,67 @@ class StartupImportBoundaryTests(unittest.TestCase):
                             for node in ast.walk(factory)))
 
 
+    def test_workers_module_defers_search_attachment_and_provider_imports(self):
+        source = (ROOT / "kira" / "ui" / "workers.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        eager = []
+        for node in tree.body:
+            if isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                imported = {alias.name for alias in node.names}
+                if module.endswith("hybrid_ai") or module.endswith("websearch") or "attachments" in imported:
+                    eager.append((module, sorted(imported)))
+            elif isinstance(node, ast.Import):
+                eager.extend(
+                    (alias.name, [])
+                    for alias in node.names
+                    if alias.name in {"kira.hybrid_ai", "kira.websearch", "kira.chat.attachments"}
+                )
+        self.assertEqual(eager, [])
+
+    def test_eager_shell_modules_do_not_import_worker_implementations(self):
+        paths = (
+            "kira/ui/application_adapters.py",
+            "kira/ui/main_window_chat_support.py",
+            "kira/ui/main_window_voice_settings_support.py",
+            "kira/ui/main_window_lifecycle_support.py",
+            "kira/ui/main_window_root_support.py",
+        )
+        for relative in paths:
+            source = (ROOT / relative).read_text(encoding="utf-8")
+            tree = ast.parse(source)
+            eager = [
+                node for node in tree.body
+                if isinstance(node, ast.ImportFrom)
+                and (node.module or "").endswith("workers")
+            ]
+            self.assertEqual(eager, [], relative)
+
+    def test_worker_classes_are_imported_only_inside_feature_actions(self):
+        expectations = {
+            "kira/ui/application_adapters.py": "StreamWorker",
+            "kira/ui/main_window_chat.py": "SearchWorker",
+            "kira/ui/main_window_voice_settings.py": "TaskWorker",
+            "kira/ui/main_window_lifecycle.py": "OllamaTaskWorker",
+            "kira/ui/main_window_composition.py": "AttachWorker",
+        }
+        for relative, class_name in expectations.items():
+            source = (ROOT / relative).read_text(encoding="utf-8")
+            tree = ast.parse(source)
+            imports = [
+                node for node in ast.walk(tree)
+                if isinstance(node, ast.ImportFrom)
+                and (node.module or "").endswith("workers")
+                and any(alias.name == class_name for alias in node.names)
+            ]
+            self.assertTrue(imports, f"{relative} must retain a lazy {class_name} import")
+            top_level = [
+                node for node in tree.body
+                if isinstance(node, ast.ImportFrom)
+                and (node.module or "").endswith("workers")
+            ]
+            self.assertEqual(top_level, [], relative)
+
+
 if __name__ == "__main__":
     unittest.main()
