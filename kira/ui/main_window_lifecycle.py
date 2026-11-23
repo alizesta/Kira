@@ -100,10 +100,20 @@ class LifecycleController(WindowFeatureController):
         except Exception as exc:
             QMessageBox.critical(self.window, "خطا در ذخیره تنظیمات", f"تنظیمات ذخیره نشدند:\n{exc}")
             return
-        # Construct all routers before replacing any live Session router.
-        self.context.services.provider_application_service.rebuild_session_routers(
+        # Build replacements before touching live routers. Vision keeps its own
+        # request/cancellation channel, and an old analysis is cancelled against
+        # that channel only.
+        provider_service = self.context.services.provider_application_service
+        previous_vision_router = self.context.services.vision_router
+        replacement_vision_router = provider_service.create_isolated_router(
+            s, previous_router=previous_vision_router
+        )
+        provider_service.rebuild_session_routers(
             s, self.context.state.sessions.values(), previous_router=self.context.session.client
         )
+        self.feature_controller("attachments_vision")._cancel_vision_worker()
+        previous_vision_router.cancel()
+        self.context.services.vision_router = replacement_vision_router
         self.context.services.runtime_settings_application_service.apply(s, tool_agent=self.context.services.tool_agent)
         self.context.services.ollama_client = self.context.services.provider_application_service.create_ollama_client(s)
         self.feature_controller("provider_settings").refresh_route_list()
