@@ -1,9 +1,4 @@
-"""Application policy for the bounded game-vision capture loop.
-
-Qt screen capture, image encoding, timers and worker objects remain UI/adapter
-responsibilities. This service owns the policy gate, capture eligibility and
-duplicate-result suppression.
-"""
+"""Application policy for Game Mode and Live Desktop Vision."""
 from __future__ import annotations
 
 from typing import Any
@@ -12,12 +7,15 @@ from ..vision_pipeline import FrameGate, policy_for
 
 
 class VisionApplicationService:
-    """Own vision cadence and Game Mode capture/result policy."""
+    """Own source-aware capture eligibility, cadence and result policy."""
 
-    def __init__(self, game_mode_service: Any, mode: str | None = None) -> None:
-        if game_mode_service is None:
-            raise TypeError("game_mode_service is required")
+    GAME_SOURCE = "game"
+    DESKTOP_SOURCE = "desktop"
+
+    def __init__(self, game_mode_service: Any | None = None, mode: str | None = None,
+                 desktop_capture_application_service: Any | None = None) -> None:
         self.game_mode_service = game_mode_service
+        self.desktop_capture_application_service = desktop_capture_application_service
         self.frame_gate = FrameGate(policy_for(mode))
         self._last_note = ""
         self._active = True
@@ -47,34 +45,41 @@ class VisionApplicationService:
         self._disposed = True
 
     def set_mode(self, mode: str):
-        """Set a supported cadence; unknown values resolve to the economic policy."""
         if self._disposed:
             raise RuntimeError("VisionApplicationService has been disposed")
         policy = policy_for(mode)
         self.frame_gate.set_policy(policy)
         return policy
 
-    def capture_allowed(self, enabled: bool, profile: str | None) -> bool:
-        """Require an explicit Game Mode opt-in and a profile that permits capture."""
-        return (
-            self._active and not self._disposed and bool(enabled)
-            and self.game_mode_service.can_capture_vision(profile)
+    def capture_allowed(self, enabled: bool, profile: str | None, *,
+                        source: str = GAME_SOURCE, window_info: dict | None = None,
+                        explicit: bool = False) -> bool:
+        if not self._active or self._disposed:
+            return False
+        if source == self.DESKTOP_SOURCE:
+            privacy = self.desktop_capture_application_service
+            if privacy is None:
+                return False
+            allowed, _reason = privacy.evaluate_window(window_info, explicit=explicit)
+            return bool(allowed)
+        if source != self.GAME_SOURCE or self.game_mode_service is None:
+            return False
+        allowed = bool(enabled) and self.game_mode_service.can_capture_vision(profile)
+        if not allowed:
+            return False
+        if window_info is None or self.desktop_capture_application_service is None:
+            return True
+        allowed, _reason = self.desktop_capture_application_service.evaluate_window(
+            window_info, explicit=True
         )
+        return bool(allowed)
 
-    def should_analyze(
-        self,
-        *,
-        enabled: bool,
-        profile: str | None,
-        frame_available: bool,
-        worker_running: bool,
-        chat_busy: bool,
-        provider_busy: bool,
-        speech_active: bool,
-    ) -> bool:
-        """Avoid stale/overlapping analysis and never compete with interactive chat."""
+    def should_analyze(self, *, enabled: bool, profile: str | None,
+                       frame_available: bool, worker_running: bool,
+                       chat_busy: bool, provider_busy: bool, speech_active: bool,
+                       source: str = GAME_SOURCE, window_info: dict | None = None) -> bool:
         return (
-            self.capture_allowed(enabled, profile)
+            self.capture_allowed(enabled, profile, source=source, window_info=window_info)
             and bool(frame_available)
             and not bool(worker_running)
             and not bool(chat_busy)
@@ -82,9 +87,10 @@ class VisionApplicationService:
             and not bool(speech_active)
         )
 
-    def consume_result(self, *, enabled: bool, profile: str | None, ok: bool, result: Any) -> str | None:
-        """Return a new user-presentable result once; suppress empty and duplicate notices."""
-        if not self.capture_allowed(enabled, profile):
+    def consume_result(self, *, enabled: bool, profile: str | None, ok: bool,
+                       result: Any, source: str = GAME_SOURCE,
+                       window_info: dict | None = None) -> str | None:
+        if not self.capture_allowed(enabled, profile, source=source, window_info=window_info):
             return None
         message = str(result or "").strip()
         if not ok and not message:
@@ -99,9 +105,8 @@ class VisionApplicationService:
         return self.frame_gate.policy
 
     def accept_frame(self, jpeg: bytes, visual_sample: bytes | None = None) -> bool:
-        return (
-            self._active and not self._disposed
-            and self.frame_gate.accept(jpeg, visual_sample=visual_sample)
+        return self._active and not self._disposed and self.frame_gate.accept(
+            jpeg, visual_sample=visual_sample
         )
 
     def mark_latency(self, milliseconds: int) -> None:
@@ -111,6 +116,5 @@ class VisionApplicationService:
         return self.frame_gate.snapshot()
 
     def reset(self) -> None:
-        """Clear cadence and duplicate suppression when capture is disabled."""
         self.frame_gate.reset()
         self._last_note = ""

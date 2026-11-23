@@ -27,10 +27,11 @@ APPLICATION_FEATURE_DEPENDENCIES = {
     "web_search": (),
     "shared_skills": (),
     "game_mode": (),
+    "desktop_capture": (),
     "provider": (),
     "coding_agent": (),
     "runtime_settings": (),
-    "vision": ("game_mode",),
+    "vision": ("game_mode", "desktop_capture"),
     "chat_application": ("chat_history", "conversation_lifecycle"),
     "session_application": ("chat_application",),
     "initiative_application": ("memory", "mood"),
@@ -79,6 +80,7 @@ def register_application_modules(
     from .provider_application import ProviderApplicationService
     from .runtime_settings_application import RuntimeSettingsApplicationService
     from .vision_application import VisionApplicationService
+    from .desktop_capture_application import DesktopCaptureApplicationService
     from ..config import DATA_DIR, save_settings
     from .chat_composition import create_chat_application_service_factory
     from .session_composition import create_session_application_service_factory
@@ -91,9 +93,15 @@ def register_application_modules(
             raise TypeError(f"Feature factory must be callable: {key}")
         return factory
 
+    def create_desktop_capture_service() -> Any:
+        return DesktopCaptureApplicationService(settings)
+
     def create_vision() -> Any:
         game_mode = container.resolve("game_mode_application_service")
-        return VisionApplicationService(game_mode, settings.get("vision_mode", "economic"))
+        desktop_capture = container.resolve("desktop_capture_application_service")
+        return VisionApplicationService(
+            game_mode, settings.get("vision_mode", "economic"), desktop_capture
+        )
 
     def create_coding_agent_service() -> Any:
         from .coding_agent_application import KodeApplicationService
@@ -197,6 +205,9 @@ def register_application_modules(
             "shared_skills_application_service", create_shared_skills_service
         ),
         "game_mode_application_service": selected("game_mode_application_service", GameModeApplicationService),
+        "desktop_capture_application_service": selected(
+            "desktop_capture_application_service", create_desktop_capture_service
+        ),
         "provider_application_service": selected("provider_application_service", ProviderApplicationService),
         "coding_agent_application_service": selected(
             "coding_agent_application_service", create_coding_agent_service
@@ -228,6 +239,7 @@ def register_application_modules(
         ("web_search", "web_search_service"),
         ("shared_skills", "shared_skills_application_service"),
         ("game_mode", "game_mode_application_service"),
+        ("desktop_capture", "desktop_capture_application_service"),
         ("provider", "provider_application_service"),
         ("coding_agent", "coding_agent_application_service"),
         ("runtime_settings", "runtime_settings_application_service"),

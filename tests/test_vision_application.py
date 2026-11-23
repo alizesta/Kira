@@ -3,6 +3,7 @@ import unittest
 
 from kira.app.game_mode_application import GameModeApplicationService
 from kira.app.vision_application import VisionApplicationService
+from kira.app.desktop_capture_application import DesktopCaptureApplicationService
 
 
 class VisionApplicationServiceTests(unittest.TestCase):
@@ -59,6 +60,28 @@ class VisionApplicationServiceTests(unittest.TestCase):
             self.service.consume_result(enabled=True, profile="story", ok=True, result="new scene"),
             "new scene",
         )
+
+    def test_desktop_source_uses_independent_manual_privacy_gate(self):
+        desktop = DesktopCaptureApplicationService()
+        service = VisionApplicationService(self.game_mode, "economic", desktop)
+        identity = {
+            "hwnd": 10, "pid": 20, "exe": "browser.exe", "title": "Work tab",
+            "path": r"C:\Program Files\Browser.exe", "rect": (0, 0, 900, 700),
+        }
+        self.assertFalse(service.capture_allowed(
+            False, None, source="desktop", window_info=identity
+        ))
+        desktop.set_enabled(True)
+        self.assertTrue(service.capture_allowed(
+            False, None, source="desktop", window_info=identity
+        ))
+        blocked = dict(identity, title="New Tab - Incognito")
+        self.assertFalse(service.capture_allowed(
+            False, None, source="desktop", window_info=blocked
+        ))
+        self.assertFalse(service.capture_allowed(
+            False, None, source="unknown", window_info=identity
+        ))
 
     def test_reset_clears_duplicate_suppression_and_frame_gate(self):
         self.service.consume_result(enabled=True, profile="story", ok=True, result="scene")

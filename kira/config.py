@@ -22,7 +22,7 @@ DB_PATH = DATA_DIR / "kira_memory.sqlite3"
 APP_NAME = "Project Kira"  # change this to rebrand the desktop application
 PROJECT_URL = "https://github.com/alizesta/Kira"
 RELEASES_URL = PROJECT_URL + "/releases/latest"
-VERSION = "1.1"
+VERSION = "1.2"
 
 DEFAULTS = {
     "ollama_url": "http://localhost:11434",
@@ -47,6 +47,10 @@ DEFAULTS = {
     "web_read_max_mb": 2.5,              # biggest page / PDF read (MB); the rest is cut
     "web_max_redirects": 4,              # redirects followed per page (each hop is re-checked against SSRF rules)
     "speak_replies": True,
+    "desktop_vision_enabled": False,        # Live Desktop Vision starts off on every app launch
+    "desktop_vision_monitor_id": "",          # empty = monitor containing the foreground window
+    "desktop_vision_allowlist": [],           # explicit exe:<name>, title:<pattern>, path:<pattern> exceptions
+    "desktop_vision_blocklist": {},           # custom privacy rules merged with defaults
     "voice_engine": "gemini_live",       # gemini_live = primary bidirectional voice; local = existing Qwen/Whisper + Piper
     "voice_engine_migrated": True,       # one-time migration guard; preserves an intentional local-primary choice
     "gemini_live_provider": "",          # provider id from the existing Google API Manager; never stores a second API key
