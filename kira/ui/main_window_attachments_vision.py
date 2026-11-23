@@ -90,7 +90,7 @@ class AttachmentsVisionController(WindowFeatureController):
         base = max(
             250, int(self.context.services.vision_application_service.policy.interval_seconds * 1000)
         )
-        return min(base, 1000) if getattr(self, "_live_video_active", False) else base
+        return 1000 if getattr(self, "_live_video_active", False) else base
 
     def _clear_live_video_state(self):
         self._live_video_sample = b""
