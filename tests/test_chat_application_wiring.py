@@ -87,13 +87,15 @@ class ChatApplicationWiringTests(unittest.TestCase):
         self.assertIn("def max_attachments(", service)
 
 
-    def test_eye_mode_frame_is_injected_into_structured_provider_images(self):
+    def test_eye_mode_chat_uses_rolling_context_without_per_turn_screenshot(self):
         chat = (ROOT / "kira" / "ui" / "main_window_chat.py").read_text(encoding="utf-8")
-        self.assertIn('._live_vision_attachment()', chat)
-        self.assertIn('extra0["images"].append({', chat)
-        self.assertIn('"mime": live_frame["mime"]', chat)
-        self.assertIn('"b64": live_frame["b64"]', chat)
-        self.assertIn('self.context.session._turn_extra = extra0', chat)
+        vision = (ROOT / "kira" / "ui" / "main_window_attachments_vision.py").read_text(encoding="utf-8")
+        self.assertNotIn('._live_vision_attachment()', chat)
+        self.assertIn('build_chat_vision_context(', chat)
+        self.assertIn('"visual_observation"', vision)
+        self.assertIn('context_service.record_event(', vision)
+        self.assertIn('recent timestamped visual observations', vision)
+        self.assertNotIn('self._capture_desktop_frame()', vision[vision.index("    def _vision_status"):vision.index("    def build_chat_vision_context")])
 
     def test_shutdown_uses_two_phase_chat_application_disposal(self):
         runtime_tree = ast.parse((ROOT / "kira" / "ui" / "main_window_runtime.py").read_text(encoding="utf-8"))
