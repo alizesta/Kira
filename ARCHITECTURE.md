@@ -2,7 +2,7 @@
 
 **Current architecture source:** [docs/ARCHITECTURE_MASTER.md](docs/ARCHITECTURE_MASTER.md)  
 **Snapshot branch:** `new-main`  
-**Last synchronized:** 2026-11-23
+**Last synchronized:** 2026-11-24
 
 This file is the short repository-level entry point. It intentionally contains no independent architecture claims; the linked documents below are the canonical records.
 
@@ -43,6 +43,9 @@ For current status and limitations, use the verification sections in the three c
 - 2026-11-22 03:20 Iran: audio playback = `_PcmPlayer` (QAudioSink, PCM wav only) in kira/voice.py; QMediaPlayer / QSoundEffect / winsound removed. Needs a listening test on Windows.
 
 - 2026-11-22 03:26 Iran: speech engine is switchable (settings `tts_engine`: piper | kitten; Kitten English-only, Persian sentences always Piper). See kira/voice.py `_use_kitten` / `_synth_kitten`.
+
+## Eye Mode — unified desktop observation
+Eye Mode is the single user-facing desktop observation path. DesktopCaptureService provides privacy-checked, selected-monitor capture; PerceptionEngine and DesktopContext maintain a bounded RAM-only text context for ordinary chat; AttachmentsVisionController can forward changed JPEG samples to the existing Gemini Live session. The context marks the latest observation as fresh (≤15 s), recent (15–60 s), stale (>60 s) or unknown and labels older observations as historical. Raw frames are not persisted or automatically attached to ordinary chat. Gemini Live sampling is capped at 1 FPS and is not continuous 30/60 FPS video. Disabling Eye Mode or denying privacy clears pending visual state. Windows capture, OCR quality, latency and Gemini Live API compatibility remain runtime-unverified.
 
 ## Gemini Live visual companion
 
