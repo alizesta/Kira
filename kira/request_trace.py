@@ -50,6 +50,15 @@ def gemini_trace(phase: str, **fields):
     _write(phase, fields, "gemini_trace.jsonl")
 
 
+def vision_trace(phase: str, **fields):
+    """Game Mode vision diagnostics into DATA_DIR/logs/vision_trace.jsonl.
+
+    Records what the capture/attachment path did (window found, frame size, whether the frame
+    reached the model request). It never records pixels or prompts.
+    """
+    _write(phase, fields, "vision_trace.jsonl")
+
+
 def _write(phase: str, fields: dict, filename: str):
     record = {
         "ts": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
@@ -77,7 +86,8 @@ def _write(phase: str, fields: dict, filename: str):
                     pass
             with path.open("a", encoding="utf-8") as stream:
                 stream.write(line)
-        _logger.info("%s%s", "[gemini] " if filename.startswith("gemini") else "", json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+        prefix = "[gemini] " if filename.startswith("gemini") else "[vision] " if filename.startswith("vision") else ""
+        _logger.info("%s%s", prefix, json.dumps(record, ensure_ascii=False, separators=(",", ":")))
     except Exception:
         # Diagnostics are best-effort and must never interrupt provider traffic.
         pass
