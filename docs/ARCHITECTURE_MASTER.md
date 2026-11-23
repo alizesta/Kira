@@ -264,3 +264,17 @@ Focused regression coverage was added for lazy Chat imports, lazy controller fac
 - `GeminiLiveWorker` owns the existing bidirectional audio session and a one-slot latest-frame video queue. Audio and video writes share an asyncio lock; video sends use `send_realtime_input(video=Blob(..., mime_type='image/jpeg'))` and a thread-safe 1 FPS gate.
 - The capture timer runs at up to 1 Hz only while a Live audio session and a manually enabled visual source coexist. Significant visual changes alone enter the video queue. Stop/source-disable/privacy-denial clears queued frames and the local change baseline.
 - This is sampled full-monitor input, not continuous 30/60 FPS video. API support is model/account-dependent. Test sources are added; Windows capture, API compatibility, latency, and audio/video synchronization remain runtime-unverified.
+
+
+## Eye Mode architecture update — 2026-11-24
+
+Eye Mode consolidates the desktop-observation path across the selected monitor and the existing Gemini Live voice session:
+
+- DesktopCaptureService owns monitor capture and binds capture to a freshly checked foreground HWND/PID. Privacy policy is applied before and after capture; raw frame bytes remain in memory.
+- PerceptionEngine owns foreground normalization, change detection and perception events. Optional OCR is behind OcrEngine; it uses only installed dependencies and existing language data.
+- DesktopContext owns the bounded RAM-only summary. The latest observation is labelled fresh (≤15 s), recent (15–60 s), stale (>60 s) or unknown; older observations are separately labelled historical. The model prompt must not present stale/historical data as the current screen.
+- AttachmentsVisionController owns selected-monitor resolution, manual Eye Mode/source opt-in, privacy rechecks, change sampling and JPEG construction. Ordinary chat receives the compact text context; it does not receive an automatic raw screenshot attachment.
+- GeminiLiveWorker owns the bounded latest-frame queue and serialized video/audio transport. Video is sampled at no more than 1 FPS and is available only while the visual source and a compatible Live session are both active.
+- Disabling Eye Mode/source or a privacy denial stops capture and clears queued frames and current visual context. No raw screen image is persisted to disk.
+
+This is periodic screen sampling, not a continuous 30/60 FPS video stream. Windows multi-monitor capture, OCR quality, runtime performance, latency and provider/model compatibility remain unverified until exercised on Windows with a real Gemini Live session.
