@@ -128,6 +128,43 @@ class ProviderApplicationServiceTests(unittest.TestCase):
         self.assertIs(first.client, old_a)
         self.assertIs(second.client, old_b)
 
+    def test_isolated_router_copies_health_without_sharing_cancellation_state(self):
+        class Router:
+            def __init__(self, settings):
+                self.settings = settings
+                self.states = {}
+                self.cooldowns = {}
+                self.cancelled = False
+
+            def cancel(self):
+                self.cancelled = True
+
+        previous = Router(self.settings)
+        previous.states = {"route-a": {"health": "healthy"}}
+        previous.cooldowns = {"route-a": 12.0}
+        created = []
+        service = ProviderApplicationService(
+            router_factory=lambda settings: created.append(Router(settings)) or created[-1]
+        )
+
+        isolated = service.create_isolated_router(self.settings, previous_router=previous)
+
+        self.assertIsNot(isolated, previous)
+        self.assertEqual(isolated.states, previous.states)
+        self.assertIsNot(isolated.states, previous.states)
+        self.assertIsNot(isolated.states["route-a"], previous.states["route-a"])
+        self.assertEqual(isolated.cooldowns, previous.cooldowns)
+        self.assertIsNot(isolated.cooldowns, previous.cooldowns)
+        isolated.cancel()
+        self.assertTrue(isolated.cancelled)
+        self.assertFalse(previous.cancelled)
+
+    def test_isolated_router_rejects_a_factory_that_reuses_the_chat_router(self):
+        router = object()
+        service = ProviderApplicationService(router_factory=lambda _settings: router)
+        with self.assertRaisesRegex(RuntimeError, "previous router"):
+            service.create_isolated_router(self.settings, previous_router=router)
+
     def test_router_factory_receives_current_settings(self):
         seen = []
         marker = object()
