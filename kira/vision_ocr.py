@@ -21,7 +21,11 @@ class OcrResult:
     def __post_init__(self):
         object.__setattr__(self, "text", " ".join(str(self.text or "").split())[:1100])
         object.__setattr__(self, "language", str(self.language or "")[:24])
-        object.__setattr__(self, "confidence", max(0.0, min(1.0, float(self.confidence or 0.0))))
+        try:
+            confidence = float(self.confidence or 0.0)
+        except (TypeError, ValueError):
+            confidence = 0.0
+        object.__setattr__(self, "confidence", max(0.0, min(1.0, confidence)))
         object.__setattr__(self, "error_code", str(self.error_code or "")[:48])
 
 
@@ -40,7 +44,7 @@ class TesseractOcrEngine:
     ):
         self.preferred_languages = tuple(str(item) for item in preferred_languages)
         self.timeout_seconds = max(1, int(timeout_seconds))
-        self.max_image_bytes = max(1024, int(max_image_bytes))
+        self.max_image_bytes = max(1, int(max_image_bytes))
         self.max_pixels = max(1, int(max_pixels))
         self._languages = None
 
