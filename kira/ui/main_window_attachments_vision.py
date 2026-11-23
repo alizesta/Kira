@@ -632,7 +632,7 @@ class AttachmentsVisionController(WindowFeatureController):
             self._vision_interval_ms()
         )
         if self.context.state._game_mode_enabled:
-            self._capture_game_frame()
+            self._capture_desktop_frame()
             if not self.context.state._game_capture_timer.isActive():
                 self.context.state._game_capture_timer.start()
         elif service.desktop_capture_application_service.enabled:
@@ -740,32 +740,26 @@ class AttachmentsVisionController(WindowFeatureController):
             enabled = action == "enable"
             self.set_game_mode(enabled, announce=False)
             if not enabled:
-                return "Game Mode خاموش شد؛ Capture متوقف شد و من الان تصویر زنده‌ای از بازی دریافت نمی‌کنم."
+                return "Eye Mode خاموش شد؛ ضبط صفحه متوقف است و تصویر زنده‌ای دریافت نمی‌کنم."
         return self._game_vision_status_message()
 
     def _game_vision_status_message(self):
-        """Describe Game Mode only when a foreground game window was actually captured."""
+        """Compatibility status command for the unified Eye Mode."""
         if not self.context.state._game_mode_enabled:
-            return "Game Mode خاموش است؛ برای فعال‌کردن دستی کلیک کن."
-        service = self.context.services.vision_application_service
-        if not service.capture_allowed(
-            self.context.state._game_mode_enabled,
-            self.context.state._game_mode_profile,
-            source="game",
-        ):
-            return "پروفایل فعلی اجازهٔ Capture بازی را نمی‌دهد."
-        self._capture_game_frame()
-        game = self.context.adapters.game_mode.last_game
+            return "Eye Mode خاموش است؛ برای فعال‌کردن دید زنده روی آیکون چشم کلیک کن."
+        self._capture_desktop_frame()
+        window_info = self.context.adapters.game_mode.capture_service.foreground_window_info()
+        privacy = self.context.services.vision_application_service.desktop_capture_application_service
+        allowed, reason = privacy.evaluate_window(window_info)
+        if not allowed:
+            return f"Eye Mode روشن است، اما پنجرهٔ فعال به‌دلیل محدودیت حریم خصوصی مسدود شد: {reason}"
         frame = self.context.state._latest_game_frame
-        if not game:
-            return "پنجرهٔ بازی پشتیبانی‌شده‌ای در پیش‌زمینه شناسایی نشد؛ هیچ تصویر جایگزینی ارسال نمی‌شود."
-        exe = str(game.get("exe") or "بازی")[:80]
         if frame is None or frame.isNull():
-            return f"پنجرهٔ {exe} شناسایی شد، اما Capture مجاز یا موفق نبود."
+            return "Eye Mode روشن است، اما Capture مانیتور انتخاب‌شده ناموفق بود."
         worker = getattr(self.context.session, "_vision_worker", None)
         if worker is not None and worker.isRunning():
-            return f"فریم پنجرهٔ {exe} دریافت شده و تحلیل Vision در حال اجراست."
-        return f"فریم پنجرهٔ {exe} دریافت شده؛ هنگام ارسال پیام دربارهٔ بازی می‌توان آن را ضمیمه کرد."
+            return "Eye Mode تصویر مانیتور انتخاب‌شده را دریافت کرده و تحلیل در حال اجراست."
+        return "Eye Mode روشن است؛ تصویر مانیتور انتخاب‌شده برای تحلیل دریافت شد."
 
     def _vision_status(self, turn_extra=None):
         """Describe Eye Mode state and never claim a frame was attached without proof."""
