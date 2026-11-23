@@ -24,17 +24,13 @@ from .main_window_attachments_vision_support import (
 
 from .window_feature_controller import WindowFeatureController
 
-# Last (game_detected, frame_ok) pair written to the vision trace; the capture timer
+# Last (game_detected, frame_ok, source) tuple written to the vision trace; the capture timer
 # only logs when this changes so the log is not flooded every few seconds.
 _LAST_CAPTURE_STATE = {}
 
 # Where the frame attached to the most recent chat turn came from: "game" (the detected
 # game window) or "screen" (the whole primary screen, used when no game window is captured).
 _FRAME_SOURCE = {"value": None}
-
-# Whole-screen frames need more pixels than a game window crop to keep text readable.
-SCREEN_CAPTURE_MAX_WIDTH = 1280
-SCREEN_CAPTURE_MAX_HEIGHT = 720
 
 
 def _game_fields(game):
@@ -44,12 +40,15 @@ def _game_fields(game):
     return {"exe": str(game.get("exe") or "")[:80], "title": str(game.get("title") or "")[:120]}
 
 
-def _trace_capture_state(game, frame):
-    state = (bool(game), frame is not None and not frame.isNull())
+def _trace_capture_state(game, frame, source=None):
+    state = (bool(game), frame is not None and not frame.isNull(), source)
     if _LAST_CAPTURE_STATE.get("value") == state:
         return
     _LAST_CAPTURE_STATE["value"] = state
-    vision_trace("capture_state", game_detected=state[0], frame_ok=state[1], **_game_fields(game))
+    vision_trace(
+        "capture_state", game_detected=state[0], frame_ok=state[1], source=source,
+        **_game_fields(game),
+    )
 
 
 class AttachmentsVisionController(WindowFeatureController):
@@ -227,7 +226,12 @@ class AttachmentsVisionController(WindowFeatureController):
 
     def set_game_mode_profile(self, profile):
         """Apply a manually selected gameplay profile; never infer or enable it automatically."""
+        previous = self.context.state._game_mode_profile
         self.context.state._game_mode_profile = self.context.services.game_mode_application_service.normalize_profile(profile)
+        if self.context.state._game_mode_profile != previous:
+            # An analysis started under the old profile must not deliver its result under the new one.
+            self._cancel_vision_worker()
+            self.context.services.vision_application_service.reset()
         self.context.views.game_mode_story_action.setChecked(self.context.services.game_mode_application_service.is_story(self.context.state._game_mode_profile))
         self.context.views.game_mode_safe_action.setChecked(self.context.services.game_mode_application_service.is_competitive_safe(self.context.state._game_mode_profile))
         self.set_game_mode(True)
@@ -256,8 +260,8 @@ class AttachmentsVisionController(WindowFeatureController):
         game = self.context.adapters.game_mode.last_game
         frame = self.context.state._latest_game_frame
         if not game:
-            if self._capture_full_screen() is not None:
-                return "پنجره بازیِ پشتیبانی‌شده‌ای شناسایی نشده؛ اما Game Mode روشن است و با پیام بعدی تصویر کل صفحه اصلی را برای مدل می‌فرستم."
+            if frame is not None and not frame.isNull():
+                return "پنجره بازیِ پشتیبانی‌شده‌ای شناسایی نشده؛ اما Game Mode روشن است و تصویر کل صفحه اصلی را فریم‌به‌فریم (طبق حالت Vision انتخاب‌شده) برای تحلیل می‌گیرم و با هر پیامت هم به مدل می‌فرستم."
             return "Game Mode روشن است، اما هیچ پنجره بازی‌ای شناسایی نشده و گرفتن تصویر کل صفحه هم ناموفق بود؛ پس فعلاً تصویری ندارم."
         title = str(game.get("title") or game.get("exe") or "بازی")[:90]
         if frame is None or frame.isNull():
@@ -403,7 +407,7 @@ class AttachmentsVisionController(WindowFeatureController):
             if announce:
                 self.feature_controller("session").add_chat("system", "🛡️ Competitive Safe فعال شد. Kira تصویر بازیِ پنجرهٔ فعال را فقط‌خواندنی تحلیل می‌کند؛ شنود صدای بازی و کنترل ورودی/دسکتاپ غیرفعال‌اند. فقط چت، جست‌وجوی وب و میکروفون/Wake Word مستقل هم فعال‌اند.")
         if enabled and vision_allowed and announce:
-            self.feature_controller("session").add_chat("system", "🖥️ اگر پنجرهٔ بازی‌ای شناسایی نشود، با هر پیامی که می‌فرستی تصویر کل صفحهٔ اصلی (همان لحظهٔ ارسال) برای مدل فرستاده می‌شود. برای قطع‌کردنش Game Mode را خاموش کن.")
+            self.feature_controller("session").add_chat("system", "🖥️ اگر پنجرهٔ بازی‌ای شناسایی نشود، تصویر کل صفحهٔ اصلی فریم‌به‌فریم (طبق حالت Vision انتخاب‌شده، با کیفیت و اندازهٔ کم) برای تحلیل مدل ابری فرستاده می‌شود. برای قطع‌کردنش Game Mode را خاموش کن.")
 
     def _start_game_audio_listener(self):
         if self.context.state._closing or not self.context.state._game_mode_enabled:
@@ -492,21 +496,33 @@ class AttachmentsVisionController(WindowFeatureController):
             self.feature_controller("runtime").reply_local(alert.message, alert.emotion)
 
     def _capture_game_frame(self):
-        """Capture a bounded frame and analyze only changed frames at the selected low-cost rate."""
-        if not self.context.services.vision_application_service.capture_allowed(self.context.state._game_mode_enabled, self.context.state._game_mode_profile):
+        """Capture a small frame (game window, else the whole screen) and analyze only changed frames at the selected rate."""
+        service = self.context.services.vision_application_service
+        if not service.capture_allowed(self.context.state._game_mode_enabled, self.context.state._game_mode_profile):
             self.context.state._latest_game_frame = None
-            self.context.services.vision_application_service.reset()
+            service.reset()
             _trace_capture_state(None, None)
             return
         # Re-check the foreground immediately before every capture; the slower
         # suggestion timer alone could leave a background game capturable for seconds.
         self.context.adapters.game_mode.poll()
-        pixmap = self.context.adapters.game_mode.capture_last_game(
-            self.context.services.vision_application_service.policy.max_width, self.context.services.vision_application_service.policy.max_height
+        policy = service.policy
+        pixmap = self.context.adapters.game_mode.capture_last_game(policy.max_width, policy.max_height)
+        frame = pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
+        source = "game"
+        if frame is None:
+            # No game window (or its capture failed): analyze the whole primary screen instead.
+            try:
+                frame = self._capture_full_screen(policy.max_width, policy.max_height)
+            except Exception as exc:  # noqa: BLE001 - vision must never interrupt the game/chat
+                vision_trace("analysis_error", error=f"{type(exc).__name__}: {exc}", fallback="screen")
+                frame = None
+            source = "screen"
+        self.context.state._latest_game_frame = frame
+        _trace_capture_state(
+            self.context.adapters.game_mode.last_game, frame, source if frame is not None else None
         )
-        self.context.state._latest_game_frame = pixmap.toImage() if pixmap is not None else None
-        _trace_capture_state(self.context.adapters.game_mode.last_game, self.context.state._latest_game_frame)
-        if not self.context.services.vision_application_service.should_analyze(
+        if not service.should_analyze(
             enabled=self.context.state._game_mode_enabled,
             profile=self.context.state._game_mode_profile,
             frame_available=self.context.state._latest_game_frame is not None,
@@ -522,17 +538,17 @@ class AttachmentsVisionController(WindowFeatureController):
             buffer = QBuffer(data)
             if not buffer.open(QIODevice.WriteOnly):
                 return
-            if not self.context.state._latest_game_frame.save(buffer, "JPEG", self.context.services.vision_application_service.policy.jpeg_quality):
+            if not self.context.state._latest_game_frame.save(buffer, "JPEG", policy.jpeg_quality):
                 return
             jpeg = bytes(data)
             # Compare a tiny grayscale thumbnail, not compressed JPEG bytes, to detect real scene changes.
             thumb = self.context.state._latest_game_frame.scaled(32, 18, Qt.IgnoreAspectRatio, Qt.FastTransformation).convertToFormat(QImage.Format_Grayscale8)
             visual_sample = bytes(thumb.pixelColor(x, y).red() for y in range(thumb.height()) for x in range(thumb.width()))
-            if not self.context.services.vision_application_service.accept_frame(jpeg, visual_sample=visual_sample):
+            if not service.accept_frame(jpeg, visual_sample=visual_sample):
                 return
             image = att.image_attachment(jpeg, "game-screen.jpg", "image/jpeg")
             vision_trace(
-                "analysis_started", jpeg_bytes=len(jpeg),
+                "analysis_started", source=source, jpeg_bytes=len(jpeg),
                 width=self.context.state._latest_game_frame.width(),
                 height=self.context.state._latest_game_frame.height(),
             )
@@ -601,17 +617,18 @@ class AttachmentsVisionController(WindowFeatureController):
         except Exception:  # noqa: BLE001 - diagnostics must never block chat
             return False
 
-    def _capture_full_screen(self):
-        """Grab the whole primary screen as a bounded QImage, or None. Used only for a user-initiated chat turn."""
+    def _capture_full_screen(self, max_width=None, max_height=None):
+        """Grab the whole primary screen as a small QImage (bounded by the active Vision policy), or None."""
+        policy = self.context.services.vision_application_service.policy
+        max_width = int(max_width or policy.max_width)
+        max_height = int(max_height or policy.max_height)
         screen = QApplication.primaryScreen()
         if screen is None:
             return None
         pixmap = screen.grabWindow(0)
         if pixmap.isNull():
             return None
-        target = fit_capture_size(
-            pixmap.width(), pixmap.height(), SCREEN_CAPTURE_MAX_WIDTH, SCREEN_CAPTURE_MAX_HEIGHT
-        )
+        target = fit_capture_size(pixmap.width(), pixmap.height(), max_width, max_height)
         if pixmap.width() > target[0] or pixmap.height() > target[1]:
             pixmap = pixmap.scaled(target[0], target[1], Qt.KeepAspectRatio, Qt.FastTransformation)
         image = pixmap.toImage()
@@ -619,7 +636,8 @@ class AttachmentsVisionController(WindowFeatureController):
 
     def _game_vision_attachment(self):
         """Attach a fresh frame (the game window, else the whole screen) only while Game Mode is manually enabled."""
-        if not self.context.services.vision_application_service.capture_allowed(
+        service = self.context.services.vision_application_service
+        if not service.capture_allowed(
             self.context.state._game_mode_enabled, self.context.state._game_mode_profile
         ):
             self.context.state._latest_game_frame = None
@@ -632,16 +650,14 @@ class AttachmentsVisionController(WindowFeatureController):
         # Do not attach a stale frame from a game that lost foreground focus since the last timer tick.
         self.context.adapters.game_mode.poll()
         game = self.context.adapters.game_mode.last_game
-        pixmap = self.context.adapters.game_mode.capture_last_game(
-            self.context.services.vision_application_service.policy.max_width,
-            self.context.services.vision_application_service.policy.max_height,
-        )
+        policy = service.policy
+        pixmap = self.context.adapters.game_mode.capture_last_game(policy.max_width, policy.max_height)
         frame = pixmap.toImage() if pixmap is not None and not pixmap.isNull() else None
         source = "game"
         if frame is None:
-            # No game window (or its capture failed): look at the whole primary screen for this one message.
+            # No game window (or its capture failed): look at the whole primary screen for this message.
             try:
-                frame = self._capture_full_screen()
+                frame = self._capture_full_screen(policy.max_width, policy.max_height)
             except Exception as exc:  # noqa: BLE001 - a failed capture must not block ordinary chat
                 vision_trace("attach_error", error=f"{type(exc).__name__}: {exc}", fallback="screen")
                 frame = None
@@ -658,7 +674,8 @@ class AttachmentsVisionController(WindowFeatureController):
             from PySide6.QtCore import QBuffer, QByteArray, QIODevice
             data = QByteArray()
             buffer = QBuffer(data)
-            if not buffer.open(QIODevice.WriteOnly) or not frame.save(buffer, "JPEG", CAPTURE_JPEG_QUALITY):
+            quality = min(int(policy.jpeg_quality), int(CAPTURE_JPEG_QUALITY))
+            if not buffer.open(QIODevice.WriteOnly) or not frame.save(buffer, "JPEG", quality):
                 _FRAME_SOURCE["value"] = None
                 vision_trace("attach_skip", reason="jpeg_encode_failed", **_game_fields(game))
                 return None
