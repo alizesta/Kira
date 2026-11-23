@@ -52,6 +52,22 @@ class PerceptionEngineTests(unittest.TestCase):
         engine.observe_window(window(hwnd=11, pid=21, title="another.py"))
         self.assertTrue(engine.screen_changed(bytes([1] * 576)))
 
+    def test_visual_observations_form_a_bounded_timeline_for_chat_context(self):
+        context = DesktopContext(max_events=3)
+        context.update_active_window(window())
+        context.record_event("visual_observation", "Opened inventory", dedupe_key="visual:1")
+        context.record_event("visual_observation", "Selected health potion", dedupe_key="visual:2")
+        context.record_event("visual_observation", "Returned to gameplay", dedupe_key="visual:3")
+        summary = context.summary()
+        self.assertIn("Opened inventory", summary)
+        self.assertIn("Selected health potion", summary)
+        self.assertIn("Returned to gameplay", summary)
+        context.record_event("visual_observation", "Moved to map", dedupe_key="visual:4")
+        summary = context.summary()
+        self.assertNotIn("Opened inventory", summary)
+        self.assertIn("Selected health potion", summary)
+        self.assertIn("Moved to map", summary)
+
     def test_engine_updates_context_only_for_the_observed_window(self):
         context = DesktopContext()
         engine = PerceptionEngine(context, FakeOcr())
