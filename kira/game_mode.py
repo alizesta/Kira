@@ -262,6 +262,10 @@ class GameModeMonitor(QObject):
         if int(current_pid.value) != int(self.last_game.get("pid", -1)):
             self.last_game = None
             return None
+        # Focus can change between poll() and the grab: never capture a window that is no longer in front.
+        if int(self._user32.GetForegroundWindow() or 0) != hwnd:
+            self.last_game = None
+            return None
         screen = QApplication.primaryScreen()
         if screen is None:
             return None
