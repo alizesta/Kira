@@ -29,3 +29,5 @@ python -m unittest tests.test_face_animation_fps tests.test_mood_indicator_cache
 ```
 
 For a real Windows idle-CPU comparison, use the same build and profile, keep the avatar views hidden/minimize the application, allow warm-up, and sample the Kira process CPU for at least 60 seconds. Repeat with a visible avatar and compare the same process, power profile and workload. The timer-rate tests validate the scheduling policy; actual Windows CPU percentages must be measured on the target PC and are not inferred from callback counts.
+
+- All visible views sharing one animator now reuse the same tile and face-anchor rig transforms for each animation tick. This avoids repeating the NumPy deformation/Jacobian calculations when the chat-card avatar and floating companion are visible together; pose ticks and character-art changes invalidate the cache.
