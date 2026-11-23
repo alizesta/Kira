@@ -6,6 +6,7 @@ If you replace the image, re-measure EYES, MOUTH and BLUSH below.
 """
 import math
 import random
+import weakref
 from pathlib import Path
 
 import numpy as np
@@ -18,6 +19,13 @@ from .rig import Rig, region_at
 from . import avatar_art
 
 IMG = Path(__file__).resolve().parent.parent / "assets" / "kira_character.png"
+
+# The full-resolution avatar renders at a nominal 60 FPS while any view is
+# actually visible. Hidden/minimized avatars retain slow state progression at 5 FPS.
+AVATAR_VISIBLE_FPS = 60
+AVATAR_VISIBLE_INTERVAL_MS = 16
+AVATAR_HIDDEN_FPS = 5
+AVATAR_HIDDEN_INTERVAL_MS = 200
 
 # Reference size of the character picture; all coordinates below use these pixels.
 REF_W, REF_H = 832, 1248
@@ -109,10 +117,48 @@ class FaceAnimator(QObject):
         self._clock = QElapsedTimer()
         self._clock.start()
         self._last = 0.0
+        self._avatar_views = weakref.WeakSet()
+        self._animation_fps = AVATAR_HIDDEN_FPS
         self._timer = QTimer(self)
-        self._timer.setInterval(33)
+        self._timer.setTimerType(Qt.TimerType.PreciseTimer)
+        self._timer.setInterval(AVATAR_HIDDEN_INTERVAL_MS)
         self._timer.timeout.connect(self._tick)
         self._timer.start()
+
+    @property
+    def animation_fps(self) -> int:
+        """Current target update rate: 60 FPS while visible, 5 FPS while hidden."""
+        return self._animation_fps
+
+    def register_view(self, view) -> None:
+        """Track one AvatarView without extending its QObject lifetime."""
+        self._avatar_views.add(view)
+        self.refresh_animation_rate()
+
+    def refresh_animation_rate(self) -> int:
+        """Select the full or idle update rate based on all live avatar views."""
+        visible = False
+        for view in tuple(self._avatar_views):
+            try:
+                if not view.isVisible():
+                    continue
+                window = view.window()
+                if window is None or not window.isVisible():
+                    continue
+                if callable(getattr(window, "isMinimized", None)) and window.isMinimized():
+                    continue
+                visible = True
+                break
+            except RuntimeError:
+                # A Qt widget may be destroyed between a timer tick and this scan.
+                continue
+
+        target_fps = AVATAR_VISIBLE_FPS if visible else AVATAR_HIDDEN_FPS
+        interval = AVATAR_VISIBLE_INTERVAL_MS if visible else AVATAR_HIDDEN_INTERVAL_MS
+        if self._timer.interval() != interval:
+            self._timer.setInterval(interval)
+        self._animation_fps = target_fps
+        return target_fps
 
     def _build_tiles(self, T=32):
         img = self.master.convertToFormat(QImage.Format_RGBA8888)
@@ -202,6 +248,9 @@ class FaceAnimator(QObject):
 
     # ---- internals --------------------------------------------------
     def _tick(self):
+        # Also catches top-level minimize/restore transitions that do not always
+        # generate a child show/hide event on every platform.
+        self.refresh_animation_rate()
         now = self._clock.elapsed() / 1000.0
         dt = min(now - self._last, 0.1)
         self._last = now
@@ -475,6 +524,15 @@ class AvatarView(QWidget):
         self._moved = False
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         animator.changed.connect(self.update)
+        animator.register_view(self)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.anim.refresh_animation_rate()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self.anim.refresh_animation_rate()
 
     @property
     def src(self):
