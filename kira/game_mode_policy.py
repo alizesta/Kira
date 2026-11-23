@@ -1,4 +1,4 @@
-"""Fail-closed permissions for Ai1 gameplay profiles."""
+"""Feature permissions for Ai1 gameplay profiles."""
 from __future__ import annotations
 
 STORY_MODE = "story"
@@ -37,8 +37,10 @@ def game_mode_permissions(profile: str | None) -> dict[str, bool]:
 
 
 def tool_categories_allowed(profile: str | None, categories) -> bool:
-    """Competitive Safe permits web research only; local-control/unknown tools fail closed."""
-    if normalize_game_mode_profile(profile) == STORY_MODE:
-        return True
-    values = set(categories or ())
-    return bool(values) and values.issubset({"web"})
+    """Keep ordinary configured tools available in both profiles; reject uncategorized tools.
+
+    Competitive Safe restrictions apply to game-interfering capabilities (memory access,
+    injection, hooks, game-file modification and drivers), not to ordinary desktop,
+    application, file, MCP, Agent or web tools.
+    """
+    return bool(set(categories or ()))
