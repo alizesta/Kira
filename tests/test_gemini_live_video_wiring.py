@@ -94,3 +94,19 @@ def test_eye_mode_uses_the_selected_monitor_for_chat_and_background_analysis():
     assert 'return att.image_attachment(jpeg, "eye-screen.jpg", "image/jpeg")' in live_attach
     assert 'capture.capture_monitor_for_window(' in desktop_capture
     assert 'self._submit_vision_frame(frame, "desktop", window_info)' in desktop_capture
+
+
+
+def test_eye_mode_runtime_does_not_require_voice_session_initialization():
+    source = read("kira/ui/main_window_runtime_voice.py")
+    assert 'getattr(self, "_voice_session_requested", False)' in source
+    assert "self._voice_session_requested\n" not in source
+    assert "if self._voice_session_requested" not in source
+    assert "and self._voice_session_requested" not in source
+
+
+def test_eye_mode_eye_icon_asset_exists():
+    source = read("assets/icons/eye.svg")
+    assert '<svg' in source
+    assert 'viewBox="0 0 24 24"' in source
+    assert '<circle cx="12" cy="12" r="3"/>' in source
