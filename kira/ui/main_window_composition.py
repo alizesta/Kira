@@ -489,13 +489,10 @@ def initialize_main_window(
 
     desktop_policy = self.services.vision_application_service.desktop_capture_application_service
     self.views.nav_menu.addSeparator()
-    self.views.desktop_vision_action = self.views.nav_menu.addAction("Live Desktop Vision")
-    self.views.desktop_vision_action.setCheckable(True)
-    self.views.desktop_vision_action.setChecked(False)
-    self.views.desktop_vision_action.toggled.connect(
-        self.controllers.require("attachments_vision").set_desktop_vision
-    )
-    self.views.desktop_vision_monitor_menu = self.views.nav_menu.addMenu("انتخاب مانیتور")
+    # Eye Mode has exactly one on/off control in the chat composer. Keep only
+    # monitor selection in navigation; the legacy second toggle is removed.
+    self.views.desktop_vision_action = None
+    self.views.desktop_vision_monitor_menu = self.views.nav_menu.addMenu("Eye Mode · انتخاب مانیتور")
     self.views.desktop_vision_monitor_actions = {}
     self.views.desktop_vision_auto_action = self.views.desktop_vision_monitor_menu.addAction(
         "خودکار · مانیتور پنجرهٔ فعال"
