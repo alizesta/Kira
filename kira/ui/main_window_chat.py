@@ -144,11 +144,6 @@ class ChatController(WindowFeatureController):
             voice, self.context.session._voice_next = self.context.session._voice_next, False
         else:
             voice, self.context.session._voice_next = bool(_voice), False
-        vision_worker = getattr(self.context.session, "_vision_worker", None)
-        wait_for_vision = (
-            not self.context.session.busy and vision_worker is not None and vision_worker.isRunning()
-            and getattr(vision_worker, "router", None) is self.context.session.client
-        )
         if self.context.session.busy and not attachments:
             try:
                 control_dispatch = self.context.services.chat_application_service.dispatch_control_commands(
@@ -165,7 +160,7 @@ class ChatController(WindowFeatureController):
         self.feature_controller("session")._ensure_session_conversation(self.context.state.cur)
         result = self.context.services.chat_application_service.submit_message(
             self.context.state.cur.session_id, text, attachments, voice,
-            busy=self.context.session.busy, force_queue=wait_for_vision,
+            busy=self.context.session.busy,
             conversation_id=self.context.state.cur.conversation_id,
             character_id=self.context.state.cur.cid,
         )
@@ -173,15 +168,9 @@ class ChatController(WindowFeatureController):
             return
         if result.queued:
             count = self.context.services.chat_application_service.pending_count(self.context.state.cur.session_id)
-            if wait_for_vision:
-                self.context.views.status.setText(
-                    f"پیام در صف است ({count}) — تحلیل Vision متوقف می‌شود و پیام بعد از آن ارسال خواهد شد."
-                )
-                vision_worker.cancel_request()
-                if not vision_worker.isRunning():
-                    QTimer.singleShot(0, lambda owner=self.context.state.cur: self.feature_controller("attachments_vision")._send_pending_for_session(owner))
-            else:
-                self.context.views.status.setText(f"پیام در صف است ({count}) — بعد از پایان پاسخ فعلی ارسال می‌شود.")
+            self.context.views.status.setText(
+                f"پیام در صف است ({count}) — بعد از پایان پاسخ فعلی ارسال می‌شود."
+            )
             return
 
     def _process_chat_request(self, text, attachments=None, _voice=False):
