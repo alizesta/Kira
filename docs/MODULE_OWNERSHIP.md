@@ -1,6 +1,7 @@
 # KIRA MODULE OWNERSHIP
 
-**Snapshot:** 2026-11-19  
+**Historical audit snapshot:** 2026-11-19  
+**Current synchronization:** 2026-11-23; `new-main` source baseline `91d5cdad7359da1d8bb626064fa84d676c160c02`.  
 **Source baseline:** `new-main` at `0a84bbdc3d47afb1728ff314a056b49e6e56848b`  
 **Scope:** TASK 001–020 and adjacent application capabilities. This register describes observed ownership, not desired ownership where implementation is absent.
 
