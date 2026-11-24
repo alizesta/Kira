@@ -45,36 +45,54 @@ RUN_DIALOG_TITLES = {"run", "اجرا"}
 DANGEROUS_CONTROL_RX = re.compile(r"(?i)(delete|remove|erase|uninstall|format|reset|wipe|clear all|pay|purchase|buy|checkout|order|send|submit|publish|post\b|transfer|"
                                   r"sign[\s-]*in|log[\s-]*in|install|allow|grant|accept|agree|permanently|empty recycle|"
                                   r"حذف|پاک|نصب|پرداخت|خرید|سفارش|ارسال|انتشار|فرمت|ریست|بازنشانی|انتقال|ورود|اجازه|موافقم|می‌پذیرم|می پذیرم)")
-VK = {"enter": 0x0D, "return": 0x0D, "tab": 0x09, "esc": 0x1B, "escape": 0x1B, "backspace": 0x08, "delete": 0x2E, "del": 0x2E, "space": 0x20,
-      "up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27, "home": 0x24, "end": 0x23, "pageup": 0x21, "pagedown": 0x22, "ctrl": 0x11, "shift": 0x10,
-      "alt": 0x12, **{chr(c).lower(): c for c in range(ord("A"), ord("Z") + 1)}, **{str(d): 0x30 + d for d in range(10)}, **{f"f{n}": 0x6F + n for n in range(1, 13)}}
-SAFE_PLAIN = {"enter", "return", "tab", "esc", "escape", "backspace", "delete", "del", "space", "up", "down", "left", "right", "home", "end", "pageup", "pagedown",
-              *{f"f{n}" for n in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)}}
-SAFE_CTRL = set("ACXVZYSFNOPWTLDRBIU") | {"enter", "tab", "home", "end", "left", "right", "up", "down", "backspace", "delete", "pageup", "pagedown"}
-SAFE_CTRL_SHIFT = {"left", "right", "up", "down", "home", "end", "Z", "T", "N", "TAB", "tab"}
+VK = {
+    "enter": 0x0D, "return": 0x0D, "tab": 0x09, "esc": 0x1B, "escape": 0x1B,
+    "backspace": 0x08, "delete": 0x2E, "del": 0x2E, "insert": 0x2D, "space": 0x20,
+    "up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27, "home": 0x24, "end": 0x23,
+    "pageup": 0x21, "pagedown": 0x22, "printscreen": 0x2C, "pause": 0x13,
+    "capslock": 0x14, "numlock": 0x90, "scrolllock": 0x91,
+    "ctrl": 0x11, "shift": 0x10, "alt": 0x12, "win": 0x5B,
+    **{chr(c).lower(): c for c in range(ord("A"), ord("Z") + 1)},
+    **{str(d): 0x30 + d for d in range(10)},
+    **{f"f{n}": 0x6F + n for n in range(1, 25)},
+    **dict(zip(("semicolon", "equals", "comma", "minus", "period", "slash", "grave",
+                "leftbracket", "backslash", "rightbracket", "apostrophe"),
+               (0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF, 0xC0, 0xDB, 0xDC, 0xDD, 0xDE))),
+}
+SAFE_PLAIN = {"enter", "return", "tab", "esc", "escape", "backspace", "delete", "del", "insert", "space",
+              "up", "down", "left", "right", "home", "end", "pageup", "pagedown", "printscreen", "pause",
+              "capslock", "numlock", "scrolllock", *{f"f{n}" for n in range(1, 25)}}
+SAFE_CTRL = set("ACXVZYSFNOPWTLDRBIU") | {"enter", "tab", "home", "end", "left", "right", "up", "down",
+              "backspace", "delete", "insert", "pageup", "pagedown"}
+SAFE_CTRL_SHIFT = {"left", "right", "up", "down", "home", "end", "Z", "T", "N", "tab"}
 SAFE_SHIFT = SAFE_PLAIN - {"f1"}
-SAFE_ALT = {"left", "right", "tab", "home"}
+SAFE_ALT = {"left", "right", "tab", "home", "space"}
+SAFE_WIN = {"a", "d", "e", "g", "i", "s", "t", "v", "x", "tab", "up", "down", "left", "right",
+            "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "period"}
+SAFE_WIN_CTRL = {"d", "left", "right", "f4", "o"}
 
 
 def _fa(text) -> str:
-    return re.sub(r"\s+", " ", str(text or "").lower().replace("ي", "ی").replace("ك", "ک").replace("‌", " ").replace("‏", " ")).strip()
+    return re.sub(r"\\s+", " ", str(text or "").lower().replace("ي", "ی").replace("ك", "ک").replace("‌", " ").replace("‏", " ")).strip()
 
 
 def parse_combo(combo: str):
-    """'ctrl+s' -> ([vk...], normalised text). Raises ToolError for anything not on the whitelist."""
-    parts = [p.strip().lower() for p in re.split(r"\s*\+\s*", str(combo or "").strip()) if p.strip()]
-    if not parts or len(parts) > 3:
-        raise ToolError("کلید نامعتبر است. نمونه: enter، tab، ctrl+s، ctrl+shift+left.")
+    """Parse one bounded, allow-listed Windows virtual-key combination."""
+    parts = [p.strip().lower() for p in re.split(r"\\s*\\+\\s*", str(combo or "").strip()) if p.strip()]
+    if not parts or len(parts) > 4:
+        raise ToolError("کلید نامعتبر است؛ نمونه: alt+tab، win+e، win+ctrl+left، ctrl+shift+left.")
     mods, key = parts[:-1], parts[-1]
-    if any(m not in ("ctrl", "shift", "alt") for m in mods) or len(set(mods)) != len(mods):
-        raise ToolError("فقط ctrl و shift و alt به‌عنوان کلید ترکیبی مجازند (کلید Windows ممنوع است).", DENIED)
-    ok_key = key if key in VK else None
-    if ok_key is None:
+    allowed_mods = {"ctrl", "shift", "alt", "win"}
+    if any(m not in allowed_mods for m in mods) or len(set(mods)) != len(mods):
+        raise ToolError("ترکیب modifierها نامعتبر است.", DENIED)
+    if key not in VK or key in allowed_mods:
         raise ToolError(f"کلید «{key}» پشتیبانی نمی‌شود.")
-    mset = set(mods)
+    mset = frozenset(mods)
     up = key.upper() if len(key) == 1 else key
+    punctuation = {"semicolon", "equals", "comma", "minus", "period", "slash", "grave",
+                   "leftbracket", "backslash", "rightbracket", "apostrophe"}
     if not mset:
-        allowed = key in SAFE_PLAIN or (len(key) == 1)
+        allowed = key in SAFE_PLAIN or len(key) == 1 or key in punctuation
     elif mset == {"ctrl"}:
         allowed = up in SAFE_CTRL
     elif mset == {"shift"}:
@@ -83,13 +101,19 @@ def parse_combo(combo: str):
         allowed = key in SAFE_ALT
     elif mset == {"ctrl", "shift"}:
         allowed = up in SAFE_CTRL_SHIFT or key in SAFE_CTRL_SHIFT
+    elif mset == {"win"}:
+        allowed = key in SAFE_WIN
+    elif mset == {"win", "ctrl"}:
+        allowed = key in SAFE_WIN_CTRL
+    elif mset == {"win", "shift"}:
+        allowed = key in {"left", "right"}
     else:
         allowed = False
-    if key == "f4" and "alt" in mset:
+    if (key == "f4" and "alt" in mset) or (mset == {"win"} and key in {"r", "l"}):
         allowed = False
     if not allowed:
-        raise ToolError(f"ترکیب «{'+'.join(parts)}» در فهرست مجاز نیست (برای بستن پنجره از window_close استفاده کن).", DENIED)
-    return [VK[m] for m in mods] + [VK[ok_key]], "+".join(parts)
+        raise ToolError(f"ترکیب «{'+'.join(parts)}» در فهرست مجاز نیست.", DENIED)
+    return [VK[m] for m in mods] + [VK[key]], "+".join(parts)
 
 
 # =============================================================================================== Win32 backend
@@ -447,24 +471,6 @@ class DesktopTools:
             raise ToolError("متن در کلیپ‌بورد قرار نگرفت.")
         return f"{len(text)} نویسه در کلیپ‌بورد گذاشته شد."
 
-    def paste_text(self, a: dict) -> str:
-        """Paste user-requested text through the existing clipboard + virtual-key path."""
-        text = str(a["text"])
-        if not text or len(text) > TYPE_MAX * 5 or redact_secrets(text) != text:
-            raise ToolError("متن خالی/خیلی بلند است یا شبیه کلید و رمز است.", DENIED)
-        w = self.resolve(a["window"])
-        self._guard_input(w)
-        self._focus(w)
-        self._still_target(w)
-        self.b.clipboard_set(text)
-        if self.b.clipboard_get() != text:
-            raise ToolError("متن در کلیپ‌بورد قرار نگرفت؛ چیزی Paste نشد.")
-        self._still_target(w)
-        vks, _ = parse_combo("ctrl+v")
-        self.b.press(vks)
-        return (f"{len(text)} نویسه با Ctrl+V در پنجره‌ی «{w['title'][:50]}» Paste شد. "
-                "ارسال میانبر تأیید شد؛ محتوای نهایی داخل برنامه هنوز باید با مشاهده‌ی صفحه بررسی شود.")
-
     def confirm_clipboard_get(self, a: dict) -> str:
         return "محتوای متنی فعلی کلیپ‌بورد خوانده می‌شود و در اختیار Kira (و مدل) قرار می‌گیرد؛ ممکن است چیز خصوصی در آن باشد."
 
@@ -557,7 +563,7 @@ FOCUS_RX = _V(r"فعال", r"جلو", r"بیار", r"برو", r"سوییچ", r"�
 CLOSE_RX = _V(r"ببند", r"بسته", r"ببندش", r"کلوز", r"close", r"quit", r"exit")
 STATE_RX = _V(r"کوچک", r"مینی", r"بزرگ", r"ماکسی", r"تمام\s*صفحه", r"برگردون", r"minimi", r"maximi", r"restore", r"full\s*screen")
 TYPE_RX = _V(r"تایپ", r"بنویس", r"بنویسش", r"بزن", r"وارد\s*کن", r"پر\s*کن", r"paste", r"type", r"write", r"enter", r"fill")
-KEYS_RX = _V(r"کلید", r"بزن", r"فشار", r"ذخیره", r"کپی", r"پیست", r"انتخاب", r"ctrl", r"کنترل", r"press", r"hit", r"save", r"copy", r"paste", r"select", r"undo", r"enter", r"tab")
+KEYS_RX = _V(r"کلید", r"بزن", r"فشار", r"ذخیره", r"کپی", r"پیست", r"انتخاب", r"ctrl", r"کنترل", r"alt", r"win", r"windows", r"ویندوز", r"press", r"hit", r"save", r"copy", r"paste", r"select", r"undo", r"enter", r"tab")
 CLICK_RX = _V(r"کلیک", r"بزن", r"فشار", r"انتخاب", r"click", r"press", r"select", r"choose", r"tap", r"باز", r"open", r"تیک", r"check")
 CLIP_RX = _V(r"کلیپ\s*بورد", r"clipboard", r"کپی", r"copy")
 
@@ -589,14 +595,11 @@ class DesktopModule(WinModule):
                        "password or security windows). ONLY when the user asks to type/write something",
                        t.type_text, ACTION, (win, Param("text", "string", "the exact text to type (max 2000 characters)", True)), cat,
                        intent_rx=TYPE_RX, memo=lambda a, x: f"type_text → {a.get('window')}", changes_system=True, external=True),
-            Capability("press_keys", "desktop", "press ONE allowed key or shortcut in a window (enter, tab, esc, arrows, ctrl+s, ctrl+c ...); no Win key, no Alt+F4. ONLY on explicit request",
-                       t.press_keys, ACTION, (win, Param("keys", "string", "e.g. enter, tab, ctrl+s, ctrl+shift+left", True)), cat,
+            Capability("press_keys", "desktop", "press an allow-listed Windows virtual key or shortcut in a window (Alt+Tab, Win+E, Win+D, Win+Tab, Win+Ctrl+Arrow, Ctrl/Shift/Alt shortcuts, F1-F24, navigation and punctuation); dangerous system shortcuts such as Win+R, Win+L and Alt+F4 remain blocked. ONLY on explicit request",
+                       t.press_keys, ACTION, (win, Param("keys", "string", "e.g. alt+tab, win+e, win+ctrl+left, ctrl+s, ctrl+shift+left", True)), cat,
                        intent_rx=KEYS_RX, memo=lambda a, x: f"press_keys → {a.get('keys')}", changes_system=True, external=True),
             Capability("clipboard_set", "desktop", "put text on the clipboard (so the user can paste it). ONLY when the user asks", t.clipboard_set, ACTION,
                        (Param("text", "string", "text to copy", True),), cat, intent_rx=CLIP_RX, verifies_result=True, changes_system=True),
-            Capability("paste_text", "desktop", "paste supplied text into ONE named window using the clipboard and the virtual Ctrl+V key event (no terminal typing); target window is checked before paste. ONLY when the user asks to paste/write text",
-                       t.paste_text, ACTION, (win, Param("text", "string", "exact text to paste (max 10000 characters)", True)), cat,
-                       intent_rx=TYPE_RX, memo=lambda a, x: f"paste_text → {a.get('window')}", changes_system=True, external=True),
             Capability("clipboard_get", "desktop", "read the text currently on the clipboard (it may be private, so the user confirms first)", t.clipboard_get, SENSITIVE, (), cat,
                        confirm_summary=t.confirm_clipboard_get, external=True),
             Capability("ui_list_controls", "desktop", "list the buttons, menus, fields and checkboxes of a window by name (UI Automation; changes nothing)",
@@ -614,5 +617,5 @@ class DesktopModule(WinModule):
                        cat, confirm_summary=t.confirm_mouse_click, changes_system=True, external=True),
         ]
         for c in caps:                                          # the backend that really does the work (shown in the access table / journal)
-            c.backend = "uia" if c.name.startswith("ui_") else "sendinput" if c.name in ("type_text", "press_keys", "paste_text", "mouse_click") else "win32"
+            c.backend = "uia" if c.name.startswith("ui_") else "sendinput" if c.name in ("type_text", "press_keys", "mouse_click") else "win32"
         return caps
