@@ -23,8 +23,16 @@ class ToolAgentDenialBufferTests(unittest.TestCase):
             args[6]("برنامه پیدا شد.")
             return {"text": "برنامه پیدا شد.", "tools": [{"tool": "find_app", "status": "ok"}]}
 
+        calls = 0
+
+        def run_once_side_effect(*args):
+            nonlocal calls
+            calls += 1
+            handler = first_round if calls == 1 else retry_round
+            return handler(*args)
+
         with patch.object(agent, "_direct_bridge", return_value=False), \
-             patch.object(agent, "_run_once", side_effect=[first_round, retry_round]) as run_once, \
+             patch.object(agent, "_run_once", side_effect=run_once_side_effect) as run_once, \
              patch.object(agent, "planning_enabled", return_value=False), \
              patch.object(agent, "_schema_categories", return_value={"apps"}):
             result = agent.run(None, [], "", 0.2, plan, on_chunk=visible.append)
