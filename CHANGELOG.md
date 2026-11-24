@@ -637,7 +637,7 @@ Mate Engine (shinyflvre) is a Unity/C# project under AGPL-3.0 + its own licence,
 - Corrected the DeepSeek session-store tests to use a reversible base64 test cipher, so they verify that persisted content is opaque instead of using a fake prefix that exposed the original cookie/token values.
 - Hardened headless response streaming with a rolling uncommitted tail and common-prefix reconciliation, avoiding duplicate cumulative text when the page re-renders or revises the trailing Markdown/code block.
 - A response that has started is returned as a partial result when the Route deadline expires; the transport no longer raises after streaming content and accidentally triggers a second failover answer.
-- Completion detection now checks localized/accessible Stop controls and composer state, with a longer idle fallback when no Stop control is discoverable; short 750 ms pauses no longer terminate generation.
+- Completion detection now checks accessible English/Persian Stop controls and composer state; after a detected Stop control disappears it waits 2.5 seconds, and when no Stop control is discoverable it waits for a 5-second idle interval. Short 750 ms pauses no longer terminate generation.
 - Refreshes and re-encrypts Playwright cookies/local storage plus the current origin's sessionStorage after a response, preserving other stored origins.
 - Cancellation state is no longer cleared at stream entry, so a stop issued immediately before the worker starts is not discarded. Browser/session cleanup and lock release remain in the finalizer.
 - Static source review and regression-test updates completed. Python tests and live DeepSeek browser/account behavior have not been executed in this source-only change.
