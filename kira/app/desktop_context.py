@@ -275,6 +275,19 @@ class DesktopContext:
                         break
 
         if data["visible_text"]:
+            ocr_events = [event for event in events if event.get("type") == "visible_text_updated"]
+            ocr_freshness, ocr_age = "unknown", "unknown"
+            if ocr_events:
+                try:
+                    observed_at = datetime.fromisoformat(ocr_events[-1]["timestamp"])
+                    if observed_at.tzinfo is None:
+                        observed_at = observed_at.replace(tzinfo=timezone.utc)
+                    age_seconds = max(0, int((self._wall_clock() - observed_at).total_seconds()))
+                    ocr_age = f"{age_seconds}s" if age_seconds < 60 else f"{age_seconds // 60}m {age_seconds % 60}s"
+                    ocr_freshness = "fresh" if age_seconds <= 15 else "recent" if age_seconds <= 60 else "stale"
+                except (KeyError, TypeError, ValueError):
+                    pass
+            append_bounded(f"OCR observation freshness: {ocr_freshness}; age: {ocr_age}.")
             append_bounded(
                 f"Visible on-screen text [{data['ocr_language'] or 'unknown'}, "
                 f"confidence {data['ocr_confidence']:.2f}]: {data['visible_text']}"
