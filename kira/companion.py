@@ -1,7 +1,7 @@
 import base64
 
 from PySide6.QtCore import Qt, Signal, QThread, QBuffer, QIODevice, QTimer
-from PySide6.QtGui import QGuiApplication, QPixmap, QFontMetrics
+from PySide6.QtGui import QGuiApplication, QPixmap, QFontMetrics, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QPushButton, QFrame, QToolButton, QLabel,
                                QFileDialog)
 from . import attachments as att
@@ -167,6 +167,9 @@ class CompanionBubble(QWidget):
         self._preview_timer = QTimer(self)
         self._preview_timer.setSingleShot(True)
         self._preview_timer.timeout.connect(self.hide_preview)
+        self._escape_shortcut = QShortcut(QKeySequence(Qt.Key_Escape), self)
+        self._escape_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
+        self._escape_shortcut.activated.connect(self.close_composer)
         panel = QFrame(self)
         panel.setObjectName("bubblePanel")
         panel.setStyleSheet("#bubblePanel{background:rgba(24,26,40,150);border:1px solid rgba(160,140,255,82);border-radius:16px;}"
@@ -368,6 +371,18 @@ class CompanionBubble(QWidget):
         self.show()
         self.raise_()
         self.edit.setFocus(Qt.OtherFocusReason)
+
+    def close_composer(self):
+        """Close the composer with Escape and return to the timed latest-message preview."""
+        if not self._composer_open:
+            return
+        self._composer_open = False
+        self._set_composer_visible(False)
+        self._render()
+        if self._preview_companion is not None and (self.items or (self.live and self.live[1].strip())):
+            self.show_preview(self._preview_companion)
+        else:
+            self.hide()
 
     def show_preview(self, companion=None):
         """Show only the newest chat item, then return to the avatar after ten seconds."""
