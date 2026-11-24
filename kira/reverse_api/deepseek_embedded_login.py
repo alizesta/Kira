@@ -96,14 +96,15 @@ def run_embedded_login(parent=None, store: DeepSeekSessionStore | None = None) -
             self.timer.stop()
             script = """JSON.stringify({
                 origin: location.origin,
-                entries: Object.entries(localStorage).map(([name,value]) => ({name,value}))
+                localStorage: Object.entries(localStorage).map(([name,value]) => ({name,value})),
+                sessionStorage: Object.entries(sessionStorage).map(([name,value]) => ({name,value}))
             })"""
             self.page.runJavaScript(script, self._save_state)
 
         def _save_state(self, raw_storage):
             try:
                 storage = json.loads(raw_storage or "{}")
-                entries = storage.get("entries") or []
+                entries = storage.get("localStorage") or []
                 origins = []
                 if entries:
                     origins.append({
@@ -111,6 +112,11 @@ def run_embedded_login(parent=None, store: DeepSeekSessionStore | None = None) -
                         "localStorage": entries,
                     })
                 state = {"cookies": list(self._cookies.values()), "origins": origins}
+                session_entries = storage.get("sessionStorage") or []
+                if session_entries:
+                    state["sessionStorageByOrigin"] = {
+                        str(storage.get("origin") or "https://chat.deepseek.com"): session_entries
+                    }
                 session_store.save(state)
                 self.status.setText("نشست DeepSeek به‌صورت رمزگذاری‌شده ذخیره شد.")
                 self.accept()
