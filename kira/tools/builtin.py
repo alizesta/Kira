@@ -8,7 +8,7 @@ from .audio import AudioTools
 from .bluetooth import BluetoothTools
 from .fileagent import register_file_agent
 from .fileops import FileTools
-from .registry import ToolRegistry, Tool, Param, READ, ACTION, SENSITIVE
+from .registry import ToolRegistry, Tool, Param, ToolError, READ, ACTION, SENSITIVE
 from .webtools import register_web_tools
 from .wincontrol import WindowsControlLayer
 from .desktop import DesktopModule
@@ -20,6 +20,19 @@ def _paths_memo(args, text):
     if not lines:
         return None
     return "search_files → " + " | ".join(ln.split(" — ")[0] for ln in lines[:5])
+
+
+def _screen_look_text(provider) -> str:
+    """Read the latest locally cached, privacy-filtered desktop context without capturing or uploading an image."""
+    if not callable(provider):
+        raise ToolError("منبع مشاهدهٔ دسکتاپ وصل نیست؛ خلاصهٔ مجاز Eye Mode در دسترس نیست.")
+    try:
+        summary = str(provider() or "").strip()
+    except Exception as exc:  # noqa: BLE001 - perception must not break the tool agent
+        raise ToolError(f"خواندن وضعیت دسکتاپ ناموفق بود ({type(exc).__name__}).") from exc
+    if not summary:
+        raise ToolError("مشاهدهٔ مجاز دسکتاپ موجود نیست؛ Eye Mode را فعال کن و بعد دوباره screen_look را بخواه.")
+    return summary
 
 
 def build_registry(policy: PathPolicy) -> ToolRegistry:
@@ -74,6 +87,16 @@ def build_registry(policy: PathPolicy) -> ToolRegistry:
     layer.register_module(AudioModule(AudioTools()))
     layer.register_module(DesktopModule())
     layer.register_info_tool()
+
+    # Pull-only, text-only view of the privacy-filtered local perception cache.
+    # The provider is injected by the UI composition root; no screenshot is captured here.
+    reg.desktop_context_provider = None
+    reg.register(Tool(
+        "screen_look",
+        "read the latest locally cached, privacy-approved desktop OCR/context summary and its observation age; text only, does not capture or upload a screenshot",
+        lambda _args: _screen_look_text(reg.desktop_context_provider),
+        (), READ, ("desktop",), external=True, backend="python", max_chars=6000,
+    ))
 
     # ---------------- Web Intelligence & Research (kira/webintel): search, read pages, deep research - read-only, never downloads or runs anything ----------------
     register_web_tools(reg, lambda: policy.settings, policy.data_dir)
