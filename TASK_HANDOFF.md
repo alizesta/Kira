@@ -337,3 +337,11 @@ Character specialization and generated portraits. The implementation is complete
 - Validation: source and test changes were inspected through GitHub. Python tests, browser automation against the live DeepSeek site, token-rotation behavior, and Windows runtime remain unverified; no GitHub Actions were run.
 
 - Release metadata: `VERSION=1.2.1`; `kira/build_info.py` stamped for 2026-11-24 12:03 Asia/Tehran with the detected developer `ChatGPT`; the matching `1.2.1` Changelog entry is present.
+
+
+## ToolAgent import crash — handoff (2026-11-24)
+- Fixed the missing closing parenthesis in `_ACCESS_DENIAL_RX` in `kira/tools/agent.py`. The outer non-capturing regex group now closes correctly, preventing `re.PatternError` during module import.
+- Added `tests/test_tool_agent_import.py`, which imports `kira.tools.agent` inside the test body and asserts the `ToolAgent` class is exported. Because the import happens during test execution (not module collection), a regression becomes a normal focused test failure.
+- Only the critical import-crash item was changed in this task. Keyboard shortcut policy, streamed denial retries, info_text pagination validation/compact catalog and the earlier DeepSeek review suggestions remain separate work.
+- Version metadata: `1.2.2`, build stamp `2026-11-24 12:07` Asia/Tehran, developer `ChatGPT`.
+- Validation: corrected regex compilation was checked with Python's `re` module. Full package import, repository test and Windows/PySide6 runtime have not been executed in this environment.

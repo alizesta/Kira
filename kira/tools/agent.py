@@ -82,7 +82,7 @@ _ACCESS_DENIAL_RX = re.compile(
     r"(?:دسترسی.{0,40}ندارم|ندارم.{0,40}دسترسی|ابزار.{0,35}(?:ندارم|در اختیارم نیست|موجود نیست)|قابلیت.{0,35}(?:ندارم|در اختیارم نیست)|"
     r"نمی.?توانم.{0,45}(?:دسترسی|کنترل|باز|اجرا|کلیک|تایپ)|"
     r"(?:don't have access|do not have access|cannot access|can't access|unable to access|"
-    r"not available to me|don't have the ability|cannot control|can't control)",
+    r"not available to me|don't have the ability|cannot control|can't control))",
     re.I,
 )
 
