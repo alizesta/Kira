@@ -113,7 +113,7 @@ class ToolArgumentValidationTests(unittest.TestCase):
         self.assertIn("read a report by its exact path", report)
         self.assertIn("path (string، اجباری): absolute report path", report)
         self.assertIn("limit (integer، اختیاری): maximum rows", report)
-        self.assertIn("تعداد ابزارهای ثبت‌شده", report)
+        self.assertIn("تعداد کل ابزارهای منطبق: 1", report)
 
     def test_capability_report_paginates_without_hiding_registered_tools(self):
         for name in ("alpha_probe", "beta_probe"):
