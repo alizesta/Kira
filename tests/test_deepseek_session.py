@@ -7,6 +7,7 @@ import unittest
 from kira.reverse_api.deepseek_session import (
     DEEPSEEK_LOGIN_URL,
     DeepSeekSessionError,
+    DeepSeekBrowserLogin,
     DeepSeekSessionStore,
     _chrome_candidate_paths,
 )
@@ -36,12 +37,19 @@ class DeepSeekSessionStoreTests(unittest.TestCase):
         self.assertEqual(len(paths), 3)
         self.assertEqual(paths[0].parts[-4:], ("Google", "Chrome", "Application", "chrome.exe"))
 
+    def test_debug_port_is_specific_and_loopback_only(self):
+        port = DeepSeekBrowserLogin._reserve_debug_port()
+        self.assertGreater(port, 0)
+        self.assertLessEqual(port, 65535)
+
     def test_interactive_login_attaches_to_normal_chrome_instead_of_launching_playwright_chromium(self):
         from pathlib import Path
 
         source = Path(__file__).resolve().parents[1] / "kira" / "reverse_api" / "deepseek_session.py"
         code = source.read_text(encoding="utf-8")
-        self.assertIn('"--remote-debugging-port=0"', code)
+        self.assertIn('f"--remote-debugging-port={port}"', code)
+        self.assertIn('"--remote-debugging-address=127.0.0.1"', code)
+        self.assertNotIn('"--remote-debugging-port=0"', code)
         self.assertIn("connect_over_cdp(endpoint", code)
         self.assertNotIn('chromium.launch(channel="chrome"', code)
         self.assertNotIn("headless=False", code)

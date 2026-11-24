@@ -9,12 +9,14 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import socket
 import subprocess
 import tempfile
 import threading
 import time
 from pathlib import Path
 from typing import Any, Callable
+from urllib.request import urlopen
 
 from ..secret_store import protect, unprotect
 
@@ -175,8 +177,16 @@ class DeepSeekBrowserLogin:
         self._lock = threading.Lock()
 
     @staticmethod
-    def _read_debug_port(port_file: Path, process, timeout_seconds: float = 25.0) -> int:
-        """Wait for Chrome's ephemeral loopback DevTools port without automation flags."""
+    def _reserve_debug_port() -> int:
+        """Choose a specific free loopback port; Chrome treats port=0 as an automation signal."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+            listener.bind(("127.0.0.1", 0))
+            return int(listener.getsockname()[1])
+
+    @staticmethod
+    def _wait_for_debug_endpoint(port: int, process, timeout_seconds: float = 25.0) -> None:
+        """Wait until the local DevTools HTTP endpoint is responsive."""
+        endpoint = f"http://127.0.0.1:{int(port)}/json/version"
         deadline = time.monotonic() + max(1.0, float(timeout_seconds))
         while time.monotonic() < deadline:
             if process.poll() is not None:
@@ -184,11 +194,10 @@ class DeepSeekBrowserLogin:
                     "Chrome هنگام شروع ورود بسته شد؛ مرورگر را به‌روز کن و دوباره امتحان کن."
                 )
             try:
-                lines = port_file.read_text(encoding="utf-8").splitlines()
-                port = int(lines[0].strip())
-                if 0 < port < 65536:
-                    return port
-            except (OSError, ValueError, IndexError):
+                with urlopen(endpoint, timeout=0.8) as response:
+                    if response.status == 200:
+                        return
+            except Exception:
                 pass
             time.sleep(0.15)
         raise DeepSeekChromeUnavailable(
@@ -220,17 +229,16 @@ class DeepSeekBrowserLogin:
                 ) from exc
 
             self.store.chrome_profile_dir.mkdir(parents=True, exist_ok=True)
-            port_file = self.store.chrome_profile_dir / "DevToolsActivePort"
             try:
-                port_file.unlink(missing_ok=True)
-            except OSError:
-                pass
+                port = self._reserve_debug_port()
+            except OSError as exc:
+                raise DeepSeekChromeUnavailable(f"پورت محلی ورود DeepSeek رزرو نشد: {exc}") from exc
 
             command = [
                 str(chrome),
                 f"--user-data-dir={self.store.chrome_profile_dir}",
                 "--remote-debugging-address=127.0.0.1",
-                "--remote-debugging-port=0",
+                f"--remote-debugging-port={port}",
                 "--no-first-run",
                 "--no-default-browser-check",
                 "--new-window",
@@ -250,7 +258,7 @@ class DeepSeekBrowserLogin:
                 raise DeepSeekChromeUnavailable(f"اجرای Chrome معمولی ناموفق بود: {exc}") from exc
 
             with sync_playwright() as playwright:
-                port = self._read_debug_port(port_file, process)
+                self._wait_for_debug_endpoint(port, process)
                 endpoint = f"http://127.0.0.1:{port}"
                 try:
                     browser = playwright.chromium.connect_over_cdp(endpoint, timeout=20_000)
