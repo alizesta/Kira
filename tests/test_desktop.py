@@ -151,6 +151,19 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(self.run_tool("press_keys", {"window": "notepad", "keys": "ctrl+s"}, "press ctrl+s").status, OK)
         self.assertEqual(self.run_tool("press_keys", {"window": "powershell", "keys": "enter"}, "press enter").status, DENIED)
 
+    def test_paste_text_uses_clipboard_and_virtual_ctrl_v_for_target_window(self):
+        res = self.run_tool("paste_text", {"window": "notepad", "text": "hello from Kira"}, "paste this text")
+        self.assertEqual(res.status, OK, res.text)
+        self.assertEqual(self.be.clip, "hello from Kira")
+        self.assertEqual(self.be.fg, 1)
+        self.assertIn(("press", parse_combo("ctrl+v")[0]), self.be.log)
+        self.assertIn("Ctrl+V", res.text)
+
+    def test_paste_text_refuses_shell_and_secret_payloads(self):
+        self.assertEqual(self.run_tool("paste_text", {"window": "powershell", "text": "hello"}, "paste this").status, DENIED)
+        self.assertEqual(self.run_tool("paste_text", {"window": "notepad", "text": "sk-" + "a" * 30}, "paste this").status, DENIED)
+        self.assertFalse(any(item[0] == "press" for item in self.be.log))
+
     def test_clipboard_read_needs_confirmation_and_masks_secrets(self):
         self.be.clip = "note sk-" + "b" * 30
         self.assertEqual(self.run_tool("clipboard_get", {}).status, NEEDS_CONFIRM)
@@ -214,7 +227,7 @@ class DesktopTests(unittest.TestCase):
         self.assertIn("desktop", protocol.detect_categories("متن را تایپ کن"))
         self.assertIn("type_text", {c.name for c in self.layer.capabilities()})
         real = build_registry(PathPolicy({}, None, None))                                      # the real module is registered with the Win32 backend
-        for name in ("window_list", "type_text", "ui_click", "clipboard_get", "mouse_click"):
+        for name in ("window_list", "type_text", "paste_text", "press_keys", "ui_click", "clipboard_get", "mouse_click"):
             self.assertIsNotNone(real.get(name), name)
 
 
