@@ -95,7 +95,7 @@ class ReverseApiProvider(BaseProvider):
 
     # ---- request assembly ----
     def _request(self, messages, system_prompt, temperature, max_tokens=None):
-        clean = normalize_messages(messages)
+        clean = normalize_messages(messages, preserve_tool_messages=True)
         if not clean:
             raise self._fail("هیچ پیام کاربری برای ارسال وجود ندارد.", False, kind="request")
         transport = self._resolve_transport()
