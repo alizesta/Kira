@@ -135,9 +135,14 @@ class DeepSeekBrowserTransport:
                 page = context.new_page()
                 self._active_page = page
                 page.set_default_timeout(min(timeout_ms, 20_000))
+                page.set_default_navigation_timeout(min(timeout_ms, 30_000))
                 try:
-                    page.goto("https://chat.deepseek.com/", wait_until="domcontentloaded", timeout=timeout_ms)
-                    composer = page.wait_for_function(
+                    if cancel.is_set() or self._cancel.is_set():
+                        return
+                    page.goto("https://chat.deepseek.com/", wait_until="domcontentloaded", timeout=min(timeout_ms, 30_000))
+                    if cancel.is_set() or self._cancel.is_set():
+                        return
+                    page.wait_for_function(
                         """selectors => selectors.some(selector => [...document.querySelectorAll(selector)].some(node => {
                             const s = getComputedStyle(node); return s.display !== "none" && s.visibility !== "hidden";
                         }))""",
