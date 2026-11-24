@@ -264,6 +264,12 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
                 f"composition references undeclared {namespace} fields: {sorted(referenced - fields)}",
             )
 
+    def test_new_chat_button_is_declared_and_available_to_session_controller(self):
+        from kira.ui.window_presentation_context import CONTROLLER_ACCESS, VIEW_FIELDS
+
+        self.assertIn("new_chat_btn", VIEW_FIELDS)
+        self.assertIn("new_chat_btn", CONTROLLER_ACCESS["session"]["views"])
+
     def test_deepseek_login_worker_is_declared_for_provider_settings(self):
         from kira.ui.window_presentation_context import CONTROLLER_ACCESS, RESOURCE_OWNERS, STATE_FIELDS
 
