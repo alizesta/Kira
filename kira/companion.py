@@ -396,6 +396,8 @@ class CompanionBubble(QWidget):
         """Stop tray previews while the main chat window is visible."""
         self._preview_timer.stop()
         self._preview_companion = None
+        self._composer_open = False
+        self._set_composer_visible(False)
         self.hide()
 
     def _submit(self):
