@@ -95,6 +95,18 @@ class DeepSeekBrowserTransport:
         return index
 
     @staticmethod
+    def _stable_stream_delta(previous: str, current: str, emitted_prefix: str) -> tuple[str, str]:
+        """Return only newly stable text, keeping a mutable tail out of the append-only stream."""
+        if not previous:
+            return "", emitted_prefix
+        stable_prefix = DeepSeekBrowserTransport._common_prefix_length(previous, current)
+        safe_length = max(0, min(stable_prefix, len(current) - _STREAM_HOLDBACK_CHARS))
+        if current.startswith(emitted_prefix) and safe_length > len(emitted_prefix):
+            next_prefix = current[:safe_length]
+            return current[len(emitted_prefix):safe_length], next_prefix
+        return "", emitted_prefix
+
+    @staticmethod
     def _merge_session_storage(state: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]:
         """Merge the current origin's sessionStorage into Playwright's refreshed storage state."""
         updated = dict(state)
@@ -112,7 +124,7 @@ class DeepSeekBrowserTransport:
             updated.pop("sessionStorageByOrigin", None)
         return updated
 
-    def _persist_refreshed_session(self, context, page, previous_state: dict[str, Any]) -> None:
+    def _persist_refreshed_session(self, context, page) -> None:
         """Persist rotated cookies/local storage and current-origin sessionStorage after a reply."""
         refreshed = context.storage_state()
         snapshot = page.evaluate(
@@ -228,7 +240,7 @@ class DeepSeekBrowserTransport:
                 latest_text = ""
                 last_change = time.monotonic()
                 started = False
-                completed = False
+                saw_stop = False
                 while time.monotonic() < deadline:
                     if cancel.is_set() or self._cancel.is_set():
                         return
@@ -241,26 +253,23 @@ class DeepSeekBrowserTransport:
                         latest_text = current
                         if current != previous_snapshot:
                             last_change = now
-                        if previous_snapshot:
-                            stable_prefix = self._common_prefix_length(previous_snapshot, current)
-                            safe_length = max(0, min(stable_prefix, len(current) - _STREAM_HOLDBACK_CHARS))
-                            if current.startswith(emitted_prefix) and safe_length > len(emitted_prefix):
-                                delta = current[len(emitted_prefix):safe_length]
-                                if delta:
-                                    yield delta
-                                emitted_prefix = current[:safe_length]
+                        delta, next_prefix = self._stable_stream_delta(
+                            previous_snapshot, current, emitted_prefix
+                        )
+                        if delta:
+                            yield delta
+                        emitted_prefix = next_prefix
                         previous_snapshot = current
 
                     generation = page.evaluate(_GENERATION_STATE_SCRIPT)
                     stop_visible = bool(generation.get("stopVisible")) if isinstance(generation, dict) else bool(generation)
                     composer_disabled = bool(generation.get("composerDisabled")) if isinstance(generation, dict) else False
                     idle_for = now - last_change
-                    if started and not stop_visible:
-                        if composer_disabled is False and idle_for >= _NO_STOP_IDLE_SECONDS:
-                            completed = True
-                            break
-                        if isinstance(generation, dict) and idle_for >= _STOP_IDLE_SECONDS:
-                            completed = True
+                    if stop_visible:
+                        saw_stop = True
+                    elif started and not composer_disabled:
+                        idle_limit = _STOP_IDLE_SECONDS if saw_stop else _NO_STOP_IDLE_SECONDS
+                        if idle_for >= idle_limit:
                             break
                     page.wait_for_timeout(250)
 
@@ -271,7 +280,7 @@ class DeepSeekBrowserTransport:
                 # raise after yielding it: the router would otherwise trigger failover
                 # and append a second answer to the already streamed text.
                 try:
-                    self._persist_refreshed_session(context, page, state)
+                    self._persist_refreshed_session(context, page)
                 except Exception as exc:
                     self._last_error = "ذخیره نشست تازه‌شده ناموفق بود: " + str(exc)[:180]
 
