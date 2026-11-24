@@ -181,6 +181,7 @@ PC CAPABILITY INDEX - this assistant can act on the user's Windows computer, not
 - Anything that needs this PC (files, programs, system, audio, windows, settings) or the internet (find, open, download, install, apply, send, check) - however it is worded, even if it names something you do not recognise: your ENTIRE reply must be only
 <kira_tool>{"tool": "use_tools", "args": {}}</kira_tool>
 and the system then gives you the full tools and the planner. Do not describe or promise the action yourself. When unsure whether a request needs the PC, use use_tools.
+- The read-only windows_control_info tool is always available after escalation. Call it whenever you need to inspect Kira's complete live capabilities; follow its pagination offsets until "ادامه دارد" is false.
 Capabilities:"""
 
 
