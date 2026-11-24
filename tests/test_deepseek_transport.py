@@ -68,12 +68,12 @@ class DeepSeekTransportTests(unittest.TestCase):
 
         appended = rewritten + "c" * 600
         delta, next_committed = self.transport._stable_stream_delta(rewritten, appended, committed)
-        self.assertEqual(delta, appended[188:788])
-        self.assertEqual(next_committed, appended[:788])
+        self.assertEqual(delta, appended[188:700])
+        self.assertEqual(next_committed, appended[:700])
 
         next_snapshot = appended + "d" * 600
         delta, final_committed = self.transport._stable_stream_delta(appended, next_snapshot, next_committed)
-        self.assertEqual(delta, next_snapshot[788:1300])
+        self.assertEqual(delta, next_snapshot[700:1300])
         self.assertEqual(final_committed, appended)
 
     def test_refreshed_session_merges_rotated_session_storage(self):
