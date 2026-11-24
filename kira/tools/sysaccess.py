@@ -348,11 +348,11 @@ class AccessManager:
             else:
                 param_text = "بدون ورودی"
             lines.append(
-                f"\\n- {t.name} [{categories}]"
-                f"\\n  کاربرد: {t.description}"
-                f"\\n  ورودی‌ها: {param_text}"
-                f"\\n  سطح ابزار/مجوز: {level_name} / {permission_name} · دامنه: {p.domain} · Backend: {backend}"
-                f"\\n  شرط اجرا: {gate}"
+                f"\n- {t.name} [{categories}]"
+                f"\n  کاربرد: {t.description}"
+                f"\n  ورودی‌ها: {param_text}"
+                f"\n  سطح ابزار/مجوز: {level_name} / {permission_name} · دامنه: {p.domain} · Backend: {backend}"
+                f"\n  شرط اجرا: {gate}"
                 + (" · نتیجه دوباره بررسی می‌شود" if p.verifies else "")
             )
         recent = self._report_int(recent, 8, 0, 50)
@@ -367,7 +367,7 @@ class AccessManager:
                              f"{' · تأییدشده' if e['confirmed'] else ''}{' · بازبینی‌شده' if e['verified'] else ''}: {e['summary'][:150]}")
         else:
             lines.append("هنوز عملیاتی در این اجرای برنامه ثبت نشده است.")
-        return "\\n".join(lines)
+        return "\n".join(lines)
 
 
 
