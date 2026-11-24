@@ -309,14 +309,17 @@ class DeepSeekBrowserLogin:
                     pass
             if process is not None and process.poll() is None:
                 try:
-                    process.terminate()
-                    process.wait(timeout=8)
-                except Exception:
+                    process.wait(timeout=6)
+                except subprocess.TimeoutExpired:
                     try:
-                        process.kill()
-                        process.wait(timeout=4)
+                        process.terminate()
+                        process.wait(timeout=8)
                     except Exception:
-                        pass
+                        try:
+                            process.kill()
+                            process.wait(timeout=4)
+                        except Exception:
+                            pass
             if profile_temp is not None:
                 try:
                     profile_temp.cleanup()
