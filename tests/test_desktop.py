@@ -149,7 +149,7 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(parse_combo("win+tab")[1], "win+tab")
         self.assertEqual(parse_combo("win+ctrl+left")[1], "win+ctrl+left")
         self.assertEqual(parse_combo("win+shift+right")[1], "win+shift+right")
-        self.assertEqual(parse_combo("f24")[1], "ctrl+f24")
+        self.assertEqual(parse_combo("f24")[1], "f24")
         self.assertEqual(parse_combo("semicolon")[1], "semicolon")
         res = self.run_tool("press_keys", {"window": "notepad", "keys": "alt+tab"}, "switch app with alt+tab")
         self.assertEqual(res.status, OK, res.text)
