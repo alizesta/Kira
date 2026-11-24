@@ -208,7 +208,7 @@ class LifecycleController(WindowFeatureController):
         menu.addSeparator()
         exit_action = menu.addAction("خروج")
         # Defer shutdown until the native tray menu has finished closing.
-        exit_action.triggered.connect(lambda checked=False: QTimer.singleShot(0, self.quit_app))
+        exit_action.triggered.connect(lambda checked=False: QTimer.singleShot(100, self.quit_app))
 
     def tray_toggle_mic(self, checked=False):
         self.context.views.mic_btn.setChecked(not self.context.views.mic_btn.isChecked())
@@ -221,6 +221,13 @@ class LifecycleController(WindowFeatureController):
             return
         away = getattr(self.context.views, "tray", None) is not None and (not self.window.isVisible() or self.window.isMinimized())
         if away and self.context.adapters.companion.isVisible() and not self.context.state._closing:
+            session = self.context.session
+            if getattr(bubble, "session_id", None) != session.session_id:
+                try:
+                    self.feature_controller("session").sync_bubble_history(bubble)
+                except Exception:
+                    # The companion must remain usable if history restoration is temporarily unavailable.
+                    pass
             bubble.place_beside(self.context.adapters.companion)
             if not bubble.isVisible():
                 bubble.show()
@@ -253,6 +260,12 @@ class LifecycleController(WindowFeatureController):
         # closeEvent owns the shutdown protocol. Calling QApplication.quit()
         # here would bypass it when active workers cause closeEvent to ignore.
         self.context.state._quitting = True
+        tray = getattr(self.context.views, "tray", None)
+        if tray is not None:
+            tray.hide()
+        app = QApplication.instance()
+        if app is not None:
+            app.setQuitOnLastWindowClosed(True)
         self.window.close()
 
     def changeEvent(self, event):
