@@ -116,6 +116,7 @@ ADAPTER_FIELDS = frozenset({
     "game_audio_listener",
     "game_mode",
     "music_watcher",
+    "motion",
     "speaker",
 })
 
@@ -340,7 +341,7 @@ CONTROLLER_ACCESS = {
  "runtime": {
   "state": frozenset({"_clicks","_close_after_local_voice","_closing","_quitting","_game_mode_profile","_last_variant","_provider_workers","_save_warned","awake","cur","front","reactions","sessions"}),
   "services": frozenset({"brain_application_service","character_service","chat_application_service","vision_application_service","game_mode_application_service","memory_service","mood_service","provider_application_service","reflection_application_service","session_application_service","settings","tool_agent","vision_router","voice_application_service"}),
-  "adapters": frozenset({"animator","bubble","companion","director","game_mode"}),
+  "adapters": frozenset({"animator","bubble","companion","director","game_mode","motion"}),
   "views": frozenset({"code_chat","companion_btn","desktop_vision_action","desktop_vision_auto_action","desktop_vision_monitor_actions","desktop_vision_monitor_menu","gen_stop_btn","input","kode_activity","mic_btn","route_badge","route_menu","route_status","send_btn","status","tab_keys","tray","voice_btn","voice_page","wake_btn","wake_timer"}),
   "peers": frozenset({"session","provider_settings","attachments_vision","chat","lifecycle","voice_settings"}),
   "resources": frozenset({"_model_import_worker","_local_voice_worker","_local_stt_test_listener","_mcp_registry_worker","_model_catalog_worker","_api_worker","_route_worker","_bench_worker","_scan_worker","_provider_test_worker","_ollama_worker","_vision_worker","_perception_worker","_web_test_worker","_attach_worker","_stopping_listener","_stopping_game_audio_listener","game_audio_listener","listener","wake_timer","_game_poll_timer","_game_capture_timer","_mood_ui_timer"}),

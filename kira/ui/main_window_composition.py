@@ -11,6 +11,7 @@ import sys
 from PySide6.QtWidgets import QApplication
 
 from .shortcuts import install_window_shortcuts
+from .motion_manager import MotionManager
 from .console_log import build_console_log_page
 from .main_window_root_support import (
     AttachmentTile,
@@ -238,6 +239,8 @@ def initialize_main_window(
     self.services.ollama_client = self.services.provider_application_service.create_ollama_client(self.services.settings)
     self.adapters.director = EmotionDirector.from_default()        # emotion library + engine (kira/emotion, emotion_library/)
     self.adapters.animator = EmotionFaceAnimator(self.host, director=self.adapters.director)
+    # One window-owned manager will serve all future UI motion features.
+    self.adapters.motion = MotionManager(self.host)
     from .appearance_runtime import AppearanceRuntime
     self.adapters.appearance_runtime = AppearanceRuntime(self)
     self.adapters.companion = CompanionWindow(self.adapters.animator)

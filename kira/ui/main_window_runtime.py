@@ -764,6 +764,9 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         """Finish the Qt event loop only after the normal close protocol has accepted the window."""
         # Close the companion only after closeEvent has accepted shutdown. An ignored
         # close must leave the bubble available alongside the still-running app.
+        motion = getattr(self.context.adapters, "motion", None)
+        if motion is not None:
+            motion.shutdown()
         bubble = getattr(self.context.adapters, "bubble", None)
         if bubble is not None:
             bubble.close()
