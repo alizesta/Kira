@@ -842,10 +842,54 @@ class SessionController(WindowFeatureController):
         d = detect_direction(text, ui_dir)
         self.context.views.input.setLayoutDirection(Qt.RightToLeft if d == "rtl" else Qt.LeftToRight)
 
+    def _remove_thinking_indicator(self, session=None):
+        session = session or self.context.state.front
+        position = getattr(session, "_thinking_indicator_position", None)
+        view = getattr(session, "view", None)
+        if position is None or view is None:
+            return
+        document = view.document()
+        if position >= document.characterCount():
+            session._thinking_indicator_position = None
+            return
+        cursor = QTextCursor(document)
+        cursor.setPosition(position)
+        cursor.select(QTextCursor.BlockUnderCursor)
+        cursor.removeSelectedText()
+        cursor.deleteChar()
+        session._thinking_indicator_position = None
+
+    def _show_thinking_indicator(self, session=None):
+        session = session or self.context.state.front
+        view = getattr(session, "view", None)
+        if view is None or getattr(session, "_thinking_indicator_position", None) is not None:
+            return
+        label = self.t("st_thinking")
+        align = "right" if self.context.services.settings.get("ui_lang", "fa") == "fa" else "left"
+        view.append(
+            f'<p align="{align}" style="margin:3px 12px 9px 12px; '
+            f'color:#9298ad; font-size:9pt; font-style:italic;">'
+            f'<span style="color:#a99aff;">◌</span> {label}</p>'
+        )
+        cursor = QTextCursor(view.document())
+        cursor.movePosition(QTextCursor.End)
+        cursor.movePosition(QTextCursor.StartOfBlock)
+        session._thinking_indicator_position = cursor.block().position()
+        bar = view.verticalScrollBar()
+        bar.setValue(bar.maximum())
+
     @front_only
     def set_status(self, key, **kw):
         self.context.state._status = (key, kw)
-        self.context.views.status.setText(self.t(key, **kw))
+        thinking = key == "st_thinking"
+        if thinking:
+            self._show_thinking_indicator(self.context.state.front)
+            self.context.views.status.clear()
+            self.context.views.status.hide()
+        else:
+            self._remove_thinking_indicator(self.context.state.front)
+            self.context.views.status.setText(self.t(key, **kw))
+            self.context.views.status.show()
 
     # ---------- navigation / responsive layout ----------
 
