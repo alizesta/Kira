@@ -188,6 +188,16 @@ class ProviderSettingsController(WindowFeatureController):
         if assistant_page is not None:
             layout.addWidget(assistant_page.model_box)        # local Ollama model settings (formerly in the Assistant tab)
 
+        # DeepSeek Reverse API uses a one-time visible login; later requests will use saved state headlessly.
+        deepseek_row = QHBoxLayout()
+        self.deepseek_login_btn = QPushButton("ورود به حساب DeepSeek")
+        self.deepseek_login_btn.clicked.connect(self.start_deepseek_login)
+        self.deepseek_login_status = QLabel()
+        deepseek_row.addWidget(self.deepseek_login_btn)
+        deepseek_row.addWidget(self.deepseek_login_status, 1)
+        layout.addLayout(deepseek_row)
+        self.refresh_deepseek_login_status()
+
         # Advanced controls remain available but are collapsed by default.
         self.connections_advanced_btn = QToolButton()
         self.connections_advanced_btn.setText("تنظیمات پیشرفته و مدیریت Providerها")
@@ -928,6 +938,53 @@ class ProviderSettingsController(WindowFeatureController):
         self.refresh_unified_models()
         if not self.context.session.busy:
             self.feature_controller("runtime").set_badge("idle", self.context.session.client.preview_route())
+
+    def refresh_deepseek_login_status(self):
+        try:
+            from ..reverse_api.deepseek_session import DeepSeekSessionStore
+            connected = DeepSeekSessionStore().has_session()
+            self.deepseek_login_status.setText("نشست DeepSeek ذخیره شده است." if connected else "هنوز وارد حساب DeepSeek نشده‌ای.")
+        except Exception as exc:
+            self.deepseek_login_status.setText("وضعیت نشست قابل‌خواندن نیست: " + str(exc)[:160])
+
+    def start_deepseek_login(self):
+        if self.context.state._closing:
+            return
+        current = self.context.resource("_deepseek_login_worker")
+        if current is not None and current.isRunning():
+            return
+        self.deepseek_login_btn.setEnabled(False)
+        self.deepseek_login_status.setText("مرورگر ورود DeepSeek در حال باز شدن است…")
+        def login():
+            from ..reverse_api.deepseek_session import DeepSeekBrowserLogin
+            return DeepSeekBrowserLogin().login()
+        worker = TaskWorker(login)
+        self.context.state._deepseek_login_worker = worker
+        worker.done.connect(self.on_deepseek_login_done)
+        worker.finished.connect(self.clear_deepseek_login_worker)
+        worker.start()
+
+    @Slot(object)
+    def on_deepseek_login_done(self, result):
+        worker = self.sender()
+        if worker is None or self.context.state._deepseek_login_worker is not worker or self.context.state._closing:
+            return
+        ok, value = result
+        self.deepseek_login_btn.setEnabled(True)
+        if ok:
+            self.deepseek_login_status.setText("✓ نشست DeepSeek به‌صورت رمزگذاری‌شده ذخیره شد.")
+        else:
+            self.deepseek_login_status.setText("✕ ورود ناموفق بود: " + str(value)[:220])
+
+    @Slot()
+    def clear_deepseek_login_worker(self):
+        worker = self.sender()
+        if self.context.state._deepseek_login_worker is worker:
+            self.context.state._deepseek_login_worker = None
+        if worker is not None:
+            worker.deleteLater()
+        if not self.context.state._closing:
+            self.deepseek_login_btn.setEnabled(True)
 
     def test_selected_route(self):
         rid = self._selected_route_id()
