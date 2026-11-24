@@ -364,30 +364,39 @@ def initialize_main_window(
     building_settings_tabs = set()
 
     def _ensure_settings_tab(index):
-        entry = lazy_tab_builders.get(int(index))
+        index = int(index)
+        entry = lazy_tab_builders.get(index)
         if entry is None or index in built_settings_tabs or index in building_settings_tabs:
             return index in built_settings_tabs
         key, builder = entry
-        placeholder = self.views.tabs.widget(index)
+        tabs = self.views.tabs
+        placeholder = tabs.widget(index)
         if placeholder is None:
             return False
-        tabs = self.views.tabs
-        selected_index = tabs.currentIndex()
-        count_before = tabs.count()
+
+        # A page builder appends a real page to this stack. Replacing its placeholder
+        # changes tab indexes transiently; block currentChanged until the swap is complete
+        # so a neighboring lazy page cannot start building re-entrantly.
+        selected_widget = tabs.currentWidget()
+        original_widgets = [tabs.widget(pos) for pos in range(tabs.count())]
+        previous_signals_blocked = tabs.blockSignals(True)
         building_settings_tabs.add(index)
+        page = None
         try:
             builder()
-            page = tabs.widget(tabs.count() - 1)
-            if page is None or page is placeholder:
-                raise RuntimeError(f"Settings page builder did not create {key}")
-            added_index = tabs.indexOf(page)
-            tabs.removeTab(added_index)
-            tabs.removeTab(index)
-            tabs.insertTab(index, page, session_controller.t(key))
-            placeholder.deleteLater()
-            built_settings_tabs.add(index)
+            new_pages = [
+                tabs.widget(pos)
+                for pos in range(tabs.count())
+                if all(tabs.widget(pos) is not old_widget for old_widget in original_widgets)
+            ]
+            if len(new_pages) != 1:
+                raise RuntimeError(
+                    f"Settings page builder for {key} must create exactly one top-level page; "
+                    f"created {len(new_pages)}"
+                )
+            page = new_pages[0]
 
-            # Reapply page-specific responsive finalizers and translated labels after lazy creation.
+            # Finalize the newly built page while the original placeholder is still intact.
             from .pages._pages_finalizer_entry import apply_all_page_finalizers
             page_fields = {
                 "appearance": "appearance_page",
@@ -398,24 +407,50 @@ def initialize_main_window(
                 "skills": "skills_page",
                 "voice": "voice_page",
             }
-            pages = {name: getattr(self.views, field) for name, field in page_fields.items() if hasattr(self.views, field)}
+            pages = {
+                name: getattr(self.views, field)
+                for name, field in page_fields.items()
+                if hasattr(self.views, field)
+            }
             apply_all_page_finalizers(pages)
             session_controller.tidy_forms()
             session_controller.retranslate()
-            tabs.setCurrentIndex(min(selected_index, tabs.count() - 1))
+
+            placeholder_index = tabs.indexOf(placeholder)
+            added_index = tabs.indexOf(page)
+            if placeholder_index < 0 or added_index < 0:
+                raise RuntimeError(f"Settings page {key} lost its placeholder or newly built page")
+            tabs.removeTab(added_index)
+            tabs.removeTab(placeholder_index)
+            tabs.insertTab(index, page, session_controller.t(key))
+
+            # Keep the same selected page; when the placeholder itself was selected,
+            # select its replacement at the same stable index.
+            target_widget = page if selected_widget is placeholder else selected_widget
+            if target_widget is not None and tabs.indexOf(target_widget) >= 0:
+                tabs.setCurrentWidget(target_widget)
+            placeholder.deleteLater()
+            built_settings_tabs.add(index)
             return True
         except Exception as exc:                                          # noqa: BLE001 - one settings page must not break the chat shell
-            if tabs.count() > count_before:
-                failed_page = tabs.widget(tabs.count() - 1)
-                tabs.removeTab(tabs.count() - 1)
-                if failed_page is not None:
-                    failed_page.deleteLater()
+            # Remove every page created by a failed builder, not just the last tab.
+            for pos in reversed(range(tabs.count())):
+                candidate = tabs.widget(pos)
+                if candidate is not None and all(candidate is not old_widget for old_widget in original_widgets):
+                    tabs.removeTab(pos)
+                    candidate.deleteLater()
+            if tabs.indexOf(placeholder) < 0:
+                if page is not None and tabs.indexOf(page) >= 0:
+                    tabs.removeTab(tabs.indexOf(page))
+                tabs.insertTab(min(index, tabs.count()), placeholder, session_controller.t(key))
             placeholder.setToolTip(f"بارگذاری این بخش ناموفق بود: {exc}")
             logging.getLogger("kira.ui").exception("Could not build settings page %s", key)
-            tabs.setCurrentIndex(min(selected_index, tabs.count() - 1))
+            if selected_widget is not None and tabs.indexOf(selected_widget) >= 0:
+                tabs.setCurrentWidget(selected_widget)
             return False
         finally:
             building_settings_tabs.discard(index)
+            tabs.blockSignals(previous_signals_blocked)
 
     # Save may be requested from any settings section; build all sections on demand then.
     self.host._ensure_settings_tab = _ensure_settings_tab

@@ -239,5 +239,20 @@ class BrainReflectionCompositionTests(unittest.TestCase):
 
 
 
+    def test_lazy_settings_tabs_block_reentrant_selection_changes_during_build(self):
+        path = ROOT / "kira" / "ui" / "main_window_composition.py"
+        source = path.read_text(encoding="utf-8")
+        module = ast.parse(source, filename=str(path))
+        builder = next(
+            node for node in ast.walk(module)
+            if isinstance(node, ast.FunctionDef) and node.name == "_ensure_settings_tab"
+        )
+        body = ast.get_source_segment(source, builder)
+        self.assertIn("tabs.blockSignals(True)", body)
+        self.assertIn("tabs.currentWidget()", body)
+        self.assertIn("tabs.setCurrentWidget(target_widget)", body)
+        self.assertIn("len(new_pages) != 1", body)
+        self.assertIn("tabs.blockSignals(previous_signals_blocked)", body)
+
 if __name__ == "__main__":
     unittest.main()
