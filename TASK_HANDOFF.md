@@ -1,3 +1,8 @@
+## ToolAgent test regressions — handoff (2026-11-24)
+- Corrected `tests/test_tool_agent_denial_buffer.py`: its `_run_once` mock now uses a callable `side_effect` with a call counter, so the first-round and retry handlers are actually invoked with the production callback arguments.
+- Updated `tests/test_tool_registry_validation.py` to assert the compact inventory by default, then use `name="report_probe"` to assert full parameter contracts. Pagination now expects the current `تعداد ابزارهای منطبق` label.
+- No production code changed in this follow-up. The fixes are committed on a branch and are awaiting repository test execution; this environment has not run Python imports or unittest.
+
 ## Eye Vision settings tab — handoff (2026-11-24 07:13 Iran)
 - Branch: `feat/eye-vision-settings-tab`, based on `new-main` e339ac8. Overlaps with ChatGPT's planned Eye Mode status panel (`feat/eye-mode-proactive-status`): that panel (enabled/monitor/last successful frame time) can live in this same page; rebase that branch on `new-main` first.
 - Verified offscreen with a real composed MainWindow: the tab builds lazily, a profile change is saved without enabling Eye Mode, a budget change reaches the live selector policy, the page switch drives the composer button and follows it back. 10 new page tests pass.
