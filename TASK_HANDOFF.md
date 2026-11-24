@@ -1,3 +1,9 @@
+## Gemini Live frame budget — handoff (2026-11-24 07:05 Iran)
+- Branch: `feat/live-video-frame-budget`, based on `new-main` 119a9ba.
+- Defaults: 5 s minimum interval, 10 frames/minute. Not a daily cap: a daily or per-session cap would need persistence across restarts and is not implemented.
+- Further savings not yet implemented: send frames only around the user's speech turns plus a slow baseline, and suspend streaming while the user is idle.
+- Verified locally (Linux, offscreen): 16 selector tests incl. budget behaviour and the 60-ticks-of-constant-change case (10 frames sent), 27 tests across the selector and Live wiring files. Not verified on Windows or against a real Gemini Live quota. No GitHub Actions run by hand.
+
 ## Adaptive Live frame selection — handoff (2026-11-24 01:41 Iran)
 - Branch: `feat/adaptive-live-video-selector`, based on `new-main` 9e85000. Not merged; no Pull Request opened (a PR would trigger `android-apk.yml`); no GitHub Actions run.
 - Root-cause fix: undefined `MAX_VIDEO_FRAME_BYTES` in the vision controller silently disabled all Gemini Live video (visible as `live_video_encode_failed` / `error=NameError` in the vision trace on `new-main`).

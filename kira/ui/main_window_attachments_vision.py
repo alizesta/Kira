@@ -293,6 +293,7 @@ class AttachmentsVisionController(WindowFeatureController):
             reason=decision.reason, mean_change=round(decision.mean_change, 4),
             changed_cells=decision.changed_cells,
             skipped_unchanged=selector.skipped_unchanged,
+            skipped_rate_limited=selector.skipped_rate_limited,
             format="JPEG", width=encoded_image.width(), height=encoded_image.height(),
             jpeg_quality=quality, jpeg_bytes=len(jpeg),
             jpeg_kib=round(len(jpeg) / 1024.0, 2),

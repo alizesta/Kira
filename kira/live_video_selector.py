@@ -16,6 +16,8 @@ the Live rate limit is retried on the next tick.
 """
 from __future__ import annotations
 
+import time
+from collections import deque
 from dataclasses import dataclass
 
 SAMPLE_WIDTH = 64
@@ -31,12 +33,16 @@ class SelectorPolicy:
     cell_threshold: float = 0.12
     # This many changed cells count as a local change.
     hotspot_cells: int = 12
+    # Frame budget (0 disables a limit). A changed frame that is over budget is not lost:
+    # the reference stays on the last sent frame, so the newest screen is sent once allowed.
+    min_interval_seconds: float = 5.0
+    max_frames_per_minute: int = 10
 
 
 @dataclass(frozen=True)
 class SelectorDecision:
     send: bool
-    reason: str  # first | size_changed | mean_change | local_change | unchanged
+    reason: str  # first | size_changed | mean_change | local_change | unchanged | rate_limited
     mean_change: float = 0.0
     changed_cells: int = 0
 
@@ -66,34 +72,59 @@ class LiveFrameSelector:
         self.evaluated = 0
         self.sent = 0
         self.skipped_unchanged = 0
+        self.skipped_rate_limited = 0
+        self._sent_times: deque[float] = deque()
 
     @property
     def has_reference(self) -> bool:
         return bool(self._reference)
 
-    def evaluate(self, sample: bytes) -> SelectorDecision:
+    def _over_budget(self, now: float) -> bool:
+        policy = self.policy
+        if not self._sent_times:
+            return False
+        if policy.min_interval_seconds > 0 and now - self._sent_times[-1] < policy.min_interval_seconds:
+            return True
+        if policy.max_frames_per_minute > 0:
+            recent = sum(1 for moment in self._sent_times if now - moment < 60.0)
+            if recent >= policy.max_frames_per_minute:
+                return True
+        return False
+
+    def evaluate(self, sample: bytes, now: float | None = None) -> SelectorDecision:
         """Judge a sample against the last sent frame. Does not change the reference."""
+        moment = time.monotonic() if now is None else float(now)
         current = bytes(sample or b"")
         self.evaluated += 1
         if not current:
             self.skipped_unchanged += 1
             return SelectorDecision(False, "unchanged")
         if not self._reference:
-            return SelectorDecision(True, "first", 1.0, len(current))
-        if len(self._reference) != len(current):
-            return SelectorDecision(True, "size_changed", 1.0, len(current))
-        mean, strong = measure_change(self._reference, current, self.policy.cell_threshold)
-        if mean >= self.policy.mean_threshold:
-            return SelectorDecision(True, "mean_change", mean, strong)
-        if strong >= self.policy.hotspot_cells:
-            return SelectorDecision(True, "local_change", mean, strong)
-        self.skipped_unchanged += 1
-        return SelectorDecision(False, "unchanged", mean, strong)
+            reason, mean, strong = "first", 1.0, len(current)
+        elif len(self._reference) != len(current):
+            reason, mean, strong = "size_changed", 1.0, len(current)
+        else:
+            mean, strong = measure_change(self._reference, current, self.policy.cell_threshold)
+            if mean >= self.policy.mean_threshold:
+                reason = "mean_change"
+            elif strong >= self.policy.hotspot_cells:
+                reason = "local_change"
+            else:
+                self.skipped_unchanged += 1
+                return SelectorDecision(False, "unchanged", mean, strong)
+        if self._over_budget(moment):
+            self.skipped_rate_limited += 1
+            return SelectorDecision(False, "rate_limited", mean, strong)
+        return SelectorDecision(True, reason, mean, strong)
 
-    def commit(self, sample: bytes) -> None:
+    def commit(self, sample: bytes, now: float | None = None) -> None:
         """Remember a frame that was really queued for Gemini Live."""
+        moment = time.monotonic() if now is None else float(now)
         self._reference = bytes(sample or b"")
         self.sent += 1
+        self._sent_times.append(moment)
+        while self._sent_times and moment - self._sent_times[0] >= 60.0:
+            self._sent_times.popleft()
 
     def reset(self) -> None:
         """Forget the reference so the next frame is always sent (new session, privacy stop)."""
@@ -104,4 +135,5 @@ class LiveFrameSelector:
             "evaluated": self.evaluated,
             "sent": self.sent,
             "skipped_unchanged": self.skipped_unchanged,
+            "skipped_rate_limited": self.skipped_rate_limited,
         }

@@ -1,3 +1,8 @@
+## 2026-11-24 07:05 Iran — Gemini Live frame budget
+- `LiveFrameSelector` now enforces a frame budget on top of change detection: at least 5 s between frames and at most 10 frames per minute (`SelectorPolicy.min_interval_seconds` / `max_frames_per_minute`; 0 disables a limit). Previously a constantly changing screen (video, game) could send up to 1 frame per second, i.e. 60 per minute.
+- A changed frame that is over budget is not dropped: the reference stays on the last sent frame, so the newest screen is sent as soon as the budget allows. The first frame of a new session or after a window switch also respects the budget.
+- `live_video_frame_queued` trace and `snapshot()` now include `skipped_rate_limited`.
+- Reason: free-tier Gemini daily limits were being exhausted by the 1 FPS ceiling. The actual quota is not known to this change; tune the two policy values against real usage.
 ## 2026-11-24 01:41 Iran — Adaptive Gemini Live frame selection and Live video NameError fix
 - Fixed: `kira/ui/main_window_attachments_vision.py` used `MAX_VIDEO_FRAME_BYTES` without importing it. The NameError was swallowed by the Live `try/except` and logged as `live_video_encode_failed`, so no Live video frame could be queued. The constant is now imported from `kira/gemini_live.py` inside the Live path.
 - Added `kira/live_video_selector.py` (Qt-free): a 64x36 smoothed grayscale grid compared against the last frame actually sent. A frame is sent on a global change (mean >= 1.5%) or a local change (>= 12 cells moved by >= 12%), which small popups and text lines trigger without moving the global mean. Caret/icon-sized changes are ignored.
