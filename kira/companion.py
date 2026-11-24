@@ -361,6 +361,7 @@ class CompanionBubble(QWidget):
         self._composer_open = True
         self._preview_timer.stop()
         self._set_composer_visible(True)
+        self._render()
         self.view.show()
         if companion is not None:
             self.place_beside(companion)
@@ -411,6 +412,7 @@ class CompanionBubble(QWidget):
             self.clear_attachments()
             self._composer_open = False
             self._set_composer_visible(False)
+            self._render()
             self.submitted.emit(text, files)
             self.show_preview()
 
