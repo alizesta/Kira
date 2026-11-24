@@ -1,3 +1,10 @@
+## Companion and Tray lifecycle — release 1.2.6 (2026-11-24)
+- The companion bubble is a transient preview of the newest chat item. It hides after 10 seconds; the pencil control beside the avatar opens the full composer.
+- Escape closes the composer and returns to the timed preview. The composer must not remain permanently open after being invoked.
+- Explicit application Exit preserves the Tray icon and normal Qt last-window policy until the full close protocol accepts the window. Worker waits or persistence failures must not strand a live process without a Tray entry point.
+- Bubble/session synchronization uses session_id when present and falls back to character and conversation identity for legacy Session objects.
+- Regression contract tests are in tests/test_companion_tray_shutdown_contracts.py. Static/source coverage is not a substitute for the required Windows PySide6 Tray and keyboard smoke test.
+
 ## Eye Mode — release 1.2 synchronization (2026-11-24)
 - Eye Mode is the unified, manually enabled desktop-observation path for the selected monitor across ordinary desktop use and gameplay; it is not a game-only feature.
 - DesktopCaptureService performs monitor-bound capture with foreground HWND/PID and privacy-policy rechecks. PerceptionEngine supplies change-aware events and optional local OCR; DesktopContext is RAM-only and bounded to 2,000 characters.
