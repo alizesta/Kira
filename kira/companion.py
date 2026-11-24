@@ -172,7 +172,7 @@ class CompanionBubble(QWidget):
         self._escape_shortcut.activated.connect(self.close_composer)
         panel = QFrame(self)
         panel.setObjectName("bubblePanel")
-        panel.setStyleSheet("#bubblePanel{background:rgba(24,26,40,150);border:1px solid rgba(160,140,255,82);border-radius:16px;}"
+        panel.setStyleSheet("#bubblePanel{background:rgba(24,26,40,88);border:1px solid rgba(160,140,255,82);border-radius:16px;}"
                             "QTextBrowser{background:transparent;border:none;color:#eceef6;}"
                             "QPlainTextEdit{background:rgba(255,255,255,12);border:1px solid rgba(255,255,255,34);border-radius:10px;"
                             "padding:5px 9px;color:#f1f2f8;font-size:10pt;}"
