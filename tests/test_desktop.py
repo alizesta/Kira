@@ -157,10 +157,16 @@ class DesktopTests(unittest.TestCase):
         res = self.run_tool("press_keys", {"window": "notepad", "keys": "win+e"}, "press win+e")
         self.assertEqual(res.status, OK, res.text)
 
-    def test_virtual_keyboard_accepts_safe_alt_and_ctrl_shift_letters(self):
-        for combo in ("alt+s", "alt+f", "alt+q", "ctrl+shift+e", "ctrl+shift+s"):
+    def test_virtual_keyboard_allows_only_explicit_alt_and_ctrl_shift_combinations(self):
+        for combo in ("alt+tab", "alt+left", "alt+right", "ctrl+shift+left",
+                      "ctrl+shift+right", "ctrl+shift+home", "ctrl+shift+end", "ctrl+shift+tab"):
             with self.subTest(combo=combo):
                 self.assertEqual(parse_combo(combo)[1], combo)
+        for combo in ("alt+s", "alt+f", "alt+q", "ctrl+shift+e", "ctrl+shift+s",
+                      "ctrl+shift+q", "ctrl+shift+w", "ctrl+shift+a"):
+            with self.subTest(combo=combo):
+                with self.assertRaises(ToolError):
+                    parse_combo(combo)
 
     def test_virtual_keyboard_keeps_dangerous_system_shortcuts_blocked(self):
         for bad in ("win+r", "win+l", "alt+f4", "ctrl+alt+delete", "ctrl+shift+esc",

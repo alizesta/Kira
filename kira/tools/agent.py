@@ -707,7 +707,48 @@ class ToolAgent(AutonomyMixin):
         """Run a ToolPlan; an access-denial answer gets one retry with the complete local catalog."""
         if self._direct_bridge(router, plan):
             plan.index_only, plan.complex, plan.reasons, plan.direct = False, False, (), True
-        result = self._run_once(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
+        # Hold only the opening sentence while checking for the common unsupported
+        # access-denial claim. Once it is safe, the rest of the answer streams normally.
+        # If a denial is detected, hold the rest until the retry decision is known.
+        pending_chunks = []
+        pending_text = ""
+        released = False
+
+        def guarded_chunk(piece):
+            nonlocal pending_text, released
+            if not piece:
+                return
+            piece = str(piece)
+            if released:
+                if callable(on_chunk):
+                    on_chunk(piece)
+                return
+            pending_chunks.append(piece)
+            pending_text += piece
+            if self._claims_missing_access(pending_text):
+                # Keep the opening denial private until the retry decision is made.
+                return
+            if len(pending_text) >= 240 or re.search(r"[.!?؟\n]", pending_text):
+                released = True
+                if callable(on_chunk):
+                    for chunk in pending_chunks:
+                        on_chunk(chunk)
+                pending_chunks.clear()
+                pending_text = ""
+
+        def flush_pending():
+            if callable(on_chunk):
+                for chunk in pending_chunks:
+                    on_chunk(chunk)
+            pending_chunks.clear()
+
+        try:
+            result = self._run_once(router, messages, system_prompt, temperature, plan, retry_index,
+                                    guarded_chunk, on_event, on_tool)
+        except Exception:
+            # No retry decision is available after a transport failure; preserve partial output.
+            flush_pending()
+            raise
         if isinstance(result, dict):
             model_escalated = bool(result.pop("_escalate", False))
             full_local_catalog = set(protocol.ALL_CATEGORIES) - {"mcp", "agents"}
@@ -737,7 +778,10 @@ class ToolAgent(AutonomyMixin):
                 if self.planning_enabled():
                     plan.complex = True
                     plan.reasons = ("بررسی دوباره با فهرست کامل قابلیت‌های محلی",)
+                # Discard the buffered denial text; it must not flash before the retry.
                 return self._run_once(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
+        # If a denial was not eligible for a full-catalog retry, preserve the model's answer.
+        flush_pending()
         return result
 
     def _direct_bridge(self, router, plan) -> bool:

@@ -326,6 +326,13 @@ Character specialization and generated portraits. The implementation is complete
 - Added tests: `tests/test_gemini_live.py` (JPEG/rate gate), `tests/test_desktop_capture.py` (full-monitor capture tied to current HWND/PID), and `tests/test_gemini_live_video_wiring.py` (cross-controller contract).
 - Validation: source changes are inspected through GitHub. No Python test, import, Qt/Windows capture, live Google API call, audio/video sync test or GitHub Actions run is claimed. Full monitor is visible only while the user explicitly enables a visual source; blocked/unidentified foreground windows fail closed. The uploaded task PDF contains detailed Tasks 1–2, not a separate Task 3 specification; implementation follows the previously agreed Gemini Live + visual companion scope.
 
+## ToolAgent desktop safety and discovery — handoff (2026-11-24)
+- Keyboard shortcuts now use explicit allowlists: Ctrl+Shift permits navigation/selection only; Alt permits navigation/switching only. Alt+letter and Ctrl+Shift+letter combinations (including Q/W) are denied. Existing Win shortcuts and plain keys are unchanged.
+- ToolAgent holds the opening sentence while checking for an unsupported access-denial claim, then streams normally. When an opening denial is detected, the remaining text stays buffered until the retry decision; a full-local-catalog retry discards it. If the call fails or no retry is eligible, buffered partial text is preserved.
+- windows_control_info now returns a compact paginated index by default. Use its exact `name` argument for full purpose, parameters, permission, backend and confirmation gate. Invalid offset/limit/recent values fall back safely instead of raising.
+- Added regression tests for the narrowed shortcut policy, denial-output buffering and inventory parsing/details.
+- Validation in this source-only environment: changes and diffs inspected; Python imports and unittest execution have not been run.
+
 ## DeepSeek Reverse API hardening — handoff (2026-11-24)
 - Fixes the two session-store test failures by replacing the fake `encrypted:` prefix with a reversible base64 test cipher; the assertions now verify that cookie/session values are not visible in the persisted test file.
 - Transport streaming keeps a 512-character mutable tail uncommitted and emits only text confirmed by the common prefix of successive DOM snapshots. This prevents replaying the full cumulative answer after trailing Markdown/code-block re-renders; edits to already committed text cannot be represented by the current append-only transport contract.
@@ -342,6 +349,6 @@ Character specialization and generated portraits. The implementation is complete
 ## ToolAgent import crash — handoff (2026-11-24)
 - Fixed the missing closing parenthesis in `_ACCESS_DENIAL_RX` in `kira/tools/agent.py`. The outer non-capturing regex group now closes correctly, preventing `re.PatternError` during module import.
 - Added `tests/test_tool_agent_import.py`, which imports `kira.tools.agent` inside the test body and asserts the `ToolAgent` class is exported. Because the import happens during test execution (not module collection), a regression becomes a normal focused test failure.
-- Only the critical import-crash item was changed in this task. Keyboard shortcut policy, streamed denial retries, info_text pagination validation/compact catalog and the earlier DeepSeek review suggestions remain separate work.
+- The critical import-crash fix was followed by the 1.2.3 ToolAgent safety/discovery update below, which completes the shortcut policy, streamed denial buffering and info_text validation/compact catalog items.
 - Version metadata: `1.2.2`, build stamp `2026-11-24 12:07` Asia/Tehran, developer `ChatGPT`.
 - Validation: corrected regex compilation was checked with Python's `re` module. Full package import, repository test and Windows/PySide6 runtime have not been executed in this environment.
