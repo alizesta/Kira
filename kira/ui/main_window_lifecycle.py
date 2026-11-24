@@ -224,32 +224,7 @@ class LifecycleController(WindowFeatureController):
             session = self.context.session
             if getattr(bubble, "session_id", None) != session.session_id:
                 try:
-                    history = self.context.services.chat_application_service.recent_messages(
-                        bubble.KEEP,
-                        character_id=session.cid,
-                        conversation_id=session.conversation_id,
-                    )
-                    items = []
-                    ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "fa") == "fa" else "ltr"
-                    assistant_name = self.context.services.character_service.display_name(
-                        self.context.services.settings
-                    )
-                    user_name = self.feature_controller("session").t("you")
-                    for item in history:
-                        role = item.get("role")
-                        if role == "assistant":
-                            text = self.context.adapters.director.parse_reply(
-                                item.get("content", "")
-                            ).text
-                            name = assistant_name
-                        elif role == "user":
-                            text = item.get("content", "")
-                            name = user_name
-                        else:
-                            continue
-                        if str(text).strip():
-                            items.append((role, name, text))
-                    bubble.replace_history(items, ui_dir, session.session_id)
+                    self.feature_controller("session").sync_bubble_history(bubble)
                 except Exception:
                     # The companion must remain usable if history restoration is temporarily unavailable.
                     pass
