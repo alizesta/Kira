@@ -111,7 +111,7 @@ class DeepSeekSessionStore:
 
 
 class DeepSeekBrowserLogin:
-    """Open the first-login page in Chrome, falling back to Playwright's Chromium."""
+    """Open the first-login page in installed Chrome; the UI owns the embedded fallback."""
 
     def __init__(self, store: DeepSeekSessionStore | None = None) -> None:
         self.store = store or DeepSeekSessionStore()
