@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import threading
 import tempfile
 import unittest
 
@@ -14,8 +16,8 @@ class DeepSeekTransportTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.store = DeepSeekSessionStore(
             self.temp.name,
-            encrypt=lambda value: "encrypted:" + value,
-            decrypt=lambda value: value.removeprefix("encrypted:"),
+            encrypt=lambda value: base64.b64encode(value.encode("utf-8")).decode("ascii"),
+            decrypt=lambda value: base64.b64decode(value.encode("ascii")).decode("utf-8"),
         )
         self.transport = DeepSeekBrowserTransport(store=self.store)
 
@@ -44,6 +46,60 @@ class DeepSeekTransportTests(unittest.TestCase):
         status = self.transport.status()
         self.assertIn(status.state, {TransportState.CONNECTED, TransportState.UNAVAILABLE})
 
+    def test_stream_diff_holds_mutable_tail_and_does_not_replay_cumulative_text(self):
+        original = "a" * 700
+        delta, committed = self.transport._stable_stream_delta("", original, "")
+        self.assertEqual(delta, "")
+        self.assertEqual(committed, "")
+
+        delta, committed = self.transport._stable_stream_delta(original, original, committed)
+        self.assertEqual(delta, "a" * 188)
+        self.assertEqual(committed, "a" * 188)
+
+        # DeepSeek re-renders the trailing Markdown/code region. Previously emitted
+        # text is not replayed and the mutable region remains buffered until final flush.
+        rewritten = "a" * 600 + "b" * 100
+        delta, committed_after_rewrite = self.transport._stable_stream_delta(original, rewritten, committed)
+        self.assertEqual(delta, "")
+        self.assertEqual(committed_after_rewrite, committed)
+        delta, committed_after_stable = self.transport._stable_stream_delta(rewritten, rewritten, committed)
+        self.assertEqual(delta, "")
+        self.assertEqual(committed_after_stable, committed)
+
+        appended = rewritten + "c" * 600
+        delta, next_committed = self.transport._stable_stream_delta(rewritten, appended, committed)
+        self.assertEqual(delta, appended[188:700])
+        self.assertEqual(next_committed, appended[:700])
+
+        next_snapshot = appended + "d" * 600
+        delta, final_committed = self.transport._stable_stream_delta(appended, next_snapshot, next_committed)
+        self.assertEqual(delta, next_snapshot[700:1300])
+        self.assertEqual(final_committed, appended)
+
+    def test_refreshed_session_merges_rotated_session_storage(self):
+        state = {
+            "cookies": [{"name": "rotated", "value": "new-cookie"}],
+            "origins": [{"origin": "https://chat.deepseek.com", "localStorage": []}],
+            "sessionStorageByOrigin": {
+                "https://other.example": [{"name": "keep", "value": "1"}],
+                "https://chat.deepseek.com": [{"name": "old", "value": "2"}],
+            },
+        }
+        merged = self.transport._merge_session_storage(
+            state,
+            {"origin": "https://chat.deepseek.com", "entries": [{"name": "new", "value": "3"}]},
+        )
+        self.assertEqual(merged["cookies"][0]["value"], "new-cookie")
+        self.assertEqual(merged["sessionStorageByOrigin"]["https://other.example"], [{"name": "keep", "value": "1"}])
+        self.assertEqual(merged["sessionStorageByOrigin"]["https://chat.deepseek.com"], [{"name": "new", "value": "3"}])
+
+    def test_empty_refreshed_session_storage_removes_stale_origin_entries(self):
+        state = {"sessionStorageByOrigin": {"https://chat.deepseek.com": [{"name": "old", "value": "2"}]}}
+        merged = self.transport._merge_session_storage(
+            state, {"origin": "https://chat.deepseek.com", "entries": []}
+        )
+        self.assertNotIn("sessionStorageByOrigin", merged)
+
     def test_session_storage_is_injected_for_matching_origin_only(self):
         state = {
             "sessionStorageByOrigin": {
@@ -55,6 +111,17 @@ class DeepSeekTransportTests(unittest.TestCase):
         self.assertIn("sessionStorage.setItem", script)
         self.assertIn("chat.deepseek.com", script)
         self.assertIn("access_token", script)
+
+    def test_abort_before_stream_start_is_not_cleared_or_ignored(self):
+        self.transport.abort()
+        self.assertTrue(self.transport._cancel.is_set())
+        self.assertEqual(list(self.transport.stream(None, threading.Event())), [])
+        self.assertFalse(self.transport._cancel.is_set())
+
+    def test_request_cancel_before_stream_start_skips_browser_setup(self):
+        cancel = threading.Event()
+        cancel.set()
+        self.assertEqual(list(self.transport.stream(None, cancel)), [])
 
     def test_abort_sets_cancellation_flag(self):
         self.transport.abort()

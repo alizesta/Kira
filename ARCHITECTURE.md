@@ -50,3 +50,7 @@ Eye Mode is the single user-facing desktop observation path. DesktopCaptureServi
 ## Gemini Live visual companion
 
 The existing Gemini Live audio worker accepts privacy-checked full-monitor JPEG snapshots through the same Live session. `AttachmentsVisionController` owns explicit source opt-in, full-monitor capture, foreground/privacy rechecks and change sampling; `RuntimeVoiceMixin` exposes only the send/clear/readiness bridge; `GeminiLiveWorker` owns the bounded one-frame queue and serialized audio/video transport. Video is sampled at no more than 1 FPS and remains RAM-only. Runtime acceptance is pending Windows/API testing.
+
+## Reverse API — DeepSeek
+
+`kira/reverse_api/` contains external web-chat transports, while provider routing and the Chat application retain ownership of character identity, prompts, conversation history, memory, Skills and tool execution. The built-in DeepSeek transport uses an encrypted local browser session and a serialized headless Playwright request. It refreshes the stored browser state after replies, streams a bounded/reconciled response tail, preserves partial output at Route timeout, and observes cancellation requested before worker startup. See [DeepSeek Reverse API](docs/REVERSE_API_FA.md) for setup and runtime limitations.

@@ -325,3 +325,15 @@ Character specialization and generated portraits. The implementation is complete
 - Stop, source disable and privacy rejection clear queued frames. The voice prompt instructs the companion to make useful, restrained observations and never claim unseen visibility.
 - Added tests: `tests/test_gemini_live.py` (JPEG/rate gate), `tests/test_desktop_capture.py` (full-monitor capture tied to current HWND/PID), and `tests/test_gemini_live_video_wiring.py` (cross-controller contract).
 - Validation: source changes are inspected through GitHub. No Python test, import, Qt/Windows capture, live Google API call, audio/video sync test or GitHub Actions run is claimed. Full monitor is visible only while the user explicitly enables a visual source; blocked/unidentified foreground windows fail closed. The uploaded task PDF contains detailed Tasks 1–2, not a separate Task 3 specification; implementation follows the previously agreed Gemini Live + visual companion scope.
+
+## DeepSeek Reverse API hardening — handoff (2026-11-24)
+- Fixes the two session-store test failures by replacing the fake `encrypted:` prefix with a reversible base64 test cipher; the assertions now verify that cookie/session values are not visible in the persisted test file.
+- Transport streaming keeps a 512-character mutable tail uncommitted and emits only text confirmed by the common prefix of successive DOM snapshots. This prevents replaying the full cumulative answer after trailing Markdown/code-block re-renders; edits to already committed text cannot be represented by the current append-only transport contract.
+- If a response has started before the Route deadline, the transport flushes the available partial answer and returns normally rather than raising a timeout after already yielding content (which could trigger router failover and duplicate output).
+- Completion checks accessible English/Persian Stop controls and composer disabled state; when the site exposes no detectable Stop control, it waits for a 5-second idle interval rather than treating a 750 ms pause as completion.
+- After a response, refreshed Playwright cookies and local storage plus current-origin sessionStorage are re-encrypted and persisted. Other origins' sessionStorage entries are retained.
+- `_cancel` is not cleared at stream entry. A cancellation set immediately before stream startup remains observable; the flag is cleared only during final cleanup.
+- Files changed: `kira/reverse_api/deepseek_transport.py`, `tests/test_deepseek_session.py`, `tests/test_deepseek_transport.py`, and repository-level changelog/architecture/context handoffs.
+- Validation: source and test changes were inspected through GitHub. Python tests, browser automation against the live DeepSeek site, token-rotation behavior, and Windows runtime remain unverified; no GitHub Actions were run.
+
+- Release metadata: `VERSION=1.2.1`; `kira/build_info.py` stamped for 2026-11-24 12:03 Asia/Tehran with the detected developer `ChatGPT`; the matching `1.2.1` Changelog entry is present.
