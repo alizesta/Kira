@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -150,8 +152,21 @@ class DeepSeekBrowserLogin:
                                 pass
                         browser, context = None, None
                 if browser is None or context is None:
+                    # Playwright's Python package does not bundle browser binaries.
+                    # Install its pinned Chromium runtime once, then retry the managed browser.
+                    try:
+                        install = subprocess.run(
+                            [sys.executable, "-m", "playwright", "install", "chromium"],
+                            capture_output=True, text=True, timeout=240, check=False,
+                        )
+                        if install.returncode == 0:
+                            browser = playwright.chromium.launch(headless=False)
+                            context = browser.new_context()
+                    except Exception as exc:
+                        errors.append(f"chromium install: {exc}")
+                if browser is None or context is None:
                     raise DeepSeekSessionError(
-                        "Chrome و Chromium قابل اجرا نیستند: " + " | ".join(errors)[:500]
+                        "Chrome و مرورگر داخلی Kira قابل اجرا نیستند: " + " | ".join(errors)[:500]
                     )
 
                 try:
