@@ -75,12 +75,12 @@ SAFE_WIN_CTRL = {"d", "left", "right", "f4", "o"}
 
 
 def _fa(text) -> str:
-    return re.sub(r"\\s+", " ", str(text or "").lower().replace("ي", "ی").replace("ك", "ک").replace("‌", " ").replace("‏", " ")).strip()
+    return re.sub(r"\s+", " ", str(text or "").lower().replace("ي", "ی").replace("ك", "ک").replace("‌", " ").replace("‏", " ")).strip()
 
 
 def parse_combo(combo: str):
     """Parse one bounded, allow-listed Windows virtual-key combination."""
-    parts = [p.strip().lower() for p in re.split(r"\\s*\\+\\s*", str(combo or "").strip()) if p.strip()]
+    parts = [p.strip().lower() for p in re.split(r"\s*\+\s*", str(combo or "").strip()) if p.strip()]
     if not parts or len(parts) > 4:
         raise ToolError("کلید نامعتبر است؛ نمونه: alt+tab، win+e، win+ctrl+left، ctrl+shift+left.")
     mods, key = parts[:-1], parts[-1]
