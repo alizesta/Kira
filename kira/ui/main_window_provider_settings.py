@@ -195,9 +195,13 @@ class ProviderSettingsController(WindowFeatureController):
         self.deepseek_enable_btn = QPushButton("فعال‌سازی در چت")
         self.deepseek_enable_btn.setToolTip("DeepSeek را به Route Manager اضافه می‌کند و برای چت انتخاب می‌کند.")
         self.deepseek_enable_btn.clicked.connect(self.enable_deepseek_route)
+        self.deepseek_disconnect_btn = QPushButton("قطع اتصال Chromium")
+        self.deepseek_disconnect_btn.setToolTip("مرورگر مخفی Chromium را می‌بندد؛ نشست ورود DeepSeek حفظ می‌شود.")
+        self.deepseek_disconnect_btn.clicked.connect(self.disconnect_deepseek_chromium)
         self.deepseek_login_status = QLabel()
         deepseek_row.addWidget(self.deepseek_login_btn)
         deepseek_row.addWidget(self.deepseek_enable_btn)
+        deepseek_row.addWidget(self.deepseek_disconnect_btn)
         deepseek_row.addWidget(self.deepseek_login_status, 1)
         layout.addLayout(deepseek_row)
         self.refresh_deepseek_login_status()
@@ -771,7 +775,10 @@ class ProviderSettingsController(WindowFeatureController):
                 self.context.views.route_model_edit.set_models(self.context.state._ollama_models)
             self.context.views.route_model_edit.setText(route["model"])
             self.context.views.route_enabled_chk.setChecked(bool(route.get("enabled", True)))
-            lo, hi = self.context.services.provider_application_service.LOCAL_TIMEOUT if local else self.context.services.provider_application_service.CLOUD_TIMEOUT
+            if route["provider"] == route_model.REVERSE_API:
+                lo, hi = self.context.services.provider_application_service.REVERSE_TIMEOUT
+            else:
+                lo, hi = self.context.services.provider_application_service.LOCAL_TIMEOUT if local else self.context.services.provider_application_service.CLOUD_TIMEOUT
             self.context.views.route_timeout.setRange(lo, hi)
             self.context.views.route_timeout.setValue(int(route.get("timeout", 18)))
             self.context.views.route_cooldown.setValue(int(route.get("cooldown", 45)))
@@ -957,10 +964,19 @@ class ProviderSettingsController(WindowFeatureController):
             if hasattr(self, "deepseek_enable_btn"):
                 self.deepseek_enable_btn.setEnabled(connected)
                 self.deepseek_enable_btn.setText("✓ انتخاب‌شده برای چت" if active else "انتخاب DeepSeek برای چت")
+            try:
+                from ..reverse_api import is_deepseek_browser_running
+                browser_running = is_deepseek_browser_running()
+                if hasattr(self, "deepseek_disconnect_btn"):
+                    self.deepseek_disconnect_btn.setEnabled(browser_running)
+            except Exception:
+                browser_running = False
             if not connected:
                 message = "ابتدا وارد حساب DeepSeek شو."
+            elif active and browser_running:
+                message = "نشست ذخیره شده؛ Chromium متصل و آماده است."
             elif active:
-                message = "نشست ذخیره شده؛ DeepSeek برای چت انتخاب شده است."
+                message = "DeepSeek انتخاب شده؛ Chromium هنوز اجرا نشده یا قطع شده است."
             else:
                 message = "نشست ذخیره شده؛ برای انتخاب DeepSeek در چت دکمه را بزن."
             self.deepseek_login_status.setText(message)
@@ -968,6 +984,20 @@ class ProviderSettingsController(WindowFeatureController):
             if hasattr(self, "deepseek_enable_btn"):
                 self.deepseek_enable_btn.setEnabled(False)
             self.deepseek_login_status.setText("وضعیت نشست قابل‌خواندن نیست: " + str(exc)[:160])
+
+    def disconnect_deepseek_chromium(self):
+        if self.context.state._closing:
+            return
+        try:
+            from ..reverse_api import disconnect_deepseek_browser
+            closed = disconnect_deepseek_browser()
+            self.deepseek_disconnect_btn.setEnabled(False)
+            self.deepseek_login_status.setText(
+                "درخواست بستن Chromium ارسال شد؛ نشست ورود DeepSeek محفوظ می‌ماند."
+                if closed else "Chromium از قبل بسته بود؛ نشست ورود DeepSeek محفوظ است."
+            )
+        except Exception as exc:
+            self.deepseek_login_status.setText("✕ قطع اتصال Chromium ناموفق بود: " + str(exc)[:180])
 
     def enable_deepseek_route(self):
         if self.context.state._closing:

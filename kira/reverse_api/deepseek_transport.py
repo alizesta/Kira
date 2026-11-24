@@ -37,7 +37,7 @@ _RESPONSE_SCRIPT = """() => {
 # Keep a rolling tail uncommitted so transient markdown/code-block re-renders
 # do not resend the entire cumulative response.
 _STREAM_HOLDBACK_CHARS = 96
-_NO_STOP_IDLE_SECONDS = 1.5
+_NO_STOP_IDLE_SECONDS = 10.0
 _COMPLETION_GRACE_SECONDS = 0.35
 
 _POLL_SCRIPT = """() => {
@@ -99,30 +99,18 @@ class _DeepSeekBrowserWorker:
         self.jobs = queue.Queue()
         self.ready = threading.Event()
         self.startup_error = None
+        self._shutdown_requested = threading.Event()
         self._thread = threading.Thread(
             target=self._run,
             name="Kira-DeepSeek-Browser",
             daemon=True,
         )
+        # Startup stays asynchronous: app launch and the first chat turn must
+        # not block the GUI for the full Chromium startup timeout.
         self._thread.start()
-        if not self.ready.wait(35):
-            self.shutdown()
-            raise ReverseTransportError(
-                "راه‌اندازی مرورگر DeepSeek بیش از حد طول کشید.",
-                kind="timeout",
-                retryable=True,
-            )
-        if self.startup_error is not None:
-            error = self.startup_error
-            self.shutdown()
-            raise ReverseTransportError(
-                "مرورگر DeepSeek اجرا نشد: " + str(error)[:220],
-                kind="missing",
-                retryable=False,
-            ) from error
 
     def is_alive(self) -> bool:
-        return self._thread.is_alive()
+        return self._thread.is_alive() and not self._shutdown_requested.is_set()
 
     def submit(self, job) -> None:
         if not self.is_alive():
@@ -163,6 +151,7 @@ class _DeepSeekBrowserWorker:
                         try:
                             if not job.cancel.is_set():
                                 if browser is None or not browser.is_connected():
+                                    self.transport._close_browser_context()
                                     browser = self._launch(playwright)
                                 self.transport._execute_job(browser, job)
                         except Exception as exc:  # noqa: BLE001 - deliver failures to this request only
@@ -170,6 +159,7 @@ class _DeepSeekBrowserWorker:
                         finally:
                             job.events.put(("done", None))
                 finally:
+                    self.transport._close_browser_context()
                     if browser is not None:
                         try:
                             browser.close()
@@ -187,10 +177,19 @@ class _DeepSeekBrowserWorker:
                     job.events.put(("error", exc))
                     job.events.put(("done", None))
 
+    def request_shutdown(self) -> None:
+        if self._shutdown_requested.is_set():
+            return
+        self._shutdown_requested.set()
+        active_job = self.transport._active_job
+        if active_job is not None:
+            active_job.cancel.set()
+        self.jobs.put(None)
+
     def shutdown(self) -> None:
-        if self._thread.is_alive():
-            self.jobs.put(None)
-            self._thread.join(timeout=6)
+        self.request_shutdown()
+        if self._thread.is_alive() and threading.current_thread() is not self._thread:
+            self._thread.join(timeout=20)
 
 
 class DeepSeekBrowserTransport:
@@ -202,11 +201,14 @@ class DeepSeekBrowserTransport:
         self._lock = threading.Lock()
         self._cancel = threading.Event()
         self._active_page = None
+        self._browser_context = None
+        self._browser_page = None
         self._active_job = None
         self._last_error = ""
         self._worker = None
         self._worker_lock = threading.RLock()
         self._activation_generation = 0
+        self._manual_disconnect = False
         atexit.register(self.shutdown)
 
     def configure(self, config: dict[str, Any] | None = None):
@@ -217,9 +219,9 @@ class DeepSeekBrowserTransport:
     def _timeout_ms(self) -> int:
         """Convert the active Route timeout to milliseconds without overriding short user values."""
         try:
-            seconds = float(self.config.get("timeout", 90))
+            seconds = float(self.config.get("timeout", 300))
         except (TypeError, ValueError):
-            seconds = 90.0
+            seconds = 300.0
         return max(1_000, int(seconds * 1000))
 
     @staticmethod
@@ -352,9 +354,21 @@ class DeepSeekBrowserTransport:
             " })();"
         )
 
+    def _close_browser_context(self) -> None:
+        """Close and forget the reusable page/context on the Playwright owner thread."""
+        context, self._browser_context = self._browser_context, None
+        self._browser_page = None
+        self._active_page = None
+        if context is not None:
+            try:
+                context.close()
+            except Exception:
+                pass
+
     def _execute_job(self, browser, job) -> None:
-        """Run one isolated chat in the warm browser owned by the worker thread."""
+        """Run one chat in the warm browser, reusing the page for the same local conversation."""
         context = None
+        page = None
         cancelled = lambda: job.cancel.is_set() or self._cancel.is_set()
         try:
             if cancelled():
@@ -371,11 +385,19 @@ class DeepSeekBrowserTransport:
                 )
 
             timeout_ms = self._timeout_ms()
-            context = browser.new_context(
-                storage_state=self._playwright_storage_state(state)
-            )
-            context.add_init_script(self._session_init_script(state))
-            page = context.new_page()
+            context, page = self._browser_context, self._browser_page
+            try:
+                page_ready = context is not None and page is not None and not page.is_closed()
+            except Exception:
+                page_ready = False
+            if not page_ready:
+                self._close_browser_context()
+                context = browser.new_context(
+                    storage_state=self._playwright_storage_state(state)
+                )
+                context.add_init_script(self._session_init_script(state))
+                page = context.new_page()
+                self._browser_context, self._browser_page = context, page
             self._active_page = page
             page.set_default_timeout(min(timeout_ms, 10_000))
             page.set_default_navigation_timeout(min(timeout_ms, 20_000))
@@ -386,11 +408,13 @@ class DeepSeekBrowserTransport:
                 saved_conversation_url = self.store.get_conversation_url(
                     job.request.conversation_id
                 )
-                page.goto(
-                    saved_conversation_url or "https://chat.deepseek.com/",
-                    wait_until="domcontentloaded",
-                    timeout=min(timeout_ms, 20_000),
-                )
+                target_url = saved_conversation_url or "https://chat.deepseek.com/"
+                if str(page.url or "").rstrip("/") != target_url.rstrip("/"):
+                    page.goto(
+                        target_url,
+                        wait_until="domcontentloaded",
+                        timeout=min(timeout_ms, 20_000),
+                    )
                 composer_deadline = time.monotonic() + min(timeout_ms / 1000, 20.0)
                 composer = None
                 while time.monotonic() < composer_deadline and not cancelled():
@@ -523,23 +547,53 @@ class DeepSeekBrowserTransport:
                 job.events.put(("chunk", latest_text))
         finally:
             self._active_page = None
-            if context is not None:
-                try:
-                    context.close()
-                except Exception:
-                    pass
 
     def _ensure_browser_worker(self):
         with self._worker_lock:
+            if self._manual_disconnect:
+                raise ReverseTransportError(
+                    "اتصال Chromium به‌صورت دستی قطع شده است؛ برای اتصال دوباره DeepSeek را دوباره فعال کن.",
+                    kind="network",
+                    retryable=False,
+                )
             worker = self._worker
             if worker is None or not worker.is_alive():
                 worker = _DeepSeekBrowserWorker(self)
                 self._worker = worker
             return worker
 
+    def is_browser_running(self) -> bool:
+        # Read-only status is queried from the GUI; never wait on the lifecycle
+        # lock because browser construction must remain off the GUI thread.
+        worker = self._worker
+        return bool(worker is not None and worker.is_alive())
+
+    def disconnect_browser(self) -> bool:
+        """Stop the hidden Chromium worker without deleting the encrypted login session."""
+        with self._worker_lock:
+            self._manual_disconnect = True
+            self._activation_generation += 1
+            worker, self._worker = self._worker, None
+        if worker is not None:
+            worker.request_shutdown()
+            threading.Thread(
+                target=worker.shutdown,
+                name="Kira-DeepSeek-Browser-Disconnect",
+                daemon=True,
+            ).start()
+            return True
+        return False
+
     def activate(self, active: bool) -> None:
         """Keep a hidden warm Chromium process while DeepSeek is selected."""
         with self._worker_lock:
+            if active:
+                self._manual_disconnect = False
+            current = self._worker
+            if active and current is not None and current.is_alive():
+                return
+            if not active and current is None:
+                return
             self._activation_generation += 1
             generation = self._activation_generation
         threading.Thread(
@@ -625,7 +679,9 @@ class DeepSeekBrowserTransport:
 
     def shutdown(self) -> None:
         """Stop the warm browser worker during interpreter shutdown."""
+        self._manual_disconnect = True
         with self._worker_lock:
+            self._activation_generation += 1
             worker, self._worker = self._worker, None
         if worker is not None:
             worker.shutdown()

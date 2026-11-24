@@ -25,6 +25,8 @@ CLOUD_TIMEOUT = (5, 60)
 LOCAL_TIMEOUT = (10, 600)
 DEFAULT_CLOUD_TIMEOUT = 18
 DEFAULT_LOCAL_TIMEOUT = 180
+REVERSE_TIMEOUT = (30, 600)
+DEFAULT_REVERSE_TIMEOUT = 300
 DEFAULT_COOLDOWN = 45                  # seconds after a transient failure (network / timeout / 5xx)
 COOLDOWN_RANGE = (0, 3600)
 REVERSE_API = "reverse_api"           # provider id AND provider type of the Reverse API connection (see kira/reverse_api)
@@ -96,7 +98,7 @@ def add_reverse_api_provider(settings, transport, label="Reverse API", enabled=F
     if not isinstance(cfg, dict):
         cfg = providers[REVERSE_API] = {"enabled": bool(enabled)}
     cfg.update({"type": REVERSE_API, "label": str(label or "Reverse API").strip() or "Reverse API",
-                "transport": transport, "local": False, "timeout": CLOUD_TIMEOUT[1]})
+                "transport": transport, "local": False, "timeout": DEFAULT_REVERSE_TIMEOUT})
     return REVERSE_API
 
 
@@ -181,19 +183,23 @@ def is_google(provider, cfg=None):
 
 
 def effective_timeout(route, cfg):
-    """Seconds a request on this route may take. Single rule shared by real chat and the connection test.
-
-    Gemini can legitimately take longer than the generic 18 s cloud default before its first token (thinking models),
-    so a Google route left at that default gets the cloud maximum; any value the user raised explicitly is kept."""
+    """Seconds a request on this route may take. Shared by chat and connection tests."""
+    provider = route.get("provider")
     timeout = route.get("timeout") or (cfg or {}).get("timeout", DEFAULT_CLOUD_TIMEOUT)
-    if is_google(route.get("provider"), cfg) and int(timeout or DEFAULT_CLOUD_TIMEOUT) <= DEFAULT_CLOUD_TIMEOUT:
+    if provider == REVERSE_API:
+        return clamp_timeout(timeout, "cloud", provider)
+    if is_google(provider, cfg) and int(timeout or DEFAULT_CLOUD_TIMEOUT) <= DEFAULT_CLOUD_TIMEOUT:
         return CLOUD_TIMEOUT[1]
     return timeout
 
 
-def clamp_timeout(value, kind):
-    lo, hi = LOCAL_TIMEOUT if kind == "local" else CLOUD_TIMEOUT
-    default = DEFAULT_LOCAL_TIMEOUT if kind == "local" else DEFAULT_CLOUD_TIMEOUT
+def clamp_timeout(value, kind, provider=None):
+    if provider == REVERSE_API:
+        lo, hi = REVERSE_TIMEOUT
+        default = DEFAULT_REVERSE_TIMEOUT
+    else:
+        lo, hi = LOCAL_TIMEOUT if kind == "local" else CLOUD_TIMEOUT
+        default = DEFAULT_LOCAL_TIMEOUT if kind == "local" else DEFAULT_CLOUD_TIMEOUT
     try:
         return max(lo, min(int(value), hi))
     except (TypeError, ValueError):
@@ -233,7 +239,7 @@ def normalize_model_id(value):
 def make_route(route_id, provider, model, enabled=True, timeout=None, cooldown=None, kind=None, **extra):
     kind = kind or provider_kind(provider)
     route = {"id": str(route_id), "provider": str(provider), "model": normalize_model_id(model), "enabled": bool(enabled),
-             "timeout": clamp_timeout(timeout, kind), "cooldown": clamp_cooldown(cooldown if cooldown is not None else DEFAULT_COOLDOWN)}
+             "timeout": clamp_timeout(timeout, kind, provider), "cooldown": clamp_cooldown(cooldown if cooldown is not None else DEFAULT_COOLDOWN)}
     for key in ("num_ctx", "num_predict"):                       # optional per-route Ollama overrides (0/absent = inherit)
         if extra.get(key):
             route[key] = int(extra[key])
@@ -289,7 +295,14 @@ def ensure_routes(settings):
             rid, n = f"{base}-{n}", n + 1
         seen.add(rid)
         kind = provider_kind(provider, settings["providers"].get(provider))
-        item = make_route(rid, provider, r.get("model", ""), r.get("enabled", True), r.get("timeout"), r.get("cooldown"), kind,
+        saved_timeout = r.get("timeout")
+        if provider == REVERSE_API:
+            try:
+                if saved_timeout is None or int(saved_timeout) <= CLOUD_TIMEOUT[1]:
+                    saved_timeout = DEFAULT_REVERSE_TIMEOUT
+            except (TypeError, ValueError):
+                saved_timeout = DEFAULT_REVERSE_TIMEOUT
+        item = make_route(rid, provider, r.get("model", ""), r.get("enabled", True), saved_timeout, r.get("cooldown"), kind,
                           num_ctx=r.get("num_ctx"), num_predict=r.get("num_predict"))
         if r.get("label"):
             item["label"] = str(r["label"])[:60]
@@ -449,7 +462,7 @@ def update_route(settings, route_id, **changes):
         if route["provider"] == "ollama" and route["enabled"]:
             settings.setdefault("providers", {}).setdefault("ollama", {})["enabled"] = True
     if "timeout" in changes:
-        route["timeout"] = clamp_timeout(changes["timeout"], kind)
+        route["timeout"] = clamp_timeout(changes["timeout"], kind, route["provider"])
     if "cooldown" in changes:
         route["cooldown"] = clamp_cooldown(changes["cooldown"])
     for key in ("num_ctx", "num_predict"):

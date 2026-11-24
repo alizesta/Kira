@@ -31,6 +31,8 @@ class ProviderApplicationServiceTests(unittest.TestCase):
         self.assertEqual(route["provider"], "reverse_api")
         self.assertEqual(route["model"], "deepseek-web")
         self.assertTrue(route["enabled"])
+        self.assertEqual(config["timeout"], route_model.DEFAULT_REVERSE_TIMEOUT)
+        self.assertEqual(route["timeout"], route_model.DEFAULT_REVERSE_TIMEOUT)
 
     def test_ensure_reverse_api_route_is_idempotent_and_reenables_existing_route(self):
         first = self.service.ensure_reverse_api_route(self.settings)

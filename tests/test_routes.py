@@ -65,6 +65,43 @@ class RouteModelTests(unittest.TestCase):
         routes.ensure_routes(s)
         self.assertEqual(s["routes"], once)
 
+    def test_reverse_api_routes_get_a_long_timeout_and_upgrade_legacy_default(self):
+        settings = {
+            "providers": {
+                "reverse_api": {
+                    "type": "reverse_api",
+                    "enabled": True,
+                    "transport": "deepseek",
+                    "timeout": 60,
+                }
+            },
+            "routes": [
+                {
+                    "id": "reverse_api",
+                    "provider": "reverse_api",
+                    "model": "deepseek-web",
+                    "enabled": True,
+                    "timeout": 60,
+                }
+            ],
+        }
+
+        routes.ensure_routes(settings)
+        route = routes.find_route(settings, "reverse_api")
+        self.assertEqual(route["timeout"], routes.DEFAULT_REVERSE_TIMEOUT)
+        self.assertEqual(routes.clamp_timeout(20, "cloud", "reverse_api"), routes.REVERSE_TIMEOUT[0])
+        self.assertEqual(routes.clamp_timeout(999, "cloud", "reverse_api"), routes.REVERSE_TIMEOUT[1])
+
+        routes.update_route(settings, "reverse_api", timeout=480)
+        self.assertEqual(route["timeout"], 480)
+
+    def test_new_reverse_api_route_uses_300_second_default(self):
+        settings = {"providers": {}, "routes": []}
+        routes.add_reverse_api_provider(settings, "deepseek", enabled=True)
+        route = routes.add_route(settings, "reverse_api", "deepseek-web")
+        self.assertEqual(route["timeout"], 300)
+        self.assertEqual(settings["providers"]["reverse_api"]["timeout"], 300)
+
     def test_derived_routes_do_not_write_into_settings(self):
         s = legacy_settings()
         self.assertEqual([r["id"] for r in routes.get_routes(s)][:2], ["cloudflare", "ollama"])

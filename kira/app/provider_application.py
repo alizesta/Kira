@@ -79,6 +79,7 @@ class ProviderApplicationService:
     BUILTIN = route_model.BUILTIN
     LOCAL_TIMEOUT = route_model.LOCAL_TIMEOUT
     CLOUD_TIMEOUT = route_model.CLOUD_TIMEOUT
+    REVERSE_TIMEOUT = route_model.REVERSE_TIMEOUT
 
     @staticmethod
     def get_routes(settings: dict[str, Any]):

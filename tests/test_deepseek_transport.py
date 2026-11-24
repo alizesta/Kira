@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from kira.core.interfaces.reverse_transport import ReverseRequest, TransportState
+from kira.core.interfaces.reverse_transport import ReverseRequest, ReverseTransportError, TransportState
 from kira.reverse_api import TRANSPORTS, DeepSeekBrowserTransport
 from kira.reverse_api.deepseek_session import DeepSeekSessionStore
 
@@ -37,6 +37,8 @@ class DeepSeekTransportTests(unittest.TestCase):
         self.assertEqual(self.transport._timeout_ms(), 5_000)
         self.transport.configure({"timeout": 17})
         self.assertEqual(self.transport._timeout_ms(), 17_000)
+        self.transport.configure({"timeout": 300})
+        self.assertEqual(self.transport._timeout_ms(), 300_000)
 
     def test_status_requires_saved_session(self):
         status = self.transport.status()
@@ -90,14 +92,17 @@ class DeepSeekTransportTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "kira/reverse_api/deepseek_transport.py").read_text(encoding="utf-8")
         self.assertIn("_STREAM_HOLDBACK_CHARS = 96", source)
         self.assertIn("_COMPLETION_GRACE_SECONDS = 0.35", source)
-        self.assertIn("_NO_STOP_IDLE_SECONDS = 1.5", source)
+        self.assertIn("_NO_STOP_IDLE_SECONDS = 10.0", source)
         self.assertIn("_DeepSeekBrowserWorker", source)
         self.assertIn("browser.new_context(", source)
+        self.assertIn("self._browser_context, self._browser_page", source)
+        self.assertIn("target_url.rstrip", source)
 
     def test_selected_deepseek_keeps_a_headless_browser_without_startup_chat_navigation(self):
         transport_source = (Path(__file__).resolve().parents[1] / "kira/reverse_api/deepseek_transport.py").read_text(encoding="utf-8")
         init_source = (Path(__file__).resolve().parents[1] / "kira/reverse_api/__init__.py").read_text(encoding="utf-8")
         runtime_source = (Path(__file__).resolve().parents[1] / "kira/ui/main_window_runtime.py").read_text(encoding="utf-8")
+        lifecycle_source = (Path(__file__).resolve().parents[1] / "kira/ui/main_window_lifecycle.py").read_text(encoding="utf-8")
         self.assertIn('"headless": True', transport_source)
         self.assertNotIn('display_page.goto(', transport_source)
         self.assertIn('def activate(self, active: bool)', transport_source)
@@ -106,6 +111,7 @@ class DeepSeekTransportTests(unittest.TestCase):
         self.assertIn('storage_state(indexed_db=True)', transport_source)
         self.assertIn('def set_deepseek_browser_active(active: bool)', init_source)
         self.assertIn('set_deepseek_browser_active(bool(selected and selected.get("provider") == "reverse_api"))', runtime_source)
+        self.assertIn('if not getattr(self, "_deepseek_startup_checked", False)', lifecycle_source)
 
     def test_conversation_url_rejects_home_and_non_deepseek_urls(self):
         self.assertIsNone(self.transport._conversation_url("https://chat.deepseek.com/"))
@@ -199,6 +205,28 @@ class DeepSeekTransportTests(unittest.TestCase):
     def test_abort_sets_cancellation_flag(self):
         self.transport.abort()
         self.assertTrue(self.transport._cancel.is_set())
+
+    def test_manual_browser_disconnect_preserves_saved_login_session(self):
+        stopped = threading.Event()
+        requested = threading.Event()
+
+        class Worker:
+            def request_shutdown(self):
+                requested.set()
+
+            def shutdown(self):
+                stopped.set()
+
+        self.store.save({"cookies": [{"name": "sid", "value": "saved"}], "origins": []})
+        self.transport._worker = Worker()
+
+        self.assertTrue(self.transport.disconnect_browser())
+        self.assertTrue(self.transport._manual_disconnect)
+        self.assertTrue(requested.is_set())
+        self.assertTrue(stopped.wait(2))
+        self.assertTrue(self.store.has_session())
+        with self.assertRaisesRegex(ReverseTransportError, "Chromium"):
+            self.transport._ensure_browser_worker()
 
 
 if __name__ == "__main__":

@@ -30,6 +30,19 @@ class LifecycleController(WindowFeatureController):
     def showEvent(self, event):
         self.qt_super_event("showEvent", event)
         winfx.apply_effect(self.window.winId(), self.context.state._effect)
+        if not getattr(self, "_deepseek_startup_checked", False):
+            self._deepseek_startup_checked = True
+            try:
+                settings = self.context.services.settings
+                manual = settings.get("manual_route_id", "")
+                selected = (
+                    self.context.services.provider_application_service.find_route(settings, manual)
+                    if manual else self.context.session.client.preview_route()
+                )
+                from ..reverse_api import set_deepseek_browser_active
+                set_deepseek_browser_active(bool(selected and selected.get("provider") == "reverse_api"))
+            except Exception:
+                pass
         QTimer.singleShot(0, self.update_bubble)
 
     def update_window_effect(self, wanted):
