@@ -711,7 +711,11 @@ class ToolAgent(AutonomyMixin):
             )
             has_full_local_catalog = full_local_catalog.issubset(self._schema_categories(plan))
             requested_inventory = any(item.get("tool") == "windows_control_info" for item in tool_results)
-            if requested_inventory and not has_full_local_catalog:
+            other_tool_results = [item for item in tool_results if item.get("tool") != "windows_control_info"]
+            inventory_needs_catalog = requested_inventory and not any(
+                item.get("status") != "unknown_tool" for item in other_tool_results
+            )
+            if inventory_needs_catalog and not has_full_local_catalog:
                 model_escalated = True
             unsupported_denial = (
                 no_capability_result
