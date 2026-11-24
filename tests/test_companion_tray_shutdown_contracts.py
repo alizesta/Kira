@@ -99,6 +99,22 @@ class CompanionTrayShutdownContractTests(unittest.TestCase):
         self.assertIn("self._preview_timer.start(10000)", source)
         self.assertIn("visible_items = self.items[-1:]", source)
 
+    def test_bubble_closes_only_after_shutdown_is_accepted(self):
+        close_event = _method("kira/ui/main_window_runtime.py", "closeEvent")
+        self.assertNotIn("bubble.close", ast.get_source_segment(
+            _source("kira/ui/main_window_runtime.py"), close_event
+        ))
+        exit_application = _method("kira/ui/main_window_runtime.py", "_exit_application")
+        self.assertIn("close", _call_names(exit_application))
+        self.assertIn('getattr(self.context.adapters, "bubble", None)', ast.get_source_segment(
+            _source("kira/ui/main_window_runtime.py"), exit_application
+        ))
+
+    def test_bubble_panel_is_more_transparent(self):
+        source = _source("kira/companion.py")
+        self.assertIn("background:rgba(24,26,40,88)", source)
+        self.assertNotIn("background:rgba(24,26,40,150)", source)
+
 
 if __name__ == "__main__":
     unittest.main()
