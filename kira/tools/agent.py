@@ -714,7 +714,7 @@ class ToolAgent(AutonomyMixin):
                 and self._schema_categories(plan) != full_local_catalog
                 and self._claims_missing_access(result.get("text", ""))
             )
-            if (model_escalated and getattr(plan, "index_only", False)) or unsupported_denial:
+            if model_escalated or unsupported_denial:
                 plan.index_only = False
                 # A narrow category guess must never make Kira claim that a registered capability is absent.
                 # On this one fallback only, expose every built-in local category; MCP/agents stay opt-in.
@@ -902,6 +902,10 @@ class ToolAgent(AutonomyMixin):
                     out["_escalate"] = True
                     return out
                 calls, errors = protocol.parse_calls(gate.raw)
+                if any(call.get("tool") == protocol.USE_TOOLS for call in calls):
+                    out = self._final(res, "", executed)
+                    out["_escalate"] = True
+                    return out
                 if not last and (calls or errors):
                     results = self._run_calls(calls, errors, on_tool)
                     executed.extend(results)
