@@ -17,6 +17,14 @@ from unittest.mock import patch
 
 
 class ToolAgentSessionIsolationTests(unittest.TestCase):
+
+    def test_access_denial_claims_are_detected_for_capability_retry(self):
+        self.assertTrue(ToolAgent._claims_missing_access("من به کامپیوتر دسترسی ندارم."))
+        self.assertTrue(ToolAgent._claims_missing_access("I don't have access to your PC."))
+        self.assertTrue(ToolAgent._claims_missing_access("این ابزار در اختیارم نیست."))
+        self.assertFalse(ToolAgent._claims_missing_access("پنجره‌ی تنظیمات باز شد."))
+        self.assertFalse(ToolAgent._claims_missing_access("برای ادامه، نام برنامه را بگو."))
+
     def setUp(self):
         self.access = AccessManager(SimpleNamespace())
         self.agent = ToolAgent.__new__(ToolAgent)
