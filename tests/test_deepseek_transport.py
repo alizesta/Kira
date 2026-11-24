@@ -14,8 +14,8 @@ class DeepSeekTransportTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.store = DeepSeekSessionStore(
             self.temp.name,
-            encrypt=lambda value: "encrypted:" + value,
-            decrypt=lambda value: value.removeprefix("encrypted:"),
+            encrypt=lambda value: __import__("base64").b64encode(value.encode("utf-8")).decode("ascii"),
+            decrypt=lambda value: __import__("base64").b64decode(value.encode("ascii")).decode("utf-8"),
         )
         self.transport = DeepSeekBrowserTransport(store=self.store)
 
@@ -43,6 +43,34 @@ class DeepSeekTransportTests(unittest.TestCase):
         self.store.save({"cookies": [{"name": "sid", "value": "x"}], "origins": []})
         status = self.transport.status()
         self.assertIn(status.state, {TransportState.CONNECTED, TransportState.UNAVAILABLE})
+
+    def test_stream_diff_helpers_do_not_replay_rewritten_prefixes(self):
+        self.assertEqual(self.transport._common_prefix_length("answer part A", "answer part B"), 12)
+        self.assertEqual(self.transport._common_prefix_length("same", "same plus"), 4)
+
+    def test_refreshed_session_merges_rotated_session_storage(self):
+        state = {
+            "cookies": [{"name": "rotated", "value": "new-cookie"}],
+            "origins": [{"origin": "https://chat.deepseek.com", "localStorage": []}],
+            "sessionStorageByOrigin": {
+                "https://other.example": [{"name": "keep", "value": "1"}],
+                "https://chat.deepseek.com": [{"name": "old", "value": "2"}],
+            },
+        }
+        merged = self.transport._merge_session_storage(
+            state,
+            {"origin": "https://chat.deepseek.com", "entries": [{"name": "new", "value": "3"}]},
+        )
+        self.assertEqual(merged["cookies"][0]["value"], "new-cookie")
+        self.assertEqual(merged["sessionStorageByOrigin"]["https://other.example"], [{"name": "keep", "value": "1"}])
+        self.assertEqual(merged["sessionStorageByOrigin"]["https://chat.deepseek.com"], [{"name": "new", "value": "3"}])
+
+    def test_empty_refreshed_session_storage_removes_stale_origin_entries(self):
+        state = {"sessionStorageByOrigin": {"https://chat.deepseek.com": [{"name": "old", "value": "2"}]}}
+        merged = self.transport._merge_session_storage(
+            state, {"origin": "https://chat.deepseek.com", "entries": []}
+        )
+        self.assertNotIn("sessionStorageByOrigin", merged)
 
     def test_session_storage_is_injected_for_matching_origin_only(self):
         state = {
