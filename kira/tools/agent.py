@@ -703,7 +703,12 @@ class ToolAgent(AutonomyMixin):
         result = self._run_once(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
         if isinstance(result, dict):
             model_escalated = bool(result.pop("_escalate", False))
-            unsupported_denial = not result.get("tools") and self._claims_missing_access(result.get("text", ""))
+            full_local_catalog = set(protocol.ALL_CATEGORIES) - {"mcp", "agents"}
+            unsupported_denial = (
+                not result.get("tools")
+                and self._schema_categories(plan) != full_local_catalog
+                and self._claims_missing_access(result.get("text", ""))
+            )
             if (model_escalated and getattr(plan, "index_only", False)) or unsupported_denial:
                 plan.index_only = False
                 # A narrow category guess must never make Kira claim that a registered capability is absent.
