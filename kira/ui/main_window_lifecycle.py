@@ -215,12 +215,16 @@ class LifecycleController(WindowFeatureController):
         self.feature_controller("runtime").toggle_mic()
 
     def update_bubble(self):
-        """The chat bubble is shown beside Kira only while the main window is out of the way (in the tray)."""
+        """Show a short latest-message preview beside Kira while the main window is in the tray."""
         bubble = getattr(self.context.adapters, "bubble", None)
         if bubble is None:
             return
+        companion = self.context.adapters.companion
+        if not getattr(companion, "_bubble_chat_button_connected", False):
+            companion.chat_requested.connect(lambda b=bubble, c=companion: b.open_composer(c))
+            companion._bubble_chat_button_connected = True
         away = getattr(self.context.views, "tray", None) is not None and (not self.window.isVisible() or self.window.isMinimized())
-        if away and self.context.adapters.companion.isVisible() and not self.context.state._closing:
+        if away and companion.isVisible() and not self.context.state._closing:
             session = self.context.session
             if getattr(bubble, "session_id", None) != session.session_id:
                 try:
@@ -228,11 +232,10 @@ class LifecycleController(WindowFeatureController):
                 except Exception:
                     # The companion must remain usable if history restoration is temporarily unavailable.
                     pass
-            bubble.place_beside(self.context.adapters.companion)
             if not bubble.isVisible():
-                bubble.show()
+                bubble.show_preview(companion)
         else:
-            bubble.hide()
+            bubble.disable_preview()
 
     def hideEvent(self, event):
         self.qt_super_event("hideEvent", event)
