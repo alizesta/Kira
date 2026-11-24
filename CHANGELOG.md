@@ -1,3 +1,9 @@
+## 1.2.6 — 2026-11-24 — Companion bubble and Tray shutdown hardening
+- Explicit Exit no longer hides the system-tray icon or changes Qt's last-window policy before shutdown is accepted. The tray is hidden only in the post-acceptance _exit_application step; an ignored close keeps the app recoverable from the tray.
+- Added Escape handling to the companion composer. Escape closes the input controls and returns to the timed latest-message preview; sending a message still closes the composer.
+- Companion history synchronization now uses a shared Qt-free session marker: native session_id when available, otherwise the character and conversation IDs. Legacy Session objects no longer break update_bubble.
+- Added standard-library regression guards for the shutdown ordering, Escape binding, 10-second preview contract and legacy session identity. These tests were added but have not been executed in this source-only workflow; the Windows/Qt interaction still needs target-machine verification.
+
 ## 2026-11-24 — ToolAgent regression-test corrections
 - Fixed the denial-buffer test double: `_run_once` now receives a callable `side_effect` that dispatches to the first response and retry handlers instead of returning those handler functions as mock results.
 - Updated capability-report tests for the compact default inventory and exact-name detailed lookup (`name="report_probe"`). Pagination assertions now match the current count label.
