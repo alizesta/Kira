@@ -94,16 +94,20 @@ def run_embedded_login(parent=None, store: DeepSeekSessionStore | None = None) -
                 return
             self._finishing = True
             self.timer.stop()
-            script = "JSON.stringify(Object.entries(localStorage).map(([name,value]) => ({name,value})))"
+            script = """JSON.stringify({
+                origin: location.origin,
+                entries: Object.entries(localStorage).map(([name,value]) => ({name,value}))
+            })"""
             self.page.runJavaScript(script, self._save_state)
 
         def _save_state(self, raw_storage):
             try:
-                entries = json.loads(raw_storage or "[]")
+                storage = json.loads(raw_storage or "{}")
+                entries = storage.get("entries") or []
                 origins = []
                 if entries:
                     origins.append({
-                        "origin": "https://chat.deepseek.com",
+                        "origin": str(storage.get("origin") or "https://chat.deepseek.com"),
                         "localStorage": entries,
                     })
                 state = {"cookies": list(self._cookies.values()), "origins": origins}
