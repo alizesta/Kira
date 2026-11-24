@@ -614,5 +614,5 @@ class DesktopModule(WinModule):
                        cat, confirm_summary=t.confirm_mouse_click, changes_system=True, external=True),
         ]
         for c in caps:                                          # the backend that really does the work (shown in the access table / journal)
-            c.backend = "uia" if c.name.startswith("ui_") else "sendinput" if c.name in ("type_text", "press_keys", "mouse_click") else "win32"
+            c.backend = "uia" if c.name.startswith("ui_") else "sendinput" if c.name in ("type_text", "press_keys", "paste_text", "mouse_click") else "win32"
         return caps
