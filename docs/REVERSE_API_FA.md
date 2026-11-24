@@ -25,5 +25,5 @@ Chat/Brain → HybridRouter → ReverseApiProvider (ChatProvider) → ReverseTra
 ## محدودیت‌های فعلی (عمدی)
 
 - هیچ Transport واقعی وجود ندارد (مرورگر/ورود/Session/Headless = Task 2 و 3). تا آن موقع Provider خاموش است و درخواست به خطای `missing` می‌خورد.
-- دکمهٔ «تست اتصال Route» (`probe_provider`) هنوز نوع `reverse_api` را نمی‌شناسد؛ هنگام اولین Transport واقعی با `provider.probe()` وصل می‌شود.
+- دکمهٔ «تست اتصال Route» (`probe_provider`) از `provider.probe()` استفاده می‌کند و فقط وضعیت نشست را می‌خواند؛ هیچ درخواست تولید آزمایشی ارسال نمی‌شود.
 - فقط یک اتصال `reverse_api` در یک زمان (انتخاب Transport با فیلد `transport`).
