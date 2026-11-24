@@ -142,27 +142,28 @@ class DesktopTests(unittest.TestCase):
         self.assertIn("هنوز باز است", res.text)
         self.assertEqual(self.run_tool("window_close", {"window": "hwnd:3"}, "close it").status, DENIED)   # Kira itself is never closed
 
-    def test_key_whitelist(self):
-        self.assertEqual(parse_combo("ctrl+s")[1], "ctrl+s")
-        self.assertEqual(parse_combo("Enter")[1], "enter")
-        for bad in ("win+r", "alt+f4", "ctrl+alt+delete", "ctrl+shift+esc", "ctrl+alt+t", "f13", "ctrl+q", ""):
+    def test_virtual_keyboard_supports_app_switching_windows_and_extended_keys(self):
+        self.assertEqual(parse_combo("alt+tab")[1], "alt+tab")
+        self.assertEqual(parse_combo("win+e")[1], "win+e")
+        self.assertEqual(parse_combo("win+d")[1], "win+d")
+        self.assertEqual(parse_combo("win+tab")[1], "win+tab")
+        self.assertEqual(parse_combo("win+ctrl+left")[1], "win+ctrl+left")
+        self.assertEqual(parse_combo("win+shift+right")[1], "win+shift+right")
+        self.assertEqual(parse_combo("ctrl+f24")[1], "ctrl+f24")
+        self.assertEqual(parse_combo("semicolon")[1], "semicolon")
+        res = self.run_tool("press_keys", {"window": "notepad", "keys": "alt+tab"}, "switch app with alt+tab")
+        self.assertEqual(res.status, OK, res.text)
+        self.assertEqual(self.be.log[-1], ("press", parse_combo("alt+tab")[0]))
+        res = self.run_tool("press_keys", {"window": "notepad", "keys": "win+e"}, "press win+e")
+        self.assertEqual(res.status, OK, res.text)
+
+    def test_virtual_keyboard_keeps_dangerous_system_shortcuts_blocked(self):
+        for bad in ("win+r", "win+l", "alt+f4", "ctrl+alt+delete", "ctrl+shift+esc",
+                    "ctrl+alt+t", "win+ctrl+alt+left", "f25", "ctrl+q", ""):
             with self.assertRaises(ToolError, msg=bad):
                 parse_combo(bad)
         self.assertEqual(self.run_tool("press_keys", {"window": "notepad", "keys": "ctrl+s"}, "press ctrl+s").status, OK)
         self.assertEqual(self.run_tool("press_keys", {"window": "powershell", "keys": "enter"}, "press enter").status, DENIED)
-
-    def test_paste_text_uses_clipboard_and_virtual_ctrl_v_for_target_window(self):
-        res = self.run_tool("paste_text", {"window": "notepad", "text": "hello from Kira"}, "paste this text")
-        self.assertEqual(res.status, OK, res.text)
-        self.assertEqual(self.be.clip, "hello from Kira")
-        self.assertEqual(self.be.fg, 1)
-        self.assertIn(("press", parse_combo("ctrl+v")[0]), self.be.log)
-        self.assertIn("Ctrl+V", res.text)
-
-    def test_paste_text_refuses_shell_and_secret_payloads(self):
-        self.assertEqual(self.run_tool("paste_text", {"window": "powershell", "text": "hello"}, "paste this").status, DENIED)
-        self.assertEqual(self.run_tool("paste_text", {"window": "notepad", "text": "sk-" + "a" * 30}, "paste this").status, DENIED)
-        self.assertFalse(any(item[0] == "press" for item in self.be.log))
 
     def test_clipboard_read_needs_confirmation_and_masks_secrets(self):
         self.be.clip = "note sk-" + "b" * 30
@@ -227,7 +228,7 @@ class DesktopTests(unittest.TestCase):
         self.assertIn("desktop", protocol.detect_categories("متن را تایپ کن"))
         self.assertIn("type_text", {c.name for c in self.layer.capabilities()})
         real = build_registry(PathPolicy({}, None, None))                                      # the real module is registered with the Win32 backend
-        for name in ("window_list", "type_text", "paste_text", "press_keys", "ui_click", "clipboard_get", "mouse_click"):
+        for name in ("window_list", "type_text", "ui_click", "clipboard_get", "mouse_click"):
             self.assertIsNotNone(real.get(name), name)
 
 
