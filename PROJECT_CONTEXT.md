@@ -237,6 +237,10 @@ Local-only speech stack: Qwen3-ASR primary STT, faster-whisper local fallback, P
 - Source/test updates are recorded in `TASK_HANDOFF.md`. Python test execution, Windows browser acceptance, live DeepSeek DOM selector compatibility and actual token rotation remain pending.
 
 
+## Release metadata — ToolAgent safety and capability discovery (2026-11-24)
+- Version advanced to `1.2.3` in `kira/config.py`; `kira/build_info.py` records the 2026-11-24 12:12 Asia/Tehran build stamp and developer `ChatGPT`.
+- `1.2.2` fixes the ToolAgent import-time regex crash. `1.2.3` narrows keyboard shortcut allowlists, buffers an opening access-denial sentence until the full-catalog retry decision, and makes `windows_control_info` compact, paginated and robust to malformed arguments, with exact-name detail lookup.
+- Regression tests were added for these behaviours. Source diffs were inspected; Python test execution and `scripts/build_metadata.py --check` have not been run in this source-only workflow.
+
 ## Release metadata — DeepSeek Reverse API hardening (2026-11-24)
-- Version advanced to `1.2.1` in `kira/config.py`; `kira/build_info.py` records the 2026-11-24 12:03 Asia/Tehran build stamp and detected developer `ChatGPT`.
-- The `CHANGELOG.md` entry for `1.2.1` records the DeepSeek Reverse API hardening. `scripts/build_metadata.py --check` remains the authoritative validation gate; it has not been run in this source-only workflow.
+- Version `1.2.1` recorded the DeepSeek Reverse API hardening. See `CHANGELOG.md` and `TASK_HANDOFF.md` for its detailed implementation and validation boundary.
