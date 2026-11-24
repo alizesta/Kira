@@ -149,7 +149,7 @@ class ToolArgumentValidationTests(unittest.TestCase):
         self.assertIn("windows_control_info()", self.registry.catalog_for_selected_categories({"apps"}))
         self.assertNotIn("file_probe", self.registry.catalog_for_selected_categories({"apps"}))
 
-    def test_capability_report_includes_tool_purpose_and_argument_contract(self):
+    def test_capability_report_is_compact_by_default_and_named_lookup_has_contract(self):
         tool = Tool(
             "report_probe",
             "read a report by its exact path",
@@ -159,23 +159,29 @@ class ToolArgumentValidationTests(unittest.TestCase):
         )
         self.registry.register(tool)
 
-        report = self.registry.access.info_text(recent=0)
-        self.assertIn("read a report by its exact path", report)
-        self.assertIn("path (string، اجباری): absolute report path", report)
-        self.assertIn("limit (integer، اختیاری): maximum rows", report)
-        self.assertIn("تعداد کل ابزارهای منطبق: 1", report)
+        summary = self.registry.access.info_text(recent=0)
+        self.assertIn("read a report by its exact path", summary)
+        self.assertIn("- report_probe [files] — read a report by its exact path", summary)
+        self.assertNotIn("ورودی‌ها:", summary)
+        self.assertIn("تعداد ابزارهای منطبق: 1", summary)
 
-    def test_capability_report_paginates_without_hiding_registered_tools(self):
+        details = self.registry.access.info_text(recent=0, name="report_probe")
+        self.assertIn("path (string، اجباری): absolute report path", details)
+        self.assertIn("limit (integer، اختیاری): maximum rows", details)
+        self.assertIn("ورودی‌ها:", details)
+
+    def test_capability_report_paginates_compact_inventory_without_hiding_tools(self):
         for name in ("alpha_probe", "beta_probe"):
             self.registry.register(Tool(name, name + " description", lambda args: "ok", (), categories=("files",)))
 
         first = self.registry.access.info_text(recent=0, category="files", offset=0, limit=1)
         second = self.registry.access.info_text(recent=0, category="files", offset=1, limit=1)
 
-        self.assertIn("تعداد کل ابزارهای منطبق: 2", first)
+        self.assertIn("تعداد ابزارهای منطبق: 2", first)
         self.assertIn("ادامه دارد: True", first)
         self.assertIn("offset بعدی: 1", first)
         self.assertIn("alpha_probe", first)
+        self.assertNotIn("ورودی‌ها:", first)
         self.assertIn("beta_probe", second)
         self.assertIn("ادامه دارد: False", second)
 
