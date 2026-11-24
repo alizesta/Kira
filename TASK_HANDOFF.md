@@ -1,3 +1,11 @@
+## Companion bubble and Tray shutdown follow-up — release 1.2.6 (2026-11-24)
+- Branch: fix/companion-tray-shutdown-escape, based on the current new-main after PR #267.
+- Fixed shutdown ordering in kira/ui/main_window_runtime.py and kira/ui/main_window_lifecycle.py: the first close attempt no longer hides the Tray icon or enables quit-on-last-window before workers and persistence have completed. Only the accepted-close callback _exit_application hides Tray and ends the event loop.
+- Added a QShortcut with WidgetWithChildrenShortcut scope to CompanionBubble; Escape closes the composer and returns to the timed preview.
+- Added kira/ui/companion_session.py as a Qt-free session marker helper. It prefers session_id, then falls back to (cid, conversation_id). Both lifecycle comparison and history restoration use the same marker.
+- Added tests/test_companion_tray_shutdown_contracts.py using only the standard library for structural regression checks plus direct tests of legacy marker fallback.
+- Verification performed here: source/diff inspection and marker checks only. The new test file, Python suite, PySide6 offscreen interaction and Windows Tray behaviour have not been executed in this environment. Do not claim runtime acceptance until the target Windows test is done.
+
 ## ToolAgent test regressions — handoff (2026-11-24)
 - Corrected `tests/test_tool_agent_denial_buffer.py`: its `_run_once` mock now uses a callable `side_effect` with a call counter, so the first-round and retry handlers are actually invoked with the production callback arguments.
 - Updated `tests/test_tool_registry_validation.py` to assert the compact inventory by default, then use `name="report_probe"` to assert full parameter contracts. Pagination now expects the current `تعداد ابزارهای منطبق` label.
