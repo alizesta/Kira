@@ -293,12 +293,35 @@ class AccessManager:
     # ------------------------------------------------------------ report (READ tool windows_control_info)
     def info_text(self, recent: int = 8) -> str:
         tools = sorted(self.registry.all(), key=lambda t: (self.policy_for(t).permission, self.policy_for(t).domain, t.name))
-        lines = ["مدیر مرکزی دسترسی (سطح · دامنه · ابزار · Backend · شرط اجرا):"]
+        lines = [
+            "فهرست زنده و کامل قابلیت‌های کیرا (از رجیستری واقعی همین اجرا؛ ابزارهای قطع‌شده/ثبت‌نشده در این فهرست نیستند):",
+            f"تعداد ابزارهای ثبت‌شده: {len(tools)}",
+            "برای انتخاب ابزار، نام، کاربرد، ورودی‌ها، سطح دسترسی و شرط اجرا را با هم بررسی کن؛ صرفاً از روی نام ابزار حدس نزن.",
+        ]
         for t in tools:
             p = self.policy_for(t)
             gate = ("تأیید صریح کاربر روی همین عملیات و پارامترها" if p.always_confirm else "فقط با درخواست صریح در همان پیام" if p.intent_rx is not None
                     else "با درخواست کاربر (بعد از خواندن محتوای خارجی: تأیید)" if p.permission in (CONTROL, FILE) else "فقط خواندن")
-            lines.append(f"- {p.name} · {p.domain} · {t.name} · {BACKENDS.get(p.backend, p.backend)} · {gate}" + (" · نتیجه دوباره بررسی می‌شود" if p.verifies else ""))
+            categories = ", ".join(t.categories) or "بدون دسته"
+            if t.params:
+                params = []
+                for arg in t.params:
+                    required = "اجباری" if arg.required else "اختیاری"
+                    detail = f"{arg.name} ({arg.type}، {required}): {arg.description or 'بدون توضیح'}"
+                    if arg.enum:
+                        detail += "؛ مقادیر مجاز: " + ", ".join(map(str, arg.enum))
+                    params.append(detail)
+                param_text = "؛ ".join(params)
+            else:
+                param_text = "بدون ورودی"
+            lines.append(
+                f"\\n- {t.name} [{categories}]"
+                f"\\n  کاربرد: {t.description}"
+                f"\\n  ورودی‌ها: {param_text}"
+                f"\\n  سطح/دامنه: {p.permission} / {p.domain} · Backend: {BACKENDS.get(p.backend, p.backend)}"
+                f"\\n  شرط اجرا: {gate}"
+                + (" · نتیجه دوباره بررسی می‌شود" if p.verifies else "")
+            )
         items = [e for e in self.journal.recent(recent + 2) if e["tool"] != "windows_control_info"][-recent:]
         lines.append("")
         if items:
