@@ -59,7 +59,7 @@ _GENERATION_STATE_SCRIPT = """() => {
 # do not resend the entire cumulative response.
 _STREAM_HOLDBACK_CHARS = 512
 _NO_STOP_IDLE_SECONDS = 5.0
-_STOP_IDLE_SECONDS = 1.0
+_STOP_IDLE_SECONDS = 2.5
 
 
 class DeepSeekBrowserTransport:
@@ -178,6 +178,8 @@ class DeepSeekBrowserTransport:
         # Do not clear a cancellation requested immediately before stream() starts.
         browser = context = page = None
         try:
+            if cancel.is_set() or self._cancel.is_set():
+                return
             try:
                 from playwright.sync_api import sync_playwright
             except ImportError as exc:
