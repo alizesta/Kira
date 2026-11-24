@@ -48,6 +48,9 @@ DEFAULTS = {
     "web_max_redirects": 4,              # redirects followed per page (each hop is re-checked against SSRF rules)
     "speak_replies": True,
     "desktop_vision_enabled": False,        # Live Desktop Vision starts off on every app launch
+    "eye_mode_profile": "competitive_safe",   # manual Eye Mode game profile: competitive_safe | story
+    "eye_live_min_interval_seconds": 5,      # Gemini Live frame budget: minimum seconds between frames
+    "eye_live_max_frames_per_minute": 10,    # Gemini Live frame budget: hard per-minute cap
     "desktop_vision_monitor_id": "",          # empty = monitor containing the foreground window
     "desktop_vision_allowlist": [],           # explicit exe:<name>, title:<pattern>, path:<pattern> exceptions
     "desktop_vision_blocklist": {},           # custom privacy rules merged with defaults

@@ -1,3 +1,9 @@
+## Eye Vision settings tab — handoff (2026-11-24 07:13 Iran)
+- Branch: `feat/eye-vision-settings-tab`, based on `new-main` e339ac8. Overlaps with ChatGPT's planned Eye Mode status panel (`feat/eye-mode-proactive-status`): that panel (enabled/monitor/last successful frame time) can live in this same page; rebase that branch on `new-main` first.
+- Verified offscreen with a real composed MainWindow: the tab builds lazily, a profile change is saved without enabling Eye Mode, a budget change reaches the live selector policy, the page switch drives the composer button and follows it back. 10 new page tests pass.
+- Pre-existing, not changed: turning Eye Mode on before the Voice settings tab was ever opened logs `AttributeError: views.voice_page has not been initialized` from `toggle_mic -> set_live_listening -> collect_voice_settings`. It reproduces on `new-main` without this change.
+- Not verified: Windows, a real multi-monitor setup, RTL visual layout/styling in the real theme.
+
 ## Gemini Live frame budget — handoff (2026-11-24 07:05 Iran)
 - Branch: `feat/live-video-frame-budget`, based on `new-main` 119a9ba.
 - Defaults: 5 s minimum interval, 10 frames/minute. Not a daily cap: a daily or per-session cap would need persistence across restarts and is not implemented.

@@ -126,14 +126,94 @@ class AttachmentsVisionController(WindowFeatureController):
         )
         return 1000 if getattr(self, "_live_video_active", False) else base
 
+    def _live_budget_values(self):
+        """Frame budget from settings, clamped; bad or missing values fall back to the defaults."""
+        settings = self.context.services.settings
+        defaults = SelectorPolicy()
+        try:
+            interval = float(settings.get("eye_live_min_interval_seconds", defaults.min_interval_seconds))
+        except (TypeError, ValueError):
+            interval = defaults.min_interval_seconds
+        try:
+            per_minute = int(settings.get("eye_live_max_frames_per_minute", defaults.max_frames_per_minute))
+        except (TypeError, ValueError):
+            per_minute = defaults.max_frames_per_minute
+        return max(1.0, min(interval, 60.0)), max(1, min(per_minute, 60))
+
+    def _live_policy(self):
+        interval, per_minute = self._live_budget_values()
+        return SelectorPolicy(
+            mean_threshold=LIVE_VIDEO_CHANGE_THRESHOLD,
+            min_interval_seconds=interval,
+            max_frames_per_minute=per_minute,
+        )
+
     def _live_selector(self):
         selector = getattr(self, "_live_frame_selector", None)
         if selector is None:
-            selector = LiveFrameSelector(
-                SelectorPolicy(mean_threshold=LIVE_VIDEO_CHANGE_THRESHOLD)
-            )
+            selector = LiveFrameSelector(self._live_policy())
             self._live_frame_selector = selector
         return selector
+
+    def set_live_frame_budget(self, interval_seconds, frames_per_minute):
+        """Persist the Gemini Live frame budget and apply it to the running selector."""
+        settings = self.context.services.settings
+        settings["eye_live_min_interval_seconds"] = float(interval_seconds)
+        settings["eye_live_max_frames_per_minute"] = int(frames_per_minute)
+        save_settings(settings)
+        self._live_selector().policy = self._live_policy()
+
+    def set_eye_mode_profile(self, profile):
+        """Persist the manually chosen game profile. It never turns Eye Mode on by itself."""
+        service = self.context.services.game_mode_application_service
+        normalized = service.normalize_profile(profile)
+        settings = self.context.services.settings
+        settings["eye_mode_profile"] = normalized
+        save_settings(settings)
+        if self.context.state._game_mode_enabled:
+            self.set_game_mode_profile(normalized)       # resets in-flight analysis, keeps Eye Mode on
+        else:
+            self.context.state._game_mode_profile = normalized
+
+    def _eye_monitor_choices(self):
+        capture = self.context.adapters.game_mode.capture_service
+        return [
+            (monitor.id, monitor.name + (" · اصلی" if monitor.primary else ""))
+            for monitor in capture.list_monitors()
+        ]
+
+    def build_eye_vision_page(self):
+        """Settings page for Eye Mode; widgets live in the page, behaviour stays in this controller."""
+        from .pages.eye_vision_page import EyeVisionPage
+
+        session = self.feature_controller("session")
+        privacy = self.context.services.vision_application_service.desktop_capture_application_service
+        page = EyeVisionPage(session.t)
+        page.set_monitors(self._eye_monitor_choices(), privacy.selected_monitor_id or "")
+        page.set_profile(self.context.state._game_mode_profile)
+        page.set_eye_enabled(bool(self.context.state._game_mode_enabled))
+        page.set_budget(*self._live_budget_values())
+
+        game_mode_btn = self.context.views.game_mode_btn
+        page.eye_mode_toggled.connect(lambda on: game_mode_btn.setChecked(bool(on)))
+        game_mode_btn.toggled.connect(page.set_eye_enabled)
+        page.profile_selected.connect(self.set_eye_mode_profile)
+        page.frame_budget_changed.connect(self.set_live_frame_budget)
+
+        def select_monitor(monitor_id):
+            if not self.set_desktop_monitor(monitor_id):
+                page.select_monitor(privacy.selected_monitor_id or "")
+
+        def refresh():
+            page.set_monitors(self._eye_monitor_choices(), privacy.selected_monitor_id or "")
+            page.set_profile(self.context.state._game_mode_profile)
+            page.set_eye_enabled(bool(self.context.state._game_mode_enabled))
+
+        page.monitor_selected.connect(select_monitor)
+        page.refresh_requested.connect(refresh)
+        page.bind_translations(session.reg)
+        self._eye_vision_page = page
+        return page
 
     def _clear_live_video_state(self):
         self._live_selector().reset()

@@ -1,3 +1,8 @@
+## 2026-11-24 07:13 Iran — Eye Vision settings tab
+- Added a lazy "Eye Vision" settings tab (`tab_eye`, last tab) with: Eye Mode switch (two-way synced with the composer eye button), monitor selection (Automatic + each monitor, refreshed whenever the tab is shown), the manual game profile (Competitive Safe / Story) and the Gemini Live frame budget (minimum seconds between frames, maximum frames per minute, with an estimated frames-per-hour ceiling).
+- The game profile is now persisted (`eye_mode_profile`, default `competitive_safe`) and loaded at startup. Changing it never turns Eye Mode on; if Eye Mode is already on, the existing profile-change path resets in-flight analysis. The nav-menu monitor submenu is unchanged and stays in sync.
+- Frame budget is stored as `eye_live_min_interval_seconds` / `eye_live_max_frames_per_minute` (defaults 5 s / 10 per minute) and applied to the running `LiveFrameSelector` immediately.
+- New page widget `kira/ui/pages/eye_vision_page.py` (signals only); behaviour lives in `AttachmentsVisionController`. fa/en strings added.
 ## 2026-11-24 07:05 Iran — Gemini Live frame budget
 - `LiveFrameSelector` now enforces a frame budget on top of change detection: at least 5 s between frames and at most 10 frames per minute (`SelectorPolicy.min_interval_seconds` / `max_frames_per_minute`; 0 disables a limit). Previously a constantly changing screen (video, game) could send up to 1 frame per second, i.e. 60 per minute.
 - A changed frame that is over budget is not dropped: the reference stays on the last sent frame, so the newest screen is sent as soon as the budget allows. The first frame of a new session or after a window switch also respects the budget.

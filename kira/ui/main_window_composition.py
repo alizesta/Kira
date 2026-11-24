@@ -216,7 +216,9 @@ def initialize_main_window(
     self.adapters.game_mode = GameModeMonitor(self.host)
     self.state._game_mode_enabled = False
     self.state._game_audio_restart_pending = False
-    self.state._game_mode_profile = self.services.game_mode_application_service.COMPETITIVE_SAFE_MODE
+    self.state._game_mode_profile = self.services.game_mode_application_service.normalize_profile(
+        self.services.settings.get("eye_mode_profile")      # unknown/missing -> Competitive Safe
+    )
     self.state._latest_game_frame = None
     # Vision cadence, safety gating and deduplication are owned by the application service.
     self.session._vision_worker = None
@@ -316,7 +318,7 @@ def initialize_main_window(
     voice_controller.build_chat_tab()
 
     # Reserve stable tab indexes, but construct settings pages only on first entry.
-    self.views.tab_keys = ["tab_chat", "tab_voice", "tab_char", "tab_appearance", "tab_general", "tab_ai"]
+    self.views.tab_keys = ["tab_chat", "tab_voice", "tab_char", "tab_appearance", "tab_general", "tab_ai", "tab_eye"]
     def _ensure_assistant_section():
         if not hasattr(self.views, "assistant_page"):
             voice_controller.build_assistant_section()
@@ -335,12 +337,17 @@ def initialize_main_window(
         _ensure_assistant_section()
         self.controllers.require("provider_settings").build_ai_tab()
 
+    def _build_eye_tab():
+        page = self.controllers.require("attachments_vision").build_eye_vision_page()
+        self.views.tabs.addTab(session_controller.page(page), "")
+
     lazy_tab_builders = {
         1: ("tab_voice", voice_controller.build_voice_tab),
         2: ("tab_char", _build_characters_tab),
         3: ("tab_appearance", _build_appearance_tab),
         4: ("tab_general", _build_general_tab),
         5: ("tab_ai", _build_ai_tab),
+        6: ("tab_eye", _build_eye_tab),
     }
     for key in self.views.tab_keys[1:]:
         placeholder = QWidget(self.host)
