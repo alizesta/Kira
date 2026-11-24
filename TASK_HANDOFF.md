@@ -328,7 +328,7 @@ Character specialization and generated portraits. The implementation is complete
 
 ## ToolAgent desktop safety and discovery — handoff (2026-11-24)
 - Keyboard shortcuts now use explicit allowlists: Ctrl+Shift permits navigation/selection only; Alt permits navigation/switching only. Alt+letter and Ctrl+Shift+letter combinations (including Q/W) are denied. Existing Win shortcuts and plain keys are unchanged.
-- ToolAgent stages the first response's text chunks until the capability-denial check finishes. If it retries with the full local catalog, the unsupported denial text is discarded; successful first responses are then emitted in their original chunk order. Partial chunks are still flushed if the model call raises, preserving existing partial-output behavior.
+- ToolAgent holds the opening sentence while checking for an unsupported access-denial claim, then streams normally. When an opening denial is detected, the remaining text stays buffered until the retry decision; a full-local-catalog retry discards it. If the call fails or no retry is eligible, buffered partial text is preserved.
 - windows_control_info now returns a compact paginated index by default. Use its exact `name` argument for full purpose, parameters, permission, backend and confirmation gate. Invalid offset/limit/recent values fall back safely instead of raising.
 - Added regression tests for the narrowed shortcut policy, denial-output buffering and inventory parsing/details.
 - Validation in this source-only environment: changes and diffs inspected; Python imports and unittest execution have not been run.
