@@ -113,16 +113,6 @@ class DeepSeekBrowserLogin:
         self.store = store or DeepSeekSessionStore()
         self._lock = threading.Lock()
 
-    @staticmethod
-    def _authenticated(page) -> bool:
-        for selector in _AUTHENTICATED_SELECTORS:
-            try:
-                if page.locator(selector).first.is_visible(timeout=700):
-                    return True
-            except Exception:
-                continue
-        return False
-
     def login(self, timeout_ms: int = 300_000) -> dict[str, Any]:
         """Wait for the user to finish login, then encrypt and persist browser storage state.
 
@@ -179,7 +169,8 @@ class DeepSeekBrowserLogin:
                     )
                     state = context.storage_state()
                     self.store.save(state)
-                    return state
+                    # Never return cookie/token material to the UI or log layer.
+                    return {"saved": True, "session_file": str(self.store.path)}
                 except Exception as exc:
                     raise DeepSeekSessionError(
                         "ورود DeepSeek کامل نشد یا صفحه چت شناسایی نشد: " + str(exc)[:400]
