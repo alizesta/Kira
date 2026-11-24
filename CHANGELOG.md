@@ -641,3 +641,9 @@ Mate Engine (shinyflvre) is a Unity/C# project under AGPL-3.0 + its own licence,
 - Refreshes and re-encrypts Playwright cookies/local storage plus the current origin's sessionStorage after a response, preserving other stored origins.
 - Cancellation state is no longer cleared at stream entry, so a stop issued immediately before the worker starts is not discarded. Browser/session cleanup and lock release remain in the finalizer.
 - Static source review and regression-test updates completed. Python tests and live DeepSeek browser/account behavior have not been executed in this source-only change.
+
+
+## 1.2.2 — 2026-11-24 — ToolAgent import crash fix
+- Fixed the unterminated outer non-capturing group in `_ACCESS_DENIAL_RX` in `kira/tools/agent.py`; importing ToolAgent no longer fails while compiling the access-denial pattern.
+- Added `tests/test_tool_agent_import.py`, a focused import regression test that imports `kira.tools.agent` during test execution so a future regex/import failure is reported as a test failure rather than breaking test collection.
+- Validation in this environment: the corrected regular expression was compiled with Python's `re` module. The repository import test and broader suite have not been executed here.
