@@ -1,3 +1,8 @@
+## 2026-11-24 — ToolAgent regression-test corrections
+- Fixed the denial-buffer test double: `_run_once` now receives a callable `side_effect` that dispatches to the first response and retry handlers instead of returning those handler functions as mock results.
+- Updated capability-report tests for the compact default inventory and exact-name detailed lookup (`name="report_probe"`). Pagination assertions now match the current count label.
+- These are test-fixture/expectation corrections only; no ToolAgent runtime behavior changed. Test execution remains pending in this source-only workflow.
+
 ## 2026-11-24 07:13 Iran — Eye Vision settings tab
 - Added a lazy "Eye Vision" settings tab (`tab_eye`, last tab) with: Eye Mode switch (two-way synced with the composer eye button), monitor selection (Automatic + each monitor, refreshed whenever the tab is shown), the manual game profile (Competitive Safe / Story) and the Gemini Live frame budget (minimum seconds between frames, maximum frames per minute, with an estimated frames-per-hour ceiling).
 - The game profile is now persisted (`eye_mode_profile`, default `competitive_safe`) and loaded at startup. Changing it never turns Eye Mode on; if Eye Mode is already on, the existing profile-change path resets in-flight analysis. The nav-menu monitor submenu is unchanged and stays in sync.
