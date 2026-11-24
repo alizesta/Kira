@@ -16,7 +16,7 @@
 - The 1 FPS ceiling, 480x270 frame size, quality stepping and privacy rechecks are unchanged.
 ## 1.2.3 — 2026-11-24 — ToolAgent safety and capability discovery
 - Narrowed Ctrl+Shift and Alt keyboard combinations to explicit navigation/selection allowlists; broad letter shortcuts including Ctrl+Shift+Q/W are refused.
-- The first ToolAgent answer is staged until unsupported access-denial claims are checked. If a full-local-catalog retry is needed, the rejected text is discarded instead of being streamed to the chat.
+- ToolAgent holds the opening sentence until checking for an unsupported access-denial claim, then streams the rest normally. If a full-local-catalog retry is needed, the denial and following text are discarded instead of being shown.
 - Hardened windows_control_info pagination parsing against malformed model arguments. Its default inventory is compact (tool name + one-line purpose + access gate); passing an exact name returns the full parameter and permission details.
 - Added regression coverage for shortcut allowlists, denial-stream suppression, invalid pagination values and named tool details. Runtime test execution remains pending.
 
