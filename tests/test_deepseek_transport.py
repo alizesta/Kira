@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import tempfile
 import unittest
 
@@ -14,8 +15,8 @@ class DeepSeekTransportTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.store = DeepSeekSessionStore(
             self.temp.name,
-            encrypt=lambda value: __import__("base64").b64encode(value.encode("utf-8")).decode("ascii"),
-            decrypt=lambda value: __import__("base64").b64decode(value.encode("ascii")).decode("utf-8"),
+            encrypt=lambda value: base64.b64encode(value.encode("utf-8")).decode("ascii"),
+            decrypt=lambda value: base64.b64decode(value.encode("ascii")).decode("utf-8"),
         )
         self.transport = DeepSeekBrowserTransport(store=self.store)
 
@@ -44,9 +45,30 @@ class DeepSeekTransportTests(unittest.TestCase):
         status = self.transport.status()
         self.assertIn(status.state, {TransportState.CONNECTED, TransportState.UNAVAILABLE})
 
-    def test_stream_diff_helpers_do_not_replay_rewritten_prefixes(self):
-        self.assertEqual(self.transport._common_prefix_length("answer part A", "answer part B"), 12)
-        self.assertEqual(self.transport._common_prefix_length("same", "same plus"), 4)
+    def test_stream_diff_holds_mutable_tail_and_does_not_replay_cumulative_text(self):
+        original = "a" * 700
+        delta, committed = self.transport._stable_stream_delta("", original, "")
+        self.assertEqual(delta, "")
+        self.assertEqual(committed, "")
+
+        delta, committed = self.transport._stable_stream_delta(original, original, committed)
+        self.assertEqual(delta, "a" * 188)
+        self.assertEqual(committed, "a" * 188)
+
+        # DeepSeek re-renders the trailing Markdown/code region. Previously emitted
+        # text is not replayed and the mutable region remains buffered until final flush.
+        rewritten = "a" * 600 + "b" * 100
+        delta, committed_after_rewrite = self.transport._stable_stream_delta(original, rewritten, committed)
+        self.assertEqual(delta, "")
+        self.assertEqual(committed_after_rewrite, committed)
+        delta, committed_after_stable = self.transport._stable_stream_delta(rewritten, rewritten, committed)
+        self.assertEqual(delta, "")
+        self.assertEqual(committed_after_stable, committed)
+
+        appended = rewritten + "c" * 50
+        delta, next_committed = self.transport._stable_stream_delta(rewritten, appended, committed)
+        self.assertEqual(delta, "c" * 50)
+        self.assertEqual(next_committed, "a" * 600 + "b" * 100 + "c" * 50)
 
     def test_refreshed_session_merges_rotated_session_storage(self):
         state = {
