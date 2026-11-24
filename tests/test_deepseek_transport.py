@@ -76,6 +76,11 @@ class DeepSeekTransportTests(unittest.TestCase):
         self.assertEqual(delta, next_snapshot[700:1300])
         self.assertEqual(final_committed, next_snapshot[:1300])
 
+    def test_completion_detection_treats_missing_composer_as_unknown(self):
+        source = (Path(__file__).resolve().parents[1] / "kira/reverse_api/deepseek_transport.py").read_text(encoding="utf-8")
+        self.assertIn("composerPresent: !!composer", source)
+        self.assertIn("and composer_present", source)
+
     def test_warm_browser_is_closed_before_playwright_runtime_stops(self):
         source = (Path(__file__).resolve().parents[1] / "kira/reverse_api/deepseek_transport.py").read_text(encoding="utf-8")
         worker = source.split("class _DeepSeekBrowserWorker:", 1)[1].split("class DeepSeekBrowserTransport:", 1)[0]

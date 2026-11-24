@@ -72,8 +72,9 @@ _POLL_SCRIPT = """() => {
   return {
     values,
     stopVisible,
-    composerDisabled: !composer || composer.disabled ||
-      composer.getAttribute("aria-disabled") === "true"
+    composerPresent: !!composer,
+    composerDisabled: !!composer && (composer.disabled ||
+      composer.getAttribute("aria-disabled") === "true")
   };
 }"""
 
@@ -424,8 +425,10 @@ class DeepSeekBrowserTransport:
                 if composer_disabled:
                     saw_composer_disabled = True
 
+                composer_present = bool(snapshot.get("composerPresent"))
                 completed = (
                     started
+                    and composer_present
                     and not stop_visible
                     and not composer_disabled
                     and (saw_stop or saw_composer_disabled)
@@ -442,6 +445,7 @@ class DeepSeekBrowserTransport:
                     started
                     and not saw_stop
                     and not saw_composer_disabled
+                    and composer_present
                     and now - last_change >= _NO_STOP_IDLE_SECONDS
                 ):
                     break
