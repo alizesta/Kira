@@ -973,6 +973,15 @@ class ProviderSettingsController(WindowFeatureController):
         self.deepseek_login_btn.setEnabled(True)
         if ok:
             self.deepseek_login_status.setText("✓ نشست DeepSeek به‌صورت رمزگذاری‌شده ذخیره شد.")
+        elif str(value).startswith("CHROME_UNAVAILABLE:"):
+            try:
+                from ..reverse_api.deepseek_embedded_login import run_embedded_login
+                if run_embedded_login(self.window):
+                    self.deepseek_login_status.setText("✓ نشست DeepSeek از مرورگر داخلی Kira ذخیره شد.")
+                else:
+                    self.deepseek_login_status.setText("ورود DeepSeek لغو شد.")
+            except Exception as exc:
+                self.deepseek_login_status.setText("✕ مرورگر داخلی Kira اجرا نشد: " + str(exc)[:200])
         else:
             self.deepseek_login_status.setText("✕ ورود ناموفق بود: " + str(value)[:220])
 
