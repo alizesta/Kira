@@ -360,6 +360,7 @@ GATES = {
     "desktop": _rx(r"تایپ", r"\btype\b", r"کلیک", r"\bclick\b", r"پنجره", r"\bwindow\b", r"کیبورد", r"صفحه\s*کلید", r"\bkeyboard\b", r"\bhotkey\b", r"میانبر",
                    r"کلیپ\s*بورد", r"\bclipboard\b", r"ببند", r"\bclose\b", r"کوچک\s*کن", r"بزرگ\s*کن", r"\bminimi[sz]e\b", r"\bmaximi[sz]e\b", r"داخلش\s*بنویس",
                    r"دکمه", r"\bbutton\b", r"منو(?:ی)?(?=\s|$|[،,.!?])", r"\bmenu\b", r"چک\s*باکس", r"\bcheckbox\b",
+                   r"\bscreen\b", r"\bdisplay\b", r"\bmonitor\b", r"اسکرین", r"صفحه\s*(?:نمایش|من|م|کامپیوتر)",
                    r"\bnotepad\b", r"\bnavigate\s+to\b", r"\bdefault\s+microphone\b", r"\bpaired\s+devices?\b", r"\bdocument\s+.{0,30}\bin\s+notepad\b"),
     "web": _rx(r"تحقیق", r"پژوهش", r"\bresearch\b", r"deep\s*research", r"(?:سرچ|جست\s*و\s*جوی?)\s*(?:عمیق|کامل|دقیق|چند\s*مرحله)", r"چند\s*منبع", r"(?:دو|سه|چهار|پنج)\s+منبع", r"منابع?\s*(?:معتبر|مستند|مختلف|رو|را)",
                r"با\s*منبع", r"مستند", r"fact\s*-?check", r"صحت\s*(?:سنجی)?", r"investigate", r"https?://", r"\bwww\.", r"(?:این|همین|اون|همون)\s*(?:لینک|سایت|صفحه|مقاله|آدرس)",
