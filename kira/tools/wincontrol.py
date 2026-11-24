@@ -137,5 +137,10 @@ class WindowsControlLayer:
 
     def register_info_tool(self) -> None:
         """The manager's own read-only report: every tool with its level, backend and gate, plus the real recent operations / errors."""
-        self.registry.register(Tool("windows_control_info", "list every tool with its permission level, backend and safety gate, and the real recent operations / errors",
-                                    lambda a: self.registry.access.info_text(), (), READ, ("system",), permission=READ_P, domain="system", backend="python"))
+        self.registry.register(Tool(
+            "windows_control_info",
+            "complete live capability inventory: every registered built-in and connected external tool, what it does, its arguments, access level, backend, safety/confirmation gate, and recent real operations",
+            lambda a: self.registry.access.info_text(),
+            (), READ, ("system",), permission=READ_P, domain="system", backend="python",
+            always_visible=True,
+        ))
