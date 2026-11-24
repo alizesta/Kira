@@ -27,6 +27,7 @@ DEFAULT_CLOUD_TIMEOUT = 18
 DEFAULT_LOCAL_TIMEOUT = 180
 DEFAULT_COOLDOWN = 45                  # seconds after a transient failure (network / timeout / 5xx)
 COOLDOWN_RANGE = (0, 3600)
+REVERSE_API = "reverse_api"           # provider id AND provider type of the Reverse API connection (see kira/reverse_api)
 
 
 # ---------------- provider helpers ----------------
@@ -50,7 +51,8 @@ def provider_label(name, cfg=None):
 
 
 def requires_key(name, cfg=None):
-    return provider_type(name, cfg) != "ollama" and not (cfg or {}).get("local")
+    """Whether the provider needs an API key. Ollama and Reverse API authenticate differently (no key)."""
+    return provider_type(name, cfg) not in ("ollama", REVERSE_API) and not (cfg or {}).get("local")
 
 
 def slugify(text):
@@ -79,6 +81,23 @@ def add_provider(settings, label, base_url, api_key="", local=False, enabled=Tru
         "type": "openai_compat", "label": label, "base_url": base_url, "api_key": str(api_key or "").strip(),
         "local": bool(local), "enabled": bool(enabled), "timeout": DEFAULT_LOCAL_TIMEOUT if local else DEFAULT_CLOUD_TIMEOUT}
     return pid
+
+
+def add_reverse_api_provider(settings, transport, label="Reverse API", enabled=False):
+    """Register (or re-point) the single Reverse API connection. Returns its provider id ("reverse_api").
+
+    ``transport`` is the id of a transport registered in kira.reverse_api.TRANSPORTS. The provider is OFF by default
+    and carries no credentials: a transport that needs a session owns it. Existing routes stay attached."""
+    transport = str(transport or "").strip().lower()
+    if not transport:
+        raise ValueError("شناسه‌ی انتقال (transport) خالی است.")
+    providers = settings.setdefault("providers", {})
+    cfg = providers.get(REVERSE_API)
+    if not isinstance(cfg, dict):
+        cfg = providers[REVERSE_API] = {"enabled": bool(enabled)}
+    cfg.update({"type": REVERSE_API, "label": str(label or "Reverse API").strip() or "Reverse API",
+                "transport": transport, "local": False, "timeout": CLOUD_TIMEOUT[1]})
+    return REVERSE_API
 
 
 def _check_url(url):

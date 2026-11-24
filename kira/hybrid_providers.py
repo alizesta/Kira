@@ -980,6 +980,13 @@ def probe_provider(name, config, provider_cls=None, *, timeout=None):
         left = deadline - time.monotonic()
         return max(0.0, min(float(default), left))
 
+    # Session-backed providers expose a lightweight probe that checks their own
+    # authentication/session state. Do not call /models or send a synthetic chat turn.
+    if getattr(cls, "supports_probe", False):
+        probe = getattr(provider, "probe", None)
+        if callable(probe):
+            return probe()
+
     try:
         if cls is not CloudflareProvider and cls is not OpenRouterProvider:
             base = provider._base()
