@@ -33,29 +33,6 @@ _RESPONSE_SCRIPT = """() => {
   }
   return values;
 }"""
-_GENERATION_STATE_SCRIPT = """() => {
-  const selectors = [
-    'button[aria-label*="stop" i]', 'button[title*="stop" i]',
-    '[data-testid*="stop" i]', 'button[class*="stop" i]',
-    '[aria-label*="停止"]', '[title*="停止"]',
-    '[aria-label*="توقف"]', '[title*="توقف"]'
-  ];
-  const stopVisible = selectors.some(selector =>
-    [...document.querySelectorAll(selector)].some(node => {
-      const style = getComputedStyle(node);
-      return style.display !== "none" && style.visibility !== "hidden" &&
-        node.getAttribute("aria-hidden") !== "true" && !node.disabled;
-    })
-  );
-  const composer = [...document.querySelectorAll('textarea, [contenteditable="true"], [role="textbox"]')]
-    .find(node => {
-      const style = getComputedStyle(node);
-      return style.display !== "none" && style.visibility !== "hidden";
-    });
-  return { stopVisible, composerDisabled: !composer || composer.disabled ||
-    composer.getAttribute("aria-disabled") === "true" };
-}"""
-
 # Keep a rolling tail uncommitted so transient markdown/code-block re-renders
 # do not resend the entire cumulative response.
 _STREAM_HOLDBACK_CHARS = 96

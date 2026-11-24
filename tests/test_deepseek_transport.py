@@ -74,7 +74,7 @@ class DeepSeekTransportTests(unittest.TestCase):
         next_snapshot = appended + "d" * 600
         delta, final_committed = self.transport._stable_stream_delta(appended, next_snapshot, next_committed)
         self.assertEqual(delta, next_snapshot[1204:1804])
-        self.assertEqual(final_committed, appended[:1204])
+        self.assertEqual(final_committed, next_snapshot[:1804])
 
     def test_deepseek_streaming_reuses_browser_and_finishes_without_fixed_five_second_wait(self):
         source = (Path(__file__).resolve().parents[1] / "kira/reverse_api/deepseek_transport.py").read_text(encoding="utf-8")
