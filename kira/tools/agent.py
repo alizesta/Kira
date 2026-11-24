@@ -78,7 +78,7 @@ def is_bare_confirmation(t: str) -> bool:
 CANCEL_RX = re.compile(r"(?:\bنه\b|نکن|لغو|کنسل|منصرف|بیخیال|بی\s*خیال|نخیر|\bno\b|cancel|don'?t|stop|never\s*mind)", re.I)
 
 _ACCESS_DENIAL_RX = re.compile(
-    r"(?:دسترسی.{0,40}ندارم|ندارم.{0,40}دسترسی|ابزار.{0,35}ندارم|قابلیت.{0,35}ندارم|"
+    r"(?:دسترسی.{0,40}ندارم|ندارم.{0,40}دسترسی|ابزار.{0,35}(?:ندارم|در اختیارم نیست|موجود نیست)|قابلیت.{0,35}(?:ندارم|در اختیارم نیست)|"
     r"نمی.?توانم.{0,45}(?:دسترسی|کنترل|باز|اجرا|کلیک|تایپ)|"
     r"(?:don't have access|do not have access|cannot access|can't access|unable to access|"
     r"not available to me|don't have the ability|cannot control|can't control)",
