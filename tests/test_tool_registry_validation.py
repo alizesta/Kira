@@ -95,6 +95,7 @@ class ToolArgumentValidationTests(unittest.TestCase):
 
         selected = self.registry.for_selected_categories({"apps"})
         self.assertEqual([tool.name for tool in selected], ["windows_control_info"])
+        self.assertEqual([tool.name for tool in self.registry.for_categories({"apps"})], ["windows_control_info"])
         self.assertEqual([tool.name for tool in self.registry.for_selected_categories(set())], ["windows_control_info"])
         self.assertIn("windows_control_info()", self.registry.catalog_for_selected_categories({"apps"}))
         self.assertNotIn("file_probe", self.registry.catalog_for_selected_categories({"apps"}))
