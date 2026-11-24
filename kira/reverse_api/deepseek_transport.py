@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import threading
 import time
 from collections.abc import Iterable
@@ -116,9 +118,18 @@ class DeepSeekBrowserTransport:
                     try:
                         browser = playwright.chromium.launch(channel="chrome", headless=True)
                     except Exception:
-                        browser = playwright.chromium.launch(headless=True)
+                        try:
+                            browser = playwright.chromium.launch(headless=True)
+                        except Exception:
+                            install = subprocess.run(
+                                [sys.executable, "-m", "playwright", "install", "chromium"],
+                                capture_output=True, text=True, timeout=240, check=False,
+                            )
+                            if install.returncode != 0:
+                                raise RuntimeError((install.stderr or install.stdout or "Chromium install failed")[-500:])
+                            browser = playwright.chromium.launch(headless=True)
                 except Exception as exc:
-                    raise ReverseTransportError("مرورگر Headless قابل اجرا نیست؛ Chromium مربوط به Playwright را نصب کن.", kind="missing", retryable=False) from exc
+                    raise ReverseTransportError("مرورگر Headless DeepSeek اجرا نشد: " + str(exc)[:300], kind="missing", retryable=False) from exc
                 context = browser.new_context(storage_state={"cookies": state.get("cookies", []), "origins": state.get("origins", [])})
                 context.add_init_script(self._session_init_script(state))
                 page = context.new_page()
