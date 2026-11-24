@@ -15,6 +15,7 @@ from kira import routes as route_model
 from kira.core.interfaces import ChatProvider
 from kira.core.interfaces.reverse_transport import ReverseTransportError, TransportState, TransportStatus
 from kira.hybrid_ai import HybridRouter, ProviderError, provider_class
+from kira.hybrid_providers import probe_provider
 from kira.infrastructure.providers import ProviderRegistry
 from kira.reverse_api import TRANSPORTS, TransportRegistry
 from kira.reverse_api.prompt import build_prompt
@@ -146,6 +147,20 @@ class ReverseApiProviderTests(unittest.TestCase):
         self.assertTrue(_provider(transport).probe()[0])
         transport.state = TransportState.DISCONNECTED
         self.assertFalse(_provider(transport).probe()[0])
+        self.assertEqual(transport.requests, [])
+
+    def test_route_probe_uses_transport_status_without_generation(self):
+        transport_id = "route-probe-test"
+        transport = _Transport()
+        TRANSPORTS.register(transport_id, lambda config: transport)
+        self.addCleanup(TRANSPORTS.unregister, transport_id)
+        config = {"type": "reverse_api", "enabled": True, "transport": transport_id, "model": "web"}
+        self.assertEqual(probe_provider("reverse_api", config), (True, "نشست Reverse API متصل است."))
+        self.assertEqual(transport.requests, [])
+        transport.state = TransportState.DISCONNECTED
+        ok, message = probe_provider("reverse_api", config)
+        self.assertFalse(ok)
+        self.assertIn("disconnected", message)
         self.assertEqual(transport.requests, [])
 
 
