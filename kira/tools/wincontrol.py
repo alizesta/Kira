@@ -142,9 +142,11 @@ class WindowsControlLayer:
         """The manager's own read-only report: every tool with its level, backend and gate, plus the real recent operations / errors."""
         self.registry.register(Tool(
             "windows_control_info",
-            "inspect the live capability registry; supports category filtering and pagination with offset/limit; reports each tool purpose, exact arguments, permission, backend and confirmation gate",
-            lambda a: self.registry.access.info_text(category=a.get("category", ""), offset=a.get("offset", 0), limit=a.get("limit", 30)),
+            "inspect the live capability registry; compact paginated tool list by default, pass an exact name for full arguments and permission details",
+            lambda a: self.registry.access.info_text(category=a.get("category", ""), offset=a.get("offset", 0),
+                                                      limit=a.get("limit", 30), name=a.get("name", "")),
             (Param("category", "string", "optional category filter such as desktop, files, apps, web, system"),
+             Param("name", "string", "exact tool name to inspect its full parameters and permission details", False, ""),
              Param("offset", "integer", "start position for pagination", False, 0),
              Param("limit", "integer", "number of tools to return, 1-40", False, 30)),
             READ, ("system",), permission=READ_P, domain="system", backend="python",
