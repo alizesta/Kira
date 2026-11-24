@@ -1,6 +1,7 @@
 """Headless Playwright transport for the DeepSeek web chat."""
 from __future__ import annotations
 
+import json
 import threading
 import time
 from collections.abc import Iterable
@@ -86,7 +87,7 @@ class DeepSeekBrowserTransport:
     @staticmethod
     def _session_init_script(state: dict[str, Any]) -> str:
         entries = state.get("sessionStorageByOrigin") or {}
-        payload = __import__("json").dumps(entries, ensure_ascii=False)
+        payload = json.dumps(entries, ensure_ascii=False)
         return (
             "(() => { const all = " + payload + "; const entries = all[location.origin];"
             " if (entries) for (const item of entries) { try { sessionStorage.setItem(item.name, item.value); } catch (_) {} }"
