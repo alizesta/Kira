@@ -59,7 +59,7 @@ def run_embedded_login(parent=None, store: DeepSeekSessionStore | None = None) -
             try:
                 name = bytes(cookie.name()).decode("utf-8", "replace")
                 value = bytes(cookie.value()).decode("utf-8", "replace")
-                domain = str(cookie.domain())
+                domain = str(cookie.domain() or self.view.url().host())
                 path = str(cookie.path() or "/")
                 if not name or not domain:
                     return
