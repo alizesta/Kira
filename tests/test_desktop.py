@@ -245,6 +245,8 @@ class DesktopTests(unittest.TestCase):
         from kira.tools import protocol
         self.assertIn("desktop", protocol.detect_categories("پنجره مرورگر را ببند"))
         self.assertIn("desktop", protocol.detect_categories("متن را تایپ کن"))
+        self.assertIn("desktop", protocol.detect_categories("what is on my screen"))
+        self.assertIn("desktop", protocol.detect_categories("صفحه نمایش رو نگاه کن"))
         self.assertIn("type_text", {c.name for c in self.layer.capabilities()})
         real = build_registry(PathPolicy({}, None, None))                                      # the real module is registered with the Win32 backend
         for name in ("window_list", "type_text", "ui_click", "clipboard_get", "mouse_click"):
