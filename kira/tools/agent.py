@@ -709,9 +709,10 @@ class ToolAgent(AutonomyMixin):
                 not tool_results
                 or all(item.get("status") == "unknown_tool" for item in tool_results)
             )
+            has_full_local_catalog = full_local_catalog.issubset(self._schema_categories(plan))
             unsupported_denial = (
                 no_capability_result
-                and self._schema_categories(plan) != full_local_catalog
+                and not has_full_local_catalog
                 and self._claims_missing_access(result.get("text", ""))
             )
             if model_escalated or unsupported_denial:
@@ -902,7 +903,9 @@ class ToolAgent(AutonomyMixin):
                     out["_escalate"] = True
                     return out
                 calls, errors = protocol.parse_calls(gate.raw)
-                if any(call.get("tool") == protocol.USE_TOOLS for call in calls):
+                full_local_catalog = set(protocol.ALL_CATEGORIES) - {"mcp", "agents"}
+                has_full_local_catalog = full_local_catalog.issubset(self._schema_categories(plan))
+                if any(call.get("tool") == protocol.USE_TOOLS for call in calls) and not has_full_local_catalog:
                     out = self._final(res, "", executed)
                     out["_escalate"] = True
                     return out
