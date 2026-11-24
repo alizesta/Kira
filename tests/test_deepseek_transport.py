@@ -122,6 +122,7 @@ class DeepSeekTransportTests(unittest.TestCase):
         cancel = threading.Event()
         cancel.set()
         self.assertEqual(list(self.transport.stream(None, cancel)), [])
+
     def test_abort_sets_cancellation_flag(self):
         self.transport.abort()
         self.assertTrue(self.transport._cancel.is_set())
