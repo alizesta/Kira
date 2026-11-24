@@ -1,7 +1,7 @@
 # KIRA ARCHITECTURE MASTER ROADMAP
 
 **Snapshot date:** 2026-11-19  
-**Current synchronization:** 2026-11-23; source baseline `new-main` at `91d5cdad7359da1d8bb626064fa84d676c160c02`. Historical audit dates and counts below remain unchanged.  
+**Current synchronization:** 2026-11-24; upstream baseline `new-main` at `9caa4e6d872bfc6f74e4ae98a465313f8cafcc7d`; the companion/Tray lifecycle follow-up is recorded in section 2.5 on branch `fix/companion-tray-shutdown-escape`. Historical audit dates and counts below remain unchanged.  
 **Merged architecture deltas:** PRs #239 (startup deferral), #240 (topic-scoped tool schemas), #243 (inactive Session/service deferral), and #246 (Chat/UI import boundaries, history facade and SQLite schema manager) are merged into `new-main`.  
 **Pending acceptance:** PR #248 (idle avatar/render and worker-import optimization) and PR #250 (lazy voice settings toggle guard) are open at this snapshot. Their tests and Windows runtime/CPU/memory measurements are not yet accepted. Workflow jobs with empty step lists are infrastructure failures, not test passes.
 **Repository:** `alizesta/Kira`  
