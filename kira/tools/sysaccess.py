@@ -369,7 +369,5 @@ class AccessManager:
             lines.append("هنوز عملیاتی در این اجرای برنامه ثبت نشده است.")
         return "\n".join(lines)
 
-
-
 __all__ = ["AccessManager", "Policy", "Journal", "BackendUnavailable", "ToolError", "READ_P", "CONTROL", "FILE", "ELEVATED", "PROTECTED",
            "PERMISSION_NAMES", "BACKENDS", "READ"]
