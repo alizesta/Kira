@@ -231,6 +231,9 @@ def initialize_main_window(
     self.state._game_prev_mic = False
     self.state._game_prev_wake = False
     self.services.tool_agent = tool_agent
+    set_desktop_context_provider = getattr(tool_agent, "set_desktop_context_provider", None)
+    if callable(set_desktop_context_provider):
+        set_desktop_context_provider(self.services.desktop_context_application_service.summary)
     self.session._tool_plan = None             # tool plan of the message being answered (None = ordinary chat, nothing added to the prompt)
     self.services.ollama_client = self.services.provider_application_service.create_ollama_client(self.services.settings)
     self.adapters.director = EmotionDirector.from_default()        # emotion library + engine (kira/emotion, emotion_library/)
