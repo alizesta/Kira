@@ -315,11 +315,11 @@ class AccessManager:
             else:
                 param_text = "بدون ورودی"
             lines.append(
-                f"\\n- {t.name} [{categories}]"
-                f"\\n  کاربرد: {t.description}"
-                f"\\n  ورودی‌ها: {param_text}"
-                f"\\n  سطح/دامنه: {p.permission} / {p.domain} · Backend: {BACKENDS.get(p.backend, p.backend)}"
-                f"\\n  شرط اجرا: {gate}"
+                f"\n- {t.name} [{categories}]"
+                f"\n  کاربرد: {t.description}"
+                f"\n  ورودی‌ها: {param_text}"
+                f"\n  سطح/دامنه: {p.permission} / {p.domain} · Backend: {BACKENDS.get(p.backend, p.backend)}"
+                f"\n  شرط اجرا: {gate}"
                 + (" · نتیجه دوباره بررسی می‌شود" if p.verifies else "")
             )
         items = [e for e in self.journal.recent(recent + 2) if e["tool"] != "windows_control_info"][-recent:]
