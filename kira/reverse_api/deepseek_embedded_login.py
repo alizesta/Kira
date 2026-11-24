@@ -21,7 +21,6 @@ def run_embedded_login(parent=None, store: DeepSeekSessionStore | None = None) -
     """Show DeepSeek inside Kira and save its cookies/localStorage after login."""
     try:
         from PySide6.QtCore import QTimer, QUrl
-        from PySide6.QtNetwork import QNetworkCookie
         from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout
         from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
         from PySide6.QtWebEngineWidgets import QWebEngineView
