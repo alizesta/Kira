@@ -386,6 +386,12 @@ class CompanionBubble(QWidget):
         if not self._composer_open:
             self.hide()
 
+    def disable_preview(self):
+        """Stop tray previews while the main chat window is visible."""
+        self._preview_timer.stop()
+        self._preview_companion = None
+        self.hide()
+
     def _submit(self):
         if self.loading():
             self.show_error("ضمیمه‌ها هنوز در حال بارگذاری‌اند؛ چند لحظه صبر کن.")
