@@ -348,8 +348,11 @@ class CompanionBubble(QWidget):
             event.acceptProposedAction()
 
     def _set_composer_visible(self, visible):
-        for widget in self._composer_widgets:
-            widget.setVisible(bool(visible))
+        visible = bool(visible)
+        self.strip.setVisible(visible and bool(self._chips))
+        self.err.setVisible(visible and bool(self.err.text()))
+        for widget in (self.attach_btn, self.img_btn, self.edit, self.send):
+            widget.setVisible(visible)
 
     def open_composer(self, companion=None):
         """Open the full composer from the small pencil button beside the avatar."""
@@ -368,6 +371,9 @@ class CompanionBubble(QWidget):
     def show_preview(self, companion=None):
         """Show only the newest chat item, then return to the avatar after ten seconds."""
         if self._composer_open:
+            return
+        if not self.items and not (self.live and self.live[1].strip()):
+            self.hide()
             return
         if companion is not None:
             self._preview_companion = companion
