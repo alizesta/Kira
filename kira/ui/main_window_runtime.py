@@ -249,27 +249,29 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
             label = str(e.get("label") or e.get("tool") or "ابزار")
             self.context.views.status.setText(f"🔧 {label}…")
             if self.context.state.cur is self.context.state.front:
-                self.context.views.kode_activity.step(f"در حال {label}…")
+                self.context.views.kode_activity.begin(f"در حال {label}…", key=str(e.get("tool") or label))
         elif phase == "tool_done":
             label = str(e.get("label") or e.get("tool") or "ابزار")
             status = str(e.get("status") or "")
+            key = str(e.get("tool") or label)
             if self.context.state.cur is self.context.state.front:
+                activity = self.context.views.kode_activity
                 if status == "ok":
-                    self.context.views.kode_activity.step(f"{label} انجام شد")
+                    activity.finish(key, f"{label} انجام شد")
                 elif status == "needs_confirm":
-                    self.context.views.kode_activity.step(f"در انتظار تأیید برای {label}")
+                    activity.finish(key, f"در انتظار تأیید برای {label}", state="stopped")
                 elif status:
-                    self.context.views.kode_activity.step(f"{label}: {status}")
+                    activity.finish(key, f"{label}: {status}", state="failed")
         elif phase == "plan_step":
             label = f"مرحله {e.get('i', '?')} از {e.get('n', '?')}: {e.get('title', '')}"
             self.context.views.status.setText("🧭 " + label)
             if self.context.state.cur is self.context.state.front:
-                self.context.views.kode_activity.step(label)
+                self.context.views.kode_activity.begin(label, key=f"plan:{e.get('i', '?')}")
         elif phase == "plan_ready":
             label = f"برنامه آماده شد: {e.get('n', '?')} مرحله" + (f" — {e['estimate']}" if e.get("estimate") else "")
             self.context.views.status.setText("🧭 " + label)
             if self.context.state.cur is self.context.state.front:
-                self.context.views.kode_activity.update(label)
+                self.context.views.kode_activity.add_done(label)
 
     def on_stream_done(self, res):
         if self.context.state._closing:
