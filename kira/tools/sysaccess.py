@@ -313,6 +313,8 @@ class AccessManager:
             gate = ("تأیید صریح کاربر روی همین عملیات و پارامترها" if p.always_confirm else "فقط با درخواست صریح در همان پیام" if p.intent_rx is not None
                     else "با درخواست کاربر (بعد از خواندن محتوای خارجی: تأیید)" if p.permission in (CONTROL, FILE) else "فقط خواندن")
             categories = ", ".join(t.categories) or "بدون دسته"
+            level_name = {READ: "READ", ACTION: "ACTION", SENSITIVE: "SENSITIVE"}.get(t.level, str(t.level))
+            permission_name = PERMISSION_NAMES.get(p.permission, str(p.permission))
             if t.params:
                 params = []
                 for arg in t.params:
@@ -328,7 +330,7 @@ class AccessManager:
                 f"\n- {t.name} [{categories}]"
                 f"\n  کاربرد: {t.description}"
                 f"\n  ورودی‌ها: {param_text}"
-                f"\n  سطح/دامنه: {p.permission} / {p.domain} · Backend: {BACKENDS.get(p.backend, p.backend)}"
+                f"\n  سطح ابزار/مجوز: {level_name} / {permission_name} · دامنه: {p.domain} · Backend: {BACKENDS.get(p.backend, p.backend)}"
                 f"\n  شرط اجرا: {gate}"
                 + (" · نتیجه دوباره بررسی می‌شود" if p.verifies else "")
             )
