@@ -218,12 +218,12 @@ def _openai_compatible(pid, cfg, timeout, meta=None):
         if isinstance(item.get("supported_parameters"), list):
             entry["tools"] = "tools" in item["supported_parameters"]
         pricing = item.get("pricing")
-        if isinstance(pricing, dict) and "prompt" in pricing:                       # OpenRouter publishes per-model prices
+        if isinstance(pricing, dict) and "prompt" in pricing:                       # OpenRouter / APInex publish per-model prices
             try:
                 entry["free"] = float(pricing.get("prompt") or 0) == 0 and float(pricing.get("completion") or 0) == 0
             except (TypeError, ValueError):
                 pass
-        elif mid.endswith(":free"):
+        elif mid.startswith("free/") or mid.endswith(":free"):
             entry["free"] = True
         models.append(entry)
     return _unique_sorted(models)
