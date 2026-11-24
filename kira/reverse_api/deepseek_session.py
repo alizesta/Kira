@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -23,12 +26,65 @@ _AUTHENTICATED_SELECTORS = (
 )
 
 
+def _chrome_candidate_paths(environ=None) -> tuple[Path, ...]:
+    """Return standard Windows Chrome locations in preference order."""
+    env = os.environ if environ is None else environ
+    candidates = []
+    for variable in ("LOCALAPPDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432"):
+        root = str(env.get(variable) or "").strip()
+        if root:
+            candidates.append(Path(root) / "Google" / "Chrome" / "Application" / "chrome.exe")
+    return tuple(dict.fromkeys(candidates))
+
+
+def _registered_chrome_paths() -> tuple[Path, ...]:
+    """Read Chrome's own Windows App Paths registration, when available."""
+    if os.name != "nt":
+        return ()
+    try:
+        import winreg
+    except ImportError:
+        return ()
+    locations = []
+    keys = (
+        r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe",
+        r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe",
+    )
+    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        for key_name in keys:
+            try:
+                with winreg.OpenKey(hive, key_name) as key:
+                    value, _ = winreg.QueryValueEx(key, None)
+                if value:
+                    locations.append(Path(os.path.expandvars(str(value).strip().strip('"'))))
+            except OSError:
+                continue
+    return tuple(dict.fromkeys(locations))
+
+
+def _find_chrome_executable() -> Path | None:
+    """Find installed Google Chrome; never fall back to an automated browser."""
+    candidates = list(_registered_chrome_paths())
+    candidates.extend(_chrome_candidate_paths())
+    for command in ("chrome.exe", "chrome"):
+        found = shutil.which(command)
+        if found:
+            candidates.append(Path(found))
+    for candidate in candidates:
+        try:
+            if candidate.is_file():
+                return candidate
+        except OSError:
+            continue
+    return None
+
+
 class DeepSeekSessionError(RuntimeError):
     """Login, browser runtime, or encrypted-session failure."""
 
 
 class DeepSeekChromeUnavailable(DeepSeekSessionError):
-    """Chrome could not be started; the UI should open its embedded login page."""
+    """A normal installed Chrome browser is unavailable for interactive login."""
 
 
 class DeepSeekSessionStore:
@@ -45,6 +101,7 @@ class DeepSeekSessionStore:
             from ..config import DATA_DIR
             data_dir = DATA_DIR
         self.path = Path(data_dir) / "reverse_api" / "deepseek.session"
+        self.chrome_profile_dir = self.path.parent / "deepseek_chrome_profile"
         self._encrypt = encrypt
         self._decrypt = decrypt
         self._lock = threading.RLock()
@@ -111,40 +168,101 @@ class DeepSeekSessionStore:
 
 
 class DeepSeekBrowserLogin:
-    """Open the first-login page in installed Chrome; the UI owns the embedded fallback."""
+    """Open a real, visible Chrome window and attach only to save the signed-in session."""
 
     def __init__(self, store: DeepSeekSessionStore | None = None) -> None:
         self.store = store or DeepSeekSessionStore()
         self._lock = threading.Lock()
 
-    def login(self, timeout_ms: int = 300_000) -> dict[str, Any]:
-        """Wait for the user to finish login, then encrypt and persist browser storage state.
+    @staticmethod
+    def _read_debug_port(port_file: Path, process, timeout_seconds: float = 25.0) -> int:
+        """Wait for Chrome's ephemeral loopback DevTools port without automation flags."""
+        deadline = time.monotonic() + max(1.0, float(timeout_seconds))
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise DeepSeekChromeUnavailable(
+                    "Chrome هنگام شروع ورود بسته شد؛ مرورگر را به‌روز کن و دوباره امتحان کن."
+                )
+            try:
+                lines = port_file.read_text(encoding="utf-8").splitlines()
+                port = int(lines[0].strip())
+                if 0 < port < 65536:
+                    return port
+            except (OSError, ValueError, IndexError):
+                pass
+            time.sleep(0.15)
+        raise DeepSeekChromeUnavailable(
+            "Chrome اجرا شد اما رابط اتصال محلی آن آماده نشد. همه پنجره‌های موقت Chrome را ببند و دوباره تلاش کن."
+        )
 
-        This is intentionally synchronous and should be called from a worker thread,
-        never from the Qt UI thread.
+    def login(self, timeout_ms: int = 300_000) -> dict[str, Any]:
+        """Let the user sign in manually in regular Chrome and encrypt the resulting browser state.
+
+        Chrome is started as an ordinary desktop process with a dedicated Kira profile.
+        Playwright attaches over loopback CDP; it does not launch a webdriver-controlled
+        browser or interact with the CAPTCHA. Run this method in a worker thread.
         """
         if not self._lock.acquire(blocking=False):
             raise DeepSeekSessionError("فرایند ورود DeepSeek از قبل در حال اجراست.")
+        process = None
+        browser = None
         try:
+            chrome = _find_chrome_executable()
+            if chrome is None:
+                raise DeepSeekChromeUnavailable(
+                    "CHROME_UNAVAILABLE: مرورگر Google Chrome روی این سیستم پیدا نشد. برای ورود امن، Chrome معمولی لازم است."
+                )
             try:
                 from playwright.sync_api import sync_playwright
             except ImportError as exc:
                 raise DeepSeekChromeUnavailable(
-                    "CHROME_UNAVAILABLE: Playwright نصب نیست؛ ورود داخلی Kira فعال می‌شود."
+                    "CHROME_UNAVAILABLE: Playwright نصب نیست؛ وابستگی‌های Kira را نصب کن."
                 ) from exc
 
+            self.store.chrome_profile_dir.mkdir(parents=True, exist_ok=True)
+            port_file = self.store.chrome_profile_dir / "DevToolsActivePort"
+            try:
+                port_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+            command = [
+                str(chrome),
+                f"--user-data-dir={self.store.chrome_profile_dir}",
+                "--remote-debugging-address=127.0.0.1",
+                "--remote-debugging-port=0",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--new-window",
+                DEEPSEEK_LOGIN_URL,
+            ]
+            popen_options = {
+                "stdin": subprocess.DEVNULL,
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL,
+                "close_fds": True,
+            }
+            if os.name == "nt":
+                popen_options["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            try:
+                process = subprocess.Popen(command, **popen_options)
+            except OSError as exc:
+                raise DeepSeekChromeUnavailable(f"اجرای Chrome معمولی ناموفق بود: {exc}") from exc
+
             with sync_playwright() as playwright:
-                browser = None
-                context = None
+                port = self._read_debug_port(port_file, process)
+                endpoint = f"http://127.0.0.1:{port}"
                 try:
-                    browser = playwright.chromium.launch(channel="chrome", headless=False)
-                    context = browser.new_context()
-                except Exception as exc:
-                    raise DeepSeekChromeUnavailable(
-                        "CHROME_UNAVAILABLE: Chrome در دسترس نیست؛ ورود داخلی Kira فعال می‌شود."
-                    ) from exc
-                try:
-                    page = context.new_page()
+                    browser = playwright.chromium.connect_over_cdp(endpoint, timeout=20_000)
+                    if not browser.contexts:
+                        raise DeepSeekSessionError("Chrome نشست مرورگر قابل‌استفاده‌ای ایجاد نکرد.")
+                    context = browser.contexts[0]
+                    page = next(
+                        (item for item in context.pages if "chat.deepseek.com" in (item.url or "")),
+                        None,
+                    )
+                    if page is None:
+                        page = context.new_page()
                     page.goto(DEEPSEEK_LOGIN_URL, wait_until="domcontentloaded", timeout=60_000)
                     page.wait_for_function(
                         """selectors => selectors.some(selector => {
@@ -162,20 +280,32 @@ class DeepSeekBrowserLogin:
                             .map(([name, value]) => ({name, value}))})"""
                     )
                     if session_storage.get("entries"):
-                        state["sessionStorageByOrigin"] = {session_storage["origin"]: session_storage["entries"]}
+                        state["sessionStorageByOrigin"] = {
+                            session_storage["origin"]: session_storage["entries"]
+                        }
                     self.store.save(state)
-                    # Never return cookie/token material to the UI or log layer.
                     return {"saved": True, "session_file": str(self.store.path)}
                 except Exception as exc:
+                    if isinstance(exc, DeepSeekSessionError):
+                        raise
                     raise DeepSeekSessionError(
-                        "ورود DeepSeek کامل نشد یا صفحه چت شناسایی نشد: " + str(exc)[:400]
+                        "ورود DeepSeek کامل نشد. اگر کپچا نمایش داده شد، آن را در پنجره Chrome حل کن "
+                        "و تا بازشدن صفحه چت صبر کن. جزئیات: " + str(exc)[:240]
                     ) from exc
-                finally:
-                    try:
-                        if context is not None:
-                            context.close()
-                    finally:
-                        if browser is not None:
-                            browser.close()
         finally:
+            if browser is not None:
+                try:
+                    browser.close()
+                except Exception:
+                    pass
+            if process is not None and process.poll() is None:
+                try:
+                    process.terminate()
+                    process.wait(timeout=8)
+                except Exception:
+                    try:
+                        process.kill()
+                        process.wait(timeout=4)
+                    except Exception:
+                        pass
             self._lock.release()

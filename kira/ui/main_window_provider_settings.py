@@ -996,7 +996,7 @@ class ProviderSettingsController(WindowFeatureController):
         if current is not None and current.isRunning():
             return
         self.deepseek_login_btn.setEnabled(False)
-        self.deepseek_login_status.setText("مرورگر ورود DeepSeek در حال باز شدن است…")
+        self.deepseek_login_status.setText("Chrome عادی Kira در حال باز شدن است؛ کپچا را در همان پنجره حل کن…")
         def login():
             from ..reverse_api.deepseek_session import DeepSeekBrowserLogin
             return DeepSeekBrowserLogin().login()
@@ -1021,14 +1021,7 @@ class ProviderSettingsController(WindowFeatureController):
         if ok:
             self.refresh_deepseek_login_status()
         elif str(value).startswith("CHROME_UNAVAILABLE:"):
-            try:
-                from ..reverse_api.deepseek_embedded_login import run_embedded_login
-                if run_embedded_login(self.window):
-                    self.refresh_deepseek_login_status()
-                else:
-                    self.deepseek_login_status.setText("ورود DeepSeek لغو شد.")
-            except Exception as exc:
-                self.deepseek_login_status.setText("✕ مرورگر داخلی Kira اجرا نشد: " + str(exc)[:200])
+            self.deepseek_login_status.setText("✕ " + str(value).replace("CHROME_UNAVAILABLE:", "", 1).strip()[:220])
         else:
             self.deepseek_login_status.setText("✕ ورود ناموفق بود: " + str(value)[:220])
 

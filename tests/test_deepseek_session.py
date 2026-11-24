@@ -4,12 +4,47 @@ import base64
 import tempfile
 import unittest
 
-from kira.reverse_api.deepseek_session import DEEPSEEK_LOGIN_URL, DeepSeekSessionError, DeepSeekSessionStore
+from kira.reverse_api.deepseek_session import (
+    DEEPSEEK_LOGIN_URL,
+    DeepSeekSessionError,
+    DeepSeekSessionStore,
+    _chrome_candidate_paths,
+)
 
 
 class DeepSeekSessionStoreTests(unittest.TestCase):
     def test_login_uses_explicit_sign_in_page(self):
         self.assertEqual(DEEPSEEK_LOGIN_URL, "https://chat.deepseek.com/sign_in")
+
+    def test_chrome_profile_is_separate_from_the_default_user_profile(self):
+        store = DeepSeekSessionStore(
+            self.temp.name,
+            encrypt=lambda value: value,
+            decrypt=lambda value: value,
+        )
+        self.assertEqual(
+            store.chrome_profile_dir,
+            store.path.parent / "deepseek_chrome_profile",
+        )
+
+    def test_standard_windows_chrome_locations_are_checked(self):
+        paths = _chrome_candidate_paths({
+            "LOCALAPPDATA": r"C:\Users\Kira\AppData\Local",
+            "PROGRAMFILES": r"C:\Program Files",
+            "PROGRAMFILES(X86)": r"C:\Program Files (x86)",
+        })
+        self.assertEqual(len(paths), 3)
+        self.assertTrue(str(paths[0]).endswith(r"Google\Chrome\Application\chrome.exe"))
+
+    def test_interactive_login_attaches_to_normal_chrome_instead_of_launching_playwright_chromium(self):
+        from pathlib import Path
+
+        source = Path(__file__).resolve().parents[1] / "kira" / "reverse_api" / "deepseek_session.py"
+        code = source.read_text(encoding="utf-8")
+        self.assertIn('"--remote-debugging-port=0"', code)
+        self.assertIn("connect_over_cdp(endpoint", code)
+        self.assertNotIn('chromium.launch(channel="chrome"', code)
+        self.assertNotIn("headless=False", code)
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
