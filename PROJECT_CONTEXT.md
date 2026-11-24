@@ -235,3 +235,8 @@ Local-only speech stack: Qwen3-ASR primary STT, faster-whisper local fallback, P
 - A pre-start cancellation is preserved; cancellation state is cleared only after request cleanup.
 - The session-store test cipher is reversible base64 test-only encoding, not production encryption. Production session encryption remains provided by the Windows user-scoped secret store/DPAPI.
 - Source/test updates are recorded in `TASK_HANDOFF.md`. Python test execution, Windows browser acceptance, live DeepSeek DOM selector compatibility and actual token rotation remain pending.
+
+
+## Release metadata — DeepSeek Reverse API hardening (2026-11-24)
+- Version advanced to `1.2.1` in `kira/config.py`; `kira/build_info.py` records the 2026-11-24 12:03 Asia/Tehran build stamp and detected developer `ChatGPT`.
+- The `CHANGELOG.md` entry for `1.2.1` records the DeepSeek Reverse API hardening. `scripts/build_metadata.py --check` remains the authoritative validation gate; it has not been run in this source-only workflow.
