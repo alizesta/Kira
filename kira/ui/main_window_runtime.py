@@ -212,6 +212,18 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
             self.context.session.client.reset_cooldowns(route_id)
         self.save_now()
         self.feature_controller("provider_settings").refresh_route_list()
+        try:
+            selected = (
+                self.context.services.provider_application_service.find_route(
+                    self.context.services.settings, route_id
+                )
+                if route_id
+                else self.context.session.client.preview_route()
+            )
+            from ..reverse_api import set_deepseek_browser_active
+            set_deepseek_browser_active(bool(selected and selected.get("provider") == "reverse_api"))
+        except Exception as exc:  # noqa: BLE001 - browser lifecycle must not interrupt route selection
+            _log.warning("DeepSeek browser lifecycle update failed: %s", exc)
         if not self.context.session.busy:
             self.set_badge("idle", self.context.session.client.preview_route())
 

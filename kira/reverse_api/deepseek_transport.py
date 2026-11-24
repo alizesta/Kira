@@ -151,8 +151,32 @@ class _DeepSeekBrowserWorker:
 
             with sync_playwright() as playwright:
                 browser = None
+                display_context = None
                 try:
                     browser = self._launch(playwright)
+                    try:
+                        state = self.transport.store.load()
+                    except DeepSeekSessionError:
+                        state = None
+                    context_options = {}
+                    if state:
+                        context_options["storage_state"] = {
+                            "cookies": state.get("cookies", []),
+                            "origins": state.get("origins", []),
+                        }
+                    display_context = browser.new_context(**context_options)
+                    if state:
+                        display_context.add_init_script(self.transport._session_init_script(state))
+                    display_page = display_context.new_page()
+                    try:
+                        display_page.goto(
+                            "https://chat.deepseek.com/",
+                            wait_until="domcontentloaded",
+                            timeout=20_000,
+                        )
+                    except Exception:
+                        # Keep the visible browser open even if DeepSeek is temporarily unreachable.
+                        pass
                     self.ready.set()
                     while True:
                         job = self.jobs.get()
@@ -168,6 +192,11 @@ class _DeepSeekBrowserWorker:
                         finally:
                             job.events.put(("done", None))
                 finally:
+                    if display_context is not None:
+                        try:
+                            display_context.close()
+                        except Exception:
+                            pass
                     if browser is not None:
                         try:
                             browser.close()
@@ -204,6 +233,7 @@ class DeepSeekBrowserTransport:
         self._last_error = ""
         self._worker = None
         self._worker_lock = threading.RLock()
+        self._activation_generation = 0
         atexit.register(self.shutdown)
 
     def configure(self, config: dict[str, Any] | None = None):
@@ -486,6 +516,39 @@ class DeepSeekBrowserTransport:
                 worker = _DeepSeekBrowserWorker(self)
                 self._worker = worker
             return worker
+
+    def activate(self, active: bool) -> None:
+        """Open a visible Chromium window while DeepSeek is selected; close it when deselected."""
+        with self._worker_lock:
+            self._activation_generation += 1
+            generation = self._activation_generation
+        threading.Thread(
+            target=self._apply_activation,
+            args=(bool(active), generation),
+            name="Kira-DeepSeek-Browser-Lifecycle",
+            daemon=True,
+        ).start()
+
+    def _apply_activation(self, active: bool, generation: int) -> None:
+        if active:
+            try:
+                worker = self._ensure_browser_worker()
+            except Exception:
+                return
+            with self._worker_lock:
+                stale = generation != self._activation_generation
+                if stale and self._worker is worker:
+                    self._worker = None
+            if stale:
+                worker.shutdown()
+            return
+
+        with self._worker_lock:
+            if generation != self._activation_generation:
+                return
+            worker, self._worker = self._worker, None
+        if worker is not None:
+            worker.shutdown()
 
     def stream(self, request: ReverseRequest, cancel: threading.Event) -> Iterable[str]:
         if not self._lock.acquire(blocking=False):

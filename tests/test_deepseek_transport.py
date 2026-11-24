@@ -94,6 +94,16 @@ class DeepSeekTransportTests(unittest.TestCase):
         self.assertIn("_DeepSeekBrowserWorker", source)
         self.assertIn("browser.new_context(", source)
 
+    def test_selected_deepseek_opens_visible_browser_until_deselected(self):
+        transport_source = (Path(__file__).resolve().parents[1] / "kira/reverse_api/deepseek_transport.py").read_text(encoding="utf-8")
+        init_source = (Path(__file__).resolve().parents[1] / "kira/reverse_api/__init__.py").read_text(encoding="utf-8")
+        runtime_source = (Path(__file__).resolve().parents[1] / "kira/ui/main_window_runtime.py").read_text(encoding="utf-8")
+        self.assertIn('"headless": True', transport_source)
+        self.assertIn('display_page.goto(', transport_source)
+        self.assertIn('def activate(self, active: bool)', transport_source)
+        self.assertIn('def set_deepseek_browser_active(active: bool)', init_source)
+        self.assertIn('set_deepseek_browser_active(bool(selected and selected.get("provider") == "reverse_api"))', runtime_source)
+
     def test_refreshed_session_merges_rotated_session_storage(self):
         state = {
             "cookies": [{"name": "rotated", "value": "new-cookie"}],
