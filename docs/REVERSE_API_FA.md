@@ -22,6 +22,13 @@ Chat/Brain → HybridRouter → ReverseApiProvider (ChatProvider) → ReverseTra
 - تصویر: فقط وقتی Transport `supports_images=True` اعلام کند.
 - `probe()` فقط وضعیت Session را می‌خواند و درخواست تولید نمی‌فرستد.
 
+## فعال‌سازی در Route Manager (Task 4)
+
+- بعد از ورود موفق، دکمهٔ «انتخاب DeepSeek برای چت» یک Provider از نوع `reverse_api` و یک Route با شناسهٔ مدل نمایشی `deepseek-web` می‌سازد یا Route موجود را دوباره فعال می‌کند.
+- Route بدون API Key کار می‌کند؛ احراز هویت فقط از نشست رمزگذاری‌شدهٔ DeepSeek استفاده می‌کند.
+- با فعال‌سازی، Route در حالت انتخاب دستی چت قرار می‌گیرد. برای برگشت به مسیرهای اولویت‌بندی‌شده، گزینهٔ «خودکار» در Route Manager را انتخاب کن.
+- تست اتصال Route فقط وضعیت نشست را می‌خواند و پیام تولیدی ارسال نمی‌کند.
+
 ## ورود DeepSeek و نشست (Task 2)
 
 - دکمهٔ «ورود به حساب DeepSeek» در صفحهٔ Providerها اضافه شده است.

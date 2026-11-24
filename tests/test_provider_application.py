@@ -32,10 +32,14 @@ class ProviderApplicationServiceTests(unittest.TestCase):
         self.assertEqual(route["model"], "deepseek-web")
         self.assertTrue(route["enabled"])
 
-    def test_ensure_reverse_api_route_is_idempotent_and_preserves_existing_route(self):
+    def test_ensure_reverse_api_route_is_idempotent_and_reenables_existing_route(self):
         first = self.service.ensure_reverse_api_route(self.settings)
+        self.settings["providers"]["reverse_api"]["enabled"] = False
+        route_model.update_route(self.settings, first["id"], enabled=False)
         second = self.service.ensure_reverse_api_route(self.settings)
         self.assertEqual(first["id"], second["id"])
+        self.assertTrue(self.settings["providers"]["reverse_api"]["enabled"])
+        self.assertTrue(second["enabled"])
         self.assertEqual(sum(r["provider"] == "reverse_api" for r in self.settings["routes"]), 1)
 
     def test_ensure_reverse_api_route_rolls_back_on_failure(self):

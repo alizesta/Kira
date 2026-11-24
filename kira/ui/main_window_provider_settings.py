@@ -950,16 +950,17 @@ class ProviderSettingsController(WindowFeatureController):
             settings = self.context.services.settings
             config = settings.get("providers", {}).get(route_model.REVERSE_API, {})
             route = self.context.services.provider_application_service.find_route(settings, route_model.REVERSE_API)
-            active = bool(config.get("enabled")) and bool(route and route.get("enabled"))
+            active = (bool(config.get("enabled")) and bool(route and route.get("enabled"))
+                      and settings.get("manual_route_id") == (route or {}).get("id"))
             if hasattr(self, "deepseek_enable_btn"):
                 self.deepseek_enable_btn.setEnabled(connected)
-                self.deepseek_enable_btn.setText("✓ فعال در چت" if active else "فعال‌سازی در چت")
+                self.deepseek_enable_btn.setText("✓ انتخاب‌شده برای چت" if active else "انتخاب DeepSeek برای چت")
             if not connected:
                 message = "ابتدا وارد حساب DeepSeek شو."
             elif active:
-                message = "نشست ذخیره شده؛ DeepSeek در Route Manager فعال است."
+                message = "نشست ذخیره شده؛ DeepSeek برای چت انتخاب شده است."
             else:
-                message = "نشست ذخیره شده؛ برای استفاده در چت فعالش کن."
+                message = "نشست ذخیره شده؛ برای انتخاب DeepSeek در چت دکمه را بزن."
             self.deepseek_login_status.setText(message)
         except Exception as exc:
             if hasattr(self, "deepseek_enable_btn"):
