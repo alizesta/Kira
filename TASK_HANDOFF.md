@@ -326,6 +326,13 @@ Character specialization and generated portraits. The implementation is complete
 - Added tests: `tests/test_gemini_live.py` (JPEG/rate gate), `tests/test_desktop_capture.py` (full-monitor capture tied to current HWND/PID), and `tests/test_gemini_live_video_wiring.py` (cross-controller contract).
 - Validation: source changes are inspected through GitHub. No Python test, import, Qt/Windows capture, live Google API call, audio/video sync test or GitHub Actions run is claimed. Full monitor is visible only while the user explicitly enables a visual source; blocked/unidentified foreground windows fail closed. The uploaded task PDF contains detailed Tasks 1–2, not a separate Task 3 specification; implementation follows the previously agreed Gemini Live + visual companion scope.
 
+## ToolAgent desktop safety and discovery — handoff (2026-11-24)
+- Keyboard shortcuts now use explicit allowlists: Ctrl+Shift permits navigation/selection only; Alt permits navigation/switching only. Alt+letter and Ctrl+Shift+letter combinations (including Q/W) are denied. Existing Win shortcuts and plain keys are unchanged.
+- ToolAgent stages the first response's text chunks until the capability-denial check finishes. If it retries with the full local catalog, the unsupported denial text is discarded; successful first responses are then emitted in their original chunk order. Partial chunks are still flushed if the model call raises, preserving existing partial-output behavior.
+- windows_control_info now returns a compact paginated index by default. Use its exact `name` argument for full purpose, parameters, permission, backend and confirmation gate. Invalid offset/limit/recent values fall back safely instead of raising.
+- Added regression tests for the narrowed shortcut policy, denial-output buffering and inventory parsing/details.
+- Validation in this source-only environment: changes and diffs inspected; Python imports and unittest execution have not been run.
+
 ## DeepSeek Reverse API hardening — handoff (2026-11-24)
 - Fixes the two session-store test failures by replacing the fake `encrypted:` prefix with a reversible base64 test cipher; the assertions now verify that cookie/session values are not visible in the persisted test file.
 - Transport streaming keeps a 512-character mutable tail uncommitted and emits only text confirmed by the common prefix of successive DOM snapshots. This prevents replaying the full cumulative answer after trailing Markdown/code-block re-renders; edits to already committed text cannot be represented by the current append-only transport contract.
