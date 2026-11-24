@@ -704,8 +704,13 @@ class ToolAgent(AutonomyMixin):
         if isinstance(result, dict):
             model_escalated = bool(result.pop("_escalate", False))
             full_local_catalog = set(protocol.ALL_CATEGORIES) - {"mcp", "agents"}
+            tool_results = result.get("tools") or []
+            no_capability_result = (
+                not tool_results
+                or all(item.get("status") == "unknown_tool" for item in tool_results)
+            )
             unsupported_denial = (
-                not result.get("tools")
+                no_capability_result
                 and self._schema_categories(plan) != full_local_catalog
                 and self._claims_missing_access(result.get("text", ""))
             )
