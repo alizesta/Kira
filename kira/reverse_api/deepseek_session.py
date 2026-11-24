@@ -15,7 +15,7 @@ from typing import Any, Callable
 
 from ..secret_store import protect, unprotect
 
-DEEPSEEK_LOGIN_URL = "https://chat.deepseek.com/"
+DEEPSEEK_LOGIN_URL = "https://chat.deepseek.com/sign_in"
 _AUTHENTICATED_SELECTORS = (
     'textarea',
     '[contenteditable="true"]',

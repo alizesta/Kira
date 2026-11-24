@@ -4,10 +4,13 @@ import base64
 import tempfile
 import unittest
 
-from kira.reverse_api.deepseek_session import DeepSeekSessionError, DeepSeekSessionStore
+from kira.reverse_api.deepseek_session import DEEPSEEK_LOGIN_URL, DeepSeekSessionError, DeepSeekSessionStore
 
 
 class DeepSeekSessionStoreTests(unittest.TestCase):
+    def test_login_uses_explicit_sign_in_page(self):
+        self.assertEqual(DEEPSEEK_LOGIN_URL, "https://chat.deepseek.com/sign_in")
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
