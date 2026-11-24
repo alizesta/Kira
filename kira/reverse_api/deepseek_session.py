@@ -136,11 +136,11 @@ class DeepSeekBrowserLogin:
             with sync_playwright() as playwright:
                 try:
                     browser = playwright.chromium.launch(channel="chrome", headless=False)
+                    context = browser.new_context()
                 except Exception as exc:
                     raise DeepSeekChromeUnavailable(
                         "CHROME_UNAVAILABLE: Chrome در دسترس نیست؛ ورود داخلی Kira فعال می‌شود."
                     ) from exc
-                context = browser.new_context()
                 try:
                     page = context.new_page()
                     page.goto(DEEPSEEK_LOGIN_URL, wait_until="domcontentloaded", timeout=60_000)
