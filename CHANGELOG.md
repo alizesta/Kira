@@ -14,6 +14,12 @@
 - The reference frame changes only after a frame is really queued, so a rejected or failed frame is retried on the next tick; a new Live session or privacy stop resets it so the next frame is always sent.
 - `live_video_frame_queued` trace now records `reason`, `mean_change`, `changed_cells` and the cumulative `skipped_unchanged` count.
 - The 1 FPS ceiling, 480x270 frame size, quality stepping and privacy rechecks are unchanged.
+## 1.2.3 — 2026-11-24 — ToolAgent safety and capability discovery
+- Narrowed Ctrl+Shift and Alt keyboard combinations to explicit navigation/selection allowlists; broad letter shortcuts including Ctrl+Shift+Q/W are refused.
+- The first ToolAgent answer is staged until unsupported access-denial claims are checked. If a full-local-catalog retry is needed, the rejected text is discarded instead of being streamed to the chat.
+- Hardened windows_control_info pagination parsing against malformed model arguments. Its default inventory is compact (tool name + one-line purpose + access gate); passing an exact name returns the full parameter and permission details.
+- Added regression coverage for shortcut allowlists, denial-stream suppression, invalid pagination values and named tool details. Runtime test execution remains pending.
+
 ## 1.2 — 2026-11-24 — Eye Mode and desktop-awareness release
 - Unified Game Mode screen understanding and Live Desktop Vision under one user-facing Eye Mode capture path. The selected monitor is sampled for desktop context; the same privacy-checked capture source can provide frames to Gemini Live when a compatible Live session is active.
 - Added a bounded, RAM-only DesktopContext with current-screen state, observation freshness (fresh ≤15 s, recent 15–60 s, stale >60 s), and separately labelled historical observations. Stale observations are not presented as the current screen.
