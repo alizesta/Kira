@@ -138,6 +138,7 @@ class CompanionBubble(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setAcceptDrops(True)
         self.items = []                    # [(kind, name, text)]
+        self.session_id = None              # character conversation currently mirrored
         self.live = None                   # (name, text) while a reply streams
         self.ui_dir = "rtl"
         self._chips = []                   # attachment chips waiting for the next message
@@ -146,12 +147,12 @@ class CompanionBubble(QWidget):
         self._load_chips = []
         panel = QFrame(self)
         panel.setObjectName("bubblePanel")
-        panel.setStyleSheet("#bubblePanel{background:rgba(24,26,40,230);border:1px solid rgba(160,140,255,90);border-radius:16px;}"
+        panel.setStyleSheet("#bubblePanel{background:rgba(24,26,40,150);border:1px solid rgba(160,140,255,82);border-radius:16px;}"
                             "QTextBrowser{background:transparent;border:none;color:#eceef6;}"
-                            "QPlainTextEdit{background:rgba(255,255,255,18);border:1px solid rgba(255,255,255,40);border-radius:10px;"
-                            "padding:4px 8px;color:#f1f2f8;}"
-                            "QPushButton{background:#6c5ce7;color:white;border:none;border-radius:10px;padding:6px 12px;}"
-                            "QToolButton{background:rgba(255,255,255,18);color:#f1f2f8;border:none;border-radius:10px;padding:5px 8px;}"
+                            "QPlainTextEdit{background:rgba(255,255,255,12);border:1px solid rgba(255,255,255,34);border-radius:10px;"
+                            "padding:5px 9px;color:#f1f2f8;font-size:10pt;}"
+                            "QPushButton{background:#6c5ce7;color:white;border:none;border-radius:10px;padding:6px 12px;font-size:9pt;}"
+                            "QToolButton{background:rgba(255,255,255,12);color:#f1f2f8;border:none;border-radius:10px;padding:5px 8px;}"
                             "QToolButton:checked{background:#6c5ce7;}"
                             "#attChip{background:rgba(255,255,255,22);border-radius:8px;}"
                             "#attChip QLabel{color:#eceef6;}"
@@ -205,7 +206,7 @@ class CompanionBubble(QWidget):
         self.edit.filesDropped.connect(self.add_paths)
         self.edit.imagePasted.connect(self.add_pasted_image)
         self.send.clicked.connect(self._submit)
-        self.resize(360, 300)
+        self.resize(420, 320)
 
     # ---- image-search switch (shared with the main window) ----
     def _update_img_tip(self):
@@ -341,6 +342,18 @@ class CompanionBubble(QWidget):
         bar = self.view.verticalScrollBar()
         bar.setValue(bar.maximum())
 
+    def replace_history(self, items, ui_dir="rtl", session_id=None):
+        """Replace the mirrored transcript when the active character/session changes."""
+        self.ui_dir = ui_dir
+        self.items = [
+            (kind, name, str(text))
+            for kind, name, text in items
+            if kind in ("user", "assistant", "error") and str(text).strip()
+        ][-self.KEEP:]
+        self.session_id = session_id
+        self.live = None
+        self._render()
+
     def push(self, kind, name, text, ui_dir="rtl"):
         if kind not in ("user", "assistant", "error") or not str(text).strip():
             return
@@ -365,7 +378,7 @@ class CompanionBubble(QWidget):
         g = companion.frameGeometry()
         screen = (QGuiApplication.screenAt(g.center()) or QGuiApplication.primaryScreen()).availableGeometry()
         h = min(max(260, g.height() // 2), screen.height() - 20)
-        self.resize(360, h)
+        self.resize(420, h)
         x = g.left() - self.width() - 6
         if x < screen.left():
             x = g.right() + 6
