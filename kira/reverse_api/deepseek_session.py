@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
-import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -27,6 +25,10 @@ _AUTHENTICATED_SELECTORS = (
 
 class DeepSeekSessionError(RuntimeError):
     """Login, browser runtime, or encrypted-session failure."""
+
+
+class DeepSeekChromeUnavailable(DeepSeekSessionError):
+    """Chrome could not be started; the UI should open its embedded login page."""
 
 
 class DeepSeekSessionStore:
@@ -127,48 +129,18 @@ class DeepSeekBrowserLogin:
             try:
                 from playwright.sync_api import sync_playwright
             except ImportError as exc:
-                raise DeepSeekSessionError(
-                    "Playwright نصب نیست؛ وابستگی‌های Kira را به‌روزرسانی کن."
+                raise DeepSeekChromeUnavailable(
+                    "CHROME_UNAVAILABLE: Playwright نصب نیست؛ ورود داخلی Kira فعال می‌شود."
                 ) from exc
 
-            errors: list[str] = []
             with sync_playwright() as playwright:
-                browser = None
-                context = None
-                for channel in ("chrome", None):
-                    try:
-                        launch = {"headless": False}
-                        if channel:
-                            launch["channel"] = channel
-                        browser = playwright.chromium.launch(**launch)
-                        context = browser.new_context()
-                        break
-                    except Exception as exc:
-                        errors.append(f"{channel or 'chromium'}: {exc}")
-                        if browser is not None:
-                            try:
-                                browser.close()
-                            except Exception:
-                                pass
-                        browser, context = None, None
-                if browser is None or context is None:
-                    # Playwright's Python package does not bundle browser binaries.
-                    # Install its pinned Chromium runtime once, then retry the managed browser.
-                    try:
-                        install = subprocess.run(
-                            [sys.executable, "-m", "playwright", "install", "chromium"],
-                            capture_output=True, text=True, timeout=240, check=False,
-                        )
-                        if install.returncode == 0:
-                            browser = playwright.chromium.launch(headless=False)
-                            context = browser.new_context()
-                    except Exception as exc:
-                        errors.append(f"chromium install: {exc}")
-                if browser is None or context is None:
-                    raise DeepSeekSessionError(
-                        "Chrome و مرورگر داخلی Kira قابل اجرا نیستند: " + " | ".join(errors)[:500]
-                    )
-
+                try:
+                    browser = playwright.chromium.launch(channel="chrome", headless=False)
+                except Exception as exc:
+                    raise DeepSeekChromeUnavailable(
+                        "CHROME_UNAVAILABLE: Chrome در دسترس نیست؛ ورود داخلی Kira فعال می‌شود."
+                    ) from exc
+                context = browser.new_context()
                 try:
                     page = context.new_page()
                     page.goto(DEEPSEEK_LOGIN_URL, wait_until="domcontentloaded", timeout=60_000)
