@@ -41,6 +41,22 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
         self.assertNotIn("mcp", plan.schema_categories)
         self.assertNotIn("agents", plan.schema_categories)
 
+    def test_capability_inspection_escalates_to_full_local_tool_catalog(self):
+        first = {"text": "inventory read", "tools": [{"tool": "windows_control_info", "status": "ok"}]}
+        second = {"text": "این‌ها ابزارهای موجود هستند.", "tools": []}
+        plan = ToolPlan(categories={"apps"}, schema_categories={"apps"})
+        with patch.object(self.agent, "_direct_bridge", return_value=False), \
+             patch.object(self.agent, "_run_once", side_effect=[first, second]) as run_once, \
+             patch.object(self.agent, "planning_enabled", return_value=False):
+            result = self.agent.run(None, [], "", 0.2, plan)
+
+        self.assertEqual(result["text"], "این‌ها ابزارهای موجود هستند.")
+        self.assertEqual(run_once.call_count, 2)
+        self.assertIn("desktop", plan.schema_categories)
+        self.assertIn("files", plan.schema_categories)
+        self.assertNotIn("mcp", plan.schema_categories)
+        self.assertNotIn("agents", plan.schema_categories)
+
     def test_unknown_tool_followed_by_access_denial_also_retries(self):
         first = {"text": "ابزار مناسب را در اختیار ندارم.", "tools": [{"tool": "wrong_tool", "status": "unknown_tool"}]}
         second = {"text": "پیدا شد.", "tools": [{"tool": "list_running_apps", "status": "ok"}]}
