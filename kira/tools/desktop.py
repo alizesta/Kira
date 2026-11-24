@@ -447,6 +447,24 @@ class DesktopTools:
             raise ToolError("متن در کلیپ‌بورد قرار نگرفت.")
         return f"{len(text)} نویسه در کلیپ‌بورد گذاشته شد."
 
+    def paste_text(self, a: dict) -> str:
+        """Paste user-requested text through the existing clipboard + virtual-key path."""
+        text = str(a["text"])
+        if not text or len(text) > TYPE_MAX * 5 or redact_secrets(text) != text:
+            raise ToolError("متن خالی/خیلی بلند است یا شبیه کلید و رمز است.", DENIED)
+        w = self.resolve(a["window"])
+        self._guard_input(w)
+        self._focus(w)
+        self._still_target(w)
+        self.b.clipboard_set(text)
+        if self.b.clipboard_get() != text:
+            raise ToolError("متن در کلیپ‌بورد قرار نگرفت؛ چیزی Paste نشد.")
+        self._still_target(w)
+        vks, _ = parse_combo("ctrl+v")
+        self.b.press(vks)
+        return (f"{len(text)} نویسه با Ctrl+V در پنجره‌ی «{w['title'][:50]}» Paste شد. "
+                "ارسال میانبر تأیید شد؛ محتوای نهایی داخل برنامه هنوز باید با مشاهده‌ی صفحه بررسی شود.")
+
     def confirm_clipboard_get(self, a: dict) -> str:
         return "محتوای متنی فعلی کلیپ‌بورد خوانده می‌شود و در اختیار Kira (و مدل) قرار می‌گیرد؛ ممکن است چیز خصوصی در آن باشد."
 
@@ -576,6 +594,9 @@ class DesktopModule(WinModule):
                        intent_rx=KEYS_RX, memo=lambda a, x: f"press_keys → {a.get('keys')}", changes_system=True, external=True),
             Capability("clipboard_set", "desktop", "put text on the clipboard (so the user can paste it). ONLY when the user asks", t.clipboard_set, ACTION,
                        (Param("text", "string", "text to copy", True),), cat, intent_rx=CLIP_RX, verifies_result=True, changes_system=True),
+            Capability("paste_text", "desktop", "paste supplied text into ONE named window using the clipboard and the virtual Ctrl+V key event (no terminal typing); target window is checked before paste. ONLY when the user asks to paste/write text",
+                       t.paste_text, ACTION, (win, Param("text", "string", "exact text to paste (max 10000 characters)", True)), cat,
+                       intent_rx=TYPE_RX, memo=lambda a, x: f"paste_text → {a.get('window')}", changes_system=True, external=True),
             Capability("clipboard_get", "desktop", "read the text currently on the clipboard (it may be private, so the user confirms first)", t.clipboard_get, SENSITIVE, (), cat,
                        confirm_summary=t.confirm_clipboard_get, external=True),
             Capability("ui_list_controls", "desktop", "list the buttons, menus, fields and checkboxes of a window by name (UI Automation; changes nothing)",
