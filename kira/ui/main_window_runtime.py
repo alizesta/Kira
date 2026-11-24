@@ -123,6 +123,8 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "fa") == "fa" else "ltr"
         footer = self.feature_controller("session").chat_actions_html("assistant", text) if final else ""     # copy / edit / speak once the reply is complete
         html = message_html("assistant", name, text, ui_dir, footer_html=footer, accent=self.feature_controller("session").accent())
+        if self.context.session._stream_pos is None:
+            self.context.views.kode_activity.suspend()      # the answer is appearing: drop the progress lines first
         doc = self.context.session.view.document()
         cur = QTextCursor(doc)
         if self.context.session._stream_pos is None:

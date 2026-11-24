@@ -3,6 +3,7 @@ import logging
 
 from .shortcuts import delete_key
 from .companion_session import session_marker
+from .components.kode_activity import apply_progress_to_view, clear_progress
 from .main_window_session_support import (
     KIRA_PROFILE,
     QApplication,
@@ -842,12 +843,24 @@ class SessionController(WindowFeatureController):
         d = detect_direction(text, ui_dir)
         self.context.views.input.setLayoutDirection(Qt.RightToLeft if d == "rtl" else Qt.LeftToRight)
 
+    def sync_progress(self):
+        """Draw Kira's current work stages as small lines at the end of the visible chat."""
+        view = getattr(self.context.state.front, "view", None)
+        previous = getattr(self, "_progress_view", None)
+        if previous is not None and previous is not view:
+            clear_progress(previous)               # the person switched tabs mid-request
+        self._progress_view = view
+        if view is None:
+            return
+        rtl = self.context.services.settings.get("ui_lang", "fa") == "fa"
+        apply_progress_to_view(view, self.context.views.kode_activity.visible_rows(), rtl)
+
     @front_only
     def set_status(self, key, **kw):
         self.context.state._status = (key, kw)
         thinking = key == "st_thinking"
         if thinking:
-            # The progress checklist (kode_activity) replaces the old inline "thinking…" line.
+            # Work stages (incl. "thinking…") are drawn in the chat by sync_progress.
             self.context.views.kode_activity.ensure_running(self.t("st_thinking"))
             self.context.views.status.clear()
             self.context.views.status.hide()

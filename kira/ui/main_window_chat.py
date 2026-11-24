@@ -261,7 +261,7 @@ class ChatController(WindowFeatureController):
             return
         self.context.session.busy = True
         if self.context.state.cur is self.context.state.front:
-            self.context.views.kode_activity.start("در حال آماده‌سازی پاسخ…")
+            self.context.views.kode_activity.start("در حال فکر کردن…")
         self.context.views.gen_stop_btn.show()
         self.feature_controller("session").set_status("st_thinking")
         self.feature_controller("runtime").set_badge("connecting", self.context.session.client.preview_route())

@@ -1,3 +1,8 @@
+## Inline chat progress (replaces the composer checklist) — handoff (2026-11-25 00:35 Iran)
+- Branch: `claude/inline-progress`, based on `new-main` 493e39b (which already grants the session controller `views.kode_activity`).
+- Verified here (Linux, offscreen): the rendering helpers on a bare QTextBrowser (4 new tests incl. removal with messages before/after, all end states, HTML escaping) and a rendered screenshot. Not verified: the full MainWindow flow, Windows, the real theme. `tests/test_chat_code_gui.py` already fails on untouched `new-main` in this sandbox, so its updated tests were not executed.
+- Known limit: once the first answer text is written, later tool phases of the same request do not draw progress lines again (the tracker stays suspended until the next request).
+
 ## Progress checklist (replaces thinking line + activity card) — handoff (2026-11-24 22:46 Iran)
 - Branch: `claude/progress-checklist`, based on `new-main` 4183cdc. Not merged; no Pull Request opened (a PR would trigger `android-apk.yml`); no GitHub Actions run.
 - Verified here (Linux, PySide6 6.12 offscreen): the new panel renders correctly in RTL for running, done and failed states (rendered to PNG and inspected); all edited files compile. Not verified: Windows, the real Kira theme, the full MainWindow flow.

@@ -141,24 +141,24 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.assertFalse(hasattr(self.cc, "button"))
         self.assertFalse([b for b in w.findChildren(QAbstractButton) if b.text().strip() == "</>"])
 
-    def test_kode_activity_panel_tracks_live_work_and_resets(self):
+    def test_kode_activity_tracks_live_work_and_resets(self):
         panel = self.cc.win.kode_activity
-        self.assertFalse(panel.isVisible())
+        panel.reset()
+        self.assertEqual(panel.visible_rows(), [])
         panel.start("در حال تحلیل درخواست…")
-        self.assertTrue(panel.isVisible())
-        self.assertEqual(panel.status.text(), "در حال تحلیل درخواست…")
+        self.assertEqual(panel.status_text, "در حال تحلیل درخواست…")
         panel.step("جست‌وجوی فایل‌های پروژه")
         self.assertEqual(panel.items(), [("در حال تحلیل درخواست…", "done"), ("جست‌وجوی فایل‌های پروژه", "active")])
         panel.complete("تحلیل تمام شد")
-        self.assertEqual(panel.status.text(), "تحلیل تمام شد")
+        self.assertEqual(panel.status_text, "تحلیل تمام شد")
         self.assertTrue(all(state == "done" for _text, state in panel.items()))
+        self.assertEqual(panel.visible_rows(), [])         # nothing is drawn once the request is over
         panel.reset()
-        self.assertFalse(panel.isVisible())
         self.assertEqual(panel.items(), [])
 
-    def test_progress_checklist_marks_failure_and_stop(self):
+    def test_progress_marks_failure_and_stop(self):
         panel = self.cc.win.kode_activity
-        panel.start("در حال آماده‌سازی پاسخ…")
+        panel.start("در حال فکر کردن…")
         panel.begin("در حال جست‌وجوی وب…", key="web_search")
         panel.finish("web_search", "جست‌وجوی وب: خطا", state="failed")
         self.assertEqual(panel.items()[-1], ("جست‌وجوی وب: خطا", "failed"))
@@ -167,22 +167,27 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.assertEqual(panel.items(), [("دوباره", "stopped")])
         panel.reset()
 
-    def test_thinking_status_uses_checklist_not_inline_line(self):
+    def test_thinking_status_is_written_inside_the_chat_not_above_the_input(self):
         panel = self.cc.win.kode_activity
         panel.reset()
+        view = self.win.cur.view
         self.win.presentation_context.controllers.require("session").set_status("st_thinking")
-        self.assertTrue(panel.isVisible())
-        self.assertNotIn("در حال فکر کردن", self.win.cur.view.toPlainText())
+        self.assertTrue(panel.active)
+        self.assertIn("در حال فکر کردن", view.toPlainText())
+        panel.complete("پاسخ آماده شد")
+        self.assertNotIn("در حال فکر کردن", view.toPlainText())
         panel.reset()
 
-    def test_real_chat_tool_events_appear_in_kira_activity(self):
+    def test_real_chat_tool_events_appear_in_the_chat_progress(self):
         panel = self.cc.win.kode_activity
-        panel.start("در حال پاسخ‌گویی…")
+        panel.start("در حال فکر کردن…")
         runtime = self.win.presentation_context.controllers.require("runtime")
         runtime.on_tool_event({"phase": "tool_start", "tool": "web_search", "label": "جست‌وجوی وب"})
-        self.assertEqual(panel.status.text(), "در حال جست‌وجوی وب…")
+        self.assertEqual(panel.status_text, "در حال جست‌وجوی وب…")
+        self.assertIn("در حال جست‌وجوی وب", self.win.cur.view.toPlainText())
         runtime.on_tool_event({"phase": "tool_done", "tool": "web_search", "label": "جست‌وجوی وب", "status": "ok"})
-        self.assertEqual(panel.status.text(), "جست‌وجوی وب انجام شد")
+        self.assertEqual(panel.status_text, "جست‌وجوی وب انجام شد")
+        panel.reset()
 
     def test_first_coding_request_asks_for_the_project_folder_once(self):
         asked = []

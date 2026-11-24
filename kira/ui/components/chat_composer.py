@@ -86,7 +86,8 @@ class ChatComposer(QFrame):
         self.attach_err_widget.hide()
         self.kode_activity = KodeActivityPanel(self)
         owner.kode_activity = self.kode_activity
-        co.addWidget(self.kode_activity)
+        # Progress is drawn inside the chat page (not above the input): see sync_progress.
+        self.kode_activity.changed.connect(lambda: owner.feature_controller("session").sync_progress())
         co.addWidget(self.send_strip)
         co.addWidget(self.attach_strip)
         co.addWidget(self.attach_err_widget)
