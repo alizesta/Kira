@@ -57,6 +57,22 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
         self.assertNotIn("mcp", plan.schema_categories)
         self.assertNotIn("agents", plan.schema_categories)
 
+    def test_successful_action_after_capability_inspection_is_not_replayed(self):
+        first = {
+            "text": "برنامه باز شد.",
+            "tools": [
+                {"tool": "windows_control_info", "status": "ok"},
+                {"tool": "open_app", "status": "ok"},
+            ],
+        }
+        plan = ToolPlan(categories={"apps"}, schema_categories={"apps"})
+        with patch.object(self.agent, "_direct_bridge", return_value=False), \
+             patch.object(self.agent, "_run_once", return_value=first) as run_once:
+            result = self.agent.run(None, [], "", 0.2, plan)
+
+        self.assertEqual(result["text"], "برنامه باز شد.")
+        run_once.assert_called_once()
+
     def test_unknown_tool_followed_by_access_denial_also_retries(self):
         first = {"text": "ابزار مناسب را در اختیار ندارم.", "tools": [{"tool": "wrong_tool", "status": "unknown_tool"}]}
         second = {"text": "پیدا شد.", "tools": [{"tool": "list_running_apps", "status": "ok"}]}
