@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
-from pathlib import Path
 
 from kira.reverse_api.deepseek_session import DeepSeekSessionError, DeepSeekSessionStore
 
