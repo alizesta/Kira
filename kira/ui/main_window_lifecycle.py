@@ -1,5 +1,6 @@
 """Window lifecycle feature controller."""
 from PySide6.QtCore import Slot
+from .companion_session import session_marker
 from .main_window_lifecycle_support import (
     QApplication,
     QDesktopServices,
@@ -226,7 +227,8 @@ class LifecycleController(WindowFeatureController):
         away = getattr(self.context.views, "tray", None) is not None and (not self.window.isVisible() or self.window.isMinimized())
         if away and companion.isVisible() and not self.context.state._closing:
             session = self.context.session
-            if getattr(bubble, "session_id", None) != session.session_id:
+            marker = session_marker(session)
+            if getattr(bubble, "session_id", None) != marker:
                 try:
                     self.feature_controller("session").sync_bubble_history(bubble)
                 except Exception:
