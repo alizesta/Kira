@@ -37,7 +37,8 @@ _GENERATION_STATE_SCRIPT = """() => {
   const selectors = [
     'button[aria-label*="stop" i]', 'button[title*="stop" i]',
     '[data-testid*="stop" i]', 'button[class*="stop" i]',
-    '[aria-label*="停止"]', '[title*="停止"]'
+    '[aria-label*="停止"]', '[title*="停止"]',
+    '[aria-label*="توقف"]', '[title*="توقف"]'
   ];
   const stopVisible = selectors.some(selector =>
     [...document.querySelectorAll(selector)].some(node => {
@@ -263,7 +264,12 @@ class DeepSeekBrowserTransport:
                         emitted_prefix = next_prefix
                         previous_snapshot = current
 
-                    generation = page.evaluate(_GENERATION_STATE_SCRIPT)
+                    try:
+                        generation = page.evaluate(_GENERATION_STATE_SCRIPT)
+                    except Exception:
+                        if started and latest_text.strip():
+                            break
+                        raise
                     stop_visible = bool(generation.get("stopVisible")) if isinstance(generation, dict) else bool(generation)
                     composer_disabled = bool(generation.get("composerDisabled")) if isinstance(generation, dict) else False
                     idle_for = now - last_change
