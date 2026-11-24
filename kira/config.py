@@ -22,7 +22,7 @@ DB_PATH = DATA_DIR / "kira_memory.sqlite3"
 APP_NAME = "Project Kira"  # change this to rebrand the desktop application
 PROJECT_URL = "https://github.com/alizesta/Kira"
 RELEASES_URL = PROJECT_URL + "/releases/latest"
-VERSION = "1.2"
+VERSION = "1.2.1"
 
 DEFAULTS = {
     "ollama_url": "http://localhost:11434",
