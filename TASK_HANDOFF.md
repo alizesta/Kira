@@ -335,3 +335,5 @@ Character specialization and generated portraits. The implementation is complete
 - `_cancel` is not cleared at stream entry. A cancellation set immediately before stream startup remains observable; the flag is cleared only during final cleanup.
 - Files changed: `kira/reverse_api/deepseek_transport.py`, `tests/test_deepseek_session.py`, `tests/test_deepseek_transport.py`, and repository-level changelog/architecture/context handoffs.
 - Validation: source and test changes were inspected through GitHub. Python tests, browser automation against the live DeepSeek site, token-rotation behavior, and Windows runtime remain unverified; no GitHub Actions were run.
+
+- Release metadata: `VERSION=1.2.1`; `kira/build_info.py` stamped for 2026-11-24 12:03 Asia/Tehran with the detected developer `ChatGPT`; the matching `1.2.1` Changelog entry is present.
