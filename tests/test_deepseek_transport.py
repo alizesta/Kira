@@ -29,7 +29,8 @@ class DeepSeekTransportTests(unittest.TestCase):
         self.assertIs(configured, self.transport)
         self.assertEqual(self.transport.config["timeout"], 17)
 
-    def test_status_requires_saved_session(self):        status = self.transport.status()
+    def test_status_requires_saved_session(self):
+        status = self.transport.status()
         self.assertEqual(status.state, TransportState.DISCONNECTED)
 
     def test_status_does_not_launch_or_send_a_request(self):
