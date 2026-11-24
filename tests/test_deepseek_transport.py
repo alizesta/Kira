@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import threading
 import tempfile
 import unittest
 
@@ -106,6 +107,16 @@ class DeepSeekTransportTests(unittest.TestCase):
         self.assertIn("chat.deepseek.com", script)
         self.assertIn("access_token", script)
 
+    def test_abort_before_stream_start_is_not_cleared_or_ignored(self):
+        self.transport.abort()
+        self.assertTrue(self.transport._cancel.is_set())
+        self.assertEqual(list(self.transport.stream(None, threading.Event())), [])
+        self.assertFalse(self.transport._cancel.is_set())
+
+    def test_request_cancel_before_stream_start_skips_browser_setup(self):
+        cancel = threading.Event()
+        cancel.set()
+        self.assertEqual(list(self.transport.stream(None, cancel)), [])
     def test_abort_sets_cancellation_flag(self):
         self.transport.abort()
         self.assertTrue(self.transport._cancel.is_set())
