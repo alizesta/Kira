@@ -77,6 +77,14 @@ def is_bare_confirmation(t: str) -> bool:
 
 CANCEL_RX = re.compile(r"(?:\bنه\b|نکن|لغو|کنسل|منصرف|بیخیال|بی\s*خیال|نخیر|\bno\b|cancel|don'?t|stop|never\s*mind)", re.I)
 
+_ACCESS_DENIAL_RX = re.compile(
+    r"(?:دسترسی.{0,40}ندارم|ندارم.{0,40}دسترسی|ابزار.{0,35}ندارم|قابلیت.{0,35}ندارم|"
+    r"نمی.?توانم.{0,45}(?:دسترسی|کنترل|باز|اجرا|کلیک|تایپ)|"
+    r"(?:don't have access|do not have access|cannot access|can't access|unable to access|"
+    r"not available to me|don't have the ability|cannot control|can't control)",
+    re.I,
+)
+
 
 @dataclass
 class ToolPlan:
@@ -683,20 +691,28 @@ class ToolAgent(AutonomyMixin):
         return "\n\n".join(lines)
 
     # ------------------------------------------------------------ the turn loop
+    @staticmethod
+    def _claims_missing_access(text: str) -> bool:
+        """Detect a model's unsupported 'I have no access/tool' claim before accepting it as final."""
+        return bool(_ACCESS_DENIAL_RX.search(str(text or "")))
+
     def run(self, router, messages, system_prompt, temperature, plan, retry_index=0, on_chunk=None, on_event=None, on_tool=None):
-        """Run a ToolPlan. A cheap triage plan that the model escalates is re-run with the full catalog / planner."""
+        """Run a ToolPlan; an access-denial answer gets one retry with the complete local catalog."""
         if self._direct_bridge(router, plan):
             plan.index_only, plan.complex, plan.reasons, plan.direct = False, False, (), True
         result = self._run_once(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
-        if isinstance(result, dict) and result.pop("_escalate", False) and getattr(plan, "index_only", False):
-            plan.index_only = False
-            if not self._schema_categories(plan):
-                # Unknown but model-confirmed PC requests receive the full local catalog only after escalation.
+        if isinstance(result, dict):
+            model_escalated = bool(result.pop("_escalate", False))
+            unsupported_denial = not result.get("tools") and self._claims_missing_access(result.get("text", ""))
+            if (model_escalated and getattr(plan, "index_only", False)) or unsupported_denial:
+                plan.index_only = False
+                # A narrow category guess must never make Kira claim that a registered capability is absent.
+                # On this one fallback only, expose every built-in local category; MCP/agents stay opt-in.
                 plan.schema_categories = set(protocol.ALL_CATEGORIES) - {"mcp", "agents"}
-            if self.planning_enabled():
-                plan.complex = True
-                plan.reasons = ("ارزیابی معنایی هدف توسط Planner مدل",)
-            return self._run_once(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
+                if self.planning_enabled():
+                    plan.complex = True
+                    plan.reasons = ("بررسی دوباره با فهرست کامل قابلیت‌های محلی",)
+                return self._run_once(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
         return result
 
     def _direct_bridge(self, router, plan) -> bool:
