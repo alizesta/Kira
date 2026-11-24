@@ -8,6 +8,6 @@ from .deepseek_transport import DeepSeekBrowserTransport
 # so its registry and request lock remain shared across provider instances.
 _DEEPSEEK_TRANSPORT = DeepSeekBrowserTransport()
 if TRANSPORTS.resolve("deepseek") is None:
-    TRANSPORTS.register("deepseek", lambda config: _DEEPSEEK_TRANSPORT)
+    TRANSPORTS.register("deepseek", lambda config: _DEEPSEEK_TRANSPORT.configure(config))
 
 __all__ = ["TRANSPORTS", "TransportRegistry", "DeepSeekBrowserTransport"]
