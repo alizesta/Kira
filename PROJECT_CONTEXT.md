@@ -241,6 +241,7 @@ Local-only speech stack: Qwen3-ASR primary STT, faster-whisper local fallback, P
 - Version advanced to `1.2.3` in `kira/config.py`; `kira/build_info.py` records the 2026-11-24 12:12 Asia/Tehran build stamp and developer `ChatGPT`.
 - `1.2.2` fixes the ToolAgent import-time regex crash. `1.2.3` narrows keyboard shortcut allowlists, buffers an opening access-denial sentence until the full-catalog retry decision, and makes `windows_control_info` compact, paginated and robust to malformed arguments, with exact-name detail lookup.
 - Regression tests were added for these behaviours. Source diffs were inspected; Python test execution and `scripts/build_metadata.py --check` have not been run in this source-only workflow.
+- Follow-up review corrections: the denial-buffer regression test now dispatches callable first/retry handlers via a counted mock side effect, and capability-report tests reflect compact-by-default output plus exact-name detail lookup. These test-only corrections have not yet been executed in Python.
 
 ## Release metadata — DeepSeek Reverse API hardening (2026-11-24)
 - Version `1.2.1` recorded the DeepSeek Reverse API hardening. See `CHANGELOG.md` and `TASK_HANDOFF.md` for its detailed implementation and validation boundary.
