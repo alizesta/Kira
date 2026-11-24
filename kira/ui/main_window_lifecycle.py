@@ -236,6 +236,8 @@ class LifecycleController(WindowFeatureController):
                     pass
             if not bubble.isVisible():
                 bubble.show_preview(companion)
+            else:
+                bubble.follow_companion(companion)
         else:
             bubble.disable_preview()
 

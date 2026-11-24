@@ -264,6 +264,18 @@ class MainWindowFeatureDependencyTests(unittest.TestCase):
                 f"composition references undeclared {namespace} fields: {sorted(referenced - fields)}",
             )
 
+    def test_deepseek_login_worker_is_declared_for_provider_settings(self):
+        from kira.ui.window_presentation_context import CONTROLLER_ACCESS, RESOURCE_OWNERS, STATE_FIELDS
+
+        self.assertIn("_deepseek_login_worker", STATE_FIELDS)
+        self.assertEqual(
+            RESOURCE_OWNERS["_deepseek_login_worker"],
+            ("state", "_deepseek_login_worker"),
+        )
+        access = CONTROLLER_ACCESS["provider_settings"]
+        self.assertIn("_deepseek_login_worker", access["state"])
+        self.assertIn("_deepseek_login_worker", access["resources"])
+
     def test_resource_owner_map_resolves_only_declared_context_resources(self):
         from kira.chat_sessions import SESSION_FIELDS
         from kira.ui.window_presentation_context import (

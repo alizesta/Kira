@@ -63,6 +63,17 @@ class PetController(QObject):
         point = QPoint(int(x if x is not None else self.w.x() + self.w.width() / 2), int(y if y is not None else self.w.y() + self.w.height() / 2))
         return QGuiApplication.screenAt(point) or QGuiApplication.primaryScreen()
 
+    def _clamp_position(self, x: float, y: float, screen=None) -> tuple[int, int]:
+        """Keep the complete companion window, including its pencil button, on one usable screen."""
+        screen = screen or self._screen(x + self.w.width() / 2, y + self.w.height() / 2)
+        area = screen.availableGeometry()
+        max_x = max(area.left(), area.right() - self.w.width() + 1)
+        max_y = max(area.top(), area.bottom() - self.w.height() + 1)
+        return (
+            int(round(max(area.left(), min(max_x, x)))),
+            int(round(max(area.top(), min(max_y, y)))),
+        )
+
     def _floor(self, screen) -> Surface:
         avail, full = screen.availableGeometry(), screen.geometry()
         kind = "taskbar" if avail.bottom() < full.bottom() else "floor"
@@ -101,7 +112,9 @@ class PetController(QObject):
             self._moved = True
             self._begin_drag()
         if self.state != "dragging":                           # perch and hang both off: plain window dragging
-            self.w.move(self._win0 + d)
+            screen = self._screen(gp.x(), gp.y())
+            x, y = self._clamp_position(self._win0.x() + d.x(), self._win0.y() + d.y(), screen)
+            self.w.move(x, y)
 
     def release(self) -> bool:
         """True when the press was a drag (so it is not also a click)."""
@@ -141,8 +154,9 @@ class PetController(QObject):
         lx, ly = self._last
         dt = TICK_MS / 1000.0
         self._v = [self._v[0] * 0.5 + 0.5 * (x - lx) / dt, self._v[1] * 0.5 + 0.5 * (y - ly) / dt]
+        x, y = self._clamp_position(x, y, self._screen(cur.x(), cur.y()))
         self._last = (x, y)
-        self.w.move(int(round(x)), int(round(y)))
+        self.w.move(x, y)
         self._send_hang(True, self._v[0] / max(1, self.w.height()))
 
     def _end_drag(self) -> None:

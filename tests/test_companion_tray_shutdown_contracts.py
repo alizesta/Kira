@@ -94,10 +94,20 @@ class CompanionTrayShutdownContractTests(unittest.TestCase):
         self.assertIn("show_preview", calls)
         self.assertIn("hide", calls)
 
-    def test_preview_remains_latest_only_and_expires_after_ten_seconds(self):
+    def test_preview_remains_latest_only_and_fades_after_ten_seconds(self):
         source = _source("kira/companion.py")
         self.assertIn("self._preview_timer.start(10000)", source)
         self.assertIn("visible_items = self.items[-1:]", source)
+        hide_preview = _method("kira/companion.py", "hide_preview")
+        self.assertIn("start", _call_names(hide_preview))
+        fade = _method("kira/companion.py", "_finish_preview_fade")
+        self.assertIn("hide", _call_names(fade))
+
+    def test_visible_bubble_tracks_companion_geometry(self):
+        follow = _method("kira/companion.py", "follow_companion")
+        self.assertIn("place_beside", _call_names(follow))
+        update = _method("kira/ui/main_window_lifecycle.py", "update_bubble")
+        self.assertIn("follow_companion", _call_names(update))
 
     def test_bubble_closes_only_after_shutdown_is_accepted(self):
         close_event = _method("kira/ui/main_window_runtime.py", "closeEvent")

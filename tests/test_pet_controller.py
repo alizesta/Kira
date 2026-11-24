@@ -32,9 +32,25 @@ class PetControllerTests(unittest.TestCase):
         window, pet, _ = make({"companion_perch": False, "companion_hang": False})
         pet.press(QPoint(300, 300))
         pet.move(QPoint(340, 330))
-        self.assertEqual((window.x(), window.y()), (240, 130))
+        area = QApplication.primaryScreen().availableGeometry()
+        self.assertGreaterEqual(window.x(), area.left())
+        self.assertGreaterEqual(window.y(), area.top())
+        self.assertLessEqual(window.x() + window.width() - 1, area.right())
+        self.assertLessEqual(window.y() + window.height() - 1, area.bottom())
         self.assertTrue(pet.release())
         self.assertEqual(pet.state, "free")
+
+    def test_plain_drag_cannot_move_any_part_of_the_companion_off_screen(self):
+        window, pet, _ = make({"companion_perch": False, "companion_hang": False})
+        area = QApplication.primaryScreen().availableGeometry()
+        window.resize(120, 160)
+        window.move(area.left() + 5, area.top() + 5)
+        pet.press(QPoint(area.left() + 10, area.top() + 10))
+        pet.move(QPoint(area.right() + 200, area.bottom() + 200))
+        self.assertGreaterEqual(window.x(), area.left())
+        self.assertGreaterEqual(window.y(), area.top())
+        self.assertLessEqual(window.x() + window.width() - 1, area.right())
+        self.assertLessEqual(window.y() + window.height() - 1, area.bottom())
 
     def test_small_movement_is_a_click_not_a_drag(self):
         _, pet, _ = make({})

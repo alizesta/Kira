@@ -1000,11 +1000,16 @@ class ProviderSettingsController(WindowFeatureController):
         def login():
             from ..reverse_api.deepseek_session import DeepSeekBrowserLogin
             return DeepSeekBrowserLogin().login()
-        worker = TaskWorker(login)
-        self.context.state._deepseek_login_worker = worker
-        worker.done.connect(self.on_deepseek_login_done)
-        worker.finished.connect(self.clear_deepseek_login_worker)
-        worker.start()
+        try:
+            worker = TaskWorker(login)
+            self.context.state._deepseek_login_worker = worker
+            worker.done.connect(self.on_deepseek_login_done)
+            worker.finished.connect(self.clear_deepseek_login_worker)
+            worker.start()
+        except Exception as exc:
+            self.context.state._deepseek_login_worker = None
+            self.deepseek_login_btn.setEnabled(True)
+            self.deepseek_login_status.setText("✕ شروع ورود DeepSeek ناموفق بود: " + str(exc)[:200])
 
     @Slot(object)
     def on_deepseek_login_done(self, result):

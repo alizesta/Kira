@@ -1,6 +1,6 @@
 import base64
 
-from PySide6.QtCore import Qt, Signal, QThread, QBuffer, QIODevice, QTimer
+from PySide6.QtCore import Qt, Signal, QThread, QBuffer, QIODevice, QTimer, QEasingCurve, QPropertyAnimation
 from PySide6.QtGui import QGuiApplication, QPixmap, QFontMetrics, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QPushButton, QFrame, QToolButton, QLabel,
                                QFileDialog)
@@ -84,7 +84,10 @@ class CompanionWindow(QWidget):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
-        self.chat_button.move(max(8, self.width() - 48), max(8, self.height() - 48))
+        margin = 10
+        x = max(margin, self.width() - self.chat_button.width() - margin)
+        y = max(margin, self.height() - self.chat_button.height() - margin)
+        self.chat_button.move(x, y)
         self.chat_button.raise_()
         self.geometry_changed.emit()
 
@@ -167,6 +170,10 @@ class CompanionBubble(QWidget):
         self._preview_timer = QTimer(self)
         self._preview_timer.setSingleShot(True)
         self._preview_timer.timeout.connect(self.hide_preview)
+        self._fade_animation = QPropertyAnimation(self, b"windowOpacity", self)
+        self._fade_animation.setDuration(450)
+        self._fade_animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._fade_animation.finished.connect(self._finish_preview_fade)
         self._escape_shortcut = QShortcut(QKeySequence(Qt.Key_Escape), self)
         self._escape_shortcut.setContext(Qt.WidgetWithChildrenShortcut)
         self._escape_shortcut.activated.connect(self.close_composer)
@@ -357,12 +364,22 @@ class CompanionBubble(QWidget):
         for widget in (self.attach_btn, self.img_btn, self.edit, self.send):
             widget.setVisible(visible)
 
+    def _cancel_preview_fade(self):
+        self._fade_animation.stop()
+        self.setWindowOpacity(1.0)
+
+    def _finish_preview_fade(self):
+        if not self._composer_open:
+            self.hide()
+            self.setWindowOpacity(1.0)
+
     def open_composer(self, companion=None):
         """Open the full composer from the small pencil button beside the avatar."""
         if companion is not None:
             self._preview_companion = companion
         self._composer_open = True
         self._preview_timer.stop()
+        self._cancel_preview_fade()
         self._set_composer_visible(True)
         self._render()
         self.view.show()
@@ -389,8 +406,10 @@ class CompanionBubble(QWidget):
         if self._composer_open:
             return
         if not self.items and not (self.live and self.live[1].strip()):
+            self._cancel_preview_fade()
             self.hide()
             return
+        self._cancel_preview_fade()
         if companion is not None:
             self._preview_companion = companion
         companion = companion or self._preview_companion
@@ -405,12 +424,17 @@ class CompanionBubble(QWidget):
         self._preview_timer.start(10000)
 
     def hide_preview(self):
-        if not self._composer_open:
-            self.hide()
+        if self._composer_open or not self.isVisible():
+            return
+        self._fade_animation.stop()
+        self._fade_animation.setStartValue(self.windowOpacity())
+        self._fade_animation.setEndValue(0.0)
+        self._fade_animation.start()
 
     def disable_preview(self):
         """Stop tray previews while the main chat window is visible."""
         self._preview_timer.stop()
+        self._cancel_preview_fade()
         self._preview_companion = None
         self._composer_open = False
         self._set_composer_visible(False)
@@ -475,15 +499,25 @@ class CompanionBubble(QWidget):
         if not self._composer_open and self._preview_companion is not None:
             self.show_preview(self._preview_companion)
 
+    def follow_companion(self, companion):
+        """Keep the visible preview/composer anchored to the companion as she moves."""
+        if self.isVisible() and self._preview_companion is companion:
+            self.place_beside(companion)
+
     def place_beside(self, companion):
-        """Left of Kira when there is room on screen, otherwise right; bottom-aligned with her."""
+        """Prefer the left side, switch right when needed, and keep the bubble inside the same screen."""
         g = companion.frameGeometry()
         screen = (QGuiApplication.screenAt(g.center()) or QGuiApplication.primaryScreen()).availableGeometry()
         height = 320 if self._composer_open else 112
-        h = min(height, screen.height() - 20)
-        self.resize(420, h)
-        x = g.left() - self.width() - 6
-        if x < screen.left():
-            x = g.right() + 6
-        y = min(max(screen.top(), g.bottom() - h), screen.bottom() - h)
+        h = min(height, max(1, screen.height() - 20))
+        self.resize(min(420, max(1, screen.width() - 20)), h)
+        left_x = g.left() - self.width() - 6
+        right_x = g.right() + 6
+        if left_x >= screen.left():
+            x = left_x
+        elif right_x + self.width() - 1 <= screen.right():
+            x = right_x
+        else:
+            x = min(max(screen.left(), left_x), screen.right() - self.width() + 1)
+        y = min(max(screen.top(), g.bottom() - h), screen.bottom() - h + 1)
         self.move(x, y)
