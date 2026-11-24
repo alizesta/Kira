@@ -291,30 +291,51 @@ class AccessManager:
                 self._tainted = True                         # even an external error message may contain attacker-controlled instructions
 
     # ------------------------------------------------------------ report (READ tool windows_control_info)
-    def info_text(self, recent: int = 8, category: str = "", offset: int = 0, limit: int = 30) -> str:
+    @staticmethod
+    def _report_int(value, default: int, minimum: int, maximum: int) -> int:
+        """Parse untrusted model arguments without allowing malformed values to break discovery."""
+        if isinstance(value, bool):
+            return default
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError, OverflowError):
+            return default
+        return max(minimum, min(maximum, parsed))
+
+    def info_text(self, recent: int = 8, category: str = "", offset: int = 0, limit: int = 30,
+                  name: str = "") -> str:
         tools = sorted(self.registry.all(), key=lambda t: (self.policy_for(t).permission, self.policy_for(t).domain, t.name))
         category = str(category or "").strip().lower()
+        name = str(name or "").strip()
         if category:
             tools = [tool for tool in tools if category in {str(item).lower() for item in tool.categories}]
+        if name:
+            tools = [tool for tool in tools if tool.name.casefold() == name.casefold()]
+            if not tools:
+                return f"ابزار «{name[:100]}» در رجیستری فعلی پیدا نشد. نام دقیق را از فهرست ابزارها بردار."
         total = len(tools)
-        offset = max(0, int(offset or 0))
-        limit = max(1, min(40, int(limit or 30)))
+        offset = 0 if name else self._report_int(offset, 0, 0, 1_000_000)
+        limit = 1 if name else self._report_int(limit, 30, 1, 40)
         page = tools[offset:offset + limit]
         next_offset = offset + len(page)
         more = next_offset < total
         lines = [
-            "فهرست زندهٔ قابلیت‌های کیرا از رجیستری واقعی همین اجرا؛ ابزارهای ثبت‌نشده یا قطع‌شده در این فهرست نیستند:",
-            f"تعداد کل ابزارهای منطبق: {total} · نمایش: {offset + 1 if page else 0} تا {next_offset}",
+            "فهرست زندهٔ قابلیت‌های کیرا از رجیستری واقعی همین اجرا:",
+            f"تعداد ابزارهای منطبق: {total} · نمایش: {offset + 1 if page else 0} تا {next_offset}",
             f"ادامه دارد: {more} · offset بعدی: {next_offset if more else 'ندارد'}",
-            "برای انتخاب ابزار، کاربرد، ورودی‌ها، سطح دسترسی و شرط اجرا را بررسی کن؛ از روی نام ابزار حدس نزن.",
+            "برای جزئیات کامل یک ابزار، name را با نام دقیق همان ابزار فراخوانی کن.",
         ]
         for t in page:
             p = self.policy_for(t)
-            gate = ("تأیید صریح کاربر روی همین عملیات و پارامترها" if p.always_confirm else "فقط با درخواست صریح در همان پیام" if p.intent_rx is not None
-                    else "با درخواست کاربر (بعد از خواندن محتوای خارجی: تأیید)" if p.permission in (CONTROL, FILE) else "فقط خواندن")
+            gate = ("تأیید لازم" if p.always_confirm else "درخواست صریح لازم" if p.intent_rx is not None
+                    else "پس از محتوای خارجی: تأیید" if p.permission in (CONTROL, FILE) else "فقط خواندن")
             categories = ", ".join(t.categories) or "بدون دسته"
             level_name = {READ: "READ", ACTION: "ACTION", SENSITIVE: "SENSITIVE"}.get(t.level, str(t.level))
             permission_name = PERMISSION_NAMES.get(p.permission, str(p.permission))
+            backend = BACKENDS.get(p.backend, p.backend)
+            if not name:
+                lines.append(f"- {t.name} [{categories}] — {t.description[:180]} · {level_name}/{permission_name} · {backend} · {gate}")
+                continue
             if t.params:
                 params = []
                 for arg in t.params:
@@ -327,14 +348,14 @@ class AccessManager:
             else:
                 param_text = "بدون ورودی"
             lines.append(
-                f"\n- {t.name} [{categories}]"
-                f"\n  کاربرد: {t.description}"
-                f"\n  ورودی‌ها: {param_text}"
-                f"\n  سطح ابزار/مجوز: {level_name} / {permission_name} · دامنه: {p.domain} · Backend: {BACKENDS.get(p.backend, p.backend)}"
-                f"\n  شرط اجرا: {gate}"
+                f"\\n- {t.name} [{categories}]"
+                f"\\n  کاربرد: {t.description}"
+                f"\\n  ورودی‌ها: {param_text}"
+                f"\\n  سطح ابزار/مجوز: {level_name} / {permission_name} · دامنه: {p.domain} · Backend: {backend}"
+                f"\\n  شرط اجرا: {gate}"
                 + (" · نتیجه دوباره بررسی می‌شود" if p.verifies else "")
             )
-        recent = max(0, int(recent or 0))
+        recent = self._report_int(recent, 8, 0, 50)
         recent_items = [e for e in self.journal.recent(recent + 2) if e["tool"] != "windows_control_info"]
         items = recent_items[-recent:] if recent else []
         lines.append("")
@@ -346,7 +367,8 @@ class AccessManager:
                              f"{' · تأییدشده' if e['confirmed'] else ''}{' · بازبینی‌شده' if e['verified'] else ''}: {e['summary'][:150]}")
         else:
             lines.append("هنوز عملیاتی در این اجرای برنامه ثبت نشده است.")
-        return "\n".join(lines)
+        return "\\n".join(lines)
+
 
 
 __all__ = ["AccessManager", "Policy", "Journal", "BackendUnavailable", "ToolError", "READ_P", "CONTROL", "FILE", "ELEVATED", "PROTECTED",
