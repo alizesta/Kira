@@ -163,6 +163,7 @@ class CompanionBubble(QWidget):
         self._loader = None
         self._load_chips = []
         self._composer_open = False
+        self._preview_companion = None
         self._preview_timer = QTimer(self)
         self._preview_timer.setSingleShot(True)
         self._preview_timer.timeout.connect(self.hide_preview)
@@ -352,6 +353,8 @@ class CompanionBubble(QWidget):
 
     def open_composer(self, companion=None):
         """Open the full composer from the small pencil button beside the avatar."""
+        if companion is not None:
+            self._preview_companion = companion
         self._composer_open = True
         self._preview_timer.stop()
         self._set_composer_visible(True)
@@ -366,6 +369,9 @@ class CompanionBubble(QWidget):
         """Show only the newest chat item, then return to the avatar after ten seconds."""
         if self._composer_open:
             return
+        if companion is not None:
+            self._preview_companion = companion
+        companion = companion or self._preview_companion
         self._set_composer_visible(False)
         self.view.show()
         if companion is not None:
@@ -422,8 +428,8 @@ class CompanionBubble(QWidget):
         self.items = (self.items + [(kind, name, str(text))])[-self.KEEP:]
         self.live = None
         self._render()
-        if self.isVisible() and not self._composer_open:
-            self.show_preview()
+        if not self._composer_open and self._preview_companion is not None:
+            self.show_preview(self._preview_companion)
 
     def set_live(self, name, text, ui_dir="rtl"):
         self.ui_dir = ui_dir
@@ -435,8 +441,8 @@ class CompanionBubble(QWidget):
             self.items = (self.items + [("assistant", self.live[0], self.live[1])])[-self.KEEP:]
         self.live = None
         self._render()
-        if self.isVisible() and not self._composer_open:
-            self.show_preview()
+        if not self._composer_open and self._preview_companion is not None:
+            self.show_preview(self._preview_companion)
 
     def place_beside(self, companion):
         """Left of Kira when there is room on screen, otherwise right; bottom-aligned with her."""
