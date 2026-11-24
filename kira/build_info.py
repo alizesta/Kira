@@ -5,5 +5,5 @@ The version itself is maintained in kira/config.py. See PROJECT_CONTEXT.md.
 """
 
 BUILD_DATE = "2026-11-24"      # Gregorian, YYYY-MM-DD (Asia/Tehran build time)
-BUILD_TIME = "13:17"          # 24-hour HH:MM (Asia/Tehran build time)
+BUILD_TIME = "13:36"          # 24-hour HH:MM (Asia/Tehran build time)
 DEVELOPER = "ChatGPT"             # auto-detected by the build; never hand-edited

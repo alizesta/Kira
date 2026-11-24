@@ -2,7 +2,7 @@
 
 **Current architecture source:** [docs/ARCHITECTURE_MASTER.md](docs/ARCHITECTURE_MASTER.md)  
 **Snapshot branch:** `new-main`  
-**Last synchronized:** 2026-11-24
+**Last synchronized:** 2026-11-24 — Companion bubble and Tray shutdown follow-up
 
 This file is the short repository-level entry point. It intentionally contains no independent architecture claims; the linked documents below are the canonical records.
 

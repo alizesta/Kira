@@ -2,6 +2,7 @@
 import logging
 
 from .shortcuts import delete_key
+from .companion_session import session_marker
 from .main_window_session_support import (
     KIRA_PROFILE,
     QApplication,
@@ -496,7 +497,7 @@ class SessionController(WindowFeatureController):
                 continue
             if str(text).strip():
                 items.append((role, name, text))
-        bubble.replace_history(items, ui_dir, session.session_id)
+        bubble.replace_history(items, ui_dir, session_marker(session))
 
     def restore_history(self, limit=40):
         """Show the saved conversation of the CURRENT chat again after a restart (it is already used as model context)."""

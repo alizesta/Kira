@@ -1,7 +1,7 @@
 # KIRA ARCHITECTURE MASTER ROADMAP
 
 **Snapshot date:** 2026-11-19  
-**Current synchronization:** 2026-11-23; source baseline `new-main` at `91d5cdad7359da1d8bb626064fa84d676c160c02`. Historical audit dates and counts below remain unchanged.  
+**Current synchronization:** 2026-11-24; upstream baseline `new-main` at `9caa4e6d872bfc6f74e4ae98a465313f8cafcc7d`; the companion/Tray lifecycle follow-up is recorded in section 2.5 on branch `fix/companion-tray-shutdown-escape`. Historical audit dates and counts below remain unchanged.  
 **Merged architecture deltas:** PRs #239 (startup deferral), #240 (topic-scoped tool schemas), #243 (inactive Session/service deferral), and #246 (Chat/UI import boundaries, history facade and SQLite schema manager) are merged into `new-main`.  
 **Pending acceptance:** PR #248 (idle avatar/render and worker-import optimization) and PR #250 (lazy voice settings toggle guard) are open at this snapshot. Their tests and Windows runtime/CPU/memory measurements are not yet accepted. Workflow jobs with empty step lists are infrastructure failures, not test passes.
 **Repository:** `alizesta/Kira`  
@@ -69,6 +69,13 @@ The following source changes are now merged into `new-main` and supersede the pr
 **Follow-up implementation status:** the idle-avatar and deferred-worker-import patch originally prepared as PR #248 was reapplied on the current `new-main` base in PR #252. It adds visibility-aware avatar cadence (60 FPS visible / 5 FPS hidden), shared avatar transform caching, mood-indicator caching and deferred worker imports. The lazy voice-toggle guard originally proposed in PR #250 is carried on the current base in PR #253. It updates the main voice button immediately and synchronizes the settings checkbox only after that page/control exists, restoring each widget's prior signal-blocking state. Regression tests cover unopened, initialized and partially initialized page states. Executable Qt/runtime acceptance is still pending; the avatar timer policy alone does not establish real CPU savings.
 
 **Verification boundary:** source changes and regression tests are present, but the associated GitHub Actions jobs inspected for these changes completed without executable steps/logs. No full Python suite, Qt desktop smoke test, target-Windows startup/RAM baseline or measured CPU improvement is claimed. See `docs/STARTUP_PERFORMANCE.md` for the required measurement protocol.
+
+### 2.5 Companion bubble and Tray shutdown synchronization — 2026-11-24
+
+- CompanionBubble is a transient preview surface beside the avatar: passive mode renders only the newest chat item and expires after 10 seconds. The avatar's pencil control opens the composer; Escape closes the composer and restores the timed preview.
+- Tray Exit follows a two-stage Qt lifecycle. The initial close request starts cancellation and worker draining while retaining the Tray entry point. _exit_application hides Tray and ends the event loop only after closeEvent accepts the close. An ignored close must leave the process recoverable.
+- The bubble's session marker prefers the Session's native session_id, with a legacy fallback to (cid, conversation_id). Lifecycle checks and history restoration share this helper.
+- tests/test_companion_tray_shutdown_contracts.py guards shutdown ordering, the Escape shortcut, preview expiry and legacy identity without importing Qt. These are source-level regression checks; real PySide6 and Windows Tray interaction remains runtime-unverified.
 
 ## 3. High-level architecture
 

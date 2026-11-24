@@ -1,5 +1,6 @@
 """Window lifecycle feature controller."""
 from PySide6.QtCore import Slot
+from .companion_session import session_marker
 from .main_window_lifecycle_support import (
     QApplication,
     QDesktopServices,
@@ -226,7 +227,8 @@ class LifecycleController(WindowFeatureController):
         away = getattr(self.context.views, "tray", None) is not None and (not self.window.isVisible() or self.window.isMinimized())
         if away and companion.isVisible() and not self.context.state._closing:
             session = self.context.session
-            if getattr(bubble, "session_id", None) != session.session_id:
+            marker = session_marker(session)
+            if getattr(bubble, "session_id", None) != marker:
                 try:
                     self.feature_controller("session").sync_bubble_history(bubble)
                 except Exception:
@@ -260,15 +262,9 @@ class LifecycleController(WindowFeatureController):
             self.window.activateWindow()
 
     def quit_app(self):
-        # closeEvent owns the shutdown protocol. Calling QApplication.quit()
-        # here would bypass it when active workers cause closeEvent to ignore.
+        # closeEvent owns the shutdown protocol. Keep the tray icon and Qt's
+        # last-window policy unchanged until closeEvent has accepted shutdown.
         self.context.state._quitting = True
-        tray = getattr(self.context.views, "tray", None)
-        if tray is not None:
-            tray.hide()
-        app = QApplication.instance()
-        if app is not None:
-            app.setQuitOnLastWindowClosed(True)
         self.window.close()
 
     def changeEvent(self, event):

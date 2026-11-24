@@ -701,8 +701,6 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         self._clear_chat_coordinator_queues()
         if getattr(self.context.views, "code_chat", None) is not None:
             self.context.views.code_chat.shutdown()
-        if getattr(self.context.views, "tray", None) is not None:
-            self.context.views.tray.hide()
         self.context.adapters.bubble.close()
         self.context.services.tool_agent.request_cancel()
         # Stop attachment reads as soon as shutdown starts; a large file must not
@@ -764,7 +762,10 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         QTimer.singleShot(0, self._exit_application)
 
     def _exit_application(self):
-        """Finish the Qt event loop after the normal close/shutdown protocol succeeds."""
+        """Finish the Qt event loop only after the normal close protocol has accepted the window."""
+        tray = getattr(self.context.views, "tray", None)
+        if tray is not None:
+            tray.hide()
         app = QApplication.instance()
         if app is not None:
             app.setQuitOnLastWindowClosed(True)
