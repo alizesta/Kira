@@ -20,7 +20,7 @@ _AUTHENTICATED_JS = """(() => {
 def run_embedded_login(parent=None, store: DeepSeekSessionStore | None = None) -> bool:
     """Show DeepSeek inside Kira and save its cookies/localStorage after login."""
     try:
-        from PySide6.QtCore import QTimer, Qt
+        from PySide6.QtCore import QTimer, QUrl
         from PySide6.QtNetwork import QNetworkCookie
         from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout
         from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
@@ -54,7 +54,7 @@ def run_embedded_login(parent=None, store: DeepSeekSessionStore | None = None) -
             self.timer = QTimer(self)
             self.timer.setInterval(900)
             self.timer.timeout.connect(self._check_login)
-            self.view.setUrl(DEEPSEEK_LOGIN_URL)
+            self.view.setUrl(QUrl(DEEPSEEK_LOGIN_URL))
 
         def _cookie_added(self, cookie):
             try:
