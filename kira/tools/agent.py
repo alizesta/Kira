@@ -408,8 +408,8 @@ class ToolAgent(AutonomyMixin):
             extra.append(protocol.MCP_RULES)
         if visible:
             extra.append(
-                "Only the functions supplied for this request are available. "
-                "Use those functions only; do not invent hidden tool names or assume other capabilities were exposed."
+                "Use the supplied functions for this request. If another capability may exist but is not listed, call the always-available windows_control_info inventory; the system will then expose the full local tool catalog. "
+                "Never invent tool names or claim a capability is missing without checking the live inventory."
             )
         return protocol.build_native_block(self._memo_block(), "\n\n".join(extra))
 
@@ -433,9 +433,9 @@ class ToolAgent(AutonomyMixin):
             extra = (extra + "\n\n" if extra else "") + protocol.MCP_RULES
         if visible:
             extra = (extra + "\n\n" if extra else "") + (
-                "Only the tools listed for this request are available. If the requested workflow needs "
-                "a capability that is not listed, ask a concise clarifying question instead of "
-                "inventing a tool name or claiming the action was performed."
+                "The tools listed for this request are the initial selection, not the complete inventory. If the requested workflow needs "
+                "a capability that is not listed, call windows_control_info to inspect the live registry; the system will expose the full local catalog. "
+                "Only ask a clarifying question if the inventory still shows no suitable capability or required user information is missing."
             )
         catalog = self.registry.catalog_for_selected_categories(visible)
         return protocol.build_block(catalog, self._memo_block(), extra=extra)
@@ -710,6 +710,9 @@ class ToolAgent(AutonomyMixin):
                 or all(item.get("status") == "unknown_tool" for item in tool_results)
             )
             has_full_local_catalog = full_local_catalog.issubset(self._schema_categories(plan))
+            requested_inventory = any(item.get("tool") == "windows_control_info" for item in tool_results)
+            if requested_inventory and not has_full_local_catalog:
+                model_escalated = True
             unsupported_denial = (
                 no_capability_result
                 and not has_full_local_catalog
