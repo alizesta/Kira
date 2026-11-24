@@ -82,7 +82,9 @@ class Tool:
                 entry["enum"] = list(p.enum)
             props[p.name] = entry
         return {"name": self.name, "description": self.description,
-                "parameters": {"type": "object", "properties": props, "required": [p.name for p in self.params if p.required]}}
+                "parameters": {"type": "object", "properties": props,
+                               "required": [p.name for p in self.params if p.required],
+                               "additionalProperties": False}}
 
 
 @dataclass
@@ -249,7 +251,8 @@ class ToolRegistry:
         return len(gone)
 
     def get(self, name: str) -> Tool | None:
-        return self._tools.get(str(name or "").strip())
+        with self._tools_lock:
+            return self._tools.get(str(name or "").strip())
 
     def names(self) -> list[str]:
         with self._tools_lock:
