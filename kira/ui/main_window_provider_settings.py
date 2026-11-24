@@ -192,8 +192,12 @@ class ProviderSettingsController(WindowFeatureController):
         deepseek_row = QHBoxLayout()
         self.deepseek_login_btn = QPushButton("ورود به حساب DeepSeek")
         self.deepseek_login_btn.clicked.connect(self.start_deepseek_login)
+        self.deepseek_enable_btn = QPushButton("فعال‌سازی در چت")
+        self.deepseek_enable_btn.setToolTip("DeepSeek را به Route Manager اضافه می‌کند و برای چت انتخاب می‌کند.")
+        self.deepseek_enable_btn.clicked.connect(self.enable_deepseek_route)
         self.deepseek_login_status = QLabel()
         deepseek_row.addWidget(self.deepseek_login_btn)
+        deepseek_row.addWidget(self.deepseek_enable_btn)
         deepseek_row.addWidget(self.deepseek_login_status, 1)
         layout.addLayout(deepseek_row)
         self.refresh_deepseek_login_status()
@@ -943,9 +947,44 @@ class ProviderSettingsController(WindowFeatureController):
         try:
             from ..reverse_api.deepseek_session import DeepSeekSessionStore
             connected = DeepSeekSessionStore().has_session()
-            self.deepseek_login_status.setText("نشست DeepSeek ذخیره شده است." if connected else "هنوز وارد حساب DeepSeek نشده‌ای.")
+            settings = self.context.services.settings
+            config = settings.get("providers", {}).get(route_model.REVERSE_API, {})
+            route = self.context.services.provider_application_service.find_route(settings, route_model.REVERSE_API)
+            active = bool(config.get("enabled")) and bool(route and route.get("enabled"))
+            if hasattr(self, "deepseek_enable_btn"):
+                self.deepseek_enable_btn.setEnabled(connected)
+                self.deepseek_enable_btn.setText("✓ فعال در چت" if active else "فعال‌سازی در چت")
+            if not connected:
+                message = "ابتدا وارد حساب DeepSeek شو."
+            elif active:
+                message = "نشست ذخیره شده؛ DeepSeek در Route Manager فعال است."
+            else:
+                message = "نشست ذخیره شده؛ برای استفاده در چت فعالش کن."
+            self.deepseek_login_status.setText(message)
         except Exception as exc:
+            if hasattr(self, "deepseek_enable_btn"):
+                self.deepseek_enable_btn.setEnabled(False)
             self.deepseek_login_status.setText("وضعیت نشست قابل‌خواندن نیست: " + str(exc)[:160])
+
+    def enable_deepseek_route(self):
+        if self.context.state._closing:
+            return
+        try:
+            from ..reverse_api.deepseek_session import DeepSeekSessionStore
+            if not DeepSeekSessionStore().has_session():
+                self.deepseek_login_status.setText("ابتدا با دکمهٔ ورود به حساب DeepSeek وارد شو.")
+                self.deepseek_enable_btn.setEnabled(False)
+                return
+            route = self.context.services.provider_application_service.ensure_reverse_api_route(
+                self.context.services.settings, transport="deepseek", enabled=True
+            )
+            self.context.session.client.reset_cooldowns()
+            self.after_route_change(select=route["id"])
+            self.feature_controller("runtime").select_route(route["id"])
+            self.refresh_deepseek_login_status()
+            self.deepseek_login_status.setText("✓ DeepSeek فعال و برای چت انتخاب شد.")
+        except Exception as exc:
+            self.deepseek_login_status.setText("✕ فعال‌سازی DeepSeek انجام نشد: " + str(exc)[:200])
 
     def start_deepseek_login(self):
         if self.context.state._closing:
@@ -972,12 +1011,12 @@ class ProviderSettingsController(WindowFeatureController):
         ok, value = result
         self.deepseek_login_btn.setEnabled(True)
         if ok:
-            self.deepseek_login_status.setText("✓ نشست DeepSeek به‌صورت رمزگذاری‌شده ذخیره شد.")
+            self.refresh_deepseek_login_status()
         elif str(value).startswith("CHROME_UNAVAILABLE:"):
             try:
                 from ..reverse_api.deepseek_embedded_login import run_embedded_login
                 if run_embedded_login(self.window):
-                    self.deepseek_login_status.setText("✓ نشست DeepSeek از مرورگر داخلی Kira ذخیره شد.")
+                    self.refresh_deepseek_login_status()
                 else:
                     self.deepseek_login_status.setText("ورود DeepSeek لغو شد.")
             except Exception as exc:
