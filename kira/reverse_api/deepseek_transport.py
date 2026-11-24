@@ -57,6 +57,11 @@ class DeepSeekBrowserTransport:
         self._active_page = None
         self._last_error = ""
 
+    def configure(self, config: dict[str, Any] | None = None):
+        """Refresh per-route options while retaining the shared session and request lock."""
+        self.config = dict(config or {})
+        return self
+
     def status(self) -> TransportStatus:
         try:
             state = self.store.load()
