@@ -311,9 +311,25 @@ class DeepSeekBrowserLogin:
                 try:
                     process.wait(timeout=6)
                 except subprocess.TimeoutExpired:
+                    if os.name == "nt":
+                        try:
+                            subprocess.run(
+                                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                                stdin=subprocess.DEVNULL,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                                timeout=8,
+                                check=False,
+                            )
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            process.terminate()
+                        except Exception:
+                            pass
                     try:
-                        process.terminate()
-                        process.wait(timeout=8)
+                        process.wait(timeout=4)
                     except Exception:
                         try:
                             process.kill()
