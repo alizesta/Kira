@@ -873,8 +873,10 @@ class SessionController(WindowFeatureController):
         )
         cursor = QTextCursor(view.document())
         cursor.movePosition(QTextCursor.End)
-        cursor.movePosition(QTextCursor.StartOfBlock)
-        session._thinking_indicator_position = cursor.block().position()
+        cursor = view.document().find(label, cursor, QTextDocument.FindBackward)
+        session._thinking_indicator_position = (
+            cursor.block().position() if not cursor.isNull() else None
+        )
         bar = view.verticalScrollBar()
         bar.setValue(bar.maximum())
 
