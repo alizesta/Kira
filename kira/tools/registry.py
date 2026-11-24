@@ -63,6 +63,7 @@ class Tool:
     verifies_result: bool = False        # the handler re-reads the real state after changing it
     intent_alt: Any = None               # optional extra way to satisfy intent_rx: callable(normalised user text) -> bool (e.g. 'continue the paused research')
     external: bool = False               # its RESULT is content written by somebody else (web page, document, MCP / agent output)
+    always_visible: bool = False          # model can discover this meta/tool-introspection capability in every tool turn
 
     def signature(self) -> str:
         parts = [f"{p.name}{'*' if p.required else '?'}: {p.type}" for p in self.params]
@@ -260,7 +261,7 @@ class ToolRegistry:
 
     def for_categories(self, categories) -> list[Tool]:
         wanted = set(categories or ())
-        return [t for t in self.all() if not wanted or wanted & set(t.categories)]
+        return [t for t in self.all() if t.always_visible or not wanted or wanted & set(t.categories)]
 
     def catalog(self, categories=None) -> str:
         return "\n".join(t.catalog_line() for t in self.for_categories(categories))
@@ -271,9 +272,7 @@ class ToolRegistry:
     def for_selected_categories(self, categories) -> list[Tool]:
         """Return only tools matching a non-empty model-visible capability selection."""
         wanted = set(categories or ())
-        if not wanted:
-            return []
-        return [tool for tool in self.all() if wanted.intersection(tool.categories)]
+        return [tool for tool in self.all() if tool.always_visible or wanted.intersection(tool.categories)]
 
     def catalog_for_selected_categories(self, categories) -> str:
         """Build a model catalog without treating an empty selection as permission to expose everything."""
