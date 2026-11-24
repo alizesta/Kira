@@ -362,7 +362,7 @@ CONTROLLER_ACCESS = {
   "state": frozenset({"_att_seq","_chat_action_seq","_chat_action_texts","_menu_actions","_nav_icon_map","_status","_tr","cur","front","sessions","_closing","_effect","_mood_emotion_glow","_save_warned"}),
   "services": frozenset({"character_service","chat_application_service","initiative_application_service","mood_service","provider_application_service","session_application_service","session_manager","settings","tool_agent","voice_application_service"}),
   "adapters": frozenset({"bubble","director","chat_attachment_controller", "appearance_runtime"}),
-  "views": frozenset({"code_chat","appearance_page","assistant_page","char_tab_buttons","char_tab_group","char_tabs_row","character_page","chat_page","chat_stack","gen_stop_btn","glow_effects","help_page","input","mic_btn","mood_indicator","mood_emotion_icon","nav_buttons","avatar_card","menu_btn","route_badge","preferences_page","save_btn","status","tab_keys","tabs","title","voice_page"}),
+  "views": frozenset({"code_chat","appearance_page","assistant_page","char_tab_buttons","char_tab_group","char_tabs_row","character_page","chat_page","chat_stack","gen_stop_btn","glow_effects","help_page","input","kode_activity","mic_btn","mood_indicator","mood_emotion_icon","nav_buttons","avatar_card","menu_btn","route_badge","preferences_page","save_btn","status","tab_keys","tabs","title","voice_page"}),
   "peers": frozenset({"session","runtime","chat","character_settings","attachments_vision","voice_settings"}),
   "resources": frozenset(),
   "extras": frozenset({"session","is_background_session"}),

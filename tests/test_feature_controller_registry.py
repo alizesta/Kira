@@ -176,6 +176,12 @@ class FeatureControllerRegistryTests(unittest.TestCase):
             sorted(shutdown_resources - CONTROLLER_ACCESS["runtime"]["resources"]),
         )
 
+    def test_session_controller_can_access_progress_checklist_view(self):
+        from kira.ui.window_presentation_context import CONTROLLER_ACCESS, VIEW_FIELDS
+
+        self.assertIn("kode_activity", VIEW_FIELDS)
+        self.assertIn("kode_activity", CONTROLLER_ACCESS["session"]["views"])
+
     def test_provider_settings_views_are_declared(self):
         from kira.ui.window_presentation_context import CONTROLLER_ACCESS, VIEW_FIELDS
 
