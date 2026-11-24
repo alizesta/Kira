@@ -81,14 +81,17 @@ class WindowsControlLayer:
     def register(self, cap: Capability) -> Tool:
         self._validate(cap)
         perm = self._permission(cap)
-        self._caps[cap.name] = cap
+        # Do not mutate the module catalogue until the central registry accepts the tool.
+        # A duplicate-name failure must leave the original capability intact.
         # the legacy registry level follows the permission: only READ / (CONTROL, FILE) / (ELEVATED, PROTECTED) exist there
         level = READ if perm == READ_P else ACTION if perm in (CONTROL, FILE) else SENSITIVE
         kwargs = {"max_chars": cap.max_chars} if cap.max_chars else {}
-        return self.registry.register(Tool(cap.name, cap.description, self._wrap(cap), tuple(cap.params), level, tuple(cap.categories),
-                                           confirm_summary=cap.confirm_summary, precheck=cap.precheck, memo=cap.memo, intent_rx=cap.intent_rx,
-                                           permission=perm, domain=cap.domain, backend=cap.backend or DOMAIN_BACKEND[cap.domain],
-                                           verifies_result=cap.verifies_result, external=cap.external, **kwargs))
+        registered = self.registry.register(Tool(cap.name, cap.description, self._wrap(cap), tuple(cap.params), level, tuple(cap.categories),
+                                                  confirm_summary=cap.confirm_summary, precheck=cap.precheck, memo=cap.memo, intent_rx=cap.intent_rx,
+                                                  permission=perm, domain=cap.domain, backend=cap.backend or DOMAIN_BACKEND[cap.domain],
+                                                  verifies_result=cap.verifies_result, external=cap.external, **kwargs))
+        self._caps[cap.name] = cap
+        return registered
 
     @staticmethod
     def _validate(cap: Capability) -> None:
