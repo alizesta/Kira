@@ -87,6 +87,21 @@ class ReverseApiProviderTests(unittest.TestCase):
         self.assertIn("PERSONA", request.prompt)
         self.assertEqual(request.messages[0]["content"], "hi")
 
+    def test_stream_preserves_shared_tool_calls_and_results(self):
+        transport = _Transport()
+        messages = [
+            {"role": "user", "content": "Find the answer"},
+            {"role": "assistant", "content": "", "tool_calls": [
+                {"id": "call-1", "type": "function", "function": {"name": "lookup", "arguments": "{}"}}
+            ]},
+            {"role": "tool", "tool_call_id": "call-1", "name": "lookup", "content": "result-42"},
+        ]
+        list(_provider(transport).stream(messages, "PERSONA"))
+        request = transport.requests[0]
+        self.assertEqual([item["role"] for item in request.messages], ["user", "assistant", "tool"])
+        self.assertIn('"name":"lookup"', request.prompt)
+        self.assertIn("Tool result (lookup, call call-1): result-42", request.prompt)
+
     def test_chat_returns_text_and_empty_answer_is_an_error(self):
         self.assertEqual(_provider(_Transport()).chat(USER, "s"), "Hello")
         with self.assertRaises(ProviderError) as ctx:
