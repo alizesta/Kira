@@ -144,6 +144,35 @@ class DesktopContextTests(unittest.TestCase):
         self.assertIn("OLD_WINDOW_STATE", summary)
         self.assertLess(summary.index("LATEST_KNOWN_STATE"), summary.index("OLD_WINDOW_STATE"))
 
+    def test_summary_distinguishes_window_identity_freshness_from_screen_content(self):
+        now = datetime(2026, 11, 24, 12, 0, 0, tzinfo=timezone.utc)
+        context = DesktopContext(wall_clock=lambda: now)
+        context.update_active_window(window())
+        context._active_observed_at = now - timedelta(seconds=90)
+
+        summary = context.summary()
+
+        self.assertIn(
+            "Foreground window identity freshness: stale; age: 1m 30s "
+            "(window identity only; this is not visual verification of screen content).",
+            summary,
+        )
+        self.assertNotIn("Visible on-screen text", summary)
+
+    def test_summary_reports_cached_ocr_age_and_staleness(self):
+        now = datetime(2026, 11, 24, 12, 0, 0, tzinfo=timezone.utc)
+        context = DesktopContext(wall_clock=lambda: now)
+        context.update_active_window(window())
+        context.set_visible_text("cached screen text", language="eng", confidence=0.9)
+        context._events[-1] = replace(
+            context._events[-1], timestamp=(now - timedelta(seconds=90)).isoformat()
+        )
+
+        summary = context.summary()
+
+        self.assertIn("OCR observation freshness: stale; age: 1m 30s.", summary)
+        self.assertIn("cached screen text", summary)
+
     def test_summary_marks_recent_observations_without_claiming_live_state(self):
         now = datetime(2026, 11, 24, 12, 0, 0, tzinfo=timezone.utc)
         context = DesktopContext(wall_clock=lambda: now)

@@ -157,9 +157,14 @@ class DesktopTests(unittest.TestCase):
         res = self.run_tool("press_keys", {"window": "notepad", "keys": "win+e"}, "press win+e")
         self.assertEqual(res.status, OK, res.text)
 
+    def test_virtual_keyboard_accepts_safe_alt_and_ctrl_shift_letters(self):
+        for combo in ("alt+s", "alt+f", "alt+q", "ctrl+shift+e", "ctrl+shift+s"):
+            with self.subTest(combo=combo):
+                self.assertEqual(parse_combo(combo)[1], combo)
+
     def test_virtual_keyboard_keeps_dangerous_system_shortcuts_blocked(self):
         for bad in ("win+r", "win+l", "alt+f4", "ctrl+alt+delete", "ctrl+shift+esc",
-                    "ctrl+alt+t", "win+ctrl+alt+left", "f25", "ctrl+q", ""):
+                    "ctrl+shift+delete", "ctrl+alt+t", "win+ctrl+alt+left", "f25", "ctrl+q", ""):
             with self.assertRaises(ToolError, msg=bad):
                 parse_combo(bad)
         self.assertEqual(self.run_tool("press_keys", {"window": "notepad", "keys": "ctrl+s"}, "press ctrl+s").status, OK)
@@ -222,10 +227,26 @@ class DesktopTests(unittest.TestCase):
     def test_set_state_is_verified(self):
         self.assertEqual(self.run_tool("window_set_state", {"window": "notepad", "state": "minimize"}, "minimize it").status, OK)
 
+    def test_screen_look_reads_only_the_injected_local_context(self):
+        real = build_registry(PathPolicy({}, None, None))
+        self.assertIsNotNone(real.get("screen_look"))
+
+        unavailable = real.execute("screen_look", {})
+        self.assertEqual(unavailable.status, ERROR)
+        self.assertIn("Eye Mode", unavailable.text)
+
+        real.desktop_context_provider = lambda: "CURRENT SCREEN STATE (freshness: fresh; observation age: 2s):\\nVisible text: hello"
+        observed = real.execute("screen_look", {})
+        self.assertEqual(observed.status, OK, observed.text)
+        self.assertIn("freshness: fresh", observed.text)
+        self.assertIn("Visible text: hello", observed.text)
+
     def test_gate_words_and_layer_registration(self):
         from kira.tools import protocol
         self.assertIn("desktop", protocol.detect_categories("پنجره مرورگر را ببند"))
         self.assertIn("desktop", protocol.detect_categories("متن را تایپ کن"))
+        self.assertIn("desktop", protocol.detect_categories("what is on my screen"))
+        self.assertIn("desktop", protocol.detect_categories("صفحه نمایش رو نگاه کن"))
         self.assertIn("type_text", {c.name for c in self.layer.capabilities()})
         real = build_registry(PathPolicy({}, None, None))                                      # the real module is registered with the Win32 backend
         for name in ("window_list", "type_text", "ui_click", "clipboard_get", "mouse_click"):

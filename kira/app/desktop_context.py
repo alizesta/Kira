@@ -33,6 +33,7 @@ class DesktopContext:
         self._active: dict[str, Any] | None = None
         self._active_key: tuple[int, int] | None = None
         self._active_since: float | None = None
+        self._active_observed_at: datetime | None = None
         self._visible_text = ""
         self._ocr_language = ""
         self._ocr_confidence = 0.0
@@ -81,6 +82,7 @@ class DesktopContext:
             self.clear_sensitive()
             return False
         now = self._clock()
+        observed_at = self._wall_clock()
         with self._lock:
             if self._disposed or not self._active_lifecycle:
                 return False
@@ -110,6 +112,7 @@ class DesktopContext:
                 "hwnd": key[0], "pid": key[1], "exe": exe,
                 "title": title, "path": path, "source": str(source or "desktop")[:16],
             }
+            self._active_observed_at = observed_at
             return changed
 
     def set_visible_text(
@@ -179,6 +182,7 @@ class DesktopContext:
         self._active = None
         self._active_key = None
         self._active_since = None
+        self._active_observed_at = None
         self._visible_text = ""
         self._ocr_language = ""
         self._ocr_confidence = 0.0
@@ -200,6 +204,7 @@ class DesktopContext:
             return {
                 "active_window": dict(self._active) if self._active else None,
                 "active_seconds": duration,
+                "active_observed_at": self._active_observed_at.isoformat() if self._active_observed_at else None,
                 "visible_text": self._visible_text,
                 "ocr_language": self._ocr_language,
                 "ocr_confidence": self._ocr_confidence,
@@ -239,6 +244,25 @@ class DesktopContext:
             lines.append(value)
             return True
 
+        observed_at_value = data.get("active_observed_at")
+        if observed_at_value:
+            try:
+                observed_at = datetime.fromisoformat(observed_at_value)
+                now = self._wall_clock()
+                if observed_at.tzinfo is None:
+                    observed_at = observed_at.replace(tzinfo=timezone.utc)
+                if now.tzinfo is None:
+                    now = now.replace(tzinfo=timezone.utc)
+                age_seconds = max(0, int((now - observed_at).total_seconds()))
+                age_label = f"{age_seconds}s" if age_seconds < 60 else f"{age_seconds // 60}m {age_seconds % 60}s"
+                freshness = "fresh" if age_seconds <= 15 else "recent" if age_seconds <= 60 else "stale"
+            except (TypeError, ValueError):
+                freshness, age_label = "unknown", "unknown"
+            append_bounded(
+                f"Foreground window identity freshness: {freshness}; age: {age_label} "
+                "(window identity only; this is not visual verification of screen content)."
+            )
+
         events = list(data["recent_events"])
         visual_events = [event for event in events if event.get("type") == "visual_observation"]
         if visual_events:
@@ -275,6 +299,19 @@ class DesktopContext:
                         break
 
         if data["visible_text"]:
+            ocr_events = [event for event in events if event.get("type") == "visible_text_updated"]
+            ocr_freshness, ocr_age = "unknown", "unknown"
+            if ocr_events:
+                try:
+                    observed_at = datetime.fromisoformat(ocr_events[-1]["timestamp"])
+                    if observed_at.tzinfo is None:
+                        observed_at = observed_at.replace(tzinfo=timezone.utc)
+                    age_seconds = max(0, int((self._wall_clock() - observed_at).total_seconds()))
+                    ocr_age = f"{age_seconds}s" if age_seconds < 60 else f"{age_seconds // 60}m {age_seconds % 60}s"
+                    ocr_freshness = "fresh" if age_seconds <= 15 else "recent" if age_seconds <= 60 else "stale"
+                except (KeyError, TypeError, ValueError):
+                    pass
+            append_bounded(f"OCR observation freshness: {ocr_freshness}; age: {ocr_age}.")
             append_bounded(
                 f"Visible on-screen text [{data['ocr_language'] or 'unknown'}, "
                 f"confidence {data['ocr_confidence']:.2f}]: {data['visible_text']}"

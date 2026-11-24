@@ -51,6 +51,7 @@ TOOL_LABELS = {
     "delete_file": "حذف فایل (نیازمند تأیید)", "move_file": "انتقال فایل (نیازمند تأیید)",
     "agent_ask": "سپردن کار به ایجنت (نیازمند تأیید)", "agent_status": "وضعیت کار ایجنت", "agent_answer": "ارسال جواب کاربر به ایجنت",
     "window_list": "فهرست پنجره‌ها", "window_active": "پنجره‌ی فعال", "window_focus": "آوردن پنجره به جلو", "window_close": "بستن پنجره", "window_set_state": "تغییر اندازه‌ی پنجره",
+    "screen_look": "بررسی آخرین وضعیت قابل مشاهدهٔ دسکتاپ",
     "type_text": "تایپ متن", "press_keys": "زدن کلید", "clipboard_set": "قرار دادن متن در کلیپ‌بورد", "clipboard_get": "خواندن کلیپ‌بورد (نیازمند تأیید)",
     "ui_list_controls": "فهرست کنترل‌های پنجره", "ui_click": "کلیک روی کنترل", "ui_click_confirmed": "کلیک روی کنترل حساس (نیازمند تأیید)",
     "ui_set_text": "پر کردن فیلد متنی", "mouse_click": "کلیک روی نقطه (نیازمند تأیید)",
@@ -142,6 +143,12 @@ class ToolAgent(AutonomyMixin):
         self._pending_by_session: dict[str, Pending] = {}
         self._pending_new_sessions: set[str] = set()
         self._init_autonomy(data_dir)            # task plans, task state, user control of a running task
+
+    def set_desktop_context_provider(self, provider):
+        """Inject the UI-owned, privacy-filtered local desktop summary into screen_look."""
+        if provider is not None and not callable(provider):
+            raise TypeError("desktop context provider must be callable or None")
+        self.registry.desktop_context_provider = provider
 
     def _ensure_app_catalog_warmup(self):
         """Warm Windows app indexes only when a request actually uses app tools."""

@@ -31,6 +31,7 @@ class LazyToolAgent:
         self._lock = threading.Lock()
         self._pending_settings = None
         self._pending_competitive_safe_mode = None
+        self._pending_desktop_context_provider = None
         self._pending_begin_turns: set[str] = set()
         self._tasks_proxy = _LazyTaskStore(self)
 
@@ -47,6 +48,11 @@ class LazyToolAgent:
                     instance.set_settings(self._pending_settings)
                 if self._pending_competitive_safe_mode is not None:
                     instance.set_competitive_safe_mode(self._pending_competitive_safe_mode)
+                if self._pending_desktop_context_provider is not None:
+                    setter = getattr(instance, "set_desktop_context_provider", None)
+                    if not callable(setter):
+                        raise TypeError("ToolAgent does not support desktop context injection")
+                    setter(self._pending_desktop_context_provider)
                 begin_turn = getattr(instance, "begin_turn", None)
                 if callable(begin_turn):
                     for session_id in sorted(self._pending_begin_turns):
@@ -72,6 +78,19 @@ class LazyToolAgent:
             instance = self._instance
         if instance is not None:
             instance.set_settings(settings)
+
+    def set_desktop_context_provider(self, provider) -> None:
+        """Pass the UI-owned perception summary through without realizing ToolAgent at startup."""
+        if provider is not None and not callable(provider):
+            raise TypeError("desktop context provider must be callable or None")
+        with self._lock:
+            self._pending_desktop_context_provider = provider
+            instance = self._instance
+        if instance is not None:
+            setter = getattr(instance, "set_desktop_context_provider", None)
+            if not callable(setter):
+                raise TypeError("ToolAgent does not support desktop context injection")
+            setter(provider)
 
     def set_competitive_safe_mode(self, enabled: bool) -> None:
         """Preserve Game Mode restrictions before or after realization."""

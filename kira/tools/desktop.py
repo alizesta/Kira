@@ -64,9 +64,10 @@ SAFE_PLAIN = {"enter", "return", "tab", "esc", "escape", "backspace", "delete", 
               "capslock", "numlock", "scrolllock", *{f"f{n}" for n in range(1, 25)}}
 SAFE_CTRL = set("ACXVZYSFNOPWTLDRBIU") | {"enter", "tab", "home", "end", "left", "right", "up", "down",
               "backspace", "delete", "insert", "pageup", "pagedown"}
-SAFE_CTRL_SHIFT = {"left", "right", "up", "down", "home", "end", "Z", "T", "N", "tab"}
+SAFE_CTRL_SHIFT = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ") | {"left", "right", "up", "down", "home", "end", "tab"}
 SAFE_SHIFT = SAFE_PLAIN - {"f1"}
-SAFE_ALT = {"left", "right", "tab", "home", "space"}
+# Alt+letter opens an application menu mnemonic; Alt+F4 remains explicitly denied below.
+SAFE_ALT = {"left", "right", "tab", "home", "space"} | set("abcdefghijklmnopqrstuvwxyz")
 SAFE_WIN = {"a", "d", "e", "g", "i", "s", "t", "v", "x", "tab", "up", "down", "left", "right",
             "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "period"}
 SAFE_WIN_CTRL = {"d", "left", "right", "f4", "o"}
