@@ -671,7 +671,7 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
                 QTimer.singleShot(100, self.window.close)
                 return
             event.accept()
-            QTimer.singleShot(0, QApplication.quit)
+            QTimer.singleShot(0, self._exit_application)
             return
         model_import_worker = self.context.resource("_model_import_worker")
         if model_import_worker is not None and model_import_worker.isRunning():
@@ -761,7 +761,14 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
             QTimer.singleShot(100, self.window.close)
             return
         event.accept()
-        QTimer.singleShot(0, QApplication.quit)                     # the tray keeps 'last window closed' from quitting by itself
+        QTimer.singleShot(0, self._exit_application)
+
+    def _exit_application(self):
+        """Finish the Qt event loop after the normal close/shutdown protocol succeeds."""
+        app = QApplication.instance()
+        if app is not None:
+            app.setQuitOnLastWindowClosed(True)
+            app.quit()
 
     def reload_chat_view(self):
         for sess in self.context.state.sessions.values():             # every character's conversation is shown again from the database
