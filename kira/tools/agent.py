@@ -707,19 +707,48 @@ class ToolAgent(AutonomyMixin):
         """Run a ToolPlan; an access-denial answer gets one retry with the complete local catalog."""
         if self._direct_bridge(router, plan):
             plan.index_only, plan.complex, plan.reasons, plan.direct = False, False, (), True
-        # Hold the first streamed answer until its capability claims are checked. If it is
-        # an unsupported access-denial, discard it before retrying with the full local catalog.
-        staged_chunks = []
-        def stage_chunk(piece):
-            if piece:
-                staged_chunks.append(str(piece))
+        # Hold only the opening sentence while checking for the common unsupported
+        # access-denial claim. Once it is safe, the rest of the answer streams normally.
+        # If a denial is detected, hold the rest until the retry decision is known.
+        pending_chunks = []
+        pending_text = ""
+        released = False
+        denial_candidate = False
+
+        def guarded_chunk(piece):
+            nonlocal pending_text, released, denial_candidate
+            if not piece:
+                return
+            piece = str(piece)
+            if released:
+                if callable(on_chunk):
+                    on_chunk(piece)
+                return
+            pending_chunks.append(piece)
+            pending_text += piece
+            if self._claims_missing_access(pending_text):
+                denial_candidate = True
+                return
+            if len(pending_text) >= 240 or re.search(r"[.!?؟\\n]", pending_text):
+                released = True
+                if callable(on_chunk):
+                    for chunk in pending_chunks:
+                        on_chunk(chunk)
+                pending_chunks.clear()
+                pending_text = ""
+
+        def flush_pending():
+            if callable(on_chunk):
+                for chunk in pending_chunks:
+                    on_chunk(chunk)
+            pending_chunks.clear()
+
         try:
             result = self._run_once(router, messages, system_prompt, temperature, plan, retry_index,
-                                    stage_chunk, on_event, on_tool)
+                                    guarded_chunk, on_event, on_tool)
         except Exception:
-            if callable(on_chunk):
-                for piece in staged_chunks:
-                    on_chunk(piece)
+            # No retry decision is available after a transport failure; preserve partial output.
+            flush_pending()
             raise
         if isinstance(result, dict):
             model_escalated = bool(result.pop("_escalate", False))
@@ -750,11 +779,10 @@ class ToolAgent(AutonomyMixin):
                 if self.planning_enabled():
                     plan.complex = True
                     plan.reasons = ("بررسی دوباره با فهرست کامل قابلیت‌های محلی",)
-                # Discard the staged unsupported denial; it must not flash before the retry.
+                # Discard the buffered denial text; it must not flash before the retry.
                 return self._run_once(router, messages, system_prompt, temperature, plan, retry_index, on_chunk, on_event, on_tool)
-        if callable(on_chunk):
-            for piece in staged_chunks:
-                on_chunk(piece)
+        # If a denial was not eligible for a full-catalog retry, preserve the model's answer.
+        flush_pending()
         return result
 
     def _direct_bridge(self, router, plan) -> bool:
