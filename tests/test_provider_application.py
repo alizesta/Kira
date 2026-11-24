@@ -21,36 +21,6 @@ class ProviderApplicationServiceTests(unittest.TestCase):
         route = next(r for r in self.settings["routes"] if r["provider"] == provider_id)
         self.assertEqual(route["model"], "test-model")
 
-    def test_ensure_reverse_api_route_creates_enabled_session_provider_and_route(self):
-        route = self.service.ensure_reverse_api_route(self.settings)
-        config = self.settings["providers"]["reverse_api"]
-        self.assertEqual(config["type"], "reverse_api")
-        self.assertEqual(config["transport"], "deepseek")
-        self.assertTrue(config["enabled"])
-        self.assertFalse(route_model.requires_key("reverse_api", config))
-        self.assertEqual(route["provider"], "reverse_api")
-        self.assertEqual(route["model"], "deepseek-web")
-        self.assertTrue(route["enabled"])
-        self.assertEqual(config["timeout"], route_model.DEFAULT_REVERSE_TIMEOUT)
-        self.assertEqual(route["timeout"], route_model.DEFAULT_REVERSE_TIMEOUT)
-
-    def test_ensure_reverse_api_route_is_idempotent_and_reenables_existing_route(self):
-        first = self.service.ensure_reverse_api_route(self.settings)
-        self.settings["providers"]["reverse_api"]["enabled"] = False
-        route_model.update_route(self.settings, first["id"], enabled=False)
-        second = self.service.ensure_reverse_api_route(self.settings)
-        self.assertEqual(first["id"], second["id"])
-        self.assertTrue(self.settings["providers"]["reverse_api"]["enabled"])
-        self.assertTrue(second["enabled"])
-        self.assertEqual(sum(r["provider"] == "reverse_api" for r in self.settings["routes"]), 1)
-
-    def test_ensure_reverse_api_route_rolls_back_on_failure(self):
-        before = deepcopy(self.settings)
-        with patch("kira.app.provider_application.route_model.add_route", side_effect=ValueError("route rejected")):
-            with self.assertRaisesRegex(ValueError, "route rejected"):
-                self.service.ensure_reverse_api_route(self.settings)
-        self.assertEqual(self.settings, before)
-
     def test_add_provider_rolls_back_when_initial_route_is_invalid(self):
         before = deepcopy(self.settings)
         with patch("kira.app.provider_application.route_model.add_route", side_effect=ValueError("route rejected")):

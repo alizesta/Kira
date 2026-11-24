@@ -188,24 +188,6 @@ class ProviderSettingsController(WindowFeatureController):
         if assistant_page is not None:
             layout.addWidget(assistant_page.model_box)        # local Ollama model settings (formerly in the Assistant tab)
 
-        # DeepSeek Reverse API uses a one-time visible login; later requests will use saved state headlessly.
-        deepseek_row = QHBoxLayout()
-        self.deepseek_login_btn = QPushButton("ورود به حساب DeepSeek")
-        self.deepseek_login_btn.clicked.connect(self.start_deepseek_login)
-        self.deepseek_enable_btn = QPushButton("فعال‌سازی در چت")
-        self.deepseek_enable_btn.setToolTip("DeepSeek را به Route Manager اضافه می‌کند و برای چت انتخاب می‌کند.")
-        self.deepseek_enable_btn.clicked.connect(self.enable_deepseek_route)
-        self.deepseek_disconnect_btn = QPushButton("قطع اتصال Chromium")
-        self.deepseek_disconnect_btn.setToolTip("مرورگر مخفی Chromium را می‌بندد؛ نشست ورود DeepSeek حفظ می‌شود.")
-        self.deepseek_disconnect_btn.clicked.connect(self.disconnect_deepseek_chromium)
-        self.deepseek_login_status = QLabel()
-        deepseek_row.addWidget(self.deepseek_login_btn)
-        deepseek_row.addWidget(self.deepseek_enable_btn)
-        deepseek_row.addWidget(self.deepseek_disconnect_btn)
-        deepseek_row.addWidget(self.deepseek_login_status, 1)
-        layout.addLayout(deepseek_row)
-        self.refresh_deepseek_login_status()
-
         # Advanced controls remain available but are collapsed by default.
         self.connections_advanced_btn = QToolButton()
         self.connections_advanced_btn.setText("تنظیمات پیشرفته و مدیریت Providerها")
@@ -752,8 +734,6 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.views.route_manual_lbl.setText("انتخاب دستی: " + (manual or "خودکار (بر اساس اولویت)") +
                                       ("" if self.context.services.settings.get("failover_enabled", True) else " · Failover خاموش است"))
         self.on_route_selected()
-        if hasattr(self, "deepseek_login_status"):
-            self.refresh_deepseek_login_status()
 
     def on_route_selected(self):
         rid = self._selected_route_id()
@@ -775,10 +755,7 @@ class ProviderSettingsController(WindowFeatureController):
                 self.context.views.route_model_edit.set_models(self.context.state._ollama_models)
             self.context.views.route_model_edit.setText(route["model"])
             self.context.views.route_enabled_chk.setChecked(bool(route.get("enabled", True)))
-            if route["provider"] == route_model.REVERSE_API:
-                lo, hi = self.context.services.provider_application_service.REVERSE_TIMEOUT
-            else:
-                lo, hi = self.context.services.provider_application_service.LOCAL_TIMEOUT if local else self.context.services.provider_application_service.CLOUD_TIMEOUT
+            lo, hi = self.context.services.provider_application_service.LOCAL_TIMEOUT if local else self.context.services.provider_application_service.CLOUD_TIMEOUT
             self.context.views.route_timeout.setRange(lo, hi)
             self.context.views.route_timeout.setValue(int(route.get("timeout", 18)))
             self.context.views.route_cooldown.setValue(int(route.get("cooldown", 45)))
@@ -951,119 +928,6 @@ class ProviderSettingsController(WindowFeatureController):
         self.refresh_unified_models()
         if not self.context.session.busy:
             self.feature_controller("runtime").set_badge("idle", self.context.session.client.preview_route())
-
-    def refresh_deepseek_login_status(self):
-        try:
-            from ..reverse_api.deepseek_session import DeepSeekSessionStore
-            connected = DeepSeekSessionStore().has_session()
-            settings = self.context.services.settings
-            config = settings.get("providers", {}).get(route_model.REVERSE_API, {})
-            route = self.context.services.provider_application_service.find_route(settings, route_model.REVERSE_API)
-            active = (bool(config.get("enabled")) and bool(route and route.get("enabled"))
-                      and settings.get("manual_route_id") == (route or {}).get("id"))
-            if hasattr(self, "deepseek_enable_btn"):
-                self.deepseek_enable_btn.setEnabled(connected)
-                self.deepseek_enable_btn.setText("✓ انتخاب‌شده برای چت" if active else "انتخاب DeepSeek برای چت")
-            try:
-                from ..reverse_api import is_deepseek_browser_running
-                browser_running = is_deepseek_browser_running()
-                if hasattr(self, "deepseek_disconnect_btn"):
-                    self.deepseek_disconnect_btn.setEnabled(browser_running)
-            except Exception:
-                browser_running = False
-            if not connected:
-                message = "ابتدا وارد حساب DeepSeek شو."
-            elif active and browser_running:
-                message = "نشست ذخیره شده؛ Chromium متصل و آماده است."
-            elif active:
-                message = "DeepSeek انتخاب شده؛ Chromium هنوز اجرا نشده یا قطع شده است."
-            else:
-                message = "نشست ذخیره شده؛ برای انتخاب DeepSeek در چت دکمه را بزن."
-            self.deepseek_login_status.setText(message)
-        except Exception as exc:
-            if hasattr(self, "deepseek_enable_btn"):
-                self.deepseek_enable_btn.setEnabled(False)
-            self.deepseek_login_status.setText("وضعیت نشست قابل‌خواندن نیست: " + str(exc)[:160])
-
-    def disconnect_deepseek_chromium(self):
-        if self.context.state._closing:
-            return
-        try:
-            from ..reverse_api import disconnect_deepseek_browser
-            closed = disconnect_deepseek_browser()
-            self.deepseek_disconnect_btn.setEnabled(False)
-            self.deepseek_login_status.setText(
-                "درخواست بستن Chromium ارسال شد؛ نشست ورود DeepSeek محفوظ می‌ماند."
-                if closed else "Chromium از قبل بسته بود؛ نشست ورود DeepSeek محفوظ است."
-            )
-        except Exception as exc:
-            self.deepseek_login_status.setText("✕ قطع اتصال Chromium ناموفق بود: " + str(exc)[:180])
-
-    def enable_deepseek_route(self):
-        if self.context.state._closing:
-            return
-        try:
-            from ..reverse_api.deepseek_session import DeepSeekSessionStore
-            if not DeepSeekSessionStore().has_session():
-                self.deepseek_login_status.setText("ابتدا با دکمهٔ ورود به حساب DeepSeek وارد شو.")
-                self.deepseek_enable_btn.setEnabled(False)
-                return
-            route = self.context.services.provider_application_service.ensure_reverse_api_route(
-                self.context.services.settings, transport="deepseek", enabled=True
-            )
-            self.context.session.client.reset_cooldowns()
-            self.after_route_change(select=route["id"])
-            self.feature_controller("runtime").select_route(route["id"])
-            self.refresh_deepseek_login_status()
-            self.deepseek_login_status.setText("✓ DeepSeek فعال و برای چت انتخاب شد.")
-        except Exception as exc:
-            self.deepseek_login_status.setText("✕ فعال‌سازی DeepSeek انجام نشد: " + str(exc)[:200])
-
-    def start_deepseek_login(self):
-        if self.context.state._closing:
-            return
-        current = self.context.resource("_deepseek_login_worker")
-        if current is not None and current.isRunning():
-            return
-        self.deepseek_login_btn.setEnabled(False)
-        self.deepseek_login_status.setText("Chrome عادی Kira در حال باز شدن است؛ کپچا را در همان پنجره حل کن…")
-        def login():
-            from ..reverse_api.deepseek_session import DeepSeekBrowserLogin
-            return DeepSeekBrowserLogin().login()
-        try:
-            worker = TaskWorker(login)
-            self.context.state._deepseek_login_worker = worker
-            worker.done.connect(self.on_deepseek_login_done)
-            worker.finished.connect(self.clear_deepseek_login_worker)
-            worker.start()
-        except Exception as exc:
-            self.context.state._deepseek_login_worker = None
-            self.deepseek_login_btn.setEnabled(True)
-            self.deepseek_login_status.setText("✕ شروع ورود DeepSeek ناموفق بود: " + str(exc)[:200])
-
-    @Slot(object)
-    def on_deepseek_login_done(self, result):
-        worker = self.sender()
-        if worker is None or self.context.state._deepseek_login_worker is not worker or self.context.state._closing:
-            return
-        ok, value = result
-        self.deepseek_login_btn.setEnabled(True)
-        if ok:
-            self.refresh_deepseek_login_status()
-        elif str(value).startswith("CHROME_UNAVAILABLE:"):
-            self.deepseek_login_status.setText("✕ " + str(value).replace("CHROME_UNAVAILABLE:", "", 1).strip()[:220])
-        else:
-            self.deepseek_login_status.setText("✕ ورود ناموفق بود: " + str(value)[:220])
-
-    @Slot()
-    def clear_deepseek_login_worker(self):
-        worker = self.sender()
-        if self.context.state._deepseek_login_worker is worker:
-            self.context.state._deepseek_login_worker = None
-        if worker is not None:
-            worker.deleteLater()
-        if not self.context.state._closing:
-            self.deepseek_login_btn.setEnabled(True)
 
     def test_selected_route(self):
         rid = self._selected_route_id()

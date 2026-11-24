@@ -6,11 +6,9 @@ from importlib import import_module
 from threading import RLock
 from typing import Any
 
-# Built-in adapters that are imported only when first resolved (keeps startup lazy and avoids import cycles).
+# Optional adapters that are imported only when first resolved (keeps startup lazy and avoids import cycles).
 # Format: provider id -> "package.module:ClassName".
-DEFAULT_LAZY_ADAPTERS: dict[str, str] = {
-    "reverse_api": "kira.reverse_api.provider:ReverseApiProvider",
-}
+DEFAULT_LAZY_ADAPTERS: dict[str, str] = {}
 
 
 class ProviderRegistry:

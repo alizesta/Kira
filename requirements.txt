@@ -1,6 +1,5 @@
 PySide6>=6.7,<7
 requests>=2.31,<3
-playwright>=1.51,<2          # managed Chromium for DeepSeek Reverse API login/session
 numpy>=1.26
 psutil>=5.9            # optional: faster / richer PC information (Kira works without it)
 dxcam[winrt]>=0.3.0; platform_system == "Windows"  # DXGI / Windows Graphics Capture for low-latency game frames

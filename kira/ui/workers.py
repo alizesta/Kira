@@ -11,8 +11,6 @@ import time
 
 from PySide6.QtCore import QThread, Signal
 
-from ..core.request_context import conversation_scope
-
 
 class StreamWorker(QThread):
     """Runs one streamed request off the GUI thread. Everything the router reports becomes a Qt signal."""
@@ -24,10 +22,9 @@ class StreamWorker(QThread):
 
     def __init__(
         self, router, messages, prompt, temperature, retry_index=0,
-        agent=None, plan=None, role="", route_id="", conversation_id=None,
+        agent=None, plan=None, role="", route_id="",
     ):
         super().__init__()
-        self.conversation_id = str(conversation_id) if conversation_id else None
         self.role, self.route_id = role, route_id                 # brain stage (kira/brain.py); "" = normal routing
         self.router, self.messages, self.prompt, self.temperature, self.retry_index = router, messages, prompt, temperature, retry_index
         self.agent, self.plan = agent, plan                       # tool loop (kira/tools); plan None = an ordinary chat turn
@@ -39,16 +36,15 @@ class StreamWorker(QThread):
             # Establish the brain role first: vision_route_id() must see the role's
             # usage limits, and vision_scope() must be the innermost scope so its
             # selected Vision route is not overwritten by role_scope's preference.
-            with conversation_scope(self.conversation_id):
-                with (scope(self.role, self.route_id) if scope else contextlib.nullcontext()):
-                    if has_images:
-                        vision_route = self.router.vision_route_id()
-                        if not vision_route:
-                            raise RuntimeError("برای تحلیل این تصویر هیچ مدل Vision فعالی در Route Manager پیدا نشد. یک مدل بینایی انتخاب کن.")
-                        with self.router.vision_scope(vision_route):
-                            result = self._run_request()
-                    else:
+            with (scope(self.role, self.route_id) if scope else contextlib.nullcontext()):
+                if has_images:
+                    vision_route = self.router.vision_route_id()
+                    if not vision_route:
+                        raise RuntimeError("برای تحلیل این تصویر هیچ مدل Vision فعالی در Route Manager پیدا نشد. یک مدل بینایی انتخاب کن.")
+                    with self.router.vision_scope(vision_route):
                         result = self._run_request()
+                else:
+                    result = self._run_request()
             self.finished_ok.emit(result)
         except Exception as e:                                    # noqa: BLE001 - shown to the user, never crashes the UI
             self.failed.emit(str(e))

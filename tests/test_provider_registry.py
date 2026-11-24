@@ -39,6 +39,10 @@ class ProviderRegistryTests(unittest.TestCase):
         finally:
             PROVIDER_REGISTRY.register("groq", original, replace=True)
 
+    def test_retired_reverse_api_adapter_is_not_available(self):
+        self.assertIsNone(ProviderRegistry().resolve("reverse_api"))
+        self.assertIsNone(provider_class("reverse_api", {"type": "reverse_api"}))
+
     def test_builtin_adapter_satisfies_chat_provider_contract(self):
         provider = GroqProvider({"enabled": False}, name="groq")
         self.assertIsInstance(provider, ChatProvider)

@@ -79,7 +79,6 @@ class ProviderApplicationService:
     BUILTIN = route_model.BUILTIN
     LOCAL_TIMEOUT = route_model.LOCAL_TIMEOUT
     CLOUD_TIMEOUT = route_model.CLOUD_TIMEOUT
-    REVERSE_TIMEOUT = route_model.REVERSE_TIMEOUT
 
     @staticmethod
     def get_routes(settings: dict[str, Any]):
@@ -104,34 +103,6 @@ class ProviderApplicationService:
     @staticmethod
     def add_route(settings: dict[str, Any], provider: str, model: str, enabled: bool = True):
         return route_model.add_route(settings, provider, model, enabled=enabled)
-
-    @staticmethod
-    def ensure_reverse_api_route(settings: dict[str, Any], transport: str = "deepseek", enabled: bool = True):
-        """Create or repair the single session-backed Reverse API provider and its chat route atomically."""
-        before = deepcopy(settings)
-        try:
-            route_model.add_reverse_api_provider(settings, transport, enabled=enabled)
-            config = settings.setdefault("providers", {}).setdefault(route_model.REVERSE_API, {})
-            config["enabled"] = bool(enabled)
-            if not config.get("model"):
-                config["model"] = "deepseek-web"
-            route_model.ensure_routes(settings)
-            route = route_model.find_route(settings, route_model.REVERSE_API)
-            if route is None:
-                route = route_model.add_route(
-                    settings, route_model.REVERSE_API, config["model"], enabled=enabled
-                )
-            else:
-                changes = {"enabled": bool(enabled)}
-                if not route.get("model"):
-                    changes["model"] = config["model"]
-                route_model.update_route(settings, route["id"], **changes)
-                route = route_model.find_route(settings, route["id"])
-            return route
-        except Exception:
-            settings.clear()
-            settings.update(before)
-            raise
 
     @staticmethod
     def update_route(settings: dict[str, Any], route_id: str, **changes):

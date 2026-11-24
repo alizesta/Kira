@@ -25,11 +25,8 @@ CLOUD_TIMEOUT = (5, 60)
 LOCAL_TIMEOUT = (10, 600)
 DEFAULT_CLOUD_TIMEOUT = 18
 DEFAULT_LOCAL_TIMEOUT = 180
-REVERSE_TIMEOUT = (30, 600)
-DEFAULT_REVERSE_TIMEOUT = 300
 DEFAULT_COOLDOWN = 45                  # seconds after a transient failure (network / timeout / 5xx)
 COOLDOWN_RANGE = (0, 3600)
-REVERSE_API = "reverse_api"           # provider id AND provider type of the Reverse API connection (see kira/reverse_api)
 
 
 # ---------------- provider helpers ----------------
@@ -53,8 +50,8 @@ def provider_label(name, cfg=None):
 
 
 def requires_key(name, cfg=None):
-    """Whether the provider needs an API key. Ollama and Reverse API authenticate differently (no key)."""
-    return provider_type(name, cfg) not in ("ollama", REVERSE_API) and not (cfg or {}).get("local")
+    """Whether the provider needs an API key. Ollama is the only built-in keyless provider."""
+    return provider_type(name, cfg) != "ollama" and not (cfg or {}).get("local")
 
 
 def slugify(text):
@@ -83,23 +80,6 @@ def add_provider(settings, label, base_url, api_key="", local=False, enabled=Tru
         "type": "openai_compat", "label": label, "base_url": base_url, "api_key": str(api_key or "").strip(),
         "local": bool(local), "enabled": bool(enabled), "timeout": DEFAULT_LOCAL_TIMEOUT if local else DEFAULT_CLOUD_TIMEOUT}
     return pid
-
-
-def add_reverse_api_provider(settings, transport, label="Reverse API", enabled=False):
-    """Register (or re-point) the single Reverse API connection. Returns its provider id ("reverse_api").
-
-    ``transport`` is the id of a transport registered in kira.reverse_api.TRANSPORTS. The provider is OFF by default
-    and carries no credentials: a transport that needs a session owns it. Existing routes stay attached."""
-    transport = str(transport or "").strip().lower()
-    if not transport:
-        raise ValueError("شناسه‌ی انتقال (transport) خالی است.")
-    providers = settings.setdefault("providers", {})
-    cfg = providers.get(REVERSE_API)
-    if not isinstance(cfg, dict):
-        cfg = providers[REVERSE_API] = {"enabled": bool(enabled)}
-    cfg.update({"type": REVERSE_API, "label": str(label or "Reverse API").strip() or "Reverse API",
-                "transport": transport, "local": False, "timeout": DEFAULT_REVERSE_TIMEOUT})
-    return REVERSE_API
 
 
 def _check_url(url):
@@ -184,22 +164,15 @@ def is_google(provider, cfg=None):
 
 def effective_timeout(route, cfg):
     """Seconds a request on this route may take. Shared by chat and connection tests."""
-    provider = route.get("provider")
     timeout = route.get("timeout") or (cfg or {}).get("timeout", DEFAULT_CLOUD_TIMEOUT)
-    if provider == REVERSE_API:
-        return clamp_timeout(timeout, "cloud", provider)
-    if is_google(provider, cfg) and int(timeout or DEFAULT_CLOUD_TIMEOUT) <= DEFAULT_CLOUD_TIMEOUT:
+    if is_google(route.get("provider"), cfg) and int(timeout or DEFAULT_CLOUD_TIMEOUT) <= DEFAULT_CLOUD_TIMEOUT:
         return CLOUD_TIMEOUT[1]
     return timeout
 
 
-def clamp_timeout(value, kind, provider=None):
-    if provider == REVERSE_API:
-        lo, hi = REVERSE_TIMEOUT
-        default = DEFAULT_REVERSE_TIMEOUT
-    else:
-        lo, hi = LOCAL_TIMEOUT if kind == "local" else CLOUD_TIMEOUT
-        default = DEFAULT_LOCAL_TIMEOUT if kind == "local" else DEFAULT_CLOUD_TIMEOUT
+def clamp_timeout(value, kind):
+    lo, hi = LOCAL_TIMEOUT if kind == "local" else CLOUD_TIMEOUT
+    default = DEFAULT_LOCAL_TIMEOUT if kind == "local" else DEFAULT_CLOUD_TIMEOUT
     try:
         return max(lo, min(int(value), hi))
     except (TypeError, ValueError):
@@ -239,7 +212,7 @@ def normalize_model_id(value):
 def make_route(route_id, provider, model, enabled=True, timeout=None, cooldown=None, kind=None, **extra):
     kind = kind or provider_kind(provider)
     route = {"id": str(route_id), "provider": str(provider), "model": normalize_model_id(model), "enabled": bool(enabled),
-             "timeout": clamp_timeout(timeout, kind, provider), "cooldown": clamp_cooldown(cooldown if cooldown is not None else DEFAULT_COOLDOWN)}
+             "timeout": clamp_timeout(timeout, kind), "cooldown": clamp_cooldown(cooldown if cooldown is not None else DEFAULT_COOLDOWN)}
     for key in ("num_ctx", "num_predict"):                       # optional per-route Ollama overrides (0/absent = inherit)
         if extra.get(key):
             route[key] = int(extra[key])
@@ -280,6 +253,8 @@ def get_routes(settings):
 def ensure_routes(settings):
     """Persist and repair routes, collapsing duplicate provider/model entries."""
     settings.setdefault("providers", {})
+    # Remove configurations persisted by the retired browser-backed Reverse API.
+    settings["providers"].pop("reverse_api", None)
     stored = settings.get("routes")
     routes = derive_routes(settings) if not isinstance(stored, list) else stored
     clean, seen, model_positions, id_remap = [], set(), {}, {}
@@ -295,14 +270,7 @@ def ensure_routes(settings):
             rid, n = f"{base}-{n}", n + 1
         seen.add(rid)
         kind = provider_kind(provider, settings["providers"].get(provider))
-        saved_timeout = r.get("timeout")
-        if provider == REVERSE_API:
-            try:
-                if saved_timeout is None or int(saved_timeout) <= CLOUD_TIMEOUT[1]:
-                    saved_timeout = DEFAULT_REVERSE_TIMEOUT
-            except (TypeError, ValueError):
-                saved_timeout = DEFAULT_REVERSE_TIMEOUT
-        item = make_route(rid, provider, r.get("model", ""), r.get("enabled", True), saved_timeout, r.get("cooldown"), kind,
+        item = make_route(rid, provider, r.get("model", ""), r.get("enabled", True), r.get("timeout"), r.get("cooldown"), kind,
                           num_ctx=r.get("num_ctx"), num_predict=r.get("num_predict"))
         if r.get("label"):
             item["label"] = str(r["label"])[:60]
@@ -358,6 +326,11 @@ def ensure_routes(settings):
 
     settings["routes"] = clean
     ids = {r["id"] for r in clean}
+    notes = settings.get("route_notes")
+    if isinstance(notes, dict):
+        for route_id in tuple(notes):
+            if route_id not in ids:
+                notes.pop(route_id, None)
     if settings.get("manual_route_id") not in ids:
         settings["manual_route_id"] = ""
     if settings.get("default_route_id") not in ids:
@@ -462,7 +435,7 @@ def update_route(settings, route_id, **changes):
         if route["provider"] == "ollama" and route["enabled"]:
             settings.setdefault("providers", {}).setdefault("ollama", {})["enabled"] = True
     if "timeout" in changes:
-        route["timeout"] = clamp_timeout(changes["timeout"], kind, route["provider"])
+        route["timeout"] = clamp_timeout(changes["timeout"], kind)
     if "cooldown" in changes:
         route["cooldown"] = clamp_cooldown(changes["cooldown"])
     for key in ("num_ctx", "num_predict"):
