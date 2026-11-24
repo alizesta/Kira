@@ -748,6 +748,8 @@ class ProviderSettingsController(WindowFeatureController):
         self.context.views.route_manual_lbl.setText("انتخاب دستی: " + (manual or "خودکار (بر اساس اولویت)") +
                                       ("" if self.context.services.settings.get("failover_enabled", True) else " · Failover خاموش است"))
         self.on_route_selected()
+        if hasattr(self, "deepseek_login_status"):
+            self.refresh_deepseek_login_status()
 
     def on_route_selected(self):
         rid = self._selected_route_id()
