@@ -62,6 +62,14 @@ class DeepSeekBrowserTransport:
         self.config = dict(config or {})
         return self
 
+    def _timeout_ms(self) -> int:
+        """Convert the active Route timeout to milliseconds without overriding short user values."""
+        try:
+            seconds = float(self.config.get("timeout", 90))
+        except (TypeError, ValueError):
+            seconds = 90.0
+        return max(1_000, int(seconds * 1000))
+
     def status(self) -> TransportStatus:
         try:
             state = self.store.load()
@@ -117,7 +125,7 @@ class DeepSeekBrowserTransport:
                 raise ReverseTransportError(str(exc), kind="auth", retryable=False) from exc
             if not state:
                 raise ReverseTransportError("نشست DeepSeek ذخیره نشده است؛ ابتدا وارد حساب شو.", kind="auth", retryable=False)
-            timeout_ms = max(15_000, int(float(self.config.get("timeout", 90)) * 1000))
+            timeout_ms = self._timeout_ms()
             with sync_playwright() as playwright:
                 try:
                     try:
