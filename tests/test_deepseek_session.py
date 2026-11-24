@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import tempfile
 import unittest
 
@@ -12,8 +13,8 @@ class DeepSeekSessionStoreTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.store = DeepSeekSessionStore(
             self.temp.name,
-            encrypt=lambda value: "encrypted:" + value,
-            decrypt=lambda value: value.removeprefix("encrypted:"),
+            encrypt=lambda value: base64.b64encode(value.encode("utf-8")).decode("ascii"),
+            decrypt=lambda value: base64.b64decode(value.encode("ascii")).decode("utf-8"),
         )
 
     def test_session_is_encrypted_and_round_trips(self):
@@ -23,7 +24,8 @@ class DeepSeekSessionStoreTests(unittest.TestCase):
         }
         self.store.save(state)
         saved = self.store.path.read_text(encoding="utf-8")
-        self.assertTrue(saved.startswith("encrypted:"))
+        self.assertNotEqual(saved, "")
+        self.assertNotIn("session_token", saved)
         self.assertNotIn("secret-cookie", saved)
         self.assertEqual(self.store.load(), state)
         self.assertTrue(self.store.has_session())
