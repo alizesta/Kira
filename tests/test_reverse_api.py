@@ -153,7 +153,8 @@ class ReverseApiRoutingTests(unittest.TestCase):
     def _settings(self, transport_id):
         settings = {"providers": {"ollama": {"enabled": False}}}
         route_model.add_reverse_api_provider(settings, transport_id, enabled=True)
-        route_model.add_route(settings, "reverse_api", "web-model")
+        settings["providers"]["reverse_api"]["model"] = "web-model"
+        route_model.ensure_routes(settings)                          # derives the "reverse_api" route from the provider
         route_model.set_manual(settings, "reverse_api")
         return settings
 
@@ -185,7 +186,8 @@ class ReverseApiRoutingTests(unittest.TestCase):
     def test_router_never_selects_disabled_reverse_provider(self):
         settings = self._settings("unused")
         settings["providers"]["reverse_api"]["enabled"] = False
-        self.assertEqual(HybridRouter(settings).eligibility(settings["routes"][-1])[1], "provider_off")
+        route = route_model.find_route(settings, "reverse_api")
+        self.assertEqual(HybridRouter(settings).eligibility(route)[1], "provider_off")
 
 
 class ReverseApiSettingsTests(unittest.TestCase):
