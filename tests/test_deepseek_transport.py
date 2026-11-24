@@ -76,6 +76,11 @@ class DeepSeekTransportTests(unittest.TestCase):
         self.assertEqual(delta, next_snapshot[700:1300])
         self.assertEqual(final_committed, next_snapshot[:1300])
 
+    def test_warm_browser_is_closed_before_playwright_runtime_stops(self):
+        source = (Path(__file__).resolve().parents[1] / "kira/reverse_api/deepseek_transport.py").read_text(encoding="utf-8")
+        worker = source.split("class _DeepSeekBrowserWorker:", 1)[1].split("class DeepSeekBrowserTransport:", 1)[0]
+        self.assertLess(worker.index("browser.close()"), worker.index("except Exception as exc:  # noqa: BLE001 - unblock waiters"))
+
     def test_deepseek_streaming_reuses_browser_and_finishes_without_fixed_five_second_wait(self):
         source = (Path(__file__).resolve().parents[1] / "kira/reverse_api/deepseek_transport.py").read_text(encoding="utf-8")
         self.assertIn("_STREAM_HOLDBACK_CHARS = 96", source)

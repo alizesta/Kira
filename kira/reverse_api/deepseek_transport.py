@@ -145,26 +145,33 @@ class _DeepSeekBrowserWorker:
         raise RuntimeError("؛ ".join(errors))
 
     def _run(self) -> None:
-        browser = None
         try:
             from playwright.sync_api import sync_playwright
 
             with sync_playwright() as playwright:
-                browser = self._launch(playwright)
-                self.ready.set()
-                while True:
-                    job = self.jobs.get()
-                    if job is None:
-                        break
-                    try:
-                        if not job.cancel.is_set():
-                            if browser is None or not browser.is_connected():
-                                browser = self._launch(playwright)
-                            self.transport._execute_job(browser, job)
-                    except Exception as exc:  # noqa: BLE001 - deliver failures to this request only
-                        job.events.put(("error", exc))
-                    finally:
-                        job.events.put(("done", None))
+                browser = None
+                try:
+                    browser = self._launch(playwright)
+                    self.ready.set()
+                    while True:
+                        job = self.jobs.get()
+                        if job is None:
+                            break
+                        try:
+                            if not job.cancel.is_set():
+                                if browser is None or not browser.is_connected():
+                                    browser = self._launch(playwright)
+                                self.transport._execute_job(browser, job)
+                        except Exception as exc:  # noqa: BLE001 - deliver failures to this request only
+                            job.events.put(("error", exc))
+                        finally:
+                            job.events.put(("done", None))
+                finally:
+                    if browser is not None:
+                        try:
+                            browser.close()
+                        except Exception:
+                            pass
         except Exception as exc:  # noqa: BLE001 - unblock waiters if startup or loop fails
             self.startup_error = exc
             self.ready.set()
@@ -176,12 +183,6 @@ class _DeepSeekBrowserWorker:
                 if job is not None:
                     job.events.put(("error", exc))
                     job.events.put(("done", None))
-        finally:
-            if browser is not None:
-                try:
-                    browser.close()
-                except Exception:
-                    pass
 
     def shutdown(self) -> None:
         if self._thread.is_alive():
