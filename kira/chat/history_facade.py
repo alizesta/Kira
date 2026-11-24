@@ -32,6 +32,17 @@ class ChatHistoryFacade:
             raise ValueError("character_id must not be empty")
         return self._persistence.get_or_create_conversation(owner)
 
+    def create_conversation(
+        self, character_id: str, title: str = "", metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        owner = str(character_id or "").strip()
+        if not owner:
+            raise ValueError("character_id must not be empty")
+        creator = getattr(self._persistence, "create_conversation", None)
+        if not callable(creator):
+            raise RuntimeError("Chat persistence does not support creating conversations")
+        return creator(owner, title, metadata)
+
     def list_conversations(self, character_id: str | None = None, *, statuses=None):
         lifecycle = self._require_conversation_lifecycle()
         options = {} if statuses is None else {"statuses": statuses}
@@ -79,9 +90,11 @@ class ChatHistoryFacade:
     def conversation_context(
         self, limit: int = 12, max_chars: int = 12000,
         character_id: str | None = None, conversation_id: str | None = None,
+        *, session_id: str | None = None,
     ):
+        owner = character_id if character_id is not None else session_id
         return self._persistence.conversation_context(
-            limit, max_chars, character_id, conversation_id
+            limit, max_chars, owner, conversation_id
         )
 
     def message_count(

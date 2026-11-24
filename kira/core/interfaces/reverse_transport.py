@@ -40,6 +40,7 @@ class ReverseRequest:
     model: str
     temperature: float = 0.7
     max_tokens: int | None = None
+    conversation_id: str | None = None
 
 
 class ReverseTransportError(RuntimeError):

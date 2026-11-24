@@ -70,6 +70,13 @@ class SessionController(WindowFeatureController):
     def retranslate(self):
         lang = self.context.services.settings.get("ui_lang", "fa")
         QApplication.setLayoutDirection(Qt.RightToLeft if lang == "fa" else Qt.LeftToRight)
+        new_chat_button = getattr(self.context.views, "new_chat_btn", None)
+        if new_chat_button is not None:
+            new_chat_button.setText("چت جدید" if lang == "fa" else "New chat")
+            new_chat_button.setToolTip(
+                "شروع یک گفتگوی مستقل؛ تاریخچهٔ قبلی حفظ می‌شود."
+                if lang == "fa" else "Start a separate conversation; previous history is preserved."
+            )
         for setter, key in self.context.state._tr:
             setter(self.t(key))
         input_widget = self.context.views.input
@@ -205,6 +212,46 @@ class SessionController(WindowFeatureController):
     @staticmethod
     def _schedule_chat_callback(callback):
         QTimer.singleShot(0, callback)
+
+    def new_chat(self):
+        """Start a fresh durable conversation without clearing the previous one."""
+        session = self.context.state.cur
+        service = self.context.services.chat_application_service
+        if session.busy or service.pending_count(session.session_id):
+            self.context.views.status.setText(
+                "بعد از پایان پاسخ فعلی می‌توانی گفتگوی جدید بسازی."
+                if self.context.services.settings.get("ui_lang", "fa") == "fa"
+                else "Start a new conversation after the current response finishes."
+            )
+            return False
+        try:
+            record = service.create_conversation(session.cid)
+            conversation_id = (
+                record.get("id") or record.get("conversation_id")
+                if isinstance(record, dict) else None
+            )
+            if not conversation_id:
+                raise RuntimeError("ذخیره‌ساز شناسهٔ گفتگوی جدید را برنگرداند.")
+            session.conversation_id = str(conversation_id)
+            session.draft = ""
+            session.loaded = True
+            if session.view is not None:
+                session.view.clear()
+            with self._as(session):
+                self.add_chat("assistant", self.greeting_text())
+            self.refresh_tab_buttons()
+            self.context.views.status.setText(
+                "گفتگوی جدید آماده است."
+                if self.context.services.settings.get("ui_lang", "fa") == "fa"
+                else "New conversation is ready."
+            )
+            return True
+        except Exception as exc:
+            _log.exception("Could not create a new chat conversation")
+            self.context.views.status.setText(
+                "ساخت گفتگوی جدید ناموفق بود: " + str(exc)[:180]
+            )
+            return False
 
     def _ensure_session_conversation(self, session):
         return self.context.services.session_application_service.bind_conversation(session)

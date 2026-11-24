@@ -93,6 +93,29 @@ class DeepSeekSessionStoreTests(unittest.TestCase):
         self.assertEqual(self.store.load(), state)
         self.assertNotIn("private", self.store.path.read_text(encoding="utf-8"))
 
+    def test_indexed_db_storage_state_is_preserved(self):
+        state = {
+            "cookies": [{"name": "sid", "value": "secret"}],
+            "origins": [],
+            "indexedDB": [{
+                "origin": "https://chat.deepseek.com",
+                "databases": [{"name": "auth-db", "version": 1, "stores": []}],
+            }],
+        }
+        self.store.save(state)
+        self.assertEqual(self.store.load()["indexedDB"], state["indexedDB"])
+
+    def test_conversation_url_is_encrypted_and_survives_session_refresh(self):
+        self.store.save({"cookies": [{"name": "sid", "value": "secret"}], "origins": []})
+        url = "https://chat.deepseek.com/a/chat/s/private-chat-id"
+        self.assertTrue(self.store.set_conversation_url("local-conversation", url))
+        self.assertEqual(self.store.get_conversation_url("local-conversation"), url)
+        encrypted = self.store.path.read_text(encoding="utf-8")
+        self.assertNotIn("private-chat-id", encrypted)
+
+        self.store.save({"cookies": [{"name": "sid", "value": "rotated"}], "origins": []})
+        self.assertEqual(self.store.get_conversation_url("local-conversation"), url)
+
     def test_missing_session_is_not_an_error(self):
         self.assertIsNone(self.store.load())
         self.assertFalse(self.store.has_session())

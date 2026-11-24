@@ -13,6 +13,7 @@ from ..core.interfaces.reverse_transport import (
     ReverseRequest, ReverseTransportError, TransportState, TransportStatus,
 )
 from .deepseek_session import DeepSeekSessionError, DeepSeekSessionStore
+from .prompt import build_prompt
 
 _COMPOSER_SELECTORS = (
     "textarea",
@@ -151,32 +152,9 @@ class _DeepSeekBrowserWorker:
 
             with sync_playwright() as playwright:
                 browser = None
-                display_context = None
                 try:
                     browser = self._launch(playwright)
-                    try:
-                        state = self.transport.store.load()
-                    except DeepSeekSessionError:
-                        state = None
-                    context_options = {}
-                    if state:
-                        context_options["storage_state"] = {
-                            "cookies": state.get("cookies", []),
-                            "origins": state.get("origins", []),
-                        }
-                    display_context = browser.new_context(**context_options)
-                    if state:
-                        display_context.add_init_script(self.transport._session_init_script(state))
-                    display_page = display_context.new_page()
-                    try:
-                        display_page.goto(
-                            "https://chat.deepseek.com/",
-                            wait_until="domcontentloaded",
-                            timeout=20_000,
-                        )
-                    except Exception:
-                        # Keep the visible browser open even if DeepSeek is temporarily unreachable.
-                        pass
+                    # Keep Chromium warm without creating a remote chat during app startup.
                     self.ready.set()
                     while True:
                         job = self.jobs.get()
@@ -192,11 +170,6 @@ class _DeepSeekBrowserWorker:
                         finally:
                             job.events.put(("done", None))
                 finally:
-                    if display_context is not None:
-                        try:
-                            display_context.close()
-                        except Exception:
-                            pass
                     if browser is not None:
                         try:
                             browser.close()
@@ -288,8 +261,11 @@ class DeepSeekBrowserTransport:
         return updated
 
     def _persist_refreshed_session(self, context, page) -> None:
-        """Persist rotated cookies/local storage and current-origin sessionStorage after a reply."""
-        refreshed = context.storage_state()
+        """Persist rotated cookies/local storage, IndexedDB and sessionStorage after a reply."""
+        try:
+            refreshed = context.storage_state(indexed_db=True)
+        except TypeError:
+            refreshed = context.storage_state()
         snapshot = page.evaluate(
             """() => ({origin: location.origin, entries: Object.entries(sessionStorage)
                 .map(([name, value]) => ({name, value}))})"""
@@ -329,6 +305,44 @@ class DeepSeekBrowserTransport:
         return None
 
     @staticmethod
+    def _playwright_storage_state(state: dict[str, Any]) -> dict[str, Any]:
+        """Keep only Playwright-native fields; Kira metadata stays encrypted beside them."""
+        return {
+            key: state[key]
+            for key in ("cookies", "origins", "indexedDB")
+            if key in state
+        }
+
+    @staticmethod
+    def _conversation_url(url: str) -> str | None:
+        """Return a DeepSeek chat URL, excluding home and sign-in pages."""
+        from urllib.parse import urlsplit
+
+        value = str(url or "").strip()
+        try:
+            parsed = urlsplit(value)
+        except ValueError:
+            return None
+        if parsed.scheme != "https" or parsed.hostname != "chat.deepseek.com":
+            return None
+        if parsed.path.rstrip("/") in ("", "/sign_in"):
+            return None
+        return value
+
+    @staticmethod
+    def _prompt_for_request(request: ReverseRequest, *, has_existing_conversation: bool = False) -> str:
+        """Seed new remote chats with full Kira context; append only the newest user turn thereafter."""
+        if not has_existing_conversation:
+            return request.prompt
+        latest_user = next(
+            (item for item in reversed(request.messages) if item.get("role") == "user"),
+            None,
+        )
+        if latest_user is None:
+            return request.prompt
+        return build_prompt([dict(latest_user)], request.system_prompt)
+
+    @staticmethod
     def _session_init_script(state: dict[str, Any]) -> str:
         entries = state.get("sessionStorageByOrigin") or {}
         payload = json.dumps(entries, ensure_ascii=False)
@@ -358,10 +372,7 @@ class DeepSeekBrowserTransport:
 
             timeout_ms = self._timeout_ms()
             context = browser.new_context(
-                storage_state={
-                    "cookies": state.get("cookies", []),
-                    "origins": state.get("origins", []),
-                }
+                storage_state=self._playwright_storage_state(state)
             )
             context.add_init_script(self._session_init_script(state))
             page = context.new_page()
@@ -372,8 +383,11 @@ class DeepSeekBrowserTransport:
             try:
                 if cancelled():
                     return
+                saved_conversation_url = self.store.get_conversation_url(
+                    job.request.conversation_id
+                )
                 page.goto(
-                    "https://chat.deepseek.com/",
+                    saved_conversation_url or "https://chat.deepseek.com/",
                     wait_until="domcontentloaded",
                     timeout=min(timeout_ms, 20_000),
                 )
@@ -411,7 +425,10 @@ class DeepSeekBrowserTransport:
                     kind="response",
                     retryable=False,
                 )
-            composer.fill(job.request.prompt)
+            composer.fill(self._prompt_for_request(
+                job.request,
+                has_existing_conversation=bool(saved_conversation_url),
+            ))
             composer.press("Enter")
 
             deadline = time.monotonic() + timeout_ms / 1000
@@ -492,8 +509,11 @@ class DeepSeekBrowserTransport:
 
             try:
                 self._persist_refreshed_session(context, page)
+                conversation_url = self._conversation_url(page.url)
+                if conversation_url:
+                    self.store.set_conversation_url(job.request.conversation_id, conversation_url)
             except Exception as exc:
-                self._last_error = "ذخیره نشست تازه‌شده ناموفق بود: " + str(exc)[:180]
+                self._last_error = "ذخیره نشست یا شناسهٔ گفتگوی DeepSeek ناموفق بود: " + str(exc)[:180]
 
             if latest_text.startswith(emitted_prefix):
                 tail = latest_text[len(emitted_prefix):]
@@ -518,7 +538,7 @@ class DeepSeekBrowserTransport:
             return worker
 
     def activate(self, active: bool) -> None:
-        """Open a visible Chromium window while DeepSeek is selected; close it when deselected."""
+        """Keep a hidden warm Chromium process while DeepSeek is selected."""
         with self._worker_lock:
             self._activation_generation += 1
             generation = self._activation_generation

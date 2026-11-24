@@ -16,6 +16,7 @@ from ..core.interfaces.reverse_transport import (
     TransportState,
     TransportStatus,
 )
+from ..core.request_context import current_conversation_id
 from ..hybrid_providers import BaseProvider, ProviderError, normalize_messages, redact
 from ..think_filter import ThinkFilter
 from .prompt import build_prompt
@@ -111,6 +112,7 @@ class ReverseApiProvider(BaseProvider):
             model=self.model,
             temperature=float(temperature),
             max_tokens=int(max_tokens) if max_tokens else None,
+            conversation_id=current_conversation_id(),
         )
         return transport, request
 

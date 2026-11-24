@@ -85,6 +85,19 @@ class DeepSeekSessionError(RuntimeError):
     """Login, browser runtime, or encrypted-session failure."""
 
 
+def capture_storage_state(context: Any) -> dict[str, Any]:
+    """Capture cookies, local storage and IndexedDB for a reusable login session."""
+    try:
+        state = context.storage_state(indexed_db=True)
+    except TypeError as exc:
+        raise DeepSeekSessionError(
+            "برای ذخیرهٔ کامل نشست DeepSeek، Playwright نسخهٔ 1.51 یا جدیدتر لازم است."
+        ) from exc
+    if not isinstance(state, dict):
+        raise DeepSeekSessionError("مرورگر وضعیت ذخیره‌سازی معتبری برنگرداند.")
+    return state
+
+
 class DeepSeekChromeUnavailable(DeepSeekSessionError):
     """A normal installed Chrome browser is unavailable for interactive login."""
 
@@ -110,8 +123,18 @@ class DeepSeekSessionStore:
     def save(self, state: dict[str, Any]) -> None:
         if os.name != "nt" and self._encrypt is protect:
             raise DeepSeekSessionError("ذخیره امن نشست DeepSeek فقط روی Windows پشتیبانی می‌شود.")
-        if not isinstance(state, dict) or not (state.get("cookies") or state.get("origins") or state.get("sessionStorageByOrigin")):
+        if not isinstance(state, dict) or not (
+            state.get("cookies") or state.get("origins")
+            or state.get("indexedDB") or state.get("sessionStorageByOrigin")
+        ):
             raise DeepSeekSessionError("مرورگر نشست معتبری برای ذخیره برنگرداند.")
+        state = dict(state)
+        try:
+            previous = self.load()
+        except DeepSeekSessionError:
+            previous = None
+        if previous and previous.get("conversation_urls") and not state.get("conversation_urls"):
+            state["conversation_urls"] = dict(previous["conversation_urls"])
         raw = json.dumps(state, ensure_ascii=False, separators=(",", ":"))
         try:
             encrypted = self._encrypt(raw)
@@ -148,7 +171,10 @@ class DeepSeekSessionStore:
                 if not raw:
                     raise DeepSeekSessionError("نشست ذخیره‌شده روی این حساب Windows قابل رمزگشایی نیست.")
                 state = json.loads(raw)
-                if not isinstance(state, dict) or not (state.get("cookies") or state.get("origins") or state.get("sessionStorageByOrigin")):
+                if not isinstance(state, dict) or not (
+                    state.get("cookies") or state.get("origins")
+                    or state.get("indexedDB") or state.get("sessionStorageByOrigin")
+                ):
                     raise DeepSeekSessionError("ساختار نشست DeepSeek معتبر نیست.")
                 return state
             except DeepSeekSessionError:
@@ -163,6 +189,30 @@ class DeepSeekSessionStore:
                 return True
             except OSError as exc:
                 raise DeepSeekSessionError(f"حذف نشست DeepSeek ناموفق بود: {exc}") from exc
+
+    def get_conversation_url(self, conversation_id: str | None) -> str | None:
+        key = str(conversation_id or "").strip()
+        if not key:
+            return None
+        state = self.load() or {}
+        value = (state.get("conversation_urls") or {}).get(key)
+        return str(value) if value else None
+
+    def set_conversation_url(self, conversation_id: str | None, url: str) -> bool:
+        key = str(conversation_id or "").strip()
+        target = str(url or "").strip()
+        if not key or not target:
+            return False
+        state = self.load()
+        if state is None:
+            return False
+        links = dict(state.get("conversation_urls") or {})
+        if links.get(key) == target:
+            return False
+        links[key] = target
+        state["conversation_urls"] = links
+        self.save(state)
+        return True
 
     def has_session(self) -> bool:
         return self.load() is not None
@@ -283,7 +333,7 @@ class DeepSeekBrowserLogin:
                         arg=list(_AUTHENTICATED_SELECTORS),
                         timeout=max(1_000, int(timeout_ms)),
                     )
-                    state = context.storage_state()
+                    state = capture_storage_state(context)
                     session_storage = page.evaluate(
                         """() => ({origin: location.origin, entries: Object.entries(sessionStorage)
                             .map(([name, value]) => ({name, value}))})"""

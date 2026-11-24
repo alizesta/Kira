@@ -74,6 +74,16 @@ class FakePersistence:
             str(character_id), {"id": f"{character_id}-conversation"}
         )
 
+    def create_conversation(self, character_id=None, title="", metadata=None):
+        record = {
+            "id": f"{character_id}-conversation-{len(self.conversations) + 1}",
+            "character_id": str(character_id),
+            "title": str(title or ""),
+            "metadata": dict(metadata or {}),
+        }
+        self.conversations[str(character_id)] = record
+        return record
+
     def recent_messages(self, limit=12, character_id=None, conversation_id=None):
         self.history_calls.append(("recent", limit, character_id, conversation_id))
         return []
@@ -473,6 +483,28 @@ class ChatApplicationServiceTests(unittest.TestCase):
                 ("count", "kira", conversation_id),
             ],
         )
+
+    def test_conversation_context_accepts_session_id_compatibility_keyword(self):
+        self.service.conversation_context(
+            8, session_id="kira", conversation_id="kira-conversation"
+        )
+        self.assertEqual(
+            self.persistence.history_calls[-1],
+            ("context", 8, 12000, "kira", "kira-conversation"),
+        )
+
+    def test_new_conversation_creation_is_delegated_to_persistence(self):
+        record = self.service.create_conversation("kira", title="Fresh chat")
+        self.assertTrue(record["id"].startswith("kira-conversation-"))
+        self.assertEqual(record["title"], "Fresh chat")
+
+    def test_provider_worker_receives_the_durable_conversation_id(self):
+        conversation_id = self.service.get_or_create_conversation("kira")["id"]
+        submission = self.service.submit_message(
+            "kira", "hello", conversation_id=conversation_id
+        )
+        worker = self._start_provider(submission)
+        self.assertEqual(worker.request["conversation_id"], conversation_id)
 
     def test_begin_shutdown_cancels_queues_but_keeps_session_resources_open(self):
         active = self.service.submit_message("kira", "active request")

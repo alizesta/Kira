@@ -592,6 +592,7 @@ class ChatApplicationService:
                     ProviderEvent.failed(aid, sid, error)
                 ),
             })
+            provider_request.setdefault("conversation_id", state.request.conversation_id)
             worker = self._coordinator(owner).start_provider_request(
                 callbacks=callbacks,
                 messages=[dict(message) for message in context_result.messages],
@@ -951,6 +952,11 @@ class ChatApplicationService:
     def get_or_create_conversation(self, character_id: str) -> dict[str, Any]:
         return self._history.get_or_create_conversation(character_id)
 
+    def create_conversation(
+        self, character_id: str, title: str = "", metadata: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
+        return self._history.create_conversation(character_id, title, dict(metadata or {}))
+
     def list_conversations(self, character_id: str | None = None, *, statuses=None):
         return self._history.list_conversations(character_id, statuses=statuses)
 
@@ -989,9 +995,11 @@ class ChatApplicationService:
     def conversation_context(
         self, limit: int = 12, max_chars: int = 12000,
         character_id: str | None = None, conversation_id: str | None = None,
+        *, session_id: str | None = None,
     ):
+        owner = character_id if character_id is not None else session_id
         return self._history.conversation_context(
-            limit, max_chars, character_id, conversation_id
+            limit, max_chars, owner, conversation_id
         )
 
     def message_count(

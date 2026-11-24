@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 import unittest
 
-from kira.core.interfaces.reverse_transport import TransportState
+from kira.core.interfaces.reverse_transport import ReverseRequest, TransportState
 from kira.reverse_api import TRANSPORTS, DeepSeekBrowserTransport
 from kira.reverse_api.deepseek_session import DeepSeekSessionStore
 
@@ -94,15 +94,60 @@ class DeepSeekTransportTests(unittest.TestCase):
         self.assertIn("_DeepSeekBrowserWorker", source)
         self.assertIn("browser.new_context(", source)
 
-    def test_selected_deepseek_opens_visible_browser_until_deselected(self):
+    def test_selected_deepseek_keeps_a_headless_browser_without_startup_chat_navigation(self):
         transport_source = (Path(__file__).resolve().parents[1] / "kira/reverse_api/deepseek_transport.py").read_text(encoding="utf-8")
         init_source = (Path(__file__).resolve().parents[1] / "kira/reverse_api/__init__.py").read_text(encoding="utf-8")
         runtime_source = (Path(__file__).resolve().parents[1] / "kira/ui/main_window_runtime.py").read_text(encoding="utf-8")
         self.assertIn('"headless": True', transport_source)
-        self.assertIn('display_page.goto(', transport_source)
+        self.assertNotIn('display_page.goto(', transport_source)
         self.assertIn('def activate(self, active: bool)', transport_source)
+        self.assertIn('get_conversation_url(job.request.conversation_id)', transport_source)
+        self.assertIn('set_conversation_url(', transport_source)
+        self.assertIn('storage_state(indexed_db=True)', transport_source)
         self.assertIn('def set_deepseek_browser_active(active: bool)', init_source)
         self.assertIn('set_deepseek_browser_active(bool(selected and selected.get("provider") == "reverse_api"))', runtime_source)
+
+    def test_conversation_url_rejects_home_and_non_deepseek_urls(self):
+        self.assertIsNone(self.transport._conversation_url("https://chat.deepseek.com/"))
+        self.assertIsNone(self.transport._conversation_url("https://chat.deepseek.com/sign_in"))
+        self.assertIsNone(self.transport._conversation_url("https://example.com/chat"))
+        self.assertEqual(
+            self.transport._conversation_url("https://chat.deepseek.com/a/chat/s/abc"),
+            "https://chat.deepseek.com/a/chat/s/abc",
+        )
+
+    def test_new_deepseek_chat_is_seeded_from_kira_history_and_mapped_chat_gets_only_new_turn(self):
+        request = ReverseRequest(
+            prompt="system instructions\nold user\nold answer\nnew user",
+            system_prompt="system instructions",
+            messages=(
+                {"role": "user", "content": "old user"},
+                {"role": "assistant", "content": "old answer"},
+                {"role": "user", "content": "new user"},
+            ),
+            model="deepseek",
+            conversation_id="local-conversation",
+        )
+        initial = self.transport._prompt_for_request(request)
+        continued = self.transport._prompt_for_request(
+            request, has_existing_conversation=True
+        )
+        self.assertIn("old user", initial)
+        self.assertIn("system instructions", continued)
+        self.assertIn("new user", continued)
+        self.assertNotIn("old user", continued)
+
+    def test_playwright_storage_state_includes_indexed_db_but_excludes_kira_metadata(self):
+        state = {
+            "cookies": [],
+            "origins": [],
+            "indexedDB": [{"origin": "https://chat.deepseek.com", "databases": []}],
+            "conversation_urls": {"local": "https://chat.deepseek.com/a/chat/s/abc"},
+        }
+        self.assertEqual(
+            self.transport._playwright_storage_state(state),
+            {"cookies": [], "origins": [], "indexedDB": state["indexedDB"]},
+        )
 
     def test_refreshed_session_merges_rotated_session_storage(self):
         state = {
