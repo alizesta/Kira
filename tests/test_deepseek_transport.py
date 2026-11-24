@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import threading
 import tempfile
+from pathlib import Path
 import unittest
 
 from kira.core.interfaces.reverse_transport import TransportState
@@ -53,12 +54,11 @@ class DeepSeekTransportTests(unittest.TestCase):
         self.assertEqual(committed, "")
 
         delta, committed = self.transport._stable_stream_delta(original, original, committed)
-        self.assertEqual(delta, "a" * 188)
-        self.assertEqual(committed, "a" * 188)
+        self.assertEqual(delta, "a" * 604)
+        self.assertEqual(committed, "a" * 604)
 
-        # DeepSeek re-renders the trailing Markdown/code region. Previously emitted
-        # text is not replayed and the mutable region remains buffered until final flush.
-        rewritten = "a" * 600 + "b" * 100
+        # Re-renders stay inside the 96-character uncommitted tail.
+        rewritten = "a" * 650 + "b" * 50
         delta, committed_after_rewrite = self.transport._stable_stream_delta(original, rewritten, committed)
         self.assertEqual(delta, "")
         self.assertEqual(committed_after_rewrite, committed)
@@ -68,13 +68,21 @@ class DeepSeekTransportTests(unittest.TestCase):
 
         appended = rewritten + "c" * 600
         delta, next_committed = self.transport._stable_stream_delta(rewritten, appended, committed)
-        self.assertEqual(delta, appended[188:700])
-        self.assertEqual(next_committed, appended[:700])
+        self.assertEqual(delta, appended[604:1204])
+        self.assertEqual(next_committed, appended[:1204])
 
         next_snapshot = appended + "d" * 600
         delta, final_committed = self.transport._stable_stream_delta(appended, next_snapshot, next_committed)
-        self.assertEqual(delta, next_snapshot[700:1300])
-        self.assertEqual(final_committed, appended)
+        self.assertEqual(delta, next_snapshot[1204:1804])
+        self.assertEqual(final_committed, appended[:1204])
+
+    def test_deepseek_streaming_reuses_browser_and_finishes_without_fixed_five_second_wait(self):
+        source = (Path(__file__).resolve().parents[1] / "kira/reverse_api/deepseek_transport.py").read_text(encoding="utf-8")
+        self.assertIn("_STREAM_HOLDBACK_CHARS = 96", source)
+        self.assertIn("_COMPLETION_GRACE_SECONDS = 0.35", source)
+        self.assertIn("_NO_STOP_IDLE_SECONDS = 1.5", source)
+        self.assertIn("_DeepSeekBrowserWorker", source)
+        self.assertIn("browser.new_context(", source)
 
     def test_refreshed_session_merges_rotated_session_storage(self):
         state = {
