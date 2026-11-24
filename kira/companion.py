@@ -1,6 +1,6 @@
 import base64
 
-from PySide6.QtCore import Qt, Signal, QThread, QBuffer, QIODevice
+from PySide6.QtCore import Qt, Signal, QThread, QBuffer, QIODevice, QTimer
 from PySide6.QtGui import QGuiApplication, QPixmap, QFontMetrics
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, QPushButton, QFrame, QToolButton, QLabel,
                                QFileDialog)
@@ -17,6 +17,7 @@ class CompanionWindow(QWidget):
     """Floating Kira. Drag = move, wheel = resize, right-click = hide."""
     visibility = Signal(bool)
     geometry_changed = Signal()
+    chat_requested = Signal()
 
     def __init__(self, animator):
         super().__init__(None, Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
@@ -30,6 +31,20 @@ class CompanionWindow(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.view)
+        self.chat_button = QToolButton(self)
+        self.chat_button.setText("✎")
+        self.chat_button.setToolTip("باز کردن گفت‌وگو")
+        self.chat_button.setAccessibleName("باز کردن گفت‌وگو")
+        self.chat_button.setCursor(Qt.PointingHandCursor)
+        self.chat_button.setFixedSize(38, 38)
+        self.chat_button.setStyleSheet(
+            "QToolButton{background:rgba(18,24,48,185);color:#8CF5FF;"
+            "border:1px solid rgba(108,220,255,190);border-radius:19px;"
+            "font-size:21pt;font-weight:600;}"
+            "QToolButton:hover{background:rgba(54,65,112,225);color:white;}"
+        )
+        self.chat_button.clicked.connect(self.chat_requested.emit)
+        self.chat_button.raise_()
         self.pet = PetController(self, animator)
         self.set_height(620)
 
@@ -69,6 +84,8 @@ class CompanionWindow(QWidget):
 
     def resizeEvent(self, e):
         super().resizeEvent(e)
+        self.chat_button.move(max(8, self.width() - 48), max(8, self.height() - 48))
+        self.chat_button.raise_()
         self.geometry_changed.emit()
 
 
@@ -145,6 +162,10 @@ class CompanionBubble(QWidget):
         self._seq = 0
         self._loader = None
         self._load_chips = []
+        self._composer_open = False
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setSingleShot(True)
+        self._preview_timer.timeout.connect(self.hide_preview)
         panel = QFrame(self)
         panel.setObjectName("bubblePanel")
         panel.setStyleSheet("#bubblePanel{background:rgba(24,26,40,150);border:1px solid rgba(160,140,255,82);border-radius:16px;}"
@@ -202,6 +223,8 @@ class CompanionBubble(QWidget):
         row.addWidget(self.edit, 1)
         row.addWidget(self.send)
         lay.addLayout(row)
+        self._composer_widgets = (self.strip, self.err, self.attach_btn, self.img_btn, self.edit, self.send)
+        self._set_composer_visible(False)
         self.edit.returnPressed.connect(self._submit)
         self.edit.filesDropped.connect(self.add_paths)
         self.edit.imagePasted.connect(self.add_pasted_image)
@@ -323,6 +346,40 @@ class CompanionBubble(QWidget):
             self.add_paths(paths)
             event.acceptProposedAction()
 
+    def _set_composer_visible(self, visible):
+        for widget in self._composer_widgets:
+            widget.setVisible(bool(visible))
+
+    def open_composer(self, companion=None):
+        """Open the full composer from the small pencil button beside the avatar."""
+        self._composer_open = True
+        self._preview_timer.stop()
+        self._set_composer_visible(True)
+        self.view.show()
+        if companion is not None:
+            self.place_beside(companion)
+        self.show()
+        self.raise_()
+        self.edit.setFocus(Qt.OtherFocusReason)
+
+    def show_preview(self, companion=None):
+        """Show only the newest chat item, then return to the avatar after ten seconds."""
+        if self._composer_open:
+            return
+        self._set_composer_visible(False)
+        self.view.show()
+        if companion is not None:
+            self.place_beside(companion)
+        else:
+            self.resize(420, 112)
+        self.show()
+        self.raise_()
+        self._preview_timer.start(10000)
+
+    def hide_preview(self):
+        if not self._composer_open:
+            self.hide()
+
     def _submit(self):
         if self.loading():
             self.show_error("ضمیمه‌ها هنوز در حال بارگذاری‌اند؛ چند لحظه صبر کن.")
@@ -332,10 +389,14 @@ class CompanionBubble(QWidget):
         if text or files:
             self.edit.clear()
             self.clear_attachments()
+            self._composer_open = False
+            self._set_composer_visible(False)
             self.submitted.emit(text, files)
+            self.show_preview()
 
     def _render(self):
-        html = "".join(message_html(k, n, t, self.ui_dir) for k, n, t in self.items)
+        visible_items = self.items[-1:] if not self._composer_open else self.items
+        html = "".join(message_html(k, n, t, self.ui_dir) for k, n, t in visible_items)
         if self.live and self.live[1].strip():
             html += message_html("assistant", self.live[0], self.live[1], self.ui_dir)
         self.view.setHtml(html)
@@ -361,6 +422,8 @@ class CompanionBubble(QWidget):
         self.items = (self.items + [(kind, name, str(text))])[-self.KEEP:]
         self.live = None
         self._render()
+        if self.isVisible() and not self._composer_open:
+            self.show_preview()
 
     def set_live(self, name, text, ui_dir="rtl"):
         self.ui_dir = ui_dir
@@ -372,12 +435,15 @@ class CompanionBubble(QWidget):
             self.items = (self.items + [("assistant", self.live[0], self.live[1])])[-self.KEEP:]
         self.live = None
         self._render()
+        if self.isVisible() and not self._composer_open:
+            self.show_preview()
 
     def place_beside(self, companion):
         """Left of Kira when there is room on screen, otherwise right; bottom-aligned with her."""
         g = companion.frameGeometry()
         screen = (QGuiApplication.screenAt(g.center()) or QGuiApplication.primaryScreen()).availableGeometry()
-        h = min(max(260, g.height() // 2), screen.height() - 20)
+        height = 320 if self._composer_open else 112
+        h = min(height, screen.height() - 20)
         self.resize(420, h)
         x = g.left() - self.width() - 6
         if x < screen.left():
