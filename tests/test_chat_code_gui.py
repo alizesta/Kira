@@ -148,13 +148,32 @@ class ChatCodeGuiTests(unittest.TestCase):
         self.assertTrue(panel.isVisible())
         self.assertEqual(panel.status.text(), "در حال تحلیل درخواست…")
         panel.step("جست‌وجوی فایل‌های پروژه")
-        self.assertEqual(panel.steps.count(), 2)
-        self.assertIn("جست‌وجوی فایل‌های پروژه", panel.steps.item(1).text())
+        self.assertEqual(panel.items(), [("در حال تحلیل درخواست…", "done"), ("جست‌وجوی فایل‌های پروژه", "active")])
         panel.complete("تحلیل تمام شد")
         self.assertEqual(panel.status.text(), "تحلیل تمام شد")
+        self.assertTrue(all(state == "done" for _text, state in panel.items()))
         panel.reset()
         self.assertFalse(panel.isVisible())
-        self.assertEqual(panel.steps.count(), 0)
+        self.assertEqual(panel.items(), [])
+
+    def test_progress_checklist_marks_failure_and_stop(self):
+        panel = self.cc.win.kode_activity
+        panel.start("در حال آماده‌سازی پاسخ…")
+        panel.begin("در حال جست‌وجوی وب…", key="web_search")
+        panel.finish("web_search", "جست‌وجوی وب: خطا", state="failed")
+        self.assertEqual(panel.items()[-1], ("جست‌وجوی وب: خطا", "failed"))
+        panel.start("دوباره")
+        panel.cancel("درخواست متوقف شد")
+        self.assertEqual(panel.items(), [("دوباره", "stopped")])
+        panel.reset()
+
+    def test_thinking_status_uses_checklist_not_inline_line(self):
+        panel = self.cc.win.kode_activity
+        panel.reset()
+        self.win.presentation_context.controllers.require("session").set_status("st_thinking")
+        self.assertTrue(panel.isVisible())
+        self.assertNotIn("در حال فکر کردن", self.win.cur.view.toPlainText())
+        panel.reset()
 
     def test_real_chat_tool_events_appear_in_kira_activity(self):
         panel = self.cc.win.kode_activity

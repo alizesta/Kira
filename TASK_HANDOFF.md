@@ -1,3 +1,9 @@
+## Progress checklist (replaces thinking line + activity card) — handoff (2026-11-24 22:46 Iran)
+- Branch: `claude/progress-checklist`, based on `new-main` 4183cdc. Not merged; no Pull Request opened (a PR would trigger `android-apk.yml`); no GitHub Actions run.
+- Verified here (Linux, PySide6 6.12 offscreen): the new panel renders correctly in RTL for running, done and failed states (rendered to PNG and inspected); all edited files compile. Not verified: Windows, the real Kira theme, the full MainWindow flow.
+- `tests/test_chat_code_gui.py` already fails on untouched `new-main` in this sandbox (`MainWindow` has no `code_chat`), so the updated/new tests in it were NOT executed here.
+- Design note: the progress bar is honest about unknown length: it never reaches 100% until the request completes (value = (done + 0.5) / (rows + 1)).
+
 ## Companion bubble and Tray shutdown follow-up — release 1.2.6 (2026-11-24)
 - Branch: fix/companion-tray-shutdown-escape, based on the current new-main after PR #267.
 - Fixed shutdown ordering in kira/ui/main_window_runtime.py and kira/ui/main_window_lifecycle.py: the first close attempt no longer hides the Tray icon or enables quit-on-last-window before workers and persistence have completed. Only the accepted-close callback _exit_application hides Tray and ends the event loop.

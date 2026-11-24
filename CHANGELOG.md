@@ -1,3 +1,8 @@
+## 2026-11-24 22:46 Iran — Progress checklist replaces "thinking" line and activity card
+- Removed the inline "◌ در حال فکر کردن…" line from the chat view and the old "فعالیت کیرا / جزئیات" card. `MainWindowSession.set_status("st_thinking")` now just makes sure the progress checklist is running; `_show_thinking_indicator` / `_remove_thinking_indicator` are deleted.
+- `KodeActivityPanel` (kira/ui/components/kode_activity.py) is now a live checklist: painted state icons (pending ring, spinning arc, check, cross, pause), a slim neon progress bar, an "N از M" counter and a collapsible step list. Only real stages are listed (request preparation, tool start/finish, plan steps, answer writing); no fake pre-seeded steps.
+- New panel API: `begin(text, key)`, `finish(key, text, state)`, `add_done(text)`, `ensure_running(text)`, `cancel(text)`, `items()`; `start/step/update/complete/fail/reset` keep working. Tool events now resolve their own row (ok -> check, needs_confirm -> paused, other status -> failed); a stopped request shows the paused state instead of a success check.
+- Tests: kode-activity tests in tests/test_chat_code_gui.py updated to the new API plus two new ones (failure/stop states, thinking status uses the checklist).
 ## 1.2.6 — 2026-11-24 — Companion bubble and Tray shutdown hardening
 - Explicit Exit no longer hides the system-tray icon or changes Qt's last-window policy before shutdown is accepted. The tray is hidden only in the post-acceptance _exit_application step; an ignored close keeps the app recoverable from the tray.
 - Added Escape handling to the companion composer. Escape closes the input controls and returns to the timed latest-message preview; sending a message still closes the composer.

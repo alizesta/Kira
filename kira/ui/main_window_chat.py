@@ -117,7 +117,7 @@ class ChatController(WindowFeatureController):
                 self.feature_controller("runtime").on_stream_done(response)
             elif event.kind is ApplicationEventKind.REQUEST_CANCELLED:
                 if session is self.context.state.front:
-                    self.context.views.kode_activity.complete("درخواست متوقف شد")
+                    self.context.views.kode_activity.cancel("درخواست متوقف شد")
                 self.feature_controller("runtime").on_stream_done({
                     "text": event.content,
                     "stopped": True,
