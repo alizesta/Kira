@@ -17,6 +17,7 @@ class ProviderDiscoveryRemoteDataSource {
             key.startsWith("AIza") -> listOf("gemini")
             key.startsWith("gsk_") -> listOf("groq")
             key.startsWith("sk-or-") -> listOf("openrouter")
+            key.startsWith("sk-apx-") -> listOf("apinex")
             else -> listOf("mistral","deepseek","openrouter","groq","gemini")
         }
         val failures=mutableListOf<String>()
@@ -36,6 +37,7 @@ class ProviderDiscoveryRemoteDataSource {
             "mistral" -> "https://api.mistral.ai/v1/models"
             "deepseek" -> "https://api.deepseek.com/models"
             "openrouter" -> "https://openrouter.ai/api/v1/models?sort=most-popular"
+            "apinex" -> "https://api.apinex.bond/v1/models"
             else -> throw IllegalArgumentException("این Provider هنوز فهرست خودکار مدل‌ها را پشتیبانی نمی‌کند.")
         }
         val connection=(URL(endpoint).openConnection() as HttpURLConnection).apply {
@@ -62,9 +64,13 @@ class ProviderDiscoveryRemoteDataSource {
                 val openRouterIsFree=pricing!=null &&
                     pricing.optString("prompt").toDoubleOrNull()==0.0 &&
                     pricing.optString("completion").toDoubleOrNull()==0.0
+                val apiNexIsFree=pricing!=null &&
+                    pricing.optString("prompt").toDoubleOrNull()==0.0 &&
+                    pricing.optString("completion").toDoubleOrNull()==0.0
                 val free=when(id) {
                     "gemini","mistral" -> FreeModelPolicy.isVerifiedFreeChatModel(id,name)
                     "openrouter" -> name.endsWith(":free") && openRouterIsFree
+                    "apinex" -> name.startsWith("free/") && apiNexIsFree
                     else -> false
                 }
                 if(free) found += name
@@ -77,6 +83,7 @@ class ProviderDiscoveryRemoteDataSource {
                 "deepseek" -> "DeepSeek API مدل رایگان دائمی ندارد؛ کلید آن برای مدل‌های پولی است و در فهرست رایگان Kira نمایش داده نمی‌شود."
                 "groq" -> "فهرست فعلی Groq مدل چت رایگانِ با قیمت صفر مشخص نمی‌کند؛ برای جلوگیری از هزینه، هیچ مدلی اضافه نشد."
                 "mistral" -> "در فهرست فعلی Mistral مدل چت رایگانِ سازگار پیدا نشد. فقط مدل‌های رایگان دارای قابلیت چت پذیرفته می‌شوند."
+                "apinex" -> "در فهرست APInex مدل چت رایگان با قیمت صفر ورودی و خروجی پیدا نشد."
                 else -> "هیچ مدل چت رایگانی با قیمت صفر برای این Provider پیدا نشد. هیچ مدل پولی اضافه یا انتخاب نشد."
             }
             throw IllegalStateException(message)
@@ -92,6 +99,12 @@ class ProviderDiscoveryRemoteDataSource {
         "mistral" -> item.optJSONObject("capabilities")?.optBoolean("completion_chat",false)==true
         "openrouter" -> {
             val modalities=item.optJSONObject("architecture")?.optJSONArray("output_modalities")
+            modalities==null || (0 until modalities.length()).any { modalities.optString(it)=="text" }
+        }
+        "apinex" -> {
+            val architecture=item.optJSONObject("architecture")
+            val modalities=architecture?.optJSONArray("output_modalities")
+                ?: item.optJSONArray("output_modalities")
             modalities==null || (0 until modalities.length()).any { modalities.optString(it)=="text" }
         }
         else -> false

@@ -7,7 +7,8 @@ internal object ProviderEndpointCatalog {
         "openrouter" to Definition("OpenRouter", "https://openrouter.ai/api/v1"),
         "groq" to Definition("Groq", "https://api.groq.com/openai/v1"),
         "mistral" to Definition("Mistral", "https://api.mistral.ai/v1"),
-        "deepseek" to Definition("DeepSeek", "https://api.deepseek.com")
+        "deepseek" to Definition("DeepSeek", "https://api.deepseek.com"),
+        "apinex" to Definition("APInex", "https://api.apinex.bond/v1")
     )
 
     fun label(providerId: String): String = definitions[providerId.trim().lowercase()]?.label ?: providerId

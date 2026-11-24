@@ -12,6 +12,7 @@ object FreeModelPolicy {
             "gemini" -> model in setOf("gemini-3.8-flash", "gemini-2.5-flash", "gemini-2.5-flash-lite")
             "openrouter" -> model.endsWith(":free")
             "mistral" -> model == "labs-leanstral-2603"
+            "apinex" -> model.startsWith("free/")
             else -> false
         }
     }
@@ -32,6 +33,11 @@ object FreeModelPolicy {
                 "minimax/minimax-m3:free",
                 "qwen/qwen3.5-32b:free",
                 "google/gemma-4-26b-a4b-it:free"
+            )
+            "apinex" -> listOf(
+                "free/deepseek-v4.1-flash",
+                "free/gemini-3.8-flash",
+                "free/qwen-3.8-max"
             )
             else -> emptyList()
         }
