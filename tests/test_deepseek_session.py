@@ -17,16 +17,13 @@ class DeepSeekSessionStoreTests(unittest.TestCase):
     def test_login_uses_explicit_sign_in_page(self):
         self.assertEqual(DEEPSEEK_LOGIN_URL, "https://chat.deepseek.com/sign_in")
 
-    def test_chrome_profile_is_separate_from_the_default_user_profile(self):
-        store = DeepSeekSessionStore(
-            self.temp.name,
-            encrypt=lambda value: value,
-            decrypt=lambda value: value,
-        )
-        self.assertEqual(
-            store.chrome_profile_dir,
-            store.path.parent / "deepseek_chrome_profile",
-        )
+    def test_interactive_login_uses_a_temporary_chrome_profile(self):
+        from pathlib import Path
+
+        source = Path(__file__).resolve().parents[1] / "kira" / "reverse_api" / "deepseek_session.py"
+        code = source.read_text(encoding="utf-8")
+        self.assertIn('tempfile.TemporaryDirectory(prefix="kira-deepseek-login-")', code)
+        self.assertIn('f"--user-data-dir={profile_dir}"', code)
 
     def test_standard_windows_chrome_locations_are_checked(self):
         paths = _chrome_candidate_paths({

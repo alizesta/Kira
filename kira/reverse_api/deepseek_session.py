@@ -103,7 +103,6 @@ class DeepSeekSessionStore:
             from ..config import DATA_DIR
             data_dir = DATA_DIR
         self.path = Path(data_dir) / "reverse_api" / "deepseek.session"
-        self.chrome_profile_dir = self.path.parent / "deepseek_chrome_profile"
         self._encrypt = encrypt
         self._decrypt = decrypt
         self._lock = threading.RLock()
@@ -215,6 +214,7 @@ class DeepSeekBrowserLogin:
             raise DeepSeekSessionError("فرایند ورود DeepSeek از قبل در حال اجراست.")
         process = None
         browser = None
+        profile_temp = None
         try:
             chrome = _find_chrome_executable()
             if chrome is None:
@@ -228,7 +228,8 @@ class DeepSeekBrowserLogin:
                     "CHROME_UNAVAILABLE: Playwright نصب نیست؛ وابستگی‌های Kira را نصب کن."
                 ) from exc
 
-            self.store.chrome_profile_dir.mkdir(parents=True, exist_ok=True)
+            profile_temp = tempfile.TemporaryDirectory(prefix="kira-deepseek-login-")
+            profile_dir = Path(profile_temp.name)
             try:
                 port = self._reserve_debug_port()
             except OSError as exc:
@@ -236,7 +237,7 @@ class DeepSeekBrowserLogin:
 
             command = [
                 str(chrome),
-                f"--user-data-dir={self.store.chrome_profile_dir}",
+                f"--user-data-dir={profile_dir}",
                 "--remote-debugging-address=127.0.0.1",
                 f"--remote-debugging-port={port}",
                 "--no-first-run",
@@ -316,4 +317,9 @@ class DeepSeekBrowserLogin:
                         process.wait(timeout=4)
                     except Exception:
                         pass
+            if profile_temp is not None:
+                try:
+                    profile_temp.cleanup()
+                except OSError:
+                    pass
             self._lock.release()
