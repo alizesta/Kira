@@ -7,6 +7,7 @@ import unittest
 import re
 
 from kira.tools.agent import Pending, ToolAgent, ToolPlan
+from kira.lazy_tool_agent import LazyToolAgent
 from kira.tools.sysaccess import AccessManager
 from kira.webintel.session import CANCEL, DEFAULT_BUDGET, SessionScopedResearchStore
 from kira import mood
@@ -17,6 +18,28 @@ from unittest.mock import patch
 
 
 class ToolAgentSessionIsolationTests(unittest.TestCase):
+
+    def test_lazy_agent_keeps_desktop_context_provider_without_eager_realization(self):
+        class AgentProbe:
+            def __init__(self):
+                self.provider = None
+
+            def set_desktop_context_provider(self, provider):
+                self.provider = provider
+
+        instance = AgentProbe()
+        lazy = LazyToolAgent(lambda: instance)
+        provider = lambda: "cached context"
+
+        lazy.set_desktop_context_provider(provider)
+        self.assertFalse(lazy.realized)
+        self.assertIs(lazy._get(), instance)
+        self.assertIs(instance.provider, provider)
+        self.assertTrue(lazy.realized)
+
+        replacement = lambda: "new context"
+        lazy.set_desktop_context_provider(replacement)
+        self.assertIs(instance.provider, replacement)
 
     def test_access_denial_claims_are_detected_for_capability_retry(self):
         self.assertTrue(ToolAgent._claims_missing_access("من به کامپیوتر دسترسی ندارم."))
