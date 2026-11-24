@@ -27,6 +27,8 @@ SERVICES = {
     "google": {"label": "Google AI Studio", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
                "default_models": ("gemini-3.8-flash", "gemini-flash-latest", "gemini-2.5-flash")},
     "cloudflare": {"label": "Cloudflare Workers AI", "base_url": "", "default_models": ("@cf/meta/llama-3.1-8b-instruct",)},
+    "apinex": {"label": "APInex", "base_url": "https://api.apinex.bond/v1",
+               "default_models": ("free/deepseek-v4.1-flash", "free/gemini-3.8-flash", "free/qwen-3.8-max")},
 }
 BUILTIN_FOR = {"groq": "groq", "mistral": "mistral", "cloudflare": "cloudflare", "openrouter": "openrouter"}      # google has no built-in id: it is a registered provider
 KEY_MIN, KEY_MAX = 16, 300
@@ -56,6 +58,8 @@ def candidate_services(key) -> list[str]:
     """Which services this key may belong to, judged only by its public prefix, so a key is not sent to services it cannot belong to.
     A known prefix means ONE service; a key without a known prefix is checked against the two services whose keys have no prefix."""
     key = str(key or "").strip()
+    if key.startswith("sk-apx-"):
+        return ["apinex"]
     if key.startswith("gsk_"):
         return ["groq"]
     if key.startswith(("sk-or-v1-", "sk-or-")):
@@ -91,8 +95,8 @@ def _probe_listing(service, key, timeout):
     """Groq / Mistral / Google: the official model list IS the validation. -> Detection"""
     meta = {}
     cfg = {"api_key": key}
-    if service == "google":
-        pid, cfg = "google", {"type": "openai_compat", "base_url": SERVICES["google"]["base_url"], "api_key": key}
+    if service in ("google", "apinex"):
+        pid, cfg = service, {"type": "openai_compat", "base_url": SERVICES[service]["base_url"], "api_key": key}
     else:
         pid = service
     try:
@@ -167,7 +171,7 @@ def detect(key, account_id="", hint="", timeout=12) -> Detection:
             return hit
     if len(services) == 1:
         return results[0] if results else Detection("unknown", "", "Provider شناسایی نشد.")
-    return Detection("unknown", "", "این کلید برای هیچ‌کدام از سرویس‌های پشتیبانی‌شده (Groq، Mistral، Google AI Studio، Cloudflare، OpenRouter) تأیید نشد؛ "
+    return Detection("unknown", "", "این کلید برای هیچ‌کدام از سرویس‌های پشتیبانی‌شده (Groq، Mistral، Google AI Studio، Cloudflare، OpenRouter، APInex) تأیید نشد؛ "
                                     "کلید را بررسی کن. ثبت نشد.")
 
 
