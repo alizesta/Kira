@@ -115,6 +115,20 @@ class ToolArgumentValidationTests(unittest.TestCase):
         self.assertIn("limit (integer، اختیاری): maximum rows", report)
         self.assertIn("تعداد ابزارهای ثبت‌شده", report)
 
+    def test_capability_report_paginates_without_hiding_registered_tools(self):
+        for name in ("alpha_probe", "beta_probe"):
+            self.registry.register(Tool(name, name + " description", lambda args: "ok", (), categories=("files",)))
+
+        first = self.registry.access.info_text(recent=0, category="files", offset=0, limit=1)
+        second = self.registry.access.info_text(recent=0, category="files", offset=1, limit=1)
+
+        self.assertIn("تعداد کل ابزارهای منطبق: 2", first)
+        self.assertIn("ادامه دارد: True", first)
+        self.assertIn("offset بعدی: 1", first)
+        self.assertIn("alpha_probe", first)
+        self.assertIn("beta_probe", second)
+        self.assertIn("ادامه دارد: False", second)
+
 
 if __name__ == "__main__":
     unittest.main()
