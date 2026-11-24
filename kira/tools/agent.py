@@ -44,7 +44,7 @@ TOOL_LABELS = {
     "get_active_window": "خواندن پنجره‌ی فعال", "find_app": "جست‌وجوی برنامه", "list_allowed_folders": "پوشه‌های مجاز",
     "search_files": "جست‌وجوی فایل", "list_folder": "فهرست پوشه", "file_info": "اطلاعات فایل", "read_file": "خواندن فایل",
     "open_app": "باز کردن برنامه", "open_path": "باز کردن فایل/پوشه", "open_url": "باز کردن لینک",
-    "bluetooth_status": "بررسی وضعیت بلوتوث", "bluetooth_on": "روشن کردن بلوتوث", "bluetooth_off": "خاموش کردن بلوتوث", "windows_control_info": "جدول دسترسی‌ها و عملیات اخیر",
+    "bluetooth_status": "بررسی وضعیت بلوتوث", "bluetooth_on": "روشن کردن بلوتوث", "bluetooth_off": "خاموش کردن بلوتوث", "windows_control_info": "فهرست کامل توانایی‌ها و ابزارهای کیرا",
     "make_folder": "ساخت پوشه", "create_file": "ساخت فایل", "append_text": "افزودن متن به فایل", "copy_item": "کپی فایل/پوشه", "rename_item": "تغییر نام",
     "write_file": "جایگزینی محتوای فایل (نیازمند تأیید)", "delete_folder": "حذف پوشه (نیازمند تأیید)", "batch_files": "عملیات گروهی روی فایل‌ها (نیازمند تأیید)",
     "organise_folder": "مرتب‌سازی پوشه (نیازمند تأیید)", "undo_file_operation": "برگرداندن آخرین عملیات فایل (نیازمند تأیید)",
