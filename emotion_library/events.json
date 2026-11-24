@@ -36,13 +36,18 @@
       },
       "runtime_behaviors": {
         "focused": 5
-      }
+      },
+      "listening": false,
+      "release_events": [
+        "listening_started"
+      ]
     },
     "response_finished": {
       "pulse": "nod",
       "release_events": [
         "response_started"
-      ]
+      ],
+      "listening": false
     },
     "response_failed": {
       "emotion": "sad",
@@ -57,25 +62,32 @@
       },
       "runtime_behaviors": {
         "focused": 5
-      }
+      },
+      "listening": false
     },
     "response_cancelled": {
       "release_events": [
         "response_started"
       ],
-      "release_responses": true
+      "release_responses": true,
+      "listening": false
     },
     "tts_started": {
       "speaking": true,
       "runtime_emotions": {
         "confident": 3
-      }
+      },
+      "listening": false,
+      "release_events": [
+        "listening_started"
+      ]
     },
     "tts_stopped": {
       "speaking": false,
       "runtime_emotions": {
         "calm": 2
-      }
+      },
+      "listening": false
     },
     "user_interrupt": {
       "emotion": "annoyed",
@@ -92,7 +104,21 @@
       },
       "runtime_behaviors": {
         "reserved": 4
-      }
+      },
+      "listening": false
+    },
+    "listening_started": {
+      "emotion": "curious",
+      "intensity": 28,
+      "duration": null,
+      "pulse": "listen",
+      "listening": true
+    },
+    "listening_stopped": {
+      "listening": false,
+      "release_events": [
+        "listening_started"
+      ]
     }
   }
 }

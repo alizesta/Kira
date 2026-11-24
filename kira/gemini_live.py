@@ -105,6 +105,8 @@ class GeminiLiveWorker(QThread):
     connected = Signal()
     transcript = Signal(str, str)  # role, text
     failed = Signal(str)
+    audio_playback_changed = Signal(bool)
+    audio_level = Signal(float)
 
     def __init__(self, *, api_key: str, model: str, settings: dict, system_instruction: str = "", parent=None):
         super().__init__(parent)
@@ -131,6 +133,8 @@ class GeminiLiveWorker(QThread):
             self._output_gain = 0.9
         self._playback_tail = b""
         self._playback_lock = threading.Lock()
+        self._output_speaking = False
+        self._output_silence_buffers = 0
         self._input_stream = None
         self._output_stream = None
         self._failure = ""
@@ -244,12 +248,30 @@ class GeminiLiveWorker(QThread):
                 self._playback_tail = b"".join(pieces)
             chunk, self._playback_tail = self._playback_tail[:needed], self._playback_tail[needed:]
         outdata.fill(0)
+        level = 0.0
         if chunk and self._output_gain > 0:
             import numpy as np
             samples = np.frombuffer(chunk, dtype="<i2").astype(np.float32)
             if self._output_gain != 1.0:
                 samples *= self._output_gain
             outdata[:len(samples), 0] = np.clip(samples, -32768, 32767).astype("<i2")
+            if samples.size:
+                level = float(np.sqrt(np.mean(samples * samples)) / 32768.0)
+        transition = None
+        with self._playback_lock:
+            if level >= 0.0015:
+                self._output_silence_buffers = 0
+                if not self._output_speaking:
+                    self._output_speaking = True
+                    transition = True
+            else:
+                self._output_silence_buffers += 1
+                if self._output_speaking and self._output_silence_buffers >= 8:
+                    self._output_speaking = False
+                    transition = False
+        self.audio_level.emit(min(1.0, level * 4.0))
+        if transition is not None:
+            self.audio_playback_changed.emit(transition)
 
     def _clear_output(self):
         with self._playback_lock:
@@ -259,6 +281,12 @@ class GeminiLiveWorker(QThread):
                 except queue.Empty:
                     break
             self._playback_tail = b""
+            was_speaking = self._output_speaking
+            self._output_speaking = False
+            self._output_silence_buffers = 0
+        self.audio_level.emit(0.0)
+        if was_speaking:
+            self.audio_playback_changed.emit(False)
 
     async def _send_audio(self, session, types):
         while not self._stop.is_set():
@@ -373,6 +401,7 @@ class GeminiLiveWorker(QThread):
                 group.create_task(self._receive(session))
 
     def _close_audio(self):
+        self._clear_output()
         for stream in (self._input_stream, self._output_stream):
             if stream is None:
                 continue

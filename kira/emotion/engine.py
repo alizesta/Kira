@@ -35,12 +35,12 @@ class Entry:
 
 class Frame:
     """Result of one engine tick."""
-    __slots__ = ("face", "pose", "base_mood", "active", "dominant", "members", "speaking")
+    __slots__ = ("face", "pose", "base_mood", "active", "dominant", "members", "speaking", "listening")
 
     def __init__(self):
         self.face, self.pose = {}, {}
         self.base_mood = "neutral"
-        self.active, self.dominant, self.members, self.speaking = False, "neutral", [], False
+        self.active, self.dominant, self.members, self.speaking, self.listening = False, "neutral", [], False, False
 
 
 class EmotionEngine:
@@ -54,6 +54,7 @@ class EmotionEngine:
         self.last_response_switch = NEVER
         self._switches = []
         self.speaking = False
+        self.listening = False
         self._speak_gain = 0.0
         self._neutral = dict(library.reaction_for(library.get("neutral"))["face"])
         self.face = dict(self._neutral)
@@ -149,7 +150,12 @@ class EmotionEngine:
         """User cut Kira off: drop automatic emotions, pending reaction and speaking at once."""
         self.release(sources=("response", "event"), now=now)
         self.pending = None
+        self.set_listening(False)
         self.set_speaking(False, hard=True)
+
+    def set_listening(self, on):
+        """Track an active microphone session independently from response generation."""
+        self.listening = bool(on)
 
     def set_speaking(self, on, hard=False):
         self.speaking = bool(on)
@@ -298,7 +304,10 @@ class EmotionEngine:
             self._speak_gain = min(1.0, self._speak_gain + dt / fade)
         else:
             self._speak_gain = max(0.0, self._speak_gain - dt / 0.12)
-        return self._frame(now, bool(members) or self._strength > 0.02 or self._speak_gain > 0.0 or bool(self._live_pulses(now)))
+        if self.listening and not members and not self.speaking:
+            base = "thinking"
+            dominant = "thinking"
+        return self._frame(now, bool(members) or self._strength > 0.02 or self._speak_gain > 0.0 or bool(self._live_pulses(now)) or self.listening)
 
     def _live_pulses(self, now):
         return [(n, s) for n, s in self._pulses if now - s < float(self.lib.pulses.get(n, {}).get("dur", 0.5))]
@@ -326,7 +335,7 @@ class EmotionEngine:
                 add(k["part"], k["channel"], float(k["amp"]) * env)
         f.pose = pose
         f.base_mood, f.active = self.base_mood, active
-        f.dominant, f.members, f.speaking = self.dominant, [(m[0].id, round(m[1]), round(m[2], 2)) for m in self._members], self.speaking
+        f.dominant, f.members, f.speaking, f.listening = self.dominant, [(m[0].id, round(m[1]), round(m[2], 2)) for m in self._members], self.speaking, self.listening
         return f
 
     def current_base_mood(self, now):

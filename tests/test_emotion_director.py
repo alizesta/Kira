@@ -66,6 +66,33 @@ class EmotionDirectorLifecycleTests(unittest.TestCase):
         self.assertFalse(self._has_entry(source="response"))
         self.assertTrue(self._has_entry(source="event", tag="response_failed"))
 
+    def test_listening_state_drives_avatar_and_releases_when_thinking_starts(self):
+        self.director.event("listening_started", now=100.0)
+
+        listening = self.director.tick(now=100.0)
+        self.assertTrue(listening.listening)
+        self.assertTrue(listening.active)
+        self.assertEqual(listening.dominant, "curious")
+        self.assertTrue(self._has_entry(source="event", tag="listening_started"))
+
+        self.director.event("response_started", now=101.0)
+        thinking = self.director.tick(now=101.0)
+        self.assertFalse(thinking.listening)
+        self.assertFalse(self._has_entry(source="event", tag="listening_started"))
+        self.assertTrue(self._has_entry(source="event", tag="response_started"))
+
+    def test_speaking_and_interrupt_clear_listening(self):
+        self.director.event("listening_started", now=100.0)
+        self.director.event("tts_started", now=101.0)
+        self.assertFalse(self.director.tick(now=101.0).listening)
+        self.assertTrue(self.director.engine.speaking)
+
+        self.director.event("listening_started", now=102.0)
+        self.director.event("user_interrupt", now=103.0)
+        frame = self.director.tick(now=103.0)
+        self.assertFalse(frame.listening)
+        self.assertFalse(frame.speaking)
+
 
 if __name__ == "__main__":
     unittest.main()

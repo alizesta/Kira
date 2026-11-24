@@ -226,16 +226,27 @@ class RuntimeVoiceMixin:
         if worker is not None:
             worker.clear_video_frames()
 
+    def _on_gemini_audio_playback(self, speaking):
+        worker = self.sender()
+        if worker is not None and worker is not getattr(self, "_gemini_worker", None):
+            return
+        self.context.adapters.director.event("tts_started" if speaking else "tts_stopped")
+        if not speaking and getattr(self, "_voice_mode", "") == "gemini_live":
+            self.context.adapters.director.event("listening_started")
+
     def _on_gemini_state(self, state):
         worker = self.sender()
         if worker is not None and worker is not getattr(self, "_gemini_worker", None):
             return
         if state == "gemini_connecting":
             self._voice_mode = "gemini_connecting"
+            self.context.adapters.director.event("listening_stopped")
         elif state == "gemini_live":
             self._voice_mode = "gemini_live"
+            self.context.adapters.director.event("listening_started")
             self.feature_controller("attachments_vision").set_live_video_active(True)
         elif state == "stopped":
+            self.context.adapters.director.event("listening_stopped")
             self.feature_controller("attachments_vision").set_live_video_active(False)
         self._sync_voice_mode_badge()
         self.update_engine_label()
@@ -313,6 +324,8 @@ class RuntimeVoiceMixin:
             )
             self._gemini_worker = worker
             worker.state_changed.connect(self._on_gemini_state)
+            worker.audio_playback_changed.connect(self._on_gemini_audio_playback)
+            worker.audio_level.connect(self.context.adapters.animator.set_mouth_target)
             worker.transcript.connect(self._on_gemini_transcript)
             worker.failed.connect(self._on_gemini_failed)
             worker.finished.connect(self._on_gemini_worker_finished)
@@ -329,6 +342,7 @@ class RuntimeVoiceMixin:
             self._sync_live_toggle(False)
             return
         if not enabled:
+            self.context.adapters.director.event("listening_stopped")
             self._voice_session_requested = False
             self._pending_gemini_start = False
             self.feature_controller("attachments_vision").set_live_video_active(False)
@@ -458,6 +472,7 @@ class RuntimeVoiceMixin:
         self.context.services.voice_application_service.start_recording()
 
     def stop_listener(self):
+        self.context.adapters.director.event("listening_stopped")
         self._clear_voice_preview()
         self.context.services.voice_application_service.stop_recording()
         self.feature_controller("session").set_status("st_ready")
@@ -558,11 +573,19 @@ class RuntimeVoiceMixin:
         if getattr(self, "_voice_mode", "") not in ("local_fallback", "local_primary", "gemini_live", "gemini_connecting"):
             self._voice_mode = "local_stt"
         self._sync_voice_mode_badge(state)
-        if state == "listening":
-            self.update_engine_label()
-            self.feature_controller("session").set_status("st_sleeping" if (self.context.views.wake_btn.isChecked() and not self.context.state.awake) else "st_listening")
+        if state in ("listening", "hearing"):
+            if self.context.views.wake_btn.isChecked() and not self.context.state.awake:
+                self.context.adapters.director.event("listening_stopped")
+            else:
+                self.context.adapters.director.event("listening_started")
+            if state == "listening":
+                self.update_engine_label()
+                self.feature_controller("session").set_status("st_sleeping" if (self.context.views.wake_btn.isChecked() and not self.context.state.awake) else "st_listening")
+            else:
+                self.feature_controller("session").set_status("st_hearing")
         else:
-            self.feature_controller("session").set_status({"loading": "st_loading", "hearing": "st_hearing", "transcribing": "st_transcribing"}.get(state, "st_ready"))
+            self.context.adapters.director.event("listening_stopped")
+            self.feature_controller("session").set_status({"loading": "st_loading", "transcribing": "st_transcribing"}.get(state, "st_ready"))
 
     def update_engine_label(self):
         # The voice settings page is built lazily when its tab is first opened.

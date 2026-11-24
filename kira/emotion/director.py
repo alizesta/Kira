@@ -72,6 +72,8 @@ class EmotionDirector:
         if ev.get("release_responses"):
             self.engine.release(sources=("response",), now=now)
             self.engine.pending = None
+        if "listening" in ev:
+            self.engine.set_listening(bool(ev["listening"]))
         if "speaking" in ev and name != "user_interrupt":
             self.engine.set_speaking(bool(ev["speaking"]), hard=not ev["speaking"])
         if ev.get("pulse"):
