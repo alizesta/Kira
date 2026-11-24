@@ -34,7 +34,7 @@ class DeepSeekSessionStoreTests(unittest.TestCase):
             "PROGRAMFILES(X86)": r"C:\Program Files (x86)",
         })
         self.assertEqual(len(paths), 3)
-        self.assertTrue(str(paths[0]).endswith(r"Google\Chrome\Application\chrome.exe"))
+        self.assertEqual(paths[0].parts[-4:], ("Google", "Chrome", "Application", "chrome.exe"))
 
     def test_interactive_login_attaches_to_normal_chrome_instead_of_launching_playwright_chromium(self):
         from pathlib import Path
