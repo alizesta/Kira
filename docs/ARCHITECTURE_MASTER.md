@@ -70,6 +70,13 @@ The following source changes are now merged into `new-main` and supersede the pr
 
 **Verification boundary:** source changes and regression tests are present, but the associated GitHub Actions jobs inspected for these changes completed without executable steps/logs. No full Python suite, Qt desktop smoke test, target-Windows startup/RAM baseline or measured CPU improvement is claimed. See `docs/STARTUP_PERFORMANCE.md` for the required measurement protocol.
 
+### 2.5 Companion bubble and Tray shutdown synchronization — 2026-11-24
+
+- CompanionBubble is a transient preview surface beside the avatar: passive mode renders only the newest chat item and expires after 10 seconds. The avatar's pencil control opens the composer; Escape closes the composer and restores the timed preview.
+- Tray Exit follows a two-stage Qt lifecycle. The initial close request starts cancellation and worker draining while retaining the Tray entry point. _exit_application hides Tray and ends the event loop only after closeEvent accepts the close. An ignored close must leave the process recoverable.
+- The bubble's session marker prefers the Session's native session_id, with a legacy fallback to (cid, conversation_id). Lifecycle checks and history restoration share this helper.
+- tests/test_companion_tray_shutdown_contracts.py guards shutdown ordering, the Escape shortcut, preview expiry and legacy identity without importing Qt. These are source-level regression checks; real PySide6 and Windows Tray interaction remains runtime-unverified.
+
 ## 3. High-level architecture
 
 ```mermaid
