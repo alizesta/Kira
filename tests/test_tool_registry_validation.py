@@ -80,6 +80,41 @@ class ToolArgumentValidationTests(unittest.TestCase):
         with self.assertRaises(ToolError):
             self.registry.clean_args(self.tool, {"count": True})
 
+    def test_always_visible_introspection_tool_is_available_for_every_category(self):
+        introspection = Tool(
+            "windows_control_info",
+            "live tool inventory",
+            lambda args: "inventory",
+            (),
+            categories=("system",),
+            always_visible=True,
+        )
+        hidden = Tool("file_probe", "file probe", lambda args: "ok", (), categories=("files",))
+        self.registry.register(introspection)
+        self.registry.register(hidden)
+
+        selected = self.registry.for_selected_categories({"apps"})
+        self.assertEqual([tool.name for tool in selected], ["windows_control_info"])
+        self.assertEqual([tool.name for tool in self.registry.for_selected_categories(set())], ["windows_control_info"])
+        self.assertIn("windows_control_info()", self.registry.catalog_for_selected_categories({"apps"}))
+        self.assertNotIn("file_probe", self.registry.catalog_for_selected_categories({"apps"}))
+
+    def test_capability_report_includes_tool_purpose_and_argument_contract(self):
+        tool = Tool(
+            "report_probe",
+            "read a report by its exact path",
+            lambda args: "ok",
+            (Param("path", "string", "absolute report path", True), Param("limit", "integer", "maximum rows")),
+            categories=("files",),
+        )
+        self.registry.register(tool)
+
+        report = self.registry.access.info_text(recent=0)
+        self.assertIn("read a report by its exact path", report)
+        self.assertIn("path (string، اجباری): absolute report path", report)
+        self.assertIn("limit (integer، اختیاری): maximum rows", report)
+        self.assertIn("تعداد ابزارهای ثبت‌شده", report)
+
 
 if __name__ == "__main__":
     unittest.main()
