@@ -713,10 +713,9 @@ class ToolAgent(AutonomyMixin):
         pending_chunks = []
         pending_text = ""
         released = False
-        denial_candidate = False
 
         def guarded_chunk(piece):
-            nonlocal pending_text, released, denial_candidate
+            nonlocal pending_text, released
             if not piece:
                 return
             piece = str(piece)
@@ -727,9 +726,9 @@ class ToolAgent(AutonomyMixin):
             pending_chunks.append(piece)
             pending_text += piece
             if self._claims_missing_access(pending_text):
-                denial_candidate = True
+                # Keep the opening denial private until the retry decision is made.
                 return
-            if len(pending_text) >= 240 or re.search(r"[.!?؟\\n]", pending_text):
+            if len(pending_text) >= 240 or re.search(r"[.!?؟\n]", pending_text):
                 released = True
                 if callable(on_chunk):
                     for chunk in pending_chunks:
