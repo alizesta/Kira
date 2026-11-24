@@ -468,6 +468,36 @@ class SessionController(WindowFeatureController):
             return f"سلام! من {name} هستم. {profile.get('description', '')}"
         return f"Hi! I'm {name}. {profile.get('description', '')}"
 
+    def sync_bubble_history(self, bubble):
+        """Refresh the floating chat transcript for the active character session."""
+        session = self.context.session
+        history = self.context.services.chat_application_service.recent_messages(
+            bubble.KEEP,
+            character_id=session.cid,
+            conversation_id=session.conversation_id,
+        )
+        items = []
+        ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "fa") == "fa" else "ltr"
+        assistant_name = self.context.services.character_service.display_name(
+            self.context.services.settings
+        )
+        user_name = self.t("you")
+        for item in history:
+            role = item.get("role")
+            if role == "assistant":
+                text = self.context.adapters.director.parse_reply(
+                    item.get("content", "")
+                ).text
+                name = assistant_name
+            elif role == "user":
+                text = item.get("content", "")
+                name = user_name
+            else:
+                continue
+            if str(text).strip():
+                items.append((role, name, text))
+        bubble.replace_history(items, ui_dir, session.session_id)
+
     def restore_history(self, limit=40):
         """Show the saved conversation of the CURRENT chat again after a restart (it is already used as model context)."""
         try:
