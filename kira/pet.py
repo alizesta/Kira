@@ -21,6 +21,8 @@ TICK_MS = 16
 GRAVITY = 3200.0            # px/s^2 at a 620 px high window; scaled with the window height
 TRACK_MS = 150
 HOLD_X, HOLD_Y = 0.5, 0.10  # where on the window the cursor holds her while hanging (top of the head)
+PERCH_SNAP_DISTANCE = 110   # pixels above a window edge / taskbar that count as an intentional drop
+PERCH_SNAP_SLACK = 6        # match landing_surface's collision tolerance
 
 
 class PetController(QObject):
@@ -159,16 +161,44 @@ class PetController(QObject):
         self.w.move(x, y)
         self._send_hang(True, self._v[0] / max(1, self.w.height()))
 
+    def _drop_target(self, surfaces: list[Surface], floor: Surface) -> Surface | None:
+        """Return a ledge only when the companion's feet are close enough for an intentional perch."""
+        feet_x, feet_y = perch.feet_position(
+            self.w.x(), self.w.y(), self.w.width(), self.w.height()
+        )
+        candidates: list[tuple[float, Surface]] = []
+        for surface in surfaces:
+            gap = surface.y - feet_y
+            if (surface.left <= feet_x <= surface.right
+                    and -PERCH_SNAP_SLACK <= gap <= PERCH_SNAP_DISTANCE):
+                candidates.append((max(0.0, gap), surface))
+        if floor.kind == "taskbar":
+            gap = floor.y - feet_y
+            if (floor.left <= feet_x <= floor.right
+                    and -PERCH_SNAP_SLACK <= gap <= PERCH_SNAP_DISTANCE):
+                candidates.append((max(0.0, gap), floor))
+        return min(candidates, key=lambda candidate: candidate[0])[1] if candidates else None
+
     def _end_drag(self) -> None:
         self._tick.stop()
         self._send_hang(False, 0.0)
         if not self.on("companion_perch"):
             self.state = "free"
             return
+
+        screen = self._screen()
+        surfaces, floor = self._surfaces(screen), self._floor(screen)
+        if self._drop_target(surfaces, floor) is None:
+            # An ordinary release is just a move; gravity is only for a nearby ledge/taskbar.
+            self.state, self.surface = "free", None
+            self._v = [0.0, 0.0]
+            self._last = None
+            self._body("reset")
+            return
+
+        self._fall_surfaces, self._fall_floor, self._fall_screen = surfaces, floor, screen
         self._body("arms_out")
         self.state = "falling"
-        screen = self._screen()
-        self._fall_surfaces, self._fall_floor, self._fall_screen = self._surfaces(screen), self._floor(screen), screen
         self._v[0] = max(-1800.0, min(1800.0, self._v[0] * 0.6))
         self._v[1] = max(0.0, min(400.0, self._v[1] * 0.3))
         self._tick.start()

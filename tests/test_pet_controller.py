@@ -58,21 +58,60 @@ class PetControllerTests(unittest.TestCase):
         pet.move(QPoint(12, 11))
         self.assertFalse(pet.release())
 
-    def test_released_character_falls_and_sits_on_the_floor(self):
-        window, pet, commands = make({"companion_hang": False})
-        window.move(300, 0)
-        pet.press(QPoint(310, 10))
-        pet.move(QPoint(330, 20))
-        self.assertEqual(pet.state, "dragging")
-        pet.release()
+    def test_released_character_stays_put_when_no_perch_target_is_nearby(self):
+        window, pet, _ = make({})
+        window.move(200, 100)
+        from kira.perch import Surface
+        pet._screen = lambda: object()
+        pet._surfaces = lambda _screen: [Surface(0, 1000, 1100, "window", 1)]
+        pet._floor = lambda _screen: Surface(0, 1200, 1200, "floor")
+        pet._begin_drag()
+        original_pos = window.pos()
+        pet._end_drag()
+        self.assertEqual(pet.state, "free")
+        self.assertEqual(window.pos(), original_pos)
+        self.assertFalse(pet._tick.isActive())
+
+    def test_released_character_falls_when_feet_are_near_a_window_top(self):
+        window, pet, _ = make({})
+        window.resize(300, 600)
+        window.move(200, 100)
+        from kira.perch import Surface
+        pet._screen = lambda: object()
+        pet._surfaces = lambda _screen: [Surface(150, 700, 760, "window", 1)]
+        pet._floor = lambda _screen: Surface(0, 1200, 1300, "floor")
+        pet._begin_drag()
+        pet._end_drag()
         self.assertEqual(pet.state, "falling")
-        for _ in range(2000):
-            if pet.state != "falling":
-                break
-            pet._fall_tick()
-        self.assertEqual(pet.state, "perched")
-        self.assertIn("sit", commands[-1])
-        self.assertIsNotNone(pet.surface)
+        pet._tick.stop()
+
+    def test_released_character_falls_when_feet_are_near_the_taskbar(self):
+        window, pet, _ = make({})
+        window.resize(300, 600)
+        window.move(200, 100)
+        from kira.perch import Surface
+        feet_y = 100 + 600 * 0.97
+        pet._screen = lambda: object()
+        pet._surfaces = lambda _screen: []
+        pet._floor = lambda _screen: Surface(0, 1200, feet_y + 80, "taskbar")
+        pet._begin_drag()
+        pet._end_drag()
+        self.assertEqual(pet.state, "falling")
+        pet._tick.stop()
+
+    def test_released_character_does_not_fall_at_an_ordinary_screen_edge(self):
+        window, pet, _ = make({})
+        window.resize(300, 600)
+        window.move(200, 100)
+        from kira.perch import Surface
+        feet_y = 100 + 600 * 0.97
+        pet._screen = lambda: object()
+        pet._surfaces = lambda _screen: []
+        pet._floor = lambda _screen: Surface(0, 1200, feet_y + 80, "floor")
+        pet._begin_drag()
+        pet._end_drag()
+        self.assertEqual(pet.state, "free")
+        self.assertFalse(pet._tick.isActive())
 
     def test_music_makes_a_perched_character_stand_up_and_stop_makes_her_sit(self):
         window, pet, commands = make({})
