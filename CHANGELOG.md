@@ -633,7 +633,7 @@ Mate Engine (shinyflvre) is a Unity/C# project under AGPL-3.0 + its own licence,
 
 - Include read-only web research tools in the auto-mode planner catalog; existing web rules still require explicit user intent before searching.
 
-## 2026-11-24 — DeepSeek Reverse API hardening
+## 1.2.1 — 2026-11-24 — DeepSeek Reverse API hardening
 - Corrected the DeepSeek session-store tests to use a reversible base64 test cipher, so they verify that persisted content is opaque instead of using a fake prefix that exposed the original cookie/token values.
 - Hardened headless response streaming with a rolling uncommitted tail and common-prefix reconciliation, avoiding duplicate cumulative text when the page re-renders or revises the trailing Markdown/code block.
 - A response that has started is returned as a partial result when the Route deadline expires; the transport no longer raises after streaming content and accidentally triggers a second failover answer.
