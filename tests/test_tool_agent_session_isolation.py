@@ -41,6 +41,19 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
         self.assertNotIn("mcp", plan.schema_categories)
         self.assertNotIn("agents", plan.schema_categories)
 
+    def test_unknown_tool_followed_by_access_denial_also_retries(self):
+        first = {"text": "ابزار مناسب را در اختیار ندارم.", "tools": [{"tool": "wrong_tool", "status": "unknown_tool"}]}
+        second = {"text": "پیدا شد.", "tools": [{"tool": "list_running_apps", "status": "ok"}]}
+        plan = ToolPlan(categories={"system"}, schema_categories={"system"})
+        with patch.object(self.agent, "_direct_bridge", return_value=False), \
+             patch.object(self.agent, "_run_once", side_effect=[first, second]) as run_once, \
+             patch.object(self.agent, "planning_enabled", return_value=False):
+            result = self.agent.run(None, [], "", 0.2, plan)
+
+        self.assertEqual(result["text"], "پیدا شد.")
+        self.assertEqual(run_once.call_count, 2)
+        self.assertIn("desktop", plan.schema_categories)
+
     def setUp(self):
         self.access = AccessManager(SimpleNamespace())
         self.agent = ToolAgent.__new__(ToolAgent)
