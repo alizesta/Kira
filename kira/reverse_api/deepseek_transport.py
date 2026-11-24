@@ -33,17 +33,33 @@ _RESPONSE_SCRIPT = """() => {
   }
   return values;
 }"""
-_GENERATING_SCRIPT = """() => {
+_GENERATION_STATE_SCRIPT = """() => {
   const selectors = [
-    'button[aria-label*= "Stop"]', 'button[aria-label*= "stop"]',
-    'button[title*= "Stop"]', 'button[title*= "stop"]',
-    '[data-testid*= "stop"]', 'button[class*= "stop"]'
+    'button[aria-label*="stop" i]', 'button[title*="stop" i]',
+    '[data-testid*="stop" i]', 'button[class*="stop" i]',
+    '[aria-label*="停止"]', '[title*="停止"]'
   ];
-  return selectors.some(selector => [...document.querySelectorAll(selector)].some(node => {
-    const style = getComputedStyle(node);
-    return style.display !== "none" && style.visibility !== "hidden" && !node.disabled;
-  }));
+  const stopVisible = selectors.some(selector =>
+    [...document.querySelectorAll(selector)].some(node => {
+      const style = getComputedStyle(node);
+      return style.display !== "none" && style.visibility !== "hidden" &&
+        node.getAttribute("aria-hidden") !== "true" && !node.disabled;
+    })
+  );
+  const composer = [...document.querySelectorAll('textarea, [contenteditable="true"], [role="textbox"]')]
+    .find(node => {
+      const style = getComputedStyle(node);
+      return style.display !== "none" && style.visibility !== "hidden";
+    });
+  return { stopVisible, composerDisabled: !composer || composer.disabled ||
+    composer.getAttribute("aria-disabled") === "true" };
 }"""
+
+# Keep a rolling tail uncommitted so transient markdown/code-block re-renders
+# do not resend the entire cumulative response.
+_STREAM_HOLDBACK_CHARS = 512
+_NO_STOP_IDLE_SECONDS = 5.0
+_STOP_IDLE_SECONDS = 1.0
 
 
 class DeepSeekBrowserTransport:
@@ -69,6 +85,41 @@ class DeepSeekBrowserTransport:
         except (TypeError, ValueError):
             seconds = 90.0
         return max(1_000, int(seconds * 1000))
+
+    @staticmethod
+    def _common_prefix_length(left: str, right: str) -> int:
+        limit = min(len(left), len(right))
+        index = 0
+        while index < limit and left[index] == right[index]:
+            index += 1
+        return index
+
+    @staticmethod
+    def _merge_session_storage(state: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]:
+        """Merge the current origin's sessionStorage into Playwright's refreshed storage state."""
+        updated = dict(state)
+        by_origin = dict(state.get("sessionStorageByOrigin") or {})
+        origin = snapshot.get("origin")
+        entries = snapshot.get("entries") or []
+        if origin:
+            if entries:
+                by_origin[origin] = entries
+            else:
+                by_origin.pop(origin, None)
+        if by_origin:
+            updated["sessionStorageByOrigin"] = by_origin
+        else:
+            updated.pop("sessionStorageByOrigin", None)
+        return updated
+
+    def _persist_refreshed_session(self, context, page, previous_state: dict[str, Any]) -> None:
+        """Persist rotated cookies/local storage and current-origin sessionStorage after a reply."""
+        refreshed = context.storage_state()
+        snapshot = page.evaluate(
+            """() => ({origin: location.origin, entries: Object.entries(sessionStorage)
+                .map(([name, value]) => ({name, value}))})"""
+        )
+        self.store.save(self._merge_session_storage(refreshed, snapshot))
 
     def status(self) -> TransportStatus:
         try:
@@ -112,7 +163,7 @@ class DeepSeekBrowserTransport:
     def stream(self, request: ReverseRequest, cancel: threading.Event) -> Iterable[str]:
         if not self._lock.acquire(blocking=False):
             raise ReverseTransportError("درخواست دیگری از طریق نشست DeepSeek در حال اجراست.", kind="rate", retryable=True)
-        self._cancel.clear()
+        # Do not clear a cancellation requested immediately before stream() starts.
         browser = context = page = None
         try:
             try:
@@ -172,9 +223,12 @@ class DeepSeekBrowserTransport:
                 composer.fill(request.prompt)
                 composer.press("Enter")
                 deadline = time.monotonic() + timeout_ms / 1000
-                previous = ""
-                stable = 0
+                previous_snapshot = ""
+                emitted_prefix = ""
+                latest_text = ""
+                last_change = time.monotonic()
                 started = False
+                completed = False
                 while time.monotonic() < deadline:
                     if cancel.is_set() or self._cancel.is_set():
                         return
@@ -182,26 +236,54 @@ class DeepSeekBrowserTransport:
                     current = texts[-1] if texts else ""
                     if texts and (len(texts) > len(before) or current not in before):
                         started = True
+                    now = time.monotonic()
                     if started and current:
-                        if current.startswith(previous):
-                            delta = current[len(previous):]
-                        else:
-                            delta = current
-                        if delta:
-                            yield delta
-                        if current == previous:
-                            stable += 1
-                        else:
-                            stable = 0
-                        previous = current
-                    generating = page.evaluate(_GENERATING_SCRIPT)
-                    if started and not generating and stable >= 3:
-                        break
+                        latest_text = current
+                        if current != previous_snapshot:
+                            last_change = now
+                        if previous_snapshot:
+                            stable_prefix = self._common_prefix_length(previous_snapshot, current)
+                            safe_length = max(0, min(stable_prefix, len(current) - _STREAM_HOLDBACK_CHARS))
+                            if current.startswith(emitted_prefix) and safe_length > len(emitted_prefix):
+                                delta = current[len(emitted_prefix):safe_length]
+                                if delta:
+                                    yield delta
+                                emitted_prefix = current[:safe_length]
+                        previous_snapshot = current
+
+                    generation = page.evaluate(_GENERATION_STATE_SCRIPT)
+                    stop_visible = bool(generation.get("stopVisible")) if isinstance(generation, dict) else bool(generation)
+                    composer_disabled = bool(generation.get("composerDisabled")) if isinstance(generation, dict) else False
+                    idle_for = now - last_change
+                    if started and not stop_visible:
+                        if composer_disabled is False and idle_for >= _NO_STOP_IDLE_SECONDS:
+                            completed = True
+                            break
+                        if isinstance(generation, dict) and idle_for >= _STOP_IDLE_SECONDS:
+                            completed = True
+                            break
                     page.wait_for_timeout(250)
-                if not started or not previous.strip():
+
+                if not started or not latest_text.strip():
                     raise ReverseTransportError("DeepSeek در مهلت تعیین‌شده پاسخی برنگرداند.", kind="timeout", retryable=True)
-                if time.monotonic() >= deadline:
-                    raise ReverseTransportError("مهلت دریافت پاسخ DeepSeek تمام شد.", kind="timeout", retryable=True)
+
+                # A timed-out partial response is still a usable partial result. Do not
+                # raise after yielding it: the router would otherwise trigger failover
+                # and append a second answer to the already streamed text.
+                try:
+                    self._persist_refreshed_session(context, page, state)
+                except Exception as exc:
+                    self._last_error = "ذخیره نشست تازه‌شده ناموفق بود: " + str(exc)[:180]
+
+                if latest_text.startswith(emitted_prefix):
+                    tail = latest_text[len(emitted_prefix):]
+                    if tail:
+                        yield tail
+                elif not emitted_prefix:
+                    yield latest_text
+                # If the deadline elapsed after content arrived, return the partial
+                # answer as a completed transport result rather than raising timeout.
+                return
         except ReverseTransportError:
             raise
         except Exception as exc:
@@ -220,6 +302,9 @@ class DeepSeekBrowserTransport:
                     browser.close()
             except Exception:
                 pass
+            # Clear only after this request has completely unwound. A stop arriving
+            # before stream() starts is therefore observed instead of erased.
+            self._cancel.clear()
             self._lock.release()
 
 
