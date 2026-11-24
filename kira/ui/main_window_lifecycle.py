@@ -208,7 +208,7 @@ class LifecycleController(WindowFeatureController):
         menu.addSeparator()
         exit_action = menu.addAction("خروج")
         # Defer shutdown until the native tray menu has finished closing.
-        exit_action.triggered.connect(lambda checked=False: QTimer.singleShot(0, self.quit_app))
+        exit_action.triggered.connect(lambda checked=False: QTimer.singleShot(100, self.quit_app))
 
     def tray_toggle_mic(self, checked=False):
         self.context.views.mic_btn.setChecked(not self.context.views.mic_btn.isChecked())
@@ -221,6 +221,38 @@ class LifecycleController(WindowFeatureController):
             return
         away = getattr(self.context.views, "tray", None) is not None and (not self.window.isVisible() or self.window.isMinimized())
         if away and self.context.adapters.companion.isVisible() and not self.context.state._closing:
+            session = self.context.session
+            if getattr(bubble, "session_id", None) != session.session_id:
+                try:
+                    history = self.context.services.chat_application_service.recent_messages(
+                        bubble.KEEP,
+                        character_id=session.cid,
+                        conversation_id=session.conversation_id,
+                    )
+                    items = []
+                    ui_dir = "rtl" if self.context.services.settings.get("ui_lang", "fa") == "fa" else "ltr"
+                    assistant_name = self.context.services.character_service.display_name(
+                        self.context.services.settings
+                    )
+                    user_name = self.feature_controller("session").t("you")
+                    for item in history:
+                        role = item.get("role")
+                        if role == "assistant":
+                            text = self.context.adapters.director.parse_reply(
+                                item.get("content", "")
+                            ).text
+                            name = assistant_name
+                        elif role == "user":
+                            text = item.get("content", "")
+                            name = user_name
+                        else:
+                            continue
+                        if str(text).strip():
+                            items.append((role, name, text))
+                    bubble.replace_history(items, ui_dir, session.session_id)
+                except Exception:
+                    # The companion must remain usable if history restoration is temporarily unavailable.
+                    pass
             bubble.place_beside(self.context.adapters.companion)
             if not bubble.isVisible():
                 bubble.show()
@@ -253,6 +285,12 @@ class LifecycleController(WindowFeatureController):
         # closeEvent owns the shutdown protocol. Calling QApplication.quit()
         # here would bypass it when active workers cause closeEvent to ignore.
         self.context.state._quitting = True
+        tray = getattr(self.context.views, "tray", None)
+        if tray is not None:
+            tray.hide()
+        app = QApplication.instance()
+        if app is not None:
+            app.setQuitOnLastWindowClosed(True)
         self.window.close()
 
     def changeEvent(self, event):
