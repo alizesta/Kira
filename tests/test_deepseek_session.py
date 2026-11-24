@@ -36,8 +36,19 @@ class DeepSeekSessionStoreTests(unittest.TestCase):
         with self.assertRaises(DeepSeekSessionError):
             self.store.load()
 
-    def test_missing_session_is_not_an_error(self):
-        self.assertIsNone(self.store.load())
+    def test_session_storage_only_state_is_valid(self):
+        state = {
+            "cookies": [],
+            "origins": [],
+            "sessionStorageByOrigin": {
+                "https://chat.deepseek.com": [{"name": "token", "value": "private"}]
+            },
+        }
+        self.store.save(state)
+        self.assertEqual(self.store.load(), state)
+        self.assertNotIn("private", self.store.path.read_text(encoding="utf-8"))
+
+    def test_missing_session_is_not_an_error(self):        self.assertIsNone(self.store.load())
         self.assertFalse(self.store.has_session())
 
     def test_clear_removes_only_session_file(self):
