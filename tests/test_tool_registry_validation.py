@@ -1,6 +1,8 @@
 """Boundary tests for the central tool argument validator."""
+import threading
 import unittest
 
+from kira.tools.wincontrol import Capability, WindowsControlLayer
 from kira.tools.registry import Param, Tool, ToolError, ToolRegistry
 
 
@@ -79,6 +81,53 @@ class ToolArgumentValidationTests(unittest.TestCase):
     def test_integer_boolean_is_not_coerced_to_one_or_zero(self):
         with self.assertRaises(ToolError):
             self.registry.clean_args(self.tool, {"count": True})
+
+    def test_registry_get_obeys_the_registry_lock(self):
+        self.registry.register(self.tool)
+        started = threading.Event()
+        finished = threading.Event()
+        found = []
+
+        def read_tool():
+            started.set()
+            found.append(self.registry.get("numeric_probe"))
+            finished.set()
+
+        with self.registry._tools_lock:
+            worker = threading.Thread(target=read_tool)
+            worker.start()
+            self.assertTrue(started.wait(1))
+            self.assertFalse(finished.wait(0.05))
+
+        worker.join(1)
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(finished.is_set())
+        self.assertIs(found[0], self.tool)
+
+    def test_json_schema_rejects_undeclared_arguments(self):
+        schema = self.tool.json_schema()
+        self.assertIs(schema["parameters"]["additionalProperties"], False)
+        self.assertEqual(schema["parameters"]["required"], ["count"])
+        self.assertEqual(set(schema["parameters"]["properties"]), {"count", "ratio"})
+
+    def test_duplicate_capability_does_not_replace_the_registered_module_entry(self):
+        registry = ToolRegistry()
+        layer = WindowsControlLayer(registry)
+        original = Capability(
+            "duplicate_probe", "desktop", "original capability",
+            lambda _args: "original", categories=("desktop",),
+        )
+        replacement = Capability(
+            "duplicate_probe", "desktop", "replacement capability",
+            lambda _args: "replacement", categories=("desktop",),
+        )
+
+        layer.register(original)
+        with self.assertRaises(ValueError):
+            layer.register(replacement)
+
+        self.assertEqual(layer.capabilities(), [original])
+        self.assertEqual(registry.get("duplicate_probe").description, "original capability")
 
     def test_always_visible_introspection_tool_is_available_for_every_category(self):
         introspection = Tool(
