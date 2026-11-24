@@ -270,7 +270,7 @@ class ToolRegistry:
         return [t.json_schema() for t in self.for_categories(categories)]
 
     def for_selected_categories(self, categories) -> list[Tool]:
-        """Return only tools matching a non-empty model-visible capability selection."""
+        """Return selected tools plus explicitly always-visible meta capabilities."""
         wanted = set(categories or ())
         return [tool for tool in self.all() if tool.always_visible or wanted.intersection(tool.categories)]
 
