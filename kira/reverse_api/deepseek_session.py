@@ -52,7 +52,7 @@ class DeepSeekSessionStore:
     def save(self, state: dict[str, Any]) -> None:
         if os.name != "nt" and self._encrypt is protect:
             raise DeepSeekSessionError("ذخیره امن نشست DeepSeek فقط روی Windows پشتیبانی می‌شود.")
-        if not isinstance(state, dict) or not (state.get("cookies") or state.get("origins")):
+        if not isinstance(state, dict) or not (state.get("cookies") or state.get("origins") or state.get("sessionStorageByOrigin")):
             raise DeepSeekSessionError("مرورگر نشست معتبری برای ذخیره برنگرداند.")
         raw = json.dumps(state, ensure_ascii=False, separators=(",", ":"))
         try:
@@ -90,7 +90,7 @@ class DeepSeekSessionStore:
                 if not raw:
                     raise DeepSeekSessionError("نشست ذخیره‌شده روی این حساب Windows قابل رمزگشایی نیست.")
                 state = json.loads(raw)
-                if not isinstance(state, dict) or not (state.get("cookies") or state.get("origins")):
+                if not isinstance(state, dict) or not (state.get("cookies") or state.get("origins") or state.get("sessionStorageByOrigin")):
                     raise DeepSeekSessionError("ساختار نشست DeepSeek معتبر نیست.")
                 return state
             except DeepSeekSessionError:
@@ -134,6 +134,8 @@ class DeepSeekBrowserLogin:
                 ) from exc
 
             with sync_playwright() as playwright:
+                browser = None
+                context = None
                 try:
                     browser = playwright.chromium.launch(channel="chrome", headless=False)
                     context = browser.new_context()
@@ -155,6 +157,12 @@ class DeepSeekBrowserLogin:
                         timeout=max(1_000, int(timeout_ms)),
                     )
                     state = context.storage_state()
+                    session_storage = page.evaluate(
+                        """() => ({origin: location.origin, entries: Object.entries(sessionStorage)
+                            .map(([name, value]) => ({name, value}))})"""
+                    )
+                    if session_storage.get("entries"):
+                        state["sessionStorageByOrigin"] = {session_storage["origin"]: session_storage["entries"]}
                     self.store.save(state)
                     # Never return cookie/token material to the UI or log layer.
                     return {"saved": True, "session_file": str(self.store.path)}
@@ -164,8 +172,10 @@ class DeepSeekBrowserLogin:
                     ) from exc
                 finally:
                     try:
-                        context.close()
+                        if context is not None:
+                            context.close()
                     finally:
-                        browser.close()
+                        if browser is not None:
+                            browser.close()
         finally:
             self._lock.release()
