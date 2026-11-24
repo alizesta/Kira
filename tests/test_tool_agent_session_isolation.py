@@ -25,6 +25,22 @@ class ToolAgentSessionIsolationTests(unittest.TestCase):
         self.assertFalse(ToolAgent._claims_missing_access("پنجره‌ی تنظیمات باز شد."))
         self.assertFalse(ToolAgent._claims_missing_access("برای ادامه، نام برنامه را بگو."))
 
+    def test_access_denial_retries_once_with_full_local_tool_catalog(self):
+        first = {"text": "من به کامپیوتر دسترسی ندارم.", "tools": []}
+        second = {"text": "درخواست انجام شد.", "tools": [{"tool": "open_app", "status": "ok"}]}
+        plan = ToolPlan(categories={"apps"}, schema_categories={"apps"})
+        with patch.object(self.agent, "_direct_bridge", return_value=False), \
+             patch.object(self.agent, "_run_once", side_effect=[first, second]) as run_once, \
+             patch.object(self.agent, "planning_enabled", return_value=False):
+            result = self.agent.run(None, [], "", 0.2, plan)
+
+        self.assertEqual(result["text"], "درخواست انجام شد.")
+        self.assertEqual(run_once.call_count, 2)
+        self.assertIn("desktop", plan.schema_categories)
+        self.assertIn("files", plan.schema_categories)
+        self.assertNotIn("mcp", plan.schema_categories)
+        self.assertNotIn("agents", plan.schema_categories)
+
     def setUp(self):
         self.access = AccessManager(SimpleNamespace())
         self.agent = ToolAgent.__new__(ToolAgent)
