@@ -942,5 +942,6 @@ class HybridRouter:
                         "health": st["health"], "last_error": st["last_error"], "last_ms": st["last_ms"],
                         "policy_decision": next((d["reason"] for d in self.last_route_decisions
                                                  if d["route_id"] == str(route.get("id") or "")), None),
+                        "network_policy": self.settings.get("network_policy", "local_only"),
                         "failure_class": st.get("failure_class"), "retryable": st.get("retryable")})
         return out
