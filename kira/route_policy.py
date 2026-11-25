@@ -147,6 +147,9 @@ class RoutePolicyEngine:
         manual_id = str(settings.get("manual_route_id") or "")
         manual = next((r for r in routes if str(r.get("id") or "") == manual_id), None) if manual_id else None
         if manual is not None and not settings.get("failover_enabled", True):
+            for route in routes:
+                if route is not manual:
+                    decisions[str(route.get("id") or "")] = "manual_failover_disabled"
             ordered = [manual]
         elif manual is not None:
             ordered = [manual] + [r for r in routes if r is not manual]
