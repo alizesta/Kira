@@ -126,5 +126,3 @@ class AttachmentsController(WindowFeatureController):
         if paths:
             self.add_attachment_paths(paths)
             event.acceptProposedAction()
-
-}

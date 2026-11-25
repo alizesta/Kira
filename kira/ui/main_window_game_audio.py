@@ -95,5 +95,3 @@ class GameAudioController(WindowFeatureController):
         )
         if alert is not None:
             self.feature_controller("runtime").reply_local(alert.message, alert.emotion)
-
-}
