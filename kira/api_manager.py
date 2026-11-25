@@ -276,7 +276,7 @@ def apply_models(settings, pid, models, rate_limit=None, now=None, *, capabiliti
     """Merge a fresh model list into the registry. New models appear as available; models that were known but are no longer listed
     are marked 'unavailable' (never silently dropped). Routes are NOT changed here. Returns {'new': [...], 'gone': [...]}"""
     now = int(now if now is not None else time.time())
-    ensure_registry(capabilities)
+    ensure_registry(settings, capabilities)
     entry = registry(capabilities)[pid]
     old = entry.get("models", {})
     fresh = {m["id"]: _model_record(m, now, old.get(m["id"])) for m in models if m.get("id")}
@@ -295,7 +295,7 @@ def apply_models(settings, pid, models, rate_limit=None, now=None, *, capabiliti
 def apply_failure(settings, pid, detection, now=None, *, capabilities: DetectedCapabilities):
     """Remember that the last check failed (the saved key, routes and models stay as they were)."""
     now = int(now if now is not None else time.time())
-    ensure_registry(capabilities)
+    ensure_registry(settings, capabilities)
     entry = registry(capabilities)[pid]
     entry.update({"status": "invalid" if detection.state == "invalid" else "error", "checked_at": now, "last_error": detection.message[:300]})
 
@@ -340,7 +340,7 @@ def register(settings, detection, key, now=None, *, capabilities: DetectedCapabi
         raise ValueError(f"این کلید قبلاً به‌عنوان «{route_model.provider_label(dup, settings['providers'][dup])}» ثبت شده است.")
     service = detection.service
     providers = settings.setdefault("providers", {})
-    ensure_registry(capabilities)
+    ensure_registry(settings, capabilities)
     pid = None
     builtin = BUILTIN_FOR.get(service)
     if builtin and not str(providers.get(builtin, {}).get("api_key") or "").strip():
@@ -468,7 +468,7 @@ def move_api(settings, pid, delta):
 
 def unique_models(settings, *, capabilities: DetectedCapabilities) -> dict:
     """{model id: [api ids]} - the same model reachable through several keys is ONE model with several routes to it."""
-    ensure_registry(capabilities)
+    ensure_registry(settings, capabilities)
     out = {}
     for pid, entry in registry(capabilities).items():
         for mid, rec in entry.get("models", {}).items():
@@ -487,7 +487,7 @@ def _tri(value):
 
 
 def api_row(settings, pid, *, capabilities: DetectedCapabilities) -> dict:
-    ensure_registry(capabilities)
+    ensure_registry(settings, capabilities)
     cfg = settings["providers"][pid]
     entry = registry(capabilities)[pid]
     routes = [r for r in route_model.get_routes(settings) if r["provider"] == pid]
@@ -507,13 +507,13 @@ def api_row(settings, pid, *, capabilities: DetectedCapabilities) -> dict:
 
 
 def api_rows(settings, *, capabilities: DetectedCapabilities) -> list[dict]:
-    ensure_registry(capabilities)
+    ensure_registry(settings, capabilities)
     return [api_row(settings, pid, capabilities=capabilities) for pid in api_ids(settings)]
 
 
 def api_details(settings, pid, *, capabilities: DetectedCapabilities) -> dict:
     """Everything the details panel shows. Anything the provider did not report is None (shown as Unknown / Not Available)."""
-    ensure_registry(capabilities)
+    ensure_registry(settings, capabilities)
     row = api_row(settings, pid, capabilities=capabilities)
     entry = registry(capabilities)[pid]
     routes = {r["model"]: r for r in route_model.get_routes(settings) if r["provider"] == pid}
