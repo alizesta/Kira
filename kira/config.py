@@ -246,6 +246,34 @@ def _migrate_v6_to_v7(data, warnings=None):
     return data
 
 
+def _migrate_v7_to_v8(data, warnings=None):
+    """Move installs that still carry the old factory network boundary to the new default.
+
+    The old defaults were network_policy=local_only with only Ollama allowed for normal chat. Only that
+    untouched state is changed: a file whose surface allowlist was customised, or that already says
+    cloud_permitted, is left exactly as the user saved it. A missing network_policy is left missing so
+    the new schema default applies.
+    """
+    if data.get("network_policy") != "local_only":
+        return data
+    allowlists = data.get("role_provider_allowlist")
+    surface = allowlists.get("surface") if isinstance(allowlists, dict) else None
+    if isinstance(surface, (list, tuple)):
+        if [str(item).strip().lower() for item in surface] != ["ollama"]:
+            return data
+    elif surface is not None:
+        return data
+    data["network_policy"] = "cloud_permitted"
+    if isinstance(allowlists, dict) and "surface" in allowlists:
+        allowlists["surface"] = list(DEFAULTS["role_provider_allowlist"]["surface"])
+    if warnings is not None:
+        warnings.append(
+            "سیاست شبکه از local_only به cloud_permitted تغییر کرد و Providerهای ابری برای چت عادی مجاز شدند. "
+            "برای بازگشت، network_policy را روی local_only بگذار."
+        )
+    return data
+
+
 def _migrate_settings(saved, *, warnings=None):
     """Apply each schema migration once to a private copy, reporting side effects explicitly."""
     if not isinstance(saved, dict):
@@ -270,6 +298,7 @@ def _migrate_settings(saved, *, warnings=None):
         4: lambda value: _migrate_v4_to_v5(value, warnings=warnings),
         5: lambda value: _migrate_v5_to_v6(value, warnings=warnings),
         6: lambda value: _migrate_v6_to_v7(value, warnings=warnings),
+        7: lambda value: _migrate_v7_to_v8(value, warnings=warnings),
     }
     while version < SETTINGS_SCHEMA_VERSION:
         migrated = migrations[version](migrated)
