@@ -10,6 +10,7 @@ from .personality import STOCK_PERSONAS
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCAL_UNCENSORED_MODEL = "kira-qwen3.5-9b-abliterated:q4_k_m"
+DEFAULT_OLLAMA_URL = "http://localhost:11434"
 LEGACY_LOCAL_CHAT_MODELS = {"qwen3.5:4b"}
 from . import storage
 
@@ -27,7 +28,7 @@ VERSION = "1.2.6"
 SETTINGS_SCHEMA_VERSION = 3
 
 DEFAULTS = {
-    "ollama_url": "http://localhost:11434",
+    "ollama_url": DEFAULT_OLLAMA_URL,
     "model": LOCAL_UNCENSORED_MODEL,
     "assistant_name": "Kira",
     "active_character_id": "kira",
@@ -150,7 +151,7 @@ DEFAULTS = {
         "openrouter": {"enabled": False, "api_key": "", "model": "", "timeout": 18},
         # num_ctx / keep_alive keep the local model light while gaming (8 GB VRAM card).
         # "model" and "base_url" here mirror the top-level "model" / "ollama_url" keys.
-        "ollama": {"enabled": True, "base_url": "http://localhost:11434", "model": LOCAL_UNCENSORED_MODEL,
+        "ollama": {"enabled": True, "base_url": DEFAULT_OLLAMA_URL, "model": LOCAL_UNCENSORED_MODEL,
                    "num_ctx": 6144, "keep_alive": "2m", "timeout": 180, "num_predict": 512}
     }
 }
