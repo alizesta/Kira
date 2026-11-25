@@ -119,6 +119,35 @@ class ASRManagerTests(unittest.TestCase):
                 manager.transcribe([], 16000, {"local_voice_asr_backend": "fixture"})
             self.assertEqual(caught.exception.code, "inference_failed")
 
+    def test_discovery_does_not_leak_another_selection_failure(self):
+        first, second = FakeAdapter("first", fail="inference"), FakeAdapter("second")
+        manager = ASRManager(adapters=[first, second])
+        first_settings = {"local_voice_asr_backend": "first"}
+        second_settings = {"local_voice_asr_backend": "second"}
+
+        with self.assertRaises(ASRError):
+            manager.transcribe([], 16000, first_settings)
+
+        state = manager.discover(second_settings)
+        self.assertTrue(state["ready"])
+        self.assertEqual(state["state"], "available")
+        self.assertEqual(state["last_error"], "")
+
+    def test_shutdown_clears_error_after_failed_initialization(self):
+        adapter = FakeAdapter(fail="initialization")
+        manager = ASRManager(adapters=[adapter])
+        settings = {"local_voice_asr_backend": "fixture"}
+
+        with self.assertRaises(ASRError):
+            manager.initialize(settings)
+        self.assertEqual(manager.state, "failed")
+
+        manager.shutdown()
+        state = manager.discover(settings)
+        self.assertEqual(manager.state, "idle")
+        self.assertEqual(state["state"], "available")
+        self.assertEqual(state["last_error"], "")
+
     def test_engine_switch_shuts_down_old_adapter_before_loading_new(self):
         first, second = FakeAdapter("first"), FakeAdapter("second")
         manager = ASRManager(adapters=[first, second])
