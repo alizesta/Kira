@@ -1,0 +1,90 @@
+"""Regression tests for centralized Vision frame routing and backpressure."""
+import threading
+import unittest
+
+from kira.vision_orchestrator import FrameContext, FrameJob, VisionFrameOrchestrator
+
+
+class Clock:
+    def __init__(self):
+        self.value = 0.0
+
+    def __call__(self):
+        return self.value
+
+
+class VisionOrchestratorTests(unittest.TestCase):
+    def test_each_frame_gets_exactly_one_route_even_when_live_and_analysis_compete(self):
+        orchestrator = VisionFrameOrchestrator()
+        context = orchestrator.create_context("session-a", "desktop", {"hwnd": 4})
+        first = orchestrator.decide(context, live_ready=True, analysis_allowed=True)
+        second = orchestrator.decide(context, live_ready=False, analysis_allowed=True)
+        self.assertEqual(first.route, orchestrator.LIVE)
+        self.assertEqual(second, first)
+        self.assertEqual(orchestrator.snapshot()["duplicate_frames"], 1)
+
+    def test_latest_pending_frame_replaces_oldest_when_capture_outpaces_processing(self):
+        orchestrator = VisionFrameOrchestrator(capacity=1)
+        first = orchestrator.create_context("s", "desktop")
+        second = orchestrator.create_context("s", "desktop")
+        self.assertTrue(orchestrator.enqueue(FrameJob(first, b"old")))
+        self.assertTrue(orchestrator.enqueue(FrameJob(second, b"new")))
+        self.assertEqual(orchestrator.take_next().context.frame_id, second.frame_id)
+        self.assertEqual(orchestrator.snapshot()["dropped_pending"], 1)
+
+    def test_cancelled_session_cannot_enqueue_or_dispatch_stale_frames(self):
+        orchestrator = VisionFrameOrchestrator()
+        context = orchestrator.create_context("session-a", "desktop")
+        orchestrator.enqueue(FrameJob(context, b"frame"))
+        orchestrator.cancel_session("session-a")
+        self.assertIsNone(orchestrator.take_next())
+        self.assertFalse(orchestrator.enqueue(FrameJob(context, b"late")))
+        fresh = orchestrator.create_context("session-a", "desktop")
+        self.assertNotEqual(fresh.generation, context.generation)
+        self.assertTrue(orchestrator.enqueue(FrameJob(fresh, b"fresh")))
+
+    def test_budget_is_shared_by_live_and_analysis_routes_per_session(self):
+        clock = Clock()
+        orchestrator = VisionFrameOrchestrator(
+            max_frames_per_minute=1, min_interval_seconds=0, clock=clock
+        )
+        live = orchestrator.create_context("s", "desktop")
+        analysis = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(live, live_ready=True).route, "live")
+        self.assertEqual(
+            orchestrator.decide(analysis, live_ready=False).reason, "frame_budget_exhausted"
+        )
+        other_session = orchestrator.create_context("other", "desktop")
+        self.assertEqual(orchestrator.decide(other_session, live_ready=False).route, "analysis")
+
+    def test_frame_context_is_immutable_and_contains_session_and_window_identity(self):
+        context = FrameContext.create(
+            "s", "game", {"hwnd": 3, "pid": 7, "exe": "GAME.EXE", "title": "Arena"}
+        )
+        self.assertEqual(context.session_id, "s")
+        self.assertEqual(context.window_identity[:4], (3, 7, "game.exe", "Arena"))
+        with self.assertRaises(Exception):
+            context.session_id = "other"
+
+    def test_concurrent_decisions_for_one_frame_are_idempotent(self):
+        orchestrator = VisionFrameOrchestrator()
+        context = orchestrator.create_context("s", "desktop")
+        results = []
+        barrier = threading.Barrier(8)
+
+        def decide():
+            barrier.wait()
+            results.append(orchestrator.decide(context, live_ready=True))
+
+        threads = [threading.Thread(target=decide) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(len(results), 8)
+        self.assertEqual({result.route for result in results}, {"live"})
+        self.assertEqual(orchestrator.snapshot()["duplicate_frames"], 7)
+
+
+if __name__ == "__main__":
+    unittest.main()
