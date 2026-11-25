@@ -142,19 +142,34 @@ def update_provider(settings, pid, *, label=None, base_url=None, api_key=None, a
 
 
 def remove_provider(settings, pid):
-    """Only custom providers can be removed (built-ins keep their keys). Their routes go with them. Returns removed route ids."""
+    """Remove a custom provider and its routes, clearing every dangling route reference."""
     if pid in BUILTIN:
         raise ValueError("Providerهای پیش‌فرض حذف نمی‌شوند؛ فقط می‌توان آن‌ها را غیرفعال کرد.")
-    settings.get("providers", {}).pop(pid, None)
     routes = settings.get("routes")
     removed = []
     if routes is not None:
         keep = []
-        for r in routes:
-            (removed if r.get("provider") == pid else keep).append(r.get("id") if r.get("provider") == pid else r)
-        settings["routes"] = [r for r in keep if isinstance(r, dict)]
+        for route in routes:
+            if isinstance(route, dict) and route.get("provider") == pid:
+                route_id = route.get("id")
+                if route_id:
+                    removed.append(route_id)
+            elif isinstance(route, dict):
+                keep.append(route)
+        settings["routes"] = keep
     if settings.get("manual_route_id") in removed:
         settings["manual_route_id"] = ""
+    if settings.get("default_route_id") in removed:
+        fallback = next(
+            (route for route in settings.get("routes", []) if route.get("enabled", True)),
+            settings.get("routes", [None])[0] if settings.get("routes") else None,
+        )
+        settings["default_route_id"] = fallback.get("id", "") if fallback else ""
+    notes = settings.get("route_notes")
+    if isinstance(notes, dict):
+        for route_id in removed:
+            notes.pop(route_id, None)
+    settings.get("providers", {}).pop(pid, None)
     sync_legacy(settings)
     return removed
 
@@ -386,7 +401,12 @@ def add_route(settings, provider, model, enabled=True, timeout=None, cooldown=No
     model = str(model or "").strip()
     if not model:
         raise ValueError("شناسه‌ی مدل (Model ID) خالی است.")
-    if any(r["provider"] == provider and r["model"] == model for r in routes):
+    model_key = model.casefold()
+    if any(
+        r["provider"] == provider
+        and str(r.get("model") or "").strip().casefold() == model_key
+        for r in routes
+    ):
         raise ValueError(f"این مدل از قبل برای {provider} وجود دارد.")
     route = make_route(unique_route_id(settings, provider), provider, model, enabled, timeout, cooldown,
                        provider_kind(provider, cfg), **extra)
@@ -465,6 +485,9 @@ def remove_route(settings, route_id):
         settings["manual_route_id"] = ""
     if settings.get("default_route_id") == route_id:
         settings["default_route_id"] = settings["routes"][0]["id"] if settings["routes"] else ""
+    notes = settings.get("route_notes")
+    if isinstance(notes, dict):
+        notes.pop(route_id, None)
     sync_legacy(settings)
 
 
