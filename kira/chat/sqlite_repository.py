@@ -87,8 +87,7 @@ class SqliteChatRepository:
             read_rows=self._read_rows_full,
             read_conversations=self._read_conversations,
             merge_rows=self._merge,
-            write_rows=self._write_all,
-            restore_conversations=self._restore_conversation_metadata,
+            write_recovery_state=self._write_recovery_state,
             db_name=DB_NAME,
             persistence_error=PersistenceError,
         )
