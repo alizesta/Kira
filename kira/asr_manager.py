@@ -290,7 +290,6 @@ class ASRManager:
             return self.discover(settings)
 
     def _ensure_selected(self, settings):
-        engine_id, model_id = self.select(settings)
         with self._lock:
             cleanup_pending = bool(
                 self._state == "failed"
@@ -300,7 +299,9 @@ class ASRManager:
             )
             if cleanup_pending:
                 # Never run inference while a previous adapter may still own native resources.
+                # Retry cleanup even when the newly selected engine is unsupported.
                 self._shutdown_locked()
+            engine_id, model_id = self.select(settings)
             if (self._active_adapter is None or self._active_adapter.engine_id != engine_id
                     or self._active_model != model_id):
                 self.initialize(settings)
