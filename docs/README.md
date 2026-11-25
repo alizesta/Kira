@@ -1,3 +1,5 @@
+[فارسی](README_FA.md) — [Project README](../README.md)
+
 # Kira Documentation
 
 This directory contains the technical and operational documentation for Project Kira.
