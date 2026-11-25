@@ -99,6 +99,14 @@ class PersonaMemoryTests(unittest.TestCase):
         pm.observe("user", "من چی دوست دارم؟")
         self.assertEqual(pm.facts(), [])
 
+    def test_uncertainty_and_correction_flags_use_the_evidence_index_rules(self):
+        uncertain = pm.extract_facts_detailed("کوتاه جواب بده، شاید")
+        corrected = pm.extract_facts_detailed("در واقع کوتاه جواب بده")
+        self.assertTrue(uncertain)
+        self.assertTrue(uncertain[0]["uncertain"])
+        self.assertTrue(corrected)
+        self.assertTrue(corrected[0]["correction"])
+
     def test_digest_and_prompt_integration(self):
         older = [{"role": "user", "content": "درباره‌ی سفر به شیراز حرف زدیم"}, {"role": "assistant", "content": "اوهوم"}]
         block = pm.build_block(older)
