@@ -44,6 +44,16 @@ class VisionOcrTests(unittest.TestCase):
         self.assertEqual(result.source_frame_id,"f1")
         self.assertAlmostEqual(result.confidence,.85)
 
+    def test_python_binding_and_pillow_dependencies_are_reported_separately(self):
+        tess = types.ModuleType("pytesseract")
+        pil = types.ModuleType("PIL")
+        pil.Image = object()
+        with mock.patch.dict(sys.modules, {"pytesseract": None, "PIL": pil}):
+            status = TesseractOcrEngine().diagnostics()
+        self.assertFalse(status["python_bindings_ready"])
+        self.assertTrue(status["pillow_ready"])
+        self.assertFalse(status["ready"])
+
     def test_missing_binary_is_not_ready(self):
         tess=types.ModuleType("pytesseract"); tess.get_languages=mock.Mock(return_value=["eng","fas"])
         tess.get_tesseract_version=mock.Mock(return_value="5.4.0")

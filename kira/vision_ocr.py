@@ -49,11 +49,18 @@ class TesseractOcrEngine:
             return self._pytesseract, self._image_module
         try:
             import pytesseract
-            from PIL import Image
             if self.executable: pytesseract.pytesseract.tesseract_cmd = self.executable
-            self._pytesseract, self._image_module = pytesseract, Image
-            self._runtime_error = ""
-        except ImportError: self._runtime_error = "ocr_dependency_unavailable"
+            self._pytesseract = pytesseract
+        except ImportError:
+            self._runtime_error = "pytesseract_dependency_unavailable"
+        try:
+            from PIL import Image
+            self._image_module = Image
+        except ImportError:
+            self._runtime_error = (
+                "pytesseract_and_pillow_unavailable"
+                if self._runtime_error else "pillow_dependency_unavailable"
+            )
         return self._pytesseract, self._image_module
 
     def diagnostics(self, *, refresh=False):
