@@ -40,7 +40,10 @@ def test_live_stream_uses_full_monitor_and_privacy_rechecks():
     assert "bytes(rgb.constBits()).translate(_LIVE_VIDEO_CHANNEL_LUT)" in source
     assert "palette_colors=LIVE_VIDEO_PALETTE_COLORS" in source
     assert "jpeg_quality=quality" in source
-    assert "approx_kib_per_second=" in source
+    assert "approx_kib_per_frame=" in source
+    assert "min_interval_seconds=selector.policy.min_interval_seconds" in source
+    assert "max_frames_per_minute=selector.policy.max_frames_per_minute" in source
+    assert "fps=1" not in source
     assert "frame_exceeds_size_limit" in source
     assert "def set_live_video_active(self, enabled)" in source
     assert 'return 1000 if getattr(self, "_live_video_active", False) else base' in source
@@ -66,6 +69,13 @@ def test_vision_controller_has_no_undefined_names():
             defined.add(node.name)
     used = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)}
     assert sorted(used - defined) == []
+
+
+def test_live_system_instruction_uses_the_configured_budget():
+    source = read("kira/ui/main_window_runtime_voice.py")
+    assert ".live_video_budget()" in source
+    assert "at least {interval_seconds:g} seconds apart" in source
+    assert "no more than {max_frames_per_minute} times in any rolling 60-second window" in source
 
 
 def test_live_frame_decision_is_made_by_the_selector_and_committed_after_queueing():

@@ -7,7 +7,8 @@ from types import SimpleNamespace
 
 from tests import helpers
 from kira.hybrid_ai import HybridRouter, ProgressBody
-from kira.ui.main_window import MainWindow
+from kira.ui.main_window_chat import ChatController
+from kira.ui.main_window_attachments_vision import AttachmentsVisionController
 from kira.ui.main_window_support import SessionRelay
 from kira.ui.workers import StreamWorker, VisionAnalysisWorker
 
@@ -60,6 +61,10 @@ class FakeTimer:
     def __init__(self):
         self.started = False
         self.stopped = False
+        self.interval = None
+
+    def setInterval(self, interval):
+        self.interval = interval
 
     def start(self):
         self.started = True
@@ -169,20 +174,37 @@ class VisionRoutingTests(unittest.TestCase):
         self.assertTrue(router.cancelled)
         self.assertEqual(results, [])
 
-    def test_user_message_queues_and_cancels_background_vision_without_losing_voice_flag(self):
-        client = object()
-        worker = SimpleNamespace(router=client, isRunning=lambda: True, cancel_request=mock.Mock())
-        state = SimpleNamespace(
-            busy=False,
-            _voice_next=True,
-            _vision_worker=worker,
-            client=client,
-            _pending=[],
-            status=SimpleNamespace(setText=mock.Mock()),
+    def test_chat_submit_preserves_voice_flag_when_queued_by_application_service(self):
+        session = SimpleNamespace(
+            status="active", _voice_next=True, busy=False, conversation_id="conversation",
+            cid="kira", session_id="session-1",
         )
-        MainWindow.submit(state, "voice question")
-        self.assertEqual(state._pending, [("voice question", None, True)])
-        worker.cancel_request.assert_called_once_with()
+        chat_service = SimpleNamespace(
+            submit_message=mock.Mock(return_value=SimpleNamespace(accepted=True, queued=True)),
+            pending_count=mock.Mock(return_value=2),
+        )
+        session_controller = SimpleNamespace(_ensure_session_conversation=mock.Mock())
+        status = SimpleNamespace(setText=mock.Mock())
+        context = SimpleNamespace(
+            state=SimpleNamespace(cur=session),
+            session=session,
+            services=SimpleNamespace(chat_application_service=chat_service),
+            views=SimpleNamespace(status=status),
+        )
+        controller = SimpleNamespace(
+            context=context,
+            feature_controller=lambda name: session_controller,
+        )
+
+        ChatController.submit(controller, "voice question")
+
+        chat_service.submit_message.assert_called_once_with(
+            "session-1", "voice question", None, True,
+            busy=False, conversation_id="conversation", character_id="kira",
+        )
+        session_controller._ensure_session_conversation.assert_called_once_with(session)
+        self.assertFalse(session._voice_next)
+        status.setText.assert_called_once()
 
     def test_vision_result_relay_runs_in_its_owning_character_session(self):
         session = SimpleNamespace(cid="kira")
@@ -208,70 +230,127 @@ class VisionRoutingTests(unittest.TestCase):
         self.assertEqual(seen, ["kira"])
         self.assertEqual(state.cur, "ren")
 
-    def test_queued_message_is_not_started_after_window_shutdown(self):
-        session = SimpleNamespace(cid="kira")
-        state = SimpleNamespace(
-            _closing=True,
-            sessions={"kira": session},
-            _as=lambda target: contextlib.nullcontext(),
-            submit=mock.Mock(),
+    def test_queued_application_request_is_not_started_after_window_shutdown(self):
+        session = SimpleNamespace(cid="kira", session_id="session-1")
+        complete = mock.Mock()
+        process = mock.Mock()
+        context = SimpleNamespace(
+            state=SimpleNamespace(_closing=True),
+            services=SimpleNamespace(
+                session_manager=SimpleNamespace(get_session=mock.Mock(return_value=session)),
+                chat_application_service=SimpleNamespace(complete_local_request=complete),
+            ),
         )
-        MainWindow._submit_for(state, session, ("hello", None, False))
-        state.submit.assert_not_called()
+        controller = SimpleNamespace(context=context, _process_chat_request=process)
+        request = SimpleNamespace(
+            session_id="session-1", request_id="request-1", text="hello", attachments=[]
+        )
 
-    def test_vision_finished_relay_flushes_the_pending_queue(self):
-        calls = []
-        relay = SimpleNamespace(_run=lambda name: calls.append(name))
-        SessionRelay.game_vision_finished(relay)
-        self.assertEqual(calls, ["_send_next_pending"])
+        ChatController._dispatch_application_request(controller, request)
+
+        complete.assert_called_once_with("request-1")
+        process.assert_not_called()
 
     def test_competitive_safe_stops_active_code_chat_job(self):
         session = object()
-        class FakeCodeChat:
-            def __init__(self):
-                self.session = session
-                self.stopped = None
-
-            def stop(self, target):
-                self.stopped = target
-
-        code_chat = FakeCodeChat()
-        state = SimpleNamespace(code_chat=code_chat, _as=lambda target: contextlib.nullcontext())
-        MainWindow._stop_local_code_jobs(state)
-        self.assertIs(code_chat.stopped, session)
-
-    def test_disabling_vision_capture_cancels_an_in_flight_analysis(self):
-        worker = FakeVisionWorker()
-        timer = FakeTimer()
-        state = SimpleNamespace(
-            game_mode=FakeGameMode(),
-            _game_capture_timer=timer,
-            _latest_game_frame=object(),
-            _vision_worker=worker,
-            _vision_gate=FakeVisionGate(),
-            _vision_last_note="previous analysis",
+        code_chat = SimpleNamespace(session=session)
+        stop_session = mock.Mock()
+        session_controller = SimpleNamespace(_as=lambda target: contextlib.nullcontext())
+        context = SimpleNamespace(
+            views=SimpleNamespace(code_chat=code_chat),
+            services=SimpleNamespace(coding_agent_application_service=SimpleNamespace(
+                stop_session=stop_session
+            )),
         )
-        state._cancel_vision_worker = lambda: MainWindow._cancel_vision_worker(state)
-        MainWindow._set_game_vision_capture(state, False)
-        self.assertFalse(state.game_mode.enabled)
+        controller = SimpleNamespace(
+            context=context, feature_controller=lambda name: session_controller
+        )
+
+        AttachmentsVisionController._stop_local_code_jobs(controller)
+
+        stop_session.assert_called_once_with(code_chat, session)
+
+    def test_disabling_vision_capture_cancels_workers_and_resets_capture_state(self):
+        timer = FakeTimer()
+        privacy = SimpleNamespace(set_enabled=mock.Mock())
+        game_mode = FakeGameMode()
+        vision_service = SimpleNamespace(
+            desktop_capture_application_service=privacy, reset=mock.Mock()
+        )
+        desktop_context = SimpleNamespace(clear=mock.Mock())
+        context = SimpleNamespace(
+            services=SimpleNamespace(
+                vision_application_service=vision_service,
+                desktop_context_application_service=desktop_context,
+            ),
+            adapters=SimpleNamespace(game_mode=game_mode),
+            state=SimpleNamespace(
+                _game_capture_timer=timer, _latest_game_frame=object(), _closing=False
+            ),
+        )
+        controller = SimpleNamespace(
+            context=context,
+            _cancel_vision_worker=mock.Mock(),
+            _cancel_perception_worker=mock.Mock(),
+            _clear_live_video_state=mock.Mock(),
+        )
+
+        AttachmentsVisionController._set_game_vision_capture(controller, False)
+
+        self.assertFalse(game_mode.enabled)
+        privacy.set_enabled.assert_called_once_with(False)
         self.assertTrue(timer.stopped)
-        self.assertIsNone(state._latest_game_frame)
-        self.assertEqual(state._vision_gate.reset_count, 1)
-        self.assertEqual(state._vision_last_note, "")
-        self.assertTrue(worker.cancelled)
+        self.assertIsNone(context.state._latest_game_frame)
+        vision_service.reset.assert_called_once_with()
+        desktop_context.clear.assert_called_once_with()
+        controller._cancel_vision_worker.assert_called_once_with()
+        controller._cancel_perception_worker.assert_called_once_with()
+        controller._clear_live_video_state.assert_called_once_with()
 
-    def test_enabling_vision_capture_starts_capture_and_timer(self):
+    def test_enabling_vision_capture_starts_monitor_capture_and_timer(self):
         timer = FakeTimer()
-        state = SimpleNamespace(
-            game_mode=FakeGameMode(),
-            _game_capture_timer=timer,
-            _capture_game_frame=lambda: setattr(state, "captured", True),
-            _cancel_vision_worker=lambda: setattr(state, "cancelled", True),
+        privacy = SimpleNamespace(set_enabled=mock.Mock())
+        game_mode = FakeGameMode()
+        vision_service = SimpleNamespace(
+            desktop_capture_application_service=privacy, reset=mock.Mock()
         )
-        MainWindow._set_game_vision_capture(state, True)
-        self.assertTrue(state.game_mode.enabled)
+        desktop_context = SimpleNamespace(clear=mock.Mock())
+        capture = mock.Mock()
+        context = SimpleNamespace(
+            services=SimpleNamespace(
+                vision_application_service=vision_service,
+                desktop_context_application_service=desktop_context,
+            ),
+            adapters=SimpleNamespace(game_mode=game_mode),
+            state=SimpleNamespace(_game_capture_timer=timer),
+        )
+        controller = SimpleNamespace(
+            context=context,
+            _cancel_vision_worker=mock.Mock(),
+            _cancel_perception_worker=mock.Mock(),
+            _clear_live_video_state=mock.Mock(),
+            _vision_interval_ms=mock.Mock(return_value=1000),
+            _capture_desktop_frame=capture,
+        )
+
+        AttachmentsVisionController._set_game_vision_capture(controller, True)
+
+        self.assertTrue(game_mode.enabled)
+        privacy.set_enabled.assert_called_once_with(True)
+        self.assertEqual(timer.interval, 1000)
         self.assertTrue(timer.started)
-        self.assertTrue(state.captured)
+        vision_service.reset.assert_called_once_with()
+        desktop_context.clear.assert_called_once_with()
+        capture.assert_called_once_with()
+
+    def test_cancel_vision_worker_uses_the_active_chat_session(self):
+        worker = FakeVisionWorker()
+        session = SimpleNamespace(_vision_worker=worker)
+        controller = SimpleNamespace(context=SimpleNamespace(session=session))
+
+        AttachmentsVisionController._cancel_vision_worker(controller)
+
+        self.assertTrue(worker.cancelled)
 
     def test_image_route_is_selected_inside_role_and_kept_as_preference(self):
         router = FakeRouter()

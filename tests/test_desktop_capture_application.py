@@ -16,15 +16,33 @@ class DesktopCapturePolicyTests(unittest.TestCase):
         self.assertFalse(service.enabled)
         self.assertFalse(settings["desktop_vision_enabled"])
 
-    def test_unknown_or_incomplete_identity_fails_closed(self):
+    def test_unknown_window_or_missing_capture_anchor_fails_closed(self):
         service = DesktopCaptureApplicationService()
         service.set_enabled(True)
         self.assertEqual(service.evaluate_window(None),
                          (False, "foreground_window_unidentified"))
-        missing_path = make_window()
-        missing_path["path"] = ""
-        self.assertEqual(service.evaluate_window(missing_path),
+        missing_anchor = make_window()
+        missing_anchor["hwnd"] = 0
+        self.assertEqual(service.evaluate_window(missing_anchor),
                          (False, "foreground_window_identity_incomplete"))
+
+    def test_monitor_capture_allows_missing_optional_foreground_metadata(self):
+        service = DesktopCaptureApplicationService()
+        service.set_enabled(True)
+        for field in ("exe", "title", "path"):
+            window = make_window()
+            window[field] = ""
+            self.assertTrue(service.evaluate_window(window)[0], field)
+
+    def test_monitor_capture_still_blocks_known_sensitive_metadata_when_other_fields_are_missing(self):
+        service = DesktopCaptureApplicationService()
+        service.set_enabled(True)
+        password_manager = make_window("KeePassXC.exe", "", "")
+        self.assertEqual(service.evaluate_window(password_manager),
+                         (False, "blocked_exe"))
+        private_window = make_window("", "Incognito", "")
+        self.assertEqual(service.evaluate_window(private_window),
+                         (False, "blocked_title"))
 
     def test_manual_enablement_is_required(self):
         service = DesktopCaptureApplicationService()
