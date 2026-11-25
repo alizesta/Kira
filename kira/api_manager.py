@@ -299,6 +299,8 @@ def find_duplicate(settings, key) -> str:
     """Id of the registered API that already uses this exact key ('' = none)."""
     key = str(key or "").strip()
     for pid, cfg in settings.get("providers", {}).items():
+        if not isinstance(cfg, dict):
+            continue
         if key and pid != "ollama" and str(cfg.get("api_key") or "").strip() == key:
             return pid
     return ""
@@ -419,6 +421,11 @@ def delete_api(settings, pid):
                 route_model.update_route(settings, r["id"], enabled=False)
         if settings.get("manual_route_id") and (route_model.find_route(settings, settings["manual_route_id"]) or {}).get("provider") == pid:
             settings["manual_route_id"] = ""
+        default_route = route_model.find_route(settings, settings.get("default_route_id"))
+        if default_route and default_route.get("provider") == pid:
+            remaining = route_model.get_routes(settings)
+            replacement = next((route for route in remaining if route.get("provider") != pid), None)
+            settings["default_route_id"] = replacement["id"] if replacement else ""
     else:
         route_model.remove_provider(settings, pid)
     registry(settings).pop(pid, None)

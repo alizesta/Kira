@@ -412,10 +412,12 @@ class MigrationAndLifecycleTests(unittest.TestCase):
         s = fresh()
         am.register(s, am.Detection("ok", "groq", "", [{"id": "openai/gpt-oss-120b"}]), GROQ_KEY)
         s["manual_route_id"] = "groq"
+        s["default_route_id"] = "groq"
         am.delete_api(s, "groq")
         self.assertEqual((s["providers"]["groq"]["api_key"], s["providers"]["groq"]["enabled"]), ("", False))
         self.assertFalse(rm.find_route(s, "groq")["enabled"])
         self.assertEqual(s["manual_route_id"], "")
+        self.assertNotEqual(s["default_route_id"], "groq")
         self.assertNotIn("groq", [r["id"] for r in am.api_rows(s)])
         pid = am.register(s, am.Detection("ok", "google", "", [{"id": "gemini-2.5-flash"}]), GOOGLE_KEY)
         am.delete_api(s, pid)
