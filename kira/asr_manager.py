@@ -213,7 +213,7 @@ class ASRManager:
                 error_matches_selection or cleanup_pending
             )
             snapshot.update(
-                initialized=active,
+                initialized=active and not cleanup_pending,
                 state="failed" if failed else ("ready" if active else
                        ("available" if snapshot.get("ready") else "unavailable")),
                 last_error=(
