@@ -7,6 +7,18 @@ from typing import Callable
 
 LOCAL_ONLY = "local_only"
 CLOUD_PERMITTED = "cloud_permitted"
+_PROTECTED_ROLES = frozenset({"surface", "deep", "reflection", "memory"})
+
+
+def normalize_network_policy(value):
+    """Normalize network permission using a fail-closed default.
+
+    Only the explicit cloud_permitted value can authorize Cloud routes. Missing,
+    empty, malformed, or future/unknown values are treated as local_only.
+    """
+    if isinstance(value, str) and value.strip().lower() == CLOUD_PERMITTED:
+        return CLOUD_PERMITTED
+    return LOCAL_ONLY
 
 
 @dataclass(frozen=True)
@@ -17,7 +29,7 @@ class RouteDecision:
 
 
 class RoutePolicyEngine:
-    """Resolve role, network, vision, manual-priority and usage policy into an ordered route plan.
+    """Resolve network, role, vision and manual-priority policy into an ordered route plan.
 
     Provider health, cooldown, quota backoff and retry execution are deliberately
     not owned here. They are runtime gates applied by the router after policy selection.
@@ -50,88 +62,118 @@ class RoutePolicyEngine:
                     decisions[rid] = reason
             return kept
 
-        network_policy = str(settings.get("network_policy") or CLOUD_PERMITTED).strip().lower()
-        if network_policy not in (LOCAL_ONLY, CLOUD_PERMITTED):
-            network_policy = CLOUD_PERMITTED
-
-        role_allowlist = settings.get("role_provider_allowlist")
-        allowed = role_allowlist.get(role) if isinstance(role_allowlist, dict) else None
-        surface_cloud_fallback = role == "surface" and not vision_only and network_policy == CLOUD_PERMITTED
-
+        network_policy = normalize_network_policy(settings.get("network_policy"))
         if network_policy == LOCAL_ONLY:
             routes = filter_routes(
                 routes,
-                lambda route: provider_kind(route.get("provider"), provider_cfg(route)) == "local",
+                lambda route: provider_kind(
+                    route.get("provider"), provider_cfg(route)
+                ) == "local",
                 "blocked_by_local_only",
             )
 
-        if vision_only and role in ("surface", "deep") and network_policy != LOCAL_ONLY:
-            allowed = ["google"]
+        # Known roles are security boundaries. A missing or malformed allowlist
+        # for one of them grants no providers. Unknown/general roles retain their
+        # existing unrestricted-by-role behavior unless explicitly configured.
+        role_allowlists = settings.get("role_provider_allowlist")
+        has_role_allowlist = (
+            isinstance(role_allowlists, dict) and role in role_allowlists
+        )
+        role_is_restricted = has_role_allowlist or role in _PROTECTED_ROLES
+        raw_allowed = (
+            role_allowlists.get(role)
+            if has_role_allowlist
+            else None
+        )
+        allow = (
+            {
+                str(value).strip().lower()
+                for value in raw_allowed
+                if str(value).strip()
+            }
+            if isinstance(raw_allowed, (list, tuple, set, frozenset))
+            else set()
+        )
 
+        def provider_allowed(route):
+            provider = str(route.get("provider") or "").strip().lower()
+            return (
+                provider in allow
+                or (
+                    "google" in allow
+                    and is_google(route.get("provider"), provider_cfg(route))
+                )
+            )
+
+        if role_is_restricted:
+            routes = filter_routes(
+                routes,
+                provider_allowed,
+                "blocked_by_role_provider_allowlist",
+            )
+
+        # Vision's Google-only role rule is an additional restriction, never an
+        # override of the role allowlist or the network privacy boundary.
+        if vision_only and role in ("surface", "deep"):
+            routes = filter_routes(
+                routes,
+                lambda route: is_google(
+                    route.get("provider"), provider_cfg(route)
+                ),
+                "vision_provider_not_google",
+            )
+
+        model_allowlists = settings.get("role_route_models")
+        if not vision_only and isinstance(model_allowlists, dict) and role in model_allowlists:
+            raw_models = model_allowlists.get(role)
+            allowed_models = (
+                {
+                    str(value).strip().lower()
+                    for value in raw_models
+                    if str(value).strip()
+                }
+                if isinstance(raw_models, (list, tuple, set, frozenset))
+                else set()
+            )
+            # Surface may use any configured Ollama route when Ollama itself is
+            # explicitly allowlisted; all non-Ollama routes remain model-limited.
+            local_surface_routes = role == "surface" and "ollama" in allow
+            routes = filter_routes(
+                routes,
+                lambda route: (
+                    local_surface_routes
+                    and str(route.get("provider") or "").strip().lower() == "ollama"
+                ) or str(route.get("model") or "").strip().lower() in allowed_models,
+                "blocked_by_role_model_allowlist",
+            )
+
+        surface_cloud_fallback = (
+            role == "surface"
+            and not vision_only
+            and network_policy == CLOUD_PERMITTED
+        )
         if surface_cloud_fallback:
-            # The surface role is local-first, not local-exclusive: preserve all
-            # configured Cloud fallbacks behind its role-approved local routes.
+            # Local-first ordering is only an ordering rule. Every route has
+            # already passed the same network and role-policy filters above.
             local_routes = [
                 route for route in routes
-                if provider_kind(route.get("provider"), provider_cfg(route)) == "local"
+                if provider_kind(
+                    route.get("provider"), provider_cfg(route)
+                ) == "local"
             ]
             cloud_routes = [
                 route for route in routes
-                if provider_kind(route.get("provider"), provider_cfg(route)) == "cloud"
+                if provider_kind(
+                    route.get("provider"), provider_cfg(route)
+                ) == "cloud"
             ]
-            if isinstance(allowed, (list, tuple)):
-                allow = {str(value).strip().lower() for value in allowed if str(value).strip()}
-                local_routes = [
-                    route for route in local_routes
-                    if str(route.get("provider") or "").lower() in allow
-                    or ("google" in allow and is_google(route.get("provider"), provider_cfg(route)))
-                ]
-            model_allowlist = settings.get("role_route_models")
-            allowed_models = model_allowlist.get(role) if isinstance(model_allowlist, dict) else None
-            if isinstance(allowed_models, (list, tuple)) and "ollama" not in allow:
-                model_ids = {str(value).strip().lower() for value in allowed_models if str(value).strip()}
-                local_routes = [
-                    route for route in local_routes
-                    if str(route.get("model") or "").strip().lower() in model_ids
-                ]
             routes = local_routes + cloud_routes
-        else:
-            allow = {str(value).strip().lower() for value in allowed if str(value).strip()} if isinstance(allowed, (list, tuple)) else set()
-            if isinstance(allowed, (list, tuple)):
-                routes = filter_routes(
-                    routes,
-                    lambda route: (
-                        ("google" in allow and is_google(route.get("provider"), provider_cfg(route)))
-                        or str(route.get("provider") or "").lower() in allow
-                    ),
-                    "blocked_by_role_provider_allowlist",
-                )
-
-            model_allowlist = settings.get("role_route_models")
-            allowed_models = model_allowlist.get(role) if isinstance(model_allowlist, dict) else None
-            if vision_only:
-                allowed_models = None
-            if isinstance(allowed_models, (list, tuple)):
-                model_ids = {str(value).strip().lower() for value in allowed_models if str(value).strip()}
-                local_surface_routes = role == "surface" and "ollama" in allow
-                routes = filter_routes(
-                    routes,
-                    lambda route: (
-                        local_surface_routes
-                        and str(route.get("provider") or "").strip().lower() == "ollama"
-                    ) or str(route.get("model") or "").strip().lower() in model_ids,
-                    "blocked_by_role_model_allowlist",
-                )
-
-        if vision_only:
-            routes = filter_routes(
-                routes,
-                lambda route: supports_vision(route, provider_cfg(route)),
-                "vision_not_supported",
-            )
 
         manual_id = str(settings.get("manual_route_id") or "")
-        manual = next((r for r in routes if str(r.get("id") or "") == manual_id), None) if manual_id else None
+        manual = next(
+            (r for r in routes if str(r.get("id") or "") == manual_id),
+            None,
+        ) if manual_id else None
         if manual is not None and not settings.get("failover_enabled", True):
             for route in routes:
                 if route is not manual:
@@ -154,11 +196,18 @@ class RoutePolicyEngine:
         result = []
         for route in ordered:
             rid = str(route.get("id") or "")
-            reason = "preferred_route" if preferred is route else ("manual_route" if manual is route else "priority_order")
+            reason = (
+                "preferred_route"
+                if preferred is route
+                else ("manual_route" if manual is route else "priority_order")
+            )
             result.append(RouteDecision(rid, True, reason))
         for route in original_routes:
             rid = str(route.get("id") or "")
             if rid not in selected_ids and rid not in decisions:
                 decisions[rid] = "not_selected"
-        result.extend(RouteDecision(rid, False, reason) for rid, reason in decisions.items())
+        result.extend(
+            RouteDecision(rid, False, reason)
+            for rid, reason in decisions.items()
+        )
         return ordered, result

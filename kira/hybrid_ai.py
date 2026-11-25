@@ -18,7 +18,7 @@ from . import routes as route_model
 from .app.detected_capabilities import DetectedCapabilities
 from .request_trace import trace as request_trace, set_request_id as set_trace_request_id, reset_request_id as reset_trace_request_id
 from .leak_guard import LeakGuard, clean_final
-from .route_policy import RoutePolicyEngine
+from .route_policy import RoutePolicyEngine, normalize_network_policy
 from .ollama_client import OllamaClient, OllamaError
 from .core.interfaces.chat_provider import ChatProvider
 from .hybrid_providers import (  # noqa: F401 - re-exported for backward compatibility
@@ -474,7 +474,7 @@ class HybridRouter:
             candidates = self._candidates()
             usage_blocked_providers = self._usage_blocked_providers(candidates)
             request_trace("request_start", stream=bool(stream), retry_index=int(retry_index), role=_ROLE.get() or "chat",
-                          candidates=len(candidates), network_policy=self.settings.get("network_policy", "cloud_permitted"),
+                          candidates=len(candidates), network_policy=normalize_network_policy(self.settings.get("network_policy")),
                           route_decisions=self.last_route_decisions)
             failures = []
             emit = on_event or (lambda e: None)
@@ -1045,7 +1045,7 @@ class HybridRouter:
                         "health": st["health"], "last_error": st["last_error"], "last_ms": st["last_ms"],
                         "policy_decision": next((d["reason"] for d in self.last_route_decisions
                                                  if d["route_id"] == str(route.get("id") or "")), None),
-                        "network_policy": self.settings.get("network_policy", "local_only"),
+                        "network_policy": normalize_network_policy(self.settings.get("network_policy")),
                         "quota_block": (self._quota_status(route) or {}).get("kind"),
                         "usage_limit": usage.limit_state("provider", str(route.get("provider") or "")),
                         "failure_class": st.get("failure_class"), "retryable": st.get("retryable")})
