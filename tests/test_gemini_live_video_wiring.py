@@ -217,6 +217,16 @@ def test_live_failures_release_reserved_budget():
     assert "return True" in live
 
 
+def test_frame_budget_reservations_are_finalized_after_dispatch():
+    orchestrator = read("kira/vision_orchestrator.py")
+    service = read("kira/app/vision_application.py")
+    controller = read("kira/ui/main_window_attachments_vision.py")
+    assert "def commit(self, context: FrameContext) -> bool" in orchestrator
+    assert "def commit_frame_budget(self, context) -> bool" in service
+    assert "service.commit_frame_budget(frame_context)" in controller
+    assert "self.context.services.vision_application_service.commit_frame_budget(frame_context)" in controller
+
+
 def test_worker_completion_carries_the_immutable_frame_context():
     worker = read("kira/ui/workers.py")
     relay = read("kira/ui/main_window_support.py")

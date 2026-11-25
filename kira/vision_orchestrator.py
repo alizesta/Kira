@@ -216,6 +216,11 @@ class VisionFrameOrchestrator:
         with self._lock:
             return self._release_budget(context.frame_id)
 
+    def commit(self, context: FrameContext) -> bool:
+        """Finalize a dispatched frame while retaining its consumed quota timestamp."""
+        with self._lock:
+            return self._budget_decisions.pop(context.frame_id, None) is not None
+
     def take_next(self, session_id: str | None = None) -> FrameJob | None:
         """Take an eligible job for one session without stealing another session's work."""
         key = None if session_id is None else str(session_id or "")

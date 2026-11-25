@@ -136,6 +136,18 @@ class VisionOrchestratorTests(unittest.TestCase):
         next_context = orchestrator.create_context("s", "desktop")
         self.assertEqual(orchestrator.decide(next_context, live_ready=False).route, "analysis")
 
+    def test_committing_dispatched_frame_retains_quota_without_reservation_leak(self):
+        orchestrator = VisionFrameOrchestrator(max_frames_per_minute=1)
+        context = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(context, live_ready=True).route, "live")
+        self.assertTrue(orchestrator.commit(context))
+        self.assertFalse(orchestrator.commit(context))
+        next_context = orchestrator.create_context("s", "desktop")
+        self.assertEqual(
+            orchestrator.decide(next_context, live_ready=False).reason,
+            "frame_budget_exhausted",
+        )
+
     def test_replacing_pending_frame_releases_evicted_quota(self):
         orchestrator = VisionFrameOrchestrator(capacity=1, max_frames_per_minute=2)
         first = orchestrator.create_context("s", "desktop")

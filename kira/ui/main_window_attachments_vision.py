@@ -392,6 +392,8 @@ class AttachmentsVisionController(WindowFeatureController):
         if not runtime.send_gemini_video_frame(jpeg):
             return self._release_live_frame_budget(frame_context)
         selector.commit(sample)
+        if frame_context is not None:
+            self.context.services.vision_application_service.commit_frame_budget(frame_context)
         vision_trace(
             "live_video_frame_queued", source=source,
             frame_id=frame_context.frame_id if frame_context is not None else None,
@@ -1436,6 +1438,7 @@ class AttachmentsVisionController(WindowFeatureController):
             worker.done_with_context.connect(session.relay.game_vision_done_with_context)
             worker.finished.connect(session.relay.game_vision_finished)
             worker.start()
+            service.commit_frame_budget(frame_context)
         except Exception as exc:
             service.release_frame_budget(frame_context)
             vision_trace(
