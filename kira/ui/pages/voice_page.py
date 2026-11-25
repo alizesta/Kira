@@ -116,7 +116,7 @@ class VoicePage(QScrollArea):
         stt_form.setVerticalSpacing(4)
         self.stt_lang = self._row(stt_form, "stt_lang", QComboBox())
         self.stt_lang.addItems(["fa", "en", "auto"])
-        self.stt_lang.setCurrentText(str(settings.get("stt_language") or SETTINGS_DEFAULTS["stt_language"]"))
+        self.stt_lang.setCurrentText(str(settings.get("stt_language") or SETTINGS_DEFAULTS["stt_language"]))
         selected_asr_engine = str(settings.get("local_voice_asr_backend") or SETTINGS_DEFAULTS["local_voice_asr_backend"]).strip().lower()
         selected_asr_model = str(settings.get("local_voice_asr_model") or SETTINGS_DEFAULTS["local_voice_asr_model"])
         self._asr_catalog = {
