@@ -55,7 +55,6 @@ class FakeOcr:
         self.result = result or OcrResult("Open project", "eng", 0.91)
         self.received_frame_ids = []
         self.shutdown_calls = 0
-        self.trace_events = []
 
     def shutdown(self):
         self.shutdown_calls += 1
@@ -102,6 +101,7 @@ class TestPerceptionApplicationService:
         self.privacy = FakePrivacy()
         self.capture = FakeCapture(self.privacy, window())
         self.ocr = FakeOcr()
+        self.trace_events = []
         self.service = PerceptionApplicationService(
             self.context,
             self.capture,
