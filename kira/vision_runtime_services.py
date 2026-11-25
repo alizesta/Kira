@@ -203,6 +203,20 @@ class VisionCaptureService:
         return _to_image(pixmap)
 
 
+@dataclass(frozen=True)
+class VisionResultOutcome:
+    """Qt-free result of validating and consuming one immutable Vision result."""
+
+    status: str
+    source: str | None = None
+    reason: str | None = None
+    message: str | None = None
+    latency_ms: int = 0
+    stats: dict[str, Any] | None = None
+    same_window: bool | None = None
+    history_events: int | None = None
+
+
 class VisionAnalysisCoordinator:
     """Qt-free owner of frame routing, queue admission and worker lifecycle."""
 
@@ -211,10 +225,12 @@ class VisionAnalysisCoordinator:
         vision_service: Any,
         frame_encoder: Callable[[Any, int], tuple[bytes, bytes]],
         *,
+        capture_service: VisionCaptureService | None = None,
         trace: Callable[..., Any] | None = None,
     ) -> None:
         self._vision = vision_service
         self._frame_encoder = frame_encoder
+        self._capture = capture_service
         self._trace = trace or (lambda *_args, **_kwargs: None)
 
     def submit_frame(
@@ -355,13 +371,28 @@ class VisionAnalysisCoordinator:
         source = context.source
         enabled = game_mode_enabled if source == "game" else True
         profile = game_mode_profile if source == "game" else None
-        window_info = {
-            "hwnd": context.window_identity[0],
-            "pid": context.window_identity[1],
-            "exe": context.window_identity[2],
-            "title": context.window_identity[3],
-            "path": context.window_identity[4],
-        }
+        if self._capture is None:
+            self.release(context)
+            raise RuntimeError("VisionAnalysisCoordinator requires a capture service for worker dispatch")
+        window_info = self._capture.foreground_window_info(
+            allow_partial_identity=(source == "desktop")
+        )
+        if not isinstance(window_info, dict):
+            self.release(context)
+            self._trace(
+                "analysis_discarded", frame_id=context.frame_id,
+                session_id=context.session_id, source=source,
+                reason="foreground_window_unavailable",
+            )
+            return None
+        if source == "game" and _window_identity(window_info) != context.window_identity:
+            self.release(context)
+            self._trace(
+                "analysis_discarded", frame_id=context.frame_id,
+                session_id=context.session_id, source=source,
+                reason="foreground_window_changed",
+            )
+            return None
         try:
             eligible = self._vision.should_analyze(
                 enabled=enabled,
@@ -426,6 +457,151 @@ class VisionAnalysisCoordinator:
             report_error(f"Vision: آماده‌سازی فریم ناموفق بود: {str(exc)[:180]}")
             return None
 
+
+    def process_result(
+        self,
+        ok: bool,
+        result: Any,
+        latency_ms: int,
+        session: Any,
+        *,
+        session_id: str,
+        closing: bool,
+        game_mode_enabled: bool,
+        game_mode_profile: str | None,
+        desktop_context_service: Any,
+        fingerprint: Callable[[str], str],
+        frame_context: Any = None,
+    ) -> VisionResultOutcome:
+        """Apply result freshness/privacy policy and record observations without Qt."""
+        session_id = str(session_id or "")
+        if frame_context is None:
+            frame_context = getattr(session, "_vision_frame_context", None)
+        if frame_context is None:
+            self._trace("analysis_discarded", session_id=session_id, reason="missing_frame_context")
+            return VisionResultOutcome("discarded", reason="missing_frame_context")
+        if frame_context.session_id != session_id:
+            self._trace(
+                "analysis_discarded", frame_id=frame_context.frame_id,
+                session_id=frame_context.session_id, active_session_id=session_id,
+                source=frame_context.source, reason="session_context_mismatch",
+            )
+            return VisionResultOutcome("discarded", source=frame_context.source, reason="session_context_mismatch")
+
+        owned = getattr(session, "_vision_frame_context", None)
+        if owned is not None and owned.frame_id != frame_context.frame_id:
+            self._trace(
+                "analysis_discarded", frame_id=frame_context.frame_id,
+                session_id=session_id, source=frame_context.source,
+                reason="superseded_session_job",
+            )
+            return VisionResultOutcome("discarded", source=frame_context.source, reason="superseded_session_job")
+        if closing or not self.is_current(frame_context):
+            reason = "window_shutdown" if closing else "stale_session_generation"
+            self._trace(
+                "analysis_discarded", frame_id=frame_context.frame_id,
+                session_id=session_id, source=frame_context.source, reason=reason,
+            )
+            if owned is not None and owned.frame_id == frame_context.frame_id:
+                session._vision_frame_context = None
+            return VisionResultOutcome("discarded", source=frame_context.source, reason=reason)
+        if owned is not None and owned.frame_id == frame_context.frame_id:
+            session._vision_frame_context = None
+
+        source = frame_context.source
+        hwnd, pid, exe, title, path = frame_context.window_identity
+        captured = {"hwnd": hwnd, "pid": pid, "exe": exe, "title": title, "path": path}
+        if self._capture is None:
+            raise RuntimeError("VisionAnalysisCoordinator requires a capture service for result validation")
+        current = self._capture.foreground_window_info(
+            allow_partial_identity=(source == "desktop")
+        )
+        same_window = (
+            isinstance(current, dict)
+            and int(current.get("hwnd") or 0) == int(hwnd or -1)
+            and int(current.get("pid") or 0) == int(pid or -1)
+        )
+        privacy = self._vision.desktop_capture_application_service
+        desktop_source_active = (
+            source == "desktop" and not closing and bool(game_mode_enabled)
+            and privacy is not None and bool(privacy.enabled)
+        )
+        desktop_allowed, desktop_reason = (
+            privacy.evaluate_window(current)
+            if desktop_source_active else (False, "source_disabled")
+        )
+        current_result = (
+            desktop_source_active and current is not None and desktop_allowed
+            if source == "desktop"
+            else same_window and bool(game_mode_enabled)
+        )
+
+        self._vision.mark_latency(latency_ms, session_id=session_id)
+        stats = self._vision.snapshot(session_id=session_id)
+        if not current_result:
+            reason = (
+                "capture_source_disabled" if source == "desktop" and not desktop_source_active
+                else desktop_reason if source == "desktop" and not desktop_allowed
+                else "foreground_window_changed"
+            )
+            self._trace(
+                "analysis_discarded", source=source,
+                exe=str(exe or "")[:80] or None, reason=reason,
+            )
+            return VisionResultOutcome(
+                "discarded", source=source, reason=reason,
+                latency_ms=int(latency_ms or 0), stats=stats,
+                same_window=bool(same_window),
+            )
+        if source == "desktop" and not same_window:
+            self._trace(
+                "analysis_foreground_changed_accepted",
+                source=source,
+                captured_exe=str(exe or "")[:80] or None,
+                current_exe=str((current or {}).get("exe") or "")[:80] or None,
+                reason="selected_monitor_frame_is_independent_of_foreground_window",
+            )
+
+        message = self._vision.consume_result(
+            enabled=bool(game_mode_enabled) if source == "game" else True,
+            profile=game_mode_profile if source == "game" else None,
+            ok=bool(ok), result=result, source=source,
+            window_info=current, session_id=session_id,
+        )
+        self._trace(
+            "analysis_result", source=source, ok=bool(ok),
+            latency_ms=int(latency_ms or 0), result_chars=len(str(result or "")),
+        )
+        if message is None:
+            return VisionResultOutcome(
+                "no_message", source=source, latency_ms=int(latency_ms or 0),
+                stats=stats, same_window=bool(same_window),
+            )
+
+        history_events = None
+        if ok and game_mode_enabled:
+            desktop_context_service.record_event(
+                "visual_observation", message[:240], source=source,
+                dedupe_key=f"visual:{fingerprint(message)}",
+            )
+            history_events = len(desktop_context_service.snapshot().get("recent_events", ()))
+            self._trace(
+                "visual_observation_recorded", source=source,
+                observation_chars=len(message), history_events=history_events,
+            )
+        if not ok:
+            self._trace("visual_observation_not_presented", source=source, reason="analysis_failed")
+            return VisionResultOutcome(
+                "failed", source=source, message=message,
+                latency_ms=int(latency_ms or 0), stats=stats,
+                same_window=bool(same_window), history_events=history_events,
+            )
+        self._trace("visual_observation_ready_for_chat", source=source, observation_chars=len(message))
+        return VisionResultOutcome(
+            "ready", source=source, message=message,
+            latency_ms=int(latency_ms or 0), stats=stats,
+            same_window=bool(same_window), history_events=history_events,
+        )
 
 class LiveSessionManager:
     """Own Live frame budgets, privacy revalidation, change detection and send admission."""

@@ -75,6 +75,7 @@ class AttachmentsVisionController(WindowFeatureController):
             coordinator = VisionAnalysisCoordinator(
                 self.context.services.vision_application_service,
                 self._frame_codec().encode_analysis_frame,
+                capture_service=self._capture_service(),
                 trace=vision_trace,
             )
             self._vision_analysis_coordinator = coordinator
@@ -1173,149 +1174,25 @@ class AttachmentsVisionController(WindowFeatureController):
         self.feature_controller("runtime")._send_next_pending(session)
 
     def _on_game_vision_result(self, ok, result, latency_ms, frame_context=None):
-        service = self.context.services.vision_application_service
+        """Render status; result freshness and observation policy are service-owned."""
         session = self.context.session
-        session_id = self._vision_session_id(session)
-        if frame_context is None:
-            frame_context = getattr(session, "_vision_frame_context", None)
-        if frame_context is None:
-            vision_trace(
-                "analysis_discarded", session_id=session_id,
-                reason="missing_frame_context",
+        outcome = self._analysis_coordinator().process_result(
+            ok, result, latency_ms, session,
+            session_id=self._vision_session_id(session),
+            closing=bool(self.context.state._closing),
+            game_mode_enabled=bool(self.context.state._game_mode_enabled),
+            game_mode_profile=self.context.state._game_mode_profile,
+            desktop_context_service=self.context.services.desktop_context_application_service,
+            fingerprint=PerceptionEvent.fingerprint,
+            frame_context=frame_context,
+        )
+        if outcome.stats is not None:
+            stats = outcome.stats
+            self.context.views.game_mode_btn.setToolTip(
+                f"Vision {stats['mode']} · تحلیل: {stats['analysis_count']} · "
+                f"فریم تکراری ردشده: {stats['unchanged_skips']} · "
+                f"تأخیر آخرین تحلیل: {int(latency_ms or 0)}ms"
             )
-            return
-        if frame_context.session_id != session_id:
-            vision_trace(
-                "analysis_discarded", frame_id=frame_context.frame_id,
-                session_id=frame_context.session_id, active_session_id=session_id,
-                source=frame_context.source, reason="session_context_mismatch",
-            )
-            return
-        owned_context = getattr(session, "_vision_frame_context", None)
-        if owned_context is not None and owned_context.frame_id != frame_context.frame_id:
-            vision_trace(
-                "analysis_discarded", frame_id=frame_context.frame_id,
-                session_id=session_id, source=frame_context.source,
-                reason="superseded_session_job",
-            )
-            return
-        if self.context.state._closing or not service.frame_context_is_current(frame_context):
-            vision_trace(
-                "analysis_discarded", frame_id=frame_context.frame_id,
-                session_id=session_id, source=frame_context.source,
-                reason="window_shutdown" if self.context.state._closing else "stale_session_generation",
-            )
-            if owned_context is not None and owned_context.frame_id == frame_context.frame_id:
-                session._vision_frame_context = None
-            return
-        if owned_context is not None and owned_context.frame_id == frame_context.frame_id:
-            session._vision_frame_context = None
-        source = frame_context.source
-        captured = {
-            "hwnd": frame_context.window_identity[0],
-            "pid": frame_context.window_identity[1],
-            "exe": frame_context.window_identity[2],
-            "title": frame_context.window_identity[3],
-            "path": frame_context.window_identity[4],
-        }
-        current = self.context.adapters.game_mode.capture_service.foreground_window_info(
-            allow_partial_identity=(source == "desktop")
-        )
-        same_window = (
-            current is not None
-            and int(current.get("hwnd") or 0) == int(captured.get("hwnd") or -1)
-            and int(current.get("pid") or 0) == int(captured.get("pid") or -1)
-        )
-        privacy = service.desktop_capture_application_service
-        desktop_source_active = (
-            source == "desktop"
-            and not bool(self.context.state._closing)
-            and bool(self.context.state._game_mode_enabled)
-            and bool(privacy.enabled)
-        )
-        desktop_allowed, desktop_block_reason = (
-            privacy.evaluate_window(current) if desktop_source_active else (False, "source_disabled")
-        )
-        # A desktop frame represents the entire selected monitor. A foreground
-        # switch after capture must not invalidate the visual analysis result.
-        result_is_current = (
-            (desktop_source_active and current is not None and desktop_allowed)
-            if source == "desktop"
-            else (same_window and bool(self.context.state._game_mode_enabled))
-        )
-        service.mark_latency(latency_ms, session_id=session_id)
-        stats = service.snapshot(session_id=session_id)
-        self.context.views.game_mode_btn.setToolTip(
-            f"Vision {stats['mode']} · تحلیل: {stats['analysis_count']} · "
-            f"فریم تکراری ردشده: {stats['unchanged_skips']} · تأخیر آخرین تحلیل: {latency_ms}ms"
-        )
-        if not result_is_current:
-            vision_trace(
-                "analysis_discarded",
-                source=source,
-                exe=str(captured.get("exe") or "")[:80] or None,
-                reason=(
-                    "capture_source_disabled" if source == "desktop" and not desktop_source_active
-                    else desktop_block_reason if source == "desktop" and not desktop_allowed
-                    else "foreground_window_changed"
-                ),
-            )
-            return
-        if source == "desktop" and not same_window:
-            vision_trace(
-                "analysis_foreground_changed_accepted",
-                source=source,
-                captured_exe=str(captured.get("exe") or "")[:80] or None,
-                current_exe=str((current or {}).get("exe") or "")[:80] or None,
-                reason="selected_monitor_frame_is_independent_of_foreground_window",
-            )
-        message = service.consume_result(
-            enabled=self.context.state._game_mode_enabled if source == "game" else True,
-            profile=self.context.state._game_mode_profile if source == "game" else None,
-            ok=ok,
-            result=result,
-            source=source,
-            window_info=current,
-            session_id=session_id,
-        )
-        vision_trace(
-            "analysis_result",
-            source=source,
-            ok=bool(ok),
-            latency_ms=int(latency_ms or 0),
-            result_chars=len(str(result or "")),
-        )
-        if message is None:
-            return
-        if ok and self.context.state._game_mode_enabled:
-            # Preserve each distinct model observation in the bounded desktop timeline.
-            # Chat turns consume this history instead of triggering another screenshot.
-            context_service = self.context.services.desktop_context_application_service
-            context_service.record_event(
-                "visual_observation",
-                message[:240],
-                source=source,
-                dedupe_key=f"visual:{PerceptionEvent.fingerprint(message)}",
-            )
-            vision_trace(
-                "visual_observation_recorded",
-                source=source,
-                observation_chars=len(message),
-                history_events=len(context_service.snapshot().get("recent_events", ())),
-            )
-        if not ok:
-            # Failed background observations stay in diagnostics; they are not
-            # presented as if Kira were replying to the user.
-            vision_trace("visual_observation_not_presented", source=source, reason="analysis_failed")
-            return
-        # Successful observations are stored in the rolling desktop context and
-        # consumed by the next conversational reply. Do not dump the model's raw
-        # analysis into chat as a fake assistant/system utterance.
-        vision_trace(
-            "visual_observation_ready_for_chat",
-            source=source,
-            observation_chars=len(message),
-        )
 
     def on_game_detected(self, info):
         """Suggest Game Mode once per detected process, unless the user already enabled it."""

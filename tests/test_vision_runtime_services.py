@@ -181,6 +181,17 @@ class FakeLiveCapture:
         return FakeImage()
 
 
+class FakeDesktopContext:
+    def __init__(self):
+        self.events = []
+
+    def record_event(self, kind, content, **kwargs):
+        self.events.append((kind, content, kwargs))
+
+    def snapshot(self):
+        return {"recent_events": tuple(self.events)}
+
+
 class FakeCodec:
     def __init__(self, sample=b"sample"):
         self.sample = sample
@@ -328,12 +339,21 @@ class TestVisionRuntimeServiceTests:
         privacy = DesktopCaptureApplicationService()
         privacy.set_enabled(True)
         vision = VisionApplicationService(desktop_capture_application_service=privacy)
+        identity = {
+            "hwnd": 3, "pid": 4, "exe": "browser.exe", "title": "Work",
+            "path": "/apps/browser", "rect": (0, 0, 1280, 720),
+        }
+        capture = VisionCaptureService(
+            FakeCaptureAdapter(window=identity, privacy=privacy), vision
+        )
         coordinator = VisionAnalysisCoordinator(
-            vision, lambda _frame, _quality: (b"jpeg", b"sample")
+            vision, lambda _frame, _quality: (b"jpeg", b"sample"),
+            capture_service=capture,
         )
         identity = {
             "hwnd": 3, "pid": 4, "exe": "browser.exe", "title": "Work",
             "path": "/apps/browser",
+            "rect": (0, 0, 1280, 720),
         }
         context, _decision = coordinator.submit_frame(
             FakeImage(), "desktop", identity,
@@ -401,8 +421,8 @@ class TestVisionRuntimeServiceTests:
             max_frame_bytes_provider=lambda: 1024,
         )
 
-        first_context = object()
-        second_context = object()
+        first_context = SimpleNamespace(frame_id="frame-first", session_id="session-a")
+        second_context = SimpleNamespace(frame_id="frame-second", session_id="session-a")
         first = manager.stream_frame(
             None, "desktop", capture.window,
             frame_context=first_context,
@@ -493,3 +513,74 @@ class TestVisionRuntimeServiceTests:
         interval, per_minute = manager.budget_values()
         assert interval >= 1.0
         assert 1 <= per_minute <= 60
+
+    def test_desktop_result_survives_foreground_switch_and_records_observation(self):
+        privacy = DesktopCaptureApplicationService()
+        privacy.set_enabled(True)
+        captured = {
+            "hwnd": 10, "pid": 20, "exe": "browser.exe", "title": "Captured",
+            "path": "/apps/browser", "rect": (0, 0, 1280, 720),
+        }
+        current = {
+            "hwnd": 11, "pid": 21, "exe": "editor.exe", "title": "Now active",
+            "path": "/apps/editor", "rect": (0, 0, 1280, 720),
+        }
+        vision = VisionApplicationService(desktop_capture_application_service=privacy)
+        capture = VisionCaptureService(FakeCaptureAdapter(window=current, privacy=privacy), vision)
+        coordinator = VisionAnalysisCoordinator(
+            vision, lambda _frame, _quality: (b"jpeg", b"sample"), capture_service=capture
+        )
+        context, _decision = coordinator.submit_frame(
+            FakeImage(), "desktop", captured, session_id="session-desktop",
+            live_ready=False, analysis_allowed=True,
+            interval_seconds=1.0, max_frames_per_minute=10,
+        )
+        session = SimpleNamespace(_vision_frame_context=context)
+        history = FakeDesktopContext()
+        outcome = coordinator.process_result(
+            True, "A visible editor window", 42, session,
+            session_id="session-desktop", closing=False,
+            game_mode_enabled=True, game_mode_profile=None,
+            desktop_context_service=history,
+            fingerprint=lambda _message: "stable-fingerprint",
+        )
+        assert outcome.status == "ready"
+        assert outcome.same_window is False
+        assert outcome.message == "A visible editor window"
+        assert history.events[0][0] == "visual_observation"
+        assert history.events[0][2]["dedupe_key"] == "visual:stable-fingerprint"
+        assert session._vision_frame_context is None
+
+    def test_stale_result_generation_is_discarded_without_consuming_result(self):
+        privacy = DesktopCaptureApplicationService()
+        privacy.set_enabled(True)
+        window = {
+            "hwnd": 1, "pid": 2, "exe": "browser.exe", "title": "Work",
+            "path": "/apps/browser", "rect": (0, 0, 1280, 720),
+        }
+        vision = VisionApplicationService(desktop_capture_application_service=privacy)
+        capture = VisionCaptureService(FakeCaptureAdapter(window=window, privacy=privacy), vision)
+        coordinator = VisionAnalysisCoordinator(
+            vision, lambda _frame, _quality: (b"jpeg", b"sample"), capture_service=capture
+        )
+        context, _decision = coordinator.submit_frame(
+            FakeImage(), "desktop", window, session_id="session-stale",
+            live_ready=False, analysis_allowed=True,
+            interval_seconds=1.0, max_frames_per_minute=10,
+        )
+        session = SimpleNamespace(_vision_frame_context=context)
+        coordinator.cancel_session("session-stale")
+        history = FakeDesktopContext()
+        outcome = coordinator.process_result(
+            True, "Must not be consumed", 10, session,
+            session_id="session-stale", closing=False,
+            game_mode_enabled=True, game_mode_profile=None,
+            desktop_context_service=history,
+            fingerprint=lambda _message: "unused",
+        )
+        assert outcome.status == "discarded"
+        assert outcome.reason == "stale_session_generation"
+        assert session._vision_frame_context is None
+        assert history.events == []
+        assert vision.last_note == ""
+
