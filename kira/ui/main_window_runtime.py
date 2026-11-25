@@ -552,6 +552,7 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         """Return owned threads and processes that must finish before Qt destroys the window."""
         workers = list(self.context.state._provider_workers)
         workers.append(getattr(self, "_gemini_worker", None))
+        workers.append(self.feature_controller("attachments_vision").perception_worker())
         for session in getattr(self.context.state, "sessions", {}).values():
             workers.extend((
                 getattr(session, "worker", None),
@@ -561,7 +562,7 @@ class RuntimeController(RuntimeVoiceMixin, WindowFeatureController):
         for name in (
             "_local_voice_worker", "_local_stt_test_listener", "_mcp_registry_worker",
             "_model_catalog_worker", "_api_worker", "_route_worker", "_bench_worker", "_scan_worker",
-            "_provider_test_worker", "_ollama_worker", "_vision_worker", "_perception_worker", "_web_test_worker",
+            "_provider_test_worker", "_ollama_worker", "_vision_worker", "_web_test_worker",
             "_attach_worker", "_model_import_worker", "_stopping_listener",
             "_stopping_game_audio_listener", "game_audio_listener", "listener",
         ):

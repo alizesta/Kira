@@ -1,14 +1,13 @@
 """Attachment and vision feature controller for the desktop window."""
 from PySide6.QtCore import Slot
 from ..request_trace import vision_trace
-from ..perception import PerceptionEngine
 from ..perception.events import PerceptionEvent
 from ..vision_runtime_services import (
     LiveSessionManager,
     VisionAnalysisCoordinator,
     VisionCaptureService,
 )
-from ..vision_ocr import OcrResult, OcrService
+from ..app.perception_application import PerceptionApplicationService
 from ..chat.attachment_content import format_desktop_context
 from .main_window_attachments_vision_support import (
     AttachmentTile,
@@ -17,11 +16,8 @@ from .main_window_attachments_vision_support import (
     QFileDialog,
     QFrame,
     QHBoxLayout,
-    QImage,
     QSystemTrayIcon,
     QTimer,
-    Qt,
-    TaskWorker,
     VisionAnalysisWorker,
     att,
     front_only,
@@ -32,6 +28,7 @@ from .main_window_attachments_vision_support import (
 
 from .window_feature_controller import WindowFeatureController
 from .vision_frame_codec import QtVisionFrameCodec, GeminiLiveTransportAdapter
+from .perception_worker_controller import PerceptionWorkerController
 
 
 def _game_fields(game):
@@ -131,45 +128,10 @@ class AttachmentsVisionController(WindowFeatureController):
             **_game_fields(game),
         )
 
-    def _perception_engine(self):
-        engine = getattr(self, "_desktop_perception_engine", None)
-        if engine is None:
-            ocr_service = OcrService()
-            engine = PerceptionEngine(
-                self.context.services.desktop_context_application_service,
-                ocr_service,
-            )
-            self._desktop_perception_engine = engine
-            status = ocr_service.diagnostics()
-            selected = status["engines"][status["selected_engine"]]
-            vision_trace(
-                "ocr_runtime_diagnostics",
-                engine=status["selected_engine"],
-                ready=status["ready"],
-                python_bindings_ready=selected.get("python_bindings_ready", False),
-                binary_ready=selected.get("binary_ready", False),
-                persian_ready=status["languages"]["fas"],
-                english_ready=status["languages"]["eng"],
-                error=selected.get("error_code") or None,
-            )
-        return engine
-
-    @staticmethod
-    def _perception_sample(frame):
-        thumbnail = frame.scaled(
-            32, 18, Qt.IgnoreAspectRatio, Qt.FastTransformation
-        ).convertToFormat(QImage.Format_Grayscale8)
-        return bytes(
-            thumbnail.pixelColor(x, y).red()
-            for y in range(thumbnail.height())
-            for x in range(thumbnail.width())
-        )
-
     def _cancel_perception_worker(self):
-        worker = self.context.state._perception_worker
-        if worker is not None and worker.isRunning():
-            worker.cancel()
-
+        controller = getattr(self, "_perception_worker_controller", None)
+        if controller is not None:
+            controller.cancel()
     def _vision_interval_ms(self):
         base = max(
             250, int(_service_value(self.context.services.vision_application_service, "policy").interval_seconds * 1000)
@@ -281,206 +243,33 @@ class AttachmentsVisionController(WindowFeatureController):
             game_mode_profile=self.context.state._game_mode_profile,
         )
 
+    def _perception_worker_controller(self):
+        controller = getattr(self, "_perception_worker_controller", None)
+        if controller is None:
+            service = PerceptionApplicationService(
+                self.context.services.desktop_context_application_service,
+                self._capture_service(),
+                trace=vision_trace,
+            )
+            controller = PerceptionWorkerController(
+                service,
+                self._frame_codec(),
+                self.context.services.settings,
+                is_closing=lambda: bool(self.context.state._closing),
+                game_mode_enabled=lambda: bool(self.context.state._game_mode_enabled),
+                trace=vision_trace,
+            )
+            self._perception_worker_controller = controller
+        return controller
+
+    def perception_worker(self):
+        controller = getattr(self, "_perception_worker_controller", None)
+        return controller.worker if controller is not None else None
+
     def _queue_perception_ocr(self, frame, source, window_info):
-        """Update safe app context immediately; OCR only follows a changed screen."""
-        context = self.context.services.desktop_context_application_service
-        privacy = _service_value(self.context.services.vision_application_service, "desktop_capture_application_service")
-        allowed, reason = privacy.evaluate_window(
-            window_info, explicit=(source == "game")
-        )
-        if not allowed:
-            context.clear_sensitive(
-                exe=str((window_info or {}).get("exe") or ""),
-                reason=reason,
-            )
-            self._cancel_perception_worker()
-            vision_trace(
-                "perception_blocked", source=source,
-                exe=str((window_info or {}).get("exe") or "")[:80] or None,
-                reason=reason,
-            )
-            return
-
-        engine = self._perception_engine()
-        previous_window = context.snapshot().get("active_window")
-        normalized = engine.observe_window(window_info, source=source)
-        if normalized is None:
-            context.clear_sensitive(reason="foreground_window_unidentified")
-            self._cancel_perception_worker()
-            return
-
-        current_identity = (
-            int(normalized.get("hwnd") or 0),
-            int(normalized.get("pid") or 0),
-            str(normalized.get("exe") or "").casefold(),
-            str(normalized.get("title") or "").strip(),
-            str(normalized.get("path") or "").casefold(),
-        )
-        previous_identity = None
-        if isinstance(previous_window, dict):
-            previous_identity = (
-                int(previous_window.get("hwnd") or 0),
-                int(previous_window.get("pid") or 0),
-                str(previous_window.get("exe") or "").casefold(),
-                str(previous_window.get("title") or "").strip(),
-                str(previous_window.get("path") or "").casefold(),
-            )
-        if previous_identity != current_identity:
-            vision_trace(
-                "perception_event",
-                event_type="active_window_changed",
-                source=source,
-                exe=str(normalized.get("exe") or "")[:80] or None,
-            )
-
-        worker = self.context.state._perception_worker
-        if worker is not None and worker.isRunning():
-            # Do not advance the change detector while OCR is busy; the next timer
-            # tick will compare the newest frame with the last processed sample.
-            return
-        sample = self._perception_sample(frame)
-        if not engine.screen_changed(sample):
-            return
-
-        sample_key = PerceptionEvent.fingerprint(sample.hex())
-        context.record_event(
-            "screen_changed",
-            "Visible foreground content changed",
-            source=source,
-            dedupe_key=f"screen:{source}:{sample_key}",
-        )
-        vision_trace(
-            "perception_event",
-            event_type="screen_changed",
-            source=source,
-            sample_id=sample_key,
-        )
-        settings = self.context.services.settings
-        ocr_enabled = (
-            bool(settings.get("desktop_vision_ocr_enabled", True))
-            if source == "desktop"
-            else bool(settings.get("vision_ocr_in_game_mode", False))
-        )
-        if not ocr_enabled:
-            vision_trace("perception_change", source=source, ocr_enabled=False)
-            return
-
-        try:
-            from PySide6.QtCore import QBuffer, QByteArray, QIODevice
-            data = QByteArray()
-            buffer = QBuffer(data)
-            if not buffer.open(QIODevice.WriteOnly) or not frame.save(buffer, "JPEG", 65):
-                vision_trace("perception_ocr_skipped", source=source, reason="jpeg_encode_failed")
-                return
-            jpeg = bytes(data)
-        except Exception as exc:  # OCR must never interrupt live capture.
-            vision_trace("perception_ocr_skipped", source=source, reason=type(exc).__name__)
-            return
-
-        started = time.monotonic()
-        worker = TaskWorker(
-            lambda cancelled, payload=jpeg, engine=engine, frame_id=sample_key: engine.recognize(payload, cancelled, source_frame_id=frame_id),
-            cancellable=True,
-        )
-        self.context.state._perception_window_info = dict(normalized)
-        self.context.state._perception_source = source
-        self.context.state._perception_result = None
-        self.context.state._perception_worker = worker
-        self._perception_started_at = started
-        worker.done.connect(self._on_perception_worker_done)
-        worker.finished.connect(self._on_perception_worker_finished)
-        worker.start()
-        vision_trace(
-            "perception_ocr_started", source=source,
-            exe=str(normalized.get("exe") or "")[:80] or None,
-            image_bytes=len(jpeg),
-        )
-
-    @Slot(object)
-    def _on_perception_worker_done(self, result):
-        self.context.state._perception_result = result
-
-    @Slot()
-    def _on_perception_worker_finished(self):
-        worker = self.sender()
-        source = self.context.state._perception_source or "desktop"
-        captured = self.context.state._perception_window_info or {}
-        outcome = self.context.state._perception_result
-        self.context.state._perception_worker = None
-        self.context.state._perception_window_info = None
-        self.context.state._perception_source = None
-        self.context.state._perception_result = None
-        if worker is not None:
-            worker.deleteLater()
-
-        latency_ms = int(max(0.0, time.monotonic() - getattr(self, "_perception_started_at", time.monotonic())) * 1000)
-        if not isinstance(outcome, tuple) or len(outcome) != 2 or not outcome[0]:
-            vision_trace("perception_ocr_failed", source=source, latency_ms=latency_ms)
-            return
-        result = outcome[1]
-        if not isinstance(result, OcrResult):
-            return
-
-        capture = self.context.adapters.game_mode.capture_service
-        current = capture.foreground_window_info(
-            allow_partial_identity=(source == "desktop")
-        )
-        same_window = (
-            current is not None
-            and int(current.get("hwnd") or 0) == int(captured.get("hwnd") or -1)
-            and int(current.get("pid") or 0) == int(captured.get("pid") or -1)
-            and str(current.get("exe") or "").casefold() == str(captured.get("exe") or "").casefold()
-            and str(current.get("title") or "").strip() == str(captured.get("title") or "").strip()
-            and str(current.get("path") or "").casefold() == str(captured.get("path") or "").casefold()
-        )
-        privacy = _service_value(self.context.services.vision_application_service, "desktop_capture_application_service")
-        source_enabled = (
-            not bool(self.context.state._closing)
-            and (
-                bool(self.context.state._game_mode_enabled)
-                if source == "game" else bool(_service_value(privacy, "enabled"))
-            )
-        )
-        allowed, reason = privacy.evaluate_window(
-            current, explicit=(source == "game")
-        )
-        if not source_enabled:
-            self.context.services.desktop_context_application_service.clear()
-        elif not allowed:
-            self.context.services.desktop_context_application_service.clear_sensitive(
-                exe=str((current or {}).get("exe") or ""),
-                reason=reason,
-            )
-        elif not same_window:
-            # A title/PID/HWND change can occur before the next capture tick.
-            # Update the current identity now so a chat turn cannot reuse old OCR.
-            if current is None:
-                self.context.services.desktop_context_application_service.clear_sensitive(
-                    reason="foreground_window_unidentified"
-                )
-            else:
-                self._perception_engine().observe_window(current, source=source)
-        if not source_enabled or not same_window or not allowed:
-            vision_trace(
-                "perception_ocr_discarded", source=source,
-                reason=("capture_source_disabled" if not source_enabled else
-                        "foreground_changed" if not same_window else reason),
-            )
-            return
-
-        applied = self._perception_engine().apply_ocr(result, current, source=source)
-        if result.error_code:
-            self.context.services.desktop_context_application_service.record_event(
-                "ocr_unavailable",
-                "Local OCR unavailable; application and window metadata remain available",
-                source=source,
-                dedupe_key=f"ocr-unavailable:{result.error_code}",
-            )
-        vision_trace(
-            "perception_ocr_result", source=source, applied=applied,
-            text_chars=len(result.text), language=result.language or None,
-            confidence=round(result.confidence, 3), error=result.error_code or None,
-            latency_ms=latency_ms,
+        """Delegate frame observations and OCR job creation to the perception worker adapter."""
+        self._perception_worker_controller().process_frame(
+            frame, source, window_info
         )
 
     def capture_screen_attachment(self):
@@ -1266,22 +1055,20 @@ class AttachmentsVisionController(WindowFeatureController):
             return None
 
     def dispose_runtime_services(self):
-        """Cancel service-owned Vision work after the host has stopped its Qt workers."""
+        """Cancel and dispose service-owned Vision and Perception work after worker drain."""
         self._cancel_all_vision_workers()
-        self._cancel_perception_worker()
+        perception_controller = getattr(self, "_perception_worker_controller", None)
+        if perception_controller is not None and not perception_controller.dispose():
+            return False
         manager = getattr(self, "_vision_live_session_manager", None)
         if manager is not None:
             manager.dispose()
-        perception_worker = self.context.state._perception_worker
-        if perception_worker is not None and perception_worker.isRunning():
-            return False
         sessions = tuple(self.context.state.sessions.values())
         return not any(
             (worker := getattr(session, "_vision_worker", None)) is not None
             and worker.isRunning()
             for session in sessions
         )
-
     def _game_vision_attachment(self):
         """Backward-compatible Game Mode attachment facade."""
         if not self.context.state._game_mode_enabled:

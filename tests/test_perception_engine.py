@@ -14,8 +14,10 @@ class FakeClock:
 
 
 class FakeOcr:
-    def recognize(self, image_bytes):
-        return OcrResult("Open project", "eng", 0.91)
+    def recognize(self, image_bytes, *, source_frame_id=""):
+        return OcrResult(
+            "Open project", "eng", 0.91, source_frame_id=source_frame_id
+        )
 
 
 def window(hwnd=10, pid=20, exe="code.exe", title="project.py"):
@@ -87,9 +89,28 @@ class PerceptionEngineTests(unittest.TestCase):
         self.assertIsNone(engine.observe_window(None))
         self.assertEqual(context.summary(), "")
 
+    def test_engine_preserves_source_frame_id_for_the_replaceable_ocr_engine(self):
+        class CapturingOcr:
+            def __init__(self):
+                self.frame_id = None
+
+            def recognize(self, image_bytes, *, source_frame_id=""):
+                self.frame_id = source_frame_id
+                return OcrResult(
+                    "Open project", "eng", 0.91,
+                    source_frame_id=source_frame_id,
+                )
+
+        ocr = CapturingOcr()
+        engine = PerceptionEngine(DesktopContext(), ocr)
+        result = engine.recognize(b"fake-jpeg", source_frame_id="frame-123")
+
+        self.assertEqual(ocr.frame_id, "frame-123")
+        self.assertEqual(result.source_frame_id, "frame-123")
+
     def test_ocr_engine_errors_are_returned_as_empty_results(self):
         class BrokenOcr:
-            def recognize(self, image_bytes):
+            def recognize(self, image_bytes, *, source_frame_id=""):
                 raise RuntimeError("broken")
 
         engine = PerceptionEngine(DesktopContext(), BrokenOcr())

@@ -35,14 +35,28 @@ class PerceptionEngine:
     def screen_changed(self, sample: bytes) -> bool:
         return self.change_detector.changed(sample)
 
-    def recognize(self, image_bytes: bytes, cancel_event=None) -> OcrResult:
+    def recognize(
+        self, image_bytes: bytes, cancel_event=None, *, source_frame_id: str = ""
+    ) -> OcrResult:
+        """Run the replaceable OCR engine while preserving the originating frame id."""
         if cancel_event is not None and cancel_event.is_set():
-            return OcrResult()
+            return OcrResult(error_code="cancelled", source_frame_id=source_frame_id)
         try:
-            result = self.ocr_engine.recognize(bytes(image_bytes or b""))
+            result = self.ocr_engine.recognize(
+                bytes(image_bytes or b""), source_frame_id=source_frame_id
+            )
         except Exception as exc:  # OCR is optional and must never break capture/chat.
-            return OcrResult(error_code=type(exc).__name__[:48])
-        return result if isinstance(result, OcrResult) else OcrResult(text=str(result or "")[:1100])
+            return OcrResult(
+                error_code=type(exc).__name__[:48],
+                source_frame_id=source_frame_id,
+            )
+        return (
+            result if isinstance(result, OcrResult)
+            else OcrResult(
+                text=str(result or "")[:1100],
+                source_frame_id=source_frame_id,
+            )
+        )
 
     def apply_ocr(self, result: OcrResult, window_info: dict[str, Any] | None, *, source: str = "desktop") -> bool:
         if not isinstance(result, OcrResult) or not result.text.strip():

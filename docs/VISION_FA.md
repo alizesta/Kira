@@ -127,3 +127,24 @@ Worker دیگر مالکیت این کنترلر نیست.
 را درخواست می‌کند؛ بنابراین نتیجهٔ دیررس نمی‌تواند دوباره معتبر تلقی شود.
 هنگام Shutdown نیز هر Session از طریق همان Coordinator لغو می‌شود و پس از
 پایان Workerها سرویس‌های Vision آزاد می‌شوند.
+
+
+## مالکیت چرخه اجرای Perception/OCR (تسک ۱۴)
+
+PerceptionApplicationService مالک سیاست Perception محلی، اعتبارسنجی پنجره فعال،
+تشخیص تغییر، هویت درخواست OCR، نسل‌های لغو، اعتبارسنجی نتیجه و اعمال OCR روی
+Desktop Context محدودشده است و هیچ وابستگی‌ای به Qt ندارد.
+
+PerceptionWorkerController فقط آداپتر Qt است: نمونه QImage و JPEG را Encode می‌کند،
+TaskWorker قابل لغو را می‌سازد، سیگنال‌های نتیجه/پایان را منتقل و QObject را آزاد
+می‌کند. کنترلر Vision پنجره فقط فراخوانی فریم، لغو و Shutdown را Delegate می‌کند؛
+فیلدهای قدیمی Perception از State پنجره حذف شده‌اند.
+
+هر Job مربوط به OCR دارای Frame Fingerprint و Generation پایدار است. نتیجه فقط پس
+از اعتبارسنجی مجدد Source، Privacy و هویت کامل پنجره اعمال می‌شود. لغو ابتدا
+Generation را نامعتبر می‌کند و سپس Worker را متوقف می‌کند؛ بنابراین OCR دیررس
+نمی‌تواند Context پاک‌شده یا جایگزین‌شده را دوباره پر کند.
+
+PerceptionEngine اکنون source_frame_id را در قرارداد OCR قابل‌تعویض منتقل
+می‌کند. این کار ناهماهنگی قبلی امضا را برطرف می‌کند؛ جایی که Runtime این Keyword را
+به PerceptionEngine.recognize می‌فرستاد، اما متد آن را نمی‌پذیرفت.
