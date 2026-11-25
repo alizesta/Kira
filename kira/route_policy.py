@@ -57,23 +57,7 @@ class RoutePolicyEngine:
 
         role_allowlist = settings.get("role_provider_allowlist")
         allowed = role_allowlist.get(role) if isinstance(role_allowlist, dict) else None
-        local_ready = False
-        if role == "surface" and not vision_only:
-            local_ready = any(
-                str(route.get("provider") or "").lower() == "ollama" and is_eligible(route)
-                for route in routes
-            )
-            # Preserve the existing local-first conversation behavior, but only
-            # cross the network boundary when the explicit policy permits Cloud.
-            if not local_ready:
-                if network_policy == LOCAL_ONLY:
-                    return [], [RouteDecision(str(r.get("id") or ""), False, "local_unavailable_local_only") for r in routes]
-                routes = filter_routes(
-                    routes,
-                    lambda route: provider_kind(route.get("provider"), provider_cfg(route)) == "cloud",
-                    "local_unavailable_cloud_fallback",
-                )
-                allowed = None
+        surface_cloud_fallback = role == "surface" and not vision_only and network_policy == CLOUD_PERMITTED
 
         if network_policy == LOCAL_ONLY:
             routes = filter_routes(
@@ -85,34 +69,56 @@ class RoutePolicyEngine:
         if vision_only and role in ("surface", "deep") and network_policy != LOCAL_ONLY:
             allowed = ["google"]
 
-        if isinstance(allowed, (list, tuple)):
-            allow = {str(value).strip().lower() for value in allowed if str(value).strip()}
-            routes = filter_routes(
-                routes,
-                lambda route: (
-                    ("google" in allow and is_google(route.get("provider"), provider_cfg(route)))
-                    or str(route.get("provider") or "").lower() in allow
-                ),
-                "blocked_by_role_provider_allowlist",
-            )
+        if surface_cloud_fallback:
+            # The surface role is local-first, not local-exclusive: preserve all
+            # configured Cloud fallbacks behind its role-approved local routes.
+            local_routes = [
+                route for route in routes
+                if provider_kind(route.get("provider"), provider_cfg(route)) == "local"
+            ]
+            cloud_routes = [
+                route for route in routes
+                if provider_kind(route.get("provider"), provider_cfg(route)) == "cloud"
+            ]
+            if isinstance(allowed, (list, tuple)):
+                allow = {str(value).strip().lower() for value in allowed if str(value).strip()}
+                local_routes = [
+                    route for route in local_routes
+                    if str(route.get("provider") or "").lower() in allow
+                    or ("google" in allow and is_google(route.get("provider"), provider_cfg(route)))
+                ]
+            model_allowlist = settings.get("role_route_models")
+            allowed_models = model_allowlist.get(role) if isinstance(model_allowlist, dict) else None
+            if isinstance(allowed_models, (list, tuple)):
+                model_ids = {str(value).strip().lower() for value in allowed_models if str(value).strip()}
+                local_routes = [
+                    route for route in local_routes
+                    if str(route.get("model") or "").strip().lower() in model_ids
+                ]
+            routes = local_routes + cloud_routes
+        else:
+            if isinstance(allowed, (list, tuple)):
+                allow = {str(value).strip().lower() for value in allowed if str(value).strip()}
+                routes = filter_routes(
+                    routes,
+                    lambda route: (
+                        ("google" in allow and is_google(route.get("provider"), provider_cfg(route)))
+                        or str(route.get("provider") or "").lower() in allow
+                    ),
+                    "blocked_by_role_provider_allowlist",
+                )
 
-        model_allowlist = settings.get("role_route_models")
-        allowed_models = model_allowlist.get(role) if isinstance(model_allowlist, dict) else None
-        if vision_only:
-            allowed_models = None
-        if isinstance(allowed_models, (list, tuple)) and not (role == "surface" and not local_ready):
-            model_ids = {str(value).strip().lower() for value in allowed_models if str(value).strip()}
-            local_surface_routes = (
-                role == "surface" and isinstance(allowed, set) and "ollama" in allowed
-            )
-            routes = filter_routes(
-                routes,
-                lambda route: (
-                    local_surface_routes
-                    and str(route.get("provider") or "").strip().lower() == "ollama"
-                ) or str(route.get("model") or "").strip().lower() in model_ids,
-                "blocked_by_role_model_allowlist",
-            )
+            model_allowlist = settings.get("role_route_models")
+            allowed_models = model_allowlist.get(role) if isinstance(model_allowlist, dict) else None
+            if vision_only:
+                allowed_models = None
+            if isinstance(allowed_models, (list, tuple)):
+                model_ids = {str(value).strip().lower() for value in allowed_models if str(value).strip()}
+                routes = filter_routes(
+                    routes,
+                    lambda route: str(route.get("model") or "").strip().lower() in model_ids,
+                    "blocked_by_role_model_allowlist",
+                )
 
         # Provider usage limits are a policy constraint, not a health signal.
         # Their implementation owns its own storage/error handling.
