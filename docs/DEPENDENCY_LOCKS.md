@@ -6,7 +6,7 @@ Kira targets Windows 11 x86-64 with CPython 3.11 and 3.12. The source requiremen
 
 ## Generate or refresh the locks
 
-Run these commands from the repository root on a Windows machine with access to a Python package index:
+Normal installations and dependency-changing updates generate these locks automatically through `install.bat`; no manual command is required. Maintainers can regenerate them explicitly from the repository root on a Windows machine with access to a Python package index:
 
 ```powershell
 py -3.12 -m pip install --upgrade uv
