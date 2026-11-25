@@ -157,7 +157,8 @@ class ProviderSettingsController(WindowFeatureController):
         # Ollama is a local daemon, not part of the cloud API catalogue TTL.
         # Scan it on every startup so installed local models are always selectable,
         # even when cloud model metadata is still fresh.
-        self.scan_ollama()
+        # The AI page owns the Ollama status widgets. Its lazy builder schedules
+        # the local scan after the page has been inserted into the settings stack.
         if time.time() - self.context.services.provider_application_service.model_catalog_refreshed_at < self.CATALOG_MAX_AGE_SECONDS:
             return
         self.refresh_model_catalogs()
@@ -301,6 +302,9 @@ class ProviderSettingsController(WindowFeatureController):
         self.refresh_api_table()
         self.refresh_unified_models()
         self.feature_controller("voice_settings").refresh_local_voice_status()
+        # Run only after the lazy settings-page swap has completed; otherwise the
+        # worker can finish against widgets which the page rollback has deleted.
+        QTimer.singleShot(0, self.scan_ollama)
 
     def refresh_unified_models(self):
         """Populate the three cloud capability lists and the three local model lists."""
