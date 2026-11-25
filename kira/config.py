@@ -189,6 +189,13 @@ def _backup_corrupt(path):
         return None
 
 
+def _default_settings():
+    """Return a fresh runtime settings snapshot carrying the current schema version."""
+    settings = deepcopy(DEFAULTS)
+    settings["settings_version"] = SETTINGS_SCHEMA_VERSION
+    return settings
+
+
 def prepare_user_data():
     """Carry old data over (copy only) and keep a rolling backup. Never raises."""
     notes = [storage.DATA_DIR_WARNING] if storage.DATA_DIR_WARNING else []
@@ -413,7 +420,7 @@ def load_settings():
             backup = _backup_corrupt(CONFIG_PATH)
             where = f" نسخه‌ی پشتیبان: {backup.name}" if backup else ""
             LOAD_WARNINGS.append(f"فایل تنظیمات خراب بود و خوانده نشد ({exc}). با تنظیمات پیش‌فرض اجرا شد.{where}")
-            return deepcopy(DEFAULTS)
+            return _default_settings()
         merged = {**DEFAULTS, **saved}
         merged["api_registry"] = deepcopy(saved["api_registry"]) if isinstance(saved.get("api_registry"), dict) else {}      # never share DEFAULTS' dict
         # Stock persona texts from earlier versions are not user customisation: Kira's character now
@@ -477,8 +484,7 @@ def load_settings():
                 or settings_repaired):
             save_settings(merged)
         return merged
-    fresh = deepcopy(DEFAULTS)
-    fresh["settings_version"] = SETTINGS_SCHEMA_VERSION
+    fresh = _default_settings()
     route_model.ensure_routes(fresh)
     save_settings(fresh)
     return fresh

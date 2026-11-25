@@ -179,6 +179,7 @@ class ConfigTests(unittest.TestCase):
         self.path.write_text("{this is not json", encoding="utf-8")
         s = config.load_settings()
         self.assertEqual(s["model"], config.DEFAULTS["model"])
+        self.assertEqual(s["settings_version"], config.SETTINGS_SCHEMA_VERSION)
         self.assertEqual(self.path.read_text(encoding="utf-8"), "{this is not json")   # original untouched
         self.assertTrue(list(self.tmp.glob("settings.json.corrupt-*")))
         self.assertTrue(config.LOAD_WARNINGS)
