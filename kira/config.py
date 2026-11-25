@@ -289,9 +289,11 @@ def _validate_route_overrides(settings):
         if not isinstance(route, dict):
             continue
         for key in ("num_ctx", "num_predict"):
-            if key not in route or route[key] in (None, "", 0, "0"):
+            if key not in route:
                 continue
             value = route[key]
+            if value is None or value == "" or (not isinstance(value, bool) and value == 0):
+                continue
             try:
                 number = int(value) if not isinstance(value, bool) else 0
             except (TypeError, ValueError, OverflowError):
