@@ -1033,6 +1033,7 @@ class HybridRouter:
         return results
 
     def status(self):
+        from . import usage
         now = time.monotonic()
         out = []
         for route in self.routes():
@@ -1047,7 +1048,6 @@ class HybridRouter:
                                                  if d["route_id"] == str(route.get("id") or "")), None),
                         "network_policy": self.settings.get("network_policy", "local_only"),
                         "quota_block": (self._quota_status(route) or {}).get("kind"),
-                        "usage_limit": __import__("kira.usage", fromlist=["limit_state"]).limit_state(
-                            "provider", str(route.get("provider") or "")),
+                        "usage_limit": usage.limit_state("provider", str(route.get("provider") or "")),
                         "failure_class": st.get("failure_class"), "retryable": st.get("retryable")})
         return out
