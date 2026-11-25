@@ -303,6 +303,22 @@ class RuntimeVoiceMixin:
             if not api_key:
                 self._start_local_voice_fallback("کلید معتبر Google AI در بخش اتصالات انتخاب نشده است")
                 return
+            settings = self.context.services.settings
+            try:
+                frame_interval = max(1.0, min(60.0, float(
+                    settings.get("eye_live_min_interval_seconds", 5.0)
+                )))
+            except (TypeError, ValueError):
+                frame_interval = 5.0
+            try:
+                frames_per_minute = max(1, min(60, int(
+                    settings.get("eye_live_max_frames_per_minute", 10)
+                )))
+            except (TypeError, ValueError):
+                frames_per_minute = 10
+            effective_frames_per_minute = min(
+                frames_per_minute, int(60.0 / frame_interval), 60
+            )
             worker = GeminiLiveWorker(
                 api_key=api_key,
                 model=page.gemini_model.currentText().strip() or "gemini-3.8-live",
@@ -313,7 +329,8 @@ class RuntimeVoiceMixin:
                     "in the user's language. You receive occasional JPEG snapshots of the entire explicitly "
                     "selected monitor, or the monitor containing the foreground window in automatic mode. "
                     "The user manually enables Live Desktop Vision or Game Mode before screen capture begins. "
-                    "Frames arrive only on meaningful visual changes and at no more than one per second. "
+                    f"Frames arrive only on meaningful visual changes, at least {frame_interval:g} seconds apart, "
+                    f"with a maximum of {effective_frames_per_minute} frames per minute and never more than one per second. "
                     "Use them as continuing context and connect visible events with the user's speech. Offer "
                     "brief helpful observations or timely warnings when useful, but do not narrate trivial changes "
                     "or interrupt unnecessarily. Only claim to see content present in received frames; never invent "
