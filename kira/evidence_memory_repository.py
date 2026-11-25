@@ -119,7 +119,7 @@ class EvidenceFactRepository:
         superseded = []
         if status == "active":
             if predicate in self._single_valued:
-                superseded = [row["id"] for row in existing_row if row["id"] != fact_id]
+                superseded = [row["id"] for row in existing if row["id"] != fact_id]
             elif predicate in ("like", "dislike"):
                 opposite = "dislike" if predicate == "like" else "like"
                 opposite_rows = connection.execute(
