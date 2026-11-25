@@ -43,7 +43,8 @@ def test_live_stream_uses_full_monitor_and_privacy_rechecks():
     assert "approx_kib_per_frame=" in source
     assert "min_interval_seconds=selector.policy.min_interval_seconds" in source
     assert "max_frames_per_minute=selector.policy.max_frames_per_minute" in source
-    assert "fps=1" not in source
+    assert ", fps=1," not in source
+    assert "gate_max_fps=1" in source
     assert "frame_exceeds_size_limit" in source
     assert "def set_live_video_active(self, enabled)" in source
     assert 'return 1000 if getattr(self, "_live_video_active", False) else base' in source
