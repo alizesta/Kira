@@ -320,6 +320,11 @@ def load_settings():
         for key, value in DEFAULTS["providers"].items():
             user_cfg = merged["providers"].get(key)
             merged["providers"][key] = {**value, **(user_cfg if isinstance(user_cfg, dict) else {})}
+        # Validate merged provider values before route normalization: routes.make_route
+        # converts numeric overrides and must never be handed malformed persisted data.
+        before_validation = deepcopy(merged)
+        merged = _validate_settings(merged)
+        settings_repaired = merged != before_validation
         merged["provider_order"] = normalize_provider_order(saved.get("provider_order"))
         # Migrate retired Groq model IDs (the old ID would only produce 404/400 errors).
         groq_cfg = merged["providers"]["groq"]
@@ -412,8 +417,9 @@ def load_settings():
         if migrated_local_route_state:
             LOAD_WARNINGS.append("وضعیت قدیمی Ollama اصلاح شد: Provider محلی برای Route فعال دوباره روشن شد.")
         before_validation = deepcopy(merged)
+        before_final_validation = deepcopy(merged)
         merged = _validate_settings(merged)
-        settings_repaired = merged != before_validation
+        settings_repaired = settings_repaired or merged != before_final_validation
         if (int(source_settings_version or 0) < SETTINGS_SCHEMA_VERSION
                 or migrated_local_model or migrated_local_route_state or settings_repaired):
             save_settings(merged)
