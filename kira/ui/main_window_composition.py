@@ -220,10 +220,6 @@ def initialize_main_window(
     # Vision cadence, safety gating and deduplication are owned by the application service.
     self.session._vision_worker = None
     self.session._vision_session = None
-    self.state._perception_worker = None
-    self.state._perception_window_info = None
-    self.state._perception_source = None
-    self.state._perception_result = None
     self.adapters.game_audio_listener = None
     self.state._game_prev_mic = False
     self.state._game_prev_wake = False
