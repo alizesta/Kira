@@ -240,35 +240,17 @@ class VisionAnalysisWorker(QThread):
         try:
             if self._cancelled.is_set():
                 return
-            route_id = self.router.vision_route_id()
-            if self._cancelled.is_set():
-                return
-            if not route_id:
-                raise RuntimeError("هیچ مدل Vision فعالی پیدا نشد. یک Route بینایی انتخاب کن یا برای Provider سفارشی vision_enabled را فعال کن.")
             from ..vision_ocr import extract_local_text
             ocr_text = extract_local_text(self.image) if self.ocr_enabled else ""
-            prompt = (
-                "این تصویر، فریم بازی کاربر است. فقط شواهد قابل مشاهده را گزارش کن و حدس نزن. "
-                "اگر متن OCR در اختیار داری، آن را به‌عنوان سرنخ کمکی در نظر بگیر، نه حقیقت قطعی. "
-                "اگر زمینه یا سؤال کاربر داده شده، دقیقاً به همان پاسخ بده؛ در غیر این صورت وضعیت، خطر، هدف و اقدام فوری را کوتاه بگو.\n"
-                + (("زمینه/سؤال کاربر: " + self.context + "\n") if self.context else "")
-                + (("متن استخراج‌شده‌ی محلی از تصویر: " + ocr_text[:1800]) if ocr_text else "")
+            if self._cancelled.is_set():
+                return
+            from ..vision_provider import VisionProviderExecutor
+            result = VisionProviderExecutor(self.router).execute(
+                self.image,
+                context=self.context,
+                ocr_text=ocr_text,
+                cancel_event=self._cancelled,
             )
-            if self._cancelled.is_set():
-                return
-            with self.router.vision_scope(route_id):
-                response = self.router.chat_stream(
-                    [{"role": "user", "content": self.context or "فریم فعلی بازی را بررسی کن.", "images": [self.image]}],
-                    prompt, 0.2, cancel_event=self._cancelled,
-                )
-            if self._cancelled.is_set():
-                return
-            if isinstance(response, dict):
-                if response.get("interrupted") or response.get("stopped"):
-                    raise RuntimeError("تحلیل Vision پیش از تکمیل متوقف شد.")
-                result = response.get("text", "")
-            else:
-                result = response
             if not self._cancelled.is_set():
                 self._emit_result(True, str(result or "").strip(), int((time.monotonic() - began) * 1000))
         except Exception as exc:
