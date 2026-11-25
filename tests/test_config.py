@@ -189,6 +189,22 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(saved["providers"]["ollama"]["num_ctx"], defaults["num_ctx"])
         self.assertTrue(any("providers.ollama.num_ctx" in warning for warning in config.LOAD_WARNINGS))
 
+    def test_invalid_route_overrides_are_repaired_before_route_normalization(self):
+        self.path.write_text(
+            json.dumps({
+                "routes": [{
+                    "id": "ollama", "provider": "ollama", "model": "custom-model",
+                    "enabled": True, "num_ctx": "not-a-number", "num_predict": -4,
+                }]
+            }),
+            encoding="utf-8",
+        )
+        settings = config.load_settings()
+        route = next(item for item in settings["routes"] if item["id"] == "ollama")
+        self.assertNotIn("num_ctx", route)
+        self.assertNotIn("num_predict", route)
+        self.assertTrue(any("routes[0].num_ctx" in warning for warning in config.LOAD_WARNINGS))
+
     def test_fresh_defaults(self):
         s = helpers.fresh_settings()
         self.assertEqual(s["model"], config.LOCAL_UNCENSORED_MODEL)

@@ -279,6 +279,35 @@ def _validate_settings(settings):
     settings["settings_version"] = SETTINGS_SCHEMA_VERSION
     return settings
 
+def _validate_route_overrides(settings):
+    """Drop malformed optional route limits before routes.ensure_routes converts them."""
+    routes = settings.get("routes")
+    if not isinstance(routes, list):
+        return
+    repaired = []
+    for index, route in enumerate(routes):
+        if not isinstance(route, dict):
+            continue
+        for key in ("num_ctx", "num_predict"):
+            if key not in route or route[key] in (None, "", 0, "0"):
+                continue
+            value = route[key]
+            try:
+                number = int(value) if not isinstance(value, bool) else 0
+            except (TypeError, ValueError, OverflowError):
+                number = 0
+            if number <= 0:
+                route.pop(key, None)
+                repaired.append(f"routes[{index}].{key}")
+            else:
+                route[key] = number
+    if repaired:
+        LOAD_WARNINGS.append(
+            "محدودیت‌های نامعتبر Route حذف شدند تا مقدار Provider به ارث برسد: "
+            + ", ".join(repaired)
+        )
+
+
 def load_settings():
     LOAD_WARNINGS.clear()
     LOAD_WARNINGS.extend(prepare_user_data())
@@ -356,6 +385,7 @@ def load_settings():
                 LOAD_WARNINGS.append(f"کلید Tavily با این حساب ویندوز رمزگشایی نشد ({exc}). دوباره وارد کن.")
         for stale in ("web_engine", "web_read_pages"):               # removed options (Google-through-Gemini / DuckDuckGo)
             merged.pop(stale, None)
+        _validate_route_overrides(merged)
         route_model.ensure_routes(merged)
         # Repair configurations written by versions where a local Route could be
         # switched on while the Ollama Provider master switch stayed off.
