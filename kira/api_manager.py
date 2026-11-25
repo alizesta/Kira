@@ -385,10 +385,36 @@ def register(settings, detection, key, now=None) -> str:
 
 
 # ---------------- actions on a registered API ----------------
+def _replacement_default_route(settings, excluded_provider):
+    providers = settings.get("providers", {})
+    for route in route_model.get_routes(settings):
+        provider = route.get("provider")
+        cfg = providers.get(provider) or {}
+        if provider == excluded_provider or not route.get("enabled", True):
+            continue
+        if not cfg.get("enabled", provider == "ollama"):
+            continue
+        if route_model.requires_key(provider, cfg) and not str(cfg.get("api_key") or "").strip():
+            continue
+        return route.get("id") or ""
+    return ""
+
+
+def _clear_disabled_api_selection(settings, pid):
+    manual = route_model.find_route(settings, settings.get("manual_route_id") or "")
+    if manual and manual.get("provider") == pid:
+        settings["manual_route_id"] = ""
+    default = route_model.find_route(settings, settings.get("default_route_id") or "")
+    if default and default.get("provider") == pid:
+        settings["default_route_id"] = _replacement_default_route(settings, pid)
+
+
 def set_api_enabled(settings, pid, enabled):
     if pid not in settings.get("providers", {}):
         raise KeyError(pid)
     settings["providers"][pid]["enabled"] = bool(enabled)
+    if not enabled:
+        _clear_disabled_api_selection(settings, pid)
 
 
 def set_model_enabled(settings, pid, model, enabled):
@@ -417,8 +443,7 @@ def delete_api(settings, pid):
         for r in route_model.get_routes(settings):
             if r["provider"] == pid:
                 route_model.update_route(settings, r["id"], enabled=False)
-        if settings.get("manual_route_id") and (route_model.find_route(settings, settings["manual_route_id"]) or {}).get("provider") == pid:
-            settings["manual_route_id"] = ""
+        _clear_disabled_api_selection(settings, pid)
     else:
         route_model.remove_provider(settings, pid)
     registry(settings).pop(pid, None)
