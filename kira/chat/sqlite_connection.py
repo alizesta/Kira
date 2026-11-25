@@ -26,7 +26,16 @@ class SqliteUnitOfWork:
         if connection is None:
             return False
         try:
-            connection.rollback() if exc_type is not None else connection.commit()
+            if exc_type is not None:
+                connection.rollback()
+            else:
+                try:
+                    connection.commit()
+                except BaseException:
+                    # A failed commit must not leave an open, partially applied
+                    # transaction on a connection that is about to be discarded.
+                    connection.rollback()
+                    raise
         finally:
             connection.close()
         return False
