@@ -14,10 +14,9 @@ from PySide6.QtWidgets import QApplication
 CAPTURE_MAX_WIDTH = 768
 CAPTURE_MAX_HEIGHT = 432
 CAPTURE_JPEG_QUALITY = 78
-# Escalated capture for small text / dense UI / OCR (used only when the question or a failed read needs it).
-CAPTURE_DETAIL_MAX_WIDTH = 1280
-CAPTURE_DETAIL_MAX_HEIGHT = 720
-CAPTURE_DETAIL_JPEG_QUALITY = 80
+from .vision_pipeline import (  # noqa: E402,F401 - Qt-free home of the detail-capture constants, re-exported here
+    CAPTURE_DETAIL_JPEG_QUALITY, CAPTURE_DETAIL_MAX_HEIGHT, CAPTURE_DETAIL_MAX_WIDTH,
+)
 
 
 def fit_capture_size(width: int, height: int, max_width: int = CAPTURE_MAX_WIDTH,

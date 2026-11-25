@@ -1,3 +1,8 @@
+## Eye Vision detail capture plumbing — follow-up (2026-11-26 00:48 Iran)
+- Branch `claude/eye-vision-free-models`. `capture_desktop_attachment(detail=True)` now captures 1280x720; `_live_vision_attachment(question, detail=)` picks detail via `wants_detail_capture(question)` and encodes at q80. Detail constants moved to Qt-free `vision_pipeline.py` (re-exported by `desktop_capture.py`).
+- Still NOT triggered anywhere: since Task 2, ordinary chat does not attach raw frames, so `_game_vision_attachment` has no caller. The automatic single retry (`reply_was_unreadable`) needs a chat-side trigger that is not built yet.
+- Tests: affected files show no new failures vs the base; `tests/test_router_routes.py` already fails 20 tests on untouched `new-main` here.
+
 ## Eye Vision capture + free Gemini model chain — handoff (2026-11-25 17:26 Iran)
 - Branch: `claude/eye-vision-free-models`, based on `new-main` b41de3f. No Pull Request opened, no GitHub Actions run.
 - Capture (`desktop_capture.py`): default 768x432 (was 854x480), JPEG quality 78 (was 68), Qt resampling `FastTransformation` -> `SmoothTransformation` (text edges). New `CAPTURE_DETAIL_*` constants: 1280x720 / q80 for small text and OCR.

@@ -64,7 +64,7 @@ class GameModeSafetyTests(unittest.TestCase):
 
     def test_capture_size_is_bounded_to_480p_and_keeps_aspect_ratio(self):
         self.assertEqual(fit_capture_size(1920, 1080), (768, 432))
-        self.assertEqual(fit_capture_size(1280, 1024), (600, 480))
+        self.assertEqual(fit_capture_size(1280, 1024), (540, 432))
         self.assertEqual(fit_capture_size(640, 360), (640, 360))
 
     def test_capture_region_is_clipped_to_primary_output(self):

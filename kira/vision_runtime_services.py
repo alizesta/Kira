@@ -10,6 +10,7 @@ from typing import Any, Callable, Protocol
 
 from .live_video_selector import LiveFrameSelector, SelectorPolicy
 from .vision_orchestrator import FrameJob
+from .vision_pipeline import CAPTURE_DETAIL_MAX_HEIGHT, CAPTURE_DETAIL_MAX_WIDTH
 
 
 @dataclass(frozen=True)
@@ -142,11 +143,14 @@ class VisionCaptureService:
             )
 
         policy = self._vision.policy
+        # detail=True (small text / fine UI / OCR retry) escalates to 1280x720; default stays at the policy size.
+        max_width = CAPTURE_DETAIL_MAX_WIDTH if detail else policy.max_width
+        max_height = CAPTURE_DETAIL_MAX_HEIGHT if detail else policy.max_height
         pixmap = self._capture.capture_monitor_for_window(
             window_info,
             monitor_id=self.privacy.selected_monitor_id or None,
-            max_width=policy.max_width,
-            max_height=policy.max_height,
+            max_width=max_width,
+            max_height=max_height,
         )
         return CaptureResult("desktop", window_info, _to_image(pixmap))
 
@@ -170,7 +174,7 @@ class VisionCaptureService:
         )
         return CaptureResult("desktop", window_info, _to_image(pixmap))
 
-    def capture_desktop_attachment(self, *, source_enabled: bool) -> CaptureResult:
+    def capture_desktop_attachment(self, *, source_enabled: bool, detail: bool = False) -> CaptureResult:
         """Capture a user-requested Eye Mode attachment after both source gates pass."""
         if not source_enabled or not self.privacy.enabled:
             return CaptureResult(

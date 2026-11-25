@@ -1,6 +1,7 @@
 """Attachment and vision feature controller for the desktop window."""
 from PySide6.QtCore import Slot
 from ..request_trace import vision_trace
+from ..vision_pipeline import CAPTURE_DETAIL_JPEG_QUALITY, wants_detail_capture
 from ..perception import PerceptionEngine
 from ..perception.events import PerceptionEvent
 from ..vision_runtime_services import (
@@ -1206,10 +1207,15 @@ class AttachmentsVisionController(WindowFeatureController):
             tray.showMessage("Kira · Eye Mode", "بازی شناسایی شد. برای تحلیل زندهٔ مانیتور، Eye Mode را روشن کن.",
                              QSystemTrayIcon.Information, 7000)
 
-    def _live_vision_attachment(self):
-        """Attach a privacy-approved frame from Eye Mode's selected monitor."""
+    def _live_vision_attachment(self, question: str = "", *, detail: bool = False):
+        """Attach a privacy-approved frame from Eye Mode's selected monitor.
+
+        Small-text/menu/OCR questions (or detail=True, used for the single retry after an unreadable reply)
+        capture at 1280x720; everything else stays at the policy size (768x432 by default).
+        """
+        detail = bool(detail or wants_detail_capture(question))
         captured = self._capture_service().capture_desktop_attachment(
-            source_enabled=bool(self.context.state._game_mode_enabled)
+            source_enabled=bool(self.context.state._game_mode_enabled), detail=detail
         )
         if not captured.allowed:
             vision_trace(
@@ -1230,7 +1236,8 @@ class AttachmentsVisionController(WindowFeatureController):
             return None
         try:
             policy = self.context.services.vision_application_service.policy
-            quality = min(int(policy.jpeg_quality), int(CAPTURE_JPEG_QUALITY))
+            quality = (int(CAPTURE_DETAIL_JPEG_QUALITY) if detail
+                       else min(int(policy.jpeg_quality), int(CAPTURE_JPEG_QUALITY)))
             jpeg = self._frame_codec().encode_jpeg(frame, quality)
             if not jpeg:
                 raise RuntimeError("jpeg_encode_failed")
@@ -1272,11 +1279,11 @@ class AttachmentsVisionController(WindowFeatureController):
             for session in sessions
         )
 
-    def _game_vision_attachment(self):
+    def _game_vision_attachment(self, question: str = "", *, detail: bool = False):
         """Backward-compatible Game Mode attachment facade."""
         if not self.context.state._game_mode_enabled:
             return None
-        return self._live_vision_attachment()
+        return self._live_vision_attachment(question, detail=detail)
 
 
 # Backward-compatible import name for callers migrating from mixin composition.

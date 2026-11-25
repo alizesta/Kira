@@ -123,3 +123,7 @@ class DetailEscalationTests(unittest.TestCase):
         self.assertFalse(wants_detail_capture("الان کجای نقشه‌ام؟"))
         self.assertTrue(reply_was_unreadable("the text is too small to read"))
         self.assertFalse(reply_was_unreadable("یه دشمن سمت چپه"))
+
+    def test_detail_constants_are_1280x720_q80(self):
+        from kira.vision_pipeline import CAPTURE_DETAIL_JPEG_QUALITY, CAPTURE_DETAIL_MAX_HEIGHT, CAPTURE_DETAIL_MAX_WIDTH
+        self.assertEqual((CAPTURE_DETAIL_MAX_WIDTH, CAPTURE_DETAIL_MAX_HEIGHT, CAPTURE_DETAIL_JPEG_QUALITY), (1280, 720, 80))

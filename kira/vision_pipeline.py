@@ -20,6 +20,11 @@ class VisionPolicy:
     jpeg_quality: int = 45
 
 
+# Escalated capture for small text / dense UI / OCR (used only when the question or a failed read needs it).
+CAPTURE_DETAIL_MAX_WIDTH = 1280
+CAPTURE_DETAIL_MAX_HEIGHT = 720
+CAPTURE_DETAIL_JPEG_QUALITY = 80
+
 # Frames are kept small on purpose: every analysed frame is uploaded to a cloud vision model.
 POLICIES = {
     "economic": VisionPolicy("economic", 5.0, 0.045, 768, 432, 75),
