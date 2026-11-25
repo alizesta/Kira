@@ -180,6 +180,9 @@ SETTING_RANGES = {
     "memory_top_k": (1, 50),
     "providers.ollama.num_ctx": (1024, 32768),
     "route_cooldown": (0, 3600),
+    "routes.timeout.cloud": (5, 60),
+    "routes.timeout.local": (10, 600),
+    "routes.cooldown": (0, 3600),
 }
 
 # Preferred starting models are selected only if a provider actually reports them.

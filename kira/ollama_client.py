@@ -7,13 +7,13 @@ from __future__ import annotations
 import json
 import re
 import requests
-from .settings_schema import DEFAULTS as SETTINGS_DEFAULTS
+from .settings_schema import DEFAULTS as SETTINGS_DEFAULTS, SETTING_RANGES
 
 _OLLAMA_DEFAULTS = SETTINGS_DEFAULTS["providers"]["ollama"]
 DEFAULT_NUM_CTX = _OLLAMA_DEFAULTS["num_ctx"]
 DEFAULT_KEEP_ALIVE = _OLLAMA_DEFAULTS["keep_alive"]
 DEFAULT_NUM_PREDICT = _OLLAMA_DEFAULTS["num_predict"]          # max reply length in tokens: stops a runaway/slow generation
-MIN_NUM_CTX, MAX_NUM_CTX = 1024, 32768
+MIN_NUM_CTX, MAX_NUM_CTX = SETTING_RANGES["providers.ollama.num_ctx"]
 REPLY_RESERVE_TOKENS = 768          # room kept free for the model's answer
 CHARS_PER_TOKEN = 2.0               # conservative for Persian text
 

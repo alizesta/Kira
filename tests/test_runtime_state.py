@@ -5,6 +5,7 @@ import unittest
 from kira.app.detected_capabilities import DetectedCapabilities
 from kira.app.runtime_state import RuntimeState
 from kira.ui.window_presentation_context import WindowPresentationContext
+from kira import api_manager
 
 
 class _ControllerRegistry:
@@ -20,6 +21,9 @@ class _ControllerRegistry:
 
 class RuntimeStateTests(unittest.TestCase):
     def test_runtime_state_is_strict_and_process_local(self):
+        self.assertFalse(hasattr(api_manager, "_DEFAULT_CAPABILITIES"))
+        with self.assertRaises(TypeError):
+            api_manager.registry()
         state = RuntimeState({"worker", "closing"})
         worker = object()
         state.set("worker", worker)

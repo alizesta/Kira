@@ -13,7 +13,7 @@ import ast
 import re
 from copy import deepcopy
 
-from .settings_schema import DEFAULTS as SETTINGS_DEFAULTS
+from .settings_schema import DEFAULTS as SETTINGS_DEFAULTS, SETTING_RANGES
 
 BUILTIN = {
     "groq": {"label": "Groq", "kind": "cloud", "type": "openai_compat", "model": SETTINGS_DEFAULTS["providers"]["groq"]["model"]},
@@ -23,12 +23,12 @@ BUILTIN = {
     "ollama": {"label": "Ollama", "kind": "local", "type": "ollama", "model": SETTINGS_DEFAULTS["providers"]["ollama"]["model"]},
 }
 DEFAULT_ORDER = list(SETTINGS_DEFAULTS["provider_order"])
-CLOUD_TIMEOUT = (5, 60)
-LOCAL_TIMEOUT = (10, 600)
+CLOUD_TIMEOUT = SETTING_RANGES["routes.timeout.cloud"]
+LOCAL_TIMEOUT = SETTING_RANGES["routes.timeout.local"]
 DEFAULT_CLOUD_TIMEOUT = SETTINGS_DEFAULTS["providers"]["groq"]["timeout"]
 DEFAULT_LOCAL_TIMEOUT = SETTINGS_DEFAULTS["providers"]["ollama"]["timeout"]
 DEFAULT_COOLDOWN = SETTINGS_DEFAULTS["route_cooldown"]
-COOLDOWN_RANGE = (0, 3600)
+COOLDOWN_RANGE = SETTING_RANGES["routes.cooldown"]
 
 
 # ---------------- provider helpers ----------------

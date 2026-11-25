@@ -112,7 +112,14 @@ class ConfigTests(unittest.TestCase):
         source = {
             "settings_version": 3,
             "assistant_name": "My Kira",
+            "model": "user-selected-model",
             "voice_engine": "local",
+            "voice_local_fallback": False,
+            "gemini_live_provider": "google",
+            "gemini_live_model": "user-selected-live-model",
+            "local_voice_asr_backend": "shenava",
+            "local_voice_asr_model": "user-selected-asr-model",
+            "local_voice_tts_model": "user-selected-tts-model",
             "providers": {"groq": {"api_key": "preserve-me"}},
             "api_registry": {"groq": {"status": "valid"}},
             "model_catalog_refreshed_at": 12345,
@@ -122,12 +129,20 @@ class ConfigTests(unittest.TestCase):
         migrated = config._migrate_settings(source)
         self.assertEqual(migrated["settings_version"], config.SETTINGS_SCHEMA_VERSION)
         self.assertEqual(migrated["assistant_name"], "My Kira")
+        self.assertEqual(migrated["model"], "user-selected-model")
         self.assertEqual(migrated["voice_engine"], "local")
+        self.assertFalse(migrated["voice_local_fallback"])
+        self.assertEqual(migrated["gemini_live_provider"], "google")
+        self.assertEqual(migrated["gemini_live_model"], "user-selected-live-model")
+        self.assertEqual(migrated["local_voice_asr_backend"], "shenava")
+        self.assertEqual(migrated["local_voice_asr_model"], "user-selected-asr-model")
+        self.assertEqual(migrated["local_voice_tts_model"], "user-selected-tts-model")
         self.assertEqual(migrated["providers"]["groq"]["api_key"], "preserve-me")
         self.assertEqual(migrated["user_extension"], {"enabled": True})
         for runtime_key in ("api_registry", "model_catalog_refreshed_at", "model_tests"):
             self.assertNotIn(runtime_key, migrated)
         self.assertEqual(source["api_registry"]["groq"]["status"], "valid")
+        self.assertEqual(config._migrate_settings(migrated), migrated)
 
     def test_save_settings_validates_nested_values_without_mutating_caller(self):
         settings = helpers.fresh_settings()
@@ -451,7 +466,7 @@ class ConfigTests(unittest.TestCase):
 
     def test_route_and_provider_defaults_are_derived_from_canonical_schema(self):
         from kira import api_manager, ollama_client, routes
-        from kira.settings_schema import DEFAULTS as SCHEMA_DEFAULTS, PROVIDER_DEFAULT_MODELS
+        from kira.settings_schema import DEFAULTS as SCHEMA_DEFAULTS, PROVIDER_DEFAULT_MODELS, SETTING_RANGES
 
         self.assertIs(config.DEFAULTS, SCHEMA_DEFAULTS)
         self.assertEqual(routes.DEFAULT_ORDER, SCHEMA_DEFAULTS["provider_order"])
@@ -465,6 +480,10 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(ollama_client.DEFAULT_NUM_CTX, ollama_defaults["num_ctx"])
         self.assertEqual(ollama_client.DEFAULT_KEEP_ALIVE, ollama_defaults["keep_alive"])
         self.assertEqual(ollama_client.DEFAULT_NUM_PREDICT, ollama_defaults["num_predict"])
+        self.assertEqual((ollama_client.MIN_NUM_CTX, ollama_client.MAX_NUM_CTX), SETTING_RANGES["providers.ollama.num_ctx"])
+        self.assertEqual(routes.CLOUD_TIMEOUT, SETTING_RANGES["routes.timeout.cloud"])
+        self.assertEqual(routes.LOCAL_TIMEOUT, SETTING_RANGES["routes.timeout.local"])
+        self.assertEqual(routes.COOLDOWN_RANGE, SETTING_RANGES["routes.cooldown"])
 
     def test_fresh_defaults(self):
         s = helpers.fresh_settings()
