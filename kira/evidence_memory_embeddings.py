@@ -4,7 +4,7 @@ import contextlib
 import math
 import time
 from typing import Protocol
-from .evidence_memory_models import EmbeddingVector
+from .evidence_memory_models import EvidenceVector
 
 INDEX_VERSION = 1
 EMBED_BATCH = 16
@@ -127,7 +127,7 @@ class EmbeddingService:
             return None
 
 def pack_vector(vector) -> bytes:
-    return EmbeddingVector.create("packing", "packing", vector).to_blob()
+    return EvidenceVector.create("packing", "packing", vector).to_blob()
 
 def unpack_vector(blob) -> list[float]:
     import array
