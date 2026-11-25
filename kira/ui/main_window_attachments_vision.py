@@ -242,11 +242,16 @@ class AttachmentsVisionController(WindowFeatureController):
             if enabled:
                 self._capture_active_vision_frame()
 
+    def _release_live_frame_budget(self, frame_context):
+        if frame_context is not None:
+            self.context.services.vision_application_service.release_frame_budget(frame_context)
+        return False
+
     def _maybe_stream_gemini_live_frame(self, _frame, source, window_info, *, frame_context=None):
         """Send a full-monitor JPEG after rechecking Live readiness and foreground privacy."""
         runtime = self.feature_controller("runtime")
         if not runtime.is_gemini_live_ready():
-            return False
+            return self._release_live_frame_budget(frame_context)
         # Imported here: Live is already running at this point and startup stays deferred.
         from ..gemini_live import MAX_VIDEO_FRAME_BYTES
         privacy = self.context.services.vision_application_service.desktop_capture_application_service
@@ -261,7 +266,7 @@ class AttachmentsVisionController(WindowFeatureController):
             source_enabled = False
         if not source_enabled:
             self._clear_live_video_state()
-            return False
+            return self._release_live_frame_budget(frame_context)
 
         capture = self.context.adapters.game_mode.capture_service
         allow_partial_identity = source == "desktop"
@@ -277,7 +282,7 @@ class AttachmentsVisionController(WindowFeatureController):
         if not permitted:
             self._clear_live_video_state()
             vision_trace("live_video_blocked", source=source, reason="privacy_or_source_disabled")
-            return False
+            return self._release_live_frame_budget(frame_context)
         foreground_identity = (
             int(current.get("hwnd") or 0), int(current.get("pid") or 0),
             str(current.get("exe") or "").casefold(), str(current.get("title") or "").strip(),
@@ -298,7 +303,7 @@ class AttachmentsVisionController(WindowFeatureController):
         if source == "game" and (not all(foreground_identity) or foreground_identity != expected):
             self._clear_live_video_state()
             vision_trace("live_video_blocked", source=source, reason="foreground_changed")
-            return False
+            return self._release_live_frame_budget(frame_context)
         if identity != getattr(self, "_live_video_identity", None):
             runtime.clear_gemini_video_frames()
             self._live_selector().reset()
@@ -306,7 +311,7 @@ class AttachmentsVisionController(WindowFeatureController):
 
         monitor_id = privacy.selected_monitor_id if source == "desktop" else None
         if frame_context is not None and not self.context.services.vision_application_service.frame_orchestrator.is_current(frame_context):
-            return False
+            return self._release_live_frame_budget(frame_context)
         if _frame is not None and not _frame.isNull():
             frame_image = _frame.scaled(
                 LIVE_VIDEO_MAX_WIDTH, LIVE_VIDEO_MAX_HEIGHT,
@@ -321,7 +326,7 @@ class AttachmentsVisionController(WindowFeatureController):
         if frame_image is None or frame_image.isNull():
             self._clear_live_video_state()
             vision_trace("live_video_capture_skipped", source=source, reason="full_monitor_capture_failed")
-            return False
+            return self._release_live_frame_budget(frame_context)
         latest = capture.foreground_window_info(
             allow_partial_identity=allow_partial_identity
         )
@@ -338,14 +343,14 @@ class AttachmentsVisionController(WindowFeatureController):
         ):
             self._clear_live_video_state()
             vision_trace("live_video_blocked", source=source, reason="foreground_changed_during_capture")
-            return False
+            return self._release_live_frame_budget(frame_context)
 
         image = _quantize_live_video_image(frame_image)
         selector = self._live_selector()
         sample = _live_gray_sample(image)
         decision = selector.evaluate(sample)
         if not decision.send:
-            return False
+            return self._release_live_frame_budget(frame_context)
         try:
             from PySide6.QtCore import QBuffer, QByteArray, QIODevice
 
@@ -380,12 +385,12 @@ class AttachmentsVisionController(WindowFeatureController):
                     max_bytes=MAX_VIDEO_FRAME_BYTES,
                     width=encoded_image.width(), height=encoded_image.height(),
                 )
-                return False
+                return self._release_live_frame_budget(frame_context)
         except Exception as exc:  # a video path error must not interrupt audio
             vision_trace("live_video_encode_failed", source=source, error=type(exc).__name__)
-            return False
+            return self._release_live_frame_budget(frame_context)
         if not runtime.send_gemini_video_frame(jpeg):
-            return False
+            return self._release_live_frame_budget(frame_context)
         selector.commit(sample)
         vision_trace(
             "live_video_frame_queued", source=source,
