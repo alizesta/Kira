@@ -145,18 +145,24 @@ def remove_provider(settings, pid):
     """Only custom providers can be removed (built-ins keep their keys). Their routes go with them. Returns removed route ids."""
     if pid in BUILTIN:
         raise ValueError("Providerهای پیش‌فرض حذف نمی‌شوند؛ فقط می‌توان آن‌ها را غیرفعال کرد.")
+    # Resolve legacy-derived routes before removing the provider so its route
+    # identities can be cleared from manual/default selections as well.
+    removed = [
+        route.get("id") for route in get_routes(settings)
+        if route.get("provider") == pid
+    ]
     settings.get("providers", {}).pop(pid, None)
     routes = settings.get("routes")
-    removed = []
-    if routes is not None:
-        keep = []
-        for r in routes:
-            (removed if r.get("provider") == pid else keep).append(r.get("id") if r.get("provider") == pid else r)
-        settings["routes"] = [r for r in keep if isinstance(r, dict)]
+    if isinstance(routes, list):
+        settings["routes"] = [
+            route for route in routes
+            if isinstance(route, dict) and route.get("provider") != pid
+        ]
     if settings.get("manual_route_id") in removed:
         settings["manual_route_id"] = ""
     if settings.get("default_route_id") in removed:
-        settings["default_route_id"] = settings["routes"][0]["id"] if settings["routes"] else ""
+        remaining = get_routes(settings)
+        settings["default_route_id"] = remaining[0]["id"] if remaining else ""
     sync_legacy(settings)
     return removed
 
@@ -385,7 +391,7 @@ def add_route(settings, provider, model, enabled=True, timeout=None, cooldown=No
     cfg = settings.get("providers", {}).get(provider)
     if provider not in BUILTIN and cfg is None:
         raise ValueError("Provider ناشناخته است.")
-    model = str(model or "").strip()
+    model = normalize_model_id(model)
     if not model:
         raise ValueError("شناسه‌ی مدل (Model ID) خالی است.")
     model_key = model.casefold()
