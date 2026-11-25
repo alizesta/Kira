@@ -466,6 +466,7 @@ class RuntimeVoiceMixin:
             sensitivity=self.context.services.settings.get("mic_sensitivity", 100),
             barge_in=self.context.services.settings.get("barge_in", True),
             settings=self.context.services.settings,
+            asr_manager=self.context.services.voice_application_service.asr_manager,
         )
 
     def start_listener(self):
