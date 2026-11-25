@@ -300,6 +300,10 @@ class OllamaClient:
         except requests.RequestException as exc:
             raise OllamaError(f"خطای شبکه در ارتباط با Ollama: {exc}", "network") from exc
 
+    def _cancelled(self):
+        event = getattr(self, "cancel_event", None)
+        return bool(event is not None and event.is_set())
+
     def _close_chat_response(self):
         with self._response_lock:
             response, self._chat_resp = self._chat_resp, None
@@ -481,7 +485,7 @@ class OllamaClient:
             payload.pop("think")         # model has no thinking support
             self._no_think = True
             r = self._post("/api/chat", payload, self.timeout, cancellable=True)
-        if r.status_code == 404 and self.resolve_installed() and self.active_model != payload["model"]:
+        if not self._cancelled() and r.status_code == 404 and self.resolve_installed() and self.active_model != payload["model"]:
             payload["model"] = self.active_model         # e.g. configured qwen3.5:4b, installed as qwen3.5:latest
             r = self._post("/api/chat", payload, self.timeout, cancellable=True)
         for _ in range(MAX_CONTEXT_RETRIES):
@@ -556,7 +560,7 @@ class OllamaClient:
             payload.pop("think")
             self._no_think = True
             r = self._post("/api/chat", payload, self.timeout, cancellable=True)
-        if r.status_code == 404 and self.resolve_installed() and self.active_model != payload["model"]:
+        if not self._cancelled() and r.status_code == 404 and self.resolve_installed() and self.active_model != payload["model"]:
             payload["model"] = self.active_model
             r = self._post("/api/chat", payload, self.timeout, cancellable=True)
         for _ in range(MAX_CONTEXT_RETRIES):
@@ -673,7 +677,7 @@ class OllamaClient:
             payload.pop("think")
             self._no_think = True
             r = self._open_stream(payload)
-        if r.status_code == 404 and self.resolve_installed() and self.active_model != payload["model"]:
+        if not self._cancelled() and r.status_code == 404 and self.resolve_installed() and self.active_model != payload["model"]:
             self._release_stream_response(r)
             r.close()
             payload["model"] = self.active_model

@@ -79,7 +79,8 @@ def _write(phase: str, fields: dict, filename: str):
         if normalized_key in _SENSITIVE_FIELDS:
             continue
         if any(normalized_key.endswith(suffix) for suffix in (
-            "_api_key", "_secret", "_authorization", "_prompt", "_messages",
+            "_api_key", "_key", "_secret", "_token", "_password", "_cookie",
+            "_credential", "_credentials", "_authorization", "_prompt", "_messages",
             "_message", "_content", "_completion", "_response_body",
             "_body", "_payload", "_tool_calls", "_tool_arguments",
         )):

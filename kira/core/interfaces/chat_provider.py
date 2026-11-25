@@ -12,7 +12,6 @@ class ChatProvider(Protocol):
     name: str
     upload_progress: Callable[[int], None] | None
     last_usage: dict[str, Any] | None
-    cancel_event: Any | None
 
     def enabled(self) -> bool: ...
 
