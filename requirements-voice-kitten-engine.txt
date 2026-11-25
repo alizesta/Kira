@@ -1,0 +1,2 @@
+# Engine distribution is installed with --no-deps to avoid its optional PyTorch extras.
+kittenml>=0.9.8,<1

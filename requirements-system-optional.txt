@@ -1,0 +1,4 @@
+# Optional hardware/system discovery and document extraction.
+psutil>=5.9,<8
+dxcam[winrt]>=0.3.0,<1; platform_system == "Windows"
+pypdf>=5,<7

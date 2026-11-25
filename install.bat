@@ -116,34 +116,47 @@ if not exist .venv\Scripts\python.exe (
 )
 if not exist .venv\Scripts\python.exe goto fail
 call .venv\Scripts\activate.bat
-python -m pip install --upgrade pip --retries 10 --timeout 60
-if errorlevel 1 goto netfail
-
-echo.
-echo [1/5] Installing core Kira dependencies...
-python install_deps.py requirements.txt
-if errorlevel 1 goto netfail
-
-echo.
-echo [2/5] Installing optional local OCR Python dependencies...
-python -m pip install --upgrade --retries 10 --timeout 60 -r requirements-ocr.txt
+rem pip 23.1 introduced the dry-run resolver report used by install_deps.py.
+python -c "import pip,sys; v=tuple(int(x) for x in pip.__version__.split('.')[:2]); sys.exit(0 if v >= (23,1) else 1)" >nul 2>nul
 if errorlevel 1 (
-  echo WARNING: Python OCR dependencies are unavailable; OCR remains disabled.
+  echo Updating pip only because the dependency resolver preflight requires pip 23.1 or newer...
+  python -m pip install --upgrade "pip>=23.1,<27" --retries 10 --timeout 60
+  if errorlevel 1 goto netfail
+)
+
+echo.
+echo [1/6] Resolving and installing core Kira dependencies...
+python install_deps.py requirements.txt --constraints constraints.txt
+if errorlevel 1 goto netfail
+
+echo.
+echo [2/6] Installing optional system and document integrations...
+python install_deps.py requirements-system-optional.txt --constraints constraints.txt
+if errorlevel 1 (
+  echo WARNING: Optional system integrations are unavailable.
+  set "SYSTEM_SETUP_FAILED=1"
+)
+
+echo.
+echo [3/6] Installing optional local OCR Python dependencies...
+python install_deps.py requirements-ocr.txt --constraints constraints.txt
+if errorlevel 1 (
+  echo WARNING: Python OCR dependencies are unavailable; other Kira features remain available.
   set "OCR_SETUP_FAILED=1"
 )
 python -m kira.vision_ocr
+
 echo.
-echo [3/5] Installing microphone and speech support...
+echo [4/6] Installing optional microphone and audio dependencies as one group...
 if exist voice_failed.txt del voice_failed.txt
-set "PKGS=sounddevice PyAudioWPatch miniaudio"
-for %%P in (%PKGS%) do (
-  echo --- %%P
-  python -m pip install --upgrade --retries 10 --timeout 60 %%P
-  if errorlevel 1 echo %%P>>voice_failed.txt
+python install_deps.py requirements-audio.txt --constraints constraints.txt
+if errorlevel 1 (
+  echo WARNING: Optional audio dependencies are unavailable.
+  set "AUDIO_SETUP_FAILED=1"
 )
 
 echo.
-echo [4/5] Installing local Persian STT/TTS and downloading their models...
+echo [5/6] Installing local Persian STT/TTS and downloading their models...
 echo Installing only Shenava INT8 for offline speech recognition.
 .venv\Scripts\python.exe scripts\setup_local_voice.py --install --prepare-models
 if errorlevel 1 (
@@ -152,7 +165,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [5/5] Checking optional Ollama local runtime and model setup...
+echo [6/6] Checking optional Ollama local runtime and model setup...
 python -m kira.setup_manager --interactive
 if errorlevel 1 (
   echo WARNING: Ollama setup is incomplete. Kira core installation remains available.
@@ -167,7 +180,9 @@ echo ============================================================
 echo Data folder: %KIRA_DATA_DIR%
 echo Future updates will reuse this folder automatically.
 if defined VOICE_SETUP_FAILED echo WARNING: Local voice setup needs attention.
+if defined AUDIO_SETUP_FAILED echo WARNING: Optional audio dependencies need attention.
 if defined OCR_SETUP_FAILED echo WARNING: OCR Python dependencies need attention.
+if defined SYSTEM_SETUP_FAILED echo WARNING: Optional system integrations need attention.
 if defined OLLAMA_SETUP_FAILED echo WARNING: Local Ollama setup needs attention; rerun python -m kira.setup_manager --interactive.
 echo OCR native engine and language data are detected, not silently installed.
 echo Persian OCR requires the Tesseract fas language pack; English requires eng.

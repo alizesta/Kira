@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import io
 import os
-import sys
 import threading
 from pathlib import Path
 
@@ -27,14 +26,17 @@ _MODEL_SIZES_MB = {"pico": 4.0, "nano": 8.8, "mini": 47.5}
 _TEST_TEXT = "Hello! I am Kira. This is a local Kitten TTS voice test."
 
 
-def _run(command, timeout=3600, cancel_event=None):
-    """Use Kira's cancellable, hidden-window installer process."""
-    from .local_voice import _run_install_command
+def _run(requirements, timeout=3600, cancel_event=None, extra_args=(), check=True):
+    """Use the shared cancellable resolver and dependency constraints."""
+    from .local_voice import _run_dependency_install
 
-    result = _run_install_command(command, timeout=timeout, cancel_event=cancel_event)
-    if result.returncode:
-        detail = (result.stderr or result.stdout or "pip failed")[-3000:]
-        raise RuntimeError(f"نصب وابستگی KittenTTS ناموفق بود: {detail}")
+    result = _run_dependency_install(
+        requirements,
+        timeout=timeout,
+        cancel_event=cancel_event,
+        extra_args=extra_args,
+        check=check,
+    )
     return result.stdout
 
 
@@ -67,16 +69,18 @@ def install_runtime(cancel_event=None):
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
     # Kitten's default extra dependencies include PyTorch. --no-deps keeps this
     # optional CPU feature small; install its documented ONNX/text/audio runtime.
-    _run([sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "4",
-          "--timeout", "60", "--constraint",
-          str(Path(__file__).resolve().parents[1] / "constraints-voice.txt"),
-          "kittenml", "--no-deps"], cancel_event=cancel_event)
-    _run([sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "4",
-          "--timeout", "60", "--constraint",
-          str(Path(__file__).resolve().parents[1] / "constraints-voice.txt"),
-          "onnxruntime>=1.20", "numpy>=1.26", "soundfile",
-          "huggingface-hub>=0.34.0,<1.0", "phonemizer", "espeakng_loader", "misaki",
-          "num2words", "spacy>=3.8"], cancel_event=cancel_event)
+    root = Path(__file__).resolve().parents[1]
+    engine_requirements = root / "requirements-voice-kitten-engine.txt"
+    runtime_requirements = root / "requirements-voice-kitten.txt"
+    missing = [str(path) for path in (engine_requirements, runtime_requirements) if not path.is_file()]
+    if missing:
+        raise RuntimeError("فایل‌های وابستگی KittenTTS پیدا نشدند: " + ", ".join(missing))
+
+    # Preserve the deliberate two-stage install: Kitten's upstream extras can
+    # pull the multi-GB PyTorch stack, while Kira uses its ONNX CPU backend.
+    _run(["-r", str(engine_requirements)], extra_args=("--no-deps",),
+         check=False, cancel_event=cancel_event)
+    _run(["-r", str(runtime_requirements)], cancel_event=cancel_event)
     missing = [name for name in required_modules if not importlib.util.find_spec(name)]
     if missing:
         raise RuntimeError("پس از نصب، ماژول‌های لازم پیدا نشدند: " + ", ".join(missing))

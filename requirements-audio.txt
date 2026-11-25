@@ -1,0 +1,4 @@
+# Optional microphone, loopback and lightweight audio support.
+sounddevice>=0.5.6,<0.6
+PyAudioWPatch>=0.2.12.9,<0.3; platform_system == "Windows"
+miniaudio>=1.63,<2

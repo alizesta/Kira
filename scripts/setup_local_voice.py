@@ -33,10 +33,19 @@ def run_install() -> bool:
         return False
     print(f"Python: {sys.executable}")
     print(f"Installing Shenava and local TTS dependencies from {REQ.name} ...")
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "5", "--timeout", "60", "-r", str(REQ)],
-        cwd=ROOT,
+    installer = ROOT / "install_deps.py"
+    constraints = (
+        ROOT / "constraints.txt",
+        ROOT / "constraints-voice.txt",
     )
+    missing = [str(path) for path in (installer, *constraints) if not path.is_file()]
+    if missing:
+        print("ERROR: missing dependency installation contracts: " + ", ".join(missing))
+        return False
+    command = [sys.executable, str(installer), str(REQ)]
+    for path in constraints:
+        command.extend(["--constraints", str(path)])
+    result = subprocess.run(command, cwd=ROOT)
     if result.returncode:
         print(f"ERROR: pip exited with code {result.returncode}")
         return False

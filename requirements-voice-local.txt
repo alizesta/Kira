@@ -1,6 +1,9 @@
-# Optional local voice engines. STT is limited to Shenava (sherpa-onnx); Gemini Live provides cloud real-time audio.
-# Keep Persian speech runtime and Piper for local text-to-speech.
-persian-speech
+# Optional Persian local speech engines. Gemini Live uses the core google-genai SDK.
+persian-speech>=1.1.3,<2
 piper-tts>=1.3.0,<2
-transformers>=4.40,<5  # Optional Persian TTS text preprocessing
-Pillow>=8,<13  # Keep Gradio 6.x compatible
+sherpa-onnx>=2.0.2,<3
+transformers>=4.40,<5
+huggingface-hub>=0.34.0,<1.0
+onnxruntime>=1.20,<2
+hf_xet>=1.1,<2
+Pillow>=10,<13

@@ -1,0 +1,2 @@
+# Development-only tooling; never installed by the end-user installer.
+ruff>=0.6,<1

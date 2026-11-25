@@ -70,6 +70,7 @@ if errorlevel 1 (
   rem Only setup/dependency changes trigger install.bat.
   for /f "delims=" %%F in ('git --no-pager diff --name-only "%BRANCH%" "origin/%BRANCH%"') do (
     echo %%F| findstr /I /R /C:"^requirements.*\.txt$" >nul && set "NEEDS_INSTALL=1"
+    echo %%F| findstr /I /R /C:"^constraints.*\.txt$" >nul && set "NEEDS_INSTALL=1"
     if /I "%%F"=="install.bat" set "NEEDS_INSTALL=1"
     if /I "%%F"=="install_deps.py" set "NEEDS_INSTALL=1"
     if /I "%%F"=="scripts/setup_local_voice.py" set "NEEDS_INSTALL=1"

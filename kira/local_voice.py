@@ -694,11 +694,77 @@ def _run_install_command(command, *, timeout: float, cancel_event=None):
             continue
 
 
+def _dependency_constraint_args(*filenames: str) -> list[str]:
+    """Build pip constraint arguments from the shared, shipped dependency contracts."""
+    root = Path(__file__).resolve().parents[1]
+    selected = filenames or ("constraints.txt", "constraints-voice.txt")
+    args = []
+    for filename in selected:
+        path = root / filename
+        if not path.is_file():
+            raise RuntimeError(f"فایل محدودیت وابستگی پیدا نشد: {path}")
+        args.extend(["--constraint", str(path)])
+    return args
+
+
+def _run_dependency_install(
+    requirements,
+    *,
+    extra_args=(),
+    constraints_files=("constraints.txt", "constraints-voice.txt"),
+    timeout=3600,
+    cancel_event=None,
+    check=True,
+):
+    """Resolve a complete optional voice graph before installing it, then verify pip's environment."""
+    import sys
+    import tempfile
+
+    constraints = _dependency_constraint_args(*constraints_files)
+    base = [
+        sys.executable, "-m", "pip", "install",
+        "--retries", "5", "--timeout", "60",
+        *constraints,
+    ]
+    requested = [str(item) for item in requirements]
+    options = [str(item) for item in extra_args]
+
+    with tempfile.TemporaryDirectory(prefix="kira-voice-resolution-") as temp_dir:
+        report = str(Path(temp_dir) / "resolution.json")
+        preflight = _run_install_command(
+            [*base, "--dry-run", "--report", report, *options, *requested],
+            timeout=timeout,
+            cancel_event=cancel_event,
+        )
+        if preflight.returncode:
+            detail = (preflight.stderr or preflight.stdout or "dependency resolution failed")[-3500:]
+            raise RuntimeError(f"حل تعارض وابستگی‌های صوتی ناموفق بود: {detail}")
+
+        result = _run_install_command(
+            [*base, *options, *requested],
+            timeout=timeout,
+            cancel_event=cancel_event,
+        )
+        if result.returncode:
+            detail = (result.stderr or result.stdout or "pip installation failed")[-3500:]
+            raise RuntimeError(f"نصب وابستگی‌های صوتی ناموفق بود: {detail}")
+
+        if check:
+            checked = _run_install_command(
+                [sys.executable, "-m", "pip", "check"],
+                timeout=min(180, timeout),
+                cancel_event=cancel_event,
+            )
+            if checked.returncode:
+                detail = (checked.stdout or checked.stderr or "pip check failed")[-3500:]
+                raise RuntimeError(f"پس از نصب، ناسازگاری وابستگی‌ها شناسایی شد: {detail}")
+
+    return result
+
+
 def _ensure_pillow_compatible(cancel_event=None) -> None:
     """Force Gradio-compatible Pillow into Kira's active Python and verify it."""
     from importlib.metadata import PackageNotFoundError, version
-    import subprocess
-    import sys
 
     try:
         installed = version("Pillow")
@@ -711,17 +777,13 @@ def _ensure_pillow_compatible(cancel_event=None) -> None:
     except (TypeError, ValueError):
         pass
 
-    # --upgrade alone can leave an incompatible preinstalled Pillow untouched.
-    # Force-reinstall the compatible version, without allowing pip to alter
-    # unrelated packages while repairing this specific conflict.
-    result = _run_install_command(
-        [sys.executable, "-m", "pip", "install", "--force-reinstall", "--no-deps",
-         "--retries", "5", "--timeout", "60", "Pillow>=8,<13"],
-        timeout=1800, cancel_event=cancel_event,
+    # Repair only Pillow, but resolve its chosen version against shared constraints.
+    _run_dependency_install(
+        ["Pillow>=8,<13"],
+        extra_args=("--force-reinstall", "--no-deps"),
+        timeout=1800,
+        cancel_event=cancel_event,
     )
-    if result.returncode:
-        detail = (result.stderr or result.stdout or "Pillow compatibility fix failed")[-2500:]
-        raise RuntimeError(f"اصلاح ناسازگاری Pillow ناموفق بود: {detail}")
 
     try:
         fixed = version("Pillow")
@@ -733,26 +795,9 @@ def _ensure_pillow_compatible(cancel_event=None) -> None:
 
 def _install_voice_package(package: str, cancel_event=None) -> None:
     """Install a voice runtime, then enforce Gradio's Pillow<13 requirement."""
-    import subprocess
-    import sys
-
-    # Apply the Pillow cap during dependency resolution, not only after pip
-    # finishes. Otherwise a voice package can upgrade Pillow to 13 and emit a
-    # Gradio conflict before the post-install repair runs.
-    constraints = Path(__file__).resolve().parents[1] / "constraints-voice.txt"
-    if not constraints.is_file():
-        raise RuntimeError(f"فایل محدودیت وابستگی‌های صوتی پیدا نشد: {constraints}")
-    result = _run_install_command(
-        [sys.executable, "-m", "pip", "install", "--upgrade", "--retries", "5",
-         "--timeout", "60", "--constraint", str(constraints), package],
-        timeout=3600, cancel_event=cancel_event,
-    )
-    if result.returncode:
-        detail = (result.stderr or result.stdout or f"pip install {package} failed")[-3500:]
-        raise RuntimeError(f"نصب موتور {package} ناموفق بود: {detail}")
-
-    # Some voice packages pull Pillow 13 as a dependency. Repair it after
-    # their installation, and fail clearly if Gradio compatibility is not restored.
+    # Apply both the shared core pins and the voice-specific Hugging Face/Pillow
+    # constraints before touching the active environment.
+    _run_dependency_install([package], timeout=3600, cancel_event=cancel_event)
     _ensure_pillow_compatible(cancel_event)
 
 

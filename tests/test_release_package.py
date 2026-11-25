@@ -31,9 +31,15 @@ def make_runtime_tree(root: Path) -> dict[str, bytes]:
             content = b"# runtime resource\n"
         files[relative] = content
 
-    files["requirements.txt"] = b"PySide6>=6.7,<7\nrequests>=2.31,<3\n"
-    files["requirements-voice-local.txt"] = b"piper-tts>=1.3.0,<2\n"
-    files["constraints-voice.txt"] = b"Pillow>=8,<13\n"
+    files["requirements.txt"] = b"PySide6>=6.7,<7\\nrequests>=2.31,<3\\nnumpy>=1.26,<3\\ngoogle-genai>=2.3.0,<3\\n"
+    files["requirements-audio.txt"] = b"sounddevice>=0.5.6,<0.6\\n"
+    files["requirements-ocr.txt"] = b"Pillow>=10,<13\\npytesseract>=0.3.10,<0.4\\n"
+    files["requirements-system-optional.txt"] = b"psutil>=5.9,<8\\npypdf>=5,<7\\n"
+    files["requirements-voice-local.txt"] = b"piper-tts>=1.3.0,<2\\n"
+    files["requirements-voice-kitten-engine.txt"] = b"kittenml>=0.9.8,<1\\n"
+    files["requirements-voice-kitten.txt"] = b"onnxruntime>=1.20,<2\\nnumpy>=1.26,<3\\n"
+    files["constraints.txt"] = b"google-genai==2.34.0\\nPillow==12.3.0\\n"
+    files["constraints-voice.txt"] = b"Pillow==12.3.0\\n"
     files.update({
         "README.md": b"Kira\n",
         "README.fa.md": "کیرا\n".encode("utf-8"),

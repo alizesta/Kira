@@ -1,0 +1,10 @@
+# Optional English-only KittenTTS ONNX runtime; installed only when selected.
+onnxruntime>=1.20,<2
+numpy>=1.26,<3
+soundfile>=0.12,<1
+huggingface-hub>=0.34.0,<1.0
+phonemizer>=3.6,<4
+espeakng-loader>=0.2.4,<1
+misaki>=0.9.4,<1
+num2words>=0.5.14,<1
+spacy>=3.8,<4
