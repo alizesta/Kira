@@ -1190,7 +1190,7 @@ class AttachmentsVisionController(WindowFeatureController):
             _FRAME_WINDOW_INFO["value"] = None
             if window_info:
                 _allowed, reason = service.desktop_capture_application_service.evaluate_window(
-                    window_info, explicit=True
+                    window_info, explicit=True, allow_partial_identity=True
                 )
                 vision_trace(
                     "capture_blocked",
