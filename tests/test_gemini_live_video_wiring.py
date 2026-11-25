@@ -215,3 +215,15 @@ def test_live_failures_release_reserved_budget():
     assert "def _release_live_frame_budget" in source
     assert "return self._release_live_frame_budget(frame_context)" in live
     assert "return True" in live
+
+
+def test_worker_completion_carries_the_immutable_frame_context():
+    worker = read("kira/ui/workers.py")
+    relay = read("kira/ui/main_window_support.py")
+    controller = read("kira/ui/main_window_attachments_vision.py")
+    assert "done_with_context = Signal(bool, str, int, object)" in worker
+    assert "frame_context=frame_context" in controller
+    assert "worker.done_with_context.connect(session.relay.game_vision_done_with_context)" in controller
+    assert "def game_vision_done_with_context(self, ok, result, latency_ms, frame_context)" in relay
+    assert "def _on_game_vision_result(self, ok, result, latency_ms, frame_context=None)" in controller
+    assert 'reason="missing_frame_context"' in controller
