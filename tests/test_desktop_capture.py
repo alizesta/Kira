@@ -118,8 +118,9 @@ class DesktopCaptureAdapterTests(unittest.TestCase):
         service._qt_screens = mock.Mock(return_value=([primary, secondary], primary))
         service._is_current_foreground = mock.Mock(return_value=True)
         service._capture_monitor_screen = mock.Mock(return_value="full-monitor")
-        item = {"hwnd": 10, "pid": 20, "exe": "browser.exe", "path": r"C:\Browser.exe",
-                "title": "Work", "rect": (2000, 100, 3000, 900)}
+        # Full-monitor capture only needs the current HWND/PID and monitor geometry;
+        # title/executable/path may be unavailable for desktop surfaces or overlays.
+        item = {"hwnd": 10, "pid": 20, "rect": (2000, 100, 3000, 900)}
         self.assertEqual(service.capture_monitor_for_window(item), "full-monitor")
         service._capture_monitor_screen.assert_called_once_with(secondary, 854, 480)
 
