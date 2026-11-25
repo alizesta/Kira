@@ -935,5 +935,7 @@ class HybridRouter:
                         "kind": route_model.provider_kind(route["provider"], self._provider_cfg(route)),
                         "enabled": ok or reason == "cooldown", "reason": reason,
                         "cooldown": max(0, int(self.cooldowns.get(route["id"], 0) - now)),
-                        "health": st["health"], "last_error": st["last_error"], "last_ms": st["last_ms"]})
+                        "health": st["health"], "last_error": st["last_error"], "last_ms": st["last_ms"],
+                        "policy_decision": next((d["reason"] for d in self.last_route_decisions
+                                                 if d["route_id"] == str(route.get("id") or "")), None)})
         return out
