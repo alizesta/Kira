@@ -139,12 +139,11 @@ def _start_background(fn, *args) -> None:
 
 
 def _meta_get(con, key, default=""):
-    row = con.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
-    return row["value"] if row else default
+    return _FACT_REPOSITORY.get_meta(con, key, default)
 
 
 def _meta_set(con, key, value) -> None:
-    con.execute("INSERT INTO meta(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
+    return _FACT_REPOSITORY.set_meta(con, key, value)
 
 
 def _fact_id(subject, predicate, value) -> str:
@@ -364,9 +363,9 @@ def ingest_model_facts(raw, events, now=None) -> tuple[int, list[str]]:
                                   category=category, quote=first["quote"], speaker=src["speaker"], message_id=int(first["source_id"]),
                                   source_kind="model", now=now, uncertain=status == "uncertain", valid_to=valid_to, source_text=src["text"])
                     for q in quotes[1:]:
-                        if fid:
-                            con.execute("INSERT OR IGNORE INTO evidence(fact_id, message_id, speaker, quote, created_at) VALUES (?,?,?,?,?)",
-                                        (fid, int(q["source_id"]), q["speaker"], " ".join(str(q["quote"]).split()), now))
+                        _FACT_REPOSITORY.add_evidence_quote(
+                            con, fid, int(q["source_id"]), q["speaker"], q["quote"], now
+                        )
                     accepted += 1 if fid else 0
                 except (KeyError, TypeError, ValueError) as exc:
                     rejected.append(str(exc)[:120])
