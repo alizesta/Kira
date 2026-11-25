@@ -124,19 +124,6 @@ class RoutePolicyEngine:
                     "blocked_by_role_model_allowlist",
                 )
 
-        # Provider usage limits are a policy constraint, not a health signal.
-        # Their implementation owns its own storage/error handling.
-        from . import usage
-        if preferred_route_id and not usage.role_allowed(role):
-            preferred_route_id = ""
-        before_limits = list(routes)
-        routes = usage.apply_limits(routes, is_eligible)
-        retained = {str(r.get("id") or "") for r in routes}
-        for route in before_limits:
-            rid = str(route.get("id") or "")
-            if rid not in retained:
-                decisions[rid] = "blocked_by_usage_limit"
-
         if vision_only:
             routes = filter_routes(
                 routes,
