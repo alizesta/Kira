@@ -89,7 +89,7 @@ class RoutePolicyEngine:
                 ]
             model_allowlist = settings.get("role_route_models")
             allowed_models = model_allowlist.get(role) if isinstance(model_allowlist, dict) else None
-            if isinstance(allowed_models, (list, tuple)):
+            if isinstance(allowed_models, (list, tuple)) and "ollama" not in allow:
                 model_ids = {str(value).strip().lower() for value in allowed_models if str(value).strip()}
                 local_routes = [
                     route for route in local_routes
@@ -97,8 +97,8 @@ class RoutePolicyEngine:
                 ]
             routes = local_routes + cloud_routes
         else:
+            allow = {str(value).strip().lower() for value in allowed if str(value).strip()} if isinstance(allowed, (list, tuple)) else set()
             if isinstance(allowed, (list, tuple)):
-                allow = {str(value).strip().lower() for value in allowed if str(value).strip()}
                 routes = filter_routes(
                     routes,
                     lambda route: (
@@ -114,9 +114,13 @@ class RoutePolicyEngine:
                 allowed_models = None
             if isinstance(allowed_models, (list, tuple)):
                 model_ids = {str(value).strip().lower() for value in allowed_models if str(value).strip()}
+                local_surface_routes = role == "surface" and "ollama" in allow
                 routes = filter_routes(
                     routes,
-                    lambda route: str(route.get("model") or "").strip().lower() in model_ids,
+                    lambda route: (
+                        local_surface_routes
+                        and str(route.get("provider") or "").strip().lower() == "ollama"
+                    ) or str(route.get("model") or "").strip().lower() in model_ids,
                     "blocked_by_role_model_allowlist",
                 )
 
