@@ -52,6 +52,19 @@ class SqliteConnectionManagerTests(unittest.TestCase):
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM sample").fetchone()[0], 0)
             self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
 
+    def test_failed_commit_rolls_back_before_connection_is_closed(self):
+        with self.manager.unit_of_work() as connection:
+            connection.execute("CREATE TABLE parent(id INTEGER PRIMARY KEY)")
+            connection.execute(
+                "CREATE TABLE child(parent_id INTEGER, "
+                "FOREIGN KEY(parent_id) REFERENCES parent(id) DEFERRABLE INITIALLY DEFERRED)"
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            with self.manager.unit_of_work() as connection:
+                connection.execute("INSERT INTO child(parent_id) VALUES (99)")
+        with self.manager.unit_of_work() as connection:
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM child").fetchone()[0], 0)
+
     def test_unit_of_work_cannot_be_reentered(self):
         unit = self.manager.unit_of_work()
         with unit:
