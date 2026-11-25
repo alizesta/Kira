@@ -161,7 +161,7 @@ SETTING_RANGES = {
     "voice_volume": (0.0, 1.0),
     "mic_gain": (50, 300),
     "mic_sensitivity": (50, 200),
-    "wake_timeout": (1, 300),
+    "wake_timeout": (5, 120),
     "companion_height": (100, 2000),
     "follow_strength": (0.0, 2.0),
     "motion_strength": (0.0, 2.0),

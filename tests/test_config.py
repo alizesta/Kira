@@ -73,13 +73,23 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(from_v1["providers"]["groq"]["model"], "openai/gpt-oss-20b")
 
         from_v2 = config._migrate_settings({
-            "settings_version": 2, "model": "qwen3.5:4b",
+            "settings_version": 2,
+            "model": "qwen3.5:4b",
+            "providers": {"ollama": {"enabled": False, "model": "qwen3.5:4b"}},
+            "routes": [{
+                "id": "ollama", "provider": "ollama",
+                "model": "qwen3.5:4b", "enabled": True,
+            }],
             "role_route_models": {"surface": ["qwen3.5:4b"]},
         })
-        self.assertEqual(from_v2["model"], config.LOCAL_UNCENSORED_MODEL)
+        self.assertEqual(from_v2["model"], "qwen3.5:4b")
         self.assertEqual(
-            from_v2["role_route_models"]["surface"], [config.LOCAL_UNCENSORED_MODEL]
+            from_v2["providers"]["ollama"]["model"], "qwen3.5:4b"
         )
+        self.assertEqual(
+            from_v2["role_route_models"]["surface"], ["qwen3.5:4b"]
+        )
+        self.assertTrue(from_v2["providers"]["ollama"]["enabled"])
 
     def test_current_version_route_repair_is_persisted(self):
         self.path.write_text(
@@ -142,6 +152,64 @@ class ConfigTests(unittest.TestCase):
         self.assertNotIn("api_registry", saved)
         self.assertNotIn("model_catalog_refreshed_at", saved)
         self.assertNotIn("model_tests", saved)
+
+    def test_migration_warnings_are_explicit_and_idempotent(self):
+        source = {
+            "providers": {"groq": {"model": "llama-3.3-70b-versatile"}},
+            "voice_engine": "local",
+        }
+        warnings = []
+        once = config._migrate_settings(source, warnings=warnings)
+        first_warnings = list(warnings)
+        twice = config._migrate_settings(once, warnings=warnings)
+
+        self.assertEqual(once, twice)
+        self.assertEqual(warnings, first_warnings)
+        self.assertEqual(source["providers"]["groq"]["model"], "llama-3.3-70b-versatile")
+        self.assertEqual(source["voice_engine"], "local")
+
+    def test_old_voice_api_key_and_unknown_settings_survive_full_load_and_save(self):
+        selected_model = "qwen3.5:4b"
+        legacy = {
+            "voice_engine": "local",
+            "local_voice_asr_backend": "shenava",
+            "local_voice_asr_model": "custom/shenava-model",
+            "voice_volume": 0.72,
+            "mic_gain": 145,
+            "model": selected_model,
+            "providers": {
+                "groq": {"enabled": True, "api_key": f"{CANARY}-legacy", "model": "openai/gpt-oss-120b"},
+                "ollama": {"enabled": True, "model": selected_model},
+            },
+            "user_extension": {"enabled": True, "label": "keep"},
+        }
+        self.path.write_text(json.dumps(legacy), encoding="utf-8")
+        settings = config.load_settings()
+
+        self.assertEqual(settings["voice_engine"], "local")
+        self.assertEqual(settings["local_voice_asr_backend"], "shenava")
+        self.assertEqual(settings["local_voice_asr_model"], "custom/shenava-model")
+        self.assertEqual(settings["voice_volume"], 0.72)
+        self.assertEqual(settings["mic_gain"], 145)
+        self.assertEqual(settings["model"], selected_model)
+        self.assertEqual(settings["providers"]["ollama"]["model"], selected_model)
+        self.assertEqual(settings["providers"]["groq"]["api_key"], f"{CANARY}-legacy")
+        self.assertEqual(settings["user_extension"], {"enabled": True, "label": "keep"})
+
+        config.save_settings(settings)
+        restored = config.load_settings()
+        self.assertEqual(restored["voice_engine"], "local")
+        self.assertEqual(restored["local_voice_asr_model"], "custom/shenava-model")
+        self.assertEqual(restored["providers"]["groq"]["api_key"], f"{CANARY}-legacy")
+        self.assertEqual(restored["user_extension"], {"enabled": True, "label": "keep"})
+
+    def test_voice_page_uses_canonical_schema_defaults_and_ranges(self):
+        from kira.settings_schema import DEFAULTS as SCHEMA_DEFAULTS, SETTING_RANGES
+        from kira.ui.pages.voice_page import SETTINGS_DEFAULTS
+
+        self.assertIs(SETTINGS_DEFAULTS, SCHEMA_DEFAULTS)
+        self.assertEqual(SETTING_RANGES["wake_timeout"], (5, 120))
+        self.assertEqual(SETTINGS_DEFAULTS["wake_timeout"], 25)
 
     def test_settings_migration_is_idempotent(self):
         original = {"voice_engine": "local", "providers": {"ollama": {"num_ctx": 8192}}}
@@ -247,36 +315,38 @@ class ConfigTests(unittest.TestCase):
                          ["mistral", "ollama", "groq", "cloudflare", "openrouter"])
         self.assertEqual(config.normalize_provider_order(None)[-1], "ollama")
 
-    def test_legacy_local_model_migration_also_updates_role_allowlist(self):
+    def test_legacy_local_model_selection_is_preserved_across_migrations(self):
         from kira.hybrid_ai import HybridRouter
 
+        selected_model = "qwen3.5:4b"
         legacy = {
-            "model": "qwen3.5:4b",
-            "providers": {"ollama": {"enabled": True, "model": "qwen3.5:4b"}},
-            "routes": [{"id": "ollama", "provider": "ollama", "model": "qwen3.5:4b", "enabled": True}],
+            "model": selected_model,
+            "providers": {"ollama": {"enabled": True, "model": selected_model}},
+            "routes": [{"id": "ollama", "provider": "ollama", "model": selected_model, "enabled": True}],
             "role_provider_allowlist": {
                 "surface": ["ollama"], "deep": ["google"], "reflection": ["google"], "memory": ["ollama"]
             },
-            "role_route_models": {"surface": ["qwen3.5:4b"]},
+            "role_route_models": {"surface": [selected_model]},
         }
         self.path.write_text(json.dumps(legacy), encoding="utf-8")
 
         settings = config.load_settings()
 
-        expected = config.LOCAL_UNCENSORED_MODEL
-        self.assertEqual(settings["model"], expected)
-        self.assertEqual(settings["routes"][0]["model"], expected)
-        self.assertEqual(settings["role_route_models"]["surface"], [expected])
-        self.assertTrue(any("Abliterated" in warning for warning in config.LOAD_WARNINGS))
+        self.assertEqual(settings["model"], selected_model)
+        self.assertEqual(settings["providers"]["ollama"]["model"], selected_model)
+        route = next(route for route in settings["routes"] if route["id"] == "ollama")
+        self.assertEqual(route["model"], selected_model)
+        self.assertEqual(settings["role_route_models"]["surface"], [selected_model])
+        self.assertFalse(any("Abliterated" in warning for warning in config.LOAD_WARNINGS))
 
         router = HybridRouter(settings)
         with router.role_scope("surface"):
             candidates = router._candidates()
         self.assertEqual([route["id"] for route in candidates], ["ollama"])
-        self.assertTrue(all(route["provider"] == "ollama" for route in candidates))
+        self.assertTrue(all(route["model"] == selected_model for route in candidates))
 
         saved = json.loads(self.path.read_text(encoding="utf-8"))
-        self.assertEqual(saved["role_route_models"]["surface"], [expected])
+        self.assertEqual(saved["role_route_models"]["surface"], [selected_model])
 
     def test_partial_nested_settings_restore_missing_schema_fields(self):
         self.path.write_text(

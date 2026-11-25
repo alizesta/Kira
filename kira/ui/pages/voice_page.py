@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from ..components.switch_checkbox import SwitchCheckBox
+from kira.settings_schema import DEFAULTS as SETTINGS_DEFAULTS
 
 
 # Gemini Live prebuilt voices: (API name, label shown to the user)
@@ -65,7 +66,7 @@ class VoicePage(QScrollArea):
         self.setWidgetResizable(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        settings = settings or {}
+        settings = {**SETTINGS_DEFAULTS, **(settings or {})}
         self._settings = settings
         mic_box = QGroupBox("میکروفن")
         mic_form = QFormLayout(mic_box)
@@ -76,21 +77,21 @@ class VoicePage(QScrollArea):
         self.engine_lbl = self._row(mic_form, "engine", QLabel())
         self.mic_gain = self._row(mic_form, "mic_gain", QSlider(Qt.Horizontal))
         self.mic_gain.setRange(50, 300)
-        self.mic_gain.setValue(int(settings.get("mic_gain", 100)))
+        self.mic_gain.setValue(int(settings.get("mic_gain", SETTINGS_DEFAULTS["mic_gain"])))
         self.mic_sens = self._row(mic_form, "mic_sens", QSlider(Qt.Horizontal))
         self.mic_sens.setRange(50, 200)
-        self.mic_sens.setValue(int(settings.get("mic_sensitivity", 100)))
+        self.mic_sens.setValue(int(settings.get("mic_sensitivity", SETTINGS_DEFAULTS["mic_sensitivity"])))
         self.barge_chk = SwitchCheckBox()
-        self.barge_chk.setChecked(bool(settings.get("barge_in", True)))
+        self.barge_chk.setChecked(bool(settings.get("barge_in", SETTINGS_DEFAULTS["barge_in"])))
         self._register(self.barge_chk.setText, "barge_in")
         mic_form.addRow(self.barge_chk)
         self.wake_timeout = self._row(mic_form, "wake_timeout", QSpinBox())
         self.wake_timeout.setRange(5, 120)
-        self.wake_timeout.setValue(int(settings.get("wake_timeout", 30)))
+        self.wake_timeout.setValue(int(settings.get("wake_timeout", SETTINGS_DEFAULTS["wake_timeout"])))
         self.real_time_asr_chk = SwitchCheckBox(
             "تشخیص زنده با میکروفن (Real-time ASR)"
         )
-        self.real_time_asr_chk.setChecked(bool(settings.get("realtime_asr_enabled", True)))
+        self.real_time_asr_chk.setChecked(bool(settings.get("realtime_asr_enabled", SETTINGS_DEFAULTS["realtime_asr_enabled"])))
         self.real_time_asr_chk.setToolTip(
             "این گزینه فقط میکروفن STT محلی و حالت بیدارباش را کنترل می‌کند؛ "
             "آزمایش آفلاین فایل WAV فعال می‌ماند و Gemini Live مستقل است."
@@ -105,7 +106,7 @@ class VoicePage(QScrollArea):
         output_form.setVerticalSpacing(4)
         self.volume = self._row(output_form, "volume", QSlider(Qt.Horizontal))
         self.volume.setRange(0, 100)
-        self.volume.setValue(int(float(settings.get("voice_volume", 0.9)) * 100))
+        self.volume.setValue(int(float(settings.get("voice_volume", SETTINGS_DEFAULTS["voice_volume"])) * 100))
         self.out_device = self._row(output_form, "output_device", QComboBox())
 
         stt_box = QGroupBox("تشخیص گفتار (STT)")
@@ -115,9 +116,9 @@ class VoicePage(QScrollArea):
         stt_form.setVerticalSpacing(4)
         self.stt_lang = self._row(stt_form, "stt_lang", QComboBox())
         self.stt_lang.addItems(["fa", "en", "auto"])
-        self.stt_lang.setCurrentText(str(settings.get("stt_language") or "fa"))
-        selected_asr_engine = str(settings.get("local_voice_asr_backend") or "shenava").strip().lower()
-        selected_asr_model = str(settings.get("local_voice_asr_model") or "")
+        self.stt_lang.setCurrentText(str(settings.get("stt_language") or SETTINGS_DEFAULTS["stt_language"]"))
+        selected_asr_engine = str(settings.get("local_voice_asr_backend") or SETTINGS_DEFAULTS["local_voice_asr_backend"]).strip().lower()
+        selected_asr_model = str(settings.get("local_voice_asr_model") or SETTINGS_DEFAULTS["local_voice_asr_model"])
         self._asr_catalog = {
             str(item.get("id") or "").strip().lower(): dict(item)
             for item in (asr_catalog or [])
@@ -143,7 +144,7 @@ class VoicePage(QScrollArea):
         self.asr_model.currentIndexChanged.connect(lambda *_: self._update_shenava_download_label())
 
         self.local_asr_chk = SwitchCheckBox("استفاده از موتور تشخیص گفتار محلی")
-        self.local_asr_chk.setChecked(bool(settings.get("local_voice_asr", True)))
+        self.local_asr_chk.setChecked(bool(settings.get("local_voice_asr", SETTINGS_DEFAULTS["local_voice_asr"])))
         self.local_asr_chk.toggled.connect(self.local_asr_enabled_requested.emit)
         stt_form.addRow(self.local_asr_chk)
         shenava_actions = QGridLayout()
@@ -191,7 +192,7 @@ class VoicePage(QScrollArea):
         self.voice_engine = QComboBox()
         self.voice_engine.addItem("ریل‌تایم · Gemini Live", "gemini_live")
         self.voice_engine.addItem("محلی · آفلاین", "local")
-        selected_engine = str(settings.get("voice_engine") or "gemini_live")
+        selected_engine = str(settings.get("voice_engine") or SETTINGS_DEFAULTS["voice_engine"])
         self.voice_engine.setCurrentIndex(max(0, self.voice_engine.findData(selected_engine)))
         live_form.addRow("موتور اصلی", self.voice_engine)
         self.gemini_provider = QComboBox()
@@ -208,16 +209,16 @@ class VoicePage(QScrollArea):
             "gemini-3.8-live",
             "gemini-3.8-live-extended-thinking",
         ])
-        self.gemini_model.setCurrentText(str(settings.get("gemini_live_model") or "gemini-3.8-live"))
+        self.gemini_model.setCurrentText(str(settings.get("gemini_live_model") or SETTINGS_DEFAULTS["gemini_live_model"]))
         self.gemini_model.setEnabled(True)
         live_form.addRow("مدل Gemini Live", self.gemini_model)
         self.gemini_voice = QComboBox()
         for voice_name, voice_label in GEMINI_VOICES:
             self.gemini_voice.addItem(voice_label, voice_name)
-        self.gemini_voice.setCurrentIndex(max(0, self.gemini_voice.findData(str(settings.get("gemini_voice") or "Zephyr"))))
+        self.gemini_voice.setCurrentIndex(max(0, self.gemini_voice.findData(str(settings.get("gemini_voice") or SETTINGS_DEFAULTS["gemini_voice"]))))
         self.gemini_voice.currentIndexChanged.connect(lambda *_: self.autosave_requested.emit())
         self.local_fallback_chk = SwitchCheckBox("در صورت قطع Gemini Live، انتقال خودکار به STT/TTS محلی")
-        self.local_fallback_chk.setChecked(bool(settings.get("voice_local_fallback", True)))
+        self.local_fallback_chk.setChecked(bool(settings.get("voice_local_fallback", SETTINGS_DEFAULTS["voice_local_fallback"])))
         live_form.addRow(self.local_fallback_chk)
         self.live_config_note = QLabel()
         self.live_config_note.setWordWrap(True)
@@ -235,15 +236,15 @@ class VoicePage(QScrollArea):
         tts_form.setHorizontalSpacing(8)
         tts_form.setVerticalSpacing(4)
         self.speak_chk = SwitchCheckBox()
-        self.speak_chk.setChecked(bool(settings.get("speak_replies", True)))
+        self.speak_chk.setChecked(bool(settings.get("speak_replies", SETTINGS_DEFAULTS["speak_replies"])))
         self.speak_chk.toggled.connect(self.voice_enabled_requested.emit)
         self._register(self.speak_chk.setText, "speak_on")
         tts_form.addRow(self.speak_chk)
         self.stream_chk = SwitchCheckBox("خواندن پیوسته‌ی پاسخ")
-        self.stream_chk.setChecked(bool(settings.get("stream_speech", True)))
+        self.stream_chk.setChecked(bool(settings.get("stream_speech", SETTINGS_DEFAULTS["stream_speech"])))
         tts_form.addRow(self.stream_chk)
         self.local_tts_chk = SwitchCheckBox("استفاده از Piper محلی")
-        self.local_tts_chk.setChecked(bool(settings.get("local_voice_tts", True)))
+        self.local_tts_chk.setChecked(bool(settings.get("local_voice_tts", SETTINGS_DEFAULTS["local_voice_tts"])))
         self.local_tts_chk.toggled.connect(self.local_tts_enabled_requested.emit)
         tts_form.addRow(self.local_tts_chk)
         self.local_tts_model = QComboBox()
@@ -270,7 +271,7 @@ class VoicePage(QScrollArea):
         self.tts_engine.addItem("Piper · فارسی (پیش‌فرض)", "piper")
         self.tts_engine.addItem("KittenTTS · انگلیسی، سریع و سبک", "kitten")
         self.tts_engine.setToolTip("موتور ساخت صدای کیرا. جمله‌های فارسی همیشه با Piper خوانده می‌شوند؛ Kitten فقط انگلیسی می‌خواند.")
-        saved_engine = str(settings.get("tts_engine") or "piper").lower()
+        saved_engine = str(settings.get("tts_engine") or SETTINGS_DEFAULTS["tts_engine"]).lower()
         self.tts_engine.setCurrentIndex(max(0, self.tts_engine.findData(saved_engine)))
         self.tts_engine.currentIndexChanged.connect(lambda *_: self.autosave_requested.emit())
         tts_form.addRow("موتور صدا", self.tts_engine)
@@ -278,13 +279,13 @@ class VoicePage(QScrollArea):
         self.kitten_model.addItem("Kitten 2 Pico · INT4 · 4 MB", "pico")
         self.kitten_model.addItem("Kitten 2 Nano · INT4 · 8.8 MB", "nano")
         self.kitten_model.addItem("Kitten 2 Mini · INT4 · 47.5 MB", "mini")
-        self.kitten_model.setCurrentIndex(max(0, self.kitten_model.findData(str(settings.get("kitten_model") or "mini").lower())))
+        self.kitten_model.setCurrentIndex(max(0, self.kitten_model.findData(str(settings.get("kitten_model") or SETTINGS_DEFAULTS["kitten_model"]).lower())))
         self.kitten_model.currentIndexChanged.connect(lambda *_: self.autosave_requested.emit())
         tts_form.addRow("مدل KittenTTS", self.kitten_model)
         self.kitten_test_btn = QPushButton("نصب و تست KittenTTS")
         self.kitten_test_btn.setToolTip("مدل انتخابی را دانلود می‌کند و یک نمونه انگلیسی را با صدای آن پخش می‌کند.")
         self.kitten_test_btn.clicked.connect(
-            lambda checked=False: self.test_kitten_requested.emit(str(self.kitten_model.currentData() or "mini"))
+            lambda checked=False: self.test_kitten_requested.emit(str(self.kitten_model.currentData() or SETTINGS_DEFAULTS["kitten_model"]))
         )
         tts_form.addRow(self.kitten_test_btn)
         self.kitten_result = QLabel("KittenTTS فقط انگلیسی می‌خواند؛ جمله‌های فارسی خودکار با Piper خوانده می‌شوند. اول «نصب و تست» را بزن، بعد موتور را روی Kitten بگذار.")
@@ -294,7 +295,7 @@ class VoicePage(QScrollArea):
         self.rate = QSpinBox()
         self.rate.setRange(-30, 30)
         self.rate.setSuffix(" %")
-        self.rate.setValue(int(settings.get("voice_rate", 0)))
+        self.rate.setValue(int(settings.get("voice_rate", SETTINGS_DEFAULTS["voice_rate"])))
         tts_form.addRow("سرعت گفتار محلی", self.rate)
         self.local_voice_status = QLabel()
         self.local_voice_status.setWordWrap(True)
@@ -577,7 +578,7 @@ class VoicePage(QScrollArea):
     def refresh_gemini_providers(self, settings: dict) -> None:
         """Refresh Google connections without replacing a saved (possibly stale) selection."""
         combo = self.gemini_provider
-        settings = settings or {}
+        settings = {**SETTINGS_DEFAULTS, **(settings or {})}
         providers = []
         for provider_id, provider_cfg in (settings.get("providers") or {}).items():
             if not isinstance(provider_cfg, dict):

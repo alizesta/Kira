@@ -102,74 +102,47 @@ def _migrate_v0_to_v1(data):
     return data
 
 
-def _migrate_v1_to_v2(data):
+def _migrate_v1_to_v2(data, warnings=None):
     """Replace only provider model IDs that the provider has explicitly retired."""
     providers = data.get("providers")
     groq = providers.get("groq") if isinstance(providers, dict) else None
     old_model = groq.get("model") if isinstance(groq, dict) else None
     if old_model in RETIRED_GROQ_MODELS:
         groq["model"] = RETIRED_GROQ_MODELS[old_model]
-        LOAD_WARNINGS.append(
-            f"مدل Groq «{old_model}» توسط Groq بازنشسته شده؛ به {groq['model']} تغییر کرد."
-        )
+        if warnings is not None:
+            warnings.append(
+                f"مدل Groq «{old_model}» توسط Groq بازنشسته شده؛ به {groq['model']} تغییر کرد."
+            )
     return data
 
 
-def _migrate_v2_to_v3(data):
-    """Migrate the former bundled local model and its dependent route allowlists."""
-    migrated_model = False
+def _migrate_v2_to_v3(data, warnings=None):
+    """Repair a contradictory legacy Ollama enablement state without rewriting model choices."""
     providers = data.get("providers")
     ollama = providers.get("ollama") if isinstance(providers, dict) else None
-    if isinstance(ollama, dict):
-        if str(ollama.get("model") or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS:
-            ollama["model"] = LOCAL_UNCENSORED_MODEL
-            migrated_model = True
-    if str(data.get("model") or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS:
-        data["model"] = LOCAL_UNCENSORED_MODEL
-        migrated_model = True
     routes = data.get("routes")
-    if isinstance(routes, list):
-        for route in routes:
-            if (isinstance(route, dict) and route.get("provider") == "ollama"
-                    and str(route.get("model") or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS):
-                route["model"] = LOCAL_UNCENSORED_MODEL
-                migrated_model = True
-    allowlist = data.get("role_route_models")
-    if isinstance(allowlist, dict):
-        for role, models in list(allowlist.items()):
-            if isinstance(models, (list, tuple)):
-                migrated = [
-                    LOCAL_UNCENSORED_MODEL
-                    if str(model or "").strip().lower() in LEGACY_LOCAL_CHAT_MODELS else model
-                    for model in models
-                ]
-                if migrated != list(models):
-                    allowlist[role] = migrated
-                    migrated_model = True
-    if migrated_model:
-        LOAD_WARNINGS.append("مدل محلی پیش‌فرض به Qwen3.5-9B Abliterated Q4_K_M مهاجرت کرد.")
-
     if isinstance(ollama, dict) and not bool(ollama.get("enabled", True)):
         if isinstance(routes, list) and any(
             isinstance(route, dict) and route.get("provider") == "ollama"
             and route.get("enabled", True) for route in routes
         ):
             ollama["enabled"] = True
-            LOAD_WARNINGS.append(
-                "وضعیت قدیمی Ollama اصلاح شد: Provider محلی برای Route فعال دوباره روشن شد."
-            )
+            if warnings is not None:
+                warnings.append(
+                    "وضعیت قدیمی Ollama اصلاح شد: Provider محلی برای Route فعال دوباره روشن شد."
+                )
     return data
 
 
-def _migrate_v3_to_v4(data):
+def _migrate_v3_to_v4(data, warnings=None):
     """Move provider/model discovery observations out of persistent user settings."""
     for key in ("api_registry", "model_catalog_refreshed_at", "model_tests"):
         data.pop(key, None)
     return data
 
 
-def _migrate_settings(saved):
-    """Apply each schema migration once to a private copy of persisted settings."""
+def _migrate_settings(saved, *, warnings=None):
+    """Apply each schema migration once to a private copy, reporting side effects explicitly."""
     if not isinstance(saved, dict):
         raise ValueError("ساختار فایل تنظیمات معتبر نیست.")
     migrated = deepcopy(saved)
@@ -186,9 +159,9 @@ def _migrate_settings(saved):
         raise ValueError(f"نسخهٔ تنظیمات پشتیبانی نمی‌شود: {version}")
     migrations = {
         0: _migrate_v0_to_v1,
-        1: _migrate_v1_to_v2,
-        2: _migrate_v2_to_v3,
-        3: _migrate_v3_to_v4,
+        1: lambda value: _migrate_v1_to_v2(value, warnings=warnings),
+        2: lambda value: _migrate_v2_to_v3(value, warnings=warnings),
+        3: lambda value: _migrate_v3_to_v4(value, warnings=warnings),
     }
     while version < SETTINGS_SCHEMA_VERSION:
         migrated = migrations[version](migrated)
@@ -305,7 +278,7 @@ def load_settings():
         try:
             saved = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
             source_settings_version = saved.get("settings_version", 0) if isinstance(saved, dict) else 0
-            saved = _migrate_settings(saved)
+            saved = _migrate_settings(saved, warnings=LOAD_WARNINGS)
             if not isinstance(saved, dict):
                 raise ValueError("ساختار فایل تنظیمات معتبر نیست.")
         except Exception as exc:
