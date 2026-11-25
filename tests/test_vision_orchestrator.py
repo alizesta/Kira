@@ -94,6 +94,19 @@ class VisionOrchestratorTests(unittest.TestCase):
         self.assertEqual(stale.route, "drop")
         self.assertEqual(stale.reason, "stale_session_generation")
 
+    def test_shared_cooldown_applies_when_route_changes_from_live_to_analysis(self):
+        clock = Clock()
+        orchestrator = VisionFrameOrchestrator(clock=clock)
+        orchestrator.configure_budget(max_frames_per_minute=60, min_interval_seconds=5)
+        live = orchestrator.create_context("s", "desktop")
+        self.assertEqual(orchestrator.decide(live, live_ready=True).route, "live")
+        clock.value = 2
+        orchestrator.configure_budget(max_frames_per_minute=60, min_interval_seconds=5)
+        analysis = orchestrator.create_context("s", "desktop")
+        decision = orchestrator.decide(analysis, live_ready=False)
+        self.assertEqual(decision.route, "drop")
+        self.assertEqual(decision.reason, "frame_budget_exhausted")
+
     def test_concurrent_decisions_for_one_frame_are_idempotent(self):
         orchestrator = VisionFrameOrchestrator()
         context = orchestrator.create_context("s", "desktop")
