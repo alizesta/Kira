@@ -26,6 +26,29 @@ class DesktopCapturePolicyTests(unittest.TestCase):
         self.assertEqual(service.evaluate_window(missing_path),
                          (False, "foreground_window_identity_incomplete"))
 
+    def test_partial_identity_is_allowed_only_when_requested_and_known_blocks_still_apply(self):
+        service = DesktopCaptureApplicationService()
+        service.set_enabled(True)
+        partial = make_window(exe="", title="", path="")
+        self.assertEqual(
+            service.evaluate_window(partial),
+            (False, "foreground_window_identity_incomplete"),
+        )
+        self.assertEqual(
+            service.evaluate_window(partial, allow_partial_identity=True),
+            (True, "allowed"),
+        )
+        blocked = make_window(exe="KeePassXC.exe", title="", path="")
+        self.assertEqual(
+            service.evaluate_window(blocked, allow_partial_identity=True),
+            (False, "blocked_exe"),
+        )
+        blocked_title = make_window(exe="", title="Incognito", path="")
+        self.assertEqual(
+            service.evaluate_window(blocked_title, allow_partial_identity=True),
+            (False, "blocked_title"),
+        )
+
     def test_manual_enablement_is_required(self):
         service = DesktopCaptureApplicationService()
         self.assertEqual(service.evaluate_window(make_window()),
