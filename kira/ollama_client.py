@@ -668,24 +668,29 @@ class OllamaClient:
         self.last_stats = None
         r = self._open_stream(payload)
         if r.status_code == 400 and "think" in (r.text or "").lower() and "think" in payload:
+            self._release_stream_response(r)
             r.close()
             payload.pop("think")
             self._no_think = True
             r = self._open_stream(payload)
         if r.status_code == 404 and self.resolve_installed() and self.active_model != payload["model"]:
+            self._release_stream_response(r)
             r.close()
             payload["model"] = self.active_model
             r = self._open_stream(payload)
         for _ in range(MAX_CONTEXT_RETRIES):
             if not self._retry_context_overflow(r, payload, normalized, system_prompt):
                 break
+            self._release_stream_response(r)
             r.close()
             r = self._open_stream(payload)
         if r.status_code == 404:
+            self._release_stream_response(r)
             r.close()
             raise self._missing()
         if r.status_code >= 400:
             detail = self._error_text(r)
+            self._release_stream_response(r)
             r.close()
             kind = "memory" if "memory" in detail.lower() else "error"
             raise OllamaError(f"خطای Ollama ({r.status_code}): {detail}", kind)

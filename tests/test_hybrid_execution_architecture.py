@@ -216,21 +216,21 @@ class HybridExecutionArchitectureTests(unittest.TestCase):
                 token = set_request_id(request_id)
                 try:
                     barrier.wait(2)
-                    with mock.patch.object(config, "DATA_DIR", Path(folder)):
-                        trace(
-                            "parallel_request", worker=request_id, route_id="route-a",
-                            api_key=f"secret-{request_id}", prompt=f"prompt-{request_id}",
-                            response_body=f"body-{request_id}", response_chars=15,
-                        )
+                    trace(
+                        "parallel_request", worker=request_id, route_id="route-a",
+                        api_key=f"secret-{request_id}", prompt=f"prompt-{request_id}",
+                        response_body=f"body-{request_id}", response_chars=15,
+                    )
                 finally:
                     reset_request_id(token)
 
-            threads = [threading.Thread(target=worker, args=(f"request-{i}",)) for i in range(2)]
-            for thread in threads:
-                thread.start()
-            for thread in threads:
-                thread.join(3)
-                self.assertFalse(thread.is_alive())
+            with mock.patch.object(config, "DATA_DIR", Path(folder)):
+                threads = [threading.Thread(target=worker, args=(f"request-{i}",)) for i in range(2)]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join(3)
+                    self.assertFalse(thread.is_alive())
 
             path = Path(folder) / "logs" / "request_trace.jsonl"
             records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]

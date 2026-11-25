@@ -1071,7 +1071,7 @@ class HybridRouter:
                                load_ms=stats.get("load_ms"))
                 elif first_at and end > first_at and text:
                     row["speed"] = round(len(text) / (end - first_at), 1)
-                if route["provider"] == "ollama" and hasattr(provider, "running"):       # RAM / VRAM share of the loaded model
+                if not self._cancel.is_set() and route["provider"] == "ollama" and hasattr(provider, "running"):  # optional RAM / VRAM snapshot
                     try:
                         for m in provider.running():
                             if str(m.get("name", "")).split(":")[0] == str(getattr(provider, "active_model", "")).split(":")[0]:
@@ -1081,7 +1081,7 @@ class HybridRouter:
                                 break
                     except Exception:                                                     # noqa: BLE001 - optional extra info
                         pass
-                if not text:
+                if not text and not row.get("cancelled"):
                     row["error"] = "پاسخ خالی"
                 if row["ok"]:
                     ping = row.get("connect_ms")
