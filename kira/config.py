@@ -103,15 +103,51 @@ def _migrate_v0_to_v1(data):
 
 
 def _migrate_v1_to_v2(data, warnings=None):
-    """Replace only provider model IDs that the provider has explicitly retired."""
+    """Replace retired Groq model IDs in every persisted reference, without touching user choices."""
+    migrated = {}
+
     providers = data.get("providers")
     groq = providers.get("groq") if isinstance(providers, dict) else None
-    old_model = groq.get("model") if isinstance(groq, dict) else None
-    if old_model in RETIRED_GROQ_MODELS:
-        groq["model"] = RETIRED_GROQ_MODELS[old_model]
-        if warnings is not None:
+    if isinstance(groq, dict):
+        old_model = groq.get("model")
+        if old_model in RETIRED_GROQ_MODELS:
+            migrated[old_model] = RETIRED_GROQ_MODELS[old_model]
+            groq["model"] = migrated[old_model]
+
+    # Routes are the live provider/model references. Updating only the legacy
+    # provider mirror leaves a stale route that can still be selected at runtime.
+    routes = data.get("routes")
+    if isinstance(routes, list):
+        for route in routes:
+            if not isinstance(route, dict) or route.get("provider") != "groq":
+                continue
+            old_model = route.get("model")
+            if old_model in RETIRED_GROQ_MODELS:
+                migrated.setdefault(old_model, RETIRED_GROQ_MODELS[old_model])
+                route["model"] = migrated[old_model]
+
+    # Role model allowlists are exact model-ID filters. Keep their structure and
+    # order while replacing only the provider IDs that are known to be retired.
+    model_allowlist = data.get("role_route_models")
+    if isinstance(model_allowlist, dict):
+        for role, models in list(model_allowlist.items()):
+            if not isinstance(models, (list, tuple)):
+                continue
+            updated = [
+                RETIRED_GROQ_MODELS.get(model, model)
+                if isinstance(model, str) else model
+                for model in models
+            ]
+            if updated != list(models):
+                model_allowlist[role] = updated
+                for old_model in models:
+                    if isinstance(old_model, str) and old_model in RETIRED_GROQ_MODELS:
+                        migrated.setdefault(old_model, RETIRED_GROQ_MODELS[old_model])
+
+    if warnings is not None:
+        for old_model, new_model in migrated.items():
             warnings.append(
-                f"مدل Groq «{old_model}» توسط Groq بازنشسته شده؛ به {groq['model']} تغییر کرد."
+                f"مدل Groq «{old_model}» بازنشسته شده؛ تمام ارجاع‌های آن به {new_model} مهاجرت کردند."
             )
     return data
 

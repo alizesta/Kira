@@ -54,6 +54,42 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings["voice_engine"], "local")
         self.assertEqual(settings["settings_version"], config.SETTINGS_SCHEMA_VERSION)
 
+    def test_retired_groq_migration_updates_provider_routes_and_role_allowlists(self):
+        source = {
+            "settings_version": 1,
+            "providers": {
+                "groq": {"model": "llama-3.3-70b-versatile", "api_key": "keep-this-key"},
+                "ollama": {"model": "user-selected-local-model"},
+            },
+            "routes": [
+                {"id": "groq", "provider": "groq", "model": "llama-3.3-70b-versatile", "enabled": True},
+                {"id": "other", "provider": "custom-other", "model": "llama-3.3-70b-versatile", "enabled": True},
+            ],
+            "role_route_models": {
+                "deep": ["llama-3.3-70b-versatile", "user-model"],
+                "surface": ["user-selected-local-model"],
+            },
+            "manual_route_id": "groq",
+            "user_extension": {"keep": True},
+        }
+        warnings = []
+        migrated = config._migrate_settings(source, warnings=warnings)
+
+        replacement = "openai/gpt-oss-120b"
+        self.assertEqual(migrated["providers"]["groq"]["model"], replacement)
+        self.assertEqual(migrated["providers"]["groq"]["api_key"], "keep-this-key")
+        self.assertEqual(migrated["providers"]["ollama"]["model"], "user-selected-local-model")
+        self.assertEqual(migrated["routes"][0]["model"], replacement)
+        # A route under another provider is not rewritten by this provider migration.
+        self.assertEqual(migrated["routes"][1]["model"], "llama-3.3-70b-versatile")
+        self.assertEqual(migrated["role_route_models"]["deep"], [replacement, "user-model"])
+        self.assertEqual(migrated["role_route_models"]["surface"], ["user-selected-local-model"])
+        self.assertEqual(migrated["manual_route_id"], "groq")
+        self.assertEqual(migrated["user_extension"], {"keep": True})
+        self.assertTrue(any("تمام ارجاع‌ها" in warning for warning in warnings))
+        self.assertEqual(config._migrate_settings(migrated), migrated)
+        self.assertEqual(source["providers"]["groq"]["model"], "llama-3.3-70b-versatile")
+
     def test_each_supported_settings_version_runs_forward_migrations(self):
         legacy_voice = config._migrate_settings({
             "voice_engine": "local", "web_engine": "retired",
