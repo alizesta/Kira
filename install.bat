@@ -165,7 +165,7 @@ if errorlevel 1 (
   echo WARNING: Python OCR dependencies are unavailable; other Kira features remain available.
   set "OCR_SETUP_FAILED=1"
 )
-python -m kira.vision_ocr --status
+python -m kira.vision_ocr --setup
 if errorlevel 1 set "OCR_RUNTIME_SETUP_FAILED=1"
 
 echo.
@@ -207,7 +207,7 @@ if defined OCR_SETUP_FAILED echo WARNING: OCR Python dependencies need attention
 if defined OCR_RUNTIME_SETUP_FAILED echo WARNING: Native OCR runtime or required language data is incomplete; other Vision features remain available.
 if defined SYSTEM_SETUP_FAILED echo WARNING: Optional system integrations need attention.
 if defined OLLAMA_SETUP_FAILED echo WARNING: Local Ollama setup needs attention; rerun python -m kira.setup_manager --interactive.
-echo OCR native engine and language data are detected, not silently installed.
+echo OCR native engine and language data are installed only after explicit consent.
 echo Persian OCR requires the Tesseract fas language pack; English requires eng.
 if exist voice_failed.txt (
   echo Some optional audio packages failed:
