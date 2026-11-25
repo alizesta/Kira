@@ -408,6 +408,41 @@ class MigrationAndLifecycleTests(unittest.TestCase):
         self.assertFalse(rm.find_route(s, rid)["enabled"])
         self.assertEqual(am.api_row(s, "groq")["active"], 1)
 
+    def test_model_toggle_reuses_case_insensitive_existing_route(self):
+        s = fresh()
+        am.register(
+            s,
+            am.Detection("ok", "groq", "", [
+                {"id": "openai/gpt-oss-120b"},
+                {"id": "Case-Sensitive-Model"},
+            ]),
+            GROQ_KEY,
+        )
+        route_id = am.set_model_enabled(s, "groq", "Case-Sensitive-Model", True)
+        same_id = am.set_model_enabled(s, "groq", "case-sensitive-model", False)
+        self.assertEqual(same_id, route_id)
+        matching = [
+            route for route in rm.get_routes(s)
+            if route["provider"] == "groq"
+            and route["model"].casefold() == "case-sensitive-model"
+        ]
+        self.assertEqual(len(matching), 1)
+        self.assertFalse(matching[0]["enabled"])
+
+    def test_delete_builtin_retargets_default_route_and_clears_removed_route_notes(self):
+        s = fresh()
+        am.register(
+            s,
+            am.Detection("ok", "groq", "", [{"id": "openai/gpt-oss-120b"}]),
+            GROQ_KEY,
+        )
+        s["default_route_id"] = "groq"
+        s.setdefault("route_notes", {})["groq"] = "stale"
+        am.delete_api(s, "groq")
+        self.assertNotEqual(s["default_route_id"], "groq")
+        self.assertNotIn("groq", s["route_notes"])
+        self.assertTrue(rm.find_route(s, s["default_route_id"]))
+
     def test_delete_builtin_clears_key_disables_routes_custom_is_removed(self):
         s = fresh()
         am.register(s, am.Detection("ok", "groq", "", [{"id": "openai/gpt-oss-120b"}]), GROQ_KEY)

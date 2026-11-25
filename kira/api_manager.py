@@ -393,8 +393,11 @@ def set_api_enabled(settings, pid, enabled):
 
 def set_model_enabled(settings, pid, model, enabled):
     """Switch one model on/off. Turning on a listed model that has no route yet creates it (at the end of the priority list)."""
+    model = str(model or "").strip()
+    if not model:
+        raise ValueError("شناسه‌ی مدل (Model ID) خالی است.")
     for r in route_model.get_routes(settings):
-        if r["provider"] == pid and r["model"] == model:
+        if r["provider"] == pid and str(r.get("model") or "").strip().casefold() == model.casefold():
             route_model.update_route(settings, r["id"], enabled=bool(enabled))
             return r["id"]
     if enabled:
@@ -414,11 +417,23 @@ def delete_api(settings, pid):
         if "account_id" in cfg:
             cfg["account_id"] = ""
         cfg.pop("service", None)
+        removed_route_ids = []
         for r in route_model.get_routes(settings):
             if r["provider"] == pid:
+                removed_route_ids.append(r["id"])
                 route_model.update_route(settings, r["id"], enabled=False)
         if settings.get("manual_route_id") and (route_model.find_route(settings, settings["manual_route_id"]) or {}).get("provider") == pid:
             settings["manual_route_id"] = ""
+        if settings.get("default_route_id") in removed_route_ids:
+            remaining = [
+                route for route in route_model.get_routes(settings)
+                if route["provider"] != pid
+            ]
+            settings["default_route_id"] = remaining[0]["id"] if remaining else ""
+        notes = settings.get("route_notes")
+        if isinstance(notes, dict):
+            for route_id in removed_route_ids:
+                notes.pop(route_id, None)
     else:
         route_model.remove_provider(settings, pid)
     registry(settings).pop(pid, None)
