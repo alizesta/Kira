@@ -29,6 +29,7 @@ class MainWindow(QMainWindow):
             "runtime": controller_factory("main_window_runtime", "RuntimeController"),
             "chat": controller_factory("main_window_chat", "ChatController"),
             "attachments_vision": controller_factory("main_window_attachments_vision", "AttachmentsVisionController"),
+            "game_audio": controller_factory("main_window_game_audio", "GameAudioController"),
             "attachments": controller_factory("main_window_attachments", "AttachmentsController"),
             "lifecycle": controller_factory("main_window_lifecycle", "LifecycleController"),
             "provider_settings": controller_factory("main_window_provider_settings", "ProviderSettingsController"),
