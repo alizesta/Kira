@@ -14,6 +14,7 @@ import time
 from typing import Callable
 from urllib.parse import quote
 import requests
+from .ollama_client import resolve_model
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 REGISTRY_URL = "https://registry.ollama.ai"
@@ -30,6 +31,7 @@ class SetupSnapshot:
     version: str | None
     installed_models: tuple[str, ...]
     selected_model: str
+    resolved_model: str | None
     selected_model_installed: bool
     selected_model_runnable: bool
     error: str | None = None
@@ -166,15 +168,16 @@ class OllamaSetupManager:
             version=str(self._get_json("/api/version").get("version") or "")
             installed=self.installed_models()
         except (requests.RequestException,ValueError,SetupError) as exc:
-            return SetupSnapshot(executable,False,None,(),self.selected_model,False,False,str(exc))
-        present=self.selected_model in installed
+            return SetupSnapshot(executable,False,None,(),self.selected_model,None,False,False,str(exc))
+        resolved=resolve_model(installed,self.selected_model)
+        present=resolved is not None
         runnable=False; error=None
         if present:
             try:
-                runnable=self.probe_model(self.selected_model)
-                if not runnable: error=f"مدل «{self.selected_model}» نصب است اما اجرای مستقل آن موفق نبود."
+                runnable=self.probe_model(resolved)
+                if not runnable: error=f"مدل انتخاب‌شده «{self.selected_model}» (نسخهٔ نصب‌شده: «{resolved}») نصب است اما اجرای مستقل آن موفق نبود."
             except (requests.RequestException,ValueError) as exc: error=str(exc)
-        return SetupSnapshot(executable,True,version,installed,self.selected_model,present,runnable,error)
+        return SetupSnapshot(executable,True,version,installed,self.selected_model,resolved,present,runnable,error)
 
     def install_engine(self):
         if os.name!="nt": raise SetupError("نصب خودکار Ollama فقط در Windows پشتیبانی می‌شود.")
@@ -210,7 +213,7 @@ class OllamaSetupManager:
 
     def pull_model(self,model,*,progress=None):
         if not MODEL_RE.fullmatch(str(model or "").strip()): raise ValueError("شناسهٔ مدل معتبر نیست.")
-        if model in self.installed_models(): return
+        if resolve_model(self.installed_models(),model) is not None: return
         self.preflight(model)
         response=self.session.post(f"{self.base_url}/api/pull",json={"model":model,"stream":True},
             stream=True,timeout=(10,60))
@@ -284,7 +287,12 @@ def _interactive():
         except (SetupError,OSError,subprocess.SubprocessError) as exc:
             print(f"OLLAMA SERVER SETUP FAILED: {exc}"); return 1
     model=input(f"Model ID to prepare [{selected}]: ").strip() or selected
-    try: manifest,required,fit,detail=manager.preflight(model)
+    try:
+        installed=manager.installed_models()
+        if resolve_model(installed,model) is not None:
+            manifest,required,fit,detail=ModelManifest(model,0,0),0,"already_installed","این مدل یا نام مستعار سازگار آن از قبل نصب است."
+        else:
+            manifest,required,fit,detail=manager.preflight(model)
     except (SetupError,ValueError,requests.RequestException) as exc:
         print(f"MODEL PREFLIGHT FAILED: {exc}"); return 1
     print(f"Model: {model}")

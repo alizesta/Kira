@@ -2,6 +2,7 @@ import unittest
 from unittest import mock
 import requests
 from kira.setup_manager import HardwareProfile,ModelManifest,OllamaSetupManager,SetupError,_model_parts,configured_local_model,registry_manifest
+from kira.ollama_client import resolve_model
 
 class Response:
     def __init__(self,payload=None,status=200,lines=()):
@@ -23,6 +24,9 @@ class SetupManagerTests(unittest.TestCase):
     def test_missing_manifest_is_not_zero_size(self):
         session=mock.Mock(); session.get.return_value=Response(status=404)
         with self.assertRaises(SetupError): registry_manifest("not-found",session=session)
+    def test_configured_model_alias_resolves_to_installed_runtime_name(self):
+        self.assertEqual(resolve_model(["qwen3.5:latest"],"qwen3.5:4b"),"qwen3.5:latest")
+
     def test_hardware_assessment(self):
         profile=HardwareProfile(ram_bytes=16000,vram_bytes=8000)
         self.assertEqual(profile.assess(7000)[0],"gpu_fit")
