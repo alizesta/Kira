@@ -15,6 +15,8 @@ SYS = "persona"
 
 def router(*names, ollama=True):
     s = helpers.enable(helpers.fresh_settings(), *names)
+    # These tests exercise cloud routing, so they explicitly grant its network permission.
+    s["network_policy"] = "cloud_permitted"
     s["providers"]["ollama"]["enabled"] = ollama
     return HybridRouter(s)
 
