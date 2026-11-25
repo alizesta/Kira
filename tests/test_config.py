@@ -54,6 +54,49 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(settings["voice_engine"], "local")
         self.assertEqual(settings["settings_version"], config.SETTINGS_SCHEMA_VERSION)
 
+    def test_each_supported_settings_version_runs_forward_migrations(self):
+        legacy_voice = config._migrate_settings({
+            "voice_engine": "local", "web_engine": "retired",
+            "providers": {"groq": {"model": "llama-3.3-70b-versatile"}},
+        })
+        self.assertEqual(legacy_voice["settings_version"], config.SETTINGS_SCHEMA_VERSION)
+        self.assertEqual(legacy_voice["voice_engine"], "local")
+        self.assertNotIn("web_engine", legacy_voice)
+        self.assertEqual(
+            legacy_voice["providers"]["groq"]["model"], "openai/gpt-oss-120b"
+        )
+
+        from_v1 = config._migrate_settings({
+            "settings_version": 1,
+            "providers": {"groq": {"model": "llama-3.1-8b-instant"}},
+        })
+        self.assertEqual(from_v1["providers"]["groq"]["model"], "openai/gpt-oss-20b")
+
+        from_v2 = config._migrate_settings({
+            "settings_version": 2, "model": "qwen3.5:4b",
+            "role_route_models": {"surface": ["qwen3.5:4b"]},
+        })
+        self.assertEqual(from_v2["model"], config.LOCAL_UNCENSORED_MODEL)
+        self.assertEqual(
+            from_v2["role_route_models"]["surface"], [config.LOCAL_UNCENSORED_MODEL]
+        )
+
+    def test_current_version_route_repair_is_persisted(self):
+        self.path.write_text(
+            json.dumps({
+                "settings_version": config.SETTINGS_SCHEMA_VERSION,
+                "routes": [{
+                    "id": "ollama", "provider": "ollama", "model": "custom-model",
+                    "enabled": True, "num_ctx": "broken",
+                }]
+            }),
+            encoding="utf-8",
+        )
+        config.load_settings()
+        saved = json.loads(self.path.read_text(encoding="utf-8"))
+        route = next(item for item in saved["routes"] if item["id"] == "ollama")
+        self.assertNotIn("num_ctx", route)
+
     def test_settings_migration_is_idempotent(self):
         original = {"voice_engine": "local", "providers": {"ollama": {"num_ctx": 8192}}}
         once = config._migrate_settings(original)

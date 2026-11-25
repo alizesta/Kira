@@ -364,7 +364,7 @@ def _validate_route_overrides(settings):
     """Drop malformed optional route limits before routes.ensure_routes converts them."""
     routes = settings.get("routes")
     if not isinstance(routes, list):
-        return
+        return False
     repaired = []
     for index, route in enumerate(routes):
         if not isinstance(route, dict):
@@ -389,6 +389,7 @@ def _validate_route_overrides(settings):
             "محدودیت‌های نامعتبر Route حذف شدند تا مقدار Provider به ارث برسد: "
             + ", ".join(repaired)
         )
+    return bool(repaired)
 
 
 def load_settings():
@@ -447,7 +448,7 @@ def load_settings():
             except Exception as exc:
                 merged["tavily_api_key"] = ""
                 LOAD_WARNINGS.append(f"کلید Tavily با این حساب ویندوز رمزگشایی نشد ({exc}). دوباره وارد کن.")
-        _validate_route_overrides(merged)
+        settings_repaired = _validate_route_overrides(merged) or settings_repaired
         route_model.ensure_routes(merged)
         allowlist = merged.get("role_provider_allowlist")
         if not isinstance(allowlist, dict):
