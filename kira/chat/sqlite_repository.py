@@ -441,8 +441,11 @@ class SqliteChatRepository:
             self.last_error = None
             return pending_count
 
-    def _conversation_record(self, row):
-        return self._conversations._conversation_record(row)
+    @staticmethod
+    def _conversation_record(row):
+        record = dict(row)
+        record["metadata"] = _json_object(record.get("metadata"))
+        return record
 
     def create_conversation(self, character_id=None, title="", metadata=None, conversation_id=None) -> dict[str, Any]:
         return self._conversations.create_conversation(character_id, title, metadata, conversation_id)
