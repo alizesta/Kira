@@ -215,7 +215,89 @@ class ProviderSettingsController(WindowFeatureController):
             self.surface_provider_checks[pid] = check
             provider_layout.addWidget(check)
         form.addRow("Providerهای مجاز برای مکالمهٔ عادی", provider_box)
+
+        self.enable_surface_cloud_btn = QPushButton("فعال‌سازی Cloud برای مکالمهٔ عادی")
+        self.enable_surface_cloud_btn.setToolTip(
+            "با تأیید صریح، Providerهای ابری فعال و دارای کلید را برای مکالمهٔ عادی مجاز می‌کند."
+        )
+        self.enable_surface_cloud_btn.clicked.connect(self.enable_surface_cloud)
+        form.addRow("", self.enable_surface_cloud_btn)
         return panel
+
+    def enable_surface_cloud(self):
+        """Explicit one-click opt-in for configured Cloud providers used by ordinary chat."""
+        settings = self.context.services.settings
+        provider_service = self.context.services.provider_application_service
+        providers = settings.get("providers", {})
+        selected = [
+            pid for pid, checkbox in getattr(self, "surface_provider_checks", {}).items()
+            if checkbox.isChecked()
+            and isinstance(providers.get(pid), dict)
+            and providers[pid].get("enabled", True)
+            and bool(str(providers[pid].get("api_key") or "").strip())
+        ]
+        if not selected:
+            selected = [
+                pid for pid, cfg in providers.items()
+                if pid != "ollama"
+                and isinstance(cfg, dict)
+                and cfg.get("enabled", True)
+                and bool(str(cfg.get("api_key") or "").strip())
+                and provider_service.provider_kind(pid, cfg) == "cloud"
+            ]
+        if not selected:
+            QMessageBox.warning(
+                self.window,
+                "Provider ابری آماده نیست",
+                "هیچ Provider ابریِ فعال با کلید API ذخیره‌شده پیدا نشد. ابتدا در همین صفحه یک Provider را پیکربندی و فعال کن.",
+            )
+            return False
+
+        labels = "، ".join(provider_service.provider_label(pid, providers.get(pid)) for pid in selected)
+        answer = QMessageBox.question(
+            self.window,
+            "تأیید ارسال مکالمه به Cloud",
+            "با ادامه، متن مکالمه و داده‌های لازم برای درخواست‌های عادی ممکن است به این Providerهای ابری ارسال شوند:\n"
+            f"{labels}\n\nهمچنین Cloud به‌عنوان مسیر جایگزین پس از Routeهای محلی مجاز خواهد بود. ادامه می‌دهی؟",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return False
+
+        settings["network_policy"] = "cloud_permitted"
+        allowlists = settings.get("role_provider_allowlist")
+        if not isinstance(allowlists, dict):
+            allowlists = {}
+            settings["role_provider_allowlist"] = allowlists
+        raw = allowlists.get("surface")
+        allowed = {
+            str(value).strip().lower()
+            for value in raw
+            if str(value).strip()
+        } if isinstance(raw, (list, tuple, set, frozenset)) else set()
+        allowed.update(str(pid).strip().lower() for pid in selected)
+        allowed.add("ollama")
+        allowlists["surface"] = sorted(allowed)
+
+        if not self.feature_controller("runtime").save_now():
+            QMessageBox.warning(
+                self.window,
+                "ذخیره تنظیمات ناموفق بود",
+                "مجوز Cloud در فایل تنظیمات ذخیره نشد. وضعیت ذخیره را در صفحه Route بررسی کن.",
+            )
+            return False
+        for pid, checkbox in getattr(self, "surface_provider_checks", {}).items():
+            checkbox.setChecked(pid.strip().lower() in allowed)
+        if hasattr(self.context.views, "network_policy_combo"):
+            self.network_policy_combo.setCurrentIndex(
+                self.network_policy_combo.findData("cloud_permitted")
+            )
+        self.refresh_route_list()
+        runtime = self.feature_controller("runtime")
+        if not self.context.session.busy:
+            runtime.set_badge("idle", self.context.session.client.preview_route())
+        return True
 
     def on_surface_provider_toggled(self, provider_id, enabled):
         """Persist an explicit per-provider permission for ordinary chat (surface)."""
