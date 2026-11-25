@@ -133,6 +133,26 @@ class ASRManagerTests(unittest.TestCase):
         self.assertEqual(state["state"], "available")
         self.assertEqual(state["last_error"], "")
 
+    def test_discovery_does_not_leak_failure_to_another_model_on_same_engine(self):
+        adapter = FakeAdapter(fail="inference")
+        manager = ASRManager(adapters=[adapter])
+        failed_settings = {
+            "local_voice_asr_backend": "fixture",
+            "local_voice_asr_model": "fixture-model",
+        }
+        other_model_settings = {
+            "local_voice_asr_backend": "fixture",
+            "local_voice_asr_model": "another-model",
+        }
+
+        with self.assertRaises(ASRError):
+            manager.transcribe([], 16000, failed_settings)
+
+        state = manager.discover(other_model_settings)
+        self.assertTrue(state["ready"])
+        self.assertEqual(state["state"], "available")
+        self.assertEqual(state["last_error"], "")
+
     def test_shutdown_clears_error_after_failed_initialization(self):
         adapter = FakeAdapter(fail="initialization")
         manager = ASRManager(adapters=[adapter])
