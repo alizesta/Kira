@@ -54,6 +54,34 @@ class ProviderApplicationServiceTests(unittest.TestCase):
         self.assertNotIn(provider_id, self.service.registry())
         self.assertIsNone(self.service.detected_capabilities.mapping_get("route_notes", route_id))
 
+    def test_explicit_model_enable_clears_automatic_disable_note(self):
+        provider_id = self.service.add_provider(
+            self.settings, "Custom", "https://example.test/v1", first_model="model-a"
+        )
+        route = next(route for route in route_model.get_routes(self.settings) if route["provider"] == provider_id)
+        route_model.update_route(self.settings, route["id"], enabled=False)
+        self.service.detected_capabilities.mapping_set("route_notes", route["id"], "previous automatic failure")
+
+        self.service.set_model_enabled(self.settings, provider_id, "model-a", True)
+
+        self.assertTrue(route_model.find_route(self.settings, route["id"])["enabled"])
+        self.assertIsNone(
+            self.service.detected_capabilities.mapping_get("route_notes", route["id"])
+        )
+
+    def test_delete_api_clears_detected_route_notes(self):
+        provider_id = "groq"
+        routes = [route for route in route_model.get_routes(self.settings) if route["provider"] == provider_id]
+        if not routes:
+            route_model.add_route(self.settings, provider_id, "openai/gpt-oss-120b", enabled=True)
+            routes = [route for route in route_model.get_routes(self.settings) if route["provider"] == provider_id]
+        route_id = routes[0]["id"]
+        self.service.detected_capabilities.mapping_set("route_notes", route_id, "previous automatic failure")
+        self.service.delete_api(self.settings, provider_id)
+        self.assertIsNone(
+            self.service.detected_capabilities.mapping_get("route_notes", route_id)
+        )
+
     def test_builtin_provider_cannot_be_removed(self):
         with self.assertRaises(ValueError):
             self.service.remove_provider(self.settings, "ollama")

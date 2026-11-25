@@ -436,12 +436,8 @@ def delete_api(settings, pid, *, capabilities: DetectedCapabilities):
                 if route["provider"] != pid
             ]
             settings["default_route_id"] = remaining[0]["id"] if remaining else ""
-        notes = settings.get("route_notes")
-        if isinstance(notes, dict):
-            for route_id in removed_route_ids:
-                notes.pop(route_id, None)
     else:
-        route_model.remove_provider(settings, pid)
+        route_model.remove_provider(settings, pid, capabilities=capabilities)
     registry(capabilities).pop(pid, None)
 
 
