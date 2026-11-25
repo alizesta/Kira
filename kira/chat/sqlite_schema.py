@@ -7,9 +7,9 @@ from typing import Any, Callable
 class SqliteSchemaManager:
     """Own schema version checks, additive DDL and legacy conversation backfill.
 
-    Connections, transactions and backups remain owned by the repository.
-    Callbacks avoid importing the concrete repository and preserve its safety
-    boundaries around data recovery and storage lifecycle.
+    Connections and transactions are supplied by the persistence composition.
+    Pre-migration snapshots are delegated through the snapshot-service callback;
+    callbacks avoid importing the concrete repository.
     """
 
     def __init__(
