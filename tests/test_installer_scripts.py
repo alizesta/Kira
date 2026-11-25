@@ -48,7 +48,10 @@ class InstallerScriptTests(unittest.TestCase):
 
     def test_updater_triggers_dependency_setup_when_lock_generator_or_lock_files_change(self):
         self.assertIn('if /I "%%F"=="scripts/generate_dependency_locks.py" set "NEEDS_INSTALL=1"', self.updater)
-        self.assertIn(r'^dependency-locks/.*\.txt
+        self.assertIn(r'^dependency-locks/.*\.txt$', self.updater)
+
+    def test_installer_keeps_ollama_setup_separate_from_python_dependency_groups(self):
+        self.assertIn("python -m kira.setup_manager --interactive", self.installer)
         self.assertNotIn("Ollama.Ollama", self.installer)
         self.assertNotIn("ollama serve", self.installer)
         self.assertNotIn("setup_local_chat_model.py", self.installer)
