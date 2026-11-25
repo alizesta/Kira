@@ -5,7 +5,10 @@ from collections.abc import Callable
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from kira.ui.pages._all_pages_fluid_finalizers import finalize_appearance_page
-from kira.settings_schema import DEFAULTS as SETTINGS_DEFAULTS
+from kira.settings_schema import (
+    DEFAULTS as SETTINGS_DEFAULTS,
+    SETTING_RANGES as SETTINGS_RANGES,
+)
 
 from PySide6.QtWidgets import (
     QComboBox,
@@ -84,15 +87,24 @@ class AppearancePage(QScrollArea):
         form.addRow("رنگ پس‌زمینه", colour_row)
         self._set_color_preview(self._background_color)
 
-        self.appearance_brightness = self._slider(form, "روشنایی", 40, 150, appearance["brightness"])
+        brightness_min, brightness_max = SETTINGS_RANGES["appearance.brightness"]
+        self.appearance_brightness = self._slider(
+            form, "روشنایی", brightness_min, brightness_max, appearance["brightness"]
+        )
         self.appearance_brightness.setToolTip(
             "روشنایی رنگ‌های پس‌زمینه را تنظیم می‌کند؛ مقدار بیشتر یعنی روشن‌تر."
         )
-        self.appearance_glow = self._slider(form, "درخشش نور", 0, 100, appearance["glow"])
+        glow_min, glow_max = SETTINGS_RANGES["appearance.glow"]
+        self.appearance_glow = self._slider(
+            form, "درخشش نور", glow_min, glow_max, appearance["glow"]
+        )
         self.appearance_glow.setToolTip(
             "درخشش آیکون‌ها، حاشیه‌ها و سایه‌ی کارت گفتگو را کنترل می‌کند."
         )
-        self.appearance_transparency = self._slider(form, "شفافیت", 0, 80, appearance["transparency"])
+        transparency_min, transparency_max = SETTINGS_RANGES["appearance.transparency"]
+        self.appearance_transparency = self._slider(
+            form, "شفافیت", transparency_min, transparency_max, appearance["transparency"]
+        )
         self.appearance_transparency.setToolTip(
             "مقدار بیشتر، سطح پنجره را شفاف‌تر می‌کند."
         )

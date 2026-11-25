@@ -211,6 +211,27 @@ class ConfigTests(unittest.TestCase):
         self.assertIn("appearance_glow_adjusted", source)
         self.assertIn("appearance_neon_shooter_v1", source)
 
+    def test_invalid_appearance_ranges_are_repaired_from_nested_schema(self):
+        self.path.write_text(
+            json.dumps({
+                "appearance": {
+                    "brightness": 999,
+                    "glow": -5,
+                    "transparency": 100,
+                }
+            }),
+            encoding="utf-8",
+        )
+        settings = config.load_settings()
+        defaults = config.DEFAULTS["appearance"]
+        self.assertEqual(settings["appearance"]["brightness"], defaults["brightness"])
+        self.assertEqual(settings["appearance"]["glow"], defaults["glow"])
+        self.assertEqual(settings["appearance"]["transparency"], defaults["transparency"])
+        warnings = " ".join(config.LOAD_WARNINGS)
+        self.assertIn("appearance.brightness", warnings)
+        self.assertIn("appearance.glow", warnings)
+        self.assertIn("appearance.transparency", warnings)
+
     def test_appearance_defaults_are_shared_by_schema_page_and_runtime(self):
         from kira.settings_schema import DEFAULTS as SCHEMA_DEFAULTS
         from kira.ui.appearance_runtime import SETTINGS_DEFAULTS as RUNTIME_DEFAULTS
