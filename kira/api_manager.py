@@ -363,13 +363,20 @@ def register(settings, detection, key, now=None) -> str:
     route_model.ensure_routes(settings)
     apply_models(settings, pid, detection.models, detection.rate_limit, now)
     start = pick_default_model(service, detection.models)
-    has_route = any(r["provider"] == pid for r in route_model.get_routes(settings))
-    if start and not any(r["provider"] == pid and r["model"] == start for r in route_model.get_routes(settings)):
+    provider_routes = [
+        route for route in route_model.get_routes(settings)
+        if route["provider"] == pid
+    ]
+    start_key = str(start or "").strip().casefold()
+    existing_start = next(
+        (route for route in provider_routes
+         if str(route.get("model") or "").strip().casefold() == start_key),
+        None,
+    )
+    if start and existing_start is None:
         route_model.add_route(settings, pid, start, enabled=True)
-    elif start and has_route:
-        for r in route_model.get_routes(settings):                              # reused built-in: its default route is switched on
-            if r["provider"] == pid and r["model"] == start:
-                route_model.update_route(settings, r["id"], enabled=True)
+    elif start and existing_start is not None:
+        route_model.update_route(settings, existing_start["id"], enabled=True)
 
     # Google is the explicitly preferred Chat provider: newly registered Gemini
     # routes must not be appended behind Cloudflare/Groq and silently lose to
@@ -419,8 +426,12 @@ def set_api_enabled(settings, pid, enabled):
 
 def set_model_enabled(settings, pid, model, enabled):
     """Switch one model on/off. Turning on a listed model that has no route yet creates it (at the end of the priority list)."""
+    model_key = str(route_model.normalize_model_id(model) or "").strip().casefold()
     for r in route_model.get_routes(settings):
-        if r["provider"] == pid and r["model"] == model:
+        if (
+            r["provider"] == pid
+            and str(r.get("model") or "").strip().casefold() == model_key
+        ):
             route_model.update_route(settings, r["id"], enabled=bool(enabled))
             return r["id"]
     if enabled:
