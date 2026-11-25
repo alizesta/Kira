@@ -335,6 +335,30 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(s["providers"]["groq"]["api_key"], "")
         self.assertTrue(any("groq" in w for w in config.LOAD_WARNINGS))
 
+    def test_failed_migration_keeps_original_settings_and_recovery_backup(self):
+        original = json.dumps(
+            {
+                "settings_version": 1,
+                "voice_engine": "local",
+                "providers": {"groq": {"model": "llama-3.3-70b-versatile", "api_key": "old-key"}},
+            },
+            ensure_ascii=False,
+        )
+        self.path.write_text(original, encoding="utf-8")
+
+        with mock.patch.object(config.time, "strftime", return_value="migration-failure"):
+            with mock.patch.object(
+                config, "_migrate_v1_to_v2", side_effect=RuntimeError("migration failed")
+            ):
+                settings = config.load_settings()
+
+        backup = self.path.with_name("settings.json.corrupt-migration-failure")
+        self.assertEqual(self.path.read_text(encoding="utf-8"), original)
+        self.assertTrue(backup.is_file())
+        self.assertEqual(backup.read_text(encoding="utf-8"), original)
+        self.assertEqual(settings["settings_version"], config.SETTINGS_SCHEMA_VERSION)
+        self.assertTrue(any("migration failed" in warning for warning in config.LOAD_WARNINGS))
+
     def test_03d_corrupt_file_is_backed_up_not_lost(self):
         self.path.write_text("{this is not json", encoding="utf-8")
         s = config.load_settings()
