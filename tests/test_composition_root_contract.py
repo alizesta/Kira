@@ -239,6 +239,27 @@ class AttachmentControllerOwnershipTests(unittest.TestCase):
         self.assertNotIn("def pick_attachments", {node.name for node in ast.walk(vision) if isinstance(node, ast.FunctionDef)})
 
 
+class GameAudioControllerOwnershipTests(unittest.TestCase):
+    def test_game_audio_lifecycle_is_owned_outside_vision_controller(self):
+        main_window = (ROOT / "kira" / "ui" / "main_window.py").read_text(encoding="utf-8")
+        vision = (ROOT / "kira" / "ui" / "main_window_attachments_vision.py").read_text(encoding="utf-8")
+        game_audio = parse("kira/ui/main_window_game_audio.py")
+        self.assertIn('"game_audio": controller_factory', main_window)
+        self.assertIn('self.feature_controller("game_audio")', vision)
+        names = {node.name for node in ast.walk(game_audio) if isinstance(node, ast.FunctionDef)}
+        self.assertTrue({
+            "_start_game_audio_listener",
+            "_stop_game_audio_listener",
+            "_on_game_audio_listener_finished",
+            "on_game_audio_error",
+            "on_game_audio_transcript",
+        }.issubset(names))
+        self.assertNotIn("def _start_game_audio_listener", {
+            node.name for node in ast.walk(parse("kira/ui/main_window_attachments_vision.py"))
+            if isinstance(node, ast.FunctionDef)
+        })
+
+
 class BrainReflectionCompositionTests(unittest.TestCase):
     def test_brain_and_reflection_services_are_required_and_injected(self):
         bootstrap = parse("kira/ui/bootstrap.py")
