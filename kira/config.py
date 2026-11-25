@@ -315,8 +315,11 @@ def _validate_value(value, default, path, repaired):
     elif isinstance(default, int):
         valid = isinstance(value, int) and not isinstance(value, bool)
     elif isinstance(default, float):
-        valid = (isinstance(value, (int, float)) and not isinstance(value, bool)
-                 and math.isfinite(value))
+        try:
+            valid = (isinstance(value, (int, float)) and not isinstance(value, bool)
+                     and math.isfinite(value))
+        except (OverflowError, TypeError):
+            valid = False
     elif isinstance(default, str):
         valid = isinstance(value, str)
     elif isinstance(default, list):
