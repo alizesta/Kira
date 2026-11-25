@@ -218,6 +218,20 @@ class TestVisionRuntimeServiceTests:
         assert adapter.poll_count == 0
         assert adapter.calls == []
 
+    def test_game_capture_without_active_game_never_calls_capture_adapter(self):
+        privacy = FakePrivacy()
+        adapter = FakeCaptureAdapter(privacy=privacy)
+        adapter.last_game = None
+        service = VisionCaptureService(adapter, FakeVisionPolicy(privacy))
+
+        result = service.capture_game_frame(True, "story")
+
+        assert not result.allowed
+        assert result.stage == "capture"
+        assert result.reason == "foreground_game_unavailable"
+        assert adapter.poll_count == 1
+        assert not any(call[0] == "window" for call in adapter.calls)
+
     def test_game_capture_uses_privacy_policy_and_capture_dimensions(self):
         privacy = FakePrivacy()
         adapter = FakeCaptureAdapter(privacy=privacy)
@@ -343,8 +357,9 @@ class TestVisionRuntimeServiceTests:
             "hwnd": 3, "pid": 4, "exe": "browser.exe", "title": "Work",
             "path": "/apps/browser", "rect": (0, 0, 1280, 720),
         }
+        current_identity = {**identity, "title": "Work — title changed"}
         capture = VisionCaptureService(
-            FakeCaptureAdapter(window=identity, privacy=privacy), vision
+            FakeCaptureAdapter(window=current_identity, privacy=privacy), vision
         )
         coordinator = VisionAnalysisCoordinator(
             vision, lambda _frame, _quality: (b"jpeg", b"sample"),

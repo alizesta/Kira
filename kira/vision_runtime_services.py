@@ -106,6 +106,11 @@ class VisionCaptureService:
 
         self._game_mode_adapter.poll()
         window_info = self._game_mode_adapter.last_game
+        if not isinstance(window_info, dict) or not window_info:
+            return CaptureResult(
+                "game", None, allowed=False,
+                reason="foreground_game_unavailable", stage="capture",
+            )
         if not self._vision.capture_allowed(
             enabled, profile, source="game", window_info=window_info
         ):
@@ -128,10 +133,12 @@ class VisionCaptureService:
     def capture_desktop_frame(self) -> CaptureResult:
         window_info = self.foreground_window_info(allow_partial_identity=True)
         allowed, reason = self.privacy.evaluate_window(window_info)
-        if not allowed:
+        if not allowed or not self._vision.capture_allowed(
+            True, None, source="desktop", window_info=window_info
+        ):
             return CaptureResult(
                 "desktop", window_info, allowed=False,
-                reason=reason or "privacy_blocked", stage="privacy",
+                reason=reason or "vision_service_inactive", stage="privacy",
             )
 
         policy = self._vision.policy
@@ -146,10 +153,12 @@ class VisionCaptureService:
     def capture_explicit_window(self) -> CaptureResult:
         window_info = self.foreground_window_info()
         allowed, reason = self.privacy.evaluate_window(window_info, explicit=True)
-        if not allowed:
+        if not allowed or not self._vision.capture_allowed(
+            False, None, source="desktop", window_info=window_info, explicit=True
+        ):
             return CaptureResult(
                 "desktop", window_info, allowed=False,
-                reason=reason or "privacy_blocked", stage="privacy",
+                reason=reason or "vision_service_inactive", stage="privacy",
             )
 
         policy = self._vision.policy
@@ -385,7 +394,7 @@ class VisionAnalysisCoordinator:
                 reason="foreground_window_unavailable",
             )
             return None
-        if source == "game" and _window_identity(window_info) != context.window_identity:
+        if source == "game" and _window_identity(window_info)[:2] != context.window_identity[:2]:
             self.release(context)
             self._trace(
                 "analysis_discarded", frame_id=context.frame_id,
