@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import requests
 from .settings_schema import DEFAULTS as SETTINGS_DEFAULTS, SETTING_RANGES
 
@@ -148,6 +149,9 @@ class OllamaClient:
         self._resolved = None            # installed name actually used when it differs from the configured one
         self.last_stats = None           # filled after a streamed answer: load/eval durations and token counts
         self._stream_resp = None
+        self._chat_resp = None
+        self._response_lock = threading.RLock()
+        self.cancel_event = None
 
     @property
     def active_model(self):
@@ -297,13 +301,18 @@ class OllamaClient:
             raise OllamaError(f"خطای شبکه در ارتباط با Ollama: {exc}", "network") from exc
 
     def _close_chat_response(self):
-        response = getattr(self, "_chat_resp", None)
-        self._chat_resp = None
+        with self._response_lock:
+            response, self._chat_resp = self._chat_resp, None
         if response is not None:
             try:
                 response.close()
             except Exception:
                 pass
+
+    def _release_stream_response(self, response):
+        with self._response_lock:
+            if self._stream_resp is response:
+                self._stream_resp = None
 
     def _post(self, path, payload, timeout, *, cancellable=False):
         event = getattr(self, "cancel_event", None)
@@ -317,7 +326,8 @@ class OllamaClient:
                 request_options["stream"] = True
             response = requests.post(f"{self.base_url}{path}", json=payload, **request_options)
             if cancellable:
-                self._chat_resp = response
+                with self._response_lock:
+                    self._chat_resp = response
                 if event is not None and event.is_set():
                     self._close_chat_response()
                     raise RuntimeError("درخواست لغو شده است.")
@@ -602,10 +612,16 @@ class OllamaClient:
 
     # ---------- streaming ----------
     def abort(self):
-        """Close either a non-streaming JSON response or an active NDJSON stream."""
-        self._close_chat_response()
-        response = getattr(self, "_stream_resp", None)
-        if response is not None:
+        """Close active JSON and NDJSON responses from another thread."""
+        with self._response_lock:
+            responses = (self._chat_resp, self._stream_resp)
+            self._chat_resp = None
+            self._stream_resp = None
+        seen = set()
+        for response in responses:
+            if response is None or id(response) in seen:
+                continue
+            seen.add(id(response))
             try:
                 response.close()
             except Exception:
@@ -614,8 +630,16 @@ class OllamaClient:
     def _open_stream(self, payload):
         """POST /api/chat with stream=True. Same 400(think)/404(alias) recovery as chat(). Returns the open response."""
         timeout = (min(10, self.timeout), self.timeout)           # (connect, wait-between-chunks)
+        event = getattr(self, "cancel_event", None)
+        if event is not None and event.is_set():
+            raise RuntimeError("درخواست لغو شده است.")
         try:
             r = requests.post(f"{self.base_url}/api/chat", json=payload, timeout=timeout, stream=True)
+            with self._response_lock:
+                self._stream_resp = r
+            if event is not None and event.is_set():
+                self.abort()
+                raise RuntimeError("درخواست لغو شده است.")
         except requests.ConnectionError as exc:
             raise self._offline(exc) from exc
         except requests.Timeout as exc:
@@ -665,7 +689,6 @@ class OllamaClient:
             r.close()
             kind = "memory" if "memory" in detail.lower() else "error"
             raise OllamaError(f"خطای Ollama ({r.status_code}): {detail}", kind)
-        self._stream_resp = r
         if on_connect:
             on_connect()
         flt = ThinkFilter()
@@ -712,7 +735,7 @@ class OllamaClient:
         except requests.RequestException as exc:
             raise OllamaError(f"ارتباط با Ollama وسط پاسخ قطع شد: {exc}", "network") from exc
         finally:
-            self._stream_resp = None
+            self._release_stream_response(r)
             try:
                 r.close()
             except Exception:

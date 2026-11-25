@@ -516,9 +516,10 @@ class BaseProvider(ChatProvider):
         if self._cancelled():
             raise RuntimeError("درخواست لغو شده است.")
         kwargs = self._send_args(headers, payload)
-        # Keep the response body lazy even for JSON calls so another thread can close
-        # the socket while requests is decoding a slow/non-streaming model response.
-        kwargs["stream"] = True
+        # Lazy body reads are needed only when cancellation is wired; direct
+        # adapter calls retain requests' ordinary eager-response behavior.
+        if stream or self.cancel_event is not None:
+            kwargs["stream"] = True
         timeout = (min(10, self.timeout), self.timeout) if stream else self.timeout
         started = time.monotonic()
         host = __import__("urllib.parse", fromlist=["urlsplit"]).urlsplit(url).hostname or "unknown"

@@ -1,36 +1,40 @@
-"""Router-scoped health, cooldown and quota state for hybrid provider execution.
-
-Each HybridRouter owns one instance by default. Nothing in this module is
-process-global or persisted. A higher-level application owner may explicitly
-share individual maps across a related group of routers; independent groups
-remain isolated unless such sharing is deliberately configured.
-"""
+"""Router-scoped health, cooldown and quota state for hybrid provider execution."""
 from __future__ import annotations
-
 import threading
 import time
 from typing import Any
 
-
 class ProviderRuntimeState:
-    """Own transient provider state for exactly one router lifecycle."""
-
-    def __init__(self) -> None:
-        self.cooldowns: dict[str, float] = {}
-        self.quota_blocks: dict[tuple, dict[str, Any]] = {}
-        self.states: dict[str, dict[str, Any]] = {}
+    """Own transient state; related routers may deliberately share this owner."""
+    def __init__(self, *, states=None, cooldowns=None, quota_blocks=None) -> None:
+        self.cooldowns = cooldowns if isinstance(cooldowns, dict) else {}
+        self.quota_blocks = quota_blocks if isinstance(quota_blocks, dict) else {}
+        self.states = states if isinstance(states, dict) else {}
         self._lock = threading.RLock()
 
+    @staticmethod
+    def _defaults() -> dict[str, Any]:
+        return {"health": "unknown", "last_error": None, "last_ms": None,
+                "latency_ms": None, "last_ok_at": None, "last_attempt_at": None,
+                "failures": 0, "last_kind": None, "retryable": None,
+                "failure_class": None, "model_failures": 0}
+
     def state_for(self, route_id: str) -> dict[str, Any]:
-        """Return the mutable health record owned by this router."""
-        defaults = {
-            "health": "unknown", "last_error": None, "last_ms": None,
-            "latency_ms": None, "last_ok_at": None, "last_attempt_at": None,
-            "failures": 0, "last_kind": None, "retryable": None,
-            "failure_class": None,
-        }
         with self._lock:
-            return self.states.setdefault(str(route_id), defaults)
+            return self.states.setdefault(str(route_id), self._defaults())
+
+    def state_snapshot(self, route_id: str) -> dict[str, Any]:
+        with self._lock:
+            return dict(self.states.setdefault(str(route_id), self._defaults()))
+
+    def update_state(self, route_id: str, values=None, *, increments=None) -> dict[str, Any]:
+        with self._lock:
+            state = self.states.setdefault(str(route_id), self._defaults())
+            if values:
+                state.update(values)
+            for key, amount in (increments or {}).items():
+                state[key] = int(state.get(key, 0) or 0) + int(amount)
+            return dict(state)
 
     def cooldown_remaining(self, route_id: str, *, now: float | None = None) -> float:
         instant = time.monotonic() if now is None else float(now)

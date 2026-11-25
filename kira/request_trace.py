@@ -18,6 +18,12 @@ _request_id = contextvars.ContextVar("kira_request_trace_id", default="")
 _lock = threading.Lock()
 _logger = logging.getLogger("kira.request_trace")
 _MAX_BYTES = 5 * 1024 * 1024
+_SENSITIVE_FIELDS = frozenset({
+    "key", "api_key", "secret", "token", "authorization", "headers",
+    "prompt", "messages", "message", "content", "completion", "response",
+    "response_body", "body", "payload", "input", "output", "tool_calls",
+    "tool_arguments", "arguments", "credential", "credentials",
+})
 
 
 def current_request_id() -> str:
@@ -68,8 +74,18 @@ def _write(phase: str, fields: dict, filename: str):
     }
     # Explicitly accept only scalar diagnostic fields; callers must never pass payloads.
     for key, value in fields.items():
+        field_name = str(key)[:48]
+        normalized_key = field_name.strip().casefold().replace("-", "_")
+        if normalized_key in _SENSITIVE_FIELDS:
+            continue
+        if any(normalized_key.endswith(suffix) for suffix in (
+            "_api_key", "_secret", "_authorization", "_prompt", "_messages",
+            "_message", "_content", "_completion", "_response_body",
+            "_body", "_payload", "_tool_calls", "_tool_arguments",
+        )):
+            continue
         if value is None or isinstance(value, (str, int, float, bool)):
-            record[str(key)[:48]] = value[:240] if isinstance(value, str) else value
+            record[field_name] = value[:240] if isinstance(value, str) else value
     try:
         path = _log_path(filename)
         line = json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n"

@@ -368,11 +368,12 @@ class HybridRouter:
         return self.runtime_state.state_for(rid)
 
     def _mark_success(self, route, ms, latency_ms=None):
-        st = self._state(route["id"])
         measured = latency_ms if isinstance(latency_ms, (int, float)) and latency_ms >= 0 else ms
-        st.update(health="healthy", last_error=None, last_ms=ms, latency_ms=measured,
-                  last_ok_at=time.time(), last_attempt_at=time.time(), failures=0, last_kind=None,
-                  retryable=None, failure_class=None, model_failures=0)
+        self.runtime_state.update_state(route["id"], {
+            "health": "healthy", "last_error": None, "last_ms": ms, "latency_ms": measured,
+            "last_ok_at": time.time(), "last_attempt_at": time.time(), "failures": 0,
+            "last_kind": None, "retryable": None, "failure_class": None, "model_failures": 0,
+        })
         self.runtime_state.clear_cooldown(route["id"])
 
     def _google_quota_scope(self, route):
@@ -416,48 +417,46 @@ class HybridRouter:
         elif kind in ("auth", "model", "request", "missing"):
             cooldown = max(COOLDOWN_CONFIG, base)
         elif kind == "offline":
-            cooldown = 0                          # connection refused answers instantly: nothing to wait for, retry freely
+            cooldown = 0
         else:
             cooldown = base
         if cooldown > 0:
-            cooldown_until = time.monotonic() + cooldown
-            self.runtime_state.set_cooldown(route["id"], cooldown_until)
+            deadline = time.monotonic() + cooldown
+            self.runtime_state.set_cooldown(route["id"], deadline)
             if kind == "rate" or status == 429:
-                quota_scope = self._google_quota_scope(route)
-                if quota_scope is not None:
-                    # Google quota buckets are project + model scoped. quota_scope
-                    # lets separate API entries for the same project share that model bucket.
+                scope = self._google_quota_scope(route)
+                if scope is not None:
                     for sibling in self.routes():
-                        if self._google_quota_scope(sibling) == quota_scope:
-                            self.runtime_state.set_cooldown(sibling["id"], cooldown_until)
-        st = self._state(route["id"])
-        st["failures"] += 1
-        st["last_kind"] = kind
-        st["retryable"] = bool(retryable)
-        st["failure_class"] = "transient" if retryable else "permanent"
-        st["last_attempt_at"] = time.time()
-        st["last_error"] = redact(str(exc), *secrets)[:300]
-        st["health"] = "down" if kind in ("auth", "model", "request", "missing", "offline") else "degraded"
+                        if self._google_quota_scope(sibling) == scope:
+                            self.runtime_state.set_cooldown(sibling["id"], deadline)
+
         quota_kind_value = str(getattr(exc, "quota", "") or "")
+        permanent_quota = quota_kind_value == "no_free"
+        values = {
+            "last_kind": kind,
+            "retryable": False if permanent_quota else bool(retryable),
+            "failure_class": "permanent" if permanent_quota or not retryable else "transient",
+            "last_attempt_at": time.time(),
+            "last_error": redact(str(exc), *secrets)[:300],
+            "health": "down" if kind in ("auth", "model", "request", "missing", "offline") else "degraded",
+        }
+        increments = {"failures": 1}
+        if kind == "model":
+            increments["model_failures"] = 1
+        else:
+            values["model_failures"] = 0
+        self.runtime_state.update_state(route["id"], values, increments=increments)
+
         if quota_kind_value in ("no_free", "daily"):
-            if quota_kind_value == "no_free":
-                st["retryable"] = False
-                st["failure_class"] = "permanent"
-            quota_scope = self._google_quota_scope(route) or (
+            scope = self._google_quota_scope(route) or (
                 "route-model", str(route.get("provider") or "").casefold(),
                 str(route.get("model") or "").casefold(),
             )
-            self.runtime_state.set_quota_block(quota_scope, {
+            self.runtime_state.set_quota_block(scope, {
                 "kind": quota_kind_value,
                 "expires_at": None if quota_kind_value == "no_free" else time.monotonic() + 86400,
                 "route_id": str(route.get("id") or ""),
             })
-        # Quota exhaustion and permanent model/configuration errors affect runtime
-        # health only. They must never rewrite route.enabled or any other user setting.
-        if kind == "model":
-            st["model_failures"] = st.get("model_failures", 0) + 1
-        else:
-            st["model_failures"] = 0
         return kind, status, cooldown
 
     # ---------- cancellation ----------
@@ -902,6 +901,8 @@ class HybridRouter:
                                   retry_same_target=decision.retry_same_target, decision=decision.reason)
                     if decision.reason == "cancelled":
                         return {"text": "", "tool_calls": [], "stopped": True, "interrupted": None}
+                    if not decision.continue_with_alternative:
+                        break
                     last_provider = provider
                     last_route_info = {**self.route_info(route), "route": route}
                     secrets = (self._provider_cfg(route).get("api_key"),)
@@ -1001,13 +1002,13 @@ class HybridRouter:
         except Exception as exc:                                                    # noqa: BLE001
             ok, msg = False, redact(exc, cfg.get("api_key"))[:400]
         ms = int((time.monotonic() - t0) * 1000)
-        st = self._state(route_id)
-        st["last_attempt_at"] = time.time()
         if ok:
             self._mark_success(route, ms)
         else:
-            st.update(health="down", last_error=redact(msg, cfg.get("api_key"))[:300], last_ms=None)
-            st["failures"] += 1
+            self.runtime_state.update_state(route_id, {
+                "last_attempt_at": time.time(), "health": "down",
+                "last_error": redact(msg, cfg.get("api_key"))[:300], "last_ms": None,
+            }, increments={"failures": 1})
         return ok, msg, ms
 
     def benchmark(self, route_ids, prompt="سلام! خودت را در یک جمله کوتاه معرفی کن.", max_tokens=48, on_progress=None):
@@ -1041,6 +1042,7 @@ class HybridRouter:
             secrets = (self._provider_cfg(route).get("api_key"),)
             try:
                 provider = self._make_provider(route)
+                provider.cancel_event = self._cancel
                 self._active = provider
 
                 def on_connect():
@@ -1048,12 +1050,17 @@ class HybridRouter:
                     connect_at = time.monotonic()
                 for chunk in provider.stream([{"role": "user", "content": prompt}], "پاسخ را کوتاه بده.", 0.3,
                                              on_connect=on_connect, max_tokens=max_tokens):
+                    if self._cancel.is_set():
+                        break
                     if chunk and first_at is None:
                         first_at = time.monotonic()
                     parts.append(chunk)
                     if self._cancel.is_set():
                         break
                 end = time.monotonic()
+                if self._cancel.is_set():
+                    parts.clear()
+                    row.update(cancelled=True, error="درخواست لغو شد.")
                 text = "".join(parts)
                 row.update(ok=bool(text), chars=len(text), total_ms=int((end - t0) * 1000),
                            connect_ms=int((connect_at - t0) * 1000) if connect_at else None,
@@ -1101,7 +1108,7 @@ class HybridRouter:
         out = []
         for route in self.routes():
             ok, reason = self.eligibility(route)
-            st = self._state(route["id"])
+            st = self.runtime_state.state_snapshot(route["id"])
             out.append({"name": route["id"], "provider": route["provider"], "model": route["model"],
                         "kind": route_model.provider_kind(route["provider"], self._provider_cfg(route)),
                         "enabled": ok or reason == "cooldown", "reason": reason,

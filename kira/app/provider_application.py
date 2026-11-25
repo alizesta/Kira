@@ -88,16 +88,31 @@ class ProviderApplicationService:
         if not sessions:
             return ()
         old_states = getattr(previous_router, "states", None)
-        shared_cooldowns = {}
-        shared_quota_blocks = {}
         # Build every replacement before mutating any Session; a failed factory
         # must not leave the character set with a mixture of old and new routers.
         routers = [self.create_router(settings) for _session in sessions]
-        for router in routers:
-            if old_states is not None:
-                router.states = old_states
-            router.cooldowns = shared_cooldowns
-            router.quota_blocks = shared_quota_blocks
+
+        if routers and all(hasattr(router, "runtime_state") for router in routers):
+            from ..provider_runtime_state import ProviderRuntimeState
+            previous_runtime = getattr(previous_router, "runtime_state", None)
+            previous_states = getattr(previous_runtime, "states", old_states)
+            previous_quotas = getattr(previous_runtime, "quota_blocks", {})
+            shared_runtime = ProviderRuntimeState(
+                states=deepcopy(previous_states) if isinstance(previous_states, dict) else {},
+                cooldowns={},
+                quota_blocks=deepcopy(previous_quotas) if isinstance(previous_quotas, dict) else {},
+            )
+            for router in routers:
+                router.runtime_state = shared_runtime
+        else:
+            # Backwards-compatible support for injected Router doubles and older factories.
+            shared_cooldowns = {}
+            shared_quota_blocks = {}
+            for router in routers:
+                if old_states is not None:
+                    router.states = old_states
+                router.cooldowns = shared_cooldowns
+                router.quota_blocks = shared_quota_blocks
         for session, router in zip(sessions, routers):
             session.client = router
         return tuple(routers)
