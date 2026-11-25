@@ -95,6 +95,7 @@ class RouteGuiTests(unittest.TestCase):
     def cloud(self, *names, ollama=False):
         w = self.win
         helpers.enable(w.settings, *names)
+        w.settings["network_policy"] = "cloud_permitted"
         w.settings["providers"]["ollama"]["enabled"] = ollama
         route_model.ensure_routes(w.settings)
         w.client = HybridRouter(w.settings)
