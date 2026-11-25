@@ -131,9 +131,11 @@ class ModuleManager:
                 raise ModuleManagerError(f"Module did not become active: {key}")
             record.error = None
         except Exception as exc:
-            record.active = False
+            rollback_errors = self._rollback_failed_activation(record)
             record.error = f"{type(exc).__name__}: {exc}"
-            if isinstance(exc, ModuleManagerError):
+            if rollback_errors:
+                record.error += "; rollback: " + "; ".join(rollback_errors)
+            if isinstance(exc, ModuleManagerError) and not rollback_errors:
                 raise
             raise ModuleManagerError(
                 f"Could not activate module '{key}': {record.error}"
@@ -167,6 +169,50 @@ class ModuleManager:
             raise ModuleManagerError(
                 f"Could not deactivate module '{key}': {record.error}"
             ) from exc
+
+    @staticmethod
+    def _rollback_failed_activation(record: _ModuleRecord) -> list[str]:
+        """Release partial resources after activation fails, without unregistering.
+
+        An activation hook may allocate resources before raising. Always invoke
+        the feature's deactivation hook in that case, even when its active flag
+        was never committed. If that hook itself fails, make a final stop attempt
+        so the manager does not silently leave a partially active feature.
+        """
+        instance = record.instance
+        if instance is None:
+            record.active = False
+            return []
+
+        errors: list[str] = []
+        activatable = isinstance(instance, ActivatableApplicationModule)
+        try:
+            if activatable:
+                instance.deactivate()
+            else:
+                instance.stop()
+        except Exception as exc:
+            operation = "deactivate" if activatable else "stop"
+            errors.append(f"{operation}: {type(exc).__name__}: {exc}")
+            if activatable:
+                try:
+                    instance.stop()
+                except Exception as stop_exc:
+                    errors.append(f"stop fallback: {type(stop_exc).__name__}: {stop_exc}")
+
+        if activatable:
+            try:
+                record.active = bool(instance.is_active)
+            except Exception as exc:
+                # Be conservative: an unreadable state must not be reported idle.
+                record.active = True
+                errors.append(f"activation state: {type(exc).__name__}: {exc}")
+        else:
+            record.active = False
+
+        if record.active:
+            errors.append("module remained active after activation rollback")
+        return errors
 
     def _start(self, module_id: str, stack: tuple[str, ...]) -> None:
         if module_id in stack:

@@ -4,6 +4,7 @@ import unittest
 
 from kira.app.dependency_container import DependencyContainer
 from kira.app.event_bus import EventBus
+from kira.app.module_manager import ModuleManager, ModuleManagerError, ModuleState
 from kira.app.service_module import ServiceModule
 from kira.core.interfaces.application_module import ActivatableApplicationModule
 
@@ -158,6 +159,118 @@ class LazyServiceModuleTests(unittest.TestCase):
                 ("shared", "close"),
             ],
         )
+
+
+    def test_failed_activation_rolls_back_partial_resources_and_can_retry(self):
+        events = []
+
+        class PartiallyActivatedFeature:
+            def __init__(self):
+                self._active = False
+                self.resources_acquired = False
+                self.fail_once = True
+
+            @property
+            def is_active(self):
+                return self._active
+
+            def register(self, container, event_bus):
+                pass
+
+            def start(self):
+                events.append("start")
+
+            def activate(self):
+                events.append("activate")
+                self.resources_acquired = True
+                self._active = True
+                if self.fail_once:
+                    self.fail_once = False
+                    raise RuntimeError("activation failed after allocation")
+
+            def deactivate(self):
+                events.append("deactivate")
+                self.resources_acquired = False
+                self._active = False
+
+            def stop(self):
+                events.append("stop")
+                self.resources_acquired = False
+                self._active = False
+
+            def dispose(self):
+                events.append("dispose")
+                self.resources_acquired = False
+                self._active = False
+
+        feature = PartiallyActivatedFeature()
+        manager = ModuleManager(DependencyContainer(), EventBus())
+        manager.register("feature", lambda: feature, optional=True)
+        manager.start("feature")
+
+        with self.assertRaisesRegex(ModuleManagerError, "activation failed after allocation"):
+            manager.activate("feature")
+
+        self.assertEqual(events, ["start", "activate", "deactivate"])
+        self.assertFalse(feature.resources_acquired)
+        self.assertFalse(manager.is_active("feature"))
+        self.assertEqual(manager.state("feature"), ModuleState.STARTED)
+
+        # The same registered feature remains recoverable after successful rollback.
+        manager.activate("feature")
+        self.assertTrue(manager.is_active("feature"))
+        self.assertTrue(feature.resources_acquired)
+        manager.deactivate("feature")
+        self.assertFalse(manager.is_active("feature"))
+        self.assertFalse(feature.resources_acquired)
+        self.assertEqual(manager.shutdown(), {})
+        self.assertEqual(events[-2:], ["stop", "dispose"])
+
+    def test_activation_rollback_falls_back_to_stop_when_deactivate_raises(self):
+        events = []
+
+        class BrokenDeactivateFeature:
+            def __init__(self):
+                self._active = False
+
+            @property
+            def is_active(self):
+                return self._active
+
+            def register(self, container, event_bus):
+                pass
+
+            def start(self):
+                pass
+
+            def activate(self):
+                self._active = True
+                raise RuntimeError("activation failed")
+
+            def deactivate(self):
+                events.append("deactivate")
+                raise RuntimeError("deactivate failed")
+
+            def stop(self):
+                events.append("stop")
+                self._active = False
+
+            def dispose(self):
+                events.append("dispose")
+
+        feature = BrokenDeactivateFeature()
+        manager = ModuleManager(DependencyContainer(), EventBus())
+        manager.register("feature", lambda: feature)
+        manager.start("feature")
+
+        with self.assertRaisesRegex(ModuleManagerError, "rollback: deactivate"):
+            manager.activate("feature")
+
+        self.assertEqual(events, ["deactivate", "stop"])
+        self.assertFalse(manager.is_active("feature"))
+        self.assertEqual(manager.state("feature"), ModuleState.STARTED)
+        self.assertEqual(manager.shutdown(), {})
+        self.assertEqual(events[-1], "dispose")
 
 
 
