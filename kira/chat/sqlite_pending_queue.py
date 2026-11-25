@@ -45,17 +45,27 @@ class SqlitePendingMessageQueue:
                         rows.setdefault(row[6], row)
             except OSError as exc:
                 raise self._persistence_error(f"صف اضطراری پیام‌ها خوانده نشد: {exc}") from exc
-        for index, raw in enumerate(repo._pending):
+        for raw in repo._pending:
             row = tuple(raw)
             if len(row) == 6:
+                # Legacy in-memory entries have no stable receipt token. Normalize
+                # only this read; do not mutate the caller-owned compatibility queue.
                 row = (*row, uuid.uuid4().hex)
-                repo._pending[index] = row
             if len(row) == 7 and str(row[6] or ""):
                 rows.setdefault(str(row[6]), row)
         return list(rows.values())
 
     def enqueue_locked(self, row):
         repo, spool = self._repository, self.spool_path()
+        # The configured cap applies to the combined RAM + durable spool queue.
+        # Do not silently turn a rejected interactive write into an unbounded
+        # disk backlog.
+        if len(self.rows_locked()) >= self._max_pending:
+            repo.last_error = (
+                f"صف پیام‌های معوق پر است (queue is full): جدیدترین پیام در صف قرار نگرفت "
+                f"(newest message was not queued). سقف {self._max_pending} پیام است."
+            )
+            return False
         original_size = 0
         try:
             spool.parent.mkdir(parents=True, exist_ok=True)

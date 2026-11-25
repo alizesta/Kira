@@ -19,7 +19,7 @@ from typing import Any, Callable
 from ..config import DB_PATH
 from .sqlite_schema import SqliteSchemaManager
 from .repository_contracts import ChatRepository
-from .sqlite_connection import SqliteConnectionManager
+from .sqlite_connection import SQLITE_BUSY_TIMEOUT_SECONDS, SqliteConnectionManager
 from .sqlite_recovery import SqliteRecoveryManager
 from .sqlite_pending_queue import SqlitePendingMessageQueue
 
